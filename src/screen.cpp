@@ -544,6 +544,10 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 	if (ob->stats->query_bit_flags(BIT_ETHEREAL) )
 		return 1; //moved up to avoid unneeded calculation
 
+	// Zardus: PORT: Does the grid exist?
+	if (!grid)
+		return 0;
+
 	// Check if our butt hangs over shorto next grid square
 	if (!((xover)%GRID_SIZE))
 		xtrax = 0; //this should be the rare case
