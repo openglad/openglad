@@ -37,6 +37,10 @@ main(long argc, char **argv)
   if (!get_pix_directory())
     exit(1);
   myscreen = new screen(1);
+
+	//buffers: setting the seed
+	srand(time(NULL));
+  
   // Disabling intro for faster startup
 //  intro_main(argc, argv);
   picker_main(argc, argv);
@@ -218,6 +222,8 @@ void glad_main(screen *myscreen, long playermode)
          }
 
   }
+
+	clear_keyboard();
 
   // Delete all of our current information and abort ..
   here = myscreen->oblist;
