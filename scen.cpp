@@ -1028,7 +1028,8 @@ long save_map_file(char  * filename, screen *master)
   // Create the full pathname for the pixie file
   strcpy(fullpath, my_dir);
   strcat(fullpath, filename);
-  strcat(fullpath, ".PIX");
+  //buffers: changed .PIX to .pix
+  strcat(fullpath, ".pix");
 
   if ( (outfile = fopen(fullpath, "wb")) == NULL )        // open for write
   {
@@ -1066,12 +1067,16 @@ long load_new_grid(screen *master)
   scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
   strcpy(tempstring, scentext->input_string(115, 32, 8, grid_name));
   //NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
-  if (strlen(tempstring))
+  if (strlen(tempstring)) {
+  	//buffers: our grid files are all lowercase...
+	lowercase(tempstring);
    strcpy(grid_name, tempstring);
+  }
 
 //printf("DB: loading %s\n", grid_name);
 
-  strcat(tempstring, ".PIX");
+//buffers: PORT: changed .PIX to .pix
+  strcat(tempstring, ".pix");
   master->grid = read_pixie_file(tempstring);
   master->maxx = master->grid[1];
   master->maxy = master->grid[2];
@@ -1094,8 +1099,11 @@ long new_scenario_name()
   scentext->write_xy(52, 32, "Scenario name: ", DARK_BLUE, 1);
   strcpy(tempstring, scentext->input_string(135, 32, 8, scen_name));
   //NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
-  if (strlen(tempstring))
+  if (strlen(tempstring)) {
    strcpy(scen_name, tempstring);
+	//buffers: all our files are lowercase....
+	lowercase(scen_name);
+   }
 
   return 1;
 }
@@ -1306,7 +1314,8 @@ long save_scenario(char * filename, screen * master, char *gridname)
 
   strcpy(temp_filename, scen_directory);
   strcat(temp_filename, filename);
-  strcat(temp_filename, ".FSS");
+  //buffers: PORT: changed .FSS to .fss
+  strcat(temp_filename, ".fss");
 
   if ( (outfile = fopen(temp_filename, "wb")) == NULL ) // open for write
   {
