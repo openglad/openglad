@@ -1,9 +1,11 @@
+//walker.cpp
+
+/* ChangeLog
+	buffers: 7/31/02: *deleted some redundant headers
+*/
+
 #include "graph.h"
 #include "smooth.h"
-#include <stdio.h>
-#include <fstream.h>
-#include <stdlib.h>
-// Z's script: #include <dos.h>
 
 // ************************************************************
 //  WALKER -- graphics routines

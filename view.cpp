@@ -1,11 +1,12 @@
-#include "input.h"
+//view.cpp
 
+/* ChangeLog
+	buffers: 7/31/02: *include cleanup
+*/
+
+#include "input.h"
 #include "graph.h"
 #include "colors.h"
-#include <fstream.h>
-#include <stdlib.h>
-// Z's script: #include <dos.h>
-// Z's script: #include <i86.h>
 
 //these are for chad's team info page
 #define VIEW_TEAM_TOP    2

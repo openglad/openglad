@@ -1,8 +1,10 @@
+//radar.cpp
+
+/* ChangeLog
+	buffers: 7/31/02: *include cleanup
+*/
 #include "graph.h"
 #include "colors.h"
-#include <fstream.h>
-#include <stdlib.h>
-// Z's script: #include <dos.h>
 
 #define RADAR_X 60  // These are the dimensions of the radar
 #define RADAR_Y 44  // viewport

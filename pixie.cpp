@@ -1,7 +1,9 @@
+//pixie.cpp
+
+/* ChangeLog
+	buffers: 7/31/02: *include cleanup
+*/
 #include "graph.h"
-#include <fstream.h>
-#include <stdlib.h>
-// Z's script: #include <dos.h>
 
 // ************************************************************
 //  Pixie -- Base graphic object. It holds pixel by pixel data

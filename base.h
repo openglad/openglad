@@ -3,16 +3,19 @@
 
 // BASE definitions (perhaps this should be broken up some more
 
+/* ChangeLog
+	buffers: 7/31/02: *C++ style includes for string and fstream
+			: *deleted some redundant headers
+			: *added math.h,ctype.h
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
-// Z's script: #include <conio.h>
-// Z's script: #include <mem.h>
-#include <string.h>
-#include <fstream.h>
-// Z's script: #include <dos.h>
-// Z's script: #include <process.h>
+#include <string>
+#include <fstream>
+#include <math.h>
+#include <ctype.h>
 #include "sounds.h"
-//buffers: we want input.h instead of int32.h now #include "int32.h"
 #include "input.h"
 #include "parse32.h"
 #include "SDL/SDL.h"

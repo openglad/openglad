@@ -1,10 +1,9 @@
 // Video object code
+
+/* ChangeLog
+	buffers: 7/31/02: *include cleanup
+*/
 #include "graph.h"
-#include <fstream.h>
-#include <stdlib.h>
-#include <math.h>
-// Z's script: #include <dos.h>
-// Z's script: #include <i86.h>
 
 #define VIDEO_BUFFER_WIDTH 320
 #define VIDEO_WIDTH 320

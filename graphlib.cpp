@@ -1,10 +1,10 @@
+//graphlib.cpp
+
+/* ChangeLog
+	buffers: 7/31/02: *include cleanup
+*/
 #include "graph.h"
 #include "gladpack.h"
-#include <fstream.h>
-#include <stdlib.h>
-// Z's script: #include <dos.h>
-#include <ctype.h>
-// Z's script: #include <i86.h>
 
 // Use this for globally setting the graphics dir, etc..
 char pix_directory[80];
