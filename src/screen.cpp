@@ -74,13 +74,6 @@ unsigned long random(unsigned long x)
 	return (unsigned long) ( ((unsigned long) rand()) % x);
 }
 
-// Tiny bit of code for oblink:
-inline oblink::oblink()
-{
-	ob = NULL;
-	next = NULL;
-}
-
 // ************************************************************
 //  SCREEN -- graphics routines
 //
@@ -524,7 +517,7 @@ void screen::reset(short howmany)
 
 }
 
-inline short screen::query_grid_passable(short x, short y, walker  *ob)
+short screen::query_grid_passable(short x, short y, walker  *ob)
 {
 	long i,j;
 	//  short xsize=ob->sizex, ysize=ob->sizey;

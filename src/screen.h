@@ -39,7 +39,7 @@ class screen : public video
 		video * get_video_ob();
 		short query_passable(short x,short y,walker  *ob);
 		short query_object_passable(short x, short y, walker  *ob);
-		inline short query_grid_passable(short x, short y, walker  *ob);
+		short query_grid_passable(short x, short y, walker  *ob);
 		short redraw();
 		void refresh();
 		walker  * first_of(unsigned char whatorder, unsigned char whatfamily,

@@ -66,7 +66,7 @@ class packfile;
 class oblink
 {
 	public:
-		oblink();
+		oblink() : ob(NULL), next(NULL) {}
 		walker  *ob;
 		oblink  *next;
 };
