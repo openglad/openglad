@@ -895,6 +895,7 @@ void uppercase(char *somestring)
 
 }
 
+/* buffers: we have a new one in input.cpp (openglad uses it)
 void lowercase(char *somestring)
 {
   long i;
@@ -903,7 +904,7 @@ void lowercase(char *somestring)
    if (somestring[i] < 96)
     somestring[i] += 32;
 
-}
+}*/
 
 
 void remove_all_objects(screen *master)
