@@ -1,4 +1,4 @@
-/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+/* Copyright (C) 2002  Kari Pahula
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,18 +14,22 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-//
-// parsecfg.h
-//
+#ifndef PARSER_H
+#define PARSER_H
 
-//#include <stdio.h>
-//#include <string.h>
-//#include <cstring.h>
-//includes moved to parsecfg.cpp
-#include <stdio.h> //needed here for a file* function
+#include <string>
+#include <map>
 
-FILE* open_cfg_file(char *filename);   // returns a poshorter to open                                                                                                                          // .cfg file
-void close_cfg_file(FILE *cfgfile);     // close a .cfg file
-void dump_cfg_file(FILE *cfgfile);
-char* read_one_line(FILE *cfgfile);    // read until \n
-char* query_cfg_value(FILE *cfgfile, char *section, char *pattern);
+using namespace std;
+
+class CfgStore {
+public:
+	bool parse(const char *);
+	const char *query(const char*, const char *);
+
+	map<string, map<string, string> > data;
+};
+
+extern CfgStore cfg;
+
+#endif PARSER_H
