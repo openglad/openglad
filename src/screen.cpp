@@ -1417,7 +1417,7 @@ short screen::endgame(short ending, short nextlevel)
 			buffer_to_screen(0, 0, 320, 200);
 			clear_keyboard();
 			while (!endkeys[SDLK_ESCAPE])
-				;
+				get_input_events(WAIT);
 			//while (query_key() != SDLK_ESCAPE);
 			end = 1;
 		}
