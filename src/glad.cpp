@@ -210,6 +210,8 @@ void glad_main(screen *myscreen, long playermode)
 		// Reset the timer count to zero ...
 		reset_timer();
 
+		myscreen->clearfontbuffer();
+
 		input = (char) query_key();
 
 		if (myscreen->redrawme)
