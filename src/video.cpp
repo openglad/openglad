@@ -1456,7 +1456,7 @@ int video::FadeBetween(
 
 int video::fadeblack(bool way)
 {
-	SDL_Surface *black = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
+	SDL_Surface *black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
 	int c = SDL_MapRGB(black->format, 0, 0, 0);
 	SDL_Surface *render;
 	int i;
