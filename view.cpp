@@ -458,9 +458,7 @@ short viewscreen::input(char inputthing)
 		  mykeys[KEY_DOWN_LEFT], mykeys[KEY_DOWN], mykeys[KEY_DOWN_RIGHT],
 		  mykeys[KEY_FIRE], mykeys[KEY_SWITCH], mykeys[KEY_SPECIAL], query_key());
 
-//  if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
-//  Temporarily:
-    if (inputkeyboard[SDLK_7])
+  if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
  	options_menu();
 
 
