@@ -2334,7 +2334,7 @@ long save_team_list(char * filename)
 
   //strcpy(temp_filename, scen_directory);
   strcpy(temp_filename, filename);
-  strcat(temp_filename, ".GTL"); // gladiator team list
+  strcat(temp_filename, ".gtl"); // gladiator team list
   
   release_mouse();
 
