@@ -67,12 +67,14 @@ bool cfg_store::parse(const char *filename)
 
 void cfg_store::commandline(int &argc, char **&argv)
 {
-#ifndef OPENSCEN
 	const char helpmsg[] = "\
-Usage: openglad [-dfhsSv]\n\
+Usage: open(glad|scen) [-dfhsSvnxe]\n\
   -s, --sound		Turn sound on\n\
-  -S, --soundoff	Turn sound off\n\
-  -d, --pdouble		Double pixel size\n\
+  -S, --nosound		Turn sound off\n\
+  -n, --nostretch	Run at 320x200 resolution\n\
+  -d, --double		Double pixel size\n\
+  -e, --eagle		Use eagle engine for pixel doubling\n\
+  -i, --sai		Use sai2x engine for pixel doubling\n\
   -f, --fullscreen	Use full screen\n\
   -h, --help		Print a summary of the options\n\
   -v, --version		Print the version number\n\
@@ -83,14 +85,17 @@ Usage: openglad [-dfhsSv]\n\
 		{"version", 0, 0, 'v'},
 		{"sound", 0, 0, 's'},
 		{"nosound", 0, 0, 'S'},
-		{"pdouble", 0, 0, 'd'},
+		{"nostretch", 0, 0, 'n'},
+		{"double", 0, 0, 'd'},
+		{"eagle", 0, 0, 'e'},
+		{"sai", 0, 0, 'i'},
 		{"fullscreen", 0, 0, 'f'},
 		{0, 0, 0, 0}
 	};
 	while(1)
 	{
 		int option_index, c;
-		c = getopt_long (argc, argv, "dfhsSv", longopts, NULL);
+		c = getopt_long (argc, argv, "dniefhsSv", longopts, NULL);
 		switch(c)
 		{
 		case 'h':
@@ -105,8 +110,17 @@ Usage: openglad [-dfhsSv]\n\
 		case 'S':
 			data["sound"]["sound"] = "off";
 			break;
+		case 'n':
+			data["graphics"]["render"] = "normal";
+			break;
 		case 'd':
-			data["graphics"]["pdouble"] = "on";
+			data["graphics"]["render"] = "double";
+			break;
+		case 'e':
+			data["graphics"]["render"] = "eagle";
+			break;
+		case 'x':
+			data["graphics"]["render"] = "sai";
 			break;
 		case 'f':
 			data["graphics"]["fullscreen"] = "on";
@@ -115,42 +129,6 @@ Usage: openglad [-dfhsSv]\n\
 			return;
 		}
 	}
-#else // openscen options
-	const char helpmsg[] = "\
-Usage: openscen [-hvd]\n\
-  -h, --help		Print a summary of the options\n\
-  -v, --version		Print the version number\n\
-  -d, --pdouble		Double pixel size\n\
-";
-	const char versmsg[] = "openscen version " PACKAGE_VERSION "\n";
-	const struct option longopts[] = {
-		{"help", 0, 0, 'h'},
-		{"version", 0, 0, 'v'},
-		{"sound", 0, 0, 's'},
-		{"nosound", 0, 0, 'S'},
-		{"pdouble", 0, 0, 'd'},
-		{0, 0, 0, 0}
-	};
-	while(1)
-	{
-		int option_index, c;
-		c = getopt_long (argc, argv, "dhv", longopts, NULL);
-		switch(c)
-		{
-		case 'h':
-			cout << helpmsg;
-			exit (0);
-		case 'v':
-			cout << versmsg;
-			exit (0);
-		case 'd':
-			data["graphics"]["pdouble"] = "on";
-			break;
-		case -1:
-			return;
-		}
-	}
-#endif // openglad or openscen command line parsing
 }
 
 const char *cfg_store::query(const char *section, const char *entry)
