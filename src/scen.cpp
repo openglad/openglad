@@ -16,7 +16,7 @@
  */
 #include "scen.h"
 #include "input.h"
-
+#include "util.h"
 
 /* Changelog
  * 	8/8/02: Zardus: added scrolling-by-minimap
@@ -44,6 +44,8 @@ long difficulty_level[DIFFICULTY_SETTINGS] =
         100,
         200,
     };  // end of difficulty settings
+
+FILE * open_misc_file(char *, char *, char *);
 
 long do_load(screen *ascreen);  // load a scenario or grid
 long do_save(screen *ascreen);  // save a scenario or grid
@@ -974,29 +976,6 @@ void set_screen_pos(screen *myscreen, long x, long y)
 	event = 1;
 }
 
-/* buffers: we have a new uppercase in input.cpp (openglad uses it)
-void uppercase(char *somestring)
-{
-  long i;
- 
-  for (i=0; i < strlen(somestring); i++)
-   if (somestring[i] > 96)
-    somestring[i] -= 32;
- 
-}*/
-
-/* buffers: we have a new one in input.cpp (openglad uses it)
-void lowercase(char *somestring)
-{
-  long i;
- 
-  for (i=0; i < strlen(somestring); i++)
-   if (somestring[i] < 96)
-    somestring[i] += 32;
- 
-}*/
-
-
 void remove_all_objects(screen *master)
 {
 	oblink *fx = master->fxlist;
@@ -1073,17 +1052,17 @@ long save_map_file(char  * filename, screen *master)
 
 	char numframes, x, y;
 	//  char  *newpic;
-	string fullpath(getenv("HOME"));
+	string fullpath(filename);
 	FILE  *outfile;
 	//buffers: we want to save grid files to scen/
 	//buffers: original glad's grid files were always handle as pixies
 
 	// Create the full pathname for the pixie file
-	fullpath += "/.openglad/scen/";
-	fullpath += filename;
 	fullpath += ".pix";
 
-	if ( (outfile = fopen(fullpath.c_str(), "wb")) == NULL )
+	lowercase (fullpath);
+
+	if ( (outfile = open_misc_file((char *)fullpath.c_str(), "scen/", "wb")) == NULL )
 	{
 		master->draw_button(30, 30, 220, 60, 1, 1);
 		scentext->write_xy(32, 32, "Error in saving map file", DARK_BLUE, 1);
@@ -1404,15 +1383,16 @@ long save_scenario(char * filename, screen * master, char *gridname)
 	// 1-byte character width of line
 	// m bytes == characters on this line
 
-	strcpy(temp_filename, scen_directory);
-	strcat(temp_filename, filename);
+	// Zardus: PORT: no longer need to put in scen/ in this part
+	//strcpy(temp_filename, scen_directory);
+	strcpy(temp_filename, filename);
 	//buffers: PORT: changed .FSS to .fss
 	strcat(temp_filename, ".fss");
 
-	if ( (outfile = fopen(temp_filename, "wb")) == NULL ) // open for write
+	if ( (outfile = open_misc_file(temp_filename, "scen/", "wb")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
-		//printf("Error in writing file %s\n", filename);
+		printf("Error in writing file %s\n", filename);
 
 		master->draw_button(30, 30, 220, 60, 1, 1);
 		sprintf(buffer, "Error in saving scenario file");

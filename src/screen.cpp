@@ -28,6 +28,7 @@
 #include "graph.h"
 #include "smooth.h"
 #include "gladpack.h"
+#include "util.h"
 
 // From picker.cpp
 extern long calculate_level(unsigned long temp_exp);
@@ -61,8 +62,7 @@ char  * query_my_map_name();
 
 char my_map_name[40];
 
-void get_input_events(bool);
-void lowercase(char *);
+FILE * open_misc_file(char *, char *);
 
 // These are globals for the packed files ..
 packfile scenpack;
@@ -1753,18 +1753,12 @@ short load_scenario(char * filename, screen * master)
 	// Open the pixie-pack, if not already done ...
 	if (!scenpack.opened())
 	{
-		if (scenpack.open("levels.001") == -1) // not in current directory
+		if (scenpack.open("levels.001") == -1) // doesn't exist
 		{
-			// Create the full pathname for the resource file
-			strcpy(fullpath, DATADIR);
-			strcat(fullpath, "levels.001");
-			if (scenpack.open(fullpath) == -1) // not in random directory
-			{
-				load_and_set_palette("our.pal", myscreen->ourpalette);
-				printf("Cannot open levels resource file!\n");
-				release_keyboard();
-				exit(0);
-			}
+			load_and_set_palette("our.pal", myscreen->ourpalette);
+			printf("Cannot open levels resource file!\n");
+			release_keyboard();
+			exit(0);
 		}
 	}
 
@@ -1773,33 +1767,16 @@ short load_scenario(char * filename, screen * master)
 	//buffers: the file
 	strcpy(thefile, filename);
 	strcat(thefile, ".fss");
-	strcpy(thefileupper,thefile);
+	lowercase(thefile);
+
+	strcpy(thefileupper, thefile);
 	uppercase(thefileupper);
-
-
-	//buffers: the full path of file
-	strcpy(fullpath,scen_directory);
-	strcat(fullpath,thefile);
-
-	strcpy(fullpathupper,scen_directory);
-	strcat(fullpathupper,thefileupper);
 
 	gotit = 0;
 
-	//buffers: first try to find the file in scen/
-	//printf("DEBUG: looking for %s\n",fullpath);
-	if ( (infile = fopen(fullpath, "rb")) == NULL )
-	{      // open for read
-		//printf("looking for %s now\n",fullpathupper);
-		if((infile = fopen(fullpathupper,"rb")) != NULL)
-		{
-			//printf("DEBUG: scenario %s found in scen/\n",fullpathupper);
-			gotit = 1;
-		}
-	}
-	else
+	// Zaradus: much much better this way
+	if ( (infile = open_misc_file(thefile, "scen/")))
 	{
-		//printf("DEBUG: scenario %s found\n",fullpath);
 		gotit = 1;
 	}
 
