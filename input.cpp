@@ -169,11 +169,11 @@ void wait_for_key(unsigned char somekey)
 
 	// First wait for key press .. 
 	while (!key_list[somekey])
-		dumbcount++; // do nothing
+		get_input_events();
 
 	// And now for the key to be released ..
 	while (key_list[somekey])
-		dumbcount--; // do nothing
+		get_input_events();
 }
 
 short query_key_press_event()
@@ -211,12 +211,9 @@ void reset_mouse()
 
 long * query_mouse()
 {
-  //Fetches buttons, and sets mouse x,y coords
-  //mouse_state[MOUSE_LEFT] = (long) (mouse_buttons & (long) LEFT_MASK);
-  //mouse_state[MOUSE_RIGHT] = (long) (mouse_buttons & (long) RIGHT_MASK);
-  //mouse_state[MOUSE_X] = (long) (outregs.w.cx >> 1);
-  //mouse_state[MOUSE_Y] = (long) outregs.w.dx;
-  //return mouse_state;
+	// The mouse_state thing is set using get_input_events, though
+	// it should probably get its own function
+	return mouse_state;
 }
 
 long * query_joy()
