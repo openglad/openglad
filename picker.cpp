@@ -2035,7 +2035,9 @@ long cycle_team_guy(long whichway)
   current_team_num = current_guy->teamnum;
 
   // Set our team button back to normal color ..
-  allbuttons[18]->do_outline = 0;
+  // Zardus: FIX: added a check for null pointers
+  if (allbuttons[18])
+  	allbuttons[18]->do_outline = 0;
 
   return OK;
 }
