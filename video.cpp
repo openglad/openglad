@@ -544,7 +544,7 @@ void video::putbuffer(long tilestartx, long tilestarty,
 		long portendx, long portendy,
 		SDL_Surface *sourceptr)
 {
-	SDL_Rect rect;
+	SDL_Rect rect,temp;
 	int i,j,num;
 	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
 	unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
@@ -582,11 +582,13 @@ void video::putbuffer(long tilestartx, long tilestarty,
 	offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
 	offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
-	rect.x = (tilestartx-xmin)*mult;
-	rect.y = (tilestarty-ymin)*mult;
-	rect.w = xmax*mult;
-	rect.h = ymax*mult;
-	SDL_BlitSurface(sourceptr,NULL,screen,&rect);
+	rect.x = (tilestartx)*mult;
+	rect.y = (tilestarty)*mult;
+	temp.x = xmin*mult;
+	temp.y = ymin*mult;
+	temp.w = (xmax-xmin)*mult;
+	temp.h = (ymax-ymin)*mult;
+	SDL_BlitSurface(sourceptr,&temp,screen,&rect);
 }
 
 
