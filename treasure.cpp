@@ -20,7 +20,7 @@ treasure::treasure(unsigned char  *data, screen  *myscreen) : walker(data, myscr
 
 treasure::~treasure()
 {
-  walker::~walker();
+  //bufffers: PORT: cannot call destructor w/o obj: walker::~walker();
 }
 
 short treasure::act()
@@ -147,9 +147,12 @@ short treasure::eat_me(walker  * eater)
                 // Get the name of our exit..
                 sprintf(message, "scen%d", stats->level);
                 strcpy(exitname, myscreen->get_scen_title(message, myscreen) );
-                if (!stricmp(exitname, "none"))
-                  sprintf(exitname, "Level %d", stats->level);
-                leftside  = 160 - ( (strlen(exitname) + 18) * 3);
+                
+		//buffers: PORT: need to replace stricmp
+		//buffers: if (!stricmp(exitname, "none"))
+                //buffers:  sprintf(exitname, "Level %d", stats->level);
+                
+		leftside  = 160 - ( (strlen(exitname) + 18) * 3);
                 rightside = 160 + ( (strlen(exitname) + 18) * 3);
                 // First check to see if we're withdrawing into 
                 //    somewhere we've been, in which case we abort
