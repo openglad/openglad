@@ -65,10 +65,14 @@ class video
 	char bluepalette[768]; // for special effects like time-freeze
 	char dospalette[768]; // store the dos palette so we can restore it later
 
-	 SDL_Surface *screen;
          unsigned char videobuffer[64000]; //our new unified video buffer
          short cyclemode; //color cycling on or off
 
+
+	//buffers: screen vars
+	SDL_Surface *screen;
+	int screen_width,screen_height;
+	int pdouble, mult;
 };
 
 #endif
