@@ -18,7 +18,7 @@ video::video()
 {
 	long i;
 
-	pdouble = 1;
+	pdouble = 0;
 
 	//buffer: set vars according to pdouble
 	if(pdouble) {
@@ -53,7 +53,20 @@ load_palette("our.pal", redpalette);
 		bluepalette[i*3+0] /= 2;
 		bluepalette[i*3+1] /= 2;
 	}
-	
+
+//buffers: code straight from the libSDL doc project :)
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	rmask = 0xff000000;
+	gmask = 0x00ff0000;
+	bmask = 0x0000ff00;
+	amask = 0x000000ff;
+#else
+	rmask = 0x000000ff;
+	gmask = 0x0000ff00;
+	bmask = 0x00ff0000;
+	amask = 0xff000000;
+#endif
+
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO);
 	screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
@@ -541,6 +554,61 @@ void video::putbuffer(long tilestartx, long tilestarty,
 	}
 }
 
+//buffers: this is the SDL_Surface accelerated version of putbuffer
+void video::putbuffer(long tilestartx, long tilestarty,
+		long tilewidth, long tileheight,
+		long portstartx, long portstarty,
+		long portendx, long portendy,
+		SDL_Surface *sourceptr)
+{
+	SDL_Rect rect;
+	int i,j,num;
+	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
+	unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
+	long totrows,rowsize; //number of rows and width of each row in the source
+	unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
+	unsigned char * videobufptr = &videobuffer[0];
+	//buffers: unsigned char * sourcebufptr = &sourceptr[0];
+	if (tilestartx >= portendx || tilestarty >= portendy )
+		return; // abort, the tile is drawing outside the clipping region
+
+	if ((tilestartx + tilewidth) > portendx)   //this clips on the right edge
+		xmax = portendx - tilestartx; //stop drawing after xmax bytes
+	else if (tilestartx < portstartx) //this clips on the left edge
+	{
+		xmin = portstartx - tilestartx;
+		tilestartx = portstartx;
+	}
+
+	if ((tilestarty + tileheight) > portendy) //this clips on the bottom edge
+		ymax = portendy - tilestarty;
+	else if (tilestarty < portstarty) //this clips the top edge
+	{
+		ymin = portstarty - tilestarty;
+		tilestarty = portstarty;
+	}
+															      
+	totrows = (ymax-ymin); //how many rows to copy
+	rowsize = (xmax-xmin); //how many bytes to copy
+	if (totrows <= 0 || rowsize <= 0) 
+		return; //this happens on bad args
+
+	targetshifter = VIDEO_BUFFER_WIDTH - rowsize; //this will wrap the target around
+	sourceshifter = tilewidth - rowsize;  //this will wrap the source around
+
+	offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
+	offssource = (ymin * tilewidth) + xmin; //start at u-l position
+
+	rect.x = tilestartx-xmin;
+	rect.y = tilestarty-ymin;
+	rect.w = xmax;
+	rect.h = ymax;
+	if(SDL_BlitSurface(sourceptr,NULL,screen,&rect)!=0)
+		printf("error\n");
+	
+}
+
+
 // walkputbuffer draws active guys to the screen (basically all non-tiles
 // c-only since it isn't used that often (despite what you might think)
 // walkerstartx,walkerstarty are the screen position we will try to draw to
@@ -608,7 +676,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
       }
       if (curcolor > (unsigned char) 247) curcolor = (unsigned char) (teamcolor+(255-curcolor));
       //buffers: PORT: videobuffer[buffoff++] = curcolor;
-      	point(walkerstartx+curx,walkerstarty+cury,curcolor);
+      	pointb(walkerstartx+curx,walkerstarty+cury,curcolor);
     }
     walkoff += walkshift;
     buffoff += buffshift;
