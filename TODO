@@ -1,5 +1,6 @@
 * figure out a good fix for grid prob at screen.cpp:376
 * finish phantom stuff in walkputbuffer (Energy Wave and Magic Mace (both special abilities, Mage and Cleric) need it)
+	-buffers: 8/8/02: fixed
 * sound
 * joystick
 * scrolling in full screen openscen is a bit messed up
