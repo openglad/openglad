@@ -66,7 +66,11 @@ video::video()
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO);
 
+	strcpy(temp,"off");
+
+#ifndef OPENSCEN
 	strcpy(temp,get_cfg_item("graphics","fullscreen"));
+#endif
 	if(strcmp(temp,"on")==0)
 		screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
 	else
@@ -730,7 +734,6 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
   buffshift = VIDEO_BUFFER_WIDTH - rowsize;
 
   walkoff   = (ymin * walkerwidth) + xmin;
-  // Zardus: they used to do it by buffoff. we'll do it with xval and yval
   buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;     
   xval = walkerstartx;
   yval = walkerstarty;
@@ -904,7 +907,9 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	  shift = 0;
 	  break;
       } //end switch (shifttype)
-  
+ 
+	printf("%d\n",shift);
+ 
       for(cury = 0; cury < totrows;cury++)
       {
 	for(curx=0;curx<rowsize;curx++)
@@ -924,16 +929,17 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	  {
 	    //buffers: bufcolor = videobuffer[buffoff];
 	    bufcolor = get_pixel(buffoff);
-	    if ((bufcolor%8)!=0) bufcolor--;
+	    if ((bufcolor%8)!=0 && bufcolor !=0) bufcolor--;
 	    //buffers: videobuffer[buffoff++] = bufcolor;
-	    pointb(buffoff++,bufcolor);
+	    pointb(buffoff,bufcolor);
+	    buffoff++;
 	  }
 	  
 	  else if (shifttype == SHIFT_DARKER)
 	  {
 	    //buffers: bufcolor = videobuffer[buffoff];
 	    bufcolor = get_pixel(buffoff);
-	    if ((bufcolor%7)!=0) bufcolor++;
+	    if ((bufcolor%7)!=0 && bufcolor<255) bufcolor++;
 	    //videobuffer[buffoff++] = bufcolor;
 	    pointb(buffoff++,bufcolor);
 	  }
@@ -944,13 +950,15 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	    	pointb(buffoff++,get_pixel(buffoff-320));
 	    else if (curx%2) //videobuffer[buffoff++] = videobuffer[buffoff-1];
 	    	 
-		pointb(buffoff++,get_pixel(buffoff-1));
+		pointb(buffoff++,get_pixel(buffoff-2));
 	    else buffoff++;
 	  }
 	  
-	  else 
+	  else { 
 	    //buffers: videobuffer[buffoff++] = videobuffer[buffoff+shift];
-		pointb(buffoff++,get_pixel(buffoff+shift));
+		pointb(buffoff,get_pixel(buffoff+shift));
+		buffoff++;
+	}
 	} //end each row
 	
 	walkoff += walkshift;
@@ -1040,7 +1048,6 @@ void video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 
 	SDL_GetRGB(col,screen->format,&q,&w,&e);
 	*r=q;*g=w;*b=e;
-	printf("%d %d %d\n",*r,*g,*b);
 }
 
 //buffers: get pixel index if you have XY.
@@ -1054,7 +1061,7 @@ int video::get_pixel(int x, int y, int *index)
 	r /= 4;
 	g /= 4;
 	b /= 4;
-
+	
 	for(i=0;i<256;i++) {
 		query_palette_reg(i,&tr,&tg,&tb);
 		if(r==tr && g==tg && b==tb) {
@@ -1062,6 +1069,8 @@ int video::get_pixel(int x, int y, int *index)
 			return i;
 		}
 	}
+	printf("DEBUG: could not find color: %d %d %d\n",r,g,b);
+	return 0;
 }
 
 //buffers: get pixel index if you have an buffer offset
