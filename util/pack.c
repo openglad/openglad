@@ -38,13 +38,14 @@ int main(int argc, char **argv)
 	for (i = 0; i < numfiles; i++)
 	{
 		fwrite(argv[i+1], sizeof(char) * 13, 1, outfile);
-		fwrite(&filelocation[i], sizeof(long), 1, outfile);
+		fwrite(&filelocation[i + 1], sizeof(long), 1, outfile);
 	}
 
 	for (i = 0; i < numfiles; i++)
 	{
 		if (!(infile = fopen(argv[i + 1], "rb"))) exit(0);
 		printf("adding %s ",argv[i+1]);
+		printf("-- location %i ", filelocation[i]);
 		printf("-- size %d\n",filesize[i]);
 
 		fread(buffer,filesize[i],1,infile);
