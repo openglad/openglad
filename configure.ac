@@ -42,5 +42,5 @@ AC_STRUCT_TM
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([memset pow])
 
-AC_CONFIG_FILES([Makefile src/Makefile util/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile util/Makefile sound/Makefile])
 AC_OUTPUT

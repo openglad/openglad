@@ -1,4 +1,4 @@
-SUBDIRS = util src
+SUBDIRS = util src sound
 EXTRA_DIST= release-notes.txt classes.txt scen.txt pix/*.pix \
 scen/*.fss
 #nobase_dist_data_DATA = sound start.tex
