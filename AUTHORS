@@ -8,5 +8,6 @@ Sean Ford <aglswapbuffers> - stford@silcom.com
 	* programmer and porter
 
 Contributers:
-Michael Bonfils (mom32@murlock.org) - created Visual C++ makefile
+Michael Bonfils <mom32@murlock.org> - created Visual C++ makefile
+Erik Hermansen <erikh2000@yahoo.com> - fading code
 Kari Pahula <kaolpa@utu.fi> - autoconf and optimization work, new config file handling
