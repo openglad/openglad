@@ -17,6 +17,3 @@ graphics.001:
 
 levels.001:
 	cd scen; ../util/gladpack p ../levels.001 *.fss
-
-sound:
-	mkdir @DATADIR@/sound
