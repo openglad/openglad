@@ -8,7 +8,9 @@
 #include "text.h"
 #include "screen.h"
 #include <math.h>
-#include "int32.h"
+//buffers: we are putting the int32 stuff into a new file (input.cpp/h)
+//#include "int32.h"
+#include "input.h"
 
 #define MEM_TIME (long) 2000
 class vbutton;

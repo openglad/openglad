@@ -12,7 +12,8 @@
 // Z's script: #include <dos.h>
 // Z's script: #include <process.h>
 #include "sounds.h"
-//buffers: #include "int32.h"
+//buffers: we want input.h instead of int32.h now #include "int32.h"
+#include "input.h"
 #include "parse32.h"
 #include "scankeys.h"
 #include "pal32.h"

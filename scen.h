@@ -5,9 +5,9 @@
 #define SCEN_H
 
 //#include "\wfiles\glad\graph.h"
-#include "\wfiles\glad\base.h"
-
-#include "\wfiles\glad\smooth.h"
+//buffers: took out absolute locations in the includes of base.h and smooth.h
+#include "base.h"
+#include "smooth.h"
 
 #define S_LEFT 12
 #define S_RIGHT 245
