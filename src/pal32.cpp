@@ -44,7 +44,6 @@ char our_pal_lookup(int index);
 //
 short load_and_set_palette(char *filename, char *newpalette)
 {
-	FILE *infile;
 	short i;
 
 	//buffers: don't need this file stuff since we use our_pal_lookup instead
@@ -90,7 +89,6 @@ short save_palette(char * whatpalette)
 //
 short load_palette(char *filename, char *newpalette)
 {
-	FILE *infile;
 	short i;
 
 	/* buffers: we don't need this since we use our_pal_lookup() now
@@ -172,7 +170,6 @@ void cycle_palette(char *newpalette, short start, short end, short shift)
 	short length = (short) (end-start);
 	short newval;
 	short colorspot;
-	short begin = (short) (start*3);
 
 	// Copy over the palette info ..
 	for (i=0; i < 768; i+=3)

@@ -732,8 +732,6 @@ short has_mouse_focus(button thisbutton)
 
 long vbutton::do_call(long whatfunc, long arg)
 {
-	long i;
-
 	switch (whatfunc)
 	{
 		case BEGINMENU:
@@ -796,8 +794,6 @@ long vbutton::do_call(long whatfunc, long arg)
 // For right-button
 long vbutton::do_call_right(long whatfunc, long arg)
 {
-	long i;
-
 	switch (whatfunc)
 	{
 		case DECREASE_STAT:

@@ -45,7 +45,6 @@ short effect::act()
 	oblink *foelist, *here;
 	walker *newob;
 	short numfoes;
-	char message[80];
 
 	// Make sure everyone we're poshorting to is valid
 	if (foe && foe->dead)
@@ -590,7 +589,6 @@ short effect::death()
 	walker  *newob;
 	long xdelta,ydelta;
 	long tempx, tempy, generic;
-	char message[80];
 
 	if (death_called)
 		return 0;

@@ -38,19 +38,14 @@ char mypalette[768];
 
 void intro_main(long argc, char** argv)
 {
-	int i,j;
 	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
 	//char **args = (char **)new int;
-	unsigned char red, green, blue;
-	double delay;
-	int xnewsize, ynewsize;
 	text *mytext;
 	pixie *gladiator;
 	pixie *bigfoot;
 	pixie *ul, *ur, *ll, *lr; // for full-screen displays
 	unsigned char *uldata, *urdata, *lldata, *lrdata;
 	unsigned char *gladdata, *bigdata;
-	int currentcycle = 0, cycletime = 3;
 	char message[80];
 
 #if 0
@@ -294,30 +289,8 @@ int show() // default uses SHOW_TIME
 
 int show(int howlong)
 {
-	short i,j;
-	int red,green,blue; //buffers: PORT: changed to ints from chars
 	if (myscreen->fadeblack(FROM) == -1) return -1;
-	//*******************************
-	// Fade in loop
-	//*******************************
-	/* buffers: PORT:
-	  for(j=0;j<64;j++)
-	  {
-	  reset_timer();
-	  while (query_timer() < 1);
-	 
-	         for(i=0;i<256;i++)
-	         {
-	                query_palette_reg((unsigned char)i,&red,&green,&blue);
-	                if (red < mypalette[i*3]) red++;
-	                if (green < mypalette[i*3+1]) green++;
-	                if (blue < mypalette[i*3+2]) blue++;
-	                set_palette_reg((unsigned char)i,red,green,blue);
-	         }
-	 
-	  }
-	*/ //buffers: PORT
-	//  myscreen->soundp->play_sound(SOUND_TELEPORT);
+
 	reset_timer();
 	while (query_timer() < howlong)
 	{
@@ -327,29 +300,5 @@ int show(int howlong)
 	}
 
 	if (myscreen->fadeblack(TO) == -1) return -1;
-	// Fade out
-	/* //buffers: PORT:
-	for (i = 0; i<256; i++)
-	{
-	       query_palette_reg((unsigned char)i, &red, &green, &blue);
-	       pal[i][0] = red;
-	       pal[i][1] = green;
-	       pal[i][2] = blue;
-	}
-	for(j = 0; j <= 64; j++)
-	{
-	       reset_timer();
-	       while (query_timer() < 1);
-
-	       for (i = 0; i < 256; i++)
-	       {
-	              query_palette_reg((unsigned char)i, &red, &green, &blue);
-	              if (red) red--;
-	              if (green) green--;
-	              if(blue) blue--;
-	              set_palette_reg((unsigned char)i, red, green, blue);
-	       }
-	}
-	*/ //buffers: PORT:
 	return 1;
 }

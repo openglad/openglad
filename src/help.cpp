@@ -204,7 +204,6 @@ short read_help(char *somefile,screen * myscreen)
 	static text *mytext = new text(myscreen, TEXT_1);
 	long start_time, now_time;
 	long bottomrow;
-	char tmp[50];
 
 	if ((infile = open_misc_file(somefile)) == NULL)
 	{

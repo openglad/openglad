@@ -75,12 +75,9 @@ int main(int argc, char *argv[])
 
 void glad_main(screen *myscreen, long playermode)
 {
-	short i,j;
-	char prefs[6][PREF_MAX];
 	unsigned char input;
 	char somemessage[80];
 	//  char soundpath[80];
-	char mypalette[768];
 	//  short cyclemode = 1;            // color cycling on or off
 	char *keyboard;
 	short dumbcount=0;
@@ -94,10 +91,7 @@ void glad_main(screen *myscreen, long playermode)
 
 	numviews = (short) playermode;
 
-
 	//screen  *myscreen;
-	int red, green, blue; //buffers: PORT: changed to int from char
-	unsigned char colors[256][3];
 
 	// Get sound path ..
 	//if (!get_cfg_item("directories", "sound") )
@@ -325,40 +319,7 @@ short score_panel(screen *myscreen)
 
 short score_panel(screen *myscreen, short do_it)
 {
-#define L_D(x) x*8
-	char message[50];
-	static char *name[5] = {"XXXXXXXXXX", "XXXXXXXXXX"};
-	char tempname[20];
-	short temp = 0, i, j;
-	short tempallies = 0;
 	text *mytext = new text(myscreen, TEXT_1);
-#if 0
-	static unsigned long family[5]={-1,-1},
-	                               hitpoints[5]={-1, -1},
-	                                            magicpoints[5]={-1,-1},
-	                                                           score[5]={-1,-1},
-	                                                                    act[5]={-1, -1},
-	                                                                           numfoes[5]={0, 0},
-	                                                                                      numallies[5]={0,0};
-#endif
-	static short numobs = myscreen->numobs;
-	unsigned short hp_bar_length, hp_bar_remainder, HP_COLOR; //HP BAR
-	unsigned short mp_bar_length, mp_bar_remainder, MP_COLOR; //SP BAR
-	walker  *control;
-	short lm=10;
-	short tm=4;
-	static short width=70; //, height;
-	short which;
-	static char namelist[20][NUM_FAMILIES] =
-	    { "SOLDIER", "ELF", "ARCHER", "MAGE",
-	      "SKELETON", "CLERIC", "ELEMENTAL",
-	      "FAERIE", "SLIME", "SLIME", "SLIME",
-	      "THIEF", "GHOST", "DRUID", "XX", "YY", "ZZ"
-	    };
-	static unsigned long myexp[5] = {1, 1};
-	unsigned long temp_exp;
-
-	//       short linesdown;
 
 	delete mytext;
 	return new_score_panel(myscreen, 1);
@@ -545,7 +506,6 @@ void new_draw_value_bar(short left, short top,
 	short totallength = 60;
 	short bar_length=0;
 	short bar_remainder = totallength - bar_length;
-	short i, j;
 	char whatcolor;
 
 	if (mode == 0) // hitpoint bar
@@ -606,10 +566,8 @@ short new_score_panel(screen *myscreen, short do_it)
 #define L_D(x) x*8
 	char message[50];
 	//static
-	char *name[5] = {"XXXXXXXXXX", "XXXXXXXXXX", "XXXXXXXXX",
-	                 "XXXXXXXXX", "XXXXXXXXXX"};
 	char tempname[20];
-	short tempfoes = 0, i, j;
+	short tempfoes = 0;
 	short players;
 	short tempallies = 0;
 	text *mytext = new text(myscreen, TEXT_1);
@@ -618,12 +576,9 @@ short new_score_panel(screen *myscreen, short do_it)
 	                               act[5]={-1, -1,-1,-1,-1};
 #endif
 
-	static short numobs = myscreen->numobs;
 	walker  *control;
 	short lm, tm; // left and top margins
 	short rm, bm; // right and bottom margins
-	static short width=70; //, height;
-	short which;
 	char draw_button;  // do we draw a button background?
 	char text_color;
 	static char namelist[NUM_FAMILIES][20] =
@@ -634,7 +589,6 @@ short new_score_panel(screen *myscreen, short do_it)
 	      "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
 	      "GOLEM", "GIANT SKEL", "TOWER",
 	    };
-	unsigned long temp_exp;
 
 	unsigned long myscore;
 	static unsigned long scorecountup[4] = {
@@ -756,7 +710,7 @@ short new_score_panel(screen *myscreen, short do_it)
 				if (control->myguy)
 					sprintf(message, "XP: %ld", control->myguy->exp);
 				else
-					sprintf(message, "LEVEL: %ld", control->stats->level);
+					sprintf(message, "LEVEL: %i", control->stats->level);
 				mytext->write_xy(lm+2, bm-16, message, text_color, (short) 1);
 
 				// Currently-select special

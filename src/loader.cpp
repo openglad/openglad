@@ -815,7 +815,6 @@ walker  *loader::create_walker(char order,
                                screen  *myscreen)
 {
 	walker  *ob;
-	short i;
 
 	//i = PIX(order, family);
 	//printf("PIX(order, family) = %d\n", i);
