@@ -97,6 +97,9 @@ void reset_timer();
 long query_timer();
 long query_timer_control();
 
+//buffers: added prototype
+void get_input_events(void);
+
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.
 int query_key();                                                            // return last keypress
