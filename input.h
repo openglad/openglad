@@ -95,7 +95,7 @@ void grab_timer();
 void release_timer();
 void reset_timer();
 long query_timer();
-unsigned long query_timer_control();
+long query_timer_control();
 
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.

@@ -55,12 +55,12 @@ long query_timer()
 	// Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
 	// that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
 	// or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
-	return (SDL_GetTicks() - reset_value) / 13.6;
+	return (long) ((SDL_GetTicks() - reset_value) / 13.6);
 }
 
-unsigned long query_timer_control()
+long query_timer_control()
 {
-	return SDL_GetTicks() / 13.6;
+	return (long) (SDL_GetTicks() / 13.6);
 }
 
 
