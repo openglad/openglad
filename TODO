@@ -5,5 +5,6 @@
 * figure out a good fix for grid prob at screen.cpp:349
 * finish phantom stuff in walkputbuffer
 * get input code to work right for multiplayer (ie, right from the start)
+	- Zardus: FIXED: 7/18/02
 * sound
 * get the damn boomerang bug sorted out
