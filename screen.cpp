@@ -1874,6 +1874,8 @@ short load_version_2(FILE  *infile, screen * master)
 
   // Get grid file to load
   fread(newgrid, 8, 1, infile);
+  //buffers: PORT: make sure grid name is lowercase
+  lowercase((char *)newgrid);
   strcpy(my_map_name, newgrid);
 
   // Determine number of objects to load ...
@@ -1997,6 +1999,8 @@ short load_version_3(FILE  *infile, screen * master)
 
   // Get grid file to load
   fread(newgrid, 8, 1, infile);
+  //buffers: PORT: make sure grid name is lowercase
+  lowercase((char *)newgrid);
   strcpy(my_map_name, newgrid);
 
   // Determine number of objects to load ...
@@ -2117,6 +2121,8 @@ short load_version_4(FILE  *infile, screen * master)
 
   // Get grid file to load
   fread(newgrid, 8, 1, infile);
+  //buffers: PORT: make sure grid name is lowercase
+  lowercase((char *)newgrid);
   strcpy(my_map_name, newgrid);
 
   // Determine number of objects to load ...
@@ -2245,6 +2251,8 @@ short load_version_5(FILE  *infile, screen * master)
 
   // Get grid file to load
   fread(newgrid, 8, 1, infile);
+  //buffers: PORT: make sure grid name is lowercase
+  lowercase((char *)newgrid);
   strcpy(my_map_name, newgrid);
 
   // Get the scenario type information
