@@ -64,7 +64,7 @@ short text::query_width(char *string) // returns width, in pixels
 	return over;
 }
 
-short text::write_xy(short x, short y, char *string, unsigned char color)
+short text::write_xy(short x, short y, const char *string, unsigned char color)
 {
 	unsigned short i = 0;
 	while(string[i])
@@ -75,7 +75,7 @@ short text::write_xy(short x, short y, char *string, unsigned char color)
 	return 1;
 }
 
-short text::write_xy(short x, short y, char *string)
+short text::write_xy(short x, short y, const char *string)
 {
 	unsigned short i = 0;
 	while(string[i])
@@ -86,7 +86,7 @@ short text::write_xy(short x, short y, char *string)
 	return 1;
 }
 
-short text::write_xy(short x, short y, char *string, unsigned char color,
+short text::write_xy(short x, short y, const char *string, unsigned char color,
                      short to_buffer)
 {
 	unsigned short i = 0;
@@ -125,7 +125,7 @@ short text::write_xy(short x, short y, char *string, unsigned char color,
 	return over;
 }
 
-short text::write_xy(short x, short y, char *string, short to_buffer)
+short text::write_xy(short x, short y, const char *string, short to_buffer)
 {
 	unsigned short i = 0;
 	unsigned short width;
@@ -148,7 +148,7 @@ short text::write_xy(short x, short y, char *string, short to_buffer)
 	return 1;
 }
 
-short text::write_xy(short x, short y, char *string, unsigned char color,
+short text::write_xy(short x, short y, const char *string, unsigned char color,
                      viewscreen *whereto)
 {
 	unsigned short i = 0;
@@ -163,7 +163,7 @@ short text::write_xy(short x, short y, char *string, unsigned char color,
 	return 1;
 }
 
-short text::write_xy(short x, short y, char *string, viewscreen *whereto)
+short text::write_xy(short x, short y, const char *string, viewscreen *whereto)
 {
 	unsigned short i = 0;
 	while(string[i])
@@ -177,7 +177,7 @@ short text::write_xy(short x, short y, char *string, viewscreen *whereto)
 	return 1;
 }
 
-short text::write_y(short y, char *string, unsigned char color)
+short text::write_y(short y, const char *string, unsigned char color)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
@@ -186,7 +186,7 @@ short text::write_y(short y, char *string, unsigned char color)
 	return write_xy(xstart, y, string, (unsigned char) color);
 }
 
-short text::write_y(short y, char *string)
+short text::write_y(short y, const char *string)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
@@ -195,7 +195,7 @@ short text::write_y(short y, char *string)
 	return write_xy(xstart, y, string, (unsigned char) DEFAULT_TEXT_COLOR);
 }
 
-short text::write_y(short y, char *string, unsigned char color,
+short text::write_y(short y, const char *string, unsigned char color,
                     short to_buffer)
 {
 	unsigned short len = 0;
@@ -208,7 +208,7 @@ short text::write_y(short y, char *string, unsigned char color,
 		return write_xy(xstart, y, string, (unsigned char) color, to_buffer);
 }
 
-short text::write_y(short y, char *string, short to_buffer)
+short text::write_y(short y, const char *string, short to_buffer)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
@@ -220,7 +220,7 @@ short text::write_y(short y, char *string, short to_buffer)
 		return write_xy(xstart, y, string, (unsigned char) DEFAULT_TEXT_COLOR, to_buffer);
 }
 
-short text::write_y(short y, char *string, unsigned char color,
+short text::write_y(short y, const char *string, unsigned char color,
                     viewscreen *whereto)
 {
 	unsigned short len = 0;
@@ -233,7 +233,7 @@ short text::write_y(short y, char *string, unsigned char color,
 		return write_xy(xstart, y, string, (unsigned char) color, whereto);
 }
 
-short text::write_y(short y, char *string, viewscreen *whereto)
+short text::write_y(short y, const char *string, viewscreen *whereto)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
