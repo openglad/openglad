@@ -26,6 +26,7 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 #include <sys/stat.h>
+#include "base.h"
 
 using namespace std;
 
@@ -96,30 +97,8 @@ void uppercase(std::string &str)
 FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 {
 	FILE * infile;
-	string filepath(file);
 
-#ifndef	WINDOWS
-	filepath = getenv("HOME");
-	filepath += "/.openglad/";
-	filepath += pos_dir;
-	filepath += file;
-
-	if ((infile = fopen(filepath.c_str(), attr)))
-		return infile;
-#endif
-
-	filepath = DATADIR;
-	filepath += pos_dir;
-	filepath += file;
-
-	if ((infile = fopen(filepath.c_str(), attr)))
-		return infile;
-
-	// as a last resort, try ./posdir/file
-        filepath = pos_dir;
-        filepath += file;
-
-	if ((infile = fopen(filepath.c_str(), attr)))
+	if ((infile = fopen(get_file_path(file, pos_dir, attr), attr)))
                 return infile;
 
 	// if it got here, it didn't find the file
@@ -172,6 +151,20 @@ char * get_file_path(char * file, char * pos_dir, char * attr)
 		return (char *)filepath.c_str();
 	}
 #endif
+
+	// Lets try the datadir option now.
+	if (cfg.query("dirs", "data"))
+	{
+		filepath = cfg.query("dirs", "data");
+		filepath += pos_dir;
+		filepath += file;
+
+		if ((infile = fopen(filepath.c_str(), attr)))
+		{
+			fclose(infile);
+			return (char *)filepath.c_str();
+		}
+	}
 
 	filepath = DATADIR;
 	filepath += pos_dir;
