@@ -164,8 +164,6 @@ int main(int argc, char **argv)
 	short count;
 	// char buffer[80];
 
-	screen  *myscreen;
-
 	//Zardus: add: init the input
 	init_input();
 
@@ -782,8 +780,6 @@ int main(int argc, char **argv)
 long quit(long num)
 {
 
-	delete myscreen;
-
 	// Release the mouse ..
 	release_mouse();
 
@@ -792,6 +788,15 @@ long quit(long num)
 
 	// And release the timer ..
 	release_timer();
+
+	// And stop input
+	stop_input();
+
+	// And delete myscreen
+	delete myscreen;
+
+	// Delete scentext
+	delete scentext;
 
 	SDL_Quit();
 
@@ -928,6 +933,7 @@ long score_panel(screen *myscreen)
 	myscreen->draw_box(S_RIGHT, PIX_TOP,
 	                   S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
+	delete mytext;
 	// Restore the mouse
 	grab_mouse();
 
