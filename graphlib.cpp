@@ -163,7 +163,7 @@ unsigned char  * read_pixie_file(char  * filename)
         printf("Error in reading file %s <press return>\n", filename);
         printf("You may need to run SETUP.EXE\n");
         release_keyboard();
-        getch();
+        //buffers: PORT: implicit declaration: getch();
         exit(0);
   }
 
