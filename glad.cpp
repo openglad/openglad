@@ -565,7 +565,8 @@ short new_score_panel(screen *myscreen, short do_it)
 {
 #define L_D(x) x*8
          char message[50];
-         static char *name[5] = {"XXXXXXXXXX", "XXXXXXXXXX", "XXXXXXXXX",
+         //static 
+	 char *name[5] = {"XXXXXXXXXX", "XXXXXXXXXX", "XXXXXXXXX",
           "XXXXXXXXX", "XXXXXXXXXX"};
          char tempname[20];
          short tempfoes = 0, i, j;
@@ -633,9 +634,11 @@ short new_score_panel(screen *myscreen, short do_it)
                 strcpy(tempname, control->stats->name);
              else
                 strcpy(tempname, namelist[control->query_family()]);
-	     // Zardus: PORT: these were causing the strcpy segfaults
-             //strcpy(name[players], tempname);
-             //strcpy(message, tempname);
+
+		// TODO: get these to not segfault
+		//strcpy(name[players], tempname);
+		//strcpy(message, tempname);
+
              if (draw_button)
                myscreen->draw_button(lm+1, tm+2, lm+63, tm+9, 1, 1);
 

@@ -248,8 +248,9 @@ void picker_main(long argc, char  **argv)
          fclose(loadgame);
          load_team_list_one("save0");
   }
-  else
-         fclose(loadgame);
+// Is this neccessary? It crashes it.
+//  else
+//         fclose(loadgame);
 
 	printf("DEBUG: entering mainmenu()\n");
   mainmenu(1);
