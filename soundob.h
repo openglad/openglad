@@ -2,7 +2,7 @@
 #ifndef __SOUNDOB_H
 #define __SOUNDOB_H
 
-#include <SDL/SDL.h>
+#include <SDL/SDL_mixer.h>
 
 #define SOUND_BOW       0
 #define SOUND_CLANG     1
@@ -36,21 +36,18 @@ class soundob
     void shutdown();
     void play_sound(short whichsound);
     void set_sound_volume(int);
-    void load_sound(SDL_AudioSpec *audio, char * file);
-    void free_sound(SDL_AudioSpec *sound);
+    void load_sound(Mix_Chunk **audio, char * file);
+    void free_sound(Mix_Chunk *sound);
 
     unsigned char query_volume();
     unsigned char set_sound(unsigned char toggle);      // Toggle sound on/off
     void load_sound(SDL_AudioSpec, char *);
     unsigned char set_volume(unsigned char volumelevel);
     char soundlist[NUMSOUNDS][14];              // Our list of sounds
-    SDL_AudioSpec *sound[NUMSOUNDS];		// AudioSpec for loading sounds
-    SDL_AudioSpec des_audio, real_audio;
+    Mix_Chunk *sound[NUMSOUNDS];		// AudioSpec for loading sounds
     int baseio, irq, dma, dma16;                // Card-specific information
     int volume;                       // Volume: 0 - 255
     unsigned char silence;                      // 0 = on, 1 = silent
-    
-  
 };
 
 #endif
