@@ -1,0 +1,6 @@
+* glad.cpp:640 - get strcpy to not segfault when copying name
+* get radar working
+* figure out a good fix for grid prob at screen.cpp:349
+* finish phantom stuff in walkputbuffer
+* get input code to work right for multiplayer (ie, right from the start)
+* sound
