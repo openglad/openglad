@@ -1,3 +1,6 @@
+/* For making the .001 files out of normal files
+ *  8/18/02, Zardus
+ */
 #include <stdio.h>
 #include <stdlib.h>
 
