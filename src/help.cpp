@@ -35,10 +35,12 @@ FILE * open_misc_file(char *);
 // end-of-line character ..
 char* read_one_line(FILE *infile, short length)
 {
-	char newline[HELP_WIDTH]; // = new char(length);
+	char *newline; // = new char(length);
 	char temp;
 	short readvalue;
 	short i;
+
+	newline = new char[HELP_WIDTH];
 
 	// Make sure this line is blank ..
 	for (i=0; i < HELP_WIDTH; i++)
@@ -57,7 +59,7 @@ char* read_one_line(FILE *infile, short length)
 		newline[i] = temp;
 	}
 
-	return &newline[0];
+	return newline;
 }
 
 // Note: this code has been redone to work in 'SDLKlines,'
@@ -343,6 +345,7 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], FILE *infile)
 //short fill_help_array(char somearray[80][80], FILE *infile)
 {
 	short i;
+	char *someline;
 
 	if (!infile)
 		return 0;
@@ -350,7 +353,9 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], FILE *infile)
 	for (i=0; i < MAX_LINES; i++)
 	{
 		//somearray[i] = read_one_line(infile, HELP_WIDTH);
-		strcpy(somearray[i], read_one_line(infile, HELP_WIDTH) );
+		someline = read_one_line(infile, HELP_WIDTH);
+		strcpy(somearray[i], someline);
+		delete someline;
 		if (end_of_file)
 			return i;
 	}
