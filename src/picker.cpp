@@ -231,11 +231,8 @@ void picker_main(long argc, char  **argv)
 	magepix = new pixieN(magepic, myscreen);
 
 	// Get the mouse, timer, & keyboard ..
-	reset_mouse();
 	grab_mouse();
-
 	grab_timer();
-
 	grab_keyboard();
 	clear_keyboard();
 

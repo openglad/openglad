@@ -242,7 +242,6 @@ int main(int argc, char **argv)
 
 	// Now do the mouse ..
 	grab_mouse();
-	reset_mouse();
 
 	// Get our pixie data ..
 	load_map_data(mypixdata);

@@ -255,9 +255,6 @@ void release_mouse()
 	SDL_ShowCursor(SDL_DISABLE);
 }
 
-void reset_mouse()
-{}
-
 long * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though

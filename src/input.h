@@ -62,5 +62,4 @@ void stop_input();
 
 void grab_mouse();
 void release_mouse();
-void reset_mouse();
 long * query_mouse();
