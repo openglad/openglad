@@ -4,8 +4,10 @@ Linux
 =====
 
 1. Unpack the tarball into some directory.
-2. Execute `make` to compile openglad, `make openscen`
+2. Linux: Execute `make` to compile openglad, `make openscen`
    to compile the scenario editor
+   Windows: A Visual C++ Makefile can be found in src/. You might need to
+   edit the paths to the SDL lib/includes. (Thanks Murlock)
 3. openglad is the game binary, openscen is the editor.
 
 
