@@ -6,6 +6,8 @@
 	buffers: 8/8/02: 
 		*fixed bug in pointb that caused it to not draw correctly when
 		 pixel doubling was off
+		*ugly fix for the cleric's hammer drawing problems. see second
+		 get_pixel func for more details
 */
 #include "graph.h"
 
@@ -285,7 +287,7 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 void video::point(long x, long y, unsigned char color)
 {
 	pointb(x,y,color);
-	SDL_UpdateRect(screen,x,y,1,1);
+	//buffers: PORT: SDL_UpdateRect(screen,x,y,1,1);
 }
 
 //buffers: PORT: this draws a point in the offscreen buffer
@@ -1056,11 +1058,32 @@ int video::get_pixel(int x, int y, int *index)
 	
 	for(i=0;i<256;i++) {
 		query_palette_reg(i,&tr,&tg,&tb);
-		if(r==tr && g==tg){ //&& b==tb) {
+		if(r==tr && g==tg && b==tb) {
 			*index = i;
 			return i;
 		}
 	}
+
+	//buffers: VERY VERY UGLY FIX
+	//buffers: this fixes the problems with the cleric's hammer not
+	//buffers: displaying properly on grayish surfaces. its related to
+	//buffers: the RGB values being stored in 565 format in 16bit and
+	//buffers: getting corrupted when we read them.
+	//buffers: a better fix would be to changed to 24bit (RGB888) or to keep
+	//buffers: and main surface to 16bit and create another surface thats
+	//buffers: 24bit and blitting that to the 16bit surface.
+	//buffers: i need to talk to zardus before i make any of these changes.
+	if(r==b)
+		r=b=g;
+
+	for(i=0;i<256;i++) {
+		query_palette_reg(i,&tr,&tg,&tb);
+		if(r==tr && g==tg && b==tb) {
+			*index = i;
+			return i;
+		}
+	}
+	
 	printf("DEBUG: could not find color: %d %d %d\n",r,g,b);
 	return 0;
 }
