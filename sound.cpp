@@ -30,6 +30,7 @@ soundob::~soundob()
 
 int soundob::init()
 {
+/* //buffers: PORT: begin commented func  
     int i;
 
     // Guarantee null pointers, regardless of sound status
@@ -113,11 +114,13 @@ int soundob::init()
     #endif
     
     return 1;
+*/ //buffers: PORT: end commented func
 }
 
 
 void soundob::shutdown()
 {
+/* //buffers: PORT: begin commented func
     int i;
 
     if (silence)
@@ -129,14 +132,15 @@ void soundob::shutdown()
     for (i=0; i < NUMSOUNDS; i++)
       if (sound[i] != NULL)
         free_sound(sound+i);
+*/ //buffers: PORT: end commented func
 
 }
 
 void soundob::play_sound(short whichnum)
 {
-    if (silence)         // If silent mode set, do nothing here
-      return;
-    start_sound(sound[whichnum], whichnum, volume, 0); // 0 means play once?
+//buffers: PORT: commented func:    if (silence)         // If silent mode set, do nothing here
+//buffers: PORT: commented func:       return;
+//buffers: PORT: commented func:     start_sound(sound[whichnum], whichnum, volume, 0); // 0 means play once?
 }
 
 unsigned char soundob::query_volume()
