@@ -110,6 +110,10 @@ void glad_main(screen *myscreen, long playermode)
 		exit(1);
 #endif
 
+	clear_keyboard();
+	// Zardus: PORT: fade needs to be here before it clears the screen buffer
+	myscreen->fadeblack(0);
+
 	if (myscreen)
 	{
 		//myscreen->reset(numviews);
@@ -134,11 +138,7 @@ void glad_main(screen *myscreen, long playermode)
 	load_saved_game("save0", myscreen); // over-rides current.fss ..
 
 	// Prepare screen for fade in
-	myscreen->draw_panels(myscreen->numviews);
-
-	myscreen->input(0);
-	myscreen->redraw();
-	myscreen->refresh();
+	//myscreen->draw_panels(myscreen->numviews);
 
 	//*******************************
 	// Fade in loop
@@ -159,6 +159,9 @@ void glad_main(screen *myscreen, long playermode)
 
 	// Set palette to selected ..
 	adjust_palette(myscreen->newpalette, myscreen->viewob[0]->prefs[PREF_GAMMA]);
+	myscreen->input(0);
+	myscreen->redraw();
+	myscreen->fadeblack(1);
 
 
 	//******************************
