@@ -1,6 +1,6 @@
 #include "graph.h"
 
-void get_input_events();
+void get_input_events(bool);
 
 text::text(screen * myscreen)
 {
@@ -335,7 +335,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
     // Wait for a key to be pressed ..
     while (!query_key_press_event())
       //dumbcount++;
-      get_input_events();
+      get_input_events(WAIT);
     tempchar = query_key();
     clear_key_press_event();
     if (tempchar == SDLK_RETURN)

@@ -13,7 +13,7 @@
 #include "guy.h"
 
 // Zardus: this is the func to get events
-void get_input_events();
+void get_input_events(bool);
 
 treasure::treasure(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 {
@@ -175,7 +175,7 @@ short treasure::eat_me(walker  * eater)
                   eatkeys = query_keyboard();
                   clear_keyboard();
                   while (!eatkeys[SDLK_y] && !eatkeys[SDLK_n])
-			  get_input_events();
+			  get_input_events(WAIT);
                   // Redraw screen ..
                   screenp->redrawme = 1;
 
@@ -224,7 +224,7 @@ short treasure::eat_me(walker  * eater)
                   clear_keyboard();
 		  // Zardus: FIX: get_input_events instead of freezing and counting :-)
                   while (!eatkeys[SDLK_y] && !eatkeys[SDLK_n])
-			  get_input_events();
+			  get_input_events(WAIT);
                   // Redraw screen ..
                   screenp->redrawme = 1;
 

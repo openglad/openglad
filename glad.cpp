@@ -28,7 +28,7 @@ void draw_gem(short x, short y, short color, screen * myscreen);
 unsigned char *radarpic;
 pixie *radarpix;
 
-void get_input_events();
+void get_input_events(bool);
 
 void glad_main(screen *myscreen, long playermode);
 
@@ -195,7 +195,7 @@ void glad_main(screen *myscreen, long playermode)
              (unsigned char) DARK_BLUE, 1);
            myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
            while (!keyboard[SDLK_y] && !keyboard[SDLK_n])
-		   get_input_events();
+		   get_input_events(WAIT);
            myscreen->redrawme = 1;
            if (keyboard[SDLK_y]) // player wants to quit
              break;

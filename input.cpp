@@ -65,57 +65,65 @@ long query_timer_control()
 
 
 //
-// Input routine (for handling all events and then setting the appropriate vars)
+// Input routines (for handling all events and then setting the appropriate vars)
 //
 
-void get_input_events()
+void get_input_events(bool type)
 {
 	SDL_Event event;
 
-	while (SDL_PollEvent(&event))
+	if (type == POLL)
+		while (SDL_PollEvent(&event)) handle_events(event);
+	if (type == WAIT)
 	{
-		switch (event.type)
-		{
-			// Key pressed or released:
-			case SDL_KEYDOWN:
-				key_list[event.key.keysym.sym] = 1;
-				raw_key = event.key.keysym.sym;
-				key_press_event = 1;
-				break;
-			case SDL_KEYUP:
-				key_list[event.key.keysym.sym] = 0;
-				break;
+		SDL_WaitEvent(&event);
+		handle_events(event);
+	}
+}
 
-			// Mouse event
-			case SDL_MOUSEMOTION:
-				mouse_state[MOUSE_X] = event.motion.x;
-				mouse_state[MOUSE_Y] = event.motion.y;
-				break;
-			case SDL_MOUSEBUTTONUP:
-				if (event.button.button == SDL_BUTTON_LEFT)
-					mouse_state[MOUSE_LEFT] = 0;
-				if (event.button.button == SDL_BUTTON_RIGHT)
-					mouse_state[MOUSE_RIGHT] = 0;
-				//mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
-				//printf ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
-				//mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
-				//printf ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
-				break;
-			case SDL_MOUSEBUTTONDOWN:
-				if (event.button.button == SDL_BUTTON_LEFT)
-					mouse_state[MOUSE_LEFT] = 1;
-				if (event.button.button == SDL_BUTTON_RIGHT)
-					mouse_state[MOUSE_RIGHT] = 1;
-				break;
-			case SDL_QUIT:
-				//buffers: PORT: the quit function is not avialiable to the scen app so we don't try to call it if we compile scen
-				#ifndef SCEN
-					quit(1);
-				#endif
-				break;
-			default:
-				break;
-		}
+void handle_events(SDL_Event event)
+{
+	switch (event.type)
+	{
+		// Key pressed or released:
+		case SDL_KEYDOWN:
+			key_list[event.key.keysym.sym] = 1;
+			raw_key = event.key.keysym.sym;
+			key_press_event = 1;
+			break;
+		case SDL_KEYUP:
+			key_list[event.key.keysym.sym] = 0;
+			break;
+
+		// Mouse event
+		case SDL_MOUSEMOTION:
+			mouse_state[MOUSE_X] = event.motion.x;
+			mouse_state[MOUSE_Y] = event.motion.y;
+			break;
+		case SDL_MOUSEBUTTONUP:
+			if (event.button.button == SDL_BUTTON_LEFT)
+				mouse_state[MOUSE_LEFT] = 0;
+			if (event.button.button == SDL_BUTTON_RIGHT)
+				mouse_state[MOUSE_RIGHT] = 0;
+			//mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
+			//printf ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
+			//mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
+			//printf ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
+			break;
+		case SDL_MOUSEBUTTONDOWN:
+			if (event.button.button == SDL_BUTTON_LEFT)
+				mouse_state[MOUSE_LEFT] = 1;
+			if (event.button.button == SDL_BUTTON_RIGHT)
+				mouse_state[MOUSE_RIGHT] = 1;
+			break;
+		case SDL_QUIT:
+			//buffers: PORT: the quit function is not avialiable to the scen app so we don't try to call it if we compile scen
+			#ifndef SCEN
+				quit(1);
+			#endif
+			break;
+		default:
+			break;
 	}
 }
 
@@ -150,7 +158,6 @@ void clear_keyboard()
 
 char * query_keyboard()
 {
-	get_input_events();
 	return key_list;
 }
 
@@ -158,11 +165,11 @@ void wait_for_key(unsigned char somekey)
 {
 	// First wait for key press .. 
 	while (!key_list[somekey])
-		get_input_events();
+		get_input_events(WAIT);
 
 	// And now for the key to be released ..
 	while (key_list[somekey])
-		get_input_events();
+		get_input_events(WAIT);
 }
 
 short query_key_press_event()
@@ -204,7 +211,7 @@ long * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though
 	// it should probably get its own function
-	get_input_events();
+	get_input_events(POLL);
 	return mouse_state;
 }
 

@@ -9,7 +9,7 @@
 
 short end_of_file;                        // global flag ..
 char helptext[HELP_WIDTH][MAX_LINES];
-void get_input_events();
+void get_input_events(bool);
 
 
 // This function reads one text line from file infile,
@@ -70,7 +70,7 @@ short read_scenario(screen *myscreen)
   mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
   while (!mykeyboard[SDLK_ESCAPE])
   {
-	  get_input_events();
+	  get_input_events(POLL);
     if (mykeyboard[SDLK_DOWN])    // scrolling down
     {
       now_time = query_timer();
@@ -149,7 +149,7 @@ short read_scenario(screen *myscreen)
   }  // loop until ESC is pressed 
 
   while (mykeyboard[SDLK_ESCAPE])  // wait for key release
-	  get_input_events();
+	  get_input_events(WAIT);
   mykeyboard[SDLK_ESCAPE] = 0;
   delete mytext;
   mytext = NULL;
@@ -203,7 +203,7 @@ short read_help(char *somefile,screen * myscreen)
   mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
   while (!mykeyboard[SDLK_ESCAPE])
   {
-	  get_input_events();
+	  get_input_events(POLL);
     if (mykeyboard[SDLK_DOWN])    // scrolling down
     {
       now_time = query_timer();
@@ -284,7 +284,7 @@ short read_help(char *somefile,screen * myscreen)
         
 
         while (mykeyboard[SDLK_ESCAPE])  // wait for key release
-		get_input_events();
+		get_input_events(WAIT);
         //delete mytext; 
         return (short) (numlines);
 }

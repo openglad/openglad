@@ -5,7 +5,7 @@ extern pixieN *backdrops[5];
 
 vbutton * allbuttons[MAX_BUTTONS];
 short dumbcount;
-void get_input_events();
+void get_input_events(bool);
 
 //vbutton functions, vbutton is a button class that will be self controlled
 vbutton::vbutton(long xpos, long ypos, long wide, long high,
@@ -257,7 +257,7 @@ long vbutton::leftclick(long whichbutton)
       retvalue = do_call(myfunc, arg);
     }
     while (mousekeys[hotkey])
-	    get_input_events();
+	    get_input_events(WAIT);
     return retvalue;
   }
  } 

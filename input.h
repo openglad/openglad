@@ -37,6 +37,10 @@
 #define LOW_BYTE(n)  (n & 0x00ff)
 #define HI_BYTE(n)   ((n>>8) & 0x00ff)
 
+// Zardus: defines for event getting method
+#define POLL 0
+#define WAIT 1
+
 //Keyboard defines
 #define MAXKEYS 320
 #define KEY_BUFFER 0x60
@@ -98,7 +102,8 @@ long query_timer();
 long query_timer_control();
 
 //buffers: added prototype
-void get_input_events(void);
+void get_input_events(bool type);
+void handle_events(SDL_Event event);
 
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.

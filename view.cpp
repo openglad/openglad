@@ -39,7 +39,7 @@
 #define KEY_CHEAT               15
 
 // get input
-void get_input_events();
+void get_input_events(bool);
 
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
@@ -325,7 +325,7 @@ short viewscreen::input(char inputthing)
   char view_team_on = 0;
 
   inputkeyboard = query_keyboard();
-  get_input_events();
+  get_input_events(POLL);
 
   if (inputthing) dumbcount++;
 
@@ -567,7 +567,7 @@ short viewscreen::input(char inputthing)
     set_display_text(somemessage, STANDARD_TEXT_TIME);
     
     while (inputkeyboard[SDLK_F1])
-	    get_input_events();
+	    get_input_events(WAIT);
     read_help("glad.hlp",screenp);
     inputkeyboard = query_keyboard();
     clear_keyboard();
@@ -1511,11 +1511,11 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
   teamkeys = query_keyboard();
   while (!teamkeys[SDLK_ESCAPE]) {
     screenp->do_cycle(currentcycle++, cycletime);
-    get_input_events();
+    get_input_events(POLL);
   }
   while (teamkeys[SDLK_ESCAPE])
     //buffers: PORT: dumbcount++;
-    get_input_events();
+    get_input_events(WAIT);
 
   return;
 }
@@ -1631,7 +1631,7 @@ void viewscreen::options_menu()
   // Wait for esc for now
   while (!opkeys[SDLK_ESCAPE])
   {
-	  get_input_events();
+	  get_input_events(POLL);
     if (opkeys[SDLK_KP_PLUS]) // faster game speed
     {
       gamespeed = change_speed(1);
@@ -1640,7 +1640,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_KP_PLUS])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_KP_MINUS]) // slower game speed
     {
@@ -1650,7 +1650,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_KP_MINUS])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_LEFTBRACKET]) // smaller view size
     {
@@ -1673,7 +1673,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_LEFTBRACKET])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_RIGHTBRACKET]) // larger view size
     {
@@ -1696,7 +1696,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_RIGHTBRACKET])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_COMMA]) // darken screen
     {
@@ -1706,7 +1706,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_COMMA])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_PERIOD]) // lighten screen
     {
@@ -1716,7 +1716,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_PERIOD])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_r]) // toggle radar display      
     {
@@ -1729,7 +1729,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_r])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_h]) // toggle HP display      
     {
@@ -1748,7 +1748,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_h])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_f]) // toggle foes display      
     {
@@ -1761,7 +1761,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_f])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     if (opkeys[SDLK_s]) // toggle score display      
     {
@@ -1774,7 +1774,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_s])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
 
     if (opkeys[SDLK_t])      // View the teamlist
@@ -1790,7 +1790,7 @@ void viewscreen::options_menu()
       screenp->cyclemode= (short) ((screenp->cyclemode+1) %2);
       while (opkeys[SDLK_c])
         //buffers: PORT: dumbcount++;
-	get_input_events();
+	get_input_events(WAIT);
       if (screenp->cyclemode)
         sprintf(message,"Color Cycling (C)      : ON ");
       else
@@ -1820,7 +1820,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(11), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_j])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
     
     if (opkeys[SDLK_k])      // Edit the keyboard mappings
@@ -1845,13 +1845,13 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_b])
-	      get_input_events();
+	      get_input_events(WAIT);
     }
 
   }  // end of wait for ESC press
 
   while (opkeys[SDLK_ESCAPE])
-	  get_input_events();
+	  get_input_events(WAIT);
   screenp->redrawme = 1;
   prefsob->save(this);
 }
@@ -2168,7 +2168,7 @@ int get_keypress()
 {
   clear_key_press_event(); // clear any previous key
   while (!query_key_press_event())
-	  get_input_events();
+	  get_input_events(WAIT);
   return query_key();
 }
 

@@ -38,7 +38,7 @@ char  * query_my_map_name();
 
 char my_map_name[40];
 
-void get_input_events();
+void get_input_events(bool);
 void lowercase(char *);
 
 // These are globals for the packed files ..
@@ -1394,7 +1394,7 @@ short screen::endgame(short ending, short nextlevel)
       mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
       buffer_to_screen(0, 0, 320, 200);
       // Zardus: all things should listen to get_input_events() for now until further notice
-      while (!endkeys[SDLK_ESCAPE]) get_input_events();
+      while (!endkeys[SDLK_ESCAPE]) get_input_events(WAIT);
       end = 1;
     }
     else // we're withdrawing to another level
@@ -1481,7 +1481,7 @@ short screen::endgame(short ending, short nextlevel)
 
     // Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
     // actions
-    while (!endkeys[SDLK_ESCAPE]) get_input_events(); // pause
+    while (!endkeys[SDLK_ESCAPE]) get_input_events(WAIT); // pause
 
     // Check for guys who have gone up levels
     if (checklist) // should always be true, but just in case
