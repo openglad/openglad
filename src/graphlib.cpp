@@ -60,7 +60,7 @@ unsigned char  * read_pixie_file(const char  * filename)
 	// Open the pixie-pack, if not already done ...
 	if (!tempack.opened())
 	{
-		if (tempack.open(DATADIR "graphics.001") == -1)
+		if (tempack.open("graphics.001") == -1)
 		{
 			printf("Cannot open graphics resource file!\n");
 			release_keyboard();

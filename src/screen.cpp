@@ -1692,13 +1692,7 @@ char* screen::get_scen_title(char *filename, screen *master)
 	{
 		if (scenpack.open("levels.001") == -1) // not in current directory
 		{
-			// Create the full pathname for the resource file
-			strcpy(fullpath, scen_directory);
-			strcat(fullpath, "levels.001");
-			if (scenpack.open(fullpath) == -1) // not in random directory
-			{
-				return "none";
-			}
+			return "none";
 		}
 	}
 

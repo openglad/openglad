@@ -28,6 +28,7 @@
 #include <string.h>
 #include "gladpack.h"
 #include "input.h"
+#include "config.h"
 #include <string>
 using namespace std;
 
@@ -45,11 +46,29 @@ class packfileinfo
 int packfile::open(const char *filename)
 {
 	long i;
+	string filepath(filename);
 	char temp[GLAD_HEADER_SIZE+1];
 
+	// Zardus: first try in the current directory
 	if ( (datafile=fopen(filename, "rb")) == NULL)
-		return -1;
-
+	{
+		//now try in the user's home directory
+		filepath = getenv("HOME");
+		filepath += "/.openglad/";
+		filepath += filename;
+		if ((datafile = fopen(filepath.c_str(), "rb")) == NULL)
+		{
+			//finally try DATADIR/file
+			filepath = DATADIR;
+			filepath += filename;
+			if ((datafile = fopen(filepath.c_str(), "rb")) == NULL)
+			{
+				// that's it, we give up
+				return -1;
+			}
+		}
+	}
+	
 	fread(temp, GLAD_HEADER_SIZE, 1, datafile);
 	temp[GLAD_HEADER_SIZE] = 0;
 	if ( strcmp(temp, GLAD_HEADER) != 0)
