@@ -32,6 +32,8 @@ void delete_list(oblink *list)
 	oblink *here;
 	oblink *prev;
 
+	if (!list) return;
+
 	here = list;
 	while (here->next)
 	{
