@@ -297,7 +297,7 @@ short read_help(char *somefile,screen * myscreen)
 		if (changed)  // did we scroll, etc.?
 		{
 			//buffers: need this to make text display right
-			myscreen->clearfontbuffer();
+			myscreen->clearfontbuffer(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,244,119);
 		
 			templines = linesdown/8; // which TEXT line are we at?
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
@@ -322,7 +322,10 @@ short read_help(char *somefile,screen * myscreen)
 			                 HELPTEXT_TOP-7, "GLADIATOR", (unsigned char) RED, 1);
 			mytext->write_xy(HELPTEXT_LEFT+52,
 			                 HELPTEXT_TOP+98, "PRESS 'ESC' TO CONTINUE", (unsigned char) RED, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
+			//myscreen->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,244,119);
+
+			
 			changed = 0;
 		} // end of changed drawing loop
 
