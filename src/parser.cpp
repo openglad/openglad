@@ -14,12 +14,17 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#include <config.h>
+#if defined(WIN32)
+	#pragma warning(disable : 4786)
+#endif
+
+#include "config.h"
 
 #include <iostream>
 #include <fstream>
 #include <string>
 #include "parser.h"
+
 using namespace std;
 
 cfg_store cfg;
@@ -79,7 +84,69 @@ Usage: open(glad|scen) [-dfhsSvnxe]\n\
   -h, --help		Print a summary of the options\n\
   -v, --version		Print the version number\n\
 ";
+
 	const char versmsg[] = "openglad version " PACKAGE_VERSION "\n";
+
+	// Begin changes by David Storey (Deathifier)
+	// FIX: Handle mutually exclusive arguments being used at the same time?
+	// E.G. -s and -S
+
+	// Iterate over arguments, ignoring the first (Program Name).
+	for(int argnum = 1; argnum < argc; argnum++)
+	{
+		// Look for arguments of 2 chars only:
+		if(argv[argnum][0] == '-' && strlen(argv[argnum]) == 2)
+		{
+			// To handle arguments which have aditional arguments attached
+			// to them, take care of it within the case statement and
+			// increment argnum appropriately.
+			switch(argv[argnum][1])
+			{
+				case 'h':
+					std::cout << helpmsg;
+					exit (0);
+				case 'v':
+					std::cout << versmsg;
+					exit (0);
+				case 's':
+					data["sound"]["sound"] = "on";
+					std::cout << "Sound is on." << std::endl;
+					break;
+				case 'S':
+					data["sound"]["sound"] = "off";
+					std::cout << "Sound is off." << std::endl;
+					break;
+				case 'n':
+					data["graphics"]["render"] = "normal";
+					std::cout << "Screen Resolution set to 320x200." << std::endl;
+					break;
+				case 'd':
+					data["graphics"]["render"] = "double";
+					std::cout << "Screen Resolution set to 640x400 (basic mode)." << std::endl;
+					break;
+				case 'e':
+					data["graphics"]["render"] = "eagle";
+					std::cout << "Screen Resolution set to 640x400 (eagle mode)." << std::endl;
+					break;
+				case 'x':
+					data["graphics"]["render"] = "sai";
+					std::cout << "Screen Resolution set to 640x400 (sai2x mode)." << std::endl;
+					break;
+				case 'f':
+					data["graphics"]["fullscreen"] = "on";
+					std::cout << "Running in fullscreen mode." << std::endl;
+					break;
+				default:
+					std::cout << "Unknown argument " << argv[argnum] << " ignored." << std::endl;
+			}
+		}
+	}
+
+	// End Changes
+
+/* Old version:
+ * Ran the same switch as above but with the getopt_long result
+	
 	const struct option longopts[] = {
 		{"help", 0, 0, 'h'},
 		{"version", 0, 0, 'v'},
@@ -97,38 +164,8 @@ Usage: open(glad|scen) [-dfhsSvnxe]\n\
 		int c;
 		c = getopt_long (argc, argv, "dniefhsSv", longopts, NULL);
 		switch(c)
-		{
-		case 'h':
-			cout << helpmsg;
-			exit (0);
-		case 'v':
-			cout << versmsg;
-			exit (0);
-		case 's':
-			data["sound"]["sound"] = "on";
-			break;
-		case 'S':
-			data["sound"]["sound"] = "off";
-			break;
-		case 'n':
-			data["graphics"]["render"] = "normal";
-			break;
-		case 'd':
-			data["graphics"]["render"] = "double";
-			break;
-		case 'e':
-			data["graphics"]["render"] = "eagle";
-			break;
-		case 'x':
-			data["graphics"]["render"] = "sai";
-			break;
-		case 'f':
-			data["graphics"]["fullscreen"] = "on";
-			break;
-		case -1:
-			return;
-		}
-	}
+*/
+
 }
 
 const char *cfg_store::query(const char *section, const char *entry)

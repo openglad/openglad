@@ -19,7 +19,6 @@
 
 #include <string>
 #include <map>
-#include <getopt.h>
 
 class cfg_store {
 public:
