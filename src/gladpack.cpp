@@ -50,10 +50,9 @@ int packfile::open(const char *filename)
 	long i;
 	string filepath(filename);
 	char temp[GLAD_HEADER_SIZE+1];
-	filepath = DATADIR + filepath;
 
 	// Zardus: first try in the current directory
-	if ( (datafile=fopen(filepath.c_str(), "rb")) == NULL)
+	if ( (datafile=fopen(get_file_path((char *)filename), "rb")) == NULL)
 	{
 		return -1;
 	}
