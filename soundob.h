@@ -43,7 +43,7 @@ class soundob
     unsigned char set_sound(unsigned char toggle);      // Toggle sound on/off
     void load_sound(SDL_AudioSpec, char *);
     unsigned char set_volume(unsigned char volumelevel);
-    char soundlist[NUMSOUNDS][14];              // Our list of sounds
+    char soundlist[NUMSOUNDS][40];              // Our list of sounds
     Mix_Chunk *sound[NUMSOUNDS];		// AudioSpec for loading sounds
     int baseio, irq, dma, dma16;                // Card-specific information
     int volume;                       // Volume: 0 - 255

@@ -11,7 +11,7 @@
 #include "soundob.h"
 #include "SDL/SDL_mixer.h"
 
-#define SOUND_DB   1 // define for debugging messages
+#define SOUND_DB   0 // define for debugging messages
 
 
 soundob::soundob()
@@ -50,7 +50,7 @@ int soundob::init()
    	if(SOUND_DB)
 		printf("DEBUG: init: trying to init sound\n");
    
-	if(Mix_OpenAudio(22050,AUDIO_S16,2,4096)==-1) {
+	if(Mix_OpenAudio(22050,AUDIO_S16,1,1024)==-1) {
 		printf("ERROR: Mix_OpenAudio: %s\n",Mix_GetError());
 		exit(0);
 	}
@@ -61,22 +61,22 @@ int soundob::init()
 	Mix_AllocateChannels(8);
 
     // Init the sounds ..
-    strcpy(soundlist[SOUND_BOW],      "twang.wav");
-    strcpy(soundlist[SOUND_CLANG],    "clang.wav");
-    strcpy(soundlist[SOUND_DIE1],     "die1.wav");
-    strcpy(soundlist[SOUND_BLAST],    "blast1.wav");
-    strcpy(soundlist[SOUND_SPARKLE],  "faerie1.wav"); 
-    strcpy(soundlist[SOUND_TELEPORT], "teleport.wav");
-    strcpy(soundlist[SOUND_YO],       "yo.wav");
-    strcpy(soundlist[SOUND_BOLT],     "bolt1.wav");
-    strcpy(soundlist[SOUND_HEAL],     "heal1.wav");
-    strcpy(soundlist[SOUND_CHARGE],   "charge.wav");
-    strcpy(soundlist[SOUND_FWIP],     "fwip.wav");
-    strcpy(soundlist[SOUND_EXPLODE],  "explode1.wav");
-    strcpy(soundlist[SOUND_DIE2],     "die2.wav"); // registered only
-    strcpy(soundlist[SOUND_ROAR],     "roar.wav"); // reg
-    strcpy(soundlist[SOUND_MONEY],    "money.wav"); // reg
-    strcpy(soundlist[SOUND_EAT],      "eat.wav"); // reg
+    strcpy(soundlist[SOUND_BOW],      "sound/twang.wav");
+    strcpy(soundlist[SOUND_CLANG],    "sound/clang.wav");
+    strcpy(soundlist[SOUND_DIE1],     "sound/die1.wav");
+    strcpy(soundlist[SOUND_BLAST],    "sound/blast1.wav");
+    strcpy(soundlist[SOUND_SPARKLE],  "sound/faerie1.wav"); 
+    strcpy(soundlist[SOUND_TELEPORT], "sound/teleport.wav");
+    strcpy(soundlist[SOUND_YO],       "sound/yo.wav");
+    strcpy(soundlist[SOUND_BOLT],     "sound/bolt1.wav");
+    strcpy(soundlist[SOUND_HEAL],     "sound/heal1.wav");
+    strcpy(soundlist[SOUND_CHARGE],   "sound/charge.wav");
+    strcpy(soundlist[SOUND_FWIP],     "sound/fwip.wav");
+    strcpy(soundlist[SOUND_EXPLODE],  "sound/explode1.wav");
+    strcpy(soundlist[SOUND_DIE2],     "sound/die2.wav"); // registered only
+    strcpy(soundlist[SOUND_ROAR],     "sound/roar.wav"); // reg
+    strcpy(soundlist[SOUND_MONEY],    "sound/money.wav"); // reg
+    strcpy(soundlist[SOUND_EAT],      "sound/eat.wav"); // reg
 
     for (i=0; i < NUMSOUNDS; i++)
     {
