@@ -1,7 +1,7 @@
 These are the installation instructions for Openglad.
 
-Linux
-=====
+INSTALL
+=======
 
 1. Unpack the tarball into some directory.
 2. Linux: Execute `make` to compile openglad, `make openscen`
