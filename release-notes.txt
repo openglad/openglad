@@ -1,2 +1,1 @@
-Openglad 0.97 is a bugfix release. Lots of memory leaks are fixed and some
-other bugs as well.
+Openglad 0.98 fixed a major crash bug and some small annoyances. Everyone should upgrade to this, as it no longer crashes like .97 did, and doesn't leak like .95 did. Best of both worlds :-)
