@@ -4,7 +4,7 @@
 #ifndef SMOOTH_H
 #define SMOOTH_H
 
-#include "\wfiles\glad\graph.h"
+#include "graph.h"
 
 // Used for deciding cases
 #define TO_UP 1
