@@ -35,7 +35,7 @@ long calculate_level(unsigned long howmuch)
 }
 
 long *mymouse;
-bool *mykeyboard;
+char *mykeyboard;
 //scenario *myscen = new scenario;
 long currentmode = OBJECT_MODE;
 unsigned long currentlevel = 1;
@@ -1698,7 +1698,7 @@ void set_name(walker  *target, screen * master)
 void scenario_options(screen *myscreen)
 {
   static text opt_text(myscreen);
-  bool *opt_keys = query_keyboard();
+  char *opt_keys = query_keyboard();
   long dumbcount;
   short lm, tm;
   char message[80];
@@ -1814,7 +1814,7 @@ void scenario_options(screen *myscreen)
 // Set an object's facing ..
 void set_facing(walker *target, screen *myscreen)
 {
-  bool *setkeys = query_keyboard();
+  char *setkeys = query_keyboard();
   long dumbcount = 0;
 
   if (target)

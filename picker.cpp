@@ -394,7 +394,7 @@ long leftmouse()
   long i = 0;
   short happy;
   long somebutton = -1;
-  bool * mousekeys = query_keyboard();
+  char * mousekeys = query_keyboard();
 
   grab_mouse();
   mymouse = query_mouse();
@@ -1027,7 +1027,7 @@ long create_buy_menu(long arg1)
 {
   static long no_clear = 1;
   long linesdown, retvalue = 0;
-  bool * inputkeyboard = query_keyboard();
+  char * inputkeyboard = query_keyboard();
   long i;
   long start_time = query_timer();
   long now_time;

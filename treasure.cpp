@@ -35,7 +35,7 @@ short treasure::eat_me(walker  * eater)
   oblink *here;
   static text eattext(screenp);
   char message[80];
-  bool * eatkeys;
+  char * eatkeys;
   static short dumbcount = 0;
   long distance;
   walker  *target, *flash;

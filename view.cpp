@@ -302,7 +302,7 @@ short viewscreen::input(char inputthing)
   short i;
   oblink  *here, *tempobj, *helpme;
   //short step;
-  bool *inputkeyboard;
+  char *inputkeyboard;
   long dumbcount=0;
   static short changedchar[6] = {0, 0, 0, 0, 0, 0};   // for switching guys
   static short changedchar2[6]= {0, 0, 0, 0, 0, 0};  // for switching TYPE of guy
@@ -1111,7 +1111,7 @@ void viewscreen::input_joy()
   long resx,resy,diffx,diffy;
   long currentx, currenty;
   long * localjoystick;
-  bool * localkeyboard;
+  char * localkeyboard;
   localjoystick = query_joy();
   localkeyboard = query_keyboard();
 
@@ -1376,7 +1376,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
   list->ob = NULL;
   list->next = NULL;
   temp = new oblink;
-  bool *teamkeys;
+  char *teamkeys;
   long dumbcount, currentcycle = 0, cycletime = 30000;
 
   screenp->redrawme = 1;
@@ -1504,7 +1504,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 void viewscreen::options_menu()
 {
   static text optiontext(screenp);
-  static bool *opkeys;
+  static char *opkeys;
   long dumbcount;
   long gamespeed, viewsize;
   static char message[80], tempstr[80];

@@ -19,6 +19,7 @@
 #define VERSION_INT 3
 
 // Z's script: //#include <dos.h>
+#include <SDL/SDL.h>
 
 
 #define TIME_KEEPER_INT 0x1C
@@ -101,7 +102,7 @@ void release_keyboard();                                    // restore normal sh
 //buffers: PORT: doesnt compile void __interrupt key_int();           // called on press/release
 short query_key();                                                            // return last keypress
 void clear_keyboard();                                              // set keyboard to none pressed
-bool * query_keyboard();                                    // keyboard status
+char * query_keyboard();                                    // keyboard status
 void wait_for_key(unsigned char somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)
