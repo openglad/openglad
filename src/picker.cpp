@@ -231,7 +231,6 @@ void picker_main(long argc, char  **argv)
 	grab_mouse();
 
 	grab_timer();
-	change_time((unsigned int)FREQ_HIGH);
 
 	grab_keyboard();
 	clear_keyboard();

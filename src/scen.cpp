@@ -232,8 +232,6 @@ int main(int argc, char **argv)
 
 	// Install our masking timer interrupt
 	grab_timer();
-	// Now speed it up ..
-	change_time((unsigned long)FREQ_HIGH);
 
 	// Now install the keyboard interrupt
 	grab_keyboard();
@@ -824,8 +822,6 @@ long quit(long num)
 	// Release the keyboard interrupt
 	release_keyboard();
 
-	// Now reset the timer to normal ..
-	change_time((unsigned long)FREQ_NORMAL);
 	// And release the timer ..
 	release_timer();
 

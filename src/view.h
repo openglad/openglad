@@ -55,23 +55,6 @@
 
 class viewscreen;
 
-class joyvalues
-{
-	public:
-		long joyaligned; //has the joystick, if used been centered??
-		long joyleft; //left,right,up,down max values
-		long joyright;
-		long joyup;
-		long joydown;//left,right,up,down max values
-		long minoffleft;
-		long minoffright;
-		long minoffup;
-		long minoffdown; //minimum deflections to get a joystick hit
-		long joycenterx;
-		long joycentery;
-		long deltax, deltay;
-};
-
 // This is a child object of all viewscreens
 //  It is used to save and load all prefs
 //  because each player has their own
@@ -86,7 +69,6 @@ class options
 	protected:
 		signed char prefs[4][10];
 		char keys[4][16];
-		joyvalues joys[4];
 };
 
 class viewscreen
@@ -108,9 +90,6 @@ class viewscreen
 		void shift_text(long row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
 		short draw_obs(); //moved here to fix radar
-		void align_joy(); //center the joystick
-		void input_joy(); //query the joystick, and move appropriate data to the keyboard!! buffer
-		void remove_joy(); //let the player revert to keyboard control
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
 		void view_team();
@@ -138,20 +117,6 @@ class viewscreen
 		signed char prefs[10]; // User preferences ..
 		radar * myradar;
 		short radarstart; //has the radar been started yet?
-
-		long joyaligned; //has the joystick, if used been centered??
-		long joyleft; //left,right,up,down max values
-		long joyright;
-		long joyup;
-		long joydown;//left,right,up,down max values
-		long minoffleft;
-		long minoffright;
-		long minoffup;
-		long minoffdown; //minimum deflections to get a joystick hit
-		long joycenterx;
-		long joycentery;
-		long deltax, deltay;
-
 
 	protected:
 		options *prefsob;

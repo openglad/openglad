@@ -27,7 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gladpack.h"
-#include "input.h"
+#include "util.h"
 #include "config.h"
 #include <string>
 using namespace std;

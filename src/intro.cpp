@@ -62,7 +62,6 @@ void intro_main(long argc, char** argv)
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 	grab_timer();
 	grab_keyboard();
-	change_time((unsigned int)FREQ_HIGH);
 	mytext = new text(myscreen);
 	load_and_set_palette("our.pal", (char *)mypalette);
 	//  load_scenario("current", myscreen);
@@ -263,7 +262,6 @@ int cleanup()
 	long i;
 	int red,green,blue; //buffers: PORT: changed to ints
 	query_palette_reg((unsigned char)0, &red, &green, &blue); // Resets palette to read mode
-	change_time((unsigned int)FREQ_NORMAL);
 	release_timer();
 	release_keyboard();
 	//delete myscreen;

@@ -31,12 +31,6 @@
 #define VIEW_TEAM_RIGHT  280
 
 
-//joystick tolerance defines
-#define TOLERANCE 50
-
-#define COUNT_TIME 3500
-//note these are kind of backwards, they are screen oriented
-
 // These are keyboard defines .. high-level
 #define KEY_UP                  0
 #define KEY_UP_RIGHT            1
@@ -184,12 +178,6 @@ viewscreen::viewscreen(short x, short y, short width,
 		textlist[i][0] = 0; // null message
 	}
 
-	/*
-	  joyaligned = 0; //by default not aligned
-	  joyright = 608; joydown = 498; //make sure these will be small
-	  joyleft = 15; joyup = 12; //make sure these start large
-	  joycenterx = 332; joycentery = 290; //start these at reasonable values
-	*/
 	resize(prefs[PREF_VIEW]); // Properly resize the viewscreen
 }
 
@@ -318,7 +306,6 @@ short viewscreen::input(char inputthing)
 {
 	static text mytext(screenp);
 	static char somemessage[80];
-	long *joystick;
 	oblink *templink;
 	char sillytext[80];
 	int  counter;
@@ -346,26 +333,6 @@ short viewscreen::input(char inputthing)
 
 	if (inputthing)
 		dumbcount++;
-
-	//  joystick = query_joy();
-	//  if (prefs[PREF_JOY] == PREF_USE_JOY)
-	//  {
-	//    joystick = query_joy();
-	//    sprintf(somemessage, "X:%ld Y:%ld B1:%ld B2:%ld B3:%ld B4:%ld",
-	//                         joystick[JOY_X], joystick[JOY_Y],
-	//                         joystick[JOY_B1], joystick[JOY_B2],
-	//                         joystick[JOY_B3],joystick[JOY_B4]);
-	//    set_display_text(somemessage, 1);
-	//  }
-
-	if ( (prefs[PREF_JOY] == PREF_USE_JOY) && !joyaligned)
-		align_joy();
-
-	if ( (prefs[PREF_JOY] == PREF_USE_JOY) && joyaligned)
-		input_joy();
-
-	if ( (prefs[PREF_JOY] == PREF_NO_JOY) && joyaligned )
-		remove_joy();
 
 	if (control && control->user == -1)
 	{
@@ -1004,208 +971,6 @@ short viewscreen::draw_obs()
 	}
 
 	return 1;
-}
-
-
-void viewscreen::align_joy()
-{
-	long * joystick;
-	static char somemessage[80];
-	long deltax, deltay;
-	long count, countx, county;
-
-	if (prefs[PREF_JOY]!=PREF_USE_JOY)
-		return; //this shouldn't happen, should be checked sooner
-
-	joystick = query_joy();
-
-	// First we need to get the center values ..
-	//  sprintf(somemessage,"CENTER JOYSTICK, THEN PRESS BUTTON 1");
-	//  screentext->write_xy( (xview-strlen(somemessage)*6)/2,
-	//                         50, somemessage, YELLOW, this );
-	clear_text();
-	redraw();
-	set_display_text("CENTER JOYSTICK", 1);
-	set_display_text("PRESS BUTTON 1", 1);
-	display_text();
-	display_text();
-	screenp->buffer_to_screen(0,0,320,200);
-	count = 0;
-	while (!joystick[JOY_B1] || count < COUNT_TIME )
-	{
-		joycenterx +=joystick[JOY_X];
-		joycentery +=joystick[JOY_Y];
-		count++;
-		//printf("CX: %ld,  CY:  %ld\n", joycenterx/count, joycentery/count);
-		joystick = query_joy();
-	}
-	joycenterx /= (long) count;
-	joycentery /= (long) count;
-
-	//  sprintf(somemessage, "MOVE JOYSTICK TO UPPER LEFT, THEN PRESS BUTTON 2");
-	//  screentext->write_xy( (xview-strlen(somemessage)*6)/2,
-	//                         60, somemessage, YELLOW, this );
-	clear_text();
-	redraw();
-	set_display_text("MOVE JOYSTICK TO", 1);
-	set_display_text("UPPER LEFT", 1);
-	set_display_text("PRESS BUTTON 2", 1);
-	display_text();
-	display_text();
-	display_text();
-	screenp->buffer_to_screen(0,0,320,200);
-	count = countx = county = 0;
-	while (!joystick[JOY_B2] || (countx+county) < COUNT_TIME)
-	{
-		if (joystick[JOY_X] < joycenterx && joystick[JOY_X] > 5)
-		{
-			joyleft += joystick[JOY_X];
-			countx++;
-		}
-		if (joystick[JOY_Y] < joycentery && joystick[JOY_Y] > 5)
-		{
-			joyup += joystick[JOY_Y];
-			county++;
-		}
-		count++;
-		joystick = query_joy();
-	}
-	joyleft /= countx;
-	joyup   /= county;
-
-	//  sprintf(somemessage, "MOVE JOYSTICK TO LOWER RIGHT, THEN PRESS BUTTON 1");
-	//  screentext->write_xy( (xview-strlen(somemessage)*6)/2,
-	//                         90, somemessage, YELLOW, this );
-	clear_text();
-	redraw();
-	set_display_text("MOVE JOYSTICK TO", 1);
-	set_display_text("LOWER RIGHT", 1);
-	set_display_text("PRESS BUTTON 1", 1);
-	display_text();
-	display_text();
-	display_text();
-
-	screenp->buffer_to_screen(0,0,320,200);
-	count = countx = county = 0;
-	while (!joystick[JOY_B1] || (countx+county) < COUNT_TIME)
-	{
-		if (joystick[JOY_X] > joycenterx)
-		{
-			joyright += joystick[JOY_X];
-			countx++;
-		}
-		if (joystick[JOY_Y] > joycentery)
-		{
-			joydown += joystick[JOY_Y];
-			county++;
-		}
-		count++;
-		//printf("X: %ld, Y: %ld\n", joyright/count, joydown/count);
-		joystick = query_joy();
-	}
-	joyright /= countx;
-	joydown /= county;
-
-
-	// Calculate left & top offsets ..
-	deltax = joycenterx - joyleft;
-	deltay = joycentery - joyup;
-	minoffleft = joycenterx - (deltax * TOLERANCE)/100;
-	minoffup   = joycentery - (deltay * TOLERANCE)/100;
-
-	// Right and down offsets..
-	deltax = joyright - joycenterx;
-	deltay = joydown - joycentery;
-	minoffright = joycenterx + (deltax * TOLERANCE)/100;
-	minoffdown = joycentery + (deltay * TOLERANCE)/100;
-
-	// Debugging only:
-	//printf("L: %ld R: %ld U: %ld D:%ld",joyleft,joyright,joyup,joydown);
-	//printf("ML: %ld MR: %ld MU: %ld MD: %ld",minoffleft,minoffright,minoffup,minoffdown);
-	//printf("CX: %ld CY: %ld",joycenterx,joycentery);
-
-	allkeys[mynum][KEY_UP] = JOY_KEYBOARD_UP;
-	allkeys[mynum][KEY_DOWN] = JOY_KEYBOARD_DOWN;
-	allkeys[mynum][KEY_LEFT] = JOY_KEYBOARD_LEFT;
-	allkeys[mynum][KEY_RIGHT] = JOY_KEYBOARD_RIGHT;
-	allkeys[mynum][KEY_FIRE] = JOY_KEYBOARD_B1;
-	allkeys[mynum][KEY_SPECIAL] = JOY_KEYBOARD_B2;
-	//  keys[mynum][KEY_SPECIAL_SWITCH] = JOY_KEYBOARD_B3;
-	//  keys[mynum][KEY_SWITCH] = JOY_KEYBOARD_B4;
-	joyaligned = 1;
-	prefsob->save(this); // We need this so the changes are saved
-}
-
-
-void viewscreen::input_joy()
-{
-	long resx,resy,diffx,diffy;
-	long currentx, currenty;
-	long * localjoystick;
-	char * localkeyboard;
-	localjoystick = query_joy();
-	localkeyboard = query_keyboard();
-
-	//first the buttons
-	if (localjoystick[JOY_B1])
-		localkeyboard[JOY_KEYBOARD_B1] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_B1] = (char) 0;
-
-	if (localjoystick[JOY_B2])
-		localkeyboard[JOY_KEYBOARD_B2] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_B2] = (char) 0;
-
-	if (localjoystick[JOY_B3])
-		localkeyboard[JOY_KEYBOARD_B3] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_B3] = (char) 0;
-
-	if (localjoystick[JOY_B4])
-		localkeyboard[JOY_KEYBOARD_B4] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_B4] = (char) 0;
-
-
-	currentx = localjoystick[JOY_X];
-	currenty = localjoystick[JOY_Y];
-	//diffx = joycenterx - resx;
-	//diffy = joycentery - resy;
-	/*
-	if (abs(diffx) < abs(joycenterx/4) &&      //make sure x is close to center
-	    abs(diffy) > abs(joycentery/12) &&     //make sure y is not close to center
-	    resy > minoffup)                       //make sure we are not trying to go up
-	{
-	  resy += minoffdown; //values straight down are weird
-	  resy *= 2;
-	  diffy = joycentery - resy;
-	}
-	*/
-
-	if ( currentx < minoffleft )
-		localkeyboard[JOY_KEYBOARD_LEFT] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_LEFT] = (char) 0;
-	if ( currentx > minoffright )
-		localkeyboard[JOY_KEYBOARD_RIGHT] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_RIGHT] = (char) 0;
-
-	if ( currenty < minoffup )
-		localkeyboard[JOY_KEYBOARD_UP] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_UP] = (char) 0;
-	if ( currenty > minoffdown )
-		localkeyboard[JOY_KEYBOARD_DOWN] = (char) 1;
-	else
-		localkeyboard[JOY_KEYBOARD_DOWN] = (char) 0;
-}
-
-void viewscreen::remove_joy()
-{
-	memcpy(mykeys, normalkeys[mynum], 16 * sizeof(int));
-	joyaligned = 0;
 }
 
 void viewscreen::resize(short x, short y, short length, short height)
@@ -1882,24 +1647,7 @@ void viewscreen::options_menu()
 
 		if (opkeys[SDLK_j]) // toggle joystick display
 		{
-			prefs[PREF_JOY] = (prefs[PREF_JOY]+1)%2;
-			if (prefs[PREF_JOY] == PREF_USE_JOY)
-			{
-				sprintf(message, "Joystick Mode (J)      : ON ");
-			}
-			else
-			{
-				sprintf(message, "Joystick Mode (J)      : OFF ");
-				if (prefs[PREF_JOY] != PREF_USE_JOY)
-				{
-					memcpy(mykeys, normalkeys[mynum], 16 * sizeof(int));
-				}
-			}
-			screenp->draw_box(45, OPLINES(11), 275, OPLINES(11)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(11), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_j])
-				get_input_events(WAIT);
+			//Zardus: TODO: remove this and the joystick display on options
 		}
 
 		if (opkeys[SDLK_k])      // Edit the keyboard mappings
@@ -1996,7 +1744,6 @@ options::options()
 		prefs[i][PREF_FOES]  = PREF_FOES_ON;
 		prefs[i][PREF_GAMMA] = 0;
 		prefs[i][PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button behind text
-		joys[i].joyaligned = 0;
 	}
 
 	infile = fopen(KEY_FILE, "rb");
@@ -2009,7 +1756,6 @@ options::options()
 	{
 		fread(allkeys[i], 16 * sizeof(int), 1, infile);
 		fread(prefs[i], 10, 1, infile);
-		fread(&joys[i], sizeof(joyvalues), 1, infile);
 	}
 
 	fclose(infile);
@@ -2025,19 +1771,6 @@ short options::load(viewscreen *viewp)
 	// Yes, we are ACTUALLY COPYING the data
 	memcpy(viewp->prefs, prefs[prefnum], 10);
 	memcpy(viewp->mykeys, allkeys[prefnum], 16 * sizeof(int));
-	viewp->joyaligned = joys[prefnum].joyaligned;
-	viewp->joyleft = joys[prefnum].joyleft;
-	viewp->joyright = joys[prefnum].joyright;
-	viewp->joyup = joys[prefnum].joyup;
-	viewp->joydown = joys[prefnum].joydown;
-	viewp->minoffleft = joys[prefnum].minoffleft;
-	viewp->minoffright = joys[prefnum].minoffright;
-	viewp->minoffup = joys[prefnum].minoffup;
-	viewp->minoffdown = joys[prefnum].minoffdown;
-	viewp->joycenterx = joys[prefnum].joycenterx;
-	viewp->joycentery = joys[prefnum].joycentery;
-	viewp->deltax = joys[prefnum].deltax;
-	viewp->deltay = joys[prefnum].deltay;
 	return 1;
 }
 
@@ -2056,19 +1789,6 @@ short options::save(viewscreen *viewp)
 	// Yes, we are ACTUALLY COPYING the data
 	memcpy(prefs[prefnum], viewp->prefs, 10);
 	memcpy(allkeys[prefnum], viewp->mykeys, 16 * sizeof (int));
-	joys[prefnum].joyaligned = viewp->joyaligned;
-	joys[prefnum].joyleft = viewp->joyleft;
-	joys[prefnum].joyright = viewp->joyright;
-	joys[prefnum].joyup = viewp->joyup;
-	joys[prefnum].joydown = viewp->joydown;
-	joys[prefnum].minoffleft = viewp->minoffleft;
-	joys[prefnum].minoffright = viewp->minoffright;
-	joys[prefnum].minoffup = viewp->minoffup;
-	joys[prefnum].minoffdown = viewp->minoffdown;
-	joys[prefnum].joycenterx = viewp->joycenterx;
-	joys[prefnum].joycentery = viewp->joycentery;
-	joys[prefnum].deltax = viewp->deltax;
-	joys[prefnum].deltay = viewp->deltay;
 
 	outfile = fopen(KEY_FILE, "wb");
 
@@ -2080,7 +1800,6 @@ short options::save(viewscreen *viewp)
 	{
 		fwrite(allkeys[i], 16 * sizeof(int), 1, outfile);
 		fwrite(prefs[i], 10, 1, outfile);
-		fwrite(&joys[i], sizeof(joyvalues), 1, outfile);
 	}
 
 	fclose(outfile);

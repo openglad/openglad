@@ -15,28 +15,18 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 //
-// __interrupt routines library
-// for Gladiator and associated files
+// input.cpp
 //
-// Created:  02-04-95
+// input code
 //
+
 #include "input.h"
-// Z's script: #include <dos.h>
-// Z's script: #include <conio.h>
-// Z's script: #include <i86.h>
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen
 #include <malloc.h>
 #include <string>
 
-unsigned long start_time=0;
-unsigned long reset_value=0;
-time_t starttime, endtime;
-tm tmbuffer;
-// Z: might need these two later
-// dostime_t newtime;
-// dosdate_t newdate;
 long quit(long arg1);
 
 int raw_key;
@@ -46,44 +36,12 @@ bool *key_list;
 long mouse_state[MSTATE];
 long mouse_buttons;
 
-long joy_state[JSTATE];
 int mult = 1;
 
 // Zardus: add: arrays to keep track of joystick data
 int joy_numaxes[4];
 int joy_startval[4];
 int joy_numbuttons[4];
-
-// Zardus: PORT: the __stuff seems to freak it out: void (__far __interrupt *old_timer_isr)();
-// same here: void (__far __interrupt *old_keyboard_isr)();
-
-
-void change_time(unsigned long new_count)
-{}
-
-void grab_timer()
-{}
-
-void release_timer()
-{}
-
-void reset_timer()
-{
-	reset_value = SDL_GetTicks();
-}
-
-long query_timer()
-{
-	// Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
-	// that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
-	// or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
-	return (long) ((SDL_GetTicks() - reset_value) / 13.6);
-}
-
-long query_timer_control()
-{
-	return (long) (SDL_GetTicks() / 13.6);
-}
 
 
 //
@@ -306,44 +264,6 @@ long * query_mouse()
 	// it should probably get its own function
 	get_input_events(POLL);
 	return mouse_state;
-}
-
-long * query_joy()
-{
-	//joyasm();
-	//joy_state[JOY_X] = (long) joyx;
-	//joy_state[JOY_Y] = (long) joyy;
-
-	return joy_state;
-}
-
-// Zardus: add: some extra routines (one right now) that really shouldn't be here, but we'll put them here anyways
-void lowercase(char * str)
-{
-	int i;
-	for (i = 0; i < strlen(str);i++)
-		str[i] = tolower(str[i]);
-}
-
-//buffers: add: another extra routine.
-void uppercase(char *str)
-{
-	int i;
-	for(i=0;i<strlen(str);i++)
-		str[i] = toupper(str[i]);
-}
-
-// kari: yet two extra
-void lowercase(std::string &str)
-{
-	for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
-		*iter = tolower(*iter);
-}
-
-void uppercase(std::string &str)
-{
-	for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
-		*iter = toupper(*iter);
 }
 
 // Zardus: add: this sets the multiplier mult

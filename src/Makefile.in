@@ -1,6 +1,6 @@
-# Makefile.in generated automatically by automake 1.4-p4 from Makefile.am
+# Makefile.in generated automatically by automake 1.4-p5 from Makefile.am
 
-# Copyright (C) 1994, 1995-8, 1999 Free Software Foundation, Inc.
+# Copyright (C) 1994, 1995-8, 1999, 2001 Free Software Foundation, Inc.
 # This Makefile.in is free software; the Free Software Foundation
 # gives unlimited permission to copy and/or distribute it,
 # with or without modifications, as long as this notice is preserved.
@@ -57,58 +57,48 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-host_alias = @host_alias@
-host_triplet = @host@
-AMDEPBACKSLASH = @AMDEPBACKSLASH@
-AMTAR = @AMTAR@
-AWK = @AWK@
 CXX = @CXX@
-DEPDIR = @DEPDIR@
-INSTALL_STRIP_PROGRAM = @INSTALL_STRIP_PROGRAM@
 MAKEINFO = @MAKEINFO@
 PACKAGE = @PACKAGE@
 SDL_CFLAGS = @SDL_CFLAGS@
 SDL_CONFIG = @SDL_CONFIG@
 SDL_LIBS = @SDL_LIBS@
-STRIP = @STRIP@
 VERSION = @VERSION@
-am__include = @am__include@
-am__quote = @am__quote@
-install_sh = @install_sh@
 
-bin_PROGRAMS = openglad
-EXTRA_PROGRAMS = openscen
+bin_PROGRAMS = openglad openscen
+#EXTRA_PROGRAMS = openscen
 
-openglad_SOURCES = glad.cpp button.cpp effect.cpp game.cpp gladpack.cpp graphlib.cpp guy.cpp help.cpp input.cpp intro.cpp living.cpp loader.cpp obmap.cpp pal32.cpp parser.cpp picker.cpp pixie.cpp pixien.cpp radar.cpp screen.cpp smooth.cpp sound.cpp stats.cpp text.cpp treasure.cpp video.cpp view.cpp walker.cpp weap.cpp base.h button.h colors.h effect.h gladpack.h graph.h guy.h input.h living.h loader.h obmap.h pal32.h palettes.h parser.h picker.h pixdefs.h pixie.h pixien.h radar.h scen.h screen.h smooth.h soundob.h sounds.h stats.h text.h treasure.h video.h view.h walker.h weap.h
+openglad_SOURCES = glad.cpp button.cpp effect.cpp game.cpp gladpack.cpp graphlib.cpp guy.cpp help.cpp input.cpp intro.cpp living.cpp loader.cpp obmap.cpp pal32.cpp parser.cpp picker.cpp pixie.cpp pixien.cpp radar.cpp screen.cpp smooth.cpp sound.cpp stats.cpp text.cpp treasure.cpp video.cpp view.cpp walker.cpp weap.cpp sai2x.cpp util.cpp base.h button.h colors.h effect.h gladpack.h graph.h guy.h input.h living.h loader.h obmap.h pal32.h palettes.h parser.h picker.h pixdefs.h pixie.h pixien.h radar.h scen.h screen.h smooth.h soundob.h sounds.h stats.h text.h treasure.h video.h view.h walker.h weap.h sai2x.h util.h
 
 
-openscen_SOURCES = scen.cpp effect.cpp game.cpp gladpack.cpp graphlib.cpp guy.cpp help.cpp input.cpp intro.cpp living.cpp loader.cpp obmap.cpp pal32.cpp parser.cpp pixie.cpp pixien.cpp radar.cpp screen.cpp smooth.cpp sound.cpp stats.cpp text.cpp treasure.cpp video.cpp view.cpp walker.cpp weap.cpp base.h colors.h effect.h gladpack.h graph.h guy.h input.h living.h loader.h obmap.h pal32.h palettes.h parser.h pixdefs.h pixie.h pixien.h radar.h scen.h screen.h smooth.h soundob.h sounds.h stats.h text.h treasure.h video.h view.h walker.h weap.h
+openscen_SOURCES = scen.cpp effect.cpp game.cpp gladpack.cpp graphlib.cpp guy.cpp help.cpp input.cpp intro.cpp living.cpp loader.cpp obmap.cpp pal32.cpp parser.cpp pixie.cpp pixien.cpp radar.cpp screen.cpp smooth.cpp sound.cpp stats.cpp text.cpp treasure.cpp video.cpp view.cpp walker.cpp weap.cpp sai2x.cpp util.cpp base.h colors.h effect.h gladpack.h graph.h guy.h input.h living.h loader.h obmap.h pal32.h palettes.h parser.h pixdefs.h pixie.h pixien.h radar.h scen.h screen.h smooth.h soundob.h sounds.h stats.h text.h treasure.h video.h view.h walker.h weap.h sai2x.h util.h
 
 openscen_CXXFLAGS = -DOPENSCEN
 mkinstalldirs = $(SHELL) $(top_srcdir)/mkinstalldirs
-CONFIG_HEADER = ../config.h ../_AM_File, ../[$2], ../[$3])]
+CONFIG_HEADER = ../config.h
 CONFIG_CLEAN_FILES = 
 PROGRAMS =  $(bin_PROGRAMS)
 
 
-DEFS = @DEFS@ -I. -I$(srcdir) -I.. -I.. -I.. -I..
+DEFS = @DEFS@ -I. -I$(srcdir) -I..
 CPPFLAGS = @CPPFLAGS@
 LDFLAGS = @LDFLAGS@
 LIBS = @LIBS@
-openscen_OBJECTS =  scen.o effect.o game.o gladpack.o graphlib.o guy.o \
-help.o input.o intro.o living.o loader.o obmap.o pal32.o parser.o \
-pixie.o pixien.o radar.o screen.o smooth.o sound.o stats.o text.o \
-treasure.o video.o view.o walker.o weap.o
-openscen_LDADD = $(LDADD)
-openscen_DEPENDENCIES = 
-openscen_LDFLAGS = 
 openglad_OBJECTS =  glad.o button.o effect.o game.o gladpack.o \
 graphlib.o guy.o help.o input.o intro.o living.o loader.o obmap.o \
 pal32.o parser.o picker.o pixie.o pixien.o radar.o screen.o smooth.o \
-sound.o stats.o text.o treasure.o video.o view.o walker.o weap.o
+sound.o stats.o text.o treasure.o video.o view.o walker.o weap.o \
+sai2x.o util.o
 openglad_LDADD = $(LDADD)
 openglad_DEPENDENCIES = 
 openglad_LDFLAGS = 
+openscen_OBJECTS =  scen.o effect.o game.o gladpack.o graphlib.o guy.o \
+help.o input.o intro.o living.o loader.o obmap.o pal32.o parser.o \
+pixie.o pixien.o radar.o screen.o smooth.o sound.o stats.o text.o \
+treasure.o video.o view.o walker.o weap.o sai2x.o util.o
+openscen_LDADD = $(LDADD)
+openscen_DEPENDENCIES = 
+openscen_LDFLAGS = 
 CXXFLAGS = @CXXFLAGS@
 CXXCOMPILE = $(CXX) $(DEFS) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CXXFLAGS) $(CXXFLAGS)
 CXXLD = $(CXX)
@@ -128,11 +118,12 @@ DEP_FILES =  .deps/button.P .deps/effect.P .deps/game.P .deps/glad.P \
 .deps/gladpack.P .deps/graphlib.P .deps/guy.P .deps/help.P \
 .deps/input.P .deps/intro.P .deps/living.P .deps/loader.P .deps/obmap.P \
 .deps/pal32.P .deps/parser.P .deps/picker.P .deps/pixie.P \
-.deps/pixien.P .deps/radar.P .deps/scen.P .deps/screen.P .deps/smooth.P \
-.deps/sound.P .deps/stats.P .deps/text.P .deps/treasure.P .deps/video.P \
-.deps/view.P .deps/walker.P .deps/weap.P
-SOURCES = $(openscen_SOURCES) $(openglad_SOURCES)
-OBJECTS = $(openscen_OBJECTS) $(openglad_OBJECTS)
+.deps/pixien.P .deps/radar.P .deps/sai2x.P .deps/scen.P .deps/screen.P \
+.deps/smooth.P .deps/sound.P .deps/stats.P .deps/text.P \
+.deps/treasure.P .deps/util.P .deps/video.P .deps/view.P .deps/walker.P \
+.deps/weap.P
+SOURCES = $(openglad_SOURCES) $(openscen_SOURCES)
+OBJECTS = $(openglad_OBJECTS) $(openscen_OBJECTS)
 
 all: all-redirect
 .SUFFIXES:
@@ -186,13 +177,13 @@ distclean-compile:
 
 maintainer-clean-compile:
 
-openscen: $(openscen_OBJECTS) $(openscen_DEPENDENCIES)
-	@rm -f openscen
-	$(CXXLINK) $(openscen_LDFLAGS) $(openscen_OBJECTS) $(openscen_LDADD) $(LIBS)
-
 openglad: $(openglad_OBJECTS) $(openglad_DEPENDENCIES)
 	@rm -f openglad
 	$(CXXLINK) $(openglad_LDFLAGS) $(openglad_OBJECTS) $(openglad_LDADD) $(LIBS)
+
+openscen: $(openscen_OBJECTS) $(openscen_DEPENDENCIES)
+	@rm -f openscen
+	$(CXXLINK) $(openscen_LDFLAGS) $(openscen_OBJECTS) $(openscen_LDADD) $(LIBS)
 .cpp.o:
 	$(CXXCOMPILE) -c $<
 
@@ -214,7 +205,7 @@ TAGS:  $(HEADERS) $(SOURCES)  $(TAGS_DEPENDENCIES) $(LISP)
 	  awk '    { files[$$0] = 1; } \
 	       END { for (i in files) print i; }'`; \
 	test -z "$(ETAGS_ARGS)$$unique$(LISP)$$tags" \
-	  || (cd $(srcdir) && etags $(ETAGS_ARGS) $$tags  $$unique $(LISP) -o $$here/TAGS)
+	  || (cd $(srcdir) && etags -o $$here/TAGS $(ETAGS_ARGS) $$tags  $$unique $(LISP))
 
 mostlyclean-tags:
 

@@ -91,7 +91,6 @@ screen::screen(short howmany):video()
 	long left = 66;
 
 	grab_timer();
-	change_time( FREQ_HIGH );
 
 	grid = NULL;
 	mysmoother = new smoother();
@@ -321,7 +320,6 @@ screen::~screen()
 {
 	int i;
 
-	change_time(FREQ_NORMAL);
 	release_timer();
 	delete soundp;
 	delete myloader;
