@@ -1069,22 +1069,26 @@ long save_map_file(char  * filename, screen *master)
 	//  char  *newpic;
 	char fullpath[80];
 	FILE  *outfile;
-	//buffers: we want to save grid files to pix/
+	//buffers: we want to save grid files to scen/
 	//buffers: original glad's grid files were always handle as pixies
-	char my_dir[80] = "pix/";
+	char my_dir[80] = "scen/";
 	char tempdir[80];
 	char buffer[200];
 
 	// Do we have a pix directory?
-	get_pix_directory(tempdir);
-	if (strlen(tempdir) > 2)
-		strcpy(my_dir, tempdir);
+	//get_pix_directory(tempdir);
+	//if (strlen(tempdir) > 2)
+	//	strcpy(my_dir, tempdir);
 
 	// Create the full pathname for the pixie file
 	strcpy(fullpath, my_dir);
 	strcat(fullpath, filename);
+	//buffers: make sure its all lowercase
+	lowercase(fullpath);
 	//buffers: changed .PIX to .pix
 	strcat(fullpath, ".pix");
+
+	printf("%s\n",fullpath);
 
 	if ( (outfile = fopen(fullpath, "wb")) == NULL )        // open for write
 	{
@@ -1375,7 +1379,8 @@ long save_scenario(char * filename, screen * master, char *gridname)
 	long i;
 	char temp_version = VERSION_NUM;
 	char temp_filename[80];
-	char scen_directory[80] = "";
+	//buffers: make sure we save to scen/
+	char scen_directory[80] = "scen/";
 	char numlines, tempwidth;
 	char oneline[80];
 	char tempname[12];
