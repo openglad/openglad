@@ -28,6 +28,7 @@ long mouse_state[MSTATE];
 long mouse_buttons;
 
 long joy_state[JSTATE];
+int get_mult();
 
 // Zardus: PORT: the __stuff seems to freak it out: void (__far __interrupt *old_timer_isr)();
 // same here: void (__far __interrupt *old_keyboard_isr)();
@@ -97,8 +98,8 @@ void handle_events(SDL_Event event)
 
 		// Mouse event
 		case SDL_MOUSEMOTION:
-			mouse_state[MOUSE_X] = event.motion.x;
-			mouse_state[MOUSE_Y] = event.motion.y;
+			mouse_state[MOUSE_X] = event.motion.x / get_mult();
+			mouse_state[MOUSE_Y] = event.motion.y / get_mult();
 			break;
 		case SDL_MOUSEBUTTONUP:
 			if (event.button.button == SDL_BUTTON_LEFT)
