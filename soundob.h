@@ -2,8 +2,6 @@
 #ifndef __SOUNDOB_H
 #define __SOUNDOB_H
 
-#define REGISTERED      // synchronize with graph.h!
-
 #define SOUND_BOW       0
 #define SOUND_CLANG     1
 #define SOUND_DIE1      2
@@ -21,12 +19,7 @@
 #define SOUND_MONEY     14  // reg
 #define SOUND_EAT       15  // reg
 
-//#ifdef REGISTERED
-  #define NUMSOUNDS 16   // For now, let's use ALL sounds, regardless
-//#else
-//  #define NUMSOUNDS 12
-//#endif
-
+#define NUMSOUNDS 16   // For now, let's use ALL sounds, regardless
 
 //buffers: PORT: don't need this anymore: #include "detect.h"
 //buffers: PORT: don't need this anymore: #include "smix.h"
@@ -43,11 +36,12 @@ class soundob
     void           play_sound(short whichsound);
     unsigned char query_volume();
     unsigned char set_sound(unsigned char toggle);      // Toggle sound on/off
+    void load_sound(SDL_AudioSpec, char *);
     unsigned char set_volume(unsigned char volumelevel);
     char soundlist[NUMSOUNDS][14];              // Our list of sounds
-    
+    SDL_AudioSpec *sound[NUMSOUNDS];		// AudioSpec for loading sounds
+
     int baseio, irq, dma, dma16;                // Card-specific information
-//buffers: PORT: removed... no smix    SOUND *sound[NUMSOUNDS];
     unsigned char volume;                       // Volume: 0 - 255
     unsigned char silence;                      // 0 = on, 1 = silent
     

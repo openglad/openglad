@@ -236,12 +236,9 @@ screen::screen(short howmany):video()
     }
 
   strcpy(special_name[FAMILY_SOLDIER][1], "CHARGE");
-  //#ifdef REGISTERED
-  #if 1
-    strcpy(special_name[FAMILY_SOLDIER][2], "BOOMERANG");
-    strcpy(special_name[FAMILY_SOLDIER][3], "WHIRLWIND");
-    strcpy(special_name[FAMILY_SOLDIER][4], "DISARM");
-  #endif
+  strcpy(special_name[FAMILY_SOLDIER][2], "BOOMERANG");
+  strcpy(special_name[FAMILY_SOLDIER][3], "WHIRLWIND");
+  strcpy(special_name[FAMILY_SOLDIER][4], "DISARM");
 
   strcpy(special_name[FAMILY_BARBARIAN][1], "Hurl Boulder");
   strcpy(special_name[FAMILY_BARBARIAN][2], "Exploding Boulder");
@@ -253,20 +250,14 @@ screen::screen(short howmany):video()
 
   strcpy(special_name[FAMILY_ARCHER][1], "FIRE ARROWS");
   strcpy(special_name[FAMILY_ARCHER][2], "BARRAGE");
-  //#ifdef REGISTERED
-  #if 1
-    strcpy(special_name[FAMILY_ARCHER][3], "EXPLODING BOLT");
-  #endif
+  strcpy(special_name[FAMILY_ARCHER][3], "EXPLODING BOLT");
 
   strcpy(special_name[FAMILY_MAGE][1], "TELEPORT");
     strcpy(alternate_name[FAMILY_MAGE][1], "TELEPORT MARKER");
   strcpy(special_name[FAMILY_MAGE][2], "WARP SPACE");
-  //#ifdef REGISTERED
-  #if 1
-    strcpy(special_name[FAMILY_MAGE][3], "FREEZE TIME");
-    strcpy(special_name[FAMILY_MAGE][4], "ENERGY WAVE");
-    strcpy(special_name[FAMILY_MAGE][5], "HEARTBURST");
-  #endif
+  strcpy(special_name[FAMILY_MAGE][3], "FREEZE TIME");
+  strcpy(special_name[FAMILY_MAGE][4], "ENERGY WAVE");
+  strcpy(special_name[FAMILY_MAGE][5], "HEARTBURST");
 
   strcpy(special_name[FAMILY_ARCHMAGE][1], "TELEPORT");
     strcpy(alternate_name[FAMILY_ARCHMAGE][1], "TELEPORT MARKER");
@@ -284,18 +275,12 @@ screen::screen(short howmany):video()
     strcpy(alternate_name[FAMILY_CLERIC][2], "TURN UNDEAD");
   strcpy(special_name[FAMILY_CLERIC][3], "RAISE GHOST");
     strcpy(alternate_name[FAMILY_CLERIC][3], "TURN UNDEAD");
-  //#ifdef REGISTERED
-  #if 1
-    strcpy(special_name[FAMILY_CLERIC][4], "RESSURECT");
-  #endif
+  strcpy(special_name[FAMILY_CLERIC][4], "RESSURECT");
 
   strcpy(special_name[FAMILY_DRUID][1], "GROW TREE");
   strcpy(special_name[FAMILY_DRUID][2], "SUMMON FAERIE");
-  //#ifdef REGISTERED
-  #if 1
-    strcpy(special_name[FAMILY_DRUID][3], "REVEAL");
-    strcpy(special_name[FAMILY_DRUID][4], "PROTECTION");
-  #endif
+  strcpy(special_name[FAMILY_DRUID][3], "REVEAL");
+  strcpy(special_name[FAMILY_DRUID][4], "PROTECTION");
 
   strcpy(special_name[FAMILY_THIEF][1], "DROP BOMB");
   strcpy(special_name[FAMILY_THIEF][2], "CLOAK");
@@ -1454,27 +1439,22 @@ short screen::endgame(short ending, short nextlevel)
       m_totalscore[i] += m_score[i];
       m_totalcash[i] += (m_score[i]*2);
     }
-    #ifdef REGISTERED
+    for (i=0; i < 4; i++)
+    {
+      bonuscash[i] = (m_score[i] * (TIME_BONUS + ((long)par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((long)par_value * LEVEL_BONUS)/2));
+      if (bonuscash[i] < 0 || framecount > TIME_BONUS) // || framecount < 0) 
+        bonuscash[i] = 0;
+      m_totalcash[i] += bonuscash[i];
+      allbonuscash += bonuscash[i];
+    }
+    if (levelstatus[scen_num] == 1) // already won, no bonus
+    {
       for (i=0; i < 4; i++)
-      {
-        bonuscash[i] = (m_score[i] * (TIME_BONUS + ((long)par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((long)par_value * LEVEL_BONUS)/2));
-        if (bonuscash[i] < 0 || framecount > TIME_BONUS) // || framecount < 0) 
-          bonuscash[i] = 0;
-        m_totalcash[i] += bonuscash[i];
-        allbonuscash += bonuscash[i];
-      }
-      if (levelstatus[scen_num] == 1) // already won, no bonus
-      {
-        for (i=0; i < 4; i++)
-          bonuscash[i] = 0;
-        allbonuscash = 0;
-      }
-      sprintf(temp,"YOUR TIME BONUS IS %ld.\n",allbonuscash);
-      mytext.write_y(110,temp, DARK_BLUE, 1);
-    #else
-      sprintf(temp,"NO TIME BONUS (UNREGISTERED VERSION)", DARK_BLUE, 1);
-      mytext.write_y(110, temp);
-    #endif
+        bonuscash[i] = 0;
+      allbonuscash = 0;
+    }
+    sprintf(temp,"YOUR TIME BONUS IS %ld.\n",allbonuscash);
+    mytext.write_y(110,temp, DARK_BLUE, 1);
     buffer_to_screen(0, 0, 320, 200);
 
     // Save the level to disk ..

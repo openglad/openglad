@@ -56,10 +56,8 @@ short treasure::eat_me(walker  * eater)
                   if (eater->stats->hitpoints > eater->stats->max_hitpoints)
                          eater->stats->hitpoints = eater->stats->max_hitpoints;
                   dead = 1;
-                  //#ifdef REGISTERED
-                    if (on_screen())
-                      screenp->soundp->play_sound(SOUND_EAT);
-                  //#endif
+                  if (on_screen())
+                    screenp->soundp->play_sound(SOUND_EAT);
                   return 1;
                 }
          case FAMILY_GOLD_BAR:
@@ -67,10 +65,8 @@ short treasure::eat_me(walker  * eater)
                 {
                   myscreen->m_score[eater->team_num] += (200*stats->level);
                   dead = 1;
-                  //#ifdef REGISTERED
-                    if (on_screen())
-                      screenp->soundp->play_sound(SOUND_MONEY);
-                  //#endif
+                  if (on_screen())
+                    screenp->soundp->play_sound(SOUND_MONEY);
                 }
                 return 1;
          case FAMILY_SILVER_BAR:
@@ -78,10 +74,8 @@ short treasure::eat_me(walker  * eater)
                 {
                   myscreen->m_score[eater->team_num] += (50*stats->level);
                   dead = 1;
-                  //#ifdef REGISTERED
-                    if (on_screen())
-                      screenp->soundp->play_sound(SOUND_MONEY);
-                  //#endif
+                  if (on_screen())
+                    screenp->soundp->play_sound(SOUND_MONEY);
                 }
                 return 1;
          case FAMILY_FLIGHT_POTION:

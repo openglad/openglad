@@ -562,9 +562,7 @@ short viewscreen::input(char inputthing)
   {
     strcpy(somemessage, "GLADIATOR V. ");
     strcat(somemessage, GLAD_VER); //append the version num
-    #ifdef REGISTERED
-      strcat(somemessage, " REGISTERED");
-    #endif
+    strcat(somemessage, " OPENSOURCE");
     set_display_text(somemessage, STANDARD_TEXT_TIME);
     
     while (inputkeyboard[SDLK_F1])

@@ -145,9 +145,7 @@ void glad_main(screen *myscreen, long playermode)
   //sprintf(somemessage, "SPEED SET TO %d", (20-myscreen->timer_wait)/2+1);
   strcpy(somemessage, "GLADIATOR V. ");
   strcat(somemessage, GLAD_VER);
-  #ifdef REGISTERED
-    strcat(somemessage, " REGISTERED");
-  #endif
+  strcat(somemessage, " OPENSOURCE");
   myscreen->viewob[0]->set_display_text(somemessage, 100);
   myscreen->viewob[0]->set_display_text("PRESS F1 FOR HELP", 100);
 

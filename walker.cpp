@@ -1339,14 +1339,10 @@ if (headguy->myguy && headguy->user == 0 && order == ORDER_WEAPON)
          }
          if (on_screen() && targetorder == ORDER_LIVING)
          {
-           #ifdef REGISTERED
              if (random(2))
                screenp->soundp->play_sound(SOUND_DIE1);
              else
                screenp->soundp->play_sound(SOUND_DIE2);
-           #else
-             screenp->soundp->play_sound(SOUND_DIE1);
-           #endif 
          }
                 
          target->dead = 1;
@@ -1620,26 +1616,6 @@ short walker::special()
                 }
                 break;  // end of archer
          case FAMILY_SOLDIER:
-           //#ifndef REGISTERED // fighter only gets one special
-           #if 0
-                switch (current_special)
-                {
-                  case 1:
-                  case 2:
-                  case 3:
-                  case 4:
-                  default:
-                    //if (!query_next_to())
-                    if (!stats->forward_blocked())
-                    {
-                      stats->add_command(COMMAND_RUSH, 3, lastx/stepsize, lasty/stepsize);
-                      if (on_screen())
-                        screenp->soundp->play_sound(SOUND_CHARGE);
-                    }
-                    else
-                      return 0;
-                }
-           #else  // registered fighter gets more
                 switch (current_special)
                 {
                   case 1: // charge enemy
@@ -1734,7 +1710,6 @@ short walker::special()
                     break;
                   default: break;
                 }
-         #endif
                 break; // end of fighter
          case FAMILY_CLERIC:
            switch (current_special)
@@ -2063,12 +2038,6 @@ short walker::special()
                     }
                     break;
                   case 2:
-                 //#ifndef REGISTERED  // shareware has only 2 mage specials
-                 #if 0
-                  case 3:
-                  case 4:
-                  default:
-                 #endif
                    tempx = lastx; // store our facing
                    tempy = lasty;
                    // Do we have extra magic points to spend?
@@ -2106,8 +2075,6 @@ short walker::special()
                    lastx = tempx;
                    lasty = tempy;
                    break;
-                 //#ifdef REGISTERED
-                 #if 1
                   case 3:  // Freeze time
                      if (team_num == 0 || myguy) // the player's team
                      {
@@ -2177,7 +2144,6 @@ short walker::special()
                       here = here->next;
                     }
                     break; // end of burst enemies
-                 #endif // end of registered specials ..
                 }
                 break; // end of mage
          case FAMILY_ARCHMAGE:
@@ -2927,10 +2893,8 @@ short walker::special()
                  }
                  newlist = newlist->next;
                }
-               #ifdef REGISTERED
                  if (on_screen())
                    screenp->soundp->play_sound(SOUND_ROAR);
-               #endif 
                break;
              case 2: // eat corpse for health
              case 3:

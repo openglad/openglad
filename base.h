@@ -122,7 +122,6 @@ char* read_one_line(FILE *infile, short length);
 // Random defines:
 //#define PROFILING
 //#include "profiler.h"
-#define REGISTERED  // synchronize with soundob.h and cheats !!
 #define CHEAT_MODE 1  // set to 0 for no cheats..
 // Picture Object class defs
 

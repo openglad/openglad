@@ -30,47 +30,19 @@ soundob::~soundob()
 
 int soundob::init()
 {
-/* //buffers: PORT: begin commented func  
     int i;
+
+    if (!SDL_OpenAudio (des_audio, real_audio))
+    	printf("Sound init failed\n");
 
     // Guarantee null pointers, regardless of sound status
     for (i=0; i < NUMSOUNDS; i++)
-      sound[i] = NULL;
+      sounds[i] = NULL;
       
     // Do we have sounds on?
     if (silence)
       return 0;
       
-    // First get the sound card settings
-    if (!detect_settings(&baseio, &irq, &dma, &dma16))
-    {
-        printf("Sound Error: Invalid or non-existant BLASTER environment variable.\n");
-        silence = 1;
-        return 0;
-    }
-    else if (!init_sb(baseio, irq, dma, dma16))
-    {
-          printf("Sound Error: Error initializing sound card.\n");
-          silence = 1;
-          return 0;
-    }
-
-    #ifdef SOUND_DB
-      printf("BaseIO=%Xh,   IRQ%u,   DMA8=%u,   DMA16=%u\n",
-        baseio, irq, dma, dma16);
-      printf("DSP version %.2f:  ", dspversion);
-      if (sixteenbit)
-        printf("16-bit, ");
-      else
-        printf("8-bit, ");
-      if (autoinit)
-        printf("Auto-initialized\n");
-      else
-        printf("Single-cycle\n");
-
-      printf("Loading sounds...\n");
-    #endif
-        
     // Init the sounds ..
     strcpy(soundlist[SOUND_BOW],      "TWANG.SOU");
     strcpy(soundlist[SOUND_CLANG],    "CLANG.SOU");
@@ -84,13 +56,11 @@ int soundob::init()
     strcpy(soundlist[SOUND_CHARGE],   "CHARGE.SOU");
     strcpy(soundlist[SOUND_FWIP],     "FWIP.SOU");
     strcpy(soundlist[SOUND_EXPLODE],  "EXPLODE1.SOU");
-    //#ifdef REGISTERED
-    #if 1
-      strcpy(soundlist[SOUND_DIE2],     "DIE2.SOU"); // registered only
-      strcpy(soundlist[SOUND_ROAR],     "ROAR.SOU"); // reg
-      strcpy(soundlist[SOUND_MONEY],    "MONEY.SOU"); // reg
-      strcpy(soundlist[SOUND_EAT],      "EAT.SOU"); // reg
-    #endif
+    strcpy(soundlist[SOUND_DIE2],     "DIE2.SOU"); // registered only
+    strcpy(soundlist[SOUND_ROAR],     "ROAR.SOU"); // reg
+    strcpy(soundlist[SOUND_MONEY],    "MONEY.SOU"); // reg
+    strcpy(soundlist[SOUND_EAT],      "EAT.SOU"); // reg
+
     for (i=0; i < NUMSOUNDS; i++)
     {
       #ifdef SOUND_DB
@@ -98,12 +68,6 @@ int soundob::init()
       #endif
       load_sound( (sound+i), soundlist[i] );
     }
-
-    // Initialize the mixing stuff..
-    #ifdef SOUND_DB
-      printf("Initializing mixing\n");
-    #endif
-    init_mixing();
 
     // Set volume (default is loudest)
     volume = 255;
@@ -114,26 +78,35 @@ int soundob::init()
     #endif
     
     return 1;
-*/ //buffers: PORT: end commented func
+	if (!SDL_OpenAudio (des_audio, real_audio))
+		printf("Sound init failed\n");
 }
+
+void soundob::load_sound(SDL_AudioSpec *audio, char * file)
+{
+	audio = (SDL_AudioSpec *)malloc (sizeof (SDL_AudioSpec));
+	audio->freq = 16384;
+	audio->format = AUDIO_U8;
+	audio->samples = 1024;
+	audio->callback = audio_cb;
+	audio->user_data = NULL;
+
+	if (!SDL_OpenAudio(audio, audio))
+		printf ("Can't open audio device for %s\n", file);
+
+	if (!SDL_LoadWAV(file, audio, 
 
 
 void soundob::shutdown()
 {
-/* //buffers: PORT: begin commented func
-    int i;
+	if (silence)
+		return;
 
-    if (silence)
-      return;
-      
-    shutdown_mixing();
-    shutdown_sb();
+	for (i=0; i < NUMSOUNDS; i++)
+		if (sound[i] != NULL)
+			free_sound(sound+i);
 
-    for (i=0; i < NUMSOUNDS; i++)
-      if (sound[i] != NULL)
-        free_sound(sound+i);
-*/ //buffers: PORT: end commented func
-
+	SDL_CloseAudio();
 }
 
 void soundob::play_sound(short whichnum)
@@ -141,6 +114,8 @@ void soundob::play_sound(short whichnum)
 //buffers: PORT: commented func:    if (silence)         // If silent mode set, do nothing here
 //buffers: PORT: commented func:       return;
 //buffers: PORT: commented func:     start_sound(sound[whichnum], whichnum, volume, 0); // 0 means play once?
+
+	
 }
 
 unsigned char soundob::query_volume()

@@ -58,7 +58,6 @@ long teamsize = 0;
 char save_file[40] = "SAVED GAME";
 short current_team_num = 0;
 
-#ifdef REGISTERED
 long allowable_guys[] =
     { FAMILY_SOLDIER,
       FAMILY_BARBARIAN,
@@ -75,17 +74,6 @@ long allowable_guys[] =
       FAMILY_FAERIE,
       FAMILY_GHOST
     };
-#else  // unregistered
-  long allowable_guys[] =
-    { FAMILY_SOLDIER,
-      FAMILY_ELF,
-      FAMILY_ARCHER,
-      FAMILY_MAGE,
-      FAMILY_CLERIC,
-      FAMILY_THIEF,
-      FAMILY_DRUID,
-    };
-#endif
 
 long current_type = 0; // guy type we're looking at
 
@@ -1162,7 +1150,6 @@ long create_buy_menu(long arg1)
     else if (clickvalue == 2)
       retvalue=localbuttons->rightclick();
 
-    #ifdef REGISTERED
     if (inputkeyboard[SDLK_LCTRL])
     {
       if (inputkeyboard[SDLK_KP_PLUS])
@@ -1176,7 +1163,6 @@ long create_buy_menu(long arg1)
         retvalue = OK;
       }
     }
-    #endif
 
     if (localbuttons && ( (retvalue == REDRAW)||(retvalue == OK) ) ) 
     {
@@ -2168,17 +2154,15 @@ long edit_guy(long arg1)
   if (!here)
     return -1;  // error case; should never happen
 
-  // This is for cheating! Only REGISTERED and CHEAT :)
+  // This is for cheating! Only CHEAT :)
   // When holding down the right mouse button, can always accept free changes
-  #ifdef REGISTERED
-    if (CHEAT_MODE && cheatmouse[MOUSE_RIGHT])
-    {
-      if (here->level != current_guy->level)
-        current_guy->exp = calculate_exp(current_guy->level);
-      statscopy(here, current_guy);
-      return OK;
-    }
-  #endif
+  if (CHEAT_MODE && cheatmouse[MOUSE_RIGHT])
+  {
+    if (here->level != current_guy->level)
+      current_guy->exp = calculate_exp(current_guy->level);
+    statscopy(here, current_guy);
+    return OK;
+  }
 
   if ( (calculate_cost(here) > money[current_guy->teamnum]) ||  // compare cost of here to current_guy
          (calculate_cost(here) < 0) )
@@ -2358,9 +2342,7 @@ long save_team_list(char * filename)
 
   // Versions 7+ include a mark for registered or not
   temp_registered = 0;
-  #ifdef REGISTERED
-    temp_registered = 1;
-  #endif
+  temp_registered = 1;
   fwrite(&temp_registered, 2, 1, outfile);
 
   // Write the saved game name
@@ -2957,12 +2939,10 @@ long quit(long arg1)
   if (arg1)  arg1 = 1;
   release_mouse();
   
-  #ifndef REGISTERED
-    //grab_keyboard();
-    read_help("register.tex", myscreen);
-    //release_keyboard();
-    myscreen->refresh();
-  #endif
+  //grab_keyboard();
+  read_help("register.tex", myscreen);
+  //release_keyboard();
+  myscreen->refresh();
 
   release_keyboard();
   delete myscreen;
@@ -3564,47 +3544,35 @@ long do_set_scen_level(long arg1)
       x2loc = 220;
       y2loc = 190;
 
-#ifdef REGISTERED 
+  myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
+  savetext.write_xy(xloc+5, yloc+4, "ENTER LEVEL NUMBER:", DARK_BLUE, 1);
+    
+  //buffers: changed itoa to sprintf
+  //itoa(scen_level, newnum, 10);
+  sprintf(newnum,"%d",scen_level);
+  
+  templevel = atoi(savetext.input_string(xloc+50, yloc+11, 8, newnum) );
+  
+  //buffers: changed itoa to sprintf
+  //itoa(templevel, newnum, 10);      
+  sprintf(newnum,"%d",templevel);
 
-      myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
-      savetext.write_xy(xloc+5, yloc+4, "ENTER LEVEL NUMBER:", DARK_BLUE, 1);
-      
-      //buffers: changed itoa to sprintf
-      //itoa(scen_level, newnum, 10);
-      sprintf(newnum,"%d",scen_level);
-      
-      templevel = atoi(savetext.input_string(xloc+50, yloc+11, 8, newnum) );
-      
-      //buffers: changed itoa to sprintf
-      //itoa(templevel, newnum, 10);      
-      sprintf(newnum,"%d",templevel);
-
-      strcpy(newname, "scen");
-      strcat(newname, newnum);
-      if (!load_scenario(newname, myscreen))
-      {
-        myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-        savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
-        myscreen->buffer_to_screen(0, 0, 320, 200);
-        temptime = query_timer();
-        while(query_timer() < temptime + 100);
-      }
-      else
-      {
-        myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-        myscreen->buffer_to_screen(0, 0, 320, 200);
-        scen_level = templevel;
-      }
-
-#else
-
-        myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-        savetext.write_xy(xloc+5, yloc+4, "PLEASE REGISTER", DARK_BLUE, 1);
-        myscreen->buffer_to_screen(0, 0, 320, 200);
-        temptime = query_timer();
-        while(query_timer() < temptime + 100);
-
-#endif
+  strcpy(newname, "scen");
+  strcat(newname, newnum);
+  if (!load_scenario(newname, myscreen))
+  {
+    myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
+    savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
+    myscreen->buffer_to_screen(0, 0, 320, 200);
+    temptime = query_timer();
+    while(query_timer() < temptime + 100);
+  }
+  else
+  {
+    myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
+    myscreen->buffer_to_screen(0, 0, 320, 200);
+    scen_level = templevel;
+  }
 
   //release_keyboard();
   grab_mouse();

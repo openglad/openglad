@@ -690,11 +690,8 @@ loader::loader()
   // Generator
   graphics[PIX(ORDER_GENERATOR, FAMILY_TENT)] = read_pixie_file("tent.pix");
   graphics[PIX(ORDER_GENERATOR, FAMILY_TOWER)] = read_pixie_file("tower4.pix");
-  //#ifdef REGISTERED
-  #if 1
-   graphics[PIX(ORDER_GENERATOR, FAMILY_BONES)] = read_pixie_file("bonepile.pix");
-   graphics[PIX(ORDER_GENERATOR, FAMILY_TREEHOUSE)] = read_pixie_file("bigtree.pix");
-  #endif
+  graphics[PIX(ORDER_GENERATOR, FAMILY_BONES)] = read_pixie_file("bonepile.pix");
+  graphics[PIX(ORDER_GENERATOR, FAMILY_TREEHOUSE)] = read_pixie_file("bigtree.pix");
   hitpoints[PIX(ORDER_GENERATOR, FAMILY_TENT)] = 100;
 
   act_types[PIX(ORDER_GENERATOR, FAMILY_TENT)] = ACT_GENERATE;
@@ -951,11 +948,8 @@ walker  *loader::set_walker(walker *ob,
                          ob->stats->weapon_cost = 4;
                          ob->stats->special_cost[1] = 15; // grow tree
                          ob->stats->special_cost[2] = 80; // summon faerie
-                         //#ifdef REGISTERED
-                         #if 1
-                          ob->stats->special_cost[3] = 150; // reveal items
-                          ob->stats->special_cost[4] = 200; // protection shield
-                         #endif
+                         ob->stats->special_cost[3] = 150; // reveal items
+                         ob->stats->special_cost[4] = 200; // protection shield
                          break;
                   case FAMILY_ORC:
                          ob->stats->special_cost[1] = 25; // howl

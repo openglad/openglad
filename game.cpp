@@ -602,10 +602,7 @@ short save_game(char * filename, screen  *myscreen)
   fwrite(&temp_version, 1, 1, outfile);
 
   // Versions 7+ include a mark for registered or not
-  temp_registered = 0;
-  #ifdef REGISTERED
-    temp_registered = 1;
-  #endif
+  temp_registered = 1;
   fwrite(&temp_registered, 2, 1, outfile);
 
   // Write the name

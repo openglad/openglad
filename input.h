@@ -110,7 +110,7 @@ void release_keyboard();                                    // restore normal sh
 int query_key();                                                            // return last keypress
 void clear_keyboard();                                              // set keyboard to none pressed
 char * query_keyboard();                                    // keyboard status
-void wait_for_key(unsigned char somekey); // wait for key SOMEKEY
+void wait_for_key(int somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)
 short query_key_code(short code);                       // OBSOLETE, use query_keyboard
