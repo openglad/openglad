@@ -20,6 +20,7 @@ class video
          void point(long x, long y, unsigned char color);
          //buffers: PORT: added below prototype
 	 void pointb(long x, long y, unsigned char color);
+	 void pointb(int offset, unsigned char color);
 	 void hor_line(long x, long y, long length, unsigned char color);
          void ver_line(long x, long y, long length, unsigned char color);
          void hor_line(long x, long y, long length, unsigned char color, long tobuffer);
@@ -66,6 +67,10 @@ class video
 
          void clear_ints();
          void restore_ints();
+
+	void get_pixel(int x, int y, int *r, int *g, int *b);
+	int get_pixel(int x, int y, int *index);
+	int get_pixel(int offset);
 
 	char ourpalette[768]; // our standard glad palette
 	char redpalette[768]; // for 'faded' backgrounds during menus

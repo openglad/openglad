@@ -311,7 +311,18 @@ void video::pointb(long x, long y, unsigned char color)
 		*address = c;
 		SDL_UnlockSurface(screen);
 	}
-}											
+}	
+
+void video::pointb(int offset, unsigned char color)
+{
+	int x, y;
+
+	y = offset/320;
+	x = offset - y*320;
+
+	pointb(x,y,color);
+}
+
 // Place a horizontal line on the screen.
 //buffers: this func originally drew directly to the screen
 void video::hor_line(long x, long y, long length, unsigned char color)
@@ -683,7 +694,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
   long walkoff=0,buffoff=0,walkshift=0,buffshift=0;
   long totrows,rowsize;
   signed char shift;
-  int yval, xval;
+  int yval, xval,temp;
 
   if (walkerstartx >= portendx || walkerstarty >= portendy)
     return; //walker is below or to the right of the viewport
@@ -719,7 +730,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 
   walkoff   = (ymin * walkerwidth) + xmin;
   // Zardus: they used to do it by buffoff. we'll do it with xval and yval
-  //buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;     
+  buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;     
   xval = walkerstartx;
   yval = walkerstarty;
 
@@ -904,31 +915,40 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	  }
 	  
 	  if (shifttype == SHIFT_RANDOM) 
-	    videobuffer[buffoff++] = videobuffer[buffoff+random(2)];
-	  
+	    //buffers:videobuffer[buffoff++] = videobuffer[buffoff+random(2)];
+	 	pointb(buffoff++,get_pixel(buffoff+random(2)));
+	 
 	  else if (shifttype == SHIFT_LIGHTER)
 	  {
-	    bufcolor = videobuffer[buffoff];
+	    //buffers: bufcolor = videobuffer[buffoff];
+	    bufcolor = get_pixel(buffoff);
 	    if ((bufcolor%8)!=0) bufcolor--;
-	    videobuffer[buffoff++] = bufcolor;
+	    //buffers: videobuffer[buffoff++] = bufcolor;
+	    pointb(buffoff++,bufcolor);
 	  }
 	  
 	  else if (shifttype == SHIFT_DARKER)
 	  {
-	    bufcolor = videobuffer[buffoff];
+	    //buffers: bufcolor = videobuffer[buffoff];
+	    bufcolor = get_pixel(buffoff);
 	    if ((bufcolor%7)!=0) bufcolor++;
-	    videobuffer[buffoff++] = bufcolor;
+	    //videobuffer[buffoff++] = bufcolor;
+	    pointb(buffoff++,bufcolor);
 	  }
 	  
 	  else if (shifttype == SHIFT_BLOCKY)
 	  {
-	    if (cury%2) videobuffer[buffoff++] = videobuffer[buffoff-VIDEO_BUFFER_WIDTH];
-	    else if (curx%2) videobuffer[buffoff++] = videobuffer[buffoff-1];
+	    if (cury%2) //buffers:videobuffer[buffoff++] = videobuffer[buffoff-VIDEO_BUFFER_WIDTH];
+	    	pointb(buffoff++,get_pixel(buffoff-320));
+	    else if (curx%2) //videobuffer[buffoff++] = videobuffer[buffoff-1];
+	    	 
+		pointb(buffoff++,get_pixel(buffoff-1));
 	    else buffoff++;
 	  }
 	  
 	  else 
-	    videobuffer[buffoff++] = videobuffer[buffoff+shift];
+	    //buffers: videobuffer[buffoff++] = videobuffer[buffoff+shift];
+		pointb(buffoff++,get_pixel(buffoff+shift));
 	} //end each row
 	
 	walkoff += walkshift;
@@ -999,4 +1019,51 @@ void video::clear_ints()
 void video::restore_ints()
 {
   //buffers: PORT: won't link with this in: do_restore_ints();
+}
+
+void video::get_pixel(int x, int y, int *r, int *g, int *b)
+{
+	Uint32 col = 0;
+	
+	x*=mult;
+	y*=mult;
+
+
+	char *p = (char *)screen->pixels;
+	p += screen->pitch*y;
+	p += screen->format->BytesPerPixel*x;
+
+	//memcpy(&col,p,screen->format->BytesPerPixel);
+
+	SDL_GetRGB(*p,screen->format,(Uint8 *)r,(Uint8 *)g,(Uint8 *)b);
+	printf("%d %d %d\n",*r,*g,*b);
+}
+
+int video::get_pixel(int x, int y, int *index)
+{
+	int r,g,b,i;
+	int tr,tg,tb;
+
+	get_pixel(x,y,&r,&g,&b);
+	r /= 4;
+	g /= 4;
+	b /= 4;
+
+	for(i=0;i<256;i++) {
+		query_palette_reg(i,&tr,&tg,&tb);
+		if(r==tr && g==tg && b==tb) {
+			*index = i;
+			return i;
+		}
+	}
+}
+
+int video::get_pixel(int offset)
+{
+	int x,y,t;
+
+	y = offset/320;
+	x = offset-y*320;
+
+	return get_pixel(x,y,&t);
 }
