@@ -55,11 +55,11 @@ class packfile
 			close();
 		}
 
-		int open(char *filename);
+		int open(const char *filename);
 		bool opened() {return numfiles > 0;}
 		int close();
 
-		FILE *get_subfile(char *subfilename);
+		FILE *get_subfile(const char *subfilename);
 		long get_subfilesize();
 
 };
