@@ -1,0 +1,6 @@
+This release, OpenGlad 0.1, is a completely unaltered version of the Gladiator 3.8 source that
+was given to Snowstorm by FSGames. The directory contains compiled binaries and all that messy
+stuff, but as we are not sure that the source will compile under any modern compiler, we've
+left them in.
+
+Again, this release is 100% Forgotten Sages' code. All credit goes to them. Thank you, FSGames.
