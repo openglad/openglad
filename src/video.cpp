@@ -1222,7 +1222,7 @@ extern void do_clear_ints();
 extern void do_restore_ints();
 
 //buffers: PORT: #pragma aux do_clear_ints = "cli";
-#pragma aux do_restore_ints = "sti";
+// Zardus: PORT: #pragma aux do_restore_ints = "sti";
 
 void video::clear_ints()
 {
