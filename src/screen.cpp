@@ -455,8 +455,6 @@ void screen::cleanup(short howmany)
 void screen::reset(short howmany)
 {
 	long i;
-	oblink *here, *templink;
-	walker *who;
 
 	if (!mysmoother)
 		mysmoother = new smoother();
@@ -1476,7 +1474,9 @@ short screen::endgame(short ending, short nextlevel)
 		if (levelstatus[scen_num] == 1) // this scenario is completed ..
 		{
 			draw_dialog(30, 70, 290, 134, "Traveling On..");
-			sprintf(temp,"(Field Already Won)", allscore);
+			// Zardus: FIX: what the hell is this supposed to mean?
+			//      sprintf(temp,"(Field Already Won)", allscore);
+			sprintf(temp, "(Field Already Won)");
 			mytext.write_y(100,temp, DARK_BLUE, 1);
 		}
 		else
@@ -1707,9 +1707,7 @@ char* screen::get_scen_title(char *filename, screen *master)
 	char temptext[10] = "XXX";
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
-	char scen_directory[80] = "";
 	enum {notfound, file, pack} gotit = notfound;
-	short tempvalue;
 	static char buffer[30];
 
 	// Open the pixie-pack, if not already done ...
@@ -1764,11 +1762,9 @@ short load_scenario(char * filename, screen * master)
 {
 	FILE  *infile = NULL;
 	char temptext[10] = "XXX";
-	char tempfile[80] = "x.x";
 	char versionnumber = 0;
 	long gotit;
 	short tempvalue;
-	char temp[80]="",fullpathupper[80];
 	string thefile(filename);
 
 	// Open the pixie-pack, if not already done ...
@@ -1801,7 +1797,7 @@ short load_scenario(char * filename, screen * master)
 
 	//buffers: second, try to get the file from levels.001
 	if(!infile && scenpack.opened())
-		if (infile = scenpack.get_subfile((char *)thefile.c_str()))
+		if ((infile = scenpack.get_subfile((char *)thefile.c_str())))
 			gotit = 1;
 
 	if(gotit == 0 || !infile)
@@ -2954,7 +2950,7 @@ void screen::report_mem()
 	//sprintf(memreport, "Largest Block: %lu bytes",
 	//  Memory.LargestBlockAvail);
 	//viewob[0]->set_display_text(memreport, STANDARD_TEXT_TIME);
-	sprintf(memreport, "Free Linear address: %lu pages",
+	sprintf(memreport, "Free Linear address: %u pages",
 	        Memory.FreeLinAddrSpace);
 	//  printf(memreport);
 	//  printf("\n");

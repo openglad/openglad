@@ -327,7 +327,6 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 	short string_done = 0;
 	static char editstring[100], firststring[100];
 	//char *somekeyboard = grab_keyboard();
-	short dumbcount; // used for delays, etc.
 	int tempchar;
 	short has_typed = 0; // hasn't typed yet
 

@@ -421,7 +421,6 @@ button loadteam[] =
 long leftmouse()
 {
 	long i = 0;
-	short happy;
 	long somebutton = -1;
 	char * mousekeys = query_keyboard();
 
@@ -461,11 +460,8 @@ void view_team(short left, short top, short right, short bottom)
 {
 	char text_down = top+3;
 	int i;
-	char message[30], done = 0, hpcolor, mpcolor, namecolor, numguys = 0;
-	short hp, mp, maxhp, maxmp;
+	char message[30], namecolor, numguys = 0;
 	text mytext(myscreen);
-	char *teamkeys;
-	long dumbcount, currentcycle = 0, cycletime = 30000;
 
 	myscreen->redrawme = 1;
 	myscreen->draw_button(left, top, right, bottom, 2, 1);
@@ -524,9 +520,6 @@ long mainmenu(long arg1)
 	vbutton *tempbuttons;
 	long retvalue=0;
 	long count;
-	int red, green, blue; //buffers: PORT: changed type to int
-	char  mypalette[768];
-	long i, j;
 	char message[80];
 
 	if (arg1)
@@ -1053,7 +1046,6 @@ long create_team_menu(long arg1)
 long create_view_menu(long arg1)
 {
 	long retvalue = 0;
-	char message[80];
 
 	if (arg1)
 		arg1 = 1;
@@ -1094,12 +1086,10 @@ long create_view_menu(long arg1)
 
 long create_buy_menu(long arg1)
 {
-	static long no_clear = 1;
 	long linesdown, retvalue = 0;
 	char * inputkeyboard = query_keyboard();
 	long i;
 	long start_time = query_timer();
-	long now_time;
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
 	long current_cost;
 	long clickvalue;
@@ -1371,7 +1361,6 @@ long create_buy_menu(long arg1)
 
 long create_edit_menu(long arg1)
 {
-	static long no_clear = 1;
 	guy * here;
 	long linesdown, i, retvalue=0;
 	unsigned char showcolor;
@@ -1432,7 +1421,7 @@ long create_edit_menu(long arg1)
 	myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
 	myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
 	myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
-	sprintf(message, "Total Kills: %ld", current_guy->kills);
+	sprintf(message, "Total Kills: %d", current_guy->kills);
 	mytext->write_xy(180, 48, message, DARK_BLUE, 1);
 	if (current_guy->kills) // are we a veteran?
 	{
@@ -1607,7 +1596,7 @@ long create_edit_menu(long arg1)
 			myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
 			myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
 			myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
-			sprintf(message, "Total Kills: %ld", current_guy->kills);
+			sprintf(message, "Total Kills: %d", current_guy->kills);
 			mytext->write_xy(180, 48, message, DARK_BLUE, 1);
 			if (current_guy->kills) // are we a veteran?
 			{
@@ -1697,7 +1686,7 @@ long create_load_menu(long arg1)
 
 	for (i=0; i < 10; i++)
 	{
-		sprintf(temp_filename, "save%d", i+1);
+		sprintf(temp_filename, "save%ld", i+1);
 		strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 		myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 		allbuttons[i]->vdisplay();
@@ -1737,7 +1726,7 @@ long create_load_menu(long arg1)
 			loadtext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
 			for (i=0; i < 10; i++)
 			{
-				sprintf(temp_filename, "save%d", i+1);
+				sprintf(temp_filename, "save%ld", i+1);
 				strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 				myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 				allbuttons[i]->vdisplay();
@@ -1782,7 +1771,7 @@ long create_save_menu(long arg1)
 
 	for (i=0; i < 10; i++)
 	{
-		sprintf(temp_filename, "save%d", i+1);
+		sprintf(temp_filename, "save%ld", i+1);
 		strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 		myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 		allbuttons[i]->vdisplay();
@@ -1818,7 +1807,7 @@ long create_save_menu(long arg1)
 			savetext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
 			for (i=0; i < 10; i++)
 			{
-				sprintf(temp_filename, "save%d", i+1);
+				sprintf(temp_filename, "save%ld", i+1);
 				strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 				myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 				allbuttons[i]->vdisplay();
@@ -1905,7 +1894,6 @@ long calculate_cost()
 	guy  *ob = current_guy;
 	long temp;
 	long myfamily;
-	guy *guytemp;
 
 	if (!ob)
 		return 0;
@@ -1960,7 +1948,6 @@ long calculate_cost(guy  *oldguy)
 	guy  *ob = current_guy;
 	long temp;
 	long myfamily;
-	long i;
 
 	if (!ob || !oldguy)
 		return 0;
@@ -2030,10 +2017,7 @@ long calculate_cost(guy  *oldguy)
 long cycle_guy(long whichway)
 {
 	long newfamily;
-	walker  *mywalker;
 	char tempnum[5];
-	short centerx = 80, centery = 45; // center for walker
-	long i;
 
 	if (!current_guy)
 		newfamily = allowable_guys[0];
@@ -2059,7 +2043,7 @@ long cycle_guy(long whichway)
 	// Make the new guy
 	current_guy = new guy(newfamily);
 	current_guy->teamnum = current_team_num;
-	sprintf(tempnum, "%d", numbought[newfamily]+1);
+	sprintf(tempnum, "%ld", numbought[newfamily]+1);
 	strcat(current_guy->name, tempnum);
 
 	show_guy(0, 0);
@@ -2117,10 +2101,6 @@ void show_guy(long frames, long who) // shows the current guy ..
 // returns a COPY of him as the function result
 long cycle_team_guy(long whichway)
 {
-	long i;
-	walker  *mywalker;
-	short centerx = 80, centery = 45; // center for walker
-
 	if (teamsize < 1)
 		return -1;
 
@@ -2264,7 +2244,7 @@ long add_guy(long ignoreme)
 			strcpy(type_name, current_guy->name);
 			statscopy(current_guy, ourteam[i]); // set to same stats as just bought
 			strcpy(current_guy->name, type_name);
-			sprintf(tempnum, "%d", numbought[newfamily]+1);
+			sprintf(tempnum, "%ld", numbought[newfamily]+1);
 			strcat(current_guy->name, tempnum);
 
 			// Return okay status
@@ -2278,7 +2258,6 @@ long add_guy(long ignoreme)
 long edit_guy(long arg1)
 {
 	guy *here;
-	long i;
 	long *cheatmouse = query_mouse();
 
 	if (arg1)
@@ -2334,14 +2313,13 @@ long do_save(long arg1)
 	char newname[8];
 	char newnum[8];
 	static text savetext(myscreen);
-	long i;
 	long xloc, yloc, x2loc, y2loc;
 
 	strcpy(newname, "save");
 
 	//buffers: PORT: changed itoa to sprintf, might be BUGGY
 	//itoa(arg1, newnum, 10);
-	sprintf(newnum,"%d",arg1);
+	sprintf(newnum,"%li",arg1);
 
 	strcat(newname, newnum);
 	release_mouse();
@@ -2378,7 +2356,7 @@ long do_load(long arg1)
 
 	//buffers: PORT: changed itoa to sprintf
 	//itoa(arg1, newnum, 10);
-	sprintf(newnum,"%d",arg1);
+	sprintf(newnum,"%li",arg1);
 
 	strcat(newname, newnum);
 	load_team_list_one(newname);
@@ -2610,7 +2588,6 @@ long load_team_list_one(char * filename)
 	long temp_int, temp_arm, temp_lev;
 	unsigned long temp_exp;
 	guy  *tempguy;
-	long current_slot = 0;
 	long temp_kills, temp_level_kills;
 	long temp_td, temp_th, temp_ts;
 	short temp_teamnum;           // v.5+
@@ -2951,13 +2928,8 @@ long go_menu(long arg1)
 {
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
-	char param[5];
-	static signed char prefs[5][PREF_MAX] = { {2, 1, 0, 0, 1, 1, 0}, {2, 1, 0, 0, 1, 1, 0},
-	                                        {2, 1, 0, 0, 1, 1, 0}, {2, 1, 0, 0, 1, 1, 0}, {2, 1, 0, 0, 1, 1, 0} };
 	static text gotext(myscreen);
-	int red, green, blue; //buffers: PORT: changed to int
-	long i, j, temptime;
-	long retvalue;
+	long temptime;
 
 	if (arg1)
 		arg1 = 1;
@@ -3650,7 +3622,6 @@ long return_menu(long arg)
 	           char newname[8];
 	           char newnum[8];
 	           static text savetext(myscreen);
-	           long i;
 	           long xloc, yloc, x2loc, y2loc;
 	           long templevel;
 	           long temptime;
@@ -3674,13 +3645,13 @@ long return_menu(long arg)
 
 	           //buffers: changed itoa to sprintf
 	           //itoa(scen_level, newnum, 10);
-	           sprintf(newnum,"%d",scen_level);
+	           sprintf(newnum,"%li",scen_level);
 
 	           templevel = atoi(savetext.input_string(xloc+50, yloc+11, 8, newnum) );
 
 	           //buffers: changed itoa to sprintf
 	           //itoa(templevel, newnum, 10);
-	           sprintf(newnum,"%d",templevel);
+	           sprintf(newnum,"%li",templevel);
 
 	           strcpy(newname, "scen");
 	           strcat(newname, newnum);

@@ -456,8 +456,7 @@ void statistics::hit_response(walker  *who)
 	walker *foe; // who is attacking us?
 	long possible_specials[NUM_SPECIALS];
 	long threshold; // for hitpoint 'running away'
-	char message[80];
-	oblink *helplist, *newlist, *here; // for calling for help
+	oblink *newlist; // for calling for help
 	short howmany;
 
 	if (!who || !controller)
