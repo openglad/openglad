@@ -1,0 +1,15 @@
+These are the installation instructions for Openglad.
+
+Linux
+=====
+
+1. Unpack the tarball into some directory.
+2. Execute `make` to compile openglad, `make openscen`
+   to compile the scenario editor
+3. openglad is the game binary, openscen is the editor.
+
+
+
+If you get Openglad to work on any other operating systems,
+please tell us how you did. You can contact one of the
+Snowstorm Entertainment guys or post on the forums.

@@ -1,0 +1,22 @@
+Openglad
+========
+
+Openglad is a port of the open-sourced dos game known as Gladiator
+(http://fsgames.com/glad/). It is a top-view gauntlet style RPG that
+features fast paced multiplayer action, several different classes, and
+a scenario editor.
+
+Install
+======
+
+Read the INSTALL file for install instructions.
+
+Playing
+=======
+
+Read the in-game help for help on how to play (press f1 in a level or read glad.hlp).
+
+Notes
+=====
+
+The old readme.txt file that FSGames shipped with gladiator is still here for nastalgic purpouses. Its, well, readme.txt.
