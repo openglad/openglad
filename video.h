@@ -62,6 +62,8 @@ class video
          long draw_dialog(long x1, long y1, long x2, long y2, char *header);
          void draw_text_bar(long x1, long y1, long x2, long y2);
 
+	void swap(void);
+
          void clear_ints();
          void restore_ints();
 
