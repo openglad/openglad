@@ -10,6 +10,9 @@
 #define VIDEO_WIDTH 320
 #define VIDEO_SIZE 64000
 
+// Zardus: set_mult in input.cpp sets input's mult value
+void set_mult(int);
+
 //buffers: PORT: REGS, bleh bleh: union REGS inregs,outregs;
 unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
@@ -37,12 +40,12 @@ video::video()
 		screen_height = 200;
 	}
 
+	set_mult(mult);
+
 	//buffers: PORT: no need: save_palette(dospalette);
 	// Load our palettes ..
 	load_and_set_palette("our.pal", ourpalette);
-
-
-load_palette("our.pal", redpalette);
+	load_palette("our.pal", redpalette);
 
 	// Create the red-shifted palette
 	for (i=32; i < 256; i++)

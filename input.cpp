@@ -28,7 +28,7 @@ long mouse_state[MSTATE];
 long mouse_buttons;
 
 long joy_state[JSTATE];
-int get_mult();
+int mult = 1;
 
 // Zardus: PORT: the __stuff seems to freak it out: void (__far __interrupt *old_timer_isr)();
 // same here: void (__far __interrupt *old_keyboard_isr)();
@@ -98,8 +98,8 @@ void handle_events(SDL_Event event)
 
 		// Mouse event
 		case SDL_MOUSEMOTION:
-			mouse_state[MOUSE_X] = event.motion.x / get_mult();
-			mouse_state[MOUSE_Y] = event.motion.y / get_mult();
+			mouse_state[MOUSE_X] = event.motion.x / mult;
+			mouse_state[MOUSE_Y] = event.motion.y / mult;
 			break;
 		case SDL_MOUSEBUTTONUP:
 			if (event.button.button == SDL_BUTTON_LEFT)
@@ -239,4 +239,10 @@ void uppercase(char *string)
 	int i;
 	for(i=0;i<strlen(string);i++)
 		string[i] = toupper(string[i]);
+}
+
+// Zardus: add: this sets the multiplier mult
+void set_mult(int m)
+{
+	mult = m;
 }

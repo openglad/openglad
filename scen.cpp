@@ -138,12 +138,6 @@ main(short argc, char **argv)
 
   screen  *myscreen;
 
-	int smult; //buffers: myscreen->mult
-//buffers: odox and odoy are used to store current mouse XY. we need to use
-//buffers: these so if we do a /=smult (for pdouble), we are not changing
-//buffers: the original values (mouse_state in input.cpp)
-	int odox, odoy;
-
   // Get sound path ..
   //if (!get_cfg_item("directories", "sound") )
   //     exit(1);
@@ -187,8 +181,6 @@ main(short argc, char **argv)
 
   myscreen = new screen(1);
 
-	smult = myscreen->mult;
-  
   scentext = new text(myscreen);
   // Set the un-set text to empty ..
   for (i=0; i < 60; i ++)
@@ -561,36 +553,32 @@ main(short argc, char **argv)
    	// Mouse stuff ..
    	mymouse = query_mouse();
 
-	//buffers: scale the mouse XY down if we are using pixel doubling
-	odox = mymouse[MOUSE_X]/smult;
-	odoy = mymouse[MOUSE_Y]/smult;
-	
    // Scroll the screen ..
-   if (odoy < 2 && myscreen->topy >= 0) // top of the screen
+   if (mymouse[MOUSE_Y]< 2 && myscreen->topy >= 0) // top of the screen
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy-SCROLLSIZE);
-   if (odoy > 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
+   if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy+SCROLLSIZE);
-   if (odox < 2 && myscreen->topx >= 0) // scroll left
+   if (mymouse[MOUSE_X]< 2 && myscreen->topx >= 0) // scroll left
     set_screen_pos(myscreen, myscreen->topx-SCROLLSIZE,
               myscreen->topy);
-   if (odox > 318 && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
+   if (mymouse[MOUSE_X] > 318 && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
     set_screen_pos(myscreen, myscreen->topx+SCROLLSIZE,
               myscreen->topy);
 
    if (mymouse[MOUSE_LEFT])       // put or remove the current guy
    {
     event = 1;
-    mx = odox;
-    my = odoy;
+    mx = mymouse[MOUSE_X];
+    my = mymouse[MOUSE_Y];
     if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
         (my >= S_UP) && (my <= S_DOWN) )      // in the main window
     {
-      windowx = odox + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+      windowx = mymouse[MOUSE_X] + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
       if (grid_aligned==1)
        windowx -= (windowx%GRID_SIZE);
-      windowy = odoy + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
+      windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
       if (grid_aligned==1)
         windowy -= (windowy%GRID_SIZE);
       if (mykeyboard[SDLK_i]) // get info on current object
@@ -1986,11 +1974,4 @@ long do_save(screen *ascreen)  // save a scenario or grid
   if (result)
     levelchanged = 0;
   return result;
-}
-
-// Zardus: PORT: just a function to return the mult value
-int get_mult()
-{
-	if (myscreen) return myscreen->mult;
-	else return 1;
 }
