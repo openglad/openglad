@@ -558,9 +558,7 @@ main(short argc, char **argv)
    if (mymouse[MOUSE_Y]< 2 && myscreen->topy >= 0) // top of the screen
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy-SCROLLSIZE);
-   // Zardus: lets try hardcoding the edge
-   //if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
-   if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= 200) // scroll down
+   if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy+SCROLLSIZE);
    if (mymouse[MOUSE_X]< 2 && myscreen->topx >= 0) // scroll left
