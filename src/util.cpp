@@ -150,14 +150,20 @@ char * get_file_path(char * file, char * pos_dir, char * attr)
 	filepath += file;
 
 	if ((infile = fopen(filepath.c_str(), attr)))
+	{
+		fclose(infile);
 		return (char *)filepath.c_str();
+	}
 
 	filepath = DATADIR;
 	filepath += pos_dir;
 	filepath += file;
 
 	if ((infile = fopen(filepath.c_str(), attr)))
+	{
+		fclose(infile);
 		return (char *)filepath.c_str();
+	}
 
 	// if it got here, it didn't find the file
 	return NULL;
