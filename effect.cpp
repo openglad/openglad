@@ -19,7 +19,7 @@ effect::effect(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 
 effect::~effect()
 {
-  walker::~walker();
+// Zardus: PORT: that parent object problem again:  walker::~walker();
 }
 
 short effect::act()
