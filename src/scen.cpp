@@ -1088,8 +1088,6 @@ long save_map_file(char  * filename, screen *master)
 	//buffers: changed .PIX to .pix
 	strcat(fullpath, ".pix");
 
-	printf("%s\n",fullpath);
-
 	if ( (outfile = fopen(fullpath, "wb")) == NULL )        // open for write
 	{
 		master->draw_button(30, 30, 220, 60, 1, 1);
