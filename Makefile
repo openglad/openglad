@@ -15,3 +15,6 @@ clean:
 	rm -f *.o
 	rm -f openglad
 	rm -f openscen
+
+.cpp.o:
+	g++ -g -c $<
