@@ -4,6 +4,8 @@
 	buffers: 7/31/02: *deleted some redundant headers.
 			: *load_scenario now looks for all uppercase files in
 			:  levels.001 if lowercase file fails
+	buffers: 8/15/02: *load_scenario now checks for uppercase file names in
+			   scen/ in case lowercase check fails
 */
 
 #include "graph.h"
@@ -1707,6 +1709,8 @@ char* screen::get_scen_title(char *filename, screen *master)
 
 }
 
+//buffers: the file finding and loading code is pretty ugly... i should
+//buffers: rewrite it...
 short load_scenario(char * filename, screen * master)
 {
   FILE  *infile = NULL;
@@ -1717,7 +1721,7 @@ short load_scenario(char * filename, screen * master)
   char fullpath[80] = "";
   long gotit;
   short tempvalue;
-  char temp[80]="";
+  char temp[80]="",fullpathupper[80],thefile[80],thefileupper[80];
 
   // Open the pixie-pack, if not already done ...
   if (!scen_opened) 
@@ -1741,37 +1745,44 @@ short load_scenario(char * filename, screen * master)
 	//buffers: first look for the scenario in scen/, then in levels.001
  
 	//buffers: the file
-	strcpy(temp, filename);
-	strcat(temp, ".fss");
+	strcpy(thefile, filename);
+	strcat(thefile, ".fss");
+	strcpy(thefileupper,thefile);
+	uppercase(thefileupper);
+
 
 	//buffers: the full path of file
-	strcpy(tempfile,scen_directory);
-	strcat(tempfile,temp);
+	strcpy(fullpath,scen_directory);
+	strcat(fullpath,thefile);
+
+	strcpy(fullpathupper,scen_directory);
+	strcat(fullpathupper,thefileupper);
 
 	gotit = 0;
 
 	//buffers: first try to find the file in scen/
-	printf("DEBUG: looking for %s\n",tempfile);
-	if ( (infile = fopen(tempfile, "rb")) == NULL )       // open for read
-		printf("DEBUG: scenario %s not found in scen/\n",temp);	
-	else {
-		printf("DEBUG: scenario %s found in scen/\n",temp);
+	printf("DEBUG: looking for %s\n",fullpath);
+	if ( (infile = fopen(fullpath, "rb")) == NULL ) {      // open for read
+		printf("looking for %s now\n",fullpathupper);
+		if((infile = fopen(fullpathupper,"rb")) != NULL) {
+			printf("DEBUG: scenario %s found in scen/\n",fullpathupper);
+			gotit = 1;
+		}
+	} else {
+		printf("DEBUG: scenario %s found\n",fullpath);
 		gotit = 1;
 	}
 
 	//buffers: second, try to get the file from levels.001
 	if(!infile && scen_opened) {
-		if(!(infile = scenpack.get_subfile(temp)))
+		if(!(infile = scenpack.get_subfile(thefile)))
 			//buffers: uppercase the filename...
 			//buffers: original levels.001 file stores
 			//buffers: files in all uppercase letters
-			strcpy(tempfile,temp);
-			uppercase(tempfile);
-			if(!(infile = scenpack.get_subfile(tempfile)))
-				printf("DEBUG: scenario %s not found in levels.001\n",temp);
+			if((infile = scenpack.get_subfile(thefileupper)))
+				gotit=1;
 		else {
 			gotit = 1;
-			printf("DEBUG: scenario %s found in levels.001\n",temp);
 		}
 	}
 
