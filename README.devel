@@ -4,7 +4,7 @@ Breaking news:
 
 Scenario no longer segfaults on start. I fixed the outline thing and
 tracked down the bug in strcpy to glad.cpp (or maybe game.cpp), line
-633 (iirc). I commented out the two strcpy's that segfaulted it, but
+636 (iirc). I commented out the two strcpy's that segfaulted it, but
 they were the two lines that were supposed to draw (or at least set
 the string) the char's name to the top-left corner of the screen, so
 the name is garbage currently.
