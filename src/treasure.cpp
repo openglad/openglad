@@ -229,7 +229,8 @@ short treasure::eat_me(walker  * eater)
 				clear_keyboard();
 			} // end of checking for withdrawal to completed level
 
-			if (!guys_here) // nobody evil left, so okay to exit level ..
+			//buffers: also, allow exit if scenario_type == can exit
+			if (!guys_here || (screenp->scenario_type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
 			{
 				screenp->draw_dialog(30, 20, 290, 54, "Exit Field");
 				sprintf(message, "Exit to %s? (Y/N)", exitname);
