@@ -10,7 +10,7 @@
 #define VIDEO_WIDTH 320
 #define VIDEO_SIZE 64000
 
-union REGS inregs,outregs;
+//buffers: PORT: REGS, bleh bleh: union REGS inregs,outregs;
 unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
 // Define some palettes to use in (video) screen ..
@@ -40,9 +40,9 @@ video::video()
     bluepalette[i*3+1] /= 2;
   }
 
-  inregs.h.ah = 0x00;
-  inregs.h.al = 0x13;
-  int386(0x10,&inregs,&outregs);
+  //buffers: PORT: inregs.h.ah = 0x00;
+  //buffers: PORT: inregs.h.al = 0x13;
+  //buffers: PORT: int386(0x10,&inregs,&outregs);
 
   for (i=0;i<64000;i++) //clear the screen and the buffer on init
   {
@@ -54,9 +54,10 @@ video::video()
 video::~video()
 {
   set_palette(dospalette);
-  inregs.h.ah = 0x00;
-  inregs.h.al = 0x02;
-  int386(0x10,&inregs,&outregs);
+  
+  //buffers: PORT: inregs.h.ah = 0x00;
+  //buffers: PORT: inregs.h.al = 0x02;
+  //buffers: PORT: int386(0x10,&inregs,&outregs);
 //  delete videobuffer;
 //  delete ourpalette;
 //  delete redpalette;
@@ -484,60 +485,60 @@ void video::putbuffer(long tilestartx, long tilestarty,
 
 
 extern void putbufbasm();
-#pragma aux putbufbasm = \
-	     "mov edi, videobufptr"\
-	     "add edi, offstarget"\
-	     "mov esi, sourcebufptr"\
-	     "add esi, offssource"\
-	     "mov edx, totrows"\
-	     "mov ebx, sourceshifter"\
-	     "mov eax, targetshifter"\
-	     "tileloopx:"\
-	     "mov ecx, rowsize"\
-	     "rep movsw"\
-	     "movsb"\
-	     "add edi, eax"\   
-	     "add esi, ebx"\   
-	     "dec edx"\          
-	     "jnz tileloopx"\   
-	     modify[eax ebx ecx edx edi esi];
+//buffers: PORT: #pragma aux putbufbasm = \
+//buffers: PORT: 	     "mov edi, videobufptr"\
+//buffers: PORT: 	     "add edi, offstarget"\
+//buffers: PORT: 	     "mov esi, sourcebufptr"\
+//buffers: PORT: 	     "add esi, offssource"\
+//buffers: PORT: 	     "mov edx, totrows"\
+//buffers: PORT: 	     "mov ebx, sourceshifter"\
+//buffers: PORT: 	     "mov eax, targetshifter"\
+//buffers: PORT: 	     "tileloopx:"\
+//buffers: PORT: 	     "mov ecx, rowsize"\
+//buffers: PORT: 	     "rep movsw"\
+//buffers: PORT: 	     "movsb"\
+//buffers: PORT: 	     "add edi, eax"\   
+//buffers: PORT: 	     "add esi, ebx"\   
+//buffers: PORT: 	     "dec edx"\          
+//buffers: PORT: 	     "jnz tileloopx"\   
+//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
 
 extern void putbufwasm();
-#pragma aux putbufwasm = \
-	     "mov edi, videobufptr"\
-	     "add edi, offstarget"\
-	     "mov esi, sourcebufptr"\
-	     "add esi, offssource"\
-	     "mov edx, totrows"\
-	     "mov ebx, sourceshifter"\
-	     "mov eax, targetshifter"\
-	     "tileloopx:"\
-	     "mov ecx, rowsize"\
-	     "rep movsd"\
-	     "movsw"\
-	     "add edi, eax"\   
-	     "add esi, ebx"\   
-	     "dec edx"\          
-	     "jnz tileloopx"\   
-	     modify[eax ebx ecx edx edi esi];
+//buffers: PORT: #pragma aux putbufwasm = \
+//buffers: PORT: 	     "mov edi, videobufptr"\
+//buffers: PORT: 	     "add edi, offstarget"\
+//buffers: PORT: 	     "mov esi, sourcebufptr"\
+//buffers: PORT: 	     "add esi, offssource"\
+//buffers: PORT: 	     "mov edx, totrows"\
+//buffers: PORT: 	     "mov ebx, sourceshifter"\
+//buffers: PORT: 	     "mov eax, targetshifter"\
+//buffers: PORT: 	     "tileloopx:"\
+//buffers: PORT: 	     "mov ecx, rowsize"\
+//buffers: PORT: 	     "rep movsd"\
+//buffers: PORT: 	     "movsw"\
+//buffers: PORT: 	     "add edi, eax"\   
+//buffers: PORT: 	     "add esi, ebx"\   
+//buffers: PORT: 	     "dec edx"\          
+//buffers: PORT: 	     "jnz tileloopx"\   
+//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
 
 extern void putbufdasm();
-#pragma aux putbufdasm = \
-	     "mov edi, videobufptr"\
-	     "add edi, offstarget"\
-	     "mov esi, sourcebufptr"\
-	     "add esi, offssource"\
-	     "mov edx, totrows"\
-	     "mov ebx, sourceshifter"\
-	     "mov eax, targetshifter"\
-	     "tileloopx:"\
-	     "mov ecx, rowsize"\
-	     "rep movsd"\
-	     "add edi, eax"\   
-	     "add esi, ebx"\   
-	     "dec edx"\          
-	     "jnz tileloopx"\   
-	     modify[eax ebx ecx edx edi esi];
+//buffers: PORT: #pragma aux putbufdasm = \
+//buffers: PORT: 	     "mov edi, videobufptr"\
+//buffers: PORT: 	     "add edi, offstarget"\
+//buffers: PORT: 	     "mov esi, sourcebufptr"\
+//buffers: PORT: 	     "add esi, offssource"\
+//buffers: PORT: 	     "mov edx, totrows"\
+//buffers: PORT: 	     "mov ebx, sourceshifter"\
+//buffers: PORT: 	     "mov eax, targetshifter"\
+//buffers: PORT: 	     "tileloopx:"\
+//buffers: PORT: 	     "mov ecx, rowsize"\
+//buffers: PORT: 	     "rep movsd"\
+//buffers: PORT: 	     "add edi, eax"\   
+//buffers: PORT: 	     "add esi, ebx"\   
+//buffers: PORT: 	     "dec edx"\          
+//buffers: PORT: 	     "jnz tileloopx"\   
+//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
 
 
   if (! (rowsize % 4))
@@ -938,22 +939,22 @@ void video::buffer_to_screen(long viewstartx,long viewstarty,
   unsigned char * videobufptr = &videobuffer[0];
   
 extern void buftosasm();
-#pragma aux buftosasm = \
-	     "mov edx, viewheight"\
-	     "mov ebx, shifter"\
-	     "mov eax, rowsize"\
-	     "mov esi, videobufptr"\
-	     "add esi, offsvid"\
-	     "mov edi, videoptr"\
-	     "add edi, offsvid"\
-	     "buffloopx:"\
-	     "mov ecx, eax"\
-	     "rep movsd"\
-	     "add edi, ebx"\
-	     "add esi, ebx"\   
-	     "dec edx"\          
-	     "jnz buffloopx"\   
-	     modify[eax ebx ecx edx edi esi];
+//buffers: PORT: #pragma aux buftosasm = \
+//buffers: PORT: 	     "mov edx, viewheight"\
+//buffers: PORT: 	     "mov ebx, shifter"\
+//buffers: PORT: 	     "mov eax, rowsize"\
+//buffers: PORT: 	     "mov esi, videobufptr"\
+//buffers: PORT: 	     "add esi, offsvid"\
+//buffers: PORT: 	     "mov edi, videoptr"\
+//buffers: PORT: 	     "add edi, offsvid"\
+//buffers: PORT: 	     "buffloopx:"\
+//buffers: PORT: 	     "mov ecx, eax"\
+//buffers: PORT:  	     "rep movsd"\
+//buffers: PORT: 	     "add edi, ebx"\
+//buffers: PORT: 	     "add esi, ebx"\   
+//buffers: PORT: 	     "dec edx"\          
+//buffers: PORT: 	     "jnz buffloopx"\   
+//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
 
   buftosasm();
 
@@ -963,8 +964,8 @@ extern void buftosasm();
 extern void do_clear_ints();
 extern void do_restore_ints();
 
-#pragma aux do_clear_ints = \
-  "cli";
+//buffers: PORT: #pragma aux do_clear_ints = \
+//buffers: PORT:   "cli";
 
 #pragma aux do_restore_ints = "sti";
 
