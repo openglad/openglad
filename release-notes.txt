@@ -1,1 +1,1 @@
-Openglad 0.9 is a late beta. All the features are implemented. This is mostly a bug/leak hunt :-)
+Openglad 0.95 is a complete port. We are getting ready to release 1.0
