@@ -1,4 +1,5 @@
-/* For making the .001 files out of normal files
+/* gladpack.c
+ * for the packing and unpacking of .001 files
  *  8/18/02, Zardus
  */
 #include <stdio.h>
@@ -54,14 +55,14 @@ int pack(int argc, char **argv)
 		fclose(infile);
 	}
 
-	sizeoffile = filelocation[numfiles] + filesize[numfiles - 1];
-	fwrite(&sizeoffile, sizeof(long), 1, outfile);
-
 	for (i = 0; i < numfiles; i++)
 	{
+		fwrite(&filelocation[i], sizeof(long), 1, outfile);
 		fwrite(argv[i+3], sizeof(char) * 13, 1, outfile);
-		fwrite(&filelocation[i + 1], sizeof(long), 1, outfile);
 	}
+
+	sizeoffile = filelocation[numfiles];
+	fwrite(&sizeoffile, sizeof(long), 1, outfile);
 
 	for (i = 0; i < numfiles; i++)
 	{
@@ -76,10 +77,64 @@ int pack(int argc, char **argv)
 		fclose(infile);
 	}
 
-
 	fclose(outfile);
+
+	return 0;
 }
 
 int unpack(int argc, char **argv)
 {
+	long *filelocation;
+	char filename[300][13];
+	int headersize;
+	int bodysize;
+	short numfiles;
+	long sizeoffile;
+	int i;
+	char buffer[5000000];
+	FILE *infile;
+	FILE *outfile;
+
+	if (!(infile = fopen(argv[2], "r")))
+	{
+		printf("Error: can't open input file.\n");
+		return 1;
+	}
+
+	fread(buffer, 8, 1, infile);
+	if (strcmp(buffer, "GladPack")) printf("Warning: this file does not appear to be a pack file.\n");
+
+	fread(&numfiles, sizeof(short), 1, infile);
+	printf("%i files in pack.\n", numfiles);
+
+	filelocation = (long *) malloc((numfiles + 1) * sizeof(long));
+
+	for (i = 0; i < numfiles; i++)
+	{
+		fread(&filelocation[i], sizeof(long), 1, infile);
+		fread(filename[i], sizeof(char) * 13, 1, infile);
+
+		printf("File %s at location %i\n", filename[i], filelocation[i]);
+	}
+
+	fread(&sizeoffile, sizeof(long), 1, infile);
+	printf("Pack file is %i bytes long.\n", sizeoffile);
+
+	filelocation[numfiles] = sizeoffile;
+
+	for (i = 0; i < numfiles; i++)
+	{
+		printf("Extracting %s at location %i\n, size %i\n", filename[i], filelocation[i],
+				filelocation[i + 1] - filelocation[i]);
+		//rewind(infile);
+		//fseek(infile, filelocation[i], SEEK_SET);
+		fread(buffer, filelocation[i + 1] - filelocation[i], 1, infile);
+
+		outfile = fopen(filename[i], "w");
+		fwrite(buffer, filelocation[i + 1] - filelocation[i], 1, outfile);
+		fclose(outfile);
+	}
+
+	fclose(infile);
+	return 0;
 }
