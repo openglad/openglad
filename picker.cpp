@@ -1,7 +1,10 @@
 #include "graph.h"
 #include "button.h"
 #include "pal32.h"
-#include "int32.h"
+
+//buffers:  using input.h instead #include "int32.h"
+#include "input.h"
+
 #include "scankeys.h"
 #include "parse32.h"
 #include <malloc.h>
@@ -2085,7 +2088,8 @@ long add_guy(long ignoreme)
 {
   long newfamily = current_guy->family;
   char tempnum[12];
-  char typename[30];
+  //buffers: changed typename to type_name due to some compile error
+  char type_name[30];
   static text addtext(myscreen);
   long i;
 
@@ -2125,11 +2129,13 @@ long add_guy(long ignoreme)
       // Ensure we have the right exp for our level
       ourteam[i]->exp = calculate_exp(ourteam[i]->level);
 
+      //buffers: changed typename to type_name in below code
+
       // Grab a new, generic guy to be editted/bought
       current_guy = new guy(newfamily);
-      strcpy(typename, current_guy->name);
+      strcpy(type_name, current_guy->name);
       statscopy(current_guy, ourteam[i]); // set to same stats as just bought
-      strcpy(current_guy->name, typename);
+      strcpy(current_guy->name, type_name);
       sprintf(tempnum, "%d", numbought[newfamily]+1);
       strcat(current_guy->name, tempnum);
 
@@ -2205,7 +2211,11 @@ long do_save(long arg1)
   long xloc, yloc, x2loc, y2loc;
   
   strcpy(newname, "save");
-  itoa(arg1, newnum, 10);
+
+  //buffers: PORT: changed itoa to sprintf, might be BUGGY
+  //itoa(arg1, newnum, 10);
+  sprintf(newnum,"%d",arg1);
+  
   strcat(newname, newnum);
   release_mouse();
       clear_keyboard();
@@ -2235,7 +2245,11 @@ long do_load(long arg1)
   //commented out debugging done
   //myscreen->soundp->play_sound(SOUND_YO);
   strcpy(newname, "save");
-  itoa(arg1, newnum, 10);
+  
+  //buffers: PORT: changed itoa to sprintf
+  //itoa(arg1, newnum, 10);
+  sprintf(newnum,"%d",arg1);
+  
   strcat(newname, newnum);
   load_team_list_one(newname);
   return REDRAW;
@@ -2319,12 +2333,12 @@ long save_team_list(char * filename)
   
   release_mouse();
 
-  _disable(); //disable interrupts
+  //buffers: PORT: dont need this? _disable(); //disable interrupts
 
   outfile = fopen(temp_filename, "wb");
   //myscreen->restore_ints();
 
-  _enable(); //enable interrupts
+  //buffers: PORT: dont need this? _enable(); //enable interrupts
   grab_mouse();
 
   if (!outfile)
@@ -3541,9 +3555,16 @@ long do_set_scen_level(long arg1)
 
       myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
       savetext.write_xy(xloc+5, yloc+4, "ENTER LEVEL NUMBER:", DARK_BLUE, 1);
-      itoa(scen_level, newnum, 10);
+      
+      //buffers: changed itoa to sprintf
+      //itoa(scen_level, newnum, 10);
+      sprintf(newnum,"%d",scen_level);
+      
       templevel = atoi(savetext.input_string(xloc+50, yloc+11, 8, newnum) );
-      itoa(templevel, newnum, 10);      
+      
+      //buffers: changed itoa to sprintf
+      //itoa(templevel, newnum, 10);      
+      sprintf(newnum,"%d",templevel);
 
       strcpy(newname, "scen");
       strcat(newname, newnum);
