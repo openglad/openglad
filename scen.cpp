@@ -570,16 +570,20 @@ main(short argc, char **argv)
 
    // Scroll the screen ..
    // Zardus: ADD: added scrolling by keyboard
-   if ((mykeyboard[SDLK_KP8] || mymouse[MOUSE_Y]< 2) && myscreen->topy >= 0) // top of the screen
+   if ((mykeyboard[SDLK_KP8] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP9] || mymouse[MOUSE_Y]< 2)
+		   && myscreen->topy >= 0) // top of the screen
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy-SCROLLSIZE);
-   if ((mykeyboard[SDLK_KP2] || mymouse[MOUSE_Y]> 198) && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
+   if ((mykeyboard[SDLK_KP2] || mykeyboard[SDLK_KP1] || mykeyboard[SDLK_KP3] || mymouse[MOUSE_Y]> 198)
+		   && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy+SCROLLSIZE);
-   if ((mykeyboard[SDLK_KP4] || mymouse[MOUSE_X]< 2) && myscreen->topx >= 0) // scroll left
+   if ((mykeyboard[SDLK_KP4] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP1] || mymouse[MOUSE_X]< 2)
+		   && myscreen->topx >= 0) // scroll left
     set_screen_pos(myscreen, myscreen->topx-SCROLLSIZE,
               myscreen->topy);
-   if ((mykeyboard[SDLK_KP6] || mymouse[MOUSE_X] > 318) && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
+   if ((mykeyboard[SDLK_KP6] || mykeyboard[SDLK_KP3] || mykeyboard[SDLK_KP9] || mymouse[MOUSE_X] > 318)
+		   && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
     set_screen_pos(myscreen, myscreen->topx+SCROLLSIZE,
               myscreen->topy);
 
@@ -590,28 +594,16 @@ main(short argc, char **argv)
     my = mymouse[MOUSE_Y];
 
     // Zardus: ADD: can move map by clicking on minimap
-    if (mx > myscreen->viewob[0]->endx - RADAR_X - 4 && my > myscreen->viewob[0]->endy - RADAR_Y - 4
+    if (mx > myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4 
+		    && my > myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4
 		    && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
     {
-	    mx -= myscreen->viewob[0]->endx - RADAR_X - 4;
-	    my -= myscreen->viewob[0]->endy - RADAR_Y - 4;
-	    i = SCREEN_X; // i and j will be our shift factors
-	    j = SCREEN_Y;
-
-	    if (myscreen->maxx <= RADAR_X) i *= 1.5;
-	    else i *= .5;
-
-	    if (myscreen->maxy <= RADAR_Y) j *= 1.5;
-	    else j *= .5;
-
-	    // Zardus: (place on minimap / size of minimap) * (size of map) + (half of screen)
-	    //set_screen_pos (myscreen , ((float) mx / myscreen->viewob[0]->myradar->get_xview()) * (GRID_SIZE*myscreen->maxx) - SCREEN_X * 1.5,
-	    //		    ((float) my / RADAR_Y) * (GRID_SIZE*myscreen->maxy + SCREEN_Y / 2) - SCREEN_Y);
-	    //Above won't work cause radar no longer has get_xview
+	    mx -= myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4;
+	    my -= myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4;
 
 	    // Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
-	    set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - i,
-			    myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - j);
+	    set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - 160,
+			    myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - 100);
     }
     else if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
         (my >= S_UP) && (my <= S_DOWN) )      // in the main window
