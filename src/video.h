@@ -121,7 +121,7 @@ class video
 
 		//buffers: screen vars
 		SDL_Surface *window;
-		int screen_width,screen_height;
+		int screen_width,screen_height,fullscreen;
 		int pdouble, mouse_mult,mult,font_mult;
 };
 
