@@ -2,7 +2,9 @@
 //#include "pixie.h"
 // Z's script: #include <process.h>
 
-#define SHOW_TIME 130
+//buffers: PORT: #define SHOW_TIME 130
+//buffers: PORT: quick fix
+#define SHOW_TIME 1500 
 #include "input.h" 
 
 int show();
@@ -44,8 +46,8 @@ intro_main(long argc, char** argv)
   mytext = new text(myscreen);
   load_and_set_palette("our.pal", (char *)mypalette);
 //  load_scenario("current", myscreen);
-  for (i=0;i<256;i++)
-         set_palette_reg(i,0,0,0);
+//buffers: PORT:  for (i=0;i<256;i++)
+//buffers: PORT:         set_palette_reg(i,0,0,0);
   myscreen->clear();
 
   gladdata = read_pixie_file("3mages2.pix");
@@ -54,11 +56,11 @@ intro_main(long argc, char** argv)
   gladiator->drawMix(120,55,myscreen->viewob[0]);
   mytext->write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0]);
   myscreen->refresh();
-  if (show() < 0)
-  {
-    cleanup();
-    return;
-  }
+	if (show() < 0)
+	{
+		cleanup();
+		return;
+	}
 
   // Delay
   reset_timer();
@@ -84,21 +86,21 @@ intro_main(long argc, char** argv)
   gladiator->drawMix(100, 110, myscreen->viewob[0]);
   myscreen->refresh();
   
-  if (show() < 0)
-  {
-    cleanup();
-    return;
-  }
+	if (show() < 0)
+	{
+		cleanup();
+		return;
+	}
 
   myscreen->clear();
   mytext->write_y(70,"THOSE WHO ARE ABOUT TO DIE SALUTE YOU", 230, myscreen->viewob[0]);
   myscreen->refresh();
 
-  if (show() < 0)
-  {
-    cleanup();
-    return;
-  }
+	if (show() < 0)
+	{
+		cleanup();
+		return;
+	}
 
   // Programming Credits, Page 1
   myscreen->clear();
@@ -108,11 +110,11 @@ intro_main(long argc, char** argv)
   
   myscreen->refresh();
 
-  if (show() < 0)
-  {
-    cleanup();
-    return;
-  }
+	if (show() < 0)
+	{
+		cleanup();
+		return;
+	}
 
   // First 'interlude' snapshot
   myscreen->clear();
@@ -154,15 +156,17 @@ intro_main(long argc, char** argv)
   
   myscreen->refresh();
 
-  if (show(SHOW_TIME+30) < 0)
-  {
-    cleanup();
-    return;
-  }
+	if (show(SHOW_TIME+30) < 0)
+	{
+		cleanup();
+		return;
+	}
   
   // Programming Credits, Page 2
   myscreen->clear();
   mytext->write_y(90,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
+  //buffers: PORT: w00t w00t
+  mytext->write_y(110,"Ported by Odo and Zardus",230,myscreen->viewob[0]);
   myscreen->refresh();
 
   if (show() < 0)
@@ -268,7 +272,7 @@ int show(int howlong)
 //*******************************
 // Fade in loop
 //*******************************
-
+/* buffers: PORT:
   for(j=0;j<64;j++)
   {
   reset_timer();
@@ -284,13 +288,14 @@ int show(int howlong)
          }
 
   }
-
+*/ //buffers: PORT
 //  myscreen->soundp->play_sound(SOUND_TELEPORT);
   reset_timer();
   while (query_timer() < howlong)
     if (query_key_press_event()) return -1;
 
-  // Fade out
+  // Fade out 
+  /* //buffers: PORT:
   for (i = 0; i<256; i++)
   {
          query_palette_reg((unsigned char)i, &red, &green, &blue);
@@ -312,6 +317,6 @@ int show(int howlong)
                 set_palette_reg((unsigned char)i, red, green, blue);
          }
   }
-
+*/ //buffers: PORT:
   return 1;
 }
