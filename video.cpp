@@ -56,11 +56,14 @@ unsigned char * video::getbuffer()
 
 void video::clearscreen()
 {
+	//buffers: PORT: clear the offscreen buffer, not the screen.
+	//buffers: we are going to see if we can double buf everything.
 	SDL_FillRect (screen, NULL, SDL_MapRGB (screen->format, 0, 0, 0));
 }
 
 void video::clearbuffer()
 {
+	SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format,0,0,0));
 }
 
 void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, long filled)
@@ -275,12 +278,14 @@ void video::hor_line(long x, long y, long length, unsigned char color, long tobu
 {
   unsigned long num, i;
 
-  if (!tobuffer)
-  {
+//buffers: PORT: we always want to draw to the offscreen buffer
+//buffers: PORT:  if (!tobuffer)
+//buffers: PORT:  {
     hor_line(x,y,length,color);
     return;
-  }
+//buffers: PORT:  }
 
+/* buffers: PORT:
   num = x + (VIDEO_WIDTH*y);
   for (i = 0; i < length; i++)
   {
@@ -288,6 +293,7 @@ void video::hor_line(long x, long y, long length, unsigned char color, long tobu
       videobuffer[num] = color;
     num ++;
   }
+*/
 }
 
 
@@ -305,13 +311,15 @@ void video::ver_line(long x, long y, long length, unsigned char color)
 void video::ver_line(long x, long y, long length, unsigned char color, long tobuffer)
 {
   unsigned long num, i;
-  
-  if (!tobuffer)  
-  {
+
+//buffers: PORT: we always want to draw to the offscreen buffer
+//buffers: PORT:  if (!tobuffer)  
+//buffers: PORT:  {
     ver_line(x,y,length,color);
     return;
-  }
+//buffers: PORT:  }
 
+/* buffers: PORT
   num = x + (VIDEO_WIDTH*y);
   for (i = 0; i < length; i++)
   {
@@ -319,6 +327,7 @@ void video::ver_line(long x, long y, long length, unsigned char color, long tobu
       videobuffer[num] = color;
     num += VIDEO_WIDTH;
   }
+*/
 }
 
 
@@ -911,10 +920,12 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 void video::buffer_to_screen(long viewstartx,long viewstarty,
 			     long viewwidth, long viewheight)
 {
-  unsigned long rowsize = (viewwidth/4); //this routine uses 32bits, not 8
-  unsigned long shifter = VIDEO_BUFFER_WIDTH - viewwidth; //to wrap the video and buffer
-  unsigned long offsvid = viewstartx + (VIDEO_WIDTH * viewstarty); //start at x,y in video
-  unsigned char * videobufptr = &videobuffer[0];
+	SDL_UpdateRect(screen,viewstartx,viewstarty,viewwidth,viewheight);
+
+//buffers: PORT:  unsigned long rowsize = (viewwidth/4); //this routine uses 32bits, not 8
+//buffers: PORT:  unsigned long shifter = VIDEO_BUFFER_WIDTH - viewwidth; //to wrap the video and buffer
+//buffers: PORT:  unsigned long offsvid = viewstartx + (VIDEO_WIDTH * viewstarty); //start at x,y in video
+//buffers: PORT:  unsigned char * videobufptr = &videobuffer[0];
   
 extern void buftosasm();
 //buffers: PORT: #pragma aux buftosasm = \
