@@ -313,7 +313,7 @@ long * query_joy()
 	//joy_state[JOY_X] = (long) joyx;
 	//joy_state[JOY_Y] = (long) joyy;
 
-	//return joy_state;
+	return joy_state;
 }
 
 // Zardus: add: some extra routines (one right now) that really shouldn't be here, but we'll put them here anyways

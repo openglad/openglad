@@ -21,7 +21,7 @@
 //buffers:  using input.h instead #include "int32.h"
 #include "input.h"
 
-#include "SDL/SDL.h"
+#include "SDL.h"
 #include "parse32.h"
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable

@@ -21,11 +21,12 @@
 //
 /* ChangeLog
 	buffers: 8/14/02: *added our_pal_lookup func so we don't need our.pal
+	Zardus: 8/20/02: added return 0 for save_pallete so VC++ is happy
 */
 
 #include "pal32.h"
 #include <stdio.h>
-#include "SDL/SDL_types.h"
+#include "SDL_types.h"
 
 char temppal[768];    // for loading, setting, etc.
 char gammapal[768];   // for gamma-correction
@@ -79,6 +80,7 @@ short load_and_set_palette(char *filename, char *newpalette)
 short save_palette(char * whatpalette)
 {
 	//buffers: PORT: we don't have a palette to save :P
+	return 0;
 }
 
 

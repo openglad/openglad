@@ -34,7 +34,7 @@
 #include "sounds.h"
 #include "input.h"
 #include "parse32.h"
-#include "SDL/SDL.h"
+#include "SDL.h"
 #include "pal32.h"
 #include "pixdefs.h"
 #include "soundob.h" // sound defines

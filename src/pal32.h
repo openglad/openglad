@@ -21,7 +21,7 @@
 //#include <stdio.h>
 //the above is included in palette.cpp now
 
-#include "SDL/SDL_types.h"
+#include "SDL_types.h"
 
 short load_and_set_palette(char *filename,char  *newpalette); // load/set palette from disk
 short load_palette(char *filename,char *newpalette); // load palette from disk

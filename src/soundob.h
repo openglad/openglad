@@ -18,7 +18,7 @@
 #ifndef __SOUNDOB_H
 #define __SOUNDOB_H
 
-#include <SDL/SDL_mixer.h>
+#include <SDL_mixer.h>
 
 #define SOUND_BOW       0
 #define SOUND_CLANG     1

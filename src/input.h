@@ -35,7 +35,7 @@
 #define VERSION_INT 3
 
 // Z's script: //#include <dos.h>
-#include <SDL/SDL.h>
+#include <SDL.h>
 #include <ctype.h>
 
 
