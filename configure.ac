@@ -4,6 +4,15 @@ AM_INIT_AUTOMAKE(openglad, 0.9)
 AC_CONFIG_SRCDIR(src/glad.cpp)
 AM_CONFIG_HEADER(config.h)
 
+test "x$prefix" = "xNONE" && prefix=/usr/local
+test "x$exec_prefix" = "xNONE" && exec_prefix=$prefix
+test "x$sysconfdir" = 'x${prefix}/etc' && sysconfdir=${prefix}/etc
+test "x$datadir" = 'x${prefix}/share' && datadir=${prefix}/share/games/openglad
+test "x$bindir" = 'x${exec_prefix}/bin' && bindir=${exec_prefix}/games
+
+AC_DEFINE_UNQUOTED(SYSCONFDIR, "$sysconfdir/",  [Config file directory])
+AC_DEFINE_UNQUOTED(DATADIR, "$datadir/", [Data file directory])
+
 # Checks for programs.
 AC_PROG_CXX
 #AC_PROG_CC
@@ -25,14 +34,13 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS([malloc.h stdlib.h string.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
-AC_C_CONST
-AC_C_INLINE
+dnl AC_C_CONST
+dnl AC_C_INLINE
 AC_STRUCT_TM
 
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([memset pow])
 
-AC_CONFIG_FILES([Makefile
-                 src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile])
 AC_OUTPUT
