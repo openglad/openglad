@@ -1,0 +1,10 @@
+del *.sym
+del *.obj
+del *.pch
+del *.mbr
+del *.err
+del *.dbr
+del *.tmp
+del *.smp
+del *.map
+del *.bak

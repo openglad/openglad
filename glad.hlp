@@ -1,0 +1,96 @@
+      *** Gladiator Help ***
+
+ESC: Quit Gladiator
+
+
+Movement keys
+Player 1       Player 2
+--------       --------
+7  8  9        Q  W  E
+ \ | /          \ | / 
+4-   -6        A-   -D
+ / | \          / | \ 
+1  2  3        Z  X  C
+
+Player 3       Player 4
+--------       -------- 
+U  I  O        R  T  Y
+ \ | /          \ | /
+J-   -L        F-   -H
+ / | \          / | \
+M  ,  .        V  B  N
+
+
+Other 'action' keys
+
+Action     Player 1       Player 2
+------     --------       --------
+ Fire      INSERT         CONTROL
+
+Special    ENTER          ALT
+
+Cycle      - (numeric)    1
+Special
+
+Switch     + (numeric)    TAB
+Character
+
+Shifter    DELETE         LEFT-SHIFT
+
+Yell       5 (numeric)    S (ess)
+
+Options    Asterisk       2
+Menu       (numeric)
+
+
+Action    Player 3       Player 4
+------    --------       -------- 
+
+Fire      SPACE          5 (non num)
+
+Special   Semicolon(;)   6 (non num)
+
+Cycle     7              3
+Special 
+
+Switch    BACKSPACE      EQUALS (=)
+Character
+
+Shifter   RIGHT-SHIFT    - (non num)
+
+Yell      K              G
+
+Options   8              4
+Menu       
+
+
+Shifter + Yell   : Summon NPC's
+  on your team to come fight with
+  or protect you.
+  
+Shifter + Switch : Switch to next TYPE
+  of team member; ie, jump to your
+  first archer.
+
+Options menu
+------------
+ +/- : Make the game run slower
+       or faster (for all)
+ [/] : Enlarge or shrink your
+       viewscreen (player-specific)
+ </> : Brighten or darken the game
+       screen (for all)
+
+ C : Toggle color-cycling on
+     or off (for all)
+ F : Toggle the foes/allies display
+     on or off (player-specific)
+ H : Cycle through hp/sp
+     display modes (player-spec.)
+ R : Toggle radar display on
+     or off (player-specific)
+ S : Toggle the score/exp display
+     on or off (player-specific)
+ T : Bring up an overview of
+     your team's status
+

@@ -1,0 +1,95 @@
+Register stuff:
+
+Shareware:
+
+[5] Registering Gladiator (do it do it do it do it)
+
+  We don't want to beg, but .. please, please PLEASE!! If you think
+  our game was at all interesting, at least send us mail with your
+  comments and feedback!  You can send email to:
+    
+    tricket@netcom.com
+          or
+    mike@ictv.com
+          or
+    dark@ix.netcom.com
+          or even
+    clawrenc@icogsci.ucsd.edu
+
+  Of course, if you have any shred of mercy for the four poor starving
+  college students (well, now 3 of us have regular jobs, which
+  is why gladiator development has slowed down somewhat) who
+  have slaved away over hot computers making Gladiator,
+  we'd REALLY be your bestest friends, and for just $10.00,
+  you get:
+    *  Lots more scenarios (take your guys to incredible levels!)
+    *  More special abilities (up to four for each character)
+    *  More types of characters, and the ability to purchase all of
+       them for your team, including:
+         FIRE ELEMENTALS (you see a couple on the last castle level)
+         FAERIES (freeze your foes!)
+         SLIMES (reproduce over and over, and overwhelm your enemies)
+         ORCS (an even more powerful grunt)
+         GHOSTS (FEAR, fly through walls)
+         SKELETONS (really fast!)
+    *  Access to the nifty cheat codes. (invisibility, free stats, etc.!)
+    *  A scenario editor! (create your own scenarios!)
+
+  Feel FREE to send cash in the mail; we don't care!  
+  (But the post office doesn't reccommend it)
+
+  You can also register Gladiator RIGHT NOW over the Internet,
+  and be playing it in minutes!  If you have a credit card and
+  would like to use it to register Gladiator, visit Albert's
+  Ambry, a great play for purchasing software, and search for
+  "glad".  The system will take your information and allow you
+  to download the latest registered version we have availible.
+
+  If you'd prefer to register by mail, that's fine too!
+  Send your payment to:
+    
+    Gladiator v 3.8 REGISTRATION
+    c/o Tom Ricket
+    12645 Cambridge Drive
+    Saratoga, CA  95070
+
+  If you send a check, make it out to Tom Ricket,
+  since the bank may not want to cash it for us otherwise.
+  Also, if you have any kind of internet access, please include
+  your e-mail address!  This will help us send you information,
+  updates, etc. as soon as they're availible!
+
+  Regardless of whether or not you register, PLEASE take the time
+  to let us know what you think.  Our best ideas so far have come
+  from our testers (radar, diagonal movement, lots of cool stuff),
+  and it's a pretty sure bet that whatever you suggest will be
+  implemented.  In fact, if you send us money, we can practically
+  guarantee it! (unless it's really, really lame!)  We also appreciate
+  knowing where you found this; our distribution network is very
+  small, and we'd like to be able to send updates to sites which
+  have started carrying our game.
+
+  So now that we've made our plea, you can read on for the credits
+  and revision history of glad ...
+
+
+
+Registered:
+
+[5] Registered Gladiator
+
+  For those of you who have the registered version, don't forget
+  to check for updates on our main web page:
+  http://www.ictv.com/users/mike/gladiator.html
+
+  From the registered page you can find out what the latest version
+  is, how any beta-projects are coming, how to get in contact with
+  us via e-mail, and lots of other good things.  Also, feel free to
+  drop us a line anytime, with suggestions, criticisms, or just to
+  say hello!
+
+  Note that to unzip the registered version off the web site, you'll
+  need the password 'Archer', with a capital A.  To specify the
+  password to pkunzip, use the "-s" option.
+  Example: pkunzip -s glad38g.zip  << it will prompt for the password
+

@@ -1,0 +1,197 @@
+!define BLANK ""
+c:\wfiles\glad\detect.obj : c:\wfiles\glad\detect.c .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wcc386 detect.c -i=C:\WC\h -w4 -e25 -zp8 -zq -od -d2 -hw -en -zu -mf -3s -&
+bt=dos
+
+c:\wfiles\glad\lowmem.obj : c:\wfiles\glad\lowmem.c .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wcc386 lowmem.c -i=C:\WC\h -w4 -e25 -zp8 -zq -od -d2 -hw -en -zu -mf -3s -&
+bt=dos
+
+c:\wfiles\glad\smix.obj : c:\wfiles\glad\smix.c .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wcc386 smix.c -i=C:\WC\h -w4 -e25 -zp8 -zq -od -d2 -hw -en -zu -mf -3s -bt&
+=dos
+
+c:\wfiles\glad\effect.obj : c:\wfiles\glad\effect.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 effect.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt&
+=dos
+
+c:\wfiles\glad\game.obj : c:\wfiles\glad\game.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 game.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=d&
+os
+
+c:\wfiles\glad\gladpack.obj : c:\wfiles\glad\gladpack.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 gladpack.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -&
+bt=dos
+
+c:\wfiles\glad\graphlib.obj : c:\wfiles\glad\graphlib.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 graphlib.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -&
+bt=dos
+
+c:\wfiles\glad\guy.obj : c:\wfiles\glad\guy.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 guy.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=do&
+s
+
+c:\wfiles\glad\help.obj : c:\wfiles\glad\help.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 help.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=d&
+os
+
+c:\wfiles\glad\int32.obj : c:\wfiles\glad\int32.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 int32.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\living.obj : c:\wfiles\glad\living.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 living.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt&
+=dos
+
+c:\wfiles\glad\loader.obj : c:\wfiles\glad\loader.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 loader.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt&
+=dos
+
+c:\wfiles\glad\obmap.obj : c:\wfiles\glad\obmap.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 obmap.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\pal32.obj : c:\wfiles\glad\pal32.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 pal32.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\parse32.obj : c:\wfiles\glad\parse32.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 parse32.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -b&
+t=dos
+
+c:\wfiles\glad\pixie.obj : c:\wfiles\glad\pixie.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 pixie.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\pixien.obj : c:\wfiles\glad\pixien.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 pixien.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt&
+=dos
+
+c:\wfiles\glad\radar.obj : c:\wfiles\glad\radar.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 radar.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\scen.obj : c:\wfiles\glad\scen.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 scen.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=d&
+os
+
+c:\wfiles\glad\screen.obj : c:\wfiles\glad\screen.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 screen.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt&
+=dos
+
+c:\wfiles\glad\smooth.obj : c:\wfiles\glad\smooth.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 smooth.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt&
+=dos
+
+c:\wfiles\glad\sound.obj : c:\wfiles\glad\sound.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 sound.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\stats.obj : c:\wfiles\glad\stats.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 stats.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\text.obj : c:\wfiles\glad\text.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 text.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=d&
+os
+
+c:\wfiles\glad\treasure.obj : c:\wfiles\glad\treasure.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 treasure.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -&
+bt=dos
+
+c:\wfiles\glad\video.obj : c:\wfiles\glad\video.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 video.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=&
+dos
+
+c:\wfiles\glad\view.obj : c:\wfiles\glad\view.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 view.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=d&
+os
+
+c:\wfiles\glad\walker.obj : c:\wfiles\glad\walker.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 walker.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt&
+=dos
+
+c:\wfiles\glad\weap.obj : c:\wfiles\glad\weap.cpp .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ *wpp386 weap.cpp -i=C:\WC\h -w1 -e25 -zp8 -zq -otexan -d2 -hw -mf -4s -bt=d&
+os
+
+c:\wfiles\glad\scen.exe : c:\wfiles\glad\detect.obj c:\wfiles\glad\lowmem.ob&
+j c:\wfiles\glad\smix.obj c:\wfiles\glad\effect.obj c:\wfiles\glad\game.obj &
+c:\wfiles\glad\gladpack.obj c:\wfiles\glad\graphlib.obj c:\wfiles\glad\guy.o&
+bj c:\wfiles\glad\help.obj c:\wfiles\glad\int32.obj c:\wfiles\glad\living.ob&
+j c:\wfiles\glad\loader.obj c:\wfiles\glad\obmap.obj c:\wfiles\glad\pal32.ob&
+j c:\wfiles\glad\parse32.obj c:\wfiles\glad\pixie.obj c:\wfiles\glad\pixien.&
+obj c:\wfiles\glad\radar.obj c:\wfiles\glad\scen.obj c:\wfiles\glad\screen.o&
+bj c:\wfiles\glad\smooth.obj c:\wfiles\glad\sound.obj c:\wfiles\glad\stats.o&
+bj c:\wfiles\glad\text.obj c:\wfiles\glad\treasure.obj c:\wfiles\glad\video.&
+obj c:\wfiles\glad\view.obj c:\wfiles\glad\walker.obj c:\wfiles\glad\weap.ob&
+j .AUTODEPEND
+ @c:
+ cd c:\wfiles\glad
+ @%write scen.lk1 NAME scen
+ @%append scen.lk1 FIL detect.obj,lowmem.obj,smix.obj,effect.obj,game.obj,gl&
+adpack.obj,graphlib.obj,guy.obj,help.obj,int32.obj,living.obj,loader.obj,obm&
+ap.obj,pal32.obj,parse32.obj,pixie.obj,pixien.obj,radar.obj,scen.obj,screen.&
+obj,smooth.obj,sound.obj,stats.obj,text.obj,treasure.obj,video.obj,view.obj,&
+walker.obj,weap.obj
+ @%append scen.lk1 
+ *wlink SYS dos4g op m d all op st=16384 op maxe=25 op q op symf @scen.lk1
+

@@ -1,0 +1,44 @@
+                        Boost ver. 1.0            
+                              by Justin Powell          
+                        
+
+                       
+As of version 1.0, Boost is public domain. 
+
+Legal junk:
+      Use of this program is at your own risk and the author may not be held 
+responsible for any damage caused by, or using it under any circumstances, 
+no matter what, ever.  
+
+
+
+                Boost ver 1.0 b            
+                     by Justin Powell  morgoth@dns.bluesky.net        
+
+This program is for use with Gladiator, if you've never heard of it go
+to http://www.fsgames.com and download it, or Email any of these people:
+
+    tricket@netcom.com
+    mike@ictv.com
+
+
+Boost is simple to use, from your command line just type "boost <savefile>"
+without the quotes.  <savefile> can be save1.gtl, save2.gtl...save5.gtl.
+If you feel you really must use Windows the same can be done.
+
+Boost will then set every statistic of each character in your team to 5000,  
+each character's level to 500 and give the team a lot of money.  This leaves 
+you with some room to expand the character if you should feel the need to do 
+so. Be carefull however, because hit points exceeding the 32767 will wrap 
+around to a negative number, causing you to die in one hit.
+
+Another caveat: Boost doesn't check to see if the file you specified is 
+the right version or not, or even if it's a Gladiator save file.  So in theory 
+you could go around trying to Boost all your system files... 
+this is a bad idea.  
+In other words, don't use this program on anything unless you're sure it's 
+not going to destroy it. 
+
+Please feel free to Email me with any thoughts/ideas/bugs Etc.  But bear in 
+mind that this isn't what I'd call a major project I'll be working on. :)
+
