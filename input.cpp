@@ -134,7 +134,10 @@ void get_input_events()
 					mouse_state[MOUSE_RIGHT] = 1;
 				break;
 			case SDL_QUIT:
-				quit(1);
+				//buffers: PORT: the quit function is not avialiable to the scen app so we don't try to call it if we compile scen
+				#ifndef SCEN
+					quit(1);
+				#endif
 				break;
 			default:
 				break;
@@ -245,4 +248,3 @@ long * query_joy()
   
   //return joy_state;
 }
-
