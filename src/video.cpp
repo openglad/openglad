@@ -30,6 +30,7 @@
 		*optimized the SHIFT_RANDOM code a bit...
 */
 #include "graph.h"
+#include "sai2x.h"
 
 #define VIDEO_BUFFER_WIDTH 320
 #define VIDEO_WIDTH 320
@@ -40,7 +41,8 @@ void set_mult(int);
 
 unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
-// Define some palettes to use in (video) screen ..
+SDL_Surface *screen;
+Screen *E_Screen;
 
 video::video()
 {
@@ -93,6 +95,10 @@ video::video()
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 
+	screen = SDL_CreateRGBSurface(SDL_SWSURFACE,320,200,32,0,0,0,0);
+	E_Screen = new Screen(SAI);
+
+/*
 #ifndef OPENSCEN
 	qresult = cfg.query("graphics","fullscreen");
 	if(strcmp(qresult,"on")==0)
@@ -100,7 +106,7 @@ video::video()
 	else
 #endif
 		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF);
-
+*/
 }
 
 video::~video()
@@ -1062,14 +1068,19 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 void video::buffer_to_screen(long viewstartx,long viewstarty,
                              long viewwidth, long viewheight)
 {
-	//buffers: update the screen (swap some buffers :)
-	SDL_UpdateRect(screen,viewstartx*mult,viewstarty*mult,viewwidth*mult,viewheight*mult);
+        //buffers: update the screen (swap some buffers :)
+	//      SDL_BlitSurface(screen,NULL,window,NULL);
+	//      SDL_UpdateRect(window,0,0,320,200);
+      
+      SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
+      E_Screen->Update(viewstartx*mult,viewstarty*mult,viewwidth*mult,viewheight*mult);
 }
 
 //buffers: like buffer_to_screen but automaticaly swaps the entire screen
 void video::swap(void)
 {
-	SDL_UpdateRect(screen,0,0,screen_width,screen_height);
+	//SDL_UpdateRect(screen,0,0,screen_width,screen_height);
+	buffer_to_screen(0,0,320,200);
 }
 
 extern void do_clear_ints();

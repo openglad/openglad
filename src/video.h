@@ -99,7 +99,7 @@ class video
 
 
 		//buffers: screen vars
-		SDL_Surface *screen;
+		SDL_Surface *window;
 		int screen_width,screen_height;
 		int pdouble, mult;
 };
