@@ -600,7 +600,12 @@ long mainmenu(long arg1)
 	magepix->drawMix(12,40, myscreen->viewob[0]);
 	magepix->set_frame(1);
 	magepix->drawMix(242,40, myscreen->viewob[0]);
-	myscreen->refresh();
+	//myscreen->refresh();
+
+	clear_keyboard();
+	reset_timer();
+	while (query_timer() < 1);
+	myscreen->fadeblack(1);
 
 	/* //buffers: PORT: we need to write new fade code later
 	  for(j=0;j<64;j++)
@@ -722,7 +727,7 @@ long mainmenu(long arg1)
 				else
 					strcpy(allbuttons[7]->label, "Player-v-Player: Enemy");
 
-				myscreen->refresh();
+				//myscreen->refresh();
 				grab_mouse();
 
 			}

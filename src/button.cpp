@@ -218,7 +218,8 @@ void vbutton::vdisplay(long status)
 	}
 	release_mouse();
 	//buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
-	myscreen->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
+	// Zardus: following isn't really needed and it messes up the fading
+	//myscreen->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
 	grab_mouse();
 }
 
