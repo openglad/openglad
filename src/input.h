@@ -134,6 +134,7 @@ void clear_key_code(int code);
 void enable_keyrepeat();
 void disable_keyrepeat();
 void init_input();
+void stop_input();
 
 void grab_mouse();
 void release_mouse();

@@ -26,8 +26,8 @@
 // Z's script: #include <i86.h>
 #include <stdio.h>
 #include <time.h>
-#include <malloc.h>
 #include <string.h> //buffers: for strlen
+#include <malloc.h>
 
 unsigned long start_time=0;
 unsigned long reset_value=0;
@@ -40,7 +40,7 @@ long quit(long arg1);
 
 int raw_key;
 short key_press_event = 0;    // used to signed key-press
-char *key_list;
+bool *key_list;
 
 long mouse_state[MSTATE];
 long mouse_buttons;
@@ -105,24 +105,28 @@ void init_input()
 		listlength += SDL_JoystickNumAxes(js) * 2 + SDL_JoystickNumButtons(js);
 	}
 
-	key_list = (char *)malloc(sizeof(char) * listlength);
+	key_list = (bool *)malloc(sizeof(bool) * listlength);
 
 	SDL_JoystickEventState(SDL_ENABLE);
 }
 
+void stop_input()
+{
+	free(key_list);
+	key_list = NULL;
+}
+
 void get_input_events(bool type)
 {
-	SDL_Event * event;
-
-	event = (SDL_Event *) malloc(sizeof(SDL_Event));
+	SDL_Event event;
 
 	if (type == POLL)
-		while (SDL_PollEvent(event))
-			handle_events(event);
+		while (SDL_PollEvent(&event))
+			handle_events(&event);
 	if (type == WAIT)
 	{
-		SDL_WaitEvent(event);
-		handle_events(event);
+		SDL_WaitEvent(&event);
+		handle_events(&event);
 	}
 }
 
@@ -231,7 +235,7 @@ void clear_keyboard()
 
 char * query_keyboard()
 {
-	return key_list;
+	return (char *) key_list;
 }
 
 void wait_for_key(int somekey)
