@@ -51,7 +51,7 @@ load_palette("our.pal", redpalette);
 //	}
 	
 	SDL_Init(SDL_INIT_VIDEO);
-	screen = SDL_SetVideoMode (320,200, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+	screen = SDL_SetVideoMode (320, 200, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
 }
 
 video::~video()
@@ -290,8 +290,8 @@ void video::point(long x, long y, unsigned char color)
 void video::pointb(long x, long y, unsigned char color)
 {
 	int r,g,b;
-	Uint8 *address = (Uint8 *)screen->pixels + y*screen->pitch +
-                              x * screen->format->BytesPerPixel;
+	int *address = (int *) ((Uint8 *)screen->pixels + y*screen->pitch +
+                              x * screen->format->BytesPerPixel);
 	int c;
 
 	query_palette_reg(color,&r,&g,&b);
