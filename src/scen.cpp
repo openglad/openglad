@@ -389,6 +389,7 @@ int main(int argc, char **argv)
 				while (mykeyboard[SDLK_g])
 					get_input_events(WAIT);
 			} // end new grid name
+			myscreen->clearfontbuffer(50,30,150,10);
 		}
 
 		// Enter scenario text ..
@@ -448,9 +449,10 @@ int main(int argc, char **argv)
 		}
 
 		// Display the scenario help..
-		if (mykeyboard[SDLK_SLASH] && mykeyboard[SDLK_RSHIFT])
+		if (mykeyboard[SDLK_SLASH] && (mykeyboard[SDLK_RSHIFT] || mykeyboard[SDLK_LSHIFT]))
 		{
 			read_scenario(myscreen);
+			myscreen->clearfontbuffer();
 			event = 1;
 		}
 

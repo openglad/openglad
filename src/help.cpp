@@ -144,12 +144,9 @@ short read_scenario(screen *myscreen)
 
 		if (changed)  // did we scroll, etc.?
 		{
-		//	myscreen->clearfontbuffer(HELPTEXT_LEFT-4,
-		//				HELPTEXT_TOP-4-8,
-		//				HELPTEXT_LEFT+200-HELPTEXT_LEFT-4,
-		//				HELPTEXT_TOP+10-HELPTEXT_TOP-4-8);
+			myscreen->clearfontbuffer(HELPTEXT_LEFT-4,
+				HELPTEXT_TOP-4-8, 200, 120);
 
-			myscreen->clearfontbuffer();
 
 			templines = linesdown/8; // which TEXT line are we at?
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
