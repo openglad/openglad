@@ -29,6 +29,7 @@
 #include "smooth.h"
 #include "gladpack.h"
 #include "util.h"
+#include <string>
 
 // From picker.cpp
 extern long calculate_level(unsigned long temp_exp);
@@ -1765,7 +1766,8 @@ short load_scenario(char * filename, screen * master)
 	char versionnumber = 0;
 	long gotit;
 	short tempvalue;
-	char temp[80]="",fullpathupper[80],thefile[80],thefileupper[80];
+	char temp[80]="",fullpathupper[80];
+	string thefile(filename);
 
 	// Open the pixie-pack, if not already done ...
 	if (!scenpack.opened())
@@ -1782,35 +1784,23 @@ short load_scenario(char * filename, screen * master)
 	//buffers: first look for the scenario in scen/, then in levels.001
 
 	//buffers: the file
-	strcpy(thefile, filename);
-	strcat(thefile, ".fss");
+	thefile += ".fss";
 	lowercase(thefile);
-
-	strcpy(thefileupper, thefile);
-	uppercase(thefileupper);
 
 	gotit = 0;
 
 	// Zaradus: much much better this way
-	if ( (infile = open_misc_file(thefile, "scen/")))
+	if ( (infile = open_misc_file((char *)thefile.c_str(), "scen/")))
 	{
 		gotit = 1;
 	}
 
+	printf("Looking for %s\n", thefile.c_str());
+
 	//buffers: second, try to get the file from levels.001
 	if(!infile && scenpack.opened())
-	{
-		if(!(infile = scenpack.get_subfile(thefile)))
-		{
-			//buffers: uppercase the filename...
-			//buffers: original levels.001 file stores
-			//buffers: files in all uppercase letters
-			if((infile = scenpack.get_subfile(thefileupper)))
-				gotit=1;
-		}
-		else
+		if (infile = scenpack.get_subfile((char *)thefile.c_str()))
 			gotit = 1;
-	}
 
 	if(gotit == 0 || !infile)
 	{
