@@ -39,9 +39,8 @@ char* get_cfg_item(char *section, char *item)
 
 	if (!cfgfile)
 	{
-		printf("Error opening glad.cfg:\n");
-		printf("Please make sure it is in the current directory.\n");
-		printf("You may need to run SETUP.EXE\n");
+		printf("ERROR: I am having problems opening glad.cfg.\n");
+		printf("You may need to reinstall Openglad.\n");
 		release_keyboard();
 		fclose(cfgfile);
 		//return NULL;
