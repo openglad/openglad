@@ -278,6 +278,7 @@ void picker_quit()
 			delete allbuttons[i];
 	}
 
+	delete_all();
 	delete mytext;
 	delete myscreen;
 	delete magepix;
