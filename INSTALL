@@ -5,11 +5,85 @@ INSTALL
 
 1. Unpack the tarball into some directory.
 
+=====
 Linux
 =====
 1. Execute ./configure to generate the make files
-2. Execute "make" for openglad and "make openscen" for openscen
+2. Execute "make" to compile and "make install" to install
+3. Copy over the sound dir and the openglad.cfg file into ~/.openglad
 
+=======
+FreeBSD
+=======
+By Niall O'Higgins (nialloh@users.sourceforge.net)
+--------------------------------------------------
+
+1) Install SDL, SDL_image and SDL_mixer from ports:
+
+	cd /usr/ports/devel/sdl12
+	make all install clean
+
+	cd /usr/ports/graphics/sdl_image
+	make all install clean
+
+	cd /usr/ports/audio/sdl_mixer
+	make all install clean
+
+Link sdl11-config to sdl-config so the configure script will pick it up:
+	ln -s /usr/local/bin/sdl11-config /usr/local/bin/sdl-config
+Or you can just set an environment variable pointing to it when ./configure fails...
+
+2) *If compiling the CVS version*, you'll need to install the GNU Auto utils:
+
+	cd /usr/ports/devel/autoconf
+	make all install clean
+
+	cd /usr/ports/devel/automake
+	make all install clean
+
+3) Install GNU Make:
+
+	cd /usr/ports/devel/gmake
+	make all install clean
+
+4) Build openglad:
+	
+	// cd to the openglad source directory
+	// If you're compiling from CVS, prepare the source tree like so:
+
+	aclocal
+	autoconf
+	automake
+
+	// Regardless, you need to run configure:
+	./configure
+	// Make using Gnu Make:
+	gmake
+	
+	// Install:
+	gmake install
+
+5) Install the data: 
+	
+	mkdir ~/.openglad
+	mkdir ~/.openglad/save
+	cp -R pix ~/.openglad/
+	cp -R sound ~/.openglad/
+	cp -R scen ~/.openglad/
+	cp -R *.001 ~/.openglad/
+	cp openglad.cfg ~/.openglad/
+
+6) Edit config file:
+
+	// You'll probably want to use EAGLE or SAI rendering
+	vi ~/.openglad/openglad.cfg
+
+
+8) Play:
+
+	/usr/local/games/openglad
+
+=======
 Windows
 =======
 A Visual C++ Makefile can be found in src/. You might need to
