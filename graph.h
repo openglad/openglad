@@ -9,7 +9,7 @@
 #include "screen.h"
 #include "view.h"
 #include "pixie.h"
-#include "pixieN.h"
+#include "pixien.h"
 #include "walker.h"
 #include "living.h"
 #include "weap.h"
