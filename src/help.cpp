@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include "graph.h"
 #include "config.h"
+#include "util.h"
 
 #define HELPTEXT_LEFT 40
 #define HELPTEXT_TOP  40
@@ -26,7 +27,7 @@
 
 short end_of_file;                        // global flag ..
 char helptext[HELP_WIDTH][MAX_LINES];
-void get_input_events(bool);
+FILE * open_misc_file(char *);
 
 
 // This function reads one text line from file infile,
@@ -208,11 +209,7 @@ short read_help(char *somefile,screen * myscreen)
 	long bottomrow;
 	char tmp[50];
 
-	strcpy(tmp,DATADIR);
-	strcat(tmp,somefile);
-
-	if ((infile = fopen(tmp, "rt"))
-	        == NULL)
+	if ((infile = open_misc_file(somefile)) == NULL)
 	{
 		fprintf(stderr, "Cannot open help file.\n");
 		//delete mytext;
