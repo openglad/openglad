@@ -277,7 +277,7 @@ short ob_pass_check(short x, short y, walker  *ob, oblink  *row)
   here = row;
   while(here)
   {
-         if (here->ob)
+         if (here->ob && ob)
 	 if (here->ob != ob && !here->ob->dead)
          {
                 // Let our own team's weapons pass over us ..

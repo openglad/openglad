@@ -43,8 +43,10 @@ void get_input_events();
 
 // Now define the arrays with their default values
 static char key1[] = {
-  SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
-  SDLK_DOWN, SDLK_END, SDLK_LEFT, SDLK_HOME,
+//  SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
+//  SDLK_DOWN, SDLK_END, SDLK_LEFT, SDLK_HOME,
+  SDLK_a, SDLK_b, SDLK_c, SDLK_d,
+  SDLK_e, SDLK_f, SDLK_g, SDLK_h,
   SDLK_INSERT, SDLK_RETURN,                    // fire & special
   SDLK_KP_PLUS,                          // switch guys
   SDLK_KP_MINUS,                         // change special
@@ -561,7 +563,7 @@ short viewscreen::input(char inputthing)
     set_display_text(somemessage, STANDARD_TEXT_TIME);
     
     while (inputkeyboard[SDLK_F1])
-      dumbcount++;
+	    get_input_events();
     read_help("glad.hlp",screenp);
     inputkeyboard = query_keyboard();
     clear_keyboard();
@@ -1616,6 +1618,7 @@ void viewscreen::options_menu()
   // Wait for esc for now
   while (!opkeys[SDLK_ESCAPE])
   {
+	  get_input_events();
     if (opkeys[SDLK_KP_PLUS]) // faster game speed
     {
       gamespeed = change_speed(1);
@@ -1624,7 +1627,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_KP_PLUS])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_KP_MINUS]) // slower game speed
     {
@@ -1634,7 +1637,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_KP_MINUS])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_LEFTBRACKET]) // smaller view size
     {
@@ -1657,7 +1660,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_LEFTBRACKET])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_RIGHTBRACKET]) // larger view size
     {
@@ -1680,7 +1683,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_RIGHTBRACKET])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_COMMA]) // darken screen
     {
@@ -1690,7 +1693,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_COMMA])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_PERIOD]) // lighten screen
     {
@@ -1700,7 +1703,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_PERIOD])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_r]) // toggle radar display      
     {
@@ -1713,7 +1716,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_r])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_h]) // toggle HP display      
     {
@@ -1732,7 +1735,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_h])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_f]) // toggle foes display      
     {
@@ -1745,7 +1748,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_f])
-        dumbcount++;
+	      get_input_events();
     }
     if (opkeys[SDLK_s]) // toggle score display      
     {
@@ -1758,7 +1761,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_s])
-        dumbcount++;
+	      get_input_events();
     }
 
     if (opkeys[SDLK_t])      // View the teamlist
@@ -1803,7 +1806,7 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(11), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_j])
-        dumbcount++;
+	      get_input_events();
     }
     
     if (opkeys[SDLK_k])      // Edit the keyboard mappings
@@ -1828,13 +1831,13 @@ void viewscreen::options_menu()
       optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
       while (opkeys[SDLK_b])
-        dumbcount++;
+	      get_input_events();
     }
 
   }  // end of wait for ESC press
 
   while (opkeys[SDLK_ESCAPE])
-    dumbcount++;
+	  get_input_events();
   screenp->redrawme = 1;
   prefsob->save(this);
 }
