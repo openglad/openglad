@@ -58,6 +58,9 @@ void family_name_copy(char *name, short family);
 unsigned char *backpics[5];
 pixieN *backdrops[5];
 
+// Zardus: FIX: this is from view.cpp, so that we can delete it here
+extern options *theprefs;
+
 //screen  *myscreen;
 text  *mytext;
 long *mymouse;     // hold mouse information
@@ -3037,6 +3040,7 @@ long quit(long arg1)
 
 	myscreen->refresh();
 
+	delete theprefs;
 	picker_quit();
 	release_keyboard();
 	stop_input();

@@ -54,6 +54,10 @@ void create_dataopenglad();
 
 void glad_main(screen *myscreen, long playermode);
 
+// Zardus: FIX: from view.cpp. We need this here so that it doesn't
+// try to create it before main and go nuts trying to load it
+extern options *theprefs;
+
 int main(int argc, char *argv[])
 {
 	char * filepath;
@@ -63,6 +67,7 @@ int main(int argc, char *argv[])
 	cfg.commandline(argc, argv);
 	create_dataopenglad();
 
+	theprefs = new options;
 	myscreen = new screen(1);
 
 	//buffers: setting the seed

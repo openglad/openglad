@@ -119,7 +119,7 @@ int *normalkeys[] = {key1,key2,key3,key4};
 int allkeys[4][16];
 
 // ** OUR prefs object! **
-static options theprefs;
+options *theprefs;
 
 //#define viewscreen_X 60  // These are the dimensions of the viewscreen
 //#define viewscreen_Y 44  // viewport
@@ -151,7 +151,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	//buffer = (char  *)new char[xview*yview];
 	control = NULL;
 	gamma = 0;
-	prefsob = &theprefs;
+	prefsob = theprefs;
 
 	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?
