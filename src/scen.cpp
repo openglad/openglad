@@ -1953,6 +1953,7 @@ long do_save(screen *ascreen)  // save a scenario or grid
 		strcpy(ascreen->scenario_title,
 		       savetext->input_string(58, 33, 29, ascreen->scenario_title) );
 
+		ascreen->clearfontbuffer(20, 30, 215, 15);
 		savetext->write_xy(52, 33, "Saving scenario..");
 		ascreen->buffer_to_screen(0, 0, 320, 200);
 		// Save the map file ..
@@ -1961,18 +1962,21 @@ long do_save(screen *ascreen)  // save a scenario or grid
 			result = 0;
 		else
 			save_scenario(scen_name, ascreen, grid_name);
-		while (mykeyboard[SDLK_s])
-			get_input_events(WAIT);
+
+		ascreen->clearfontbuffer();
+		clear_keyboard();
 	} // end of save scenario
 	else if (mykeyboard[SDLK_g]) // save current grid
 	{
+		ascreen->clearfontbuffer(50, 30, 150, 10);
 		savetext->write_xy(52, 32, "Saving grid..");
 		ascreen->buffer_to_screen(0, 0, 320, 200);
 		if (!save_map_file(grid_name, ascreen) )
 			//printf("\nError saving map!\n");
 			result = 0;
-		while (mykeyboard[SDLK_g])
-			get_input_events(WAIT);
+
+		ascreen->clearfontbuffer();
+		clear_keyboard();
 	} // end of save grid
 
 	if (result)
