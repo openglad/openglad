@@ -21,7 +21,18 @@ video::video()
 	//buffers: PORT: no need: save_palette(dospalette);
 	// Load our palettes ..
 	load_and_set_palette("our.pal", ourpalette);
-	load_palette("our.pal", redpalette);
+
+load_palette("our.pal", bluepalette);
+
+        // Create the blue-shifted palette
+	        for (i=32; i < 256; i++)
+		        {
+			                bluepalette[i*3+0] /= 2;
+					                bluepalette[i*3+1] /= 2;
+}							       
+
+
+load_palette("our.pal", redpalette);
 
 	// Create the red-shifted palette
 	for (i=32; i < 256; i++)
@@ -30,14 +41,14 @@ video::video()
 		redpalette[i*3+2] /= 2;
 	}
 
-	load_palette("our.pal", bluepalette);
+//	load_palette("our.pal", bluepalette);
 
 	// Create the blue-shifted palette
-	for (i=32; i < 256; i++)
-	{
-		bluepalette[i*3+0] /= 2;
-		bluepalette[i*3+1] /= 2;
-	}
+//	for (i=32; i < 256; i++)
+//	{
+//		bluepalette[i*3+0] /= 2;
+//		bluepalette[i*3+1] /= 2;
+//	}
 	
 	SDL_Init(SDL_INIT_VIDEO);
 	screen = SDL_SetVideoMode (320,200, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
@@ -279,7 +290,7 @@ void video::point(long x, long y, unsigned char color)
 void video::pointb(long x, long y, unsigned char color)
 {
 	int r,g,b;
-	Uint8 *address = (Uint8 *)screen->pixels + y*screen->pitch +
+	int *address = (Uint8 *)screen->pixels + y*screen->pitch +
                               x * screen->format->BytesPerPixel;
 	int c;
 
@@ -649,7 +660,8 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	continue;
       }
       if (curcolor > (unsigned char) 247) curcolor = (unsigned char) (teamcolor+(255-curcolor));
-      videobuffer[buffoff++] = curcolor;
+      //buffers: PORT: videobuffer[buffoff++] = curcolor;
+      	point(walkerstartx+curx,walkerstarty+cury,curcolor);
     }
     walkoff += walkshift;
     buffoff += buffshift;

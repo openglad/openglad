@@ -714,12 +714,15 @@ void screen::clear()
 {
   unsigned short i;
 
-  for (i=0;i<64000;i++)
-  {
-         videobuffer[i] = 0;
-  }
-  for (i=0; i < numviews; i ++)
-                viewob[i]->clear();
+//buffers: PORT:  for (i=0;i<64000;i++)
+//buffers: PORT:  {
+//buffers: PORT:         videobuffer[i] = 0;
+//buffers: PORT:  }
+	clearscreen();
+	//SDL_FillRect(screen,NULL,SDL_MapRGB(screen->format,0,0,0));
+
+  	for (i=0; i < numviews; i ++)
+		viewob[i]->clear();
 }
 
 // REDRAW -- This function moves through the data on the grid (map)
