@@ -343,6 +343,7 @@ void screen::reset(short howmany)
 
   if (grid)
   {
+    // Zardus: PORT: this segfaults while deleting grid!
     delete grid;
     grid = NULL;
   }

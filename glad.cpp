@@ -108,7 +108,7 @@ void glad_main(screen *myscreen, long playermode)
   //*******************************
   // Fade in loop
   //*******************************
-
+/* Zardus: PORT: fade code not implemented yet
   for(j=0;j<64;j++)
   {
          for(i=0;i<256;i++)
@@ -120,6 +120,7 @@ void glad_main(screen *myscreen, long playermode)
                 set_palette_reg( (char) i,(char) red,(char) green,(char) blue);
          }
   }
+*/
 
   // Set palette to selected ..
   adjust_palette(myscreen->newpalette, myscreen->viewob[0]->prefs[PREF_GAMMA]);

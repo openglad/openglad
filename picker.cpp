@@ -2877,7 +2877,8 @@ long go_menu(long arg1)
   //*******************************
   // Fade out from ACTION loop
   //*******************************
-  for(j=0;j<64;j++)
+  // Zardus: PORT: fade code not implemented yet
+  /*for(j=0;j<64;j++)
   {
     for(i=0;i<256;i++)
     {
@@ -2904,7 +2905,7 @@ long go_menu(long arg1)
       if (blue < myscreen->ourpalette[i*3+2]) blue++;
       set_palette_reg( (char) i,(char) red,(char) green,(char) blue);
     }
-  }
+  }*/
 
 
   grab_mouse();
