@@ -245,6 +245,7 @@ void glad_main(screen *myscreen, long playermode)
 		if (keyboard[SDLK_ESCAPE])
 		{
 			//buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
+			myscreen->clearfontbuffer(160-80,80,160,40);
 			dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, "Abort Mission");
 			gladtext.write_xy(dumbcount, 80+24, "Quit this Mission? (Y/N)",
 			                  (unsigned char) DARK_BLUE, 1);
