@@ -3,7 +3,7 @@ GLADFILES=button.o effect.o game.o glad.o gladpack.o graphlib.o guy.o help.o int
 SCENFILES=scen.cpp effect.cpp game.cpp gladpack.cpp graphlib.cpp guy.cpp help.cpp intro.cpp living.cpp loader.cpp obmap.cpp pal32.cpp parse32.cpp pixie.cpp pixien.cpp radar.cpp screen.cpp smooth.cpp sound.cpp stats.cpp text.cpp treasure.cpp video.cpp view.cpp walker.cpp weap.cpp input.cpp
 
 
-all: openglad openscen
+all: openglad
 
 openglad: $(GLADFILES)
 	g++ $(CFLAGS) -o openglad $(GLADFILES)

@@ -38,6 +38,8 @@ char  * query_my_map_name();
 
 char my_map_name[40];
 
+void get_input_events();
+
 // These are globals for the packed files ..
 long scen_opened = 0;
 packfile scenpack;
@@ -344,7 +346,8 @@ void screen::reset(short howmany)
   if (grid)
   {
     // Zardus: PORT: this segfaults while deleting grid!
-    delete grid;
+    //memset(grid, '\0', strlen( (const char *) grid));
+    free(grid);
     grid = NULL;
   }
 
@@ -1361,7 +1364,7 @@ short screen::endgame(short ending, short nextlevel)
       mytext.write_y(100,temp, DARK_BLUE, 1);
       mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
       buffer_to_screen(0, 0, 320, 200);
-      while (query_key() != SDLK_ESCAPE);
+      while (!endkeys[SDLK_ESCAPE]) get_input_events();
       end = 1;
     }
     else // we're withdrawing to another level
