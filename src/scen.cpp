@@ -779,6 +779,10 @@ int main(int argc, char **argv)
 
 long quit(long num)
 {
+	int i;
+
+	for (i = 0; i < PIX_MAX+1; i++)
+		if (mypixdata[i]) delete mypixdata[i];
 
 	// Release the mouse ..
 	release_mouse();
