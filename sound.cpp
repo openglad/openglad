@@ -1,5 +1,10 @@
 // Sound object
 
+/* ChangeLog
+	buffers: 8/7/02: *moved SDL_OpenAudio to after the silence check in
+			  init()
+*/
+
 #include <string.h>
 #include <stdio.h>
 #include "soundob.h"
@@ -32,9 +37,6 @@ int soundob::init()
 {
     int i;
 
-    if (!SDL_OpenAudio (&des_audio, &real_audio))
-    	printf("Sound init failed\n");
-
     // Guarantee null pointers, regardless of sound status
     for (i=0; i < NUMSOUNDS; i++)
       sound[i] = NULL;
@@ -42,7 +44,12 @@ int soundob::init()
     // Do we have sounds on?
     if (silence)
       return 0;
-      
+
+    
+	if (!SDL_OpenAudio (&des_audio, &real_audio))
+		printf("Sound init failed\n");
+
+
     // Init the sounds ..
     strcpy(soundlist[SOUND_BOW],      "TWANG.SOU");
     strcpy(soundlist[SOUND_CLANG],    "CLANG.SOU");
