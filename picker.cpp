@@ -2534,7 +2534,8 @@ long load_team_list_one(char * filename)
   // List of 200 or 500 (max levels) 1-byte scenario-level status
 
   strcpy(temp_filename, filename);
-  strcat(temp_filename, ".GTL"); // gladiator team list
+  //buffers: PORT: changed .GTL to .gtl
+  strcat(temp_filename, ".gtl"); // gladiator team list
 
   // Reset the number of guys bought ..
   for (i=0; i < NUM_FAMILIES; i++)
@@ -2543,7 +2544,8 @@ long load_team_list_one(char * filename)
   if ( (infile = fopen(temp_filename, "rb")) == NULL ) // open for write
   {
          //gotoxy(1, 22);
-         //printf("Error in opening team file: %s\n", filename);
+	 //buffers: DEBUG: uncommented following line
+         printf("Error in opening team file: %s\n", filename);
          return 0;
   }
 
@@ -2552,7 +2554,8 @@ long load_team_list_one(char * filename)
   if ( strcmp(temptext,"GTL"))
   {
          fclose(infile);
-         //printf("Error, selected file is not a GTL file: %s\n",filename);
+	 //buffers: DEBUG: uncommented following line
+         printf("Error, selected file is not a GTL file: %s\n",filename);
          return 0; //not a gtl file
   }
 
@@ -2575,7 +2578,8 @@ long load_team_list_one(char * filename)
     else
     {
       fclose(infile);
-      //printf("Error, selected file is not version one: %s\n",filename);
+      //buffers: DEBUG: uncommented following line
+      printf("Error, selected file is not version one: %s\n",filename);
       return 0;
     }
   }
@@ -2756,7 +2760,8 @@ char* get_saved_name(char * filename)
   //   .
 
   strcpy(temp_filename, filename);
-  strcat(temp_filename, ".GTL"); // gladiator team list
+  //buffers: PORT: changed .GTL to .gtl
+  strcat(temp_filename, ".gtl"); // gladiator team list
 
   if ( (infile = fopen(temp_filename, "rb")) == NULL ) // open for read
   {
