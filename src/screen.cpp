@@ -1703,7 +1703,7 @@ char* screen::get_scen_title(char *filename, screen *master)
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
 	char scen_directory[80] = "";
-	long gotit;
+	enum {notfound, file, pack} gotit = notfound;
 	short tempvalue;
 	static char buffer[30];
 
@@ -1721,11 +1721,11 @@ char* screen::get_scen_title(char *filename, screen *master)
 
 	// Zardus: first get the file from scen/, then the packfile
 	if ((infile = open_misc_file(tempfile, "scen/")))
-		gotit = 1;
+		gotit = file;
 	else if (scenpack.opened())
 	{
 		infile = scenpack.get_subfile(tempfile);
-		if (infile) gotit = 1;
+		if (infile) gotit = pack;
 		else return "none";
 	}
 
@@ -1747,7 +1747,7 @@ char* screen::get_scen_title(char *filename, screen *master)
 	// Return the title, 30 bytes
 	fread(buffer, 30, 1, infile);
 
-	if (gotit)
+	if (gotit == file)
 		fclose(infile);
 	return buffer;
 
