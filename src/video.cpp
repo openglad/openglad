@@ -92,11 +92,11 @@ video::video()
 	load_palette("our.pal", bluepalette);
 
 	// Create the blue-shifted palette
-	for (i=32; i < 256; i++)
-	{
-		bluepalette[i*3+0] /= 2;
-		bluepalette[i*3+1] /= 2;
-	}
+	//for (i=32; i < 256; i++)
+	//{
+	//	bluepalette[i*3+0] /= 2;
+	//	bluepalette[i*3+1] /= 2;
+	//}
 
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
