@@ -602,9 +602,12 @@ long mainmenu(long arg1)
 			retvalue = localbuttons->leftclick();
 			if (localbuttons && (retvalue == REDRAW))
 			{
+				myscreen->clearbuffer();
 				delete(localbuttons);
 				localbuttons = buttonmenu(buttons1, 9);
-				myscreen->clearbuffer();
+				
+				myscreen->clearfontbuffer();
+				
 				count = 0;
 				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
 				strcpy(allbuttons[6]->label, message);
@@ -756,6 +759,7 @@ long mainmenu(long arg1)
 
 				tempbuttons = localbuttons;
 				count = 0;
+				myscreen->clearfontbuffer();
 				while (allbuttons[count])
 				{
 					allbuttons[count]->vdisplay();
@@ -990,8 +994,12 @@ long create_team_menu(long arg1)
 	if (localbuttons)
 		delete localbuttons;
 
+	myscreen->clearfontbuffer();
+
 	//  myscreen->clear();
 	localbuttons = buttonmenu(bteam,8);
+
+	myscreen->buffer_to_screen(0,0,320,200);
 
 	//myscreen->soundp->play_sound(SOUND_CHARGE);
 	while ( !(retvalue & EXIT) )
@@ -1006,11 +1014,16 @@ long create_team_menu(long arg1)
 		{
 			delete(localbuttons);
 			//      myscreen->clear();
+			myscreen->clearfontbuffer();
 			localbuttons = buttonmenu(bteam, 8);
+			myscreen->buffer_to_screen(0,0,320,200);
 			retvalue = 0;
 		}
 
 	}
+
+	myscreen->clearfontbuffer();
+	
 	return REDRAW;
 }
 
@@ -1215,6 +1228,7 @@ long create_buy_menu(long arg1)
 			{
 				delete(localbuttons);
 				//myscreen->clear();
+				myscreen->clearfontbuffer();
 				localbuttons = buttonmenu(buyteam, 18);
 				for (i=2; i < 14; i++)
 				{
@@ -1224,12 +1238,18 @@ long create_buy_menu(long arg1)
 						allbuttons[i]->set_graphic(FAMILY_PLUS);
 				}
 				cycle_guy(0);
+
 				change_hire_teamnum(0);
 				myscreen->draw_button(174, 20, 306, 42, 1, 1); // text box
+				myscreen->buffer_to_screen(0,0,320,200);
 			}
 			retvalue = 0;
 			linesdown = 0;
 			release_mouse();
+
+			myscreen->clearfontbuffer(174, 20, 306-174, 42-20);
+			myscreen->clearfontbuffer(174,46,306-174,114-26);
+
 			myscreen->draw_button(174, 46, 306, 114, 1, 1); // info box
 			myscreen->draw_text_bar(178, 48, 302, 58); // title bar
 			strcpy(message, "GAME INFORMATION");
@@ -1248,8 +1268,11 @@ long create_buy_menu(long arg1)
 
 			sprintf(message, "TOTAL SCORE: %ld", score[current_team_num]);
 			mytext->write_xy(180, 102, message,(unsigned char) DARK_BLUE, 1);
+			myscreen->clearfontbuffer(34,8,126-34,24-8);
 			myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
 			myscreen->draw_text_bar(36, 10, 124, 22);
+
+			myscreen->clearfontbuffer(38,66,120-38,160-66);
 			myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
 			myscreen->draw_text_bar(42, 70, 116, 156);
 			mytext->write_xy(38, 14, current_guy->name, (unsigned char) DARK_BLUE, 1);
@@ -1468,6 +1491,8 @@ long create_edit_menu(long arg1)
 				cycle_team_guy(0);
 			if (retvalue == REDRAW)
 			{
+				myscreen->clearfontbuffer();
+				
 				delete(localbuttons);
 				localbuttons = buttonmenu(editteam, 20, 0); // don't redraw yet
 				for (i=2; i < 14; i++)
@@ -1482,10 +1507,12 @@ long create_edit_menu(long arg1)
 			linesdown = 0;
 			release_mouse();
 
+			myscreen->clearfontbuffer(34,8,126-34,24-8);
 			myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
 			myscreen->draw_text_bar(36, 10, 124, 22);
 			mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
 			                 current_guy->name,(unsigned char) DARK_BLUE, 1);
+			myscreen->clearfontbuffer(38,66,120-38,160-66);
 			myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
 			myscreen->draw_text_bar(42, 70, 116, 156);
 
@@ -1549,6 +1576,7 @@ long create_edit_menu(long arg1)
 				showcolor = STAT_COLOR;
 			mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
 
+			myscreen->clearfontbuffer(174,32,306-174,(114+22)-32);	
 			myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
 			myscreen->draw_text_bar(178, 34, 302, 44); // title bar
 			strcpy(message, "GAME INFORMATION");
@@ -1605,6 +1633,7 @@ long create_edit_menu(long arg1)
 			mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
 
 			// Display our team setting ..
+			myscreen->clearfontbuffer(174, 138, 133, 22); 
 			sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
 			strcpy(allbuttons[18]->label, message);
 			allbuttons[18]->vdisplay();
@@ -1635,6 +1664,8 @@ long create_load_menu(long arg1)
 	if (localbuttons)
 		delete (localbuttons);
 	localbuttons = buttonmenu(loadteam, 11, 0);  // don't redraw!
+
+	myscreen->clearfontbuffer();	
 
 	myscreen->draw_button(15,  9, 255, 199, 1, 1);
 	myscreen->draw_text_bar(19, 13, 251, 21);
@@ -1673,6 +1704,9 @@ long create_load_menu(long arg1)
 		{
 			delete(localbuttons);
 			//myscreen->clear();
+
+			myscreen->clearfontbuffer();
+			
 			localbuttons = buttonmenu(loadteam, 11);
 			myscreen->draw_button(15,  9, 255, 175, 1, 1);
 			myscreen->draw_text_bar(19, 13, 251, 21);
@@ -1715,6 +1749,8 @@ long create_save_menu(long arg1)
 	if (localbuttons)
 		delete (localbuttons);
 	localbuttons = buttonmenu(saveteam, 11, 0);  // don't redraw screen yet
+
+	myscreen->clearfontbuffer();
 
 	myscreen->draw_button(15,  9, 255, 199, 1, 1);
 	myscreen->draw_text_bar(19, 13, 251, 21);
@@ -2133,6 +2169,8 @@ long name_guy(long arg)  // 0 == current_guy, 1 == ourteam[editguy]
 
 	release_mouse();
 
+	myscreen->clearfontbuffer(174,8,306,30);
+	
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
 	nametext.write_xy(176, 12, "NAME THIS CHARACTER:", DARK_BLUE, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -2288,6 +2326,9 @@ long do_save(long arg1)
 	x2loc = allbuttons[arg1-1]->width + xloc;
 	y2loc = allbuttons[arg1-1]->height + yloc + 10;
 	myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
+	
+	myscreen->clearfontbuffer(xloc,yloc,x2loc-xloc,y2loc-yloc);
+	
 	savetext.write_xy(xloc+5, yloc+4, "NAME YOUR SAVED GAME:", DARK_BLUE, 1);
 	strcpy(save_file, savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label) );
 	myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
@@ -2900,6 +2941,7 @@ long go_menu(long arg1)
 	if (!ourteam[0])
 	{
 		release_mouse();
+		myscreen->clearfontbuffer(100,65,220-100,125-65);
 		myscreen->draw_dialog(100, 65, 220, 125, "Need a team!");
 		gotext.write_y(89, "Please hire a", DARK_BLUE, 1);
 		gotext.write_y(97, "team before", DARK_BLUE, 1);
@@ -3039,7 +3081,7 @@ long set_player_mode(long howmany)
 		allbuttons[count]->vdisplay();
 		count++;
 	}
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+	//buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	return OK;
 }
@@ -3158,6 +3200,8 @@ long return_menu(long arg)
 	           long *detailmouse;
 
 	           release_mouse();
+
+			myscreen->clearfontbuffer();
 
 	           if (localbuttons)
 		           delete localbuttons;
@@ -3622,6 +3666,8 @@ long return_menu(long arg)
 	           x2loc = 220;
 	           y2loc = 190;
 
+		myscreen->clearfontbuffer(xloc,yloc,x2loc,y2loc);
+
 	           myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
 	           savetext.write_xy(xloc+5, yloc+4, "ENTER LEVEL NUMBER:", DARK_BLUE, 1);
 
@@ -3676,8 +3722,8 @@ long return_menu(long arg)
 	           sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
 	           strcpy(allbuttons[6]->label, message);
 
-	           allbuttons[6]->vdisplay();
-	           myscreen->buffer_to_screen(0, 0, 320, 200);
+	           //allbuttons[6]->vdisplay();
+	           //myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	           return OK;
            }
@@ -3706,8 +3752,8 @@ long return_menu(long arg)
 
 	           strcpy(allbuttons[18]->label, message);
 	           allbuttons[18]->do_outline = 1;
-	           allbuttons[18]->vdisplay();
-	           myscreen->buffer_to_screen(0, 0, 320, 200);
+	           //allbuttons[18]->vdisplay();
+	           //myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	           return OK;
            }
@@ -3728,6 +3774,8 @@ long return_menu(long arg)
 
 	           // Update our button display
 	           sprintf(message, "Hiring For Team %d", current_team_num + 1);
+
+		myscreen->clearfontbuffer(170, 130, 133, 22);
 
 	           strcpy(allbuttons[16]->label, message);
 	           allbuttons[16]->vdisplay();
@@ -3751,8 +3799,8 @@ long return_menu(long arg)
 
 	           // Update our button display
 	           strcpy(allbuttons[7]->label, message);
-	           allbuttons[7]->vdisplay();
-	           myscreen->buffer_to_screen(0, 0, 320, 200);
+	           //buffers: allbuttons[7]->vdisplay();
+	           //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	           return OK;
            }
