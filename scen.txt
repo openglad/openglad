@@ -1,0 +1,456 @@
+Using the Scenario Editor
+
+Overview
+
+The Scenario Editor (SCEN.EXE) is used in Gladiator to create the 
+levels players fight in.  Each scenario, or game level, actually consists 
+of two files: a PIX file, which holds the map or background 
+information, and an FSS file, which contains information about the 
+enemies, treasure, exits, and other special items.  Using the scenario 
+editor, you can modify both files visually, as they will appear in the 
+game.
+
+There are several main functions the scenario editor provides.  These 
+include loading and saving scenario files, modifying the background 
+map (trees, water, walls, etc.), and adding or changing enemy and 
+friendly characters or items.  Each of these will be explained in more 
+detail in the following sections.
+
+For quick help while in the editor, press 'H'.  This will pop up a short 
+list of available commands.  Pressing SPACE will return you to the 
+standard editing mode.
+
+Before You Begin
+
+Before running the scenario editor, make sure that the directory you 
+are running it from corresponds to the directories listed in the glad.cfg 
+file.  The easiest way to insure this is to run the editor from your 
+normal Gladiator directory, and make sure your settings (as specified 
+by setup.exe) match the directory you are using.  So, if you are running 
+GLAD and the scenario editor from C:\GLAD, make sure the 
+directories listed in glad.cfg match correctly.
+
+Creating a New Scenario
+
+The easiest way to create a scenario of your own is to begin with an 
+existing scenario and modify it until you have something you like.  
+The one element of a scenario you can't easily control with the 
+scenario editor is the map dimensions.  Thus, to create a small 
+scenario, load a small scenario, such as level one; to create a large 
+scenario, load a larger scenario, such as level 18.
+
+To begin with, let's assume we want to create a level similar to level 1.  
+To load the level, hit L (for Load), then S (for Scenario).  A small box 
+will pop up asking for the scenario name.  The standard scenario 
+naming convention in Gladiator is the word 'SCEN' followed by the 
+number of the scenario.  So in this case, type in "scen1" (without the 
+quotes) and hit return.  After a brief pause, the level should pop up 
+with the background and objects loaded.
+
+Now it's time to make our own version of this scenario.  To avoid any 
+conflicts, we'll call it scenario 99 (because there isn't a scen99 
+currently in Gladiator).  The first thing we need to do is to rename the 
+FSS, or object-layer, file.  To do this, hit N (for New Name), followed 
+by S (for Scenario).  Again, this will pop up a small text-entry box.  By 
+default, the box will display the name of the current scenario (scen1 in 
+our case).  Type in "scen99" and hit return.  Although not much will 
+happen, you should notice the name in the upper right corner of the 
+screen change from SCEN1 to SCEN99.
+
+Next, we need to change the name of the background, PIX, file (so that 
+we don't overwrite what's already there).  Again, hit N for new name, 
+but this time follow it with G (for Grid).  The word GRID is another 
+word we'll use in the scenario editor to mean the background map 
+data.  Finally, type "scen99" again.  This will save a matching map 
+file, which will be automatically saved with the scenario.
+
+Now that we've specified that we're working on a new level, let's make 
+sure to save it!  Hit S (for Save), followed by S (for Scenario).  Saving 
+a scenario will automatically save its associated PIX mapfile.  If you 
+ever want to save the map file without saving the rest of the data, just 
+hit S for save, then G for Grid.
+
+A Brief Detour: the Screen Layout
+
+Now that we've begun our level editing, let's detour for a bit and take a 
+look at the screen layout.  In general, the scenario editor screen looks 
+much like a one-player Gladiator game.  Most of the screen area -- 
+about the leftmost two thirds -- is devoted to displaying the map as it 
+currently exists.  Along the right edge of the screen, from top to 
+bottom, are:
+  *  Information Box.  This is a large grey box with several lines of 
+     text in it.  These lines, from top to bottom, are:
+        *  The name of the scenario (FSS) file, which will usually 
+           look something like SCEN1.
+        *  The second line is the name of the map (PIX) file used 
+           for the background.
+        *  The current editing mode.  It will either be OBS, which 
+           means you are editing the object layer on the map, or 
+           MAP, which means you are editing the map background 
+           -- changing the tiles.
+        *  The team number and object you are ready to place.  This 
+           line will look something like "0:SOLDIER", which 
+           would mean you were ready to place a soldier of team 
+           number 0 (zero).
+        *  The level of the current object you are placing.  
+           Generally, the higher the level number, the more 
+           powerful the object will be.
+        *  The current alignment of object placement.  It will either 
+           be ON, which means objects will be placed in a grid; 
+           OFF, which means objects may be placed randomly; or 
+           STACK, which means many objects can be placed on top 
+           of each other.
+        *  The Object count.  In a rough way, this will display the 
+           number of objects in a level.  It gets confused easily, and 
+           should be used just for rough estimates (don't place 500 
+           objects!).
+  *  Selected tile display.  Below the information box, a map tile will 
+     "float" on the screen.  This is the tile you are going to draw onto 
+     the map, when in map-editing mode.
+  *  Tile selection box.  This is a four-by-four box which displays map 
+     tiles you can select.  The arrow keys cycle the box up and down 
+     for more choices, while the left mouse button selects a new tile.
+  *  Radar screen.  Like normal Gladiator, this will show you a 
+     miniature representation of the level map.
+
+Back to Designing
+
+Okay, now that we have level 99 set up to edit, let's get to work!  As a 
+quick note, if you need to come back to this later, just load the level by 
+pressing L (for load), S (for scenario), and then scen99 as the name to 
+load.
+
+The first thing to do, generally, is to remove any objects already on the 
+map, as they just clutter things up.  To do this, we'll introduce the first 
+"Magic Key" of the scenario editor.  Press Control-D (CONTRL plus 
+D), and all the objects will be deleted.  This gives us a fresh map to 
+start work on.
+
+The second thing to do is to change to map mode.  If you look at the 
+grey information box in the upper right, you'll probably see a line 
+which reads, "MODE: OBS".  This means you're currently in object 
+editing mode.  To switch to background (map) editing mode, press M.  
+The line should now read, "MODE: MAP".  Pressing M will toggle 
+back and forth between the two modes.
+
+Now that we're ready to edit the map, take a look at the currently 
+selected tile, which is beneath the information box.  It's probably 
+something like a wall piece, but it really doesn't matter.  Click the left 
+mouse button somewhere on the main map area, and you should 
+replace the current tile -- grass, tree, water, or whatever -- with 
+whatever you have selected.  You can drag the mouse around to make 
+patterns of the tiles.  If you need to move the screen view, just move 
+the mouse to any edge of the screen, and it will scroll in that direction.
+
+After a bit of this, you'd probably rather put down something more 
+useful!  To do this, you use the tile selection box, which is underneath 
+your currently selected tile.  It is a four by four box of background tiles 
+you can choose from, and is probably filled with different types of 
+grass.  Clicking the left mouse button on any of these pieces will select 
+it as the current drawing tile, kind of like a paint program.  Try 
+choosing some normal grass and smearing it around the map.  Since 
+there are more than 16 background tiles in Gladiator, you can't see 
+them all at once.  To scroll the selection box to see more choices, use 
+the UP or DOWN arrow keys.  This will display all the possible 
+backgrounds you can paint with.
+
+Sometimes a piece you want is already located on the map view.  
+Rather than having to scroll through the selection box, you can right 
+click on a map tile, and it will become the selected piece (kind of like 
+the eyedropper tool in art programs).  This can be especially useful if 
+you have buildings or trees you want to replicate, each with several 
+sets of tiles (upper left, upper middle, upper right...).
+
+Finally, when editing the background map, you'll notice that many 
+times when you put down a tile, the computer will "smooth" the tile 
+and its surrounding area automatically.  For example, if you put down 
+a "piece" of forest, the editor will attempt to blend the tiles so that the 
+image looks visually correct.  Similarly, water tiles will attempt to 
+round themselves out.  Most of the time, the computer's choices will be 
+correct.  From time to time, however, you'll want to put down exactly 
+the piece you have selected, without worrying about "smoothing."  To 
+stop the auto-smoothing, hold down control while placing your tiles.  
+This will cause the tile to be placed exactly as it appears.
+
+That's it as far as map editing goes!  Remember to save the scenario 
+frequently as you edit it (S, S) so that you can go back to earlier 
+versions.  After you have a basic map layout, it's time to start placing 
+objects.  You can always switch back to map editing later, even after 
+adding objects, but getting a basic map design down first usually 
+makes things easier.
+
+Adding Objects - Populating the Level
+
+Objects of all types -- enemies, treasure, potions, teleporters -- are 
+what really make a level come alive.  Although the placing of objects 
+is more complicated than background map editing, once you've 
+learned the basic operation, you should have no problem placing the 
+objects of your choice.
+
+Information about what type of object you have selected will be 
+displayed in the information box in the upper right corner.  The most 
+important line here consists of an object's team number followed by the 
+object name.  For example, the scenario editor will start out with a 
+soldier on team zero, which look like:
+	0:SOLDIER
+The team number of an object is one of its most important attributes.  
+Any "living" object, such as a soldier or archer, will fight according to 
+its team number.  For example, the soldier on team zero will attack 
+anyone he encounters who is on a different team than he is.  By 
+default, team zero is always the player's team in Gladiator -- anyone 
+you put down who is on team zero will help the player, and can be 
+controlled by him, while all other teams will be enemies.  To specify 
+the team number of your object "pen," press the number keys, 0 
+through 7.  As you probably know, each team gets its own color -- 
+team zero is red, team one is green, etc.
+
+Enemies and Allies
+
+Let's try placing a few objects down.  First, make sure you're in object 
+editing mode -- the display should say "MODE: OBS."  If it doesn't, 
+press M until it does.  Then, basically, just left click on the map 
+somewhere.  If nothing happens, make sure you're clicking on 
+passable terrain, such as grass or dirt.  Because Gladiator characters 
+can't swim, the scenario editor won't normally let you place objects in 
+the water, over trees, or straddling walls.
+
+Assuming you've hit a clear area, a soldier should appear.  If you 
+haven't changed the team number, he'll be red -- a friendly unit.  Just 
+as you can drag the mouse to draw map tiles, you can also, if you wish, 
+drag the mouse around to draw lines of soldiers.
+
+Changing Object Type: Of course, if all you ever placed was soldiers, 
+things wouldn't be very interesting!  To cycle through the list of 
+available troop types, click the right mouse button (make sure you're in 
+object mode).  The display should change from something like 
+"0:SOLDIER" to "0:ELF".  Each time you right-click the mouse, you'll 
+cycle through the list of troops.  Eventually, the list will cycle back to 
+soldier again.  Now you can place a variety of characters down on the 
+battlefield.
+
+Changing Team: Most of the time you place characters, however, you 
+don't want to help the player - you want to give them some 
+opposition!  And right now, we're just placing "good" characters - 
+they're all on team zero!  Remember that if we want to put down 
+enemies, they need to be on team number one or higher.  Try changing 
+the team number of the currently selected object (press the number 
+keys 1 through 7) and placing more characters.  Now we have some 
+enemies!
+
+Changing Level: Even with a variety of enemies, however, your level 
+won't be very tough if all the opponents are level 1 wimps!  We need 
+to raise the difficulty - say, to around 3rd or 4th level.  To do this, 
+press the left and right brackets ( [, ] ).  Pressing the left bracket will 
+lower the level of the currently selected object; pressing the right 
+bracket will raise it.  Press the right bracket until the line listing the 
+current level shows 3 or 4 (it should look like LVL: 4) and place a few 
+more troops.  They will look the same, but these troops will be tougher 
+than the first ones.  Note that changing the level only affects new 
+troops you place - so anyone you placed who was level 1 will remain 
+that way.
+
+Adding a Name: Sometimes it can be fun to name some of the 
+enemies - give the level some flavor.  To do this, hold down the R 
+key (for Rename) and left click a character.  Now you can type the new 
+name of the character, with a few restrictions: the name cannot 
+contain spaces, and it must be no more than eight characters!  If you 
+try to enter a name longer than 8 characters, Very Bad Things may 
+occur.  After you've hit return, a small information box will pop up to 
+show the new name of the character.
+
+Getting Information: So now you've placed a few troops with 
+different levels, but you can't tell who's-who!  We need a way to 
+inspect a character to see what level he is, what team he belongs to, 
+etc.  To do this, hold down the I key (this stands for "Information") 
+and left click on a character.  This should bring up a small information 
+box which will list the vital statistics of the object, including its level.
+
+Toggling Alignment: Most of the time when you place objects and 
+characters onto a scenario map, you'd like them to line up - this 
+makes it easier to create groups of enemies, place treasures, etc.  
+Sometimes, however, a different effect is desired, and for that, 
+Gladiator has three types of alignment offered.  The current alignment 
+style is listed in the information box on the line which will read 
+"ALIGN: ON".  To change alignment mode, press G (for Grid 
+Alignment).  The modes are:
+  *  ON:    Objects won't overlap, and will always fit to an 
+            invisible grid the same size as the background tiles.
+  *  OFF:   Objects can overlap and "smear" to a large degree.  
+            Drawing in this mode can be dangerous, as you can quickly 
+            accumulate hundreds of overlapping objects.
+  *  STACK: Objects can overlap, but will do so slowly.  This is 
+            the best way to create "piles" of gold, food, or treasure.
+
+Removing Objects:  So now we've added various characters, and set 
+their levels.  But now we want to remove that row of level 1 elves who 
+just won't cut it.  To remove an object, hold down the CONTROL key 
+and left click the object.  If you have problems getting the object to 
+vanish, try toggling the alignment to a different mode - this will 
+often fix the problem.  Using the CONTROL key, you can delete any 
+objects you don't want.  Remember that if you want to delete all the 
+objects on a level, you can use the CONTROL-D combination to do it 
+all at once.
+
+That's all there is to adding enemies to a level!  To find out how to 
+add other objects, specify character starting location, and other 
+information, read on.
+
+Cycling Through Object Types
+
+To get to other kinds of objects you can place in the scenario editor, 
+you need to cycle through the supported list.  To do this, hit the letter 
+O (for Object Type) and watch the word that appears after the number 
+on the team-number/object line (ie, 0:SOLDIER).  Repeatedly pressing 
+O will take you through the five types of objects you can place in the 
+scenario editor: living objects, monster generators, player markers, 
+treasure items, and weapons.
+
+Just like when placing characters on the map, right clicking the 
+mouse will cycle through the type of object available in the current 
+category.  For example, press O until the display reads something like 
+"0:TENT."  This means you have a skeleton tent selected - skeleton 
+tents will "create" more skeletons during the course of the level.  Now 
+click the right mouse button.  The word "tent" should change to 
+"tower," indicating that you've now selected a mage tower instead of a 
+skeleton tent.  All type selection will work like this, in any object 
+category.
+
+Placing Generators
+Remember to use the brackets to set the level before you place the exit!  
+Generators are objects which create more enemies during the course of 
+a level.  For example, a tent will generate skeletons.  The level of the 
+generator determines the level of monsters it creates.  For example, a 
+level 3 tent will create level 3 skeletons.  Additionally, higher level 
+generators are harder for players to destroy.
+
+Other types of generators in Gladiator include towers, which create 
+mages; bonepiles, which create ghosts; and treehouses, which create 
+elves.
+
+Placing Player Markers
+
+Player markers are what determines where a player's team starts out 
+on the level.  Remember, just placing characters of team zero will give 
+the players assistance, but won't reserve any areas for their own team 
+members.
+
+Each player marker looks like a large square, about two by two tiles 
+large.  Each player marker you put down will allow one team member 
+to show up at that location at the beginning of the level.  Putting down 
+too many markers won't hurt - they'll just "vanish" when the level 
+begins.  Putting down too few markers, however, will restrict the 
+number of team members who can fight in the level.  For example, if a 
+player has a team of 20 troops, but you only put down 10 markers, 
+only the first 10 troops will actually appear in the level.
+
+Currently, the team number of a player marker has no effect in the 
+game - all the player troops are considered to be on team zero.  
+Eventually, when we get player-v-player play implemented, a team 
+number 4 marker will work only for player number 4, etc.
+
+Placing Treasure
+
+Treasure of all types is often what makes levels worth playing.  In 
+general, the level of a treasure determines its potency.  For example, a 
+level 3 drumstick will heal 3 times the hitpoints of a level 1 drumstick.
+
+Some "treasure" items, such as exits, keys, and teleporters, work 
+somewhat differently, and will be explained below.  The standard 
+treasure types, however, include:
+  *  drumstick:  generic food; this will heal the character who 
+                 `eats' it some number of hit points.
+  *  gold:       treasure worth "cash" value; approx. 100 per level
+  *  silver:     treasure worth "cash" value; approx. 50 per level
+  *  magic:      a potion which adds magic points - even above 
+                 maximum - to the character who drinks it
+  *  invis:      a potion which gives limited invisibility to the 
+                 character who drinks it
+  *  invuln:     a potion which gives temporary invulnerability to 
+                 the character who drinks it
+  *  flight:     a potion which gives temporary flight to the 
+                 character who drinks it
+  *  blood:      a bloodspot; used for effect only
+  *  speed:      a potion which adds to a character's movement
+                 rate -- one speed setting per level; try to
+                 avoid values higher than 8!
+
+Placing Exits:  Exits are a special type of treasure - they don't get 
+"eaten," but rather provide a link to the next level once players have 
+defeated all enemies.  If you don't have any exits on your level, the 
+players will "win" as soon as all enemies are dead, and automatically 
+go to the next higher level.  For example, if you're working on level 99 
+and don't place any exits, players will automatically move to level 100 
+when they complete 99.
+
+Exits lead to the level specified by their level, oddly enough, as set by 
+the left and right brackets :)  For example, if you place a level 5 exit, 
+the exit will lead to scenario level 5.  Remember to use the brackets to 
+set the level before you place the exit!  Having several exits on a level, 
+each of which leads to a different level, is no problem, and can make 
+interesting "split" paths for players to follow.  It is also generally a 
+good idea to have an exit leading back to the previous level, where 
+players came from.  This will allow players to retreat back to a safe 
+level (and pick a different path) if they decide your level is too tough 
+for them!
+
+Placing Teleporters:  Teleporters work in groups, based on their 
+level, also.  All teleporters which share the same level will form a loop 
+from A to B to C and back to A again.  For example, say you have two 
+telporters (A and B) of level 1, and 3 more (C, D, and E) of level 2.  A 
+and B will just bounce you to the opposite teleporter - A to B, and B 
+to A.  C, D, and E will form a loop: C goes to D, D goes to E, and E 
+goes back to C again.
+
+If you're not sure if your teleporters are set up properly, save your 
+level, then re-load it.  After doing this, getting information on the 
+object ( press I and left click) will list some information about where 
+the teleporter leads.
+
+One last thing to remember about placing teleporters is to avoid 
+placing them near walls.  This is because large characters may "stick 
+out" over the edge of the teleporter when they arrive.  If they overlap a 
+wall, they will start taking damage - hardly what you want!  So try to 
+leave the eight square surrounding a teleporter passable.  You can 
+always surround it with carpet, wood floors, or other things to make it 
+look special.
+
+Placing Keys:  Keys unlock doors which share their level.  For 
+example, placing a level 2 key will display the message, "Tom picks 
+up key 2," if the character Tom touches the key.  Tom will now be able 
+to unlock any door of level 2.
+
+Note that keys don't vanish - they always stay around, so that many 
+players can pick up the same key.
+
+Placing Weapons
+
+Although weapons show up as one of the types you can put down, 
+there's not usually any reason to do so.  Why?  Because, as you know, 
+weapons have a limited lifetime.  So even if you put a row of fireballs 
+across a path, they'll vanish shortly after the level starts.
+
+The only exception to this is the door weapon.  Why are doors 
+weapons? Don't ask :)  Actually, the main reason for this is so that 
+anyone who is on the door's team may pass through without a key, 
+while all others are blocked.  So, when placing a door, remember:
+  *  If you don't want anyone to be able to pass through, set the 
+     team number to a team not represented on the level.  If you 
+     want players to be able to pass through, set the team number to 
+     zero; if you want the enemy to pass through, set the team 
+     number to that of the enemy.
+  *  Make sure to set the level of the door to that of the key you want 
+     to unlock it, if any.  So if you want your door to be unlocked by 
+     key (level) 3, set the door's level to 3, as well.
+
+Finishing Up
+
+That's basically it!  With this knowledge, you should be able to create, 
+play, and distribute your own levels!  To play the level in Gladiator, 
+make sure the .PIX and .FSS file are in the game directory, and then 
+select "Set Level" from the Continue menu in the picker.  Just enter 
+the level number of your new scenario, and you're set.
+
+Feel free to experiment with other aspects of the scenario editor not 
+listed here, and if you have any questions, please send them to glad-
+reg, or to me at tricket@netcom.com.  Have fun!
+
