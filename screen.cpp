@@ -1243,6 +1243,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
     numobs--;
 
   here = weaplist; //most common case
+  if (here)
   if (here->ob && here->ob == ob) // this is the ob we want
   {
     if (!no_delete)
@@ -1273,6 +1274,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 
 
   here = fxlist; //less common
+  if (here)
   if (here->ob && here->ob == ob) // this is the ob we want
   {
     if (!no_delete)
@@ -1303,6 +1305,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 
 
   here = oblist; //less common
+  if (here)
   if (here->ob && here->ob == ob) // this is the ob we want
   {
     if (!no_delete)

@@ -130,7 +130,6 @@ main(short argc, char **argv)
 //  char soundpath[80];
   long windowx, windowy;
   walker  *newob;
-  long dumbcount;
   long mx, my;
   char mystring[80]; //, someletter;
 //  long pos;
@@ -237,6 +236,8 @@ main(short argc, char **argv)
 
 	//buffers: get keys and stuff
 	get_input_events();
+
+	// Zardus: COMMENT: I went through and replaced dumbcounts with get_input_events. 
 
    // Delete all with ^D
    if (mykeyboard[SDLK_d] && mykeyboard[SDLK_LCTRL])
@@ -359,7 +360,7 @@ main(short argc, char **argv)
     scentext->write_xy(52, 32, "New name [G/S] : ", DARK_BLUE, 1);
     myscreen->buffer_to_screen(0, 0, 320, 200);
     while ( !mykeyboard[SDLK_g] && !mykeyboard[SDLK_s] )
-      dumbcount++;
+	    get_input_events();
     if (mykeyboard[SDLK_s])
     {
       myscreen->draw_button(50, 30, 200, 40, 1, 1);
@@ -1021,7 +1022,6 @@ long save_map_file(char  * filename, screen *master)
   FILE  *outfile;
   char my_dir[80] = "e:\\files\\glad\\pix\\";
   char tempdir[80];
-  long dumbcount;
   char buffer[200];
 
   // Do we have a pix directory?
@@ -1045,7 +1045,7 @@ long save_map_file(char  * filename, screen *master)
     scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
     master->buffer_to_screen(0, 0, 320, 200);
     while (!mykeyboard[SDLK_SPACE])
-      dumbcount++;
+	    get_input_events();
     return 0;
   }
 
@@ -1279,7 +1279,6 @@ long save_scenario(char * filename, screen * master, char *gridname)
   char numlines, tempwidth;
   char oneline[80];
   char tempname[12];
-  long dumbcount;
   char buffer[200];
   char scentitle[30];
   short temp_par;
@@ -1327,7 +1326,7 @@ long save_scenario(char * filename, screen * master, char *gridname)
    scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
    master->buffer_to_screen(0, 0, 320, 200);
    while (!mykeyboard[SDLK_SPACE])
-     dumbcount++;
+	   get_input_events();
 
    return 0;
   }
@@ -1598,7 +1597,6 @@ void info_box(walker  *target,screen * myscreen)
   text *infotext = new text(myscreen);
   long linesdown = 0;
   long lm = 25+32;
-  long dumbcount = 0;
   char message[80];
   treasure  *teleporter, *temp;
 
@@ -1683,9 +1681,9 @@ void info_box(walker  *target,screen * myscreen)
 
   // Wait for press and release of ESC
   while (!mykeyboard[SDLK_ESCAPE])
-   dumbcount++;
+	  get_input_events();
   while (mykeyboard[SDLK_ESCAPE])
-   dumbcount++;
+	  get_input_events();
 }
 
 // Set the stats->name value of a walker ..
@@ -1694,7 +1692,6 @@ void set_name(walker  *target, screen * master)
   char newname[10];
   char oldname[20];
   char buffer[200];
-  long dumbcount;
 
   //gotoxy(1,20);
   master->draw_button(30, 30, 220, 70, 1, 1);
@@ -1720,7 +1717,7 @@ void set_name(walker  *target, screen * master)
 
   // wait for key release
   while (mykeyboard[SDLK_r])
-    dumbcount++;
+	  get_input_events();
 
   strcpy(newname, scentext->input_string(115, 62, 9, oldname) );
   newname[10] = 0;
@@ -1736,7 +1733,6 @@ void scenario_options(screen *myscreen)
 {
   static text opt_text(myscreen);
   char *opt_keys = query_keyboard();
-  long dumbcount;
   short lm, tm;
   char message[80];
 
@@ -1772,6 +1768,7 @@ void scenario_options(screen *myscreen)
 
   while (!opt_keys[SDLK_ESCAPE])
   {
+    get_input_events();
     if (opt_keys[SDLK_e]) // toggle exit mode
     {
       if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT) // already set
@@ -1785,7 +1782,7 @@ void scenario_options(screen *myscreen)
         opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : No ", DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
       while (opt_keys[SDLK_e])
-        dumbcount++;
+	      get_input_events();
     }
     if (opt_keys[SDLK_g]) // toggle exit mode -- generators
     {
@@ -1800,7 +1797,7 @@ void scenario_options(screen *myscreen)
         opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): No ", DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
       while (opt_keys[SDLK_g])
-        dumbcount++;
+	      get_input_events();
     }
     if (opt_keys[SDLK_n]) // toggle fail mode -- named guys
     {
@@ -1815,7 +1812,7 @@ void scenario_options(screen *myscreen)
         opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : No ", DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
       while (opt_keys[SDLK_n])
-        dumbcount++;
+	      get_input_events();
     }
     if (opt_keys[SDLK_KP_MINUS]) // lower the par value
     {
@@ -1827,7 +1824,7 @@ void scenario_options(screen *myscreen)
       myscreen->buffer_to_screen(0, 0, 320, 200);
 
       while (opt_keys[SDLK_KP_MINUS])
-        dumbcount++;
+	      get_input_events();
     }
     if (opt_keys[SDLK_KP_PLUS]) // raise the par value
     {
@@ -1839,12 +1836,12 @@ void scenario_options(screen *myscreen)
       myscreen->buffer_to_screen(0, 0, 320, 200);
 
       while (opt_keys[SDLK_KP_PLUS])
-        dumbcount++;
+	      get_input_events();
     }
   }
 
   while (opt_keys[SDLK_ESCAPE])
-    dumbcount++; // wait for key release
+    get_input_events(); // wait for key release
 
 }
 
@@ -1852,7 +1849,6 @@ void scenario_options(screen *myscreen)
 void set_facing(walker *target, screen *myscreen)
 {
   char *setkeys = query_keyboard();
-  long dumbcount = 0;
 
   if (target)
     target = target;  // dummy code
@@ -1861,7 +1857,7 @@ void set_facing(walker *target, screen *myscreen)
   myscreen->buffer_to_screen(0, 0, 320, 200);
 
   while (setkeys[SDLK_f])
-    dumbcount++;
+	  get_input_events();
 
 }
 
@@ -1869,7 +1865,7 @@ void set_facing(walker *target, screen *myscreen)
 // Load a grid or scenario ..
 long do_load(screen *ascreen)
 {
-  long dumbcount, i;
+  long i;
   text *loadtext = new text(ascreen);
   char buffer[200],temp[200];
 
@@ -1932,12 +1928,11 @@ long do_load(screen *ascreen)
 long do_save(screen *ascreen)  // save a scenario or grid
 {
   text *savetext = new text(ascreen);
-  long dumbcount;
   long result = 1;
 
   event = 1;
   while (mykeyboard[SDLK_s])
-    dumbcount++;
+	  get_input_events();
   ascreen->draw_button(50, 30, 200, 40, 1, 1);
   savetext->write_xy(52, 32, "Save [G/S] ", DARK_BLUE, 1);
   ascreen->buffer_to_screen(0, 0, 320, 200);
@@ -1966,7 +1961,7 @@ long do_save(screen *ascreen)  // save a scenario or grid
     else
      save_scenario(scen_name, ascreen, grid_name);
     while (mykeyboard[SDLK_s])
-     dumbcount++;
+	    get_input_events();
   } // end of save scenario
   else if (mykeyboard[SDLK_g]) // save current grid
   {
@@ -1976,7 +1971,7 @@ long do_save(screen *ascreen)  // save a scenario or grid
      //printf("\nError saving map!\n");
      result = 0;
     while (mykeyboard[SDLK_g])
-     dumbcount++;
+	    get_input_events();
   } // end of save grid
 
   if (result)
