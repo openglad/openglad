@@ -7,10 +7,10 @@ all: openglad
 
 
 openglad: $(GLADFILES)
-	g++ $(CFLAGS) -o openglad $(GLADFILES)
+	g++ $(CFLAGS) -o openglad src/$(GLADFILES)
 
 openscen: $(SCENFILES)
-	g++ $(CFLAGS) -DOPENSCEN -o openscen $(SCENFILES)
+	g++ $(CFLAGS) -DOPENSCEN -o openscen src/$(SCENFILES)
 
 clean:
 	rm -f *.o
@@ -18,4 +18,4 @@ clean:
 	rm -f openscen
 
 .cpp.o:
-	g++ -g -p -c $<
+	g++ -g -p -c src/$<
