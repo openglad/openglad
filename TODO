@@ -1,9 +1,4 @@
 * figure out a good fix for grid prob at screen.cpp:376
-* finish phantom stuff in walkputbuffer (Energy Wave and Magic Mace (both special abilities, Mage and Cleric) need it)
-	-buffers: 8/8/02: fixed
-* sound
-	-buffers: 8/16/02: done
-* joystick
-	-Zardus: 8/16/02: implemented (mostly)
-* scrolling in full screen openscen is a bit messed up
-	-Zardus: 8/16/02: workaround (keyboard and minimap scrolling)
+* screen.cpp causes a segfault (if you uncomment line 333) while trying to delete
+  the back array. The segfault is actually in the bmp_surface (SDL_Surface) which
+  makes it segfault while it is freed. This surface is in pixie and pixien.
