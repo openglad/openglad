@@ -775,6 +775,8 @@ int main(int argc, char **argv)
 			quit(1);
 
 	}
+
+	return 0;
 }
 
 long quit(long num)
