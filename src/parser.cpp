@@ -36,7 +36,9 @@ bool cfg_store::parse(const char *filename)
 	ifstream in(filename);
 	if(!in)
 	{
-		//cerr << "could not open config file " << filename << endl;
+		cerr << "Could not open config file. Using defaults." << endl;
+		data["sound"]["sound"] = "off";
+		data["graphics"]["render"] = "normal";
 		return false;
 	}
 	while(std::getline(in, line, '\n'))
