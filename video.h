@@ -35,7 +35,12 @@ class video
                         long portstartx, long portstarty,
                         long portendx, long portendy,
                         unsigned char * sourceptr);
-         void walkputbuffer(long walkerstartx, long walkerstarty,
+	void putbuffer(long tilestartx, long tilestarty,
+			long tilewidth, long tileheight,
+			long portstartx, long portstarty,
+			long portendx, long portendy,
+			SDL_Surface *sourceptr);
+	 void walkputbuffer(long walkerstartx, long walkerstarty,
                             long walkerwidth, long walkerheight,
                             long portstartx, long portstarty,
                             long portendx, long portendy,
@@ -73,6 +78,9 @@ class video
 	SDL_Surface *screen;
 	int screen_width,screen_height;
 	int pdouble, mult;
+
+	//buffers: needed by SDL_CreateRGBSurface
+	Uint32 rmask,gmask,bmask,amask;
 };
 
 #endif
