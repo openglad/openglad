@@ -17,51 +17,13 @@ unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
 video::video()
 {
-  long i;
-
-  save_palette(dospalette);
-  // Load our palettes ..
-  load_and_set_palette("our.pal", ourpalette);
-  load_palette("our.pal", redpalette);
-
-  // Create the red-shifted palette
-  for (i=32; i < 256; i++)
-  {
-    redpalette[i*3+1] /= 2;
-    redpalette[i*3+2] /= 2;
-  }
-
-  load_palette("our.pal", bluepalette);
-
-  // Create the blue-shifted palette
-  for (i=32; i < 256; i++)
-  {
-    bluepalette[i*3+0] /= 2;
-    bluepalette[i*3+1] /= 2;
-  }
-
-  //buffers: PORT: inregs.h.ah = 0x00;
-  //buffers: PORT: inregs.h.al = 0x13;
-  //buffers: PORT: int386(0x10,&inregs,&outregs);
-
-  for (i=0;i<64000;i++) //clear the screen and the buffer on init
-  {
-    videobuffer[i] = 0;
-    videoptr[i] = 0;
-  }
+	SDL_Init(SDL_INIT_VIDEO);
+	screen = SDL_SetVideoMode (640,480, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
 }
 
 video::~video()
 {
-  set_palette(dospalette);
-  
-  //buffers: PORT: inregs.h.ah = 0x00;
-  //buffers: PORT: inregs.h.al = 0x02;
-  //buffers: PORT: int386(0x10,&inregs,&outregs);
-//  delete videobuffer;
-//  delete ourpalette;
-//  delete redpalette;
-//  delete dospalette;  
+	SDL_Quit();
 }
 
 unsigned char * video::getbuffer()
@@ -71,21 +33,11 @@ unsigned char * video::getbuffer()
 
 void video::clearscreen()
 {
-  long i;
-  for (i=0;i<64000;i++)
-  {
-      videoptr[i] = 0;
-  }
-  
+	SDL_FillRect (screen, NULL, SDL_MapRGB (screen->format, 0, 0, 0));
 }
 
 void video::clearbuffer()
 {
-  long i;
-  for (i=0;i<64000;i++)
-  {
-    videobuffer[i] = 0;
-  }
 }
 
 void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, long filled)
@@ -271,26 +223,24 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 }
 
 // Place a point on the screen
-void video::point(long x, long y, unsigned char color)
+void video::point(long x, long y, int r, int g, int b)
 {
-  long spot;
-  spot = (x+(VIDEO_WIDTH*y));
-  if (spot>0 && spot<VIDEO_SIZE)
-    videoptr[spot] = color;
+	int *address = (Uint8 *)screen->pixels + y*screen->pitch +
+		                x * screen->format->BytesPerPixel;
+	int color = SDL_MapRGB(screen->format, r, g, b);
+
+	*address = color;
 }
 
 // Place a horizontal line on the screen.
-void video::hor_line(long x, long y, long length, unsigned char color)
+void video::hor_line(long x, long y, long length, int r, ing g, int b)
 {
-  unsigned long num, i;
+	int i;
 
-  num = x + (VIDEO_WIDTH*y);
-  for (i = 0; i < length; i++)
-  {
-    if (num>0 && num<VIDEO_SIZE)
-      videoptr[num] = color;
-    num ++;
-  }
+	for (i = 0; i < length; i++)
+	{
+		point (x + i, y, r, g, b);
+	}
 }
 
 void video::hor_line(long x, long y, long length, unsigned char color, long tobuffer)
@@ -316,14 +266,12 @@ void video::hor_line(long x, long y, long length, unsigned char color, long tobu
 // Place a vertical line on the screen.
 void video::ver_line(long x, long y, long length, unsigned char color)
 {
-  unsigned long num, i;
-  num = x + (VIDEO_WIDTH*y);
-  for (i = 0; i < length; i++)
-  {
-    if (num>0 && num<VIDEO_SIZE)
-      videoptr[num] = color;
-    num += VIDEO_WIDTH;
-  }
+	int i;
+
+	for (i = 0; i < length; i++)
+	{
+		point (x, y + i, r, g, b);
+	}
 }
 
 void video::ver_line(long x, long y, long length, unsigned char color, long tobuffer)
