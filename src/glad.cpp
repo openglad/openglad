@@ -56,7 +56,10 @@ void glad_main(screen *myscreen, long playermode);
 
 int main(int argc, char *argv[])
 {
-	cfg.parse(get_file_path("openglad.cfg"));
+	char * filepath;
+	filepath = get_file_path("openglad.cfg");
+	cfg.parse(filepath);
+	delete filepath;
 	cfg.commandline(argc, argv);
 	create_dataopenglad();
 

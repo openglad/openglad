@@ -163,6 +163,7 @@ int main(int argc, char **argv)
 	//  long pos;
 	short count;
 	// char buffer[80];
+	char * filepath;
 
 	//Zardus: add: init the input
 	init_input();
@@ -170,7 +171,9 @@ int main(int argc, char **argv)
 	// Zardus: create dirs
 	create_dataopenglad();
 
-	cfg.parse(get_file_path("openglad.cfg"));
+	filepath = get_file_path("openglad.cfg");
+	cfg.parse(filepath);
+	delete filepath;
 
 	// For informational purposes..
 	if (argc > 1 && !strcmp(argv[1], "/?") )

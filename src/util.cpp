@@ -97,9 +97,13 @@ void uppercase(std::string &str)
 FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 {
 	FILE * infile;
+	char * filename = get_file_path(file, pos_dir, attr);
 
-	if ((infile = fopen(get_file_path(file, pos_dir, attr), attr)))
+	if (filename && (infile = fopen(filename, attr)))
+	{
+		delete filename;
                 return infile;
+	}
 
 	// if it got here, it didn't find the file
 	return NULL;
@@ -148,7 +152,7 @@ char * get_file_path(char * file, char * pos_dir, char * attr)
 	if ((infile = fopen(filepath.c_str(), attr)))
 	{
 		fclose(infile);
-		return (char *)filepath.c_str();
+		return strdup(filepath.c_str());
 	}
 #endif
 
@@ -162,7 +166,7 @@ char * get_file_path(char * file, char * pos_dir, char * attr)
 		if ((infile = fopen(filepath.c_str(), attr)))
 		{
 			fclose(infile);
-			return (char *)filepath.c_str();
+			return strdup(filepath.c_str());
 		}
 	}
 
@@ -173,7 +177,7 @@ char * get_file_path(char * file, char * pos_dir, char * attr)
 	if ((infile = fopen(filepath.c_str(), attr)))
 	{
 		fclose(infile);
-		return (char *)filepath.c_str();
+		return strdup(filepath.c_str());
 	}
 
 	// as a last resort, look in ./posdir/file
@@ -182,7 +186,7 @@ char * get_file_path(char * file, char * pos_dir, char * attr)
 	if ((infile = fopen(filepath.c_str(), attr)))
 	{
 		fclose (infile);
-		return (char *)filepath.c_str();
+		return strdup(filepath.c_str());
 	}
 
 	// if it got here, it didn't find the file

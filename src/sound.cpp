@@ -78,22 +78,22 @@ int soundob::init()
 	Mix_AllocateChannels(8);
 
 	// Init the sounds ..
-	strcpy(soundlist[SOUND_BOW],      "sound/twang.wav");
-	strcpy(soundlist[SOUND_CLANG],    "sound/clang.wav");
-	strcpy(soundlist[SOUND_DIE1],     "sound/die1.wav");
-	strcpy(soundlist[SOUND_BLAST],    "sound/blast1.wav");
-	strcpy(soundlist[SOUND_SPARKLE],  "sound/faerie1.wav");
-	strcpy(soundlist[SOUND_TELEPORT], "sound/teleport.wav");
-	strcpy(soundlist[SOUND_YO],       "sound/yo.wav");
-	strcpy(soundlist[SOUND_BOLT],     "sound/bolt1.wav");
-	strcpy(soundlist[SOUND_HEAL],     "sound/heal1.wav");
-	strcpy(soundlist[SOUND_CHARGE],   "sound/charge.wav");
-	strcpy(soundlist[SOUND_FWIP],     "sound/fwip.wav");
-	strcpy(soundlist[SOUND_EXPLODE],  "sound/explode1.wav");
-	strcpy(soundlist[SOUND_DIE2],     "sound/die2.wav"); // registered only
-	strcpy(soundlist[SOUND_ROAR],     "sound/roar.wav"); // reg
-	strcpy(soundlist[SOUND_MONEY],    "sound/money.wav"); // reg
-	strcpy(soundlist[SOUND_EAT],      "sound/eat.wav"); // reg
+	strcpy(soundlist[SOUND_BOW],      "twang.wav");
+	strcpy(soundlist[SOUND_CLANG],    "clang.wav");
+	strcpy(soundlist[SOUND_DIE1],     "die1.wav");
+	strcpy(soundlist[SOUND_BLAST],    "blast1.wav");
+	strcpy(soundlist[SOUND_SPARKLE],  "faerie1.wav");
+	strcpy(soundlist[SOUND_TELEPORT], "teleport.wav");
+	strcpy(soundlist[SOUND_YO],       "yo.wav");
+	strcpy(soundlist[SOUND_BOLT],     "bolt1.wav");
+	strcpy(soundlist[SOUND_HEAL],     "heal1.wav");
+	strcpy(soundlist[SOUND_CHARGE],   "charge.wav");
+	strcpy(soundlist[SOUND_FWIP],     "fwip.wav");
+	strcpy(soundlist[SOUND_EXPLODE],  "explode1.wav");
+	strcpy(soundlist[SOUND_DIE2],     "die2.wav"); // registered only
+	strcpy(soundlist[SOUND_ROAR],     "roar.wav"); // reg
+	strcpy(soundlist[SOUND_MONEY],    "money.wav"); // reg
+	strcpy(soundlist[SOUND_EAT],      "eat.wav"); // reg
 
 	for (i=0; i < NUMSOUNDS; i++)
 	{
@@ -117,13 +117,15 @@ int soundob::init()
 
 void soundob::load_sound(Mix_Chunk **audio, char * file)
 {
-	string path(get_file_path(file));
-	*audio = Mix_LoadWAV(path.c_str());
+	char * filepath;
+	filepath = get_file_path(file, "sound/");
+	*audio = Mix_LoadWAV(filepath);
 	if(!*audio)
 	{
 		printf("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
 		exit(0);
 	}
+	delete filepath;
 
 	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
 }
