@@ -43,9 +43,9 @@ char ourcolors[] = {
 int main(char argc, char **argv)
 {
 	FILE *file;
-	unsigned char numframes,x,y;
+	unsigned char numframes, x, y, curcolor;
 	unsigned char *data;
-	int i, j;
+	int i, j, sizex, sizey;
 	int frame = 1, mult = 3, done = 0, redowindow = 1, redopicture = 1;
 	SDL_Surface *pixie;
 	SDL_Event event;
@@ -78,7 +78,11 @@ int main(char argc, char **argv)
 	{
 		if (redowindow)
 		{
-			pixie = SDL_SetVideoMode (x * mult, y * mult, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+			sizex = x + 16; sizey = y;
+			if (sizey < 64) sizey = 64;
+
+			pixie = SDL_SetVideoMode (sizex * mult, sizey * mult, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+			redopicture = 1;
 			redowindow = 0;
 		}
 
@@ -108,7 +112,34 @@ int main(char argc, char **argv)
 					SDL_FillRect(pixie,&rect,c);
 				}
 			}
-			SDL_UpdateRect(pixie,0,0,x * mult, y * mult);
+
+			for (i = 0; i < 32; i++)
+			{
+				for (j = x; j < x + 8; j++)
+				{
+					SDL_Rect rect;
+					int r, g, b, c, d;
+
+					d = i * 8 + (j - x);
+					r = ourcolors[d * 3] * 4;
+					g = ourcolors[d * 3 + 1] * 4;
+					b = ourcolors[d * 3 + 2] * 4;
+
+					rect.x = x * mult + (j - x) * mult * 2;
+					rect.y = i * mult * 2;
+					rect.w = mult * 2;
+					rect.h = mult * 2;
+
+					printf("Making color at %i, %i\n", rect.x, rect.y);
+
+					c = SDL_MapRGB(pixie->format, r, g, b);
+
+					SDL_FillRect(pixie,&rect,c);
+				}
+			}
+
+			SDL_UpdateRect(pixie,0,0,sizex * mult, sizey * mult);
+			redopicture = 0;
 		}
 
 		SDL_WaitEvent(&event);
@@ -142,6 +173,24 @@ int main(char argc, char **argv)
 						break;
 					default:
 						break;
+				}
+				break;
+			case SDL_MOUSEBUTTONDOWN:
+				if (event.button.x >= x * mult)
+				{
+					int mousex = event.button.x;
+					int mousey = event.button.y;
+					mousex -= x * mult;
+					mousex /= (mult * 2);
+					mousey /= (mult * 2);
+					curcolor = mousey * 8 + mousex;
+				}
+				else
+				{
+					int spot;
+					spot = (event.button.y / mult) * x + (event.button.x / mult);
+					data[spot] = curcolor;
+					redopicture = 1;
 				}
 				break;
 			default:
