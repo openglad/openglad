@@ -88,7 +88,8 @@
 
 
 void change_time(unsigned long new_count);
-void __interrupt increment_timer();
+
+//buffers: PORT: doesnt compile void __interrupt increment_timer();
 void grab_timer();
 void release_timer();
 void reset_timer();
@@ -97,7 +98,7 @@ unsigned long query_timer_control();
 
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.
-void __interrupt key_int();           // called on press/release
+//buffers: PORT: doesnt compile void __interrupt key_int();           // called on press/release
 short query_key();                                                            // return last keypress
 void clear_keyboard();                                              // set keyboard to none pressed
 char * query_keyboard();                                    // keyboard status
