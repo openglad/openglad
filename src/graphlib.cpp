@@ -20,7 +20,6 @@
 	buffers: 7/31/02: *include cleanup
 	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_f			   ile
 */
-#include <config.h>
 #include "graph.h"
 #include "gladpack.h"
 #include <string>
