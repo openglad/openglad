@@ -1,12 +1,5 @@
-* glad.cpp:640 - get strcpy to not segfault when copying name
-	- buffers: FIXED: 7/19/02
-* get radar working
-	- buffers: FIXED: 7/19/02
 * figure out a good fix for grid prob at screen.cpp:376
 * finish phantom stuff in walkputbuffer
-* get input code to work right for multiplayer (ie, right from the start)
-	- Zardus: FIXED: 7/19/02
 * sound
 * joystick
-* get the damn boomerang respawn bug sorted out
-	- Zardus: FIXED: 7/19/02
+* scrolling in full screen openscen is a bit messed up
