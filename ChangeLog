@@ -1,6 +1,8 @@
 ChangeLog
 
 Since 0.1:
+	08/16/2002:
+		Zardus: joysticks work!
 	08/09/2002:
 		Zardus: replaced finish in intro.cpp with proper code
 	Prior to 08/09/2002:
