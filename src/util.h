@@ -35,17 +35,28 @@ long query_timer_control();
 
 // Zardus: add: lowercase func
 void lowercase(char *);
+
 // kari: lowercase for std::strings
 void lowercase(std::string &);
+
 //buffers: add: uppercase func
 void uppercase(char *);
+
 // kari: uppercase for std::strings
 void uppercase(std::string &);
+
 // Zardus: add: set_mult func
 void set_mult(int);
+
 // Zardus: for easy (and more portable) finding of files
 FILE * get_misc_file(char *, char *, char *);
 FILE * get_misc_file(char *, char *);
 FILE * get_misc_file(char *);
+
 // Zardus: create openglad data dirs:
 void create_dataopenglad();
+
+// Zardus: get a file path (portable and easy)
+char * get_file_path(char *, char *, char *);
+char * get_file_path(char *, char *);
+char * get_file_path(char *);

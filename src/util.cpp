@@ -93,14 +93,6 @@ FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 	FILE * infile;
 	string filepath(file);
 
-	// Zardus: lets not search in current dir. Ugly and unneeded
-	/* if ((infile = fopen(file, "rb")))
-		return infile;
-	
-	filepath = pos_dir + filepath;
-	if ((infile = fopen(filepath.c_str(), attr)))
-		return infile; */
-
 	filepath = getenv("HOME");
 	filepath += "/.openglad/";
 	filepath += pos_dir;
@@ -145,4 +137,38 @@ void create_dataopenglad()
 	mkdir(path.c_str(), 0755);
 	path.replace(subdirpos, path.end(), "sound/", 5);
 	mkdir(path.c_str(), 0755);
+}
+
+char * get_file_path(char * file, char * pos_dir, char * attr)
+{
+	FILE * infile;
+	string filepath(file);
+
+	filepath = getenv("HOME");
+	filepath += "/.openglad/";
+	filepath += pos_dir;
+	filepath += file;
+
+	if ((infile = fopen(filepath.c_str(), attr)))
+		return (char *)filepath.c_str();
+
+	filepath = DATADIR;
+	filepath += pos_dir;
+	filepath += file;
+
+	if ((infile = fopen(filepath.c_str(), attr)))
+		return (char *)filepath.c_str();
+
+	// if it got here, it didn't find the file
+	return NULL;
+}
+
+char * get_file_path(char * file, char * pos_dir)
+{
+	return get_file_path(file, pos_dir, "rb");
+}
+
+char * get_file_path(char * file)
+{
+	return get_file_path(file, "", "rb");
 }

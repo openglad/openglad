@@ -29,9 +29,12 @@
 #include "soundob.h"
 #include "SDL_mixer.h"
 #include <string>
+#include "util.h"
 using namespace std;
 
 //#define SOUND_DB   0 // define for debugging messages
+
+char * get_file_path(char * file);
 
 
 soundob::soundob()
@@ -115,20 +118,12 @@ int soundob::init()
 
 void soundob::load_sound(Mix_Chunk **audio, char * file)
 {
-	string path(getenv("HOME"));
-	path += "/.openglad/";
-	path += file;
+	string path(get_file_path(file));
 	*audio = Mix_LoadWAV(path.c_str());
 	if(!*audio)
 	{
-		path = DATADIR;
-		path += file;
-		*audio = Mix_LoadWAV(path.c_str());
-		if(!*audio)
-		{
-			printf("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
-			exit(0);
-		}
+		printf("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
+		exit(0);
 	}
 
 	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
