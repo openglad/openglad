@@ -28,7 +28,7 @@ class Screen
 
 	protected:
 	public:
-		Screen( RenderEngine engine );
+		Screen( RenderEngine engine, int fullscreen );
 
 		void Quit();
 

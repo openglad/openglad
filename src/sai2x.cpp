@@ -672,7 +672,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 
 /////////////////////////////////
 //
-Screen::Screen( RenderEngine engine )
+Screen::Screen( RenderEngine engine, int fullscreen)
 {
 	int tx,ty;
 	Engine=engine;
@@ -698,7 +698,10 @@ Screen::Screen( RenderEngine engine )
 		ty=200;
 		break;
 	}
-	render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF);
+	if(!fullscreen)
+		render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF);
+	else
+		render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF|SDL_FULLSCREEN);
 	if(Engine != DOUBLE)
 		screen=SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
 	else

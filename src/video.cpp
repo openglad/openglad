@@ -16,19 +16,6 @@
  */
 // Video object code
 
-/* ChangeLog
-	buffers: 7/31/02: 
-		*include cleanup
-	buffers: 8/8/02: 
-		*fixed bug in pointb that caused it to not draw correctly when
-		 pixel doubling was off
-		*ugly fix for the cleric's hammer drawing problems. see second
-		 get_pixel func for more details
-		*SDL creates a 24bit window now. fixes all current PHANTOM_MODE 
-		 bugs
-	buffers: 8/16/02:
-		*optimized the SHIFT_RANDOM code a bit...
-*/
 #include "graph.h"
 #include "sai2x.h"
 
@@ -56,6 +43,11 @@ video::video()
 	int pixel;
 	RenderEngine render;
 
+	qresult = cfg.query("graphics","fullscreen");
+	if(qresult && strcmp(qresult,"on")==0)
+		fullscreen = 1;
+	else
+		fullscreen = 0;
 
 	qresult = cfg.query("graphics", "render");
 	if(qresult && strcmp(qresult, "normal")==0) {
@@ -113,7 +105,7 @@ video::video()
 	SDL_SetColorKey(fontbuffer,SDL_SRCCOLORKEY,fontcolorkey);
 	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
 	
-	E_Screen = new Screen(render);
+	E_Screen = new Screen(render,fullscreen);
 
 /*
 #ifndef OPENSCEN
