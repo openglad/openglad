@@ -1,6 +1,6 @@
 # Process this file with autoconf to produce a configure script.
-AC_INIT(openglad, 0.97)
-AM_INIT_AUTOMAKE(openglad, 0.98)
+AC_INIT(openglad, 0.98.1)
+AM_INIT_AUTOMAKE(openglad, 0.98.1)
 AC_CONFIG_SRCDIR(src/glad.cpp)
 AM_CONFIG_HEADER(src/config.h)
 
