@@ -4,7 +4,7 @@
 
 extern long costlist[NUM_FAMILIES];  // These come from picker.cpp
 extern long statcosts[NUM_FAMILIES][6];
-int matherr(struct exception *);
+// Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
 int MAX(int a,int b)
 {
@@ -273,21 +273,22 @@ long guy::query_heart_value() // how much are we worth?
 
 }
 
-int matherr(struct exception *problem)
-{
-  char message[80];
-  // If we're a "pow" function with a <0 domain,
-  // just ignore it:
-  if (!strcmp("pow", problem->name) && problem->arg1 < 0)
-  {
-    problem->type = 0;
-    problem->retval = 0;
-    return 0;
-  }
-  // Otherwise, do nothing, but print a message
-  sprintf(message, "Error: %s (%d, %d)", problem->name,
-    problem->arg1, problem->arg2);
-  myscreen->do_notify(message, NULL);
-  return 0;
-}
+// Zardus: PORT: still no exception struct
+//int matherr(struct exception *problem)
+//{
+//  char message[80];
+//  // If we're a "pow" function with a <0 domain,
+//  // just ignore it:
+//  if (!strcmp("pow", problem->name) && problem->arg1 < 0)
+//  {
+//    problem->type = 0;
+//    problem->retval = 0;
+//    return 0;
+//  }
+//  // Otherwise, do nothing, but print a message
+//  sprintf(message, "Error: %s (%d, %d)", problem->name,
+//    problem->arg1, problem->arg2);
+//  myscreen->do_notify(message, NULL);
+//  return 0;
+//}
 
