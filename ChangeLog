@@ -1,6 +1,12 @@
 ChangeLog
 
-Since 0.1:
+.9 - .95:
+	Zardus: game now has much much better file finding, memory fixes,
+		implemented Erik's and Mike's fading code
+	Sean: implemented sai2x and eagle rendering, memory fixes
+	Kari: game is now autoconfed, command line parsing
+	
+0.1 - .9:
 	08/16/2002:
 		Zardus: joysticks work!
 		buffers: sound works w00t
