@@ -1646,7 +1646,7 @@ char* screen::get_scen_title(char *filename, screen *master)
   }
 
   strcpy(tempfile, filename);
-  strcat(tempfile, ".FSS");
+  strcat(tempfile, ".fss");
   // First try to get info from the pack-file ..
   if (scen_opened)
   {
@@ -1721,7 +1721,7 @@ short load_scenario(char * filename, screen * master)
   //strcpy(tempfile, scen_directory);
 
   strcpy(tempfile, filename);
-  strcat(tempfile, ".FSS");
+  strcat(tempfile, ".fss");
   // First try to get info from the pack-file ..
   if (scen_opened)
   {
