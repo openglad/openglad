@@ -12,6 +12,11 @@ Linux/FreeBSD/OpenBSD/Other Unixes
 2. Run "make"
 3. Run "make install"
 
+Note: if you are installing without use of autoconf,
+you will need to create a config.h file with proper
+defines (such as DATADIR), then install Openglad into
+DATADIR.
+
 =======
 Windows
 =======
@@ -20,7 +25,8 @@ edit the paths to the SDL lib/includes. To from the command line, execute
 vcvars32.bat (should be in VC98/) and then execute nmake /f Makefile.vc 
 (or nmake /f Makefile.vc openscen) in the openglad src/ dir. (Thanks Murlock)
 
-
+Note: you will need to create a config.h with the proper defines in it.
+Note2: the game currently crashes on startup in Windows
 
 ===========
 ===========
