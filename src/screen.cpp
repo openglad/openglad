@@ -329,6 +329,7 @@ screen::~screen()
 	change_time(FREQ_NORMAL);
 	release_timer();
 	delete soundp;
+	delete myloader;
 	soundp = NULL;
 	reset(1); //make sure we've cleaned up
 }
