@@ -2,3 +2,5 @@
 * screen.cpp causes a segfault (if you uncomment line 333) while trying to delete
   the back array. The segfault is actually in the bmp_surface (SDL_Surface) which
   makes it segfault while it is freed. This surface is in pixie and pixien.
+
+* make MAX_LEVELS matter when saving and loading games
