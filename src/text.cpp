@@ -21,6 +21,8 @@ void get_input_events(bool);
 text::text(screen * myscreen)
 {
 	letters = (unsigned char *) read_pixie_file(TEXT_1);
+	if(!letters)
+		printf("letters is NULL\n");
 	sizex = letters[1];
 	sizey = letters[2];
 	letters = letters+3;
@@ -253,7 +255,7 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, (unsigned char) color);
 
-	screenp->walkputbuffer(x, y, sizex, sizey, 0, 0, 319,199, (unsigned char*) &letters[letter * sizex * sizey], (unsigned char) color);
+	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, (unsigned char*) &letters[letter * sizex * sizey], (unsigned char) color);
 	//screenp->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -263,20 +265,20 @@ short text::write_char_xy(short x, short y, char letter, short to_buffer)
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, (unsigned char) DEFAULT_TEXT_COLOR);
 
-	screenp->walkputbuffer(x, y, sizex, sizey, 0, 0, 319,199, (unsigned char*) &letters[letter * sizex * sizey], (unsigned char) DEFAULT_TEXT_COLOR);
+	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, (unsigned char*) &letters[letter * sizex * sizey], (unsigned char) DEFAULT_TEXT_COLOR);
 	//screenp->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter, unsigned char color)
 {
-	screenp->putdata(x, y, sizex, sizey, (unsigned char *) &letters[letter *sizex*sizey], (unsigned char) color);
+	screenp->putdatatext(x, y, sizex, sizey, (unsigned char *) &letters[letter *sizex*sizey], (unsigned char) color);
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter)
 {
-	screenp->putdata(x, y, sizex, sizey, (unsigned char *) &letters[letter *sizex*sizey]);
+	screenp->putdatatext(x, y, sizex, sizey, (unsigned char *) &letters[letter *sizex*sizey]);
 	return 1;
 }
 
@@ -284,9 +286,9 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
 	if (!whereto)
-		screenp->putdata(x, y, sizex, sizey, (unsigned char *)&letters[letter *sizex*sizey], (unsigned char) color);
+		screenp->putdatatext(x, y, sizex, sizey, (unsigned char *)&letters[letter *sizex*sizey], (unsigned char) color);
 	else
-		screenp->walkputbuffer(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+		screenp->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
 		                       (unsigned char *)&letters[letter *sizex*sizey], (unsigned char) color);
 	//         screenp->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
@@ -297,9 +299,9 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
 {
 	if (!whereto)
-		screenp->putdata(x, y, sizex, sizey, (unsigned char *)&letters[letter *sizex*sizey]);
+		screenp->putdatatext(x, y, sizex, sizey, (unsigned char *)&letters[letter *sizex*sizey]);
 	else
-		screenp->walkputbuffer(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+		screenp->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
 		                       (unsigned char *)&letters[letter *sizex*sizey], (unsigned char) DEFAULT_TEXT_COLOR);
 	//         screenp->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
@@ -350,6 +352,9 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 
 	while ( !string_done )
 	{
+		
+		screenp->clearfontbuffer(x,y,maxlength*sizex,sizey);
+	
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event())
 			//dumbcount++;
@@ -363,9 +368,10 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 			strcpy(editstring, firststring);
 			string_done = 1;
 		}
-		else if (tempchar == SDLK_BACKSPACE && current_length)
+		else if (tempchar == SDLK_BACKSPACE && current_length) {
 			editstring[current_length-1] = 0;
-		else if ( (convert_to_ascii(tempchar) != 255) &&
+			
+		} else if ( (convert_to_ascii(tempchar) != 255) &&
 		          (current_length < maxlength) )
 		{
 			if (!has_typed) // first char, so replace text
