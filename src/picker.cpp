@@ -3105,7 +3105,6 @@ long quit(long arg1)
 	picker_quit();
 	release_keyboard();
 	stop_input();
-	SDL_Quit();
 	exit(1);
 	return 1;
 }
