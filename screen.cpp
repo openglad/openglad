@@ -370,7 +370,8 @@ void screen::reset(short howmany)
   if (grid)
   {
     // Zardus: PORT: this segfaults while deleting grid!
-    //memset(grid, '\0', strlen( (const char *) grid));
+    // temp thing: null out the whole thing so that we don't leak more than 1 byte of mem
+    memset(grid, '\0', strlen( (const char *) grid));
     //buffers: commented free() so openglad will cleanly exit
     //free(grid);
     grid = NULL;
