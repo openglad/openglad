@@ -227,15 +227,22 @@ void cycle_palette(char *newpalette, short start, short end, short shift)
 
 void query_palette_reg(unsigned char index, unsigned char &red, unsigned char &green, unsigned char&blue)
 {
- unsigned char tred, tgreen, tblue;
+ 	unsigned char tred, tgreen, tblue;
 
-  //buffers: PORT: outp(PAL_MASK,0xFF);
-  //buffers: PORT: outp(PAL_REG_RD,index);
-  //buffers: PORT: tred   = (unsigned char) inp(PAL_DATA);
-  //buffers: PORT: tgreen = (unsigned char) inp(PAL_DATA);
-  //buffers: PORT: tblue  = (unsigned char) inp(PAL_DATA);
-  
- red = tred; green = tgreen; blue = tblue;
+  	//buffers: PORT: outp(PAL_MASK,0xFF);
+  	//buffers: PORT: outp(PAL_REG_RD,index);
+ 	//buffers: PORT: tred   = (unsigned char) inp(PAL_DATA);
+  	//buffers: PORT: tgreen = (unsigned char) inp(PAL_DATA);
+  	//buffers: PORT: tblue  = (unsigned char) inp(PAL_DATA);
+
+	//buffers: get the RGB values from the current palette
+	//and convert it to the 0-255 range. (its stored using the 0
+	//to 64 range.
+	tred = temppal[index*3]*4;
+	tgreen = temppal[index*3+1]*4;
+	tblue = temppal[index*3+2]*4;
+ 
+ 	red = tred; green = tgreen; blue = tblue;
 }
 
 void set_palette_reg(unsigned char index,unsigned char red,unsigned char green,unsigned char blue)
