@@ -139,14 +139,14 @@ void handle_events(SDL_Event *event)
 				mouse_state[MOUSE_RIGHT] = 1;
 			break;
 		case SDL_JOYAXISMOTION:
-			if (event->jaxis.value > 0)
+			if (event->jaxis.value > 1)
 			{
 				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 1;
 				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 0;
 				key_press_event = 1;
 				raw_key = joy_startval[event->jaxis.which] + event->jaxis.axis * 2;
 			}
-			else if (event->jaxis.value < 0)
+			else if (event->jaxis.value < -1)
 			{
 				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 0;
 				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 1;
