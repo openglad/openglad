@@ -26,6 +26,9 @@
 #include <string.h> //buffers: for strlen
 #include <malloc.h>
 #include <string>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 unsigned long start_time=0;
 unsigned long reset_value=0;
@@ -125,4 +128,21 @@ FILE * open_misc_file(char * file, char * pos_dir)
 FILE * open_misc_file(char * file)
 {
 	return open_misc_file(file, "", "rb");
+}
+
+void create_dataopenglad()
+{       
+	string path(getenv("HOME"));
+	path += "/.openglad/";
+	mkdir(path.c_str(), 0755);
+	path.reserve(path.size()+10);
+	string::iterator subdirpos = path.end();
+	path += "pix/";
+	mkdir(path.c_str(), 0755);
+	path.replace(subdirpos, path.end(), "scen/", 4);
+	mkdir(path.c_str(), 0755);
+	path.replace(subdirpos, path.end(), "save/", 5);
+	mkdir(path.c_str(), 0755);
+	path.replace(subdirpos, path.end(), "sound/", 5);
+	mkdir(path.c_str(), 0755);
 }

@@ -43,6 +43,9 @@ void uppercase(char *);
 void uppercase(std::string &);
 // Zardus: add: set_mult func
 void set_mult(int);
+// Zardus: for easy (and more portable) finding of files
 FILE * get_misc_file(char *, char *, char *);
 FILE * get_misc_file(char *, char *);
 FILE * get_misc_file(char *);
+// Zardus: create openglad data dirs:
+void create_dataopenglad();

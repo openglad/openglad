@@ -26,6 +26,7 @@ smoother * mysmoother;
 #include <time.h>
 #include "parser.h"
 #include <string>
+#include "util.h"
 using namespace std;
 
 // Z's script: #include <process.h>
@@ -51,30 +52,9 @@ void draw_gem(short x, short y, short color, screen * myscreen);
 unsigned char *radarpic;
 pixie *radarpix;
 
-void get_input_events(bool);
+void create_dataopenglad();
 
 void glad_main(screen *myscreen, long playermode);
-
-// openscen should do this too.  this should be moved elsewhere.
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-static void create_dotopenglad()
-{
-	string path(getenv("HOME"));
-	path += "/.openglad/";
-	mkdir(path.c_str(), 0755);
-	path.reserve(path.size()+10);
-	string::iterator subdirpos = path.end();
-	path += "pix/";
-	mkdir(path.c_str(), 0755);
-	path.replace(subdirpos, path.end(), "scen/", 4);
-	mkdir(path.c_str(), 0755);
-	path.replace(subdirpos, path.end(), "save/", 5);
-	mkdir(path.c_str(), 0755);
-	path.replace(subdirpos, path.end(), "sound/", 5);
-	mkdir(path.c_str(), 0755);
-}
 
 int main(int argc, char *argv[])
 {
@@ -82,7 +62,7 @@ int main(int argc, char *argv[])
 	homecfg += "/.openglad/openglad.cfg";
 	cfg.parse(homecfg.c_str());
 	cfg.commandline(argc, argv);
-	create_dotopenglad();
+	create_dataopenglad();
 
 	myscreen = new screen(1);
 
