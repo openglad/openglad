@@ -1,7 +1,7 @@
 #ifndef MOM_SCREEN
 #define MOM_SCREEN
 
-#include <SDL/SDL.h>
+#include <SDL.h>
 
 //#include "global.h"
 
