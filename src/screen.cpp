@@ -329,8 +329,8 @@ screen::~screen()
 		if(pixdata[i])
 			delete pixdata[i];
 		// Zardus: FIXME: this should be here cause it leaks, but this makes it segfault
-		//if (back[i])
-		//	delete back[i];
+		if (back[i])
+			delete back[i];
 	}
 
 	soundp = NULL;
