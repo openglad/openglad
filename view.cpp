@@ -43,10 +43,8 @@ void get_input_events();
 
 // Now define the arrays with their default values
 static char key1[] = {
-//  SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
-//  SDLK_DOWN, SDLK_END, SDLK_LEFT, SDLK_HOME,
-  SDLK_a, SDLK_b, SDLK_c, SDLK_d,
-  SDLK_e, SDLK_f, SDLK_g, SDLK_h,
+  SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
+  SDLK_DOWN, SDLK_END, SDLK_LEFT, SDLK_HOME,
   SDLK_INSERT, SDLK_RETURN,                    // fire & special
   SDLK_KP_PLUS,                          // switch guys
   SDLK_KP_MINUS,                         // change special

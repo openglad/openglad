@@ -1,0 +1,19 @@
+This file contains the latest development notes.
+
+Breaking news:
+
+Scenario no longer segfaults on start. I fixed the outline thing and
+tracked down the bug in strcpy to glad.cpp (or maybe game.cpp), line
+633 (iirc). I commented out the two strcpy's that segfaulted it, but
+they were the two lines that were supposed to draw (or at least set
+the string) the char's name to the top-left corner of the screen, so
+the name is garbage currently.
+
+There was also a segfault on ai commands in stats.cpp line 1009, and
+I think it was also a NULL pointer issue, so I put in a check. I also
+got the in-scenario menu to be fully functional. It even lets you set
+keys.
+
+Speaking of keys, the in-game controls don't seem to work. I got my char
+to move up-right by pressing tab, and that wasn't right, and sometimes 9
+opens the menu and sometimes it doesn't. Pretty weird.
