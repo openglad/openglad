@@ -1,3 +1,5 @@
+#include "input.h"
+
 #include "graph.h"
 #include "colors.h"
 #include <fstream.h>
