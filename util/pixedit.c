@@ -46,7 +46,7 @@ int main(char argc, char **argv)
 	unsigned char numframes, x, y, curcolor;
 	unsigned char *data;
 	int i, j, sizex, sizey;
-	int frame = 1, mult = 3, done = 0, redowindow = 1, redopicture = 1;
+	int frame = 1, mult = 3, done = 0, redowindow = 1, redopicture = 1, refreshpicture = 1, leftclick = 0;
 	SDL_Surface *pixie;
 	SDL_Event event;
 
@@ -88,7 +88,10 @@ int main(char argc, char **argv)
 
 		if (redopicture)
 		{
-			printf("Drawing frame %i at %i magnification\n", frame, mult);
+			char buffer[60];
+			sprintf(buffer, "Frame %i at %ix", frame, mult);
+
+			SDL_WM_SetCaption(buffer, NULL);
 
 			for (i = 0; i < y; i++)
 			{
@@ -130,16 +133,20 @@ int main(char argc, char **argv)
 					rect.w = mult * 2;
 					rect.h = mult * 2;
 
-					printf("Making color at %i, %i\n", rect.x, rect.y);
-
 					c = SDL_MapRGB(pixie->format, r, g, b);
 
 					SDL_FillRect(pixie,&rect,c);
 				}
 			}
 
-			SDL_UpdateRect(pixie,0,0,sizex * mult, sizey * mult);
 			redopicture = 0;
+			refreshpicture = 1;
+		}
+
+		if (refreshpicture)
+		{
+			SDL_UpdateRect(pixie,0,0,sizex * mult, sizey * mult);
+			refreshpicture = 0;
 		}
 
 		SDL_WaitEvent(&event);
@@ -151,6 +158,7 @@ int main(char argc, char **argv)
 			case SDL_KEYDOWN:
 				switch (event.key.keysym.sym)
 				{
+					FILE *outfile;
 					case SDLK_q:
 						done = 1;
 						break;
@@ -159,9 +167,11 @@ int main(char argc, char **argv)
 						break;
 					case SDLK_LEFT:
 						if (frame > 1) frame--;
+						redowindow = 1;
 						break;
 					case SDLK_RIGHT:
 						if (frame < numframes) frame++;
+						redowindow = 1;
 						break;
 					case SDLK_KP_PLUS:
 						mult++;
@@ -170,6 +180,16 @@ int main(char argc, char **argv)
 					case SDLK_KP_MINUS:
 						if (mult > 1) mult--;
 						redowindow = 1;
+						break;
+					case SDLK_s:
+						outfile = fopen(argv[1], "w");
+						fwrite(&numframes, 1, 1, outfile);
+						fwrite(&x, 1, 1, outfile);
+						fwrite(&y, 1, 1, outfile);
+						fwrite(data, (numframes*x*y), 1, outfile);
+						fclose(outfile);
+
+						printf("File saved\n");
 						break;
 					default:
 						break;
@@ -185,16 +205,31 @@ int main(char argc, char **argv)
 					mousey /= (mult * 2);
 					curcolor = mousey * 8 + mousex;
 				}
+				else if (event.button.button > 1)
+				{
+					curcolor = data[(frame - 1) * x * y + (event.button.y / mult) * x + event.button.x / mult];
+				}
 				else
 				{
-					int spot;
-					spot = (event.button.y / mult) * x + (event.button.x / mult);
-					data[spot] = curcolor;
-					redopicture = 1;
+					leftclick = 1;
+				}
+				break;
+			case SDL_MOUSEBUTTONUP:
+				if (event.button.button == 1)
+				{
+					leftclick = 0;
 				}
 				break;
 			default:
 				break;
+		}
+
+		if (leftclick && event.button.y / mult < y && event.button.x / mult < x)
+		{
+			int spot;
+			spot = (event.button.y / mult) * x + (event.button.x / mult);
+			data[(frame - 1) * x * y + spot] = curcolor;
+			redopicture = 1;
 		}
 	}
 	while (!done);
