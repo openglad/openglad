@@ -54,9 +54,9 @@ void init_input()
 	SDL_Joystick *js;
 
 	numjoy = SDL_NumJoysticks();
-	joy_numaxes = new int[sizeof(int) * numjoy];
-	joy_startval = new int[sizeof(int) * numjoy];
-	joy_numbuttons = new int[sizeof(int) * numjoy];
+	joy_numaxes = new int[numjoy];
+	joy_startval = new int[numjoy];
+	joy_numbuttons = new int[numjoy];
 
 	for (i = 0; i < numjoy; i++)
 	{
@@ -67,7 +67,7 @@ void init_input()
 		listlength += SDL_JoystickNumAxes(js) * 2 + SDL_JoystickNumButtons(js);
 	}
 
-	key_list = new bool[sizeof(bool) * listlength];
+	key_list = new bool[listlength];
 
 	SDL_JoystickEventState(SDL_ENABLE);
 }
