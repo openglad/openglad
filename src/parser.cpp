@@ -94,7 +94,7 @@ Usage: open(glad|scen) [-dfhsSvnxe]\n\
 	};
 	while(1)
 	{
-		int option_index, c;
+		int c;
 		c = getopt_long (argc, argv, "dniefhsSv", longopts, NULL);
 		switch(c)
 		{
