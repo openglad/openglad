@@ -20,6 +20,7 @@
 // random helper functions
 //
 #include "util.h"
+#include "config.h"
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen
@@ -82,4 +83,41 @@ void uppercase(std::string &str)
 {
 	for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
 		*iter = toupper(*iter);
+}
+
+FILE * open_misc_file(char * file, char * pos_dir)
+{
+	FILE * infile;
+	string filepath(file);
+
+	if ((infile = fopen(file, "rb")))
+		return infile;
+	
+	filepath = pos_dir + filepath;
+	if ((infile = fopen(filepath.c_str(), "rb")))
+		return infile;
+
+	filepath = getenv("HOME");
+	filepath += "/.openglad/";
+	filepath += pos_dir;
+	filepath += file;
+
+	if ((infile = fopen(filepath.c_str(), "rb")))
+		return infile;
+
+	filepath = DATADIR;
+	filepath += pos_dir;
+	filepath += file;
+
+	if ((infile = fopen(filepath.c_str(), "rb")))
+		return infile;
+
+	// if it got here, it didn't find the file
+	printf("File %s not found.\n", file);
+	return NULL;
+}
+
+FILE * open_misc_file(char * file)
+{
+	return open_misc_file(file, "");
 }
