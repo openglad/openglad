@@ -24,6 +24,7 @@
 #include "graph.h"
 #include "colors.h"
 #include "config.h"
+#include "util.h"
 
 //these are for chad's team info page
 #define VIEW_TEAM_TOP    2
@@ -50,8 +51,8 @@
 #define KEY_PREFS               14
 #define KEY_CHEAT               15
 
-// get input
-void get_input_events(bool);
+FILE * open_misc_file(char *, char *, char *);
+FILE * open_misc_file(char *);
 
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
@@ -1765,7 +1766,7 @@ options::options()
 		prefs[i][PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button behind text
 	}
 
-	infile = fopen(KEY_FILE, "rb");
+	infile = open_misc_file(KEY_FILE);
 
 	if (!infile) // failed to read
 		return;
@@ -1809,7 +1810,7 @@ short options::save(viewscreen *viewp)
 	memcpy(prefs[prefnum], viewp->prefs, 10);
 	memcpy(allkeys[prefnum], viewp->mykeys, 16 * sizeof (int));
 
-	outfile = fopen(KEY_FILE, "wb");
+	outfile = open_misc_file(KEY_FILE, "", "wb");
 
 	if (!outfile) // failed to write
 		return 0;
@@ -1840,7 +1841,7 @@ long save_key_prefs()
   char *keypointer;
   FILE *outfile;
  
-  outfile = fopen(KEY_FILE, "wb");
+  outfile = open_misc_file(KEY_FILE, "", "wb");
  
   if (!outfile) // failed to write
     return 0;
@@ -1867,7 +1868,7 @@ long load_key_prefs()
   char *keypointer;
   FILE *infile;
  
-  infile = fopen(KEY_FILE, "rb");
+  infile = open_misc_file(KEY_FILE);
  
   if (!infile) // failed to read
     return 0;
