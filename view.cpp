@@ -102,6 +102,7 @@ int get_keypress();
 //   for our prefs object (grumble grumble)
 // Zardus: these used to be static chars too
 int *normalkeys[] = {key1,key2,key3,key4};
+// Zardus: keys is a sys var (apparently) so we'll use allkeys
 int allkeys[4][16];
 
 // ** OUR prefs object! **
