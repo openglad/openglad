@@ -39,6 +39,7 @@ char  * query_my_map_name();
 char my_map_name[40];
 
 void get_input_events();
+void lowercase(char *);
 
 // These are globals for the packed files ..
 long scen_opened = 0;
@@ -2380,6 +2381,8 @@ short load_version_6(FILE  *infile, screen * master, short version)
 
   // Get grid file to load
   fread(newgrid, 8, 1, infile);
+  // Zardus: FIX: make sure they're lowercased
+  lowercase((char *)newgrid);
   strcpy(my_map_name, newgrid);
 
   // Get scenario title, if it exists

@@ -248,3 +248,11 @@ long * query_joy()
   
   //return joy_state;
 }
+
+// Zardus: add: some extra routines (one right now) that really shouldn't be here, but we'll put them here anyways
+void lowercase(char * string)
+{
+	int i;
+	for (i = 0; i < strlen(string);i++)
+		string[i] = tolower(string[i]);
+}

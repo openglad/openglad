@@ -20,6 +20,7 @@
 
 // Z's script: //#include <dos.h>
 #include <SDL/SDL.h>
+#include <ctype.h>
 
 
 #define TIME_KEEPER_INT 0x1C
@@ -116,3 +117,5 @@ long * query_mouse();
 
 long * query_joy();
 
+// Zardus: add: lowercase func
+void lowercase(char *);
