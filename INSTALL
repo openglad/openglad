@@ -4,12 +4,22 @@ INSTALL
 =======
 
 1. Unpack the tarball into some directory.
-2. Linux: Execute `make` to compile openglad, `make openscen`
-   to compile the scenario editor
-   Windows: A Visual C++ Makefile can be found in src/. You might need to
-   edit the paths to the SDL lib/includes. (Thanks Murlock)
-3. openglad is the game binary, openscen is the editor.
 
+Linux
+=====
+1. Execute ./configure to generate the make files
+2. Execute "make" for openglad and "make openscen" for openscen
+
+Windows
+=======
+A Visual C++ Makefile can be found in src/. You might need to
+edit the paths to the SDL lib/includes. To from the command line, execute
+vcvars32.bat (should be in VC98/) and then execute nmake /f Makefile.vc 
+(or nmake /f Makefile.vc openscen) in the openglad src/ dir(Thanks Murlock)
+
+=======
+
+openglad is the game binary, openscen is the editor.
 
 
 If you get Openglad to work on any other operating systems,
