@@ -36,7 +36,7 @@
 #define HI_BYTE(n)   ((n>>8) & 0x00ff)
 
 //Keyboard defines
-#define MAXKEYS 128
+#define MAXKEYS 320
 #define KEY_BUFFER 0x60
 #define KEY_CONTROL 0x61
 #define INT_CONTROL 0x20
@@ -101,7 +101,7 @@ void release_keyboard();                                    // restore normal sh
 //buffers: PORT: doesnt compile void __interrupt key_int();           // called on press/release
 short query_key();                                                            // return last keypress
 void clear_keyboard();                                              // set keyboard to none pressed
-char * query_keyboard();                                    // keyboard status
+bool * query_keyboard();                                    // keyboard status
 void wait_for_key(unsigned char somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)

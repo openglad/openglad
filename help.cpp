@@ -52,7 +52,7 @@ short read_scenario(screen *myscreen)
   long templines;
   long text_delay = 1; // bigger = slower
   long key_presses = 0;
-  char *mykeyboard = query_keyboard();
+  bool *mykeyboard = query_keyboard();
   text *mytext = new text(myscreen, TEXT_1);
   long start_time, now_time;
   long bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) ); 
@@ -164,7 +164,7 @@ short read_help(char *somefile,screen * myscreen)
         long templines;
         long text_delay = 1; // bigger = slower
         long key_presses = 0;
-        char *mykeyboard = query_keyboard();
+        bool *mykeyboard = query_keyboard();
         static text *mytext = new text(myscreen, TEXT_1);
         long start_time, now_time;
         long bottomrow;

@@ -1339,7 +1339,7 @@ short screen::endgame(short ending, short nextlevel)
   oblink *checklist = oblist;
   walker *target;
   long test1;
-  char * endkeys = query_keyboard();
+  bool * endkeys = query_keyboard();
   int  i;
   unsigned long allscore = 0, allbonuscash = 0;
 

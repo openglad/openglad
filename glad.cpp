@@ -48,7 +48,7 @@ void glad_main(screen *myscreen, long playermode)
 //  char soundpath[80];
   char mypalette[768];
 //  short cyclemode = 1;            // color cycling on or off
-  char *keyboard;
+  bool *keyboard;
   short dumbcount=0;
   short numviews;
   oblink *here, *before;

@@ -25,7 +25,7 @@ long timer_grabbed=0;
 
 unsigned short raw_key;
 short key_press_event = 0;    // used to signed key-press
-char key_list[MAXKEYS+JOYKEYS];
+bool key_list[MAXKEYS+JOYKEYS];
 
 long mouse_state[MSTATE];
 long mouse_buttons;
@@ -158,7 +158,7 @@ void clear_keyboard()
 
 }
 
-char * query_keyboard()
+bool * query_keyboard()
 {
   return key_list;
 }

@@ -44,16 +44,16 @@ static char key1[] = {
   SDLK_INSERT, SDLK_RETURN,                    // fire & special
   SDLK_KP_PLUS,                          // switch guys
   SDLK_KP_MINUS,                         // change special
-  SDLK_CENTER,                                // Yell
+  SDLK_KP5,                                // Yell
   SDLK_DELETE,                                // Shifter
-  SDLK_NUMERIC_TIMES,                         // Options menu
+  SDLK_KP_MULTIPLY,                         // Options menu
   SDLK_F8,                                    // Cheat key
 };
 
 static char key2[] = {
   SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
   SDLK_x, SDLK_z, SDLK_a, SDLK_q,
-  SDLK_CTRL, SDLK_ALT,                    // fire & special
+  SDLK_LCTRL, SDLK_LALT,                    // fire & special
   SDLK_TAB,                               // switch guys
   SDLK_1,                                 // change special
   SDLK_s,                                 // Yell
@@ -302,7 +302,7 @@ short viewscreen::input(char inputthing)
   short i;
   oblink  *here, *tempobj, *helpme;
   //short step;
-  char *inputkeyboard;
+  bool *inputkeyboard;
   long dumbcount=0;
   static short changedchar[6] = {0, 0, 0, 0, 0, 0};   // for switching guys
   static short changedchar2[6]= {0, 0, 0, 0, 0, 0};  // for switching TYPE of guy
@@ -1111,7 +1111,7 @@ void viewscreen::input_joy()
   long resx,resy,diffx,diffy;
   long currentx, currenty;
   long * localjoystick;
-  char * localkeyboard;
+  bool * localkeyboard;
   localjoystick = query_joy();
   localkeyboard = query_keyboard();
 
@@ -1376,7 +1376,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
   list->ob = NULL;
   list->next = NULL;
   temp = new oblink;
-  char *teamkeys;
+  bool *teamkeys;
   long dumbcount, currentcycle = 0, cycletime = 30000;
 
   screenp->redrawme = 1;
@@ -1504,7 +1504,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 void viewscreen::options_menu()
 {
   static text optiontext(screenp);
-  static char *opkeys;
+  static bool *opkeys;
   long dumbcount;
   long gamespeed, viewsize;
   static char message[80], tempstr[80];

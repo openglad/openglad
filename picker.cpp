@@ -394,7 +394,7 @@ long leftmouse()
   long i = 0;
   short happy;
   long somebutton = -1;
-  char  * mousekeys = query_keyboard();
+  bool * mousekeys = query_keyboard();
 
   grab_mouse();
   mymouse = query_mouse();
@@ -1027,7 +1027,7 @@ long create_buy_menu(long arg1)
 {
   static long no_clear = 1;
   long linesdown, retvalue = 0;
-  char  * inputkeyboard = query_keyboard();
+  bool * inputkeyboard = query_keyboard();
   long i;
   long start_time = query_timer();
   long now_time;
@@ -1159,7 +1159,7 @@ long create_buy_menu(long arg1)
       retvalue=localbuttons->rightclick();
 
     #ifdef REGISTERED
-    if (inputkeyboard[SDLK_CTRL])
+    if (inputkeyboard[SDLK_LCTRL])
     {
       if (inputkeyboard[SDLK_KP_PLUS])
       {

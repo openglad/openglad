@@ -35,7 +35,7 @@ long calculate_level(unsigned long howmuch)
 }
 
 long *mymouse;
-char  *mykeyboard;
+bool *mykeyboard;
 //scenario *myscen = new scenario;
 long currentmode = OBJECT_MODE;
 unsigned long currentlevel = 1;
@@ -229,7 +229,7 @@ main(short argc, char **argv)
     break;
 
    // Delete all with ^D
-   if (mykeyboard[SDLK_d] && mykeyboard[SDLK_CTRL])
+   if (mykeyboard[SDLK_d] && mykeyboard[SDLK_LCTRL])
    {
     remove_all_objects(myscreen);
     event = 1;
@@ -295,7 +295,7 @@ main(short argc, char **argv)
     event = 1;
    }
 
-   if (mykeyboard[SDLK_NUMERIC_TIMES]) // options menu
+   if (mykeyboard[SDLK_KP_MULTIPLY]) // options menu
    {
      release_mouse();
      scenario_options(myscreen);
@@ -603,7 +603,7 @@ main(short argc, char **argv)
        newob->collide_ob = 0;
        if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, myscreen))
        {
-        if (mykeyboard[SDLK_CTRL] &&    // are we holding the erase?
+        if (mykeyboard[SDLK_LCTRL] &&    // are we holding the erase?
            newob->collide_ob )                    // and hit a guy?
         {
           myscreen->remove_ob(newob->collide_ob,0);
@@ -626,7 +626,7 @@ main(short argc, char **argv)
            mymouse = query_mouse();
          levelchanged = 1;
        }
-       if (mykeyboard[SDLK_CTRL] && newob)
+       if (mykeyboard[SDLK_LCTRL] && newob)
        {
         myscreen->remove_ob(newob,0);
         newob = NULL;
@@ -641,7 +641,7 @@ main(short argc, char **argv)
        // Set to our current selection
        myscreen->grid[windowy*(myscreen->maxx)+windowx] = some_pix(backcount);
        levelchanged = 1;
-       if (!mykeyboard[SDLK_CTRL]) // smooth a few squares, if not control
+       if (!mykeyboard[SDLK_LCTRL]) // smooth a few squares, if not control
        {
          if (mysmoother)
          {
@@ -1698,7 +1698,7 @@ void set_name(walker  *target, screen * master)
 void scenario_options(screen *myscreen)
 {
   static text opt_text(myscreen);
-  char *opt_keys = query_keyboard();
+  bool *opt_keys = query_keyboard();
   long dumbcount;
   short lm, tm;
   char message[80];
@@ -1814,7 +1814,7 @@ void scenario_options(screen *myscreen)
 // Set an object's facing ..
 void set_facing(walker *target, screen *myscreen)
 {
-  char *setkeys = query_keyboard();
+  bool *setkeys = query_keyboard();
   long dumbcount = 0;
 
   if (target)
