@@ -17,7 +17,7 @@ int main(int argc, char **argv)
 	filelocation = (long *) malloc(sizeof(long) * argc);
 	filesize = (long *) malloc(sizeof(long) * argc);
 
-	filelocation[0] = 0;
+	filelocation[0] = 8 + sizeof(short) + numfiles * (13 + sizeof(long)) + sizeof(long);
 	if (!(outfile = fopen("outfile.001", "w"))) return 1;
 	fwrite("GladPack", 8, 1, outfile);
 	fwrite(&numfiles, sizeof(short), 1, outfile);
@@ -40,6 +40,8 @@ int main(int argc, char **argv)
 		fwrite(argv[i+1], sizeof(char) * 13, 1, outfile);
 		fwrite(&filelocation[i + 1], sizeof(long), 1, outfile);
 	}
+
+	printf("So far: %i\n", ftell(outfile));
 
 	for (i = 0; i < numfiles; i++)
 	{
