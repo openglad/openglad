@@ -5,6 +5,7 @@ smoother * mysmoother;
 
 //#include <malloc.h>
 #include "colors.h"
+#include <time.h>
 
 // Z's script: #include <process.h>
 
@@ -40,6 +41,10 @@ main(long argc, char **argv)
 
 	//buffers: setting the seed
 	srand(time(NULL));
+
+	// Zardus: test the seed
+	printf("%i %i %i %i %i %i %i %i\n", random(20), random(10), random(23), random(43), random(6), 
+			random(32), random(100), random(12));
   
   // Disabling intro for faster startup
   intro_main(argc, argv);
