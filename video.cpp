@@ -69,6 +69,7 @@ void video::clearscreen()
 	//buffers: PORT: clear the offscreen buffer, not the screen.
 	//buffers: we are going to see if we can double buf everything.
 	SDL_FillRect (screen, NULL, SDL_MapRGB (screen->format, 0, 0, 0));
+	SDL_UpdateRect(screen,0,0,320,200);
 }
 
 void video::clearbuffer()
