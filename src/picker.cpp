@@ -54,6 +54,8 @@ long do_set_scen_level(long arg1);
 long leftmouse();
 void family_name_copy(char *name, short family);
 
+// Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
+unsigned char *backpics[5];
 pixieN *backdrops[5];
 
 //screen  *myscreen;
@@ -203,13 +205,18 @@ void picker_main(long argc, char  **argv)
 	for (i=0; i < 5; i++)
 		backdrops[i] = NULL;
 
-	backdrops[0] = new pixieN(read_pixie_file("mainul.pix"), myscreen);
+	backpics[0] = read_pixie_file("mainul.pix");
+	backpics[1] = read_pixie_file("mainur.pix");
+	backpics[2] = read_pixie_file("mainll.pix");
+	backpics[3] = read_pixie_file("mainlr.pix");
+
+	backdrops[0] = new pixieN(backpics[0], myscreen);
 	backdrops[0]->setxy(0, 0);
-	backdrops[1] = new pixieN(read_pixie_file("mainur.pix"), myscreen);
+	backdrops[1] = new pixieN(backpics[1], myscreen);
 	backdrops[1]->setxy(160, 0);
-	backdrops[2] = new pixieN(read_pixie_file("mainll.pix"), myscreen);
+	backdrops[2] = new pixieN(backpics[2], myscreen);
 	backdrops[2]->setxy(0, 100);
-	backdrops[3] = new pixieN(read_pixie_file("mainlr.pix"), myscreen);
+	backdrops[3] = new pixieN(backpics[3], myscreen);
 	backdrops[3]->setxy(160, 100);
 
 
@@ -257,6 +264,11 @@ void picker_quit()
 		{
 			delete backdrops[i];
 			backdrops[i] = NULL;
+		}
+		if (backpics[i])
+		{
+			delete backpics[i];
+			backpics[i] = NULL;
 		}
 	}
 
