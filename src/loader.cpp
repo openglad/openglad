@@ -505,6 +505,7 @@ loader::loader()
 	graphics[PIX(ORDER_WEAPON, FAMILY_WAVE3)] = read_pixie_file("wave3.pix");
 	graphics[PIX(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION)] = read_pixie_file("wave2.pix");
 	graphics[PIX(ORDER_WEAPON, FAMILY_HAMMER)] = read_pixie_file("hammer.pix");
+	
 	graphics[PIX(ORDER_WEAPON, FAMILY_DOOR)] = read_pixie_file("door.pix");
 	graphics[PIX(ORDER_WEAPON, FAMILY_BOULDER)] = read_pixie_file("boulder1.pix");
 
@@ -787,6 +788,24 @@ loader::loader()
 	graphics[PIX(ORDER_BUTTON1, FAMILY_PLUS)] = read_pixie_file("butplus.pix");
 	graphics[PIX(ORDER_BUTTON1, FAMILY_MINUS)] = read_pixie_file("butminus.pix");
 
+}
+
+loader::~loader(void)
+{
+	int i;
+	for(i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
+		if(PIX(ORDER_TREASURE, FAMILY_INVULNERABLE_POTION) !=  i &&PIX(ORDER_TREASURE, FAMILY_SILVER_BAR) != i && PIX(ORDER_TREASURE, FAMILY_INVIS_POTION) != i && PIX(ORDER_TREASURE, FAMILY_FLIGHT_POTION) != i && PIX(ORDER_TREASURE, FAMILY_SPEED_POTION) != i)
+			if(graphics[i] != NULL) {
+				free(graphics[i]);
+				graphics[i] = NULL;
+			}
+	}
+
+	free(act_types);
+	free(stepsizes);
+	free(lineofsight);
+	free(damage);
+	free(fire_frequency);
 }
 
 walker  *loader::create_walker(char order,
