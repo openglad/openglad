@@ -26,9 +26,7 @@
 #include <string.h> //buffers: for strlen
 #include <malloc.h>
 #include <string>
-#include <sys/types.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 unsigned long start_time=0;
 unsigned long reset_value=0;
