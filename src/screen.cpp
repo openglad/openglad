@@ -1825,8 +1825,8 @@ short load_scenario(char * filename, screen * master)
 
 	if(gotit == 0 || !infile)
 	{
-		printf("DEBUG: scenario %s was not found in levels.001 or in scen/ -- EXITING\n",temp);
-		exit(0);
+		//printf("DEBUG: scenario %s was not found in levels.001 or in scen/ -- EXITING\n",temp);
+		return 0;
 	}
 
 	// Are we a scenario file?
