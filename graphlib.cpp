@@ -160,9 +160,10 @@ unsigned char  * read_pixie_file(char  * filename)
   }
   if (!infile || gotit==0) // failed to get this way, either
   {
-        printf("Error in reading file %s <press return>\n", filename);
-        printf("You may need to run SETUP.EXE\n");
-        release_keyboard();
+  	//buffers: changed these debug messages.
+        printf("ERROR: could not find %s in graphics.001 or in pix/\n", filename);
+        printf("You may need to reinstall OpenGlad.\n");
+        //buffers: don't need this: release_keyboard();
         //buffers: PORT: implicit declaration: getch();
         exit(0);
   }
