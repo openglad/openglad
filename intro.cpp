@@ -2,9 +2,7 @@
 //#include "pixie.h"
 // Z's script: #include <process.h>
 
-//buffers: PORT: #define SHOW_TIME 130
-//buffers: PORT: quick fix
-#define SHOW_TIME 1500 
+#define SHOW_TIME 130
 #include "input.h" 
 
 int show();
