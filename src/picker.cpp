@@ -852,8 +852,10 @@ long beginmenu(long arg1)
 
 		if (localbuttons && (retvalue == REDRAW))
 		{
+			myscreen->clearbuffer();
 			delete(localbuttons);
 			localbuttons = buttonmenu(bteam, 8);
+			myscreen->swap();
 			retvalue = 0;
 		}
 
@@ -1845,6 +1847,8 @@ long create_save_menu(long arg1)
 			retvalue = 0;
 		}
 	}
+
+	myscreen->clearfontbuffer();
 	return REDRAW;
 
 }
