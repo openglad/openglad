@@ -3,6 +3,7 @@
 // Z's script: #include <process.h>
 
 #define SHOW_TIME 130
+#include "input.h" 
 
 int show();
 int show(int howlong);
@@ -62,12 +63,13 @@ intro_main(long argc, char** argv)
   // Delay
   reset_timer();
   while (query_timer() < 80)
-    if (query_key_press_event()) 
-    {
-      cleanup();
-      return;
-    }
-
+  {
+	if (query_key_press_event()) 
+	{
+		cleanup();
+		return;
+	}
+  }
 
   //gladdata = read_pixie_file("glad.pix");
   gladdata = read_pixie_file("glad2.pix");
