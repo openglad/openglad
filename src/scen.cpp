@@ -52,6 +52,9 @@ long quit(long);
 
 screen *myscreen;  // global for scen?
 
+// Zardus: our prefs object from view.cpp
+extern options * theprefs;
+
 // To appease the linker, we'll fake these from picker.cpp
 long statcosts[NUM_FAMILIES][6];
 long costlist[NUM_FAMILIES];
@@ -174,6 +177,9 @@ int main(int argc, char **argv)
 	filepath = get_file_path("openglad.cfg");
 	cfg.parse(filepath);
 	delete filepath;
+
+	// Zardus: load prefs
+	theprefs = new options;
 
 	// For informational purposes..
 	if (argc > 1 && !strcmp(argv[1], "/?") )
@@ -799,6 +805,9 @@ long quit(long num)
 
 	// And stop input
 	stop_input();
+
+	// Get rid of the prefs
+	delete theprefs;
 
 	// And delete myscreen
 	delete myscreen;
