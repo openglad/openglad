@@ -23,7 +23,6 @@
 
 #include "SDL/SDL.h"
 #include "parse32.h"
-#include <malloc.h>
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
@@ -3029,6 +3028,7 @@ long quit(long arg1)
 
 	release_keyboard();
 	delete myscreen;
+	stop_input();
 	SDL_Quit();
 	exit(1);
 	return 1;
