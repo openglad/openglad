@@ -200,6 +200,8 @@ void clear_keyboard()
 	int i = 0;
 	for (i = 0; i < MAXKEYS; i++)
 		key_list[i] = 0;
+	key_press_event = 0;
+	raw_key = 0;
 }
 
 char * query_keyboard()
