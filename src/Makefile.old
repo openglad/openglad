@@ -18,4 +18,4 @@ clean:
 	rm -f ../openscen
 
 .cpp.o:
-	g++ -g -c -I./ -I/usr/include/SDL $<
+	g++ -g -c -I.. -I/usr/include/SDL $<
