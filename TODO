@@ -6,3 +6,4 @@
 * joystick
 	-Zardus: 8/16/02: implemented (mostly)
 * scrolling in full screen openscen is a bit messed up
+	-Zardus: 8/16/02: workaround (keyboard and minimap scrolling)
