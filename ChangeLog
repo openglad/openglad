@@ -1,5 +1,12 @@
 ChangeLog
 
+.97 - .98
+	Zardus: joysticks fixed in Windows
+	Zardus: the crash that resulting in the fix for the accumulating
+		leak has been worked around. It leaks just a bit, but not as
+		much as it used to.
+	Zardus: openscen made a bit less annoying to use
+
 .95 - .97
 	Zardus: evil accumulating memory leak plugged. Some segfaults fixed.
 	Zardus: full screen seems to work in windows now. It might have worked
