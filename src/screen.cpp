@@ -23,7 +23,6 @@
 	buffers: 8/15/02: *load_scenario now checks for uppercase file names in
 			   scen/ in case lowercase check fails
 */
-#include <config.h>
 
 #include "graph.h"
 #include "smooth.h"
