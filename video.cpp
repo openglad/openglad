@@ -288,8 +288,6 @@ void video::pointb(long x, long y, unsigned char color)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	printf("DEBUG: %d: %d %d %d\n",color,r,g,b);
-
 	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
 
 	SDL_LockSurface(screen);
@@ -469,6 +467,7 @@ void video::putbuffer(long tilestartx, long tilestarty,
 		      long portendx, long portendy,
 		      unsigned char * sourceptr)
 {
+	int i,j,num;
   long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
   unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
   long totrows,rowsize; //number of rows and width of each row in the source
@@ -507,8 +506,12 @@ void video::putbuffer(long tilestartx, long tilestarty,
   offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
   offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
-
-	point(xmin,ymin,50);
+	num=0;
+	for(i=0;i<tileheight;i++) {
+		for(j=0;j<tilewidth;j++) {
+			pointb(j+tilestartx,i+tilestarty,sourcebufptr[num++]);
+		}
+	}
 
 extern void putbufbasm();
 //buffers: PORT: #pragma aux putbufbasm = \
