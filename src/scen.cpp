@@ -173,13 +173,11 @@ int main(int argc, char **argv)
 
 	screen  *myscreen;
 
-	// Get sound path ..
-	//if (!get_cfg_item("directories", "sound") )
-	//     exit(1);
-	//strcpy(soundpath, get_cfg_item("directories", "sound") );
-
 	//Zardus: add: init the input
 	init_input();
+
+	// Zardus: create dirs
+	create_dataopenglad();
 
 	string homecfg(getenv("HOME"));
 	homecfg += "/.openglad/openglad.cfg";
