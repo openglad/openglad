@@ -42,6 +42,7 @@ class packfile
 		short numfiles;
 		short last_subfile;
 		packfileinfo *fileinfo;
+		long filesize;
 
 	public:
 
@@ -55,6 +56,7 @@ class packfile
 		}
 
 		int open(char *filename);
+		bool opened() {return numfiles > 0;}
 		int close();
 
 		FILE *get_subfile(char *subfilename);

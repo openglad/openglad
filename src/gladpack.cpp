@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "gladpack.h"
 
 #define GLAD_HEADER             "GladPack"
 #define GLAD_HEADER_SIZE        8
@@ -36,36 +37,6 @@ class packfileinfo
 	public:
 		long filepos;
 		char name[FILENAME_SIZE];
-};
-
-class packfile
-{
-	private:
-
-		FILE *datafile;
-
-		short numfiles;
-		short last_subfile;
-		packfileinfo *fileinfo;
-		long filesize;
-
-	public:
-
-		packfile()
-		{
-			numfiles = 0;
-		}
-		~packfile()
-		{
-			close();
-		}
-
-		int open(char *filename);
-		int close();
-
-		FILE *get_subfile(char *subfilename);
-		long get_subfilesize();
-
 };
 
 int packfile::open(char *filename)
