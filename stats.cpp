@@ -1037,6 +1037,7 @@ short statistics::walk_to_foe()
     right_walk();
 
   // Are we really really close? Stop searching, then :)
+  // Zardus: lets check if commandlist exists, too
   if (tempdistance < 30 && commandlist)
   {
     commandlist->commandcount = 0;
