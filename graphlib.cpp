@@ -2,6 +2,7 @@
 
 /* ChangeLog
 	buffers: 7/31/02: *include cleanup
+	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_f			   ile
 */
 #include "graph.h"
 #include "gladpack.h"
@@ -108,10 +109,10 @@ unsigned char  * read_pixie_file(char  * filename)
 
         unsigned char numframes, x, y;
         unsigned char  *newpic;
-        char fullpath[40];
+        char fullpath[80],fullpathupper[80],thefile[80],thefileupper[80];
         FILE  *infile = NULL;
         long gotit = 0;
-	char temp[40];
+	char temp[80];
 
   // Open the pixie-pack, if not already done ...
   if (!opened) 
@@ -134,49 +135,53 @@ unsigned char  * read_pixie_file(char  * filename)
   pixpack = NULL;
   gotit = 0;
 
+	strcpy(thefile,filename);
+
     // Create the full pathname for the pixie file
     strcpy(fullpath, pix_directory);
-    strcat(fullpath, filename);
+    strcat(fullpath, thefile);
 
-    if ( (infile = fopen(fullpath, "rb")) == NULL ) // open for read
-    {
-      // Check the current directory if not in path ..
-      if ( (infile = fopen(filename, "rb")) == NULL )       // open for read
-      {
-        gotit = 0; // couldn't get it from a normal file ..
-      }
-      else
-        gotit = 1; // got the actual file from disk
-    }
-    else
-    {
-      gotit = 1; // got the actual file from disk
-    }
+    	strcpy(thefileupper,thefile);
+    	uppercase(thefileupper);
+	strcpy(fullpathupper,pix_directory);
+	strcat(fullpathupper,thefileupper);
 
-  // Now try to get info from the pack-file ..
-  if (opened && gotit==0)
-  {
-    if((infile = tempack.get_subfile(filename))==NULL) {
-    	//buffers: if the above check fails, try searching for the file
-	//buffers: using all uppercase chars. the default glad graphic files
-	//buffers: use all uppercase files
-	strcpy(temp,filename);
-    	uppercase(temp);
-	infile = tempack.get_subfile(temp);
-     }
-     if(infile)
-    	gotit = 1;
-  }
-  if (!infile || gotit==0) // failed to get this way, either
-  {
-  	//buffers: changed these debug messages.
-        printf("ERROR: could not find %s in graphics.001 or in pix/\n", filename);
-        printf("You may need to reinstall OpenGlad.\n");
-        //buffers: don't need this: release_keyboard();
-        //buffers: PORT: implicit declaration: getch();
-        exit(0);
-  }
 
+	//buffers: check pix/ first
+	if((infile=fopen(fullpath,"rb"))) {
+		gotit = 1;
+	} else if((infile=fopen(fullpathupper,"rb"))) {
+		gotit = 1;
+	//buffers: next, check ./
+	} else if((infile=fopen(thefile,"rb"))) {
+		gotit = 1;
+	} else if((infile=fopen(thefileupper,"rb"))) {
+		gotit = 1;
+	//buffers: then check graphics.001
+	} else if(opened && (infile=tempack.get_subfile(thefile))) {
+		gotit = 1;
+	} else if(opened && (infile=tempack.get_subfile(thefileupper))) {
+		gotit = 1;
+	//buffers: if we STILL can't find it, check scen/
+	//buffers: it might be a grid pix file...
+	} else {
+		strcpy(temp,"scen/");
+		strcat(temp,thefile);
+		if((infile=fopen(temp,"rb"))) {
+			gotit = 1;
+		} else {
+			strcpy(temp,"scen/");
+			strcat(temp,thefileupper);
+			if((infile=fopen(temp,"rb")))
+				gotit = 1;
+		}
+	}
+	if(gotit==0) {
+		printf("ERROR: the pixie file %s wasn't found\n",thefile);
+		exit(0);
+	}
+    
+    
     fread(&numframes, 1, 1, infile);
     fread(&x, 1, 1, infile);
     fread(&y, 1, 1, infile);
