@@ -5,8 +5,8 @@
 //
 #include "pal32.h"
 #include <stdio.h>
-#include <i86.h>
-#include <conio.h>
+// Z's script: #include <i86.h>
+// Z's script: #include <conio.h>
 
 #define PAL_MASK 0x03C6
 #define PAL_REG_RD 0x03C7

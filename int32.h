@@ -18,7 +18,7 @@
 //
 #define VERSION_INT 3
 
-//#include <dos.h>
+// Z's script: //#include <dos.h>
 
 
 #define TIME_KEEPER_INT 0x1C

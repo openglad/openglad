@@ -4,7 +4,7 @@
 
 #include <fstream.h>
 #include <stdlib.h>
-#include <dos.h>
+// Z's script: #include <dos.h>
 
 // From picker.cpp
 extern long calculate_level(unsigned long temp_exp);

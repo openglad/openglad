@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <fstream.h>
 #include <stdlib.h>
-#include <dos.h>
+// Z's script: #include <dos.h>
 
 // ************************************************************
 //  WALKER -- graphics routines

@@ -2,9 +2,9 @@
 #include "gladpack.h"
 #include <fstream.h>
 #include <stdlib.h>
-#include <dos.h>
+// Z's script: #include <dos.h>
 #include <ctype.h>
-#include <i86.h>
+// Z's script: #include <i86.h>
 
 // Use this for globally setting the graphics dir, etc..
 char pix_directory[80];

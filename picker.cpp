@@ -5,8 +5,8 @@
 #include "scankeys.h"
 #include "parse32.h"
 #include <malloc.h>
-#include <process.h>
-#include <i86.h> //_enable, _disable
+// Z's script: #include <process.h>
+// Z's script: #include <i86.h> //_enable, _disable
 
 #define DOWN(x) (72+x*15)
 #define VIEW_DOWN(x) (10+x*20)

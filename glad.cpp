@@ -6,7 +6,7 @@ smoother * mysmoother;
 //#include <malloc.h>
 #include "colors.h"
 
-#include <process.h>
+// Z's script: #include <process.h>
 
 void picker_main(long argc, char **argv);
 void intro_main(long argc, char **argv);

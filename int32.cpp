@@ -6,9 +6,9 @@
 //
 #include "int32.h"
 #include "scankeys.h"
-#include <dos.h>
-#include <conio.h>
-#include <i86.h>
+// Z's script: #include <dos.h>
+// Z's script: #include <conio.h>
+// Z's script: #include <i86.h>
 #include <stdio.h>
 #include <time.h>
 

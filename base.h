@@ -5,12 +5,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <conio.h>
-#include <mem.h>
+// Z's script: #include <conio.h>
+// Z's script: #include <mem.h>
 #include <string.h>
 #include <fstream.h>
-#include <dos.h>
-#include <process.h>
+// Z's script: #include <dos.h>
+// Z's script: #include <process.h>
 #include "sounds.h"
 #include "int32.h"
 #include "parse32.h"

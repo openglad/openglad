@@ -1,7 +1,7 @@
 #include "graph.h"
 #include <fstream.h>
 #include <stdlib.h>
-#include <dos.h>
+// Z's script: #include <dos.h>
 
 // ************************************************************
 //  PixieN -- N-Frame pixie

@@ -1,6 +1,6 @@
 #include "graph.h"
 //#include "pixie.h"
-#include <process.h>
+// Z's script: #include <process.h>
 
 #define SHOW_TIME 130
 

@@ -2,8 +2,8 @@
 #include "colors.h"
 #include <fstream.h>
 #include <stdlib.h>
-#include <dos.h>
-#include <i86.h>
+// Z's script: #include <dos.h>
+// Z's script: #include <i86.h>
 
 //these are for chad's team info page
 #define VIEW_TEAM_TOP    2
