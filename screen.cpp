@@ -1364,6 +1364,7 @@ short screen::endgame(short ending, short nextlevel)
       mytext.write_y(100,temp, DARK_BLUE, 1);
       mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
       buffer_to_screen(0, 0, 320, 200);
+      // Zardus: all things should listen to get_input_events() for now until further notice
       while (!endkeys[SDLK_ESCAPE]) get_input_events();
       end = 1;
     }

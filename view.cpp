@@ -1184,7 +1184,7 @@ void viewscreen::input_joy()
 
 void viewscreen::remove_joy()
 {
-  memcpy(mykeys, normalkeys[mynum], 16);
+  memcpy(mykeys, normalkeys[mynum], 16 * sizeof(int));
   joyaligned = 0;
 }
 
@@ -1804,7 +1804,7 @@ void viewscreen::options_menu()
         sprintf(message, "Joystick Mode (J)      : OFF ");
         if (prefs[PREF_JOY] != PREF_USE_JOY)
         {
-            memcpy(mykeys, normalkeys[mynum], 16);
+            memcpy(mykeys, normalkeys[mynum], 16 * sizeof(int));
         }
       }
       screenp->draw_box(45, OPLINES(11), 275, OPLINES(11)+6, PANEL_COLOR, 1, 1);
@@ -1895,7 +1895,7 @@ options::options()
   int i;
   char *datap;
   FILE *infile;
-  memcpy(*keys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
+  memcpy(&keys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
 
   // I know this isn't the most ideal thing to do, but I can't get anything else working
   //for (i = 0; i < 16; i++)
@@ -1923,7 +1923,7 @@ options::options()
   // Read the blobs of data ..
   for (i=0; i < 4; i++)
   {
-    fread(keys[i], 16, 1, infile);
+    fread(keys[i], 16 * sizeof(int), 1, infile);
     fread(prefs[i], 10, 1, infile);
     fread(&joys[i], sizeof(joyvalues), 1, infile);
   }
@@ -1971,7 +1971,7 @@ short options::save(viewscreen *viewp)
 
   // Yes, we are ACTUALLY COPYING the data
   memcpy(prefs[prefnum], viewp->prefs, 10);
-  memcpy(keys[prefnum], viewp->mykeys, 16);
+  memcpy(keys[prefnum], viewp->mykeys, 16 * sizeof (int));
   joys[prefnum].joyaligned = viewp->joyaligned;
   joys[prefnum].joyleft = viewp->joyleft;
   joys[prefnum].joyright = viewp->joyright;
@@ -1994,7 +1994,7 @@ short options::save(viewscreen *viewp)
   // Write the blobs of data ..
   for (i=0; i < 4; i++)
   {
-    fwrite(keys[i], 16, 1, outfile);
+    fwrite(keys[i], 16 * sizeof(int), 1, outfile);
     fwrite(prefs[i], 10, 1, outfile);
     fwrite(&joys[i], sizeof(joyvalues), 1, outfile);    
   }
@@ -2028,7 +2028,7 @@ long save_key_prefs()
   for (i=0; i < 4; i++)
   {
     keypointer = keys[i];
-    fwrite(keypointer, 16, 1, outfile);
+    fwrite(keypointer, 16 * sizeof(int), 1, outfile);
   }
 
   fclose(outfile);
@@ -2055,7 +2055,7 @@ long load_key_prefs()
   for (i=0; i < 4; i++)
   {
     keypointer = keys[i];
-    fread(keypointer, 16, 1, infile);
+    fread(keypointer, 16 * sizeof(int), 1, infile);
   }
 
   fclose(infile);
