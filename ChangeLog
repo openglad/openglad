@@ -1,5 +1,12 @@
 ChangeLog
 
+.95 - .97
+	Zardus: evil accumulating memory leak plugged. Some segfaults fixed.
+	Zardus: full screen seems to work in windows now. It might have worked
+		before, just not for me, but it should work for people now.
+	Zardus: improved file finding.
+	Odo says hi.
+
 .9 - .95:
 	Zardus: game now has much much better file finding, memory fixes,
 		implemented Erik's and Mike's fading code
