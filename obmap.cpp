@@ -99,7 +99,11 @@ oblink  *remove_link(walker  *ob, oblink **row)
 
   here = *row;
   // Is this an empty list?
+  // Some of this is redundant, but its worth avoiding segfaults, IMO :-)
   if (!*row) return NULL;
+  if (!ob) return NULL;
+  if (!here) return NULL;
+  if (!((*row)->ob)) return NULL;
 
   // Is our object the first on the list?
   if ((*row)->ob == ob)
@@ -277,7 +281,9 @@ short ob_pass_check(short x, short y, walker  *ob, oblink  *row)
   here = row;
   while(here)
   {
-         if (here->ob && ob)
+         if (here)
+	 if (here->ob)
+	 if (ob)
 	 if (here->ob != ob && !here->ob->dead)
          {
                 // Let our own team's weapons pass over us ..
