@@ -28,7 +28,9 @@ class video
 		~video();
 		void clearscreen();
 		void clearbuffer();
-
+		void clearfontbuffer();
+		void clearfontbuffer(int x, int y, int w, int h);
+	
 		unsigned char * getbuffer();
 		void putblack(long startx, long starty, long xsize, long ysize);
 		void fastbox(long startx, long starty, long xsize, long ysize, unsigned char color);
@@ -45,8 +47,13 @@ class video
 		void do_cycle(long curmode, long maxmode);
 		void putdata(long startx, long starty, long xsize, long ysize,
 		             unsigned char  *sourcedata);
+		void putdatatext(long startx, long starty, long xsize, long ysize,
+		                             unsigned char  *sourcedata);
 		void putdata(long startx, long starty, long xsize, long ysize,
 		             unsigned char  *sourcedata, unsigned char color);
+
+		 void putdatatext(long startx, long starty, long xsize, long ysize,
+		                              unsigned char  *sourcedata, unsigned char color);
 
 		void putbuffer(long tilestartx, long tilestarty,
 		               long tilewidth, long tileheight,
@@ -63,6 +70,13 @@ class video
 		                   long portstartx, long portstarty,
 		                   long portendx, long portendy,
 		                   unsigned char  *sourceptr, unsigned char teamcolor);
+		void walkputbuffertext(long walkerstartx, long walkerstarty,
+                                   long walkerwidth, long walkerheight,
+                                   long portstartx, long portstarty,
+                                   long portendx, long portendy,
+                                   unsigned char  *sourceptr, unsigned char teamcolor);
+
+
 		void walkputbuffer(long walkerstartx, long walkerstarty,
 		                   long walkerwidth, long walkerheight,
 		                   long portstartx, long portstarty,
@@ -101,7 +115,7 @@ class video
 		//buffers: screen vars
 		SDL_Surface *window;
 		int screen_width,screen_height;
-		int pdouble, mult;
+		int pdouble, mouse_mult,mult,font_mult;
 };
 
 #endif

@@ -41,37 +41,44 @@ void set_mult(int);
 
 unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
-SDL_Surface *screen;
+SDL_Surface *screen; //buffers: this is what we draw in
+SDL_Surface *fontbuffer;
+int fontcolorkey;
 Screen *E_Screen;
 
 video::video()
 {
 	long i;
 	const char *qresult;
+	int pixel;
+	RenderEngine render;
 
-	qresult = cfg.query("graphics", "pdouble");
-	if(qresult && strcmp(qresult, "on")==0)
-		pdouble = 1;
-	else
-		pdouble = 0;
 
-	//buffer: set vars according to pdouble
-	if(pdouble)
-	{
-		mult = 2;
-		screen_width = 640;
-		screen_height = 400;
-	}
-	else
-	{
+	qresult = cfg.query("graphics", "render");
+	if(qresult && strcmp(qresult, "normal")==0) {
+		mouse_mult = 1;
 		mult = 1;
-		screen_width = 320;
-		screen_height = 200;
+		font_mult = 1;
+		render = NoZoom;
+	} else if(qresult && strcmp(qresult,"sai")==0) {
+		mouse_mult = 2;
+		mult = 1;
+		font_mult = 2;
+		render = SAI;
+	} else if(qresult && strcmp(qresult,"eagle")==0) {
+		mouse_mult = 2;
+		mult = 1;
+		font_mult = 2;
+		render = EAGLE;
+	} else if(qresult && strcmp(qresult,"double")==0) {
+		mouse_mult = 2;
+		mult = 2;
+		font_mult = 2;
+		render = DOUBLE;
 	}
 
-	set_mult(mult);
+	set_mult(mouse_mult);
 
-	//buffers: PORT: no need: save_palette(dospalette);
 	// Load our palettes ..
 	load_and_set_palette("our.pal", ourpalette);
 	load_palette("our.pal", redpalette);
@@ -95,8 +102,13 @@ video::video()
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 
-	screen = SDL_CreateRGBSurface(SDL_SWSURFACE,320,200,32,0,0,0,0);
-	E_Screen = new Screen(SAI);
+	screen = SDL_CreateRGBSurface(SDL_SWSURFACE,320*mult,200*mult,32,0,0,0,0);
+	fontbuffer = SDL_CreateRGBSurface(SDL_SWSURFACE,320*font_mult,200*font_mult,32,0,0,0,0);
+	fontcolorkey = SDL_MapRGB(fontbuffer->format,20,0,0);
+	SDL_SetColorKey(fontbuffer,SDL_SRCCOLORKEY,fontcolorkey);
+	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
+	
+	E_Screen = new Screen(render);
 
 /*
 #ifndef OPENSCEN
@@ -111,6 +123,7 @@ video::video()
 
 video::~video()
 {
+	SDL_FreeSurface(screen);
 	SDL_Quit();
 }
 
@@ -124,12 +137,31 @@ void video::clearscreen()
 	//buffers: PORT: clear the offscreen buffer, not the screen.
 	//buffers: we are going to see if we can double buf everything.
 	SDL_FillRect (screen, NULL, SDL_MapRGB (screen->format, 0, 0, 0));
-	SDL_UpdateRect(screen,0,0,320*mult,200*mult);
+	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
 }
 
 void video::clearbuffer()
 {
 	SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format,0,0,0));
+	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
+}
+
+void video::clearfontbuffer()
+{
+//	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
+	clearfontbuffer(0,0,320,200);
+}
+
+void video::clearfontbuffer(int x, int y, int w, int h)
+{
+	SDL_Rect rect;
+
+	rect.x = x*font_mult;
+	rect.y = y*font_mult;
+	rect.w = w*font_mult;
+	rect.h = h*font_mult;
+
+	SDL_FillRect(fontbuffer,&rect,fontcolorkey);
 }
 
 void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, long filled)
@@ -507,6 +539,37 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 		}
 }
 
+
+void video::putdatatext(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata)
+{
+        unsigned long curx, cury;
+        unsigned char curcolor;
+       	unsigned long num = 0;
+        unsigned long targ = 0;
+	int r,g,b,color;
+	SDL_Rect rect;
+
+	for(cury = starty;cury < starty +ysize;cury++)
+ 	{	
+		for (curx = startx; curx < startx +xsize; curx++)
+	        {
+			curcolor = sourcedata[num++];
+			if (!curcolor)
+		        	continue;
+	        	//point(curx,cury,curcolor);//buffers: PORT: draw the poin
+			query_palette_reg(curcolor,&r,&g,&b);
+			color = SDL_MapRGB(fontbuffer->format,r*4,g*4,b*4);
+
+			rect.x = curx*font_mult;
+			rect.y = cury*font_mult;
+			rect.w = font_mult;
+			rect.h = font_mult;
+			printf("test\n");
+			SDL_FillRect(fontbuffer,&rect,color);
+		}
+    	}
+}
+
 //video::putdata
 //draws objects to screen, respecting transparency
 //used by text
@@ -530,6 +593,35 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 			//buffers: PORT: if (targ>0 && targ<VIDEO_SIZE)
 			//buffers: PORT: videoptr[targ] = curcolor;
 			point(curx,cury,curcolor);
+		}
+}
+
+void video::putdatatext(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata, unsigned char color)
+{
+        unsigned long curx, cury;
+        unsigned char curcolor;
+        unsigned long num = 0;
+        unsigned long targ = 0;
+	int r,g,b,scolor;
+	SDL_Rect rect;
+
+       for(cury = starty;cury < starty +ysize;cury++)
+	       for (curx = startx; curx < startx +xsize; curx++)
+               {
+	                curcolor = sourcedata[num++];
+                        if (!curcolor)
+  	                      	continue;
+				//if (curcolor>=248) curcolor = color+(curcolor-248);
+			if (curcolor>247)
+			        curcolor = color;
+			query_palette_reg(curcolor,&r,&g,&b);
+			scolor = SDL_MapRGB(fontbuffer->format,r*4,g*4,b*4);
+
+                   	rect.x = curx*font_mult;
+	             	rect.y = cury*font_mult;
+			rect.w = font_mult;	
+			rect.h = font_mult;
+			SDL_FillRect(fontbuffer,&rect,scolor);
 		}
 }
 
@@ -728,6 +820,81 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 		buffoff += buffshift;
 	}
 }
+
+void video::walkputbuffertext(long walkerstartx, long walkerstarty,
+                          long walkerwidth, long walkerheight,
+                          long portstartx, long portstarty,
+                          long portendx, long portendy,
+                          unsigned char  *sourceptr, unsigned char teamcolor)
+{
+        long curx, cury;
+        unsigned char curcolor;
+        long xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+        long walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+        long totrows,rowsize;
+	int r,g,b,color;
+	SDL_Rect rect;
+
+        if (walkerstartx >= portendx || walkerstarty >= portendy)
+                return; //walker is below or to the right of the viewport
+
+        if (walkerstartx < portstartx) //clip the left edge of the view
+        {
+                xmin = portstartx-walkerstartx;  //start drawing walker at xmin
+                walkerstartx = portstartx;
+        }
+	else if (walkerstartx + walkerwidth > portendx) //clip the right edge
+                xmax = portendx - walkerstartx; //stop drawing walker at xmax
+
+        if (walkerstarty < portstarty) // clip the top edge
+        {
+                ymin = portstarty-walkerstarty; //start drawing walker at ymin
+                walkerstarty = portstarty;
+        }
+
+        else if (walkerstarty + walkerheight > portendy) //clip the bottom edge
+                ymax = portendy - walkerstarty; //stop drawing walker at ymax
+
+        totrows = (ymax-ymin); //how many rows to copy
+        rowsize = (xmax-xmin); //how many bytes to copy
+        if (totrows <= 0 || rowsize <= 0)
+                return; //this happens on bad args
+
+        //note!! the clipper makes the assumption that no object is larger than
+        // the view it will be clipped to in either dimension!!!
+
+        walkshift = walkerwidth - rowsize;
+        buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+
+        walkoff   = (ymin * walkerwidth) + xmin;
+        buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+
+        for(cury = 0; cury < totrows;cury++)
+        {
+                for(curx=0;curx<rowsize;curx++)
+                {
+                        curcolor = sourceptr[walkoff++];
+                        if (!curcolor)
+                        {
+                                buffoff++;
+                                continue;
+                        }
+                        if (curcolor > (unsigned char) 247)
+                                curcolor = (unsigned char) (teamcolor+(255-curcolor));
+			query_palette_reg(curcolor,&r,&g,&b);
+                        color = SDL_MapRGB(fontbuffer->format,r*4,g*4,b*4);
+
+                        rect.x = (curx + walkerstartx)*font_mult;
+                        rect.y = (cury + walkerstarty)*font_mult;
+                        rect.w = font_mult;
+                        rect.h = font_mult;
+                        SDL_FillRect(fontbuffer,&rect,color);
+                }
+                walkoff += walkshift;
+                buffoff += buffshift;
+        }
+}
+
 
 void video::walkputbuffer(long walkerstartx, long walkerstarty,
                           long walkerwidth, long walkerheight,
@@ -1068,12 +1235,16 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 void video::buffer_to_screen(long viewstartx,long viewstarty,
                              long viewwidth, long viewheight)
 {
+	SDL_Surface *render;
+
         //buffers: update the screen (swap some buffers :)
 	//      SDL_BlitSurface(screen,NULL,window,NULL);
 	//      SDL_UpdateRect(window,0,0,320,200);
-      
-      SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
-      E_Screen->Update(viewstartx*mult,viewstarty*mult,viewwidth*mult,viewheight*mult);
+     
+      	SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
+	render = (SDL_Surface *)E_Screen->RenderAndReturn(viewstartx,viewstarty,viewwidth,viewheight);
+	SDL_BlitSurface(fontbuffer,NULL,render,NULL);
+	E_Screen->Swap(viewstartx,viewstarty,viewwidth,viewheight);
 }
 
 //buffers: like buffer_to_screen but automaticaly swaps the entire screen
