@@ -2957,6 +2957,7 @@ long quit(long arg1)
 
   release_keyboard();
   delete myscreen;
+  SDL_Quit();
   exit(1);
   return 1;
 }

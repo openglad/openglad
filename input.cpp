@@ -22,6 +22,7 @@ tm tmbuffer;
 // dosdate_t newdate;
 long keyboard_grabbed=0;
 long timer_grabbed=0;
+long quit(long arg1);
 
 unsigned short raw_key;
 short key_press_event = 0;    // used to signed key-press
@@ -113,9 +114,16 @@ void get_input_events()
 			case SDL_MOUSEMOTION:
 				mouse_state[MOUSE_X] = event.motion.x;
 				mouse_state[MOUSE_Y] = event.motion.y;
+				break;
 			case SDL_MOUSEBUTTONDOWN:
 				mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
 				mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
+				break;
+			case SDL_QUIT:
+				quit(1);
+				break;
+			default:
+				break;
 		}
 	}
 }
