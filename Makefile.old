@@ -1,9 +1,9 @@
-all: openglad
+all: openglad-game
 
-openglad:
+openglad-game:
 	make -C src/ openglad
 
-openscen:
+openscen-game:
 	make -C src/ openscen
 
 clean:
