@@ -203,6 +203,7 @@ void vbutton::vdisplay(long status)
 			if (strlen(label))
 				mytext->write_xy( (short) ( ((xloc+xend)/2) - (((strlen(label)-1)* (mytext->sizex+1) )/2)) ,
 				                  (short) (yloc + (height-(mytext->sizey))/2), label, (unsigned char) DARK_BLUE, 1);
+			myscreen->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
 		}
 		else if (status == 2) // special (red) button..
 		{
