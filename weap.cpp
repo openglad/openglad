@@ -12,7 +12,7 @@ weap::weap(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 
 weap::~weap()
 {
-  walker::~walker();
+  //buffers: PORT: can't call destructor w/o obj: walker::~walker();
 }
 
 short weap::act()
