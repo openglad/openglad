@@ -101,7 +101,11 @@ short effect::act()
                 }
                 break; // end of magic shield case
          case FAMILY_BOOMERANG: // fighter's boomerang
-                if (!owner || owner->dead)
+		// Zardus: FIX: if the drawcycle is in its >253s, the boomerang dies. This will fix the bug where
+		// the boomerang comes back to 0 (owner) after spiraling around all the way if the owner has
+		// that good of an ability (to keep its life so high). This caps boomerang ability, though... Another
+		// fix could be to make the drawcycle var an int or at least something with more capacity than char.
+                if (!owner || owner->dead || drawcycle > 253)
                 {
                   dead = 1;
                   death();
