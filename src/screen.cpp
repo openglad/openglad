@@ -319,10 +319,15 @@ screen::screen(short howmany):video()
 
 screen::~screen()
 {
+	int i;
+
 	change_time(FREQ_NORMAL);
 	release_timer();
 	delete soundp;
 	delete myloader;
+	for (i = 0; i < PIX_MAX; i++)
+		if(pixdata[i])
+			free(pixdata[i]);
 	soundp = NULL;
 	reset(1); //make sure we've cleaned up
 }
