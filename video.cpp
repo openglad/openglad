@@ -2,6 +2,7 @@
 #include "graph.h"
 #include <fstream.h>
 #include <stdlib.h>
+#include <math.h>
 // Z's script: #include <dos.h>
 // Z's script: #include <i86.h>
 
@@ -61,7 +62,13 @@ load_palette("our.pal", redpalette);
 
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO);
-	screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+
+	strcpy(temp,get_cfg_item("graphics","fullscreen"));
+	if(strcmp(temp,"on")==0)
+		screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
+	else
+		screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+		
 }
 
 video::~video()
@@ -302,8 +309,6 @@ void video::pointb(long x, long y, unsigned char color)
 		SDL_UnlockSurface(screen);
 	}
 }											
-
-
 // Place a horizontal line on the screen.
 void video::hor_line(long x, long y, long length, unsigned char color)
 {
