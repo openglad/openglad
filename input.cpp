@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <malloc.h>
+#include <string.h> //buffers: for strlen
 
 unsigned long start_time=0;
 unsigned long reset_value=0;
