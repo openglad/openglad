@@ -51,9 +51,8 @@ pixieN::~pixieN()
 {
 	bmp = NULL;
 	facings = NULL;
+	frames = NULL;
 	frames = 0;
-	if(accel)
-		SDL_FreeSurface(bmp_surface);
 }
 
 // Changes the frame number and poshorts the BMP data poshorter to
