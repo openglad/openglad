@@ -793,6 +793,8 @@ long beginmenu(long arg1)
 
 	localbuttons = buttonmenu(bteam, 8);
 
+	myscreen->swap();
+
 	if (localbuttons == NULL)
 		return 1;
 
@@ -2950,6 +2952,8 @@ long go_menu(long arg1)
 		while(query_timer() < temptime + 150)
 			;
 		grab_mouse();
+		myscreen->clearfontbuffer(100,65,220-100,125-65);
+		
 		return REDRAW;
 	}
 	save_team_list("save0");
