@@ -25,6 +25,8 @@ smoother * mysmoother;
 #include "colors.h"
 #include <time.h>
 #include "parser.h"
+#include <string>
+using namespace std;
 
 // Z's script: #include <process.h>
 
@@ -59,10 +61,10 @@ void glad_main(screen *myscreen, long playermode);
 #include <unistd.h>
 static void create_dotopenglad()
 {
-	char *home = getenv("HOME");
-	string path(home);
+	string path(getenv("HOME"));
 	path += "/.openglad/";
 	mkdir(path.c_str(), 0755);
+	path.reserve(path.size()+10);
 	string::iterator subdirpos = path.end();
 	path += "pix/";
 	mkdir(path.c_str(), 0755);
@@ -360,6 +362,7 @@ short score_panel(screen *myscreen, short do_it)
 	short temp = 0, i, j;
 	short tempallies = 0;
 	static text *mytext = new text(myscreen, TEXT_1);
+#if 0
 	static unsigned long family[5]={-1,-1},
 	                               hitpoints[5]={-1, -1},
 	                                            magicpoints[5]={-1,-1},
@@ -367,6 +370,7 @@ short score_panel(screen *myscreen, short do_it)
 	                                                                    act[5]={-1, -1},
 	                                                                           numfoes[5]={0, 0},
 	                                                                                      numallies[5]={0,0};
+#endif
 	static short numobs = myscreen->numobs;
 	unsigned short hp_bar_length, hp_bar_remainder, HP_COLOR; //HP BAR
 	unsigned short mp_bar_length, mp_bar_remainder, MP_COLOR; //SP BAR
@@ -638,8 +642,10 @@ short new_score_panel(screen *myscreen, short do_it)
 	short players;
 	short tempallies = 0;
 	static text *mytext = new text(myscreen, TEXT_1);
+#if 0
 	static unsigned long family[5]={-1,-1,-1,-1,-1},
 	                               act[5]={-1, -1,-1,-1,-1};
+#endif
 
 	static short numobs = myscreen->numobs;
 	walker  *control;

@@ -29,7 +29,7 @@ public:
 
 	const char *query(const char*, const char *);
 
-	map<string, map<string, string> > data;
+	std::map<std::string, std::map<std::string, std::string> > data;
 };
 
 extern cfg_store cfg;
