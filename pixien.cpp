@@ -18,11 +18,24 @@ pixieN::pixieN(unsigned char  *data, screen  *myscreen):
   frame = 0;
 }
 
+pixieN::pixieN(unsigned char  *data, screen  *myscreen, int doaccel):
+				pixie(data,data[1],data[2], myscreen)
+{
+	facings = data+3;
+	bmp = (unsigned char *)(data+3);
+	frames = data[0];
+	frame = 0;
+	if(doaccel)
+		init_sdl_surface();
+}
+
 pixieN::~pixieN()
 {
   bmp = NULL;
   facings = NULL;
   frames = NULL;
+  if(accel)
+  	SDL_FreeSurface(bmp_surface);
 }
 
 // Changes the frame number and poshorts the BMP data poshorter to

@@ -31,11 +31,22 @@ pixie::pixie(unsigned char *data, short x, short y, screen  *myscreen)
   sizey = y;
   size = (unsigned short) (sizex*sizey);
 //  oldbmp = (unsigned char *)new char[size];
+	accel = 0;
+}
+
+//buffers: new constructor that automatically calls init_sdl_surface
+pixie::pixie(unsigned char *data, short x, short y, screen *myscreen, int doaccel){
+	pixie(data,x,y,myscreen);
+
+	if(doaccel)
+		init_sdl_surface();
 }
 
 // Destruct the pixie and its variables
 pixie::~pixie()
 {
+	if(accel)
+		SDL_FreeSurface(bmp_surface);
 //  delete oldbmp;
 }
 
@@ -72,12 +83,19 @@ short pixie::draw(viewscreen * view_buf)
   xscreen = (long) (xpos - view_buf->topx + view_buf->xloc);
   yscreen = (long) (ypos - view_buf->topy + view_buf->yloc);
 
-  view_buf->screenp->putbuffer(xscreen, yscreen, sizex, sizey,
-                              view_buf->xloc, view_buf->yloc,
-                              view_buf->endx, view_buf->endy,
-                              bmp);
-
-  return 1;
+	if(accel) {
+		view_buf->screenp->putbuffer(xscreen, yscreen, sizex, sizey,
+			view_buf->xloc, view_buf->yloc,
+			view_buf->endx, view_buf->endy,
+			bmp_surface);
+	} else {
+		view_buf->screenp->putbuffer(xscreen, yscreen, sizex, sizey,
+			view_buf->xloc, view_buf->yloc,
+			view_buf->endx, view_buf->endy,
+			bmp);
+	}
+	
+	return 1;
 }
 
 // Allows the pixie to be placed using pixel coord data
@@ -140,4 +158,42 @@ short pixie::on_screen(viewscreen  *viewp)
   else if ( ypos > (topy + yview) ) return 0; //we are below the view
   else 
     return 1;
+}
+
+//buffers: this func initializes the bmp_surface
+void pixie::init_sdl_surface(void)
+{
+	int r,g,b,c,i,j,num;
+	SDL_Rect rect;
+
+	bmp_surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex,sizey,16,
+			screenp->rmask,screenp->gmask,screenp->bmask,0);
+	if(!bmp_surface) {
+		printf("ERROR: pixie::init_sdl_surface(): could not create bmp_surface\n");
+	}
+
+	num=0;
+	for(i=0;i<sizey;i++)
+		for(j=0;j<sizex;j++) {
+			query_palette_reg(bmp[num],&r,&g,&b);
+			c = SDL_MapRGB(bmp_surface->format,r*4,g*4,b*4);
+			rect.x = j;
+			rect.y = i;
+			rect.w = rect.h = 1;
+			SDL_FillRect(bmp_surface,&rect,c);
+			num++;
+		}
+
+	accel = 1;
+}
+
+//buffers: turn SDL_Surface accel on and off
+void pixie::set_accel(int a)
+{
+	if(a) {
+		init_sdl_surface();
+	} else {
+		if(accel)
+			SDL_FreeSurface(bmp_surface);
+	}
 }
