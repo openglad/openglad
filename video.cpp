@@ -299,7 +299,7 @@ void video::pointb(long x, long y, unsigned char color)
 
 	printf("DEBUG: %d: %d %d %d\n",color,r,g,b);
 
-	c = SDL_MapRGB(screen->format, r, g, b);
+	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
 
 	SDL_LockSurface(screen);
 
