@@ -344,7 +344,7 @@ short score_panel(screen *myscreen, short do_it)
 	char tempname[20];
 	short temp = 0, i, j;
 	short tempallies = 0;
-	static text *mytext = new text(myscreen, TEXT_1);
+	text *mytext = new text(myscreen, TEXT_1);
 #if 0
 	static unsigned long family[5]={-1,-1},
 	                               hitpoints[5]={-1, -1},
@@ -373,6 +373,7 @@ short score_panel(screen *myscreen, short do_it)
 
 	//       short linesdown;
 
+	delete mytext;
 	return new_score_panel(myscreen, 1);
 
 }
@@ -624,7 +625,7 @@ short new_score_panel(screen *myscreen, short do_it)
 	short tempfoes = 0, i, j;
 	short players;
 	short tempallies = 0;
-	static text *mytext = new text(myscreen, TEXT_1);
+	text *mytext = new text(myscreen, TEXT_1);
 #if 0
 	static unsigned long family[5]={-1,-1,-1,-1,-1},
 	                               act[5]={-1, -1,-1,-1,-1};
@@ -818,6 +819,7 @@ short new_score_panel(screen *myscreen, short do_it)
 			//    myscreen->putdata(244, 140, radarpic[1], radarpic[2], &(radarpic[3]) );
 		}
 	} // end of one-player mode
+	delete mytext;
 	return 1;
 
 }
