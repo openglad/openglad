@@ -17,7 +17,6 @@
 #include <string.h>
 #include <stdio.h>
 #include "graph.h"
-#include "config.h"
 #include "util.h"
 
 #define HELPTEXT_LEFT 40
