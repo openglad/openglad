@@ -148,9 +148,9 @@ short treasure::eat_me(walker  * eater)
                 sprintf(message, "scen%d", stats->level);
                 strcpy(exitname, myscreen->get_scen_title(message, myscreen) );
                 
-		//buffers: PORT: need to replace stricmp
-		//buffers: if (!stricmp(exitname, "none"))
-                //buffers:  sprintf(exitname, "Level %d", stats->level);
+		//buffers: PORT: using strcmp instead of stricmp
+		if (!strcmp(exitname, "none"))
+                  sprintf(exitname, "Level %d", stats->level);
                 
 		leftside  = 160 - ( (strlen(exitname) + 18) * 3);
                 rightside = 160 + ( (strlen(exitname) + 18) * 3);
