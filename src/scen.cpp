@@ -898,7 +898,7 @@ long score_panel(screen *myscreen)
 	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
 	// Level display
-	sprintf(message, "LVL: %d", currentlevel);
+	sprintf(message, "LVL: %ld", currentlevel);
 	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
 	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
@@ -913,7 +913,7 @@ long score_panel(screen *myscreen)
 
 	numobs = myscreen->numobs;
 	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-	sprintf(message, "OB: %d", numobs);
+	sprintf(message, "OB: %ld", numobs);
 	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
 
 	// Show the background grid ..
@@ -1312,7 +1312,6 @@ long save_scenario(char * filename, screen * master, char *gridname)
 	long currentx, currenty;
 	char temporder, tempfamily;
 	char tempteam, tempfacing, tempcommand;
-	char templevel;
 	short shortlevel;
 	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
 	FILE  *outfile;

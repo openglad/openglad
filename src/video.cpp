@@ -40,7 +40,6 @@ video::video()
 {
 	long i;
 	const char *qresult;
-	int pixel;
 	RenderEngine render;
 
 	qresult = cfg.query("graphics","fullscreen");
@@ -278,7 +277,6 @@ void video::draw_text_bar(long x1, long y1, long x2, long y2)
 {
 	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	long ylength = y2 - y1 + 1;
-	long i;
 
 	// First draw the filled, generic grey bar facing
 	draw_box(x1, y1, x2, y2, 12, 1, 1); // filled, to buffer
@@ -321,7 +319,6 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 // This is the version which writes to the buffer..
 void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned char color, unsigned char flag)
 {
-	unsigned long i,j, temp;
 	SDL_Rect rect;
 	int r,g,b;
 
@@ -410,7 +407,7 @@ void video::hor_line(long x, long y, long length, unsigned char color)
 
 void video::hor_line(long x, long y, long length, unsigned char color, long tobuffer)
 {
-	unsigned long num, i;
+	unsigned long i;
 
 	if (!tobuffer)
 	{
@@ -435,7 +432,7 @@ void video::ver_line(long x, long y, long length, unsigned char color)
 
 void video::ver_line(long x, long y, long length, unsigned char color, long tobuffer)
 {
-	unsigned long num, i;
+	unsigned long i;
 
 	if (!tobuffer)
 	{
@@ -498,7 +495,6 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 	unsigned long curx, cury;
 	unsigned char curcolor;
 	unsigned long num = 0;
-	unsigned long targ = 0;
 
 	for(cury = starty;cury < starty +ysize;cury++)
 		for (curx = startx; curx < startx +xsize; curx++)
@@ -519,7 +515,6 @@ void video::putdatatext(long startx, long starty, long xsize, long ysize, unsign
         unsigned long curx, cury;
         unsigned char curcolor;
        	unsigned long num = 0;
-        unsigned long targ = 0;
 	int r,g,b,color;
 	SDL_Rect rect;
 
@@ -552,7 +547,6 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 	unsigned long curx, cury;
 	unsigned char curcolor;
 	unsigned long num = 0;
-	unsigned long targ = 0;
 
 	for(cury = starty;cury < starty +ysize;cury++)
 		for (curx = startx; curx < startx +xsize; curx++)
@@ -575,7 +569,6 @@ void video::putdatatext(long startx, long starty, long xsize, long ysize, unsign
         unsigned long curx, cury;
         unsigned char curcolor;
         unsigned long num = 0;
-        unsigned long targ = 0;
 	int r,g,b,scolor;
 	SDL_Rect rect;
 
@@ -619,7 +612,6 @@ void video::putbuffer(long tilestartx, long tilestarty,
 	unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
 	long totrows,rowsize; //number of rows and width of each row in the source
 	unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
-	unsigned char * videobufptr = &videobuffer[0];
 	unsigned char * sourcebufptr = &sourceptr[0];
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
@@ -673,12 +665,10 @@ void video::putbuffer(long tilestartx, long tilestarty,
                       SDL_Surface *sourceptr)
 {
 	SDL_Rect rect,temp;
-	int i,j,num;
 	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
 	unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
 	long totrows,rowsize; //number of rows and width of each row in the source
 	unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
-	unsigned char * videobufptr = &videobuffer[0];
 	//buffers: unsigned char * sourcebufptr = &sourceptr[0];
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
@@ -884,7 +874,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	long walkoff=0,buffoff=0,walkshift=0,buffshift=0;
 	long totrows,rowsize;
 	signed char shift;
-	int yval, xval,temp;
+	int yval, xval;
 	Uint8 r,g,b;
 	int tx,ty,tempbuf;
 
@@ -1231,9 +1221,7 @@ void video::swap(void)
 extern void do_clear_ints();
 extern void do_restore_ints();
 
-//buffers: PORT: #pragma aux do_clear_ints = \
-//buffers: PORT:   "cli";
-
+//buffers: PORT: #pragma aux do_clear_ints = "cli";
 #pragma aux do_restore_ints = "sti";
 
 void video::clear_ints()
@@ -1320,8 +1308,6 @@ void video::FadeBetween24(
 	SDL_Surface* pSurface, const Uint8* fadeFromRGB, const Uint8* fadeToRGB,
 	const int amount)	//(in) mixing ratio (in increments of 'fadeDuration')
 {
-	const int bpp = pSurface->format->BytesPerPixel;
-
 	Uint8 *pw = (Uint8 *)pSurface->pixels;
 	Uint32 size = pSurface->pitch * pSurface->h;
 

@@ -130,7 +130,6 @@ short weap::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 
-	short howmany = 0;
 	walker  *newob = NULL;
 
 	if (death_called)  // Make sure we don't get multiple deaths

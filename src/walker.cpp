@@ -270,7 +270,7 @@ short walker::walkstep(short x, short y)
 	short oldcurdir = curdir;
 	short step = (short) stepsize;
 	short halfstep;
-	long i, j;
+	long i;
 	long gotup = 0, gotover = 0;
 	//walker *control1 = screenp->viewob[0]->control;
 	//walker *control2;
@@ -679,7 +679,6 @@ walker  * walker::fire()
 	walker  *weapon = NULL;
 	signed char waver;
 	short xp, yp;
-	static char message[80];
 	long extra;
 
 	// Do we have enough spellpoints for our weapon
@@ -897,8 +896,6 @@ void walker::set_weapon_heading(walker *weapon)
 short walker::draw(viewscreen  *view_buf)
 {
 	long xscreen, yscreen;
-	long i;
-	unsigned char do_outline = 0;
 
 	//no need for on screen check, it will be checked at the draw level
 	//and the draw level code is cleaner anyway
@@ -1677,10 +1674,10 @@ short walker::special()
 	short targetx, targety;
 	unsigned long distance;
 	oblink *newlist, *here;
-	oblink *list2, *here2;
+	oblink *list2;
 	short howmany;
 	short didheal;
-	short generic, generic2, generic3;
+	short generic, generic2;
 	char message[80], tempstr[80];
 	short person;
 
@@ -2166,7 +2163,7 @@ short walker::special()
 							if ((team_num == 0 || myguy) && user != -1)
 							{
 								screenp->do_notify("Teleport Marker Placed", this);
-								sprintf(message, "(%d Uses)", newob->lifetime);
+								sprintf(message, "(%ld Uses)", newob->lifetime);
 								screenp->do_notify(message, this);
 							}
 							busy +=8;
@@ -2346,7 +2343,7 @@ short walker::special()
 						if (team_num == 0 || myguy)
 						{
 							screenp->do_notify("Teleport Marker Placed", this);
-							sprintf(message, "(%d Uses)", newob->lifetime);
+							sprintf(message, "(%ld Uses)", newob->lifetime);
 							screenp->do_notify(message, this);
 						}
 						busy +=8;
@@ -3744,7 +3741,6 @@ short walker::death()
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)
-	short howmany = 0;
 	walker  *newob = NULL;
 	long i;
 

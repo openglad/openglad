@@ -309,10 +309,8 @@ short viewscreen::input(char inputthing)
 	static text mytext(screenp);
 	static char somemessage[80];
 	oblink *templink;
-	char sillytext[80];
 	int  counter;
 
-	static short prefcount[6] = {0, 0, 0, 0, 0, 0};
 	short i;
 	oblink  *here, *tempobj, *helpme;
 	//short step;
@@ -325,10 +323,8 @@ short viewscreen::input(char inputthing)
 	//buffers: PORT: this doesn't compile: union REGS inregs,outregs;
 	short newfam; //oldfam?
 	unsigned long totaltime, totalframes, framespersec;
-	walker  * blood;
 	walker *newob; // for general-purpose use
 	walker  * oldcontrol = control; // So we know if we changed guys
-	char view_team_on = 0;
 
 	inputkeyboard = query_keyboard();
 	get_input_events(POLL);
@@ -433,7 +429,7 @@ short viewscreen::input(char inputthing)
 		totaltime = (query_timer_control() - screenp->timerstart)/72;
 		totalframes = (screenp->framecount);
 		framespersec = totalframes / totaltime;
-		sprintf(somemessage, "%d FRAMES PER SEC", framespersec);
+		sprintf(somemessage, "%ld FRAMES PER SEC", framespersec);
 		screenp->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
 	}
 
@@ -1169,7 +1165,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	char text_down = top+3;
 	oblink *here = screenp->oblist;
 	oblink *dude, *list, *temp;
-	char message[30], done = 0, hpcolor, mpcolor, namecolor, numguys = 0;
+	char message[30], hpcolor, mpcolor, namecolor, numguys = 0;
 	short hp, mp, maxhp, maxmp;
 	text mytext(screenp);
 	list = new oblink;
@@ -1320,7 +1316,7 @@ void viewscreen::options_menu()
 {
 	static text optiontext(screenp);
 	static char *opkeys;
-	long gamespeed, viewsize;
+	long gamespeed;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];
 
@@ -1371,7 +1367,7 @@ void viewscreen::options_menu()
 	optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
 
 	gamma = change_gamma(0);
-	sprintf(message, "Change Brightness (<,>): %ld ", gamma);
+	sprintf(message, "Change Brightness (<,>): %d ", gamma);
 	screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 
@@ -1543,7 +1539,7 @@ void viewscreen::options_menu()
 		if (opkeys[SDLK_COMMA]) // darken screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(-2);
-			sprintf(message, "Change Brightness (<,>): %ld ", gamma);
+			sprintf(message, "Change Brightness (<,>): %d ", gamma);
 			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1553,7 +1549,7 @@ void viewscreen::options_menu()
 		if (opkeys[SDLK_PERIOD]) // lighten screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(+2);
-			sprintf(message, "Change Brightness (<,>): %ld ", gamma);
+			sprintf(message, "Change Brightness (<,>): %d ", gamma);
 			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1736,7 +1732,6 @@ long viewscreen::change_gamma(long whichway)
 options::options()
 {
 	int i;
-	char *datap;
 	FILE *infile;
 	memcpy(allkeys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
 
@@ -1790,7 +1785,6 @@ short options::save(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
 	long i;
-	char *datap;
 	FILE *outfile;
 
 	// Yes, we are ACTUALLY COPYING the data
@@ -1879,7 +1873,6 @@ long load_key_prefs()
 long viewscreen::set_key_prefs()
 {
 	static text keytext(screenp);
-	static char message[80], tempstr[80];
 
 	clear_keyboard();
 
