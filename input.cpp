@@ -163,7 +163,7 @@ void key_int()
   //remember cli/sti
 }
 
-short query_key()
+int query_key()
 {
   return raw_key;
 }

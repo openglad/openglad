@@ -309,7 +309,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
   static char editstring[100], firststring[100];
   //char *somekeyboard = grab_keyboard();
   short dumbcount; // used for delays, etc.
-  unsigned char tempchar;
+  int tempchar;
   short has_typed = 0; // hasn't typed yet
 
   for (i=0; i < 100; i++)
@@ -336,7 +336,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
     while (!query_key_press_event())
       //dumbcount++;
       get_input_events();
-    tempchar = (unsigned char) query_key();
+    tempchar = query_key();
     clear_key_press_event();
     if (tempchar == SDLK_RETURN)
       string_done = 1;

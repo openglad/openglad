@@ -101,7 +101,7 @@ unsigned long query_timer_control();
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.
 //buffers: PORT: doesnt compile void __interrupt key_int();           // called on press/release
-short query_key();                                                            // return last keypress
+int query_key();                                                            // return last keypress
 void clear_keyboard();                                              // set keyboard to none pressed
 char * query_keyboard();                                    // keyboard status
 void wait_for_key(unsigned char somekey); // wait for key SOMEKEY

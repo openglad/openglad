@@ -42,7 +42,8 @@
 void get_input_events();
 
 // Now define the arrays with their default values
-static char key1[] = {
+//static 
+char key1[] = {
   SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
   SDLK_DOWN, SDLK_END, SDLK_LEFT, SDLK_HOME,
   SDLK_INSERT, SDLK_RETURN,                    // fire & special
@@ -54,7 +55,8 @@ static char key1[] = {
   SDLK_F8,                                    // Cheat key
 };
 
-static char key2[] = {
+//static 
+char key2[] = {
   SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
   SDLK_x, SDLK_z, SDLK_a, SDLK_q,
   SDLK_LCTRL, SDLK_LALT,                    // fire & special
@@ -66,7 +68,8 @@ static char key2[] = {
   SDLK_F5,                                 // Cheat key
 };
 
-static char key3[] = {
+//static 
+char key3[] = {
   SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,  // movements
   SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
   SDLK_SPACE, SDLK_SEMICOLON,                    // fire & special
@@ -78,7 +81,8 @@ static char key3[] = {
   SDLK_F7,                                 // Cheat key
 };
 
-static char key4[] = {
+//static
+char key4[] = {
   SDLK_t, SDLK_y, SDLK_h, SDLK_n,  // movements
   SDLK_b, SDLK_v, SDLK_f, SDLK_r,
   SDLK_5, SDLK_6,                    // fire & special
@@ -93,13 +97,15 @@ static char key4[] = {
 // This is for saving/loading the key preferences
 long save_key_prefs();
 long load_key_prefs();
-unsigned char get_keypress();
+unsigned int get_keypress();
 #define KEY_FILE "keyprefs.dat"
 
 // This only exists so we can use the array constructor
 //   for our prefs object (grumble grumble)
-static char *normalkeys[] = {key1,key2,key3,key4};
-static char keys[4][16];
+//static
+char *normalkeys[] = {key1,key2,key3,key4};
+//static
+char keys[4][16];
 
 // ** OUR prefs object! **
 static options theprefs;
@@ -321,6 +327,8 @@ short viewscreen::input(char inputthing)
   char view_team_on = 0;
 
   inputkeyboard = query_keyboard();
+  get_input_events();
+
   if (inputthing) dumbcount++;
 
 //  joystick = query_joy();
@@ -446,6 +454,12 @@ short viewscreen::input(char inputthing)
 
   if (inputkeyboard[SDLK_F4] && !inputkeyboard[mykeys[KEY_CHEAT]]) // Memory report
     screenp->report_mem();
+
+  printf ("%i %i %i\n%i %i %i\n%i %i %i\n\nFire: %i\nSwitch: %i\nSpecial: %i\n\nLast: %i\n---------------\n",
+		  mykeys[KEY_UP_LEFT], mykeys[KEY_UP], mykeys[KEY_UP_RIGHT],
+		  mykeys[KEY_LEFT], mykeys[KEY_YELL], mykeys[KEY_RIGHT],
+		  mykeys[KEY_DOWN_LEFT], mykeys[KEY_DOWN], mykeys[KEY_DOWN_RIGHT],
+		  mykeys[KEY_FIRE], mykeys[KEY_SWITCH], mykeys[KEY_SPECIAL], query_key());
 
   if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
     options_menu();
@@ -2148,7 +2162,7 @@ long viewscreen::set_key_prefs()
 
 // Waits for a key to be pressed and then released ..
 // returns this key.
-unsigned char get_keypress()
+unsigned int get_keypress()
 {
   long dumbcount;
 
