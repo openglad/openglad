@@ -51,7 +51,9 @@ long event = 1;  // need to redraw?
 long levelchanged = 0;  // has level changed?
 long cyclemode = 0;      // for color cycling
 long grid_aligned = 1;  // aligned by grid, default is on
-long start_time; // for timer ops
+//buffers: PORT: changed start_time to start_time_s to avoid conflict with 
+//input.cpp
+long start_time_s; // for timer ops
 
 smoother  *mysmoother = NULL;
 
@@ -621,8 +623,8 @@ main(short argc, char **argv)
        {
          newob->draw(myscreen->viewob[0]);
          myscreen->buffer_to_screen(0, 0, 320, 200);
-         start_time = query_timer();
-         while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time) < 36 )
+         start_time_s = query_timer();
+         while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
            mymouse = query_mouse();
          levelchanged = 1;
        }
