@@ -129,7 +129,8 @@ char * query_keyboard();                                    // keyboard status
 void wait_for_key(int somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)
-short query_key_code(short code);                       // OBSOLETE, use query_keyboard
+short query_key_code(int code);                       // OBSOLETE, use query_keyboard
+void clear_key_code(int code);
 void enable_keyrepeat();
 void disable_keyrepeat();
 void init_input();

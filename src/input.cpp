@@ -256,9 +256,14 @@ void clear_key_press_event()
 	key_press_event = 0;
 }
 
-short query_key_code(short code)
+short query_key_code(int code)
 {
 	return key_list[code];
+}
+
+void clear_key_code(int code)
+{
+	key_list[code] = 0;
 }
 
 void enable_keyrepeat()

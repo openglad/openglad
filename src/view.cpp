@@ -681,8 +681,7 @@ short viewscreen::input(char inputthing)
 				control->action = 0;
 				break;
 		} // end of switch for action mode
-		while (inputkeyboard[mykeys[KEY_YELL]])
-			dumbcount++;
+		clear_key_code(mykeys[KEY_YELL]);
 	} // end of summon team defense
 
 
@@ -754,24 +753,21 @@ short viewscreen::input(char inputthing)
 		if (inputkeyboard[SDLK_RIGHTBRACKET]) // up level
 		{
 			control->stats->level++;
-			while (inputkeyboard[SDLK_RIGHTBRACKET])
-				dumbcount++;
+			clear_key_code(SDLK_RIGHTBRACKET);
 		}//end up level
 
 		if (inputkeyboard[SDLK_LEFTBRACKET]) // down level
 		{
 			if (control->stats->level > 1)
 				control->stats->level--;
-			while (inputkeyboard[SDLK_LEFTBRACKET])
-				dumbcount++;
+			clear_key_code(SDLK_LEFTBRACKET);
 		}//end down level
 
 		if (inputkeyboard[SDLK_F1]) // freeze time
 		{
 			screenp->enemy_freeze += 50;
 			set_palette(screenp->bluepalette);
-			while (inputkeyboard[SDLK_F1])
-				dumbcount++;
+			clear_key_code(SDLK_F1);
 		}//end freeze time
 
 		if (inputkeyboard[SDLK_F2]) // generate magic shield
@@ -781,8 +777,7 @@ short viewscreen::input(char inputthing)
 			newob->team_num = control->team_num;
 			newob->ani_type = 1; // dummy, non-zero value
 			newob->lifetime = 200;
-			while (inputkeyboard[SDLK_F2])
-				dumbcount++;
+			clear_key_code(SDLK_F2);
 		}//end generate magic shield
 
 		if (inputkeyboard[SDLK_f])  // ability to fly
@@ -791,8 +786,7 @@ short viewscreen::input(char inputthing)
 				control->stats->set_bit_flags(BIT_FLYING,0);
 			else
 				control->stats->set_bit_flags(BIT_FLYING,1);
-			while (inputkeyboard[SDLK_f])
-				dumbcount++;
+			clear_key_code(SDLK_f);
 		} //end flying
 
 		if (inputkeyboard[SDLK_h]) // give controller lots of hitpoints
@@ -807,8 +801,7 @@ short viewscreen::input(char inputthing)
 				control->stats->set_bit_flags(BIT_INVINCIBLE,0);
 			else
 				control->stats->set_bit_flags(BIT_INVINCIBLE,1);
-			while (inputkeyboard[SDLK_i])
-				dumbcount++;
+			clear_key_code(SDLK_i);
 		} // end invincibility
 
 		if (inputkeyboard[SDLK_m]) // give controller lots of magicpoints
@@ -826,8 +819,7 @@ short viewscreen::input(char inputthing)
 		{
 			dumbcount = (control->query_family()+1)% NUM_FAMILIES;
 			control->transform_to(control->query_order(), (char) dumbcount);
-			while (inputkeyboard[SDLK_t])
-				dumbcount++;
+			clear_key_code(SDLK_t);
 		} //end transform
 
 		if (inputkeyboard[SDLK_v]) // invisibility
@@ -1416,7 +1408,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	list->next = NULL;
 	temp = new oblink;
 	char *teamkeys;
-	long dumbcount, currentcycle = 0, cycletime = 30000;
+	long currentcycle = 0, cycletime = 30000;
 
 	screenp->redrawme = 1;
 	screenp->draw_button(left, top, right, bottom, 2);
@@ -1547,7 +1539,6 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		get_input_events(POLL);
 	}
 	while (teamkeys[SDLK_ESCAPE])
-		//buffers: PORT: dumbcount++;
 		get_input_events(WAIT);
 
 	return;
@@ -1557,7 +1548,6 @@ void viewscreen::options_menu()
 {
 	static text optiontext(screenp);
 	static char *opkeys;
-	long dumbcount;
 	long gamespeed, viewsize;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];
@@ -1879,7 +1869,6 @@ void viewscreen::options_menu()
 		{
 			screenp->cyclemode= (short) ((screenp->cyclemode+1) %2);
 			while (opkeys[SDLK_c])
-				//buffers: PORT: dumbcount++;
 				get_input_events(WAIT);
 			if (screenp->cyclemode)
 				sprintf(message,"Color Cycling (C)      : ON ");
@@ -2164,7 +2153,6 @@ long load_key_prefs()
 long viewscreen::set_key_prefs()
 {
 	static text keytext(screenp);
-	long dumbcount;
 	static char message[80], tempstr[80];
 
 	clear_keyboard();
