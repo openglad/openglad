@@ -762,15 +762,15 @@ int main(int argc, char **argv)
 			}
 		}
 
-		//if (event)
-	//	{
-	//		release_mouse();
+		if (event)
+		{
+			release_mouse();
 			myscreen->redraw();
 			score_panel(myscreen);
 			myscreen->refresh();
 			//    score_panel(myscreen);
-		//	grab_mouse();
-	//	}
+			grab_mouse();
+		}
 		event = 0;
 
 		if (mykeyboard[SDLK_ESCAPE])
