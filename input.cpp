@@ -105,6 +105,8 @@ void get_input_events()
 			// Key pressed or released:
 			case SDL_KEYDOWN:
 				key_list[event.key.keysym.sym] = 1;
+				raw_key = event.key.keysym.sym;
+				key_press_event = 1;
 				break;
 			case SDL_KEYUP:
 				key_list[event.key.keysym.sym] = 0;

@@ -1,5 +1,7 @@
 #include "graph.h"
 
+void get_input_events();
+
 text::text(screen * myscreen)
 {
   letters = (unsigned char *) read_pixie_file(TEXT_1);
@@ -332,7 +334,8 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
   {
     // Wait for a key to be pressed ..
     while (!query_key_press_event())
-      dumbcount++;
+      //dumbcount++;
+      get_input_events();
     tempchar = (unsigned char) query_key();
     clear_key_press_event();
     if (tempchar == SDLK_RETURN)
