@@ -213,7 +213,8 @@ void vbutton::vdisplay(long status)
 		}
 	}
 	release_mouse();
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+	//buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(xloc,yloc,xend,yend);
 	grab_mouse();
 }
 
@@ -394,7 +395,8 @@ long vexitmenu(vbutton * vbuttons)
 
 vbutton * buttonmenu(button * buttons, long numbuttons)
 {
-	return buttonmenu(buttons, numbuttons, 1); // default is redraw screen
+	//buffers: return buttonmenu(buttons, numbuttons, 1); // default is redraw screen
+	return buttonmenu(buttons,numbuttons,0);
 }
 
 vbutton * buttonmenu(button * buttons, long numbuttons, long redraw)
@@ -426,8 +428,8 @@ vbutton * buttonmenu(button * buttons, long numbuttons, long redraw)
 
 	release_mouse();
 
-	if (redraw)
-		myscreen->buffer_to_screen(0, 0, 320, 200);
+	//if (redraw)
+	//	myscreen->buffer_to_screen(0, 0, 320, 200);
 	grab_mouse();
 	return allbuttons[0];
 
