@@ -544,19 +544,19 @@ extern void putbufdasm();
   if (! (rowsize % 4))
   {
     rowsize/=4; //we'll move four bytes at a time
-    putbufdasm(); // d stands for the movsd we'll use
+ //buffers: PORT: wont link with this in:   putbufdasm(); // d stands for the movsd we'll use
   }
   else if (! (rowsize %2))
   {
 //    rowsize-=2;
     rowsize/=4;
-    putbufwasm();
+//buffers: PORT: doesn't link with this in:    putbufwasm();
   }
   else
   {
 //    rowsize-=1;
     rowsize/=2;
-    putbufbasm(); //all other cases will currently use the normal version b for movsb
+//buffers: PORT: doesn't link with this in:    putbufbasm(); //all other cases will currently use the normal version b for movsb
   }
 
 }
@@ -956,7 +956,7 @@ extern void buftosasm();
 //buffers: PORT: 	     "jnz buffloopx"\   
 //buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
 
-  buftosasm();
+//buffers: PORT: won't link with this in:  buftosasm();
 
 
 }
@@ -971,9 +971,9 @@ extern void do_restore_ints();
 
 void video::clear_ints()
 {
-  do_clear_ints();
+  //buffers: PORT: won't link with this in: do_clear_ints();
 }
 void video::restore_ints()
 {
-  do_restore_ints();
+  //buffers: PORT: won't link with this in: do_restore_ints();
 }
