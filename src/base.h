@@ -400,7 +400,7 @@ short save_game(char *filename, screen  *myscreen);
 
 #define ACTION_FOLLOW (char) 1
 
-unsigned char * read_pixie_file(char  * filename);
+unsigned char * read_pixie_file(const char  * filename);
 
 // Some stuff for palette
 typedef struct
@@ -414,7 +414,6 @@ typedef rgb palette[256];
 void set_vga_palette(palette p);
 rgb set_rgb(char r, char g, char b);
 short read_palette(FILE  *f, palette p);
-unsigned char * read_pixie_file(char  * filename);
 
 
 #endif

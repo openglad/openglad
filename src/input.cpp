@@ -28,6 +28,7 @@
 #include <time.h>
 #include <string.h> //buffers: for strlen
 #include <malloc.h>
+#include <string>
 
 unsigned long start_time=0;
 unsigned long reset_value=0;
@@ -317,19 +318,32 @@ long * query_joy()
 }
 
 // Zardus: add: some extra routines (one right now) that really shouldn't be here, but we'll put them here anyways
-void lowercase(char * string)
+void lowercase(char * str)
 {
 	int i;
-	for (i = 0; i < strlen(string);i++)
-		string[i] = tolower(string[i]);
+	for (i = 0; i < strlen(str);i++)
+		str[i] = tolower(str[i]);
 }
 
 //buffers: add: another extra routine.
-void uppercase(char *string)
+void uppercase(char *str)
 {
 	int i;
-	for(i=0;i<strlen(string);i++)
-		string[i] = toupper(string[i]);
+	for(i=0;i<strlen(str);i++)
+		str[i] = toupper(str[i]);
+}
+
+// kari: yet two extra
+void lowercase(std::string &str)
+{
+	for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
+		*iter = tolower(*iter);
+}
+
+void uppercase(std::string &str)
+{
+	for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
+		*iter = toupper(*iter);
 }
 
 // Zardus: add: this sets the multiplier mult

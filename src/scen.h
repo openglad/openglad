@@ -67,9 +67,6 @@ walker * some_hit(long x, long y, walker  *ob, screen * screenp);
 
 char  * query_my_map_name();
 
-void uppercase(char *somestring);
-void lowercase(char *somestring);
-
 void remove_all_objects(screen *master);
 void remove_first_ob(screen *master);
 

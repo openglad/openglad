@@ -37,6 +37,7 @@
 // Z's script: //#include <dos.h>
 #include <SDL.h>
 #include <ctype.h>
+#include <string>
 
 
 #define TIME_KEEPER_INT 0x1C
@@ -145,7 +146,11 @@ long * query_joy();
 
 // Zardus: add: lowercase func
 void lowercase(char *);
+// kari: lowercase for std::strings
+void lowercase(std::string &);
 //buffers: add: uppercase func
-void uppercase(char *string);
+void uppercase(char *);
+// kari: uppercase for std::strings
+void uppercase(std::string &);
 // Zardus: add: set_mult func
 void set_mult(int);

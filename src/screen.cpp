@@ -23,6 +23,7 @@
 	buffers: 8/15/02: *load_scenario now checks for uppercase file names in
 			   scen/ in case lowercase check fails
 */
+#include <config.h>
 
 #include "graph.h"
 #include "smooth.h"
@@ -64,7 +65,6 @@ void get_input_events(bool);
 void lowercase(char *);
 
 // These are globals for the packed files ..
-long scen_opened = 0;
 packfile scenpack;
 
 unsigned long random(unsigned long x)
@@ -227,7 +227,7 @@ screen::screen(short howmany):video()
 
 	// Init the sound data
 	qresult = cfg.query("sound", "sound");
-	if (qresult && !strcmp(qresult, "on")) // sound is on
+	if (!qresult || (qresult && !strcmp(qresult, "on"))) // sound is on
 	{
 		soundp = new soundob();
 		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
@@ -1677,13 +1677,13 @@ char* screen::get_scen_title(char *filename, screen *master)
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
 	char scen_directory[80] = "";
-	char fullpath[80] = "";
+	char fullpath[80] = DATADIR;
 	long gotit;
 	short tempvalue;
-	char buffer[30];
+	static char buffer[30];
 
 	// Open the pixie-pack, if not already done ...
-	if (!scen_opened)
+	if (!scenpack.opened())
 	{
 		if (scenpack.open("levels.001") == -1) // not in current directory
 		{
@@ -1695,13 +1695,12 @@ char* screen::get_scen_title(char *filename, screen *master)
 				return "none";
 			}
 		}
-		scen_opened = 1;
 	}
 
 	strcpy(tempfile, filename);
 	strcat(tempfile, ".fss");
 	// First try to get info from the pack-file ..
-	if (scen_opened)
+	if (scenpack.opened())
 	{
 		infile = scenpack.get_subfile(tempfile);
 		gotit = 1;
@@ -1748,14 +1747,14 @@ short load_scenario(char * filename, screen * master)
 	char temptext[10] = "XXX";
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
-	char scen_directory[80] = "scen/";
+	char scen_directory[80] = DATADIR "scen/";
 	char fullpath[80] = "";
 	long gotit;
 	short tempvalue;
 	char temp[80]="",fullpathupper[80],thefile[80],thefileupper[80];
 
 	// Open the pixie-pack, if not already done ...
-	if (!scen_opened)
+	if (!scenpack.opened())
 	{
 		if (scenpack.open("levels.001") == -1) // not in current directory
 		{
@@ -1770,7 +1769,6 @@ short load_scenario(char * filename, screen * master)
 				exit(0);
 			}
 		}
-		scen_opened = 1;
 	}
 
 	//buffers: first look for the scenario in scen/, then in levels.001
@@ -1809,7 +1807,7 @@ short load_scenario(char * filename, screen * master)
 	}
 
 	//buffers: second, try to get the file from levels.001
-	if(!infile && scen_opened)
+	if(!infile && scenpack.opened())
 	{
 		if(!(infile = scenpack.get_subfile(thefile)))
 		{

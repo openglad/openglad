@@ -27,6 +27,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "gladpack.h"
+#include "input.h"
+#include <string>
+using namespace std;
 
 #define GLAD_HEADER             "GladPack"
 #define GLAD_HEADER_SIZE        8
@@ -39,7 +42,7 @@ class packfileinfo
 		char name[FILENAME_SIZE];
 };
 
-int packfile::open(char *filename)
+int packfile::open(const char *filename)
 {
 	long i;
 	char temp[GLAD_HEADER_SIZE+1];
@@ -73,14 +76,17 @@ int packfile::close()
 	return 1;
 }
 
-FILE *packfile::get_subfile(char *subfilename)
+FILE *packfile::get_subfile(const char *subfilename)
 {
+	// kari: pix files upper case in pack
+	string subfilenameupper(subfilename);
 	short i;
 
 	//buffers: PORT: implicit delcaration: strupr(subfilename);
+	uppercase(subfilenameupper);
 
 	for (i=numfiles; i--; )
-		if ( strcmp(subfilename, fileinfo[i].name) == 0 )
+		if ( strcmp(subfilenameupper.c_str(), fileinfo[i].name) == 0 )
 		{
 			fseek(datafile, fileinfo[i].filepos, SEEK_SET);
 			last_subfile = i;

@@ -24,88 +24,12 @@
 #include "graph.h"
 #include "gladpack.h"
 #include <string>
+using namespace std;
 
 // Use this for globally setting the graphics dir, etc..
-#define PIX_DIR DATADIR "pix/"
 //char pix_directory[80];
-packfile *pixpack; // the packed pixies; perfect
+//packfile *pixpack; // the packed pixies; perfect
 packfile tempack;
-bool opened = false;  // use with tempack
-
-#if 0
-char* get_cfg_item(char *section, char *item)
-{
-	FILE  *cfgfile;
-	char  *temp;
-	static std::string returnvalue;
-
-	cfgfile = open_cfg_file();
-
-	if (!cfgfile)
-	{
-		printf("ERROR: I am having problems opening glad.cfg.\n");
-		printf("You may need to reinstall Openglad.\n");
-		release_keyboard();
-		fclose(cfgfile);
-		//return NULL;
-		exit(0);
-	}
-	temp = query_cfg_value(cfgfile, section, item);
-	if ( temp==NULL  )
-	{
-		printf("The '%s' setting in the glad.cfg file is incorrect:\n",item);
-		printf("It should be something like: graphics=e:\\files\\glad\\%s\\\n",item);
-		fclose(cfgfile);
-		return NULL;
-	}
-	strcpy(returnvalue, temp);
-	fclose(cfgfile);
-
-	return &returnvalue[0];
-}
-
-short get_pix_directory()
-{
-	char temp[80];
-
-	if (get_pix_directory(temp))
-		return 1;
-
-	return 0;
-}
-
-short get_pix_directory(char *whereto)
-{
-	short i;
-	FILE *cfgfile;
-	char temp[80];
-
-	// Get the graphics directory ..
-	cfgfile = open_cfg_file("glad.cfg");
-	if (!cfgfile)
-	{
-		printf("Error opening glad.cfg:\n");
-		release_keyboard();
-		strcpy(pix_directory, "");
-		strcpy(whereto, "");
-		return 1;
-	}
-	strcpy(temp, query_cfg_value(cfgfile, "directories", "graphics") );
-	if ( (strlen(temp) < 2) )
-	{
-		printf("The 'graphics' setting in the glad.cfg file is incorrect;\n");
-		strcpy(pix_directory, "");
-		strcpy(whereto, "");
-		fclose(cfgfile);
-		return 1;
-	}
-	strcpy(pix_directory, temp);
-	strcpy(whereto, temp);
-	fclose(cfgfile);
-	i = 1;
-	return i;
-}
-#endif
 
 // ************************************************************
 //  Other graphics routines
@@ -117,7 +41,7 @@ short get_pix_directory(char *whereto)
 // ************* Editor related functions? ************************
 // have also been moved to video
 
-unsigned char  * read_pixie_file(char  * filename)
+unsigned char  * read_pixie_file(const char  * filename)
 {
 	// Create a file stream, and read the image
 	// File data in form:
@@ -128,54 +52,45 @@ unsigned char  * read_pixie_file(char  * filename)
 
 	unsigned char numframes, x, y;
 	unsigned char  *newpic;
-	char fullpath[80];
+	char *home = getenv("HOME");
+	string userpixpath(home);
 	FILE  *infile = NULL;
-	bool gotit = false;
-	char temp[80];
+	enum {notfound, file, pack} gotit = notfound;
 
 	// Open the pixie-pack, if not already done ...
-	if (!opened)
+	if (!tempack.opened())
 	{
-	  //if (tempack.open(DATADIR "graphics.001") == -1)
-		if (tempack.open("graphics.001") == -1)
+		if (tempack.open(DATADIR "graphics.001") == -1)
 		{
 			printf("Cannot open graphics resource file!\n");
 			release_keyboard();
 			exit(0);
 		}
-		opened = true;
 	}
 
-	pixpack = NULL;
-	gotit = false;
+	// kari: First try to find the pix in ~/.openglad/pix/
+	// Second in DATADIR/pix/, third graphics.001
+	// last in ~/.openglad/scen/ (name clashes with previous?) (move away?)
+	userpixpath += "/.openglad/pix/";
+	userpixpath += filename;
+	if((infile=fopen(userpixpath.c_str(),"rb"))
+	   || (infile=fopen(DATADIR "pix/","rb")))
+		gotit = file;
+	else if (tempack.opened() && (infile=tempack.get_subfile(filename)))
+		gotit = pack;
+	else {
+		string userscenpath(home);
+		userscenpath += "/.openglad/scen/";
+		userscenpath += filename;
+		if ((infile=fopen(userscenpath.c_str(),"rb")))
+		    gotit = file;
+	}
 
-	// Create the full pathname for the pixie file
-	//strcpy(fullpath, PIX_DIR);
-	strcpy(fullpath, "pix/");
-	strcat(fullpath, filename);
-
-	//buffers: check pix/ first
-	if((infile=fopen(fullpath,"rb")))
-	{
-		gotit = true;
-	}
-	else if(opened && (infile=tempack.get_subfile(filename)))
-	{
-		gotit = true;
-	}
-	else
-	{
-		strcpy(temp,DATADIR "scen/");
-		strcat(temp,filename);
-		if((infile=fopen(temp,"rb")))
-			gotit = true;
-	}
-	if(gotit==false)
+	if(gotit==notfound)
 	{
 		printf("ERROR: the pixie file %s wasn't found\n",filename);
 		exit(0);
 	}
-
 
 	fread(&numframes, 1, 1, infile);
 	fread(&x, 1, 1, infile);
@@ -191,9 +106,8 @@ unsigned char  * read_pixie_file(char  * filename)
 	// Now read the data in a big chunk
 	fread(&newpic[3], 1, (x*y*numframes), infile);
 
-	if (!gotit) // this means we're a 'manual' file
+	if (gotit == file) // this means we're a 'manual' file
 		fclose(infile); // Close the data file
-	//tempack.close();
 	return newpic;
 
 } // End of image-reading routine

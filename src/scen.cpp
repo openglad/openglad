@@ -23,8 +23,9 @@
  * 		Zardus: added scrolling-by-keyboard
  */
 
-
-
+#include <string>
+using namespace std;
+#include <stdlib.h>
 //#include <malloc.h>
 #define MINIMUM_TIME 0
 // Zardus: these have to match radar.cpp's values
@@ -177,7 +178,9 @@ main(short argc, char **argv)
 	//Zardus: add: init the input
 	init_input();
 
-	cfg.parse("glad.cfg");
+	string homecfg(getenv("HOME"));
+	homecfg += "/.openglad/openglad.cfg";
+	cfg.parse(homecfg.c_str());
 
 	// For informational purposes..
 	if (argc > 1 && !strcmp(argv[1], "/?") )
@@ -1073,36 +1076,22 @@ long save_map_file(char  * filename, screen *master)
 
 	char numframes, x, y;
 	//  char  *newpic;
-	char fullpath[80];
+	string fullpath(getenv("HOME"));
 	FILE  *outfile;
 	//buffers: we want to save grid files to scen/
 	//buffers: original glad's grid files were always handle as pixies
-	char my_dir[80] = "scen/";
-	char tempdir[80];
-	char buffer[200];
-
-	// Do we have a pix directory?
-	//get_pix_directory(tempdir);
-	//if (strlen(tempdir) > 2)
-	//	strcpy(my_dir, tempdir);
 
 	// Create the full pathname for the pixie file
-	strcpy(fullpath, my_dir);
-	strcat(fullpath, filename);
-	//buffers: make sure its all lowercase
-	lowercase(fullpath);
-	//buffers: changed .PIX to .pix
-	strcat(fullpath, ".pix");
+	fullpath += "/.openglad/scen/";
+	fullpath += filename;
+	fullpath += ".pix";
 
-	if ( (outfile = fopen(fullpath, "wb")) == NULL )        // open for write
+	if ( (outfile = fopen(fullpath.c_str(), "wb")) == NULL )
 	{
 		master->draw_button(30, 30, 220, 60, 1, 1);
-		sprintf(buffer, "Error in saving map file");
-		scentext->write_xy(32, 32, buffer, DARK_BLUE, 1);
-		sprintf(buffer, "%s", fullpath);
-		scentext->write_xy(32, 42, buffer, DARK_BLUE, 1);
-		sprintf(buffer, "Press SPACE to continue");
-		scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
+		scentext->write_xy(32, 32, "Error in saving map file", DARK_BLUE, 1);
+		scentext->write_xy(32, 42, fullpath.c_str(), DARK_BLUE, 1);
+		scentext->write_xy(32, 52, "Press SPACE to continue", DARK_BLUE, 1);
 		master->buffer_to_screen(0, 0, 320, 200);
 		while (!mykeyboard[SDLK_SPACE])
 			get_input_events(WAIT);
@@ -1125,24 +1114,25 @@ long save_map_file(char  * filename, screen *master)
 
 long load_new_grid(screen *master)
 {
-	char tempstring[80];
+	string tempstring;
+	//char tempstring[80];
 
 	scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
-	strcpy(tempstring, scentext->input_string(115, 32, 8, grid_name));
+	tempstring = scentext->input_string(115, 32, 8, grid_name);
 	//NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
-	if (strlen(tempstring))
+	if (tempstring.empty())
 	{
 		//buffers: our grid files are all lowercase...
 		lowercase(tempstring);
 
-		strcpy(grid_name, tempstring);
+		tempstring += grid_name;
 	}
 
 	//printf("DB: loading %s\n", grid_name);
 
 	//buffers: PORT: changed .PIX to .pix
-	strcat(tempstring, ".pix");
-	master->grid = read_pixie_file(tempstring);
+	tempstring += ".pix";
+	master->grid = read_pixie_file(tempstring.c_str());
 	master->maxx = master->grid[1];
 	master->maxy = master->grid[2];
 	master->grid = master->grid + 3;

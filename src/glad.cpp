@@ -52,13 +52,30 @@ void get_input_events(bool);
 
 void glad_main(screen *myscreen, long playermode);
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+static void create_dotopenglad()
+{
+	char *home = getenv("HOME");
+	string path(home);
+	path += "/.openglad/";
+	mkdir(path.c_str(), 0755);
+	string::iterator subdirpos = path.end();
+	path += "pix/";
+	mkdir(path.c_str(), 0755);
+	path.replace(subdirpos, path.end(), "scen/", 4);
+	mkdir(path.c_str(), 0755);
+	path.replace(subdirpos, path.end(), "sound/", 5);
+	mkdir(path.c_str(), 0755);
+}
+
 main(long argc, char **argv)
 {
-#if 0
-	if (!get_pix_directory())
-		exit(1);
-#endif
-	cfg.parse("glad.cfg");
+	string homecfg(getenv("HOME"));
+	homecfg += "/.openglad/openglad.cfg";
+	cfg.parse(homecfg.c_str());
+	create_dotopenglad();
 
 	myscreen = new screen(1);
 
