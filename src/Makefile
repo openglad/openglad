@@ -7,15 +7,15 @@ all: openglad
 
 
 openglad: $(GLADFILES)
-	g++ $(CFLAGS) -o openglad $(GLADFILES)
+	g++ $(CFLAGS) -o ../openglad $(GLADFILES)
 
 openscen: $(SCENFILES)
-	g++ $(CFLAGS) -DOPENSCEN -o openscen $(SCENFILES)
+	g++ $(CFLAGS) -DOPENSCEN -o ../openscen $(SCENFILES)
 
 clean:
 	rm -f *.o
-	rm -f openglad
-	rm -f openscen
+	rm -f ../openglad
+	rm -f ../openscen
 
 .cpp.o:
 	g++ -g -p -c $<
