@@ -2,6 +2,7 @@
 * finish phantom stuff in walkputbuffer (Energy Wave and Magic Mace (both special abilities, Mage and Cleric) need it)
 	-buffers: 8/8/02: fixed
 * sound
+	-buffers: 8/16/02: done
 * joystick
 	-Zardus: 8/16/02: implemented (mostly)
 * scrolling in full screen openscen is a bit messed up
