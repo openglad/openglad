@@ -21,6 +21,7 @@ class video
          //buffers: PORT: added below prototype
 	 void pointb(long x, long y, unsigned char color);
 	 void pointb(int offset, unsigned char color);
+	 void pointb(long x, long y, int r, int g, int b);
 	 void hor_line(long x, long y, long length, unsigned char color);
          void ver_line(long x, long y, long length, unsigned char color);
          void hor_line(long x, long y, long length, unsigned char color, long tobuffer);

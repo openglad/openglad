@@ -9,7 +9,9 @@
 		*ugly fix for the cleric's hammer drawing problems. see second
 		 get_pixel func for more details
 		*SDL creates a 24bit window now. fixes all current PHANTOM_MODE 
-		 bugs 
+		 bugs
+	buffers: 8/16/02:
+		*optimized the SHIFT_RANDOM code a bit...
 */
 #include "graph.h"
 
@@ -314,6 +316,20 @@ void video::pointb(long x, long y, unsigned char color)
 	rect.h = mult;
 	SDL_FillRect(screen,&rect,c);
 }	
+
+//buffers: this sets the color using raw RGB values. no *4...
+void video::pointb(long x, long y, int r, int g, int b)
+{
+	SDL_Rect  rect;
+	int c;
+	c = SDL_MapRGB(screen->format,r,g,b);
+
+	rect.x = x*mult;
+	rect.y = y*mult;
+	rect.w = mult;
+	rect.h = mult;
+	SDL_FillRect(screen,&rect,c);
+}
 
 //buffers: draw color using an offset
 void video::pointb(int offset, unsigned char color)
@@ -698,6 +714,8 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
   long totrows,rowsize;
   signed char shift;
   int yval, xval,temp;
+  Uint8 r,g,b;
+  int tx,ty,tempbuf;
 
   if (walkerstartx >= portendx || walkerstarty >= portendy)
     return; //walker is below or to the right of the viewport
@@ -916,10 +934,20 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	    buffoff++;
 	    continue;
 	  }
-	  
-	  if (shifttype == SHIFT_RANDOM) 
-	    //buffers:videobuffer[buffoff++] = videobuffer[buffoff+random(2)];
-	 	pointb(buffoff++,get_pixel(buffoff+random(2)));
+	 
+	  //buffers: this is a messy optimization. sorry.
+	  if (shifttype == SHIFT_RANDOM) { 
+	 	//pointb(buffoff++,get_pixel(buffoff+random(2)));
+		tempbuf = buffoff+random(2);
+		ty = tempbuf/320;
+	        tx = tempbuf-ty*320;
+		get_pixel(tx,ty,&r,&g,&b);
+		
+		ty = buffoff/320;
+		tx = buffoff-ty*320;;
+		pointb(tx,ty,(int)r,(int)g,(int)b);
+		buffoff++;
+	  }
 	 
 	  else if (shifttype == SHIFT_LIGHTER)
 	  {
@@ -948,6 +976,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	    	 
 		pointb(buffoff++,get_pixel(buffoff-2));
 	    else buffoff++;
+
 	  }
 	  
 	  else { 
@@ -1065,27 +1094,7 @@ int video::get_pixel(int x, int y, int *index)
 			return i;
 		}
 	}
-/*
-	//buffers: VERY VERY UGLY FIX
-	//buffers: this fixes the problems with the cleric's hammer not
-	//buffers: displaying properly on grayish surfaces. its related to
-	//buffers: the RGB values being stored in 565 format in 16bit and
-	//buffers: getting corrupted when we read them.
-	//buffers: a better fix would be to changed to 24bit (RGB888) or to keep
-	//buffers: and main surface to 16bit and create another surface thats
-	//buffers: 24bit and blitting that to the 16bit surface.
-	//buffers: i need to talk to zardus before i make any of these changes.
-	if(r==b)
-		r=b=g;
-
-	for(i=0;i<256;i++) {
-		query_palette_reg(i,&tr,&tg,&tb);
-		if(r==tr && g==tg && b==tb) {
-			*index = i;
-			return i;
-		}
-	}
-*/	
+	
 	printf("DEBUG: could not find color: %d %d %d\n",r,g,b);
 	return 0;
 }
