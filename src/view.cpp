@@ -1336,8 +1336,6 @@ void viewscreen::options_menu()
 	opkeys = query_keyboard();
 	clear_keyboard();
 
-	screenp->clearfontbuffer();
-
 	// Draw the menu button
 	screenp->draw_button(40, 40, 280, 160, 2, 1);
 	screenp->draw_text_bar(40+4, 40+4, 280-4, 40+12);
@@ -1456,7 +1454,6 @@ void viewscreen::options_menu()
 		{
 			gamespeed = change_speed(1);
 			sprintf(message, "Change Game Speed (+/-): %2ld  ", gamespeed);
-			screenp->clearfontbuffer(LEFT_OPS,OPLINES(2),240,7);
 			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1466,7 +1463,6 @@ void viewscreen::options_menu()
 		if (opkeys[SDLK_KP_MINUS]) // slower game speed
 		{
 			gamespeed = change_speed(-1);
-			screenp->clearfontbuffer(LEFT_OPS,OPLINES(2),240,7);
 			sprintf(message, "Change Game Speed (+/-): %2ld  ", gamespeed);
 			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
@@ -1502,7 +1498,6 @@ void viewscreen::options_menu()
 					strcpy(tempstr, "Weird");
 					break;
 			}
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(3),240,7);
 			sprintf(message, "Change View Size ([,]) : %s       ", tempstr);
 			screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
@@ -1538,7 +1533,6 @@ void viewscreen::options_menu()
 					strcpy(tempstr, "Weird");
 					break;
 			}
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(3),240,7);
 			sprintf(message, "Change View Size ([,]) : %s  ", tempstr);
 			screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
@@ -1549,7 +1543,6 @@ void viewscreen::options_menu()
 		if (opkeys[SDLK_COMMA]) // darken screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(-2);
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(4),240,7);
 			sprintf(message, "Change Brightness (<,>): %ld ", gamma);
 			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
@@ -1560,7 +1553,6 @@ void viewscreen::options_menu()
 		if (opkeys[SDLK_PERIOD]) // lighten screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(+2);
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(4),240,7);
 			sprintf(message, "Change Brightness (<,>): %ld ", gamma);
 			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
@@ -1575,7 +1567,6 @@ void viewscreen::options_menu()
 				sprintf(message, "Radar Display (R)      : ON ");
 			else
 				sprintf(message, "Radar Display (R)      : OFF ");
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(5),240,7);
 			screenp->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1605,7 +1596,6 @@ void viewscreen::options_menu()
 					break;
 			}
 			sprintf(message, "Hitpoint Display (H)   : %s", tempstr);
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(6),240,7);
 			screenp->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1619,7 +1609,6 @@ void viewscreen::options_menu()
 				sprintf(message, "Foes Display (F)       : ON ");
 			else
 				sprintf(message, "Foes Display (F)       : OFF ");
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(7),240,7);
 			screenp->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1633,7 +1622,6 @@ void viewscreen::options_menu()
 				sprintf(message, "Score Display (S)      : ON ");
 			else
 				sprintf(message, "Score Display (S)      : OFF ");
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(8),240,7);
 			screenp->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1658,7 +1646,6 @@ void viewscreen::options_menu()
 				sprintf(message,"Color Cycling (C)      : ON ");
 			else
 				sprintf(message,"Color Cycling (C)      : OFF ");
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(10),240,7);
 			screenp->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
 			optiontext.write_xy(LEFT_OPS,OPLINES(10),message,(unsigned char) BLACK,1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1688,7 +1675,6 @@ void viewscreen::options_menu()
 				sprintf(message, "Text-button Display (B): ON ");
 			else
 				sprintf(message, "Text-button Display (B): OFF ");
-			 screenp->clearfontbuffer(LEFT_OPS,OPLINES(13),240,7);
 			screenp->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
