@@ -837,15 +837,27 @@ short walker::draw(viewscreen  *view_buf)
   {
     if (outline == OUTLINE_INVULNERABLE)
     {
-      if      (flight_left) outline = OUTLINE_FLYING;
-      else if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
-      else if (invisibility_left) outline = OUTLINE_INVISIBLE; 
+	if      (flight_left) outline = OUTLINE_FLYING;
+	else if (view_buf->control)
+		if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
+
+	if (outline != OUTLINE_NAMED)
+		if (invisibility_left) outline = OUTLINE_INVISIBLE; 
     }
     else if (outline == OUTLINE_FLYING)
     {
-      if      (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
-      else if (invisibility_left) outline = OUTLINE_INVISIBLE; 
-      else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
+      //if      (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
+      //else if (invisibility_left) outline = OUTLINE_INVISIBLE; 
+      //else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
+
+	if (view_buf->control)
+		if      (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
+
+	if (outline != OUTLINE_NAMED)
+	{
+		if (invisibility_left) outline = OUTLINE_INVISIBLE;
+		else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
+	}
     }
     else if (outline == OUTLINE_NAMED)
     {
@@ -857,14 +869,16 @@ short walker::draw(viewscreen  *view_buf)
     {
       if      (invulnerable_left) outline = OUTLINE_INVULNERABLE;
       else if (flight_left) outline = OUTLINE_FLYING;
-      else if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
+      else if (view_buf->control)
+      	if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
     }
     else 
     {
       if      (invisibility_left) outline = OUTLINE_INVISIBLE;
       else if (flight_left) outline = OUTLINE_FLYING;
-      else if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
       else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
+      else if (view_buf->control)
+      	if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
     }
   }
   else outline = 0;
