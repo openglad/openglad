@@ -310,16 +310,20 @@ void video::pointb(long x, long y, unsigned char color)
 	}
 }											
 // Place a horizontal line on the screen.
+//buffers: this func originally drew directly to the screen
 void video::hor_line(long x, long y, long length, unsigned char color)
 {
+/* buffers:
 	int i;
-
 	for (i = 0; i < length; i++)
 	{
 		point (x + i, y, color);
 	}
 
 	SDL_UpdateRect(screen,x,y,length,0);
+*/
+	//buffers: we always want to draw to the back buffer now
+	hor_line(x,y,length,color,1);
 }
 
 void video::hor_line(long x, long y, long length, unsigned char color, long tobuffer)
@@ -345,14 +349,20 @@ void video::hor_line(long x, long y, long length, unsigned char color, long tobu
 
 
 // Place a vertical line on the screen.
+// buffers: this func originally drew directly to the screen
 void video::ver_line(long x, long y, long length, unsigned char color)
 {
+/* buffers:
 	int i;
 
 	for (i = 0; i < length; i++)
 	{
 		point (x, y + i, color);
 	}
+*/
+
+	//buffers: we always want to draw to the back buffer now
+	ver_line(x,y,length,color,1);
 }
 
 void video::ver_line(long x, long y, long length, unsigned char color, long tobuffer)
@@ -961,6 +971,12 @@ void video::buffer_to_screen(long viewstartx,long viewstarty,
 {
 	//buffers: update the screen (swap some buffers :)
 	SDL_UpdateRect(screen,viewstartx*mult,viewstarty*mult,viewwidth*mult,viewheight*mult);
+}
+
+//buffers: like buffer_to_screen but automaticaly swaps the entire screen
+void video::swap(void)
+{
+	SDL_UpdateRect(screen,0,0,screen_width,screen_height);
 }
 
 extern void do_clear_ints();
