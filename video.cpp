@@ -234,37 +234,16 @@ void video::putblack(long startx, long starty, long xsize, long ysize)
 // the area which it changes..
 void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned char color)
 {
-	unsigned long i,j, temp;
-
-	for (i=starty;i<starty+ysize;i++)
-	{
-		for (j=startx; j < (startx+xsize); j++)
-		{
-			point(j,i,color);
-		}
-	}
-
-	//buffers: PORT: display the box now because the original code
-	//has this function writing directly to screen
-	SDL_UpdateRect(screen,startx,starty,xsize,ysize);
-
-/* buffers: PORT:
-  for (i=starty;i<starty+ysize;i++)
-  {
-    temp = startx+i*VIDEO_WIDTH;
-    for (j=temp; j < (temp+xsize); j++)
-    {
-      if (j>0 && j<VIDEO_SIZE)  
-	videoptr[j] = color;
-    }
-  }
- */
+	//buffers: we should always draw into the back buffer
+	fastbox(startx,starty,xsize,ysize,color,1);
 }
 
 // This is the version which writes to the buffer..
 void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned char color, unsigned char flag)
 {
 	unsigned long i,j, temp;
+	SDL_Rect rect;
+	int r,g,b;
 
 	// Zardus: FIX: small check to make sure we're not trying to put in antimatter or something
 	if (xsize < 0 || ysize < 0 || startx < 0 || starty < 0) return;
@@ -275,20 +254,14 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 		return ;
 	}
 
-	for (i=starty;i<starty+ysize;i++)
-	{
-		for(j=startx;j<(startx+xsize);j++);
-			point(j,i,color);
+	//buffers: create the rect to fill with SDL_FillRect
+	rect.x = startx*mult;
+	rect.y = starty*mult;
+	rect.w = xsize*mult;
+	rect.h = ysize*mult;
 
-/* buffers: PORT:
-		temp = startx+i*VIDEO_WIDTH;
-		for (j=temp; j < (temp+xsize); j++)
-		{
-			if (j>0 && j<VIDEO_SIZE)
-			videobuffer[j] = color;
-		}
-*/
-	}
+	query_palette_reg(color,&r,&g,&b);
+	SDL_FillRect(screen,&rect,SDL_MapRGB(screen->format,r*4,g*4,b*4));
 }
 
 // Place a point on the screen
