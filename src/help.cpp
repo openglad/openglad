@@ -17,6 +17,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "graph.h"
+#include "config.h"
 
 #define HELPTEXT_LEFT 40
 #define HELPTEXT_TOP  40
@@ -186,8 +187,12 @@ short read_help(char *somefile,screen * myscreen)
 	static text *mytext = new text(myscreen, TEXT_1);
 	long start_time, now_time;
 	long bottomrow;
+	char tmp[50];
 
-	if ((infile = fopen(somefile, "rt"))
+	strcpy(tmp,DATADIR);
+	strcat(tmp,somefile);
+
+	if ((infile = fopen(tmp, "rt"))
 	        == NULL)
 	{
 		fprintf(stderr, "Cannot open help file.\n");
@@ -275,10 +280,15 @@ short read_help(char *somefile,screen * myscreen)
 
 		if (changed)  // did we scroll, etc.?
 		{
+			//buffers: need this to make text display right
+			myscreen->clearfontbuffer();
+		
 			templines = linesdown/8; // which TEXT line are we at?
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                      HELPTEXT_LEFT+240, HELPTEXT_TOP+107, 3, 1);
-			for (j=0; j < DISPLAY_LINES; j++)
+			//buffers: added the -1 in DISPLAY_LINES-1
+			//buffers: it now draws properly with my fontbuffer shit
+			for (j=0; j < DISPLAY_LINES-1; j++)
 				if (strlen(helptext[j+templines]))
 					mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
 					                 helptext[j+templines], (unsigned char) DARK_BLUE, 1 ); // to buffer!
