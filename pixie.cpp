@@ -167,7 +167,7 @@ void pixie::init_sdl_surface(void)
 	SDL_Rect rect;
 
 	bmp_surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex*screenp->mult,sizey*screenp->mult,16,
-			screenp->rmask,screenp->gmask,screenp->bmask,0);
+			0,0,0,0);
 	if(!bmp_surface) {
 		printf("ERROR: pixie::init_sdl_surface(): could not create bmp_surface\n");
 	}
@@ -193,7 +193,9 @@ void pixie::set_accel(int a)
 	if(a) {
 		init_sdl_surface();
 	} else {
-		if(accel)
+		if(accel) {
 			SDL_FreeSurface(bmp_surface);
+			accel = 0;
+		}
 	}
 }
