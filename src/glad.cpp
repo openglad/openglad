@@ -204,9 +204,6 @@ void glad_main(screen *myscreen, long playermode)
 		}
 		if (myscreen->end)
 			break;
-		myscreen->input(input);
-		if (myscreen->end)
-			break;
 		myscreen->act();
 		myscreen->framecount++;
 		if (myscreen->end)
@@ -216,6 +213,10 @@ void glad_main(screen *myscreen, long playermode)
 		// this was for debugging illegal draws to bad areas.
 		score_panel(myscreen);
 		myscreen->refresh();
+
+		myscreen->input(input);
+		if (myscreen->end)
+			break;
 
 		//score_panel(myscreen);
 
