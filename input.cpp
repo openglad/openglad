@@ -115,9 +115,21 @@ void get_input_events()
 				mouse_state[MOUSE_X] = event.motion.x;
 				mouse_state[MOUSE_Y] = event.motion.y;
 				break;
+			case SDL_MOUSEBUTTONUP:
+				if (event.button.button == SDL_BUTTON_LEFT)
+					mouse_state[MOUSE_LEFT] = 0;
+				if (event.button.button == SDL_BUTTON_RIGHT)
+					mouse_state[MOUSE_RIGHT] = 0;
+				//mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
+				//printf ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
+				//mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
+				//printf ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
+				break;
 			case SDL_MOUSEBUTTONDOWN:
-				mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
-				mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
+				if (event.button.button == SDL_BUTTON_LEFT)
+					mouse_state[MOUSE_LEFT] = 1;
+				if (event.button.button == SDL_BUTTON_RIGHT)
+					mouse_state[MOUSE_RIGHT] = 1;
 				break;
 			case SDL_QUIT:
 				quit(1);
@@ -160,6 +172,9 @@ short query_key()
 //
 void clear_keyboard()
 {
+	int i = 0;
+	for (i = 0; i < MAXKEYS; i++)
+		key_list[i] = 0;
 }
 
 char * query_keyboard()
