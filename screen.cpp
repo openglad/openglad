@@ -1377,7 +1377,8 @@ short screen::endgame(short ending, short nextlevel)
   {
     if (nextlevel == -1) // generic defeat
     {
-      set_palette(redpalette);
+    	//buffers: we will port the red pal stuff later
+      //buffers: set_palette(redpalette);
       draw_dialog(30, 70, 290, 134, "Defeat!");
       mytext.write_y(92,"YOUR MEN ARE CRUSHED!", DARK_BLUE, 1);
       sprintf(temp,"YOUR SCORE IS %ld.\n", allscore);
@@ -1390,7 +1391,8 @@ short screen::endgame(short ending, short nextlevel)
     }
     else // we're withdrawing to another level
     {
-      set_palette(redpalette);
+    	//buffers: we will port the red pal stuff later
+      //buffers: set_palette(redpalette);
       draw_dialog(30, 70, 290, 134, "Retreat!");
       sprintf(temp, "Retreating to Level %d", nextlevel);
       mytext.write_y(92,temp, DARK_BLUE, 1);
@@ -1407,7 +1409,8 @@ short screen::endgame(short ending, short nextlevel)
   }
   else if (ending == SCEN_TYPE_SAVE_ALL) // failed to save a guy
   {
-    set_palette(redpalette);
+   //buffers: we will port the red pal stuff later
+    //buffers: set_palette(redpalette);
     //draw_button(30,82,290,122,4);
     draw_dialog(30, 70, 290, 134, "Defeat!");
     mytext.write_y(92,"YOU ARE DEFEATED", DARK_BLUE, 1);
@@ -1420,7 +1423,8 @@ short screen::endgame(short ending, short nextlevel)
   }
   else if (ending == 0) // we won
   {
-    set_palette(redpalette);
+   //buffers: we will port the red pal stuff later
+    //buffers: set_palette(redpalette);
     if (levelstatus[scen_num] == 1) // this scenario is completed ..
     {
       draw_dialog(30, 70, 290, 134, "Traveling On..");
