@@ -5,6 +5,9 @@ all the work that was saved.
 
 Thank you, FSGames.
 
+Note: the submitted source contained smix.(c|h), detect.(c|h), and mixtest.c,
+which were freeware but not GPLed. They've been removed, but can be found
+on the net.
 
 The readme file for the 3.8 release of Gladiator follows below.
 
