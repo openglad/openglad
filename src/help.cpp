@@ -143,6 +143,13 @@ short read_scenario(screen *myscreen)
 
 		if (changed)  // did we scroll, etc.?
 		{
+		//	myscreen->clearfontbuffer(HELPTEXT_LEFT-4,
+		//				HELPTEXT_TOP-4-8,
+		//				HELPTEXT_LEFT+200-HELPTEXT_LEFT-4,
+		//				HELPTEXT_TOP+10-HELPTEXT_TOP-4-8);
+
+			myscreen->clearfontbuffer();
+
 			templines = linesdown/8; // which TEXT line are we at?
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                      HELPTEXT_LEFT+200, HELPTEXT_TOP+107, 3, 1);
@@ -150,6 +157,18 @@ short read_scenario(screen *myscreen)
 				if (strlen(myscreen->scentext[j+templines]))
 					mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
 					                 myscreen->scentext[j+templines], (unsigned char) DARK_BLUE, 1 ); // to buffer!
+
+			myscreen->clearfontbuffer(HELPTEXT_LEFT, 
+						HELPTEXT_TOP-8,
+						HELPTEXT_LEFT+200-4-HELPTEXT_LEFT,
+						7);
+
+  			myscreen->clearfontbuffer(HELPTEXT_LEFT,
+                                                HELPTEXT_TOP+97,
+                                                HELPTEXT_LEFT+200-4-HELPTEXT_LEFT,
+                                                7);
+
+
 			// Draw a bounding box (top and bottom edges) ..
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
 			                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP-2);
@@ -286,12 +305,17 @@ short read_help(char *somefile,screen * myscreen)
 			templines = linesdown/8; // which TEXT line are we at?
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                      HELPTEXT_LEFT+240, HELPTEXT_TOP+107, 3, 1);
-			//buffers: added the -1 in DISPLAY_LINES-1
-			//buffers: it now draws properly with my fontbuffer shit
-			for (j=0; j < DISPLAY_LINES-1; j++)
+			for (j=0; j < DISPLAY_LINES; j++)
 				if (strlen(helptext[j+templines]))
 					mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
 					                 helptext[j+templines], (unsigned char) DARK_BLUE, 1 ); // to buffer!
+			myscreen->clearfontbuffer(HELPTEXT_LEFT,HELPTEXT_TOP-8,
+						240-4,7);
+
+			myscreen->clearfontbuffer(HELPTEXT_LEFT,HELPTEXT_TOP+97,
+			                          240-4,7);
+
+			
 			// Draw a bounding box (top and bottom edges) ..
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP-2);
