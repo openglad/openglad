@@ -32,4 +32,4 @@ public:
 
 extern CfgStore cfg;
 
-#endif PARSER_H
+#endif
