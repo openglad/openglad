@@ -15,7 +15,7 @@ AC_DEFINE_UNQUOTED(DATADIR, "$datadir/", [Data file directory])
 
 # Checks for programs.
 AC_PROG_CXX
-#AC_PROG_CC
+AC_PROG_CC
 AC_PROG_MAKE_SET
 
 # Checks for libraries.
@@ -42,5 +42,5 @@ AC_STRUCT_TM
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([memset pow])
 
-AC_CONFIG_FILES([Makefile src/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile util/Makefile])
 AC_OUTPUT
