@@ -150,7 +150,7 @@ screen::screen(short howmany):video()
   // Initialize a pixie for each background piece
   for(i = 0; i < PIX_MAX; i++)
  // for(i=0;i<10;i++)
-         back[i] = new pixieN(pixdata[i], this);
+         back[i] = new pixieN(pixdata[i], this,1);
 
   // Set up the viewscreen poshorters
   numviews = howmany; // # of viewscreens
@@ -347,7 +347,8 @@ void screen::reset(short howmany)
   {
     // Zardus: PORT: this segfaults while deleting grid!
     //memset(grid, '\0', strlen( (const char *) grid));
-    free(grid);
+    //buffers: commented free() so openglad will cleanly exit
+    //free(grid);
     grid = NULL;
   }
 
