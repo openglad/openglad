@@ -8,4 +8,5 @@ Sean Ford <aglswapbuffers> - stford@silcom.com
 	* programmer and porter
 
 Contributers:
-Murlock (murlock.org) - created Visual C++ makefile (thanks!)
+Murlock (murlock.org) - created Visual C++ makefile
+Kari Pahula <kari@sammakko.yok.utu.fi> - autoconf and optimization work
