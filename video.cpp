@@ -18,6 +18,19 @@ video::video()
 {
 	long i;
 
+	pdouble = 1;
+
+	//buffer: set vars according to pdouble
+	if(pdouble) {
+		mult = 2;
+		screen_width = 640;
+		screen_height = 400;
+	} else {
+		mult = 1;
+		screen_width = 320;
+		screen_height = 200;
+	}
+
 	//buffers: PORT: no need: save_palette(dospalette);
 	// Load our palettes ..
 	load_and_set_palette("our.pal", ourpalette);
@@ -41,8 +54,9 @@ load_palette("our.pal", redpalette);
 		bluepalette[i*3+1] /= 2;
 	}
 	
+	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO);
-	screen = SDL_SetVideoMode (320, 200, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+	screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
 }
 
 video::~video()
@@ -60,7 +74,7 @@ void video::clearscreen()
 	//buffers: PORT: clear the offscreen buffer, not the screen.
 	//buffers: we are going to see if we can double buf everything.
 	SDL_FillRect (screen, NULL, SDL_MapRGB (screen->format, 0, 0, 0));
-	SDL_UpdateRect(screen,0,0,319,199);
+	SDL_UpdateRect(screen,0,0,320*mult,200*mult);
 }
 
 void video::clearbuffer()
@@ -285,8 +299,9 @@ void video::pointb(long x, long y, unsigned char color)
 	int *address = (int *) ((Uint8 *)screen->pixels + y*screen->pitch +
                               x * screen->format->BytesPerPixel);
 	int c;
+	SDL_Rect rect;
 
-//buffers: this does bound checking (just to be safe)
+	//buffers: this does bound checking (just to be safe)
 	if(x<0 || x>319 || y<0 || y>199)
 		return;
 
@@ -294,11 +309,17 @@ void video::pointb(long x, long y, unsigned char color)
 
 	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
 
-	SDL_LockSurface(screen);
-
-	*address = c;
-
-	SDL_UnlockSurface(screen);
+	if(pdouble) {
+		rect.x = x*mult;
+		rect.y = y*mult;
+		rect.w = mult;
+		rect.h = mult;
+		SDL_FillRect(screen,&rect,c);
+	} else {
+		SDL_LockSurface(screen);
+		*address = c;
+		SDL_UnlockSurface(screen);
+	}
 }											
 
 
@@ -518,83 +539,6 @@ void video::putbuffer(long tilestartx, long tilestarty,
 			pointb(j+tilestartx-xmin,i+tilestarty-ymin,sourcebufptr[num]);
 		}
 	}
-
-extern void putbufbasm();
-//buffers: PORT: #pragma aux putbufbasm = \
-//buffers: PORT: 	     "mov edi, videobufptr"\
-//buffers: PORT: 	     "add edi, offstarget"\
-//buffers: PORT: 	     "mov esi, sourcebufptr"\
-//buffers: PORT: 	     "add esi, offssource"\
-//buffers: PORT: 	     "mov edx, totrows"\
-//buffers: PORT: 	     "mov ebx, sourceshifter"\
-//buffers: PORT: 	     "mov eax, targetshifter"\
-//buffers: PORT: 	     "tileloopx:"\
-//buffers: PORT: 	     "mov ecx, rowsize"\
-//buffers: PORT: 	     "rep movsw"\
-//buffers: PORT: 	     "movsb"\
-//buffers: PORT: 	     "add edi, eax"\   
-//buffers: PORT: 	     "add esi, ebx"\   
-//buffers: PORT: 	     "dec edx"\          
-//buffers: PORT: 	     "jnz tileloopx"\   
-//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
-
-extern void putbufwasm();
-//buffers: PORT: #pragma aux putbufwasm = \
-//buffers: PORT: 	     "mov edi, videobufptr"\
-//buffers: PORT: 	     "add edi, offstarget"\
-//buffers: PORT: 	     "mov esi, sourcebufptr"\
-//buffers: PORT: 	     "add esi, offssource"\
-//buffers: PORT: 	     "mov edx, totrows"\
-//buffers: PORT: 	     "mov ebx, sourceshifter"\
-//buffers: PORT: 	     "mov eax, targetshifter"\
-//buffers: PORT: 	     "tileloopx:"\
-//buffers: PORT: 	     "mov ecx, rowsize"\
-//buffers: PORT: 	     "rep movsd"\
-//buffers: PORT: 	     "movsw"\
-//buffers: PORT: 	     "add edi, eax"\   
-//buffers: PORT: 	     "add esi, ebx"\   
-//buffers: PORT: 	     "dec edx"\          
-//buffers: PORT: 	     "jnz tileloopx"\   
-//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
-
-extern void putbufdasm();
-//buffers: PORT: #pragma aux putbufdasm = \
-//buffers: PORT: 	     "mov edi, videobufptr"\
-//buffers: PORT: 	     "add edi, offstarget"\
-//buffers: PORT: 	     "mov esi, sourcebufptr"\
-//buffers: PORT: 	     "add esi, offssource"\
-//buffers: PORT: 	     "mov edx, totrows"\
-//buffers: PORT: 	     "mov ebx, sourceshifter"\
-//buffers: PORT: 	     "mov eax, targetshifter"\
-//buffers: PORT: 	     "tileloopx:"\
-//buffers: PORT: 	     "mov ecx, rowsize"\
-//buffers: PORT: 	     "rep movsd"\
-//buffers: PORT: 	     "add edi, eax"\   
-//buffers: PORT: 	     "add esi, ebx"\   
-//buffers: PORT: 	     "dec edx"\          
-//buffers: PORT: 	     "jnz tileloopx"\   
-//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
-
-/* buffers: PORT:
-  if (! (rowsize % 4))
-  {
-    rowsize/=4; //we'll move four bytes at a time
- //buffers: PORT: wont link with this in:   putbufdasm(); // d stands for the movsd we'll use
-  }
-  else if (! (rowsize %2))
-  {
-//    rowsize-=2;
-    rowsize/=4;
-//buffers: PORT: doesn't link with this in:    putbufwasm();
-  }
-  else
-  {
-//    rowsize-=1;
-    rowsize/=2;
-//buffers: PORT: doesn't link with this in:    putbufbasm(); //all other cases will currently use the normal version b for movsb
-  }
-
-*/
 }
 
 // walkputbuffer draws active guys to the screen (basically all non-tiles
@@ -970,34 +914,8 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 void video::buffer_to_screen(long viewstartx,long viewstarty,
 			     long viewwidth, long viewheight)
 {
-	SDL_UpdateRect(screen,viewstartx,viewstarty,viewwidth,viewheight);
-
-//buffers: PORT:  unsigned long rowsize = (viewwidth/4); //this routine uses 32bits, not 8
-//buffers: PORT:  unsigned long shifter = VIDEO_BUFFER_WIDTH - viewwidth; //to wrap the video and buffer
-//buffers: PORT:  unsigned long offsvid = viewstartx + (VIDEO_WIDTH * viewstarty); //start at x,y in video
-//buffers: PORT:  unsigned char * videobufptr = &videobuffer[0];
-  
-extern void buftosasm();
-//buffers: PORT: #pragma aux buftosasm = \
-//buffers: PORT: 	     "mov edx, viewheight"\
-//buffers: PORT: 	     "mov ebx, shifter"\
-//buffers: PORT: 	     "mov eax, rowsize"\
-//buffers: PORT: 	     "mov esi, videobufptr"\
-//buffers: PORT: 	     "add esi, offsvid"\
-//buffers: PORT: 	     "mov edi, videoptr"\
-//buffers: PORT: 	     "add edi, offsvid"\
-//buffers: PORT: 	     "buffloopx:"\
-//buffers: PORT: 	     "mov ecx, eax"\
-//buffers: PORT:  	     "rep movsd"\
-//buffers: PORT: 	     "add edi, ebx"\
-//buffers: PORT: 	     "add esi, ebx"\   
-//buffers: PORT: 	     "dec edx"\          
-//buffers: PORT: 	     "jnz buffloopx"\   
-//buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
-
-//buffers: PORT: won't link with this in:  buftosasm();
-
-
+	//buffers: update the screen (swap some buffers :)
+	SDL_UpdateRect(screen,viewstartx*mult,viewstarty*mult,viewwidth*mult,viewheight*mult);
 }
 
 extern void do_clear_ints();
