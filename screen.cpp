@@ -1693,7 +1693,7 @@ short load_scenario(char * filename, screen * master)
   char temptext[10] = "XXX";
   char tempfile[80] = "x.x";
   char versionnumber = 0;
-  char scen_directory[80] = "";
+  char scen_directory[80] = "scen/";
   char fullpath[80] = "";
   long gotit;
   short tempvalue;
@@ -1718,9 +1718,11 @@ short load_scenario(char * filename, screen * master)
     scen_opened = 1;
   }
 
-  //strcpy(tempfile, scen_directory);
+	//buffers: PORT: uncommented the below line
+  strcpy(tempfile, scen_directory);
 
-  strcpy(tempfile, filename);
+	//buffers: PORT: changed below line to strcat from strcpy
+  strcat(tempfile, filename);
   strcat(tempfile, ".fss");
   // First try to get info from the pack-file ..
   if (scen_opened)
