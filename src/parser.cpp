@@ -73,16 +73,16 @@ bool cfg_store::parse(const char *filename)
 void cfg_store::commandline(int &argc, char **&argv)
 {
 	const char helpmsg[] = "\
-Usage: open(glad|scen) [-dfhsSvnxe]\n\
-  -s, --sound		Turn sound on\n\
-  -S, --nosound		Turn sound off\n\
-  -n, --nostretch	Run at 320x200 resolution\n\
-  -d, --double		Double pixel size\n\
-  -e, --eagle		Use eagle engine for pixel doubling\n\
-  -i, --sai		Use sai2x engine for pixel doubling\n\
-  -f, --fullscreen	Use full screen\n\
-  -h, --help		Print a summary of the options\n\
-  -v, --version		Print the version number\n\
+Usage: open(glad|scen) [-d -f ...]\n\
+  -s		Turn sound on\n\
+  -S		Turn sound off\n\
+  -n		Run at 320x200 resolution\n\
+  -d		Double pixel size\n\
+  -e		Use eagle engine for pixel doubling\n\
+  -i		Use sai2x engine for pixel doubling\n\
+  -f		Use full screen\n\
+  -h		Print a summary of the options\n\
+  -v		Print the version number\n\
 ";
 
 	const char versmsg[] = "openglad version " PACKAGE_VERSION "\n";
