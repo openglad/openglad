@@ -1,4 +1,5 @@
 #include "scen.h"
+#include "input.h"
 
 //#include <malloc.h>
 #define MINIMUM_TIME 0
@@ -12,7 +13,6 @@ long difficulty_level[DIFFICULTY_SETTINGS] =
   100,
   200,
 };  // end of difficulty settings
-
 
 long do_load(screen *ascreen);  // load a scenario or grid
 long do_save(screen *ascreen);  // save a scenario or grid
@@ -139,6 +139,8 @@ main(short argc, char **argv)
 
   screen  *myscreen;
 
+	int smult; //buffers: myscreen->mult
+
   // Get sound path ..
   //if (!get_cfg_item("directories", "sound") )
   //     exit(1);
@@ -181,6 +183,9 @@ main(short argc, char **argv)
   }
 
   myscreen = new screen(1);
+
+	smult = myscreen->mult;
+  
   scentext = new text(myscreen);
   // Set the un-set text to empty ..
   for (i=0; i < 60; i ++)
@@ -229,6 +234,9 @@ main(short argc, char **argv)
 
    if (myscreen->end)
     break;
+
+	//buffers: get keys and stuff
+	get_input_events();
 
    // Delete all with ^D
    if (mykeyboard[SDLK_d] && mykeyboard[SDLK_LCTRL])
@@ -285,7 +293,8 @@ main(short argc, char **argv)
     grid_aligned = (grid_aligned+1)%3;
     event = 1;
     while (mykeyboard[SDLK_g])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
    }
    
    // Show help
@@ -314,7 +323,8 @@ main(short argc, char **argv)
        scentext->write_xy(32, 17, "Save level first? [Y/N]", DARK_BLUE, 1);
        myscreen->buffer_to_screen(0, 0, 320, 200);
        while ( !mykeyboard[SDLK_y] && !mykeyboard[SDLK_n])
-         dumbcount++;
+         //buffers: dumbcount++;
+	 get_input_events();
        if (mykeyboard[SDLK_y]) // save first
          do_save(myscreen);
      }
@@ -336,7 +346,8 @@ main(short argc, char **argv)
     event = 1;
     currentmode = (currentmode+1) %2;
     while (mykeyboard[SDLK_m])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
    }
 
    // New names
@@ -355,7 +366,8 @@ main(short argc, char **argv)
       myscreen->buffer_to_screen(0, 0, 320, 200);
       new_scenario_name();
       while (mykeyboard[SDLK_s])
-       dumbcount++;
+       //buffers: dumbcount++;
+       get_input_events();
     } // end new scenario name
     else if (mykeyboard[SDLK_g])
     {
@@ -363,7 +375,8 @@ main(short argc, char **argv)
       myscreen->buffer_to_screen(0, 0, 320, 200);
       new_grid_name();
       while (mykeyboard[SDLK_g])
-       dumbcount++;
+       //buffers: dumbcount++;
+       get_input_events();
     } // end new grid name
    }
 
@@ -468,7 +481,8 @@ main(short argc, char **argv)
     currentmode = OBJECT_MODE;
     event = 1; // change score panel
     while (mykeyboard[SDLK_o])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
    }
 
    // Slide tile selector down ..
@@ -480,7 +494,8 @@ main(short argc, char **argv)
       rowsdown -= maxrows;
     score_panel(myscreen);
     while (mykeyboard[SDLK_DOWN])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
    }
 
    // Slide tile selector up ..
@@ -494,7 +509,8 @@ main(short argc, char **argv)
       rowsdown = 0;
     score_panel(myscreen);
     while (mykeyboard[SDLK_UP])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
    }
 
    // Smooth current map, F5
@@ -506,7 +522,8 @@ main(short argc, char **argv)
     mysmoother->set_target(myscreen);
     mysmoother->smooth();
     while (mykeyboard[SDLK_F5])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
     event = 1;
     levelchanged = 1;
    }
@@ -516,7 +533,8 @@ main(short argc, char **argv)
    {
     load_and_set_palette("our.pal", scenpalette);
     while (mykeyboard[SDLK_F9])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
    }
 
    // Toggle color cycling
@@ -525,7 +543,8 @@ main(short argc, char **argv)
     cyclemode++;
     cyclemode %= 2;
     while (mykeyboard[SDLK_F10])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
    }
    // Now perform color cycling if selected
    if (cyclemode)
@@ -536,6 +555,10 @@ main(short argc, char **argv)
 
    // Mouse stuff ..
    mymouse = query_mouse();
+
+	//buffers: scale the mouse XY down if we are using pixel doubling
+	mymouse[MOUSE_X] /= smult;
+	mymouse[MOUSE_Y] /= smult;
 
    // Scroll the screen ..
    if (mymouse[MOUSE_Y] < 2 && myscreen->topy >= 0) // top of the screen
@@ -554,8 +577,8 @@ main(short argc, char **argv)
    if (mymouse[MOUSE_LEFT])       // put or remove the current guy
    {
     event = 1;
-    mx = mymouse[MOUSE_X];
-    my = mymouse[MOUSE_Y];
+    mx = mymouse[MOUSE_X]/smult;
+    my = mymouse[MOUSE_Y]/smult;
     if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
         (my >= S_UP) && (my <= S_DOWN) )      // in the main window
     {
@@ -609,8 +632,11 @@ main(short argc, char **argv)
            newob->collide_ob )                    // and hit a guy?
         {
           myscreen->remove_ob(newob->collide_ob,0);
-          while (mymouse[MOUSE_LEFT])
+          while (mymouse[MOUSE_LEFT]) {
            mymouse = query_mouse();
+	   mymouse[MOUSE_X] /= smult;
+	   mymouse[MOUSE_Y] /= smult;
+	   }
           levelchanged = 1;
         } // end of deleting guy
         if (newob)
@@ -624,8 +650,12 @@ main(short argc, char **argv)
          newob->draw(myscreen->viewob[0]);
          myscreen->buffer_to_screen(0, 0, 320, 200);
          start_time_s = query_timer();
-         while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
+         while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 ) {
            mymouse = query_mouse();
+		mymouse[MOUSE_X] /= smult;
+		mymouse[MOUSE_Y] /= smult;
+
+	   }
          levelchanged = 1;
        }
        if (mykeyboard[SDLK_LCTRL] && newob)
@@ -707,8 +737,12 @@ main(short argc, char **argv)
       windowy /= GRID_SIZE;
       backcount = myscreen->grid[windowy*(myscreen->maxx)+windowx];
     }
-    while (mymouse[MOUSE_RIGHT])
+    while (mymouse[MOUSE_RIGHT]) {
       mymouse = query_mouse();
+      mymouse[MOUSE_X] /= smult;
+      mymouse[MOUSE_Y] /= smult;
+      
+      }
    }
 
    if (event)
@@ -1837,14 +1871,15 @@ long do_load(screen *ascreen)
 {
   long dumbcount, i;
   text *loadtext = new text(ascreen);
-  char buffer[200];
+  char buffer[200],temp[200];
 
   event = 1;
   ascreen->draw_button(50, 30, 200, 40, 1, 1);
   loadtext->write_xy(52, 32, "Load [G/S] : ", DARK_BLUE, 1);
   ascreen->buffer_to_screen(0, 0, 320, 200);
   while ( !mykeyboard[SDLK_g] && !mykeyboard[SDLK_s] )
-    dumbcount++;
+    //dumbcount++;
+    get_input_events();
   if (mykeyboard[SDLK_s])
   {
     ascreen->draw_button(50, 30, 200, 40, 1, 1);
@@ -1860,10 +1895,15 @@ long do_load(screen *ascreen)
     ascreen->viewob[0]->myradar->update();
     strcpy(grid_name, query_my_map_name());
     while (mykeyboard[SDLK_s])
-     dumbcount++;
+     //buffers: dumbcount++;
+     get_input_events();
     //buffers: PORT: stricmp isn't compiling... need to find replacement func
-    /*if (strlen(ascreen->scenario_title) &&
-        stricmp(ascreen->scenario_title, "none") )
+    //buffers: workaround: copy scenario_title to new buffer and make it all
+    //buffers: lowercase and then compare it to lowercase 'none'
+    strcpy(temp,ascreen->scenario_title);
+    lowercase(temp);
+    if (strlen(ascreen->scenario_title) &&
+        strcmp(temp, "none") )
     {
       ascreen->draw_button(10, 30, 238, 51, 1, 1);
       sprintf(buffer, "Loaded: %s", ascreen->scenario_title);
@@ -1871,8 +1911,9 @@ long do_load(screen *ascreen)
       loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
       ascreen->buffer_to_screen(0, 0, 320, 200);
       while (!mykeyboard[SDLK_SPACE])
-        dumbcount++;
-    }*/
+        //buffers: dumbcount++;
+	get_input_events();
+    }
   } // end load scenario
   else if (mykeyboard[SDLK_g])
   {
@@ -1880,7 +1921,8 @@ long do_load(screen *ascreen)
     ascreen->buffer_to_screen(0, 0, 320, 200);
     load_new_grid(ascreen);
     while (mykeyboard[SDLK_g])
-     dumbcount++;
+     //dumbcount++;
+     get_input_events();
   } // end load new grid
 
   levelchanged = 0;
@@ -1900,11 +1942,13 @@ long do_save(screen *ascreen)  // save a scenario or grid
   savetext->write_xy(52, 32, "Save [G/S] ", DARK_BLUE, 1);
   ascreen->buffer_to_screen(0, 0, 320, 200);
   while ( !mykeyboard[SDLK_s] && !mykeyboard[SDLK_g] )
-    dumbcount++;
+    //buffers: dumbcount++;
+    get_input_events();
   if (mykeyboard[SDLK_s]) // save scenario
   {
     while (mykeyboard[SDLK_s])
-      dumbcount++;
+      //buffers: dumbcount++;
+      get_input_events();
 
     // Allow us to set the title, if desired
     ascreen->draw_button(20, 30, 235, 41, 1, 1);
