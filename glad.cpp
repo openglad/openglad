@@ -42,7 +42,7 @@ main(long argc, char **argv)
 	srand(time(NULL));
   
   // Disabling intro for faster startup
-//  intro_main(argc, argv);
+  intro_main(argc, argv);
   picker_main(argc, argv);
 }
 
