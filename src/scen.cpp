@@ -262,12 +262,13 @@ int main(int argc, char **argv)
 	grab_mouse();
 	mykeyboard = query_keyboard();
 
+	myscreen->clearfontbuffer();
+
 	//
 	// This is the main program loop
 	//
 	while(1)
 	{
-
 		// Reset the timer count to zero ...
 		reset_timer();
 
@@ -796,15 +797,15 @@ int main(int argc, char **argv)
 			}
 		}
 
-		if (event)
-		{
-			release_mouse();
+		//if (event)
+	//	{
+	//		release_mouse();
 			myscreen->redraw();
 			score_panel(myscreen);
 			myscreen->refresh();
 			//    score_panel(myscreen);
-			grab_mouse();
-		}
+		//	grab_mouse();
+	//	}
 		event = 0;
 
 		if (mykeyboard[SDLK_ESCAPE])
@@ -1820,6 +1821,9 @@ void scenario_options(screen *myscreen)
 	tm = 45;
 
 #define OPT_LD(x) (short) (tm + (x*8) )
+while (!opt_keys[SDLK_ESCAPE])
+        {
+
 
 	myscreen->draw_button(lm-5, tm-5, 260, 160, 2, 1);
 
@@ -1846,83 +1850,43 @@ void scenario_options(screen *myscreen)
 
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
-	while (!opt_keys[SDLK_ESCAPE])
+	get_input_events(WAIT);
+	if (opt_keys[SDLK_e]) // toggle exit mode
 	{
-		get_input_events(POLL);
-		if (opt_keys[SDLK_e]) // toggle exit mode
-		{
-			if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT) // already set
-				myscreen->scenario_type -= SCEN_TYPE_CAN_EXIT;
-			else
-				myscreen->scenario_type += SCEN_TYPE_CAN_EXIT;
-			myscreen->draw_box(lm, OPT_LD(2), 255, OPT_LD(2)+7, 13, 1, 1);
-			if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT)
-				opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : Yes", DARK_BLUE, 1);
-			else
-				opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : No ", DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			while (opt_keys[SDLK_e])
-				get_input_events(WAIT);
-		}
-		if (opt_keys[SDLK_g]) // toggle exit mode -- generators
-		{
-			if (myscreen->scenario_type & SCEN_TYPE_GEN_EXIT) // already set
-				myscreen->scenario_type -= SCEN_TYPE_GEN_EXIT;
-			else
-				myscreen->scenario_type += SCEN_TYPE_GEN_EXIT;
-			myscreen->draw_box(lm, OPT_LD(3), 255, OPT_LD(3)+7, 13, 1, 1);
-			if (myscreen->scenario_type & SCEN_TYPE_GEN_EXIT)
-				opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): Yes", DARK_BLUE, 1);
-			else
-				opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): No ", DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			while (opt_keys[SDLK_g])
-				get_input_events(WAIT);
-		}
-		if (opt_keys[SDLK_n]) // toggle fail mode -- named guys
-		{
-			if (myscreen->scenario_type & SCEN_TYPE_SAVE_ALL) // already set
-				myscreen->scenario_type -= SCEN_TYPE_SAVE_ALL;
-			else
-				myscreen->scenario_type += SCEN_TYPE_SAVE_ALL;
-			myscreen->draw_box(lm, OPT_LD(4), 255, OPT_LD(4)+7, 13, 1, 1);
-			if (myscreen->scenario_type & SCEN_TYPE_SAVE_ALL)
-				opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : Yes", DARK_BLUE, 1);
-			else
-				opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : No ", DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			while (opt_keys[SDLK_n])
-				get_input_events(WAIT);
-		}
-		if (opt_keys[SDLK_KP_MINUS]) // lower the par value
-		{
-			if (myscreen->par_value > 1)
-				myscreen->par_value--;
-			myscreen->draw_box(lm, OPT_LD(5), 255, OPT_LD(5)+7, 13, 1, 1);
-			sprintf(message, " Level Par Value (+,-)      : %d ", myscreen->par_value);
-			opt_text.write_xy(lm, OPT_LD(5), message, DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-
-			while (opt_keys[SDLK_KP_MINUS])
-				get_input_events(WAIT);
-		}
-		if (opt_keys[SDLK_KP_PLUS]) // raise the par value
-		{
-			myscreen->par_value++;
-
-			sprintf(message, " Level Par Value (+,-)      : %d ", myscreen->par_value);
-			myscreen->draw_box(lm, OPT_LD(5), 255, OPT_LD(5)+7, 13, 1, 1);
-			opt_text.write_xy(lm, OPT_LD(5), message, DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-
-			while (opt_keys[SDLK_KP_PLUS])
-				get_input_events(WAIT);
-		}
+		if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT) // already set
+			myscreen->scenario_type -= SCEN_TYPE_CAN_EXIT;
+		else
+			myscreen->scenario_type += SCEN_TYPE_CAN_EXIT;
 	}
+	if (opt_keys[SDLK_g]) // toggle exit mode -- generators
+	{
+		if (myscreen->scenario_type & SCEN_TYPE_GEN_EXIT) // already set
+			myscreen->scenario_type -= SCEN_TYPE_GEN_EXIT;
+		else
+			myscreen->scenario_type += SCEN_TYPE_GEN_EXIT;
+	}
+	if (opt_keys[SDLK_n]) // toggle fail mode -- named guys
+	{
+		if (myscreen->scenario_type & SCEN_TYPE_SAVE_ALL) // already set
+			myscreen->scenario_type -= SCEN_TYPE_SAVE_ALL;
+		else
+			myscreen->scenario_type += SCEN_TYPE_SAVE_ALL;
+	}
+	if (opt_keys[SDLK_KP_MINUS]) // lower the par value
+	{
+		if (myscreen->par_value > 1)
+			myscreen->par_value--;
+	}
+	if (opt_keys[SDLK_KP_PLUS]) // raise the par value
+	{
+		myscreen->par_value++;
+	}
+}
 
-	while (opt_keys[SDLK_ESCAPE])
-		get_input_events(WAIT); // wait for key release
+while (opt_keys[SDLK_ESCAPE])
+	get_input_events(WAIT); // wait for key release
 
+	myscreen->clearfontbuffer(lm-5, tm-5, 260-(lm-5), 160-(tm-5));
 }
 
 // Set an object's facing ..
