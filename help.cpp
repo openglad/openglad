@@ -9,6 +9,7 @@
 
 short end_of_file;                        // global flag ..
 char helptext[HELP_WIDTH][MAX_LINES];
+void get_input_events();
 
 
 // This function reads one text line from file infile,
@@ -69,6 +70,7 @@ short read_scenario(screen *myscreen)
   mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
   while (!mykeyboard[SDLK_ESCAPE])
   {
+	  get_input_events();
     if (mykeyboard[SDLK_DOWN])    // scrolling down
     {
       now_time = query_timer();
@@ -201,6 +203,7 @@ short read_help(char *somefile,screen * myscreen)
   mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
   while (!mykeyboard[SDLK_ESCAPE])
   {
+	  get_input_events();
     if (mykeyboard[SDLK_DOWN])    // scrolling down
     {
       now_time = query_timer();
