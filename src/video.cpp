@@ -1360,6 +1360,7 @@ int video::FadeBetween(
 	SDL_Surface* DestSurface)	//	surface which is the destination
 {
 	bool bOldNull = false, bNewNull = false;
+	int i = 1;
 
 	//Set NULL pointers to temporary black screens
 	//(for simple fade-in/out effects).
@@ -1430,7 +1431,10 @@ int video::FadeBetween(
 
 		get_input_events(POLL);
 		if (query_key_press_event())
-			return -1;
+		{
+			i = -1;
+			break;
+		}
 	} while (dwNow - dwFirstPaint + 50 < fadeDuration);	// constant-time effect
 
 	if ( SDL_MUSTLOCK(pNewSurface) ) {
@@ -1451,7 +1455,7 @@ int video::FadeBetween(
 	if (bNewNull)
 		SDL_FreeSurface(pNewSurface);
 
-	return 1;
+	return i;
 }
 
 int video::fadeblack(bool way)
