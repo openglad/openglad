@@ -78,9 +78,6 @@ class video
 	SDL_Surface *screen;
 	int screen_width,screen_height;
 	int pdouble, mult;
-
-	//buffers: needed by SDL_CreateRGBSurface
-	Uint32 rmask,gmask,bmask,amask;
 };
 
 #endif

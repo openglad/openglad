@@ -54,19 +54,6 @@ load_palette("our.pal", redpalette);
 		bluepalette[i*3+1] /= 2;
 	}
 
-//buffers: code straight from the libSDL doc project :)
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-	rmask = 0xff000000;
-	gmask = 0x00ff0000;
-	bmask = 0x0000ff00;
-	amask = 0x000000ff;
-#else
-	rmask = 0x000000ff;
-	gmask = 0x0000ff00;
-	bmask = 0x00ff0000;
-	amask = 0xff000000;
-#endif
-
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO);
 	screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
