@@ -1798,19 +1798,19 @@ short load_scenario(char * filename, screen * master)
 	gotit = 0;
 
 	//buffers: first try to find the file in scen/
-	printf("DEBUG: looking for %s\n",fullpath);
+	//printf("DEBUG: looking for %s\n",fullpath);
 	if ( (infile = fopen(fullpath, "rb")) == NULL )
 	{      // open for read
-		printf("looking for %s now\n",fullpathupper);
+		//printf("looking for %s now\n",fullpathupper);
 		if((infile = fopen(fullpathupper,"rb")) != NULL)
 		{
-			printf("DEBUG: scenario %s found in scen/\n",fullpathupper);
+			//printf("DEBUG: scenario %s found in scen/\n",fullpathupper);
 			gotit = 1;
 		}
 	}
 	else
 	{
-		printf("DEBUG: scenario %s found\n",fullpath);
+		//printf("DEBUG: scenario %s found\n",fullpath);
 		gotit = 1;
 	}
 
