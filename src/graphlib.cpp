@@ -96,9 +96,7 @@ unsigned char  * read_pixie_file(const char  * filename)
 	fread(&x, 1, 1, infile);
 	fread(&y, 1, 1, infile);
 
-	// Zardus: PORT: switch the "new" to "malloc"
-	//newpic = new unsigned char[x * y * numframes + 3];
-	newpic = (unsigned char *) malloc (((x * y * numframes) + 3) * sizeof (char));
+	newpic = new unsigned char[x * y * numframes + 3];
 	newpic[0] = numframes;
 	newpic[1] = x;
 	newpic[2] = y;
