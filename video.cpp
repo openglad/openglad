@@ -8,6 +8,8 @@
 		 pixel doubling was off
 		*ugly fix for the cleric's hammer drawing problems. see second
 		 get_pixel func for more details
+		*SDL creates a 24bit window now. fixes all current PHANTOM_MODE 
+		 bugs 
 */
 #include "graph.h"
 
@@ -76,9 +78,9 @@ video::video()
 	strcpy(temp,get_cfg_item("graphics","fullscreen"));
 #endif
 	if(strcmp(temp,"on")==0)
-		screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
+		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
 	else
-		screen = SDL_SetVideoMode (screen_width, screen_height, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF);
 		
 }
 
@@ -1063,7 +1065,7 @@ int video::get_pixel(int x, int y, int *index)
 			return i;
 		}
 	}
-
+/*
 	//buffers: VERY VERY UGLY FIX
 	//buffers: this fixes the problems with the cleric's hammer not
 	//buffers: displaying properly on grayish surfaces. its related to
@@ -1083,7 +1085,7 @@ int video::get_pixel(int x, int y, int *index)
 			return i;
 		}
 	}
-	
+*/	
 	printf("DEBUG: could not find color: %d %d %d\n",r,g,b);
 	return 0;
 }
