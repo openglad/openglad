@@ -103,7 +103,7 @@ long query_timer_control();
 
 //buffers: added prototype
 void get_input_events(bool type);
-void handle_events(SDL_Event event);
+void handle_events(SDL_Event *event);
 
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.

@@ -10,6 +10,7 @@
 // Z's script: #include <i86.h>
 #include <stdio.h>
 #include <time.h>
+#include <malloc.h>
 
 unsigned long start_time=0;
 unsigned long reset_value=0;
@@ -71,29 +72,31 @@ long query_timer_control()
 
 void get_input_events(bool type)
 {
-	SDL_Event event;
+	SDL_Event * event;
+
+	event = (SDL_Event *) malloc(sizeof(SDL_Event));
 
 	if (type == POLL)
-		while (SDL_PollEvent(&event)) handle_events(event);
+		while (SDL_PollEvent(event)) handle_events(event);
 	if (type == WAIT)
 	{
-		SDL_WaitEvent(&event);
+		SDL_WaitEvent(event);
 		handle_events(event);
 	}
 }
 
-void handle_events(SDL_Event event)
+void handle_events(SDL_Event *event)
 {
-	switch (event.type)
+	switch (event->type)
 	{
 		// Key pressed or released:
 		case SDL_KEYDOWN:
-			key_list[event.key.keysym.sym] = 1;
-			raw_key = event.key.keysym.sym;
+			key_list[event->key.keysym.sym] = 1;
+			raw_key = event->key.keysym.sym;
 			key_press_event = 1;
 			break;
 		case SDL_KEYUP:
-			key_list[event.key.keysym.sym] = 0;
+			key_list[event->key.keysym.sym] = 0;
 			break;
 
 		// Mouse event
@@ -101,14 +104,14 @@ void handle_events(SDL_Event event)
 			//printf("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
 			//if (!(event.motion.x < 10 && mouse_state[MOUSE_X] * mult > 620)
 			//	&& !(event.motion.y == 0 && mouse_state[MOUSE_Y] > 20))
-			mouse_state[MOUSE_X] = event.motion.x / mult;
+			mouse_state[MOUSE_X] = event->motion.x / mult;
 			//if (!(event.motion.y < 10 && mouse_state[MOUSE_Y] * mult > 460))
-			mouse_state[MOUSE_Y] = event.motion.y / mult;
+			mouse_state[MOUSE_Y] = event->motion.y / mult;
 			break;
 		case SDL_MOUSEBUTTONUP:
-			if (event.button.button == SDL_BUTTON_LEFT)
+			if (event->button.button == SDL_BUTTON_LEFT)
 				mouse_state[MOUSE_LEFT] = 0;
-			if (event.button.button == SDL_BUTTON_RIGHT)
+			if (event->button.button == SDL_BUTTON_RIGHT)
 				mouse_state[MOUSE_RIGHT] = 0;
 			//mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
 			//printf ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
@@ -116,9 +119,9 @@ void handle_events(SDL_Event event)
 			//printf ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
 			break;
 		case SDL_MOUSEBUTTONDOWN:
-			if (event.button.button == SDL_BUTTON_LEFT)
+			if (event->button.button == SDL_BUTTON_LEFT)
 				mouse_state[MOUSE_LEFT] = 1;
-			if (event.button.button == SDL_BUTTON_RIGHT)
+			if (event->button.button == SDL_BUTTON_RIGHT)
 				mouse_state[MOUSE_RIGHT] = 1;
 			break;
 		case SDL_QUIT:
@@ -213,7 +216,7 @@ long * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though
 	// it should probably get its own function
-	get_input_events(POLL);
+	get_input_events(WAIT);
 	return mouse_state;
 }
 
