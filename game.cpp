@@ -586,7 +586,7 @@ short save_game(char * filename, screen  *myscreen)
 
   //strcpy(temp_filename, scen_directory);
   strcpy(temp_filename, filename);
-  strcat(temp_filename, ".GTL"); // gladiator team list
+  strcat(temp_filename, ".gtl"); // gladiator team list
 
   if ( (outfile = fopen(temp_filename, "wb")) == NULL ) // open for write
   {
