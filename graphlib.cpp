@@ -111,6 +111,7 @@ unsigned char  * read_pixie_file(char  * filename)
         char fullpath[40];
         FILE  *infile = NULL;
         long gotit = 0;
+	char temp[40];
 
   // Open the pixie-pack, if not already done ...
   if (!opened) 
@@ -155,8 +156,16 @@ unsigned char  * read_pixie_file(char  * filename)
   // Now try to get info from the pack-file ..
   if (opened && gotit==0)
   {
-    infile = tempack.get_subfile(filename);
-    gotit = 1;
+    if((infile = tempack.get_subfile(filename))==NULL) {
+    	//buffers: if the above check fails, try searching for the file
+	//buffers: using all uppercase chars. the default glad graphic files
+	//buffers: use all uppercase files
+	strcpy(temp,filename);
+    	uppercase(temp);
+	infile = tempack.get_subfile(temp);
+     }
+     if(infile)
+    	gotit = 1;
   }
   if (!infile || gotit==0) // failed to get this way, either
   {
