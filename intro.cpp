@@ -1,3 +1,8 @@
+//intro.cpp
+/* ChangeLog
+	buffers: 8/9/02: *added return 0 to finish func
+*/
+
 #include "graph.h"
 //#include "pixie.h"
 // Z's script: #include <process.h>
@@ -72,7 +77,8 @@ void intro_main(long argc, char** argv)
 	}
   }
 
-  if (finish()) return;
+  if (finish())
+	return;
 
   //gladdata = read_pixie_file("glad.pix");
   gladdata = read_pixie_file("glad2.pix");
@@ -342,4 +348,6 @@ bool finish()
 		clear_key_press_event();
 		return 1;
 	}
+
+	return 0;
 }
