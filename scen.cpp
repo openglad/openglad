@@ -139,6 +139,10 @@ main(short argc, char **argv)
   screen  *myscreen;
 
 	int smult; //buffers: myscreen->mult
+//buffers: odox and odoy are used to store current mouse XY. we need to use
+//buffers: these so if we do a /=smult (for pdouble), we are not changing
+//buffers: the original values (mouse_state in input.cpp)
+	int odox, odoy;
 
   // Get sound path ..
   //if (!get_cfg_item("directories", "sound") )
@@ -554,39 +558,39 @@ main(short argc, char **argv)
     cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
    }
 
-   // Mouse stuff ..
-   mymouse = query_mouse();
+   	// Mouse stuff ..
+   	mymouse = query_mouse();
 
 	//buffers: scale the mouse XY down if we are using pixel doubling
-	mymouse[MOUSE_X] /= smult;
-	mymouse[MOUSE_Y] /= smult;
-
+	odox = mymouse[MOUSE_X]/smult;
+	odoy = mymouse[MOUSE_Y]/smult;
+	
    // Scroll the screen ..
-   if (mymouse[MOUSE_Y] < 2 && myscreen->topy >= 0) // top of the screen
+   if (odoy < 2 && myscreen->topy >= 0) // top of the screen
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy-SCROLLSIZE);
-   if (mymouse[MOUSE_Y] > 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
+   if (odoy > 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy+SCROLLSIZE);
-   if (mymouse[MOUSE_X] < 2 && myscreen->topx >= 0) // scroll left
+   if (odox < 2 && myscreen->topx >= 0) // scroll left
     set_screen_pos(myscreen, myscreen->topx-SCROLLSIZE,
               myscreen->topy);
-   if (mymouse[MOUSE_X] > 318 && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
+   if (odox > 318 && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
     set_screen_pos(myscreen, myscreen->topx+SCROLLSIZE,
               myscreen->topy);
 
    if (mymouse[MOUSE_LEFT])       // put or remove the current guy
    {
     event = 1;
-    mx = mymouse[MOUSE_X]/smult;
-    my = mymouse[MOUSE_Y]/smult;
+    mx = odox;
+    my = odoy;
     if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
         (my >= S_UP) && (my <= S_DOWN) )      // in the main window
     {
-      windowx = mymouse[MOUSE_X] + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+      windowx = odox + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
       if (grid_aligned==1)
        windowx -= (windowx%GRID_SIZE);
-      windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
+      windowy = odoy + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
       if (grid_aligned==1)
         windowy -= (windowy%GRID_SIZE);
       if (mykeyboard[SDLK_i]) // get info on current object
@@ -635,8 +639,6 @@ main(short argc, char **argv)
           myscreen->remove_ob(newob->collide_ob,0);
           while (mymouse[MOUSE_LEFT]) {
            mymouse = query_mouse();
-	   mymouse[MOUSE_X] /= smult;
-	   mymouse[MOUSE_Y] /= smult;
 	   }
           levelchanged = 1;
         } // end of deleting guy
@@ -653,9 +655,6 @@ main(short argc, char **argv)
          start_time_s = query_timer();
          while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 ) {
            mymouse = query_mouse();
-		mymouse[MOUSE_X] /= smult;
-		mymouse[MOUSE_Y] /= smult;
-
 	   }
          levelchanged = 1;
        }
@@ -740,9 +739,6 @@ main(short argc, char **argv)
     }
     while (mymouse[MOUSE_RIGHT]) {
       mymouse = query_mouse();
-      mymouse[MOUSE_X] /= smult;
-      mymouse[MOUSE_Y] /= smult;
-      
       }
    }
 
