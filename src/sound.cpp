@@ -21,7 +21,6 @@
 			  init()
 	buffers: 8/16/02: *sound works now.
 */
-#include <config.h>
 
 #include <string.h>
 #include <stdlib.h>
