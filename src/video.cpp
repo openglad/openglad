@@ -36,6 +36,9 @@ SDL_Surface *fontbuffer;
 int fontcolorkey;
 Screen *E_Screen;
 
+// Zardus: for the ugly retreat crash hack fix
+bool retreat;
+
 video::video()
 {
 	long i;
@@ -1438,8 +1441,23 @@ int video::FadeBetween(
 
 int video::fadeblack(bool way)
 {
-	SDL_Surface *black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
-	int c = SDL_MapRGB(black->format, 0, 0, 0);
+
+	SDL_Surface *black = NULL;
+	int c = 0;
+	
+	if (retreat)
+	{
+		while (!black)
+		{
+			black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
+		}
+		retreat = 0;
+	}
+
+	black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
+
+	c = SDL_MapRGB(black->format, 0, 0, 0);
+
 	SDL_Surface *render;
 	int i;
 

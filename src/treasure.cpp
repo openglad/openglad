@@ -31,6 +31,9 @@
 // Zardus: this is the func to get events
 void get_input_events(bool);
 
+// Zardus: from video.cpp for retreat crash ugly hack fix
+extern bool retreat;
+
 treasure::treasure(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 {
 	ignore =(char) 0;
@@ -219,6 +222,7 @@ short treasure::eat_me(walker  * eater)
 					myscreen->scen_num = (short) (stats->level-1);
 					myscreen->end = 1;
 					save_game("save0", myscreen);
+					retreat = 1;
 
 					return screenp->endgame(1, stats->level); // retreat
 				}  // end of accepted withdraw to new level ..
