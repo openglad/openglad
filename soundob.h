@@ -37,7 +37,7 @@ class soundob
     void play_sound(short whichsound);
     void set_sound_volume(int);
     void load_sound(Mix_Chunk **audio, char * file);
-    void free_sound(Mix_Chunk *sound);
+    void free_sound(Mix_Chunk **sound);
 
     unsigned char query_volume();
     unsigned char set_sound(unsigned char toggle);      // Toggle sound on/off
