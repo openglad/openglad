@@ -847,7 +847,9 @@ short screen::act()
 		{
 			if (here->ob && !here->ob->dead)
 			{
+				here->ob->in_act = 1; // Zardus: while acting, in_act is set
 				here->ob->act();
+				here->ob->in_act = 0;
 				if (here->ob && !here->ob->dead)
 				{
 					if (here->ob->team_num != my_team &&

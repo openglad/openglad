@@ -149,6 +149,7 @@ short treasure::eat_me(walker  * eater)
 			dead = 1;
 			return 1;
 		case FAMILY_EXIT: // go to another level, possibly
+			if (eater->in_act) return 1;
 			if (eater->query_act_type()!= ACT_CONTROL || (eater->skip_exit > 1))
 				return 1;
 			eater->skip_exit = 10;
@@ -248,6 +249,7 @@ short treasure::eat_me(walker  * eater)
 				clear_keyboard();
 				return 1;
 			}
+			return 1;
 		case FAMILY_TELEPORTER:
 			if (eater->skip_exit > 1)
 				return 1;
