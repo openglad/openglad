@@ -4,6 +4,7 @@
 
 /* Changelog
  * 	8/8/02: Zardus: added scrolling-by-minimap
+ * 		Zardus: added scrolling-by-keyboard
  */
 
 
@@ -568,16 +569,17 @@ main(short argc, char **argv)
    	mymouse = query_mouse();
 
    // Scroll the screen ..
-   if (mymouse[MOUSE_Y]< 2 && myscreen->topy >= 0) // top of the screen
+   // Zardus: ADD: added scrolling by keyboard
+   if ((mykeyboard[SDLK_KP8] || mymouse[MOUSE_Y]< 2) && myscreen->topy >= 0) // top of the screen
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy-SCROLLSIZE);
-   if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
+   if ((mykeyboard[SDLK_KP2] || mymouse[MOUSE_Y]> 198) && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy+SCROLLSIZE);
-   if (mymouse[MOUSE_X]< 2 && myscreen->topx >= 0) // scroll left
+   if ((mykeyboard[SDLK_KP4] || mymouse[MOUSE_X]< 2) && myscreen->topx >= 0) // scroll left
     set_screen_pos(myscreen, myscreen->topx-SCROLLSIZE,
               myscreen->topy);
-   if (mymouse[MOUSE_X] > 318 && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
+   if ((mykeyboard[SDLK_KP6] || mymouse[MOUSE_X] > 318) && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
     set_screen_pos(myscreen, myscreen->topx+SCROLLSIZE,
               myscreen->topy);
 
