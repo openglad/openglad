@@ -296,7 +296,7 @@ int show(int howlong)
 {
 	short i,j;
 	int red,green,blue; //buffers: PORT: changed to ints from chars
-	myscreen->fadeblack(FROM);
+	if (myscreen->fadeblack(FROM) == -1) return -1;
 	//*******************************
 	// Fade in loop
 	//*******************************
@@ -326,7 +326,7 @@ int show(int howlong)
 			return -1;
 	}
 
-	myscreen->fadeblack(TO);
+	if (myscreen->fadeblack(TO) == -1) return -1;
 	// Fade out
 	/* //buffers: PORT:
 	for (i = 0; i<256; i++)

@@ -105,8 +105,8 @@ class video
 
 		// Fading code: (thanks Erik!)
 		void FadeBetween24(SDL_Surface *, const Uint8 *, const Uint8 *, const int);
-		void FadeBetween(SDL_Surface *, SDL_Surface *, SDL_Surface *);
-		void fadeblack(bool);
+		int FadeBetween(SDL_Surface *, SDL_Surface *, SDL_Surface *);
+		int fadeblack(bool);
 
 		int fadeDuration;
 

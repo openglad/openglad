@@ -37,7 +37,7 @@
 #define VIDEO_SIZE 64000
 #define CX_SCREEN 320
 #define CY_SCREEN 200
-#define ASSERT(x) if (!(x)) return;
+#define ASSERT(x) if (!(x)) return 0;
 
 // Zardus: set_mult in input.cpp sets input's mult value
 void set_mult(int);
@@ -1352,7 +1352,7 @@ void video::FadeBetween24(
 }
 
 //*****************************************************************************
-void video::FadeBetween(
+int video::FadeBetween(
 //Fade between two screens.
 //Time effect to be independent of machine speed.
 	SDL_Surface* pOldSurface,	//(in)	Surface that contains starting image.
@@ -1377,12 +1377,12 @@ void video::FadeBetween(
 			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
 		SDL_FillRect(pNewSurface,NULL,0);
 	}
-	if (bOldNull && bNewNull) return;	//nothing to do
+	if (bOldNull && bNewNull) return 0;	//nothing to do
 
 	/* Lock the screen for direct access to the pixels */
 	if ( SDL_MUSTLOCK(pOldSurface) ) {
 		if ( SDL_LockSurface(pOldSurface) < 0 ) {
-			return;
+			return 0;
 		}
 	}
 	
@@ -1427,6 +1427,10 @@ void video::FadeBetween(
 				dwNow - dwFirstPaint + 50);	//allow first frame to show some change
 		E_Screen->Swap(0,0,320,200);
 		dwNow = SDL_GetTicks();
+
+		get_input_events(POLL);
+		if (query_key_press_event())
+			return -1;
 	} while (dwNow - dwFirstPaint + 50 < fadeDuration);	// constant-time effect
 
 	if ( SDL_MUSTLOCK(pNewSurface) ) {
@@ -1446,13 +1450,16 @@ void video::FadeBetween(
 		SDL_FreeSurface(pOldSurface);
 	if (bNewNull)
 		SDL_FreeSurface(pNewSurface);
+
+	return 1;
 }
 
-void video::fadeblack(bool way)
+int video::fadeblack(bool way)
 {
 	SDL_Surface *black = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
 	int c = SDL_MapRGB(black->format, 0, 0, 0);
 	SDL_Surface *render;
+	int i;
 
 	SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
 	render = (SDL_Surface *)E_Screen->RenderAndReturn(0,0,320,200);
@@ -1460,9 +1467,10 @@ void video::fadeblack(bool way)
 
 	SDL_FillRect(black, NULL, c);
 
-	if (way == 1) FadeBetween(black, render, render); // fade from black
-	if (way == 0) FadeBetween(render, black, render); // fade to black
+	if (way == 1) i = FadeBetween(black, render, render); // fade from black
+	if (way == 0) i = FadeBetween(render, black, render); // fade to black
 
 	SDL_FreeSurface(black);
+	return i;
 }
 
