@@ -37,7 +37,8 @@ char mypalette[768];
 void intro_main(long argc, char** argv)
 {
 	int i,j;
-	char **args = (char **)new int;
+	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
+	//char **args = (char **)new int;
 	unsigned char red, green, blue;
 	double delay;
 	int xnewsize, ynewsize;
