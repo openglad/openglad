@@ -813,3 +813,10 @@ void draw_percentage_bar(short left, short top, unsigned char somecolor,
   } // end of special color check ..
 
 }
+
+// Zardus: PORT: just a function to return the mult value
+int get_mult()
+{
+	if (myscreen) return myscreen->mult;
+	else return 1;
+}

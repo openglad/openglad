@@ -13,12 +13,6 @@
 //buffers: PORT: REGS, bleh bleh: union REGS inregs,outregs;
 unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
-// Zardus: PORT: just a function to return the mult value
-int get_mult()
-{
-	return myscreen->mult;
-}
-
 // Define some palettes to use in (video) screen ..
 
 video::video()

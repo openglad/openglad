@@ -1988,3 +1988,9 @@ long do_save(screen *ascreen)  // save a scenario or grid
   return result;
 }
 
+// Zardus: PORT: just a function to return the mult value
+int get_mult()
+{
+	if (myscreen) return myscreen->mult;
+	else return 1;
+}
