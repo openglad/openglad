@@ -170,8 +170,7 @@ int main(int argc, char **argv)
 	// Zardus: create dirs
 	create_dataopenglad();
 
-	string homecfg(get_file_path("openglad.cfg"));
-	cfg.parse(homecfg.c_str());
+	cfg.parse(get_file_path("openglad.cfg"));
 
 	// For informational purposes..
 	if (argc > 1 && !strcmp(argv[1], "/?") )

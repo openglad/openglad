@@ -57,8 +57,9 @@ void glad_main(screen *myscreen, long playermode);
 
 int main(int argc, char *argv[])
 {
-	string homecfg(get_file_path("openglad.cfg"));
-	cfg.parse(homecfg.c_str());
+	printf ("Parsing\n");
+	cfg.parse(get_file_path("openglad.cfg"));
+	printf ("Parsed conf file\n");
 	cfg.commandline(argc, argv);
 	create_dataopenglad();
 
