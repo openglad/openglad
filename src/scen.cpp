@@ -224,6 +224,7 @@ int main(int argc, char **argv)
 	myscreen->par_value = 1;
 	load_scenario("test", myscreen);
 
+	myscreen->clearfontbuffer();
 	myscreen->redraw();
 	myscreen->refresh();
 
@@ -233,8 +234,6 @@ int main(int argc, char **argv)
 
 	grab_mouse();
 	mykeyboard = query_keyboard();
-
-	myscreen->clearfontbuffer();
 
 	//
 	// This is the main program loop
@@ -316,6 +315,7 @@ int main(int argc, char **argv)
 		{
 			release_mouse();
 			do_help(myscreen);
+			myscreen->clearfontbuffer();
 			grab_mouse();
 			event = 1;
 		}
@@ -344,6 +344,7 @@ int main(int argc, char **argv)
 			myscreen->draw_button(30, 15, 220, 25, 1, 1);
 			scentext->write_xy(32, 17, "Loading Level...", DARK_BLUE, 1);
 			do_load(myscreen);
+			myscreen->clearfontbuffer();
 		}
 
 		// Save scenario or grid..
@@ -1882,6 +1883,7 @@ long do_load(screen *ascreen)
 		ascreen->draw_button(50, 30, 200, 40, 1, 1);
 		ascreen->buffer_to_screen(0, 0, 320, 200);
 		new_scenario_name();
+		ascreen->clearfontbuffer(50, 30, 150, 10);
 		loadtext->write_xy(52, 32, "Loading scenario..", DARK_BLUE, 1);
 		ascreen->buffer_to_screen(0, 0, 320, 200);
 		remove_all_objects(ascreen);  // kill   current obs
@@ -1903,6 +1905,7 @@ long do_load(screen *ascreen)
 		        strcmp(temp, "none") )
 		{
 			ascreen->draw_button(10, 30, 238, 51, 1, 1);
+			ascreen->clearfontbuffer(10, 30, 228, 21);
 			sprintf(buffer, "Loaded: %s", ascreen->scenario_title);
 			loadtext->write_xy(12, 33, buffer, DARK_BLUE, 1);
 			loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
