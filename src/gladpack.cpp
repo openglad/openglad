@@ -36,6 +36,8 @@ using namespace std;
 #define GLAD_HEADER_SIZE        8
 #define FILENAME_SIZE           13
 
+FILE * open_misc_file(char *);
+
 class packfileinfo
 {
 	public:
@@ -50,23 +52,9 @@ int packfile::open(const char *filename)
 	char temp[GLAD_HEADER_SIZE+1];
 
 	// Zardus: first try in the current directory
-	if ( (datafile=fopen(filename, "rb")) == NULL)
+	if ( (datafile=open_misc_file((char *) filename)) == NULL)
 	{
-		//now try in the user's home directory
-		filepath = getenv("HOME");
-		filepath += "/.openglad/";
-		filepath += filename;
-		if ((datafile = fopen(filepath.c_str(), "rb")) == NULL)
-		{
-			//finally try DATADIR/file
-			filepath = DATADIR;
-			filepath += filename;
-			if ((datafile = fopen(filepath.c_str(), "rb")) == NULL)
-			{
-				// that's it, we give up
-				return -1;
-			}
-		}
+		return -1;
 	}
 	
 	fread(temp, GLAD_HEADER_SIZE, 1, datafile);

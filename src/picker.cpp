@@ -42,6 +42,7 @@
 //int matherr (struct exception *);
 
 FILE * open_misc_file(char *, char *);
+FILE * open_misc_file(char *, char *, char *);
 
 void show_guy(long frames, long who); // shows the current guy ..
 long name_guy(long arg); // rename (or name) the current_guy
@@ -2441,7 +2442,7 @@ long save_team_list(char * filename)
 
 	//buffers: PORT: dont need this? _disable(); //disable interrupts
 
-	outfile = fopen(temp_filename, "wb");
+	outfile = open_misc_file(temp_filename, "save/", "wb");
 	//myscreen->restore_ints();
 
 	//buffers: PORT: dont need this? _enable(); //enable interrupts
@@ -3026,14 +3027,15 @@ long go_menu(long arg1)
 	myscreen->reset(1);
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 
-	loadgame = fopen("save0.gtl", "rb");
+	loadgame = open_misc_file("save0.gtl", "save/");
 	if (loadgame)
 	{
 		fclose(loadgame);
 		load_team_list_one("save0");
 	}
-	else
-		fclose(loadgame);
+	// Zardus: PORT: this obviously causes it to segfault
+	//else
+	//	fclose(loadgame);
 
 	return 1;
 }

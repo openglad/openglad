@@ -24,12 +24,15 @@
 #include "graph.h"
 #include "gladpack.h"
 #include <string>
+#include "util.h"
 using namespace std;
 
 // Use this for globally setting the graphics dir, etc..
 //char pix_directory[80];
 //packfile *pixpack; // the packed pixies; perfect
 packfile tempack;
+
+FILE * open_misc_file(char *, char *);
 
 // ************************************************************
 //  Other graphics routines
@@ -52,8 +55,6 @@ unsigned char  * read_pixie_file(const char  * filename)
 
 	unsigned char numframes, x, y;
 	unsigned char  *newpic;
-	char *home = getenv("HOME");
-	string userpixpath(home);
 	FILE  *infile = NULL;
 	enum {notfound, file, pack} gotit = notfound;
 
@@ -68,23 +69,11 @@ unsigned char  * read_pixie_file(const char  * filename)
 		}
 	}
 
-	// kari: First try to find the pix in ~/.openglad/pix/
-	// Second in DATADIR/pix/, third graphics.001
-	// last in ~/.openglad/scen/ (name clashes with previous?) (move away?)
-	userpixpath += "/.openglad/pix/";
-	userpixpath += filename;
-	if((infile=fopen(userpixpath.c_str(),"rb"))
-	   || (infile=fopen(DATADIR "pix/","rb")))
+	// Zardus: try to find file using open_misc_file, then resort to graphics.001
+	if ((infile = open_misc_file((char *)filename, "pix/")) || (infile = open_misc_file((char *)filename, "scen/")))
 		gotit = file;
 	else if (tempack.opened() && (infile=tempack.get_subfile(filename)))
 		gotit = pack;
-	else {
-		string userscenpath(home);
-		userscenpath += "/.openglad/scen/";
-		userscenpath += filename;
-		if ((infile=fopen(userscenpath.c_str(),"rb")))
-		    gotit = file;
-	}
 
 	if(gotit==notfound)
 	{

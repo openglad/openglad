@@ -90,12 +90,13 @@ FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 	FILE * infile;
 	string filepath(file);
 
-	if ((infile = fopen(file, "rb")))
+	// Zardus: lets not search in current dir. Ugly and unneeded
+	/* if ((infile = fopen(file, "rb")))
 		return infile;
 	
 	filepath = pos_dir + filepath;
 	if ((infile = fopen(filepath.c_str(), attr)))
-		return infile;
+		return infile; */
 
 	filepath = getenv("HOME");
 	filepath += "/.openglad/";
@@ -113,7 +114,6 @@ FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 		return infile;
 
 	// if it got here, it didn't find the file
-	printf("File %s not found.\n", file);
 	return NULL;
 }
 

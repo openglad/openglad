@@ -20,6 +20,7 @@
 
 short next_scenario = 1;
 FILE * open_misc_file(char *, char *);
+FILE * open_misc_file(char *, char *, char *);
 
 short load_saved_game(char *filename, screen  *myscreen)
 {
@@ -608,10 +609,10 @@ short save_game(char * filename, screen  *myscreen)
 	strcpy(temp_filename, filename);
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (outfile = fopen(temp_filename, "wb")) == NULL ) // open for write
+	if ( (outfile = open_misc_file(temp_filename, "save/", "wb")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
-		//printf("Error in writing team file %s\n", filename);
+		printf("Error in writing team file %s\n", filename);
 		return 0;
 	}
 
