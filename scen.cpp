@@ -22,6 +22,7 @@ void info_box(walker  *target, screen * myscreen);
 void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
 void scenario_options(screen * myscreen);
+long quit(long);
 
 screen *myscreen;  // global for scen?
 
@@ -557,7 +558,9 @@ main(short argc, char **argv)
    if (mymouse[MOUSE_Y]< 2 && myscreen->topy >= 0) // top of the screen
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy-SCROLLSIZE);
-   if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
+   // Zardus: lets try hardcoding the edge
+   //if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
+   if (mymouse[MOUSE_Y]> 198 && myscreen->topy <= 200) // scroll down
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy+SCROLLSIZE);
    if (mymouse[MOUSE_X]< 2 && myscreen->topx >= 0) // scroll left
@@ -741,9 +744,13 @@ main(short argc, char **argv)
    }
    event = 0;
 
-   if (mykeyboard[SDLK_ESCAPE]) break;
+   if (mykeyboard[SDLK_ESCAPE]) quit(1);
 
   }
+}
+
+long quit(long num)
+{
 
   delete myscreen;
 
@@ -758,7 +765,10 @@ main(short argc, char **argv)
   // And release the timer ..
   release_timer();
 
-  return 1;
+  SDL_Quit();
+
+  exit(num);
+  return num;
 }
 
 long score_panel(screen *myscreen)
