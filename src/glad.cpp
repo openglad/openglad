@@ -227,12 +227,16 @@ void glad_main(screen *myscreen, long playermode)
 		if (myscreen->cyclemode)
 			myscreen->do_cycle(currentcycle++, cycletime);
 
+		// Zardus: PORT: this is the new FPS cap
+		time_delay(myscreen->timer_wait - query_timer());
+
+		// Zardus: PORT: this is the old FPS cap
 		// Now check to see if we're slow enough
-		if (query_timer() < myscreen->timer_wait)
-		{
-			while(query_timer() < myscreen->timer_wait)
-			{} //do nothing until we are ready to go to next frame
-		}
+		//if (query_timer() < myscreen->timer_wait)
+		//{
+		//	while(query_timer() < myscreen->timer_wait)
+		//	{} //do nothing until we are ready to go to next frame
+		//}
 
 	}
 

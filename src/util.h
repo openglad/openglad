@@ -32,6 +32,7 @@ void release_timer();
 void reset_timer();
 long query_timer();
 long query_timer_control();
+void time_delay(long);
 
 // Zardus: add: lowercase func
 void lowercase(char *);

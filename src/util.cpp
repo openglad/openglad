@@ -57,6 +57,12 @@ long query_timer_control()
 	return (long) (SDL_GetTicks() / 13.6);
 }
 
+void time_delay(long delay)
+{
+	if (delay < 0) return;
+	SDL_Delay((unsigned long) (delay * 13.6));
+}
+
 void lowercase(char * str)
 {
 	int i;
