@@ -5,6 +5,7 @@
 //
 #include "pal32.h"
 #include <stdio.h>
+#include "SDL/SDL_types.h"
 // Z's script: #include <i86.h>
 // Z's script: #include <conio.h>
 
@@ -16,70 +17,54 @@
 #define PAL_GREEN (0x38)
 #define PAL_RED (0x1C0)
 
-char temppal[768];    // for loading, setting, etc.
-char gammapal[768];   // for gamma-correction
+//buffers: PORT: changed these arrays to type int
+Uint8 temppal[768];    // for loading, setting, etc.
+Uint8 gammapal[768];   // for gamma-correction
+
+//buffers: PORT: we need a palette to store the current palette
+Uint8 curpal[768];
+
 //
 // load_and_set_palette
 // Loads palette from file FILENAME,
 // stores palette info in NEWPALETTE, and
 // sets the current palette to this.
 //
-short load_and_set_palette(char *filename, char *newpalette)
+short load_and_set_palette(char *filename, int *newpalette)
 {
-  FILE *infile;
-  short i;
-  //buffers: PORT: doesnt compile: union REGS dregs;
+	FILE *infile;
+	short i;
 
+	if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
+	{
+		printf("Error in reading palette file %s\n", filename);
+		return 0;
+	}
 
-  if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
-  {
-   printf("Error in reading palette file %s\n", filename);
-   return 0;
-  }
+	if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
+	{
+		printf("Error: Corrupt palette file %s!\n", filename);
+		return 0;
+	}
 
-  if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
-  {
-   printf("Error: Corrupt palette file %s!\n", filename);
-   return 0;
-  }
+	fclose(infile);
 
-  fclose(infile);
+	// Copy back the palette info ..
+	for (i=0; i < 768; i++)
+		newpalette[i] = temppal[i];
 
-  //lets see if we can do the above with short386
-  //buffers: PORT: dregs.h.ah = 0x10;
-  //buffers: PORT: dregs.h.al = 0x12;
-  //buffers: PORT: dregs.x.ebx = 0;
-  //buffers: PORT: dregs.x.ecx = 256;
-  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
-  //buffers: PORT: int386(0x10,&dregs,&dregs);
-  // Copy back the palette info ..
-  for (i=0; i < 768; i++)
-   newpalette[i] = temppal[i];
+	set_palette(temppal);
 
-
-  return 1;
-
+	return 1;
 }
 
 //
 // save_palette
 // save the dos palette so we can restore it when done
 //
-short save_palette(char * whatpalette)
+short save_palette(Uint8 * whatpalette)
 {
-  //buffers: PORT: doesn't compile: union REGS dregs;
-  short i;
-
-  //buffers: PORT: dregs.h.ah = 0x10;
-  //buffers: PORT: dregs.h.al = 0x17;
-  //buffers: PORT: dregs.x.ebx = 0;
-  //buffers: PORT: dregs.x.ecx = 256;
-  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
-  //buffers: PORT: int386(0x10,&dregs,&dregs);
-  // Copy back the palette info ..
-  for (i=0; i < 768; i++)
-   whatpalette[i] = temppal[i];
-  return 1;
+	//buffers: PORT: we don't have a palette to save :P
 }
   
 
@@ -87,31 +72,30 @@ short save_palette(char * whatpalette)
 // load_palette
 // Loads palette from file FILENAME shorto NEWPALETTE
 //
-short load_palette(char *filename, char *newpalette)
+short load_palette(char *filename, Uint8 *newpalette)
 {
-  FILE *infile;
-  short i;
+	FILE *infile;
+	short i;
 
-  if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
-  {
-   printf("Error in reading palette file %s\n", filename);
-   return 0;
-  }
+	if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
+	{
+		printf("Error in reading palette file %s\n", filename);
+		return 0;
+	}
 
-  if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
-  {
-   printf("Error: Corrupt palette file %s!\n", filename);
-   return 0;
-  }
+	if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
+	{
+		printf("Error: Corrupt palette file %s!\n", filename);
+		return 0;
+	}
 
-  fclose(infile);
+	fclose(infile);
 
-  // Copy back the palette info ..
-  for (i=0; i < 768; i++)
-   newpalette[i] = temppal[i];
+	// Copy back the palette info ..
+	for (i=0; i < 768; i++)
+		newpalette[i] = temppal[i];
 
-  return 1;
-
+	return 1;
 }
 
 
@@ -119,25 +103,15 @@ short load_palette(char *filename, char *newpalette)
 // set_palette
 // Sets the current palette to NEWPALETTE.
 //
-short set_palette(char *newpalette)
+short set_palette(Uint8 *newpalette)
 {
-  short i;
-  //buffers: PORT: union REGS dregs;
+	short i;
 
+	// Copy over the palette info ..
+	for (i=0; i < 768; i++)
+		curpal[i] = newpalette[i];
 
-  // Copy over the palette info ..
-  for (i=0; i < 768; i++)
-   temppal[i] = newpalette[i];
-
-  //buffers: PORT: dregs.h.ah = 0x10;
-  //buffers: PORT: dregs.h.al = 0x12;
-  //buffers: PORT: dregs.x.ebx = 0;
-  //buffers: PORT: dregs.x.ecx = 256;
-  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
-  //buffers: PORT: int386(0x10,&dregs,&dregs); 
-  //note this code duplicates part of load and set, and could probly be combined somehow
-  return 1;
-
+	return 1;
 }
 
 //
@@ -146,113 +120,85 @@ short set_palette(char *newpalette)
 //  on whichpal based on a positive or negative amount;
 //  displays new palette, but does NOT affect whichpal
 //
-void adjust_palette(char *whichpal, short amount)
+void adjust_palette(Uint8 *whichpal, short amount)
 {
-  short i;
-  short tempcol;
-  short multiple = (short) (amount * 10);
-  //buffers: PORT: union REGS dregs;
+	short i;
+	short tempcol;
+	short multiple = (short) (amount * 10);
 
-  // Copy whichpal to temppal for setting ..
-  for (i=0; i < 768; i++)
-  {
-   tempcol = whichpal[i];
+	// Copy whichpal to temppal for setting ..
+	for (i=0; i < 768; i++)
+	{
+		tempcol = whichpal[i];
 
-   // Now modify the current color bit based on 'amount'
-   // Convert the 'amount' to = x*10% + x; ie, 2=(20% +2) increase
-   tempcol = (short) ( ( ( tempcol * (100+multiple) ) / 100) + amount);
-   if (tempcol < 0) tempcol = 0;
-   if (tempcol > 63) tempcol = 63;
+		// Now modify the current color bit based on 'amount'
+		// Convert the 'amount' to = x*10% + x; ie, 2=(20% +2) increase
+		tempcol = (short) ( ( ( tempcol * (100+multiple) ) / 100) + amount);
+		if (tempcol < 0) tempcol = 0;
+		if (tempcol > 63) tempcol = 63;
 
-   // Now set the current palette index to modified bit value
-   temppal[i] = (char) tempcol;
-  }
-
-  //buffers: PORT: dregs.h.ah = 0x10;
-  //buffers: PORT: dregs.h.al = 0x12;
-  //buffers: PORT: dregs.x.ebx = 0;
-  //buffers: PORT: dregs.x.ecx = 256;
-  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
-  //buffers: PORT: int386(0x10,&dregs,&dregs); 
-
+		// Now set the current palette index to modified bit value
+		curpal[i] = (char) tempcol;
+	}
 }
 
 //
 // cycle_palette
 // Cycle and display newpalette
 //
-void cycle_palette(char *newpalette, short start, short end, short shift)
+void cycle_palette(Uint8 *newpalette, short start, short end, short shift)
 {
-  short i;
-  short length = (short) (end-start);
-  short newval;
-  short colorspot;
-  short begin = (short) (start*3);
-  //buffers: PORT: union REGS dregs;
+	short i;
+	short length = (short) (end-start);
+	short newval;
+	short colorspot;
+	short begin = (short) (start*3);
 
-  // Copy over the palette info ..
-  for (i=0; i < 768; i+=3)
-  {
-   colorspot = (short) (i/3);
-   if ( (colorspot>= start) && (colorspot <= end) )
-   {
-    newval = (short) (colorspot-shift);
-    if (newval<start)
-      newval += length;
-    newval *= 3;
-    temppal[i]   = newpalette[newval];
-    temppal[i+1] = newpalette[newval+1];
-    temppal[i+2] = newpalette[newval+2];
-   }
-   else
-   {
-    temppal[i]   = newpalette[i];
-    temppal[i+1] = newpalette[i+1];
-    temppal[i+2] = newpalette[i+2];
-   }
-  }
+	// Copy over the palette info ..
+	for (i=0; i < 768; i+=3)
+	{
+		colorspot = (short) (i/3);
+		if ( (colorspot>= start) && (colorspot <= end) )
+		{
+			newval = (short) (colorspot-shift);
+			if (newval<start)
+				newval += length;
+			newval *= 3;
+			temppal[i]   = newpalette[newval];
+			temppal[i+1] = newpalette[newval+1];
+			temppal[i+2] = newpalette[newval+2];
+		}
+		else
+		{
+			temppal[i]   = newpalette[i];
+			temppal[i+1] = newpalette[i+1];
+			temppal[i+2] = newpalette[i+2];
+		}	
+	}
 
-  //buffers: PORT: dregs.h.ah = 0x10;
-  //buffers: PORT: dregs.h.al = 0x12;
-  //buffers: PORT: dregs.x.ebx = start;
-  //buffers: PORT: dregs.x.ecx = length+1;
-  //buffers: PORT: dregs.x.edx = FP_OFF(temppal) + begin;
-  //buffers: PORT: int386(0x10,&dregs,&dregs);
-  //hopefully the fp_off + begin will work ok
-  // Return the modified palette
-  for (i=0; i < 768; i++)
-   newpalette[i] = temppal[i];
-   
+  	// Return the modified palette
+	for (i=0; i < 768; i++)
+		newpalette[i] = temppal[i];
 }
 
-void query_palette_reg(unsigned char index, unsigned char &red, unsigned char &green, unsigned char&blue)
+void query_palette_reg(unsigned char index, int *red, int *green, int *blue)
 {
- 	unsigned char tred, tgreen, tblue;
-
-  	//buffers: PORT: outp(PAL_MASK,0xFF);
-  	//buffers: PORT: outp(PAL_REG_RD,index);
- 	//buffers: PORT: tred   = (unsigned char) inp(PAL_DATA);
-  	//buffers: PORT: tgreen = (unsigned char) inp(PAL_DATA);
-  	//buffers: PORT: tblue  = (unsigned char) inp(PAL_DATA);
+ 	int tred, tgreen, tblue;
 
 	//buffers: get the RGB values from the current palette
 	//and convert it to the 0-255 range. (its stored using the 0
 	//to 64 range.
-	tred = temppal[index*3]*4;
-	tgreen = temppal[index*3+1]*4;
-	tblue = temppal[index*3+2]*4;
+	tred = (int)curpal[index*3]*4;
+	tgreen = (int)curpal[index*3+1]*4;
+	tblue = (int)curpal[index*3+2]*4;
  
- 	red = tred; green = tgreen; blue = tblue;
+ 	*red = tred; *green = tgreen; *blue = tblue;
 }
 
-void set_palette_reg(unsigned char index,unsigned char red,unsigned char green,unsigned char blue)
+void set_palette_reg(unsigned char index,int red,int green,int blue)
 {
-
-  //buffers: PORT: outp(PAL_MASK,0xff);
-  //buffers: PORT: outp(PAL_REG_WR,index);
-  //buffers: PORT: outp(PAL_DATA, red);
-  //buffers: PORT: outp(PAL_DATA, green);
-  //buffers: PORT: outp(PAL_DATA, blue);
-
+	curpal[index*3] = red;
+	curpal[index*3+1] = green;
+	curpal[index*3+2] = blue;
 }
 
