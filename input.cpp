@@ -41,20 +41,6 @@ void change_time(unsigned long new_count)
 {
 }
 
-// Zardus: PORT: g++ isn't a bit __stuff fan: void __interrupt increment_timer()
-// Put this in for now:
-void increment_timer()
-{
-// Theirs:
-//  if (!(timer_control%DIVISOR))
-//  {
-//    old_timer_isr();
-//    basecall++;
-//  }
-  timer_count++;
-  timer_control++;
-}
-
 void grab_timer()
 {
   if (timer_grabbed)
@@ -86,7 +72,7 @@ long query_timer()
 
 unsigned long query_timer_control()
 {
-  return timer_control;
+	return SDL_GetTicks() / 10;
 }
 
 
@@ -158,14 +144,6 @@ void release_keyboard()
 {
 }
 
-// Zardus: __stuff again. will replace temporarily: void __interrupt key_int()
-void key_int()
-{
-  // above fetches a keypress from keyboard, and then
-  // reenables both __interrupts and the keyboard control
-  //remember cli/sti
-}
-
 int query_key()
 {
   return raw_key;
@@ -222,10 +200,12 @@ short query_key_code(short code)
 
 void grab_mouse()
 {
+	SDL_ShowCursor(SDL_ENABLE);
 }
 
 void release_mouse()
 {
+	SDL_ShowCursor(SDL_DISABLE);
 }
 
 void reset_mouse()
