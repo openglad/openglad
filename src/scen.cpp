@@ -1034,7 +1034,7 @@ long save_map_file(char  * filename, screen *master)
 
 	lowercase (fullpath);
 
-	if ( (outfile = open_misc_file((char *)fullpath.c_str(), "scen/", "wb")) == NULL )
+	if ( (outfile = open_misc_file((char *)fullpath.c_str(), "pix/", "wb")) == NULL )
 	{
 		master->draw_button(30, 30, 220, 60, 1, 1);
 		scentext->write_xy(32, 32, "Error in saving map file", DARK_BLUE, 1);
