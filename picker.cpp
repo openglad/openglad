@@ -505,9 +505,9 @@ long mainmenu(long arg1)
   if (arg1)  arg1 = 1;
   
   // Set screen to black, to non-display
-  for(i=0;i<256;i++)
-    set_palette_reg((unsigned char)i, 0, 0, 0);
-  load_palette("our.pal", (char *)mypalette);
+//buffers: PORT:  for(i=0;i<256;i++)
+//buffers: PORT: set_palette_reg((unsigned char)i, 0, 0, 0);
+//buffers: PORT:  load_palette("our.pal", (char *)mypalette);
 
   if (localbuttons != NULL)
     delete localbuttons; //we'll make a new set
@@ -574,6 +574,7 @@ long mainmenu(long arg1)
   magepix->drawMix(242,40, myscreen->viewob[0]);
   myscreen->refresh();
 
+/* //buffers: PORT: we need to write new fade code later
   for(j=0;j<64;j++)
   {
     reset_timer();
@@ -588,6 +589,7 @@ long mainmenu(long arg1)
       set_palette_reg((unsigned char)i,red,green,blue);
     }
   } // end of fade-in
+*/ //buffers: PORT:
 
   grab_mouse();  
 
