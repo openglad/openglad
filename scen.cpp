@@ -157,6 +157,9 @@ main(short argc, char **argv)
   //if (!get_cfg_item("directories", "sound") )
   //     exit(1);
   //strcpy(soundpath, get_cfg_item("directories", "sound") );
+  
+  //Zardus: add: init the input
+  init_input();
 
   // For informational purposes..
   if (argc > 1 && !strcmp(argv[1], "/?") )
@@ -570,19 +573,20 @@ main(short argc, char **argv)
 
    // Scroll the screen ..
    // Zardus: ADD: added scrolling by keyboard
-   if ((mykeyboard[SDLK_KP8] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP9] || mymouse[MOUSE_Y]< 2)
+   // Zardus: PORT: disabled mouse scrolling
+   if ((mykeyboard[SDLK_KP8] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP9]) // || mymouse[MOUSE_Y]< 2)
 		   && myscreen->topy >= 0) // top of the screen
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy-SCROLLSIZE);
-   if ((mykeyboard[SDLK_KP2] || mykeyboard[SDLK_KP1] || mykeyboard[SDLK_KP3] || mymouse[MOUSE_Y]> 198)
+   if ((mykeyboard[SDLK_KP2] || mykeyboard[SDLK_KP1] || mykeyboard[SDLK_KP3]) // || mymouse[MOUSE_Y]> 198)
 		   && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
     set_screen_pos(myscreen, myscreen->topx,
               myscreen->topy+SCROLLSIZE);
-   if ((mykeyboard[SDLK_KP4] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP1] || mymouse[MOUSE_X]< 2)
+   if ((mykeyboard[SDLK_KP4] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP1]) // || mymouse[MOUSE_X]< 2)
 		   && myscreen->topx >= 0) // scroll left
     set_screen_pos(myscreen, myscreen->topx-SCROLLSIZE,
               myscreen->topy);
-   if ((mykeyboard[SDLK_KP6] || mykeyboard[SDLK_KP3] || mykeyboard[SDLK_KP9] || mymouse[MOUSE_X] > 318)
+   if ((mykeyboard[SDLK_KP6] || mykeyboard[SDLK_KP3] || mykeyboard[SDLK_KP9]) // || mymouse[MOUSE_X] > 318)
 		   && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
     set_screen_pos(myscreen, myscreen->topx+SCROLLSIZE,
               myscreen->topy);
