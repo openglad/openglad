@@ -116,6 +116,7 @@ void clear_key_press_event();                       // detect a key press :)
 short query_key_code(short code);                       // OBSOLETE, use query_keyboard
 void enable_keyrepeat();
 void disable_keyrepeat();
+void init_input();
 
 void grab_mouse();
 void release_mouse();

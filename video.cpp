@@ -72,7 +72,7 @@ video::video()
 	}
 
 	//buffers: screen init
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 
 	strcpy(temp,"off");
 

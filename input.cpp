@@ -24,13 +24,18 @@ long quit(long arg1);
 
 int raw_key;
 short key_press_event = 0;    // used to signed key-press
-char key_list[MAXKEYS+JOYKEYS];
+char *key_list;
 
 long mouse_state[MSTATE];
 long mouse_buttons;
 
 long joy_state[JSTATE];
 int mult = 1;
+
+// Zardus: add: arrays to keep track of joystick data
+int joy_numaxes[4];
+int joy_startval[4];
+int joy_numbuttons[4];
 
 // Zardus: PORT: the __stuff seems to freak it out: void (__far __interrupt *old_timer_isr)();
 // same here: void (__far __interrupt *old_keyboard_isr)();
@@ -70,6 +75,27 @@ long query_timer_control()
 //
 // Input routines (for handling all events and then setting the appropriate vars)
 //
+
+void init_input()
+{
+	int numjoy, i;
+	int listlength = MAXKEYS;
+	SDL_Joystick *js;
+
+	numjoy = SDL_NumJoysticks();
+	for (i = 0; i < numjoy; i++)
+	{
+		js = SDL_JoystickOpen(i);
+		joy_numaxes[i] = SDL_JoystickNumAxes(js);
+		joy_numbuttons[i] = SDL_JoystickNumButtons(js);
+		joy_startval[i] = listlength;
+		listlength += SDL_JoystickNumAxes(js) * 2 + SDL_JoystickNumButtons(js);
+	}
+
+	key_list = (char *)malloc(sizeof(char) * listlength);
+
+	SDL_JoystickEventState(SDL_ENABLE);
+}
 
 void get_input_events(bool type)
 {
@@ -124,6 +150,35 @@ void handle_events(SDL_Event *event)
 				mouse_state[MOUSE_LEFT] = 1;
 			if (event->button.button == SDL_BUTTON_RIGHT)
 				mouse_state[MOUSE_RIGHT] = 1;
+			break;
+		case SDL_JOYAXISMOTION:
+			if (event->jaxis.value > 0)
+			{
+				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 1;
+				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 0;
+				key_press_event = 1;
+				raw_key = joy_startval[event->jaxis.which] + event->jaxis.axis * 2;
+			}
+			else if (event->jaxis.value < 0)
+			{
+				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 0;
+				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 1;
+				key_press_event = 1;
+				raw_key = joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1;
+			}
+			else
+			{
+				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 0;
+				key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 0;
+			}
+			break;
+		case SDL_JOYBUTTONDOWN:
+			key_list[joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button] = 1;
+			raw_key = joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button;
+			key_press_event = 1;
+			break;
+		case SDL_JOYBUTTONUP:
+			key_list[joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button] = 0;
 			break;
 		case SDL_QUIT:
 				quit(1);

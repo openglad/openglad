@@ -22,6 +22,7 @@ void new_draw_value_bar(short left, short top,
     walker  * control, short mode, screen * myscreen);
 void draw_percentage_bar(short left, short top, unsigned char somecolor,
                          short somelength, screen * myscreen);
+void init_input();
 
 void draw_radar_gems(screen  *myscreen);
 void draw_gem(short x, short y, short color, screen * myscreen);
@@ -42,11 +43,7 @@ main(long argc, char **argv)
 	//buffers: setting the seed
 	srand(time(NULL));
 
-	// Zardus: test the seed
-	printf("%i %i %i %i %i %i %i %i\n", random(20), random(10), random(23), random(43), random(6), 
-			random(32), random(100), random(12));
-  
-  // Disabling intro for faster startup
+  init_input();
   intro_main(argc, argv);
   picker_main(argc, argv);
 }
