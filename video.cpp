@@ -17,8 +17,13 @@ unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 video::video()
 {
 	long i;
+	char temp[5];
 
-	pdouble = 1;
+	strcpy(temp,get_cfg_item("graphics","pdouble"));
+	if(strcmp(temp,"on")==0)
+		pdouble = 1;
+	else
+		pdouble = 0;
 
 	//buffer: set vars according to pdouble
 	if(pdouble) {
