@@ -160,7 +160,8 @@ void clear_keyboard()
 
 bool * query_keyboard()
 {
-  return key_list;
+	get_input_events();
+	return key_list;
 }
 
 void wait_for_key(unsigned char somekey)
@@ -213,6 +214,7 @@ long * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though
 	// it should probably get its own function
+	get_input_events();
 	return mouse_state;
 }
 
