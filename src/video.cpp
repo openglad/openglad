@@ -212,6 +212,8 @@ void video::draw_button(long x1, long y1, long x2, long y2, long border)
 	long ylength = y2 - y1 + 1;
 	long i;
 
+	clearfontbuffer(x1,y1,xlength,ylength);
+
 	if (border)           // Hollow box
 	{
 		hor_line(x1, y1, xlength, 15); // top, old 14
@@ -232,6 +234,8 @@ void video::draw_button(long x1, long y1, long x2, long y2, long border, long to
 	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	long ylength = y2 - y1 + 1;
 	long i;
+
+	clearfontbuffer(x1,y1,xlength,ylength);
 
 	if (border)           // Hollow box
 	{
