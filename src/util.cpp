@@ -135,7 +135,8 @@ FILE * open_misc_file(char * file)
 }
 
 void create_dataopenglad()
-{       
+{
+#ifndef WINDOWS
 	string path(getenv("HOME"));
 	path += "/.openglad/";
 	mkdir(path.c_str(), 0755);
@@ -149,6 +150,7 @@ void create_dataopenglad()
 	mkdir(path.c_str(), 0755);
 	path.replace(subdirpos, path.end(), "sound/", 5);
 	mkdir(path.c_str(), 0755);
+#endif
 }
 
 char * get_file_path(char * file, char * pos_dir, char * attr)
