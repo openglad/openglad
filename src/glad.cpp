@@ -192,9 +192,9 @@ void glad_main(screen *myscreen, long playermode)
 	keyboard = query_keyboard();
 
 	//sprintf(somemessage, "SPEED SET TO %d", (20-myscreen->timer_wait)/2+1);
-	strcpy(somemessage, "GLADIATOR V. ");
-	strcat(somemessage, GLAD_VER);
-	strcat(somemessage, " OPENSOURCE");
+
+	strcpy(somemessage, "OPENGLAD V.");
+	strcat(somemessage, PACKAGE_VERSION);
 	myscreen->viewob[0]->set_display_text(somemessage, 100);
 	myscreen->viewob[0]->set_display_text("PRESS F1 FOR HELP", 100);
 
