@@ -28,12 +28,6 @@ using namespace std;
 #include <stdlib.h>
 //#include <malloc.h>
 #define MINIMUM_TIME 0
-// Zardus: these have to match radar.cpp's values
-#define RADAR_X 60
-#define RADAR_Y 44
-// Zardus: these have to be the screen size
-#define SCREEN_X 320
-#define SCREEN_Y 200
 
 // From picker // just emulate these so other files are happy
 // Difficulty settings .. in percent, so 100 == normal
@@ -179,20 +173,13 @@ int main(int argc, char **argv)
 	// Zardus: create dirs
 	create_dataopenglad();
 
-	string homecfg(getenv("HOME"));
-	homecfg += "/.openglad/openglad.cfg";
+	string homecfg(get_file_path("openglad.cfg"));
 	cfg.parse(homecfg.c_str());
 
 	// For informational purposes..
 	if (argc > 1 && !strcmp(argv[1], "/?") )
 	{
 		printf("\nScenario Editor version %s\n", GLAD_VER);
-
-#if 0
-		get_pix_directory(buffer);
-		printf("Using Data directory: %s\n", buffer);
-		printf("  NOTE: this is set in glad.cfg.\n");
-#endif
 
 		// Free memory ..
 		meminfo Memory;
@@ -211,17 +198,6 @@ int main(int argc, char **argv)
 
 		exit (0);
 	}
-
-	// Do this BEFORE getting interrupts ..
-#if 0
-	get_pix_directory(buffer);
-	if (strlen(buffer) < 2)
-	{
-		printf("Error: bad pix directory (%s)\n", buffer);
-		printf("  NOTE: this is set in glad.cfg.\n");
-		exit(1);
-	}
-#endif
 
 	myscreen = new screen(1);
 
@@ -362,7 +338,6 @@ int main(int argc, char **argv)
 				scentext->write_xy(32, 17, "Save level first? [Y/N]", DARK_BLUE, 1);
 				myscreen->buffer_to_screen(0, 0, 320, 200);
 				while ( !mykeyboard[SDLK_y] && !mykeyboard[SDLK_n])
-					//buffers: dumbcount++;
 					get_input_events(WAIT);
 				if (mykeyboard[SDLK_y]) // save first
 					do_save(myscreen);
@@ -385,7 +360,6 @@ int main(int argc, char **argv)
 			event = 1;
 			currentmode = (currentmode+1) %2;
 			while (mykeyboard[SDLK_m])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 
@@ -405,7 +379,6 @@ int main(int argc, char **argv)
 				myscreen->buffer_to_screen(0, 0, 320, 200);
 				new_scenario_name();
 				while (mykeyboard[SDLK_s])
-					//buffers: dumbcount++;
 					get_input_events(WAIT);
 			} // end new scenario name
 			else if (mykeyboard[SDLK_g])
@@ -414,7 +387,6 @@ int main(int argc, char **argv)
 				myscreen->buffer_to_screen(0, 0, 320, 200);
 				new_grid_name();
 				while (mykeyboard[SDLK_g])
-					//buffers: dumbcount++;
 					get_input_events(WAIT);
 			} // end new grid name
 		}
@@ -520,7 +492,6 @@ int main(int argc, char **argv)
 			currentmode = OBJECT_MODE;
 			event = 1; // change score panel
 			while (mykeyboard[SDLK_o])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 
@@ -533,7 +504,6 @@ int main(int argc, char **argv)
 				rowsdown -= maxrows;
 			score_panel(myscreen);
 			while (mykeyboard[SDLK_DOWN])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 
@@ -548,7 +518,6 @@ int main(int argc, char **argv)
 				rowsdown = 0;
 			score_panel(myscreen);
 			while (mykeyboard[SDLK_UP])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 
@@ -561,7 +530,6 @@ int main(int argc, char **argv)
 			mysmoother->set_target(myscreen);
 			mysmoother->smooth();
 			while (mykeyboard[SDLK_F5])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 			event = 1;
 			levelchanged = 1;
@@ -572,7 +540,6 @@ int main(int argc, char **argv)
 		{
 			load_and_set_palette("our.pal", scenpalette);
 			while (mykeyboard[SDLK_F9])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 
@@ -582,7 +549,6 @@ int main(int argc, char **argv)
 			cyclemode++;
 			cyclemode %= 2;
 			while (mykeyboard[SDLK_F10])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 		// Now perform color cycling if selected
@@ -1052,8 +1018,6 @@ long save_map_file(char  * filename, screen *master)
 	//  char  *newpic;
 	string fullpath(filename);
 	FILE  *outfile;
-	//buffers: we want to save grid files to scen/
-	//buffers: original glad's grid files were always handle as pixies
 
 	// Create the full pathname for the pixie file
 	fullpath += ".pix";
@@ -1347,8 +1311,6 @@ long save_scenario(char * filename, screen * master, char *gridname)
 	long i;
 	char temp_version = VERSION_NUM;
 	char temp_filename[80];
-	//buffers: make sure we save to scen/
-	char scen_directory[80] = "scen/";
 	char numlines, tempwidth;
 	char oneline[80];
 	char tempname[12];
@@ -1915,7 +1877,6 @@ long do_load(screen *ascreen)
 	loadtext->write_xy(52, 32, "Load [G/S] : ", DARK_BLUE, 1);
 	ascreen->buffer_to_screen(0, 0, 320, 200);
 	while ( !mykeyboard[SDLK_g] && !mykeyboard[SDLK_s] )
-		//dumbcount++;
 		get_input_events(WAIT);
 	if (mykeyboard[SDLK_s])
 	{
@@ -1948,7 +1909,6 @@ long do_load(screen *ascreen)
 			loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
 			ascreen->buffer_to_screen(0, 0, 320, 200);
 			while (!mykeyboard[SDLK_SPACE])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 	} // end load scenario
@@ -1978,12 +1938,10 @@ long do_save(screen *ascreen)  // save a scenario or grid
 	savetext->write_xy(52, 32, "Save [G/S] ", DARK_BLUE, 1);
 	ascreen->buffer_to_screen(0, 0, 320, 200);
 	while ( !mykeyboard[SDLK_s] && !mykeyboard[SDLK_g] )
-		//buffers: dumbcount++;
 		get_input_events(WAIT);
 	if (mykeyboard[SDLK_s]) // save scenario
 	{
 		while (mykeyboard[SDLK_s])
-			//buffers: dumbcount++;
 			get_input_events(WAIT);
 
 		// Allow us to set the title, if desired
