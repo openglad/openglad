@@ -418,7 +418,7 @@ unsigned char text::convert_to_ascii(unsigned char scancode)
     case SCAN_ESC: return 27;
     case SCAN_PERIOD:  return '.';
     case SCAN_COMMA: return ',';
-    case SCAN_CLOSE_QUOTE: return ''';
+// Zardus: PORT: not defined in scankeys.h:    case SCAN_CLOSE_QUOTE: return ''';
     case SCAN_OPEN_QUOTE: return '`';
 
     default: return 255;
