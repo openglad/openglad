@@ -812,7 +812,6 @@ long score_panel(screen *myscreen)
 {
 	char message[50];
 	long i, j; // for loops
-	static text *mytext = new text(myscreen);
 	//   static long family=-1, hitpoints=-1, score=-1, act=-1;
 	static long numobs = myscreen->numobs;
 	static long lm = 245;
@@ -852,16 +851,16 @@ long score_panel(screen *myscreen)
 	uppercase(message);
 
 	//myscreen->fastbox(lm, S_UP, 70, 8*5, 27, 1);
-	mytext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
+	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
 
 	strcpy(message, grid_name);
 	uppercase(message);
-	mytext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
+	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
 
 	if (currentmode==MAP_MODE)
-		mytext->write_xy(lm,L_D(curline++), "MODE: MAP", DARK_BLUE, 1);
+		scentext->write_xy(lm,L_D(curline++), "MODE: MAP", DARK_BLUE, 1);
 	else if (currentmode==OBJECT_MODE)
-		mytext->write_xy(lm,L_D(curline++), "MODE: OBS", DARK_BLUE, 1);
+		scentext->write_xy(lm,L_D(curline++), "MODE: OBS", DARK_BLUE, 1);
 
 	// Get team number ..
 	sprintf(message, "%d:", currentteam);
@@ -894,26 +893,26 @@ long score_panel(screen *myscreen)
 		strcat(message, weapons[forecount]);
 	else
 		strcat(message, "UNKNOWN");
-	mytext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
 	// Level display
 	sprintf(message, "LVL: %d", currentlevel);
 	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-	mytext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
 	// Is grid alignment on?
 	//myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
 	if (grid_aligned==1)
-		mytext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
+		scentext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
 	else if (grid_aligned==2)
-		mytext->write_xy(lm, L_D(curline++), "ALIGN: STACK", DARK_BLUE, 1);
+		scentext->write_xy(lm, L_D(curline++), "ALIGN: STACK", DARK_BLUE, 1);
 	else
-		mytext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
+		scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
 
 	numobs = myscreen->numobs;
 	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
 	sprintf(message, "OB: %d", numobs);
-	mytext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
+	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
 
 	// Show the background grid ..
 	myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
@@ -937,7 +936,6 @@ long score_panel(screen *myscreen)
 	myscreen->draw_box(S_RIGHT, PIX_TOP,
 	                   S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
-	delete mytext;
 	// Restore the mouse
 	grab_mouse();
 
