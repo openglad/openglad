@@ -1,6 +1,6 @@
 CFLAGS=-g `sdl-config --libs --cflags` -lSDL_mixer
-GLADFILES=button.o effect.o game.o glad.o gladpack.o graphlib.o guy.o help.o intro.o living.o loader.o obmap.o pal32.o parse32.o picker.o pixie.o pixien.o radar.o screen.o smooth.o sound.o stats.o text.o treasure.o video.o view.o walker.o weap.o input.o
-SCENFILES=scen.o effect.o game.o gladpack.o graphlib.o guy.o help.o intro.o living.o loader.o obmap.o pal32.o parse32.o pixie.o pixien.o radar.o screen.o smooth.o sound.o stats.o text.o treasure.o video.o view.o walker.o weap.o input.o
+GLADFILES=button.o effect.o game.o glad.o gladpack.o graphlib.o guy.o help.o intro.o living.o loader.o obmap.o pal32.o parser.o picker.o pixie.o pixien.o radar.o screen.o smooth.o sound.o stats.o text.o treasure.o video.o view.o walker.o weap.o input.o sai2x.o
+SCENFILES=scen.o effect.o game.o gladpack.o graphlib.o guy.o help.o intro.o living.o loader.o obmap.o pal32.o parser.o pixie.o pixien.o radar.o screen.o smooth.o sound.o stats.o text.o treasure.o video.o view.o walker.o weap.o input.o sai2x.o
 
 
 all: openglad
@@ -18,4 +18,4 @@ clean:
 	rm -f ../openscen
 
 .cpp.o:
-	g++ -g -c $<
+	g++ -g -c -I./ -I/usr/include/SDL $<
