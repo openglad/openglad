@@ -175,7 +175,7 @@ short treasure::eat_me(walker  * eater)
                   eatkeys = query_keyboard();
                   clear_keyboard();
                   while (!eatkeys[SDLK_y] && !eatkeys[SDLK_n])
-                         dumbcount++;
+			  get_input_events();
                   // Redraw screen ..
                   screenp->redrawme = 1;
 
