@@ -20,22 +20,26 @@
 	buffers: 7/31/02: *include cleanup
 	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_f			   ile
 */
+#include <config.h>
 #include "graph.h"
 #include "gladpack.h"
+#include <string>
 
 // Use this for globally setting the graphics dir, etc..
-char pix_directory[80];
+#define PIX_DIR DATADIR "pix/"
+//char pix_directory[80];
 packfile *pixpack; // the packed pixies; perfect
 packfile tempack;
-long opened = 0;  // use with tempack
+bool opened = false;  // use with tempack
 
+#if 0
 char* get_cfg_item(char *section, char *item)
 {
 	FILE  *cfgfile;
 	char  *temp;
-	char returnvalue[80];
+	static std::string returnvalue;
 
-	cfgfile = open_cfg_file("glad.cfg");
+	cfgfile = open_cfg_file();
 
 	if (!cfgfile)
 	{
@@ -101,7 +105,7 @@ short get_pix_directory(char *whereto)
 	i = 1;
 	return i;
 }
-
+#endif
 
 // ************************************************************
 //  Other graphics routines
@@ -124,92 +128,51 @@ unsigned char  * read_pixie_file(char  * filename)
 
 	unsigned char numframes, x, y;
 	unsigned char  *newpic;
-	char fullpath[80],fullpathupper[80],thefile[80],thefileupper[80];
+	char fullpath[80];
 	FILE  *infile = NULL;
-	long gotit = 0;
+	bool gotit = false;
 	char temp[80];
 
 	// Open the pixie-pack, if not already done ...
 	if (!opened)
 	{
-		if (tempack.open("graphics.001") == -1) // not in current directory
+	  //if (tempack.open(DATADIR "graphics.001") == -1)
+		if (tempack.open("graphics.001") == -1)
 		{
-			// Create the full pathname for the resource file
-			strcpy(fullpath, pix_directory);
-			strcat(fullpath, "graphics.001");
-			if (tempack.open(fullpath) == -1) // not in graphics directory
-			{
-				printf("Cannot open graphics resource file!\n");
-				release_keyboard();
-				exit(0);
-			}
+			printf("Cannot open graphics resource file!\n");
+			release_keyboard();
+			exit(0);
 		}
-		opened = 1;
+		opened = true;
 	}
 
 	pixpack = NULL;
-	gotit = 0;
-
-	strcpy(thefile,filename);
+	gotit = false;
 
 	// Create the full pathname for the pixie file
-	strcpy(fullpath, pix_directory);
-	strcat(fullpath, thefile);
-
-	strcpy(thefileupper,thefile);
-	uppercase(thefileupper);
-	strcpy(fullpathupper,pix_directory);
-	strcat(fullpathupper,thefileupper);
-
+	//strcpy(fullpath, PIX_DIR);
+	strcpy(fullpath, "pix/");
+	strcat(fullpath, filename);
 
 	//buffers: check pix/ first
 	if((infile=fopen(fullpath,"rb")))
 	{
-		gotit = 1;
+		gotit = true;
 	}
-	else if((infile=fopen(fullpathupper,"rb")))
+	else if(opened && (infile=tempack.get_subfile(filename)))
 	{
-		gotit = 1;
-		//buffers: next, check ./
-	}
-	else if((infile=fopen(thefile,"rb")))
-	{
-		gotit = 1;
-	}
-	else if((infile=fopen(thefileupper,"rb")))
-	{
-		gotit = 1;
-		//buffers: then check graphics.001
-	}
-	else if(opened && (infile=tempack.get_subfile(thefile)))
-	{
-		gotit = 1;
-	}
-	else if(opened && (infile=tempack.get_subfile(thefileupper)))
-	{
-		gotit = 1;
-		//buffers: if we STILL can't find it, check scen/
-		//buffers: it might be a grid pix file...
+		gotit = true;
 	}
 	else
 	{
-		strcpy(temp,"scen/");
-		strcat(temp,thefile);
+		strcpy(temp,DATADIR "scen/");
+		strcat(temp,filename);
 		if((infile=fopen(temp,"rb")))
-		{
-			gotit = 1;
-		}
-		else
-		{
-			strcpy(temp,"scen/");
-			strcat(temp,thefileupper);
-			if((infile=fopen(temp,"rb")))
-				gotit = 1;
-		}
+			gotit = true;
 	}
-	if(gotit==0)
+	if(gotit==false)
 	{
-		printf("ERROR: the pixie file %s wasn't found\n",thefile);
+		printf("ERROR: the pixie file %s wasn't found\n",filename);
 		exit(0);
 	}
 

@@ -18,10 +18,12 @@
 
 screen * myscreen;
 smoother * mysmoother;
+extern CfgStore cfg;
 
 //#include <malloc.h>
 #include "colors.h"
 #include <time.h>
+#include "parser.h"
 
 // Z's script: #include <process.h>
 
@@ -52,8 +54,12 @@ void glad_main(screen *myscreen, long playermode);
 
 main(long argc, char **argv)
 {
+#if 0
 	if (!get_pix_directory())
 		exit(1);
+#endif
+	cfg.parse("glad.cfg");
+
 	myscreen = new screen(1);
 
 	//buffers: setting the seed
@@ -95,9 +101,11 @@ void glad_main(screen *myscreen, long playermode)
 	//     exit(1);
 	//strcpy(soundpath, get_cfg_item("directories", "sound") );
 
+#if 0
 	// Do this BEFORE getting interrupts ..
 	if (!get_pix_directory())
 		exit(1);
+#endif
 
 	if (myscreen)
 	{

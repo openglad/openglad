@@ -165,7 +165,7 @@ main(short argc, char **argv)
 	char mystring[80]; //, someletter;
 	//  long pos;
 	short count;
-	char buffer[80];
+	// char buffer[80];
 
 	screen  *myscreen;
 
@@ -177,14 +177,18 @@ main(short argc, char **argv)
 	//Zardus: add: init the input
 	init_input();
 
+	cfg.parse("glad.cfg");
+
 	// For informational purposes..
 	if (argc > 1 && !strcmp(argv[1], "/?") )
 	{
 		printf("\nScenario Editor version %s\n", GLAD_VER);
 
+#if 0
 		get_pix_directory(buffer);
 		printf("Using Data directory: %s\n", buffer);
 		printf("  NOTE: this is set in glad.cfg.\n");
+#endif
 
 		// Free memory ..
 		meminfo Memory;
@@ -205,6 +209,7 @@ main(short argc, char **argv)
 	}
 
 	// Do this BEFORE getting interrupts ..
+#if 0
 	get_pix_directory(buffer);
 	if (strlen(buffer) < 2)
 	{
@@ -212,6 +217,7 @@ main(short argc, char **argv)
 		printf("  NOTE: this is set in glad.cfg.\n");
 		exit(1);
 	}
+#endif
 
 	myscreen = new screen(1);
 

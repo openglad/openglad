@@ -45,10 +45,10 @@ unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 video::video()
 {
 	long i;
-	char temp[5];
+	const char *qresult;
 
-	strcpy(temp,get_cfg_item("graphics","pdouble"));
-	if(strcmp(temp,"on")==0)
+	qresult = cfg.query("graphics", "pdouble");
+	if(qresult && strcmp(qresult, "on")==0)
 		pdouble = 1;
 	else
 		pdouble = 0;
@@ -93,16 +93,12 @@ video::video()
 	//buffers: screen init
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 
-	strcpy(temp,"off");
-
 #ifndef OPENSCEN
-
-	strcpy(temp,get_cfg_item("graphics","fullscreen"));
-#endif
-
-	if(strcmp(temp,"on")==0)
+	qresult = cfg.query("graphics","fullscreen");
+	if(strcmp(qresult,"on")==0)
 		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
 	else
+#endif
 		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF);
 
 }

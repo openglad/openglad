@@ -22,7 +22,7 @@
 #include "input.h"
 
 #include "SDL.h"
-#include "parse32.h"
+#include "parser.h"
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
@@ -55,7 +55,7 @@ pixieN *backdrops[5];
 //screen  *myscreen;
 text  *mytext;
 long *mymouse;     // hold mouse information
-char main_dir[80];
+//char main_dir[80];
 guy  *current_guy;// = new guy();
 unsigned long money[4] = {5000, 5000, 5000, 5000};
 unsigned long score[4] = {0, 0, 0, 0};
@@ -184,9 +184,7 @@ char difficulty_names[DIFFICULTY_SETTINGS][80] =
 
 void picker_main(long argc, char  **argv)
 {
-	FILE *cfgfile;
 	long i;
-
 
 	for (i=0; i < MAX_BUTTONS; i++)
 		allbuttons[i] = NULL;
@@ -194,13 +192,8 @@ void picker_main(long argc, char  **argv)
 	for (i=0; i < MAXTEAM; i++)
 		ourteam[i] = NULL;
 
-	// Do this before interrupts ..
-	if (!get_pix_directory())
-		exit(1);
-
 	// Get main dir ..
-	cfgfile = open_cfg_file("glad.cfg");
-	strcpy(main_dir, "");
+	//strcpy(main_dir, "");
 
 	// Set backdrops to NULL
 	for (i=0; i < 5; i++)
@@ -261,8 +254,10 @@ void picker_main(long argc, char  **argv)
 
 	// Reset the old palette
 
+#if 0
 	if (cfgfile)
 		cfgfile = NULL;
+#endif
 
 	release_keyboard();
 	exit(1);

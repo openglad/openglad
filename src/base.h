@@ -33,7 +33,7 @@
 #include <ctype.h>
 #include "sounds.h"
 #include "input.h"
-#include "parse32.h"
+#include "parser.h"
 #include "SDL.h"
 #include "pal32.h"
 #include "pixdefs.h"

@@ -50,8 +50,10 @@ void intro_main(long argc, char** argv)
 	int currentcycle = 0, cycletime = 3;
 	char message[80];
 
+#if 0
 	if (!get_pix_directory())
 		exit(1);
+#endif
 
 	ul = ur = ll = lr = NULL;
 

@@ -86,7 +86,7 @@ unsigned long random(unsigned long x)
 screen::screen(short howmany):video()
 {
 	long i, j;
-	char soundmode[80];
+	const char *qresult;
 	text first_text(this);
 	long left = 66;
 
@@ -226,8 +226,8 @@ screen::screen(short howmany):video()
 	buffer_to_screen(0, 0, 320, 200);
 
 	// Init the sound data
-	strcpy(soundmode, get_cfg_item("sound", "sound") );
-	if (!strcmp(soundmode, "on")) // sound is on
+	qresult = cfg.query("sound", "sound");
+	if (qresult && !strcmp(qresult, "on")) // sound is on
 	{
 		soundp = new soundob();
 		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
