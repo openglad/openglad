@@ -1,3 +1,11 @@
+Openglad 0.97:
+	Not many groundbreaking changes. Openglad-enhanced
+	was branched, so this is now a bugfix-only branch,
+	so don't expect major changes.
+	
+	However, the game should be more stable and eat up
+	less ram now :-)
+
 Openglad 0.95:
 	This is a fully functional release. All the features
 	have been implemented so its a full port. Play it
