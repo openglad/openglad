@@ -84,7 +84,7 @@ FILE *packfile::get_subfile(char *subfilename)
 {
     short i;
 
-    strupr(subfilename);
+    //buffers: PORT: implicit delcaration: strupr(subfilename);
 
     for (i=numfiles; i--; )
         if ( strcmp(subfilename, fileinfo[i].name) == 0 )
