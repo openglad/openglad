@@ -152,6 +152,29 @@ screen::screen(short howmany):video()
  // for(i=0;i<10;i++)
          back[i] = new pixieN(pixdata[i], this,1);
 
+	//buffers: after we set all the tiles to use acceleration, we go
+	//through the tiles that have pal cycling to turn of the accel.
+	back[PIX_WATER1]->set_accel(0);
+	back[PIX_WATER2]->set_accel(0);
+	back[PIX_WATER3]->set_accel(0);
+	back[PIX_WATERGRASS_LL]->set_accel(0);
+	back[PIX_WATERGRASS_LR]->set_accel(0);
+	back[PIX_WATERGRASS_UL]->set_accel(0);
+	back[PIX_WATERGRASS_UR]->set_accel(0);
+	back[PIX_WATERGRASS_U]->set_accel(0);
+	back[PIX_WATERGRASS_D]->set_accel(0);
+	back[PIX_WATERGRASS_L]->set_accel(0);
+	back[PIX_WATERGRASS_R]->set_accel(0);
+	back[PIX_GRASSWATER_LL]->set_accel(0);
+	back[PIX_GRASSWATER_LR]->set_accel(0);
+	back[PIX_GRASSWATER_UL]->set_accel(0);
+	back[PIX_GRASSWATER_UR]->set_accel(0);
+	
+	
+	
+	
+	
+
   // Set up the viewscreen poshorters
   numviews = howmany; // # of viewscreens
   for (i=0; i < MAX_VIEWS; i++)
