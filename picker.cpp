@@ -5,7 +5,7 @@
 //buffers:  using input.h instead #include "int32.h"
 #include "input.h"
 
-#include "scankeys.h"
+#include "SDL.h"
 #include "parse32.h"
 #include <malloc.h>
 // Z's script: #include <process.h>

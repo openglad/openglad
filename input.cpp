@@ -5,7 +5,7 @@
 // Created:  02-04-95
 //
 #include "input.h"
-#include "scankeys.h"
+#include "SDL.h"
 // Z's script: #include <dos.h>
 // Z's script: #include <conio.h>
 // Z's script: #include <i86.h>
@@ -85,6 +85,38 @@ long query_timer()
 unsigned long query_timer_control()
 {
   return timer_control;
+}
+
+
+//
+// Input routine (for handling all events and then setting the appropriate vars)
+//
+
+void get_input_events()
+{
+	SDL_Event event;
+
+	while (SDL_PollEvent(&event))
+	{
+		switch (event.type)
+		{
+			// Key pressed or released:
+			case SDL_KEYDOWN:
+				key_list[event.key.keysym.sym] = 1;
+				break;
+			case SDL_KEYUP:
+				key_list[event.key.keysym.sym] = 0;
+				break;
+
+			// Mouse event
+			case SDL_MOUSEMOTION:
+				mouse_state[MOUSE_X] = event.motion.x;
+				mouse_state[MOUSE_Y] = event.motion.y;
+			case SDL_MOUSEBUTTONDOWN:
+				mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
+				mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
+		}
+	}
 }
 
 

@@ -15,7 +15,7 @@
 //buffers: we want input.h instead of int32.h now #include "int32.h"
 #include "input.h"
 #include "parse32.h"
-#include "scankeys.h"
+#include "SDL.h"
 #include "pal32.h"
 #include "pixdefs.h"
 #include "soundob.h" // sound defines
