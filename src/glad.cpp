@@ -70,6 +70,8 @@ static void create_dotopenglad()
 	mkdir(path.c_str(), 0755);
 	path.replace(subdirpos, path.end(), "scen/", 4);
 	mkdir(path.c_str(), 0755);
+	path.replace(subdirpos, path.end(), "save/", 5);
+	mkdir(path.c_str(), 0755);
 	path.replace(subdirpos, path.end(), "sound/", 5);
 	mkdir(path.c_str(), 0755);
 }
