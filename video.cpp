@@ -70,7 +70,7 @@ video::video()
 	}
 
 	//buffers: screen init
-	SDL_Init(SDL_INIT_VIDEO);
+	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);
 
 	strcpy(temp,"off");
 
