@@ -372,10 +372,10 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 
 }
 
-// Convert from SDLKcode to ascii, ie, SDLK_a to 'A'
-unsigned char text::convert_to_ascii(unsigned char SDLKcode)
+// Convert from scancode to ascii, ie, SDLK_a to 'A'
+unsigned char text::convert_to_ascii(int scancode)
 {
-  switch (SDLKcode)
+  switch (scancode)
   {
     case SDLK_a: return 'A';
     case SDLK_b: return 'B';
