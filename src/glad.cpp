@@ -21,7 +21,6 @@
 screen * myscreen;
 smoother * mysmoother;
 
-//#include <malloc.h>
 #include "colors.h"
 #include <time.h>
 #include "parser.h"

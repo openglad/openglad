@@ -57,7 +57,7 @@ unsigned char  * read_pixie_file(const char  * filename)
 	unsigned char  *newpic;
 	FILE  *infile = NULL;
 	enum {notfound, file, pack} gotit = notfound;
-	char * thefile = (char *)malloc(80);
+	char * thefile = new char[80];
 
 	// Open the pixie-pack, if not already done ...
 	if (!tempack.opened())
@@ -78,6 +78,8 @@ unsigned char  * read_pixie_file(const char  * filename)
 		gotit = file;
 	else if (tempack.opened() && (infile=tempack.get_subfile(thefile)))
 		gotit = pack;
+
+	delete thefile;
 
 	if(gotit==notfound)
 	{
