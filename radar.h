@@ -25,12 +25,12 @@ class radar
          screen * screenp;
          viewscreen * viewscreenp;
          unsigned char  *bmp,  *oldbmp;
+	 short xview;
+	 short yview;
   protected:
          short mynum; // what is my viewscreen-related number?
 //         char  *buffer;
          short size;
-         short xview;
-         short yview;
 };
 
 #endif
