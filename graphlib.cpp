@@ -225,13 +225,13 @@ void load_map_data(unsigned char  * *whereto)
   whereto[PIX_GRASS3] = read_pixie_file("16grass3.pix");  //done
   whereto[PIX_GRASS4] = read_pixie_file("16grass4.pix");  //done
 
-  whereto[PIX_GRASS_DARK_1] = read_pixie_file("16grassD.pix");  //done
-  whereto[PIX_GRASS_DARK_2] = read_pixie_file("16grD2.pix");  //done
-  whereto[PIX_GRASS_DARK_3] = read_pixie_file("16grD3.pix");  //done
-  whereto[PIX_GRASS_DARK_4] = read_pixie_file("16grD4.pix");  //done
-  whereto[PIX_GRASS_DARK_LL] = read_pixie_file("16grassI.pix");  //done
-  whereto[PIX_GRASS_DARK_UR] = read_pixie_file("16grassH.pix");  //done
-  whereto[PIX_GRASS_RUBBLE] = read_pixie_file("16grassR.pix");  //done
+  whereto[PIX_GRASS_DARK_1] = read_pixie_file("16grassd.pix");  //done
+  whereto[PIX_GRASS_DARK_2] = read_pixie_file("16grd2.pix");  //done
+  whereto[PIX_GRASS_DARK_3] = read_pixie_file("16grd3.pix");  //done
+  whereto[PIX_GRASS_DARK_4] = read_pixie_file("16grd4.pix");  //done
+  whereto[PIX_GRASS_DARK_LL] = read_pixie_file("16grassi.pix");  //done
+  whereto[PIX_GRASS_DARK_UR] = read_pixie_file("16grassh.pix");  //done
+  whereto[PIX_GRASS_RUBBLE] = read_pixie_file("16grassr.pix");  //done
 
   whereto[PIX_GRASS_DARK_B1] = read_pixie_file("16grdb1.pix");  //done
   whereto[PIX_GRASS_DARK_B2] = read_pixie_file("16grdb2.pix");  //done
@@ -302,9 +302,9 @@ void load_map_data(unsigned char  * *whereto)
   whereto[PIX_TREE_B1] = read_pixie_file("16treeb1.pix"); //done tree_b1
 
   whereto[PIX_TREE_M1] = read_pixie_file("16treem1.pix"); //done tree_m1
-  whereto[PIX_TREE_ML] = read_pixie_file("16treemL.pix"); //done tree_mL
-  whereto[PIX_TREE_MR] = read_pixie_file("16treemR.pix"); //done tree_mR
-  whereto[PIX_TREE_MT] = read_pixie_file("16treemT.pix"); //done tree_mT (thin)
+  whereto[PIX_TREE_ML] = read_pixie_file("16treeml.pix"); //done tree_mL
+  whereto[PIX_TREE_MR] = read_pixie_file("16treemr.pix"); //done tree_mR
+  whereto[PIX_TREE_MT] = read_pixie_file("16treemt.pix"); //done tree_mT (thin)
 
   whereto[PIX_TREE_T1] = read_pixie_file("16treet1.pix"); //done tree_t2
 
