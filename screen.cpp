@@ -2849,17 +2849,19 @@ void screen::do_notify(char *message, walker  *who)
 void screen::report_mem()
 {
   meminfo Memory;
-  union REGS regs;
-  struct SREGS sregs;
+// Zardus: PORT: this is aparently an incomplete type:  union REGS regs;
+// Same here:  struct SREGS sregs;
   char memreport[80];
 
-  regs.x.eax = 0x00000500;
-  memset( &sregs, 0, sizeof(sregs) );
+// Zardus: PORT: Undeclared because of problems above:  regs.x.eax = 0x00000500;
+// Same here:  memset( &sregs, 0, sizeof(sregs) );
 
-  sregs.es = FP_SEG( &Memory );
-  regs.x.edi = FP_OFF( &Memory );
+// See two lines up:  sregs.es = FP_SEG( &Memory );
+// See three lines up:  regs.x.edi = FP_OFF( &Memory );
 
-  int386x( DPMI_INT, &regs, &regs, &sregs );
+// See two lines up: (plus sounds like a dos thing):  int386x( DPMI_INT, &regs, &regs, &sregs );
+
+  // Them:
   //sprintf(memreport, "Largest Block: %lu bytes",
   //  Memory.LargestBlockAvail);
   //viewob[0]->set_display_text(memreport, STANDARD_TEXT_TIME);
