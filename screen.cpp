@@ -1,10 +1,14 @@
+//screen.cpp
+
+/* ChangeLog
+	buffers: 7/31/02: *deleted some redundant headers.
+			: *load_scenario now looks for all uppercase files in
+			:  levels.001 if lowercase file fails
+*/
+
 #include "graph.h"
 #include "smooth.h"
 #include "gladpack.h"
-
-#include <fstream.h>
-#include <stdlib.h>
-// Z's script: #include <dos.h>
 
 // From picker.cpp
 extern long calculate_level(unsigned long temp_exp);
@@ -1733,7 +1737,7 @@ short load_scenario(char * filename, screen * master)
   char fullpath[80] = "";
   long gotit;
   short tempvalue;
-  char temp[80]="";;
+  char temp[80]="";
 
   // Open the pixie-pack, if not already done ...
   if (!scen_opened) 
@@ -1776,15 +1780,18 @@ short load_scenario(char * filename, screen * master)
 	}
 
 	//buffers: second, try to get the file from levels.001
-	if(!infile) {
-		if (scen_opened)
-		{
-			if(!(infile = scenpack.get_subfile(temp)))
+	if(!infile && scen_opened) {
+		if(!(infile = scenpack.get_subfile(temp)))
+			//buffers: uppercase the filename...
+			//buffers: original levels.001 file stores
+			//buffers: files in all uppercase letters
+			strcpy(tempfile,temp);
+			uppercase(tempfile);
+			if(!(infile = scenpack.get_subfile(tempfile)))
 				printf("DEBUG: scenario %s not found in levels.001\n",temp);
-			else {
-				gotit = 1;
-				printf("DEBUG: scenario %s found in levels.001\n",temp);
-			}
+		else {
+			gotit = 1;
+			printf("DEBUG: scenario %s found in levels.001\n",temp);
 		}
 	}
 
