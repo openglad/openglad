@@ -1503,11 +1503,18 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
   delete dude;
   dude = NULL;
 
+	//buffers: since we pretty much always draw to the back buffer,
+	//buffers: we need to swap the buffers to see the changes
+	screenp->swap();
+
   teamkeys = query_keyboard();
-  while (!teamkeys[SDLK_ESCAPE])
+  while (!teamkeys[SDLK_ESCAPE]) {
     screenp->do_cycle(currentcycle++, cycletime);
+    get_input_events();
+  }
   while (teamkeys[SDLK_ESCAPE])
-    dumbcount++;
+    //buffers: PORT: dumbcount++;
+    get_input_events();
 
   return;
 }
@@ -1781,7 +1788,8 @@ void viewscreen::options_menu()
     {
       screenp->cyclemode= (short) ((screenp->cyclemode+1) %2);
       while (opkeys[SDLK_c])
-        dumbcount++;
+        //buffers: PORT: dumbcount++;
+	get_input_events();
       if (screenp->cyclemode)
         sprintf(message,"Color Cycling (C)      : ON ");
       else
