@@ -12,7 +12,7 @@
 // Z's script: #include <dos.h>
 // Z's script: #include <process.h>
 #include "sounds.h"
-#include "int32.h"
+//buffers: #include "int32.h"
 #include "parse32.h"
 #include "scankeys.h"
 #include "pal32.h"
