@@ -14,6 +14,7 @@
 unsigned long timer_count=0;
 unsigned long timer_control=0;
 unsigned long start_time=0;
+unsigned long reset_value=0;
 time_t starttime, endtime;
 tm tmbuffer;
 // Z: might need these two later
@@ -73,13 +74,13 @@ void release_timer()
 
 void reset_timer()
 {
-  timer_count = 0;
+	reset_value = SDL_GetTicks();
 }
 
 long query_timer()
 {
 //  return timer_count;
-	return SDL_GetTicks();
+	return SDL_GetTicks() - reset_value;
 }
 
 unsigned long query_timer_control()
