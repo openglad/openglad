@@ -17,7 +17,8 @@ living::living(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 
 living::~living()
 {
-  walker::~walker();
+  // Zardus: PORT: this tries to delte its parent class (I think), and g++ doesn't 
+  // seem to like chicken and egg problems: walker::~walker();
 }
 
 short living::act()
