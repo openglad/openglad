@@ -39,9 +39,9 @@ long mouse_buttons;
 int mult = 1;
 
 // Zardus: add: arrays to keep track of joystick data
-int joy_numaxes[4];
-int joy_startval[4];
-int joy_numbuttons[4];
+int *joy_numaxes;
+int *joy_startval;
+int *joy_numbuttons;
 
 
 //
@@ -55,6 +55,10 @@ void init_input()
 	SDL_Joystick *js;
 
 	numjoy = SDL_NumJoysticks();
+	joy_numaxes = (int *)malloc(sizeof(int) * numjoy);
+	joy_startval = (int *)malloc(sizeof(int) * numjoy);
+	joy_numbuttons = (int *)malloc(sizeof(int) * numjoy);
+
 	for (i = 0; i < numjoy; i++)
 	{
 		js = SDL_JoystickOpen(i);
@@ -72,6 +76,10 @@ void init_input()
 void stop_input()
 {
 	free(key_list);
+	free(joy_numaxes);
+	free(joy_startval);
+	free(joy_numbuttons);
+
 	key_list = NULL;
 }
 

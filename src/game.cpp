@@ -32,7 +32,6 @@ short load_saved_game(char *filename, screen  *myscreen)
 	int           multi_team = 0;
 	int           i;
 
-	printf("Trying to load %s\n", filename);
 	// First load the team list ..
 	if (!load_team_list(filename, myscreen))
 	{
