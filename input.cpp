@@ -24,7 +24,7 @@ long timer_grabbed=0;
 
 unsigned short raw_key;
 short key_press_event = 0;    // used to signed key-press
-Uint8 *key_list;
+char key_list[MAXKEYS+JOYKEYS];
 
 long mouse_state[MSTATE];
 long mouse_buttons;
@@ -100,13 +100,13 @@ void get_input_events()
 	{
 		switch (event.type)
 		{
-//			// Key pressed or released:
-//			case SDL_KEYDOWN:
-//				key_list[event.key.keysym.sym] = 1;
-//				break;
-//			case SDL_KEYUP:
-//				key_list[event.key.keysym.sym] = 0;
-//				break;
+			// Key pressed or released:
+			case SDL_KEYDOWN:
+				key_list[event.key.keysym.sym] = 1;
+				break;
+			case SDL_KEYUP:
+				key_list[event.key.keysym.sym] = 0;
+				break;
 
 			// Mouse event
 			case SDL_MOUSEMOTION:
@@ -117,8 +117,6 @@ void get_input_events()
 				mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
 		}
 	}
-
-	key_list = SDL_GetKeyState(NULL);
 }
 
 
@@ -157,7 +155,8 @@ void clear_keyboard()
 
 char * query_keyboard()
 {
-	return (char *) key_list;
+	get_input_events();
+	return key_list;
 }
 
 void wait_for_key(unsigned char somekey)
@@ -208,6 +207,7 @@ long * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though
 	// it should probably get its own function
+	get_input_events();
 	return mouse_state;
 }
 
