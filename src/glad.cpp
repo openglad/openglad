@@ -14,11 +14,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#include <config.h>
+
 #include "graph.h"
 
 screen * myscreen;
 smoother * mysmoother;
-extern CfgStore cfg;
 
 //#include <malloc.h>
 #include "colors.h"
@@ -52,6 +53,7 @@ void get_input_events(bool);
 
 void glad_main(screen *myscreen, long playermode);
 
+// openscen should do this too.  this should be moved elsewhere.
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -70,11 +72,12 @@ static void create_dotopenglad()
 	mkdir(path.c_str(), 0755);
 }
 
-main(long argc, char **argv)
+int main(int argc, char *argv[])
 {
 	string homecfg(getenv("HOME"));
 	homecfg += "/.openglad/openglad.cfg";
 	cfg.parse(homecfg.c_str());
+	cfg.commandline(argc, argv);
 	create_dotopenglad();
 
 	myscreen = new screen(1);
@@ -85,6 +88,7 @@ main(long argc, char **argv)
 	init_input();
 	intro_main(argc, argv);
 	picker_main(argc, argv);
+	return 0;
 }
 
 void glad_main(screen *myscreen, long playermode)

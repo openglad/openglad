@@ -19,17 +19,19 @@
 
 #include <string>
 #include <map>
+#include <getopt.h>
 
-using namespace std;
-
-class CfgStore {
+class cfg_store {
 public:
+	// Commit data.  Later changes replace older, if clashes.
 	bool parse(const char *);
+	void commandline(int &argc, char **&argv);
+
 	const char *query(const char*, const char *);
 
 	map<string, map<string, string> > data;
 };
 
-extern CfgStore cfg;
+extern cfg_store cfg;
 
 #endif

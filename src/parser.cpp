@@ -20,17 +20,18 @@
 #include <fstream>
 #include <string>
 #include "parser.h"
+using namespace std;
 
-CfgStore cfg;
+cfg_store cfg;
 
-bool CfgStore::parse(const char *filename)
+bool cfg_store::parse(const char *filename)
 {
 	string line;
 	map<string, string> *section = NULL;
 	ifstream in(filename);
 	if(!in)
 	{
-		cerr << "could not open config file " << filename << endl;
+		//cerr << "could not open config file " << filename << endl;
 		return false;
 	}
 	while(std::getline(in, line, '\n'))
@@ -64,18 +65,107 @@ bool CfgStore::parse(const char *filename)
 	return true;
 }
 
-const char *CfgStore::query(const char *section, const char *entry)
+void cfg_store::commandline(int &argc, char **&argv)
 {
-	string sec(section), ent(entry);
-	//return data[sec][ent].c_str();
-	map<string, map<string, string> >::iterator a1 = data.find(sec);
+#ifndef OPENSCEN
+	const char helpmsg[] = "\
+Usage: openglad [-dfhsSv]\n\
+  -s, --sound		Turn sound on\n\
+  -S, --soundoff	Turn sound off\n\
+  -d, --pdouble		Double pixel size\n\
+  -f, --fullscreen	Use full screen\n\
+  -h, --help		Print a summary of the options\n\
+  -v, --version		Print the version number\n\
+";
+	const char versmsg[] = "openglad version " PACKAGE_VERSION "\n";
+	const struct option longopts[] = {
+		{"help", 0, 0, 'h'},
+		{"version", 0, 0, 'v'},
+		{"sound", 0, 0, 's'},
+		{"nosound", 0, 0, 'S'},
+		{"pdouble", 0, 0, 'd'},
+		{"fullscreen", 0, 0, 'f'},
+		{0, 0, 0, 0}
+	};
+	while(1)
+	{
+		int option_index, c;
+		c = getopt_long (argc, argv, "dfhsSv", longopts, NULL);
+		switch(c)
+		{
+		case 'h':
+			cout << helpmsg;
+			exit (0);
+		case 'v':
+			cout << versmsg;
+			exit (0);
+		case 's':
+			data["sound"]["sound"] = "on";
+			break;
+		case 'S':
+			data["sound"]["sound"] = "off";
+			break;
+		case 'd':
+			data["graphics"]["pdouble"] = "on";
+			break;
+		case 'f':
+			data["graphics"]["fullscreen"] = "on";
+			break;
+		case -1:
+			return;
+		}
+	}
+#else // openscen options
+	const char helpmsg[] = "\
+Usage: openscen [-hvd]\n\
+  -h, --help		Print a summary of the options\n\
+  -v, --version		Print the version number\n\
+  -d, --pdouble		Double pixel size\n\
+";
+	const char versmsg[] = "openscen version " PACKAGE_VERSION "\n";
+	const struct option longopts[] = {
+		{"help", 0, 0, 'h'},
+		{"version", 0, 0, 'v'},
+		{"sound", 0, 0, 's'},
+		{"nosound", 0, 0, 'S'},
+		{"pdouble", 0, 0, 'd'},
+		{0, 0, 0, 0}
+	};
+	while(1)
+	{
+		int option_index, c;
+		c = getopt_long (argc, argv, "dhv", longopts, NULL);
+		switch(c)
+		{
+		case 'h':
+			cout << helpmsg;
+			exit (0);
+		case 'v':
+			cout << versmsg;
+			exit (0);
+		case 'd':
+			data["graphics"]["pdouble"] = "on";
+			break;
+		case -1:
+			return;
+		}
+	}
+#endif // openglad or openscen command line parsing
+}
+
+const char *cfg_store::query(const char *section, const char *entry)
+{
+	//return data[section][entry].c_str();  // may make null entries
+	map<string, map<string, string> >::iterator a1 = data.find(section);
 	if(a1 != data.end())
 	{
-		map<string, string>::iterator a2 = a1->second.find(ent);
+		map<string, string>::iterator a2 = a1->second.find(entry);
 		if(a2 != a1->second.end())
 			return a2->second.c_str();
 	}
-	cerr << "config variable not found: section: " << sec
-	     << " entry: " << ent << endl;
+#if 0	// desired behavior now.  null replies mean use the default.
+	cerr << "config variable not found: section: " << section
+	     << " entry: " << entry << endl;
+#endif
 	return NULL;
 }

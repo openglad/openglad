@@ -154,8 +154,9 @@ long rowsdown = 0;
 long maxrows = ((sizeof(backgrounds)/4) / 4);
 text *scentext;
 
-main(short argc, char **argv)
+int main(int argc, char **argv)
 {
+	cfg.commandline(argc, argv);
 	long i,j;
 	long extra;
 	//  unsigned char input;
