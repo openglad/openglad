@@ -51,7 +51,7 @@ int key1[] = {
   SDLK_KP_PLUS,                          // switch guys
   SDLK_KP_MINUS,                         // change special
   SDLK_KP5,                                // Yell
-  SDLK_DELETE,                                // Shifter
+  SDLK_KP_PERIOD,                                // Shifter
   SDLK_KP_MULTIPLY,                         // Options menu
   SDLK_F8,                                    // Cheat key
 };
