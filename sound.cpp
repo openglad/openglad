@@ -32,12 +32,12 @@ int soundob::init()
 {
     int i;
 
-    if (!SDL_OpenAudio (des_audio, real_audio))
+    if (!SDL_OpenAudio (&des_audio, &real_audio))
     	printf("Sound init failed\n");
 
     // Guarantee null pointers, regardless of sound status
     for (i=0; i < NUMSOUNDS; i++)
-      sounds[i] = NULL;
+      sound[i] = NULL;
       
     // Do we have sounds on?
     if (silence)
@@ -66,7 +66,7 @@ int soundob::init()
       #ifdef SOUND_DB
         printf("Loading sound %d: %s\n", i, soundlist[i]);
       #endif
-      load_sound( (sound+i), soundlist[i] );
+      load_sound( sound[i], soundlist[i] );
     }
 
     // Set volume (default is loudest)
@@ -78,13 +78,13 @@ int soundob::init()
     #endif
     
     return 1;
-	if (!SDL_OpenAudio (des_audio, real_audio))
+	if (!SDL_OpenAudio (&des_audio, &real_audio))
 		printf("Sound init failed\n");
 }
 
 void soundob::load_sound(SDL_AudioSpec *audio, char * file)
 {
-	audio = (SDL_AudioSpec *)malloc (sizeof (SDL_AudioSpec));
+/*	audio = (SDL_AudioSpec *)malloc (sizeof (SDL_AudioSpec));
 	audio->freq = 16384;
 	audio->format = AUDIO_U8;
 	audio->samples = 1024;
@@ -94,17 +94,25 @@ void soundob::load_sound(SDL_AudioSpec *audio, char * file)
 	if (!SDL_OpenAudio(audio, audio))
 		printf ("Can't open audio device for %s\n", file);
 
-	if (!SDL_LoadWAV(file, audio, 
+	if (!SDL_LoadWAV(file, audio, */
+}
+
+void soundob::free_sound(SDL_AudioSpec *sound)
+{
+	
+}
 
 
 void soundob::shutdown()
 {
+	int i;
+
 	if (silence)
 		return;
 
 	for (i=0; i < NUMSOUNDS; i++)
 		if (sound[i] != NULL)
-			free_sound(sound+i);
+			free_sound(sound[i]);
 
 	SDL_CloseAudio();
 }
@@ -114,7 +122,6 @@ void soundob::play_sound(short whichnum)
 //buffers: PORT: commented func:    if (silence)         // If silent mode set, do nothing here
 //buffers: PORT: commented func:       return;
 //buffers: PORT: commented func:     start_sound(sound[whichnum], whichnum, volume, 0); // 0 means play once?
-
 	
 }
 
@@ -141,3 +148,7 @@ unsigned char soundob::set_sound(unsigned char toggle)
     return silence;
 }
 
+void soundob::set_sound_volume(int vol)
+{
+
+}
