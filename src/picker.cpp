@@ -356,7 +356,7 @@ button editteam[] =
         { "VIEW TEAM", SDLK_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1},
         { "ACCEPT", SDLK_a,  80, 170, 80, 20, EDIT_GUY, -1},
         { "RENAME", SDLK_r, 174,  8, 64, 22, NAME_GUY, 1},
-        { "DETAILS..", SDLK_d, 240, 8, 64, 22, CREATE_DETAIL_MENU, NULL},
+        { "DETAILS..", SDLK_d, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0},
         { "Playing on Team X", SDLK_t, 174, 138, 133, 22, CHANGE_TEAM, 1},
         { "ESC", SDLK_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
 
