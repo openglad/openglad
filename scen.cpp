@@ -1,8 +1,21 @@
 #include "scen.h"
 #include "input.h"
 
+
+/* Changelog
+ * 	8/8/02: Zardus: added scrolling-by-minimap
+ */
+
+
+
 //#include <malloc.h>
 #define MINIMUM_TIME 0
+// Zardus: these have to match radar.cpp's values
+#define RADAR_X 60
+#define RADAR_Y 44
+// Zardus: these have to be the screen size
+#define SCREEN_X 320
+#define SCREEN_Y 200
 
 // From picker // just emulate these so other files are happy
 // Difficulty settings .. in percent, so 100 == normal
@@ -573,7 +586,24 @@ main(short argc, char **argv)
     event = 1;
     mx = mymouse[MOUSE_X];
     my = mymouse[MOUSE_Y];
-    if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
+
+    // Zardus: ADD: can move map by clicking on minimap
+    if (mx > myscreen->viewob[0]->endx - RADAR_X - 4 && my > myscreen->viewob[0]->endy - RADAR_Y - 4
+		    && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
+    {
+	    mx -= myscreen->viewob[0]->endx - RADAR_X - 4;
+	    my -= myscreen->viewob[0]->endy - RADAR_Y - 4;
+
+	    // Zardus: (place on minimap / size of minimap) * (size of map) + (half of screen)
+	    //set_screen_pos (myscreen , ((float) mx / myscreen->viewob[0]->myradar->get_xview()) * (GRID_SIZE*myscreen->maxx) - SCREEN_X * 1.5,
+	    //		    ((float) my / RADAR_Y) * (GRID_SIZE*myscreen->maxy + SCREEN_Y / 2) - SCREEN_Y);
+	    //Above won't work cause radar no longer has get_xview
+
+	    // Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
+	    set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - SCREEN_X * 1.5,
+			    myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - SCREEN_Y * .5);
+    }
+    else if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
         (my >= S_UP) && (my <= S_DOWN) )      // in the main window
     {
       windowx = mymouse[MOUSE_X] + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT

@@ -14,6 +14,8 @@ class radar
          short sizex, sizey;
          short xpos,ypos;
          short xloc, yloc;        // where on the screen to display
+	 // Zardus: radarx and radary are now class members (instead of temp vars) so that scen can use them for scroll
+	 short radarx, radary;	  // what actual portion of the map is on the radar (top-left coord)
          short on_screen();
          short on_screen(short whatx, short whaty, short hor, short ver);
          short refresh();

@@ -39,6 +39,8 @@ void radar::start()
   size = (unsigned short) (((unsigned short) sizex)*((unsigned short) sizey));
   xview = RADAR_X;
   yview = RADAR_Y;
+  radarx = 0;
+  radary = 0;
 
   if (xview > sizex)
          xview = sizex;
@@ -67,10 +69,12 @@ short radar::draw()
   oblink  * here;
   long tempx, tempy, tempz;
   unsigned char tempcolor;
-  short radarx=0,radary=0;
   short oborder, obfamily, obteam;
   short can_see = 0, do_show = 0;
   long listtype = 0;
+
+  radarx = 0;
+  radary = 0;
 
   if (!viewscreenp || !screenp) return 0; //shouldn't be needed????
   
@@ -479,4 +483,3 @@ void radar::update()
          }
 
 }
-
