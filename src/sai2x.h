@@ -1,7 +1,7 @@
 #ifndef MOM_SCREEN
 #define MOM_SCREEN
 
-#include <SDL.h>
+#include <SDL/SDL.h>
 
 //#include "global.h"
 
@@ -11,7 +11,8 @@ typedef enum
 {
 	NoZoom = 0x01,
 	SAI = 0x02,
-	EAGLE = 0x03
+	EAGLE = 0x03,
+	DOUBLE = 0x04
 } RenderEngine;
 
 class Screen
@@ -45,6 +46,9 @@ class Screen
 
 		void Update( SDL_Rect &r_upd );
 
+		SDL_Surface *RenderAndReturn( int x, int y, int w, int h );
+
+		void Swap(int x, int y, int w, int h);
 
 		SDL_PixelFormat* GetPixelFormat()
 		{	return tempo->format;	}

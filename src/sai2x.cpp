@@ -1,4 +1,4 @@
-#include <SDL.h>
+#include <SDL/SDL.h>
 #include "sai2x.h"
 //#include "os_depend.h"
 
@@ -688,6 +688,10 @@ Screen::Screen( RenderEngine engine )
 		tx=640;
 		ty=400;
 		break;
+	case DOUBLE:
+		tx=640;
+		ty=400;
+		break;
 	case NoZoom:
 	default:
 		tx=320;
@@ -695,8 +699,10 @@ Screen::Screen( RenderEngine engine )
 		break;
 	}
 	render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF);
-	screen=SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
-
+	if(Engine != DOUBLE)
+		screen=SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+	else
+		screen=SDL_CreateRGBSurface(SDL_SWSURFACE,640,400,32,0,0,0,0);
 	SDL_FillRect( screen, 0, SDL_MapRGB(screen->format, 0x00, 0x00, 0x00) );
 }
 
@@ -738,7 +744,9 @@ void Screen::Update()
 			(unsigned char*) render->pixels, 0, 0, render->pitch );
 		SDL_UnlockSurface( render );
 		break;
+	case DOUBLE:
 	case NoZoom:
+		SDL_BlitSurface(screen,NULL,render,NULL);
 		break;
 	}
 	SDL_UpdateRect(render, 0,0,0,0);
@@ -748,6 +756,9 @@ void Screen::Update( int x, int y, int w, int h )
 {
 	switch( Engine )
 	{
+	case DOUBLE:
+		SDL_UpdateRect(render,x*2,y*2,w*2,h*2);
+		break;
 	case NoZoom:
 		SDL_UpdateRect(render, x,y,w,h);
 		break;
@@ -769,6 +780,50 @@ void Screen::Update( int x, int y, int w, int h )
 		break;
 	default:
 		printf("error, default reached\n");
+	}
+}
+
+SDL_Surface *Screen::RenderAndReturn( int x, int y, int w, int h )
+{
+        switch( Engine )
+        {
+	case DOUBLE:
+        case NoZoom:
+		SDL_BlitSurface(screen,NULL,render,NULL);
+                break;
+        case SAI:
+                SDL_LockSurface( render );
+                Super2xSaI_ex2(
+                        (unsigned char*) screen->pixels, x, y, w, h, screen->pitch, screen->h,
+                        (unsigned char*) render->pixels, 2*x, 2*y, render->pitch
+ );
+                SDL_UnlockSurface( render );
+                break;
+        case EAGLE:
+                SDL_LockSurface( render );
+                Scale_SuperEagle((unsigned char*) screen->pixels, x, y, w, h, screen->pitch, screen->h,(unsigned char*) render->pixels, 2*x, 2*y, render->pitch);
+                SDL_UnlockSurface( render );
+                break;
+        default:
+                printf("error, default reached\n");
+        }
+
+	return render;
+}
+
+void Screen::Swap(int x, int y, int w, int h)
+{
+	switch(Engine) {
+		case DOUBLE:
+			SDL_UpdateRect(render,x*2,y*2,w*2,h*2);
+			break;
+		case NoZoom:
+			SDL_UpdateRect(render,x,y,w,h);
+			break;
+		case SAI:
+		case EAGLE:
+			SDL_UpdateRect(render,x*2,y*2,w*2,h*2);
+			break;
 	}
 }
 
