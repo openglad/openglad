@@ -786,6 +786,8 @@ long beginmenu(long arg1)
 	// Starting new game ..
 	release_mouse();
 	//grab_keyboard();
+	myscreen->clearbuffer();
+	myscreen->swap();
 	read_help("start.tex", myscreen);
 	//release_keyboard();
 	myscreen->refresh();
