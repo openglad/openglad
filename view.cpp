@@ -102,7 +102,7 @@ int get_keypress();
 //   for our prefs object (grumble grumble)
 // Zardus: these used to be static chars too
 int *normalkeys[] = {key1,key2,key3,key4};
-int keys[4][16];
+int allkeys[4][16];
 
 // ** OUR prefs object! **
 static options theprefs;
@@ -141,7 +141,7 @@ viewscreen::viewscreen(short x, short y, short width,
 
   // Key entries ..
   mynum = whatnum;              // what viewscreen am I?
-  mykeys = keys[mynum]; // assign keyboard mappings
+  mykeys = allkeys[mynum]; // assign keyboard mappings
 
   // Set preferences to default values
 /*  
@@ -1104,12 +1104,12 @@ void viewscreen::align_joy()
   //printf("ML: %ld MR: %ld MU: %ld MD: %ld",minoffleft,minoffright,minoffup,minoffdown);
   //printf("CX: %ld CY: %ld",joycenterx,joycentery);
   
-  keys[mynum][KEY_UP] = JOY_KEYBOARD_UP;
-  keys[mynum][KEY_DOWN] = JOY_KEYBOARD_DOWN;
-  keys[mynum][KEY_LEFT] = JOY_KEYBOARD_LEFT;
-  keys[mynum][KEY_RIGHT] = JOY_KEYBOARD_RIGHT;
-  keys[mynum][KEY_FIRE] = JOY_KEYBOARD_B1;
-  keys[mynum][KEY_SPECIAL] = JOY_KEYBOARD_B2;
+  allkeys[mynum][KEY_UP] = JOY_KEYBOARD_UP;
+  allkeys[mynum][KEY_DOWN] = JOY_KEYBOARD_DOWN;
+  allkeys[mynum][KEY_LEFT] = JOY_KEYBOARD_LEFT;
+  allkeys[mynum][KEY_RIGHT] = JOY_KEYBOARD_RIGHT;
+  allkeys[mynum][KEY_FIRE] = JOY_KEYBOARD_B1;
+  allkeys[mynum][KEY_SPECIAL] = JOY_KEYBOARD_B2;
 //  keys[mynum][KEY_SPECIAL_SWITCH] = JOY_KEYBOARD_B3;
 //  keys[mynum][KEY_SWITCH] = JOY_KEYBOARD_B4;
   joyaligned = 1;
@@ -1903,11 +1903,7 @@ options::options()
   int i;
   char *datap;
   FILE *infile;
-  memcpy(&keys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
-
-  // I know this isn't the most ideal thing to do, but I can't get anything else working
-  //for (i = 0; i < 16; i++)
-//	keys[1][i] = key1[i];
+  memcpy(allkeys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
 
   // Set up preference defaults
   for(i=0; i<4; i++)
@@ -1948,7 +1944,7 @@ short options::load(viewscreen *viewp)
     short prefnum = viewp->mynum;
     // Yes, we are ACTUALLY COPYING the data
     memcpy(viewp->prefs, prefs[prefnum], 10);
-    memcpy(viewp->mykeys, keys[prefnum], 16 * sizeof(int));
+    memcpy(viewp->mykeys, allkeys[prefnum], 16 * sizeof(int));
     viewp->joyaligned = joys[prefnum].joyaligned;
     viewp->joyleft = joys[prefnum].joyleft;
     viewp->joyright = joys[prefnum].joyright;
@@ -1979,7 +1975,7 @@ short options::save(viewscreen *viewp)
 
   // Yes, we are ACTUALLY COPYING the data
   memcpy(prefs[prefnum], viewp->prefs, 10);
-  memcpy(keys[prefnum], viewp->mykeys, 16 * sizeof (int));
+  memcpy(allkeys[prefnum], viewp->mykeys, 16 * sizeof (int));
   joys[prefnum].joyaligned = viewp->joyaligned;
   joys[prefnum].joyleft = viewp->joyleft;
   joys[prefnum].joyright = viewp->joyright;
@@ -2090,35 +2086,35 @@ long viewscreen::set_key_prefs()
 
   keytext.write_xy(LEFT_OPS, OPLINES(2), "Press a key for 'UP':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_UP] = get_keypress();
+  allkeys[mynum][KEY_UP] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(3), "Press a key for 'UP-RIGHT':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_UP_RIGHT] = get_keypress();
+  allkeys[mynum][KEY_UP_RIGHT] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(4), "Press a key for 'RIGHT':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_RIGHT] = get_keypress();
+  allkeys[mynum][KEY_RIGHT] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(5), "Press a key for 'DOWN-RIGHT':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_DOWN_RIGHT] = get_keypress();
+  allkeys[mynum][KEY_DOWN_RIGHT] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(6), "Press a key for 'DOWN':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_DOWN] = get_keypress();
+  allkeys[mynum][KEY_DOWN] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(7), "Press a key for 'DOWN-LEFT':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_DOWN_LEFT] = get_keypress();
+  allkeys[mynum][KEY_DOWN_LEFT] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(8), "Press a key for 'LEFT':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_LEFT] = get_keypress();
+  allkeys[mynum][KEY_LEFT] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(9), "Press a key for 'UP-LEFT':", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_UP_LEFT] = get_keypress();
+  allkeys[mynum][KEY_UP_LEFT] = get_keypress();
 
   // Draw the menu button; back to the top for us!
   screenp->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
@@ -2127,36 +2123,36 @@ long viewscreen::set_key_prefs()
 
   keytext.write_xy(LEFT_OPS, OPLINES(2), "Press your 'FIRE' key:", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_FIRE] = get_keypress();
+  allkeys[mynum][KEY_FIRE] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(3), "Press your 'SPECIAL' key:", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_SPECIAL] = get_keypress();
+  allkeys[mynum][KEY_SPECIAL] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SWITCHING' key:", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_SWITCH] = get_keypress();
+  allkeys[mynum][KEY_SWITCH] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'SPECIAL SWITCH' key:", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_SPECIAL_SWITCH] = get_keypress();
+  allkeys[mynum][KEY_SPECIAL_SWITCH] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'YELL' key:", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_YELL] = get_keypress();
+  allkeys[mynum][KEY_YELL] = get_keypress();
 
   keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", (unsigned char) RED, 1);
   screenp->buffer_to_screen(0, 0, 320, 200);
-  keys[mynum][KEY_SHIFTER] = get_keypress();
+  allkeys[mynum][KEY_SHIFTER] = get_keypress();
 
 //  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", (unsigned char) RED, 1);
-//  keys[mynum][KEY_PREFS] = get_keypress();
+//  allkeys[mynum][KEY_PREFS] = get_keypress();
 
   if (CHEAT_MODE) // are cheats enabled?
   {
     keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", (unsigned char) RED, 1);
     screenp->buffer_to_screen(0, 0, 320, 200);
-    keys[mynum][KEY_CHEAT] = get_keypress();
+    allkeys[mynum][KEY_CHEAT] = get_keypress();
   }
 
   screenp->redrawme = 1;
