@@ -149,7 +149,7 @@ short read_scenario(screen *myscreen)
   }  // loop until ESC is pressed 
 
   while (mykeyboard[SDLK_ESCAPE])  // wait for key release
-    templines++;
+	  get_input_events();
   mykeyboard[SDLK_ESCAPE] = 0;
   delete mytext;
   mytext = NULL;
@@ -284,7 +284,7 @@ short read_help(char *somefile,screen * myscreen)
         
 
         while (mykeyboard[SDLK_ESCAPE])  // wait for key release
-          templines++;
+		get_input_events();
         //delete mytext; 
         return (short) (numlines);
 }
