@@ -421,7 +421,7 @@ unsigned char text::convert_to_ascii(int scancode)
     case SDLK_ESCAPE: return 27;
     case SDLK_PERIOD:  return '.';
     case SDLK_COMMA: return ',';
-// Zardus: PORT: not defined in SDLKkeys.h:    case SDLK_CLOSE_QUOTE: return ''';
+    case SDLK_QUOTE: return '\'';
     case SDLK_BACKQUOTE: return '`';
 
     default: return 255;
