@@ -98,7 +98,11 @@ void handle_events(SDL_Event event)
 
 		// Mouse event
 		case SDL_MOUSEMOTION:
+			//printf("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
+			//if (!(event.motion.x < 10 && mouse_state[MOUSE_X] * mult > 620)
+			//	&& !(event.motion.y == 0 && mouse_state[MOUSE_Y] > 20))
 			mouse_state[MOUSE_X] = event.motion.x / mult;
+			//if (!(event.motion.y < 10 && mouse_state[MOUSE_Y] * mult > 460))
 			mouse_state[MOUSE_Y] = event.motion.y / mult;
 			break;
 		case SDL_MOUSEBUTTONUP:
@@ -118,10 +122,7 @@ void handle_events(SDL_Event event)
 				mouse_state[MOUSE_RIGHT] = 1;
 			break;
 		case SDL_QUIT:
-			//buffers: PORT: the quit function is not avialiable to the scen app so we don't try to call it if we compile scen
-			#ifndef OPENSCEN
 				quit(1);
-			#endif
 			break;
 		default:
 			break;
