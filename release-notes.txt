@@ -1,1 +1,2 @@
-Openglad 0.95 is a complete port. We are getting ready to release 1.0
+Openglad 0.97 is a bugfix release. Lots of memory leaks are fixed and some
+other bugs as well.
