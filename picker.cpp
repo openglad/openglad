@@ -2939,9 +2939,6 @@ long quit(long arg1)
   if (arg1)  arg1 = 1;
   release_mouse();
   
-  //grab_keyboard();
-  read_help("register.tex", myscreen);
-  //release_keyboard();
   myscreen->refresh();
 
   release_keyboard();
