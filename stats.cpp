@@ -1037,7 +1037,7 @@ short statistics::walk_to_foe()
     right_walk();
 
   // Are we really really close? Stop searching, then :)
-  if (tempdistance < 30)
+  if (tempdistance < 30 && commandlist)
   {
     commandlist->commandcount = 0;
     //clear_command();
