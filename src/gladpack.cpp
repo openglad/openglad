@@ -28,7 +28,6 @@
 #include <string.h>
 #include "gladpack.h"
 #include "util.h"
-#include "config.h"
 #include <string>
 using namespace std;
 
