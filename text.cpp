@@ -329,6 +329,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 
   clear_keyboard();
   clear_key_press_event();
+  enable_keyrepeat();
 
   while ( !string_done )
   {
@@ -367,6 +368,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
     screenp->buffer_to_screen(0, 0, 320, 200);
   }
   
+  disable_keyrepeat();
   clear_keyboard();
   return editstring;
 

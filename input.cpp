@@ -193,6 +193,17 @@ short query_key_code(short code)
   return key_list[code];
 }
 
+void enable_keyrepeat()
+{
+	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,SDL_DEFAULT_REPEAT_INTERVAL);
+}
+
+void disable_keyrepeat()
+{
+	SDL_EnableKeyRepeat(0,0);
+}
+
+
 
 //
 // Mouse routines
@@ -216,7 +227,7 @@ long * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though
 	// it should probably get its own function
-	get_input_events(WAIT);
+	get_input_events(POLL);
 	return mouse_state;
 }
 
