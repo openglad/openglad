@@ -595,6 +595,14 @@ main(short argc, char **argv)
     {
 	    mx -= myscreen->viewob[0]->endx - RADAR_X - 4;
 	    my -= myscreen->viewob[0]->endy - RADAR_Y - 4;
+	    i = SCREEN_X; // i and j will be our shift factors
+	    j = SCREEN_Y;
+
+	    if (myscreen->maxx <= RADAR_X) i *= 1.5;
+	    else i *= .5;
+
+	    if (myscreen->maxy <= RADAR_Y) j *= 1.5;
+	    else j *= .5;
 
 	    // Zardus: (place on minimap / size of minimap) * (size of map) + (half of screen)
 	    //set_screen_pos (myscreen , ((float) mx / myscreen->viewob[0]->myradar->get_xview()) * (GRID_SIZE*myscreen->maxx) - SCREEN_X * 1.5,
@@ -602,8 +610,8 @@ main(short argc, char **argv)
 	    //Above won't work cause radar no longer has get_xview
 
 	    // Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
-	    set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - SCREEN_X * 1.5,
-			    myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - SCREEN_Y * .5);
+	    set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - i,
+			    myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - j);
     }
     else if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
         (my >= S_UP) && (my <= S_DOWN) )      // in the main window
