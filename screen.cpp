@@ -1449,8 +1449,10 @@ short screen::endgame(short ending, short nextlevel)
     if (nextlevel != -1)
       scen_num = (short) (nextlevel-1);    // Fake jumping to next level ..
     save_game("save0", this);
-    
-    while (query_key() != SDLK_ESCAPE); // pause
+
+    // Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
+    // actions
+    while (!endkeys[SDLK_ESCAPE]) get_input_events(); // pause
 
     // Check for guys who have gone up levels
     if (checklist) // should always be true, but just in case

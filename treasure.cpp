@@ -12,6 +12,9 @@
 #include "stats.h"
 #include "guy.h"
 
+// Zardus: this is the func to get events
+void get_input_events();
+
 treasure::treasure(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 {
   ignore =(char) 0;
@@ -219,8 +222,9 @@ short treasure::eat_me(walker  * eater)
                   screenp->buffer_to_screen(0, 0, 320, 200);
                   eatkeys = query_keyboard();
                   clear_keyboard();
+		  // Zardus: FIX: get_input_events instead of freezing and counting :-)
                   while (!eatkeys[SDLK_y] && !eatkeys[SDLK_n])
-                         dumbcount++;
+			  get_input_events();
                   // Redraw screen ..
                   screenp->redrawme = 1;
 
