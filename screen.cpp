@@ -1733,7 +1733,7 @@ short load_scenario(char * filename, screen * master)
   char fullpath[80] = "";
   long gotit;
   short tempvalue;
-
+  char temp[80]="";;
 
   // Open the pixie-pack, if not already done ...
   if (!scen_opened) 
@@ -1753,30 +1753,46 @@ short load_scenario(char * filename, screen * master)
     }
     scen_opened = 1;
   }
+ 
+	//buffers: first look for the scenario in scen/, then in levels.001
+ 
+	//buffers: the file
+	strcpy(temp, filename);
+	strcat(temp, ".fss");
 
-	//buffers: PORT: uncommented the below line
-  strcpy(tempfile, scen_directory);
+	//buffers: the full path of file
+	strcpy(tempfile,scen_directory);
+	strcat(tempfile,temp);
 
-	//buffers: PORT: changed below line to strcat from strcpy
-  strcat(tempfile, filename);
-  strcat(tempfile, ".fss");
-  // First try to get info from the pack-file ..
-  if (scen_opened)
-  {
-    infile = scenpack.get_subfile(tempfile);
-    gotit = 1;
-  }
+	gotit = 0;
 
-  if (!infile) // not found ...
-  {
-    if ( (infile = fopen(tempfile, "rb")) == NULL )       // open for read
-    {
-      printf("\nError in reading scenario file %s\n", tempfile);
-      return 0;
-    }
-    gotit = 0; // so we know to close the file pointer
-  }
+	//buffers: first try to find the file in scen/
+	printf("DEBUG: looking for %s\n",tempfile);
+	if ( (infile = fopen(tempfile, "rb")) == NULL )       // open for read
+		printf("DEBUG: scenario %s not found in scen/\n",temp);	
+	else {
+		printf("DEBUG: scenario %s found in scen/\n",temp);
+		gotit = 1;
+	}
 
+	//buffers: second, try to get the file from levels.001
+	if(!infile) {
+		if (scen_opened)
+		{
+			if(!(infile = scenpack.get_subfile(temp)))
+				printf("DEBUG: scenario %s not found in levels.001\n",temp);
+			else {
+				gotit = 1;
+				printf("DEBUG: scenario %s found in levels.001\n",temp);
+			}
+		}
+	}
+
+	if(gotit == 0) {
+		printf("DEBUG: scenario %s was not found in levels.001 or in scen/ -- EXITING\n",temp);
+		exit(0);
+	}
+	
   // Are we a scenario file?
   fread(temptext, 3, 1, infile);
   if (strcmp(temptext, "FSS"))
