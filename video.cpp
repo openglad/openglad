@@ -1,5 +1,4 @@
 // Video object code
-
 #include "graph.h"
 #include <fstream.h>
 #include <stdlib.h>
@@ -213,8 +212,21 @@ void video::putblack(long startx, long starty, long xsize, long ysize)
 // the area which it changes..
 void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned char color)
 {
-  unsigned long i,j, temp;
+	unsigned long i,j, temp;
 
+	for (i=starty;i<starty+ysize;i++)
+	{
+		for (j=startx; j < (startx+xsize); j++)
+		{
+			point(j,i,color);
+		}
+	}
+
+	//buffers: PORT: display the box now because the original code
+	//has this function writing directly to screen
+	SDL_UpdateRect(screen,startx,starty,xsize,ysize);
+
+/* buffers: PORT:
   for (i=starty;i<starty+ysize;i++)
   {
     temp = startx+i*VIDEO_WIDTH;
@@ -224,44 +236,64 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 	videoptr[j] = color;
     }
   }
+ */
 }
 
 // This is the version which writes to the buffer..
 void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned char color, unsigned char flag)
 {
-  unsigned long i,j, temp;
+	unsigned long i,j, temp;
 
-  if (!flag) // then write to screen directly
-  {
-    fastbox(startx, starty, xsize, ysize, color);
-    return ;
-  }
+	if (!flag) // then write to screen directly
+	{
+		fastbox(startx, starty, xsize, ysize, color);
+		return ;
+	}
 
-  for (i=starty;i<starty+ysize;i++)
-  {
-    temp = startx+i*VIDEO_WIDTH;
-    for (j=temp; j < (temp+xsize); j++)
-    {
-      if (j>0 && j<VIDEO_SIZE)
-	videobuffer[j] = color;
-    }
-  }
+	for (i=starty;i<starty+ysize;i++)
+	{
+		for(j=startx;j<(startx+xsize);j++);
+			point(j,i,color);
+
+/* buffers: PORT:
+		temp = startx+i*VIDEO_WIDTH;
+		for (j=temp; j < (temp+xsize); j++)
+		{
+			if (j>0 && j<VIDEO_SIZE)
+			videobuffer[j] = color;
+		}
+*/
+	}
 }
 
 // Place a point on the screen
+//buffers: PORT: this point func is equivalent to drawing directly to screen
 void video::point(long x, long y, unsigned char color)
+{
+	pointb(x,y,color);
+	SDL_UpdateRect(screen,x,y,1,1);
+}
+
+//buffers: PORT: this draws a point in the offscreen buffer
+//buffers: PORT: used for all the funcs that draw stuff in the offscreen buf
+void video::pointb(long x, long y, unsigned char color)
 {
 	int r,g,b;
 	Uint8 *address = (Uint8 *)screen->pixels + y*screen->pitch +
-		                x * screen->format->BytesPerPixel;
+                              x * screen->format->BytesPerPixel;
 	int c;
 
 	query_palette_reg(color,&r,&g,&b);
-	
+
 	c = SDL_MapRGB(screen->format, r, g, b);
 
+	SDL_LockSurface(screen);
+
 	*address = c;
-}
+
+	SDL_UnlockSurface(screen);
+}											
+
 
 // Place a horizontal line on the screen.
 void video::hor_line(long x, long y, long length, unsigned char color)
@@ -272,28 +304,29 @@ void video::hor_line(long x, long y, long length, unsigned char color)
 	{
 		point (x + i, y, color);
 	}
+
+	SDL_UpdateRect(screen,x,y,length,0);
 }
 
 void video::hor_line(long x, long y, long length, unsigned char color, long tobuffer)
 {
-  unsigned long num, i;
+	unsigned long num, i;
 
-//buffers: PORT: we always want to draw to the offscreen buffer
-//buffers: PORT:  if (!tobuffer)
-//buffers: PORT:  {
-    hor_line(x,y,length,color);
-    return;
-//buffers: PORT:  }
+	if (!tobuffer)
+	{
+		hor_line(x,y,length,color);
+		return;
+	}
 
-/* buffers: PORT:
-  num = x + (VIDEO_WIDTH*y);
-  for (i = 0; i < length; i++)
-  {
-    if (num>0 && num<VIDEO_SIZE)
-      videobuffer[num] = color;
-    num ++;
-  }
-*/
+	//buffers: PORT: num = x + (VIDEO_WIDTH*y);
+	for (i = 0; i < length; i++)
+	{
+		pointb(x+i,y,color);
+	
+		//buffers: PORT: if (num>0 && num<VIDEO_SIZE)
+		//buffers: PORT: videobuffer[num] = color;
+		//buffers: PORT num ++;
+	}
 }
 
 
@@ -310,24 +343,23 @@ void video::ver_line(long x, long y, long length, unsigned char color)
 
 void video::ver_line(long x, long y, long length, unsigned char color, long tobuffer)
 {
-  unsigned long num, i;
+	unsigned long num, i;
 
-//buffers: PORT: we always want to draw to the offscreen buffer
-//buffers: PORT:  if (!tobuffer)  
-//buffers: PORT:  {
-    ver_line(x,y,length,color);
-    return;
-//buffers: PORT:  }
+	if (!tobuffer)  
+	{
+		ver_line(x,y,length,color);
+		return;
+	}
 
-/* buffers: PORT
-  num = x + (VIDEO_WIDTH*y);
-  for (i = 0; i < length; i++)
-  {
-    if (num>0 && num<VIDEO_SIZE)
-      videobuffer[num] = color;
-    num += VIDEO_WIDTH;
-  }
-*/
+	//buffers: PORT: num = x + (VIDEO_WIDTH*y);
+	for (i = 0; i < length; i++)
+	{
+		pointb(x,y+i,color);
+	
+		//buffers: PORT: if (num>0 && num<VIDEO_SIZE)
+		//buffers: PORT:	videobuffer[num] = color;
+		//buffers: POT: num += VIDEO_WIDTH;
+	}
 }
 
 
@@ -386,9 +418,10 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
     {
       curcolor = sourcedata[num++];
       if (!curcolor) continue;
-      targ = (curx + (cury*VIDEO_WIDTH));
-      if (targ>0 && targ<VIDEO_SIZE)
-	videoptr[targ] = curcolor;
+      //buffers: PORT: targ = (curx + (cury*VIDEO_WIDTH));
+      //buffers: PORT: if (targ>0 && targ<VIDEO_SIZE)
+	//buffers: PORT: videoptr[targ] = curcolor;
+	point(curx,cury,curcolor);//buffers: PORT: draw the point
     }
 }
 
@@ -397,22 +430,23 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 //used by text
 void video::putdata(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata, unsigned char color)
 {
-  unsigned long curx, cury;
-  unsigned char curcolor;
-  unsigned long num = 0;
-  unsigned long targ = 0;
+	unsigned long curx, cury;
+	unsigned char curcolor;
+	unsigned long num = 0;
+	unsigned long targ = 0;
   
-  for(cury = starty;cury < starty +ysize;cury++)
-    for (curx = startx; curx < startx +xsize; curx++)
-    {
-      curcolor = sourcedata[num++];
-      if (!curcolor) continue;
-      //if (curcolor>=248) curcolor = color+(curcolor-248);
-      if (curcolor>247) curcolor = color;
-      targ = (curx + (cury*VIDEO_WIDTH));
-      if (targ>0 && targ<VIDEO_SIZE)
-	videoptr[targ] = curcolor;
-    }
+	for(cury = starty;cury < starty +ysize;cury++)
+		for (curx = startx; curx < startx +xsize; curx++)
+		{
+			curcolor = sourcedata[num++];
+			if (!curcolor) continue;
+			//if (curcolor>=248) curcolor = color+(curcolor-248);
+			if (curcolor>247) curcolor = color;
+			//buffers: PORT: targ = (curx + (cury*VIDEO_WIDTH));
+			//buffers: PORT: if (targ>0 && targ<VIDEO_SIZE)
+			//buffers: PORT: videoptr[targ] = curcolor;
+			point(curx,cury,curcolor);
+		}
 }
 
 // video::putbuffer
@@ -469,7 +503,7 @@ void video::putbuffer(long tilestartx, long tilestarty,
   offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
 
-
+	point(xmin,ymin,50);
 
 extern void putbufbasm();
 //buffers: PORT: #pragma aux putbufbasm = \
@@ -527,7 +561,7 @@ extern void putbufdasm();
 //buffers: PORT: 	     "jnz tileloopx"\   
 //buffers: PORT: 	     modify[eax ebx ecx edx edi esi];
 
-
+/* buffers: PORT:
   if (! (rowsize % 4))
   {
     rowsize/=4; //we'll move four bytes at a time
@@ -546,6 +580,7 @@ extern void putbufdasm();
 //buffers: PORT: doesn't link with this in:    putbufbasm(); //all other cases will currently use the normal version b for movsb
   }
 
+*/
 }
 
 // walkputbuffer draws active guys to the screen (basically all non-tiles

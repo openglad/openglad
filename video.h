@@ -18,7 +18,9 @@ class video
          void fastbox(long startx, long starty, long xsize, long ysize, unsigned char color);
          void fastbox(long startx, long starty, long xsize, long ysize, unsigned char color, unsigned char flag);
          void point(long x, long y, unsigned char color);
-         void hor_line(long x, long y, long length, unsigned char color);
+         //buffers: PORT: added below prototype
+	 void pointb(long x, long y, unsigned char color);
+	 void hor_line(long x, long y, long length, unsigned char color);
          void ver_line(long x, long y, long length, unsigned char color);
          void hor_line(long x, long y, long length, unsigned char color, long tobuffer);
          void ver_line(long x, long y, long length, unsigned char color, long tobuffer);

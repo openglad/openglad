@@ -184,6 +184,8 @@ void picker_main(long argc, char  **argv)
   FILE *cfgfile;
   long i;
 
+	printf("DEBUG: entering picker_main()\n");
+
   for (i=0; i < MAX_BUTTONS; i++)
     allbuttons[i] = NULL;
 
@@ -249,6 +251,7 @@ void picker_main(long argc, char  **argv)
   else
          fclose(loadgame);
 
+	printf("DEBUG: entering mainmenu()\n");
   mainmenu(1);
 
   delete mytext;
@@ -590,7 +593,7 @@ long mainmenu(long arg1)
 
   while ( !(retvalue & EXIT) )
   {
-
+	myscreen->buffer_to_screen(0,0,320,200);
      if (leftmouse())
      {
        //myscreen->soundp->play_sound(SOUND_BOW);
