@@ -313,6 +313,7 @@ void video::pointb(long x, long y, unsigned char color)
 	}
 }	
 
+//buffers: draw color using an offset
 void video::pointb(int offset, unsigned char color)
 {
 	int x, y;
@@ -882,7 +883,8 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
       } // end of all rows 
     
       break; // end OUTLINE
-     
+    
+    //buffers: PORT: ported the below block of code
     case PHANTOM_MODE: 
       switch (shifttype)
       {
@@ -1021,28 +1023,32 @@ void video::restore_ints()
   //buffers: PORT: won't link with this in: do_restore_ints();
 }
 
-void video::get_pixel(int x, int y, int *r, int *g, int *b)
+//buffers: get pixel's RGB values if you have XY
+void video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 {
 	Uint32 col = 0;
-	
+	Uint8 q=0,w=0,e=0;
+
 	x*=mult;
 	y*=mult;
-
 
 	char *p = (char *)screen->pixels;
 	p += screen->pitch*y;
 	p += screen->format->BytesPerPixel*x;
 
-	//memcpy(&col,p,screen->format->BytesPerPixel);
+	memcpy(&col,p,screen->format->BytesPerPixel);
 
-	SDL_GetRGB(*p,screen->format,(Uint8 *)r,(Uint8 *)g,(Uint8 *)b);
+	SDL_GetRGB(col,screen->format,&q,&w,&e);
+	*r=q;*g=w;*b=e;
 	printf("%d %d %d\n",*r,*g,*b);
 }
 
+//buffers: get pixel index if you have XY.
 int video::get_pixel(int x, int y, int *index)
 {
-	int r,g,b,i;
+	Uint8 r,g,b;
 	int tr,tg,tb;
+	int i;
 
 	get_pixel(x,y,&r,&g,&b);
 	r /= 4;
@@ -1058,6 +1064,7 @@ int video::get_pixel(int x, int y, int *index)
 	}
 }
 
+//buffers: get pixel index if you have an buffer offset
 int video::get_pixel(int offset)
 {
 	int x,y,t;
