@@ -48,11 +48,10 @@ class packfileinfo
 int packfile::open(const char *filename)
 {
 	long i;
-	string filepath(filename);
 	char temp[GLAD_HEADER_SIZE+1];
 
 	// Zardus: first try in the current directory
-	if ( (datafile=fopen(get_file_path((char *)filename), "rb")) == NULL)
+	if ( (datafile=open_misc_file((char *)filename)) == NULL)
 	{
 		return -1;
 	}
