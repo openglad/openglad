@@ -18,8 +18,6 @@ int pal[256][3];
 char mypalette[768]; 
 //screen *myscreen;
 
-bool finish();
-  
 void intro_main(long argc, char** argv)
 {
   int i,j;
@@ -77,9 +75,6 @@ void intro_main(long argc, char** argv)
 	}
   }
 
-  if (finish())
-	return;
-
   //gladdata = read_pixie_file("glad.pix");
   gladdata = read_pixie_file("glad2.pix");
   gladiator = new pixie(&(gladdata[3]), (int)gladdata[1],
@@ -99,8 +94,6 @@ void intro_main(long argc, char** argv)
 		return;
 	}
 
-  if (finish()) return;
-
   myscreen->clear();
   mytext->write_y(70,"THOSE WHO ARE ABOUT TO DIE SALUTE YOU", 230, myscreen->viewob[0]);
   myscreen->refresh();
@@ -110,8 +103,6 @@ void intro_main(long argc, char** argv)
 		cleanup();
 		return;
 	}
-
-	if (finish()) return;
 
   // Programming Credits, Page 1
   myscreen->clear();
@@ -126,8 +117,6 @@ void intro_main(long argc, char** argv)
 		cleanup();
 		return;
 	}
-
-	if (finish()) return;
 
   // First 'interlude' snapshot
   myscreen->clear();
@@ -175,8 +164,6 @@ void intro_main(long argc, char** argv)
 		return;
 	}
 
-	if (finish()) return;
-  
   // Programming Credits, Page 2
   myscreen->clear();
   mytext->write_y(90,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
@@ -189,8 +176,6 @@ void intro_main(long argc, char** argv)
     cleanup();
     return;
   }
-
-  if (finish()) return;
 
   // Second 'interlude' & extra credits
   myscreen->clear();
@@ -241,8 +226,6 @@ void intro_main(long argc, char** argv)
     cleanup();
     return;
   }
-
-  if (finish()) return;
 
   // cleanup
 /*
@@ -311,7 +294,10 @@ int show(int howlong)
 //  myscreen->soundp->play_sound(SOUND_TELEPORT);
   reset_timer();
   while (query_timer() < howlong)
-    if (query_key_press_event()) return -1;
+  {
+	  get_input_events(POLL);
+	  if (query_key_press_event()) return -1;
+  }
 
   // Fade out 
   /* //buffers: PORT:
@@ -338,16 +324,4 @@ int show(int howlong)
   }
 */ //buffers: PORT:
   return 1;
-}
-
-bool finish()
-{
-	get_input_events(POLL);
-	if (query_key_press_event())
-	{
-		clear_key_press_event();
-		return 1;
-	}
-
-	return 0;
 }
