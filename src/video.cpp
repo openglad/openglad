@@ -35,6 +35,9 @@
 #define VIDEO_BUFFER_WIDTH 320
 #define VIDEO_WIDTH 320
 #define VIDEO_SIZE 64000
+#define CX_SCREEN 320
+#define CY_SCREEN 200
+#define ASSERT(x) if (!(x)) return;
 
 // Zardus: set_mult in input.cpp sets input's mult value
 void set_mult(int);
@@ -78,6 +81,8 @@ video::video()
 	}
 
 	set_mult(mouse_mult);
+
+	fadeDuration = 2000;
 
 	// Load our palettes ..
 	load_and_set_palette("our.pal", ourpalette);
@@ -1305,3 +1310,159 @@ int video::get_pixel(int offset)
 
 	return get_pixel(x,y,&t);
 }
+
+
+// ***************************************************************************
+// Fading routines! Thanks, Erik!
+// ****************************************************************************
+void video::FadeBetween24(
+//Show transition between two screens at 'amount' between them.
+//
+//'pSurface' is the surface you want to apply the fade to,
+//'fadeFrom' is a copy of what the old screen looks like, and
+//'fadeTo' is a copy of what the normal screen looks like,
+// neither faded in or out, but just normal.
+//NOTE: fadeFrom, fadeTo, and pSurface must be the same size and dimensions.
+//
+//Params:
+	SDL_Surface* pSurface, const Uint8* fadeFromRGB, const Uint8* fadeToRGB,
+	const int amount)	//(in) mixing ratio (in increments of 'fadeDuration')
+{
+	const int bpp = pSurface->format->BytesPerPixel;
+
+	Uint8 *pw = (Uint8 *)pSurface->pixels;
+	Uint32 size = pSurface->pitch * pSurface->h;
+
+	const int nOldAmt = fadeDuration-amount;
+
+	const Uint8 *pFrom = fadeFromRGB;
+	const Uint8 *pTo = fadeToRGB;
+	
+	//Mix pixels in "from" and "to" images by 'amount'
+	Uint8 *pStop = pw + size;
+	while (pw != pStop)
+	{
+		*(pw++) = (nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration;
+		*(pw++) = (nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration;
+		*(pw++) = (nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration;
+		pw++; pFrom++; pTo++;
+	}
+
+	SDL_UpdateRect (pSurface, 0, 0, 0, 0);
+}
+
+//*****************************************************************************
+void video::FadeBetween(
+//Fade between two screens.
+//Time effect to be independent of machine speed.
+	SDL_Surface* pOldSurface,	//(in)	Surface that contains starting image.
+	SDL_Surface* pNewSurface,	//(in)	Image that destination surface will change to.
+	SDL_Surface* DestSurface)	//	surface which is the destination
+{
+	bool bOldNull = false, bNewNull = false;
+
+	//Set NULL pointers to temporary black screens
+	//(for simple fade-in/out effects).
+	if (!pOldSurface)
+	{
+		bOldNull = true;
+		pOldSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
+			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+		SDL_FillRect(pOldSurface,NULL,0);
+	}
+	if (!pNewSurface)
+	{
+		bNewNull = true;
+		pNewSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
+			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
+		SDL_FillRect(pNewSurface,NULL,0);
+	}
+	if (bOldNull && bNewNull) return;	//nothing to do
+
+	/* Lock the screen for direct access to the pixels */
+	if ( SDL_MUSTLOCK(pOldSurface) ) {
+		if ( SDL_LockSurface(pOldSurface) < 0 ) {
+			return;
+		}
+	}
+	
+	//The new surface shouldn't need a lock unless it is somehow a screen surface.
+	ASSERT(!SDL_MUSTLOCK(pNewSurface)); 
+
+	//The dimensions and format of the old and new surface must match exactly.
+	ASSERT(pOldSurface->pitch == pNewSurface->pitch);
+	ASSERT(pOldSurface->w == pNewSurface->w);
+	ASSERT(pOldSurface->h == pNewSurface->h);
+	ASSERT(pOldSurface->format->Rmask == pNewSurface->format->Rmask);
+	ASSERT(pOldSurface->format->Rshift == pNewSurface->format->Rshift);
+	ASSERT(pOldSurface->format->Rloss == pNewSurface->format->Rloss);
+	ASSERT(pOldSurface->format->Gmask == pNewSurface->format->Gmask);
+	ASSERT(pOldSurface->format->Gshift == pNewSurface->format->Gshift);
+	ASSERT(pOldSurface->format->Gloss == pNewSurface->format->Gloss);
+	ASSERT(pOldSurface->format->Bmask == pNewSurface->format->Bmask);
+	ASSERT(pOldSurface->format->Bshift == pNewSurface->format->Bshift);
+	ASSERT(pOldSurface->format->Bloss == pNewSurface->format->Bloss);
+	ASSERT(pOldSurface->format->Rshift == pNewSurface->format->Rshift);
+	ASSERT(pOldSurface->format->BytesPerPixel == pNewSurface->format->BytesPerPixel);
+
+	//Extract RGB pixel values from each image.
+	const int bpp = pNewSurface->format->BytesPerPixel;
+	ASSERT(bpp==4);	//24-bit color only supported
+
+	Uint32 size = pOldSurface->pitch * pOldSurface->h;
+	Uint8 *colorsf, *colorst;
+	colorsf = new Uint8[size];
+	colorst = new Uint8[size];
+
+	Uint8 *prf = (Uint8 *)pOldSurface->pixels, *prt = (Uint8 *)pNewSurface->pixels;
+	memcpy(colorsf, prf, size);
+	memcpy(colorst, prt, size);
+
+	//Fade from old to new surface.  Effect takes constant time.
+	Uint32
+		dwFirstPaint = SDL_GetTicks(),
+		dwNow = dwFirstPaint;
+	do {
+		FadeBetween24(DestSurface,colorsf,colorst,
+				dwNow - dwFirstPaint + 50);	//allow first frame to show some change
+		E_Screen->Swap(0,0,320,200);
+		dwNow = SDL_GetTicks();
+	} while (dwNow - dwFirstPaint + 50 < fadeDuration);	// constant-time effect
+
+	if ( SDL_MUSTLOCK(pNewSurface) ) {
+		SDL_UnlockSurface(pNewSurface);
+	}
+
+	//Show new screen entirely.
+	SDL_BlitSurface(pNewSurface, NULL, pOldSurface, NULL);
+	SDL_UpdateRect(pOldSurface,0,0,CX_SCREEN, CY_SCREEN);
+	E_Screen->Swap(0,0,320,200);
+	
+	//Clean up.
+	delete [] colorsf;
+	delete [] colorst;
+
+	if (bOldNull)
+		SDL_FreeSurface(pOldSurface);
+	if (bNewNull)
+		SDL_FreeSurface(pNewSurface);
+}
+
+void video::fadeblack(bool way)
+{
+	SDL_Surface *black = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
+	int c = SDL_MapRGB(black->format, 0, 0, 0);
+	SDL_Surface *render;
+
+	SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
+	render = (SDL_Surface *)E_Screen->RenderAndReturn(0,0,320,200);
+	SDL_BlitSurface(fontbuffer,NULL,render,NULL);
+
+	SDL_FillRect(black, NULL, c);
+
+	if (way == 1) FadeBetween(black, render, render); // fade from black
+	if (way == 0) FadeBetween(render, black, render); // fade to black
+
+	SDL_FreeSurface(black);
+}
+

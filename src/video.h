@@ -103,6 +103,13 @@ class video
 		int get_pixel(int x, int y, int *index);
 		int get_pixel(int offset);
 
+		// Fading code: (thanks Erik!)
+		void FadeBetween24(SDL_Surface *, const Uint8 *, const Uint8 *, const int);
+		void FadeBetween(SDL_Surface *, SDL_Surface *, SDL_Surface *);
+		void fadeblack(bool);
+
+		int fadeDuration;
+
 		char ourpalette[768]; // our standard glad palette
 		char redpalette[768]; // for 'faded' backgrounds during menus
 		char bluepalette[768]; // for special effects like time-freeze

@@ -24,6 +24,8 @@
 // Z's script: #include <process.h>
 
 #define SHOW_TIME 130
+#define FROM 1
+#define TO 0
 #include "input.h"
 
 int show();
@@ -76,7 +78,7 @@ void intro_main(long argc, char** argv)
 	                      (int)gladdata[2], myscreen);
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
 	mytext->write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0]);
-	myscreen->refresh();
+	//myscreen->refresh();
 	delete gladiator;
 	delete gladdata;
 
@@ -98,7 +100,7 @@ void intro_main(long argc, char** argv)
 	bigfoot->drawMix(120,50,myscreen->viewob[0]);
 	//gladiator->drawMix(110,65,myscreen->viewob[0]);
 	gladiator->drawMix(100, 110, myscreen->viewob[0]);
-	myscreen->refresh();
+	//myscreen->refresh();
 
 	delete gladdata;
 	delete gladiator;
@@ -114,7 +116,7 @@ void intro_main(long argc, char** argv)
 
 	myscreen->clear();
 	mytext->write_y(70,"THOSE WHO ARE ABOUT TO DIE SALUTE YOU", 230, myscreen->viewob[0]);
-	myscreen->refresh();
+	//myscreen->refresh();
 
 	if (show() < 0)
 	{
@@ -129,7 +131,7 @@ void intro_main(long argc, char** argv)
 	mytext->write_y(100,"Chad Lawrence  Doug McCreary", 230, myscreen->viewob[0]);
 	mytext->write_y(110,"Tom Ricket  Michael Scandizzo", 230, myscreen->viewob[0]);
 
-	myscreen->refresh();
+	//myscreen->refresh();
 
 	if (show() < 0)
 	{
@@ -176,7 +178,7 @@ void intro_main(long argc, char** argv)
 	delete lrdata;
 	lr = NULL;
 
-	myscreen->refresh();
+	//myscreen->refresh();
 
 	if (show(SHOW_TIME+30) < 0)
 	{
@@ -190,7 +192,7 @@ void intro_main(long argc, char** argv)
 	mytext->write_y(90,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
 	//buffers: PORT: w00t w00t
 	mytext->write_y(110,"Ported by Odo and Zardus",230,myscreen->viewob[0]);
-	myscreen->refresh();
+	//myscreen->refresh();
 
 	if (show() < 0)
 	{
@@ -240,7 +242,7 @@ void intro_main(long argc, char** argv)
 	strcpy(message, "And many others!");
 	mytext->write_xy(2, 180, message, 230, myscreen->viewob[0]);
 
-	myscreen->refresh();
+	//myscreen->refresh();
 
 	if (show(SHOW_TIME*4) < 0)
 	{
@@ -294,6 +296,7 @@ int show(int howlong)
 {
 	short i,j;
 	int red,green,blue; //buffers: PORT: changed to ints from chars
+	myscreen->fadeblack(FROM);
 	//*******************************
 	// Fade in loop
 	//*******************************
@@ -323,6 +326,7 @@ int show(int howlong)
 			return -1;
 	}
 
+	myscreen->fadeblack(TO);
 	// Fade out
 	/* //buffers: PORT:
 	for (i = 0; i<256; i++)
