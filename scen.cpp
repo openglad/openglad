@@ -153,16 +153,16 @@ main(short argc, char **argv)
 
     // Free memory ..
     meminfo Memory;
-    union REGS regs;
-    struct SREGS sregs;
+    //buffers: PORT: union REGS regs;
+    //buffers: PORT: struct SREGS sregs;
     long bytes;
 
-    regs.x.eax = 0x00000500;
-    memset( &sregs, 0, sizeof(sregs) );
-    sregs.es = FP_SEG( &Memory );
-    regs.x.edi = FP_OFF( &Memory );
+    //buffers: PORT: regs.x.eax = 0x00000500;
+    //buffers: PORT: memset( &sregs, 0, sizeof(sregs) );
+    //buffers: PORT: sregs.es = FP_SEG( &Memory );
+    //buffers: regs.x.edi = FP_OFF( &Memory );
 
-    int386x( DPMI_INT, &regs, &regs, &sregs );
+    //buffers: int386x( DPMI_INT, &regs, &regs, &sregs );
     bytes = Memory.FreeLinAddrSpace * 4096;
     printf("\nMemory available: %ld bytes.\n", bytes);
 
@@ -1858,7 +1858,8 @@ long do_load(screen *ascreen)
     strcpy(grid_name, query_my_map_name());
     while (mykeyboard[SCAN_S])
      dumbcount++;
-    if (strlen(ascreen->scenario_title) &&
+    //buffers: PORT: stricmp isn't compiling... need to find replacement func
+    /*if (strlen(ascreen->scenario_title) &&
         stricmp(ascreen->scenario_title, "none") )
     {
       ascreen->draw_button(10, 30, 238, 51, 1, 1);
@@ -1868,7 +1869,7 @@ long do_load(screen *ascreen)
       ascreen->buffer_to_screen(0, 0, 320, 200);
       while (!mykeyboard[SCAN_SPACE])
         dumbcount++;
-    }
+    }*/
   } // end load scenario
   else if (mykeyboard[SCAN_G])
   {

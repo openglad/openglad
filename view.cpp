@@ -306,7 +306,7 @@ short viewscreen::input(char inputthing)
   static short changedchar2[6]= {0, 0, 0, 0, 0, 0};  // for switching TYPE of guy
   static short changedspec[6]= {0, 0, 0, 0, 0, 0};  // for switching special
   static short changedteam[6] = {0, 0, 0, 0, 0, 0};  // for switching team
-  union REGS inregs,outregs;
+  //buffers: PORT: this doesn't compile: union REGS inregs,outregs;
   short newfam; //oldfam?
   unsigned long totaltime, totalframes, framespersec;
   walker  * blood;
