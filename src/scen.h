@@ -25,9 +25,17 @@
 #include "base.h"
 #include "smooth.h"
 
+/* Zardus: why these values?
 #define S_LEFT 12
 #define S_RIGHT 245
 #define S_UP 12
+#define S_DOWN 188
+
+*/
+
+#define S_LEFT 1
+#define S_RIGHT 245
+#define S_UP 1
 #define S_DOWN 188
 
 #define VERSION_NUM (char) 8 // save scenario type info
@@ -39,15 +47,15 @@
 #define NUM_BACKGROUNDS PIX_MAX
 
 #define PIX_LEFT   (S_RIGHT+18)
-#define PIX_TOP    (S_UP+68)
+#define PIX_TOP    (S_UP+79)
 #define PIX_OVER   4
 //#define PIX_DOWN   ((PIX_MAX/PIX_OVER)+1)
 #define PIX_DOWN   4
 #define PIX_RIGHT  (PIX_LEFT+(PIX_OVER*GRID_SIZE))
 #define PIX_BOTTOM (PIX_TOP+(PIX_DOWN*GRID_SIZE))
 
-#define L_D(x) ((S_UP-4)+8*x)
-#define L_W(x) (x*8)
+#define L_D(x) ((S_UP+7)+8*x)
+#define L_W(x) (x*8 + 9)
 #define L_H(x) (x*8)
 
 #define NORMAL_KEYBOARD(x)  clear_keyboard(); release_keyboard(); x grab_keyboard();

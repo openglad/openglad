@@ -1141,10 +1141,12 @@ long new_grid_name()
 void do_help(screen * myscreen)
 {
 	text *helptext = new text(myscreen);
-	long lm = S_LEFT+4+32, tm=S_UP+4;  // left and top margins
+	long lm = S_LEFT+4+43, tm=S_UP+15;  // left and top margins
 	long lines = 0;
 
-	myscreen->draw_button(S_LEFT+32,S_UP,S_RIGHT-1+16,S_DOWN-1,2, 1);
+	// Zardus: new margins
+	//myscreen->draw_button(S_LEFT+32,S_UP,S_RIGHT-1+16,S_DOWN-1,2, 1);
+	myscreen->draw_button(S_LEFT+43,S_UP + 11,S_RIGHT-1+16,S_DOWN-1,2, 1);
 
 	helptext->write_xy(lm + L_W(10), tm, "**HELP**", DARK_BLUE, 1);
 
