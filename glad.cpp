@@ -308,12 +308,12 @@ short score_panel(screen *myscreen, short do_it)
          short tempallies = 0;
          static text *mytext = new text(myscreen, TEXT_1);
          static unsigned long family[5]={-1,-1},
-                                                                 hitpoints[5]={-1, -1},
-                                                                 magicpoints[5]={-1,-1},
-                                                                 score[5]={-1,-1},
-                                                                 act[5]={-1, -1},
-                                                                 numfoes[5]={0, 0},
-                                                                 numallies[5]={0,0};
+	hitpoints[5]={-1, -1},
+	magicpoints[5]={-1,-1},
+	score[5]={-1,-1},
+	act[5]={-1, -1},
+	numfoes[5]={0, 0},
+	numallies[5]={0,0};
          static short numobs = myscreen->numobs;
          unsigned short hp_bar_length, hp_bar_remainder, HP_COLOR; //HP BAR
          unsigned short mp_bar_length, mp_bar_remainder, MP_COLOR; //SP BAR
@@ -636,9 +636,11 @@ short new_score_panel(screen *myscreen, short do_it)
              else
                 strcpy(tempname, namelist[control->query_family()]);
 
-		// TODO: get these to not segfault
+		//buffers: the name[] var doesn't seem to be used other then 
+		//buffers: here so i just commented it.
 		//strcpy(name[players], tempname);
-		//strcpy(message, tempname);
+		//buffers: this strcpy actually copies the name to be displayed
+		strcpy(message, tempname);
 
              if (draw_button)
                myscreen->draw_button(lm+1, tm+2, lm+63, tm+9, 1, 1);
