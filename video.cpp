@@ -60,7 +60,7 @@ void video::clearscreen()
 	//buffers: PORT: clear the offscreen buffer, not the screen.
 	//buffers: we are going to see if we can double buf everything.
 	SDL_FillRect (screen, NULL, SDL_MapRGB (screen->format, 0, 0, 0));
-	SDL_UpdateRect(screen,0,0,320,200);
+	SDL_UpdateRect(screen,0,0,319,199);
 }
 
 void video::clearbuffer()
@@ -286,6 +286,10 @@ void video::pointb(long x, long y, unsigned char color)
                               x * screen->format->BytesPerPixel);
 	int c;
 
+//buffers: this does bound checking (just to be safe)
+	if(x<0 || x>319 || y<0 || y>199)
+		return;
+
 	query_palette_reg(color,&r,&g,&b);
 
 	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
@@ -506,10 +510,12 @@ void video::putbuffer(long tilestartx, long tilestarty,
   offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
   offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
+//buffers: draws graphic. actually uses the above bound checking now (7/18/02)
 	num=0;
-	for(i=0;i<tileheight;i++) {
-		for(j=0;j<tilewidth;j++) {
-			pointb(j+tilestartx,i+tilestarty,sourcebufptr[num++]);
+	for(i=ymin;i<ymax;i++) {
+		for(j=xmin;j<xmax;j++) {
+			num = i*tilewidth + j;
+			pointb(j+tilestartx-xmin,i+tilestarty-ymin,sourcebufptr[num]);
 		}
 	}
 
