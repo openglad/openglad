@@ -226,7 +226,7 @@ short statistics::do_command()
   if (!controller) // allow dead controllers for now
   {
 	 printf("STATS:DO_COM: No controller!\n");
-	 wait_for_key(SCAN_Z);
+	 wait_for_key(SDLK_z);
 	 return 0;
   }
 

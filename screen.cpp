@@ -1357,7 +1357,7 @@ short screen::endgame(short ending, short nextlevel)
       mytext.write_y(100,temp, DARK_BLUE, 1);
       mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
       buffer_to_screen(0, 0, 320, 200);
-      while (query_key() != SCAN_ESC);
+      while (query_key() != SDLK_ESCAPE);
       end = 1;
     }
     else // we're withdrawing to another level
@@ -1371,8 +1371,8 @@ short screen::endgame(short ending, short nextlevel)
       mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
       buffer_to_screen(0, 0, 320, 200);
       clear_keyboard();
-      while (!endkeys[SCAN_ESC]);
-      //while (query_key() != SCAN_ESC);
+      while (!endkeys[SDLK_ESCAPE]);
+      //while (query_key() != SDLK_ESCAPE);
       end = 1;
     }
 
@@ -1387,7 +1387,7 @@ short screen::endgame(short ending, short nextlevel)
     mytext.write_y(100,temp, DARK_BLUE, 1);
     mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
     buffer_to_screen(0, 0, 320, 200);
-    while (query_key() != SCAN_ESC);
+    while (query_key() != SDLK_ESCAPE);
     end = 1;
   }
   else if (ending == 0) // we won
@@ -1442,7 +1442,7 @@ short screen::endgame(short ending, short nextlevel)
       scen_num = (short) (nextlevel-1);    // Fake jumping to next level ..
     save_game("save0", this);
     
-    while (query_key() != SCAN_ESC); // pause
+    while (query_key() != SDLK_ESCAPE); // pause
 
     // Check for guys who have gone up levels
     if (checklist) // should always be true, but just in case
@@ -1492,8 +1492,8 @@ short screen::endgame(short ending, short nextlevel)
           mytext.write_y(120,"PRESS ESC TO CONTINUE", DARK_BLUE, 1);
           buffer_to_screen(0, 0, 320, 200);
           clear_keyboard();
-          wait_for_key(SCAN_ESC);
-          //while (query_key() != SCAN_ESC);
+          wait_for_key(SDLK_ESCAPE);
+          //while (query_key() != SDLK_ESCAPE);
         }
         checklist = checklist->next;
       } // end of while checklist
@@ -1840,7 +1840,7 @@ short load_version_2(FILE  *infile, screen * master)
 
 //gotoxy(1,1);
 //printf("Objects in file: %d  ", listsize);
-//wait_for_key(SCAN_SPACE);
+//wait_for_key(SDLK_SPACE);
 
   // Now read in the objects one at a time
   for (i=0; i < listsize; i++)
@@ -1860,7 +1860,7 @@ short load_version_2(FILE  *infile, screen * master)
          if (!new_guy)
          {
                 printf("Error creating object!\n");
-                wait_for_key(SCAN_SPACE);
+                wait_for_key(SDLK_SPACE);
                 return 0;
          }
          new_guy ->setxy(currentx, currenty);
@@ -1869,7 +1869,7 @@ short load_version_2(FILE  *infile, screen * master)
   }
 
 //printf("Read %d objects.\n", listsize);
-//wait_for_key(SCAN_SPACE);
+//wait_for_key(SDLK_SPACE);
 
   //fclose(infile);
 
@@ -1883,7 +1883,7 @@ short load_version_2(FILE  *infile, screen * master)
   master->grid += 3;
 
 //printf("LV2: read grid %s\n", newgrid);
-//wait_for_key(SCAN_SPACE);
+//wait_for_key(SDLK_SPACE);
 
   // This is a hack because we don't know where else it is loaded.
 //  if (master->myradar[0])
@@ -1905,7 +1905,7 @@ short load_version_2(FILE  *infile, screen * master)
 
 
 //  printf("Read grid file\n");
-//  wait_for_key(SCAN_SPACE);
+//  wait_for_key(SDLK_SPACE);
 
   return 1;
 }
@@ -1981,7 +1981,7 @@ short load_version_3(FILE  *infile, screen * master)
          if (!new_guy)
          {
                 printf("Error creating object!\n");
-                wait_for_key(SCAN_SPACE);
+                wait_for_key(SDLK_SPACE);
                 return 0;
          }
          new_guy->setxy(currentx, currenty);
@@ -2102,7 +2102,7 @@ short load_version_4(FILE  *infile, screen * master)
          if (!new_guy)
          {
                 printf("Error creating object!\n");
-                wait_for_key(SCAN_SPACE);
+                wait_for_key(SDLK_SPACE);
                 return 0;
          }
          new_guy->setxy(currentx, currenty);
@@ -2233,7 +2233,7 @@ short load_version_5(FILE  *infile, screen * master)
          if (!new_guy)
          {
            printf("Error creating object! Press Space\n");
-           wait_for_key(SCAN_SPACE);
+           wait_for_key(SDLK_SPACE);
            //fclose(infile);
            return 0;
          }
@@ -2389,7 +2389,7 @@ short load_version_6(FILE  *infile, screen * master, short version)
          if (!new_guy)
          {
            printf("Error creating object! Press Space\n");
-           wait_for_key(SCAN_SPACE);
+           wait_for_key(SDLK_SPACE);
            //fclose(infile);
            return 0;
          }

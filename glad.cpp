@@ -180,18 +180,18 @@ void glad_main(screen *myscreen, long playermode)
 
          //score_panel(myscreen);
 
-         //if (input == SCAN_ESC) break;
-         if (keyboard[SCAN_ESC])
+         //if (input == SDLK_ESCAPE) break;
+         if (keyboard[SDLK_ESCAPE])
          {
            set_palette(myscreen->redpalette);
            dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, "Abort Mission");
            gladtext.write_xy(dumbcount, 80+24, "Quit this Mission? (Y/N)",
              (unsigned char) DARK_BLUE, 1);
            myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
-           while (!keyboard[SCAN_Y] && !keyboard[SCAN_N])
+           while (!keyboard[SDLK_y] && !keyboard[SDLK_n])
              dumbcount++;
            myscreen->redrawme = 1;
-           if (keyboard[SCAN_Y]) // player wants to quit
+           if (keyboard[SDLK_y]) // player wants to quit
              break;
            else
            {

@@ -125,7 +125,7 @@ oblink  *remove_link(walker  *ob, oblink **row)
          here = here->next;
   }
 //  printf("REM_LINK: Failed to find ob! push z\n");
-//  wait_for_key(SCAN_Z);
+//  wait_for_key(SDLK_z);
   return NULL;
 }
 
@@ -171,7 +171,7 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
 
   // For each y grid row we are in...
 //  printf("removing from %d to %d\n", startnum, endnum);
-//  wait_for_key(SCAN_Z);
+//  wait_for_key(SDLK_z);
   for (numx = startnumx; numx <= endnumx; numx++)
     for (numy = startnumy; numy <= endnumy; numy++)
     {
@@ -204,7 +204,7 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
   endnumy   = hash( (short) (y + ob->sizey) );
 
 //  printf("ADDing to %d to %d\n", startnum, endnum);
-//  wait_for_key(SCAN_Z);
+//  wait_for_key(SDLK_z);
   // For each y grid row we are in...
   for (numx = startnumx; numx <= endnumx; numx++)
     for (numy = startnumy; numy <= endnumy; numy++)

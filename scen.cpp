@@ -229,65 +229,65 @@ main(short argc, char **argv)
     break;
 
    // Delete all with ^D
-   if (mykeyboard[SCAN_D] && mykeyboard[SCAN_CTRL])
+   if (mykeyboard[SDLK_d] && mykeyboard[SDLK_CTRL])
    {
     remove_all_objects(myscreen);
     event = 1;
    }
 
    // Change teams ..
-   if (mykeyboard[SCAN_0])
+   if (mykeyboard[SDLK_0])
    {
     currentteam = 0;
     event = 1;
    }
-   if (mykeyboard[SCAN_1])
+   if (mykeyboard[SDLK_1])
    {
     currentteam = 1;
     event = 1;
    }
-   if (mykeyboard[SCAN_2])
+   if (mykeyboard[SDLK_2])
    {
     currentteam = 2;
     event = 1;
    }
-   if (mykeyboard[SCAN_3])
+   if (mykeyboard[SDLK_3])
    {
     currentteam = 3;
     event = 1;
    }
-   if (mykeyboard[SCAN_4])
+   if (mykeyboard[SDLK_4])
    {
     currentteam = 4;
     event = 1;
    }
-   if (mykeyboard[SCAN_5])
+   if (mykeyboard[SDLK_5])
    {
     currentteam = 5;
     event = 1;
    }
-   if (mykeyboard[SCAN_6])
+   if (mykeyboard[SDLK_6])
    {
     currentteam = 6;
     event = 1;
    }
-   if (mykeyboard[SCAN_7])
+   if (mykeyboard[SDLK_7])
    {
     currentteam = 7;
     event = 1;
    }
 
    // Toggle grid alignment
-   if (mykeyboard[SCAN_G])
+   if (mykeyboard[SDLK_g])
    {
     grid_aligned = (grid_aligned+1)%3;
     event = 1;
-    while (mykeyboard[SCAN_G])
+    while (mykeyboard[SDLK_g])
       dumbcount++;
    }
    
    // Show help
-   if (mykeyboard[SCAN_H])
+   if (mykeyboard[SDLK_h])
    {
     release_mouse();
     do_help(myscreen);
@@ -295,7 +295,7 @@ main(short argc, char **argv)
     event = 1;
    }
 
-   if (mykeyboard[SCAN_NUMERIC_TIMES]) // options menu
+   if (mykeyboard[SDLK_NUMERIC_TIMES]) // options menu
    {
      release_mouse();
      scenario_options(myscreen);
@@ -304,16 +304,16 @@ main(short argc, char **argv)
    }
 
    // Load scenario, etc. ..
-   if (mykeyboard[SCAN_L])
+   if (mykeyboard[SDLK_l])
    {
      if (levelchanged)
      {
        myscreen->draw_button(30, 15, 220, 25, 1, 1);
        scentext->write_xy(32, 17, "Save level first? [Y/N]", DARK_BLUE, 1);
        myscreen->buffer_to_screen(0, 0, 320, 200);
-       while ( !mykeyboard[SCAN_Y] && !mykeyboard[SCAN_N])
+       while ( !mykeyboard[SDLK_y] && !mykeyboard[SDLK_n])
          dumbcount++;
-       if (mykeyboard[SCAN_Y]) // save first
+       if (mykeyboard[SDLK_y]) // save first
          do_save(myscreen);
      }
      myscreen->draw_button(30, 15, 220, 25, 1, 1);
@@ -322,51 +322,51 @@ main(short argc, char **argv)
    }
 
    // Save scenario or grid..
-   if (mykeyboard[SCAN_S])
+   if (mykeyboard[SDLK_s])
    {
      do_save(myscreen);
    }  // end of saving routines
 
 
    // Switch modes ..
-   if (mykeyboard[SCAN_M])        // switch to map or guys ..
+   if (mykeyboard[SDLK_m])        // switch to map or guys ..
    {
     event = 1;
     currentmode = (currentmode+1) %2;
-    while (mykeyboard[SCAN_M])
+    while (mykeyboard[SDLK_m])
       dumbcount++;
    }
 
    // New names
-   if (mykeyboard[SCAN_N])
+   if (mykeyboard[SDLK_n])
    {
      event = 1;
     //gotoxy(1, 23);
     myscreen->draw_button(50, 30, 200, 40, 1, 1);
     scentext->write_xy(52, 32, "New name [G/S] : ", DARK_BLUE, 1);
     myscreen->buffer_to_screen(0, 0, 320, 200);
-    while ( !mykeyboard[SCAN_G] && !mykeyboard[SCAN_S] )
+    while ( !mykeyboard[SDLK_g] && !mykeyboard[SDLK_s] )
       dumbcount++;
-    if (mykeyboard[SCAN_S])
+    if (mykeyboard[SDLK_s])
     {
       myscreen->draw_button(50, 30, 200, 40, 1, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
       new_scenario_name();
-      while (mykeyboard[SCAN_S])
+      while (mykeyboard[SDLK_s])
        dumbcount++;
     } // end new scenario name
-    else if (mykeyboard[SCAN_G])
+    else if (mykeyboard[SDLK_g])
     {
       myscreen->draw_button(50, 30, 200, 40, 1, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
       new_grid_name();
-      while (mykeyboard[SCAN_G])
+      while (mykeyboard[SDLK_g])
        dumbcount++;
     } // end new grid name
    }
 
    // Enter scenario text ..
-   if (mykeyboard[SCAN_T])
+   if (mykeyboard[SDLK_t])
    {
    #define TEXT_DOWN(x)  (14+((x)*7))
    #define TL 4
@@ -422,30 +422,30 @@ main(short argc, char **argv)
    }
 
    // Display the scenario help..
-   if (mykeyboard[SCAN_SLASH] && mykeyboard[SCAN_RIGHT_SHIFT])
+   if (mykeyboard[SDLK_SLASH] && mykeyboard[SDLK_RSHIFT])
    {
     read_scenario(myscreen);
     event = 1;
    }
    
    // Change level of current guy being placed ..
-   if (mykeyboard[SCAN_CLOSE_BRACKET])
+   if (mykeyboard[SDLK_RIGHTBRACKET])
    {
     currentlevel++;
-    //while (mykeyboard[SCAN_CLOSE_BRACKET])
+    //while (mykeyboard[SDLK_RIGHTBRACKET])
     //  dumbcount++;
     event = 1;
    }
-   if (mykeyboard[SCAN_OPEN_BRACKET] && currentlevel > 1)
+   if (mykeyboard[SDLK_LEFTBRACKET] && currentlevel > 1)
    {
     currentlevel--;
-    //while (mykeyboard[SCAN_OPEN_BRACKET])
+    //while (mykeyboard[SDLK_LEFTBRACKET])
     //  dumbcount++;
     event = 1;
    }
 
    // Change between generator and living orders
-   if (mykeyboard[SCAN_O])        // this is letter o
+   if (mykeyboard[SDLK_o])        // this is letter o
    {
     if (myorder == ORDER_LIVING)
     {
@@ -465,24 +465,24 @@ main(short argc, char **argv)
       myorder = ORDER_LIVING;
     currentmode = OBJECT_MODE;
     event = 1; // change score panel
-    while (mykeyboard[SCAN_O])
+    while (mykeyboard[SDLK_o])
       dumbcount++;
    }
 
    // Slide tile selector down ..
-   if (mykeyboard[SCAN_DOWN])
+   if (mykeyboard[SDLK_DOWN])
    {
     rowsdown++;
     event = 1;
     if (rowsdown >= maxrows)
       rowsdown -= maxrows;
     score_panel(myscreen);
-    while (mykeyboard[SCAN_DOWN])
+    while (mykeyboard[SDLK_DOWN])
       dumbcount++;
    }
 
    // Slide tile selector up ..
-   if (mykeyboard[SCAN_UP])
+   if (mykeyboard[SDLK_UP])
    {
     rowsdown--;
     event = 1;
@@ -491,38 +491,38 @@ main(short argc, char **argv)
     if (rowsdown <0 || rowsdown >= maxrows) // bad case
       rowsdown = 0;
     score_panel(myscreen);
-    while (mykeyboard[SCAN_UP])
+    while (mykeyboard[SDLK_UP])
       dumbcount++;
    }
 
    // Smooth current map, F5
-   if (mykeyboard[SCAN_F5])
+   if (mykeyboard[SDLK_F5])
    {
     if (mysmoother)
       delete mysmoother;
     mysmoother = new smoother();
     mysmoother->set_target(myscreen);
     mysmoother->smooth();
-    while (mykeyboard[SCAN_F5])
+    while (mykeyboard[SDLK_F5])
       dumbcount++;
     event = 1;
     levelchanged = 1;
    }
    
    // Change to new palette ..
-   if (mykeyboard[SCAN_F9])
+   if (mykeyboard[SDLK_F9])
    {
     load_and_set_palette("our.pal", scenpalette);
-    while (mykeyboard[SCAN_F9])
+    while (mykeyboard[SDLK_F9])
       dumbcount++;
    }
 
    // Toggle color cycling
-   if (mykeyboard[SCAN_F10])
+   if (mykeyboard[SDLK_F10])
    {
     cyclemode++;
     cyclemode %= 2;
-    while (mykeyboard[SCAN_F10])
+    while (mykeyboard[SDLK_F10])
       dumbcount++;
    }
    // Now perform color cycling if selected
@@ -563,7 +563,7 @@ main(short argc, char **argv)
       windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
       if (grid_aligned==1)
         windowy -= (windowy%GRID_SIZE);
-      if (mykeyboard[SCAN_I]) // get info on current object
+      if (mykeyboard[SDLK_i]) // get info on current object
       {
        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
        newob->setxy(windowx, windowy);
@@ -572,7 +572,7 @@ main(short argc, char **argv)
        myscreen->remove_ob(newob,0);
        continue;
       }  // end of info mode
-      if (mykeyboard[SCAN_F]) // set facing of current object
+      if (mykeyboard[SDLK_f]) // set facing of current object
       {
        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
        newob->setxy(windowx, windowy);
@@ -582,7 +582,7 @@ main(short argc, char **argv)
        continue;
       }  // end of set facing
 
-      if (mykeyboard[SCAN_R]) // (re)name the current object
+      if (mykeyboard[SDLK_r]) // (re)name the current object
       {
        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
        newob->setxy(windowx, windowy);
@@ -603,7 +603,7 @@ main(short argc, char **argv)
        newob->collide_ob = 0;
        if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, myscreen))
        {
-        if (mykeyboard[SCAN_CTRL] &&    // are we holding the erase?
+        if (mykeyboard[SDLK_CTRL] &&    // are we holding the erase?
            newob->collide_ob )                    // and hit a guy?
         {
           myscreen->remove_ob(newob->collide_ob,0);
@@ -626,7 +626,7 @@ main(short argc, char **argv)
            mymouse = query_mouse();
          levelchanged = 1;
        }
-       if (mykeyboard[SCAN_CTRL] && newob)
+       if (mykeyboard[SDLK_CTRL] && newob)
        {
         myscreen->remove_ob(newob,0);
         newob = NULL;
@@ -641,7 +641,7 @@ main(short argc, char **argv)
        // Set to our current selection
        myscreen->grid[windowy*(myscreen->maxx)+windowx] = some_pix(backcount);
        levelchanged = 1;
-       if (!mykeyboard[SCAN_CTRL]) // smooth a few squares, if not control
+       if (!mykeyboard[SDLK_CTRL]) // smooth a few squares, if not control
        {
          if (mysmoother)
          {
@@ -720,7 +720,7 @@ main(short argc, char **argv)
    }
    event = 0;
 
-   if (mykeyboard[SCAN_ESC]) break;
+   if (mykeyboard[SDLK_ESCAPE]) break;
 
   }
 
@@ -1007,7 +1007,7 @@ long save_map_file(char  * filename, screen *master)
     sprintf(buffer, "Press SPACE to continue");
     scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
     master->buffer_to_screen(0, 0, 320, 200);
-    while (!mykeyboard[SCAN_SPACE])
+    while (!mykeyboard[SDLK_SPACE])
       dumbcount++;
     return 0;
   }
@@ -1032,7 +1032,7 @@ long load_new_grid(screen *master)
 
   scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
   strcpy(tempstring, scentext->input_string(115, 32, 8, grid_name));
-  //NORMAL_KEYBOARD(scanf("%s", tempstring);)
+  //NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
   if (strlen(tempstring))
    strcpy(grid_name, tempstring);
 
@@ -1060,7 +1060,7 @@ long new_scenario_name()
 
   scentext->write_xy(52, 32, "Scenario name: ", DARK_BLUE, 1);
   strcpy(tempstring, scentext->input_string(135, 32, 8, scen_name));
-  //NORMAL_KEYBOARD(scanf("%s", tempstring);)
+  //NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
   if (strlen(tempstring))
    strcpy(scen_name, tempstring);
 
@@ -1073,7 +1073,7 @@ long new_grid_name()
 
   scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
   strcpy(tempstring, scentext->input_string(117, 32, 8, grid_name));
-  //NORMAL_KEYBOARD(scanf("%s", tempstring);)
+  //NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
   if (strlen(tempstring))
    strcpy(grid_name, tempstring);
 
@@ -1116,7 +1116,7 @@ void do_help(screen * myscreen)
 
   myscreen->buffer_to_screen(0, 0, 320, 200);
 
-  wait_for_key(SCAN_SPACE);
+  wait_for_key(SDLK_SPACE);
 
 }
 
@@ -1289,7 +1289,7 @@ long save_scenario(char * filename, screen * master, char *gridname)
    sprintf(buffer, "Press SPACE to continue");
    scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
    master->buffer_to_screen(0, 0, 320, 200);
-   while (!mykeyboard[SCAN_SPACE])
+   while (!mykeyboard[SDLK_SPACE])
      dumbcount++;
 
    return 0;
@@ -1645,9 +1645,9 @@ void info_box(walker  *target,screen * myscreen)
   grab_mouse();
 
   // Wait for press and release of ESC
-  while (!mykeyboard[SCAN_ESC])
+  while (!mykeyboard[SDLK_ESCAPE])
    dumbcount++;
-  while (mykeyboard[SCAN_ESC])
+  while (mykeyboard[SDLK_ESCAPE])
    dumbcount++;
 }
 
@@ -1682,7 +1682,7 @@ void set_name(walker  *target, screen * master)
   master->buffer_to_screen(0, 0, 320, 200);
 
   // wait for key release
-  while (mykeyboard[SCAN_R])
+  while (mykeyboard[SDLK_r])
     dumbcount++;
 
   strcpy(newname, scentext->input_string(115, 62, 9, oldname) );
@@ -1733,9 +1733,9 @@ void scenario_options(screen *myscreen)
 
   myscreen->buffer_to_screen(0, 0, 320, 200);
 
-  while (!opt_keys[SCAN_ESC])
+  while (!opt_keys[SDLK_ESCAPE])
   {
-    if (opt_keys[SCAN_E]) // toggle exit mode
+    if (opt_keys[SDLK_e]) // toggle exit mode
     {
       if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT) // already set
         myscreen->scenario_type -= SCEN_TYPE_CAN_EXIT;
@@ -1747,10 +1747,10 @@ void scenario_options(screen *myscreen)
       else
         opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : No ", DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
-      while (opt_keys[SCAN_E])
+      while (opt_keys[SDLK_e])
         dumbcount++;
     }
-    if (opt_keys[SCAN_G]) // toggle exit mode -- generators
+    if (opt_keys[SDLK_g]) // toggle exit mode -- generators
     {
       if (myscreen->scenario_type & SCEN_TYPE_GEN_EXIT) // already set
         myscreen->scenario_type -= SCEN_TYPE_GEN_EXIT;
@@ -1762,10 +1762,10 @@ void scenario_options(screen *myscreen)
       else
         opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): No ", DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
-      while (opt_keys[SCAN_G])
+      while (opt_keys[SDLK_g])
         dumbcount++;
     }
-    if (opt_keys[SCAN_N]) // toggle fail mode -- named guys
+    if (opt_keys[SDLK_n]) // toggle fail mode -- named guys
     {
       if (myscreen->scenario_type & SCEN_TYPE_SAVE_ALL) // already set
         myscreen->scenario_type -= SCEN_TYPE_SAVE_ALL;
@@ -1777,10 +1777,10 @@ void scenario_options(screen *myscreen)
       else
         opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : No ", DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
-      while (opt_keys[SCAN_N])
+      while (opt_keys[SDLK_n])
         dumbcount++;
     }
-    if (opt_keys[SCAN_NUMERIC_MINUS]) // lower the par value
+    if (opt_keys[SDLK_KP_MINUS]) // lower the par value
     {
       if (myscreen->par_value > 1)
         myscreen->par_value--;
@@ -1789,10 +1789,10 @@ void scenario_options(screen *myscreen)
       opt_text.write_xy(lm, OPT_LD(5), message, DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
 
-      while (opt_keys[SCAN_NUMERIC_MINUS])
+      while (opt_keys[SDLK_KP_MINUS])
         dumbcount++;
     }
-    if (opt_keys[SCAN_NUMERIC_PLUS]) // raise the par value
+    if (opt_keys[SDLK_KP_PLUS]) // raise the par value
     {
       myscreen->par_value++;
 
@@ -1801,12 +1801,12 @@ void scenario_options(screen *myscreen)
       opt_text.write_xy(lm, OPT_LD(5), message, DARK_BLUE, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
 
-      while (opt_keys[SCAN_NUMERIC_PLUS])
+      while (opt_keys[SDLK_KP_PLUS])
         dumbcount++;
     }
   }
 
-  while (opt_keys[SCAN_ESC])
+  while (opt_keys[SDLK_ESCAPE])
     dumbcount++; // wait for key release
 
 }
@@ -1823,7 +1823,7 @@ void set_facing(walker *target, screen *myscreen)
   myscreen->draw_dialog(100, 50, 220, 170, "Set Facing");
   myscreen->buffer_to_screen(0, 0, 320, 200);
 
-  while (setkeys[SCAN_F])
+  while (setkeys[SDLK_f])
     dumbcount++;
 
 }
@@ -1840,9 +1840,9 @@ long do_load(screen *ascreen)
   ascreen->draw_button(50, 30, 200, 40, 1, 1);
   loadtext->write_xy(52, 32, "Load [G/S] : ", DARK_BLUE, 1);
   ascreen->buffer_to_screen(0, 0, 320, 200);
-  while ( !mykeyboard[SCAN_G] && !mykeyboard[SCAN_S] )
+  while ( !mykeyboard[SDLK_g] && !mykeyboard[SDLK_s] )
     dumbcount++;
-  if (mykeyboard[SCAN_S])
+  if (mykeyboard[SDLK_s])
   {
     ascreen->draw_button(50, 30, 200, 40, 1, 1);
     ascreen->buffer_to_screen(0, 0, 320, 200);
@@ -1856,7 +1856,7 @@ long do_load(screen *ascreen)
     ascreen->viewob[0]->myradar->start();
     ascreen->viewob[0]->myradar->update();
     strcpy(grid_name, query_my_map_name());
-    while (mykeyboard[SCAN_S])
+    while (mykeyboard[SDLK_s])
      dumbcount++;
     //buffers: PORT: stricmp isn't compiling... need to find replacement func
     /*if (strlen(ascreen->scenario_title) &&
@@ -1867,16 +1867,16 @@ long do_load(screen *ascreen)
       loadtext->write_xy(12, 33, buffer, DARK_BLUE, 1);
       loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
       ascreen->buffer_to_screen(0, 0, 320, 200);
-      while (!mykeyboard[SCAN_SPACE])
+      while (!mykeyboard[SDLK_SPACE])
         dumbcount++;
     }*/
   } // end load scenario
-  else if (mykeyboard[SCAN_G])
+  else if (mykeyboard[SDLK_g])
   {
     ascreen->draw_button(50, 30, 200, 40, 1, 1);
     ascreen->buffer_to_screen(0, 0, 320, 200);
     load_new_grid(ascreen);
-    while (mykeyboard[SCAN_G])
+    while (mykeyboard[SDLK_g])
      dumbcount++;
   } // end load new grid
 
@@ -1891,16 +1891,16 @@ long do_save(screen *ascreen)  // save a scenario or grid
   long result = 1;
 
   event = 1;
-  while (mykeyboard[SCAN_S])
+  while (mykeyboard[SDLK_s])
     dumbcount++;
   ascreen->draw_button(50, 30, 200, 40, 1, 1);
   savetext->write_xy(52, 32, "Save [G/S] ", DARK_BLUE, 1);
   ascreen->buffer_to_screen(0, 0, 320, 200);
-  while ( !mykeyboard[SCAN_S] && !mykeyboard[SCAN_G] )
+  while ( !mykeyboard[SDLK_s] && !mykeyboard[SDLK_g] )
     dumbcount++;
-  if (mykeyboard[SCAN_S]) // save scenario
+  if (mykeyboard[SDLK_s]) // save scenario
   {
-    while (mykeyboard[SCAN_S])
+    while (mykeyboard[SDLK_s])
       dumbcount++;
 
     // Allow us to set the title, if desired
@@ -1918,17 +1918,17 @@ long do_save(screen *ascreen)  // save a scenario or grid
      result = 0;
     else
      save_scenario(scen_name, ascreen, grid_name);
-    while (mykeyboard[SCAN_S])
+    while (mykeyboard[SDLK_s])
      dumbcount++;
   } // end of save scenario
-  else if (mykeyboard[SCAN_G]) // save current grid
+  else if (mykeyboard[SDLK_g]) // save current grid
   {
     savetext->write_xy(52, 32, "Saving grid..");
     ascreen->buffer_to_screen(0, 0, 320, 200);
     if (!save_map_file(grid_name, ascreen) )
      //printf("\nError saving map!\n");
      result = 0;
-    while (mykeyboard[SCAN_G])
+    while (mykeyboard[SDLK_g])
      dumbcount++;
   } // end of save grid
 

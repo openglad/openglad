@@ -140,15 +140,16 @@ char* read_one_line(FILE *infile, short length);
 // Generators are limited by this number
 #define MAXOBS 150
 
-// Define scan codes
-#define SCAN_UP_LEFT 71
-#define SCAN_UP 72
-#define SCAN_UP_RIGHT 73
-#define SCAN_LEFT 75
-#define SCAN_RIGHT 77
-#define SCAN_DOWN_LEFT 79
-#define SCAN_DOWN 80
-#define SCAN_DOWN_RIGHT 81
+// Zardus: PORT: this shouldn't be neccessary anymore thanx to SDL
+// // Define scan codes
+//#define SCAN_UP_LEFT 71
+//#define SCAN_UP 72
+//#define SCAN_UP_RIGHT 73
+//#define SCAN_LEFT 75
+//#define SCAN_RIGHT 77
+//#define SCAN_DOWN_LEFT 79
+//#define SCAN_DOWN 80
+//#define SCAN_DOWN_RIGHT 81
 
 
 //Screen window boundaries, two player

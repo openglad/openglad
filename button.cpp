@@ -491,30 +491,30 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
                 myscreen->do_cycle(cyclestage++, 8);
 
          // Cheat key for more cash ..
-         if (mykeyboard[SCAN_CTRL])
+         if (mykeyboard[SDLK_CTRL])
          {
-                if (mykeyboard[SCAN_NUMERIC_PLUS])
+                if (mykeyboard[SDLK_KP_PLUS])
                 {
                   add_money((long)2);
                   return 1;
                 }
-                if (mykeyboard[SCAN_NUMERIC_MINUS])
+                if (mykeyboard[SDLK_KP_MINUS])
                 {
                   add_money((long)-2);
                   return 1;
                 }
-                if (mykeyboard[SCAN_OPEN_BRACKET]) // lower scen num
+                if (mykeyboard[SDLK_LEFTBRACKET]) // lower scen num
                 {
                   if (scen_level > 1)
                          scen_level--;
-                  while (mykeyboard[SCAN_OPEN_BRACKET])
+                  while (mykeyboard[SDLK_LEFTBRACKET])
                          dumbcount++;
                   return 1;
                 }
-                if (mykeyboard[SCAN_CLOSE_BRACKET]) // raise scen num
+                if (mykeyboard[SDLK_RIGHTBRACKET]) // raise scen num
                 {
                   scen_level++;
-                  while (mykeyboard[SCAN_CLOSE_BRACKET])
+                  while (mykeyboard[SDLK_RIGHTBRACKET])
                          dumbcount++;
                   return 1;
                 }
@@ -626,10 +626,10 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
          }  // end of button-check loop
 
 //       input = 0;
-//       while(temp = get_scan_code())
+//       while(temp = get_SDLK_code())
 //              input = temp;
 
-         if (mykeyboard[SCAN_DOWN])
+         if (mykeyboard[SDLK_DOWN])
          {
                 release_mouse();
                 myscreen->draw_box(buttons[buttonnum].x-1,
@@ -639,10 +639,10 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
                 grab_mouse();
                 buttonnum++;
                 focuschanged = 1;
-                while (mykeyboard[SCAN_DOWN])
+                while (mykeyboard[SDLK_DOWN])
                   dumbcount++;
          }
-         if (mykeyboard[SCAN_UP])
+         if (mykeyboard[SDLK_UP])
          {
                 release_mouse();
                 myscreen->draw_box(buttons[buttonnum].x-1,
@@ -652,7 +652,7 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
                 grab_mouse();
                 buttonnum--;
                 focuschanged = 1;
-                while (mykeyboard[SCAN_UP])
+                while (mykeyboard[SDLK_UP])
                   dumbcount++;
          }
          if (buttonnum < 0) buttonnum = numbuttons-1;
@@ -662,9 +662,9 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
          //                     buttons[buttonnum].x+buttons[buttonnum].sizex+1,
          //                     buttons[buttonnum].y+buttons[buttonnum].sizey+1,14);
 
-         if (mykeyboard[SCAN_ENTER])
+         if (mykeyboard[SDLK_RETURN])
          {
-                while (mykeyboard[SCAN_ENTER])
+                while (mykeyboard[SDLK_RETURN])
                   dumbcount++;
                 if (!no_clear)
                   clearmenu(buttons,numbuttons);

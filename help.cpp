@@ -41,7 +41,7 @@ char* read_one_line(FILE *infile, short length)
   return &newline[0];
 }
 
-// Note: this code has been redone to work in 'scanlines,'
+// Note: this code has been redone to work in 'SDLKlines,'
 //       so that the text scrolls by pixels rather than lines.
 short read_scenario(screen *myscreen)
 {
@@ -65,11 +65,11 @@ short read_scenario(screen *myscreen)
         
   // Do the loop until person hits escape
   // Make sure we're not pressing keys ..
-  mykeyboard[SCAN_DOWN] = mykeyboard[SCAN_UP] = 0;
-  mykeyboard[SCAN_PGDN] = mykeyboard[SCAN_PGUP] = 0;
-  while (!mykeyboard[SCAN_ESC])
+  mykeyboard[SDLK_DOWN] = mykeyboard[SDLK_UP] = 0;
+  mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
+  while (!mykeyboard[SDLK_ESCAPE])
   {
-    if (mykeyboard[SCAN_DOWN])    // scrolling down
+    if (mykeyboard[SDLK_DOWN])    // scrolling down
     {
       now_time = query_timer();
 
@@ -79,9 +79,9 @@ short read_scenario(screen *myscreen)
         linesdown++;
         changed = 1;
       }
-    } // end of SCAN_DOWN
+    } // end of SDLK_DOWN
 
-    if (mykeyboard[SCAN_PGDN])    // scrolling one page down
+    if (mykeyboard[SDLK_PAGEDOWN])    // scrolling one page down
     {
       now_time = query_timer();
       key_presses = (now_time - start_time) % (10*text_delay);
@@ -98,7 +98,7 @@ short read_scenario(screen *myscreen)
       }
     } // end of PAGE DOWN
 
-    if (mykeyboard[SCAN_UP])      // scrolling up
+    if (mykeyboard[SDLK_UP])      // scrolling up
     {
       now_time = query_timer();
       key_presses = (now_time - start_time) % text_delay;
@@ -107,9 +107,9 @@ short read_scenario(screen *myscreen)
         linesdown--;
         changed = 1;
       }
-    } // end of SCAN_UP
+    } // end of SDLK_UP
 
-    if (mykeyboard[SCAN_PGUP])    // scrolling one page up
+    if (mykeyboard[SDLK_PAGEUP])    // scrolling one page up
     {
       now_time = query_timer();
       key_presses = (now_time - start_time) % (10*text_delay);
@@ -146,9 +146,9 @@ short read_scenario(screen *myscreen)
 
   }  // loop until ESC is pressed 
 
-  while (mykeyboard[SCAN_ESC])  // wait for key release
+  while (mykeyboard[SDLK_ESCAPE])  // wait for key release
     templines++;
-  mykeyboard[SCAN_ESC] = 0;
+  mykeyboard[SDLK_ESCAPE] = 0;
   delete mytext;
   mytext = NULL;
   return (short) numlines;
@@ -197,11 +197,11 @@ short read_help(char *somefile,screen * myscreen)
 
   // Do the loop until person hits escape
   // Make sure we're not pressing keys ..
-  mykeyboard[SCAN_DOWN] = mykeyboard[SCAN_UP] = 0;
-  mykeyboard[SCAN_PGDN] = mykeyboard[SCAN_PGUP] = 0;
-  while (!mykeyboard[SCAN_ESC])
+  mykeyboard[SDLK_DOWN] = mykeyboard[SDLK_UP] = 0;
+  mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
+  while (!mykeyboard[SDLK_ESCAPE])
   {
-    if (mykeyboard[SCAN_DOWN])    // scrolling down
+    if (mykeyboard[SDLK_DOWN])    // scrolling down
     {
       now_time = query_timer();
 
@@ -211,9 +211,9 @@ short read_help(char *somefile,screen * myscreen)
         linesdown++;
         changed = 1;
       }
-    } // end of SCAN_DOWN
+    } // end of SDLK_DOWN
 
-    if (mykeyboard[SCAN_PGDN])    // scrolling one page down
+    if (mykeyboard[SDLK_PAGEDOWN])    // scrolling one page down
     {
       now_time = query_timer();
       key_presses = (now_time - start_time) % (10*text_delay);
@@ -230,7 +230,7 @@ short read_help(char *somefile,screen * myscreen)
       }
     } // end of PAGE DOWN
 
-    if (mykeyboard[SCAN_UP])      // scrolling up
+    if (mykeyboard[SDLK_UP])      // scrolling up
     {
       now_time = query_timer();
       key_presses = (now_time - start_time) % text_delay;
@@ -239,9 +239,9 @@ short read_help(char *somefile,screen * myscreen)
         linesdown--;
         changed = 1;
       }
-    } // end of SCAN_UP
+    } // end of SDLK_UP
 
-    if (mykeyboard[SCAN_PGUP])    // scrolling one page up
+    if (mykeyboard[SDLK_PAGEUP])    // scrolling one page up
     {
       now_time = query_timer();
       key_presses = (now_time - start_time) % (10*text_delay);
@@ -280,7 +280,7 @@ short read_help(char *somefile,screen * myscreen)
 
         
 
-        while (mykeyboard[SCAN_ESC])  // wait for key release
+        while (mykeyboard[SDLK_ESCAPE])  // wait for key release
           templines++;
         //delete mytext; 
         return (short) (numlines);

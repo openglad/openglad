@@ -335,14 +335,14 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
       dumbcount++;
     tempchar = (unsigned char) query_key();
     clear_key_press_event();
-    if (tempchar == SCAN_ENTER)
+    if (tempchar == SDLK_RETURN)
       string_done = 1;
-    else if (tempchar == SCAN_ESC)
+    else if (tempchar == SDLK_ESCAPE)
     {
       strcpy(editstring, firststring);
       string_done = 1;
     }
-    else if (tempchar == SCAN_BACKSPACE && current_length)
+    else if (tempchar == SDLK_BACKSPACE && current_length)
       editstring[current_length-1] = 0;
     else if ( (convert_to_ascii(tempchar) != 255) &&
               (current_length < maxlength) )
@@ -369,57 +369,57 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 
 }
 
-// Convert from scancode to ascii, ie, SCAN_A to 'A'
-unsigned char text::convert_to_ascii(unsigned char scancode)
+// Convert from SDLKcode to ascii, ie, SDLK_a to 'A'
+unsigned char text::convert_to_ascii(unsigned char SDLKcode)
 {
-  switch (scancode)
+  switch (SDLKcode)
   {
-    case SCAN_A: return 'A';
-    case SCAN_B: return 'B';
-    case SCAN_C: return 'C';
-    case SCAN_D: return 'D';
-    case SCAN_E: return 'E';
-    case SCAN_F: return 'F';
-    case SCAN_G: return 'G';
-    case SCAN_H: return 'H';
-    case SCAN_I: return 'I';
-    case SCAN_J: return 'J';
-    case SCAN_K: return 'K';
-    case SCAN_L: return 'L';
-    case SCAN_M: return 'M';
-    case SCAN_N: return 'N';
-    case SCAN_O: return 'O';
-    case SCAN_P: return 'P';
-    case SCAN_Q: return 'Q';
-    case SCAN_R: return 'R';
-    case SCAN_S: return 'S';
-    case SCAN_T: return 'T';
-    case SCAN_U: return 'U';
-    case SCAN_V: return 'V';
-    case SCAN_W: return 'W';
-    case SCAN_X: return 'X';
-    case SCAN_Y: return 'Y';
-    case SCAN_Z: return 'Z';
+    case SDLK_a: return 'A';
+    case SDLK_b: return 'B';
+    case SDLK_c: return 'C';
+    case SDLK_d: return 'D';
+    case SDLK_e: return 'E';
+    case SDLK_f: return 'F';
+    case SDLK_g: return 'G';
+    case SDLK_h: return 'H';
+    case SDLK_i: return 'I';
+    case SDLK_j: return 'J';
+    case SDLK_k: return 'K';
+    case SDLK_l: return 'L';
+    case SDLK_m: return 'M';
+    case SDLK_n: return 'N';
+    case SDLK_o: return 'O';
+    case SDLK_p: return 'P';
+    case SDLK_q: return 'Q';
+    case SDLK_r: return 'R';
+    case SDLK_s: return 'S';
+    case SDLK_t: return 'T';
+    case SDLK_u: return 'U';
+    case SDLK_v: return 'V';
+    case SDLK_w: return 'W';
+    case SDLK_x: return 'X';
+    case SDLK_y: return 'Y';
+    case SDLK_z: return 'Z';
 
-    case SCAN_1: return '1';
-    case SCAN_2: return '2';
-    case SCAN_3: return '3';
-    case SCAN_4: return '4';
-    case SCAN_5: return '5';
-    case SCAN_6: return '6';
-    case SCAN_7: return '7';
-    case SCAN_8: return '8';
-    case SCAN_9: return '9';
-    case SCAN_0: return '0';
+    case SDLK_1: return '1';
+    case SDLK_2: return '2';
+    case SDLK_3: return '3';
+    case SDLK_4: return '4';
+    case SDLK_5: return '5';
+    case SDLK_6: return '6';
+    case SDLK_7: return '7';
+    case SDLK_8: return '8';
+    case SDLK_9: return '9';
+    case SDLK_0: return '0';
 
-    case SCAN_SPACE: return 32;
-//    case SCAN_BACKSPACE: return 8;
-    case SCAN_ENTER: return 13;
-    case SCAN_ESC: return 27;
-    case SCAN_PERIOD:  return '.';
-    case SCAN_COMMA: return ',';
-// Zardus: PORT: not defined in scankeys.h:    case SCAN_CLOSE_QUOTE: return ''';
-    case SCAN_OPEN_QUOTE: return '`';
+    case SDLK_SPACE: return 32;
+//    case SDLK_BACKSPACE: return 8;
+    case SDLK_RETURN: return 13;
+    case SDLK_ESCAPE: return 27;
+    case SDLK_PERIOD:  return '.';
+    case SDLK_COMMA: return ',';
+// Zardus: PORT: not defined in SDLKkeys.h:    case SDLK_CLOSE_QUOTE: return ''';
+    case SDLK_BACKQUOTE: return '`';
 
     default: return 255;
   }

@@ -39,51 +39,51 @@
 #define KEY_CHEAT               15
 // Now define the arrays with their default values
 static char key1[] = {
-  SCAN_UP, SCAN_PGUP, SCAN_RIGHT, SCAN_PGDN,  // movements
-  SCAN_DOWN, SCAN_END, SCAN_LEFT, SCAN_HOME,
-  SCAN_INSERT, SCAN_ENTER,                    // fire & special
-  SCAN_NUMERIC_PLUS,                          // switch guys
-  SCAN_NUMERIC_MINUS,                         // change special
-  SCAN_CENTER,                                // Yell
-  SCAN_DELETE,                                // Shifter
-  SCAN_NUMERIC_TIMES,                         // Options menu
-  SCAN_F8,                                    // Cheat key
+  SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
+  SDLK_DOWN, SDLK_END, SDLK_LEFT, SDLK_HOME,
+  SDLK_INSERT, SDLK_RETURN,                    // fire & special
+  SDLK_KP_PLUS,                          // switch guys
+  SDLK_KP_MINUS,                         // change special
+  SDLK_CENTER,                                // Yell
+  SDLK_DELETE,                                // Shifter
+  SDLK_NUMERIC_TIMES,                         // Options menu
+  SDLK_F8,                                    // Cheat key
 };
 
 static char key2[] = {
-  SCAN_W, SCAN_E, SCAN_D, SCAN_C,  // movements
-  SCAN_X, SCAN_Z, SCAN_A, SCAN_Q,
-  SCAN_CTRL, SCAN_ALT,                    // fire & special
-  SCAN_TAB,                               // switch guys
-  SCAN_1,                                 // change special
-  SCAN_S,                                 // Yell
-  SCAN_LEFT_SHIFT,                        // Shifter
-  SCAN_2,                                 // Options menu
-  SCAN_F5,                                 // Cheat key
+  SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
+  SDLK_x, SDLK_z, SDLK_a, SDLK_q,
+  SDLK_CTRL, SDLK_ALT,                    // fire & special
+  SDLK_TAB,                               // switch guys
+  SDLK_1,                                 // change special
+  SDLK_s,                                 // Yell
+  SDLK_LSHIFT,                        // Shifter
+  SDLK_2,                                 // Options menu
+  SDLK_F5,                                 // Cheat key
 };
 
 static char key3[] = {
-  SCAN_I, SCAN_O, SCAN_L, SCAN_PERIOD,  // movements
-  SCAN_COMMA, SCAN_M, SCAN_J, SCAN_U,
-  SCAN_SPACE, SCAN_SEMICOLON,                    // fire & special
-  SCAN_BACKSPACE,                               // switch guys
-  SCAN_7,                                 // change special
-  SCAN_K,                                 // Yell
-  SCAN_RIGHT_SHIFT,                        // Shifter
-  SCAN_8,                                 // Options menu
-  SCAN_F7,                                 // Cheat key
+  SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,  // movements
+  SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
+  SDLK_SPACE, SDLK_SEMICOLON,                    // fire & special
+  SDLK_BACKSPACE,                               // switch guys
+  SDLK_7,                                 // change special
+  SDLK_k,                                 // Yell
+  SDLK_RSHIFT,                        // Shifter
+  SDLK_8,                                 // Options menu
+  SDLK_F7,                                 // Cheat key
 };
 
 static char key4[] = {
-  SCAN_T, SCAN_Y, SCAN_H, SCAN_N,  // movements
-  SCAN_B, SCAN_V, SCAN_F, SCAN_R,
-  SCAN_5, SCAN_6,                    // fire & special
-  SCAN_EQUALS,                               // switch guys
-  SCAN_3,                                 // change special
-  SCAN_G,                                 // Yell
-  SCAN_MINUS,                        // Shifter
-  SCAN_4,                                 // Options menu
-  SCAN_F6,                                 // Cheat key
+  SDLK_t, SDLK_y, SDLK_h, SDLK_n,  // movements
+  SDLK_b, SDLK_v, SDLK_f, SDLK_r,
+  SDLK_5, SDLK_6,                    // fire & special
+  SDLK_EQUALS,                               // switch guys
+  SDLK_3,                                 // change special
+  SDLK_g,                                 // Yell
+  SDLK_MINUS,                        // Shifter
+  SDLK_4,                                 // Options menu
+  SDLK_F6,                                 // Cheat key
 };
 
 // This is for saving/loading the key preferences
@@ -431,7 +431,7 @@ short viewscreen::input(char inputthing)
   }
 
   //step = control->stepsize;
-  if (inputkeyboard[SCAN_F3] && !inputkeyboard[mykeys[KEY_CHEAT]])
+  if (inputkeyboard[SDLK_F3] && !inputkeyboard[mykeys[KEY_CHEAT]])
   {
     totaltime = (query_timer_control() - screenp->timerstart)/72;
     totalframes = (screenp->framecount);
@@ -440,7 +440,7 @@ short viewscreen::input(char inputthing)
     screenp->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
   }
 
-  if (inputkeyboard[SCAN_F4] && !inputkeyboard[mykeys[KEY_CHEAT]]) // Memory report
+  if (inputkeyboard[SDLK_F4] && !inputkeyboard[mykeys[KEY_CHEAT]]) // Memory report
     screenp->report_mem();
 
   if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
@@ -539,7 +539,7 @@ short viewscreen::input(char inputthing)
 
 
   // Redisplay the scenario text ..
-  if (inputkeyboard[SCAN_SLASH] && !inputkeyboard[mykeys[KEY_CHEAT]]) // actually "?"
+  if (inputkeyboard[SDLK_SLASH] && !inputkeyboard[mykeys[KEY_CHEAT]]) // actually "?"
   {
          read_scenario(screenp);
          screenp->redrawme = 1;
@@ -547,7 +547,7 @@ short viewscreen::input(char inputthing)
   }
 
   // Help system
-  if (inputkeyboard[SCAN_F1] && !inputkeyboard[mykeys[KEY_CHEAT]] )
+  if (inputkeyboard[SDLK_F1] && !inputkeyboard[mykeys[KEY_CHEAT]] )
   {
     strcpy(somemessage, "GLADIATOR V. ");
     strcat(somemessage, GLAD_VER); //append the version num
@@ -556,7 +556,7 @@ short viewscreen::input(char inputthing)
     #endif
     set_display_text(somemessage, STANDARD_TEXT_TIME);
     
-    while (inputkeyboard[SCAN_F1])
+    while (inputkeyboard[SDLK_F1])
       dumbcount++;
     read_help("glad.hlp",screenp);
     inputkeyboard = query_keyboard();
@@ -700,11 +700,11 @@ short viewscreen::input(char inputthing)
     
     
     // Testing bonus rounds .. take this out, please
-    if (inputkeyboard[SCAN_F11] && CHEAT_MODE) // give bonus rounds ..
+    if (inputkeyboard[SDLK_F11] && CHEAT_MODE) // give bonus rounds ..
       control->bonus_rounds = 5;
 
     // Testing effect object ..
-    if (inputkeyboard[SCAN_F12] && CHEAT_MODE) // kill living bad guys
+    if (inputkeyboard[SDLK_F12] && CHEAT_MODE) // kill living bad guys
     {
       templink = screenp->oblist;
       while (templink)
@@ -724,86 +724,86 @@ short viewscreen::input(char inputthing)
     } //end of testing effect object
     
     
-    if (inputkeyboard[SCAN_CLOSE_BRACKET]) // up level
+    if (inputkeyboard[SDLK_RIGHTBRACKET]) // up level
     {
       control->stats->level++;
-      while (inputkeyboard[SCAN_CLOSE_BRACKET])
+      while (inputkeyboard[SDLK_RIGHTBRACKET])
         dumbcount++;
     }//end up level
 
-    if (inputkeyboard[SCAN_OPEN_BRACKET]) // down level
+    if (inputkeyboard[SDLK_LEFTBRACKET]) // down level
     {
       if (control->stats->level > 1)
         control->stats->level--;
-      while (inputkeyboard[SCAN_OPEN_BRACKET])
+      while (inputkeyboard[SDLK_LEFTBRACKET])
         dumbcount++;
     }//end down level
          
-    if (inputkeyboard[SCAN_F1]) // freeze time
+    if (inputkeyboard[SDLK_F1]) // freeze time
     {
       screenp->enemy_freeze += 50;
       set_palette(screenp->bluepalette);
-      while (inputkeyboard[SCAN_F1])
+      while (inputkeyboard[SDLK_F1])
         dumbcount++;
     }//end freeze time
 
-    if (inputkeyboard[SCAN_F2]) // generate magic shield
+    if (inputkeyboard[SDLK_F2]) // generate magic shield
     {
       newob = screenp->add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
       newob->owner = control;
       newob->team_num = control->team_num;
       newob->ani_type = 1; // dummy, non-zero value
       newob->lifetime = 200;
-      while (inputkeyboard[SCAN_F2])
+      while (inputkeyboard[SDLK_F2])
         dumbcount++;
     }//end generate magic shield
            
-    if (inputkeyboard[SCAN_F])  // ability to fly
+    if (inputkeyboard[SDLK_f])  // ability to fly
     { 
       if (control->stats->query_bit_flags(BIT_FLYING))
         control->stats->set_bit_flags(BIT_FLYING,0);
       else
         control->stats->set_bit_flags(BIT_FLYING,1);
-      while (inputkeyboard[SCAN_F]) 
+      while (inputkeyboard[SDLK_f]) 
         dumbcount++;
     } //end flying
 
-    if (inputkeyboard[SCAN_H]) // give controller lots of hitpoints
+    if (inputkeyboard[SDLK_h]) // give controller lots of hitpoints
     {
       control->stats->hitpoints += 100;
       screenp->control_hp += 100;
     } //end hitpoints
          
-    if (inputkeyboard[SCAN_I])  // give invincibility
+    if (inputkeyboard[SDLK_i])  // give invincibility
     {
       if (control->stats->query_bit_flags(BIT_INVINCIBLE))
         control->stats->set_bit_flags(BIT_INVINCIBLE,0);
       else
         control->stats->set_bit_flags(BIT_INVINCIBLE,1);
-      while (inputkeyboard[SCAN_I]) 
+      while (inputkeyboard[SDLK_i]) 
         dumbcount++;
     } // end invincibility
 
-    if (inputkeyboard[SCAN_M]) // give controller lots of magicpoints
+    if (inputkeyboard[SDLK_m]) // give controller lots of magicpoints
     {
       control->stats->magicpoints += 150;
     } // end magic points
 
-    if (inputkeyboard[SCAN_S]) // give us faster speed ..
+    if (inputkeyboard[SDLK_s]) // give us faster speed ..
     {
       control->speed_bonus_left += 20;
       control->speed_bonus = control->normal_stepsize;
     }
 
-    if (inputkeyboard[SCAN_T]) // transform to new shape
+    if (inputkeyboard[SDLK_t]) // transform to new shape
     {
       dumbcount = (control->query_family()+1)% NUM_FAMILIES;
       control->transform_to(control->query_order(), (char) dumbcount);
-      while (inputkeyboard[SCAN_T]) 
+      while (inputkeyboard[SDLK_t]) 
         dumbcount++;
     } //end transform
 
-    if (inputkeyboard[SCAN_V]) // invisibility
+    if (inputkeyboard[SDLK_v]) // invisibility
     {
       if (control->invisibility_left < 3000)
         control->invisibility_left += 100;
@@ -845,7 +845,7 @@ short viewscreen::input(char inputthing)
            control->shifter_down = 0;
 
 // Testing ..
-if (inputkeyboard[SCAN_R])
+if (inputkeyboard[SDLK_r])
 {
   control->stats->right_walk();
 }
@@ -1493,9 +1493,9 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
   dude = NULL;
 
   teamkeys = query_keyboard();
-  while (!teamkeys[SCAN_ESC])
+  while (!teamkeys[SDLK_ESCAPE])
     screenp->do_cycle(currentcycle++, cycletime);
-  while (teamkeys[SCAN_ESC])
+  while (teamkeys[SDLK_ESCAPE])
     dumbcount++;
 
   return;
@@ -1610,29 +1610,29 @@ void viewscreen::options_menu()
   screenp->buffer_to_screen(0, 0, 320, 200);
 
   // Wait for esc for now
-  while (!opkeys[SCAN_ESC])
+  while (!opkeys[SDLK_ESCAPE])
   {
-    if (opkeys[SCAN_NUMERIC_PLUS]) // faster game speed
+    if (opkeys[SDLK_KP_PLUS]) // faster game speed
     {
       gamespeed = change_speed(1);
       sprintf(message, "Change Game Speed (+/-): %2ld  ", gamespeed);
       screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_NUMERIC_PLUS])
+      while (opkeys[SDLK_KP_PLUS])
         dumbcount++;
     }
-    if (opkeys[SCAN_NUMERIC_MINUS]) // slower game speed
+    if (opkeys[SDLK_KP_MINUS]) // slower game speed
     {
       gamespeed = change_speed(-1);
       sprintf(message, "Change Game Speed (+/-): %2ld  ", gamespeed);
       screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_NUMERIC_MINUS])
+      while (opkeys[SDLK_KP_MINUS])
         dumbcount++;
     }
-    if (opkeys[SCAN_OPEN_BRACKET]) // smaller view size
+    if (opkeys[SDLK_LEFTBRACKET]) // smaller view size
     {
       prefs[PREF_VIEW] = prefs[PREF_VIEW]+1;
       if (prefs[PREF_VIEW] > 4)
@@ -1652,10 +1652,10 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_OPEN_BRACKET])
+      while (opkeys[SDLK_LEFTBRACKET])
         dumbcount++;
     }
-    if (opkeys[SCAN_CLOSE_BRACKET]) // larger view size
+    if (opkeys[SDLK_RIGHTBRACKET]) // larger view size
     {
       prefs[PREF_VIEW] = prefs[PREF_VIEW]-1;
       if (prefs[PREF_VIEW] < 0)
@@ -1675,30 +1675,30 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_CLOSE_BRACKET])
+      while (opkeys[SDLK_RIGHTBRACKET])
         dumbcount++;
     }
-    if (opkeys[SCAN_COMMA]) // darken screen
+    if (opkeys[SDLK_COMMA]) // darken screen
     {
       prefs[PREF_GAMMA] = gamma = change_gamma(-2);
       sprintf(message, "Change Brightness (<,>): %ld ", gamma);
       screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_COMMA])
+      while (opkeys[SDLK_COMMA])
         dumbcount++;
     }
-    if (opkeys[SCAN_PERIOD]) // lighten screen
+    if (opkeys[SDLK_PERIOD]) // lighten screen
     {
       prefs[PREF_GAMMA] = gamma = change_gamma(+2);
       sprintf(message, "Change Brightness (<,>): %ld ", gamma);
       screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_PERIOD])
+      while (opkeys[SDLK_PERIOD])
         dumbcount++;
     }
-    if (opkeys[SCAN_R]) // toggle radar display      
+    if (opkeys[SDLK_r]) // toggle radar display      
     {
       prefs[PREF_RADAR] = (prefs[PREF_RADAR]+1)%2;
       if (prefs[PREF_RADAR])
@@ -1708,10 +1708,10 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_R])
+      while (opkeys[SDLK_r])
         dumbcount++;
     }
-    if (opkeys[SCAN_H]) // toggle HP display      
+    if (opkeys[SDLK_h]) // toggle HP display      
     {
       prefs[PREF_LIFE] = (prefs[PREF_LIFE]+1) %5;
       switch (prefs[PREF_LIFE])
@@ -1727,10 +1727,10 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_H])
+      while (opkeys[SDLK_h])
         dumbcount++;
     }
-    if (opkeys[SCAN_F]) // toggle foes display      
+    if (opkeys[SDLK_f]) // toggle foes display      
     {
       prefs[PREF_FOES] = (prefs[PREF_FOES]+1)%2;
       if (prefs[PREF_FOES])
@@ -1740,10 +1740,10 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_F])
+      while (opkeys[SDLK_f])
         dumbcount++;
     }
-    if (opkeys[SCAN_S]) // toggle score display      
+    if (opkeys[SDLK_s]) // toggle score display      
     {
       prefs[PREF_SCORE] = (prefs[PREF_SCORE]+1)%2;
       if (prefs[PREF_SCORE])
@@ -1753,11 +1753,11 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_S])
+      while (opkeys[SDLK_s])
         dumbcount++;
     }
 
-    if (opkeys[SCAN_T])      // View the teamlist
+    if (opkeys[SDLK_t])      // View the teamlist
     {  
       view_team();
       screenp->redraw();
@@ -1765,10 +1765,10 @@ void viewscreen::options_menu()
       return;
     }     
     
-    if (opkeys[SCAN_C])
+    if (opkeys[SDLK_c])
     {
       screenp->cyclemode= (short) ((screenp->cyclemode+1) %2);
-      while (opkeys[SCAN_C])
+      while (opkeys[SDLK_c])
         dumbcount++;
       if (screenp->cyclemode)
         sprintf(message,"Color Cycling (C)      : ON ");
@@ -1780,7 +1780,7 @@ void viewscreen::options_menu()
 
     }
 
-    if (opkeys[SCAN_J]) // toggle joystick display      
+    if (opkeys[SDLK_j]) // toggle joystick display      
     {
       prefs[PREF_JOY] = (prefs[PREF_JOY]+1)%2;
       if (prefs[PREF_JOY] == PREF_USE_JOY)
@@ -1798,11 +1798,11 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(11), 275, OPLINES(11)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(11), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_J])
+      while (opkeys[SDLK_j])
         dumbcount++;
     }
     
-    if (opkeys[SCAN_K])      // Edit the keyboard mappings
+    if (opkeys[SDLK_k])      // Edit the keyboard mappings
     {  
       if (set_key_prefs())
       {
@@ -1813,7 +1813,7 @@ void viewscreen::options_menu()
       options_menu();
       return;
     }     
-    if (opkeys[SCAN_B]) // toggle button display
+    if (opkeys[SDLK_b]) // toggle button display
     {
       prefs[PREF_OVERLAY] = (prefs[PREF_OVERLAY]+1)%2;
       if (prefs[PREF_OVERLAY])
@@ -1823,13 +1823,13 @@ void viewscreen::options_menu()
       screenp->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
       optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
       screenp->buffer_to_screen(0, 0, 320, 200);
-      while (opkeys[SCAN_B])
+      while (opkeys[SDLK_b])
         dumbcount++;
     }
 
   }  // end of wait for ESC press
 
-  while (opkeys[SCAN_ESC])
+  while (opkeys[SDLK_ESCAPE])
     dumbcount++;
   screenp->redrawme = 1;
   prefsob->save(this);
