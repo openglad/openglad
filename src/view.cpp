@@ -555,8 +555,7 @@ short viewscreen::input(char inputthing)
 			get_input_events(WAIT);
 
 		//buffers: lets borrow the somemessage buffer for some work
-		strcpy(somemessage,DATADIR);
-		strcat(somemessage,"glad.hlp");
+		strcpy(somemessage,"glad.hlp");
 		read_help(somemessage,screenp);
 		inputkeyboard = query_keyboard();
 		clear_keyboard();

@@ -1684,7 +1684,6 @@ char* screen::get_scen_title(char *filename, screen *master)
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
 	char scen_directory[80] = "";
-	char fullpath[80] = DATADIR;
 	long gotit;
 	short tempvalue;
 	static char buffer[30];
@@ -1743,8 +1742,6 @@ short load_scenario(char * filename, screen * master)
 	char temptext[10] = "XXX";
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
-	char scen_directory[80] = DATADIR "scen/";
-	char fullpath[80] = "";
 	long gotit;
 	short tempvalue;
 	char temp[80]="",fullpathupper[80],thefile[80],thefileupper[80];

@@ -211,7 +211,7 @@ short read_help(char *somefile,screen * myscreen)
 
 	if ((infile = open_misc_file(somefile)) == NULL)
 	{
-		fprintf(stderr, "Cannot open help file.\n");
+		fprintf(stderr, "Cannot open help file %s.\n", somefile);
 		//delete mytext;
 		return 1;
 	}
