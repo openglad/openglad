@@ -81,7 +81,7 @@ void reset_timer()
 long query_timer()
 {
 //  return timer_count;
-	return SDL_GetTicks() - reset_value;
+	return (SDL_GetTicks() - reset_value) / 10;
 }
 
 unsigned long query_timer_control()
