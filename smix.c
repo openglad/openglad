@@ -41,8 +41,8 @@ int   sixteenbit;
 
 /* лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл */
 
-#include <dos.h>
-#include <i86.h>
+// Z's script: #include <dos.h>
+// Z's script: #include <i86.h>
 #include <stdio.h>
 #include <stdlib.h>
 

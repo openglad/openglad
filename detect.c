@@ -19,7 +19,7 @@ int detect_settings(int *baseio, int *irq, int *dma, int *dma16);
 /* лллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллллл */
 
 #include <ctype.h>
-#include <dos.h>
+// Z's script: #include <dos.h>
 #include <stdlib.h>
 #include <string.h>
 
