@@ -51,7 +51,7 @@ pixieN::~pixieN()
 {
 	bmp = NULL;
 	facings = NULL;
-	frames = NULL;
+	frames = 0;
 	if(accel)
 		SDL_FreeSurface(bmp_surface);
 }
