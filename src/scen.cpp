@@ -1163,6 +1163,7 @@ void do_help(screen * myscreen)
 
 	wait_for_key(SDLK_SPACE);
 
+	delete helptext;
 }
 
 char some_pix(long whatback)
@@ -1934,6 +1935,7 @@ long do_load(screen *ascreen)
 			get_input_events(WAIT);
 	} // end load new grid
 
+	delete loadtext;
 	levelchanged = 0;
 	return 1;
 }
@@ -1988,6 +1990,8 @@ long do_save(screen *ascreen)  // save a scenario or grid
 		ascreen->clearfontbuffer();
 		clear_keyboard();
 	} // end of save grid
+
+	delete savetext;
 
 	if (result)
 		levelchanged = 0;
