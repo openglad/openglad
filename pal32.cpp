@@ -177,8 +177,12 @@ void cycle_palette(char *newpalette, short start, short end, short shift)
 	}
 
   	// Return the modified palette
-	for (i=0; i < 768; i++)
+	for (i=0; i < 768; i++) {
 		newpalette[i] = temppal[i];
+		//buffers: since this is supposed to load the pal too, we
+		//buffers: copy it over to ourpal.
+		curpal[i] = temppal[i];
+	}
 }
 
 void query_palette_reg(unsigned char index, int *red, int *green, int *blue)
