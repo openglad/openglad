@@ -5,7 +5,7 @@
 //buffers:  using input.h instead #include "int32.h"
 #include "input.h"
 
-#include "SDL.h"
+#include "SDL/SDL.h"
 #include "parse32.h"
 #include <malloc.h>
 // Z's script: #include <process.h>
@@ -494,8 +494,8 @@ long mainmenu(long arg1)
   vbutton *tempbuttons;
   long retvalue=0;
   long count;
-  unsigned char red, green, blue;
-  unsigned char mypalette[768];
+  int red, green, blue; //buffers: PORT: changed type to int
+  char  mypalette[768];
   long i, j;
   char message[80];
   
@@ -578,7 +578,7 @@ long mainmenu(long arg1)
 
     for(i=0;i<256;i++)
     {
-      query_palette_reg((unsigned char)i,red,green,blue);
+      query_palette_reg((unsigned char)i,&red,&green,&blue);
       if (red < mypalette[i*3]) red++;
       if (green < mypalette[i*3+1]) green++;
       if (blue < mypalette[i*3+2]) blue++;
@@ -2822,7 +2822,7 @@ long go_menu(long arg1)
   static signed char prefs[5][PREF_MAX] = { {2, 1, 0, 0, 1, 1, 0}, {2, 1, 0, 0, 1, 1, 0},
    {2, 1, 0, 0, 1, 1, 0}, {2, 1, 0, 0, 1, 1, 0}, {2, 1, 0, 0, 1, 1, 0} };
   static text gotext(myscreen);
-  unsigned char red, green, blue;
+  int red, green, blue; //buffers: PORT: changed to int
   long i, j, temptime;
   long retvalue;
 
@@ -2853,7 +2853,7 @@ long go_menu(long arg1)
   {
     for(i=0;i<256;i++)
     {
-       query_palette_reg((unsigned char) i,red,green,blue);
+       query_palette_reg((unsigned char) i,&red,&green,&blue);
        if (red) red--;
        if (green) green--;
        if (blue) blue--;
@@ -2877,7 +2877,7 @@ long go_menu(long arg1)
   {
     for(i=0;i<256;i++)
     {
-       query_palette_reg((unsigned char) i,red,green,blue);
+       query_palette_reg((unsigned char) i,&red,&green,&blue);
        if (red) red--;
        if (green) green--;
        if (blue) blue--;
@@ -2894,7 +2894,7 @@ long go_menu(long arg1)
   {
     for(i=0;i<256;i++)
     {
-      query_palette_reg((unsigned char) i,red,green,blue);
+      query_palette_reg((unsigned char) i,&red,&green,&blue);
       if (red < myscreen->ourpalette[i*3]) red++;
       if (green < myscreen->ourpalette[i*3+1]) green++;
       if (blue < myscreen->ourpalette[i*3+2]) blue++;

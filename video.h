@@ -58,10 +58,10 @@ class video
          void clear_ints();
          void restore_ints();
 
-         char ourpalette[768]; // our standard glad palette
-         char redpalette[768]; // for 'faded' backgrounds during menus
-         char bluepalette[768]; // for special effects like time-freeze
-         char dospalette[768]; // store the dos palette so we can restore it later
+	char ourpalette[768]; // our standard glad palette
+	char redpalette[768]; // for 'faded' backgrounds during menus
+	char bluepalette[768]; // for special effects like time-freeze
+	char dospalette[768]; // store the dos palette so we can restore it later
 
 	 SDL_Surface *screen;
          unsigned char videobuffer[64000]; //our new unified video buffer

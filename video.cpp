@@ -17,8 +17,31 @@ unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
 video::video()
 {
+	long i;
+
+	//buffers: PORT: no need: save_palette(dospalette);
+	// Load our palettes ..
+	load_and_set_palette("our.pal", ourpalette);
+	load_palette("our.pal", redpalette);
+
+	// Create the red-shifted palette
+	for (i=32; i < 256; i++)
+	{
+		redpalette[i*3+1] /= 2;
+		redpalette[i*3+2] /= 2;
+	}
+
+	load_palette("our.pal", bluepalette);
+
+	// Create the blue-shifted palette
+	for (i=32; i < 256; i++)
+	{
+		bluepalette[i*3+0] /= 2;
+		bluepalette[i*3+1] /= 2;
+	}
+	
 	SDL_Init(SDL_INIT_VIDEO);
-	screen = SDL_SetVideoMode (640,480, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+	screen = SDL_SetVideoMode (320,200, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
 }
 
 video::~video()
@@ -223,23 +246,28 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 }
 
 // Place a point on the screen
-void video::point(long x, long y, int r, int g, int b)
+void video::point(long x, long y, unsigned char color)
 {
-	int *address = (Uint8 *)screen->pixels + y*screen->pitch +
+	int r,g,b;
+	Uint8 *address = (Uint8 *)screen->pixels + y*screen->pitch +
 		                x * screen->format->BytesPerPixel;
-	int color = SDL_MapRGB(screen->format, r, g, b);
+	int c;
 
-	*address = color;
+	query_palette_reg(color,&r,&g,&b);
+	
+	c = SDL_MapRGB(screen->format, r, g, b);
+
+	*address = c;
 }
 
 // Place a horizontal line on the screen.
-void video::hor_line(long x, long y, long length, int r, ing g, int b)
+void video::hor_line(long x, long y, long length, unsigned char color)
 {
 	int i;
 
 	for (i = 0; i < length; i++)
 	{
-		point (x + i, y, r, g, b);
+		point (x + i, y, color);
 	}
 }
 
@@ -270,7 +298,7 @@ void video::ver_line(long x, long y, long length, unsigned char color)
 
 	for (i = 0; i < length; i++)
 	{
-		point (x, y + i, r, g, b);
+		point (x, y + i, color);
 	}
 }
 
@@ -298,33 +326,35 @@ void video::ver_line(long x, long y, long length, unsigned char color, long tobu
 //video::do_cycle
 //cycle the palette for flame and water motion
 // query and set functions are located in pal32.cpp
+//buffers: PORT: added & to the last 3 args of the query_palette_reg funcs
 void video::do_cycle(long curmode, long maxmode)
 {
   long i;
-  unsigned char tempcol[3];
-  unsigned char curcol[3];
+  //buffers: PORT: changed these two arrays to ints
+  int tempcol[3];
+  int curcol[3];
 
   curmode %= maxmode;   // avoid over-runs
 
   if (!curmode)  // then cycle on 0
   {
     // For orange:
-    query_palette_reg(ORANGE_END, tempcol[0],
-		      tempcol[1], tempcol[2]);        // get first color
+    query_palette_reg(ORANGE_END, &tempcol[0],
+		      &tempcol[1], &tempcol[2]);        // get first color
     for (i=ORANGE_END; i > ORANGE_START; i--)
     {
-      query_palette_reg((char) (i-1), curcol[0], curcol[1], curcol[2]);
+      query_palette_reg((char) (i-1), &curcol[0], &curcol[1], &curcol[2]);
       set_palette_reg((char) i, (char) curcol[0],(char) curcol[1], (char) curcol[2]);
     }
     set_palette_reg(ORANGE_START, tempcol[0],
 		    tempcol[1], tempcol[2]);        // reassign last to first
 
     // For blue:
-    query_palette_reg(WATER_END, tempcol[0],
-		      tempcol[1], tempcol[2]);        // get first color
+    query_palette_reg(WATER_END, &tempcol[0],
+		      &tempcol[1], &tempcol[2]);        // get first color
     for (i=WATER_END; i > WATER_START; i--)
     {
-      query_palette_reg((char) (i-1), curcol[0], curcol[1], curcol[2]);
+      query_palette_reg((char) (i-1), &curcol[0], &curcol[1], &curcol[2]);
       set_palette_reg((char) i, curcol[0], curcol[1], curcol[2]);
     }
     set_palette_reg(WATER_START, tempcol[0],

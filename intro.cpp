@@ -9,7 +9,7 @@ int show(int howlong);
 int cleanup();
 
 int pal[256][3];
-unsigned char mypalette[768];
+char mypalette[768]; 
 //screen *myscreen;
   
 void 
@@ -235,8 +235,8 @@ intro_main(long argc, char** argv)
 int cleanup()
 {
   long i;
-  unsigned char red,green,blue;
-  query_palette_reg((unsigned char)0, red, green, blue); // Resets palette to read mode
+  int red,green,blue; //buffers: PORT: changed to ints
+  query_palette_reg((unsigned char)0, &red, &green, &blue); // Resets palette to read mode
   change_time((unsigned int)FREQ_NORMAL);
   release_timer();
   release_keyboard();
@@ -262,7 +262,7 @@ int show() // default uses SHOW_TIME
 int show(int howlong)
 {
   short i,j;
-  unsigned char red,green,blue;
+  int red,green,blue; //buffers: PORT: changed to ints from chars
 //*******************************
 // Fade in loop
 //*******************************
@@ -274,7 +274,7 @@ int show(int howlong)
 
          for(i=0;i<256;i++)
          {
-                query_palette_reg((unsigned char)i,red,green,blue);
+                query_palette_reg((unsigned char)i,&red,&green,&blue);
                 if (red < mypalette[i*3]) red++;
                 if (green < mypalette[i*3+1]) green++;
                 if (blue < mypalette[i*3+2]) blue++;
@@ -291,7 +291,7 @@ int show(int howlong)
   // Fade out
   for (i = 0; i<256; i++)
   {
-         query_palette_reg((unsigned char)i, red, green, blue);
+         query_palette_reg((unsigned char)i, &red, &green, &blue);
          pal[i][0] = red;
          pal[i][1] = green;
          pal[i][2] = blue;
@@ -303,7 +303,7 @@ int show(int howlong)
 
          for (i = 0; i < 256; i++)
          {
-                query_palette_reg((unsigned char)i, red, green, blue);
+                query_palette_reg((unsigned char)i, &red, &green, &blue);
                 if (red) red--;
                 if (green) green--;
                 if(blue) blue--;

@@ -62,7 +62,7 @@ void glad_main(screen *myscreen, long playermode)
 
 
   //screen  *myscreen;
-  unsigned char red, green, blue;
+  int red, green, blue; //buffers: PORT: changed to int from char
   unsigned char colors[256][3];
 
   // Get sound path ..
@@ -110,7 +110,7 @@ void glad_main(screen *myscreen, long playermode)
   {
          for(i=0;i<256;i++)
          {
-                query_palette_reg((unsigned char) i,red,green,blue);
+                query_palette_reg((unsigned char) i,&red,&green,&blue);
                 if (red < myscreen->ourpalette[i*3]) red++;
                 if (green < myscreen->ourpalette[i*3+1]) green++;
                 if (blue < myscreen->ourpalette[i*3+2]) blue++;

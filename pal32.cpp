@@ -18,11 +18,11 @@
 #define PAL_RED (0x1C0)
 
 //buffers: PORT: changed these arrays to type int
-Uint8 temppal[768];    // for loading, setting, etc.
-Uint8 gammapal[768];   // for gamma-correction
+char temppal[768];    // for loading, setting, etc.
+char gammapal[768];   // for gamma-correction
 
 //buffers: PORT: we need a palette to store the current palette
-Uint8 curpal[768];
+char curpal[768];
 
 //
 // load_and_set_palette
@@ -30,7 +30,7 @@ Uint8 curpal[768];
 // stores palette info in NEWPALETTE, and
 // sets the current palette to this.
 //
-short load_and_set_palette(char *filename, int *newpalette)
+short load_and_set_palette(char *filename, char *newpalette)
 {
 	FILE *infile;
 	short i;
@@ -62,7 +62,7 @@ short load_and_set_palette(char *filename, int *newpalette)
 // save_palette
 // save the dos palette so we can restore it when done
 //
-short save_palette(Uint8 * whatpalette)
+short save_palette(char * whatpalette)
 {
 	//buffers: PORT: we don't have a palette to save :P
 }
@@ -72,7 +72,7 @@ short save_palette(Uint8 * whatpalette)
 // load_palette
 // Loads palette from file FILENAME shorto NEWPALETTE
 //
-short load_palette(char *filename, Uint8 *newpalette)
+short load_palette(char *filename, char *newpalette)
 {
 	FILE *infile;
 	short i;
@@ -103,7 +103,7 @@ short load_palette(char *filename, Uint8 *newpalette)
 // set_palette
 // Sets the current palette to NEWPALETTE.
 //
-short set_palette(Uint8 *newpalette)
+short set_palette(char *newpalette)
 {
 	short i;
 
@@ -120,7 +120,7 @@ short set_palette(Uint8 *newpalette)
 //  on whichpal based on a positive or negative amount;
 //  displays new palette, but does NOT affect whichpal
 //
-void adjust_palette(Uint8 *whichpal, short amount)
+void adjust_palette(char *whichpal, short amount)
 {
 	short i;
 	short tempcol;
@@ -146,7 +146,7 @@ void adjust_palette(Uint8 *whichpal, short amount)
 // cycle_palette
 // Cycle and display newpalette
 //
-void cycle_palette(Uint8 *newpalette, short start, short end, short shift)
+void cycle_palette(char *newpalette, short start, short end, short shift)
 {
 	short i;
 	short length = (short) (end-start);

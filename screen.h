@@ -67,8 +67,11 @@ class screen : public video
          char levelstatus[MAX_LEVELS];
          char scentext[80][80];                         // Array to hold scenario information
          char scentextlines;                    // How many lines of text in scenario info
-         char newpalette[768];
-         short palmode;
+         
+	 char newpalette[768];
+         
+	 
+	 short palmode;
          short my_team;
          guy  *first_guy;
          unsigned char  *grid;
