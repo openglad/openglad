@@ -68,7 +68,7 @@ class video
          void clear_ints();
          void restore_ints();
 
-	void get_pixel(int x, int y, int *r, int *g, int *b);
+	void get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b);
 	int get_pixel(int x, int y, int *index);
 	int get_pixel(int offset);
 
