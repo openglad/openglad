@@ -1,7 +1,11 @@
 // Video object code
 
 /* ChangeLog
-	buffers: 7/31/02: *include cleanup
+	buffers: 7/31/02: 
+		*include cleanup
+	buffers: 8/8/02: 
+		*fixed bug in pointb that caused it to not draw correctly when
+		 pixel doubling was off
 */
 #include "graph.h"
 
@@ -12,7 +16,6 @@
 // Zardus: set_mult in input.cpp sets input's mult value
 void set_mult(int);
 
-//buffers: PORT: REGS, bleh bleh: union REGS inregs,outregs;
 unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
 
 // Define some palettes to use in (video) screen ..
@@ -290,8 +293,6 @@ void video::point(long x, long y, unsigned char color)
 void video::pointb(long x, long y, unsigned char color)
 {
 	int r,g,b;
-	int *address = (int *) ((Uint8 *)screen->pixels + y*screen->pitch +
-                              x * screen->format->BytesPerPixel);
 	int c;
 	SDL_Rect rect;
 
@@ -303,17 +304,11 @@ void video::pointb(long x, long y, unsigned char color)
 
 	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
 
-	if(pdouble) {
-		rect.x = x*mult;
-		rect.y = y*mult;
-		rect.w = mult;
-		rect.h = mult;
-		SDL_FillRect(screen,&rect,c);
-	} else {
-		SDL_LockSurface(screen);
-		*address = c;
-		SDL_UnlockSurface(screen);
-	}
+	rect.x = x*mult;
+	rect.y = y*mult;
+	rect.w = mult;
+	rect.h = mult;
+	SDL_FillRect(screen,&rect,c);
 }	
 
 //buffers: draw color using an offset
@@ -907,8 +902,6 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	  break;
       } //end switch (shifttype)
  
-	printf("%d\n",shift);
- 
       for(cury = 0; cury < totrows;cury++)
       {
 	for(curx=0;curx<rowsize;curx++)
@@ -1063,7 +1056,7 @@ int video::get_pixel(int x, int y, int *index)
 	
 	for(i=0;i<256;i++) {
 		query_palette_reg(i,&tr,&tg,&tb);
-		if(r==tr && g==tg && b==tb) {
+		if(r==tr && g==tg){ //&& b==tb) {
 			*index = i;
 			return i;
 		}
