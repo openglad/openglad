@@ -67,9 +67,9 @@ int pack(int argc, char **argv)
 	for (i = 0; i < numfiles; i++)
 	{
 		if (!(infile = fopen(argv[i + 3], "rb"))) exit(0);
-		printf("Packing %s ",argv[i+3]);
-		printf("-- location %i ", filelocation[i]);
-		printf("-- size %d\n",filesize[i]);
+		//printf("Packing %s ",argv[i+3]);
+		//printf("-- location %i ", filelocation[i]);
+		//printf("-- size %d\n",filesize[i]);
 
 		fread(buffer,filesize[i],1,infile);
 		fwrite(buffer, filesize[i], 1, outfile);
@@ -122,8 +122,8 @@ int unpack(int argc, char **argv)
 
 	for (i = 0; i < numfiles; i++)
 	{
-		printf("Extracting %s at location %i, size %i\n", filename[i], filelocation[i],
-				filelocation[i + 1] - filelocation[i]);
+		//printf("Extracting %s at location %i, size %i\n", filename[i], filelocation[i],
+		//		filelocation[i + 1] - filelocation[i]);
 		fread(buffer, filelocation[i + 1] - filelocation[i], 1, infile);
 
 		outfile = fopen(filename[i], "w");
