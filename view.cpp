@@ -37,6 +37,10 @@
 #define KEY_SHIFTER             13
 #define KEY_PREFS               14
 #define KEY_CHEAT               15
+
+// get input
+void get_input_events();
+
 // Now define the arrays with their default values
 static char key1[] = {
   SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
@@ -2149,7 +2153,7 @@ unsigned char get_keypress()
 
   clear_key_press_event(); // clear any previous key
   while (!query_key_press_event())
-    dumbcount++; // do nothing
+	  get_input_events();
   return query_key();
 }
 

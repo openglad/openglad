@@ -28,6 +28,8 @@ void draw_gem(short x, short y, short color, screen * myscreen);
 unsigned char *radarpic;
 pixie *radarpix;
 
+void get_input_events();
+
 void glad_main(screen *myscreen, long playermode);
 
 main(long argc, char **argv)
@@ -35,7 +37,8 @@ main(long argc, char **argv)
   if (!get_pix_directory())
     exit(1);
   myscreen = new screen(1);
-  intro_main(argc, argv);
+  // Disabling intro for faster startup
+//  intro_main(argc, argv);
   picker_main(argc, argv);
 }
 
@@ -189,7 +192,7 @@ void glad_main(screen *myscreen, long playermode)
              (unsigned char) DARK_BLUE, 1);
            myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
            while (!keyboard[SDLK_y] && !keyboard[SDLK_n])
-             dumbcount++;
+		   get_input_events();
            myscreen->redrawme = 1;
            if (keyboard[SDLK_y]) // player wants to quit
              break;
@@ -630,8 +633,9 @@ short new_score_panel(screen *myscreen, short do_it)
                 strcpy(tempname, control->stats->name);
              else
                 strcpy(tempname, namelist[control->query_family()]);
-             strcpy(name[players], tempname);
-             strcpy(message, tempname);
+	     // Zardus: PORT: these were causing the strcpy segfaults
+             //strcpy(name[players], tempname);
+             //strcpy(message, tempname);
              if (draw_button)
                myscreen->draw_button(lm+1, tm+2, lm+63, tm+9, 1, 1);
 

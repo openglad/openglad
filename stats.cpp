@@ -1006,7 +1006,9 @@ short statistics::walk_to_foe()
       }
       else // our foe has moved; we need a new one
       {
-	commandlist->commandcount = 0;
+	        // Zardus: PORT: needs to check for commandlist
+		if (commandlist)
+			commandlist->commandcount = 0;
 	//clear_command();
       }
     }
