@@ -31,6 +31,8 @@
 #include "util.h"
 #include <string>
 
+using namespace std;
+
 // From picker.cpp
 extern long calculate_level(unsigned long temp_exp);
 

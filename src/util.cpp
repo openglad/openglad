@@ -27,6 +27,8 @@
 #include <string>
 #include <sys/stat.h>
 
+using namespace std;
+
 unsigned long start_time=0;
 unsigned long reset_value=0;
 
