@@ -48,8 +48,6 @@ intro_main(long argc, char** argv)
          set_palette_reg(i,0,0,0);
   myscreen->clear();
 
-	set_palette(ourpalette);
-
   gladdata = read_pixie_file("3mages2.pix");
   gladiator = new pixie(&(gladdata[3]), (int)gladdata[1],
           (int)gladdata[2], myscreen);
