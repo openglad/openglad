@@ -452,12 +452,6 @@ short viewscreen::input(char inputthing)
   if (inputkeyboard[SDLK_F4] && !inputkeyboard[mykeys[KEY_CHEAT]]) // Memory report
     screenp->report_mem();
 
-  printf ("%i %i %i\n%i %i %i\n%i %i %i\n\nFire: %i\nSwitch: %i\nSpecial: %i\n\nLast: %i\n---------------\n",
-		  mykeys[KEY_UP_LEFT], mykeys[KEY_UP], mykeys[KEY_UP_RIGHT],
-		  mykeys[KEY_LEFT], mykeys[KEY_YELL], mykeys[KEY_RIGHT],
-		  mykeys[KEY_DOWN_LEFT], mykeys[KEY_DOWN], mykeys[KEY_DOWN_RIGHT],
-		  mykeys[KEY_FIRE], mykeys[KEY_SWITCH], mykeys[KEY_SPECIAL], query_key());
-
   if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
  	options_menu();
 
