@@ -315,13 +315,14 @@ long vbutton::mouse_on()
     if (!had_focus) // just gained focus
     {
       vdisplay();
-      release_mouse();
+      // Zardus: FIX: comment release and grab mouse out cause there's no need for them here and they're causing choppyness on buttons
+      // release_mouse();
       if (mypixie)
         myscreen->draw_box(xloc-1, yloc-1, xend, yend, 27, 0, 1);
       else
         myscreen->draw_box(xloc-1, yloc-1, xend, yend, 27, 0, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
-      grab_mouse();
+      // grab_mouse();
       had_focus = 1;
     }
     return 1;
@@ -331,13 +332,13 @@ long vbutton::mouse_on()
     if (had_focus)
     {
       vdisplay();
-      release_mouse();
+      // release_mouse();
       if (mypixie)
         myscreen->draw_box(xloc-1, yloc-1, xend, yend, 0, 0, 1);
       else
         myscreen->draw_box(xloc-1, yloc-1, xend, yend, 0, 0, 1);
       myscreen->buffer_to_screen(0, 0, 320, 200);
-      grab_mouse();
+      // grab_mouse();
       had_focus = 0;
     }
     return 0;
