@@ -22,15 +22,6 @@ video::video()
 	// Load our palettes ..
 	load_and_set_palette("our.pal", ourpalette);
 
-load_palette("our.pal", bluepalette);
-
-        // Create the blue-shifted palette
-	        for (i=32; i < 256; i++)
-		        {
-			                bluepalette[i*3+0] /= 2;
-					                bluepalette[i*3+1] /= 2;
-}							       
-
 
 load_palette("our.pal", redpalette);
 
@@ -41,14 +32,14 @@ load_palette("our.pal", redpalette);
 		redpalette[i*3+2] /= 2;
 	}
 
-//	load_palette("our.pal", bluepalette);
+	load_palette("our.pal", bluepalette);
 
 	// Create the blue-shifted palette
-//	for (i=32; i < 256; i++)
-//	{
-//		bluepalette[i*3+0] /= 2;
-//		bluepalette[i*3+1] /= 2;
-//	}
+	for (i=32; i < 256; i++)
+	{
+		bluepalette[i*3+0] /= 2;
+		bluepalette[i*3+1] /= 2;
+	}
 	
 	SDL_Init(SDL_INIT_VIDEO);
 	screen = SDL_SetVideoMode (320, 200, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);

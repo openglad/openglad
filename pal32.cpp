@@ -185,9 +185,6 @@ void query_palette_reg(unsigned char index, int *red, int *green, int *blue)
 {
  	int tred, tgreen, tblue;
 
-	//buffers: get the RGB values from the current palette
-	//and convert it to the 0-255 range. (its stored using the 0
-	//to 64 range.
 	tred = (int)curpal[index*3];
 	tgreen = (int)curpal[index*3+1];
 	tblue = (int)curpal[index*3+2];
