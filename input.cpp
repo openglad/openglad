@@ -32,16 +32,19 @@ long mouse_buttons;
 
 long joy_state[JSTATE];
 
-void (__far __interrupt *old_timer_isr)();
-void (__far __interrupt *old_keyboard_isr)();
+// Zardus: PORT: the __stuff seems to freak it out: void (__far __interrupt *old_timer_isr)();
+// same here: void (__far __interrupt *old_keyboard_isr)();
 
 
 void change_time(unsigned long new_count)
 {
 }
 
-void __interrupt increment_timer()
+// Zardus: PORT: g++ isn't a bit __stuff fan: void __interrupt increment_timer()
+// Put this in for now:
+void increment_timer()
 {
+// Theirs:
 //  if (!(timer_control%DIVISOR))
 //  {
 //    old_timer_isr();
@@ -56,8 +59,8 @@ void grab_timer()
   if (timer_grabbed)
     return;
   timer_grabbed = 1;
-  old_timer_isr = _dos_getvect(TIME_KEEPER_INT);
-  _dos_setvect(TIME_KEEPER_INT,increment_timer);
+// Zardus: PORT: seem to be dos things:  old_timer_isr = _dos_getvect(TIME_KEEPER_INT);
+// Same here:  _dos_setvect(TIME_KEEPER_INT,increment_timer);
 
 }
 
@@ -66,7 +69,7 @@ void release_timer()
   if (!timer_grabbed)
     return;
   timer_grabbed = 0;
-  _dos_setvect(TIME_KEEPER_INT,old_timer_isr);
+// Zardus: dos stuff:  _dos_setvect(TIME_KEEPER_INT,old_timer_isr);
 }
 
 void reset_timer()
@@ -97,7 +100,8 @@ void release_keyboard()
 {
 }
 
-void __interrupt key_int()
+// Zardus: __stuff again. will replace temporarily: void __interrupt key_int()
+void key_int()
 {
   // above fetches a keypress from keyboard, and then
   // reenables both __interrupts and the keyboard control
