@@ -26,7 +26,6 @@
 #include <string>
 using namespace std;
 #include <stdlib.h>
-//#include <malloc.h>
 #define MINIMUM_TIME 0
 
 // From picker // just emulate these so other files are happy

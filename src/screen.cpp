@@ -165,7 +165,6 @@ screen::screen(short howmany):video()
 
 	// Initialize a pixie for each background piece
 	for(i = 0; i < PIX_MAX; i++)
-		// for(i=0;i<10;i++)
 		back[i] = new pixieN(pixdata[i], this,1);
 
 	//buffers: after we set all the tiles to use acceleration, we go
@@ -323,11 +322,133 @@ screen::~screen()
 	release_timer();
 	delete soundp;
 	delete myloader;
+	delete mysmoother;
+
 	for (i = 0; i < PIX_MAX; i++)
+	{
 		if(pixdata[i])
-			free(pixdata[i]);
+			delete pixdata[i];
+		// Zardus: FIXME: this should be here cause it leaks, but this makes it segfault
+		//if (back[i])
+		//	delete back[i];
+	}
+
 	soundp = NULL;
-	reset(1); //make sure we've cleaned up
+	cleanup(1); //make sure we've cleaned up
+}
+
+void screen::cleanup(short howmany)
+{
+	long i;
+	oblink *here, *templink;
+	walker *who;
+
+        numviews = howmany; // # of viewscreens
+        for (i=0; i < MAX_VIEWS; i++)
+        {
+                if (viewob[i])
+                        delete (viewob[i]);
+                viewob[i] = NULL;
+        }
+
+        if (grid)
+        {
+                // Zardus: PORT: this segfaults while deleting grid!
+                // temp thing: null out the whole thing so that we don't leak more than 1 byte of mem
+                memset(grid, '\0', strlen( (const char *) grid));
+                //buffers: commented free() so openglad will cleanly exit
+                //free(grid);
+                grid = NULL;
+        }
+
+        if (oblist)
+        {
+                here = oblist;
+                while (here->next)
+                {
+                        templink = here;
+                        if (templink->ob)
+                        {
+                                delete templink->ob;
+                                templink->ob = NULL;
+                        }
+                        here = here->next;
+                        delete templink;
+                        templink = NULL;
+                }
+                if (here->ob)
+                {
+                        delete here->ob;
+                        here->ob = NULL;
+                }
+                delete here;
+                here = NULL;
+        }
+        oblist = NULL;
+        if (weaplist)
+        {
+                here = weaplist;
+                while (here->next)
+                {
+                        templink = here;
+                        if (templink->ob)
+                        {
+                                delete templink->ob;
+                                templink->ob = NULL;
+                        }
+                        here = here->next;
+                        delete templink;
+                        templink = NULL;
+                }
+                if (here->ob)
+                {
+                        delete here->ob;
+                        here->ob = NULL;
+                }
+                delete here;
+                here = NULL;
+        }
+        weaplist = NULL;
+        if (fxlist)
+        {
+                here = fxlist;
+                while (here->next)
+                {
+                        templink = here;
+                        if (templink->ob)
+                        {
+                                delete templink->ob;
+                                templink->ob = NULL;
+                        }
+                        here = here->next;
+                        delete templink;
+                        templink = NULL;
+                }
+                if (here->ob)
+                {
+                        delete here->ob;
+                        here->ob = NULL;
+                }
+                delete here;
+                here = NULL;
+        }
+        fxlist = NULL;
+
+        while (weapfree)
+        {
+                who = weapfree;
+                weapfree = weapfree->cachenext; //cachenext points to next ob
+                delete who;
+                who = NULL;
+        }
+        weapfree = NULL;
+
+        if (myobmap)
+        {
+                delete myobmap;
+                myobmap = NULL;
+        }
+
 }
 
 void screen::reset(short howmany)
@@ -342,12 +463,9 @@ void screen::reset(short howmany)
 
 	// Set up the viewscreen poshorters
 	numviews = howmany; // # of viewscreens
-	for (i=0; i < MAX_VIEWS; i++)
-	{
-		if (viewob[i])
-			delete (viewob[i]);
-		viewob[i] = NULL;
-	}
+
+	// Clean stuff up
+	cleanup(howmany);
 
 	if (numviews == 1)
 	{
@@ -372,16 +490,6 @@ void screen::reset(short howmany)
 		viewob[3] = new viewscreen( 112, 16, 100, 168, 3, this);
 	}
 
-	if (grid)
-	{
-		// Zardus: PORT: this segfaults while deleting grid!
-		// temp thing: null out the whole thing so that we don't leak more than 1 byte of mem
-		memset(grid, '\0', strlen( (const char *) grid));
-		//buffers: commented free() so openglad will cleanly exit
-		//free(grid);
-		grid = NULL;
-	}
-
 	end = 0;
 
 	redrawme = 1;
@@ -397,93 +505,6 @@ void screen::reset(short howmany)
 	timerstart = query_timer_control();
 	framecount = 0;
 	enemy_freeze = 0;
-	if (oblist)
-	{
-		here = oblist;
-		while (here->next)
-		{
-			templink = here;
-			if (templink->ob)
-			{
-				delete templink->ob;
-				templink->ob = NULL;
-			}
-			here = here->next;
-			delete templink;
-			templink = NULL;
-		}
-		if (here->ob)
-		{
-			delete here->ob;
-			here->ob = NULL;
-		}
-		delete here;
-		here = NULL;
-	}
-	oblist = NULL;
-	if (weaplist)
-	{
-		here = weaplist;
-		while (here->next)
-		{
-			templink = here;
-			if (templink->ob)
-			{
-				delete templink->ob;
-				templink->ob = NULL;
-			}
-			here = here->next;
-			delete templink;
-			templink = NULL;
-		}
-		if (here->ob)
-		{
-			delete here->ob;
-			here->ob = NULL;
-		}
-		delete here;
-		here = NULL;
-	}
-	weaplist = NULL;
-	if (fxlist)
-	{
-		here = fxlist;
-		while (here->next)
-		{
-			templink = here;
-			if (templink->ob)
-			{
-				delete templink->ob;
-				templink->ob = NULL;
-			}
-			here = here->next;
-			delete templink;
-			templink = NULL;
-		}
-		if (here->ob)
-		{
-			delete here->ob;
-			here->ob = NULL;
-		}
-		delete here;
-		here = NULL;
-	}
-	fxlist = NULL;
-
-	while (weapfree)
-	{
-		who = weapfree;
-		weapfree = weapfree->cachenext; //cachenext points to next ob
-		delete who;
-		who = NULL;
-	}
-	weapfree = NULL;
-
-	if (myobmap)
-	{
-		delete myobmap;
-		myobmap = NULL;
-	}
 
 	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
 	fxlist = oblist = NULL;

@@ -245,20 +245,32 @@ void picker_main(long argc, char  **argv)
 	}
 
 	mainmenu(1);
+}
+
+void picker_quit()
+{
+	int i;
+
+	for (i = 0; i < 5; i ++)
+	{
+		if (backdrops[i])
+		{
+			delete backdrops[i];
+			backdrops[i] = NULL;
+		}
+	}
 
 	delete mytext;
 	delete myscreen;
-
-	// Reset the old palette
+	delete magepix;
+	delete magepic;
+	delete gladpix;
+	delete gladpic;
 
 #if 0
 	if (cfgfile)
 		cfgfile = NULL;
 #endif
-
-	release_keyboard();
-	exit(1);
-	//return 1;
 }
 
 button buttons1[] =
@@ -3067,8 +3079,8 @@ long quit(long arg1)
 
 	myscreen->refresh();
 
+	picker_quit();
 	release_keyboard();
-	delete myscreen;
 	stop_input();
 	SDL_Quit();
 	exit(1);

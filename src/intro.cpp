@@ -59,6 +59,7 @@ void intro_main(long argc, char** argv)
 
 	if (!myscreen)
 		myscreen = new screen(1);
+
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 	grab_timer();
 	grab_keyboard();
@@ -75,21 +76,14 @@ void intro_main(long argc, char** argv)
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
 	mytext->write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0]);
 	myscreen->refresh();
+	delete gladiator;
+	delete gladdata;
+
 	if (show() < 0)
 	{
+		delete mytext;
 		cleanup();
 		return;
-	}
-
-	// Delay
-	reset_timer();
-	while (query_timer() < 80)
-	{
-		if (query_key_press_event())
-		{
-			cleanup();
-			return;
-		}
 	}
 
 	//gladdata = read_pixie_file("glad.pix");
@@ -105,8 +99,14 @@ void intro_main(long argc, char** argv)
 	gladiator->drawMix(100, 110, myscreen->viewob[0]);
 	myscreen->refresh();
 
+	delete gladdata;
+	delete gladiator;
+	delete bigfoot;
+	delete bigdata;
+
 	if (show() < 0)
 	{
+		delete mytext;
 		cleanup();
 		return;
 	}
@@ -117,6 +117,7 @@ void intro_main(long argc, char** argv)
 
 	if (show() < 0)
 	{
+		delete mytext;
 		cleanup();
 		return;
 	}
@@ -131,6 +132,7 @@ void intro_main(long argc, char** argv)
 
 	if (show() < 0)
 	{
+		delete mytext;
 		cleanup();
 		return;
 	}
@@ -177,6 +179,7 @@ void intro_main(long argc, char** argv)
 
 	if (show(SHOW_TIME+30) < 0)
 	{
+		delete mytext;
 		cleanup();
 		return;
 	}
@@ -190,6 +193,7 @@ void intro_main(long argc, char** argv)
 
 	if (show() < 0)
 	{
+		delete mytext;
 		cleanup();
 		return;
 	}
@@ -235,11 +239,11 @@ void intro_main(long argc, char** argv)
 	strcpy(message, "And many others!");
 	mytext->write_xy(2, 180, message, 230, myscreen->viewob[0]);
 
-
 	myscreen->refresh();
 
 	if (show(SHOW_TIME*4) < 0)
 	{
+		delete mytext;
 		cleanup();
 		return;
 	}
@@ -254,6 +258,8 @@ void intro_main(long argc, char** argv)
 	         set_palette_reg(i, red, green, blue);
 	  }
 	*/
+
+	delete mytext;
 	cleanup();
 }
 
@@ -264,9 +270,9 @@ int cleanup()
 	query_palette_reg((unsigned char)0, &red, &green, &blue); // Resets palette to read mode
 	release_timer();
 	release_keyboard();
-	//delete myscreen;
 	myscreen->clear();
 	myscreen->refresh();
+
 	for (i = 0; i<256; i++)
 	{
 		red = pal[i][0];

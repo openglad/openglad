@@ -24,7 +24,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen
-#include <malloc.h>
 #include <string>
 
 long quit(long arg1);
@@ -55,9 +54,9 @@ void init_input()
 	SDL_Joystick *js;
 
 	numjoy = SDL_NumJoysticks();
-	joy_numaxes = (int *)malloc(sizeof(int) * numjoy);
-	joy_startval = (int *)malloc(sizeof(int) * numjoy);
-	joy_numbuttons = (int *)malloc(sizeof(int) * numjoy);
+	joy_numaxes = new int[sizeof(int) * numjoy];
+	joy_startval = new int[sizeof(int) * numjoy];
+	joy_numbuttons = new int[sizeof(int) * numjoy];
 
 	for (i = 0; i < numjoy; i++)
 	{
@@ -68,19 +67,22 @@ void init_input()
 		listlength += SDL_JoystickNumAxes(js) * 2 + SDL_JoystickNumButtons(js);
 	}
 
-	key_list = (bool *)malloc(sizeof(bool) * listlength);
+	key_list = new bool[sizeof(bool) * listlength];
 
 	SDL_JoystickEventState(SDL_ENABLE);
 }
 
 void stop_input()
 {
-	free(key_list);
-	free(joy_numaxes);
-	free(joy_startval);
-	free(joy_numbuttons);
+	delete key_list;
+	delete joy_numaxes;
+	delete joy_startval;
+	delete joy_numbuttons;
 
 	key_list = NULL;
+	joy_numaxes = NULL;
+	joy_startval = NULL;
+	joy_numbuttons = NULL;
 }
 
 void get_input_events(bool type)

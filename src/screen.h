@@ -35,6 +35,7 @@ class screen : public video
 
 		void reset(short howmany);
 		~screen();
+		void cleanup(short);
 		void clear();
 		video * get_video_ob();
 		short query_passable(short x,short y,walker  *ob);

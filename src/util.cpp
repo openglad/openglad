@@ -24,7 +24,6 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen
-#include <malloc.h>
 #include <string>
 #include <sys/stat.h>
 

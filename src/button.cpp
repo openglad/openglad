@@ -105,6 +105,7 @@ vbutton::vbutton(long xpos, long ypos, long wide, long high,
 	xend = xloc + width;
 	yend = yloc + height;
 	vdisplay();
+	printf("Created button\n");
 }
 
 vbutton::vbutton() //for pointers
@@ -120,6 +121,8 @@ vbutton::~vbutton()
 	myscreen->draw_box(xloc-4,yloc-4,xend+4,yend+4,0,1,1);
 	if (mypixie)
 		delete mypixie;
+
+	printf("Deleted button\n");
 	/*
 	  release_mouse();
 	  myscreen->buffer_to_screen(xloc-4,yloc-4,xend + 4, yend+4);
@@ -135,7 +138,10 @@ vbutton::~vbutton()
 
 void vbutton::set_graphic(char family)
 {
+	if (mypixie)
+		delete mypixie;
 	mypixie = myscreen->myloader->create_pixieN(ORDER_BUTTON1, family);
+	printf("Set graphic\n");
 	width = mypixie->sizex;
 	height= mypixie->sizey;
 	xend = xloc + width;

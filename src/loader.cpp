@@ -796,16 +796,18 @@ loader::~loader(void)
 	for(i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
 		if(PIX(ORDER_TREASURE, FAMILY_INVULNERABLE_POTION) !=  i &&PIX(ORDER_TREASURE, FAMILY_SILVER_BAR) != i && PIX(ORDER_TREASURE, FAMILY_INVIS_POTION) != i && PIX(ORDER_TREASURE, FAMILY_FLIGHT_POTION) != i && PIX(ORDER_TREASURE, FAMILY_SPEED_POTION) != i)
 			if(graphics[i] != NULL) {
-				free(graphics[i]);
+				delete graphics[i];
 				graphics[i] = NULL;
 			}
 	}
+	delete graphics;
 
-	free(act_types);
-	free(stepsizes);
-	free(lineofsight);
-	free(damage);
-	free(fire_frequency);
+	delete animations;
+	delete act_types;
+	delete stepsizes;
+	delete lineofsight;
+	delete damage;
+	delete fire_frequency;
 }
 
 walker  *loader::create_walker(char order,
