@@ -1819,15 +1819,15 @@ short load_scenario(char * filename, screen * master)
 	if(!infile && scen_opened)
 	{
 		if(!(infile = scenpack.get_subfile(thefile)))
+		{
 			//buffers: uppercase the filename...
 			//buffers: original levels.001 file stores
 			//buffers: files in all uppercase letters
 			if((infile = scenpack.get_subfile(thefileupper)))
 				gotit=1;
-			else
-			{
-				gotit = 1;
-			}
+		}
+		else
+			gotit = 1;
 	}
 
 	if(gotit == 0 || !infile)
