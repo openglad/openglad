@@ -1927,7 +1927,7 @@ options::options()
   // Read the blobs of data ..
   for (i=0; i < 4; i++)
   {
-    fread(keys[i], 16 * sizeof(int), 1, infile);
+    fread(allkeys[i], 16 * sizeof(int), 1, infile);
     fread(prefs[i], 10, 1, infile);
     fread(&joys[i], sizeof(joyvalues), 1, infile);
   }
@@ -1998,7 +1998,7 @@ short options::save(viewscreen *viewp)
   // Write the blobs of data ..
   for (i=0; i < 4; i++)
   {
-    fwrite(keys[i], 16 * sizeof(int), 1, outfile);
+    fwrite(allkeys[i], 16 * sizeof(int), 1, outfile);
     fwrite(prefs[i], 10, 1, outfile);
     fwrite(&joys[i], sizeof(joyvalues), 1, outfile);    
   }
