@@ -1297,6 +1297,8 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	temp = NULL;
 	delete dude;
 	dude = NULL;
+	delete list;
+	list = NULL;
 
 	//buffers: since we pretty much always draw to the back buffer,
 	//buffers: we need to swap the buffers to see the changes

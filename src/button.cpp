@@ -122,7 +122,6 @@ vbutton::~vbutton()
 	if (mypixie)
 		delete mypixie;
 
-	printf("Deleted button\n");
 	/*
 	  release_mouse();
 	  myscreen->buffer_to_screen(xloc-4,yloc-4,xend + 4, yend+4);
@@ -141,7 +140,6 @@ void vbutton::set_graphic(char family)
 	if (mypixie)
 		delete mypixie;
 	mypixie = myscreen->myloader->create_pixieN(ORDER_BUTTON1, family);
-	printf("Set graphic\n");
 	width = mypixie->sizex;
 	height= mypixie->sizey;
 	xend = xloc + width;

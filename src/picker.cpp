@@ -260,6 +260,12 @@ void picker_quit()
 		}
 	}
 
+	for (i = 0; i < MAX_BUTTONS; i++)
+	{
+		if (allbuttons[i])
+			delete allbuttons[i];
+	}
+
 	delete mytext;
 	delete myscreen;
 	delete magepix;
@@ -776,8 +782,8 @@ long mainmenu(long arg1)
 				}
 			} // end of "OK" buttons
 		}
-
 	}
+	delete tempbuttons;
 	return retvalue;
 }
 
