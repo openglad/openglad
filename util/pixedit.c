@@ -127,7 +127,7 @@ int main(char argc, char **argv)
 						done = 1;
 						break;
 					case SDLK_LEFT:
-						if (frame > 2) frame--;
+						if (frame > 1) frame--;
 						break;
 					case SDLK_RIGHT:
 						if (frame < numframes) frame++;
