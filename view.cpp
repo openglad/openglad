@@ -41,12 +41,12 @@
 // get input
 void get_input_events();
 
+// Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
-//static 
-char key1[] = {
-  SDLK_UP, SDLK_PAGEUP, SDLK_RIGHT, SDLK_PAGEDOWN,  // movements
-  SDLK_DOWN, SDLK_END, SDLK_LEFT, SDLK_HOME,
-  SDLK_INSERT, SDLK_RETURN,                    // fire & special
+int key1[] = {
+  SDLK_KP8, SDLK_KP9, SDLK_KP6, SDLK_KP3,  // movements
+  SDLK_KP2, SDLK_KP1, SDLK_KP4, SDLK_KP7,
+  SDLK_KP0, SDLK_KP_ENTER,                    // fire & special
   SDLK_KP_PLUS,                          // switch guys
   SDLK_KP_MINUS,                         // change special
   SDLK_KP5,                                // Yell
@@ -55,8 +55,7 @@ char key1[] = {
   SDLK_F8,                                    // Cheat key
 };
 
-//static 
-char key2[] = {
+int key2[] = {
   SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
   SDLK_x, SDLK_z, SDLK_a, SDLK_q,
   SDLK_LCTRL, SDLK_LALT,                    // fire & special
@@ -68,8 +67,7 @@ char key2[] = {
   SDLK_F5,                                 // Cheat key
 };
 
-//static 
-char key3[] = {
+int key3[] = {
   SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,  // movements
   SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
   SDLK_SPACE, SDLK_SEMICOLON,                    // fire & special
@@ -81,8 +79,7 @@ char key3[] = {
   SDLK_F7,                                 // Cheat key
 };
 
-//static
-char key4[] = {
+int key4[] = {
   SDLK_t, SDLK_y, SDLK_h, SDLK_n,  // movements
   SDLK_b, SDLK_v, SDLK_f, SDLK_r,
   SDLK_5, SDLK_6,                    // fire & special
@@ -97,15 +94,15 @@ char key4[] = {
 // This is for saving/loading the key preferences
 long save_key_prefs();
 long load_key_prefs();
-unsigned int get_keypress();
+// Zardus: no longer unsigned
+int get_keypress();
 #define KEY_FILE "keyprefs.dat"
 
 // This only exists so we can use the array constructor
 //   for our prefs object (grumble grumble)
-//static
-char *normalkeys[] = {key1,key2,key3,key4};
-//static
-char keys[4][16];
+// Zardus: these used to be static chars too
+int *normalkeys[] = {key1,key2,key3,key4};
+int keys[4][16];
 
 // ** OUR prefs object! **
 static options theprefs;
@@ -461,8 +458,10 @@ short viewscreen::input(char inputthing)
 		  mykeys[KEY_DOWN_LEFT], mykeys[KEY_DOWN], mykeys[KEY_DOWN_RIGHT],
 		  mykeys[KEY_FIRE], mykeys[KEY_SWITCH], mykeys[KEY_SPECIAL], query_key());
 
-  if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
-    options_menu();
+//  if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
+//  Temporarily:
+    if (inputkeyboard[SDLK_7])
+ 	options_menu();
 
 
   // TAB (ALONE) WILL SWITCH CONTROL TO THE NEXT GUY ON MY TEAM
@@ -862,11 +861,13 @@ short viewscreen::input(char inputthing)
          else
            control->shifter_down = 0;
 
-// Testing ..
-if (inputkeyboard[SDLK_r])
-{
-  control->stats->right_walk();
-}
+/* Danged testing code confused the hell out of me!! (Zardus) Who's idea was to put this in?
+ * // Testing ..
+ 	if (inputkeyboard[SDLK_r])
+	{
+	  control->stats->right_walk();
+	}
+*/
 
          if (inputkeyboard[mykeys[KEY_SPECIAL]])
          {
@@ -1902,8 +1903,12 @@ options::options()
   int i;
   char *datap;
   FILE *infile;
-  
-  memcpy(*keys, *normalkeys, 64); // Allocate our normal keys
+  memcpy(*keys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
+
+  // I know this isn't the most ideal thing to do, but I can't get anything else working
+  //for (i = 0; i < 16; i++)
+//	keys[1][i] = key1[i];
+
   // Set up preference defaults
   for(i=0; i<4; i++)
   {
@@ -1943,7 +1948,7 @@ short options::load(viewscreen *viewp)
     short prefnum = viewp->mynum;
     // Yes, we are ACTUALLY COPYING the data
     memcpy(viewp->prefs, prefs[prefnum], 10);
-    memcpy(viewp->mykeys, keys[prefnum], 16);
+    memcpy(viewp->mykeys, keys[prefnum], 16 * sizeof(int));
     viewp->joyaligned = joys[prefnum].joyaligned;
     viewp->joyleft = joys[prefnum].joyleft;
     viewp->joyright = joys[prefnum].joyright;
@@ -2162,10 +2167,8 @@ long viewscreen::set_key_prefs()
 
 // Waits for a key to be pressed and then released ..
 // returns this key.
-unsigned int get_keypress()
+int get_keypress()
 {
-  long dumbcount;
-
   clear_key_press_event(); // clear any previous key
   while (!query_key_press_event())
 	  get_input_events();

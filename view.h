@@ -112,7 +112,7 @@ class viewscreen
          char infotext[80]; // text to display
          short mynum;     // # to id the viewscreen, 0, 1, 2 ...
          short my_team;         // used for Player-v-Player mode
-         char * mykeys;     // holds the keyboard mapping
+         int * mykeys;     // holds the keyboard mapping
          walker  *control;  // the user
          short xpos,ypos;
          short topx, topy;
