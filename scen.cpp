@@ -916,6 +916,7 @@ void set_screen_pos(screen *myscreen, long x, long y)
   event = 1;
 }
 
+/* buffers: we have a new uppercase in input.cpp (openglad uses it)
 void uppercase(char *somestring)
 {
   long i;
@@ -924,7 +925,7 @@ void uppercase(char *somestring)
    if (somestring[i] > 96)
     somestring[i] -= 32;
 
-}
+}*/
 
 /* buffers: we have a new one in input.cpp (openglad uses it)
 void lowercase(char *somestring)
@@ -1016,7 +1017,9 @@ long save_map_file(char  * filename, screen *master)
 //  char  *newpic;
   char fullpath[80];
   FILE  *outfile;
-  char my_dir[80] = "e:\\files\\glad\\pix\\";
+  //buffers: we want to save grid files to pix/
+  //buffers: original glad's grid files were always handle as pixies
+  char my_dir[80] = "pix/";
   char tempdir[80];
   char buffer[200];
 
@@ -1070,6 +1073,7 @@ long load_new_grid(screen *master)
   if (strlen(tempstring)) {
   	//buffers: our grid files are all lowercase...
 	lowercase(tempstring);
+
    strcpy(grid_name, tempstring);
   }
 
