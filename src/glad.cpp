@@ -110,8 +110,8 @@ void glad_main(screen *myscreen, long playermode)
 		exit(1);
 #endif
 
+	// Zardus: PORT: fade out
 	clear_keyboard();
-	// Zardus: PORT: fade needs to be here before it clears the screen buffer
 	myscreen->fadeblack(0);
 
 	if (myscreen)
@@ -122,12 +122,6 @@ void glad_main(screen *myscreen, long playermode)
 		myscreen = new screen(numviews);
 	myscreen->clearbuffer();
 
-	// Fade out
-	/* buffers: PORT: commenting fade code
-	for (i=0;i<256;i++)
-	       set_palette_reg((unsigned char) i,0,0,0);
-	*/
-
 	// Draw rainbow background
 	//for (i = 0; i<320; i++)
 	//  for (j = 0; j < 200; j++)
@@ -137,28 +131,13 @@ void glad_main(screen *myscreen, long playermode)
 	// Load the default saved-game ..
 	load_saved_game("save0", myscreen); // over-rides current.fss ..
 
+	// Zardus: PORT: doesn't seem to be neccessary
 	// Prepare screen for fade in
 	//myscreen->draw_panels(myscreen->numviews);
 
 	//*******************************
-	// Fade in loop
+	// Fade in
 	//*******************************
-	/* Zardus: PORT: fade code not implemented yet
-	  for(j=0;j<64;j++)
-	  {
-	         for(i=0;i<256;i++)
-	         {
-	                query_palette_reg((unsigned char) i,&red,&green,&blue);
-	                if (red < myscreen->ourpalette[i*3]) red++;
-	                if (green < myscreen->ourpalette[i*3+1]) green++;
-	                if (blue < myscreen->ourpalette[i*3+2]) blue++;
-	                set_palette_reg( (char) i,(char) red,(char) green,(char) blue);
-	         }
-	  }
-	*/
-
-	// Set palette to selected ..
-	adjust_palette(myscreen->newpalette, myscreen->viewob[0]->prefs[PREF_GAMMA]);
 	myscreen->input(0);
 	myscreen->redraw();
 	myscreen->fadeblack(1);

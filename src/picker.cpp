@@ -605,24 +605,8 @@ long mainmenu(long arg1)
 	clear_keyboard();
 	reset_timer();
 	while (query_timer() < 1);
+	// Zardus: PORT: fade from black
 	myscreen->fadeblack(1);
-
-	/* //buffers: PORT: we need to write new fade code later
-	  for(j=0;j<64;j++)
-	  {
-	    reset_timer();
-	    while (query_timer() < 1);
-	 
-	    for(i=0;i<256;i++)
-	    {
-	      query_palette_reg((unsigned char)i,&red,&green,&blue);
-	      if (red < mypalette[i*3]) red++;
-	      if (green < mypalette[i*3+1]) green++;
-	      if (blue < mypalette[i*3+2]) blue++;
-	      set_palette_reg((unsigned char)i,red,green,blue);
-	    }
-	  } // end of fade-in
-	*/ //buffers: PORT:
 
 	grab_mouse();
 
@@ -3002,21 +2986,9 @@ long go_menu(long arg1)
 	//*******************************
 	// Fade out from MENU loop
 	//*******************************
-
-	for(j=0;j<64;j++)
-	{
-		for(i=0;i<256;i++)
-		{
-			query_palette_reg((unsigned char) i,&red,&green,&blue);
-			if (red)
-				red--;
-			if (green)
-				green--;
-			if (blue)
-				blue--;
-			set_palette_reg( (char) i,(char) red,(char) green,(char) blue);
-		}
-	}
+	// Zardus: PORT: fade out from menu code now in glad.cpp
+	//clear_keyboard();
+	//myscreen->fadeblack(0);
 
 	if (current_guy)
 		delete current_guy;
@@ -3030,36 +3002,22 @@ long go_menu(long arg1)
 	//*******************************
 	// Fade out from ACTION loop
 	//*******************************
-	// Zardus: PORT: fade code not implemented yet
-	/*for(j=0;j<64;j++)
-	{
-	  for(i=0;i<256;i++)
-	  {
-	     query_palette_reg((unsigned char) i,&red,&green,&blue);
-	     if (red) red--;
-	     if (green) green--;
-	     if (blue) blue--;
-	     set_palette_reg( (char) i,(char) red,(char) green,(char) blue);
-	  }
-	}
+	// Zardus: PORT: new fade code
+	myscreen->fadeblack(0);
 
+	// Zardus: PORT: doesn't seem to be neccessary
 	myscreen->clearbuffer();
-	myscreen->clearscreen(); 
+	myscreen->clearscreen();
+
+	// Zardus: PORT: they had this in just so that the pallettes got reset to
+	// normal. It actually faded in a black screen, since fading in the menu
+	// would mean messing with a bunch of things. Maybe we'll do the fade in
+	// menu later, but for now we'll keep it like they had
 	//*******************************
 	// Fade in to MENU loop
 	//*******************************
-	for(j=0;j<64;j++)
-	{
-	  for(i=0;i<256;i++)
-	  {
-	    query_palette_reg((unsigned char) i,&red,&green,&blue);
-	    if (red < myscreen->ourpalette[i*3]) red++;
-	    if (green < myscreen->ourpalette[i*3+1]) green++;
-	    if (blue < myscreen->ourpalette[i*3+2]) blue++;
-	    set_palette_reg( (char) i,(char) red,(char) green,(char) blue);
-	  }
-	}*/
-
+	// Zardus: PORT: new fade code
+	//myscreen->fadeblack(1);
 
 	grab_mouse();
 
