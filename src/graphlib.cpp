@@ -57,7 +57,6 @@ unsigned char  * read_pixie_file(const char  * filename)
 	unsigned char  *newpic;
 	FILE  *infile = NULL;
 	enum {notfound, file, pack} gotit = notfound;
-	char * thefile = new char[80];
 
 	// Open the pixie-pack, if not already done ...
 	if (!tempack.opened())
@@ -70,16 +69,11 @@ unsigned char  * read_pixie_file(const char  * filename)
 		}
 	}
 
-	strcpy(thefile, filename);
-	lowercase(thefile);
-
 	// Zardus: try to find file using open_misc_file, then resort to graphics.001
-	if ((infile = open_misc_file(thefile, "pix/")) || (infile = open_misc_file(thefile, "scen/")))
+	if ((infile = open_misc_file((char *)filename, "pix/")) || (infile = open_misc_file((char *)filename, "scen/")))
 		gotit = file;
-	else if (tempack.opened() && (infile=tempack.get_subfile(thefile)))
+	else if (tempack.opened() && (infile=tempack.get_subfile((char *)filename)))
 		gotit = pack;
-
-	delete thefile;
 
 	if(gotit==notfound)
 	{
