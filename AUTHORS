@@ -11,4 +11,5 @@ Contributers:
 Michael Bonfils <mom32@murlock.org> - created Visual C++ makefile
 Erik Hermansen <erikh2000@yahoo.com> and Mike Rimer - fading code
 Kari Pahula <kaolpa@utu.fi> - autoconf and optimization work, new config file handling
-Niall O'Higgins - autgen script
+Niall O'Higgins - autgen script, crossplatform work
+David Storey - crossplatform work
