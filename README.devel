@@ -18,5 +18,8 @@ Speaking of keys, the in-game controls don't seem to work. I got my char
 to move up-right by pressing tab, and that wasn't right, and sometimes 9
 opens the menu and sometimes it doesn't. Pretty weird.
 
+I found that the ingame control messup problem is that the key prefs are
+chars and they seem to wrap when a key value is > 256.
+
 Oh, and I commented out where it calls the intro in glad.cpp so I could
 test stuff faster. If its needed, uncomment it.
