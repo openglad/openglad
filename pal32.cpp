@@ -28,7 +28,7 @@ short load_and_set_palette(char *filename, char *newpalette)
 {
   FILE *infile;
   short i;
-  union REGS dregs;
+  //buffers: PORT: doesnt compile: union REGS dregs;
 
 
   if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
@@ -46,12 +46,12 @@ short load_and_set_palette(char *filename, char *newpalette)
   fclose(infile);
 
   //lets see if we can do the above with short386
-  dregs.h.ah = 0x10;
-  dregs.h.al = 0x12;
-  dregs.x.ebx = 0;
-  dregs.x.ecx = 256;
-  dregs.x.edx = FP_OFF(temppal);
-  int386(0x10,&dregs,&dregs);
+  //buffers: PORT: dregs.h.ah = 0x10;
+  //buffers: PORT: dregs.h.al = 0x12;
+  //buffers: PORT: dregs.x.ebx = 0;
+  //buffers: PORT: dregs.x.ecx = 256;
+  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
+  //buffers: PORT: int386(0x10,&dregs,&dregs);
   // Copy back the palette info ..
   for (i=0; i < 768; i++)
    newpalette[i] = temppal[i];
@@ -67,15 +67,15 @@ short load_and_set_palette(char *filename, char *newpalette)
 //
 short save_palette(char * whatpalette)
 {
-  union REGS dregs;
+  //buffers: PORT: doesn't compile: union REGS dregs;
   short i;
 
-  dregs.h.ah = 0x10;
-  dregs.h.al = 0x17;
-  dregs.x.ebx = 0;
-  dregs.x.ecx = 256;
-  dregs.x.edx = FP_OFF(temppal);
-  int386(0x10,&dregs,&dregs);
+  //buffers: PORT: dregs.h.ah = 0x10;
+  //buffers: PORT: dregs.h.al = 0x17;
+  //buffers: PORT: dregs.x.ebx = 0;
+  //buffers: PORT: dregs.x.ecx = 256;
+  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
+  //buffers: PORT: int386(0x10,&dregs,&dregs);
   // Copy back the palette info ..
   for (i=0; i < 768; i++)
    whatpalette[i] = temppal[i];
@@ -122,19 +122,19 @@ short load_palette(char *filename, char *newpalette)
 short set_palette(char *newpalette)
 {
   short i;
-  union REGS dregs;
+  //buffers: PORT: union REGS dregs;
 
 
   // Copy over the palette info ..
   for (i=0; i < 768; i++)
    temppal[i] = newpalette[i];
 
-  dregs.h.ah = 0x10;
-  dregs.h.al = 0x12;
-  dregs.x.ebx = 0;
-  dregs.x.ecx = 256;
-  dregs.x.edx = FP_OFF(temppal);
-  int386(0x10,&dregs,&dregs); 
+  //buffers: PORT: dregs.h.ah = 0x10;
+  //buffers: PORT: dregs.h.al = 0x12;
+  //buffers: PORT: dregs.x.ebx = 0;
+  //buffers: PORT: dregs.x.ecx = 256;
+  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
+  //buffers: PORT: int386(0x10,&dregs,&dregs); 
   //note this code duplicates part of load and set, and could probly be combined somehow
   return 1;
 
@@ -151,7 +151,7 @@ void adjust_palette(char *whichpal, short amount)
   short i;
   short tempcol;
   short multiple = (short) (amount * 10);
-  union REGS dregs;
+  //buffers: PORT: union REGS dregs;
 
   // Copy whichpal to temppal for setting ..
   for (i=0; i < 768; i++)
@@ -168,12 +168,12 @@ void adjust_palette(char *whichpal, short amount)
    temppal[i] = (char) tempcol;
   }
 
-  dregs.h.ah = 0x10;
-  dregs.h.al = 0x12;
-  dregs.x.ebx = 0;
-  dregs.x.ecx = 256;
-  dregs.x.edx = FP_OFF(temppal);
-  int386(0x10,&dregs,&dregs); 
+  //buffers: PORT: dregs.h.ah = 0x10;
+  //buffers: PORT: dregs.h.al = 0x12;
+  //buffers: PORT: dregs.x.ebx = 0;
+  //buffers: PORT: dregs.x.ecx = 256;
+  //buffers: PORT: dregs.x.edx = FP_OFF(temppal);
+  //buffers: PORT: int386(0x10,&dregs,&dregs); 
 
 }
 
@@ -188,7 +188,7 @@ void cycle_palette(char *newpalette, short start, short end, short shift)
   short newval;
   short colorspot;
   short begin = (short) (start*3);
-  union REGS dregs;
+  //buffers: PORT: union REGS dregs;
 
   // Copy over the palette info ..
   for (i=0; i < 768; i+=3)
@@ -212,12 +212,12 @@ void cycle_palette(char *newpalette, short start, short end, short shift)
    }
   }
 
-  dregs.h.ah = 0x10;
-  dregs.h.al = 0x12;
-  dregs.x.ebx = start;
-  dregs.x.ecx = length+1;
-  dregs.x.edx = FP_OFF(temppal) + begin;
-  int386(0x10,&dregs,&dregs);
+  //buffers: PORT: dregs.h.ah = 0x10;
+  //buffers: PORT: dregs.h.al = 0x12;
+  //buffers: PORT: dregs.x.ebx = start;
+  //buffers: PORT: dregs.x.ecx = length+1;
+  //buffers: PORT: dregs.x.edx = FP_OFF(temppal) + begin;
+  //buffers: PORT: int386(0x10,&dregs,&dregs);
   //hopefully the fp_off + begin will work ok
   // Return the modified palette
   for (i=0; i < 768; i++)
@@ -229,11 +229,11 @@ void query_palette_reg(unsigned char index, unsigned char &red, unsigned char &g
 {
  unsigned char tred, tgreen, tblue;
 
-  outp(PAL_MASK,0xFF);
-  outp(PAL_REG_RD,index);
-  tred   = (unsigned char) inp(PAL_DATA);
-  tgreen = (unsigned char) inp(PAL_DATA);
-  tblue  = (unsigned char) inp(PAL_DATA);
+  //buffers: PORT: outp(PAL_MASK,0xFF);
+  //buffers: PORT: outp(PAL_REG_RD,index);
+  //buffers: PORT: tred   = (unsigned char) inp(PAL_DATA);
+  //buffers: PORT: tgreen = (unsigned char) inp(PAL_DATA);
+  //buffers: PORT: tblue  = (unsigned char) inp(PAL_DATA);
   
  red = tred; green = tgreen; blue = tblue;
 }
@@ -241,11 +241,11 @@ void query_palette_reg(unsigned char index, unsigned char &red, unsigned char &g
 void set_palette_reg(unsigned char index,unsigned char red,unsigned char green,unsigned char blue)
 {
 
-  outp(PAL_MASK,0xff);
-  outp(PAL_REG_WR,index);
-  outp(PAL_DATA, red);
-  outp(PAL_DATA, green);
-  outp(PAL_DATA, blue);
+  //buffers: PORT: outp(PAL_MASK,0xff);
+  //buffers: PORT: outp(PAL_REG_WR,index);
+  //buffers: PORT: outp(PAL_DATA, red);
+  //buffers: PORT: outp(PAL_DATA, green);
+  //buffers: PORT: outp(PAL_DATA, blue);
 
 }
 
