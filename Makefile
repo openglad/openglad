@@ -10,7 +10,7 @@ openglad: $(GLADFILES)
 	g++ $(CFLAGS) -o openglad $(GLADFILES)
 
 openscen: $(SCENFILES)
-	g++ $(CFLAGS) -DSCEN -o openscen $(SCENFILES)
+	g++ $(CFLAGS) -DOPENSCEN -o openscen $(SCENFILES)
 
 clean:
 	rm -f *.o

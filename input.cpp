@@ -119,7 +119,7 @@ void handle_events(SDL_Event event)
 			break;
 		case SDL_QUIT:
 			//buffers: PORT: the quit function is not avialiable to the scen app so we don't try to call it if we compile scen
-			#ifndef SCEN
+			#ifndef OPENSCEN
 				quit(1);
 			#endif
 			break;
