@@ -715,10 +715,13 @@ Screen::~Screen()
 
 void Screen::Quit()
 {
-	SDL_FreeSurface( screen );
-	SDL_FreeSurface( tempo );
+	if(screen)
+		SDL_FreeSurface( screen );
+	
+	//buffers:if(tempo)
+	//buffers:	SDL_FreeSurface( tempo );
 	screen=NULL;
-	tempo=NULL;
+	//buffers: tempo=NULL;
 }
 
 void Screen::SaveBMP( char *filename )

@@ -123,7 +123,10 @@ video::video()
 
 video::~video()
 {
+	E_Screen->Quit();
+	delete E_Screen;
 	SDL_FreeSurface(screen);
+	SDL_FreeSurface(fontbuffer);
 	SDL_Quit();
 }
 
@@ -189,7 +192,6 @@ void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, lo
 	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
 	long ylength = y2 - y1 + 1;
 	long i;
-
 
 	if (!filled)          // Hollow box
 	{
@@ -406,16 +408,6 @@ void video::pointb(int offset, unsigned char color)
 //buffers: this func originally drew directly to the screen
 void video::hor_line(long x, long y, long length, unsigned char color)
 {
-	/* buffers:
-		int i;
-		for (i = 0; i < length; i++)
-		{
-			point (x + i, y, color);
-		}
-	 
-		SDL_UpdateRect(screen,x,y,length,0);
-	*/
-	//buffers: we always want to draw to the back buffer now
 	hor_line(x,y,length,color,1);
 }
 
@@ -429,15 +421,10 @@ void video::hor_line(long x, long y, long length, unsigned char color, long tobu
 		return;
 	}
 
-	//buffers: PORT: num = x + (VIDEO_WIDTH*y);
+	clearfontbuffer(x,y,length,1);
+	
 	for (i = 0; i < length; i++)
-	{
 		pointb(x+i,y,color);
-
-		//buffers: PORT: if (num>0 && num<VIDEO_SIZE)
-		//buffers: PORT: videobuffer[num] = color;
-		//buffers: PORT num ++;
-	}
 }
 
 
@@ -445,15 +432,6 @@ void video::hor_line(long x, long y, long length, unsigned char color, long tobu
 // buffers: this func originally drew directly to the screen
 void video::ver_line(long x, long y, long length, unsigned char color)
 {
-	/* buffers:
-		int i;
-	 
-		for (i = 0; i < length; i++)
-		{
-			point (x, y + i, color);
-		}
-	*/
-
 	//buffers: we always want to draw to the back buffer now
 	ver_line(x,y,length,color,1);
 }
@@ -468,15 +446,10 @@ void video::ver_line(long x, long y, long length, unsigned char color, long tobu
 		return;
 	}
 
-	//buffers: PORT: num = x + (VIDEO_WIDTH*y);
+	clearfontbuffer(x,y,1,length);
+	
 	for (i = 0; i < length; i++)
-	{
 		pointb(x,y+i,color);
-
-		//buffers: PORT: if (num>0 && num<VIDEO_SIZE)
-		//buffers: PORT:	videobuffer[num] = color;
-		//buffers: POT: num += VIDEO_WIDTH;
-	}
 }
 
 
