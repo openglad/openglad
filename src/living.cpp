@@ -566,13 +566,15 @@ short living::check_special()
 				{
 					enemylist = screenp->find_foes_in_range(screenp->oblist,
 					                                        110, &howmany, this);
-					while(enemylist)
+					// Zardus: TAG: this seems to just delete the list. lets use delete_list
+					/*while(enemylist)
 					{
 						templink=enemylist;
 						enemylist = enemylist->next;
 						delete templink;
 						templink = NULL;
-					}
+					}*/
+					delete_list(enemylist);
 
 					if (howmany < 3)
 						return 0;
@@ -589,6 +591,7 @@ short living::check_special()
 
 				enemylist = screenp->find_foes_in_range(screenp->oblist,
 				                                        myrange, &howmany, this);
+				delete_list(enemylist);
 				if (howmany < 1)
 					return 0;
 				else
@@ -600,13 +603,16 @@ short living::check_special()
 			howmany = 0;
 			enemylist = screenp->find_foes_in_range(screenp->oblist,
 			                                        110, &howmany, this);
-			while(enemylist)
+
+			// Zardus: TAG: lets use delete_list here too
+			/*while(enemylist)
 			{
 				templink=enemylist;
 				enemylist = enemylist->next;
 				delete templink;
 				templink = NULL;
-			}
+			}*/
+			delete_list(enemylist);
 
 			if (howmany < 1) //  away from anybody ..
 				return 1;
@@ -624,13 +630,17 @@ short living::check_special()
 			{
 				enemylist = screenp->find_friends_in_range(screenp->oblist,
 				            60, &howmany, this);
-				while(enemylist)
+
+				// Zardus: TAG: lets use delete_list here as well
+				/*while(enemylist)
 				{
 					templink=enemylist;
 					enemylist = enemylist->next;
 					delete templink;
 					templink = NULL;
-				}
+				}*/
+
+				delete_list(enemylist);
 				if (howmany > 1) // other than ourselves?
 				{
 					shifter_down = 0; // we're HEALING
@@ -652,13 +662,15 @@ short living::check_special()
 			howmany = 0;
 			enemylist = screenp->find_foes_in_range(screenp->oblist,
 			                                        5*GRID_SIZE, &howmany, this);
-			while(enemylist)
+			// Zardus: TAG: delete_list strikes again!
+			/*while(enemylist)
 			{
 				templink=enemylist;
 				enemylist = enemylist->next;
 				delete templink;
 				templink = NULL;
-			}
+			}*/
+			delete_list(enemylist);
 
 			if (howmany < 1) //  away from anybody ..
 				return 1;      //  so tunnel

@@ -144,6 +144,7 @@ short effect::act()
 			setxy( (short)( xpos+xd ), (short) (ypos+yd) );
 			foelist = screenp->find_foe_weapons_in_range(
 			              screenp->oblist, sizex, &temp, this);
+			here = foelist;
 			while (foelist)  // first weapons
 			{
 				stats->hitpoints -= foelist->ob->damage;
@@ -151,8 +152,10 @@ short effect::act()
 				foelist->ob->death();
 				foelist = foelist->next;
 			}
+			delete_list(here);
 			foelist = screenp->find_foes_in_range(
 			              screenp->oblist, sizex, &temp, this);
+			here = foelist;
 			while (foelist) // second enemies
 			{
 				stats->hitpoints -= foelist->ob->damage;
@@ -160,6 +163,7 @@ short effect::act()
 				dead = 0;
 				foelist = foelist->next;
 			}
+			delete_list(here);
 			if ( (stats->hitpoints <= 0) || (lifetime-- < 0) )
 			{
 				dead = 1;
@@ -255,6 +259,7 @@ short effect::act()
 			setxy((short) (xpos+xd), (short) (ypos+yd) );
 			foelist = screenp->find_foe_weapons_in_range(
 			              screenp->oblist, sizex*2, &temp, this);
+			here = foelist;
 			while (foelist)  // first weapons
 			{
 				stats->hitpoints -= foelist->ob->damage;
@@ -262,8 +267,10 @@ short effect::act()
 				foelist->ob->death();
 				foelist = foelist->next;
 			}
+			delete_list(here);
 			foelist = screenp->find_foes_in_range(
 			              screenp->oblist, sizex, &temp, this);
+			here = foelist;
 			while (foelist) // second enemies
 			{
 				stats->hitpoints -= foelist->ob->damage;
@@ -271,6 +278,7 @@ short effect::act()
 				dead = 0;
 				foelist = foelist->next;
 			}
+			delete_list(here);
 			if ( (stats->hitpoints <= 0) || (lifetime-- < 0) )
 			{
 				dead = 1;
@@ -357,6 +365,7 @@ short effect::act()
 			// Hit any nearby foes (not friends, for now)
 			foelist = screenp->find_foes_in_range(
 			              screenp->oblist, sizex, &temp, this);
+			here = foelist;
 			while (foelist) //
 			{
 				if (hits(xpos, ypos, sizex, sizey, // this is the cloud
@@ -368,6 +377,7 @@ short effect::act()
 				} // end of actual hit
 				foelist = foelist->next;
 			}
+			delete_list(here);
 			// Are we performing some action?
 			if (stats->commandlist)
 				temp = stats->do_command();
@@ -429,7 +439,10 @@ short effect::act()
 						{
 							newob = screenp->add_ob(ORDER_FX, FAMILY_CHAIN);
 							if (!newob)
+							{
+								delete_list(foelist);
 								return 0; // failsafe
+							}
 							newob->owner = owner;  // our caster
 							newob->leader = here->ob; // guy to attack
 							newob->stats->level = stats->level;
@@ -441,15 +454,18 @@ short effect::act()
 						here = here->next;
 					} // end of loop for nearby foes we found
 				} // end of check for nearby foes
+
 				// Clean up our list .. ?
-				here = foelist->next;
+				// Zardus: TAG: nah, lets use delete_list
+				/*here = foelist->next;
 				while (here)
 				{
 					delete foelist;
 					foelist = here;
 					here = here->next;
 				}
-				delete foelist;
+				delete foelist;*/
+				delete_list(foelist);
 				dead = 1;
 				death();
 				return 1;
@@ -624,6 +640,7 @@ short effect::death()
 				} // end of valid target
 				here = here->next;
 			} // end of cycle through scare list
+			delete_list(scarelist);
 			break;  // end of ghost scare
 		case FAMILY_BOMB: // Burning bomb
 			if (!owner || owner->dead)

@@ -537,7 +537,13 @@ void statistics::hit_response(walker  *who)
 				newlist = myscreen->find_foes_in_range(myscreen->oblist,
 				                                       200, &howmany, controller);
 				// Delete the list to save memory, not needed now
-				/* This clean-up code is broken .. why?
+				/* This clean-up code is broken .. why? <- Zardus says "Because you're trying to delete
+											an object that's in use! DUH!"
+									   Zardus then adds "sorry about that. fixing 200000
+									   		     of these leaks in walker.cpp
+											     makes one a bit cranky. here,
+											     you can use my delete_list
+											     function."
 				if (howmany && newlist)
 				{
 				  here = newlist->next;
@@ -550,6 +556,7 @@ void statistics::hit_response(walker  *who)
 				  delete newlist;
 				}
 				*/
+				delete_list(newlist);
 				if (howmany) // foes within range?
 				{
 					if (possible_specials[3]) // can we summon illusion?
@@ -642,7 +649,7 @@ void statistics::hit_response(walker  *who)
 
 void statistics::yell_for_help(walker *foe)
 {
-	oblink *helplist;
+	oblink *helplist, *here;
 	short howmany;
 	long deltax, deltay;
 	char message[80];
@@ -650,16 +657,18 @@ void statistics::yell_for_help(walker *foe)
 	controller->yo_delay += 80;
 	helplist = controller->screenp->find_friends_in_range(
 	               controller->screenp->oblist, 160, &howmany, controller);
-	while (helplist)
+	here = helplist;
+	while (here)
 	{
-		helplist->ob->leader = controller;
-		if (foe != helplist->ob->foe)
-			helplist->ob->stats->last_distance = helplist->ob->stats->current_distance = 32000;
-		helplist->ob->foe = foe;
-		//if (helplist->ob->query_act_type() != ACT_CONTROL)
-		//  helplist->ob->stats->force_command(COMMAND_FOLLOW, 80, 0, 0);
-		helplist = helplist->next;
+		here->ob->leader = controller;
+		if (foe != here->ob->foe)
+			here->ob->stats->last_distance = here->ob->stats->current_distance = 32000;
+		here->ob->foe = foe;
+		//if (here->ob->query_act_type() != ACT_CONTROL)
+		//  here->ob->stats->force_command(COMMAND_FOLLOW, 80, 0, 0);
+		here= here->next;
 	}
+	delete_list(helplist);
 	deltax = (controller->xpos - foe->xpos);
 	if (deltax)
 		deltax = (deltax / abs(deltax));
@@ -1156,6 +1165,7 @@ short statistics::walk_to_foe()
 					last_distance = controller->distance_to_ob(foe);
 				}
 				controller->init_fire();
+				delete_list(foelist);
 				return 1;
 			}
 			else // our foe has moved; we need a new one

@@ -1814,6 +1814,8 @@ short walker::special()
 						}
 						here = here->next;
 					}
+					delete newlist;
+					newlist = NULL;
 					break; // end of whirlwind attack
 				case 4:  // Disarm opponent
 					if (busy)
@@ -1825,17 +1827,19 @@ short walker::special()
 					if (!newlist)
 						return 0;
 					generic = 0;
-					while (newlist)
+					here = newlist;
+					while (here)
 					{
-						if (newlist->ob)
+						if (here->ob)
 						{
-							if (random(stats->level) >= random(newlist->ob->stats->level))
-								newlist->ob->busy += 6*(stats->level -
-								                        newlist->ob->stats->level + 1);
+							if (random(stats->level) >= random(here->ob->stats->level))
+								here->ob->busy += 6*(stats->level -
+								                        here->ob->stats->level + 1);
 							generic = 1; // disarmed at least one guy
 						}
-						newlist = newlist->next;
+						here = here->next;
 					}
+					delete_list(newlist);
 					if (generic)
 					{
 						if (on_screen())
@@ -1878,7 +1882,10 @@ short walker::special()
 								here = here->next;
 							}
 							if (!didheal)
+							{
+								delete_list(newlist);
 								return 0; // everyone was healthy; don't charge us
+							}
 							else
 							{
 								// Inform screen/view to print a message ..
@@ -1891,10 +1898,17 @@ short walker::special()
 								// Play sound ...
 								if (on_screen())
 									screenp->soundp->play_sound(SOUND_HEAL);
+
+								delete_list(newlist);
+								newlist = NULL;
 							}  // end of did heal guys case
 						}
 						else // no friends, so don't charge us
+						{
+							delete_list(newlist);
 							return 0;
+						}
+						if (newlist) delete_list(newlist);
 						break;
 					}  // end of normal heal
 					else  // else do mystic mace
@@ -2237,12 +2251,15 @@ short walker::special()
 						//screenp->buffer_to_screen(0, 0, 320, 200);
 						newlist = screenp->find_friends_in_range(
 						              screenp->oblist, 30000, &howmany, this);
-						while (newlist)
+						here = newlist;
+						while (here)
 						{
-							if (newlist->ob)
-								newlist->ob->bonus_rounds += generic;
-							newlist = newlist->next;
+							if (here->ob)
+								here->ob->bonus_rounds += generic;
+							here = here->next;
 						}
+						delete_list(newlist);
+						newlist = NULL;
 					}
 					break;
 				case 4:  // Energy wave
@@ -2274,7 +2291,10 @@ short walker::special()
 					{
 						newob = screenp->add_ob(ORDER_FX, FAMILY_EXPLOSION);
 						if (!newob)
+						{
+							delete_list(newlist);
 							return 0; // failsafe
+						}
 						newob->owner = this;
 						newob->team_num = team_num;
 						newob->stats->level = stats->level;
@@ -2288,6 +2308,7 @@ short walker::special()
 						stats->magicpoints -= generic;
 						here = here->next;
 					}
+					delete_list(newlist);
 					break; // end of burst enemies
 			}
 			break; // end of mage
@@ -2389,7 +2410,10 @@ short walker::special()
 						{
 							newob = screenp->add_ob(ORDER_FX, FAMILY_EXPLOSION);
 							if (!newob)
+							{
+								delete_list(newlist);
 								return 0; // failsafe
+							}
 							newob->owner = this;
 							newob->team_num = team_num;
 							newob->stats->level = stats->level;
@@ -2404,6 +2428,7 @@ short walker::special()
 							stats->magicpoints -= generic;
 							here = here->next;
 						}
+						delete_list(newlist);
 					} // end of heartburst, standard case
 					else // do chain-lightning
 					{
@@ -2443,6 +2468,8 @@ short walker::special()
 						  delete newlist;
 						} // end of clean-up memory
 						*/
+						// this should work
+						delete_list(newlist);
 						//newob->ani_type = ANI_ATTACK;
 					} // end of chain-lightning
 					break; // end of burst enemies, chain lightning
@@ -2685,6 +2712,7 @@ short walker::special()
 						}
 						here = here->next;
 					}
+					delete_list(newlist);
 					if (!didheal) // didn't actually get anyone?
 						return 0;
 					// Notify screen of our action
@@ -2821,6 +2849,7 @@ short walker::special()
 							}
 							here = here->next;
 						}
+						delete_list(newlist);
 						if (myguy)
 							strcpy(message, myguy->name);
 						else if ( strlen(stats->name) )
@@ -2872,6 +2901,7 @@ short walker::special()
 							} // end of if-valid-target
 							here = here->next;
 						} // end of until-got-target loop
+						delete_list(newlist);
 						if (!didheal)
 							return 0;
 						// Notify screen of our action
@@ -3031,7 +3061,10 @@ short walker::special()
 								{
 									alive = screenp->add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
 									if (!alive) // failed somehow
+									{
+										delete_list(newlist);
 										return 0;
+									}
 									alive->owner = newob;
 									alive->center_on(newob);
 									alive->team_num = newob->team_num;
@@ -3044,7 +3077,10 @@ short walker::special()
 								{
 									alive = screenp->add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
 									if (!alive) // failed somehow
+									{
+										delete_list(newlist);
 										return 0;
+									}
 									tempwalk->stats->hitpoints += alive->stats->hitpoints;
 									alive->dead = 1;
 									if (myguy)
@@ -3055,7 +3091,10 @@ short walker::special()
 							here = here->next;
 						}  // end of cycling through guys
 						if (!didheal)
+						{
+							delete_list(newlist);
 							return 0; // everyone was okay; don't charge us
+						}
 						else
 						{
 							// Inform screen/view to print a message ..
@@ -3068,10 +3107,17 @@ short walker::special()
 							// Play sound ...
 							if (on_screen())
 								screenp->soundp->play_sound(SOUND_HEAL);
+							
+							delete_list(newlist);
+							newlist = NULL;
 						}  // end of did protect guys case
 					} // end of checking for friends
 					else // no friends, so don't charge us
+					{
+						if (newlist) delete_list(newlist);
 						return 0;
+					}
+					if (newlist) delete_list(newlist);
 					break;
 					// end of druid's specials ..
 			} // end of switch on druid case
@@ -3085,21 +3131,23 @@ short walker::special()
 					busy += 2;
 					newlist = screenp->find_foes_in_range(screenp->oblist,
 					                                      160+(20*stats->level), &howmany, this);
-					while (newlist)
+					here = newlist;
+					while (here)
 					{
-						if (newlist->ob)
+						if (here->ob)
 						{
-							if (newlist->ob->myguy)
-								tempx = newlist->ob->myguy->constitution;
+							if (here->ob->myguy)
+								tempx = here->ob->myguy->constitution;
 							else
-								tempx = newlist->ob->stats->hitpoints / 30;
+								tempx = here->ob->stats->hitpoints / 30;
 							tempy = 10 + random(stats->level*10) - random(tempx*10);
 							if (tempy < 0)
 								tempy = 0;
-							newlist->ob->stats->frozen_delay += tempy;
+							here->ob->stats->frozen_delay += tempy;
 						}
-						newlist = newlist->next;
+						here = here->next;
 					}
+					delete_list(newlist);
 					if (on_screen())
 						screenp->soundp->play_sound(SOUND_ROAR);
 					break;
@@ -3322,6 +3370,7 @@ long walker::turn_undead(long range, long power)
 		}
 		here = here->next;
 	}
+	delete_list(deadlist);
 	return killed;
 }
 
