@@ -28,7 +28,7 @@
 #include "soundob.h"
 #include "SDL/SDL_mixer.h"
 
-#define SOUND_DB   0 // define for debugging messages
+//#define SOUND_DB   0 // define for debugging messages
 
 
 soundob::soundob()
