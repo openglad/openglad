@@ -2,7 +2,7 @@
 AC_INIT(openglad, 0.9)
 AM_INIT_AUTOMAKE(openglad, 0.9)
 AC_CONFIG_SRCDIR(src/glad.cpp)
-AM_CONFIG_HEADER(config.h)
+AM_CONFIG_HEADER(src/config.h)
 
 test "x$prefix" = "xNONE" && prefix=/usr/local
 test "x$exec_prefix" = "xNONE" && exec_prefix=$prefix
