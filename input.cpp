@@ -11,8 +11,6 @@
 #include <stdio.h>
 #include <time.h>
 
-unsigned long timer_count=0;
-unsigned long timer_control=0;
 unsigned long start_time=0;
 unsigned long reset_value=0;
 time_t starttime, endtime;
@@ -20,11 +18,9 @@ tm tmbuffer;
 // Z: might need these two later
 // dostime_t newtime;
 // dosdate_t newdate;
-long keyboard_grabbed=0;
-long timer_grabbed=0;
 long quit(long arg1);
 
-unsigned short raw_key;
+int raw_key;
 short key_press_event = 0;    // used to signed key-press
 char key_list[MAXKEYS+JOYKEYS];
 
@@ -43,20 +39,10 @@ void change_time(unsigned long new_count)
 
 void grab_timer()
 {
-  if (timer_grabbed)
-    return;
-  timer_grabbed = 1;
-// Zardus: PORT: seem to be dos things:  old_timer_isr = _dos_getvect(TIME_KEEPER_INT);
-// Same here:  _dos_setvect(TIME_KEEPER_INT,increment_timer);
-
 }
 
 void release_timer()
 {
-  if (!timer_grabbed)
-    return;
-  timer_grabbed = 0;
-// Zardus: dos stuff:  _dos_setvect(TIME_KEEPER_INT,old_timer_isr);
 }
 
 void reset_timer()
@@ -66,13 +52,15 @@ void reset_timer()
 
 long query_timer()
 {
-//  return timer_count;
-	return (SDL_GetTicks() - reset_value) / 10;
+	// Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
+	// that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
+	// or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
+	return (SDL_GetTicks() - reset_value) / 13.6;
 }
 
 unsigned long query_timer_control()
 {
-	return SDL_GetTicks() / 10;
+	return SDL_GetTicks() / 13.6;
 }
 
 

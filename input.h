@@ -91,7 +91,6 @@
 
 void change_time(unsigned long new_count);
 
-//buffers: PORT: doesnt compile void __interrupt increment_timer();
 void grab_timer();
 void release_timer();
 void reset_timer();
