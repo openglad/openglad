@@ -697,6 +697,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
   long walkoff=0,buffoff=0,walkshift=0,buffshift=0;
   long totrows,rowsize;
   signed char shift;
+  int yval, xval;
 
   if (walkerstartx >= portendx || walkerstarty >= portendy)
     return; //walker is below or to the right of the viewport
@@ -731,9 +732,12 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
   buffshift = VIDEO_BUFFER_WIDTH - rowsize;
 
   walkoff   = (ymin * walkerwidth) + xmin;
-  buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;     
+  // Zardus: they used to do it by buffoff. we'll do it with xval and yval
+  //buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;     
+  xval = walkerstartx;
+  yval = walkerstarty;
 
-
+  // Zardus: FIX: and now we simply replace all the videobuffer stuff with pointb.
   switch (mode)
   {
     case INVISIBLE_MODE:
@@ -751,7 +755,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	      { 
 		if (sourceptr[walkoff-2])
 		{
-		  videobuffer[buffoff++] = outline;
+		  pointb(xval++, yval, outline);
 		  continue;
 		}
 	      } 
@@ -760,7 +764,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	      {
 		if (sourceptr[walkoff])
 		{
-		  videobuffer[buffoff++] = outline;
+		  pointb(xval++, yval, outline);
 		  continue;
 		}
 	      }
@@ -769,7 +773,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	      {
 		if (sourceptr[walkoff-1-walkerwidth])
 		{
-		  videobuffer[buffoff++] = outline;
+		  pointb(xval++, yval, outline);
 		  continue;
 		}
 	      }
@@ -778,13 +782,13 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	      {
 		if (sourceptr[walkoff-1+walkerwidth])
 		{
-		  videobuffer[buffoff++] = outline;
+		  pointb(xval++, yval, outline);
 		  continue;
 		}
 	      }
 	    } // end of outline check 
 	    
-	    buffoff++;
+	    xval++;
 	    continue;
 	  } //end of transparency check
 	  
@@ -794,22 +798,23 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	  {
 	    if (curx==0 || cury==0 || curx==(walkerwidth-1) || cury==(totrows-1))
 	    {
-	      videobuffer[buffoff++] = outline;
+	      pointb(xval++, yval, outline);
 	      continue;
 	    }
 	  } // end outline
 				
 	  if (random(invisibility) > 8)
 	  {
-	    buffoff++;
+	    xval++;
 	    //videobuffer[buffoff++] = teamcolor+random(7);
 	    continue;
 	  }
-	  videobuffer[buffoff++] = curcolor;
+	  pointb(xval++, yval, curcolor);
 	} //end of each row
 	 
 	 walkoff += walkshift;
-	 buffoff += buffshift;
+	 yval++;
+	 xval = walkerstartx;
       } // end of all rows 
     
       break; // end INVISIBLE
@@ -827,7 +832,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	    { 
 	      if (sourceptr[walkoff-2])
 	      {
-		videobuffer[buffoff++] = outline;
+		pointb(xval++, yval, outline);
 		continue;
 	      }
 	    } 
@@ -836,7 +841,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	    {
 	      if (sourceptr[walkoff])
 	      {
-		videobuffer[buffoff++] = outline;
+		pointb(xval++, yval, outline);
 		continue;
 	      }
 	    }
@@ -845,7 +850,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	    {
 	      if (sourceptr[walkoff-1-walkerwidth])
 	      {
-		videobuffer[buffoff++] = outline;
+		pointb(xval++, yval, outline);
 		continue;
 	      }
 	    }
@@ -854,12 +859,12 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	    {
 	      if (sourceptr[walkoff-1+walkerwidth])
 	      {
-		videobuffer[buffoff++] = outline;
+		pointb(xval++, yval, outline);
 		continue;
 	      }
 	    }
 
-	    buffoff++;
+	    xval++;
 	    continue;
 	  } //end of transparency check
 	  
@@ -867,15 +872,16 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 
 	  if (curx==0 || cury==0 || curx==(walkerwidth-1) || cury==(totrows-1))
 	  {
-	    videobuffer[buffoff++] = outline;
+	    pointb(xval++, yval, outline);
 	    continue;
 	  }
   
-	  videobuffer[buffoff++] = curcolor;
+	  pointb(xval++, yval, curcolor);
 	} //end of each row
 	 
 	 walkoff += walkshift;
-	 buffoff += buffshift;
+	 xval = walkerstartx;
+	 yval++;
       } // end of all rows 
     
       break; // end OUTLINE
