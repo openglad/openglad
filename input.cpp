@@ -162,7 +162,7 @@ char * query_keyboard()
 	return key_list;
 }
 
-void wait_for_key(unsigned char somekey)
+void wait_for_key(int somekey)
 {
 	// First wait for key press .. 
 	while (!key_list[somekey])
