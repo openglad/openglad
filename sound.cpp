@@ -1,3 +1,19 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 // Sound object
 
 /* ChangeLog
@@ -17,9 +33,9 @@
 
 soundob::soundob()
 {
-    // Do stuff
-    silence = 0;        // default is sound ON
-    init();
+	// Do stuff
+	silence = 0;        // default is sound ON
+	init();
 }
 
 // This version of the constructor will set "silence" to
@@ -27,13 +43,13 @@ soundob::soundob()
 // don't want sound, we won't load them into memory.
 soundob::soundob(unsigned char toggle)
 {
-    silence = toggle;
-    init();             // init will do nothing if toggle (silence) is set
+	silence = toggle;
+	init();             // init will do nothing if toggle (silence) is set
 }
 
 soundob::~soundob()
 {
-    shutdown();
+	shutdown();
 }
 
 int soundob::init()
@@ -43,12 +59,13 @@ int soundob::init()
 	// Guarantee null pointers, regardless of sound status
 	for (i=0; i < NUMSOUNDS; i++)
 		sound[i] = NULL;
-      
+
 	// Do we have sounds on?
 	if (silence)
 		return 0;
 
-	if(Mix_OpenAudio(22050,AUDIO_S16,1,1024)==-1) {
+	if(Mix_OpenAudio(22050,AUDIO_S16,1,1024)==-1)
+	{
 		printf("ERROR: Mix_OpenAudio: %s\n",Mix_GetError());
 		exit(0);
 	}
@@ -60,7 +77,7 @@ int soundob::init()
 	strcpy(soundlist[SOUND_CLANG],    "sound/clang.wav");
 	strcpy(soundlist[SOUND_DIE1],     "sound/die1.wav");
 	strcpy(soundlist[SOUND_BLAST],    "sound/blast1.wav");
-	strcpy(soundlist[SOUND_SPARKLE],  "sound/faerie1.wav"); 
+	strcpy(soundlist[SOUND_SPARKLE],  "sound/faerie1.wav");
 	strcpy(soundlist[SOUND_TELEPORT], "sound/teleport.wav");
 	strcpy(soundlist[SOUND_YO],       "sound/yo.wav");
 	strcpy(soundlist[SOUND_BOLT],     "sound/bolt1.wav");
@@ -75,18 +92,20 @@ int soundob::init()
 
 	for (i=0; i < NUMSOUNDS; i++)
 	{
-		#ifdef SOUND_DB
-			printf("Loading sound %d: %s\n", i, soundlist[i]);
-		#endif
+#ifdef SOUND_DB
+		printf("Loading sound %d: %s\n", i, soundlist[i]);
+#endif
+
 		load_sound( &sound[i], soundlist[i] );
 	}
 
 	// Set volume (default is loudest)
 	volume = MIX_MAX_VOLUME;
-    
-	#ifdef SOUND_DB
-		printf("Done with sound initialization\n");
-	#endif
+
+#ifdef SOUND_DB
+
+	printf("Done with sound initialization\n");
+#endif
 
 	return 1;
 }
@@ -94,7 +113,8 @@ int soundob::init()
 void soundob::load_sound(Mix_Chunk **audio, char * file)
 {
 	*audio = Mix_LoadWAV(file);
-	if(!*audio) {
+	if(!*audio)
+	{
 		printf("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
 		exit(0);
 	}
@@ -132,23 +152,23 @@ void soundob::play_sound(short whichnum)
 
 unsigned char soundob::query_volume()
 {
-    return volume;
+	return volume;
 }
 
 unsigned char soundob::set_volume(unsigned char volumelevel)
 {
-    volume = volumelevel;
-    return volume;
+	volume = volumelevel;
+	return volume;
 }
 
 // Used to turn sound on or off
 unsigned char soundob::set_sound(unsigned char toggle)
 {
-    if (silence == toggle)      // Are we already set this way?
-      return silence;
+	if (silence == toggle)      // Are we already set this way?
+		return silence;
 
-    silence = toggle;
-    init();
+	silence = toggle;
+	init();
 
-    return silence;
+	return silence;
 }

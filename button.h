@@ -1,3 +1,19 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #ifndef __BUTTON_H
 #define __BUTTON_H
 
@@ -39,54 +55,55 @@ extern unsigned long money[4];
 
 typedef struct
 {
-  char label[30];
-  unsigned char hotkey;
-  long x, y;
-  long sizex, sizey;
-//long (*fun)(long arg1);
-  long myfun;
-  long arg1;     // argurment to function fun
-} button;
+	char label[30];
+	unsigned char hotkey;
+	long x, y;
+	long sizex, sizey;
+	//long (*fun)(long arg1);
+	long myfun;
+	long arg1;     // argurment to function fun
+}
+button;
 
 class vbutton
 {
-  public:
-         vbutton();//this should only be used for pointers!!
-         vbutton(long xpos, long ypos, long wide, long high, long func(long),
-                 long pass, char *msg, unsigned char hot );
-         vbutton(long xpos, long ypos, long wide, long high, long func_code,
-                 long pass, char *msg, unsigned char hot );
-         vbutton(long xpos, long ypos, long wide, long high, long func_code,
-                 long pass, char *msg, char family, unsigned char hot );
-         ~vbutton();
-         void set_graphic(char family);
-         long leftclick(); //is called when the button is left clicked
-         long leftclick(long whichone);
-         long rightclick(); //is called when the button is right clicked
-         long rightclick(long whichone);
-         long mouse_on(); //determins if mouse is on this button, returns 1 if true
-         void vdisplay();
-         void vdisplay(long status); // display depressed
-         long do_call(long whatfunc, long arg);
-         long do_call_right(long whatfunc, long arg);  // for right-button
-         
-         long xloc; //the xposition in screen-coords
-         long yloc; //the yposition in screen-coords
-         char label[80]; //the label on the button
-         long width; // the buttons width in pixels
-         long height; // the buttons height in pixels
-         long xend; //xloc+width
-         long yend; //yloc+height
-         long (*fun)(long arg1); //the function this button calls when clicked, with one arg
-         long myfunc;
-         long arg; //the arg to be passed to the function when called
-         vbutton * next; //a pointer to the next button
-         vbutton * prev; //a pointer to the previous button
-         char had_focus; // did we recently have focus?
-         char do_outline; // force an outline
-         char depressed;
-         pixieN *mypixie;
-         unsigned char hotkey;
+	public:
+		vbutton();//this should only be used for pointers!!
+		vbutton(long xpos, long ypos, long wide, long high, long func(long),
+		        long pass, char *msg, unsigned char hot );
+		vbutton(long xpos, long ypos, long wide, long high, long func_code,
+		        long pass, char *msg, unsigned char hot );
+		vbutton(long xpos, long ypos, long wide, long high, long func_code,
+		        long pass, char *msg, char family, unsigned char hot );
+		~vbutton();
+		void set_graphic(char family);
+		long leftclick(); //is called when the button is left clicked
+		long leftclick(long whichone);
+		long rightclick(); //is called when the button is right clicked
+		long rightclick(long whichone);
+		long mouse_on(); //determins if mouse is on this button, returns 1 if true
+		void vdisplay();
+		void vdisplay(long status); // display depressed
+		long do_call(long whatfunc, long arg);
+		long do_call_right(long whatfunc, long arg);  // for right-button
+
+		long xloc; //the xposition in screen-coords
+		long yloc; //the yposition in screen-coords
+		char label[80]; //the label on the button
+		long width; // the buttons width in pixels
+		long height; // the buttons height in pixels
+		long xend; //xloc+width
+		long yend; //yloc+height
+		long (*fun)(long arg1); //the function this button calls when clicked, with one arg
+		long myfunc;
+		long arg; //the arg to be passed to the function when called
+		vbutton * next; //a pointer to the next button
+		vbutton * prev; //a pointer to the previous button
+		char had_focus; // did we recently have focus?
+		char do_outline; // force an outline
+		char depressed;
+		pixieN *mypixie;
+		unsigned char hotkey;
 };
 
 #define MAX_BUTTONS 50  // max buttons per screen

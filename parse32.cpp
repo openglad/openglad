@@ -1,3 +1,19 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 //
 // Parsecfg.cpp
 //
@@ -10,120 +26,120 @@
 
 FILE* open_cfg_file(char * filename)
 {
-  FILE *infile;
+	FILE *infile;
 
-  if ( (infile = fopen(filename, "rt")) == NULL)
-   return NULL; // failed to read file
+	if ( (infile = fopen(filename, "rt")) == NULL)
+		return NULL; // failed to read file
 
-  return infile;
+	return infile;
 }
 
 void close_cfg_file(FILE * cfgfile)
 {
-  fclose(cfgfile);
+	fclose(cfgfile);
 }
 
 // Dump contents to screen :)
 void dump_cfg_file(FILE * cfgfile)
 {
-  char *oneline;
-  short numlines = 0;
-  oneline = read_one_line(cfgfile);
-  while (oneline)
-  {
-   printf("%d: %s\n", ++numlines, oneline);
-   oneline = read_one_line(cfgfile);
-  }
+	char *oneline;
+	short numlines = 0;
+	oneline = read_one_line(cfgfile);
+	while (oneline)
+	{
+		printf("%d: %s\n", ++numlines, oneline);
+		oneline = read_one_line(cfgfile);
+	}
 
 }
 
 char* read_one_line(FILE *cfgfile)
 {
-  static char oneline[82];
-  short currentpos = 0;
-  short currentchar = 0;
-  short result;
+	static char oneline[82];
+	short currentpos = 0;
+	short currentchar = 0;
+	short result;
 
-  while ( ( (result=(short) fscanf(cfgfile, "%c", &currentchar)) != EOF) &&
-       (currentchar != '\n') &&
-       (currentpos < 80) )
-   oneline[currentpos++] = (char) currentchar;
+	while ( ( (result=(short) fscanf(cfgfile, "%c", &currentchar)) != EOF) &&
+	        (currentchar != '\n') &&
+	        (currentpos < 80) )
+		oneline[currentpos++] = (char) currentchar;
 
-  oneline[currentpos++] = 0;  // terminate string
+	oneline[currentpos++] = 0;  // terminate string
 
-  if ( (currentpos < 2) && (result==EOF) )  // ran out of text
-   return NULL;
-  else
-   return oneline;
+	if ( (currentpos < 2) && (result==EOF) )  // ran out of text
+		return NULL;
+	else
+		return oneline;
 }
 
 // Scan .cfg file, return string value of pattern in section section
 char* query_cfg_value(FILE *cfgfile, char *section,
-                  char *pattern)
+                      char *pattern)
 {
-  short foundsection = 0;
-  char *someline;
-  char sectionstring[82];
-  char lefthand[80], righthand[80];
-  char returnvalue[80];
-  short i;
+	short foundsection = 0;
+	char *someline;
+	char sectionstring[82];
+	char lefthand[80], righthand[80];
+	char returnvalue[80];
+	short i;
 
-  // Set 'strings' to totally null :)
-  for (i=0; i < 80; i++)
-   lefthand[i] = righthand[i] = returnvalue[i] = 0;
-   
-  // Set to start of file ..
-  fseek(cfgfile, 0, SEEK_SET);
+	// Set 'strings' to totally null :)
+	for (i=0; i < 80; i++)
+		lefthand[i] = righthand[i] = returnvalue[i] = 0;
 
-  // Make the section pattern ..
-  sectionstring[0] = 0;
-  strcpy(sectionstring, "[");
-  strcat(sectionstring, section);
-  strcat(sectionstring, "]");
+	// Set to start of file ..
+	fseek(cfgfile, 0, SEEK_SET);
 
-  //printf("Looking for section %s\n", sectionstring);  
-  // Scan for the section ...
-  while ( (!foundsection) &&
-       ((someline = read_one_line(cfgfile)) != NULL) )
-  {
-   if (someline == NULL)
-    return NULL;
-   //printf("Comparing %s to %s\n", sectionstring, someline); 
-   if (!strcmp(sectionstring, someline))
-   {
-    foundsection = 1;
-    //printf("\nfound section\n");
-   }
-  }
+	// Make the section pattern ..
+	sectionstring[0] = 0;
+	strcpy(sectionstring, "[");
+	strcat(sectionstring, section);
+	strcat(sectionstring, "]");
 
-  // Scan for the pattern ..
-  //printf("Looking for pattern %s\n", pattern);
-  foundsection = 0;
-  while ( ((someline = read_one_line(cfgfile)) != NULL) )
-  {
-   //printf("line: %s\n", someline);
-   if (someline == NULL)
-    return NULL;
-   //sscanf(someline, "%[A-Za-z]s%*c%s", &lefthand[0], &righthand[0]);
-   //sscanf(someline, "%[A-Za-z]s", lefthand);
-   sscanf(someline, "%[^=]s", lefthand);
-   //printf("Lefthand got %s\n", lefthand);
-   strcpy(righthand, (someline + strlen(lefthand) + 1) );
-//   printf("\n%s, %s", lefthand, righthand);
-   //printf("Comparing %s to %s\n", pattern, lefthand);
-   if (!strcmp(pattern, lefthand))  // found our match
-   {
-    strcpy(returnvalue, righthand);
-       //printf("QCV returns %s\n", returnvalue);
-    return &returnvalue[0];
-   }
-   // Check for another section ..
-   if (someline[0] == '[') // new section ..
-    return NULL;
+	//printf("Looking for section %s\n", sectionstring);
+	// Scan for the section ...
+	while ( (!foundsection) &&
+	        ((someline = read_one_line(cfgfile)) != NULL) )
+	{
+		if (someline == NULL)
+			return NULL;
+		//printf("Comparing %s to %s\n", sectionstring, someline);
+		if (!strcmp(sectionstring, someline))
+		{
+			foundsection = 1;
+			//printf("\nfound section\n");
+		}
+	}
 
-  }
+	// Scan for the pattern ..
+	//printf("Looking for pattern %s\n", pattern);
+	foundsection = 0;
+	while ( ((someline = read_one_line(cfgfile)) != NULL) )
+	{
+		//printf("line: %s\n", someline);
+		if (someline == NULL)
+			return NULL;
+		//sscanf(someline, "%[A-Za-z]s%*c%s", &lefthand[0], &righthand[0]);
+		//sscanf(someline, "%[A-Za-z]s", lefthand);
+		sscanf(someline, "%[^=]s", lefthand);
+		//printf("Lefthand got %s\n", lefthand);
+		strcpy(righthand, (someline + strlen(lefthand) + 1) );
+		//   printf("\n%s, %s", lefthand, righthand);
+		//printf("Comparing %s to %s\n", pattern, lefthand);
+		if (!strcmp(pattern, lefthand))  // found our match
+		{
+			strcpy(returnvalue, righthand);
+			//printf("QCV returns %s\n", returnvalue);
+			return &returnvalue[0];
+		}
+		// Check for another section ..
+		if (someline[0] == '[') // new section ..
+			return NULL;
 
-  return NULL;
+	}
+
+	return NULL;
 }
 
 

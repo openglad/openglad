@@ -1,3 +1,19 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 //
 // __interrupt routines library
 // for Gladiator and associated files
@@ -42,16 +58,13 @@ int joy_numbuttons[4];
 
 
 void change_time(unsigned long new_count)
-{
-}
+{}
 
 void grab_timer()
-{
-}
+{}
 
 void release_timer()
-{
-}
+{}
 
 void reset_timer()
 {
@@ -104,7 +117,8 @@ void get_input_events(bool type)
 	event = (SDL_Event *) malloc(sizeof(SDL_Event));
 
 	if (type == POLL)
-		while (SDL_PollEvent(event)) handle_events(event);
+		while (SDL_PollEvent(event))
+			handle_events(event);
 	if (type == WAIT)
 	{
 		SDL_WaitEvent(event);
@@ -116,7 +130,7 @@ void handle_events(SDL_Event *event)
 {
 	switch (event->type)
 	{
-		// Key pressed or released:
+			// Key pressed or released:
 		case SDL_KEYDOWN:
 			key_list[event->key.keysym.sym] = 1;
 			raw_key = event->key.keysym.sym;
@@ -126,7 +140,7 @@ void handle_events(SDL_Event *event)
 			key_list[event->key.keysym.sym] = 0;
 			break;
 
-		// Mouse event
+			// Mouse event
 		case SDL_MOUSEMOTION:
 			//printf("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
 			//if (!(event.motion.x < 10 && mouse_state[MOUSE_X] * mult > 620)
@@ -181,7 +195,7 @@ void handle_events(SDL_Event *event)
 			key_list[joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button] = 0;
 			break;
 		case SDL_QUIT:
-				quit(1);
+			quit(1);
 			break;
 		default:
 			break;
@@ -194,16 +208,14 @@ void handle_events(SDL_Event *event)
 //
 
 void grab_keyboard()
-{
-}
+{}
 
 void release_keyboard()
-{
-}
+{}
 
 int query_key()
 {
-  return raw_key;
+	return raw_key;
 }
 
 //
@@ -224,7 +236,7 @@ char * query_keyboard()
 
 void wait_for_key(int somekey)
 {
-	// First wait for key press .. 
+	// First wait for key press ..
 	while (!key_list[somekey])
 		get_input_events(WAIT);
 
@@ -236,17 +248,17 @@ void wait_for_key(int somekey)
 short query_key_press_event()
 {
 
-  return key_press_event;
+	return key_press_event;
 }
 
 void clear_key_press_event()
 {
-  key_press_event = 0;
+	key_press_event = 0;
 }
 
 short query_key_code(short code)
 {
-  return key_list[code];
+	return key_list[code];
 }
 
 void enable_keyrepeat()
@@ -276,8 +288,7 @@ void release_mouse()
 }
 
 void reset_mouse()
-{
-}
+{}
 
 long * query_mouse()
 {
@@ -289,11 +300,11 @@ long * query_mouse()
 
 long * query_joy()
 {
-  //joyasm();
-  //joy_state[JOY_X] = (long) joyx;
-  //joy_state[JOY_Y] = (long) joyy;
-  
-  //return joy_state;
+	//joyasm();
+	//joy_state[JOY_X] = (long) joyx;
+	//joy_state[JOY_Y] = (long) joyy;
+
+	//return joy_state;
 }
 
 // Zardus: add: some extra routines (one right now) that really shouldn't be here, but we'll put them here anyways

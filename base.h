@@ -1,3 +1,19 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #ifndef __BASE_H
 #define __BASE_H
 
@@ -49,10 +65,10 @@ class packfile;
 
 class oblink
 {
-  public:
-         oblink();
-         walker  *ob;
-         oblink  *next;
+	public:
+		oblink();
+		walker  *ob;
+		oblink  *next;
 };
 
 #define GLAD_VER "3.8K"
@@ -65,17 +81,18 @@ unsigned long random(unsigned long x);
 #define VIDEO_LINEAR ( (VIDEO_ADDRESS) << 4)
 
 #define DPMI_INT        0x31
-struct meminfo {
-   unsigned LargestBlockAvail;
-   unsigned MaxUnlockedPage;
-   unsigned LargestLockablePage;
-   unsigned LinAddrSpace;
-   unsigned NumFreePagesAvail;
-   unsigned NumPhysicalPagesFree;
-   unsigned TotalPhysicalPages;
-   unsigned FreeLinAddrSpace;
-   unsigned SizeOfPageFile;
-   unsigned Reserved[3];
+struct meminfo
+{
+	unsigned LargestBlockAvail;
+	unsigned MaxUnlockedPage;
+	unsigned LargestLockablePage;
+	unsigned LinAddrSpace;
+	unsigned NumFreePagesAvail;
+	unsigned NumPhysicalPagesFree;
+	unsigned TotalPhysicalPages;
+	unsigned FreeLinAddrSpace;
+	unsigned SizeOfPageFile;
+	unsigned Reserved[3];
 };
 
 extern screen * myscreen; // global, availible to anyone
@@ -89,7 +106,7 @@ extern packfile * pixpack;
 #define PROT_MODE 1  // comment this out when not in protected mode
 #ifdef PROT_MODE
   #define init_sound(x,y,z)  while (0)
-  //#define play_sound(x)      while (0)
+//#define play_sound(x)      while (0)
 #endif
 
 // Used for the help-text system:
@@ -112,7 +129,7 @@ char* read_one_line(FILE *infile, short length);
 #define LIGHT_BLUE   120
 #define DARK_GREEN   63
 #define LIGHT_GREEN  56
-        
+
 // Color cycling:
 #define WATER_START  208
 #define WATER_END    223
@@ -236,8 +253,8 @@ char* read_one_line(FILE *infile, short length);
 #define FAMILY_GIANT_SKELETON 19
 #define FAMILY_TOWER1 20
 #define NUM_FAMILIES 21  // # of families; make sure to change the
-                         // SIZE_FAMILIES in loader.cpp as well
-                         // (or your code will act weird)
+// SIZE_FAMILIES in loader.cpp as well
+// (or your code will act weird)
 
 #define PIX(a,b) (NUM_FAMILIES*a+b)
 
@@ -342,9 +359,9 @@ char* read_one_line(FILE *infile, short length);
 #define DONT_DELETE 1
 
 #ifndef PROT_MODE
-  // sound
-  extern "C" short init_sound(char *filename, short speed, short which);
-  extern "C" void play_sound(short which);
+// sound
+extern "C" short init_sound(char *filename, short speed, short which);
+extern "C" void play_sound(short which);
 #endif
 
 //most of these are graphlib and are being ported to video
@@ -374,7 +391,7 @@ short save_game(char *filename, screen  *myscreen);
 
 #define SCEN_TYPE_CAN_EXIT (char) 1 // make these go by power of 2, 1,2,4,8
 #define SCEN_TYPE_GEN_EXIT (char) 2
-#define SCEN_TYPE_SAVE_ALL (char) 4 // save named npc's 
+#define SCEN_TYPE_SAVE_ALL (char) 4 // save named npc's
 
 #define OUTLINE_NAMED         7              // #defines for outline colors
 #define OUTLINE_INVULNERABLE  224            //
@@ -388,8 +405,9 @@ unsigned char * read_pixie_file(char  * filename);
 // Some stuff for palette
 typedef struct
 {
-  char r, g, b;
-} rgb;
+	char r, g, b;
+}
+rgb;
 
 typedef rgb palette[256];
 
