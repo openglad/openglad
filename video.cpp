@@ -274,6 +274,9 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 {
 	unsigned long i,j, temp;
 
+	// Zardus: FIX: small check to make sure we're not trying to put in antimatter or something
+	if (xsize < 0 || ysize < 0 || startx < 0 || starty < 0) return;
+
 	if (!flag) // then write to screen directly
 	{
 		fastbox(startx, starty, xsize, ysize, color);
