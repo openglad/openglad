@@ -165,10 +165,20 @@ bool * query_keyboard()
 
 void wait_for_key(unsigned char somekey)
 {
+	  short dumbcount=0;
+
+	// First wait for key press .. 
+	while (!key_list[somekey])
+		dumbcount++; // do nothing
+
+	// And now for the key to be released ..
+	while (key_list[somekey])
+		dumbcount--; // do nothing
 }
 
 short query_key_press_event()
 {
+
   return key_press_event;
 }
 
