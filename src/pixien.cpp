@@ -51,7 +51,7 @@ pixieN::~pixieN()
 {
 	bmp = NULL;
 	facings = NULL;
-	frames = NULL;
+	frames = 0;
 	frames = 0;
 }
 
