@@ -1,0 +1,7 @@
+Known memory leaks:
+
+screen.cpp:168
+	- I put in a fix on line 333, but it makes it segfault
+
+screen.cpp, one of the grid creators
+	- There's a fix on 358, but it also segfaults
