@@ -20,6 +20,7 @@
 
 //buffers:  using input.h instead #include "int32.h"
 #include "input.h"
+#include "util.h"
 
 #include "SDL.h"
 #include "parser.h"
@@ -39,6 +40,8 @@
 #define BUTTON_HEIGHT 15
 
 //int matherr (struct exception *);
+
+FILE * open_misc_file(char *, char *);
 
 void show_guy(long frames, long who); // shows the current guy ..
 long name_guy(long arg); // rename (or name) the current_guy
@@ -236,15 +239,12 @@ void picker_main(long argc, char  **argv)
 	clear_keyboard();
 
 	// Load the current saved game, if it exists .. (save0.gtl)
-	loadgame = fopen("save0.gtl", "rb");
+	loadgame = open_misc_file("save0.gtl", "save/");
 	if (loadgame)
 	{
 		fclose(loadgame);
 		load_team_list_one("save0");
 	}
-	// Is this neccessary? It crashes it.
-	//  else
-	//         fclose(loadgame);
 
 	mainmenu(1);
 
@@ -2641,7 +2641,7 @@ long load_team_list_one(char * filename)
 	for (i=0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
-	if ( (infile = fopen(temp_filename, "rb")) == NULL ) // open for write
+	if ( (infile = open_misc_file(temp_filename, "save/")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
 		//buffers: DEBUG: uncommented following line
@@ -2863,7 +2863,7 @@ char* get_saved_name(char * filename)
 	//buffers: PORT: changed .GTL to .gtl
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = fopen(temp_filename, "rb")) == NULL ) // open for read
+	if ( (infile = open_misc_file(temp_filename, "save/")) == NULL ) // open for read
 	{
 		return "EMPTY SLOT";
 	}

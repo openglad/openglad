@@ -16,8 +16,10 @@
  */
 #include "graph.h"
 #include "smooth.h"
+#include "util.h"
 
 short next_scenario = 1;
+FILE * open_misc_file(char *, char *);
 
 short load_saved_game(char *filename, screen  *myscreen)
 {
@@ -352,7 +354,7 @@ short load_team_list(char * filename, screen  *myscreen)
 	strcpy(temp_filename, filename);
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = fopen(temp_filename, "rb")) == NULL ) // open for write
+	if ( (infile = open_misc_file(temp_filename, "save/")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
 		//printf("Error in opening team file: %s\n", filename);

@@ -43,5 +43,6 @@ void uppercase(char *);
 void uppercase(std::string &);
 // Zardus: add: set_mult func
 void set_mult(int);
+FILE * get_misc_file(char *, char *, char *);
 FILE * get_misc_file(char *, char *);
 FILE * get_misc_file(char *);

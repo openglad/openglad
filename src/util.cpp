@@ -85,7 +85,7 @@ void uppercase(std::string &str)
 		*iter = toupper(*iter);
 }
 
-FILE * open_misc_file(char * file, char * pos_dir)
+FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 {
 	FILE * infile;
 	string filepath(file);
@@ -94,7 +94,7 @@ FILE * open_misc_file(char * file, char * pos_dir)
 		return infile;
 	
 	filepath = pos_dir + filepath;
-	if ((infile = fopen(filepath.c_str(), "rb")))
+	if ((infile = fopen(filepath.c_str(), attr)))
 		return infile;
 
 	filepath = getenv("HOME");
@@ -102,14 +102,14 @@ FILE * open_misc_file(char * file, char * pos_dir)
 	filepath += pos_dir;
 	filepath += file;
 
-	if ((infile = fopen(filepath.c_str(), "rb")))
+	if ((infile = fopen(filepath.c_str(), attr)))
 		return infile;
 
 	filepath = DATADIR;
 	filepath += pos_dir;
 	filepath += file;
 
-	if ((infile = fopen(filepath.c_str(), "rb")))
+	if ((infile = fopen(filepath.c_str(), attr)))
 		return infile;
 
 	// if it got here, it didn't find the file
@@ -117,7 +117,12 @@ FILE * open_misc_file(char * file, char * pos_dir)
 	return NULL;
 }
 
+FILE * open_misc_file(char * file, char * pos_dir)
+{
+	return open_misc_file(file, pos_dir, "rb");
+}
+
 FILE * open_misc_file(char * file)
 {
-	return open_misc_file(file, "");
+	return open_misc_file(file, "", "rb");
 }
