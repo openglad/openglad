@@ -1,8 +1,8 @@
 SUBDIRS = util src sound
 EXTRA_DIST= release-notes.txt classes.txt scen.txt pix/*.pix \
-scen/*.fss sound/*.wav start.tex glad.hlp openglad.cfg
+scen/*.fss start.tex glad.hlp openglad.cfg
 #nobase_dist_data_DATA = sound start.tex
-data_DATA = graphics.001 levels.001 sound/* start.tex glad.hlp openglad.cfg
+data_DATA = graphics.001 levels.001 start.tex glad.hlp openglad.cfg
 #dist_sysconf_DATA= openglad.cfg
 
 # We could do this, but a full source dist should have
