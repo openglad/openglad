@@ -1,0 +1,2 @@
+#!/bin/bash
+g++ -g `sdl-config --libs --cflags` -DSCEN -o scen.linux scen.cpp effect.cpp game.cpp gladpack.cpp graphlib.cpp guy.cpp help.cpp intro.cpp living.cpp loader.cpp obmap.cpp pal32.cpp parse32.cpp pixie.cpp pixien.cpp radar.cpp screen.cpp smooth.cpp sound.cpp stats.cpp text.cpp treasure.cpp video.cpp view.cpp walker.cpp weap.cpp input.cpp
