@@ -1696,20 +1696,15 @@ char* screen::get_scen_title(char *filename, screen *master)
 
 	strcpy(tempfile, filename);
 	strcat(tempfile, ".fss");
-	// First try to get info from the pack-file ..
-	if (scenpack.opened())
+
+	// Zardus: first get the file from scen/, then the packfile
+	if ((infile = open_misc_file(tempfile, "scen/")))
+		gotit = 1;
+	else if (scenpack.opened())
 	{
 		infile = scenpack.get_subfile(tempfile);
-		gotit = 1;
-	}
-
-	if (!infile) // not found in file ... try manual
-	{
-		if ( (infile = fopen(tempfile, "rb")) == NULL )       // open for read
-		{
-			return "none";
-		}
-		gotit = 0; // so we know to close the file pointer
+		if (infile) gotit = 1;
+		else return "none";
 	}
 
 	// Are we a scenario file?
@@ -1730,7 +1725,7 @@ char* screen::get_scen_title(char *filename, screen *master)
 	// Return the title, 30 bytes
 	fread(buffer, 30, 1, infile);
 
-	if (!gotit)
+	if (gotit)
 		fclose(infile);
 	return buffer;
 
