@@ -86,8 +86,10 @@ void glad_main(screen *myscreen, long playermode)
   myscreen->clearbuffer();
  
   // Fade out
+  /* buffers: PORT: commenting fade code
   for (i=0;i<256;i++)
          set_palette_reg((unsigned char) i,0,0,0);
+  */	 
 
   // Draw rainbow background
   //for (i = 0; i<320; i++)
@@ -187,7 +189,7 @@ void glad_main(screen *myscreen, long playermode)
          //if (input == SDLK_ESCAPE) break;
          if (keyboard[SDLK_ESCAPE])
          {
-           set_palette(myscreen->redpalette);
+           //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
            dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, "Abort Mission");
            gladtext.write_xy(dumbcount, 80+24, "Quit this Mission? (Y/N)",
              (unsigned char) DARK_BLUE, 1);
