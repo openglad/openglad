@@ -7,6 +7,7 @@ test -w config.cross.cache && rm config.cross.cache
 
 # Regenerate configuration files
 aclocal
+autoheader
 automake --foreign
 autoconf
 
