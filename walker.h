@@ -76,8 +76,9 @@ class walker : public pixieN
          signed char cycle;
          signed char  **ani;
          char action;
-         char team_num;
-         char real_team_num; // for 'Charm', etc.
+	 // Zardus: FIX: lets make these unsigned so that real_team_num doesn't wrap around from 255 to -1 :-)
+         unsigned char team_num;
+         unsigned char real_team_num; // for 'Charm', etc.
          char ani_type;
          long stepsize;
          long normal_stepsize; // used for elven forestwalk
