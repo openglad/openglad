@@ -18,7 +18,7 @@ video::video()
 {
 	long i;
 
-	pdouble = 0;
+	pdouble = 1;
 
 	//buffer: set vars according to pdouble
 	if(pdouble) {
@@ -602,13 +602,11 @@ void video::putbuffer(long tilestartx, long tilestarty,
 	offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
 	offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
-	rect.x = tilestartx-xmin;
-	rect.y = tilestarty-ymin;
-	rect.w = xmax;
-	rect.h = ymax;
-	if(SDL_BlitSurface(sourceptr,NULL,screen,&rect)!=0)
-		printf("error\n");
-	
+	rect.x = (tilestartx-xmin)*mult;
+	rect.y = (tilestarty-ymin)*mult;
+	rect.w = xmax*mult;
+	rect.h = ymax*mult;
+	SDL_BlitSurface(sourceptr,NULL,screen,&rect);
 }
 
 
