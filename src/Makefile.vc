@@ -1,0 +1,21 @@
+CFLAGS=/MD  -lSDL_mixer -lSDL -lSDLmain -I"C:/Travail/SDL/Include"
+GLADFILES=button.obj effect.obj game.obj glad.obj gladpack.obj graphlib.obj guy.obj help.obj intro.obj living.obj loader.obj obmap.obj pal32.obj parse32.obj picker.obj pixie.obj pixien.obj radar.obj screen.obj smooth.obj sound.obj stats.obj text.obj treasure.obj video.obj view.obj walker.obj weap.obj input.obj
+SCENFILES=scen.obj effect.obj game.obj gladpack.obj graphlib.obj guy.obj help.obj intro.obj living.obj loader.obj obmap.obj pal32.obj parse32.obj pixie.obj pixien.obj radar.obj screen.obj smooth.obj sound.obj stats.obj text.obj treasure.obj video.obj view.obj walker.obj weap.obj input.obj
+
+
+all: openglad
+
+
+openglad: $(GLADFILES)
+	link /libpath:"C:/travail/sdl/lib" $(GLADFILES) SDL.lib SDLmain.lib SDL_mixer.lib /out:../openglad.exe 
+
+openscen: $(SCENFILES)
+	link /libpath:"C:/travail/sdl/lib" $(SCENFILES) SDL.lib SDLmain.lib SDL_mixer.lib /out:../openscen.exe 
+
+clean:
+	rm -f *.o
+	rm -f ../openglad
+	rm -f ../openscen
+
+.cpp.obj:
+	cl -c $< -IC:/Travail/SDL/Include
