@@ -124,3 +124,5 @@ long * query_joy();
 
 // Zardus: add: lowercase func
 void lowercase(char *);
+//buffers: add: uppercase func
+void uppercase(char *string);

@@ -231,3 +231,11 @@ void lowercase(char * string)
 	for (i = 0; i < strlen(string);i++)
 		string[i] = tolower(string[i]);
 }
+
+//buffers: add: another extra routine.
+void uppercase(char *string)
+{
+	int i;
+	for(i=0;i<strlen(string);i++)
+		string[i] = toupper(string[i]);
+}
