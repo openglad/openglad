@@ -28,8 +28,8 @@
 //#endif
 
 
-#include "detect.h"
-#include "smix.h"
+//buffers: PORT: don't need this anymore: #include "detect.h"
+//buffers: PORT: don't need this anymore: #include "smix.h"
 
 class soundob
 {
@@ -47,7 +47,7 @@ class soundob
     char soundlist[NUMSOUNDS][14];              // Our list of sounds
     
     int baseio, irq, dma, dma16;                // Card-specific information
-    SOUND *sound[NUMSOUNDS];
+//buffers: PORT: removed... no smix    SOUND *sound[NUMSOUNDS];
     unsigned char volume;                       // Volume: 0 - 255
     unsigned char silence;                      // 0 = on, 1 = silent
     
