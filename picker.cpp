@@ -184,7 +184,6 @@ void picker_main(long argc, char  **argv)
   FILE *cfgfile;
   long i;
 
-	printf("DEBUG: entering picker_main()\n");
 
   for (i=0; i < MAX_BUTTONS; i++)
     allbuttons[i] = NULL;
@@ -252,7 +251,6 @@ void picker_main(long argc, char  **argv)
 //  else
 //         fclose(loadgame);
 
-	printf("DEBUG: entering mainmenu()\n");
   mainmenu(1);
 
   delete mytext;
