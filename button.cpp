@@ -309,8 +309,10 @@ long vbutton::mouse_on()
   mymouse = query_mouse();
   mousex = mymouse[MOUSE_X];
   mousey = mymouse[MOUSE_Y];
+	int mult = myscreen->mult;
 
-  if (mousex > xloc && mousex < xend && mousey > yloc && mousey < yend)
+	//buffers: added *mult so this will work with pixel doubling
+  if (mousex > xloc*mult && mousex < xend*mult && mousey > yloc*mult && mousey < yend*mult)
   {
     if (!had_focus) // just gained focus
     {
