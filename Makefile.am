@@ -1,6 +1,6 @@
 SUBDIRS = util src sound
 EXTRA_DIST= release-notes.txt classes.txt scen.txt pix/*.pix \
-scen/*.fss start.tex glad.hlp openglad.cfg
+scen/*.fss start.tex glad.hlp openglad.cfg cheats.txt
 #nobase_dist_data_DATA = sound start.tex
 data_DATA = graphics.001 levels.001 start.tex glad.hlp openglad.cfg
 #dist_sysconf_DATA= openglad.cfg
