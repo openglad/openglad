@@ -85,15 +85,10 @@ int packfile::close()
 
 FILE *packfile::get_subfile(const char *subfilename)
 {
-	// kari: pix files upper case in pack
-	string subfilenameupper(subfilename);
 	short i;
 
-	//buffers: PORT: implicit delcaration: strupr(subfilename);
-	uppercase(subfilenameupper);
-
 	for (i=numfiles; i--; )
-		if ( strcmp(subfilenameupper.c_str(), fileinfo[i].name) == 0 )
+		if ( strcmp(subfilename, fileinfo[i].name) == 0 )
 		{
 			fseek(datafile, fileinfo[i].filepos, SEEK_SET);
 			last_subfile = i;
