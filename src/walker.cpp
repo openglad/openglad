@@ -219,10 +219,12 @@ short walker::facing(short x, short y)
 	long slope;
 
 	if (!x)
+	{
 		if (y>0)
 			return FACE_DOWN;
 		else
 			return FACE_UP;
+	}
 
 	slope = bigy / x;
 
@@ -678,7 +680,7 @@ walker  * walker::fire()
 {
 	walker  *weapon = NULL;
 	signed char waver;
-	short xp, yp;
+	//short xp, yp;
 	long extra;
 
 	// Do we have enough spellpoints for our weapon
@@ -747,8 +749,8 @@ walker  * walker::fire()
 	// will just be draw (grumble curse)
 	weapon->curdir = (char) ((frame+1)%2);
 
-	xp = weapon->xpos;
-	yp = weapon->ypos;
+	//xp = weapon->xpos;
+	//yp = weapon->ypos;
 
 	// Actual combat
 	if (!screenp->query_passable(weapon->xpos, weapon->ypos, weapon))
@@ -1291,15 +1293,18 @@ short walker::attack(walker  *target)
 		owner->foe = target;
 		target->stats->hit_response(owner);
 		if (headguy->myguy)
+		{
 			if (targetorder != ORDER_LIVING)
 				headguy->myguy->exp += newexp/3;
 			else
 				headguy->myguy->exp += newexp;
+		}
 	}
 	else  //melee combat, set target to hit_response to us
 	{
 		target->stats->hit_response(this);
 		if (myguy)
+		{
 			if (targetorder != ORDER_LIVING)
 				myguy->exp += newexp/3;
 			else
@@ -1310,6 +1315,7 @@ short walker::attack(walker  *target)
 					screenp->m_score[team_num] += tempdamage + target->stats->level;
 				}
 			}
+		}
 	}
 
 	if (order == ORDER_WEAPON)
@@ -4041,7 +4047,7 @@ long walker::is_friendly(walker *target)
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
-	short allied_mode;
+	//short allied_mode;
 	short has_myguy;
 	walker *headguy;
 	walker *headus, *headtarget;
@@ -4068,7 +4074,7 @@ long walker::is_friendly(walker *target)
 
 	// First, get our allied setting from screen ..
 	// 0 is "enemy," and non-zero is "friendly"
-	allied_mode = myscreen->allied_mode;
+	//allied_mode = myscreen->allied_mode;
 
 	// Now, if we or the target don't contain a "myguy" pointer,
 	// then we don't care about allied_mode, and we'll

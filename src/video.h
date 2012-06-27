@@ -91,7 +91,7 @@ class video
 		void draw_box(long x1, long y1, long x2, long y2, unsigned char color, long filled, long tobuffer);
 		void draw_button(long x1, long y1, long x2, long y2, long border);
 		void draw_button(long x1, long y1, long x2, long y2, long border, long tobuffer);
-		long draw_dialog(long x1, long y1, long x2, long y2, char *header);
+		long draw_dialog(long x1, long y1, long x2, long y2, const char *header);
 		void draw_text_bar(long x1, long y1, long x2, long y2);
 
 		void swap(void);

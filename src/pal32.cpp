@@ -42,7 +42,7 @@ char our_pal_lookup(int index);
 // stores palette info in NEWPALETTE, and
 // sets the current palette to this.
 //
-short load_and_set_palette(char *filename, char *newpalette)
+short load_and_set_palette(const char *filename, char *newpalette)
 {
 	short i;
 
@@ -87,7 +87,7 @@ short save_palette(char * whatpalette)
 // load_palette
 // Loads palette from file FILENAME shorto NEWPALETTE
 //
-short load_palette(char *filename, char *newpalette)
+short load_palette(const char *filename, char *newpalette)
 {
 	short i;
 

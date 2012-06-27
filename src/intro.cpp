@@ -62,7 +62,7 @@ void intro_main(long argc, char** argv)
 	grab_timer();
 	grab_keyboard();
 	mytext = new text(myscreen);
-	load_and_set_palette("our.pal", (char *)mypalette);
+	load_and_set_palette("our.pal", mypalette);
 	//  load_scenario("current", myscreen);
 	//buffers: PORT:  for (i=0;i<256;i++)
 	//buffers: PORT:         set_palette_reg(i,0,0,0);
@@ -278,7 +278,7 @@ int cleanup()
 		blue = pal[i][2];
 		set_palette_reg(i, red, green, blue);
 	}
-	load_and_set_palette("our.pal", (char *)mypalette);
+	load_and_set_palette("our.pal", mypalette);
 	return 1;
 }
 

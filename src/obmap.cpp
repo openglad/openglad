@@ -314,8 +314,9 @@ short ob_pass_check(short x, short y, walker  *ob, oblink  *row)
 {
 	short oxsize, oysize;
 	short x2,y2,xsize2,ysize2;
-	short targetorder, targetteam;//, targetfamily;
-	short myorder, myteam;
+	short targetorder;//, targetteam, targetfamily;
+	short myorder;
+	//short myteam;
 	static char message[80];
 
 	oblink  *here;
@@ -323,7 +324,7 @@ short ob_pass_check(short x, short y, walker  *ob, oblink  *row)
 	oysize = ob->sizey;
 
 	myorder = ob->query_order();
-	myteam  = ob->team_num;
+	//myteam  = ob->team_num;
 
 	// Check each object to see if sizes collide.
 	here = row;
@@ -336,7 +337,7 @@ short ob_pass_check(short x, short y, walker  *ob, oblink  *row)
 					{
 						// Let our own team's weapons pass over us ..
 						targetorder = here->ob->query_order();
-						targetteam  = here->ob->team_num;
+						//targetteam  = here->ob->team_num;
 						//targetfamily = here->ob->query_family();
 						if ( ( (targetorder == ORDER_WEAPON)||(myorder == ORDER_WEAPON) ) &&
 						        (ob->is_friendly(here->ob))

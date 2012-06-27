@@ -58,13 +58,13 @@ short load_version_4(FILE  *infile, screen * master); // v.4 scen: + names
 short load_version_5(FILE  *infile, screen * master); // v.5 scen: + type
 short load_version_6(FILE  *infile, screen * master, short version=6); // v.6 scen: + title
 
-char* get_scen_title(char *filename, screen *master); // get the title
+//const char* get_scen_title(const char *filename, screen *master); // get the title
 
 char  * query_my_map_name();
 
 char my_map_name[40];
 
-FILE * open_misc_file(char *, char *);
+FILE * open_misc_file(const char *, const char *);
 
 // These are globals for the packed files ..
 packfile scenpack;
@@ -1650,7 +1650,7 @@ walker *screen::find_near_foe(walker  *ob)
 
 walker  *screen::find_far_foe(walker  *ob)
 {
-	short targx, targy;
+	//short targx, targy;
 	long distance, tempdistance;
 	oblink  *here;
 	walker  *foe,  *endfoe;
@@ -1663,8 +1663,8 @@ walker  *screen::find_far_foe(walker  *ob)
 	here = oblist;  // Get list of all screen objects
 
 	// Get our current coordinates
-	targx = ob->xpos;
-	targy = ob->ypos;
+	//targx = ob->xpos;
+	//targy = ob->ypos;
 
 	// Set our 'default' foe to NULL
 	endfoe = NULL;
@@ -1700,7 +1700,7 @@ walker  *screen::find_far_foe(walker  *ob)
 }
 
 
-char* screen::get_scen_title(char *filename, screen *master)
+const char* screen::get_scen_title(const char *filename, screen *master)
 {
 	FILE  *infile = NULL;
 	char temptext[10] = "XXX";
@@ -1727,8 +1727,10 @@ char* screen::get_scen_title(char *filename, screen *master)
 	else if (scenpack.opened())
 	{
 		infile = scenpack.get_subfile(tempfile);
-		if (infile) gotit = pack;
-		else return "none";
+		if (infile)
+            gotit = pack;
+		else
+            return "none";
 	}
 
 	// Are we a scenario file?
@@ -1757,7 +1759,7 @@ char* screen::get_scen_title(char *filename, screen *master)
 
 //buffers: the file finding and loading code is pretty ugly... i should
 //buffers: rewrite it...
-short load_scenario(char * filename, screen * master)
+short load_scenario(const char * filename, screen * master)
 {
 	FILE  *infile = NULL;
 	char temptext[10] = "XXX";
@@ -1787,7 +1789,7 @@ short load_scenario(char * filename, screen * master)
 	gotit = 0;
 
 	// Zaradus: much much better this way
-	if ( (infile = open_misc_file((char *)thefile.c_str(), "scen/")))
+	if ( (infile = open_misc_file(thefile.c_str(), "scen/")))
 	{
 		gotit = 1;
 	}
@@ -2647,7 +2649,7 @@ oblink* screen::find_in_range(oblink *somelist, long range, short *howmany, walk
 {
 	oblink *here;
 	oblink *newlist, *newhere;
-	short obx, oby;
+	//short obx, oby;
 	unsigned long distance;
 
 	if (!somelist || !ob)
@@ -2656,8 +2658,8 @@ oblink* screen::find_in_range(oblink *somelist, long range, short *howmany, walk
 		return NULL;
 	}
 
-	obx = (short) (ob->xpos + (ob->sizex/2) );  // center of object
-	oby = (short) (ob->ypos + (ob->sizey/2) );
+	//obx = (short) (ob->xpos + (ob->sizex/2) );  // center of object
+	//oby = (short) (ob->ypos + (ob->sizey/2) );
 
 	here = somelist;
 
@@ -2780,7 +2782,7 @@ oblink* screen::find_friends_in_range(oblink *somelist, long range,
 {
 	oblink *here;
 	oblink *newlist, *newhere;
-	short obx, oby;
+	//short obx, oby;
 	unsigned long distance;
 
 	if (!somelist || !ob)
@@ -2789,8 +2791,8 @@ oblink* screen::find_friends_in_range(oblink *somelist, long range,
 		return NULL;
 	}
 
-	obx = (short) (ob->xpos + (ob->sizex/2) );  // center of object
-	oby = (short) (ob->ypos + (ob->sizey/2) );
+	//obx = (short) (ob->xpos + (ob->sizex/2) );  // center of object
+	//oby = (short) (ob->ypos + (ob->sizey/2) );
 
 	here = somelist;
 
@@ -2913,7 +2915,7 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 	return grid[gridloc];
 }
 
-void screen::do_notify(char *message, walker  *who)
+void screen::do_notify(const char *message, walker  *who)
 {
 	short i,sent=0;
 	for(i=0;i<numviews;i++)

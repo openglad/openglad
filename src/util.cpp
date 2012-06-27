@@ -94,7 +94,7 @@ void uppercase(std::string &str)
 		*iter = toupper(*iter);
 }
 
-FILE * open_misc_file(char * file, char * pos_dir, char * attr)
+FILE * open_misc_file(const char * file, const char * pos_dir, const char * attr)
 {
 	FILE * infile;
 	char * filename = get_file_path(file, pos_dir, attr);
@@ -109,12 +109,12 @@ FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 	return NULL;
 }
 
-FILE * open_misc_file(char * file, char * pos_dir)
+FILE * open_misc_file(const char * file, const char * pos_dir)
 {
 	return open_misc_file(file, pos_dir, "rb");
 }
 
-FILE * open_misc_file(char * file)
+FILE * open_misc_file(const char * file)
 {
 	return open_misc_file(file, "", "rb");
 }
@@ -138,7 +138,7 @@ void create_dataopenglad()
 #endif
 }
 
-char * get_file_path(char * file, char * pos_dir, char * attr)
+char * get_file_path(const char * file, const char * pos_dir, const char * attr)
 {
 	FILE * infile;
 	string filepath(file);
@@ -193,12 +193,12 @@ char * get_file_path(char * file, char * pos_dir, char * attr)
 	return NULL;
 }
 
-char * get_file_path(char * file, char * pos_dir)
+char * get_file_path(const char * file, const char * pos_dir)
 {
 	return get_file_path(file, pos_dir, "rb");
 }
 
-char * get_file_path(char * file)
+char * get_file_path(const char * file)
 {
 	return get_file_path(file, "", "rb");
 }

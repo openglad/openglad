@@ -26,7 +26,7 @@
 
 short end_of_file;                        // global flag ..
 char helptext[HELP_WIDTH][MAX_LINES];
-FILE * open_misc_file(char *);
+FILE * open_misc_file(const char *);
 
 
 // This function reads one text line from file infile,
@@ -191,7 +191,7 @@ short read_scenario(screen *myscreen)
 	return (short) numlines;
 }
 
-short read_help(char *somefile,screen * myscreen)
+short read_help(const char *somefile,screen * myscreen)
 {
 	FILE *infile;
 	long screenlines;

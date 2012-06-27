@@ -35,7 +35,7 @@ using namespace std;
 #define GLAD_HEADER_SIZE        8
 #define FILENAME_SIZE           13
 
-FILE * open_misc_file(char *);
+FILE * open_misc_file(const char *);
 
 class packfileinfo
 {

@@ -25,7 +25,7 @@
 
 // Goddamned function doesn't belong in screen, much less as a C style extern!
 //   I'll fix this eventually, if I ever get hold of that part of the code.
-short load_scenario(char * filename, screen * master);
+short load_scenario(const char * filename, screen * master);
 
 class screen : public video
 {
@@ -69,13 +69,13 @@ class screen : public video
 		oblink* find_friends_in_range(oblink *somelist, long range, short *howmany, walker  *ob);
 		oblink* find_foe_weapons_in_range(oblink *somelist, long range, short *howmany, walker  *ob);
 		char damage_tile(short xloc, short yloc); // damage the specified tile
-		void do_notify(char *message, walker  *who);  // printing text
+		void do_notify(const char *message, walker  *who);  // printing text
 		void report_mem();
 		inline walker *set_walker(walker *ob, char order, char family)
 		{
 			return myloader->set_walker(ob, order, family);
 		}
-		char* get_scen_title(char *filename, screen *master);
+		const char* get_scen_title(const char *filename, screen *master);
 
 		char scenario_type; // 0 is default
 		char special_name[NUM_FAMILIES][NUM_SPECIALS][20];

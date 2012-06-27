@@ -41,14 +41,14 @@
 
 //int matherr (struct exception *);
 
-FILE * open_misc_file(char *, char *);
-FILE * open_misc_file(char *, char *, char *);
+FILE * open_misc_file(const char *, const char *);
+FILE * open_misc_file(const char *, const char *, const char *);
 
 void show_guy(long frames, long who); // shows the current guy ..
 long name_guy(long arg); // rename (or name) the current_guy
 
 void glad_main(screen *myscreen, long playermode);
-char* get_saved_name(char * filename);
+const char* get_saved_name(const char * filename);
 long do_set_scen_level(long arg1);
 
 long leftmouse();
@@ -2366,7 +2366,7 @@ long do_load(long arg1)
 	return REDRAW;
 }
 
-long save_team_list(char * filename)
+long save_team_list(const char * filename)
 {
 	char filler[50];// = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *outfile;
@@ -2566,7 +2566,7 @@ long save_team_list(char * filename)
 	return 1;
 }
 
-long load_team_list_one(char * filename)
+long load_team_list_one(const char * filename)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *infile;
@@ -2844,7 +2844,7 @@ long load_team_list_one(char * filename)
 	return 1;
 }
 
-char* get_saved_name(char * filename)
+const char* get_saved_name(const char * filename)
 {
 	FILE  *infile;
 	char temp_filename[80];

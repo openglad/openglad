@@ -45,7 +45,7 @@ bool cfg_store::parse(const char *filename)
 	}
 	while(std::getline(in, line, '\n'))
 	{
-		int pos = line.find(';');
+		size_t pos = line.find(';');
 		if (pos != string::npos)
 			line.erase(pos);
 		if((pos=line.find('[')) != std::string::npos)

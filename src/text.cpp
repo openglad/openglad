@@ -29,11 +29,12 @@ text::text(screen * myscreen)
 	screenp = myscreen;
 }
 
-text::text(screen * myscreen, char * filename)
+text::text(screen * myscreen, const char * filename)
 {
-	if (!filename || strlen(filename) < 2)
-		filename = "text.pix";
-	letters = read_pixie_file(filename);
+    const char* temp_filename = filename;
+	if (!temp_filename || strlen(temp_filename) < 2)
+		temp_filename = "text.pix";
+	letters = read_pixie_file(temp_filename);
 	sizex = letters[1];
 	sizey = letters[2];
 	letters = letters+3;
@@ -46,7 +47,7 @@ text::~text()
 	free(letters);
 	letters = NULL;
 }
-short text::query_width(char *string) // returns width, in pixels
+short text::query_width(const char *string) // returns width, in pixels
 {
 	unsigned short i=0;
 	short over = 0;

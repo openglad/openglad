@@ -499,11 +499,12 @@ short living::check_special()
 {
 	unsigned long distance, myrange;
 
-	oblink *enemylist, *templink;
+	oblink *enemylist;
+	//oblink *templink;
 	short howmany;
 
 	enemylist = NULL;
-	templink = NULL;
+	//templink = NULL;
 	shifter_down = random(2); // on or off, randomly ..
 
 	// Make sure we have enough ..
@@ -804,10 +805,12 @@ short living::facing(short x, short y)
 	long slope;
 
 	if (!x)
+	{
 		if (y>0)
 			return FACE_DOWN;
 		else
 			return FACE_UP;
+	}
 
 	slope = bigy / x;
 

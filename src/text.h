@@ -26,8 +26,8 @@ class text
 	public:
 		friend class vbutton;
 		text(screen * myscreen);
-		text(screen * myscreen, char * filename);
-		short query_width(char *string); // returns width, in pixels
+		text(screen * myscreen, const char * filename);
+		short query_width(const char *string); // returns width, in pixels
 		short write_xy(short x, short y, const char  *string);
 		short write_xy(short x, short y, const char  *string, unsigned char color);
 		short write_xy(short x, short y, const char  *string, short to_buffer);

@@ -257,7 +257,7 @@ void video::draw_button(long x1, long y1, long x2, long y2, long border, long to
 // Draws an empty but headed dialog box, returns the edge at
 // which to draw text ... does NOT display to screen.
 long video::draw_dialog(long x1, long y1, long x2, long y2,
-                        char *header)
+                        const char *header)
 {
 	static text dialogtext(myscreen, "textbig.pix"); // large text
 	long centerx = x1 + ( (x2-x1) /2 ), left;
@@ -613,9 +613,9 @@ void video::putbuffer(long tilestartx, long tilestarty,
 {
 	int i,j,num;
 	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
-	unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
+	//unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
 	long totrows,rowsize; //number of rows and width of each row in the source
-	unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
+	//unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
 	char * sourcebufptr = &sourceptr[0];
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
@@ -643,11 +643,11 @@ void video::putbuffer(long tilestartx, long tilestarty,
 	if (totrows <= 0 || rowsize <= 0)
 		return; //this happens on bad args
 
-	targetshifter = VIDEO_BUFFER_WIDTH - rowsize; //this will wrap the target around
-	sourceshifter = tilewidth - rowsize;  //this will wrap the source around
+	//targetshifter = VIDEO_BUFFER_WIDTH - rowsize; //this will wrap the target around
+	//sourceshifter = tilewidth - rowsize;  //this will wrap the source around
 
-	offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
-	offssource = (ymin * tilewidth) + xmin; //start at u-l position
+	//offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
+	//offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
 	//buffers: draws graphic. actually uses the above bound checking now (7/18/02)
 	num=0;
@@ -670,9 +670,9 @@ void video::putbuffer(long tilestartx, long tilestarty,
 {
 	SDL_Rect rect,temp;
 	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
-	unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
+	//unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
 	long totrows,rowsize; //number of rows and width of each row in the source
-	unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
+	//unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
 	//buffers: unsigned char * sourcebufptr = &sourceptr[0];
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
@@ -698,11 +698,11 @@ void video::putbuffer(long tilestartx, long tilestarty,
 	if (totrows <= 0 || rowsize <= 0)
 		return; //this happens on bad args
 
-	targetshifter = VIDEO_BUFFER_WIDTH - rowsize; //this will wrap the target around
-	sourceshifter = tilewidth - rowsize;  //this will wrap the source around
+	//targetshifter = VIDEO_BUFFER_WIDTH - rowsize; //this will wrap the target around
+	//sourceshifter = tilewidth - rowsize;  //this will wrap the source around
 
-	offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
-	offssource = (ymin * tilewidth) + xmin; //start at u-l position
+	//offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
+	//offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
 	rect.x = (tilestartx)*mult;
 	rect.y = (tilestarty)*mult;

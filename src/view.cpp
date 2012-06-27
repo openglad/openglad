@@ -51,8 +51,8 @@
 #define KEY_PREFS               14
 #define KEY_CHEAT               15
 
-FILE * open_misc_file(char *, char *, char *);
-FILE * open_misc_file(char *);
+FILE * open_misc_file(const char *, const char *, const char *);
+FILE * open_misc_file(const char *);
 
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
@@ -311,7 +311,7 @@ short viewscreen::input(char inputthing)
 	oblink *templink;
 	int  counter;
 
-	short i;
+	//short i;
 	oblink  *here, *tempobj, *helpme;
 	//short step;
 	char *inputkeyboard;
@@ -418,7 +418,8 @@ short viewscreen::input(char inputthing)
 	if (control && control->bonus_rounds) // do we have extra rounds?
 	{
 		control->bonus_rounds--;
-		i = input('0');
+		input('0');//i = input('0');
+		
 		if (control->lastx || control->lasty)
 			control->walk();
 	}
@@ -903,7 +904,7 @@ short viewscreen::input(char inputthing)
 	return 1;
 }
 
-void viewscreen::set_display_text(char *newtext, short numcycles)
+void viewscreen::set_display_text(const char *newtext, short numcycles)
 {
 	long i;
 

@@ -19,10 +19,10 @@
 #include "util.h"
 
 short next_scenario = 1;
-FILE * open_misc_file(char *, char *);
-FILE * open_misc_file(char *, char *, char *);
+FILE * open_misc_file(const char *, const char *);
+FILE * open_misc_file(const char *, const char *, const char *);
 
-short load_saved_game(char *filename, screen  *myscreen)
+short load_saved_game(const char *filename, screen  *myscreen)
 {
 	char          scenfile[20];
 	guy           *temp_guy;
@@ -283,7 +283,7 @@ short load_saved_game(char *filename, screen  *myscreen)
 	return 1;
 }
 
-short load_team_list(char * filename, screen  *myscreen)
+short load_team_list(const char * filename, screen  *myscreen)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *infile;
@@ -535,7 +535,7 @@ short load_team_list(char * filename, screen  *myscreen)
 	return 1;
 }
 
-short save_game(char * filename, screen  *myscreen)
+short save_game(const char * filename, screen  *myscreen)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *outfile;

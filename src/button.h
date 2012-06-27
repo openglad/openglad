@@ -147,9 +147,9 @@ long cycle_team_guy(long whichway);
 long add_guy(long ignoreme);
 long edit_guy(long arg1); // transfer stats .. hardcoded
 long do_save(long arg1);  // dummy function for save_team_list
-long save_team_list(char * filename); // save the team list
+long save_team_list(const char * filename); // save the team list
 long do_load(long arg1); // dummy function for load_team_list_one
-long load_team_list_one(char * filename); // load a team list
+long load_team_list_one(const char * filename); // load a team list
 long delete_all(); // delete entire team
 long delete_first(); // delete first guy on team list
 long how_many(long whatfamily);   // how many guys of family X on the team?

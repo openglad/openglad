@@ -85,7 +85,7 @@ class viewscreen
 		short redraw();
 		short refresh();
 		short input(char input);
-		void set_display_text(char *newtext, short numcycles);
+		void set_display_text(const char *newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(long row); // cycle text upward
 		void clear_text(void); // clear all text in buffer

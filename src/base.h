@@ -114,7 +114,7 @@ extern packfile * pixpack;
 #define MAX_LINES 100   // maximum number of lines in helpfile
 #define HELP_WIDTH 100   // maximum length of display line
 short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], FILE *infile);
-short   read_help(char *somefile,screen *myscreen);
+short   read_help(const char *somefile,screen *myscreen);
 short   read_scenario(screen  *myscreen);
 char* read_one_line(FILE *infile, short length);
 
@@ -372,9 +372,9 @@ short get_pix_directory();
 short get_pix_directory(char *whereto); // copies to whereto, returns OKAY..
 
 // Functions in game.cpp
-short load_team_list(char * filename, screen  *myscreen);
-short load_saved_game(char *filename, screen  *myscreen);
-short save_game(char *filename, screen  *myscreen);
+short load_team_list(const char * filename, screen  *myscreen);
+short load_saved_game(const char *filename, screen  *myscreen);
+short save_game(const char *filename, screen  *myscreen);
 
 #define NORMAL_MODE    0     // #defines for walkputbuffer mode type
 #define INVISIBLE_MODE 1     //

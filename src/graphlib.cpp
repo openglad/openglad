@@ -31,7 +31,7 @@ using namespace std;
 //packfile *pixpack; // the packed pixies; perfect
 packfile tempack;
 
-FILE * open_misc_file(char *, char *);
+FILE * open_misc_file(const char *, const char *);
 
 // ************************************************************
 //  Other graphics routines
@@ -69,7 +69,7 @@ char  * read_pixie_file(const char  * filename)
 	}
 
 	// Zardus: try to find file using open_misc_file, then resort to graphics.001
-	if ((infile = open_misc_file((char *)filename, "pix/")) || (infile = open_misc_file((char *)filename, "scen/")))
+	if ((infile = open_misc_file(filename, "pix/")) || (infile = open_misc_file(filename, "scen/")))
 		gotit = file;
 	else if (tempack.opened() && (infile=tempack.get_subfile((char *)filename)))
 		gotit = pack;

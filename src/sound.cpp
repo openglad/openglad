@@ -33,7 +33,7 @@ using namespace std;
 
 //#define SOUND_DB   0 // define for debugging messages
 
-char * get_file_path(char * file);
+char * get_file_path(const char * file);
 
 
 soundob::soundob()

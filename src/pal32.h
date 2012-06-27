@@ -23,8 +23,8 @@
 
 #include "SDL_types.h"
 
-short load_and_set_palette(char *filename,char  *newpalette); // load/set palette from disk
-short load_palette(char *filename,char *newpalette); // load palette from disk
+short load_and_set_palette(const char *filename,char  *newpalette); // load/set palette from disk
+short load_palette(const char *filename,char *newpalette); // load palette from disk
 short set_palette(char *newpalette); // set palette
 void adjust_palette(char *whichpal, short amount); //gamma correction??
 void cycle_palette(char *newpalette, short start, short end, short shift); //color cycling

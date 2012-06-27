@@ -291,8 +291,6 @@ signed char  *anifood[] = { food1, food1, food1, food1,
 
 loader::loader()
 {
-	short i;
-
 	graphics = new char*[SIZE_ORDERS*SIZE_FAMILIES];
 	memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES);
 	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];

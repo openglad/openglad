@@ -511,7 +511,7 @@ void new_draw_value_bar(short left, short top,
 	short points;
 	short totallength = 60;
 	short bar_length=0;
-	short bar_remainder = totallength - bar_length;
+	//short bar_remainder = totallength - bar_length;
 	char whatcolor;
 
 	if (mode == 0) // hitpoint bar
@@ -533,7 +533,7 @@ void new_draw_value_bar(short left, short top,
 			bar_length = 60;
 		else
 			bar_length =(short) points * 60 / control->stats->max_hitpoints;
-		bar_remainder = 60 - bar_length;
+		//bar_remainder = 60 - bar_length;
 
 		draw_percentage_bar(left, top, BAR_BACK_COLOR, 60, myscreen);
 		draw_percentage_bar(left, top, whatcolor, bar_length, myscreen);
@@ -558,7 +558,7 @@ void new_draw_value_bar(short left, short top,
 			bar_length = 60;
 		else
 			bar_length =(short) points * 60 / control->stats->max_magicpoints;
-		bar_remainder = 60 - bar_length;
+		//bar_remainder = 60 - bar_length;
 
 		draw_percentage_bar(left, top, BAR_BACK_COLOR, 60, myscreen);
 		draw_percentage_bar(left, top, whatcolor, bar_length, myscreen);
@@ -775,7 +775,7 @@ void draw_percentage_bar(short left, short top, unsigned char somecolor,
                          short somelength, screen * myscreen)
 {
 	short i, j;
-	unsigned char tempcolor;
+	//unsigned char tempcolor;
 
 	// Draw the black border ..
 	myscreen->fastbox(left+2, top, somelength-4, 1, 0, 1);
@@ -794,7 +794,7 @@ void draw_percentage_bar(short left, short top, unsigned char somecolor,
 
 	if ( (somecolor == ORANGE_START) || (somecolor == WATER_START) ) // rotating colors .. do special ..
 	{
-		tempcolor = somecolor; //+((i+j)%16
+		//tempcolor = somecolor; //+((i+j)%16
 
 		//myscreen->fastbox(left+1, top+2, 1, top+4
 		//for (j=2; j < 3; j++)
