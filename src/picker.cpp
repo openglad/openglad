@@ -3172,7 +3172,7 @@ long return_menu(long arg)
 #define WL(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, DARK_BLUE, 1)
 #define WR(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, DARK_BLUE, 1)
 
-	           long retvalue;
+	           long retvalue = 0;
 	           guy *thisguy;
 	           long start_time = query_timer();
 	           long *detailmouse;

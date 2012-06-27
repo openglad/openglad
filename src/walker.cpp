@@ -268,7 +268,7 @@ short walker::shove(walker  *target, short x, short y)
 short walker::walkstep(short x, short y)
 {
 	short returnvalue;
-	short ret1, ret2;
+	short ret1 = 0, ret2 = 0;
 	short oldcurdir = curdir;
 	short step = (short) stepsize;
 	short halfstep;
@@ -1683,7 +1683,7 @@ short walker::special()
 	oblink *list2;
 	short howmany;
 	short didheal;
-	short generic, generic2;
+	short generic, generic2 = 0;
 	char message[80], tempstr[80];
 	short person;
 
@@ -3733,7 +3733,7 @@ void walker::transform_to(char whatorder, char whatfamily)
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
 	short reset = 0;
-	short tempact;
+	short tempact = query_act_type();;
 
 	// First remove us from the collision table..
 	screenp->myobmap->remove

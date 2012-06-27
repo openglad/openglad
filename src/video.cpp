@@ -44,6 +44,11 @@ video::video()
 	long i;
 	const char *qresult;
 	RenderEngine render;
+	fullscreen = 0;
+    mouse_mult = 1;
+    mult = 1;
+    font_mult = 1;
+    render = NoZoom;
 
 	qresult = cfg.query("graphics","fullscreen");
 	if(qresult && strcmp(qresult,"on")==0)

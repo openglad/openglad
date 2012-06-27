@@ -2936,6 +2936,7 @@ void screen::do_notify(const char *message, walker  *who)
 void screen::report_mem()
 {
 	meminfo Memory;
+	Memory.FreeLinAddrSpace = 0;
 	// Zardus: PORT: this is aparently an incomplete type:  union REGS regs;
 	// Same here:  struct SREGS sregs;
 	char memreport[80];
