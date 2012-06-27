@@ -291,7 +291,16 @@ signed char  *anifood[] = { food1, food1, food1, food1,
 
 unsigned char* data_copy(unsigned char* d)
 {
-    return (unsigned char*)strdup((const char*)d);
+    if(d == NULL)
+        return NULL;
+    unsigned char numframes = d[2];
+    unsigned char x = d[0];
+    unsigned char y = d[1];
+    
+    long len = x * y * numframes + 3 + 1;
+    unsigned char* result = (unsigned char*)malloc(len);
+    memcpy(result, d, len);
+    return result;
 }
 
 

@@ -29,7 +29,7 @@
 // Zardus: set_mult in input.cpp sets input's mult value
 void set_mult(int);
 
-char * videoptr = (char *) VIDEO_LINEAR;
+unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
 
 SDL_Surface *screen; //buffers: this is what we draw in
 SDL_Surface *fontbuffer;
