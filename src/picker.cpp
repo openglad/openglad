@@ -3010,7 +3010,7 @@ long go_menu(long arg1)
 	//else
 	//	fclose(loadgame);
 
-	return 1;
+	return CREATE_TEAM_MENU;
 }
 
 void statscopy(guy *dest, guy *source)
