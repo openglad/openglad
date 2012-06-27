@@ -6,9 +6,10 @@
 		<Option pch_mode="2" />
 		<Option compiler="gcc" />
 		<Build>
-			<Target title="Debug">
+			<Target title="Linux Debug">
+				<Option platforms="Unix;Mac;" />
 				<Option output="openglad" prefix_auto="1" extension_auto="1" />
-				<Option object_output="obj/Debug/" />
+				<Option object_output="obj\Debug\" />
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Compiler>
@@ -20,9 +21,10 @@
 					<Add library="SDL_mixer" />
 				</Linker>
 			</Target>
-			<Target title="Release">
+			<Target title="Linux Release">
+				<Option platforms="Unix;Mac;" />
 				<Option output="openglad" prefix_auto="1" extension_auto="1" />
-				<Option object_output="obj/Release/" />
+				<Option object_output="obj\Release\" />
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Compiler>
@@ -30,76 +32,121 @@
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
+					<Add library="SDLmain" />
+					<Add library="SDL" />
 				</Linker>
+			</Target>
+			<Target title="Windows Debug">
+				<Option platforms="Windows;" />
+				<Option output="openglad" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj\Debug\" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+				</Compiler>
+				<Linker>
+					<Add option="-mwindows" />
+					<Add library="mingw32" />
+					<Add library="SDLmain" />
+					<Add library="SDL" />
+					<Add library="SDL_mixer" />
+				</Linker>
+				<ExtraCommands>
+					<Add after="util\gladpack.exe p graphics.001 pix\*.pix" />
+					<Add after="util\gladpack.exe p levels.001 scen\*.fss" />
+				</ExtraCommands>
+			</Target>
+			<Target title="Windows Release">
+				<Option platforms="Windows;" />
+				<Option output="openglad" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj\Release\" />
+				<Option type="0" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add option="-mwindows" />
+					<Add library="mingw32" />
+					<Add library="SDLmain" />
+					<Add library="SDL" />
+					<Add library="SDL_mixer" />
+				</Linker>
+				<ExtraCommands>
+					<Add after="util\gladpack.exe p graphics.001 pix\*.pix" />
+					<Add after="util\gladpack.exe p levels.001 scen\*.fss" />
+				</ExtraCommands>
 			</Target>
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 		</Compiler>
-		<Unit filename="src/base.h" />
-		<Unit filename="src/button.cpp" />
-		<Unit filename="src/button.h" />
-		<Unit filename="src/colors.h" />
-		<Unit filename="src/effect.cpp" />
-		<Unit filename="src/effect.h" />
-		<Unit filename="src/game.cpp" />
-		<Unit filename="src/glad.cpp" />
-		<Unit filename="src/gladpack.cpp" />
-		<Unit filename="src/gladpack.h" />
-		<Unit filename="src/graph.h" />
-		<Unit filename="src/graphlib.cpp" />
-		<Unit filename="src/guy.cpp" />
-		<Unit filename="src/guy.h" />
-		<Unit filename="src/help.cpp" />
-		<Unit filename="src/input.cpp" />
-		<Unit filename="src/input.h" />
-		<Unit filename="src/intro.cpp" />
-		<Unit filename="src/living.cpp" />
-		<Unit filename="src/living.h" />
-		<Unit filename="src/loader.cpp" />
-		<Unit filename="src/loader.h" />
-		<Unit filename="src/obmap.cpp" />
-		<Unit filename="src/obmap.h" />
-		<Unit filename="src/pal32.cpp" />
-		<Unit filename="src/pal32.h" />
-		<Unit filename="src/palettes.h" />
-		<Unit filename="src/parser.cpp" />
-		<Unit filename="src/parser.h" />
-		<Unit filename="src/picker.cpp" />
-		<Unit filename="src/picker.h" />
-		<Unit filename="src/pixdefs.h" />
-		<Unit filename="src/pixie.cpp" />
-		<Unit filename="src/pixie.h" />
-		<Unit filename="src/pixien.cpp" />
-		<Unit filename="src/pixien.h" />
-		<Unit filename="src/radar.cpp" />
-		<Unit filename="src/radar.h" />
-		<Unit filename="src/sai2x.cpp" />
-		<Unit filename="src/sai2x.h" />
-		<Unit filename="src/screen.cpp" />
-		<Unit filename="src/screen.h" />
-		<Unit filename="src/smooth.cpp" />
-		<Unit filename="src/smooth.h" />
-		<Unit filename="src/sound.cpp" />
-		<Unit filename="src/soundob.h" />
-		<Unit filename="src/sounds.h" />
-		<Unit filename="src/stats.cpp" />
-		<Unit filename="src/stats.h" />
-		<Unit filename="src/text.cpp" />
-		<Unit filename="src/text.h" />
-		<Unit filename="src/treasure.cpp" />
-		<Unit filename="src/treasure.h" />
-		<Unit filename="src/util.cpp" />
-		<Unit filename="src/util.h" />
-		<Unit filename="src/video.cpp" />
-		<Unit filename="src/video.h" />
-		<Unit filename="src/view.cpp" />
-		<Unit filename="src/view.h" />
-		<Unit filename="src/walker.cpp" />
-		<Unit filename="src/walker.h" />
-		<Unit filename="src/weap.cpp" />
-		<Unit filename="src/weap.h" />
+		<Unit filename="src\base.h" />
+		<Unit filename="src\button.cpp" />
+		<Unit filename="src\button.h" />
+		<Unit filename="src\colors.h" />
+		<Unit filename="src\effect.cpp" />
+		<Unit filename="src\effect.h" />
+		<Unit filename="src\game.cpp" />
+		<Unit filename="src\glad.cpp" />
+		<Unit filename="src\gladpack.cpp" />
+		<Unit filename="src\gladpack.h" />
+		<Unit filename="src\graph.h" />
+		<Unit filename="src\graphlib.cpp" />
+		<Unit filename="src\guy.cpp" />
+		<Unit filename="src\guy.h" />
+		<Unit filename="src\help.cpp" />
+		<Unit filename="src\input.cpp" />
+		<Unit filename="src\input.h" />
+		<Unit filename="src\intro.cpp" />
+		<Unit filename="src\living.cpp" />
+		<Unit filename="src\living.h" />
+		<Unit filename="src\loader.cpp" />
+		<Unit filename="src\loader.h" />
+		<Unit filename="src\obmap.cpp" />
+		<Unit filename="src\obmap.h" />
+		<Unit filename="src\pal32.cpp" />
+		<Unit filename="src\pal32.h" />
+		<Unit filename="src\palettes.h" />
+		<Unit filename="src\parser.cpp" />
+		<Unit filename="src\parser.h" />
+		<Unit filename="src\picker.cpp" />
+		<Unit filename="src\picker.h" />
+		<Unit filename="src\pixdefs.h" />
+		<Unit filename="src\pixie.cpp" />
+		<Unit filename="src\pixie.h" />
+		<Unit filename="src\pixien.cpp" />
+		<Unit filename="src\pixien.h" />
+		<Unit filename="src\radar.cpp" />
+		<Unit filename="src\radar.h" />
+		<Unit filename="src\sai2x.cpp" />
+		<Unit filename="src\sai2x.h" />
+		<Unit filename="src\screen.cpp" />
+		<Unit filename="src\screen.h" />
+		<Unit filename="src\smooth.cpp" />
+		<Unit filename="src\smooth.h" />
+		<Unit filename="src\sound.cpp" />
+		<Unit filename="src\soundob.h" />
+		<Unit filename="src\sounds.h" />
+		<Unit filename="src\stats.cpp" />
+		<Unit filename="src\stats.h" />
+		<Unit filename="src\text.cpp" />
+		<Unit filename="src\text.h" />
+		<Unit filename="src\treasure.cpp" />
+		<Unit filename="src\treasure.h" />
+		<Unit filename="src\util.cpp" />
+		<Unit filename="src\util.h" />
+		<Unit filename="src\video.cpp" />
+		<Unit filename="src\video.h" />
+		<Unit filename="src\view.cpp" />
+		<Unit filename="src\view.h" />
+		<Unit filename="src\walker.cpp" />
+		<Unit filename="src\walker.h" />
+		<Unit filename="src\weap.cpp" />
+		<Unit filename="src\weap.h" />
 		<Extensions>
 			<envvars />
 			<code_completion />

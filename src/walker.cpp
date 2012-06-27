@@ -2097,8 +2097,8 @@ short walker::special()
 								alive->team_num = newob->team_num;
 								if (myguy) // take some EXP away as penalty if we're a player
 								{
-									if (myguy->exp >= (newob->stats->level*newob->stats->level*100) )
-										myguy->exp -= (newob->stats->level*newob->stats->level*100);
+									if (myguy->exp >= (((unsigned long)newob->stats->level)*((unsigned long)newob->stats->level)*100) )
+										myguy->exp -= (((unsigned long)newob->stats->level)*((unsigned long)newob->stats->level)*100);
 									else
 										myguy->exp = 0;
 								}

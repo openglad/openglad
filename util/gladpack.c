@@ -4,19 +4,10 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define FILENAME_SIZE 13
 
-int main(int argc, char **argv)
-{
-	if (argc > 1 && !strcmp(argv[1], "p")) pack(argc, argv);
-	else if (argc > 1 && !strcmp(argv[1], "u")) unpack(argc, argv);
-	else
-	{
-		printf("Usage: gladpack (p|u) ...\n");
-		return 1;
-	}
-}
 
 int pack(int argc, char **argv)
 {
@@ -27,7 +18,7 @@ int pack(int argc, char **argv)
 	int i;
 	FILE *infile;
 	FILE *outfile;
-	char buffer[5000000]; //buffers: malloc is for wimps
+	char* buffer = (char*)malloc(5000000);
 
 	if (numfiles < 1)
 	{
@@ -79,6 +70,7 @@ int pack(int argc, char **argv)
 
 	fclose(outfile);
 
+    free(buffer);
 	return 0;
 }
 
@@ -86,12 +78,12 @@ int unpack(int argc, char **argv)
 {
 	long *filelocation;
 	char filename[300][13];
-	int headersize;
-	int bodysize;
+	//int headersize;
+	//int bodysize;
 	short numfiles;
 	long sizeoffile;
 	int i;
-	char buffer[5000000];
+	char* buffer = (char*)malloc(5000000);
 	FILE *infile;
 	FILE *outfile;
 
@@ -116,7 +108,7 @@ int unpack(int argc, char **argv)
 	}
 
 	fread(&sizeoffile, sizeof(long), 1, infile);
-	printf("Pack file is %i bytes long.\n", sizeoffile);
+	printf("Pack file is %ld bytes long.\n", sizeoffile);
 
 	filelocation[numfiles] = sizeoffile;
 
@@ -132,5 +124,20 @@ int unpack(int argc, char **argv)
 	}
 
 	fclose(infile);
+	free(buffer);
+	return 0;
+}
+
+
+
+int main(int argc, char **argv)
+{
+	if (argc > 1 && !strcmp(argv[1], "p")) pack(argc, argv);
+	else if (argc > 1 && !strcmp(argv[1], "u")) unpack(argc, argv);
+	else
+	{
+		printf("Usage: gladpack (p|u) ...\n");
+		return 1;
+	}
 	return 0;
 }

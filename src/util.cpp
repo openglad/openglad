@@ -20,7 +20,11 @@
 // random helper functions
 //
 #include "util.h"
-#include "config.h"
+#if defined(WIN32) || defined(_WIN32)
+    #include "config.h-win"
+#else
+    #include "config.h"
+#endif
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen
@@ -169,7 +173,7 @@ char * get_file_path(const char * file, const char * pos_dir, const char * attr)
 			return strdup(filepath.c_str());
 		}
 	}
-
+    
 	filepath = DATADIR;
 	filepath += pos_dir;
 	filepath += file;

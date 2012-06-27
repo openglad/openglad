@@ -23,7 +23,11 @@
 #include "input.h"
 #include "graph.h"
 #include "colors.h"
-#include "config.h"
+#if defined(WIN32) || defined(_WIN32)
+    #include "config.h-win"
+#else
+    #include "config.h"
+#endif
 #include "util.h"
 
 //these are for chad's team info page
