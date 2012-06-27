@@ -257,34 +257,34 @@ long guy::query_heart_value() // how much are we worth?
 	temp = strength - normal->strength; // difference..
 	temp = MAX(temp,0);
 	cost += (long) (pow( temp, RAISE)
-	                * (long)statcosts[family][0]);
+	                * (long)statcosts[(int)family][0]);
 
 	// Get dexterity cost ..
 	temp = dexterity - normal->dexterity; // difference..
 	temp = MAX(temp,0);
 	cost += (long) (pow( temp, RAISE)
-	                * (long)statcosts[family][1]);
+	                * (long)statcosts[(int)family][1]);
 
 	// Get constitution cost ..
 	temp = constitution - normal->constitution; // difference..
 	temp = MAX(temp,0);
 	cost += (long) (pow( temp, RAISE)
-	                * (long)statcosts[family][2]);
+	                * (long)statcosts[(int)family][2]);
 
 	// Get intelligence cost ..
 	temp = intelligence - normal->intelligence; // difference..
 	temp = MAX(temp,0);
 	cost += (long) (pow( temp, RAISE)
-	                * (long)statcosts[family][3]);
+	                * (long)statcosts[(int)family][3]);
 
 	// Get armor cost ..
 	temp = armor - normal->armor; // difference..
 	temp = MAX(temp,0);
 	cost += (long) (pow( temp, RAISE)
-	                * (long)statcosts[family][4]);
+	                * (long)statcosts[(int)family][4]);
 
 	// Add in the base cost value for the guy ..
-	cost += (long) costlist[family];
+	cost += (long) costlist[(int)family];
 
 	return cost;
 

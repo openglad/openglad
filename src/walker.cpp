@@ -1702,7 +1702,7 @@ short walker::special()
 	}
 
 	// Do we have enough for our special ability?
-	if (stats->magicpoints < stats->special_cost[current_special])
+	if (stats->magicpoints < stats->special_cost[(int)current_special])
 		return 0;
 
 	if (query_order() != ORDER_LIVING)
@@ -1943,7 +1943,7 @@ short walker::special()
 						newob->team_num = team_num;
 						newob->ani_type = 1; // dummy, non-zero value
 						// Specify settings based on our mana ..
-						generic = stats->magicpoints - stats->special_cost[current_special];
+						generic = stats->magicpoints - stats->special_cost[(int)current_special];
 						generic /= 2; // get half our excess magic
 
 						newob->lifetime = 100 + generic;
@@ -2188,7 +2188,7 @@ short walker::special()
 							}
 							busy +=8;
 							// Take an extra cost for placing a marker
-							generic = stats->magicpoints - stats->special_cost[current_special];
+							generic = stats->magicpoints - stats->special_cost[(int)current_special];
 							generic /= 2; // reduce our 'extra' by half
 							stats->magicpoints -= generic;
 						}
@@ -2205,7 +2205,7 @@ short walker::special()
 					tempx = lastx; // store our facing
 					tempy = lasty;
 					// Do we have extra magic points to spend?
-					generic = stats->magicpoints - stats->special_cost[current_special];
+					generic = stats->magicpoints - stats->special_cost[(int)current_special];
 					if (generic > 0)
 					{
 						generic = generic / 15;        // take 7% of remaining magic...
@@ -2375,7 +2375,7 @@ short walker::special()
 						}
 						busy +=8;
 						// Take an extra cost for placing a marker
-						generic = stats->magicpoints - stats->special_cost[current_special];
+						generic = stats->magicpoints - stats->special_cost[(int)current_special];
 						generic /= 2; // reduce our 'extra' by half
 						stats->magicpoints -= generic;
 					} // end of put a marker (shifter_down)
@@ -2691,7 +2691,7 @@ short walker::special()
 						return 0; // noone to influence
 					here = newlist;
 					didheal = 0; // howmany actually done yet?
-					generic2 = stats->magicpoints - stats->special_cost[current_special] + 10;
+					generic2 = stats->magicpoints - stats->special_cost[(int)current_special] + 10;
 					while (here && (generic2 >= 10) )
 					{
 						if ( (here->ob->real_team_num == 255) && // never been charmed
@@ -2731,7 +2731,7 @@ short walker::special()
 					sprintf(tempstr, "%s has controlled %d men", message, didheal);
 					screenp->do_notify(tempstr, this);
 
-					generic2 = stats->magicpoints - stats->special_cost[current_special];
+					generic2 = stats->magicpoints - stats->special_cost[(int)current_special];
 					if (generic2 > 0) // sap our extra based on how many guys
 					{
 						while ( (didheal > 0) && (generic2 >= 10) )
@@ -3263,7 +3263,7 @@ short walker::special()
 
 	} // end of family switch
 
-	stats->magicpoints -= stats->special_cost[current_special];
+	stats->magicpoints -= stats->special_cost[(int)current_special];
 	return 0;
 }
 

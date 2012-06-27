@@ -140,8 +140,8 @@ long create_save_menu(long arg1); // Save a team
 long go_menu(long arg1); // run glad..
 long increase_stat(long arg1, long howmuch=1); // increase a guy's stats
 long decrease_stat(long arg1, long howmuch=1); // decrease a guy's stats
-long calculate_cost();
-long calculate_cost(guy * oldguy);
+unsigned long calculate_cost();
+unsigned long calculate_cost(guy * oldguy);
 long cycle_guy(long whichway);
 long cycle_team_guy(long whichway);
 long add_guy(long ignoreme);

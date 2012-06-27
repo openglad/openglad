@@ -68,7 +68,7 @@ void time_delay(long delay)
 
 void lowercase(char * str)
 {
-	int i;
+	unsigned int i;
 	for (i = 0; i < strlen(str);i++)
 		str[i] = tolower(str[i]);
 }
@@ -76,7 +76,7 @@ void lowercase(char * str)
 //buffers: add: another extra routine.
 void uppercase(char *str)
 {
-	int i;
+	unsigned int i;
 	for(i=0;i<strlen(str);i++)
 		str[i] = toupper(str[i]);
 }

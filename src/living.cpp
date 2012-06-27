@@ -326,7 +326,7 @@ short living::act()
 					{
 						current_special = (char) (random((stats->level+2)/3) + 1);
 						if ( (current_special > 4) ||
-						        (!strcmp(screenp->special_name[family][current_special], "NONE"))
+						        (!strcmp(screenp->special_name[(int)family][(int)current_special], "NONE"))
 						   )
 							current_special = 1;
 						if (check_special() )
@@ -508,7 +508,7 @@ short living::check_special()
 	shifter_down = random(2); // on or off, randomly ..
 
 	// Make sure we have enough ..
-	if (stats->magicpoints < stats->special_cost[current_special])
+	if (stats->magicpoints < stats->special_cost[(int)current_special])
 		current_special = 1; // make us do default ..
 
 	switch (family)

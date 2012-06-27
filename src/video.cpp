@@ -295,8 +295,8 @@ void video::draw_text_bar(long x1, long y1, long x2, long y2)
 
 void video::putblack(long startx, long starty, long xsize, long ysize)
 {
-	unsigned long curx, cury;
-	unsigned long curpoint;
+	long curx, cury;
+	long curpoint;
 
 	for(cury = starty;cury < starty +ysize;cury++)
 	{
@@ -410,7 +410,7 @@ void video::hor_line(long x, long y, long length, unsigned char color)
 
 void video::hor_line(long x, long y, long length, unsigned char color, long tobuffer)
 {
-	unsigned long i;
+	long i;
 
 	if (!tobuffer)
 	{
@@ -435,7 +435,7 @@ void video::ver_line(long x, long y, long length, unsigned char color)
 
 void video::ver_line(long x, long y, long length, unsigned char color, long tobuffer)
 {
-	unsigned long i;
+	long i;
 
 	if (!tobuffer)
 	{
@@ -495,7 +495,7 @@ void video::do_cycle(long curmode, long maxmode)
 //used by text
 void video::putdata(long startx, long starty, long xsize, long ysize, char  *sourcedata)
 {
-	unsigned long curx, cury;
+	long curx, cury;
 	unsigned char curcolor;
 	unsigned long num = 0;
 
@@ -515,7 +515,7 @@ void video::putdata(long startx, long starty, long xsize, long ysize, char  *sou
 
 void video::putdatatext(long startx, long starty, long xsize, long ysize, char  *sourcedata)
 {
-        unsigned long curx, cury;
+        long curx, cury;
         unsigned char curcolor;
        	unsigned long num = 0;
 	int r,g,b,color;
@@ -547,7 +547,7 @@ void video::putdatatext(long startx, long starty, long xsize, long ysize, char  
 //used by text
 void video::putdata(long startx, long starty, long xsize, long ysize, char  *sourcedata, unsigned char color)
 {
-	unsigned long curx, cury;
+	long curx, cury;
 	unsigned char curcolor;
 	unsigned long num = 0;
 
@@ -569,7 +569,7 @@ void video::putdata(long startx, long starty, long xsize, long ysize, char  *sou
 
 void video::putdatatext(long startx, long starty, long xsize, long ysize, char  *sourcedata, unsigned char color)
 {
-        unsigned long curx, cury;
+        long curx, cury;
         unsigned char curcolor;
         unsigned long num = 0;
 	int r,g,b,scolor;
@@ -1416,7 +1416,7 @@ int video::FadeBetween(
 			i = -1;
 			break;
 		}
-	} while (dwNow - dwFirstPaint + 50 < fadeDuration);	// constant-time effect
+	} while (long(dwNow) - long(dwFirstPaint) + 50 < fadeDuration);	// constant-time effect
 
 	if ( SDL_MUSTLOCK(pNewSurface) ) {
 		SDL_UnlockSurface(pNewSurface);

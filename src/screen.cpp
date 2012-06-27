@@ -1558,11 +1558,11 @@ short screen::endgame(short ending, short nextlevel)
 					{
 						test1 = (test1 / 3) + 1; // this is the special #
 						if ( (test1 <= 4) // raise this when we have more than 4 specials
-						        && (strcmp(special_name[target->query_family()][test1], "NONE") )
+						        && (strcmp(special_name[(int)target->query_family()][test1], "NONE") )
 						   )
 						{
 							sprintf(temp, "New Ability: %s!",
-							        special_name[target->query_family()][test1]);
+							        special_name[(int)target->query_family()][test1]);
 							mytext.write_y(110, temp, DARK_BLUE, 1);
 						}
 					}
@@ -2073,7 +2073,7 @@ short load_version_3(FILE  *infile, screen * master)
 	{
 		fread(&tempwidth, 1, 1, infile);
 		fread(oneline, tempwidth, 1, infile);
-		oneline[tempwidth] = 0;
+		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}
 
@@ -2200,7 +2200,7 @@ short load_version_4(FILE  *infile, screen * master)
 	{
 		fread(&tempwidth, 1, 1, infile);
 		fread(oneline, tempwidth, 1, infile);
-		oneline[tempwidth] = 0;
+		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}
 
@@ -2334,7 +2334,7 @@ short load_version_5(FILE  *infile, screen * master)
 	{
 		fread(&tempwidth, 1, 1, infile);
 		fread(oneline, tempwidth, 1, infile);
-		oneline[tempwidth] = 0;
+		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}
 
@@ -2496,7 +2496,7 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	{
 		fread(&tempwidth, 1, 1, infile);
 		fread(oneline, tempwidth, 1, infile);
-		oneline[tempwidth] = 0;
+		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}
 

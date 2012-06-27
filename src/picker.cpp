@@ -1094,7 +1094,7 @@ long create_buy_menu(long arg1)
 	long i;
 	long start_time = query_timer();
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
-	long current_cost;
+	unsigned long current_cost;
 	long clickvalue;
 
 #define STAT_LEFT    44        // where 'INT:' appears
@@ -1136,7 +1136,7 @@ long create_buy_menu(long arg1)
 	sprintf(message, "%d", current_guy->strength);
 	mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  STR:",
 	                 (unsigned char) STAT_COLOR, 1);
-	if (statlist[current_guy->family][BUT_STR] < current_guy->strength)
+	if (statlist[(int)current_guy->family][BUT_STR] < current_guy->strength)
 		showcolor = STAT_CHANGED;
 	else
 		showcolor = STAT_COLOR;
@@ -1146,7 +1146,7 @@ long create_buy_menu(long arg1)
 	sprintf(message, "%d", current_guy->dexterity);
 	mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  DEX:",
 	                 (unsigned char) STAT_COLOR, 1);
-	if (statlist[current_guy->family][BUT_DEX] < current_guy->dexterity)
+	if (statlist[(int)current_guy->family][BUT_DEX] < current_guy->dexterity)
 		showcolor = STAT_CHANGED;
 	else
 		showcolor = STAT_COLOR;
@@ -1156,7 +1156,7 @@ long create_buy_menu(long arg1)
 	sprintf(message, "%d", current_guy->constitution);
 	mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  CON:",
 	                 (unsigned char) STAT_COLOR, 1);
-	if (statlist[current_guy->family][BUT_CON] < current_guy->constitution)
+	if (statlist[(int)current_guy->family][BUT_CON] < current_guy->constitution)
 		showcolor = STAT_CHANGED;
 	else
 		showcolor = STAT_COLOR;
@@ -1166,7 +1166,7 @@ long create_buy_menu(long arg1)
 	sprintf(message, "%d", current_guy->intelligence);
 	mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  INT:",
 	                 (unsigned char) STAT_COLOR, 1);
-	if (statlist[current_guy->family][BUT_INT] < current_guy->intelligence)
+	if (statlist[(int)current_guy->family][BUT_INT] < current_guy->intelligence)
 		showcolor = STAT_CHANGED;
 	else
 		showcolor = STAT_COLOR;
@@ -1176,7 +1176,7 @@ long create_buy_menu(long arg1)
 	sprintf(message, "%d", current_guy->armor);
 	mytext->write_xy(STAT_LEFT, DOWN(linesdown), "ARMOR:",
 	                 (unsigned char) STAT_COLOR, 1);
-	if (statlist[current_guy->family][BUT_ARMOR] < current_guy->armor)
+	if (statlist[(int)current_guy->family][BUT_ARMOR] < current_guy->armor)
 		showcolor = STAT_CHANGED;
 	else
 		showcolor = STAT_COLOR;
@@ -1186,7 +1186,7 @@ long create_buy_menu(long arg1)
 	sprintf(message, "%d", current_guy->level);
 	mytext->write_xy(STAT_LEFT, DOWN(linesdown), "LEVEL:",
 	                 (unsigned char) STAT_COLOR, 1);
-	if (statlist[current_guy->family][BUT_LEVEL] < current_guy->level)
+	if (statlist[(int)current_guy->family][BUT_LEVEL] < current_guy->level)
 		showcolor = STAT_CHANGED;
 	else
 		showcolor = STAT_COLOR;
@@ -1202,7 +1202,7 @@ long create_buy_menu(long arg1)
 	mytext->write_xy(180, 62, message,(unsigned char) DARK_BLUE, 1);
 	current_cost = calculate_cost();
 	mytext->write_xy(180, 72, "COST: ", DARK_BLUE, 1);
-	sprintf(message, "      %ld", current_cost );
+	sprintf(message, "      %lu", current_cost );
 	if (current_cost > money[current_team_num])
 		mytext->write_xy(180, 72, message, STAT_CHANGED, 1);
 	else
@@ -1276,7 +1276,7 @@ long create_buy_menu(long arg1)
 			mytext->write_xy(180, 62, message,(unsigned char) DARK_BLUE, 1);
 			current_cost = calculate_cost();
 			mytext->write_xy(180, 72, "COST: ", DARK_BLUE, 1);
-			sprintf(message, "      %ld", current_cost );
+			sprintf(message, "      %lu", current_cost );
 			if (current_cost > money[current_team_num])
 				mytext->write_xy(180, 72, message, STAT_CHANGED, 1);
 			else
@@ -1297,7 +1297,7 @@ long create_buy_menu(long arg1)
 			sprintf(message, "%d", current_guy->strength);
 			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  STR:",
 			                 (unsigned char) STAT_COLOR, 1);
-			if (statlist[current_guy->family][BUT_STR] < current_guy->strength)
+			if (statlist[(int)current_guy->family][BUT_STR] < current_guy->strength)
 				showcolor = STAT_CHANGED;
 			else
 				showcolor = STAT_COLOR;
@@ -1307,7 +1307,7 @@ long create_buy_menu(long arg1)
 			sprintf(message, "%d", current_guy->dexterity);
 			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  DEX:",
 			                 (unsigned char) STAT_COLOR, 1);
-			if (statlist[current_guy->family][BUT_DEX] < current_guy->dexterity)
+			if (statlist[(int)current_guy->family][BUT_DEX] < current_guy->dexterity)
 				showcolor = STAT_CHANGED;
 			else
 				showcolor = STAT_COLOR;
@@ -1317,7 +1317,7 @@ long create_buy_menu(long arg1)
 			sprintf(message, "%d", current_guy->constitution);
 			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  CON:",
 			                 (unsigned char) STAT_COLOR, 1);
-			if (statlist[current_guy->family][BUT_CON] < current_guy->constitution)
+			if (statlist[(int)current_guy->family][BUT_CON] < current_guy->constitution)
 				showcolor = STAT_CHANGED;
 			else
 				showcolor = STAT_COLOR;
@@ -1327,7 +1327,7 @@ long create_buy_menu(long arg1)
 			sprintf(message, "%d", current_guy->intelligence);
 			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  INT:",
 			                 (unsigned char) STAT_COLOR, 1);
-			if (statlist[current_guy->family][BUT_INT] < current_guy->intelligence)
+			if (statlist[(int)current_guy->family][BUT_INT] < current_guy->intelligence)
 				showcolor = STAT_CHANGED;
 			else
 				showcolor = STAT_COLOR;
@@ -1337,7 +1337,7 @@ long create_buy_menu(long arg1)
 			sprintf(message, "%d", current_guy->armor);
 			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "ARMOR:",
 			                 (unsigned char) STAT_COLOR, 1);
-			if (statlist[current_guy->family][BUT_ARMOR] < current_guy->armor)
+			if (statlist[(int)current_guy->family][BUT_ARMOR] < current_guy->armor)
 				showcolor = STAT_CHANGED;
 			else
 				showcolor = STAT_COLOR;
@@ -1347,7 +1347,7 @@ long create_buy_menu(long arg1)
 			sprintf(message, "%d", current_guy->level);
 			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "LEVEL:",
 			                 (unsigned char) STAT_COLOR, 1);
-			if (statlist[current_guy->family][BUT_LEVEL] < current_guy->level)
+			if (statlist[(int)current_guy->family][BUT_LEVEL] < current_guy->level)
 				showcolor = STAT_CHANGED;
 			else
 				showcolor = STAT_COLOR;
@@ -1368,7 +1368,7 @@ long create_edit_menu(long arg1)
 	long linesdown, i, retvalue=0;
 	unsigned char showcolor;
 	long start_time = query_timer();
-	long current_cost;
+	unsigned long current_cost;
 	long clickvalue;
 
 	if (arg1)
@@ -1464,7 +1464,7 @@ long create_edit_menu(long arg1)
 	mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
 	current_cost = calculate_cost(here);
 	mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
-	sprintf(message, "      %ld", current_cost );
+	sprintf(message, "      %lu", current_cost );
 	if (current_cost > money[current_guy->teamnum])
 		mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
 	else
@@ -1639,7 +1639,7 @@ long create_edit_menu(long arg1)
 			mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
 			current_cost = calculate_cost(here);
 			mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
-			sprintf(message, "      %ld", current_cost );
+			sprintf(message, "      %lu", current_cost );
 			if (current_cost > money[current_guy->teamnum])
 				mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
 			else
@@ -1892,7 +1892,7 @@ long decrease_stat(long whatstat, long howmuch)
 	return OK;
 }
 
-long calculate_cost()
+unsigned long calculate_cost()
 {
 	guy  *ob = current_guy;
 	long temp;
@@ -1940,13 +1940,14 @@ long calculate_cost()
 		//delete current_guy;
 		//current_guy = guytemp;
 		cycle_guy(0);
-		temp = -1;
+		//temp = -1;  // This used to be an error code checked by picker.cpp line 2213
+		temp = 0;
 	}
-	return temp;
+	return (unsigned long)temp;
 }
 
 // This version compares current_guy versus the old version ..
-long calculate_cost(guy  *oldguy)
+unsigned long calculate_cost(guy  *oldguy)
 {
 	guy  *ob = current_guy;
 	long temp;
@@ -2014,7 +2015,7 @@ long calculate_cost(guy  *oldguy)
 
 	}
 
-	return temp;
+	return (unsigned long)temp;
 }
 
 long cycle_guy(long whichway)
@@ -2210,7 +2211,7 @@ long add_guy(long ignoreme)
 	if (!current_guy) // we should be adding current_guy
 		return -1;
 
-	if (calculate_cost() > money[current_team_num] || calculate_cost() < 0)
+	if (calculate_cost() > money[current_team_num] || calculate_cost() == 0)
 		return OK;
 
 	money[current_team_num] -= calculate_cost();
@@ -2825,7 +2826,7 @@ long load_team_list_one(const char * filename)
 		tempguy->level = calculate_level(temp_exp);
 
 		// Count him as 'bought'
-		numbought[temp_family]++;
+		numbought[(int)temp_family]++;
 
 		// Advance to the next guy ..
 		add_guy(tempguy);

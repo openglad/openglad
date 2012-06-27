@@ -77,7 +77,7 @@ class statistics
 
 		char name[12]; // for NPC's, normally ..
 		char old_order, old_family;
-		long last_distance;
+		unsigned long last_distance;
 		long current_distance;  // Distances (to foe) are used for AI walking
 		long bit_flags;         // holds (currently) 32 bit flags
 		short delete_me;

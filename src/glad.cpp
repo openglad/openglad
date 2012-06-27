@@ -509,7 +509,7 @@ void new_draw_value_bar(short left, short top,
                         walker  * control, short mode, screen * myscreen)
 {
 	short points;
-	short totallength = 60;
+	//short totallength = 60;
 	short bar_length=0;
 	//short bar_remainder = totallength - bar_length;
 	char whatcolor;
@@ -635,7 +635,7 @@ short new_score_panel(screen *myscreen, short do_it)
 			else if ( strlen(control->stats->name) )
 				strcpy(tempname, control->stats->name);
 			else
-				strcpy(tempname, namelist[control->query_family()]);
+				strcpy(tempname, namelist[(int)control->query_family()]);
 
 			//buffers: the name[] var doesn't seem to be used other then
 			//buffers: here so i just commented it.
@@ -721,11 +721,11 @@ short new_score_panel(screen *myscreen, short do_it)
 
 				// Currently-select special
 				if (control->shifter_down &&
-				        strcmp(myscreen->alternate_name[control->query_family()][control->current_special], "NONE") )
-					sprintf(message, "SPC: %s", myscreen->alternate_name[control->query_family()][control->current_special]);
+				        strcmp(myscreen->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE") )
+					sprintf(message, "SPC: %s", myscreen->alternate_name[(int)control->query_family()][(int)control->current_special]);
 				else
-					sprintf(message, "SPC: %s", myscreen->special_name[control->query_family()][control->current_special]);
-				if (control->stats->magicpoints >= control->stats->special_cost[control->current_special])
+					sprintf(message, "SPC: %s", myscreen->special_name[(int)control->query_family()][(int)control->current_special]);
+				if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
 					mytext->write_xy(lm+2, bm-24, message, text_color, (short) 1);
 				else
 					mytext->write_xy(lm+2, bm-24, message, (unsigned char) RED, (short) 1);

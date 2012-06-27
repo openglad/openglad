@@ -253,7 +253,7 @@ short viewscreen::redraw()
 					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 			}
 			else
-				backp[gridp[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+				backp[(int)gridp[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
@@ -569,7 +569,7 @@ short viewscreen::input(char inputthing)
 		dumbcount = 0;
 		control->current_special++;
 		if (control->current_special > (NUM_SPECIALS-1)
-		        || !(strcmp(screenp->special_name[control->query_family()][control->current_special],"NONE"))
+		        || !(strcmp(screenp->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
 		        || (((control->current_special-1)*3+1) > control->stats->level) )
 			control->current_special = 1;
 		while (inputkeyboard[mykeys[KEY_SPECIAL_SWITCH]] && (dumbcount < 64000) )
