@@ -348,7 +348,7 @@ void radar::update()
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch (screenp->grid[i+sizex*j])
+			switch ((unsigned char)screenp->grid[i+sizex*j])
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:
@@ -459,7 +459,7 @@ void radar::update()
 				case PIX_CARPET_M2:
 				case PIX_CARPET_R:
 				case PIX_CARPET_SMALL_HOR:
-				case PIX_CARPET_SMALL_VER:
+                case PIX_CARPET_SMALL_VER:
 				case PIX_CARPET_SMALL_CUP:
 				case PIX_CARPET_SMALL_CAP:
 				case PIX_CARPET_SMALL_LEFT:

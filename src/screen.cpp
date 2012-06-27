@@ -584,7 +584,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 
 		{
 			// Check if item in background grid
-			switch (grid[i+maxx*j])
+			switch ((unsigned char)grid[i+maxx*j])
 			{
 				case PIX_GRASS1:  // grass is pass..
 				case PIX_GRASS2:
@@ -643,7 +643,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 				case PIX_CARPET_M2:
 				case PIX_CARPET_R:
 				case PIX_CARPET_SMALL_HOR:
-				case PIX_CARPET_SMALL_VER:
+ 				case PIX_CARPET_SMALL_VER:
 				case PIX_CARPET_SMALL_CUP:
 				case PIX_CARPET_SMALL_CAP:
 				case PIX_CARPET_SMALL_LEFT:
@@ -1949,8 +1949,8 @@ short load_version_2(FILE  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
+	master->maxx = (unsigned char)master->grid[1];
+	master->maxy = (unsigned char)master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2082,8 +2082,8 @@ short load_version_3(FILE  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
+	master->maxx = (unsigned char)master->grid[1];
+	master->maxy = (unsigned char)master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2209,8 +2209,8 @@ short load_version_4(FILE  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
+	master->maxx = (unsigned char)master->grid[1];
+	master->maxy = (unsigned char)master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2343,8 +2343,8 @@ short load_version_5(FILE  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
+	master->maxx = (unsigned char)master->grid[1];
+	master->maxy = (unsigned char)master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2505,8 +2505,8 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
+	master->maxx = (unsigned char)master->grid[1];
+	master->maxy = (unsigned char)master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2900,7 +2900,7 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 
 	gridloc = (short) (yover*maxx+xover);
 
-	switch (grid[gridloc])
+	switch ((unsigned char)grid[gridloc])
 	{
 		case PIX_GRASS1: // grass
 		case PIX_GRASS2:

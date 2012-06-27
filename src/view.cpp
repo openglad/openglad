@@ -56,19 +56,8 @@ FILE * open_misc_file(const char *);
 
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
-int key1[] = {
-                 SDLK_KP8, SDLK_KP9, SDLK_KP6, SDLK_KP3,  // movements
-                 SDLK_KP2, SDLK_KP1, SDLK_KP4, SDLK_KP7,
-                 SDLK_KP0, SDLK_KP_ENTER,                    // fire & special
-                 SDLK_KP_PLUS,                          // switch guys
-                 SDLK_KP_MINUS,                         // change special
-                 SDLK_KP5,                                // Yell
-                 SDLK_KP_PERIOD,                                // Shifter
-                 SDLK_KP_MULTIPLY,                         // Options menu
-                 SDLK_F8,                                    // Cheat key
-             };
 
-int key2[] = {
+int key1[] = {
                  SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
                  SDLK_x, SDLK_z, SDLK_a, SDLK_q,
                  SDLK_LCTRL, SDLK_LALT,                    // fire & special
@@ -78,6 +67,18 @@ int key2[] = {
                  SDLK_LSHIFT,                        // Shifter
                  SDLK_2,                                 // Options menu
                  SDLK_F5,                                 // Cheat key
+             };
+             
+int key2[] = {
+                 SDLK_KP8, SDLK_KP9, SDLK_KP6, SDLK_KP3,  // movements
+                 SDLK_KP2, SDLK_KP1, SDLK_KP4, SDLK_KP7,
+                 SDLK_KP0, SDLK_KP_ENTER,                    // fire & special
+                 SDLK_KP_PLUS,                          // switch guys
+                 SDLK_KP_MINUS,                         // change special
+                 SDLK_KP5,                                // Yell
+                 SDLK_KP_PERIOD,                                // Shifter
+                 SDLK_KP_MULTIPLY,                         // Options menu
+                 SDLK_F8,                                    // Cheat key
              };
 
 int key3[] = {

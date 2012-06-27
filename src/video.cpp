@@ -1141,12 +1141,10 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 					else if (shifttype == SHIFT_BLOCKY)
 					{
 						if (cury%2) //buffers:videobuffer[buffoff++] = videobuffer[buffoff-VIDEO_BUFFER_WIDTH];
-							pointb(buffoff++,get_pixel(buffoff-320));
+							pointb(buffoff,get_pixel(buffoff-320));
 						else if (curx%2) //videobuffer[buffoff++] = videobuffer[buffoff-1];
-
-							pointb(buffoff++,get_pixel(buffoff-2));
-						else
-							buffoff++;
+							pointb(buffoff,get_pixel(buffoff-2));
+                        buffoff++;
 
 					}
 
