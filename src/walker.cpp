@@ -895,6 +895,42 @@ void walker::set_weapon_heading(walker *weapon)
 
 }
 
+void draw_smallHealthBar(walker* w, viewscreen* view_buf)
+{
+    short points = w->stats->hitpoints;
+    char whatcolor;
+    
+    if ( (points * 3) < w->stats->max_hitpoints)
+        whatcolor = LOW_HP_COLOR;
+    else if ( (points * 3 / 2) < w->stats->max_hitpoints)
+        whatcolor = MID_HP_COLOR;
+    else if (points < w->stats->max_hitpoints)
+        whatcolor = LIGHT_GREEN;//HIGH_HP_COLOR;
+    else if (points == w->stats->max_hitpoints)
+        whatcolor = MAX_HP_COLOR;
+    else
+        whatcolor = ORANGE_START;
+    
+    
+	long xscreen = (long) (w->xpos - view_buf->topx + view_buf->xloc);
+	long yscreen = (long) (w->ypos - view_buf->topy + view_buf->yloc);
+    
+    SDL_Rect r = {xscreen + view_buf->xloc, yscreen + view_buf->yloc + w->sizey, w->sizex, 1};
+    float ratio = float(points)/w->stats->max_hitpoints;
+    if(ratio >= 0.0f)
+    {
+        if(ratio < 0.95f
+            && r.x > view_buf->xloc && r.x + r.w < view_buf->endx
+             && r.y > view_buf->yloc && r.y + r.h < view_buf->endy)
+        {
+            Uint16 max_w = r.w;
+            r.w *= ratio;
+            w->screenp->draw_box(r.x, r.y, r.x + r.w, r.y + r.h, whatcolor, 1);
+            w->screenp->draw_box(r.x-1, r.y-1, max_w+1, r.y + r.h+1, BLACK, 0);
+        }
+    }
+}
+
 short walker::draw(viewscreen  *view_buf)
 {
 	long xscreen, yscreen;
@@ -1016,6 +1052,7 @@ short walker::draw(viewscreen  *view_buf)
 		                        0 ); //type of phantom
 
 	else if (outline)    // WE HAVE SOME OUTLINE
+	{
 		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                        view_buf->endx, view_buf->endy,
@@ -1024,12 +1061,18 @@ short walker::draw(viewscreen  *view_buf)
 		                        0, //invisibility
 		                        outline, //outline
 		                        0 ); //type of phantom
-
+		                        
+        //draw_smallHealthBar(this, view_buf);
+	}
 	else
+	{
 		screenp->walkputbuffer(xscreen, yscreen, sizex, sizey,
 		                       view_buf->xloc, view_buf->yloc,
 		                       view_buf->endx, view_buf->endy,
 		                       bmp, query_team_color());
+        
+        //draw_smallHealthBar(this, view_buf);
+	}
 
 	return 1;
 }
