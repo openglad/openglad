@@ -17,10 +17,10 @@
 
 #if defined(WIN32) || defined(_WIN32)
 	#pragma warning(disable : 4786)
-    #include "config.h-win"
-#else
-    #include "config.h"
 #endif
+
+// Notice: If config.h does not exist, copy src/config.h-<platform> to config.h or run autoconf.
+#include "config.h"
 
 #include <iostream>
 #include <fstream>

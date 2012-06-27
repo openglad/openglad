@@ -20,11 +20,10 @@
 // random helper functions
 //
 #include "util.h"
-#if defined(WIN32) || defined(_WIN32)
-    #include "config.h-win"
-#else
-    #include "config.h"
-#endif
+
+// Notice: If config.h does not exist, copy src/config.h-<platform> to config.h or run autoconf.
+#include "config.h"
+
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen

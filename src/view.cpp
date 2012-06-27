@@ -23,11 +23,10 @@
 #include "input.h"
 #include "graph.h"
 #include "colors.h"
-#if defined(WIN32) || defined(_WIN32)
-    #include "config.h-win"
-#else
-    #include "config.h"
-#endif
+
+// Notice: If config.h does not exist, copy src/config.h-<platform> to config.h or run autoconf.
+#include "config.h"
+
 #include "util.h"
 
 //these are for chad's team info page

@@ -1,0 +1,5 @@
+// This is the config.h file for (non-autotools) Linux. Use to substitute
+// for the config.h that would normally be autoconfed.
+
+#define PACKAGE_VERSION "0.98.1"
+#define DATADIR "${datarootdir}/"
