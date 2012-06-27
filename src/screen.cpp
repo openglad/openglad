@@ -357,7 +357,7 @@ void screen::cleanup(short howmany)
         {
                 // Zardus: PORT: this segfaults while deleting grid!
                 //buffers: commented free() so openglad will cleanly exit
-                //delete grid;
+                free(grid-3);  // grid is offset on load
                 grid = NULL;
         }
 

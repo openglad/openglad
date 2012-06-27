@@ -256,6 +256,9 @@ void Scale_SuperEagle(
 	unsigned char *srcPtr = src + (4*srcx + srcy*src_pitch);
 	unsigned char *dstPtr = dst + (4*dstx + dsty*dst_pitch);
 
+	src_pitch=src_pitch/4;
+	dst_pitch=dst_pitch/4;
+	
 	if (srcx + srcw >= src_pitch)
 	{
 		srcw = src_pitch - srcx;
@@ -265,9 +268,6 @@ void Scale_SuperEagle(
     int ybeforelast2 = src_height - 2 - srcy;
     int xbeforelast1 = src_pitch - 1 - srcx;
     int xbeforelast2 = src_pitch - 2 - srcx;
-		
-	src_pitch=src_pitch/4;
-	dst_pitch=dst_pitch/4;
 
     for (int y = 0; y < srch; y++)
 	{
