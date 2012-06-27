@@ -24,8 +24,8 @@
 class pixie
 {
 	public:
-		pixie(char *data,short xsize, short ysize,screen  *myscreen);
-		pixie(char *data,short x,short y,screen *myscreen,int doaccel);
+		pixie(unsigned char *data,short xsize, short ysize,screen  *myscreen);
+		pixie(unsigned char *data,short x,short y,screen *myscreen,int doaccel);
 		~pixie();
 		short setxy(short x, short y);
 		virtual short move (short x, short y);
@@ -45,7 +45,7 @@ class pixie
 		screen  *screenp;
 	protected:
 		unsigned short size;
-		char  *bmp,  *oldbmp;
+		unsigned char  *bmp,  *oldbmp;
 		//buffers: same data as bmp but in a convient SDL_Surface
 		SDL_Surface *bmp_surface;
 };

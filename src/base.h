@@ -366,7 +366,7 @@ extern "C" void play_sound(short which);
 #endif
 
 //most of these are graphlib and are being ported to video
-void load_map_data(char **whereto);
+void load_map_data(unsigned char **whereto);
 char* get_cfg_item(char *section, char *item);
 short get_pix_directory();
 short get_pix_directory(char *whereto); // copies to whereto, returns OKAY..
@@ -401,7 +401,7 @@ short save_game(const char *filename, screen  *myscreen);
 
 #define ACTION_FOLLOW (char) 1
 
-char* read_pixie_file(const char  * filename);
+unsigned char* read_pixie_file(const char  * filename);
 
 // Some stuff for palette
 typedef struct

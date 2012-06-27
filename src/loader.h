@@ -29,7 +29,7 @@ class loader
 		walker  *create_walker(char order, char family, screen  *screenp);
 		pixieN *create_pixieN(char order, char family);
 		walker *set_walker(walker *ob, char order, char family);
-		char **graphics;
+		unsigned char **graphics;
 		signed char  ***animations;
 		long  *stepsizes;
 		long  *lineofsight;

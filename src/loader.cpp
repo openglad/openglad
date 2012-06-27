@@ -289,9 +289,15 @@ signed char  *anifood[] = { food1, food1, food1, food1,
                             food1, food1, food1, food1,
                             food1, food1, food1, food1 };
 
+unsigned char* data_copy(unsigned char* d)
+{
+    return (unsigned char*)strdup((const char*)d);
+}
+
+
 loader::loader()
 {
-	graphics = new char*[SIZE_ORDERS*SIZE_FAMILIES];
+	graphics = new unsigned char*[SIZE_ORDERS*SIZE_FAMILIES];
 	
 	//memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES);
 	for(int i = 0; i < SIZE_ORDERS*SIZE_FAMILIES; i++)
@@ -662,16 +668,16 @@ loader::loader()
 	// Treasure items (food, etc.)
 	graphics[PIX(ORDER_TREASURE, FAMILY_DRUMSTICK)] = read_pixie_file("food1.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)] = read_pixie_file("bar1.pix");
-	graphics[PIX(ORDER_TREASURE, FAMILY_SILVER_BAR)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)]);
+	graphics[PIX(ORDER_TREASURE, FAMILY_SILVER_BAR)] = data_copy(graphics[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)]);
 	graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)] = read_pixie_file("bottle.pix");
-	graphics[PIX(ORDER_TREASURE, FAMILY_INVIS_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
-	graphics[PIX(ORDER_TREASURE, FAMILY_INVULNERABLE_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
-	graphics[PIX(ORDER_TREASURE, FAMILY_FLIGHT_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
+	graphics[PIX(ORDER_TREASURE, FAMILY_INVIS_POTION)] = data_copy(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
+	graphics[PIX(ORDER_TREASURE, FAMILY_INVULNERABLE_POTION)] = data_copy(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
+	graphics[PIX(ORDER_TREASURE, FAMILY_FLIGHT_POTION)] = data_copy(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(ORDER_TREASURE, FAMILY_EXIT)] = read_pixie_file("16exit1.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_TELEPORTER)] = read_pixie_file("teleport.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_LIFE_GEM)] = read_pixie_file("lifegem.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_KEY)] = read_pixie_file("key.pix");
-	graphics[PIX(ORDER_TREASURE, FAMILY_SPEED_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
+	graphics[PIX(ORDER_TREASURE, FAMILY_SPEED_POTION)] = data_copy(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
 
 	hitpoints[PIX(ORDER_TREASURE, FAMILY_DRUMSTICK)] = 10;
 	hitpoints[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)] = 1000;

@@ -87,13 +87,13 @@ class screen : public video
 		char scentext[80][80];                         // Array to hold scenario information
 		char scentextlines;                    // How many lines of text in scenario info
 
-		char newpalette[768];
+		unsigned char newpalette[768];
 
 
 		short palmode;
 		short my_team;
 		guy  *first_guy;
-		char  *grid;
+		unsigned char  *grid;
 		long maxx,maxy;
 		long pixmaxx,pixmaxy;
 		long topx, topy;
@@ -124,7 +124,7 @@ class screen : public video
 		short par_value;
 		short level_done; // set true when all our foes are dead
 	protected:
-		char  *pixdata[PIX_MAX];
+		unsigned char  *pixdata[PIX_MAX];
 };
 
 #endif

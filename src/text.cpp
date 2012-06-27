@@ -23,8 +23,8 @@ text::text(screen * myscreen)
 	letters = read_pixie_file(TEXT_1);
 	if(!letters)
 		printf("letters is NULL\n");
-	sizex = (unsigned char)letters[1];
-	sizey = (unsigned char)letters[2];
+	sizex = letters[1];
+	sizey = letters[2];
 	letters = letters+3;
 	screenp = myscreen;
 }
@@ -35,8 +35,8 @@ text::text(screen * myscreen, const char * filename)
 	if (!temp_filename || strlen(temp_filename) < 2)
 		temp_filename = "text.pix";
 	letters = read_pixie_file(temp_filename);
-	sizex = (unsigned char)letters[1];
-	sizey = (unsigned char)letters[2];
+	sizex = letters[1];
+	sizey = letters[2];
 	letters = letters+3;
 	screenp = myscreen;
 }

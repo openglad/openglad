@@ -1949,8 +1949,8 @@ short load_version_2(FILE  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = (unsigned char)master->grid[1];
-	master->maxy = (unsigned char)master->grid[2];
+	master->maxx = master->grid[1];
+	master->maxy = master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2082,8 +2082,8 @@ short load_version_3(FILE  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = (unsigned char)master->grid[1];
-	master->maxy = (unsigned char)master->grid[2];
+	master->maxx = master->grid[1];
+	master->maxy = master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2343,8 +2343,8 @@ short load_version_5(FILE  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = (unsigned char)master->grid[1];
-	master->maxy = (unsigned char)master->grid[2];
+	master->maxx = master->grid[1];
+	master->maxy = master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
@@ -2505,8 +2505,8 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = (unsigned char)master->grid[1];
-	master->maxy = (unsigned char)master->grid[2];
+	master->maxx = master->grid[1];
+	master->maxy = master->grid[2];
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;

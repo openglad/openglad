@@ -43,7 +43,7 @@ FILE * open_misc_file(const char *, const char *);
 // ************* Editor related functions? ************************
 // have also been moved to video
 
-char  * read_pixie_file(const char  * filename)
+unsigned char  * read_pixie_file(const char  * filename)
 {
 	// Create a file stream, and read the image
 	// File data in form:
@@ -94,13 +94,13 @@ char  * read_pixie_file(const char  * filename)
 
 	if (gotit == file) // this means we're a 'manual' file
 		fclose(infile); // Close the data file
-	return (char*)newpic;
+	return newpic;
 
 } // End of image-reading routine
 
 
 
-void load_map_data(char **whereto)
+void load_map_data(unsigned char **whereto)
 {
 	// load the pixie graphics data shorto memory
 	whereto[0] = read_pixie_file("16tile.pix");             //done

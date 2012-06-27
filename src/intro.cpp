@@ -33,7 +33,7 @@ int show(int howlong);
 int cleanup();
 
 int pal[256][3];
-char mypalette[768];
+unsigned char mypalette[768];
 //screen *myscreen;
 
 void intro_main(long argc, char** argv)
@@ -44,8 +44,8 @@ void intro_main(long argc, char** argv)
 	pixie *gladiator;
 	pixie *bigfoot;
 	pixie *ul, *ur, *ll, *lr; // for full-screen displays
-	char *uldata, *urdata, *lldata, *lrdata;
-	char *gladdata, *bigdata;
+	unsigned char *uldata, *urdata, *lldata, *lrdata;
+	unsigned char *gladdata, *bigdata;
 	char message[80];
 
 #if 0
@@ -69,8 +69,8 @@ void intro_main(long argc, char** argv)
 	myscreen->clear();
 
 	gladdata = read_pixie_file("3mages2.pix");
-	gladiator = new pixie(&(gladdata[3]), (int)gladdata[1],
-	                      (int)gladdata[2], myscreen);
+	gladiator = new pixie(gladdata+3, gladdata[1],
+	                      gladdata[2], myscreen);
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
 	mytext->write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0]);
 	//myscreen->refresh();
@@ -138,8 +138,8 @@ void intro_main(long argc, char** argv)
 	// First 'interlude' snapshot
 	myscreen->clear();
 	uldata = read_pixie_file("game2ul.pix");
-	ul = new pixie(&(uldata[3]), (int)uldata[1],
-	               (int)uldata[2], myscreen);
+	ul = new pixie(uldata+3, uldata[1],
+	               uldata[2], myscreen);
 	ul->setxy(41, 12);
 	ul->draw(myscreen->viewob[0]);
 	delete ul;

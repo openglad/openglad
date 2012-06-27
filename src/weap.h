@@ -25,7 +25,7 @@
 class weap : public walker
 {
 	public:
-		weap(char  *data, screen  *myscreen);
+		weap(unsigned char  *data, screen  *myscreen);
 		~weap();
 
 		short act();

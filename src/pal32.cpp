@@ -42,7 +42,7 @@ char our_pal_lookup(int index);
 // stores palette info in NEWPALETTE, and
 // sets the current palette to this.
 //
-short load_and_set_palette(const char *filename, char *newpalette)
+short load_and_set_palette(const char *filename, unsigned char *newpalette)
 {
 	short i;
 
@@ -76,7 +76,7 @@ short load_and_set_palette(const char *filename, char *newpalette)
 // save_palette
 // save the dos palette so we can restore it when done
 //
-short save_palette(char * whatpalette)
+short save_palette(unsigned char * whatpalette)
 {
 	//buffers: PORT: we don't have a palette to save :P
 	return 0;
@@ -87,7 +87,7 @@ short save_palette(char * whatpalette)
 // load_palette
 // Loads palette from file FILENAME shorto NEWPALETTE
 //
-short load_palette(const char *filename, char *newpalette)
+short load_palette(const char *filename, unsigned char *newpalette)
 {
 	short i;
 
@@ -119,7 +119,7 @@ short load_palette(const char *filename, char *newpalette)
 // set_palette
 // Sets the current palette to NEWPALETTE.
 //
-short set_palette(char *newpalette)
+short set_palette(unsigned char *newpalette)
 {
 	short i;
 
@@ -136,7 +136,7 @@ short set_palette(char *newpalette)
 //  on whichpal based on a positive or negative amount;
 //  displays new palette, but does NOT affect whichpal
 //
-void adjust_palette(char *whichpal, short amount)
+void adjust_palette(unsigned char *whichpal, short amount)
 {
 	short i;
 	short tempcol;
@@ -164,7 +164,7 @@ void adjust_palette(char *whichpal, short amount)
 // cycle_palette
 // Cycle and display newpalette
 //
-void cycle_palette(char *newpalette, short start, short end, short shift)
+void cycle_palette(unsigned char *newpalette, short start, short end, short shift)
 {
 	short i;
 	short length = (short) (end-start);

@@ -27,21 +27,21 @@
 //  multiple frames and switch frames before a put.
 // ************************************************************
 
-pixieN::pixieN(char  *data, screen  *myscreen):
-		pixie(data+3,(unsigned char)data[1],(unsigned char)data[2], myscreen)
+pixieN::pixieN(unsigned char  *data, screen  *myscreen):
+		pixie(data+3,data[1],data[2], myscreen)
 {
 	facings = data+3;
 	//bmp = (data+3);
-	frames = (unsigned char)data[0];
+	frames = data[0];
 	frame = 0;
 }
 
-pixieN::pixieN(char  *data, screen  *myscreen, int doaccel):
-		pixie(data+3,(unsigned char)data[1],(unsigned char)data[2], myscreen)
+pixieN::pixieN(unsigned char  *data, screen  *myscreen, int doaccel):
+		pixie(data+3,data[1],data[2], myscreen)
 {
 	facings = data+3;
 	//bmp = (data+3);
-	frames = (unsigned char)data[0];
+	frames = data[0];
 	frame = 0;
 	if(doaccel)
 		init_sdl_surface();

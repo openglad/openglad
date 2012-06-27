@@ -64,7 +64,7 @@ void radar::start()
 		yview = sizey;
 	xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
 	yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
-	bmp = new char[size];
+	bmp = new unsigned char[size];
 	update();
 
 }

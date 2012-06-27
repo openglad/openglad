@@ -29,7 +29,7 @@
 class effect : public walker
 {
 	public:
-		effect(char  *data, screen  *myscreen);
+		effect(unsigned char  *data, screen  *myscreen);
 		~effect();
 		short          act();
 		short          animate();

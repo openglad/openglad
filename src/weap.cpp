@@ -21,7 +21,7 @@
 #include "graph.h"
 #include "smooth.h"
 
-weap::weap(char  *data, screen  *myscreen) : walker(data, myscreen)
+weap::weap(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 {
 	do_bounce = 0; // don't normally bounce :)
 }

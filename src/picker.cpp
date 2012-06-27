@@ -55,7 +55,7 @@ long leftmouse();
 void family_name_copy(char *name, short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
-char *backpics[5];
+unsigned char *backpics[5];
 pixieN *backdrops[5];
 
 // Zardus: FIX: this is from view.cpp, so that we can delete it here
@@ -72,7 +72,7 @@ long scen_level = 1;
 char  message[80];
 long editguy = 0;        // Global for editing guys ..
 unsigned char playermode=1;
-char  *gladpic,*magepic;
+unsigned char  *gladpic,*magepic;
 pixieN  *gladpix,*magepix;
 char levels[MAX_LEVELS];        // our level-completion status
 FILE *loadgame; //for loading the default game

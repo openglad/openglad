@@ -25,7 +25,7 @@
 extern long difficulty_level[DIFFICULTY_SETTINGS];
 extern long current_difficulty;
 
-living::living(char  *data, screen  *myscreen) : walker(data, myscreen)
+living::living(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 {
 	current_special = 1;
 	lifetime = 0;

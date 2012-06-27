@@ -25,7 +25,7 @@
 class treasure : public walker
 {
 	public:
-		treasure(char  *data, screen  *myscreen);
+		treasure(unsigned char  *data, screen  *myscreen);
 		~treasure();
 		short          act();
 		//short                    death(); // called upon destruction

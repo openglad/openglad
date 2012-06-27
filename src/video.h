@@ -31,7 +31,7 @@ class video
 		void clearfontbuffer();
 		void clearfontbuffer(int x, int y, int w, int h);
 	
-		char * getbuffer();
+		unsigned char * getbuffer();
 		void putblack(long startx, long starty, long xsize, long ysize);
 		void fastbox(long startx, long starty, long xsize, long ysize, unsigned char color);
 		void fastbox(long startx, long starty, long xsize, long ysize, unsigned char color, unsigned char flag);
@@ -46,20 +46,20 @@ class video
 		void ver_line(long x, long y, long length, unsigned char color, long tobuffer);
 		void do_cycle(long curmode, long maxmode);
 		void putdata(long startx, long starty, long xsize, long ysize,
-		             char  *sourcedata);
+		             unsigned char  *sourcedata);
 		void putdatatext(long startx, long starty, long xsize, long ysize,
-		                             char  *sourcedata);
+		                             unsigned char  *sourcedata);
 		void putdata(long startx, long starty, long xsize, long ysize,
-		             char  *sourcedata, unsigned char color);
+		             unsigned char  *sourcedata, unsigned char color);
 
 		 void putdatatext(long startx, long starty, long xsize, long ysize,
-		                              char  *sourcedata, unsigned char color);
+		                              unsigned char  *sourcedata, unsigned char color);
 
 		void putbuffer(long tilestartx, long tilestarty,
 		               long tilewidth, long tileheight,
 		               long portstartx, long portstarty,
 		               long portendx, long portendy,
-		               char * sourceptr);
+		               unsigned char * sourceptr);
 		void putbuffer(long tilestartx, long tilestarty,
 		               long tilewidth, long tileheight,
 		               long portstartx, long portstarty,
@@ -69,19 +69,19 @@ class video
 		                   long walkerwidth, long walkerheight,
 		                   long portstartx, long portstarty,
 		                   long portendx, long portendy,
-		                   char  *sourceptr, unsigned char teamcolor);
+		                   unsigned char  *sourceptr, unsigned char teamcolor);
 		void walkputbuffertext(long walkerstartx, long walkerstarty,
                                    long walkerwidth, long walkerheight,
                                    long portstartx, long portstarty,
                                    long portendx, long portendy,
-                                   char  *sourceptr, unsigned char teamcolor);
+                                   unsigned char  *sourceptr, unsigned char teamcolor);
 
 
 		void walkputbuffer(long walkerstartx, long walkerstarty,
 		                   long walkerwidth, long walkerheight,
 		                   long portstartx, long portstarty,
 		                   long portendx, long portendy,
-		                   char  *sourceptr, unsigned char teamcolor,
+		                   unsigned char  *sourceptr, unsigned char teamcolor,
 		                   unsigned char mode, long invisibility,
 		                   unsigned char outline, unsigned char shifttype);
 		void buffer_to_screen(long viewstartx,long viewstarty,
@@ -110,12 +110,12 @@ class video
 
 		int fadeDuration;
 
-		char ourpalette[768]; // our standard glad palette
-		char redpalette[768]; // for 'faded' backgrounds during menus
-		char bluepalette[768]; // for special effects like time-freeze
-		char dospalette[768]; // store the dos palette so we can restore it later
+		unsigned char ourpalette[768]; // our standard glad palette
+		unsigned char redpalette[768]; // for 'faded' backgrounds during menus
+		unsigned char bluepalette[768]; // for special effects like time-freeze
+		unsigned char dospalette[768]; // store the dos palette so we can restore it later
 
-		char videobuffer[64000]; //our new unified video buffer
+		unsigned char videobuffer[64000]; //our new unified video buffer
 		short cyclemode; //color cycling on or off
 
 

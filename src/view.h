@@ -125,7 +125,7 @@ class viewscreen
 		short size;
 		short xview;
 		short yview;
-		char  *bmp,  *oldbmp;
+		unsigned char  *bmp,  *oldbmp;
 };
 
 #endif
