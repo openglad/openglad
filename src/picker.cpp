@@ -1013,12 +1013,17 @@ long create_team_menu(long arg1)
 	if (localbuttons)
 		delete localbuttons;
 
+	myscreen->fadeblack(0);
 	myscreen->clearfontbuffer();
 
 	//  myscreen->clear();
 	localbuttons = buttonmenu(bteam,8);
+	
+	myscreen->fadeblack(1);
 
 	myscreen->buffer_to_screen(0,0,320,200);
+	
+	
 
 	//myscreen->soundp->play_sound(SOUND_CHARGE);
 	while ( !(retvalue & EXIT) )

@@ -81,7 +81,7 @@ video::video()
 
 	set_mult(mouse_mult);
 
-	fadeDuration = 2000;
+	fadeDuration = 500;
 
 	// Load our palettes ..
 	load_and_set_palette("our.pal", ourpalette);
