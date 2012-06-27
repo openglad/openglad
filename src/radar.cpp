@@ -75,7 +75,7 @@ radar::~radar()
 {
 	if (bmp)
 	{
-		delete bmp;
+		delete[] bmp;
 		bmp = NULL;
 	}
 }

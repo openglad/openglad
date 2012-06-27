@@ -84,7 +84,7 @@ char  * read_pixie_file(const char  * filename)
 	fread(&x, 1, 1, infile);
 	fread(&y, 1, 1, infile);
 
-	newpic = new unsigned char[x * y * numframes + 3];
+	newpic = (unsigned char*)calloc(x * y * numframes + 3 + 1, 1);
 	newpic[0] = numframes;
 	newpic[1] = x;
 	newpic[2] = y;

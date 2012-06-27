@@ -74,10 +74,10 @@ void init_input()
 
 void stop_input()
 {
-	delete key_list;
-	delete joy_numaxes;
-	delete joy_startval;
-	delete joy_numbuttons;
+	delete[] key_list;
+	delete[] joy_numaxes;
+	delete[] joy_startval;
+	delete[] joy_numbuttons;
 
 	key_list = NULL;
 	joy_numaxes = NULL;

@@ -1,0 +1,8 @@
+ 
+{
+   Suppress writev() via SDL
+   Memcheck:Param
+   writev(vector[...])
+   fun:writev
+   obj:*
+}

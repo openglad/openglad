@@ -73,7 +73,6 @@ video::video()
 		font_mult = 2;
 		render = DOUBLE;
 	}
-	
 
 	set_mult(mouse_mult);
 

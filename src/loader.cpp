@@ -291,8 +291,8 @@ signed char  *anifood[] = { food1, food1, food1, food1,
 
 loader::loader()
 {
-	graphics = new char*[SIZE_ORDERS*SIZE_FAMILIES];
-	memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES);
+	graphics = new char*[SIZE_ORDERS*SIZE_FAMILIES*2];
+	memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES*2);
 	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
@@ -791,17 +791,18 @@ loader::~loader(void)
 {
 	int i;
 	for(i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
-        free(graphics[i]);
+	    if(graphics[i])
+            free(graphics[i]);
 	}
 	
-	delete graphics;
+	delete[] graphics;
 
-	delete animations;
-	delete act_types;
-	delete stepsizes;
-	delete lineofsight;
-	delete damage;
-	delete fire_frequency;
+	delete[] animations;
+	delete[] act_types;
+	delete[] stepsizes;
+	delete[] lineofsight;
+	delete[] damage;
+	delete[] fire_frequency;
 }
 
 walker  *loader::create_walker(char order,
