@@ -291,8 +291,12 @@ signed char  *anifood[] = { food1, food1, food1, food1,
 
 loader::loader()
 {
-	graphics = new char*[SIZE_ORDERS*SIZE_FAMILIES*2];
-	memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES*2);
+	graphics = new char*[SIZE_ORDERS*SIZE_FAMILIES];
+	
+	//memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES);
+	for(int i = 0; i < SIZE_ORDERS*SIZE_FAMILIES; i++)
+        graphics[i] = NULL;
+        
 	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
@@ -791,8 +795,7 @@ loader::~loader(void)
 {
 	int i;
 	for(i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
-	    if(graphics[i])
-            free(graphics[i]);
+	    free(graphics[i]);
 	}
 	
 	delete[] graphics;

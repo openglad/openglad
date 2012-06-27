@@ -23,8 +23,8 @@ text::text(screen * myscreen)
 	letters = read_pixie_file(TEXT_1);
 	if(!letters)
 		printf("letters is NULL\n");
-	sizex = letters[1];
-	sizey = letters[2];
+	sizex = (unsigned char)letters[1];
+	sizey = (unsigned char)letters[2];
 	letters = letters+3;
 	screenp = myscreen;
 }
@@ -35,16 +35,15 @@ text::text(screen * myscreen, const char * filename)
 	if (!temp_filename || strlen(temp_filename) < 2)
 		temp_filename = "text.pix";
 	letters = read_pixie_file(temp_filename);
-	sizex = letters[1];
-	sizey = letters[2];
+	sizex = (unsigned char)letters[1];
+	sizey = (unsigned char)letters[2];
 	letters = letters+3;
 	screenp = myscreen;
 }
 
 text::~text()
 {
-	letters -= 3;
-	free(letters);
+	free(letters-3);  // letters is offset by 3 bytes on load
 	letters = NULL;
 }
 short text::query_width(const char *string) // returns width, in pixels
