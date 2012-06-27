@@ -65,6 +65,9 @@ void Super2xSaI_ex2(
 	unsigned char* srcPtr = src + (4*srcx +   srcy*src_pitch );
 	unsigned char* dstPtr = dst + (4*dstx +   dsty*dst_pitch );
 
+	src_pitch=src_pitch/4;
+	dst_pitch=dst_pitch/4;
+	
 	if (srcx + srcw >= src_pitch)
 	{
 		srcw = src_pitch - srcx;
@@ -75,8 +78,6 @@ void Super2xSaI_ex2(
     int xbeforelast1 = src_pitch - 1 - srcx;
     int xbeforelast2 = src_pitch - 2 - srcx;
 
-	src_pitch=src_pitch/4;
-	dst_pitch=dst_pitch/4;
 	for (int y = 0; y < srch; y++) 
 	{
 		unsigned long* bP = (unsigned long*) srcPtr;
