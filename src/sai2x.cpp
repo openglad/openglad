@@ -278,8 +278,9 @@ void Scale_SuperEagle(
 		{
 			unsigned long	color4, color5, color6;
 			unsigned long	color1, color2, color3;
-			unsigned long	colorA0, colorA1, colorA2, colorA3,
-							colorB0, colorB1, colorB2, colorB3,
+			//unsigned long	colorA0, colorA3, colorB0, colorB3;
+			unsigned long	colorA1, colorA2,
+							colorB1, colorB2,
 							colorS1, colorS2;
 			unsigned long	product1a, product1b,
 							product2a, product2b;
@@ -323,10 +324,10 @@ void Scale_SuperEagle(
 				nextl1 = src_pitch;
 
 
-            colorB0 = *(bP- prevl1 - sub1);
+            //colorB0 = *(bP- prevl1 - sub1);
             colorB1 = *(bP- prevl1);
             colorB2 = *(bP- prevl1 + add1);
-            colorB3 = *(bP- prevl1 + add1 + add2);
+            //colorB3 = *(bP- prevl1 + add1 + add2);
 
             color4 = *(bP - sub1);
             color5 = *(bP);
@@ -338,10 +339,10 @@ void Scale_SuperEagle(
             color3 = *(bP + nextl1 + add1);
             colorS1 = *(bP + nextl1 + add1 + add2);
 
-            colorA0 = *(bP + nextl1 + nextl2 - sub1);
+            //colorA0 = *(bP + nextl1 + nextl2 - sub1);
             colorA1 = *(bP + nextl1 + nextl2);
             colorA2 = *(bP + nextl1 + nextl2 + add1);
-            colorA3 = *(bP + nextl1 + nextl2 + add1 + add2);
+            //colorA3 = *(bP + nextl1 + nextl2 + add1 + add2);
 
 
 			if (color2 == color6 && color5 != color3)

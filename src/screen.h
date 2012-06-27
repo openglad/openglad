@@ -93,7 +93,7 @@ class screen : public video
 		short palmode;
 		short my_team;
 		guy  *first_guy;
-		unsigned char  *grid;
+		char  *grid;
 		long maxx,maxy;
 		long pixmaxx,pixmaxy;
 		long topx, topy;
@@ -124,7 +124,7 @@ class screen : public video
 		short par_value;
 		short level_done; // set true when all our foes are dead
 	protected:
-		unsigned char  *pixdata[PIX_MAX];
+		char  *pixdata[PIX_MAX];
 };
 
 #endif

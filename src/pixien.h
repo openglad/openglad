@@ -25,8 +25,8 @@
 class pixieN : public pixie
 {
 	public:
-		pixieN(unsigned char  *data, screen  *myscreen);
-		pixieN(unsigned char  *data, screen  *myscreen, int doaccel);
+		pixieN(char  *data, screen  *myscreen);
+		pixieN(char  *data, screen  *myscreen, int doaccel);
 		~pixieN();
 		short set_frame(short framenum);
 		short query_frame();
@@ -34,7 +34,7 @@ class pixieN : public pixie
 	protected:
 		short frames; // total frames
 		short frame; // current frame
-		unsigned char * facings;
+		char * facings;
 };
 
 #endif

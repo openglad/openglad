@@ -28,7 +28,7 @@
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
 
-effect::effect(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
+effect::effect(char  *data, screen  *myscreen) : walker(data, myscreen)
 {
 	ignore = 1; // don't collide with other objects
 }

@@ -44,8 +44,8 @@ void intro_main(long argc, char** argv)
 	pixie *gladiator;
 	pixie *bigfoot;
 	pixie *ul, *ur, *ll, *lr; // for full-screen displays
-	unsigned char *uldata, *urdata, *lldata, *lrdata;
-	unsigned char *gladdata, *bigdata;
+	char *uldata, *urdata, *lldata, *lrdata;
+	char *gladdata, *bigdata;
 	char message[80];
 
 #if 0
@@ -75,7 +75,7 @@ void intro_main(long argc, char** argv)
 	mytext->write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0]);
 	//myscreen->refresh();
 	delete gladiator;
-	delete gladdata;
+	free(gladdata);
 
 	if (show() < 0)
 	{
@@ -97,10 +97,10 @@ void intro_main(long argc, char** argv)
 	gladiator->drawMix(100, 110, myscreen->viewob[0]);
 	//myscreen->refresh();
 
-	delete gladdata;
+	free(gladdata);
 	delete gladiator;
 	delete bigfoot;
-	delete bigdata;
+	free(bigdata);
 
 	if (show() < 0)
 	{

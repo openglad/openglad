@@ -37,7 +37,7 @@ extern long calculate_level(unsigned long temp_exp);
 extern long difficulty_level[DIFFICULTY_SETTINGS];
 extern long current_difficulty;
 
-walker::walker(unsigned char  *data, screen  *myscreen): pixieN(data, myscreen)
+walker::walker(char  *data, screen  *myscreen): pixieN(data, myscreen)
 {
 	// Set our stats ..
 	stats = new statistics(this);
@@ -3723,7 +3723,7 @@ void walker::transfer_stats(walker  *newob)
 
 void walker::transform_to(char whatorder, char whatfamily)
 {
-	unsigned char * data;
+	char * data;
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
 	short reset = 0;
@@ -3754,7 +3754,7 @@ void walker::transform_to(char whatorder, char whatfamily)
 	// Reset the graphics
 	data = screenp->myloader->graphics[PIX(order, family)];
 	facings = data+3;
-	bmp = (unsigned char *)(data+3);
+	bmp = (data+3);
 	frames = data[0];
 	frame = 0;
 	cycle = 0;
@@ -3940,11 +3940,11 @@ short walker::eat_me(walker  * eater)
 
 void walker::set_direct_frame(short whichframe)
 {
-	unsigned char * data;
+	char * data;
 	frame =whichframe;
 
 	data = screenp->myloader->graphics[PIX(order, family)];
-	bmp = (unsigned char *) (data+3 + frame*size);
+	bmp = (data+3 + frame*size);
 
 }
 

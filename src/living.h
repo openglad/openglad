@@ -25,7 +25,7 @@
 class living : public walker
 {
 	public:
-		living(unsigned char  *data, screen  *myscreen);
+		living(char  *data, screen  *myscreen);
 		~living();
 		short          act();
 		short          check_special(); // determine if we should do special ..

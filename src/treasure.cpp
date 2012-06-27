@@ -34,7 +34,7 @@ void get_input_events(bool);
 // Zardus: from video.cpp for retreat crash ugly hack fix
 extern bool retreat;
 
-treasure::treasure(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
+treasure::treasure(char  *data, screen  *myscreen) : walker(data, myscreen)
 {
 	ignore =(char) 0;
 	dead =  (char) 0;
@@ -320,11 +320,11 @@ short treasure::eat_me(walker  * eater)
 
 void treasure::set_direct_frame(short whatframe)
 {
-	unsigned char  * data;
+	char  * data;
 	frame = whatframe;
 
 	data = screenp->myloader->graphics[PIX(order, family)];
-	bmp = (unsigned char  *) (data+3 + frame*size);
+	bmp = (data+3 + frame*size);
 
 }
 

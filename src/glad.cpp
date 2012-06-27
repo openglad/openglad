@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 	char * filepath;
 	filepath = get_file_path("openglad.cfg");
 	cfg.parse(filepath);
-	delete filepath;
+	free(filepath);
 	cfg.commandline(argc, argv);
 	create_dataopenglad();
 

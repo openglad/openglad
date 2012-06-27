@@ -23,6 +23,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <cstdlib>
+#include <cstring>
 #include "parser.h"
 
 using namespace std;

@@ -57,7 +57,7 @@ class smoother
 		long smooth();                        // smooths entire target grid
 		void set_x_y(long x, long y, long whatvalue);  // sets grid location to whatvalue
 
-		unsigned char  *mygrid; // our grid to change
+		char  *mygrid; // our grid to change
 		long maxx, maxy;   // dimensions of our grid ..
 		char  *buffer; // start of the data in the target grid
 };

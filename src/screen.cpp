@@ -329,7 +329,7 @@ screen::~screen()
 	for (i = 0; i < PIX_MAX; i++)
 	{
 		if(pixdata[i])
-			delete pixdata[i];
+			free(pixdata[i]);
 		// Zardus: FIXME: this should be here cause it leaks, but this makes it segfault
 		if (back[i])
 			delete back[i];
@@ -1903,7 +1903,7 @@ short load_version_2(FILE  *infile, screen * master)
 	// Get grid file to load
 	fread(newgrid, 8, 1, infile);
 	//buffers: PORT: make sure grid name is lowercase
-	lowercase((char *)newgrid);
+	lowercase(newgrid);
 	strcpy(my_map_name, newgrid);
 
 	// Determine number of objects to load ...
@@ -2390,6 +2390,7 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	char tempname[12];
 	oblink *here;
 	char scentitle[30];
+	memset(scentitle, 0, 30);
 	short temp_par;
 
 	// Format of a scenario object list file version 6/7 is:
@@ -2426,8 +2427,8 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	strcpy(my_map_name, newgrid);
 
 	// Get scenario title, if it exists
-	for (i=0; i < strlen(scentitle); i++)
-		scentitle[i] = 0;
+	//for (i=0; i < strlen(scentitle); i++)
+	//	scentitle[i] = 0;
 	fread(scentitle, 30, 1, infile);
 	strcpy(master->scenario_title, scentitle);
 

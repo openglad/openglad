@@ -29,7 +29,7 @@
 // Zardus: set_mult in input.cpp sets input's mult value
 void set_mult(int);
 
-unsigned char * videoptr = (unsigned char *) VIDEO_LINEAR;
+char * videoptr = (char *) VIDEO_LINEAR;
 
 SDL_Surface *screen; //buffers: this is what we draw in
 SDL_Surface *fontbuffer;
@@ -73,6 +73,7 @@ video::video()
 		font_mult = 2;
 		render = DOUBLE;
 	}
+	
 
 	set_mult(mouse_mult);
 
@@ -129,7 +130,7 @@ video::~video()
 	SDL_Quit();
 }
 
-unsigned char * video::getbuffer()
+char * video::getbuffer()
 {
 	return &videobuffer[0];
 }
@@ -493,7 +494,7 @@ void video::do_cycle(long curmode, long maxmode)
 //video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata)
+void video::putdata(long startx, long starty, long xsize, long ysize, char  *sourcedata)
 {
 	unsigned long curx, cury;
 	unsigned char curcolor;
@@ -513,7 +514,7 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 }
 
 
-void video::putdatatext(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata)
+void video::putdatatext(long startx, long starty, long xsize, long ysize, char  *sourcedata)
 {
         unsigned long curx, cury;
         unsigned char curcolor;
@@ -545,7 +546,7 @@ void video::putdatatext(long startx, long starty, long xsize, long ysize, unsign
 //video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata, unsigned char color)
+void video::putdata(long startx, long starty, long xsize, long ysize, char  *sourcedata, unsigned char color)
 {
 	unsigned long curx, cury;
 	unsigned char curcolor;
@@ -567,7 +568,7 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 		}
 }
 
-void video::putdatatext(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata, unsigned char color)
+void video::putdatatext(long startx, long starty, long xsize, long ysize, char  *sourcedata, unsigned char color)
 {
         unsigned long curx, cury;
         unsigned char curcolor;
@@ -608,14 +609,14 @@ void video::putbuffer(long tilestartx, long tilestarty,
                       long tilewidth, long tileheight,
                       long portstartx, long portstarty,
                       long portendx, long portendy,
-                      unsigned char * sourceptr)
+                      char * sourceptr)
 {
 	int i,j,num;
 	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
 	unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
 	long totrows,rowsize; //number of rows and width of each row in the source
 	unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
-	unsigned char * sourcebufptr = &sourceptr[0];
+	char * sourcebufptr = &sourceptr[0];
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
 
@@ -724,7 +725,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
                           long walkerwidth, long walkerheight,
                           long portstartx, long portstarty,
                           long portendx, long portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor)
+                          char  *sourceptr, unsigned char teamcolor)
 {
 	long curx, cury;
 	unsigned char curcolor;
@@ -792,7 +793,7 @@ void video::walkputbuffertext(long walkerstartx, long walkerstarty,
                           long walkerwidth, long walkerheight,
                           long portstartx, long portstarty,
                           long portendx, long portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor)
+                          char  *sourceptr, unsigned char teamcolor)
 {
         long curx, cury;
         unsigned char curcolor;
@@ -867,7 +868,7 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
                           long walkerwidth, long walkerheight,
                           long portstartx, long portstarty,
                           long portendx, long portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor,
+                          char  *sourceptr, unsigned char teamcolor,
                           unsigned char mode, long invisibility,
                           unsigned char outline, unsigned char shifttype)
 {

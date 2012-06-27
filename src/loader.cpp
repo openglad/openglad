@@ -293,17 +293,16 @@ loader::loader()
 {
 	short i;
 
-	graphics =  (unsigned char**) new short[SIZE_ORDERS*SIZE_FAMILIES*2];
+	graphics = new char*[SIZE_ORDERS*SIZE_FAMILIES];
+	memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES);
 	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
-	animations = (signed char***) new short[SIZE_ORDERS*SIZE_FAMILIES*2];
+	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
+	memset(animations, 0, SIZE_ORDERS*SIZE_FAMILIES);
 	stepsizes = new long[SIZE_ORDERS*SIZE_FAMILIES];
 	lineofsight = new long[SIZE_ORDERS*SIZE_FAMILIES];
 	damage = new long[SIZE_ORDERS*SIZE_FAMILIES];
 	fire_frequency = new signed char[SIZE_ORDERS*SIZE_FAMILIES];
-
-	for (i=0; i < (SIZE_ORDERS*SIZE_FAMILIES); i++)
-		graphics[i] = NULL;
 
 
 	// Livings
@@ -661,16 +660,16 @@ loader::loader()
 	// Treasure items (food, etc.)
 	graphics[PIX(ORDER_TREASURE, FAMILY_DRUMSTICK)] = read_pixie_file("food1.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)] = read_pixie_file("bar1.pix");
-	graphics[PIX(ORDER_TREASURE, FAMILY_SILVER_BAR)] = graphics[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)];
+	graphics[PIX(ORDER_TREASURE, FAMILY_SILVER_BAR)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)]);
 	graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)] = read_pixie_file("bottle.pix");
-	graphics[PIX(ORDER_TREASURE, FAMILY_INVIS_POTION)] = graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)];
-	graphics[PIX(ORDER_TREASURE, FAMILY_INVULNERABLE_POTION)] = graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)];
-	graphics[PIX(ORDER_TREASURE, FAMILY_FLIGHT_POTION)] = graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)];
+	graphics[PIX(ORDER_TREASURE, FAMILY_INVIS_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
+	graphics[PIX(ORDER_TREASURE, FAMILY_INVULNERABLE_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
+	graphics[PIX(ORDER_TREASURE, FAMILY_FLIGHT_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
 	graphics[PIX(ORDER_TREASURE, FAMILY_EXIT)] = read_pixie_file("16exit1.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_TELEPORTER)] = read_pixie_file("teleport.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_LIFE_GEM)] = read_pixie_file("lifegem.pix");
 	graphics[PIX(ORDER_TREASURE, FAMILY_KEY)] = read_pixie_file("key.pix");
-	graphics[PIX(ORDER_TREASURE, FAMILY_SPEED_POTION)] = graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)];
+	graphics[PIX(ORDER_TREASURE, FAMILY_SPEED_POTION)] = strdup(graphics[PIX(ORDER_TREASURE, FAMILY_MAGIC_POTION)]);
 
 	hitpoints[PIX(ORDER_TREASURE, FAMILY_DRUMSTICK)] = 10;
 	hitpoints[PIX(ORDER_TREASURE, FAMILY_GOLD_BAR)] = 1000;
@@ -794,12 +793,9 @@ loader::~loader(void)
 {
 	int i;
 	for(i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
-		if(PIX(ORDER_TREASURE, FAMILY_INVULNERABLE_POTION) !=  i &&PIX(ORDER_TREASURE, FAMILY_SILVER_BAR) != i && PIX(ORDER_TREASURE, FAMILY_INVIS_POTION) != i && PIX(ORDER_TREASURE, FAMILY_FLIGHT_POTION) != i && PIX(ORDER_TREASURE, FAMILY_SPEED_POTION) != i)
-			if(graphics[i] != NULL) {
-				delete graphics[i];
-				graphics[i] = NULL;
-			}
+        free(graphics[i]);
 	}
+	
 	delete graphics;
 
 	delete animations;

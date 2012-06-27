@@ -40,7 +40,7 @@ class radar
 
 		screen * screenp;
 		viewscreen * viewscreenp;
-		unsigned char  *bmp,  *oldbmp;
+		char  *bmp,  *oldbmp;
 		short xview;
 		short yview;
 	protected:

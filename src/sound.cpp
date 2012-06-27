@@ -125,7 +125,7 @@ void soundob::load_sound(Mix_Chunk **audio, char * file)
 		printf("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
 		exit(0);
 	}
-	delete filepath;
+	free(filepath);
 
 	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
 }

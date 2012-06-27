@@ -212,7 +212,7 @@ short viewscreen::redraw()
 	short yneg = 0;
 	walker  *controlob = control;
 	pixieN  **backp = screenp->back;
-	unsigned char  * gridp = screenp->grid;
+	char  * gridp = screenp->grid;
 	unsigned short maxx = screenp->maxx;
 	unsigned short maxy = screenp->maxy;
 

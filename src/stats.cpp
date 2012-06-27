@@ -1126,7 +1126,7 @@ short statistics::walk_to_foe()
 	walker * foe = controller->foe;
 	short xdest, ydest;
 	short xdelta,ydelta;
-	unsigned long tempdistance;
+	unsigned long tempdistance = 9999999L;
 	static unsigned short do_check;
 	short howmany;
 	oblink  * foelist;

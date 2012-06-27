@@ -118,9 +118,8 @@ vbutton::vbutton() //for pointers
 
 vbutton::~vbutton()
 {
-	myscreen->draw_box(xloc-4,yloc-4,xend+4,yend+4,0,1,1);
-	if (mypixie)
-		delete mypixie;
+	//myscreen->draw_box(xloc-4,yloc-4,xend+4,yend+4,0,1,1);
+	delete mypixie;
 
 	/*
 	  release_mouse();
@@ -266,7 +265,6 @@ long vbutton::leftclick(long whichbutton)
 {
 	long retvalue=0;
 	char  * mousekeys = query_keyboard();
-	long dummy;
 
 	if (whichbutton == 1) // hotkeys
 	{
@@ -297,8 +295,8 @@ long vbutton::leftclick(long whichbutton)
 			}
 			//else
 			//  retvalue = fun(arg);
-			while (mousekeys[hotkey])
-				dummy = 1;
+			//while (mousekeys[hotkey])
+			//	(void)1;
 			return retvalue;
 			//vdisplay();
 		}

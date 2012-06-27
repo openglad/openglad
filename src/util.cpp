@@ -101,7 +101,7 @@ FILE * open_misc_file(char * file, char * pos_dir, char * attr)
 
 	if (filename && (infile = fopen(filename, attr)))
 	{
-		delete filename;
+		free(filename);
                 return infile;
 	}
 

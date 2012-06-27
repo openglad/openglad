@@ -27,7 +27,7 @@ class walker : public pixieN
 	public:
 		friend class statistics;
 		friend class command;
-		walker(unsigned char  *data, screen  *myscreen);
+		walker(char  *data, screen  *myscreen);
 		~walker();
 		short reset(void);
 		short move(short x, short y);

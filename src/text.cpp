@@ -20,7 +20,7 @@ void get_input_events(bool);
 
 text::text(screen * myscreen)
 {
-	letters = (unsigned char *) read_pixie_file(TEXT_1);
+	letters = read_pixie_file(TEXT_1);
 	if(!letters)
 		printf("letters is NULL\n");
 	sizex = letters[1];
@@ -33,7 +33,7 @@ text::text(screen * myscreen, char * filename)
 {
 	if (!filename || strlen(filename) < 2)
 		filename = "text.pix";
-	letters = (unsigned char *) read_pixie_file(filename);
+	letters = read_pixie_file(filename);
 	sizex = letters[1];
 	sizey = letters[2];
 	letters = letters+3;
@@ -43,7 +43,7 @@ text::text(screen * myscreen, char * filename)
 text::~text()
 {
 	letters -= 3;
-	delete letters;
+	free(letters);
 	letters = NULL;
 }
 short text::query_width(char *string) // returns width, in pixels
@@ -255,7 +255,7 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, (unsigned char) color);
 
-	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, (unsigned char*) &letters[letter * sizex * sizey], (unsigned char) color);
+	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters[letter * sizex * sizey], (unsigned char) color);
 	//screenp->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -265,20 +265,20 @@ short text::write_char_xy(short x, short y, char letter, short to_buffer)
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, (unsigned char) DEFAULT_TEXT_COLOR);
 
-	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, (unsigned char*) &letters[letter * sizex * sizey], (unsigned char) DEFAULT_TEXT_COLOR);
+	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters[letter * sizex * sizey], (unsigned char) DEFAULT_TEXT_COLOR);
 	//screenp->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter, unsigned char color)
 {
-	screenp->putdatatext(x, y, sizex, sizey, (unsigned char *) &letters[letter *sizex*sizey], (unsigned char) color);
+	screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey], (unsigned char) color);
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter)
 {
-	screenp->putdatatext(x, y, sizex, sizey, (unsigned char *) &letters[letter *sizex*sizey]);
+	screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey]);
 	return 1;
 }
 
@@ -286,11 +286,11 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
 	if (!whereto)
-		screenp->putdatatext(x, y, sizex, sizey, (unsigned char *)&letters[letter *sizex*sizey], (unsigned char) color);
+		screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey], (unsigned char) color);
 	else
 		screenp->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       (unsigned char *)&letters[letter *sizex*sizey], (unsigned char) color);
+		                       &letters[letter *sizex*sizey], (unsigned char) color);
 	//         screenp->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
@@ -299,11 +299,11 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
 {
 	if (!whereto)
-		screenp->putdatatext(x, y, sizex, sizey, (unsigned char *)&letters[letter *sizex*sizey]);
+		screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey]);
 	else
 		screenp->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       (unsigned char *)&letters[letter *sizex*sizey], (unsigned char) DEFAULT_TEXT_COLOR);
+		                       &letters[letter *sizex*sizey], (unsigned char) DEFAULT_TEXT_COLOR);
 	//         screenp->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
