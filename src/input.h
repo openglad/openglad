@@ -101,6 +101,8 @@ void release_keyboard();                                    // restore normal sh
 int query_key();                                                            // return last keypress
 
 bool query_key_event(int key, const SDL_Event& event);
+bool isAnyPlayerKey(SDLKey key);
+bool isPlayerKey(int player_num, SDLKey key);
 
 SDL_Event wait_for_key_event();
 void quit_if_quit_event(const SDL_Event& event);

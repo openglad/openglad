@@ -516,7 +516,7 @@ short viewscreen::input(const SDL_Event& event)
 
 
 	// Redisplay the scenario text ..
-	if (query_key_event(SDLK_SLASH, event) && !isPlayerHoldingKey(mynum, KEY_CHEAT)) // actually "?"
+	if (query_key_event(SDLK_SLASH, event) && !isAnyPlayerKey(SDLK_SLASH) && !isPlayerHoldingKey(mynum, KEY_CHEAT)) // actually "?"
 	{
 		read_scenario(screenp);
 		screenp->redrawme = 1;

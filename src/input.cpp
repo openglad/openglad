@@ -56,14 +56,14 @@ int player_keys[4][NUM_KEYS] = {
          SDLK_F5,                                 // Cheat key
     },
     {
-         SDLK_KP8, SDLK_KP9, SDLK_KP6, SDLK_KP3,  // movements
-         SDLK_KP2, SDLK_KP1, SDLK_KP4, SDLK_KP7,
-         SDLK_KP0, SDLK_KP_ENTER,                    // fire & special
-         SDLK_KP_PLUS,                          // switch guys
-         SDLK_KP_MINUS,                         // change special
-         SDLK_KP5,                                // Yell
-         SDLK_KP_PERIOD,                                // Shifter
-         SDLK_KP_MULTIPLY,                         // Options menu
+         SDLK_UP, SDLK_UNKNOWN, SDLK_RIGHT, SDLK_UNKNOWN,  // movements
+         SDLK_DOWN, SDLK_UNKNOWN, SDLK_LEFT, SDLK_UNKNOWN,
+         SDLK_PERIOD, SDLK_SLASH,                    // fire & special
+         SDLK_RETURN,                          // switch guys
+         SDLK_COMMA,                         // change special
+         SDLK_l,                                // Yell
+         SDLK_RSHIFT,                                // Shifter
+         SDLK_BACKSLASH,                         // Options menu
          SDLK_F8,                                    // Cheat key
      },
      {
@@ -229,6 +229,30 @@ bool query_key_event(int key, const SDL_Event& event)
 {
     if(event.type == SDL_KEYDOWN)
         return (event.key.keysym.sym == key);
+    return false;
+}
+
+
+bool isAnyPlayerKey(SDLKey key)
+{
+    for(int player_num = 0; player_num < 4; player_num++)
+    {
+        for(int i = 0; i < NUM_KEYS; i++)
+        {
+            if(player_keys[player_num][i] == key)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool isPlayerKey(int player_num, SDLKey key)
+{
+    for(int i = 0; i < NUM_KEYS; i++)
+    {
+        if(player_keys[player_num][i] == key)
+            return true;
+    }
     return false;
 }
 
@@ -400,12 +424,24 @@ void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
             key_type[key_enum] = NEG_AXIS;
         key_index[key_enum] = event.jaxis.axis;
         index = event.jaxis.which;  // USES THE LAST JOYSTICK PRESSED
+        // Take over this joystick
+        for(int i = 0; i < 4; i++)
+        {
+            if(this != &player_joy[i] && player_joy[i].index == index)
+                player_joy[i].index = -1;
+        }
     }
     else if(event.type == SDL_JOYBUTTONDOWN)
     {
         key_type[key_enum] = BUTTON;
         key_index[key_enum] = event.jbutton.button;
         index = event.jbutton.which;  // USES THE LAST JOYSTICK PRESSED
+        // Take over this joystick
+        for(int i = 0; i < 4; i++)
+        {
+            if(this != &player_joy[i] && player_joy[i].index == index)
+                player_joy[i].index = -1;
+        }
     }
 }
 
@@ -424,6 +460,9 @@ bool JoyData::getState(int key_enum) const
 
 bool JoyData::getPress(int key_enum, const SDL_Event& event) const
 {
+    if(index < 0)
+        return false;
+    
     switch(key_type[key_enum])
     {
         case BUTTON:
@@ -451,7 +490,7 @@ bool JoyData::getPress(int key_enum, const SDL_Event& event) const
 
 bool JoyData::hasButtonSet(int key_enum) const
 {
-    return (key_type[key_enum] != NONE);
+    return (index >= 0 && key_type[key_enum] != NONE);
 }
 
 bool isPlayerHoldingKey(int player_index, int key_enum)
