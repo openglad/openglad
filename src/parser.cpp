@@ -151,9 +151,9 @@ Usage: open(glad|scen) [-d -f ...]\n\
 	// End Changes
 
 /* Old version:
- * Ran the same switch as above but with the getopt_long result
+ * Ran the same switch as above but with the getopt_int result
 	
-	const struct option longopts[] = {
+	const struct option intopts[] = {
 		{"help", 0, 0, 'h'},
 		{"version", 0, 0, 'v'},
 		{"sound", 0, 0, 's'},
@@ -168,7 +168,7 @@ Usage: open(glad|scen) [-d -f ...]\n\
 	while(1)
 	{
 		int c;
-		c = getopt_long (argc, argv, "dniefhsSv", longopts, NULL);
+		c = getopt_int (argc, argv, "dniefhsSv", intopts, NULL);
 		switch(c)
 */
 

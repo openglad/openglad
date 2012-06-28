@@ -58,7 +58,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	while (here)
 	{
 		if (here->ob)
-			here->ob->set_difficulty((unsigned long)here->ob->stats->level);
+			here->ob->set_difficulty((unsigned int)here->ob->stats->level);
 		here = here->next;
 	}
 
@@ -103,7 +103,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		if (temp_walker->stats->current_heal_delay > 1)
 		{
 			temp_walker->stats->max_heal_delay /=
-			    (long) (temp_walker->stats->current_heal_delay + 1);
+			    (int) (temp_walker->stats->current_heal_delay + 1);
 		}
 		temp_walker->stats->current_heal_delay = 0; //start off without healing
 
@@ -115,7 +115,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 
 		// Set the magic delay ..
 		temp_walker->stats->max_magic_delay = REGEN;
-		temp_walker->stats->current_magic_delay = (long)
+		temp_walker->stats->current_magic_delay = (int)
 		        (temp_guy->intelligence * 45) + (temp_guy->level*60) +
 		        (temp_guy->dexterity * 15) + 200;
 
@@ -128,7 +128,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		if (temp_walker->stats->current_magic_delay > 1)
 		{
 			temp_walker->stats->max_magic_delay /=
-			    (long) (temp_walker->stats->current_magic_delay + 1);
+			    (int) (temp_walker->stats->current_magic_delay + 1);
 		}
 		temp_walker->stats->current_magic_delay = 0; //start off without magic regen
 
@@ -293,8 +293,8 @@ short load_team_list(const char * filename, screen  *myscreen)
 	char temptext[10] = "GTL";
 	char savedgame[40];
 	char temp_version = 7;
-	unsigned long newcash;
-	unsigned long newscore = 0;
+	unsigned int newcash;
+	unsigned int newscore = 0;
 	//  short numguys;
 	short listsize;
 	short i;
@@ -305,10 +305,10 @@ short load_team_list(const char * filename, screen  *myscreen)
 	short temp_str, temp_dex, temp_con;
 	short temp_short, temp_arm, temp_lev;
 	char numplayers;
-	unsigned long temp_exp;
+	unsigned int temp_exp;
 	short temp_kills;
-	long temp_level_kills;
-	long temp_td, temp_th, temp_ts;
+	int temp_level_kills;
+	int temp_td, temp_th, temp_ts;
 	short temp_teamnum; // version 5+
 	short temp_allied;            // v.7+
 	short temp_registered;        // v.7+
@@ -319,14 +319,14 @@ short load_team_list(const char * filename, screen  *myscreen)
 	// 2-bytes registered mark            // Versions 7+
 	// 40-bytes saved game name, version 2 and up
 	// 2-bytes (short) = scenario number
-	// 4-bytes (long)= cash (unsigned)
-	// 4-bytes (long)= score (unsigned)
-	// 4-bytes (long)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (long)= score-B (unsigned)  // version 6+
-	// 4-bytes (long)= cash-C (unsigned)
-	// 4-bytes (long)= score-C (unsigned)
-	// 4-bytes (long)= cash-D (unsigned)
-	// 4-bytes (long)= score-D (unsigned)
+	// 4-bytes (int)= cash (unsigned)
+	// 4-bytes (int)= score (unsigned)
+	// 4-bytes (int)= cash-B (unsigned)   // All alternate scores
+	// 4-bytes (int)= score-B (unsigned)  // version 6+
+	// 4-bytes (int)= cash-C (unsigned)
+	// 4-bytes (int)= score-C (unsigned)
+	// 4-bytes (int)= cash-D (unsigned)
+	// 4-bytes (int)= score-D (unsigned)
 	// 2-bytes Allied mode                // Versions 7+
 	// 2-bytes (short) = # of team members in list
 	// 1-byte number of players
@@ -547,8 +547,8 @@ short save_game(const char * filename, screen  *myscreen)
 	char temptext[10] = "GTL";
 	char temp_version = 7;
 	short next_scenario = (short) ( myscreen->scen_num + 1 );
-	unsigned long newcash = myscreen->totalcash;
-	unsigned long newscore = myscreen->totalscore;
+	unsigned int newcash = myscreen->totalcash;
+	unsigned int newscore = myscreen->totalscore;
 	//  short numguys;
 	short listsize;
 	short i;
@@ -558,10 +558,10 @@ short save_game(const char * filename, screen  *myscreen)
 	short temp_str, temp_dex, temp_con;
 	short temp_short, temp_arm, temp_lev;
 	char numplayers = (char) myscreen->numviews;
-	unsigned long temp_exp;
+	unsigned int temp_exp;
 	short temp_kills;
-	long temp_level_kills;
-	long temp_td, temp_th, temp_ts;
+	int temp_level_kills;
+	int temp_td, temp_th, temp_ts;
 	short temp_teamnum;
 	short temp_allied;
 	short temp_registered;
@@ -573,14 +573,14 @@ short save_game(const char * filename, screen  *myscreen)
 	// 2-bytes Registered or not          // Version 7+
 	// 40-bytes saved-game name, dummy here
 	// 2-bytes (short) = scenario number
-	// 4-bytes (long)= cash (unsigned)
-	// 4-bytes (long)= score (unsigned)
-	// 4-bytes (long)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (long)= score-B (unsigned)  // version 6+
-	// 4-bytes (long)= cash-C (unsigned)
-	// 4-bytes (long)= score-C (unsigned)
-	// 4-bytes (long)= cash-D (unsigned)
-	// 4-bytes (long)= score-D (unsigned)
+	// 4-bytes (int)= cash (unsigned)
+	// 4-bytes (int)= score (unsigned)
+	// 4-bytes (int)= cash-B (unsigned)   // All alternate scores
+	// 4-bytes (int)= score-B (unsigned)  // version 6+
+	// 4-bytes (int)= cash-C (unsigned)
+	// 4-bytes (int)= score-C (unsigned)
+	// 4-bytes (int)= cash-D (unsigned)
+	// 4-bytes (int)= score-D (unsigned)
 	// 2-bytes allied setting              // Version 7+
 	// 2-bytes (short) = # of team members in list
 	// 1-byte number of players
@@ -595,7 +595,7 @@ short save_game(const char * filename, screen  *myscreen)
 	// 2-bytes intelligence
 	// 2-bytes armor
 	// 2-bytes level
-	// 4-bytes unsigned long experience
+	// 4-bytes unsigned int experience
 	// 2-bytes # kills, v.3+
 	// 4-bytes # total levels killed, v.3+
 	// 4-bytes total damage delt, v.4+

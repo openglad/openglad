@@ -40,13 +40,13 @@ FILE * open_misc_file(const char *);
 class packfileinfo
 {
 	public:
-		long filepos;
+		int filepos;
 		char name[FILENAME_SIZE];
 };
 
 int packfile::open(const char *filename)
 {
-	long i;
+	int i;
 	char temp[GLAD_HEADER_SIZE+1];
 
 	// Zardus: first try in the current directory
@@ -64,8 +64,8 @@ int packfile::open(const char *filename)
 
 	fileinfo = new packfileinfo[numfiles];
 	for (i=0; i < numfiles; i++)
-		fread(&(fileinfo[i]), FILENAME_SIZE + sizeof(long), 1, datafile);
-	fread(&filesize, sizeof(long), 1, datafile);
+		fread(&(fileinfo[i]), FILENAME_SIZE + sizeof(int), 1, datafile);
+	fread(&filesize, sizeof(int), 1, datafile);
 
 	return 1;
 }
@@ -96,7 +96,7 @@ FILE *packfile::get_subfile(const char *subfilename)
 	return NULL;
 }
 
-long packfile::get_subfilesize()
+int packfile::get_subfilesize()
 {
 	if (last_subfile + 1 == numfiles)
 		return filesize - fileinfo[last_subfile].filepos;

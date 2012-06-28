@@ -58,10 +58,10 @@ short treasure::eat_me(walker  * eater)
 	static text eattext(screenp);
 	char message[80];
 	Uint8* eatkeys;
-	long distance;
+	int distance;
 	walker  *target, *flash;
 	static char exitname[40];
-	long leftside, rightside;
+	int leftside, rightside;
 
 	switch (family)
 	{
@@ -297,9 +297,9 @@ short treasure::eat_me(walker  * eater)
 			death();
 			return 1;
 		case FAMILY_KEY: // get the key to this door ..
-			if (!(eater->keys & (long)(pow((double) 2, stats->level)) )) // just got it?
+			if (!(eater->keys & (int)(pow((double) 2, stats->level)) )) // just got it?
 			{
-				eater->keys |= (long) (pow((double)2, stats->level)); // ie, 2, 4, 8, 16...
+				eater->keys |= (int) (pow((double)2, stats->level)); // ie, 2, 4, 8, 16...
 				if (eater->myguy)
 					sprintf(message, "%s picks up key %d", eater->myguy->name,
 					        stats->level);

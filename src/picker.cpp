@@ -44,14 +44,14 @@
 FILE * open_misc_file(const char *, const char *);
 FILE * open_misc_file(const char *, const char *, const char *);
 
-void show_guy(long frames, long who); // shows the current guy ..
-long name_guy(long arg); // rename (or name) the current_guy
+void show_guy(int frames, int who); // shows the current guy ..
+int name_guy(int arg); // rename (or name) the current_guy
 
-void glad_main(screen *myscreen, long playermode);
+void glad_main(screen *myscreen, int playermode);
 const char* get_saved_name(const char * filename);
-long do_set_scen_level(long arg1);
+int do_set_scen_level(int arg1);
 
-long leftmouse();
+int leftmouse();
 void family_name_copy(char *name, short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
@@ -63,14 +63,14 @@ extern options *theprefs;
 
 //screen  *myscreen;
 text  *mytext;
-long *mymouse;     // hold mouse information
+int *mymouse;     // hold mouse information
 //char main_dir[80];
 guy  *current_guy;// = new guy();
-unsigned long money[4] = {5000, 5000, 5000, 5000};
-unsigned long score[4] = {0, 0, 0, 0};
-long scen_level = 1;
+unsigned int money[4] = {5000, 5000, 5000, 5000};
+unsigned int score[4] = {0, 0, 0, 0};
+int scen_level = 1;
 char  message[80];
-long editguy = 0;        // Global for editing guys ..
+int editguy = 0;        // Global for editing guys ..
 unsigned char playermode=1;
 unsigned char  *gladpic,*magepic;
 pixieN  *gladpix,*magepix;
@@ -78,11 +78,11 @@ char levels[MAX_LEVELS];        // our level-completion status
 FILE *loadgame; //for loading the default game
 vbutton * localbuttons; //global so we can delete the buttons anywhere
 guy *ourteam[MAXTEAM];
-long teamsize = 0;
+int teamsize = 0;
 char save_file[40] = "SAVED GAME";
 short current_team_num = 0;
 
-long allowable_guys[] =
+int allowable_guys[] =
     { FAMILY_SOLDIER,
       FAMILY_BARBARIAN,
       FAMILY_ELF,
@@ -99,11 +99,11 @@ long allowable_guys[] =
       FAMILY_GHOST
     };
 
-long current_type = 0; // guy type we're looking at
+int current_type = 0; // guy type we're looking at
 
-long numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0,0};
+int numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0,0};
 
-long costlist[NUM_FAMILIES] =
+int costlist[NUM_FAMILIES] =
     {
         250,  // soldier
         150,  // elf
@@ -126,7 +126,7 @@ long costlist[NUM_FAMILIES] =
     };
 
 // Also change guy::guy
-long statlist[NUM_FAMILIES][6] =
+int statlist[NUM_FAMILIES][6] =
     {
         // STR, DEX, CON, INT, ARMOR, LEVEL
         {12, 6, 12,  8, 9,  1},  // soldier
@@ -152,7 +152,7 @@ long statlist[NUM_FAMILIES][6] =
         //  {8, 12,  8, 32,10,  1},  // archmage
     };
 
-long statcosts[NUM_FAMILIES][6] =
+int statcosts[NUM_FAMILIES][6] =
     {
         // STR, DEX, CON, INT, ARMOR, LEVEL
         { 6,10, 6,25,50, 200},  // soldier
@@ -177,8 +177,8 @@ long statcosts[NUM_FAMILIES][6] =
     };
 
 // Difficulty settings .. in percent, so 100 == normal
-long current_difficulty = 1; // setting 'normal'
-long difficulty_level[DIFFICULTY_SETTINGS] =
+int current_difficulty = 1; // setting 'normal'
+int difficulty_level[DIFFICULTY_SETTINGS] =
     {
         50,
         100,
@@ -191,9 +191,9 @@ char difficulty_names[DIFFICULTY_SETTINGS][80] =
         "Slaughter",
     };  // end of difficulty names
 
-void picker_main(long argc, char  **argv)
+void picker_main(int argc, char  **argv)
 {
-	long i;
+	int i;
 
 	for (i=0; i < MAX_BUTTONS; i++)
 		allbuttons[i] = NULL;
@@ -421,10 +421,10 @@ button loadteam[] =
 
     };
 
-long leftmouse()
+int leftmouse()
 {
-	long i = 0;
-	long somebutton = -1;
+	int i = 0;
+	int somebutton = -1;
 	Uint8* mousekeys = query_keyboard();
 
 	grab_mouse();
@@ -518,11 +518,11 @@ void view_team(short left, short top, short right, short bottom)
 
 
 
-long mainmenu(long arg1)
+int mainmenu(int arg1)
 {
 	vbutton *tempbuttons;
-	long retvalue=0;
-	long count;
+	int retvalue=0;
+	int count;
 	char message[80];
 
 	if (arg1)
@@ -785,9 +785,9 @@ long mainmenu(long arg1)
 	return retvalue;
 }
 
-long beginmenu(long arg1)
+int beginmenu(int arg1)
 {
-	long i,retvalue=0;
+	int i,retvalue=0;
 
 	if (arg1)
 		arg1 = 1;
@@ -855,9 +855,9 @@ button bload[] =
         { "MAIN MENU", SDLK_ESCAPE, 100, 130, 120, 15, 0 , -1},
     };
 
-long loadmenu(long arg1)
+int loadmenu(int arg1)
 {
-	long retvalue = 0;
+	int retvalue = 0;
 
 	if (arg1)
 		arg1 = 1;
@@ -905,9 +905,9 @@ button bnew[] =
         { "BACK", SDLK_ESCAPE, 100, 130, 115, 20, 0, -1 },
     };
 
-long newmenu(long arg1)
+int newmenu(int arg1)
 {
-	long retvalue = 0;
+	int retvalue = 0;
 
 	if (localbuttons)
 		delete (localbuttons);
@@ -936,9 +936,9 @@ button bnull[] =
         { "BACK", SDLK_ESCAPE, 100, 80, 120, 30, 0, -1 },
     };
 
-long nullmenu(long arg1)
+int nullmenu(int arg1)
 {
-	long retvalue = 0;
+	int retvalue = 0;
 	if (arg1)
 		arg1 = 1;
 
@@ -1003,9 +1003,9 @@ void family_name_copy(char *name, short family)
 	}
 }
 
-long create_team_menu(long arg1)
+int create_team_menu(int arg1)
 {
-	long retvalue=0;
+	int retvalue=0;
 
 	if (arg1)
 		arg1 = 1;
@@ -1051,9 +1051,9 @@ long create_team_menu(long arg1)
 	return REDRAW;
 }
 
-long create_view_menu(long arg1)
+int create_view_menu(int arg1)
 {
-	long retvalue = 0;
+	int retvalue = 0;
 
 	if (arg1)
 		arg1 = 1;
@@ -1092,15 +1092,15 @@ long create_view_menu(long arg1)
 	return REDRAW;
 }
 
-long create_buy_menu(long arg1)
+int create_buy_menu(int arg1)
 {
-	long linesdown, retvalue = 0;
+	int linesdown, retvalue = 0;
 	Uint8* inputkeyboard = query_keyboard();
-	long i;
-	long start_time = query_timer();
+	int i;
+	int start_time = query_timer();
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
-	unsigned long current_cost;
-	long clickvalue;
+	unsigned int current_cost;
+	int clickvalue;
 
 #define STAT_LEFT    44        // where 'INT:' appears
 #define STAT_NUM     86        // where '12' appears
@@ -1367,14 +1367,14 @@ long create_buy_menu(long arg1)
 	return REDRAW;
 }
 
-long create_edit_menu(long arg1)
+int create_edit_menu(int arg1)
 {
 	guy * here;
-	long linesdown, i, retvalue=0;
+	int linesdown, i, retvalue=0;
 	unsigned char showcolor;
-	long start_time = query_timer();
-	unsigned long current_cost;
-	long clickvalue;
+	int start_time = query_timer();
+	unsigned int current_cost;
+	int clickvalue;
 
 	if (arg1)
 		arg1 = 1;
@@ -1669,10 +1669,10 @@ long create_edit_menu(long arg1)
 	return REDRAW;
 }
 
-long create_load_menu(long arg1)
+int create_load_menu(int arg1)
 {
-	long retvalue=0;
-	long i;
+	int retvalue=0;
+	int i;
 	char temp_filename[20];
 	text loadtext(myscreen);
 	char message[80];
@@ -1755,10 +1755,10 @@ long create_load_menu(long arg1)
 	return REDRAW;
 }
 
-long create_save_menu(long arg1)
+int create_save_menu(int arg1)
 {
-	long retvalue=0;
-	long i;
+	int retvalue=0;
+	int i;
 	char temp_filename[20];
 	text savetext(myscreen);
 	char message[80];
@@ -1839,7 +1839,7 @@ long create_save_menu(long arg1)
 
 }
 
-long increase_stat(long whatstat, long howmuch)
+int increase_stat(int whatstat, int howmuch)
 {
 	switch(whatstat)
 	{
@@ -1868,7 +1868,7 @@ long increase_stat(long whatstat, long howmuch)
 	return OK;
 }
 
-long decrease_stat(long whatstat, long howmuch)
+int decrease_stat(int whatstat, int howmuch)
 {
 	switch(whatstat)
 	{
@@ -1897,11 +1897,11 @@ long decrease_stat(long whatstat, long howmuch)
 	return OK;
 }
 
-unsigned long calculate_cost()
+unsigned int calculate_cost()
 {
 	guy  *ob = current_guy;
-	long temp;
-	long myfamily;
+	int temp;
+	int myfamily;
 
 	if (!ob)
 		return 0;
@@ -1924,21 +1924,21 @@ unsigned long calculate_cost()
 		ob->level = statlist[myfamily][BUT_LEVEL];
 
 	// Now figure out costs ..
-	temp += (long)((pow( (long)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (long)statcosts[myfamily][BUT_STR]) ;
-	temp += (long)((pow( (long)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (long)statcosts[myfamily][BUT_DEX]);
-	temp += (long)((pow( (long)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (long)statcosts[myfamily][BUT_CON]);
-	temp += (long)((pow( (long)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (long)statcosts[myfamily][BUT_INT]);
-	temp += (long)((pow( (long)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (long)statcosts[myfamily][BUT_ARMOR]);
-	temp += (long)((pow( (long)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (long)statcosts[myfamily][BUT_LEVEL]);
-	if ((signed long) calculate_exp(ob->level) < 0) // overflow
+	temp += (int)((pow( (int)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * (int)statcosts[myfamily][BUT_STR]) ;
+	temp += (int)((pow( (int)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * (int)statcosts[myfamily][BUT_DEX]);
+	temp += (int)((pow( (int)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * (int)statcosts[myfamily][BUT_CON]);
+	temp += (int)((pow( (int)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * (int)statcosts[myfamily][BUT_INT]);
+	temp += (int)((pow( (int)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * (int)statcosts[myfamily][BUT_ARMOR]);
+	temp += (int)((pow( (int)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
+	               * (int)statcosts[myfamily][BUT_LEVEL]);
+	if ((signed int) calculate_exp(ob->level) < 0) // overflow
 		ob->level = 1;
-	temp += (long) (calculate_exp(ob->level));
+	temp += (int) (calculate_exp(ob->level));
 	if (temp < 0)
 	{
 		//guytemp = new guy(current_guy->family);
@@ -1948,15 +1948,15 @@ unsigned long calculate_cost()
 		//temp = -1;  // This used to be an error code checked by picker.cpp line 2213
 		temp = 0;
 	}
-	return (unsigned long)temp;
+	return (unsigned int)temp;
 }
 
 // This version compares current_guy versus the old version ..
-unsigned long calculate_cost(guy  *oldguy)
+unsigned int calculate_cost(guy  *oldguy)
 {
 	guy  *ob = current_guy;
-	long temp;
-	long myfamily;
+	int temp;
+	int myfamily;
 
 	if (!ob || !oldguy)
 		return 0;
@@ -1981,36 +1981,36 @@ unsigned long calculate_cost(guy  *oldguy)
 	// Now figure out costs ..
 
 	// First we have our 'total increased value..'
-	temp += (long)((pow( (long)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (long)statcosts[myfamily][BUT_STR]) ;
-	temp += (long)((pow( (long)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (long)statcosts[myfamily][BUT_DEX]);
-	temp += (long)((pow( (long)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (long)statcosts[myfamily][BUT_CON]);
-	temp += (long)((pow( (long)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (long)statcosts[myfamily][BUT_INT]);
-	temp += (long)((pow( (long)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (long)statcosts[myfamily][BUT_ARMOR]);
-	temp += (long)((pow( (long)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (long)statcosts[myfamily][BUT_LEVEL]);
+	temp += (int)((pow( (int)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * (int)statcosts[myfamily][BUT_STR]) ;
+	temp += (int)((pow( (int)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * (int)statcosts[myfamily][BUT_DEX]);
+	temp += (int)((pow( (int)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * (int)statcosts[myfamily][BUT_CON]);
+	temp += (int)((pow( (int)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * (int)statcosts[myfamily][BUT_INT]);
+	temp += (int)((pow( (int)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * (int)statcosts[myfamily][BUT_ARMOR]);
+	temp += (int)((pow( (int)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
+	               * (int)statcosts[myfamily][BUT_LEVEL]);
 
 	// Now subtract what we've already paid for ..
-	temp -= (long)((pow( (long)(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (long)statcosts[myfamily][BUT_STR]);
-	temp -= (long)((pow( (long)(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (long)statcosts[myfamily][BUT_DEX]);
-	temp -= (long)((pow( (long)(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (long)statcosts[myfamily][BUT_CON]);
-	temp -= (long)((pow( (long)(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (long)statcosts[myfamily][BUT_INT]);
-	temp -= (long)((pow( (long)(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (long)statcosts[myfamily][BUT_ARMOR]);
-	temp -= (long)((pow( (long)(oldguy->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (long)statcosts[myfamily][BUT_LEVEL]);
+	temp -= (int)((pow( (int)(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * (int)statcosts[myfamily][BUT_STR]);
+	temp -= (int)((pow( (int)(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * (int)statcosts[myfamily][BUT_DEX]);
+	temp -= (int)((pow( (int)(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * (int)statcosts[myfamily][BUT_CON]);
+	temp -= (int)((pow( (int)(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * (int)statcosts[myfamily][BUT_INT]);
+	temp -= (int)((pow( (int)(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * (int)statcosts[myfamily][BUT_ARMOR]);
+	temp -= (int)((pow( (int)(oldguy->level - statlist[myfamily][BUT_LEVEL]), RAISE))
+	               * (int)statcosts[myfamily][BUT_LEVEL]);
 
 	// Add on extra level cost ..
 	if (calculate_exp(ob->level) > oldguy->exp)
-		temp += (long) ( ( (calculate_exp(ob->level) ) - oldguy->exp)*(ob->level-1) );
+		temp += (int) ( ( (calculate_exp(ob->level) ) - oldguy->exp)*(ob->level-1) );
 
 	if (temp < 0)
 	{
@@ -2020,12 +2020,12 @@ unsigned long calculate_cost(guy  *oldguy)
 
 	}
 
-	return (unsigned long)temp;
+	return (unsigned int)temp;
 }
 
-long cycle_guy(long whichway)
+int cycle_guy(int whichway)
 {
-	long newfamily;
+	int newfamily;
 	char tempnum[5];
 
 	if (!current_guy)
@@ -2065,12 +2065,12 @@ long cycle_guy(long whichway)
 	return OK;
 }
 
-void show_guy(long frames, long who) // shows the current guy ..
+void show_guy(int frames, int who) // shows the current guy ..
 {
 	walker *mywalker;
 	short centerx = 80, centery = 45; // center for walker
-	long i;
-	long newfamily;
+	int i;
+	int newfamily;
 
 
 	if (!current_guy)
@@ -2108,7 +2108,7 @@ void show_guy(long frames, long who) // shows the current guy ..
 }
 // Sets current_guy to 'whichguy' in the teamlist, and
 // returns a COPY of him as the function result
-long cycle_team_guy(long whichway)
+int cycle_team_guy(int whichway)
 {
 	if (teamsize < 1)
 		return -1;
@@ -2151,9 +2151,9 @@ long cycle_team_guy(long whichway)
 	return OK;
 }
 
-long add_guy(guy *newguy)
+int add_guy(guy *newguy)
 {
-	long i;
+	int i;
 
 	for (i=0; i < MAXTEAM; i++)
 		if (!ourteam[i])
@@ -2167,7 +2167,7 @@ long add_guy(guy *newguy)
 	return -1;
 }
 
-long name_guy(long arg)  // 0 == current_guy, 1 == ourteam[editguy]
+int name_guy(int arg)  // 0 == current_guy, 1 == ourteam[editguy]
 {
 	text nametext(myscreen);
 	char tempnum[30];  // don't ask
@@ -2201,14 +2201,14 @@ long name_guy(long arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	return REDRAW;
 }
 
-long add_guy(long ignoreme)
+int add_guy(int ignoreme)
 {
-	long newfamily = current_guy->family;
+	int newfamily = current_guy->family;
 	char tempnum[12];
 	//buffers: changed typename to type_name due to some compile error
 	char type_name[30];
 	static text addtext(myscreen);
-	long i;
+	int i;
 
 	if (teamsize >= MAXTEAM) // abort abort!
 		return -1;
@@ -2264,10 +2264,10 @@ long add_guy(long ignoreme)
 }
 
 // Accept changes ..
-long edit_guy(long arg1)
+int edit_guy(int arg1)
 {
 	guy *here;
-	long *cheatmouse = query_mouse();
+	int *cheatmouse = query_mouse();
 
 	if (arg1)
 		arg1 = 1;
@@ -2305,10 +2305,10 @@ long edit_guy(long arg1)
 	return OK;
 }
 
-long how_many(long whatfamily)    // how many guys of family X on the team?
+int how_many(int whatfamily)    // how many guys of family X on the team?
 {
-	long counter = 0;
-	long i;
+	int counter = 0;
+	int i;
 
 	for (i=0; i < MAXTEAM; i++)
 		if (ourteam[i] && ourteam[i]->family == whatfamily)
@@ -2317,12 +2317,12 @@ long how_many(long whatfamily)    // how many guys of family X on the team?
 	return counter;
 }
 
-long do_save(long arg1)
+int do_save(int arg1)
 {
 	char newname[8];
 	char newnum[8];
 	static text savetext(myscreen);
-	long xloc, yloc, x2loc, y2loc;
+	int xloc, yloc, x2loc, y2loc;
 
 	strcpy(newname, "save");
 
@@ -2351,7 +2351,7 @@ long do_save(long arg1)
 	return REDRAW;
 }
 
-long do_load(long arg1)
+int do_load(int arg1)
 {
 	char newname[8];
 	char newnum[8];
@@ -2372,32 +2372,32 @@ long do_load(long arg1)
 	return REDRAW;
 }
 
-long save_team_list(const char * filename)
+int save_team_list(const char * filename)
 {
 	char filler[50];// = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *outfile;
 	char temp_filename[80];
 	char savedgame[40]; // for 38-byte saved game name
 	guy *here;
-	long i, j;
+	int i, j;
 
 	char temptext[10];
 	char temp_version = 7;
 	unsigned char temp_playermode = playermode;
-	long next_scenario = scen_level;
-	unsigned long newcash = money[0];
-	unsigned long newscore = score[0];
-	//  long numguys;
-	long listsize;
+	int next_scenario = scen_level;
+	unsigned int newcash = money[0];
+	unsigned int newscore = score[0];
+	//  int numguys;
+	int listsize;
 
 	char tempname[12] = "FRED";
 	char guyname[12] = "JOE";
 	char temp_order, temp_family;
-	long temp_str, temp_dex, temp_con;
-	long temp_int, temp_arm, temp_lev;
-	unsigned  long temp_exp;
-	long temp_kills, temp_level_kills;
-	long temp_td, temp_th, temp_ts;
+	int temp_str, temp_dex, temp_con;
+	int temp_int, temp_arm, temp_lev;
+	unsigned  int temp_exp;
+	int temp_kills, temp_level_kills;
+	int temp_td, temp_th, temp_ts;
 	short temp_teamnum;
 	short temp_allied;
 	short temp_registered;
@@ -2412,14 +2412,14 @@ long save_team_list(const char * filename)
 	// 2-bytes Registered or not          // Version 7+
 	// 40-byte saved game name (version 2 and up only!)
 	// 2-bytes (int) = scenario number
-	// 4-bytes (long)= cash (unsigned)
-	// 4-bytes (long)= score (unsigned)
-	// 4-bytes (long)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (long)= score-B (unsigned)  // version 6+
-	// 4-bytes (long)= cash-C (unsigned)
-	// 4-bytes (long)= score-C (unsigned)
-	// 4-bytes (long)= cash-D (unsigned)
-	// 4-bytes (long)= score-D (unsigned)
+	// 4-bytes (int)= cash (unsigned)
+	// 4-bytes (int)= score (unsigned)
+	// 4-bytes (int)= cash-B (unsigned)   // All alternate scores
+	// 4-bytes (int)= score-B (unsigned)  // version 6+
+	// 4-bytes (int)= cash-C (unsigned)
+	// 4-bytes (int)= score-C (unsigned)
+	// 4-bytes (int)= cash-D (unsigned)
+	// 4-bytes (int)= score-D (unsigned)
 	// 2-bytes allied setting              // Version 7+
 	// 2-bytes (int) = # of team members in list
 	// 1-byte number of players
@@ -2434,7 +2434,7 @@ long save_team_list(const char * filename)
 	// 2-bytes intelligence
 	// 2-bytes armor
 	// 2-bytes level
-	// 4-bytes unsigned long exp
+	// 4-bytes unsigned int exp
 	// 2-bytes # kills, v.3+
 	// 4-bytes # level kills, v.3+
 	// 4-bytes total damage done, v.4+
@@ -2572,7 +2572,7 @@ long save_team_list(const char * filename)
 	return 1;
 }
 
-long load_team_list_one(const char * filename)
+int load_team_list_one(const char * filename)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *infile;
@@ -2581,24 +2581,24 @@ long load_team_list_one(const char * filename)
 	char temptext[10] = "GTL";
 	char savedgame[40];
 	char temp_version = 7;
-	long next_scenario = 1;
-	unsigned long newcash = money[0];
-	unsigned long newscore = 0;
-	//  long numguys;
-	long listsize = 0;
-	long i;
+	int next_scenario = 1;
+	unsigned int newcash = money[0];
+	unsigned int newscore = 0;
+	//  int numguys;
+	int listsize = 0;
+	int i;
 	unsigned char temp_playermode;
 
 	char tempname[12] = "FRED";
 	char guyname[12] = "JOE";
 	char temp_order, temp_family;
 
-	long temp_str, temp_dex, temp_con;
-	long temp_int, temp_arm, temp_lev;
-	unsigned long temp_exp;
+	int temp_str, temp_dex, temp_con;
+	int temp_int, temp_arm, temp_lev;
+	unsigned int temp_exp;
 	guy  *tempguy;
-	long temp_kills, temp_level_kills;
-	long temp_td, temp_th, temp_ts;
+	int temp_kills, temp_level_kills;
+	int temp_td, temp_th, temp_ts;
 	short temp_teamnum;           // v.5+
 	short temp_allied;            // v.7+
 	short temp_registered;        // v.7+
@@ -2611,14 +2611,14 @@ long load_team_list_one(const char * filename)
 	// 2-bytes registered mark            // Versions 7+
 	// 40-byte saved-game name (version 2 and up only!)
 	// 2-bytes (int) = scenario number
-	// 4-bytes (long)= cash (unsigned)
-	// 4-bytes (long)= score (unsigned)
-	// 4-bytes (long)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (long)= score-B (unsigned)  // version 6+
-	// 4-bytes (long)= cash-C (unsigned)
-	// 4-bytes (long)= score-C (unsigned)
-	// 4-bytes (long)= cash-D (unsigned)
-	// 4-bytes (long)= score-D (unsigned)
+	// 4-bytes (int)= cash (unsigned)
+	// 4-bytes (int)= score (unsigned)
+	// 4-bytes (int)= cash-B (unsigned)   // All alternate scores
+	// 4-bytes (int)= score-B (unsigned)  // version 6+
+	// 4-bytes (int)= cash-C (unsigned)
+	// 4-bytes (int)= score-C (unsigned)
+	// 4-bytes (int)= cash-D (unsigned)
+	// 4-bytes (int)= score-D (unsigned)
 	// 2-bytes Allied mode                // Versions 7+
 	// 2-bytes (int) = # of team members in list
 	// 1-byte number of players
@@ -2633,7 +2633,7 @@ long load_team_list_one(const char * filename)
 	// 2-bytes intelligence
 	// 2-bytes armor
 	// 2-bytes level
-	// 4-bytes unsigned long exp
+	// 4-bytes unsigned int exp
 	// 2-bytes # kills, v. 3+
 	// 4-bytes total level kills, v. 3+
 	// 4-bytes total damage done, v.4+
@@ -2910,10 +2910,10 @@ const char* get_saved_name(const char * filename)
 	return (savedgame);
 }
 
-long delete_all()
+int delete_all()
 {
-	long i;
-	long counter = teamsize;
+	int i;
+	int counter = teamsize;
 
 	for (i=0; i < MAXTEAM; i++)
 		if (ourteam[i])
@@ -2927,18 +2927,18 @@ long delete_all()
 	return counter;
 }
 
-long add_money(long howmuch)
+int add_money(int howmuch)
 {
-	money[current_guy->teamnum] += (long) howmuch;
+	money[current_guy->teamnum] += (int) howmuch;
 	return money[current_guy->teamnum];
 }
 
-long go_menu(long arg1)
+int go_menu(int arg1)
 {
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
 	static text gotext(myscreen);
-	long temptime;
+	int temptime;
 
 	if (arg1)
 		arg1 = 1;
@@ -3038,7 +3038,7 @@ void statscopy(guy *dest, guy *source)
 	strcpy(dest->name, source->name);
 }
 
-void quit(long arg1)
+void quit(int arg1)
 {
 	if (arg1)
 		arg1 = 1;
@@ -3052,9 +3052,9 @@ void quit(long arg1)
 	exit(0);
 }
 
-long set_player_mode(long howmany)
+int set_player_mode(int howmany)
 {
-	long count = 0;
+	int count = 0;
 	playermode = howmany;
 
 	while (allbuttons[count])
@@ -3067,9 +3067,9 @@ long set_player_mode(long howmany)
 	return OK;
 }
 
-long calculate_level(unsigned long experience)
+int calculate_level(unsigned int experience)
 {
-	long result=1;
+	int result=1;
 
 	while (calculate_exp(result) <= experience)
 		result++;
@@ -3106,13 +3106,13 @@ long calculate_level(unsigned long experience)
 	*/
 }
 
-unsigned long calculate_exp(long level)
+unsigned int calculate_exp(int level)
 {
 
 
 	/*
 	  if (level > 13)
-	    return (long) (2*calculate_exp(level-1) );
+	    return (int) (2*calculate_exp(level-1) );
 	  if (level == 13)
 	         return 44232000L;
 	  else if (level == 12)
@@ -3143,16 +3143,16 @@ unsigned long calculate_exp(long level)
 	*/
 
 	if (level > 2)
-		return (long) ( (8000*(level+10)) / 10) + calculate_exp(level-1);
+		return (int) ( (8000*(level+10)) / 10) + calculate_exp(level-1);
 	else if (level > 1)
-		return (long) 8000;
+		return (int) 8000;
 	else
-		return (long) 0;
+		return (int) 0;
 }
 
 void clear_levels()
 {
-	long i;
+	int i;
 
 	// Set all of our level-completion status to off
 	for (i=0; i < MAX_LEVELS; i++)
@@ -3162,12 +3162,12 @@ void clear_levels()
 
 
 //new functions
-long return_menu(long arg)
+int return_menu(int arg)
            {
 	           return arg;
            }
 
-           long create_detail_menu(guy *arg1)
+           int create_detail_menu(guy *arg1)
            {
 #define DETAIL_LM 11             // left edge margin ..
 #define DETAIL_MM 164            // center margin
@@ -3175,10 +3175,10 @@ long return_menu(long arg)
 #define WL(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, DARK_BLUE, 1)
 #define WR(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, DARK_BLUE, 1)
 
-	           long retvalue = 0;
+	           int retvalue = 0;
 	           guy *thisguy;
-	           long start_time = query_timer();
-	           long *detailmouse;
+	           int start_time = query_timer();
+	           int *detailmouse;
 
 	           release_mouse();
 
@@ -3260,7 +3260,7 @@ long return_menu(long arg)
 			           {
 				           WR(0, " Lots of Rocks");
 				           WR(1, "  Like #2, but more     ");
-				           WR(2, "  rocks, with a longer  ");
+				           WR(2, "  rocks, with a inter  ");
 				           WR(3 ,"  thrown range.         ");
 			           }
 			           // Level 10 things
@@ -3625,14 +3625,14 @@ long return_menu(long arg)
            }
 
 
-           long do_set_scen_level(long arg1)
+           int do_set_scen_level(int arg1)
            {
 	           char newname[8];
 	           char newnum[8];
 	           static text savetext(myscreen);
-	           long xloc, yloc, x2loc, y2loc;
-	           long templevel;
-	           long temptime;
+	           int xloc, yloc, x2loc, y2loc;
+	           int templevel;
+	           int temptime;
 
 
 	           //myscreen->soundp->play_sound(SOUND_YO);
@@ -3694,7 +3694,7 @@ long return_menu(long arg)
            }
            */
 
-           long set_difficulty()
+           int set_difficulty()
            {
 	           char message[80];
 
@@ -3708,7 +3708,7 @@ long return_menu(long arg)
 	           return OK;
            }
 
-           long change_teamnum(long arg)
+           int change_teamnum(int arg)
            {
 	           // Change the team number of the current guy
 	           short current_team;
@@ -3738,7 +3738,7 @@ long return_menu(long arg)
 	           return OK;
            }
 
-           long change_hire_teamnum(long arg)
+           int change_hire_teamnum(int arg)
            {
 	           // Change the team number of the hiring menu ..
 	           char  message[80];
@@ -3764,7 +3764,7 @@ long return_menu(long arg)
 	           return OK;
            }
 
-           long change_allied()
+           int change_allied()
            {
 	           // Change our allied mode (on or off)
 	           char message[80];

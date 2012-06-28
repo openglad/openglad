@@ -5,12 +5,12 @@
 #define Log(x) fprintf(stderr,x)
 
 // Private var for SAI2x
-static unsigned long colorMask = 0xF7DEF7DE;
-static unsigned long lowPixelMask = 0x08210821;
-static unsigned long qcolorMask = 0xE79CE79C;
-static unsigned long qlowpixelMask = 0x18631863;
-static unsigned long redblueMask = 0xF81F;
-static unsigned long greenMask = 0x7E0;
+static unsigned int colorMask = 0xF7DEF7DE;
+static unsigned int lowPixelMask = 0x08210821;
+static unsigned int qcolorMask = 0xE79CE79C;
+static unsigned int qlowpixelMask = 0x18631863;
+static unsigned int redblueMask = 0xF81F;
+static unsigned int greenMask = 0x7E0;
 static int PixelsPerMask = 2;
 static int xsai_depth = 0;
 
@@ -80,17 +80,17 @@ void Super2xSaI_ex2(
 
 	for (int y = 0; y < srch; y++) 
 	{
-		unsigned long* bP = (unsigned long*) srcPtr;
-		unsigned long* dP = (unsigned long*) dstPtr;
+		unsigned int* bP = (unsigned int*) srcPtr;
+		unsigned int* dP = (unsigned int*) dstPtr;
 	
 		for (int x = 0; x < srcw; x++) 
 		{
-           unsigned long color4, color5, color6;
-           unsigned long color1, color2, color3;
-           unsigned long colorA0, colorA1, colorA2, colorA3,
+           unsigned int color4, color5, color6;
+           unsigned int color1, color2, color3;
+           unsigned int colorA0, colorA1, colorA2, colorA3,
 						colorB0, colorB1, colorB2, colorB3,
 						colorS1, colorS2;
-           unsigned long product1a, product1b,
+           unsigned int product1a, product1b,
  					  product2a, product2b;
  
 			int add1, add2;
@@ -272,18 +272,18 @@ void Scale_SuperEagle(
 
     for (int y = 0; y < srch; y++)
 	{
-		unsigned long *bP = (unsigned long*) srcPtr;
-		unsigned long *dP = (unsigned long*) dstPtr;
+		unsigned int *bP = (unsigned int*) srcPtr;
+		unsigned int *dP = (unsigned int*) dstPtr;
 
 		for (int x = 0; x < srcw; x++)
 		{
-			unsigned long	color4, color5, color6;
-			unsigned long	color1, color2, color3;
-			//unsigned long	colorA0, colorA3, colorB0, colorB3;
-			unsigned long	colorA1, colorA2,
+			unsigned int	color4, color5, color6;
+			unsigned int	color1, color2, color3;
+			//unsigned int	colorA0, colorA3, colorB0, colorB3;
+			unsigned int	colorA1, colorA2,
 							colorB1, colorB2,
 							colorS1, colorS2;
-			unsigned long	product1a, product1b,
+			unsigned int	product1a, product1b,
 							product2a, product2b;
 
 			//---------------------------------------  B0 B1 B2 B3
@@ -485,14 +485,14 @@ void Scale_SuperEagle(
 
 
 
-void Super2xSaI_ex(unsigned char *src, unsigned long src_pitch, unsigned char *unused, unsigned char *dest, unsigned long dest_pitch, unsigned long width, unsigned long height) 
+void Super2xSaI_ex(unsigned char *src, unsigned int src_pitch, unsigned char *unused, unsigned char *dest, unsigned int dest_pitch, unsigned int width, unsigned int height) 
 {
 
 
 	unused=NULL;	//for avoid warning
 	//int j;
 	unsigned int x, y;
-	unsigned long color[16];
+	unsigned int color[16];
 
 	/* Point to the first 3 lines. */
 	src_line[0] = src;
@@ -504,13 +504,13 @@ void Super2xSaI_ex(unsigned char *src, unsigned long src_pitch, unsigned char *u
 	dst_line[1] = (unsigned char*) dest + dest_pitch;
 	
 	x = 0, y = 0;
-	unsigned long *lbp;
-	lbp = (unsigned long*)src_line[0];
+	unsigned int *lbp;
+	lbp = (unsigned int*)src_line[0];
 	color[0] = *lbp;       color[1] = color[0];   color[2] = color[0];    color[3] = color[0];
 	color[4] = color[0];   color[5] = color[0];   color[6] = *(lbp + 1);  color[7] = *(lbp + 2);
-	lbp = (unsigned long*)src_line[2];
+	lbp = (unsigned int*)src_line[2];
 	color[8] = *lbp;     color[9] = color[8];     color[10] = *(lbp + 1); color[11] = *(lbp + 2);
-	lbp = (unsigned long*)src_line[3];
+	lbp = (unsigned int*)src_line[3];
 	color[12] = *lbp;    color[13] = color[12];   color[14] = *(lbp + 1); color[15] = *(lbp + 2);
 
 	for (y = 0; y < height; y++) {
@@ -518,7 +518,7 @@ void Super2xSaI_ex(unsigned char *src, unsigned long src_pitch, unsigned char *u
 		/* Todo: x = width - 2, x = width - 1 */
 		
 		for (x = 0; x < width; x++) {
-			unsigned long product1a, product1b, product2a, product2b;
+			unsigned int product1a, product1b, product2a, product2b;
 
 //---------------------------------------  B0 B1 B2 B3    0  1  2  3
 //                                         4  5* 6  S2 -> 4  5* 6  7
@@ -582,10 +582,10 @@ void Super2xSaI_ex(unsigned char *src, unsigned long src_pitch, unsigned char *u
 			else
 				product1a = color[5];
 	
-			*((unsigned long *) (&dst_line[0][x * 8])) = product1a;
-			*((unsigned long *) (&dst_line[0][x * 8 + 4])) = product1b;
-			*((unsigned long *) (&dst_line[1][x * 8])) = product2a;
-			*((unsigned long *) (&dst_line[1][x * 8 + 4])) = product2b;
+			*((unsigned int *) (&dst_line[0][x * 8])) = product1a;
+			*((unsigned int *) (&dst_line[0][x * 8 + 4])) = product1b;
+			*((unsigned int *) (&dst_line[1][x * 8])) = product2a;
+			*((unsigned int *) (&dst_line[1][x * 8 + 4])) = product2b;
 			
 			/* Move color matrix forward */
 			color[0] = color[1]; color[4] = color[5]; color[8] = color[9];   color[12] = color[13];
@@ -594,10 +594,10 @@ void Super2xSaI_ex(unsigned char *src, unsigned long src_pitch, unsigned char *u
 			
 			if (x < width - 3) {
 				x += 3;
-				color[3] = *(((unsigned long*)src_line[0]) + x);
-				color[7] = *(((unsigned long*)src_line[1]) + x);
-				color[11] = *(((unsigned long*)src_line[2]) + x);
-				color[15] = *(((unsigned long*)src_line[3]) + x);
+				color[3] = *(((unsigned int*)src_line[0]) + x);
+				color[7] = *(((unsigned int*)src_line[1]) + x);
+				color[11] = *(((unsigned int*)src_line[2]) + x);
+				color[15] = *(((unsigned int*)src_line[3]) + x);
 				x -= 3;
 			}
 		}
@@ -614,14 +614,14 @@ void Super2xSaI_ex(unsigned char *src, unsigned long src_pitch, unsigned char *u
 			src_line[3] = src_line[2] + src_pitch;
 			
 		/* Then shift the color matrix up */
-		unsigned long *lbp;
-		lbp = (unsigned long*)src_line[0];
+		unsigned int *lbp;
+		lbp = (unsigned int*)src_line[0];
 		color[0] = *lbp; color[1] = color[0]; color[2] = *(lbp + 1); color[3] = *(lbp + 2);
-		lbp = (unsigned long*)src_line[1];
+		lbp = (unsigned int*)src_line[1];
 		color[4] = *lbp; color[5] = color[4]; color[6] = *(lbp + 1); color[7] = *(lbp + 2);
-		lbp = (unsigned long*)src_line[2];
+		lbp = (unsigned int*)src_line[2];
 		color[8] = *lbp; color[9] = color[9]; color[10] = *(lbp + 1); color[11] = *(lbp + 2);
-		lbp = (unsigned long*)src_line[3];
+		lbp = (unsigned int*)src_line[3];
 		color[12] = *lbp; color[13] = color[12]; color[14] = *(lbp + 1); color[15] = *(lbp + 2);
 		
 		if (y < height - 1) {

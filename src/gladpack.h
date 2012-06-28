@@ -42,7 +42,7 @@ class packfile
 		short numfiles;
 		short last_subfile;
 		packfileinfo *fileinfo;
-		long filesize;
+		int filesize;
 
 	public:
 
@@ -60,7 +60,7 @@ class packfile
 		int close();
 
 		FILE *get_subfile(const char *subfilename);
-		long get_subfilesize();
+		int get_subfilesize();
 
 };
 

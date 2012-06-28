@@ -29,14 +29,14 @@
 #include "input.h"
 
 int show();
-int show(int howlong);
+int show(int howint);
 int cleanup();
 
 int pal[256][3];
 unsigned char mypalette[768];
 //screen *myscreen;
 
-void intro_main(long argc, char** argv)
+void intro_main(int argc, char** argv)
 {
 	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
 	//char **args = (char **)new int;
@@ -263,7 +263,7 @@ void intro_main(long argc, char** argv)
 
 int cleanup()
 {
-	long i;
+	int i;
 	int red,green,blue; //buffers: PORT: changed to ints
 	query_palette_reg((unsigned char)0, &red, &green, &blue); // Resets palette to read mode
 	release_timer();
@@ -287,12 +287,12 @@ int show() // default uses SHOW_TIME
 	return show(SHOW_TIME);
 }
 
-int show(int howlong)
+int show(int howint)
 {
 	if (myscreen->fadeblack(FROM) == -1) return -1;
 
 	reset_timer();
-	while (query_timer() < howlong)
+	while (query_timer() < howint)
 	{
 		get_input_events(POLL);
 		if (query_key_press_event())

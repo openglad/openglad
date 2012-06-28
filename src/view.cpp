@@ -92,9 +92,9 @@ int key4[] = {
              };
 
 // This is for saving/loading the key preferences
-long save_key_prefs();
-long load_key_prefs();
-// Zardus: no longer unsigned
+int save_key_prefs();
+int load_key_prefs();
+// Zardus: no inter unsigned
 int get_keypress();
 #define KEY_FILE "keyprefs.dat"
 
@@ -125,7 +125,7 @@ options *theprefs;
 viewscreen::viewscreen(short x, short y, short width,
                        short height, short whatnum, screen  *myscreen)
 {
-	long i;
+	int i;
 
 	screenp = myscreen;
 	xview = width;
@@ -253,7 +253,7 @@ short viewscreen::redraw()
 
 void viewscreen::display_text()
 {
-	long i;
+	int i;
 
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
@@ -271,9 +271,9 @@ void viewscreen::display_text()
 			shift_text(i); // shift text up, starting at position i
 }
 
-void viewscreen::shift_text(long row)
+void viewscreen::shift_text(int row)
 {
-	long i;
+	int i;
 
 	for (i=row; i < (MAX_MESSAGES-1) ; i++)
 	{
@@ -307,7 +307,7 @@ short viewscreen::input(const SDL_Event& event)
 	static short changedteam[6] = {0, 0, 0, 0, 0, 0};  // for switching team
 	//buffers: PORT: this doesn't compile: union REGS inregs,outregs;
 	short newfam; //oldfam?
-	unsigned long totaltime, totalframes, framespersec;
+	unsigned int totaltime, totalframes, framespersec;
 	walker *newob; // for general-purpose use
 	walker  * oldcontrol = control; // So we know if we changed guys
 
@@ -1031,7 +1031,7 @@ short viewscreen::continuous_input()
 
 void viewscreen::set_display_text(const char *newtext, short numcycles)
 {
-	long i;
+	int i;
 
 	if (!newtext)
 		return;
@@ -1056,7 +1056,7 @@ void viewscreen::set_display_text(const char *newtext, short numcycles)
 // Blanks the screen text
 void viewscreen::clear_text()
 {
-	long i;
+	int i;
 	for (i=0; i < MAX_MESSAGES; i++)
 		textlist[i][0] = 0;
 }
@@ -1299,7 +1299,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	list->next = NULL;
 	temp = new oblink;
 	Uint8* teamkeys;
-	long currentcycle = 0, cycletime = 30000;
+	int currentcycle = 0, cycletime = 30000;
 
 	screenp->redrawme = 1;
 	screenp->clearfontbuffer(left,top,right-left,bottom-top);
@@ -1442,7 +1442,7 @@ void viewscreen::options_menu()
 {
 	static text optiontext(screenp);
 	static Uint8* opkeys;
-	long gamespeed;
+	int gamespeed;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];
 
@@ -1834,7 +1834,7 @@ void viewscreen::options_menu()
 }
 
 
-long viewscreen::change_speed(long whichway)
+int viewscreen::change_speed(int whichway)
 {
 	if (whichway > 0)
 	{
@@ -1848,10 +1848,10 @@ long viewscreen::change_speed(long whichway)
 		if (screenp->timer_wait > 20)
 			screenp->timer_wait = 20;
 	}
-	return (long) ((20-screenp->timer_wait)/2+1);
+	return (int) ((20-screenp->timer_wait)/2+1);
 }
 
-long viewscreen::change_gamma(long whichway)
+int viewscreen::change_gamma(int whichway)
 {
 	if (whichway > 1)  // lighter
 	{
@@ -1869,7 +1869,7 @@ long viewscreen::change_gamma(long whichway)
 		load_palette("our.pal", screenp->newpalette);
 	}
 	// So 0 just means report
-	return (long) gamma;
+	return (int) gamma;
 }
 
 // **************************************************
@@ -1933,7 +1933,7 @@ short options::load(viewscreen *viewp)
 short options::save(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
-	long i;
+	int i;
 	FILE *outfile;
 
 	// Yes, we are ACTUALLY COPYING the data
@@ -1965,9 +1965,9 @@ options::~options()
 // save_key_prefs saves the state of all the player key preferences
 // to the binary file KEY_FILE (currently keyprefs.dat)
 // Returns success or failure
-long save_key_prefs()
+int save_key_prefs()
 {
-  long i;
+  int i;
   char *keypointer;
   FILE *outfile;
  
@@ -1992,9 +1992,9 @@ long save_key_prefs()
 // load_key_prefs loads the state of all the player key preferences
 // from the binary file KEY_FILE (currently keyprefs.dat)
 // Returns success or failure
-long load_key_prefs()
+int load_key_prefs()
 {
-  long i;
+  int i;
   char *keypointer;
   FILE *infile;
  
@@ -2021,7 +2021,7 @@ long load_key_prefs()
 // set_key_prefs queries the user for key preferences, and
 // places them into the proper key-press array.
 // It returns success or failure.
-long viewscreen::set_key_prefs()
+int viewscreen::set_key_prefs()
 {
 	static text keytext(screenp);
 

@@ -61,17 +61,17 @@
 #define NORMAL_KEYBOARD(x)  clear_keyboard(); release_keyboard(); x grab_keyboard();
 
 
-void set_screen_pos(screen *myscreen, long x, long y);
-long save_scenario(char * filename, screen * master, char *gridname);
-long save_map_file(char  * filename, screen *master);
-long load_new_grid(screen *master);
-long new_scenario_name();
-long new_grid_name();
+void set_screen_pos(screen *myscreen, int x, int y);
+int save_scenario(char * filename, screen * master, char *gridname);
+int save_map_file(char  * filename, screen *master);
+int load_new_grid(screen *master);
+int new_scenario_name();
+int new_grid_name();
 void do_help(screen * myscreen);
-char some_pix(long whatback);
-long check_collide(long x,  long y,  long xsize,  long ysize,
-                   long x2, long y2, long xsize2, long ysize2);
-walker * some_hit(long x, long y, walker  *ob, screen * screenp);
+char some_pix(int whatback);
+int check_collide(int x,  int y,  int xsize,  int ysize,
+                   int x2, int y2, int xsize2, int ysize2);
+walker * some_hit(int x, int y, walker  *ob, screen * screenp);
 
 char  * query_my_map_name();
 

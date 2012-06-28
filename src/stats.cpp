@@ -240,7 +240,7 @@ short statistics::do_command()
 	//  short ret1, ret2, ret3; //old code
 	walker * target;
 	short deltax, deltay;
-	long distance;
+	int distance;
 
 	static short newx, newy;
 #ifdef PROFILING
@@ -450,12 +450,12 @@ short statistics::do_command()
 // 'controller' is our parent walker object
 void statistics::hit_response(walker  *who)
 {
-	long distance, i;
+	int distance, i;
 	short myfamily;
-	long deltax, deltay;
+	int deltax, deltay;
 	walker *foe; // who is attacking us?
-	long possible_specials[NUM_SPECIALS];
-	long threshold; // for hitpoint 'running away'
+	int possible_specials[NUM_SPECIALS];
+	int threshold; // for hitpoint 'running away'
 	oblink *newlist; // for calling for help
 	short howmany;
 
@@ -651,7 +651,7 @@ void statistics::yell_for_help(walker *foe)
 {
 	oblink *helplist, *here;
 	short howmany;
-	long deltax, deltay;
+	int deltax, deltay;
 	char message[80];
 
 	controller->yo_delay += 80;
@@ -686,12 +686,12 @@ void statistics::yell_for_help(walker *foe)
 
 }
 
-short statistics::query_bit_flags(long myvalue)
+short statistics::query_bit_flags(int myvalue)
 {
 	return (short) (myvalue & bit_flags);
 }
 
-void statistics::set_bit_flags(long someflag, short newvalue)
+void statistics::set_bit_flags(int someflag, short newvalue)
 {
 	if (newvalue)
 	{
@@ -1032,7 +1032,7 @@ short statistics::direct_walk()
 	short xdeltastep, ydeltastep;
 	short controlx = controller->xpos, controly = controller->ypos;
 	//  short xdistance, ydistance;
-	//  unsigned long tempdistance;
+	//  unsigned int tempdistance;
 	//  char olddir = controller->curdir;
 	//  short oldlastx = controller->lastx;
 	//  short oldlasty = controller->lasty;
@@ -1126,7 +1126,7 @@ short statistics::walk_to_foe()
 	walker * foe = controller->foe;
 	short xdest, ydest;
 	short xdelta,ydelta;
-	unsigned long tempdistance = 9999999L;
+	unsigned int tempdistance = 9999999L;
 	static unsigned short do_check;
 	short howmany;
 	oblink  * foelist;
@@ -1148,7 +1148,7 @@ short statistics::walk_to_foe()
 		xdelta = (short) (xdest - controller->xpos);
 		ydelta = (short) (ydest - controller->ypos);
 
-		tempdistance = (unsigned long) controller->distance_to_ob(foe);
+		tempdistance = (unsigned int) controller->distance_to_ob(foe);
 		if (tempdistance < 200 || (tempdistance < last_distance) )
 		{
 			foelist = controller->screenp->find_foes_in_range(controller->screenp->oblist,

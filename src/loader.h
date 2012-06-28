@@ -31,13 +31,13 @@ class loader
 		walker *set_walker(walker *ob, char order, char family);
 		unsigned char **graphics;
 		signed char  ***animations;
-		long  *stepsizes;
-		long  *lineofsight;
+		int  *stepsizes;
+		int  *lineofsight;
 	protected:
 		//         char  *hitpoints;
 		short  hitpoints[200]; // hack for now
 		char  *act_types;
-		long  *damage;
+		int  *damage;
 		signed char  *fire_frequency;
 };
 

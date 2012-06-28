@@ -41,7 +41,7 @@ bool retreat;
 
 video::video()
 {
-	long i;
+	int i;
 	const char *qresult;
 	RenderEngine render;
 	fullscreen = 0;
@@ -171,11 +171,11 @@ void video::clearfontbuffer(int x, int y, int w, int h)
 	SDL_FillRect(fontbuffer,&rect,fontcolorkey);
 }
 
-void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, long filled)
+void video::draw_box(int x1, int y1, int x2, int y2, unsigned char color, int filled)
 {
-	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
-	long ylength = y2 - y1 + 1;
-	long i;
+	int xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
+	int ylength = y2 - y1 + 1;
+	int i;
 
 	if (!filled)          // Hollow box
 	{
@@ -191,11 +191,11 @@ void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, lo
 	}
 }
 
-void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, long filled, long tobuffer)
+void video::draw_box(int x1, int y1, int x2, int y2, unsigned char color, int filled, int tobuffer)
 {
-	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
-	long ylength = y2 - y1 + 1;
-	long i;
+	int xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
+	int ylength = y2 - y1 + 1;
+	int i;
 
 	if (!filled)          // Hollow box
 	{
@@ -212,11 +212,11 @@ void video::draw_box(long x1, long y1, long x2, long y2, unsigned char color, lo
 }
 
 
-void video::draw_button(long x1, long y1, long x2, long y2, long border)
+void video::draw_button(int x1, int y1, int x2, int y2, int border)
 {
-	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
-	long ylength = y2 - y1 + 1;
-	long i;
+	int xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
+	int ylength = y2 - y1 + 1;
+	int i;
 
 	clearfontbuffer(x1,y1,xlength,ylength);
 
@@ -235,11 +235,11 @@ void video::draw_button(long x1, long y1, long x2, long y2, long border)
 	}
 }
 
-void video::draw_button(long x1, long y1, long x2, long y2, long border, long tobuffer)
+void video::draw_button(int x1, int y1, int x2, int y2, int border, int tobuffer)
 {
-	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
-	long ylength = y2 - y1 + 1;
-	long i;
+	int xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
+	int ylength = y2 - y1 + 1;
+	int i;
 
 	clearfontbuffer(x1,y1,xlength,ylength);
 
@@ -260,11 +260,11 @@ void video::draw_button(long x1, long y1, long x2, long y2, long border, long to
 
 // Draws an empty but headed dialog box, returns the edge at
 // which to draw text ... does NOT display to screen.
-long video::draw_dialog(long x1, long y1, long x2, long y2,
+int video::draw_dialog(int x1, int y1, int x2, int y2,
                         const char *header)
 {
 	static text dialogtext(myscreen, "textbig.pix"); // large text
-	long centerx = x1 + ( (x2-x1) /2 ), left;
+	int centerx = x1 + ( (x2-x1) /2 ), left;
 	short textwidth;
 
 	draw_button(x1, y1, x2, y2, 1, 1); // single-border width, to buffer
@@ -281,10 +281,10 @@ long video::draw_dialog(long x1, long y1, long x2, long y2,
 
 }
 
-void video::draw_text_bar(long x1, long y1, long x2, long y2)
+void video::draw_text_bar(int x1, int y1, int x2, int y2)
 {
-	long xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
-	long ylength = y2 - y1 + 1;
+	int xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
+	int ylength = y2 - y1 + 1;
 
 	// First draw the filled, generic grey bar facing
 	draw_box(x1, y1, x2, y2, 12, 1, 1); // filled, to buffer
@@ -298,10 +298,10 @@ void video::draw_text_bar(long x1, long y1, long x2, long y2)
 }
 
 
-void video::putblack(long startx, long starty, long xsize, long ysize)
+void video::putblack(int startx, int starty, int xsize, int ysize)
 {
-	long curx, cury;
-	long curpoint;
+	int curx, cury;
+	int curpoint;
 
 	for(cury = starty;cury < starty +ysize;cury++)
 	{
@@ -318,14 +318,14 @@ void video::putblack(long startx, long starty, long xsize, long ysize)
 // The following version, with an extra parameter, writes to
 // the buffer instead.  Note that it does NOT update (to screen)
 // the area which it changes..
-void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned char color)
+void video::fastbox(int startx, int starty, int xsize, int ysize, unsigned char color)
 {
 	//buffers: we should always draw into the back buffer
 	fastbox(startx,starty,xsize,ysize,color,1);
 }
 
 // This is the version which writes to the buffer..
-void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned char color, unsigned char flag)
+void video::fastbox(int startx, int starty, int xsize, int ysize, unsigned char color, unsigned char flag)
 {
 	SDL_Rect rect;
 	int r,g,b;
@@ -352,7 +352,7 @@ void video::fastbox(long startx, long starty, long xsize, long ysize, unsigned c
 
 // Place a point on the screen
 //buffers: PORT: this point func is equivalent to drawing directly to screen
-void video::point(long x, long y, unsigned char color)
+void video::point(int x, int y, unsigned char color)
 {
 	pointb(x,y,color);
 	//buffers: PORT: SDL_UpdateRect(screen,x,y,1,1);
@@ -360,7 +360,7 @@ void video::point(long x, long y, unsigned char color)
 
 //buffers: PORT: this draws a point in the offscreen buffer
 //buffers: PORT: used for all the funcs that draw stuff in the offscreen buf
-void video::pointb(long x, long y, unsigned char color)
+void video::pointb(int x, int y, unsigned char color)
 {
 	int r,g,b;
 	int c;
@@ -382,7 +382,7 @@ void video::pointb(long x, long y, unsigned char color)
 }
 
 //buffers: this sets the color using raw RGB values. no *4...
-void video::pointb(long x, long y, int r, int g, int b)
+void video::pointb(int x, int y, int r, int g, int b)
 {
 	SDL_Rect  rect;
 	int c;
@@ -408,14 +408,14 @@ void video::pointb(int offset, unsigned char color)
 
 // Place a horizontal line on the screen.
 //buffers: this func originally drew directly to the screen
-void video::hor_line(long x, long y, long length, unsigned char color)
+void video::hor_line(int x, int y, int length, unsigned char color)
 {
 	hor_line(x,y,length,color,1);
 }
 
-void video::hor_line(long x, long y, long length, unsigned char color, long tobuffer)
+void video::hor_line(int x, int y, int length, unsigned char color, int tobuffer)
 {
-	long i;
+	int i;
 
 	if (!tobuffer)
 	{
@@ -432,15 +432,15 @@ void video::hor_line(long x, long y, long length, unsigned char color, long tobu
 
 // Place a vertical line on the screen.
 // buffers: this func originally drew directly to the screen
-void video::ver_line(long x, long y, long length, unsigned char color)
+void video::ver_line(int x, int y, int length, unsigned char color)
 {
 	//buffers: we always want to draw to the back buffer now
 	ver_line(x,y,length,color,1);
 }
 
-void video::ver_line(long x, long y, long length, unsigned char color, long tobuffer)
+void video::ver_line(int x, int y, int length, unsigned char color, int tobuffer)
 {
-	long i;
+	int i;
 
 	if (!tobuffer)
 	{
@@ -460,9 +460,9 @@ void video::ver_line(long x, long y, long length, unsigned char color, long tobu
 //cycle the palette for flame and water motion
 // query and set functions are located in pal32.cpp
 //buffers: PORT: added & to the last 3 args of the query_palette_reg funcs
-void video::do_cycle(long curmode, long maxmode)
+void video::do_cycle(int curmode, int maxmode)
 {
-	long i;
+	int i;
 	//buffers: PORT: changed these two arrays to ints
 	int tempcol[3];
 	int curcol[3];
@@ -498,11 +498,11 @@ void video::do_cycle(long curmode, long maxmode)
 //video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata)
+void video::putdata(int startx, int starty, int xsize, int ysize, unsigned char  *sourcedata)
 {
-	long curx, cury;
+	int curx, cury;
 	unsigned char curcolor;
-	unsigned long num = 0;
+	unsigned int num = 0;
 
 	for(cury = starty;cury < starty +ysize;cury++)
 		for (curx = startx; curx < startx +xsize; curx++)
@@ -518,11 +518,11 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 }
 
 
-void video::putdatatext(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata)
+void video::putdatatext(int startx, int starty, int xsize, int ysize, unsigned char  *sourcedata)
 {
-        long curx, cury;
+        int curx, cury;
         unsigned char curcolor;
-       	unsigned long num = 0;
+       	unsigned int num = 0;
 	int r,g,b,color;
 	SDL_Rect rect;
 
@@ -550,11 +550,11 @@ void video::putdatatext(long startx, long starty, long xsize, long ysize, unsign
 //video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata, unsigned char color)
+void video::putdata(int startx, int starty, int xsize, int ysize, unsigned char  *sourcedata, unsigned char color)
 {
-	long curx, cury;
+	int curx, cury;
 	unsigned char curcolor;
-	unsigned long num = 0;
+	unsigned int num = 0;
 
 	for(cury = starty;cury < starty +ysize;cury++)
 		for (curx = startx; curx < startx +xsize; curx++)
@@ -572,11 +572,11 @@ void video::putdata(long startx, long starty, long xsize, long ysize, unsigned c
 		}
 }
 
-void video::putdatatext(long startx, long starty, long xsize, long ysize, unsigned char  *sourcedata, unsigned char color)
+void video::putdatatext(int startx, int starty, int xsize, int ysize, unsigned char  *sourcedata, unsigned char color)
 {
-        long curx, cury;
+        int curx, cury;
         unsigned char curcolor;
-        unsigned long num = 0;
+        unsigned int num = 0;
 	int r,g,b,scolor;
 	SDL_Rect rect;
 
@@ -609,17 +609,17 @@ void video::putdatatext(long startx, long starty, long xsize, long ysize, unsign
 // portstartx portstarty portendx porthendy allow us to clip to
 //    a rectangular window on screen, ie a viewscreen
 // sourceptr is a pointer to the video data to be copied into the buffer
-void video::putbuffer(long tilestartx, long tilestarty,
-                      long tilewidth, long tileheight,
-                      long portstartx, long portstarty,
-                      long portendx, long portendy,
+void video::putbuffer(int tilestartx, int tilestarty,
+                      int tilewidth, int tileheight,
+                      int portstartx, int portstarty,
+                      int portendx, int portendy,
                       unsigned char * sourceptr)
 {
 	int i,j,num;
-	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
-	//unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
-	long totrows,rowsize; //number of rows and width of each row in the source
-	//unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
+	int xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
+	//unsigned int targetshifter,sourceshifter; //these let you wrap around in the arrays
+	int totrows,rowsize; //number of rows and width of each row in the source
+	//unsigned int offssource,offstarget; //offsets into each array, for clipping and wrap
 	unsigned char * sourcebufptr = &sourceptr[0];
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
@@ -666,17 +666,17 @@ void video::putbuffer(long tilestartx, long tilestarty,
 }
 
 //buffers: this is the SDL_Surface accelerated version of putbuffer
-void video::putbuffer(long tilestartx, long tilestarty,
-                      long tilewidth, long tileheight,
-                      long portstartx, long portstarty,
-                      long portendx, long portendy,
+void video::putbuffer(int tilestartx, int tilestarty,
+                      int tilewidth, int tileheight,
+                      int portstartx, int portstarty,
+                      int portendx, int portendy,
                       SDL_Surface *sourceptr)
 {
 	SDL_Rect rect,temp;
-	long xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
-	//unsigned long targetshifter,sourceshifter; //these let you wrap around in the arrays
-	long totrows,rowsize; //number of rows and width of each row in the source
-	//unsigned long offssource,offstarget; //offsets into each array, for clipping and wrap
+	int xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
+	//unsigned int targetshifter,sourceshifter; //these let you wrap around in the arrays
+	int totrows,rowsize; //number of rows and width of each row in the source
+	//unsigned int offssource,offstarget; //offsets into each array, for clipping and wrap
 	//buffers: unsigned char * sourcebufptr = &sourceptr[0];
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
@@ -725,17 +725,17 @@ void video::putbuffer(long tilestartx, long tilestarty,
 // portstartx,portstarty,portendx,portendy define a clipping rectangle
 // sourceptr holds the walker data
 // teamcolor is used for recoloring the guys to the appropriate team
-void video::walkputbuffer(long walkerstartx, long walkerstarty,
-                          long walkerwidth, long walkerheight,
-                          long portstartx, long portstarty,
-                          long portendx, long portendy,
+void video::walkputbuffer(int walkerstartx, int walkerstarty,
+                          int walkerwidth, int walkerheight,
+                          int portstartx, int portstarty,
+                          int portendx, int portendy,
                           unsigned char  *sourceptr, unsigned char teamcolor)
 {
-	long curx, cury;
+	int curx, cury;
 	unsigned char curcolor;
-	long xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
-	long walkoff=0,buffoff=0,walkshift=0,buffshift=0;
-	long totrows,rowsize;
+	int xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+	int walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+	int totrows,rowsize;
 
 	if (walkerstartx >= portendx || walkerstarty >= portendy)
 		return; //walker is below or to the right of the viewport
@@ -793,17 +793,17 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 	}
 }
 
-void video::walkputbuffertext(long walkerstartx, long walkerstarty,
-                          long walkerwidth, long walkerheight,
-                          long portstartx, long portstarty,
-                          long portendx, long portendy,
+void video::walkputbuffertext(int walkerstartx, int walkerstarty,
+                          int walkerwidth, int walkerheight,
+                          int portstartx, int portstarty,
+                          int portendx, int portendy,
                           unsigned char  *sourceptr, unsigned char teamcolor)
 {
-        long curx, cury;
+        int curx, cury;
         unsigned char curcolor;
-        long xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
-        long walkoff=0,buffoff=0,walkshift=0,buffshift=0;
-        long totrows,rowsize;
+        int xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+        int walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+        int totrows,rowsize;
 	int r,g,b,color;
 	SDL_Rect rect;
 
@@ -868,19 +868,19 @@ void video::walkputbuffertext(long walkerstartx, long walkerstarty,
 }
 
 
-void video::walkputbuffer(long walkerstartx, long walkerstarty,
-                          long walkerwidth, long walkerheight,
-                          long portstartx, long portstarty,
-                          long portendx, long portendy,
+void video::walkputbuffer(int walkerstartx, int walkerstarty,
+                          int walkerwidth, int walkerheight,
+                          int portstartx, int portstarty,
+                          int portendx, int portendy,
                           unsigned char  *sourceptr, unsigned char teamcolor,
-                          unsigned char mode, long invisibility,
+                          unsigned char mode, int invisibility,
                           unsigned char outline, unsigned char shifttype)
 {
-	long curx, cury;
+	int curx, cury;
 	unsigned char curcolor, bufcolor;
-	long xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
-	long walkoff=0,buffoff=0,walkshift=0,buffshift=0;
-	long totrows,rowsize;
+	int xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+	int walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+	int totrows,rowsize;
 	signed char shift;
 	int yval, xval;
 	Uint8 r,g,b;
@@ -1202,8 +1202,8 @@ void video::walkputbuffer(long walkerstartx, long walkerstarty,
 // a multiple of four WIDE, or it will NOT draw correctly
 // This is designed this way with the assumption that screen draws are
 // the slowest thing we can possible do.
-void video::buffer_to_screen(long viewstartx,long viewstarty,
-                             long viewwidth, long viewheight)
+void video::buffer_to_screen(int viewstartx,int viewstarty,
+                             int viewwidth, int viewheight)
 {
 	SDL_Surface *render;
 
@@ -1419,7 +1419,7 @@ int video::FadeBetween(
 			i = -1;
 			break;
 		}
-	} while (long(dwNow) - long(dwFirstPaint) + 50 < fadeDuration);	// constant-time effect
+	} while (int(dwNow) - int(dwFirstPaint) + 50 < fadeDuration);	// constant-time effect
 
 	if ( SDL_MUSTLOCK(pNewSurface) ) {
 		SDL_UnlockSurface(pNewSurface);

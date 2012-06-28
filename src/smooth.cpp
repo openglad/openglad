@@ -36,7 +36,7 @@ void smoother::set_target(screen  *target)
 	//  buffer = target + 3; // where the data starts
 }
 
-long smoother::query_x_y(long x, long y)
+int smoother::query_x_y(int x, int y)
 {
 	// Are we set up yet?
 	if (!mygrid)
@@ -50,12 +50,12 @@ long smoother::query_x_y(long x, long y)
 		return PIX_GRASS1;
 
 	// Else, return our simple grid data ..
-	return (long) mygrid[x + y*maxx];
+	return (int) mygrid[x + y*maxx];
 }
 
-long smoother::query_genre_x_y(long x, long y)
+int smoother::query_genre_x_y(int x, int y)
 {
-	long basetype;
+	int basetype;
 
 	basetype = query_x_y(x, y); // get our base type, like PIX_GRASS1
 
@@ -173,9 +173,9 @@ long smoother::query_genre_x_y(long x, long y)
 	}
 }
 
-long smoother::surrounds(long x, long y, long whatgenre)
+int smoother::surrounds(int x, int y, int whatgenre)
 {
-	long howmany = 0;
+	int howmany = 0;
 
 	if (query_genre_x_y(x, y-1) == whatgenre) // above
 		howmany += 1;
@@ -192,23 +192,23 @@ long smoother::surrounds(long x, long y, long whatgenre)
 	return howmany;
 }
 
-long smoother::smooth(long x, long y)
+int smoother::smooth(int x, int y)
 {
-	long here = query_genre_x_y(x, y);
-	long herepix = query_x_y(x, y), uppix;
+	int here = query_genre_x_y(x, y);
+	int herepix = query_x_y(x, y), uppix;
 
-	long up    = query_genre_x_y(x, y-1);
-	long down  = query_genre_x_y(x, y+1);
-	long left  = query_genre_x_y(x-1, y);
-	long right = query_genre_x_y(x+1, y);
+	int up    = query_genre_x_y(x, y-1);
+	int down  = query_genre_x_y(x, y+1);
+	int left  = query_genre_x_y(x-1, y);
+	int right = query_genre_x_y(x+1, y);
 
-	long upleft = query_genre_x_y(x-1, y-1);
-	long upright = query_genre_x_y(x+1, y-1);
-	long downleft = query_genre_x_y(x-1, y+1);
-	long downright = query_genre_x_y(x+1, y+1);
+	int upleft = query_genre_x_y(x-1, y-1);
+	int upright = query_genre_x_y(x+1, y-1);
+	int downleft = query_genre_x_y(x-1, y+1);
+	int downright = query_genre_x_y(x+1, y+1);
 
-	long around = surrounds(x, y, here);
-	long newvalue = PIX_GRASS1;
+	int around = surrounds(x, y, here);
+	int newvalue = PIX_GRASS1;
 
 
 	switch (here) // switch on genre
@@ -877,9 +877,9 @@ long smoother::smooth(long x, long y)
 	return 1;
 }
 
-long smoother::smooth()
+int smoother::smooth()
 {
-	long x, y;
+	int x, y;
 
 	if (!mygrid)
 		return 0;
@@ -892,7 +892,7 @@ long smoother::smooth()
 	return 1;
 }
 
-void smoother::set_x_y(long x, long y, long whatvalue)
+void smoother::set_x_y(int x, int y, int whatvalue)
 {
 	if (!mygrid)
 		return;

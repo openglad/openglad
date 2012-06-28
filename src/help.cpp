@@ -65,17 +65,17 @@ char* read_one_line(FILE *infile, short length)
 //       so that the text scrolls by pixels rather than lines.
 short read_scenario(screen *myscreen)
 {
-	long screenlines = myscreen->scentextlines * 8;
-	long  numlines, j;
-	long linesdown;
-	long changed;
-	long templines;
-	long text_delay = 1; // bigger = slower
-	long key_presses = 0;
+	int screenlines = myscreen->scentextlines * 8;
+	int  numlines, j;
+	int linesdown;
+	int changed;
+	int templines;
+	int text_delay = 1; // bigger = slower
+	int key_presses = 0;
 	Uint8* mykeyboard = query_keyboard();
 	text *mytext = new text(myscreen, TEXT_1);
-	long start_time, now_time;
-	long bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
+	int start_time, now_time;
+	int bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
 
 	clear_keyboard();
 	linesdown = 0;
@@ -194,17 +194,17 @@ short read_scenario(screen *myscreen)
 short read_help(const char *somefile,screen * myscreen)
 {
 	FILE *infile;
-	long screenlines;
-	long  numlines, j;
-	long linesdown;
-	long changed;
-	long templines;
-	long text_delay = 1; // bigger = slower
-	long key_presses = 0;
+	int screenlines;
+	int  numlines, j;
+	int linesdown;
+	int changed;
+	int templines;
+	int text_delay = 1; // bigger = slower
+	int key_presses = 0;
 	Uint8* mykeyboard = query_keyboard();
 	static text *mytext = new text(myscreen, TEXT_1);
-	long start_time, now_time;
-	long bottomrow;
+	int start_time, now_time;
+	int bottomrow;
 
 	if ((infile = open_misc_file(somefile)) == NULL)
 	{
@@ -223,7 +223,7 @@ short read_help(const char *somefile,screen * myscreen)
 	fseek(infile, SEEK_SET, 0);
 
 	// Fill the helptext array with data ..
-	numlines = (long) (fill_help_array(helptext, infile));
+	numlines = (int) (fill_help_array(helptext, infile));
 	screenlines = numlines*8;
 	numlines = screenlines;
 	bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );

@@ -33,9 +33,9 @@
 // ************************************************************
 
 // From picker.cpp
-extern long calculate_level(unsigned long temp_exp);
-extern long difficulty_level[DIFFICULTY_SETTINGS];
-extern long current_difficulty;
+extern int calculate_level(unsigned int temp_exp);
+extern int difficulty_level[DIFFICULTY_SETTINGS];
+extern int current_difficulty;
 
 walker::walker(unsigned char  *data, screen  *myscreen): pixieN(data, myscreen)
 {
@@ -215,8 +215,8 @@ short walker::walk()
 
 short walker::facing(short x, short y)
 {
-	long bigy = y*1000;
-	long slope;
+	int bigy = y*1000;
+	int slope;
 
 	if (!x)
 	{
@@ -272,8 +272,8 @@ short walker::walkstep(short x, short y)
 	short oldcurdir = curdir;
 	short step = (short) stepsize;
 	short halfstep;
-	long i;
-	long gotup = 0, gotover = 0;
+	int i;
+	int gotup = 0, gotover = 0;
 	//walker *control1 = screenp->viewob[0]->control;
 	//walker *control2;
 	short mycycle;
@@ -681,7 +681,7 @@ walker  * walker::fire()
 	walker  *weapon = NULL;
 	signed char waver;
 	//short xp, yp;
-	long extra;
+	int extra;
 
 	// Do we have enough spellpoints for our weapon
 	if (stats->magicpoints < stats->weapon_cost)
@@ -812,13 +812,13 @@ walker  * walker::fire()
 					weapon->ani_type = ANI_TELE_IN; // mages teleport
 				case FAMILY_TREEHOUSE: // elves also no lifetime
 					weapon->stats->level = random(stats->level)+1;
-					weapon->set_difficulty( (unsigned long) weapon->stats->level );
+					weapon->set_difficulty( (unsigned int) weapon->stats->level );
 					weapon->owner = NULL;
 					break;
 				default: // tents, bones, etc
 					weapon->lifetime = 800 + stats->level*11;
 					weapon->stats->level = random(stats->level)+1;
-					weapon->set_difficulty((unsigned long) weapon->stats->level);
+					weapon->set_difficulty((unsigned int) weapon->stats->level);
 					break;
 			}
 		}
@@ -912,8 +912,8 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
         whatcolor = ORANGE_START;
     
     
-	long xscreen = (long) (w->xpos - view_buf->topx + view_buf->xloc);
-	long yscreen = (long) (w->ypos - view_buf->topy + view_buf->yloc);
+	int xscreen = (int) (w->xpos - view_buf->topx + view_buf->xloc);
+	int yscreen = (int) (w->ypos - view_buf->topy + view_buf->yloc);
     
     SDL_Rect r = {xscreen + view_buf->xloc, yscreen + view_buf->yloc + w->sizey, w->sizex, 1};
     float ratio = float(points)/w->stats->max_hitpoints;
@@ -933,7 +933,7 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 
 short walker::draw(viewscreen  *view_buf)
 {
-	long xscreen, yscreen;
+	int xscreen, yscreen;
 
 	//no need for on screen check, it will be checked at the draw level
 	//and the draw level code is cleaner anyway
@@ -946,8 +946,8 @@ short walker::draw(viewscreen  *view_buf)
 	//if (!bmp) {printf("No bitmap!\n"); return 0;}
 	drawcycle++;
 
-	xscreen = (long) (xpos - view_buf->topx + view_buf->xloc);
-	yscreen = (long) (ypos - view_buf->topy + view_buf->yloc);
+	xscreen = (int) (xpos - view_buf->topx + view_buf->xloc);
+	yscreen = (int) (ypos - view_buf->topy + view_buf->yloc);
 
 	if (stats->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
 	{
@@ -1232,7 +1232,7 @@ short walker::attack(walker  *target)
 	walker *headguy; // guy at top of chain..
 	short playerteam = -1;
 	char message[80];
-	long tempdamage = damage;
+	int tempdamage = damage;
 	short newexp;
 	short getscore=0;
 	char targetorder = target->query_order();
@@ -1721,7 +1721,7 @@ short walker::special()
 	short tempx, tempy;
 	short i, j;
 	short targetx, targety;
-	unsigned long distance;
+	unsigned int distance;
 	oblink *newlist, *here;
 	oblink *list2;
 	short howmany;
@@ -2035,7 +2035,7 @@ short walker::special()
 						{
 							targetx = newob->xpos;
 							targety = newob->ypos;
-							distance = (unsigned long) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
+							distance = (unsigned int) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
 							if (screenp->query_passable(targetx, targety, newob) && distance < 60)
 							{
 								alive = do_summon(FAMILY_SKELETON, 125 + (stats->level*40) );
@@ -2043,7 +2043,7 @@ short walker::special()
 									return 0;
 								alive->team_num = team_num;
 								alive->stats->level = random(stats->level) + 1;
-								alive->set_difficulty((unsigned long) alive->stats->level);
+								alive->set_difficulty((unsigned int) alive->stats->level);
 								alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
 								//screenp->remove_fx_ob(newob);
@@ -2095,7 +2095,7 @@ short walker::special()
 						{
 							targetx = newob->xpos;
 							targety = newob->ypos;
-							distance = (unsigned long) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
+							distance = (unsigned int) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
 							if (screenp->query_passable(targetx, targety, newob) && distance < 30)
 							{
 								//alive = screenp->add_ob(ORDER_LIVING, FAMILY_SKELETON);
@@ -2103,7 +2103,7 @@ short walker::special()
 								if (!alive)
 									return 0;
 								alive->stats->level = random(stats->level) + 1;
-								alive->set_difficulty((unsigned long) alive->stats->level);
+								alive->set_difficulty((unsigned int) alive->stats->level);
 								alive->team_num = team_num;
 								alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
@@ -2140,8 +2140,8 @@ short walker::special()
 								alive->team_num = newob->team_num;
 								if (myguy) // take some EXP away as penalty if we're a player
 								{
-									if (myguy->exp >= (((unsigned long)newob->stats->level)*((unsigned long)newob->stats->level)*100) )
-										myguy->exp -= (((unsigned long)newob->stats->level)*((unsigned long)newob->stats->level)*100);
+									if (myguy->exp >= (((unsigned int)newob->stats->level)*((unsigned int)newob->stats->level)*100) )
+										myguy->exp -= (((unsigned int)newob->stats->level)*((unsigned int)newob->stats->level)*100);
 									else
 										myguy->exp = 0;
 								}
@@ -2153,7 +2153,7 @@ short walker::special()
 									return 0;
 								alive->team_num = team_num;
 								alive->stats->level = random(stats->level) + 1;
-								alive->set_difficulty((unsigned long) alive->stats->level);
+								alive->set_difficulty((unsigned int) alive->stats->level);
 								alive->owner = this;
 							}
 							alive->setxy(newob->xpos, newob->ypos);
@@ -3003,7 +3003,7 @@ short walker::special()
 						fireob = (weap*) fire();
 						if (!fireob) // failsafe
 							return 0;
-						fireob->lineofsight *= 3;  // we get 50% longer, too!
+						fireob->lineofsight *= 3;  // we get 50% inter, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
 					}
@@ -3027,7 +3027,7 @@ short walker::special()
 						fireob = (weap*) fire();
 						if (!fireob) // failsafe
 							return 0;
-						fireob->lineofsight *= 5;  // we get 150% longer, too!
+						fireob->lineofsight *= 5;  // we get 150% inter, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
 					}
@@ -3209,7 +3209,7 @@ short walker::special()
 					newob = screenp->find_nearest_blood(this);
 					if (!newob) // no blood, so do nothing
 						return 0;
-					distance = (unsigned long) distance_to_ob_center(newob);
+					distance = (unsigned int) distance_to_ob_center(newob);
 					if (distance > 24) // must be close enough
 						return 0;
 					stats->hitpoints += newob->stats->level*5;
@@ -3314,7 +3314,7 @@ short walker::teleport()
 {
 	short newx,newy;
 	oblink *newlist;
-	long distance;
+	int distance;
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
@@ -3362,7 +3362,7 @@ short walker::teleport()
 	return 1;
 }
 
-short walker::teleport_ranged(long range)
+short walker::teleport_ranged(int range)
 {
 	short newx,newy;
 	short keep_going = 200; // maxtries
@@ -3386,11 +3386,11 @@ short walker::teleport_ranged(long range)
 
 // Turns undead; ie, skeleton or ghost, within range
 // Returns the number of dead destroyed
-long walker::turn_undead(long range, long power)
+int walker::turn_undead(int range, int power)
 {
 	oblink *deadlist;
 	oblink *here;
-	long killed = 0;
+	int killed = 0;
 	short targets;
 
 	deadlist = screenp->find_foes_in_range(screenp->oblist, range,
@@ -3440,7 +3440,7 @@ short walker::fire_check(short xdelta, short ydelta)
 	short i, loops;
 	short xdir = 0;
 	short ydir = 0;
-	long distance;
+	int distance;
 	short targetdir;
 
 	// Allow generators to 'always' succeed
@@ -3481,7 +3481,7 @@ short walker::fire_check(short xdelta, short ydelta)
 	}
 
 	distance = distance_to_ob(foe);
-	if (distance > (long) ( (long) weapon->stepsize * (long) weapon->lineofsight) )
+	if (distance > (int) ( (int) weapon->stepsize * (int) weapon->lineofsight) )
 	{
 		weapon->dead = 1;
 		return 0;
@@ -3840,7 +3840,7 @@ short walker::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 	walker  *newob = NULL;
-	long i;
+	int i;
 
 	if (death_called)
 		return 0;
@@ -4027,9 +4027,9 @@ void walker::center_on(walker  *target)
 	setxy(newx, newy);
 }
 
-void walker::set_difficulty(unsigned long whatlevel)
+void walker::set_difficulty(unsigned int whatlevel)
 {
-	unsigned long temp, dif1;
+	unsigned int temp, dif1;
 
 	dif1 = difficulty_level[current_difficulty];
 
@@ -4053,28 +4053,28 @@ void walker::set_difficulty(unsigned long whatlevel)
 	return;
 }
 
-long walker::distance_to_ob(walker  * target)
+int walker::distance_to_ob(walker  * target)
 {
-	//long xdelta,ydelta;
+	//int xdelta,ydelta;
 
-	//xdelta = (long) (target->xpos - xpos) +
-	//         (long) ( (target->sizex - sizex) / 2 );
-	//ydelta = (long) (target->ypos - ypos) +
-	//         (long) ( (target->sizey - sizey) / 2 );
-	//return (long) (xdelta*xdelta + ydelta*ydelta);
+	//xdelta = (int) (target->xpos - xpos) +
+	//         (int) ( (target->sizex - sizex) / 2 );
+	//ydelta = (int) (target->ypos - ypos) +
+	//         (int) ( (target->sizey - sizey) / 2 );
+	//return (int) (xdelta*xdelta + ydelta*ydelta);
 	return ( abs(target->xpos - xpos) + abs(target->ypos - ypos) );
 
 }
 
-long walker::distance_to_ob_center(walker * target)
+int walker::distance_to_ob_center(walker * target)
 {
-	long xdelta,ydelta;
+	int xdelta,ydelta;
 
-	xdelta = (long) (target->xpos - xpos) +
-	         (long) ( (target->sizex - sizex) / 2 );
-	ydelta = (long) (target->ypos - ypos) +
-	         (long) ( (target->sizey - sizey) / 2 );
-	return (long) (xdelta*xdelta + ydelta*ydelta);
+	xdelta = (int) (target->xpos - xpos) +
+	         (int) ( (target->sizex - sizex) / 2 );
+	ydelta = (int) (target->ypos - ypos) +
+	         (int) ( (target->sizey - sizey) / 2 );
+	return (int) (xdelta*xdelta + ydelta*ydelta);
 }
 
 unsigned char walker::query_team_color()
@@ -4086,7 +4086,7 @@ unsigned char walker::query_team_color()
 	//  return (unsigned char) (7*16 + 40);
 }
 
-long walker::is_friendly(walker *target)
+int walker::is_friendly(walker *target)
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.

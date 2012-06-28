@@ -38,7 +38,7 @@ class weap : public walker
 		}
 
 		// Weapons-only related variables; use with care
-		long do_bounce; // do we bounce?
+		int do_bounce; // do we bounce?
 
 };
 

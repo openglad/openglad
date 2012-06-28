@@ -277,7 +277,7 @@ void load_map_data(unsigned char **whereto)
 #if (0)
 // Testing for the sound modules
 packfile soundpack;
-long sound_opened = 0;  // use with soundpack
+int sound_opened = 0;  // use with soundpack
 
 FILE * open_sound_file(char *filename)
 {

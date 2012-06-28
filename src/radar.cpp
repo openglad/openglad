@@ -83,11 +83,11 @@ radar::~radar()
 short radar::draw()
 {
 	oblink  * here;
-	long tempx, tempy, tempz;
+	int tempx, tempy, tempz;
 	unsigned char tempcolor;
 	short oborder, obfamily, obteam;
 	short can_see = 0, do_show = 0;
-	long listtype = 0;
+	int listtype = 0;
 
 	radarx = 0;
 	radary = 0;

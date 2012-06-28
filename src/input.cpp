@@ -26,14 +26,14 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 
-void quit(long arg1);
+void quit(int arg1);
 
 int raw_key;
 short key_press_event = 0;    // used to signed key-press
 Uint8* keystates = NULL;
 
-long mouse_state[MSTATE];
-long mouse_buttons;
+int mouse_state[MSTATE];
+int mouse_buttons;
 
 int mult = 1;
 
@@ -686,7 +686,7 @@ void release_mouse()
 	SDL_ShowCursor(SDL_DISABLE);
 }
 
-long * query_mouse()
+int * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though
 	// it should probably get its own function

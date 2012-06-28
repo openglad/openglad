@@ -297,7 +297,7 @@ unsigned char* data_copy(unsigned char* d)
     unsigned char x = d[0];
     unsigned char y = d[1];
     
-    long len = x * y * numframes + 3 + 1;
+    int len = x * y * numframes + 3 + 1;
     unsigned char* result = (unsigned char*)malloc(len);
     memcpy(result, d, len);
     return result;
@@ -316,9 +316,9 @@ loader::loader()
 	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
 	memset(animations, 0, SIZE_ORDERS*SIZE_FAMILIES);
-	stepsizes = new long[SIZE_ORDERS*SIZE_FAMILIES];
-	lineofsight = new long[SIZE_ORDERS*SIZE_FAMILIES];
-	damage = new long[SIZE_ORDERS*SIZE_FAMILIES];
+	stepsizes = new int[SIZE_ORDERS*SIZE_FAMILIES];
+	lineofsight = new int[SIZE_ORDERS*SIZE_FAMILIES];
+	damage = new int[SIZE_ORDERS*SIZE_FAMILIES];
 	fire_frequency = new signed char[SIZE_ORDERS*SIZE_FAMILIES];
 
 

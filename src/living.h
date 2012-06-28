@@ -33,7 +33,7 @@ class living : public walker
 		short          do_action(); // perform overriding action
 		walker*        do_summon(char whatfamily, unsigned short lifetime);
 		short          facing(short x, short y);
-		void           set_difficulty(unsigned long whatlevel);
+		void           set_difficulty(unsigned int whatlevel);
 		short          shove(walker  *target, short x, short y);
 		char           query_order()
 		{

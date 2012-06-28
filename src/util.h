@@ -25,14 +25,14 @@
 #include <string>
 
 
-void change_time(unsigned long new_count);
+void change_time(unsigned int new_count);
 
 void grab_timer();
 void release_timer();
 void reset_timer();
-long query_timer();
-long query_timer_control();
-void time_delay(long);
+int query_timer();
+int query_timer_control();
+void time_delay(int);
 
 // Zardus: add: lowercase func
 void lowercase(char *);

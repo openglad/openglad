@@ -22,8 +22,8 @@
 #include "smooth.h"
 
 // From picker
-extern long difficulty_level[DIFFICULTY_SETTINGS];
-extern long current_difficulty;
+extern int difficulty_level[DIFFICULTY_SETTINGS];
+extern int current_difficulty;
 
 living::living(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 {
@@ -39,7 +39,7 @@ living::~living()
 
 short living::act()
 {
-	long temp;
+	int temp;
 
 	if (bonus_rounds>0 && !dead)  // we get extra rounds to act this cycle
 	{
@@ -510,7 +510,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 // the special or not ..
 short living::check_special()
 {
-	unsigned long distance, myrange;
+	unsigned int distance, myrange;
 
 	oblink *enemylist;
 	//oblink *templink;
@@ -529,7 +529,7 @@ short living::check_special()
 		case FAMILY_SOLDIER:   // Check for foe in range x
 			if (foe) // already have a foe ..
 			{
-				distance = (unsigned long) distance_to_ob(foe);//long (deltax*deltax) + long (deltay*deltay);
+				distance = (unsigned int) distance_to_ob(foe);//int (deltax*deltax) + int (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 square min
 					return 1;
 				return 0;
@@ -539,7 +539,7 @@ short living::check_special()
 				foe = screenp->find_near_foe(this);
 				if (!foe)
 					return 0;
-				distance = (unsigned long) distance_to_ob(foe); // (deltax*deltax) + long (deltay*deltay);
+				distance = (unsigned int) distance_to_ob(foe); // (deltax*deltax) + int (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 min
 					return 1;
 				return 0;
@@ -551,7 +551,7 @@ short living::check_special()
 		case FAMILY_ORC:
 			if (foe) // already have a foe ..
 			{
-				distance = (unsigned long) distance_to_ob(foe); //long (deltax*deltax) + long (deltay*deltay);
+				distance = (unsigned int) distance_to_ob(foe); //int (deltax*deltax) + int (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
@@ -561,7 +561,7 @@ short living::check_special()
 				foe = screenp->find_near_foe(this);
 				if (!foe)
 					return 0;
-				distance = (unsigned long) distance_to_ob(foe); //long (deltax*deltax) + long (deltay*deltay);
+				distance = (unsigned int) distance_to_ob(foe); //int (deltax*deltax) + int (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
@@ -572,7 +572,7 @@ short living::check_special()
 			{
 				if (foe) // already have a foe ..
 				{
-					distance = (unsigned long) distance_to_ob(foe); // (deltax*deltax) + long (deltay*deltay);
+					distance = (unsigned int) distance_to_ob(foe); // (deltax*deltax) + int (deltay*deltay);
 					if (distance < 130 && distance > 35) // about 6 squares max, 2 min
 						return 0;
 				}
@@ -697,11 +697,11 @@ short living::check_special()
 	return 1; //unreachable?
 }
 
-void living::set_difficulty(unsigned long whatlevel)
+void living::set_difficulty(unsigned int whatlevel)
 {
-	//  long calcdelay,calcrate;  // apparently not used anymore
-	unsigned long dif1 = difficulty_level[current_difficulty];
-	unsigned long levmult = (unsigned long) whatlevel*(unsigned long) whatlevel;
+	//  int calcdelay,calcrate;  // apparently not used anymore
+	unsigned int dif1 = difficulty_level[current_difficulty];
+	unsigned int levmult = (unsigned int) whatlevel*(unsigned int) whatlevel;
 
 	switch (family)
 	{
@@ -775,7 +775,7 @@ void living::set_difficulty(unsigned long whatlevel)
 	if (stats->current_heal_delay > 1)
 	{
 		stats->max_heal_delay /=
-		    (long) (stats->current_heal_delay + 1);
+		    (int) (stats->current_heal_delay + 1);
 	}
 	stats->current_heal_delay = 0; //start off without healing
 
@@ -789,7 +789,7 @@ void living::set_difficulty(unsigned long whatlevel)
 
 	// Set the magic delay ..
 	stats->max_magic_delay = REGEN;
-	stats->current_magic_delay = (long) (levmult*30);//for calculation only
+	stats->current_magic_delay = (int) (levmult*30);//for calculation only
 
 	while (stats->current_magic_delay > REGEN)
 	{
@@ -800,7 +800,7 @@ void living::set_difficulty(unsigned long whatlevel)
 	if (stats->current_magic_delay > 1)
 	{
 		stats->max_magic_delay /=
-		    (long) (stats->current_magic_delay + 1);
+		    (int) (stats->current_magic_delay + 1);
 	}
 	stats->current_magic_delay = 0; //start off without magic regen
 
@@ -814,8 +814,8 @@ void living::set_difficulty(unsigned long whatlevel)
 
 short living::facing(short x, short y)
 {
-	long bigy = (long) (y*1000);
-	long slope;
+	int bigy = (int) (y*1000);
+	int slope;
 
 	if (!x)
 	{
