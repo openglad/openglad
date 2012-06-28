@@ -470,11 +470,24 @@ short living::walk(short x, short y)
 	return 1;
 }
 
+bool walkerIsAutoAttackable(walker* ob)
+{
+    return (ob->query_order() == ORDER_LIVING
+             || ob->query_family() == FAMILY_TENT
+             || ob->query_family() == FAMILY_TOWER
+             || ob->query_family() == FAMILY_TOWER1
+             || ob->query_family() == FAMILY_TREEHOUSE
+             || ob->query_family() == FAMILY_BONES
+             || ob->query_family() == FAMILY_GLOW
+             || ob->query_family() == FAMILY_TREE
+             || ob->query_family() == FAMILY_DOOR);
+}
+
 short living::collide(walker  *ob)
 {
 	collide_ob = ob;
 	//return 1; // debug
-	if ( ob && ob->query_order() == ORDER_LIVING && (is_friendly(ob) == 0)
+	if ( ob && walkerIsAutoAttackable(ob) && (is_friendly(ob) == 0)
 	        && !ob->dead && !dead)
 		init_fire();
 	return 1;
