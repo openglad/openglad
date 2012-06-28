@@ -267,6 +267,7 @@ SDL_Event wait_for_key_event()
                || event.type == SDL_KEYDOWN
                || (event.type == SDL_JOYAXISMOTION && (event.jaxis.value > JOY_DEAD_ZONE || event.jaxis.value < -JOY_DEAD_ZONE))
                || event.type == SDL_JOYBUTTONDOWN
+               || event.type == SDL_JOYHATMOTION
                )
                 return event;
         }
@@ -288,7 +289,7 @@ bool isKeyboardEvent(const SDL_Event& event)
 
 bool isJoystickEvent(const SDL_Event& event)
 {
-    return (event.type == SDL_JOYAXISMOTION || event.type == SDL_JOYBUTTONDOWN);  // does not handle button up, hats, or balls
+    return (event.type == SDL_JOYAXISMOTION || event.type == SDL_JOYHATMOTION || event.type == SDL_JOYBUTTONDOWN);  // does not handle button up, hats, or balls
 }
 
 void clear_events()
@@ -345,17 +346,18 @@ void wait_for_key(int somekey)
 }
 
 JoyData::JoyData()
-    : index(-1), numAxes(0), numButtons(0)
+    : index(-1), numAxes(0), numButtons(0), numHats(0)
 {}
 
 JoyData::JoyData(int index)
-    : index(index), numAxes(0), numButtons(0)
+    : index(index), numAxes(0), numButtons(0), numHats(0)
 {
     SDL_Joystick *js = joysticks[index];
     if(js == NULL)
         return;
     numAxes = SDL_JoystickNumAxes(js);
     numButtons = SDL_JoystickNumButtons(js);
+    numHats = SDL_JoystickNumHats(js);
     
     // Clear all keys for this joystick
     for(int i = 0; i < NUM_KEYS; i++)
@@ -365,20 +367,31 @@ JoyData::JoyData(int index)
     }
     
     // Default movement
-    if(numAxes > 0)
-    {
-        key_type[KEY_UP] = NEG_AXIS;
-        key_index[KEY_UP] = 0;
-        key_type[KEY_DOWN] = POS_AXIS;
-        key_index[KEY_DOWN] = 0;
-    }
-    if(numAxes > 1)
+    if(numAxes > 1) // Prefer two axes
     {
         key_type[KEY_RIGHT] = POS_AXIS;
-        key_index[KEY_RIGHT] = 1;
+        key_index[KEY_RIGHT] = 0;
         key_type[KEY_LEFT] = NEG_AXIS;
-        key_index[KEY_LEFT] = 1;
+        key_index[KEY_LEFT] = 0;
+        
+        key_type[KEY_UP] = NEG_AXIS;
+        key_index[KEY_UP] = 1;
+        key_type[KEY_DOWN] = POS_AXIS;
+        key_index[KEY_DOWN] = 1;
     }
+    else if(numHats > 0) // But a single hat is okay otherwise
+    {
+        // indices default to hat 0
+        key_type[KEY_UP] = HAT_UP;
+        key_type[KEY_UP_RIGHT] = HAT_UP_RIGHT;
+        key_type[KEY_RIGHT] = HAT_RIGHT;
+        key_type[KEY_DOWN_RIGHT] = HAT_DOWN_RIGHT;
+        key_type[KEY_DOWN] = HAT_DOWN;
+        key_type[KEY_DOWN_LEFT] = HAT_DOWN_LEFT;
+        key_type[KEY_LEFT] = HAT_LEFT;
+        key_type[KEY_UP_LEFT] = HAT_UP_LEFT;
+    }
+    
     
     // Default actions
     if(numButtons > 0)
@@ -398,24 +411,25 @@ JoyData::JoyData(int index)
     }
     if(numButtons > 3)
     {
-        key_type[KEY_SHIFTER] = BUTTON;
-        key_index[KEY_SHIFTER] = 3;
+        key_type[KEY_YELL] = BUTTON;
+        key_index[KEY_YELL] = 3;
     }
     if(numButtons > 4)
     {
-        key_type[KEY_SWITCH] = BUTTON;
-        key_index[KEY_SWITCH] = 4;
+        key_type[KEY_SHIFTER] = BUTTON;
+        key_index[KEY_SHIFTER] = 4;
     }
     if(numButtons > 5)
     {
-        key_type[KEY_YELL] = BUTTON;
-        key_index[KEY_YELL] = 5;
+        key_type[KEY_SWITCH] = BUTTON;
+        key_index[KEY_SWITCH] = 5;
     }
 }
 
 
 void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
 {
+    bool gotJoy = false;
     if(event.type == SDL_JOYAXISMOTION)
     {
         if(event.jaxis.value >= 0)
@@ -424,18 +438,50 @@ void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
             key_type[key_enum] = NEG_AXIS;
         key_index[key_enum] = event.jaxis.axis;
         index = event.jaxis.which;  // USES THE LAST JOYSTICK PRESSED
-        // Take over this joystick
-        for(int i = 0; i < 4; i++)
-        {
-            if(this != &player_joy[i] && player_joy[i].index == index)
-                player_joy[i].index = -1;
-        }
+        gotJoy = true;
     }
     else if(event.type == SDL_JOYBUTTONDOWN)
     {
         key_type[key_enum] = BUTTON;
         key_index[key_enum] = event.jbutton.button;
         index = event.jbutton.which;  // USES THE LAST JOYSTICK PRESSED
+        gotJoy = true;
+    }
+    else if(event.type == SDL_JOYHATMOTION)
+    {
+        bool badHat = false;
+        if(event.jhat.value == SDL_HAT_UP)
+            key_type[key_enum] = HAT_UP;
+        else if(event.jhat.value == SDL_HAT_RIGHT)
+            key_type[key_enum] = HAT_RIGHT;
+        else if(event.jhat.value == SDL_HAT_DOWN)
+            key_type[key_enum] = HAT_DOWN;
+        else if(event.jhat.value == SDL_HAT_LEFT)
+            key_type[key_enum] = HAT_LEFT;
+        else
+        {
+            badHat = true;
+            // Diagonals are ignored because they are combinations of the cardinals
+            // This is kinda annoying because the player will get a dead key
+            /*else if(event.jhat.value == SDL_HAT_RIGHTUP)
+                key_type[key_enum] = HAT_UP_RIGHT;
+            else if(event.jhat.value == SDL_HAT_RIGHTDOWN)
+                key_type[key_enum] = HAT_DOWN_RIGHT;
+            else if(event.jhat.value == SDL_HAT_LEFTDOWN)
+                key_type[key_enum] = HAT_DOWN_LEFT;
+            else if(event.jhat.value == SDL_HAT_LEFTUP)
+                key_type[key_enum] = HAT_UP_LEFT;*/
+        }
+        if(!badHat)
+        {
+            key_index[key_enum] = event.jhat.hat;
+            index = event.jhat.which;  // USES THE LAST JOYSTICK PRESSED
+            gotJoy = true;
+        }
+    }
+    
+    if(gotJoy)
+    {
         // Take over this joystick
         for(int i = 0; i < 4; i++)
         {
@@ -449,13 +495,30 @@ bool JoyData::getState(int key_enum) const
 {
     if(index < 0)
         return false;
-    if(key_type[key_enum] == POS_AXIS)
-        return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) > JOY_DEAD_ZONE;
-    else if(key_type[key_enum] == NEG_AXIS)
-        return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) < -JOY_DEAD_ZONE;
-    else if(key_type[key_enum] == BUTTON)
-        return SDL_JoystickGetButton(joysticks[index], key_index[key_enum]);
-    return false;
+    switch(key_type[key_enum])
+    {
+        case POS_AXIS:
+            return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) > JOY_DEAD_ZONE;
+        case NEG_AXIS:
+            return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) < -JOY_DEAD_ZONE;
+        case BUTTON:
+            return SDL_JoystickGetButton(joysticks[index], key_index[key_enum]);
+        case HAT_UP:
+            return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_UP);
+        case HAT_RIGHT:
+            return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_RIGHT);
+        case HAT_DOWN:
+            return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_DOWN);
+        case HAT_LEFT:
+            return (SDL_JoystickGetHat(joysticks[index], key_index[key_enum]) & SDL_HAT_LEFT);
+        // Diagonals are ignored because they are combinations of the cardinals
+        case HAT_UP_RIGHT:
+        case HAT_DOWN_RIGHT:
+        case HAT_DOWN_LEFT:
+        case HAT_UP_LEFT:
+        default:
+        return false;
+    }
 }
 
 bool JoyData::getPress(int key_enum, const SDL_Event& event) const
@@ -483,6 +546,20 @@ bool JoyData::getPress(int key_enum, const SDL_Event& event) const
                 return (event.jaxis.which == index && event.jaxis.axis == key_index[key_enum] && event.jaxis.value < -JOY_DEAD_ZONE);
             }
         return false;
+        case HAT_UP:
+            return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_UP);
+        case HAT_RIGHT:
+            return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_RIGHT);
+        case HAT_DOWN:
+            return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_DOWN);
+        case HAT_LEFT:
+            return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_LEFT);
+            
+        // Diagonals are ignored because they are combinations of the cardinals
+        case HAT_UP_RIGHT:
+        case HAT_DOWN_RIGHT:
+        case HAT_DOWN_LEFT:
+        case HAT_UP_LEFT:
         default:
         return false;
     }

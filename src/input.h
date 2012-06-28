@@ -69,11 +69,20 @@ class JoyData
     int index;
     int numAxes;
     int numButtons;
+    int numHats;
     
     static const int NONE = 0;
     static const int BUTTON = 1;
     static const int POS_AXIS = 2;
     static const int NEG_AXIS = 3;
+    static const int HAT_UP = 4;
+    static const int HAT_UP_RIGHT = 5;
+    static const int HAT_RIGHT = 6;
+    static const int HAT_DOWN_RIGHT = 7;
+    static const int HAT_DOWN = 8;
+    static const int HAT_DOWN_LEFT = 9;
+    static const int HAT_LEFT = 10;
+    static const int HAT_UP_LEFT = 11;
     
     int key_type[NUM_KEYS];
     int key_index[NUM_KEYS];

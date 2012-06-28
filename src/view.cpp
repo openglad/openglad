@@ -309,6 +309,7 @@ short viewscreen::input(const SDL_Event& event)
 	short newfam; //oldfam?
 	unsigned long totaltime, totalframes, framespersec;
 	walker *newob; // for general-purpose use
+	walker  * oldcontrol = control; // So we know if we changed guys
 
 	if (control && control->user == -1)
 	{
@@ -784,6 +785,9 @@ short viewscreen::input(const SDL_Event& event)
 	if (control->user != mynum)
 		return 1;
 
+	// if we changed control characters
+	if (control != oldcontrol)
+		control->stats->clear_command();
 
 	// If we're frozen ..
 	if (control->stats->frozen_delay)
