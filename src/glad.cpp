@@ -63,6 +63,8 @@ extern options *theprefs;
 
 int main(int argc, char *argv[])
 {
+    SDL_putenv(const_cast<char*>("SDL_VIDEO_CENTERED=center"));
+    
 	char * filepath;
 	filepath = get_file_path("openglad.cfg");
 	cfg.parse(filepath);
