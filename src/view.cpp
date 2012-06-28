@@ -416,7 +416,10 @@ short viewscreen::input(const SDL_Event& event)
             screenp->report_mem();
 
         if (query_key_event(mykeys[KEY_PREFS], event))
+        {
             options_menu();
+            return 1;
+        }
     }
 
 
@@ -917,7 +920,7 @@ short viewscreen::continuous_input()
 	
 
 
-	// Make sure we haven't yelled recently
+	// Make sure we haven't yelled recently (this is here because it is guaranteed to run exactly once each frame)
 	if (control->yo_delay > 0)
 		control->yo_delay--;
 
@@ -1988,13 +1991,14 @@ long load_key_prefs()
  
 */
 
+
+
 // set_key_prefs queries the user for key preferences, and
 // places them into the proper key-press array.
 // It returns success or failure.
 long viewscreen::set_key_prefs()
 {
 	static text keytext(screenp);
-	SDL_Event event;
 
 	clear_keyboard();
 
@@ -2006,59 +2010,35 @@ long viewscreen::set_key_prefs()
 
 	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press a key for 'UP':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_UP] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_UP);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press a key for 'UP-RIGHT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_UP_RIGHT] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_UP_RIGHT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press a key for 'RIGHT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_RIGHT] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_RIGHT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press a key for 'DOWN-RIGHT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_DOWN_RIGHT] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_DOWN_RIGHT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press a key for 'DOWN':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_DOWN] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_DOWN);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press a key for 'DOWN-LEFT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_DOWN_LEFT] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_DOWN_LEFT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(8), "Press a key for 'LEFT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_LEFT] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_LEFT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(9), "Press a key for 'UP-LEFT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_UP_LEFT] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_UP_LEFT);
 
 	// Draw the menu button; back to the top for us!
 	screenp->clearfontbuffer(40,40,240,120);
@@ -2068,45 +2048,27 @@ long viewscreen::set_key_prefs()
 
 	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press your 'FIRE' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_FIRE] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_FIRE);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press your 'SPECIAL' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_SPECIAL] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_SPECIAL);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SWITCHING' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_SWITCH] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_SWITCH);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'SPECIAL SWITCH' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_SPECIAL_SWITCH] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_SPECIAL_SWITCH);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'YELL' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_YELL] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_YELL);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
-	allkeys[mynum][KEY_SHIFTER] = get_keypress();
-	SDL_Delay(400);
-	clear_keyboard();
-	while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_SHIFTER);
 
 	//  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", (unsigned char) RED, 1);
 	//  allkeys[mynum][KEY_PREFS] = get_keypress();
@@ -2115,10 +2077,7 @@ long viewscreen::set_key_prefs()
 	{
 		keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", (unsigned char) RED, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
-		allkeys[mynum][KEY_CHEAT] = get_keypress();
-        SDL_Delay(400);
-        clear_keyboard();
-        while(SDL_PollEvent(&event));
+	assignKeyFromWaitEvent(mynum, KEY_CHEAT);
 	}
 
 	screenp->redrawme = 1;

@@ -3038,7 +3038,7 @@ void statscopy(guy *dest, guy *source)
 	strcpy(dest->name, source->name);
 }
 
-long quit(long arg1)
+void quit(long arg1)
 {
 	if (arg1)
 		arg1 = 1;
@@ -3049,9 +3049,7 @@ long quit(long arg1)
 	delete theprefs;
 	picker_quit();
 	release_keyboard();
-	stop_input();
-	exit(1);
-	return 1;
+	exit(0);
 }
 
 long set_player_mode(long howmany)

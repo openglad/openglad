@@ -26,7 +26,7 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 
-long quit(long arg1);
+void quit(long arg1);
 
 int raw_key;
 short key_press_event = 0;    // used to signed key-press
@@ -36,11 +36,6 @@ long mouse_state[MSTATE];
 long mouse_buttons;
 
 int mult = 1;
-
-#define KEYBOARD 0
-#define JOYSTICK 1
-
-int player_input_type[4] = {KEYBOARD, KEYBOARD, KEYBOARD, KEYBOARD};
 
 JoyData player_joy[4];
 
@@ -124,11 +119,6 @@ void init_input()
 	}
 
 	SDL_JoystickEventState(SDL_ENABLE);
-}
-
-void stop_input()
-{
-    
 }
 
 void get_input_events(bool type)
@@ -242,6 +232,68 @@ bool query_key_event(int key, const SDL_Event& event)
     return false;
 }
 
+SDL_Event wait_for_key_event()
+{
+    SDL_Event event;
+    while(1)
+    {
+        while(SDL_PollEvent(&event))
+        {
+            if(event.type == SDL_QUIT
+               || event.type == SDL_KEYDOWN
+               || (event.type == SDL_JOYAXISMOTION && (event.jaxis.value > JOY_DEAD_ZONE || event.jaxis.value < -JOY_DEAD_ZONE))
+               || event.type == SDL_JOYBUTTONDOWN
+               )
+                return event;
+        }
+        SDL_Delay(10);
+    }
+    return event;
+}
+
+void quit_if_quit_event(const SDL_Event& event)
+{
+    if(event.type == SDL_QUIT)
+        quit(0);
+}
+
+bool isKeyboardEvent(const SDL_Event& event)
+{
+    return (event.type == SDL_KEYDOWN);  // does not handle key up events
+}
+
+bool isJoystickEvent(const SDL_Event& event)
+{
+    return (event.type == SDL_JOYAXISMOTION || event.type == SDL_JOYBUTTONDOWN);  // does not handle button up, hats, or balls
+}
+
+void clear_events()
+{
+    SDL_Event event;
+	while(SDL_PollEvent(&event));
+}
+
+void assignKeyFromWaitEvent(int player_num, int key_enum)
+{
+    SDL_Event event;
+    
+	event = wait_for_key_event();
+	quit_if_quit_event(event);
+	if(isKeyboardEvent(event))
+	{
+	    if(event.key.keysym.sym != SDLK_ESCAPE)
+	    {
+            player_keys[player_num][key_enum] = event.key.keysym.sym;
+	    }
+	}
+    else if(isJoystickEvent(event))
+        player_joy[player_num].setKeyFromEvent(key_enum, event);
+    
+	SDL_Delay(400);
+	clear_events();
+}
+
+
 //
 // Set the keyboard array to all zeros, the
 // virgin state, nothing depressed
@@ -291,9 +343,9 @@ JoyData::JoyData(int index)
     // Default movement
     if(numAxes > 0)
     {
-        key_type[KEY_UP] = POS_AXIS;
+        key_type[KEY_UP] = NEG_AXIS;
         key_index[KEY_UP] = 0;
-        key_type[KEY_DOWN] = NEG_AXIS;
+        key_type[KEY_DOWN] = POS_AXIS;
         key_index[KEY_DOWN] = 0;
     }
     if(numAxes > 1)
@@ -337,13 +389,33 @@ JoyData::JoyData(int index)
     }
 }
 
+
+void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
+{
+    if(event.type == SDL_JOYAXISMOTION)
+    {
+        if(event.jaxis.value >= 0)
+            key_type[key_enum] = POS_AXIS;
+        else
+            key_type[key_enum] = NEG_AXIS;
+        key_index[key_enum] = event.jaxis.axis;
+        index = event.jaxis.which;  // USES THE LAST JOYSTICK PRESSED
+    }
+    else if(event.type == SDL_JOYBUTTONDOWN)
+    {
+        key_type[key_enum] = BUTTON;
+        key_index[key_enum] = event.jbutton.button;
+        index = event.jbutton.which;  // USES THE LAST JOYSTICK PRESSED
+    }
+}
+
 bool JoyData::getState(int key_enum) const
 {
     if(index < 0)
         return false;
     if(key_type[key_enum] == POS_AXIS)
         return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) > JOY_DEAD_ZONE;
-    else if(key_type[key_enum] == POS_AXIS)
+    else if(key_type[key_enum] == NEG_AXIS)
         return SDL_JoystickGetAxis(joysticks[index], key_index[key_enum]) < -JOY_DEAD_ZONE;
     else if(key_type[key_enum] == BUTTON)
         return SDL_JoystickGetButton(joysticks[index], key_index[key_enum]);
@@ -384,7 +456,7 @@ bool JoyData::hasButtonSet(int key_enum) const
 
 bool isPlayerHoldingKey(int player_index, int key_enum)
 {
-    if(player_input_type[player_index] == JOYSTICK)
+    if(player_joy[player_index].hasButtonSet(key_enum))
     {
         return player_joy[player_index].getState(key_enum);
     }
@@ -396,7 +468,7 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
 
 bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
 {
-    if(player_input_type[player_index] == JOYSTICK && player_joy[player_index].hasButtonSet(key_enum))
+    if(player_joy[player_index].hasButtonSet(key_enum))
     {
         // This key is on the joystick, so check it.
         return player_joy[player_index].getPress(key_enum, event);

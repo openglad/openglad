@@ -125,7 +125,7 @@ long mainmenu(long arg1);
 long beginmenu(long arg1);
 long loadmenu(long arg1);
 long newmenu(long arg1);
-long quit(long arg1);
+void quit(long arg1);
 long nullmenu(long arg1);
 long load1(long arg1);  // Begin a preset scenario ..
 long load2(long arg1);

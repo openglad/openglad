@@ -739,7 +739,8 @@ long vbutton::do_call(long whatfunc, long arg)
 		case SET_PLAYER_MODE:
 			return set_player_mode(arg);
 		case QUIT_MENU:
-			return quit(arg);
+			quit(arg);
+			return 1;
 		case CREATE_VIEW_MENU:
 			return create_view_menu(arg);
 		case CREATE_EDIT_MENU:

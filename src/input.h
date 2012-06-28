@@ -81,6 +81,8 @@ class JoyData
     JoyData();
     JoyData(int index);
     
+    void setKeyFromEvent(int key_enum, const SDL_Event& event);
+    
     bool getState(int key_enum) const;
     bool getPress(int key_enum, const SDL_Event& event) const;
     bool hasButtonSet(int key_enum) const;
@@ -100,6 +102,16 @@ int query_key();                                                            // r
 
 bool query_key_event(int key, const SDL_Event& event);
 
+SDL_Event wait_for_key_event();
+void quit_if_quit_event(const SDL_Event& event);
+
+bool isKeyboardEvent(const SDL_Event& event);
+bool isJoystickEvent(const SDL_Event& event);
+
+void clear_events();  // Clears the SDL event queue
+
+void assignKeyFromWaitEvent(int player_num, int key_enum);
+
 void clear_keyboard();                                              // set keyboard to none pressed
 Uint8* query_keyboard();                                    // keyboard status
 void wait_for_key(int somekey); // wait for key SOMEKEY
@@ -110,7 +122,6 @@ void clear_key_code(int code);
 void enable_keyrepeat();
 void disable_keyrepeat();
 void init_input();
-void stop_input();
 
 void grab_mouse();
 void release_mouse();
