@@ -65,7 +65,7 @@ long calculate_level(unsigned long howmuch)
 }
 
 long *mymouse;
-char *mykeyboard;
+Uint8 *mykeyboard;
 //scenario *myscen = new scenario;
 long currentmode = OBJECT_MODE;
 unsigned long currentlevel = 1;
@@ -188,6 +188,7 @@ int main(int argc, char **argv)
 
 		// Free memory ..
 		meminfo Memory;
+		Memory.FreeLinAddrSpace = 0;
 		//buffers: PORT: union REGS regs;
 		//buffers: PORT: struct SREGS sregs;
 		long bytes;
@@ -802,9 +803,6 @@ long quit(long num)
 
 	// And release the timer ..
 	release_timer();
-
-	// And stop input
-	stop_input();
 
 	// Get rid of the prefs
 	delete theprefs;
@@ -1754,7 +1752,7 @@ void info_box(walker  *target,screen * myscreen)
 // Set the stats->name value of a walker ..
 void set_name(walker  *target, screen * master)
 {
-	char newname[10];
+	char newname[11];
 	char oldname[20];
 	char buffer[200];
 
@@ -1797,7 +1795,7 @@ void set_name(walker  *target, screen * master)
 void scenario_options(screen *myscreen)
 {
 	static text opt_text(myscreen);
-	char *opt_keys = query_keyboard();
+	Uint8 *opt_keys = query_keyboard();
 	short lm, tm;
 	char message[80];
 
@@ -1876,7 +1874,7 @@ while (opt_keys[SDLK_ESCAPE])
 // Set an object's facing ..
 void set_facing(walker *target, screen *myscreen)
 {
-	char *setkeys = query_keyboard();
+	Uint8 *setkeys = query_keyboard();
 
 	if (target)
 		target = target;  // dummy code
