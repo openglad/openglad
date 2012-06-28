@@ -38,7 +38,7 @@ long difficulty_level[DIFFICULTY_SETTINGS] =
         200,
     };  // end of difficulty settings
 
-FILE * open_misc_file(char *, char *, char *);
+FILE * open_misc_file(const char *, const char *, const char *);
 
 long do_load(screen *ascreen);  // load a scenario or grid
 long do_save(screen *ascreen);  // save a scenario or grid
@@ -73,7 +73,7 @@ char scen_name[10] = "test";
 char grid_name[10] = "test";
 
 unsigned char  *mypixdata[PIX_MAX+1];
-char scenpalette[768];
+unsigned char scenpalette[768];
 long backcount=0, forecount = 0;
 long myorder = ORDER_LIVING;
 char currentteam = 0;
@@ -1047,7 +1047,7 @@ long save_map_file(char  * filename, screen *master)
 
 	lowercase (fullpath);
 
-	if ( (outfile = open_misc_file((char *)fullpath.c_str(), "pix/", "wb")) == NULL )
+	if ( (outfile = open_misc_file(fullpath.c_str(), "pix/", "wb")) == NULL )
 	{
 		master->draw_button(30, 30, 220, 60, 1, 1);
 		scentext->write_xy(32, 32, "Error in saving map file", DARK_BLUE, 1);
@@ -1408,7 +1408,7 @@ long save_scenario(char * filename, screen * master, char *gridname)
 	fwrite(temp_grid, 8, 1, outfile);
 
 	// Write the scenario title, if it exists
-	for (i=0; i < strlen(scentitle); i++)
+	for (i=0; i < int(strlen(scentitle)); i++)
 		scentitle[i] = 0;
 	strcpy(scentitle, master->scenario_title);
 	fwrite(scentitle, 30, 1, outfile);
@@ -1665,16 +1665,16 @@ void info_box(walker  *target,screen * myscreen)
 	char message[80];
 	treasure  *teleporter, *temp;
 
-	static char *orders[] =
+	static const char *orders[] =
 	    { "LIVING", "WEAPON", "TREASURE", "GENERATOR", "FX", "SPECIAL", };
-	static char *livings[] =
+	static const char *livings[] =
 	    { "SOLDIER", "ELF", "ARCHER", "MAGE",
 	      "SKELETON", "CLERIC", "ELEMENTAL",
 	      "FAERIE", "L-SLIME", "S-SLIME",
 	      "M-SLIME", "THIEF", "GHOST",
 	      "DRUID",
 	    };
-	static char *treasures[] =
+	static const char *treasures[] =
 	    { "BLOODSTAIN", "DRUMSTICK: FOOD",
 	      "GOLD BAR", "SILVER BAR",
 	      "MAGIC POTION", "INVISIBILITY POTION",
@@ -1695,15 +1695,15 @@ void info_box(walker  *target,screen * myscreen)
 		infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
 	}
 
-	sprintf(message, "Order   : %s", orders[target->query_order()] );
+	sprintf(message, "Order   : %s", orders[(int)target->query_order()] );
 	infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
 
 	if (target->query_order() == ORDER_LIVING)
 		sprintf(message, "Family  : %s",
-		        livings[target->query_family()] );
+		        livings[(int)target->query_family()] );
 	else if (target->query_order() == ORDER_TREASURE)
 		sprintf(message, "Family  : %s",
-		        treasures[target->query_family()] );
+		        treasures[(int)target->query_family()] );
 	else
 		sprintf(message, "Family  : %d", target->query_family());
 	infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
