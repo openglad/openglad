@@ -2063,17 +2063,17 @@ long viewscreen::set_key_prefs()
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SPECIAL);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SWITCHING' key:", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_SWITCH);
-
-	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'SPECIAL SWITCH' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SPECIAL SWITCH' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SPECIAL_SWITCH);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'YELL' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'YELL' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_YELL);
+
+	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'SWITCHING' key:", (unsigned char) RED, 1);
+	screenp->buffer_to_screen(0, 0, 320, 200);
+	assignKeyFromWaitEvent(mynum, KEY_SWITCH);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
@@ -2086,7 +2086,7 @@ long viewscreen::set_key_prefs()
 	{
 		keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", (unsigned char) RED, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
-	assignKeyFromWaitEvent(mynum, KEY_CHEAT);
+        assignKeyFromWaitEvent(mynum, KEY_CHEAT);
 	}
 
 	screenp->redrawme = 1;

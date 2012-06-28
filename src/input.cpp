@@ -429,6 +429,15 @@ JoyData::JoyData(int index)
 
 void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
 {
+    // Diagonals are ignored because they are combinations of the cardinals
+    // Things get really messy when diagonals are assigned
+    if(key_enum == KEY_UP_RIGHT || key_enum == KEY_UP_LEFT || key_enum == KEY_DOWN_RIGHT || key_enum == KEY_DOWN_LEFT)
+    {
+        key_type[key_enum] = NONE;
+        key_index[key_enum] = 0;
+        return;
+    }
+    
     bool gotJoy = false;
     if(event.type == SDL_JOYAXISMOTION)
     {
@@ -462,7 +471,6 @@ void JoyData::setKeyFromEvent(int key_enum, const SDL_Event& event)
         {
             badHat = true;
             // Diagonals are ignored because they are combinations of the cardinals
-            // This is kinda annoying because the player will get a dead key
             /*else if(event.jhat.value == SDL_HAT_RIGHTUP)
                 key_type[key_enum] = HAT_UP_RIGHT;
             else if(event.jhat.value == SDL_HAT_RIGHTDOWN)
