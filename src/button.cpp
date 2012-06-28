@@ -264,7 +264,7 @@ long vbutton::rightclick()
 long vbutton::leftclick(long whichbutton)
 {
 	long retvalue=0;
-	char  * mousekeys = query_keyboard();
+	Uint8* mousekeys = query_keyboard();
 
 	if (whichbutton == 1) // hotkeys
 	{

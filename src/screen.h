@@ -45,7 +45,8 @@ class screen : public video
 		void refresh();
 		walker  * first_of(unsigned char whatorder, unsigned char whatfamily,
 		                   int team_num = -1);
-		short input(char input);
+		short input(const SDL_Event& event);
+		short continuous_input();
 		short act();
 		walker  *add_ob(char order, char family);
 		walker  *add_ob(char order, char family, short atstart); // to insert

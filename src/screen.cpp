@@ -815,13 +815,24 @@ void screen::refresh()
 // Useful stuff again
 // **************************
 
-short screen::input(char input)
+short screen::input(const SDL_Event& event)
 {
 	// static text mytext;
 	short i;
 
 	for (i=0; i < numviews; i++)
-		viewob[i]->input(input);
+		viewob[i]->input(event);
+
+	return 1;
+}
+
+short screen::continuous_input()
+{
+	// static text mytext;
+	short i;
+
+	for (i=0; i < numviews; i++)
+		viewob[i]->continuous_input();
 
 	return 1;
 }
@@ -1408,7 +1419,7 @@ short screen::endgame(short ending, short nextlevel)
 	oblink *checklist = oblist;
 	walker *target;
 	long test1;
-	char * endkeys = query_keyboard();
+	Uint8* endkeys = query_keyboard();
 	int  i;
 	unsigned long allscore = 0, allbonuscash = 0;
 

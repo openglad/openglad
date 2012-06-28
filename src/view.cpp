@@ -36,23 +36,6 @@
 #define VIEW_TEAM_RIGHT  280
 
 
-// These are keyboard defines .. high-level
-#define KEY_UP                  0
-#define KEY_UP_RIGHT            1
-#define KEY_RIGHT               2
-#define KEY_DOWN_RIGHT          3
-#define KEY_DOWN                4
-#define KEY_DOWN_LEFT           5
-#define KEY_LEFT                6
-#define KEY_UP_LEFT             7
-#define KEY_FIRE                8
-#define KEY_SPECIAL             9
-#define KEY_SWITCH              10
-#define KEY_SPECIAL_SWITCH      11
-#define KEY_YELL                12
-#define KEY_SHIFTER             13
-#define KEY_PREFS               14
-#define KEY_CHEAT               15
 
 FILE * open_misc_file(const char *, const char *, const char *);
 FILE * open_misc_file(const char *);
@@ -308,7 +291,7 @@ short viewscreen::refresh()
 	return 1;
 }
 
-short viewscreen::input(char inputthing)
+short viewscreen::input(const SDL_Event& event)
 {
 	static text mytext(screenp);
 	static char somemessage[80];
@@ -316,10 +299,8 @@ short viewscreen::input(char inputthing)
 	int  counter;
 
 	//short i;
-	oblink  *here, *tempobj, *helpme;
+	oblink  *here, *tempobj;
 	//short step;
-	char *inputkeyboard;
-	long dumbcount=0;
 	static short changedchar[6] = {0, 0, 0, 0, 0, 0};   // for switching guys
 	static short changedchar2[6]= {0, 0, 0, 0, 0, 0};  // for switching TYPE of guy
 	static short changedspec[6]= {0, 0, 0, 0, 0, 0};  // for switching special
@@ -328,13 +309,6 @@ short viewscreen::input(char inputthing)
 	short newfam; //oldfam?
 	unsigned long totaltime, totalframes, framespersec;
 	walker *newob; // for general-purpose use
-	walker  * oldcontrol = control; // So we know if we changed guys
-
-	inputkeyboard = query_keyboard();
-	get_input_events(POLL);
-
-	if (inputthing)
-		dumbcount++;
 
 	if (control && control->user == -1)
 	{
@@ -422,35 +396,36 @@ short viewscreen::input(char inputthing)
 	if (control && control->bonus_rounds) // do we have extra rounds?
 	{
 		control->bonus_rounds--;
-		input('0');//i = input('0');
 		
 		if (control->lastx || control->lasty)
 			control->walk();
 	}
 
-	//step = control->stepsize;
-	if (inputkeyboard[SDLK_F3] && !inputkeyboard[mykeys[KEY_CHEAT]])
-	{
-		totaltime = (query_timer_control() - screenp->timerstart)/72;
-		totalframes = (screenp->framecount);
-		framespersec = totalframes / totaltime;
-		sprintf(somemessage, "%ld FRAMES PER SEC", framespersec);
-		screenp->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
-	}
+    if(!isPlayerHoldingKey(mynum, KEY_CHEAT))
+    {
+        if (query_key_event(SDLK_F3, event))
+        {
+            totaltime = (query_timer_control() - screenp->timerstart)/72;
+            totalframes = (screenp->framecount);
+            framespersec = totalframes / totaltime;
+            sprintf(somemessage, "%ld FRAMES PER SEC", framespersec);
+            screenp->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
+        }
 
-	if (inputkeyboard[SDLK_F4] && !inputkeyboard[mykeys[KEY_CHEAT]]) // Memory report
-		screenp->report_mem();
+        if (query_key_event(SDLK_F4, event)) // Memory report
+            screenp->report_mem();
 
-	if (inputkeyboard[mykeys[KEY_PREFS]] && !inputkeyboard[mykeys[KEY_CHEAT]])
-		options_menu();
+        if (query_key_event(mykeys[KEY_PREFS], event))
+            options_menu();
+    }
 
 
 	// TAB (ALONE) WILL SWITCH CONTROL TO THE NEXT GUY ON MY TEAM
-	if (!inputkeyboard[mykeys[KEY_SWITCH]])
+	if (!didPlayerPressKey(mynum, KEY_SWITCH, event))
 		changedchar[mynum] = 0;
 
-	if (inputkeyboard[mykeys[KEY_SWITCH]] && !inputkeyboard[mykeys[KEY_SHIFTER]]
-	        && !changedchar[mynum] && !inputkeyboard[mykeys[KEY_CHEAT]])
+	if (didPlayerPressKey(mynum, KEY_SWITCH, event) && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
+	        && !changedchar[mynum] && !isPlayerHoldingKey(mynum, KEY_CHEAT))
 	{
 		changedchar[mynum] = 1;
 		if (control->user == mynum)
@@ -495,11 +470,11 @@ short viewscreen::input(char inputthing)
 	}  // end of switch guys
 
 	// LSHIFT-TAB WILL SWITCH TO NEXT FAMILY GROUP ON MY TEAM
-	if (!(inputkeyboard[mykeys[KEY_SWITCH]] && inputkeyboard[mykeys[KEY_SHIFTER]]))
+	if (!(didPlayerPressKey(mynum, KEY_SWITCH, event) && isPlayerHoldingKey(mynum, KEY_SHIFTER)))
 		changedchar2[mynum] = 0;
 
-	if (inputkeyboard[mykeys[KEY_SWITCH]] && inputkeyboard[mykeys[KEY_SHIFTER]]
-	        && !changedchar2[mynum] && !inputkeyboard[mykeys[KEY_CHEAT]])
+	if (didPlayerPressKey(mynum, KEY_SWITCH, event) && isPlayerHoldingKey(mynum, KEY_SHIFTER)
+	        && !changedchar2[mynum] && !isPlayerHoldingKey(mynum, KEY_CHEAT))
 	{
 		changedchar2[mynum] = 1;
 		newfam = control->query_family();
@@ -538,7 +513,7 @@ short viewscreen::input(char inputthing)
 
 
 	// Redisplay the scenario text ..
-	if (inputkeyboard[SDLK_SLASH] && !inputkeyboard[mykeys[KEY_CHEAT]]) // actually "?"
+	if (query_key_event(SDLK_SLASH, event) && !isPlayerHoldingKey(mynum, KEY_CHEAT)) // actually "?"
 	{
 		read_scenario(screenp);
 		screenp->redrawme = 1;
@@ -546,47 +521,45 @@ short viewscreen::input(char inputthing)
 	}
 
 	// Help system
-	if (inputkeyboard[SDLK_F1] && !inputkeyboard[mykeys[KEY_CHEAT]] )
+	if (query_key_event(SDLK_F1, event) && !isPlayerHoldingKey(mynum, KEY_CHEAT) )
 	{
 		strcpy(somemessage,"OPENGLAD V.");
 		strcat(somemessage, PACKAGE_VERSION); //append the version num
 		set_display_text(somemessage, STANDARD_TEXT_TIME);
 
-		while (inputkeyboard[SDLK_F1])
+		while (query_keyboard()[SDLK_F1])
 			get_input_events(WAIT);
 
 		//buffers: lets borrow the somemessage buffer for some work
 		strcpy(somemessage,"glad.hlp");
 		read_help(somemessage,screenp);
-		inputkeyboard = query_keyboard();
-		clear_keyboard();
+		
 		screenp->redrawme = 1;
 	}
 
 	// Change our currently selected special
-	if (!(inputkeyboard[mykeys[KEY_SPECIAL_SWITCH]]))
+	if (!didPlayerPressKey(mynum, KEY_SPECIAL_SWITCH, event))
 		changedspec[mynum] = 0;
 
-	if (inputkeyboard[mykeys[KEY_SPECIAL_SWITCH]] && !changedspec[mynum])
+	if (didPlayerPressKey(mynum, KEY_SPECIAL_SWITCH, event) && !changedspec[mynum])
 	{
 		changedspec[mynum] = 1;
-		dumbcount = 0;
+		
 		control->current_special++;
 		if (control->current_special > (NUM_SPECIALS-1)
 		        || !(strcmp(screenp->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
 		        || (((control->current_special-1)*3+1) > control->stats->level) )
 			control->current_special = 1;
-		while (inputkeyboard[mykeys[KEY_SPECIAL_SWITCH]] && (dumbcount < 64000) )
-			dumbcount++;
 	} //end of switch our special
 
-	// Make sure we haven't yelled recently
-	if (control->yo_delay > 0)
-		control->yo_delay--;
 
-	if (inputkeyboard[mykeys[KEY_YELL]] && !control->yo_delay
-	        && !inputkeyboard[mykeys[KEY_SHIFTER]]
-	        && !inputkeyboard[mykeys[KEY_CHEAT]] ) // yell for help
+    
+    
+	oblink  *helpme;
+
+	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay
+	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
+	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
 		helpme = screenp->oblist;
 		while (helpme)
@@ -610,8 +583,8 @@ short viewscreen::input(char inputthing)
 	} //end of yo for friends
 
 	//summon team defense
-	if (inputkeyboard[mykeys[KEY_SHIFTER]] && inputkeyboard[mykeys[KEY_YELL]]
-	        && !inputkeyboard[mykeys[KEY_CHEAT]] ) // change guys' behavior
+	if (isPlayerHoldingKey(mynum, KEY_SHIFTER) && didPlayerPressKey(mynum, KEY_YELL, event)
+	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // change guys' behavior
 	{
 		switch (control->action)
 		{
@@ -653,20 +626,21 @@ short viewscreen::input(char inputthing)
 				control->action = 0;
 				break;
 		} // end of switch for action mode
-		clear_key_code(mykeys[KEY_YELL]);
+		
 	} // end of summon team defense
+
 
 
 
 	// Before here, all keys should check for !KEY_CHEAT
 
 	// Cheat keys .. using control
-	if (inputkeyboard[mykeys[KEY_CHEAT]] && CHEAT_MODE)
+	if (isPlayerHoldingKey(mynum, KEY_CHEAT) && CHEAT_MODE)
 	{
 		// Change our team :)
-		if (changedteam[mynum] && !inputkeyboard[mykeys[KEY_SWITCH]])
+		if (changedteam[mynum] && !didPlayerPressKey(mynum, KEY_SWITCH, event))
 			changedteam[mynum] = 0;
-		if (inputkeyboard[mykeys[KEY_SWITCH]] && !changedteam[mynum] )
+		if (didPlayerPressKey(mynum, KEY_SWITCH, event) && !changedteam[mynum] )
 		{
 			changedteam[mynum] = 1;  // to debounce keys
 			screenp->my_team++;
@@ -698,11 +672,11 @@ short viewscreen::input(char inputthing)
 
 
 		// Testing bonus rounds .. take this out, please
-		if (inputkeyboard[SDLK_F11] && CHEAT_MODE) // give bonus rounds ..
+		if (query_key_event(SDLK_F11, event)) // give bonus rounds ..
 			control->bonus_rounds = 5;
 
 		// Testing effect object ..
-		if (inputkeyboard[SDLK_F12] && CHEAT_MODE) // kill living bad guys
+		if (query_key_event(SDLK_F12, event)) // kill living bad guys
 		{
 			templink = screenp->oblist;
 			while (templink)
@@ -722,79 +696,79 @@ short viewscreen::input(char inputthing)
 		} //end of testing effect object
 
 
-		if (inputkeyboard[SDLK_RIGHTBRACKET]) // up level
+		if (query_key_event(SDLK_RIGHTBRACKET, event)) // up level
 		{
 			control->stats->level++;
-			clear_key_code(SDLK_RIGHTBRACKET);
+			//clear_key_code(SDLK_RIGHTBRACKET);
 		}//end up level
 
-		if (inputkeyboard[SDLK_LEFTBRACKET]) // down level
+		if (query_key_event(SDLK_LEFTBRACKET, event)) // down level
 		{
 			if (control->stats->level > 1)
 				control->stats->level--;
-			clear_key_code(SDLK_LEFTBRACKET);
+			//clear_key_code(SDLK_LEFTBRACKET);
 		}//end down level
 
-		if (inputkeyboard[SDLK_F1]) // freeze time
+		if (query_key_event(SDLK_F1, event)) // freeze time
 		{
 			screenp->enemy_freeze += 50;
 			set_palette(screenp->bluepalette);
-			clear_key_code(SDLK_F1);
+			//clear_key_code(SDLK_F1);
 		}//end freeze time
 
-		if (inputkeyboard[SDLK_F2]) // generate magic shield
+		if (query_key_event(SDLK_F2, event)) // generate magic shield
 		{
 			newob = screenp->add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
 			newob->owner = control;
 			newob->team_num = control->team_num;
 			newob->ani_type = 1; // dummy, non-zero value
 			newob->lifetime = 200;
-			clear_key_code(SDLK_F2);
+			//clear_key_code(SDLK_F2);
 		}//end generate magic shield
 
-		if (inputkeyboard[SDLK_f])  // ability to fly
+		if (query_key_event(SDLK_f, event))  // ability to fly
 		{
 			if (control->stats->query_bit_flags(BIT_FLYING))
 				control->stats->set_bit_flags(BIT_FLYING,0);
 			else
 				control->stats->set_bit_flags(BIT_FLYING,1);
-			clear_key_code(SDLK_f);
+			//clear_key_code(SDLK_f);
 		} //end flying
 
-		if (inputkeyboard[SDLK_h]) // give controller lots of hitpoints
+		if (query_key_event(SDLK_h, event)) // give controller lots of hitpoints
 		{
 			control->stats->hitpoints += 100;
 			screenp->control_hp += 100;
 		} //end hitpoints
 
-		if (inputkeyboard[SDLK_i])  // give invincibility
+		if (query_key_event(SDLK_i, event))  // give invincibility
 		{
 			if (control->stats->query_bit_flags(BIT_INVINCIBLE))
 				control->stats->set_bit_flags(BIT_INVINCIBLE,0);
 			else
 				control->stats->set_bit_flags(BIT_INVINCIBLE,1);
-			clear_key_code(SDLK_i);
+			//clear_key_code(SDLK_i);
 		} // end invincibility
 
-		if (inputkeyboard[SDLK_m]) // give controller lots of magicpoints
+		if (query_key_event(SDLK_m, event)) // give controller lots of magicpoints
 		{
 			control->stats->magicpoints += 150;
 		} // end magic points
 
-		if (inputkeyboard[SDLK_s]) // give us faster speed ..
+		if (query_key_event(SDLK_s, event)) // give us faster speed ..
 		{
 			control->speed_bonus_left += 20;
 			control->speed_bonus = control->normal_stepsize;
 		}
 
-		if (inputkeyboard[SDLK_t]) // transform to new shape
+		if (query_key_event(SDLK_t, event)) // transform to new shape
 		{
-			dumbcount = (control->query_family()+1)% NUM_FAMILIES;
-			control->transform_to(control->query_order(), (char) dumbcount);
-			clear_key_code(SDLK_t);
+			char family = (control->query_family()+1)% NUM_FAMILIES;
+			control->transform_to(control->query_order(), family);
+			//clear_key_code(SDLK_t);
 		} //end transform
 
-		if (inputkeyboard[SDLK_v]) // invisibility
+		if (query_key_event(SDLK_v, event)) // invisibility
 		{
 			if (control->invisibility_left < 3000)
 				control->invisibility_left += 100;
@@ -808,10 +782,156 @@ short viewscreen::input(char inputthing)
 		return 1;
 
 
+	// If we're frozen ..
+	if (control->stats->frozen_delay)
+	{
+		return 1;
+	}
+
+	// Movement, etc.
+	// Make sure we're not performing some queued action ..
+	if (!control->stats->commandlist)
+	{
+
+		if (didPlayerPressKey(mynum, KEY_SHIFTER, event))
+			control->shifter_down = 1;
+		else
+			control->shifter_down = 0;
+
+		if (didPlayerPressKey(mynum, KEY_SPECIAL, event))
+		{
+			control->special();
+		}
+
+		// Standard fire
+		if (didPlayerPressKey(mynum, KEY_FIRE, event))
+		{
+			control->init_fire();
+		}
+	} // end of check for queued actions...
+
+	return 1;
+}
+
+short viewscreen::continuous_input()
+{
+	static text mytext(screenp);
+	int  counter;
+
+	//short i;
+	oblink  *here;
+	//short step;
+	walker  * oldcontrol = control; // So we know if we changed guys
+
+	if (control && control->user == -1)
+	{
+		control->set_act_type(ACT_CONTROL);
+		control->user = (char) mynum;
+		control->stats->clear_command();
+	}
+
+	if (!control || control->dead)
+	{
+		// First look for a player character, not already controlled
+		here = screenp->oblist;
+		counter = 0;
+		while(counter < 2)
+		{
+			if (here->ob &&
+			        !here->ob->dead &&
+			        here->ob->query_order() == ORDER_LIVING &&
+			        here->ob->user == -1 && // mean's we're not player-controlled
+			        here->ob->myguy &&
+			        here->ob->team_num == my_team) // makes a difference for PvP
+				break;
+			here = here->next;
+			if (!here)
+			{
+				counter++;
+				if (counter < 2)
+					here = screenp->oblist;
+			}
+		}
+		if (!here)
+		{
+			// Second, look for anyone on our team, NPC or not
+			here = screenp->oblist;
+			counter = 0;
+			while(counter < 2)
+			{
+				if (here->ob &&
+				        !here->ob->dead &&
+				        here->ob->query_order() == ORDER_LIVING &&
+				        here->ob->user == -1 && // mean's we're not player-controlled
+				        here->ob->team_num == my_team) // makes a difference for PvP
+					break;
+				here = here->next;
+				if (!here)
+				{
+					counter++;
+					if (counter < 2)
+						here = screenp->oblist;
+				}
+			}
+		}  // done with second search
+
+		if (!here)
+		{
+			// Now try for ANYONE who's left alive ..
+			here = screenp->oblist;
+			counter = 0;
+			while(counter < 2)
+			{
+				if (here->ob &&
+				        !here->ob->dead &&
+				        here->ob->query_order() == ORDER_LIVING &&
+				        here->ob->myguy != NULL)
+					break;
+				here = here->next;
+				if (!here)
+				{
+					counter++;
+					if (counter < 2)
+						here = screenp->oblist;
+				}
+			}
+		}  // done with all searches
+
+		if (!here)  // then there's nobody left!
+			return screenp->endgame(1);
+		control = here->ob;
+		if (control->user == -1)
+			control->user = mynum; // show that we're controlled now
+		control->set_act_type(ACT_CONTROL);
+		screenp->control_hp = control->stats->hitpoints;
+	}
+
+	if (control && control->bonus_rounds) // do we have extra rounds?
+	{
+		control->bonus_rounds--;
+		
+		if (control->lastx || control->lasty)
+			control->walk();
+	}
+
+	
+
+
+	// Make sure we haven't yelled recently
+	if (control->yo_delay > 0)
+		control->yo_delay--;
+
+	// Before here, all keys should check for !KEY_CHEAT
+
+
+	// Make sure we're not in use by another player
+	if (control->user != mynum)
+		return 1;
+
+
 	if (control->ani_type != ANI_WALK)
 	{
 		control->animate();
-		inputthing = 0;
 	}
 
 	// if we changed control characters
@@ -830,7 +950,7 @@ short viewscreen::input(char inputthing)
 	if (!control->stats->commandlist)
 	{
 
-		if (inputkeyboard[mykeys[KEY_SHIFTER]])
+		if (isPlayerHoldingKey(mynum, KEY_SHIFTER))
 			control->shifter_down = 1;
 		else
 			control->shifter_down = 0;
@@ -843,34 +963,28 @@ short viewscreen::input(char inputthing)
 			}
 		*/
 
-		if (inputkeyboard[mykeys[KEY_SPECIAL]])
+		if (isPlayerHoldingKey(mynum, KEY_SPECIAL))
 		{
 			control->special();
 		}
-		if (inputkeyboard[mykeys[KEY_UP]] && inputkeyboard[mykeys[KEY_RIGHT]])
-			control->walkstep(1,-1);
-		else if (inputkeyboard[mykeys[KEY_UP]] && inputkeyboard[mykeys[KEY_LEFT]])
-			control->walkstep(-1,-1);
-		else if (inputkeyboard[mykeys[KEY_DOWN]] && inputkeyboard[mykeys[KEY_RIGHT]])
-			control->walkstep(1,1);
-		else if (inputkeyboard[mykeys[KEY_DOWN]] && inputkeyboard[mykeys[KEY_LEFT]])
-			control->walkstep(-1,1);
-		else if (inputkeyboard[mykeys[KEY_UP_LEFT]])
-			control->walkstep(-1, -1);
-		else if (inputkeyboard[mykeys[KEY_UP]])
-			control->walkstep(0, -1);
-		else if (inputkeyboard[mykeys[KEY_UP_RIGHT]])
-			control->walkstep(1, -1);
-		else if (inputkeyboard[mykeys[KEY_DOWN_LEFT]])
-			control->walkstep(-1, 1);
-		else if (inputkeyboard[mykeys[KEY_DOWN]])
-			control->walkstep(0,1);
-		else if (inputkeyboard[mykeys[KEY_DOWN_RIGHT]])
-			control->walkstep(1, 1);
-		else if (inputkeyboard[mykeys[KEY_LEFT]])
-			control->walkstep(-1,0);
-		else if (inputkeyboard[mykeys[KEY_RIGHT]])
-			control->walkstep(1,0);
+		
+		int walkx = 0;
+		int walky = 0;
+		
+		if (isPlayerHoldingKey(mynum, KEY_UP) || isPlayerHoldingKey(mynum, KEY_UP_LEFT) || isPlayerHoldingKey(mynum, KEY_UP_RIGHT))
+            walky = -1;
+		else if (isPlayerHoldingKey(mynum, KEY_DOWN) || isPlayerHoldingKey(mynum, KEY_DOWN_LEFT) || isPlayerHoldingKey(mynum, KEY_DOWN_RIGHT))
+            walky = 1;
+        
+		if (isPlayerHoldingKey(mynum, KEY_LEFT) || isPlayerHoldingKey(mynum, KEY_UP_LEFT) || isPlayerHoldingKey(mynum, KEY_DOWN_LEFT))
+            walkx = -1;
+		else if (isPlayerHoldingKey(mynum, KEY_RIGHT) || isPlayerHoldingKey(mynum, KEY_DOWN_RIGHT) || isPlayerHoldingKey(mynum, KEY_UP_RIGHT))
+            walkx = 1;
+		
+		if(walkx != 0 || walky != 0)
+		{
+			control->walkstep(walkx, walky);
+		}
 		else if (control->stats->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
 		{
 			control->cycle++;
@@ -880,7 +994,7 @@ short viewscreen::input(char inputthing)
 		}
 
 		// Standard fire
-		if (inputkeyboard[mykeys[KEY_FIRE]])
+		if (isPlayerHoldingKey(mynum, KEY_FIRE))
 		{
 			control->init_fire();
 		}
@@ -1177,7 +1291,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	list->ob = NULL;
 	list->next = NULL;
 	temp = new oblink;
-	char *teamkeys;
+	Uint8* teamkeys;
 	long currentcycle = 0, cycletime = 30000;
 
 	screenp->redrawme = 1;
@@ -1320,7 +1434,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 void viewscreen::options_menu()
 {
 	static text optiontext(screenp);
-	static char *opkeys;
+	static Uint8* opkeys;
 	long gamespeed;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];
@@ -1880,6 +1994,7 @@ long load_key_prefs()
 long viewscreen::set_key_prefs()
 {
 	static text keytext(screenp);
+	SDL_Event event;
 
 	clear_keyboard();
 
@@ -1892,34 +2007,58 @@ long viewscreen::set_key_prefs()
 	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press a key for 'UP':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_UP] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press a key for 'UP-RIGHT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_UP_RIGHT] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press a key for 'RIGHT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_RIGHT] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press a key for 'DOWN-RIGHT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_DOWN_RIGHT] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press a key for 'DOWN':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_DOWN] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press a key for 'DOWN-LEFT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_DOWN_LEFT] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(8), "Press a key for 'LEFT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_LEFT] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(9), "Press a key for 'UP-LEFT':", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_UP_LEFT] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	// Draw the menu button; back to the top for us!
 	screenp->clearfontbuffer(40,40,240,120);
@@ -1930,26 +2069,44 @@ long viewscreen::set_key_prefs()
 	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press your 'FIRE' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_FIRE] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press your 'SPECIAL' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_SPECIAL] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SWITCHING' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_SWITCH] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'SPECIAL SWITCH' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_SPECIAL_SWITCH] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'YELL' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_YELL] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
 	allkeys[mynum][KEY_SHIFTER] = get_keypress();
+	SDL_Delay(400);
+	clear_keyboard();
+	while(SDL_PollEvent(&event));
 
 	//  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", (unsigned char) RED, 1);
 	//  allkeys[mynum][KEY_PREFS] = get_keypress();
@@ -1959,6 +2116,9 @@ long viewscreen::set_key_prefs()
 		keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", (unsigned char) RED, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
 		allkeys[mynum][KEY_CHEAT] = get_keypress();
+        SDL_Delay(400);
+        clear_keyboard();
+        while(SDL_PollEvent(&event));
 	}
 
 	screenp->redrawme = 1;

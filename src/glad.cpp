@@ -84,11 +84,10 @@ int main(int argc, char *argv[])
 
 void glad_main(screen *myscreen, long playermode)
 {
-	unsigned char input;
 	char somemessage[80];
 	//  char soundpath[80];
 	//  short cyclemode = 1;            // color cycling on or off
-	char *keyboard;
+	Uint8* keyboard;
 	short dumbcount=0;
 	short numviews;
 	oblink *here, *before;
@@ -141,7 +140,6 @@ void glad_main(screen *myscreen, long playermode)
 	//*******************************
 	// Fade in
 	//*******************************
-	myscreen->input(0);
 	myscreen->redraw();
 	myscreen->fadeblack(1);
 
@@ -170,14 +168,13 @@ void glad_main(screen *myscreen, long playermode)
 	myscreen->framecount = 0;
 	myscreen->timerstart = query_timer_control();
 
-	while(1)
+    bool done = false;
+	while(!done)
 	{
 		// Reset the timer count to zero ...
 		reset_timer();
 
 		myscreen->clearfontbuffer();
-
-		input = (char) query_key();
 
 		if (myscreen->redrawme)
 		{
@@ -198,33 +195,50 @@ void glad_main(screen *myscreen, long playermode)
 		// this was for debugging illegal draws to bad areas.
 		score_panel(myscreen);
 		myscreen->refresh();
-
-		myscreen->input(input);
+        
+        SDL_Event event;
+        while(SDL_PollEvent(&event))
+        {
+            if(event.type == SDL_QUIT)
+                exit(0);
+            if(event.type == SDL_KEYDOWN)
+            {
+                if(event.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
+                    myscreen->clearfontbuffer(160-80,80,160,40);
+                    dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, "Abort Mission");
+                    gladtext.write_xy(dumbcount, 80+24, "Quit this Mission? (Y/N)",
+                                      (unsigned char) DARK_BLUE, 1);
+                    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
+                    while (!keyboard[SDLK_y] && !keyboard[SDLK_n])
+                        get_input_events(WAIT);
+                    myscreen->redrawme = 1;
+                    if (keyboard[SDLK_y]) // player wants to quit
+                        done = true;
+                    else
+                    {
+                        set_palette(myscreen->ourpalette);  // restore normal palette
+                        adjust_palette(myscreen->ourpalette, myscreen->viewob[0]->gamma);
+                    }
+                    break;
+                }
+            }
+            
+            myscreen->input(event);
+        }
+		if (myscreen->end || done)
+			break;
+        
+        myscreen->continuous_input();
+        
 		if (myscreen->end)
 			break;
 
 		//score_panel(myscreen);
 
 		//if (input == SDLK_ESCAPE) break;
-		if (keyboard[SDLK_ESCAPE])
-		{
-			//buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
-			myscreen->clearfontbuffer(160-80,80,160,40);
-			dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, "Abort Mission");
-			gladtext.write_xy(dumbcount, 80+24, "Quit this Mission? (Y/N)",
-			                  (unsigned char) DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
-			while (!keyboard[SDLK_y] && !keyboard[SDLK_n])
-				get_input_events(WAIT);
-			myscreen->redrawme = 1;
-			if (keyboard[SDLK_y]) // player wants to quit
-				break;
-			else
-			{
-				set_palette(myscreen->ourpalette);  // restore normal palette
-				adjust_palette(myscreen->ourpalette, myscreen->viewob[0]->gamma);
-			}
-		}
+		
 
 		// Now cycle palette ..
 		if (myscreen->cyclemode)

@@ -425,7 +425,7 @@ long leftmouse()
 {
 	long i = 0;
 	long somebutton = -1;
-	char * mousekeys = query_keyboard();
+	Uint8* mousekeys = query_keyboard();
 
 	grab_mouse();
 	mymouse = query_mouse();
@@ -1095,7 +1095,7 @@ long create_view_menu(long arg1)
 long create_buy_menu(long arg1)
 {
 	long linesdown, retvalue = 0;
-	char * inputkeyboard = query_keyboard();
+	Uint8* inputkeyboard = query_keyboard();
 	long i;
 	long start_time = query_timer();
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED

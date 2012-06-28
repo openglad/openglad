@@ -84,7 +84,8 @@ class viewscreen
 		short draw ();
 		short redraw();
 		short refresh();
-		short input(char input);
+		short input(const SDL_Event& event);
+		short continuous_input();
 		void set_display_text(const char *newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(long row); // cycle text upward
@@ -108,7 +109,7 @@ class viewscreen
 		char infotext[80]; // text to display
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
 		short my_team;         // used for Player-v-Player mode
-		int * mykeys;     // holds the keyboard mapping
+		int* mykeys;     // holds the keyboard mapping
 		walker  *control;  // the user
 		short xpos,ypos;
 		short topx, topy;

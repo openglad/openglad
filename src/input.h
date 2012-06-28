@@ -20,6 +20,9 @@
 // input code
 //
 
+#ifndef _INPUT_H__
+#define _INPUT_H__
+
 #include <SDL.h>
 #include <ctype.h>
 #include <string>
@@ -41,6 +44,52 @@
 #define MOUSE_LEFT 2
 #define MOUSE_RIGHT 3
 
+// These are keyboard defines .. high-level
+#define KEY_UP                  0
+#define KEY_UP_RIGHT            1
+#define KEY_RIGHT               2
+#define KEY_DOWN_RIGHT          3
+#define KEY_DOWN                4
+#define KEY_DOWN_LEFT           5
+#define KEY_LEFT                6
+#define KEY_UP_LEFT             7
+#define KEY_FIRE                8
+#define KEY_SPECIAL             9
+#define KEY_SWITCH              10
+#define KEY_SPECIAL_SWITCH      11
+#define KEY_YELL                12
+#define KEY_SHIFTER             13
+#define KEY_PREFS               14
+#define KEY_CHEAT               15
+#define NUM_KEYS               16
+
+class JoyData
+{
+    public:
+    int index;
+    int numAxes;
+    int numButtons;
+    
+    static const int NONE = 0;
+    static const int BUTTON = 1;
+    static const int POS_AXIS = 2;
+    static const int NEG_AXIS = 3;
+    
+    int key_type[NUM_KEYS];
+    int key_index[NUM_KEYS];
+    
+    JoyData();
+    JoyData(int index);
+    
+    bool getState(int key_enum) const;
+    bool getPress(int key_enum, const SDL_Event& event) const;
+    bool hasButtonSet(int key_enum) const;
+};
+
+
+bool isPlayerHoldingKey(int player_index, int key_enum);
+bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
+
 //buffers: added prototype
 void get_input_events(bool type);
 void handle_events(SDL_Event *event);
@@ -48,12 +97,15 @@ void handle_events(SDL_Event *event);
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.
 int query_key();                                                            // return last keypress
+
+bool query_key_event(int key, const SDL_Event& event);
+
 void clear_keyboard();                                              // set keyboard to none pressed
-char * query_keyboard();                                    // keyboard status
+Uint8* query_keyboard();                                    // keyboard status
 void wait_for_key(int somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)
-short query_key_code(int code);                       // OBSOLETE, use query_keyboard
+bool query_key_code(int code);                       // OBSOLETE, use query_keyboard
 void clear_key_code(int code);
 void enable_keyrepeat();
 void disable_keyrepeat();
@@ -63,3 +115,5 @@ void stop_input();
 void grab_mouse();
 void release_mouse();
 long * query_mouse();
+
+#endif
