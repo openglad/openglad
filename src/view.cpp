@@ -1555,7 +1555,8 @@ void viewscreen::options_menu()
 	screenp->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
 	optiontext.write_xy(LEFT_OPS,OPLINES(10),message,(unsigned char) BLACK,1);
 
-	if (prefs[PREF_JOY] == PREF_NO_JOY)
+	//if (prefs[PREF_JOY] == PREF_NO_JOY)
+	if(!playerHasJoystick(mynum))
 		sprintf(message, "Joystick Mode (J)      : OFF ");
 	else
 		sprintf(message, "Joystick Mode (J)      : ON ");
@@ -1781,7 +1782,22 @@ void viewscreen::options_menu()
 
 		if (opkeys[SDLK_j]) // toggle joystick display
 		{
-			//Zardus: TODO: remove this and the joystick display on options
+		    if(playerHasJoystick(mynum))
+                disablePlayerJoystick(mynum);
+		    else
+                resetJoystick(mynum);
+		    
+		    // Update joystick display message
+            if(!playerHasJoystick(mynum))
+                sprintf(message, "Joystick Mode (J)      : OFF ");
+            else
+                sprintf(message, "Joystick Mode (J)      : ON ");
+            screenp->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
+            optiontext.write_xy(LEFT_OPS,OPLINES(11),message,(unsigned char) BLACK,1);
+			screenp->buffer_to_screen(0, 0, 320, 200);
+            
+            SDL_Delay(500);
+            clear_events();
 		}
 
 		if (opkeys[SDLK_k])      // Edit the keyboard mappings

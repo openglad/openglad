@@ -98,6 +98,9 @@ class JoyData
 };
 
 
+bool playerHasJoystick(int player_num);
+void disablePlayerJoystick(int player_num);
+void resetJoystick(int player_num);
 bool isPlayerHoldingKey(int player_index, int key_enum);
 bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
 

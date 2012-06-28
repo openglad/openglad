@@ -350,11 +350,13 @@ JoyData::JoyData()
 {}
 
 JoyData::JoyData(int index)
-    : index(index), numAxes(0), numButtons(0), numHats(0)
+    : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
     SDL_Joystick *js = joysticks[index];
     if(js == NULL)
         return;
+        
+    this->index = index;
     numAxes = SDL_JoystickNumAxes(js);
     numButtons = SDL_JoystickNumButtons(js);
     numHats = SDL_JoystickNumHats(js);
@@ -576,6 +578,45 @@ bool JoyData::getPress(int key_enum, const SDL_Event& event) const
 bool JoyData::hasButtonSet(int key_enum) const
 {
     return (index >= 0 && key_type[key_enum] != NONE);
+}
+
+bool playerHasJoystick(int player_num)
+{
+    return (player_joy[player_num].index >= 0);
+}
+
+void disablePlayerJoystick(int player_num)
+{
+    player_joy[player_num].index = -1;
+}
+
+void resetJoystick(int player_num)
+{
+    // Reset joystick subsystem
+    if(SDL_WasInit(SDL_INIT_JOYSTICK) & SDL_INIT_JOYSTICK)
+        SDL_QuitSubSystem(SDL_INIT_JOYSTICK);
+    SDL_InitSubSystem(SDL_INIT_JOYSTICK);
+    
+    // Set up joysticks
+    for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
+    {
+        joysticks[i] = NULL;
+    }
+    
+	int numjoy = SDL_NumJoysticks();
+	for(int i = 0; i < numjoy; i++)
+	{
+        joysticks[i] = SDL_JoystickOpen(i);
+        if(joysticks[i] == NULL)
+            continue;
+        // The joystick indices might change here.
+        // FIXME: There's a chance that players will not have the joysticks they expect and 
+        // so they might have buttons, etc. that are out of range for the new joystick.
+	}
+
+	SDL_JoystickEventState(SDL_ENABLE);
+    
+    player_joy[player_num] = JoyData(player_num);
 }
 
 bool isPlayerHoldingKey(int player_index, int key_enum)
