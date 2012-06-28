@@ -415,7 +415,7 @@ short viewscreen::input(const SDL_Event& event)
         if (query_key_event(SDLK_F4, event)) // Memory report
             screenp->report_mem();
 
-        if (query_key_event(mykeys[KEY_PREFS], event))
+        if (didPlayerPressKey(mynum, KEY_PREFS, event))
         {
             options_menu();
             return 1;
@@ -1449,7 +1449,10 @@ void viewscreen::options_menu()
 #define PANEL_COLOR 13
 
 	if (!control)
+	{
+	    printf("No control in viewscreen::options_menu()\n");
 		return;  // safety check; shouldn't happen
+	}
 
 	opkeys = query_keyboard();
 	clear_keyboard();
@@ -1457,7 +1460,9 @@ void viewscreen::options_menu()
 	// Draw the menu button
 	screenp->draw_button(40, 40, 280, 160, 2, 1);
 	screenp->draw_text_bar(40+4, 40+4, 280-4, 40+12);
-	optiontext.write_xy(160-6*6, OPLINES(0)+2, "Options Menu", (unsigned char) RED, 1);
+	char title[50];
+	snprintf(title, 50, "Options Menu (%d)", mynum+1);
+	optiontext.write_xy(160-6*6, OPLINES(0)+2, title, (unsigned char) RED, 1);
 
 
 	gamespeed = change_speed(0);

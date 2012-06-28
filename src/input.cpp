@@ -52,7 +52,7 @@ int player_keys[4][NUM_KEYS] = {
          SDLK_1,                                 // change special
          SDLK_s,                                 // Yell
          SDLK_LSHIFT,                        // Shifter
-         SDLK_2,                                 // Options menu
+         SDLK_1,                                 // Options menu
          SDLK_F5,                                 // Cheat key
     },
     {
@@ -63,7 +63,7 @@ int player_keys[4][NUM_KEYS] = {
          SDLK_COMMA,                         // change special
          SDLK_l,                                // Yell
          SDLK_RSHIFT,                                // Shifter
-         SDLK_BACKSLASH,                         // Options menu
+         SDLK_2,                         // Options menu
          SDLK_F8,                                    // Cheat key
      },
      {
@@ -74,7 +74,7 @@ int player_keys[4][NUM_KEYS] = {
          SDLK_7,                                 // change special
          SDLK_k,                                 // Yell
          SDLK_RSHIFT,                        // Shifter
-         SDLK_8,                                 // Options menu
+         SDLK_3,                                 // Options menu
          SDLK_F7,                                 // Cheat key
      },
      {
