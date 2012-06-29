@@ -40,7 +40,7 @@ char ourcolors[] = {
                           18,18,30,20,20,32,22,22,34,24,24,36,26,26,38,28,28,40,30,30,42,32,32
 		};
 
-int main(char argc, char **argv)
+int main(int argc, char **argv)
 {
 	FILE *file;
 	unsigned char numframes, x, y, curcolor;
