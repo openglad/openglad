@@ -22,8 +22,8 @@
 #include "smooth.h"
 
 // From picker
-extern int difficulty_level[DIFFICULTY_SETTINGS];
-extern int current_difficulty;
+extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
+extern Sint32 current_difficulty;
 
 living::living(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
 {
@@ -39,7 +39,7 @@ living::~living()
 
 short living::act()
 {
-	int temp;
+	Sint32 temp;
 
 	if (bonus_rounds>0 && !dead)  // we get extra rounds to act this cycle
 	{
@@ -510,7 +510,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 // the special or not ..
 short living::check_special()
 {
-	unsigned int distance, myrange;
+	Uint32 distance, myrange;
 
 	oblink *enemylist;
 	//oblink *templink;
@@ -529,7 +529,7 @@ short living::check_special()
 		case FAMILY_SOLDIER:   // Check for foe in range x
 			if (foe) // already have a foe ..
 			{
-				distance = (unsigned int) distance_to_ob(foe);//int (deltax*deltax) + int (deltay*deltay);
+				distance = (Uint32) distance_to_ob(foe);//Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 square min
 					return 1;
 				return 0;
@@ -539,7 +539,7 @@ short living::check_special()
 				foe = screenp->find_near_foe(this);
 				if (!foe)
 					return 0;
-				distance = (unsigned int) distance_to_ob(foe); // (deltax*deltax) + int (deltay*deltay);
+				distance = (Uint32) distance_to_ob(foe); // (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 min
 					return 1;
 				return 0;
@@ -551,7 +551,7 @@ short living::check_special()
 		case FAMILY_ORC:
 			if (foe) // already have a foe ..
 			{
-				distance = (unsigned int) distance_to_ob(foe); //int (deltax*deltax) + int (deltay*deltay);
+				distance = (Uint32) distance_to_ob(foe); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
@@ -561,7 +561,7 @@ short living::check_special()
 				foe = screenp->find_near_foe(this);
 				if (!foe)
 					return 0;
-				distance = (unsigned int) distance_to_ob(foe); //int (deltax*deltax) + int (deltay*deltay);
+				distance = (Uint32) distance_to_ob(foe); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
@@ -572,7 +572,7 @@ short living::check_special()
 			{
 				if (foe) // already have a foe ..
 				{
-					distance = (unsigned int) distance_to_ob(foe); // (deltax*deltax) + int (deltay*deltay);
+					distance = (Uint32) distance_to_ob(foe); // (deltax*deltax) + Sint32 (deltay*deltay);
 					if (distance < 130 && distance > 35) // about 6 squares max, 2 min
 						return 0;
 				}
@@ -697,11 +697,11 @@ short living::check_special()
 	return 1; //unreachable?
 }
 
-void living::set_difficulty(unsigned int whatlevel)
+void living::set_difficulty(Uint32 whatlevel)
 {
-	//  int calcdelay,calcrate;  // apparently not used anymore
-	unsigned int dif1 = difficulty_level[current_difficulty];
-	unsigned int levmult = (unsigned int) whatlevel*(unsigned int) whatlevel;
+	//  Sint32 calcdelay,calcrate;  // apparently not used anymore
+	Uint32 dif1 = difficulty_level[current_difficulty];
+	Uint32 levmult = (Uint32) whatlevel*(Uint32) whatlevel;
 
 	switch (family)
 	{
@@ -775,7 +775,7 @@ void living::set_difficulty(unsigned int whatlevel)
 	if (stats->current_heal_delay > 1)
 	{
 		stats->max_heal_delay /=
-		    (int) (stats->current_heal_delay + 1);
+		    (Sint32) (stats->current_heal_delay + 1);
 	}
 	stats->current_heal_delay = 0; //start off without healing
 
@@ -789,7 +789,7 @@ void living::set_difficulty(unsigned int whatlevel)
 
 	// Set the magic delay ..
 	stats->max_magic_delay = REGEN;
-	stats->current_magic_delay = (int) (levmult*30);//for calculation only
+	stats->current_magic_delay = (Sint32) (levmult*30);//for calculation only
 
 	while (stats->current_magic_delay > REGEN)
 	{
@@ -800,7 +800,7 @@ void living::set_difficulty(unsigned int whatlevel)
 	if (stats->current_magic_delay > 1)
 	{
 		stats->max_magic_delay /=
-		    (int) (stats->current_magic_delay + 1);
+		    (Sint32) (stats->current_magic_delay + 1);
 	}
 	stats->current_magic_delay = 0; //start off without magic regen
 
@@ -814,8 +814,8 @@ void living::set_difficulty(unsigned int whatlevel)
 
 short living::facing(short x, short y)
 {
-	int bigy = (int) (y*1000);
-	int slope;
+	Sint32 bigy = (Sint32) (y*1000);
+	Sint32 slope;
 
 	if (!x)
 	{

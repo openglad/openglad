@@ -44,14 +44,14 @@
 FILE * open_misc_file(const char *, const char *);
 FILE * open_misc_file(const char *, const char *, const char *);
 
-void show_guy(int frames, int who); // shows the current guy ..
-int name_guy(int arg); // rename (or name) the current_guy
+void show_guy(Sint32 frames, Sint32 who); // shows the current guy ..
+Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
-void glad_main(screen *myscreen, int playermode);
+void glad_main(screen *myscreen, Sint32 playermode);
 const char* get_saved_name(const char * filename);
-int do_set_scen_level(int arg1);
+Sint32 do_set_scen_level(Sint32 arg1);
 
-int leftmouse();
+Sint32 leftmouse();
 void family_name_copy(char *name, short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
@@ -63,14 +63,14 @@ extern options *theprefs;
 
 //screen  *myscreen;
 text  *mytext;
-int *mymouse;     // hold mouse information
+Sint32 *mymouse;     // hold mouse information
 //char main_dir[80];
 guy  *current_guy;// = new guy();
-unsigned int money[4] = {5000, 5000, 5000, 5000};
-unsigned int score[4] = {0, 0, 0, 0};
-int scen_level = 1;
+Uint32 money[4] = {5000, 5000, 5000, 5000};
+Uint32 score[4] = {0, 0, 0, 0};
+Sint32 scen_level = 1;
 char  message[80];
-int editguy = 0;        // Global for editing guys ..
+Sint32 editguy = 0;        // Global for editing guys ..
 unsigned char playermode=1;
 unsigned char  *gladpic,*magepic;
 pixieN  *gladpix,*magepix;
@@ -78,11 +78,11 @@ char levels[MAX_LEVELS];        // our level-completion status
 FILE *loadgame; //for loading the default game
 vbutton * localbuttons; //global so we can delete the buttons anywhere
 guy *ourteam[MAXTEAM];
-int teamsize = 0;
+Sint32 teamsize = 0;
 char save_file[40] = "SAVED GAME";
 short current_team_num = 0;
 
-int allowable_guys[] =
+Sint32 allowable_guys[] =
     { FAMILY_SOLDIER,
       FAMILY_BARBARIAN,
       FAMILY_ELF,
@@ -99,11 +99,11 @@ int allowable_guys[] =
       FAMILY_GHOST
     };
 
-int current_type = 0; // guy type we're looking at
+Sint32 current_type = 0; // guy type we're looking at
 
-int numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0,0};
+Sint32 numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0,0};
 
-int costlist[NUM_FAMILIES] =
+Sint32 costlist[NUM_FAMILIES] =
     {
         250,  // soldier
         150,  // elf
@@ -126,7 +126,7 @@ int costlist[NUM_FAMILIES] =
     };
 
 // Also change guy::guy
-int statlist[NUM_FAMILIES][6] =
+Sint32 statlist[NUM_FAMILIES][6] =
     {
         // STR, DEX, CON, INT, ARMOR, LEVEL
         {12, 6, 12,  8, 9,  1},  // soldier
@@ -152,7 +152,7 @@ int statlist[NUM_FAMILIES][6] =
         //  {8, 12,  8, 32,10,  1},  // archmage
     };
 
-int statcosts[NUM_FAMILIES][6] =
+Sint32 statcosts[NUM_FAMILIES][6] =
     {
         // STR, DEX, CON, INT, ARMOR, LEVEL
         { 6,10, 6,25,50, 200},  // soldier
@@ -177,8 +177,8 @@ int statcosts[NUM_FAMILIES][6] =
     };
 
 // Difficulty settings .. in percent, so 100 == normal
-int current_difficulty = 1; // setting 'normal'
-int difficulty_level[DIFFICULTY_SETTINGS] =
+Sint32 current_difficulty = 1; // setting 'normal'
+Sint32 difficulty_level[DIFFICULTY_SETTINGS] =
     {
         50,
         100,
@@ -191,9 +191,9 @@ char difficulty_names[DIFFICULTY_SETTINGS][80] =
         "Slaughter",
     };  // end of difficulty names
 
-void picker_main(int argc, char  **argv)
+void picker_main(Sint32 argc, char  **argv)
 {
-	int i;
+	Sint32 i;
 
 	for (i=0; i < MAX_BUTTONS; i++)
 		allbuttons[i] = NULL;
@@ -421,10 +421,10 @@ button loadteam[] =
 
     };
 
-int leftmouse()
+Sint32 leftmouse()
 {
-	int i = 0;
-	int somebutton = -1;
+	Sint32 i = 0;
+	Sint32 somebutton = -1;
 	Uint8* mousekeys = query_keyboard();
 
 	grab_mouse();
@@ -518,11 +518,11 @@ void view_team(short left, short top, short right, short bottom)
 
 
 
-int mainmenu(int arg1)
+Sint32 mainmenu(Sint32 arg1)
 {
 	vbutton *tempbuttons;
-	int retvalue=0;
-	int count;
+	Sint32 retvalue=0;
+	Sint32 count;
 	char message[80];
 
 	if (arg1)
@@ -785,9 +785,9 @@ int mainmenu(int arg1)
 	return retvalue;
 }
 
-int beginmenu(int arg1)
+Sint32 beginmenu(Sint32 arg1)
 {
-	int i,retvalue=0;
+	Sint32 i,retvalue=0;
 
 	if (arg1)
 		arg1 = 1;
@@ -855,9 +855,9 @@ button bload[] =
         { "MAIN MENU", SDLK_ESCAPE, 100, 130, 120, 15, 0 , -1},
     };
 
-int loadmenu(int arg1)
+Sint32 loadmenu(Sint32 arg1)
 {
-	int retvalue = 0;
+	Sint32 retvalue = 0;
 
 	if (arg1)
 		arg1 = 1;
@@ -905,9 +905,9 @@ button bnew[] =
         { "BACK", SDLK_ESCAPE, 100, 130, 115, 20, 0, -1 },
     };
 
-int newmenu(int arg1)
+Sint32 newmenu(Sint32 arg1)
 {
-	int retvalue = 0;
+	Sint32 retvalue = 0;
 
 	if (localbuttons)
 		delete (localbuttons);
@@ -936,9 +936,9 @@ button bnull[] =
         { "BACK", SDLK_ESCAPE, 100, 80, 120, 30, 0, -1 },
     };
 
-int nullmenu(int arg1)
+Sint32 nullmenu(Sint32 arg1)
 {
-	int retvalue = 0;
+	Sint32 retvalue = 0;
 	if (arg1)
 		arg1 = 1;
 
@@ -1003,9 +1003,9 @@ void family_name_copy(char *name, short family)
 	}
 }
 
-int create_team_menu(int arg1)
+Sint32 create_team_menu(Sint32 arg1)
 {
-	int retvalue=0;
+	Sint32 retvalue=0;
 
 	if (arg1)
 		arg1 = 1;
@@ -1051,9 +1051,9 @@ int create_team_menu(int arg1)
 	return REDRAW;
 }
 
-int create_view_menu(int arg1)
+Sint32 create_view_menu(Sint32 arg1)
 {
-	int retvalue = 0;
+	Sint32 retvalue = 0;
 
 	if (arg1)
 		arg1 = 1;
@@ -1092,15 +1092,15 @@ int create_view_menu(int arg1)
 	return REDRAW;
 }
 
-int create_buy_menu(int arg1)
+Sint32 create_buy_menu(Sint32 arg1)
 {
-	int linesdown, retvalue = 0;
+	Sint32 linesdown, retvalue = 0;
 	Uint8* inputkeyboard = query_keyboard();
-	int i;
-	int start_time = query_timer();
+	Sint32 i;
+	Sint32 start_time = query_timer();
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
-	unsigned int current_cost;
-	int clickvalue;
+	Uint32 current_cost;
+	Sint32 clickvalue;
 
 #define STAT_LEFT    44        // where 'INT:' appears
 #define STAT_NUM     86        // where '12' appears
@@ -1203,17 +1203,17 @@ int create_buy_menu(int arg1)
 	mytext->write_xy(240 - (strlen(message)*6/2), 51, message, (unsigned char) RED, 1);
 	myscreen->draw_text_bar(178, 60, 302, 110); // main text box
 	myscreen->draw_text_bar(188, 94, 292, 95); // dividing line
-	sprintf(message, "CASH: %ld", money[current_team_num]);
+	sprintf(message, "CASH: %u", money[current_team_num]);
 	mytext->write_xy(180, 62, message,(unsigned char) DARK_BLUE, 1);
 	current_cost = calculate_cost();
 	mytext->write_xy(180, 72, "COST: ", DARK_BLUE, 1);
-	sprintf(message, "      %lu", current_cost );
+	sprintf(message, "      %u", current_cost );
 	if (current_cost > money[current_team_num])
 		mytext->write_xy(180, 72, message, STAT_CHANGED, 1);
 	else
 		mytext->write_xy(180, 72, message, STAT_COLOR, 1);
 
-	sprintf(message, "TOTAL SCORE: %ld", score[current_team_num]);
+	sprintf(message, "TOTAL SCORE: %u", score[current_team_num]);
 	mytext->write_xy(180, 102, message,(unsigned char) DARK_BLUE, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	grab_mouse();
@@ -1277,17 +1277,17 @@ int create_buy_menu(int arg1)
 			mytext->write_xy(240 - (strlen(message)*6/2), 51, message, (unsigned char) RED, 1);
 			myscreen->draw_text_bar(178, 60, 302, 110); // main text box
 			myscreen->draw_text_bar(188, 94, 292, 95); // dividing line
-			sprintf(message, "CASH: %ld", money[current_team_num]);
+			sprintf(message, "CASH: %u", money[current_team_num]);
 			mytext->write_xy(180, 62, message,(unsigned char) DARK_BLUE, 1);
 			current_cost = calculate_cost();
 			mytext->write_xy(180, 72, "COST: ", DARK_BLUE, 1);
-			sprintf(message, "      %lu", current_cost );
+			sprintf(message, "      %u", current_cost );
 			if (current_cost > money[current_team_num])
 				mytext->write_xy(180, 72, message, STAT_CHANGED, 1);
 			else
 				mytext->write_xy(180, 72, message, STAT_COLOR, 1);
 
-			sprintf(message, "TOTAL SCORE: %ld", score[current_team_num]);
+			sprintf(message, "TOTAL SCORE: %u", score[current_team_num]);
 			mytext->write_xy(180, 102, message,(unsigned char) DARK_BLUE, 1);
 			myscreen->clearfontbuffer(34,8,126-34,24-8);
 			myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
@@ -1367,14 +1367,14 @@ int create_buy_menu(int arg1)
 	return REDRAW;
 }
 
-int create_edit_menu(int arg1)
+Sint32 create_edit_menu(Sint32 arg1)
 {
 	guy * here;
-	int linesdown, i, retvalue=0;
+	Sint32 linesdown, i, retvalue=0;
 	unsigned char showcolor;
-	int start_time = query_timer();
-	unsigned int current_cost;
-	int clickvalue;
+	Sint32 start_time = query_timer();
+	Uint32 current_cost;
+	Sint32 clickvalue;
 
 	if (arg1)
 		arg1 = 1;
@@ -1436,7 +1436,7 @@ int create_edit_menu(int arg1)
 		sprintf(message, "Avg. Victim: %.2lf ",
 		        (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
 		mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-		sprintf(message, " Exp / Kill: %ld ",
+		sprintf(message, " Exp / Kill: %u ",
 		        (current_guy->exp / current_guy->kills) );
 		mytext->write_xy(180, 62, message, DARK_BLUE, 1);
 	}
@@ -1452,7 +1452,7 @@ int create_edit_menu(int arg1)
 		sprintf(message, " Damage/Hit: %.2lf ",
 		        (float) ( (float)current_guy->total_damage / (float)current_guy->total_hits) );
 		mytext->write_xy(180, 69, message, DARK_BLUE, 1);
-		sprintf(message, "   Accuracy: %ld%% ",
+		sprintf(message, "   Accuracy: %d%% ",
 		        (current_guy->total_hits*100)/current_guy->total_shots);
 		mytext->write_xy(180, 76, message, DARK_BLUE, 1);
 	}
@@ -1463,18 +1463,18 @@ int create_edit_menu(int arg1)
 		sprintf(message, "   Accuracy: N/A ");
 		mytext->write_xy(180, 76, message, DARK_BLUE, 1);
 	}
-	sprintf(message, " EXPERIENCE: %ld", current_guy->exp);
+	sprintf(message, " EXPERIENCE: %u", current_guy->exp);
 	mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "CASH: %ld", money[current_guy->teamnum]);
+	sprintf(message, "CASH: %u", money[current_guy->teamnum]);
 	mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
 	current_cost = calculate_cost(here);
 	mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
-	sprintf(message, "      %lu", current_cost );
+	sprintf(message, "      %u", current_cost );
 	if (current_cost > money[current_guy->teamnum])
 		mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
 	else
 		mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
-	sprintf(message, "TOTAL SCORE: %ld", score[current_guy->teamnum]);
+	sprintf(message, "TOTAL SCORE: %u", score[current_guy->teamnum]);
 	mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
 
 	// Display our team setting ..
@@ -1611,7 +1611,7 @@ int create_edit_menu(int arg1)
 				sprintf(message, "Avg. Victim: %.2lf ",
 				        (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
 				mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-				sprintf(message, " Exp / Kill: %ld ",
+				sprintf(message, " Exp / Kill: %u ",
 				        (current_guy->exp / current_guy->kills) );
 				mytext->write_xy(180, 62, message, DARK_BLUE, 1);
 			}
@@ -1627,7 +1627,7 @@ int create_edit_menu(int arg1)
 				sprintf(message, " Damage/Hit: %.2lf ",
 				        (float) ( (float)current_guy->total_damage / (float)current_guy->total_hits) );
 				mytext->write_xy(180, 69, message, DARK_BLUE, 1);
-				sprintf(message, "   Accuracy: %ld%% ",
+				sprintf(message, "   Accuracy: %d%% ",
 				        (current_guy->total_hits*100)/current_guy->total_shots);
 				mytext->write_xy(180, 76, message, DARK_BLUE, 1);
 			}
@@ -1638,18 +1638,18 @@ int create_edit_menu(int arg1)
 				sprintf(message, "   Accuracy: N/A ");
 				mytext->write_xy(180, 76, message, DARK_BLUE, 1);
 			}
-			sprintf(message, " EXPERIENCE: %ld", current_guy->exp);
+			sprintf(message, " EXPERIENCE: %u", current_guy->exp);
 			mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
-			sprintf(message, "CASH: %ld", money[current_guy->teamnum]);
+			sprintf(message, "CASH: %u", money[current_guy->teamnum]);
 			mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
 			current_cost = calculate_cost(here);
 			mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
-			sprintf(message, "      %lu", current_cost );
+			sprintf(message, "      %u", current_cost );
 			if (current_cost > money[current_guy->teamnum])
 				mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
 			else
 				mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
-			sprintf(message, "TOTAL SCORE: %ld", score[current_guy->teamnum]);
+			sprintf(message, "TOTAL SCORE: %u", score[current_guy->teamnum]);
 			mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
 
 			// Display our team setting ..
@@ -1669,10 +1669,10 @@ int create_edit_menu(int arg1)
 	return REDRAW;
 }
 
-int create_load_menu(int arg1)
+Sint32 create_load_menu(Sint32 arg1)
 {
-	int retvalue=0;
-	int i;
+	Sint32 retvalue=0;
+	Sint32 i;
 	char temp_filename[20];
 	text loadtext(myscreen);
 	char message[80];
@@ -1694,7 +1694,7 @@ int create_load_menu(int arg1)
 
 	for (i=0; i < 10; i++)
 	{
-		sprintf(temp_filename, "save%ld", i+1);
+		sprintf(temp_filename, "save%d", i+1);
 		strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 		myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 		allbuttons[i]->vdisplay();
@@ -1734,7 +1734,7 @@ int create_load_menu(int arg1)
 			loadtext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
 			for (i=0; i < 10; i++)
 			{
-				sprintf(temp_filename, "save%ld", i+1);
+				sprintf(temp_filename, "save%d", i+1);
 				strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 				myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 				allbuttons[i]->vdisplay();
@@ -1755,10 +1755,10 @@ int create_load_menu(int arg1)
 	return REDRAW;
 }
 
-int create_save_menu(int arg1)
+Sint32 create_save_menu(Sint32 arg1)
 {
-	int retvalue=0;
-	int i;
+	Sint32 retvalue=0;
+	Sint32 i;
 	char temp_filename[20];
 	text savetext(myscreen);
 	char message[80];
@@ -1779,7 +1779,7 @@ int create_save_menu(int arg1)
 
 	for (i=0; i < 10; i++)
 	{
-		sprintf(temp_filename, "save%ld", i+1);
+		sprintf(temp_filename, "save%d", i+1);
 		strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 		myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 		allbuttons[i]->vdisplay();
@@ -1815,7 +1815,7 @@ int create_save_menu(int arg1)
 			savetext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
 			for (i=0; i < 10; i++)
 			{
-				sprintf(temp_filename, "save%ld", i+1);
+				sprintf(temp_filename, "save%d", i+1);
 				strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
 				myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
 				allbuttons[i]->vdisplay();
@@ -1839,7 +1839,7 @@ int create_save_menu(int arg1)
 
 }
 
-int increase_stat(int whatstat, int howmuch)
+Sint32 increase_stat(Sint32 whatstat, Sint32 howmuch)
 {
 	switch(whatstat)
 	{
@@ -1868,7 +1868,7 @@ int increase_stat(int whatstat, int howmuch)
 	return OK;
 }
 
-int decrease_stat(int whatstat, int howmuch)
+Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 {
 	switch(whatstat)
 	{
@@ -1897,11 +1897,11 @@ int decrease_stat(int whatstat, int howmuch)
 	return OK;
 }
 
-unsigned int calculate_cost()
+Uint32 calculate_cost()
 {
 	guy  *ob = current_guy;
-	int temp;
-	int myfamily;
+	Sint32 temp;
+	Sint32 myfamily;
 
 	if (!ob)
 		return 0;
@@ -1924,21 +1924,21 @@ unsigned int calculate_cost()
 		ob->level = statlist[myfamily][BUT_LEVEL];
 
 	// Now figure out costs ..
-	temp += (int)((pow( (int)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (int)statcosts[myfamily][BUT_STR]) ;
-	temp += (int)((pow( (int)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (int)statcosts[myfamily][BUT_DEX]);
-	temp += (int)((pow( (int)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (int)statcosts[myfamily][BUT_CON]);
-	temp += (int)((pow( (int)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (int)statcosts[myfamily][BUT_INT]);
-	temp += (int)((pow( (int)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (int)statcosts[myfamily][BUT_ARMOR]);
-	temp += (int)((pow( (int)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (int)statcosts[myfamily][BUT_LEVEL]);
-	if ((signed int) calculate_exp(ob->level) < 0) // overflow
+	temp += (Sint32)((pow( (Sint32)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_STR]) ;
+	temp += (Sint32)((pow( (Sint32)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_DEX]);
+	temp += (Sint32)((pow( (Sint32)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_CON]);
+	temp += (Sint32)((pow( (Sint32)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_INT]);
+	temp += (Sint32)((pow( (Sint32)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
+	temp += (Sint32)((pow( (Sint32)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_LEVEL]);
+	if ((Sint32) calculate_exp(ob->level) < 0) // overflow
 		ob->level = 1;
-	temp += (int) (calculate_exp(ob->level));
+	temp += (Sint32) (calculate_exp(ob->level));
 	if (temp < 0)
 	{
 		//guytemp = new guy(current_guy->family);
@@ -1948,15 +1948,15 @@ unsigned int calculate_cost()
 		//temp = -1;  // This used to be an error code checked by picker.cpp line 2213
 		temp = 0;
 	}
-	return (unsigned int)temp;
+	return (Uint32)temp;
 }
 
 // This version compares current_guy versus the old version ..
-unsigned int calculate_cost(guy  *oldguy)
+Uint32 calculate_cost(guy  *oldguy)
 {
 	guy  *ob = current_guy;
-	int temp;
-	int myfamily;
+	Sint32 temp;
+	Sint32 myfamily;
 
 	if (!ob || !oldguy)
 		return 0;
@@ -1981,36 +1981,36 @@ unsigned int calculate_cost(guy  *oldguy)
 	// Now figure out costs ..
 
 	// First we have our 'total increased value..'
-	temp += (int)((pow( (int)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (int)statcosts[myfamily][BUT_STR]) ;
-	temp += (int)((pow( (int)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (int)statcosts[myfamily][BUT_DEX]);
-	temp += (int)((pow( (int)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (int)statcosts[myfamily][BUT_CON]);
-	temp += (int)((pow( (int)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (int)statcosts[myfamily][BUT_INT]);
-	temp += (int)((pow( (int)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (int)statcosts[myfamily][BUT_ARMOR]);
-	temp += (int)((pow( (int)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (int)statcosts[myfamily][BUT_LEVEL]);
+	temp += (Sint32)((pow( (Sint32)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_STR]) ;
+	temp += (Sint32)((pow( (Sint32)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_DEX]);
+	temp += (Sint32)((pow( (Sint32)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_CON]);
+	temp += (Sint32)((pow( (Sint32)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_INT]);
+	temp += (Sint32)((pow( (Sint32)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
+	temp += (Sint32)((pow( (Sint32)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_LEVEL]);
 
 	// Now subtract what we've already paid for ..
-	temp -= (int)((pow( (int)(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (int)statcosts[myfamily][BUT_STR]);
-	temp -= (int)((pow( (int)(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (int)statcosts[myfamily][BUT_DEX]);
-	temp -= (int)((pow( (int)(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (int)statcosts[myfamily][BUT_CON]);
-	temp -= (int)((pow( (int)(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (int)statcosts[myfamily][BUT_INT]);
-	temp -= (int)((pow( (int)(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (int)statcosts[myfamily][BUT_ARMOR]);
-	temp -= (int)((pow( (int)(oldguy->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (int)statcosts[myfamily][BUT_LEVEL]);
+	temp -= (Sint32)((pow( (Sint32)(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_STR]);
+	temp -= (Sint32)((pow( (Sint32)(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_DEX]);
+	temp -= (Sint32)((pow( (Sint32)(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_CON]);
+	temp -= (Sint32)((pow( (Sint32)(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_INT]);
+	temp -= (Sint32)((pow( (Sint32)(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
+	temp -= (Sint32)((pow( (Sint32)(oldguy->level - statlist[myfamily][BUT_LEVEL]), RAISE))
+	               * (Sint32)statcosts[myfamily][BUT_LEVEL]);
 
 	// Add on extra level cost ..
 	if (calculate_exp(ob->level) > oldguy->exp)
-		temp += (int) ( ( (calculate_exp(ob->level) ) - oldguy->exp)*(ob->level-1) );
+		temp += (Sint32) ( ( (calculate_exp(ob->level) ) - oldguy->exp)*(ob->level-1) );
 
 	if (temp < 0)
 	{
@@ -2020,12 +2020,12 @@ unsigned int calculate_cost(guy  *oldguy)
 
 	}
 
-	return (unsigned int)temp;
+	return (Uint32)temp;
 }
 
-int cycle_guy(int whichway)
+Sint32 cycle_guy(Sint32 whichway)
 {
-	int newfamily;
+	Sint32 newfamily;
 	char tempnum[5];
 
 	if (!current_guy)
@@ -2052,7 +2052,7 @@ int cycle_guy(int whichway)
 	// Make the new guy
 	current_guy = new guy(newfamily);
 	current_guy->teamnum = current_team_num;
-	sprintf(tempnum, "%ld", numbought[newfamily]+1);
+	sprintf(tempnum, "%d", numbought[newfamily]+1);
 	strcat(current_guy->name, tempnum);
 
 	show_guy(0, 0);
@@ -2065,12 +2065,12 @@ int cycle_guy(int whichway)
 	return OK;
 }
 
-void show_guy(int frames, int who) // shows the current guy ..
+void show_guy(Sint32 frames, Sint32 who) // shows the current guy ..
 {
 	walker *mywalker;
 	short centerx = 80, centery = 45; // center for walker
-	int i;
-	int newfamily;
+	Sint32 i;
+	Sint32 newfamily;
 
 
 	if (!current_guy)
@@ -2108,7 +2108,7 @@ void show_guy(int frames, int who) // shows the current guy ..
 }
 // Sets current_guy to 'whichguy' in the teamlist, and
 // returns a COPY of him as the function result
-int cycle_team_guy(int whichway)
+Sint32 cycle_team_guy(Sint32 whichway)
 {
 	if (teamsize < 1)
 		return -1;
@@ -2151,9 +2151,9 @@ int cycle_team_guy(int whichway)
 	return OK;
 }
 
-int add_guy(guy *newguy)
+Sint32 add_guy(guy *newguy)
 {
-	int i;
+	Sint32 i;
 
 	for (i=0; i < MAXTEAM; i++)
 		if (!ourteam[i])
@@ -2167,7 +2167,7 @@ int add_guy(guy *newguy)
 	return -1;
 }
 
-int name_guy(int arg)  // 0 == current_guy, 1 == ourteam[editguy]
+Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 {
 	text nametext(myscreen);
 	char tempnum[30];  // don't ask
@@ -2201,14 +2201,14 @@ int name_guy(int arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	return REDRAW;
 }
 
-int add_guy(int ignoreme)
+Sint32 add_guy(Sint32 ignoreme)
 {
-	int newfamily = current_guy->family;
+	Sint32 newfamily = current_guy->family;
 	char tempnum[12];
 	//buffers: changed typename to type_name due to some compile error
 	char type_name[30];
 	static text addtext(myscreen);
-	int i;
+	Sint32 i;
 
 	if (teamsize >= MAXTEAM) // abort abort!
 		return -1;
@@ -2253,7 +2253,7 @@ int add_guy(int ignoreme)
 			strcpy(type_name, current_guy->name);
 			statscopy(current_guy, ourteam[i]); // set to same stats as just bought
 			strcpy(current_guy->name, type_name);
-			sprintf(tempnum, "%ld", numbought[newfamily]+1);
+			sprintf(tempnum, "%d", numbought[newfamily]+1);
 			strcat(current_guy->name, tempnum);
 
 			// Return okay status
@@ -2264,10 +2264,10 @@ int add_guy(int ignoreme)
 }
 
 // Accept changes ..
-int edit_guy(int arg1)
+Sint32 edit_guy(Sint32 arg1)
 {
 	guy *here;
-	int *cheatmouse = query_mouse();
+	Sint32 *cheatmouse = query_mouse();
 
 	if (arg1)
 		arg1 = 1;
@@ -2305,10 +2305,10 @@ int edit_guy(int arg1)
 	return OK;
 }
 
-int how_many(int whatfamily)    // how many guys of family X on the team?
+Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 {
-	int counter = 0;
-	int i;
+	Sint32 counter = 0;
+	Sint32 i;
 
 	for (i=0; i < MAXTEAM; i++)
 		if (ourteam[i] && ourteam[i]->family == whatfamily)
@@ -2317,18 +2317,18 @@ int how_many(int whatfamily)    // how many guys of family X on the team?
 	return counter;
 }
 
-int do_save(int arg1)
+Sint32 do_save(Sint32 arg1)
 {
 	char newname[8];
 	char newnum[8];
 	static text savetext(myscreen);
-	int xloc, yloc, x2loc, y2loc;
+	Sint32 xloc, yloc, x2loc, y2loc;
 
 	strcpy(newname, "save");
 
 	//buffers: PORT: changed itoa to sprintf, might be BUGGY
 	//itoa(arg1, newnum, 10);
-	sprintf(newnum,"%li",arg1);
+	sprintf(newnum,"%d",arg1);
 
 	strcat(newname, newnum);
 	release_mouse();
@@ -2351,7 +2351,7 @@ int do_save(int arg1)
 	return REDRAW;
 }
 
-int do_load(int arg1)
+Sint32 do_load(Sint32 arg1)
 {
 	char newname[8];
 	char newnum[8];
@@ -2365,39 +2365,39 @@ int do_load(int arg1)
 
 	//buffers: PORT: changed itoa to sprintf
 	//itoa(arg1, newnum, 10);
-	sprintf(newnum,"%li",arg1);
+	sprintf(newnum,"%d",arg1);
 
 	strcat(newname, newnum);
 	load_team_list_one(newname);
 	return REDRAW;
 }
 
-int save_team_list(const char * filename)
+Sint32 save_team_list(const char * filename)
 {
 	char filler[50];// = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *outfile;
 	char temp_filename[80];
 	char savedgame[40]; // for 38-byte saved game name
 	guy *here;
-	int i, j;
+	Sint32 i, j;
 
 	char temptext[10];
 	char temp_version = 7;
 	unsigned char temp_playermode = playermode;
-	int next_scenario = scen_level;
-	unsigned int newcash = money[0];
-	unsigned int newscore = score[0];
-	//  int numguys;
-	int listsize;
+	Sint32 next_scenario = scen_level;
+	Uint32 newcash = money[0];
+	Uint32 newscore = score[0];
+	//  Sint32 numguys;
+	Sint32 listsize;
 
 	char tempname[12] = "FRED";
 	char guyname[12] = "JOE";
 	char temp_order, temp_family;
-	int temp_str, temp_dex, temp_con;
-	int temp_int, temp_arm, temp_lev;
-	unsigned  int temp_exp;
-	int temp_kills, temp_level_kills;
-	int temp_td, temp_th, temp_ts;
+	Sint32 temp_str, temp_dex, temp_con;
+	Sint32 temp_int, temp_arm, temp_lev;
+	Uint32 temp_exp;
+	Sint32 temp_kills, temp_level_kills;
+	Sint32 temp_td, temp_th, temp_ts;
 	short temp_teamnum;
 	short temp_allied;
 	short temp_registered;
@@ -2412,14 +2412,14 @@ int save_team_list(const char * filename)
 	// 2-bytes Registered or not          // Version 7+
 	// 40-byte saved game name (version 2 and up only!)
 	// 2-bytes (int) = scenario number
-	// 4-bytes (int)= cash (unsigned)
-	// 4-bytes (int)= score (unsigned)
-	// 4-bytes (int)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (int)= score-B (unsigned)  // version 6+
-	// 4-bytes (int)= cash-C (unsigned)
-	// 4-bytes (int)= score-C (unsigned)
-	// 4-bytes (int)= cash-D (unsigned)
-	// 4-bytes (int)= score-D (unsigned)
+	// 4-bytes (Sint32)= cash (unsigned)
+	// 4-bytes (Sint32)= score (unsigned)
+	// 4-bytes (Sint32)= cash-B (unsigned)   // All alternate scores
+	// 4-bytes (Sint32)= score-B (unsigned)  // version 6+
+	// 4-bytes (Sint32)= cash-C (unsigned)
+	// 4-bytes (Sint32)= score-C (unsigned)
+	// 4-bytes (Sint32)= cash-D (unsigned)
+	// 4-bytes (Sint32)= score-D (unsigned)
 	// 2-bytes allied setting              // Version 7+
 	// 2-bytes (int) = # of team members in list
 	// 1-byte number of players
@@ -2434,7 +2434,7 @@ int save_team_list(const char * filename)
 	// 2-bytes intelligence
 	// 2-bytes armor
 	// 2-bytes level
-	// 4-bytes unsigned int exp
+	// 4-bytes Uint32 exp
 	// 2-bytes # kills, v.3+
 	// 4-bytes # level kills, v.3+
 	// 4-bytes total damage done, v.4+
@@ -2572,7 +2572,7 @@ int save_team_list(const char * filename)
 	return 1;
 }
 
-int load_team_list_one(const char * filename)
+Sint32 load_team_list_one(const char * filename)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	FILE  *infile;
@@ -2581,24 +2581,24 @@ int load_team_list_one(const char * filename)
 	char temptext[10] = "GTL";
 	char savedgame[40];
 	char temp_version = 7;
-	int next_scenario = 1;
-	unsigned int newcash = money[0];
-	unsigned int newscore = 0;
-	//  int numguys;
-	int listsize = 0;
-	int i;
+	Sint32 next_scenario = 1;
+	Uint32 newcash = money[0];
+	Uint32 newscore = 0;
+	//  Sint32 numguys;
+	Sint32 listsize = 0;
+	Sint32 i;
 	unsigned char temp_playermode;
 
 	char tempname[12] = "FRED";
 	char guyname[12] = "JOE";
 	char temp_order, temp_family;
 
-	int temp_str, temp_dex, temp_con;
-	int temp_int, temp_arm, temp_lev;
-	unsigned int temp_exp;
+	Sint32 temp_str, temp_dex, temp_con;
+	Sint32 temp_int, temp_arm, temp_lev;
+	Uint32 temp_exp;
 	guy  *tempguy;
-	int temp_kills, temp_level_kills;
-	int temp_td, temp_th, temp_ts;
+	Sint32 temp_kills, temp_level_kills;
+	Sint32 temp_td, temp_th, temp_ts;
 	short temp_teamnum;           // v.5+
 	short temp_allied;            // v.7+
 	short temp_registered;        // v.7+
@@ -2611,14 +2611,14 @@ int load_team_list_one(const char * filename)
 	// 2-bytes registered mark            // Versions 7+
 	// 40-byte saved-game name (version 2 and up only!)
 	// 2-bytes (int) = scenario number
-	// 4-bytes (int)= cash (unsigned)
-	// 4-bytes (int)= score (unsigned)
-	// 4-bytes (int)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (int)= score-B (unsigned)  // version 6+
-	// 4-bytes (int)= cash-C (unsigned)
-	// 4-bytes (int)= score-C (unsigned)
-	// 4-bytes (int)= cash-D (unsigned)
-	// 4-bytes (int)= score-D (unsigned)
+	// 4-bytes (Sint32)= cash (unsigned)
+	// 4-bytes (Sint32)= score (unsigned)
+	// 4-bytes (Sint32)= cash-B (unsigned)   // All alternate scores
+	// 4-bytes (Sint32)= score-B (unsigned)  // version 6+
+	// 4-bytes (Sint32)= cash-C (unsigned)
+	// 4-bytes (Sint32)= score-C (unsigned)
+	// 4-bytes (Sint32)= cash-D (unsigned)
+	// 4-bytes (Sint32)= score-D (unsigned)
 	// 2-bytes Allied mode                // Versions 7+
 	// 2-bytes (int) = # of team members in list
 	// 1-byte number of players
@@ -2633,7 +2633,7 @@ int load_team_list_one(const char * filename)
 	// 2-bytes intelligence
 	// 2-bytes armor
 	// 2-bytes level
-	// 4-bytes unsigned int exp
+	// 4-bytes Uint32 exp
 	// 2-bytes # kills, v. 3+
 	// 4-bytes total level kills, v. 3+
 	// 4-bytes total damage done, v.4+
@@ -2910,10 +2910,10 @@ const char* get_saved_name(const char * filename)
 	return (savedgame);
 }
 
-int delete_all()
+Sint32 delete_all()
 {
-	int i;
-	int counter = teamsize;
+	Sint32 i;
+	Sint32 counter = teamsize;
 
 	for (i=0; i < MAXTEAM; i++)
 		if (ourteam[i])
@@ -2927,18 +2927,18 @@ int delete_all()
 	return counter;
 }
 
-int add_money(int howmuch)
+Sint32 add_money(Sint32 howmuch)
 {
-	money[current_guy->teamnum] += (int) howmuch;
+	money[current_guy->teamnum] += (Sint32) howmuch;
 	return money[current_guy->teamnum];
 }
 
-int go_menu(int arg1)
+Sint32 go_menu(Sint32 arg1)
 {
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
 	static text gotext(myscreen);
-	int temptime;
+	Sint32 temptime;
 
 	if (arg1)
 		arg1 = 1;
@@ -3038,7 +3038,7 @@ void statscopy(guy *dest, guy *source)
 	strcpy(dest->name, source->name);
 }
 
-void quit(int arg1)
+void quit(Sint32 arg1)
 {
 	if (arg1)
 		arg1 = 1;
@@ -3052,9 +3052,9 @@ void quit(int arg1)
 	exit(0);
 }
 
-int set_player_mode(int howmany)
+Sint32 set_player_mode(Sint32 howmany)
 {
-	int count = 0;
+	Sint32 count = 0;
 	playermode = howmany;
 
 	while (allbuttons[count])
@@ -3067,9 +3067,9 @@ int set_player_mode(int howmany)
 	return OK;
 }
 
-int calculate_level(unsigned int experience)
+Sint32 calculate_level(Uint32 experience)
 {
-	int result=1;
+	Sint32 result=1;
 
 	while (calculate_exp(result) <= experience)
 		result++;
@@ -3106,13 +3106,13 @@ int calculate_level(unsigned int experience)
 	*/
 }
 
-unsigned int calculate_exp(int level)
+Uint32 calculate_exp(Sint32 level)
 {
 
 
 	/*
 	  if (level > 13)
-	    return (int) (2*calculate_exp(level-1) );
+	    return (Sint32) (2*calculate_exp(level-1) );
 	  if (level == 13)
 	         return 44232000L;
 	  else if (level == 12)
@@ -3143,16 +3143,16 @@ unsigned int calculate_exp(int level)
 	*/
 
 	if (level > 2)
-		return (int) ( (8000*(level+10)) / 10) + calculate_exp(level-1);
+		return (Sint32) ( (8000*(level+10)) / 10) + calculate_exp(level-1);
 	else if (level > 1)
-		return (int) 8000;
+		return (Sint32) 8000;
 	else
-		return (int) 0;
+		return (Sint32) 0;
 }
 
 void clear_levels()
 {
-	int i;
+	Sint32 i;
 
 	// Set all of our level-completion status to off
 	for (i=0; i < MAX_LEVELS; i++)
@@ -3162,12 +3162,12 @@ void clear_levels()
 
 
 //new functions
-int return_menu(int arg)
+Sint32 return_menu(Sint32 arg)
            {
 	           return arg;
            }
 
-           int create_detail_menu(guy *arg1)
+           Sint32 create_detail_menu(guy *arg1)
            {
 #define DETAIL_LM 11             // left edge margin ..
 #define DETAIL_MM 164            // center margin
@@ -3175,10 +3175,10 @@ int return_menu(int arg)
 #define WL(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, DARK_BLUE, 1)
 #define WR(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, DARK_BLUE, 1)
 
-	           int retvalue = 0;
+	           Sint32 retvalue = 0;
 	           guy *thisguy;
-	           int start_time = query_timer();
-	           int *detailmouse;
+	           Sint32 start_time = query_timer();
+	           Sint32 *detailmouse;
 
 	           release_mouse();
 
@@ -3260,7 +3260,7 @@ int return_menu(int arg)
 			           {
 				           WR(0, " Lots of Rocks");
 				           WR(1, "  Like #2, but more     ");
-				           WR(2, "  rocks, with a inter  ");
+				           WR(2, "  rocks, with a longer  ");
 				           WR(3 ,"  thrown range.         ");
 			           }
 			           // Level 10 things
@@ -3625,14 +3625,14 @@ int return_menu(int arg)
            }
 
 
-           int do_set_scen_level(int arg1)
+           Sint32 do_set_scen_level(Sint32 arg1)
            {
 	           char newname[8];
 	           char newnum[8];
 	           static text savetext(myscreen);
-	           int xloc, yloc, x2loc, y2loc;
-	           int templevel;
-	           int temptime;
+	           Sint32 xloc, yloc, x2loc, y2loc;
+	           Sint32 templevel;
+	           Sint32 temptime;
 
 
 	           //myscreen->soundp->play_sound(SOUND_YO);
@@ -3653,13 +3653,13 @@ int return_menu(int arg)
 
 	           //buffers: changed itoa to sprintf
 	           //itoa(scen_level, newnum, 10);
-	           sprintf(newnum,"%li",scen_level);
+	           sprintf(newnum,"%d",scen_level);
 
 	           templevel = atoi(savetext.input_string(xloc+50, yloc+11, 8, newnum) );
 
 	           //buffers: changed itoa to sprintf
 	           //itoa(templevel, newnum, 10);
-	           sprintf(newnum,"%li",templevel);
+	           sprintf(newnum,"%d",templevel);
 
 	           strcpy(newname, "scen");
 	           strcat(newname, newnum);
@@ -3694,7 +3694,7 @@ int return_menu(int arg)
            }
            */
 
-           int set_difficulty()
+           Sint32 set_difficulty()
            {
 	           char message[80];
 
@@ -3708,7 +3708,7 @@ int return_menu(int arg)
 	           return OK;
            }
 
-           int change_teamnum(int arg)
+           Sint32 change_teamnum(Sint32 arg)
            {
 	           // Change the team number of the current guy
 	           short current_team;
@@ -3738,7 +3738,7 @@ int return_menu(int arg)
 	           return OK;
            }
 
-           int change_hire_teamnum(int arg)
+           Sint32 change_hire_teamnum(Sint32 arg)
            {
 	           // Change the team number of the hiring menu ..
 	           char  message[80];
@@ -3764,7 +3764,7 @@ int return_menu(int arg)
 	           return OK;
            }
 
-           int change_allied()
+           Sint32 change_allied()
            {
 	           // Change our allied mode (on or off)
 	           char message[80];

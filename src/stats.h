@@ -26,22 +26,22 @@
 //
 
 // These are for the bit-flags
-#define BIT_FLYING     (int)     1  // fly over water, trees
-#define BIT_SWIMMING   (int)     2  // move over water
-#define BIT_ANIMATE    (int)     4  // animate even when not moving
-#define BIT_INVINCIBLE (int)     8  // can't be harmed
-#define BIT_NO_RANGED  (int)    16  // no ranged attack
-#define BIT_IMMORTAL   (int)    32  // for weapons that don't die when
+#define BIT_FLYING     (Sint32)     1  // fly over water, trees
+#define BIT_SWIMMING   (Sint32)     2  // move over water
+#define BIT_ANIMATE    (Sint32)     4  // animate even when not moving
+#define BIT_INVINCIBLE (Sint32)     8  // can't be harmed
+#define BIT_NO_RANGED  (Sint32)    16  // no ranged attack
+#define BIT_IMMORTAL   (Sint32)    32  // for weapons that don't die when
 //   they hit
-#define BIT_NO_COLLIDE (int)    64  // fly through walkers
-#define BIT_PHANTOM    (int)   128  // use phantomputbuffer instead of
+#define BIT_NO_COLLIDE (Sint32)    64  // fly through walkers
+#define BIT_PHANTOM    (Sint32)   128  // use phantomputbuffer instead of
 //   walkerputbuffer
-#define BIT_NAMED      (int)   256  // has a name (will have outline)
-#define BIT_FORESTWALK (int)   512  // can walk through forests
-#define BIT_MAGICAL    (int)  1024  // generally for magical weapons
-#define BIT_FIRE       (int)  2048  // for any flame weapons
-#define BIT_ETHEREAL   (int)  4096  // fly "through" walls
-#define BIT_LAST       (int)  8192
+#define BIT_NAMED      (Sint32)   256  // has a name (will have outline)
+#define BIT_FORESTWALK (Sint32)   512  // can walk through forests
+#define BIT_MAGICAL    (Sint32)  1024  // generally for magical weapons
+#define BIT_FIRE       (Sint32)  2048  // for any flame weapons
+#define BIT_ETHEREAL   (Sint32)  4096  // fly "through" walls
+#define BIT_LAST       (Sint32)  8192
 // Other special effects, etc.
 #define FAERIE_FREEZE_TIME    40
 
@@ -64,8 +64,8 @@ class statistics
 		short do_command();
 		void hit_response(walker * who);
 		void yell_for_help(walker *foe);  // yell and run away
-		short query_bit_flags(int myvalue);
-		void set_bit_flags(int someflag, short newvalue); // sets a single flag
+		short query_bit_flags(Sint32 myvalue);
+		void set_bit_flags(Sint32 someflag, short newvalue); // sets a single flag
 		short right_blocked(); // is our right blocked?
 		short right_forward_blocked();
 		short right_back_blocked();
@@ -77,31 +77,31 @@ class statistics
 
 		char name[12]; // for NPC's, normally ..
 		char old_order, old_family;
-		unsigned int last_distance;
-		int current_distance;  // Distances (to foe) are used for AI walking
-		int bit_flags;         // holds (currently) 32 bit flags
+		Uint32 last_distance;
+		Sint32 current_distance;  // Distances (to foe) are used for AI walking
+		Sint32 bit_flags;         // holds (currently) 32 bit flags
 		short delete_me;
-		int hitpoints;
-		int max_hitpoints;
-		int magicpoints;
-		int max_magicpoints;
+		Sint32 hitpoints;
+		Sint32 max_hitpoints;
+		Sint32 magicpoints;
+		Sint32 max_magicpoints;
 		unsigned short level;
 		short frozen_delay;              // use for paralyzing..
 		unsigned short special_cost[NUM_SPECIALS];  // cost of our special ability
 		short weapon_cost;                          // cost of our weapon
-		int max_heal_delay;
-		int current_heal_delay;
-		int max_magic_delay;
-		int current_magic_delay;
-		int magic_per_round; //magic we regain each round
-		int heal_per_round; //hp we regain each round
-		int armor; // reduces damage against us
+		Sint32 max_heal_delay;
+		Sint32 current_heal_delay;
+		Sint32 max_magic_delay;
+		Sint32 current_magic_delay;
+		Sint32 magic_per_round; //magic we regain each round
+		Sint32 heal_per_round; //hp we regain each round
+		Sint32 armor; // reduces damage against us
 		walker  * controller;
 		command *commandlist; // head of command list
 		command *endlist;     // end of command list
 	private:
 		//       short com1, com2;        // parameters to command
-		int walkrounds; //number of rounds we've spent rightwalking
+		Sint32 walkrounds; //number of rounds we've spent rightwalking
 
 };
 

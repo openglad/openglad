@@ -23,7 +23,7 @@
 #include "video.h"
 #include "loader.h"
 
-// Goddamned function doesn't beint in screen, much less as a C style extern!
+// Goddamned function doesn't belong in screen, much less as a C style extern!
 //   I'll fix this eventually, if I ever get hold of that part of the code.
 short load_scenario(const char * filename, screen * master);
 
@@ -65,10 +65,10 @@ class screen : public video
 		void draw_panels(short howmany);
 		walker  * find_nearest_blood(walker  *who);
 		walker* find_nearest_player(walker *ob);
-		oblink* find_in_range(oblink *somelist, int range, short *howmany, walker  *ob);
-		oblink* find_foes_in_range(oblink *somelist, int range, short *howmany, walker  *ob);
-		oblink* find_friends_in_range(oblink *somelist, int range, short *howmany, walker  *ob);
-		oblink* find_foe_weapons_in_range(oblink *somelist, int range, short *howmany, walker  *ob);
+		oblink* find_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
+		oblink* find_foes_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
+		oblink* find_friends_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
+		oblink* find_foe_weapons_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
 		char damage_tile(short xloc, short yloc); // damage the specified tile
 		void do_notify(const char *message, walker  *who);  // printing text
 		void report_mem();
@@ -95,9 +95,9 @@ class screen : public video
 		short my_team;
 		guy  *first_guy;
 		unsigned char  *grid;
-		int maxx,maxy;
-		int pixmaxx,pixmaxy;
-		int topx, topy;
+		Sint32 maxx,maxy;
+		Sint32 pixmaxx,pixmaxy;
+		Sint32 topx, topy;
 		short control_hp; // last turn's hitpoints
 		oblink  *oblist;
 		oblink  *fxlist;  // fx--explosions, etc.
@@ -105,20 +105,20 @@ class screen : public video
 		loader * myloader;
 		char end;
 		pixieN  *back[PIX_MAX];
-		int numobs;
+		Sint32 numobs;
 		obmap  *myobmap;
 		signed char timer_wait;
 		short scen_num;
-		unsigned int score;
-		unsigned int m_score[4];
-		unsigned int totalcash;
-		unsigned int m_totalcash[4];
-		unsigned int totalscore;
-		unsigned int m_totalscore[4];
+		Uint32 score;
+		Uint32 m_score[4];
+		Uint32 totalcash;
+		Uint32 m_totalcash[4];
+		Uint32 totalscore;
+		Uint32 m_totalscore[4];
 		viewscreen  * viewob[5];
 		short numviews;
-		unsigned int timerstart;
-		unsigned int framecount;
+		Uint32 timerstart;
+		Uint32 framecount;
 		walker * weapfree; //free weapons for re-allocation
 		char scenario_title[30]; // used in scenarios v. 6+
 		short allied_mode;

@@ -92,9 +92,9 @@ int key4[] = {
              };
 
 // This is for saving/loading the key preferences
-int save_key_prefs();
-int load_key_prefs();
-// Zardus: no inter unsigned
+Sint32 save_key_prefs();
+Sint32 load_key_prefs();
+// Zardus: no longer unsigned
 int get_keypress();
 #define KEY_FILE "keyprefs.dat"
 
@@ -125,7 +125,7 @@ options *theprefs;
 viewscreen::viewscreen(short x, short y, short width,
                        short height, short whatnum, screen  *myscreen)
 {
-	int i;
+	Sint32 i;
 
 	screenp = myscreen;
 	xview = width;
@@ -253,7 +253,7 @@ short viewscreen::redraw()
 
 void viewscreen::display_text()
 {
-	int i;
+	Sint32 i;
 
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
@@ -271,9 +271,9 @@ void viewscreen::display_text()
 			shift_text(i); // shift text up, starting at position i
 }
 
-void viewscreen::shift_text(int row)
+void viewscreen::shift_text(Sint32 row)
 {
-	int i;
+	Sint32 i;
 
 	for (i=row; i < (MAX_MESSAGES-1) ; i++)
 	{
@@ -307,7 +307,7 @@ short viewscreen::input(const SDL_Event& event)
 	static short changedteam[6] = {0, 0, 0, 0, 0, 0};  // for switching team
 	//buffers: PORT: this doesn't compile: union REGS inregs,outregs;
 	short newfam; //oldfam?
-	unsigned int totaltime, totalframes, framespersec;
+	Uint32 totaltime, totalframes, framespersec;
 	walker *newob; // for general-purpose use
 	walker  * oldcontrol = control; // So we know if we changed guys
 
@@ -409,7 +409,7 @@ short viewscreen::input(const SDL_Event& event)
             totaltime = (query_timer_control() - screenp->timerstart)/72;
             totalframes = (screenp->framecount);
             framespersec = totalframes / totaltime;
-            sprintf(somemessage, "%ld FRAMES PER SEC", framespersec);
+            sprintf(somemessage, "%u FRAMES PER SEC", framespersec);
             screenp->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
         }
 
@@ -1031,7 +1031,7 @@ short viewscreen::continuous_input()
 
 void viewscreen::set_display_text(const char *newtext, short numcycles)
 {
-	int i;
+	Sint32 i;
 
 	if (!newtext)
 		return;
@@ -1056,7 +1056,7 @@ void viewscreen::set_display_text(const char *newtext, short numcycles)
 // Blanks the screen text
 void viewscreen::clear_text()
 {
-	int i;
+	Sint32 i;
 	for (i=0; i < MAX_MESSAGES; i++)
 		textlist[i][0] = 0;
 }
@@ -1299,7 +1299,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	list->next = NULL;
 	temp = new oblink;
 	Uint8* teamkeys;
-	int currentcycle = 0, cycletime = 30000;
+	Sint32 currentcycle = 0, cycletime = 30000;
 
 	screenp->redrawme = 1;
 	screenp->clearfontbuffer(left,top,right-left,bottom-top);
@@ -1442,7 +1442,7 @@ void viewscreen::options_menu()
 {
 	static text optiontext(screenp);
 	static Uint8* opkeys;
-	int gamespeed;
+	Sint32 gamespeed;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];
 
@@ -1470,7 +1470,7 @@ void viewscreen::options_menu()
 
 
 	gamespeed = change_speed(0);
-	sprintf(message, "Change Game Speed (+/-): %2ld  ", gamespeed);
+	sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
 	optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 	switch (prefs[PREF_VIEW])
 	{
@@ -1581,7 +1581,7 @@ void viewscreen::options_menu()
 		if (opkeys[SDLK_KP_PLUS]) // faster game speed
 		{
 			gamespeed = change_speed(1);
-			sprintf(message, "Change Game Speed (+/-): %2ld  ", gamespeed);
+			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
 			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1591,7 +1591,7 @@ void viewscreen::options_menu()
 		if (opkeys[SDLK_KP_MINUS]) // slower game speed
 		{
 			gamespeed = change_speed(-1);
-			sprintf(message, "Change Game Speed (+/-): %2ld  ", gamespeed);
+			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
 			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
@@ -1834,7 +1834,7 @@ void viewscreen::options_menu()
 }
 
 
-int viewscreen::change_speed(int whichway)
+Sint32 viewscreen::change_speed(Sint32 whichway)
 {
 	if (whichway > 0)
 	{
@@ -1848,10 +1848,10 @@ int viewscreen::change_speed(int whichway)
 		if (screenp->timer_wait > 20)
 			screenp->timer_wait = 20;
 	}
-	return (int) ((20-screenp->timer_wait)/2+1);
+	return (Sint32) ((20-screenp->timer_wait)/2+1);
 }
 
-int viewscreen::change_gamma(int whichway)
+Sint32 viewscreen::change_gamma(Sint32 whichway)
 {
 	if (whichway > 1)  // lighter
 	{
@@ -1869,7 +1869,7 @@ int viewscreen::change_gamma(int whichway)
 		load_palette("our.pal", screenp->newpalette);
 	}
 	// So 0 just means report
-	return (int) gamma;
+	return (Sint32) gamma;
 }
 
 // **************************************************
@@ -1933,7 +1933,7 @@ short options::load(viewscreen *viewp)
 short options::save(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
-	int i;
+	Sint32 i;
 	FILE *outfile;
 
 	// Yes, we are ACTUALLY COPYING the data
@@ -1965,9 +1965,9 @@ options::~options()
 // save_key_prefs saves the state of all the player key preferences
 // to the binary file KEY_FILE (currently keyprefs.dat)
 // Returns success or failure
-int save_key_prefs()
+Sint32 save_key_prefs()
 {
-  int i;
+  Sint32 i;
   char *keypointer;
   FILE *outfile;
  
@@ -1992,9 +1992,9 @@ int save_key_prefs()
 // load_key_prefs loads the state of all the player key preferences
 // from the binary file KEY_FILE (currently keyprefs.dat)
 // Returns success or failure
-int load_key_prefs()
+Sint32 load_key_prefs()
 {
-  int i;
+  Sint32 i;
   char *keypointer;
   FILE *infile;
  
@@ -2021,7 +2021,7 @@ int load_key_prefs()
 // set_key_prefs queries the user for key preferences, and
 // places them into the proper key-press array.
 // It returns success or failure.
-int viewscreen::set_key_prefs()
+Sint32 viewscreen::set_key_prefs()
 {
 	static text keytext(screenp);
 

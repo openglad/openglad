@@ -88,7 +88,7 @@ class viewscreen
 		short continuous_input();
 		void set_display_text(const char *newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
-		void shift_text(int row); // cycle text upward
+		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
 		short draw_obs(); //moved here to fix radar
 		void resize(short x, short y, short length, short height);
@@ -96,11 +96,11 @@ class viewscreen
 		void view_team();
 		void view_team(short left, short top, short right, short bottom);
 		void options_menu();   // display the options menu
-		int set_key_prefs(); // get player keyboard info
-		int change_speed(int whichway);
-		int change_gamma(int whichway);
+		Sint32 set_key_prefs(); // get player keyboard info
+		Sint32 change_speed(Sint32 whichway);
+		Sint32 change_gamma(Sint32 whichway);
 
-		int gamma; // for gamma correction
+		Sint32 gamma; // for gamma correction
 #define MAX_MESSAGES 5  // max of 5 lines, currently
 
 		char textlist[MAX_MESSAGES][80]; // max of 80-wide

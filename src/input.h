@@ -139,6 +139,6 @@ void init_input();
 
 void grab_mouse();
 void release_mouse();
-int * query_mouse();
+Sint32 * query_mouse();
 
 #endif

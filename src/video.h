@@ -32,67 +32,67 @@ class video
 		void clearfontbuffer(int x, int y, int w, int h);
 	
 		unsigned char * getbuffer();
-		void putblack(int startx, int starty, int xsize, int ysize);
-		void fastbox(int startx, int starty, int xsize, int ysize, unsigned char color);
-		void fastbox(int startx, int starty, int xsize, int ysize, unsigned char color, unsigned char flag);
-		void point(int x, int y, unsigned char color);
+		void putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize);
+		void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color);
+		void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag);
+		void point(Sint32 x, Sint32 y, unsigned char color);
 		//buffers: PORT: added below prototype
-		void pointb(int x, int y, unsigned char color);
+		void pointb(Sint32 x, Sint32 y, unsigned char color);
 		void pointb(int offset, unsigned char color);
-		void pointb(int x, int y, int r, int g, int b);
-		void hor_line(int x, int y, int length, unsigned char color);
-		void ver_line(int x, int y, int length, unsigned char color);
-		void hor_line(int x, int y, int length, unsigned char color, int tobuffer);
-		void ver_line(int x, int y, int length, unsigned char color, int tobuffer);
-		void do_cycle(int curmode, int maxmode);
-		void putdata(int startx, int starty, int xsize, int ysize,
+		void pointb(Sint32 x, Sint32 y, int r, int g, int b);
+		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color);
+		void ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color);
+		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
+		void ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
+		void do_cycle(Sint32 curmode, Sint32 maxmode);
+		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		             unsigned char  *sourcedata);
-		void putdatatext(int startx, int starty, int xsize, int ysize,
+		void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		                             unsigned char  *sourcedata);
-		void putdata(int startx, int starty, int xsize, int ysize,
+		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		             unsigned char  *sourcedata, unsigned char color);
 
-		 void putdatatext(int startx, int starty, int xsize, int ysize,
+		 void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		                              unsigned char  *sourcedata, unsigned char color);
 
-		void putbuffer(int tilestartx, int tilestarty,
-		               int tilewidth, int tileheight,
-		               int portstartx, int portstarty,
-		               int portendx, int portendy,
+		void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
+		               Sint32 tilewidth, Sint32 tileheight,
+		               Sint32 portstartx, Sint32 portstarty,
+		               Sint32 portendx, Sint32 portendy,
 		               unsigned char * sourceptr);
-		void putbuffer(int tilestartx, int tilestarty,
-		               int tilewidth, int tileheight,
-		               int portstartx, int portstarty,
-		               int portendx, int portendy,
+		void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
+		               Sint32 tilewidth, Sint32 tileheight,
+		               Sint32 portstartx, Sint32 portstarty,
+		               Sint32 portendx, Sint32 portendy,
 		               SDL_Surface *sourceptr);
-		void walkputbuffer(int walkerstartx, int walkerstarty,
-		                   int walkerwidth, int walkerheight,
-		                   int portstartx, int portstarty,
-		                   int portendx, int portendy,
+		void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
+		                   Sint32 walkerwidth, Sint32 walkerheight,
+		                   Sint32 portstartx, Sint32 portstarty,
+		                   Sint32 portendx, Sint32 portendy,
 		                   unsigned char  *sourceptr, unsigned char teamcolor);
-		void walkputbuffertext(int walkerstartx, int walkerstarty,
-                                   int walkerwidth, int walkerheight,
-                                   int portstartx, int portstarty,
-                                   int portendx, int portendy,
+		void walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
+                                   Sint32 walkerwidth, Sint32 walkerheight,
+                                   Sint32 portstartx, Sint32 portstarty,
+                                   Sint32 portendx, Sint32 portendy,
                                    unsigned char  *sourceptr, unsigned char teamcolor);
 
 
-		void walkputbuffer(int walkerstartx, int walkerstarty,
-		                   int walkerwidth, int walkerheight,
-		                   int portstartx, int portstarty,
-		                   int portendx, int portendy,
+		void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
+		                   Sint32 walkerwidth, Sint32 walkerheight,
+		                   Sint32 portstartx, Sint32 portstarty,
+		                   Sint32 portendx, Sint32 portendy,
 		                   unsigned char  *sourceptr, unsigned char teamcolor,
-		                   unsigned char mode, int invisibility,
+		                   unsigned char mode, Sint32 invisibility,
 		                   unsigned char outline, unsigned char shifttype);
-		void buffer_to_screen(int viewstartx,int viewstarty,
-		                      int viewwidth, int viewheight);
+		void buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
+		                      Sint32 viewwidth, Sint32 viewheight);
 
-		void draw_box(int x1, int y1, int x2, int y2, unsigned char color, int filled);
-		void draw_box(int x1, int y1, int x2, int y2, unsigned char color, int filled, int tobuffer);
-		void draw_button(int x1, int y1, int x2, int y2, int border);
-		void draw_button(int x1, int y1, int x2, int y2, int border, int tobuffer);
-		int draw_dialog(int x1, int y1, int x2, int y2, const char *header);
-		void draw_text_bar(int x1, int y1, int x2, int y2);
+		void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled);
+		void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled, Sint32 tobuffer);
+		void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border);
+		void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border, Sint32 tobuffer);
+		Sint32 draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, const char *header);
+		void draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2);
 
 		void swap(void);
 

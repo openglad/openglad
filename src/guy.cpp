@@ -18,8 +18,8 @@
 #include <math.h>
 #define RAISE 1.85  // please also change in picker.cpp
 
-extern int costlist[NUM_FAMILIES];  // These come from picker.cpp
-extern int statcosts[NUM_FAMILIES][6];
+extern Sint32 costlist[NUM_FAMILIES];  // These come from picker.cpp
+extern Sint32 statcosts[NUM_FAMILIES][6];
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
 int MAX(int a,int b)
@@ -245,10 +245,10 @@ guy::~guy()
 	next = NULL;
 }
 
-int guy::query_heart_value() // how much are we worth?
+Sint32 guy::query_heart_value() // how much are we worth?
 {
 	guy *normal = new guy(family); // for base comparisons
-	int cost=0, temp;
+	Sint32 cost=0, temp;
 
 	if (!normal)
 		return 0l;
@@ -256,35 +256,35 @@ int guy::query_heart_value() // how much are we worth?
 	// Get strength cost ..
 	temp = strength - normal->strength; // difference..
 	temp = MAX(temp,0);
-	cost += (int) (pow( temp, RAISE)
-	                * (int)statcosts[(int)family][0]);
+	cost += (Sint32) (pow( temp, RAISE)
+	                * (Sint32)statcosts[(int)family][0]);
 
 	// Get dexterity cost ..
 	temp = dexterity - normal->dexterity; // difference..
 	temp = MAX(temp,0);
-	cost += (int) (pow( temp, RAISE)
-	                * (int)statcosts[(int)family][1]);
+	cost += (Sint32) (pow( temp, RAISE)
+	                * (Sint32)statcosts[(int)family][1]);
 
 	// Get constitution cost ..
 	temp = constitution - normal->constitution; // difference..
 	temp = MAX(temp,0);
-	cost += (int) (pow( temp, RAISE)
-	                * (int)statcosts[(int)family][2]);
+	cost += (Sint32) (pow( temp, RAISE)
+	                * (Sint32)statcosts[(int)family][2]);
 
 	// Get intelligence cost ..
 	temp = intelligence - normal->intelligence; // difference..
 	temp = MAX(temp,0);
-	cost += (int) (pow( temp, RAISE)
-	                * (int)statcosts[(int)family][3]);
+	cost += (Sint32) (pow( temp, RAISE)
+	                * (Sint32)statcosts[(int)family][3]);
 
 	// Get armor cost ..
 	temp = armor - normal->armor; // difference..
 	temp = MAX(temp,0);
-	cost += (int) (pow( temp, RAISE)
-	                * (int)statcosts[(int)family][4]);
+	cost += (Sint32) (pow( temp, RAISE)
+	                * (Sint32)statcosts[(int)family][4]);
 
 	// Add in the base cost value for the guy ..
-	cost += (int) costlist[(int)family];
+	cost += (Sint32) costlist[(int)family];
 
 	return cost;
 

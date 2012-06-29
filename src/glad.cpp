@@ -32,8 +32,8 @@ using namespace std;
 
 // Z's script: #include <process.h>
 
-void picker_main(int argc, char **argv);
-void intro_main(int argc, char **argv);
+void picker_main(Sint32 argc, char **argv);
+void intro_main(Sint32 argc, char **argv);
 
 short remaining_foes(screen *myscreen, char myteam);
 short remaining_team(screen *myscreen, char myteam);
@@ -55,7 +55,7 @@ pixie *radarpix;
 
 void create_dataopenglad();
 
-void glad_main(screen *myscreen, int playermode);
+void glad_main(screen *myscreen, Sint32 playermode);
 
 // Zardus: FIX: from view.cpp. We need this here so that it doesn't
 // try to create it before main and go nuts trying to load it
@@ -84,7 +84,7 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-void glad_main(screen *myscreen, int playermode)
+void glad_main(screen *myscreen, Sint32 playermode)
 {
 	char somemessage[80];
 	//  char soundpath[80];
@@ -95,7 +95,7 @@ void glad_main(screen *myscreen, int playermode)
 	oblink *here, *before;
 	text gladtext(myscreen);
 
-	//int inttemp;
+	//Sint32 longtemp;
 	//char message[50];
 	short currentcycle = 0, cycletime = 3;
 
@@ -597,7 +597,7 @@ short new_score_panel(screen *myscreen, short do_it)
 	short tempallies = 0;
 	text *mytext = new text(myscreen, TEXT_1);
 #if 0
-	static unsigned int family[5]={-1,-1,-1,-1,-1},
+	static Uint32 family[5]={-1,-1,-1,-1,-1},
 	                               act[5]={-1, -1,-1,-1,-1};
 #endif
 
@@ -615,8 +615,8 @@ short new_score_panel(screen *myscreen, short do_it)
 	      "GOLEM", "GIANT SKEL", "TOWER",
 	    };
 
-	unsigned int myscore;
-	static unsigned int scorecountup[4] = {
+	Uint32 myscore;
+	static Uint32 scorecountup[4] = {
 	                                           myscreen->m_score[0],
 	                                           myscreen->m_score[1],
 	                                           myscreen->m_score[2],
@@ -722,7 +722,7 @@ short new_score_panel(screen *myscreen, short do_it)
 				if (scorecountup[control->team_num] < myscore)
 				{
 					scorecountup[control->team_num]++;
-					scorecountup[control->team_num] += (unsigned int) random( (myscore - scorecountup[control->team_num])/12 );
+					scorecountup[control->team_num] += (Uint32) random( (myscore - scorecountup[control->team_num])/12 );
 				}
 				if (scorecountup[control->team_num] > myscore)
 					scorecountup[control->team_num] = myscore;

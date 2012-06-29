@@ -26,14 +26,14 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 
-void quit(int arg1);
+void quit(Sint32 arg1);
 
 int raw_key;
 short key_press_event = 0;    // used to signed key-press
 Uint8* keystates = NULL;
 
-int mouse_state[MSTATE];
-int mouse_buttons;
+Sint32 mouse_state[MSTATE];
+Sint32 mouse_buttons;
 
 int mult = 1;
 
@@ -202,7 +202,7 @@ void handle_events(SDL_Event *event)
 			//key_list[joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button] = 0;
 			break;
 		case SDL_QUIT:
-			quit(1);
+			quit(0);
 			break;
 		default:
 			break;
@@ -686,7 +686,7 @@ void release_mouse()
 	SDL_ShowCursor(SDL_DISABLE);
 }
 
-int * query_mouse()
+Sint32 * query_mouse()
 {
 	// The mouse_state thing is set using get_input_events, though
 	// it should probably get its own function

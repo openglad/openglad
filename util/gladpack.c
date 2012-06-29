@@ -2,6 +2,7 @@
  * for the packing and unpacking of .001 files
  *  8/18/02, Zardus
  */
+#include "SDL_stdinc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,9 +13,9 @@
 int pack(int argc, char **argv)
 {
 	short numfiles = (short) argc - 3;
-	long *filelocation;
-	long *filesize;
-	long sizeoffile;
+	Sint32 *filelocation;
+	Sint32 *filesize;
+	Sint32 sizeoffile;
 	int i;
 	FILE *infile;
 	FILE *outfile;
@@ -28,10 +29,10 @@ int pack(int argc, char **argv)
 
 	printf ("Creating packfile %s...\n", argv[2]);
 
-	filelocation = (long *) malloc(sizeof(long) * (numfiles + 1));
-	filesize = (long *) malloc(sizeof(long) * (numfiles + 1));
+	filelocation = (Sint32 *) malloc(sizeof(Sint32) * (numfiles + 1));
+	filesize = (Sint32 *) malloc(sizeof(Sint32) * (numfiles + 1));
 
-	filelocation[0] = 8 + sizeof(short) + numfiles * (13 + sizeof(long)) + sizeof(long);
+	filelocation[0] = 8 + sizeof(short) + numfiles * (13 + sizeof(Sint32)) + sizeof(Sint32);
 	if (!(outfile = fopen(argv[2], "w"))) return 1;
 	fwrite("GladPack", 8, 1, outfile);
 	fwrite(&numfiles, sizeof(short), 1, outfile);
@@ -48,12 +49,12 @@ int pack(int argc, char **argv)
 
 	for (i = 0; i < numfiles; i++)
 	{
-		fwrite(&filelocation[i], sizeof(long), 1, outfile);
+		fwrite(&filelocation[i], sizeof(Sint32), 1, outfile);
 		fwrite(argv[i+3], sizeof(char) * 13, 1, outfile);
 	}
 
 	sizeoffile = filelocation[numfiles];
-	fwrite(&sizeoffile, sizeof(long), 1, outfile);
+	fwrite(&sizeoffile, sizeof(Sint32), 1, outfile);
 
 	for (i = 0; i < numfiles; i++)
 	{
@@ -76,12 +77,12 @@ int pack(int argc, char **argv)
 
 int unpack(int argc, char **argv)
 {
-	long *filelocation;
+	Sint32 *filelocation;
 	char filename[300][13];
 	//int headersize;
 	//int bodysize;
 	short numfiles;
-	long sizeoffile;
+	Sint32 sizeoffile;
 	int i;
 	char* buffer = (char*)malloc(5000000);
 	FILE *infile;
@@ -99,16 +100,16 @@ int unpack(int argc, char **argv)
 	fread(&numfiles, sizeof(short), 1, infile);
 	printf("%i files in pack.\n", numfiles);
 
-	filelocation = (long *) malloc((numfiles + 1) * sizeof(long));
+	filelocation = (Sint32 *) malloc((numfiles + 1) * sizeof(Sint32));
 
 	for (i = 0; i < numfiles; i++)
 	{
-		fread(&filelocation[i], sizeof(long), 1, infile);
+		fread(&filelocation[i], sizeof(Sint32), 1, infile);
 		fread(filename[i], sizeof(char) * 13, 1, infile);
 	}
 
-	fread(&sizeoffile, sizeof(long), 1, infile);
-	printf("Pack file is %ld bytes long.\n", sizeoffile);
+	fread(&sizeoffile, sizeof(Sint32), 1, infile);
+	printf("Pack file is %d bytes long.\n", sizeoffile);
 
 	filelocation[numfiles] = sizeoffile;
 

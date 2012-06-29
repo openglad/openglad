@@ -95,15 +95,15 @@ short pixie::draw(short x, short y, viewscreen  * view_buf)
 
 short pixie::draw(viewscreen * view_buf)
 {
-	int xscreen, yscreen;
+	Sint32 xscreen, yscreen;
 
 	//  if (!on_screen(view_buf))
 	//         return 0;
 	//we actually don't need to waste time on the above since the clipper
 	//will handle it
 
-	xscreen = (int) (xpos - view_buf->topx + view_buf->xloc);
-	yscreen = (int) (ypos - view_buf->topy + view_buf->yloc);
+	xscreen = (Sint32) (xpos - view_buf->topx + view_buf->xloc);
+	yscreen = (Sint32) (ypos - view_buf->topy + view_buf->yloc);
 
 	if(accel)
 	{
@@ -132,15 +132,15 @@ short pixie::drawMix(short x, short y, viewscreen  * view_buf)
 
 short pixie::drawMix(viewscreen * view_buf)
 {
-	int xscreen, yscreen;
+	Sint32 xscreen, yscreen;
 
 	//  if (!on_screen(view_buf))
 	//         return 0;
 	//we actually don't need to waste time on the above since the clipper
 	//will handle it
 
-	xscreen = (int) (xpos - view_buf->topx + view_buf->xloc);
-	yscreen = (int) (ypos - view_buf->topy + view_buf->yloc);
+	xscreen = (Sint32) (xpos - view_buf->topx + view_buf->xloc);
+	yscreen = (Sint32) (ypos - view_buf->topy + view_buf->yloc);
 
 	view_buf->screenp->walkputbuffer(xscreen, yscreen, sizex, sizey,
 	                                 view_buf->xloc, view_buf->yloc,

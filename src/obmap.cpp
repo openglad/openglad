@@ -371,7 +371,7 @@ short ob_pass_check(short x, short y, walker  *ob, oblink  *row)
 								          && (here->ob->query_family() == FAMILY_DOOR) )
 								{
 									// Can we unlock this door?
-									if (ob->keys & (int) (pow((double) 2, here->ob->stats->level)))
+									if (ob->keys & (Sint32) (pow((double) 2, here->ob->stats->level)))
 									{
 										// Open the door ..
 										here->ob->dead = 1;

@@ -41,7 +41,7 @@ effect::~effect()
 short effect::act()
 {
 	short temp;
-	int xd, yd, distance, generic;
+	Sint32 xd, yd, distance, generic;
 	oblink *foelist, *here;
 	walker *newob;
 	short numfoes;
@@ -603,8 +603,8 @@ short effect::death()
 	oblink *frylist; // for the thief's bombs :)
 	short howmany = 0;
 	walker  *newob;
-	int xdelta,ydelta;
-	int tempx, tempy, generic;
+	Sint32 xdelta,ydelta;
+	Sint32 tempx, tempy, generic;
 
 	if (death_called)
 		return 0;

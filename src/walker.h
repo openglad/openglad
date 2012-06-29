@@ -63,8 +63,8 @@ class walker : public pixieN
 		short query_next_to();
 		short special();
 		short teleport();
-		short teleport_ranged(int range);
-		int  turn_undead(int range, int power);
+		short teleport_ranged(Sint32 range);
+		Sint32  turn_undead(Sint32 range, Sint32 power);
 		virtual short shove(walker  *target, short x, short y);
 		virtual short eat_me(walker  *eater);
 		virtual void set_direct_frame(short whichframe);
@@ -77,12 +77,12 @@ class walker : public pixieN
 		virtual walker  *do_summon(char whatfamily, unsigned short lifetime);
 		virtual short check_special();
 		void center_on(walker  *target);  // center us on target
-		virtual void set_difficulty(unsigned int whatlevel);
-		int distance_to_ob(walker * target);
-		int distance_to_ob_center(walker * target);
+		virtual void set_difficulty(Uint32 whatlevel);
+		Sint32 distance_to_ob(walker * target);
+		Sint32 distance_to_ob_center(walker * target);
 		virtual short facing(short x, short y);
 		unsigned char query_team_color();
-		int is_friendly(walker *target);
+		Sint32 is_friendly(walker *target);
 		inline short query_type(char oval, char fval)
 		{
 			if (oval == order && fval == family)
@@ -92,7 +92,7 @@ class walker : public pixieN
 		};
 
 
-		unsigned int keys; // used to open doors
+		Uint32 keys; // used to open doors
 		short view_all;     // used for seeing treasures, etc. on radar
 		short shifter_down; // is our shifter/alternate key pressed?
 		short bonus_rounds; // used if an object has extra rounds this cycle
@@ -108,10 +108,10 @@ class walker : public pixieN
 		unsigned char team_num;
 		unsigned char real_team_num; // for 'Charm', etc.
 		char ani_type;
-		int stepsize;
-		int normal_stepsize; // used for elven forestwalk
-		int lineofsight;
-		int damage;
+		Sint32 stepsize;
+		Sint32 normal_stepsize; // used for elven forestwalk
+		Sint32 lineofsight;
+		Sint32 damage;
 		signed char fire_frequency;
 		char busy;
 		statistics *stats;
@@ -132,7 +132,7 @@ class walker : public pixieN
 		short charm_left;              // If we're still being charmed
 		unsigned char drawcycle;
 		char current_special;
-		int lifetime; // how much life summoned guys have ..
+		Sint32 lifetime; // how much life summoned guys have ..
 		short skip_exit; // cycles after failed exit choice
 		unsigned char outline;
 		walker * cachenext;

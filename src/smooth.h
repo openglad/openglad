@@ -50,15 +50,15 @@ class smoother
 		~smoother();
 
 		void set_target(screen  *target);     // set our target grid to smooth ..
-		int query_x_y(int x, int y);       // return target type, ie PIX_GRASS1
-		int query_genre_x_y(int x, int y); // returns target genre, ie TYPE_GRASS
-		int surrounds(int x, int y, int whatgenre); // returns 0-15 of 4 surroundings
-		int smooth(int x, int y);          // smooth at x, y; returns changed or not
-		int smooth();                        // smooths entire target grid
-		void set_x_y(int x, int y, int whatvalue);  // sets grid location to whatvalue
+		Sint32 query_x_y(Sint32 x, Sint32 y);       // return target type, ie PIX_GRASS1
+		Sint32 query_genre_x_y(Sint32 x, Sint32 y); // returns target genre, ie TYPE_GRASS
+		Sint32 surrounds(Sint32 x, Sint32 y, Sint32 whatgenre); // returns 0-15 of 4 surroundings
+		Sint32 smooth(Sint32 x, Sint32 y);          // smooth at x, y; returns changed or not
+		Sint32 smooth();                        // smooths entire target grid
+		void set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue);  // sets grid location to whatvalue
 
 		unsigned char  *mygrid; // our grid to change
-		int maxx, maxy;   // dimensions of our grid ..
+		Sint32 maxx, maxy;   // dimensions of our grid ..
 		unsigned char  *buffer; // start of the data in the target grid
 };
 

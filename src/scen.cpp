@@ -30,8 +30,8 @@ using namespace std;
 
 // From picker // just emulate these so other files are happy
 // Difficulty settings .. in percent, so 100 == normal
-int current_difficulty = 1; // setting 'normal'
-int difficulty_level[DIFFICULTY_SETTINGS] =
+Sint32 current_difficulty = 1; // setting 'normal'
+Sint32 difficulty_level[DIFFICULTY_SETTINGS] =
     {
         50,
         100,
@@ -40,15 +40,15 @@ int difficulty_level[DIFFICULTY_SETTINGS] =
 
 FILE * open_misc_file(const char *, const char *, const char *);
 
-int do_load(screen *ascreen);  // load a scenario or grid
-int do_save(screen *ascreen);  // save a scenario or grid
-int score_panel(screen *myscreen);
-int save_scenario(char * filename, screen * master, char *gridname);
+Sint32 do_load(screen *ascreen);  // load a scenario or grid
+Sint32 do_save(screen *ascreen);  // save a scenario or grid
+Sint32 score_panel(screen *myscreen);
+Sint32 save_scenario(char * filename, screen * master, char *gridname);
 void info_box(walker  *target, screen * myscreen);
 void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
 void scenario_options(screen * myscreen);
-int quit(int);
+Sint32 quit(Sint32);
 
 screen *myscreen;  // global for scen?
 
@@ -56,38 +56,38 @@ screen *myscreen;  // global for scen?
 extern options * theprefs;
 
 // To appease the linker, we'll fake these from picker.cpp
-int statcosts[NUM_FAMILIES][6];
-int costlist[NUM_FAMILIES];
+Sint32 statcosts[NUM_FAMILIES][6];
+Sint32 costlist[NUM_FAMILIES];
 
-int calculate_level(unsigned int howmuch)
+Sint32 calculate_level(Uint32 howmuch)
 {
-	return (int) (howmuch/10);
+	return (Sint32) (howmuch/10);
 }
 
-int *mymouse;
+Sint32 *mymouse;
 Uint8 *mykeyboard;
 //scenario *myscen = new scenario;
-int currentmode = OBJECT_MODE;
-unsigned int currentlevel = 1;
+Sint32 currentmode = OBJECT_MODE;
+Uint32 currentlevel = 1;
 char scen_name[10] = "test";
 char grid_name[10] = "test";
 
 unsigned char  *mypixdata[PIX_MAX+1];
 unsigned char scenpalette[768];
-int backcount=0, forecount = 0;
-int myorder = ORDER_LIVING;
+Sint32 backcount=0, forecount = 0;
+Sint32 myorder = ORDER_LIVING;
 char currentteam = 0;
-int event = 1;  // need to redraw?
-int levelchanged = 0;  // has level changed?
-int cyclemode = 0;      // for color cycling
-int grid_aligned = 1;  // aligned by grid, default is on
+Sint32 event = 1;  // need to redraw?
+Sint32 levelchanged = 0;  // has level changed?
+Sint32 cyclemode = 0;      // for color cycling
+Sint32 grid_aligned = 1;  // aligned by grid, default is on
 //buffers: PORT: changed start_time to start_time_s to avoid conflict with
 //input.cpp
-int start_time_s; // for timer ops
+Sint32 start_time_s; // for timer ops
 
 smoother  *mysmoother = NULL;
 
-int backgrounds[] = {
+Sint32 backgrounds[] = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
                          //PIX_GRASS_DARK_B1, PIX_GRASS_DARK_BR, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2,
                          PIX_BOULDER_1, PIX_GRASS_DARK_LL, PIX_GRASS_DARK_UR, PIX_GRASS_RUBBLE,
@@ -148,22 +148,22 @@ int backgrounds[] = {
                          PIX_CLIFF_LEFT, PIX_CLIFF_TOP_L, PIX_CLIFF_TOP_R, PIX_CLIFF_RIGHT,
                      };
 
-int rowsdown = 0;
-int maxrows = ((sizeof(backgrounds)/4) / 4);
+Sint32 rowsdown = 0;
+Sint32 maxrows = ((sizeof(backgrounds)/4) / 4);
 text *scentext;
 
 int main(int argc, char **argv)
 {
 	cfg.commandline(argc, argv);
-	int i,j;
-	int extra;
+	Sint32 i,j;
+	Sint32 extra;
 	//  unsigned char input;
 	//  char soundpath[80];
-	int windowx, windowy;
+	Sint32 windowx, windowy;
 	walker  *newob;
-	int mx, my;
+	Sint32 mx, my;
 	char mystring[80]; //, someletter;
-	//  int pos;
+	//  Sint32 pos;
 	short count;
 	// char buffer[80];
 	char * filepath;
@@ -191,7 +191,7 @@ int main(int argc, char **argv)
 		Memory.FreeLinAddrSpace = 0;
 		//buffers: PORT: union REGS regs;
 		//buffers: PORT: struct SREGS sregs;
-		int bytes;
+		Sint32 bytes;
 
 		//buffers: PORT: regs.x.eax = 0x00000500;
 		//buffers: PORT: memset( &sregs, 0, sizeof(sregs) );
@@ -200,7 +200,7 @@ int main(int argc, char **argv)
 
 		//buffers: int386x( DPMI_INT, &regs, &regs, &sregs );
 		bytes = Memory.FreeLinAddrSpace * 4096;
-		printf("\nMemory available: %ld bytes.\n", bytes);
+		printf("\nMemory available: %d bytes.\n", bytes);
 
 		exit (0);
 	}
@@ -781,14 +781,14 @@ int main(int argc, char **argv)
 		event = 0;
 
 		if (mykeyboard[SDLK_ESCAPE])
-			quit(1);
+			quit(0);
 
 	}
 
 	return 0;
 }
 
-int quit(int num)
+Sint32 quit(Sint32 num)
 {
 	int i;
 
@@ -819,15 +819,15 @@ int quit(int num)
 	return num;
 }
 
-int score_panel(screen *myscreen)
+Sint32 score_panel(screen *myscreen)
 {
 	char message[50];
-	int i, j; // for loops
-	//   static int family=-1, hitpoints=-1, score=-1, act=-1;
-	static int numobs = myscreen->numobs;
-	static int lm = 245;
-	int curline = 0;
-	int whichback;
+	Sint32 i, j; // for loops
+	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
+	static Sint32 numobs = myscreen->numobs;
+	static Sint32 lm = 245;
+	Sint32 curline = 0;
+	Sint32 whichback;
 	static char treasures[20][NUM_FAMILIES] =
 	    { "BLOOD", "DRUMSTICK", "GOLD", "SILVER",
 	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
@@ -907,7 +907,7 @@ int score_panel(screen *myscreen)
 	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
 	// Level display
-	sprintf(message, "LVL: %ld", currentlevel);
+	sprintf(message, "LVL: %u", currentlevel);
 	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
 	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
@@ -922,7 +922,7 @@ int score_panel(screen *myscreen)
 
 	numobs = myscreen->numobs;
 	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-	sprintf(message, "OB: %ld", numobs);
+	sprintf(message, "OB: %d", numobs);
 	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
 
 	// Show the background grid ..
@@ -954,7 +954,7 @@ int score_panel(screen *myscreen)
 }
 
 
-void set_screen_pos(screen *myscreen, int x, int y)
+void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y)
 {
 	myscreen->topx = x;
 	myscreen->topy = y;
@@ -1027,7 +1027,7 @@ void remove_first_ob(screen *master)
 	}
 }
 
-int save_map_file(char  * filename, screen *master)
+Sint32 save_map_file(char  * filename, screen *master)
 {
 	// File data in form:
 	// <# of frames>      1 byte
@@ -1071,7 +1071,7 @@ int save_map_file(char  * filename, screen *master)
 
 } // End of map-saving routine
 
-int load_new_grid(screen *master)
+Sint32 load_new_grid(screen *master)
 {
 	string tempstring;
 	//char tempstring[80];
@@ -1106,7 +1106,7 @@ int load_new_grid(screen *master)
 	return 1;
 }
 
-int new_scenario_name()
+Sint32 new_scenario_name()
 {
 	char tempstring[80];
 
@@ -1123,7 +1123,7 @@ int new_scenario_name()
 	return 1;
 }
 
-int new_grid_name()
+Sint32 new_grid_name()
 {
 	char tempstring[80];
 
@@ -1139,8 +1139,8 @@ int new_grid_name()
 void do_help(screen * myscreen)
 {
 	text *helptext = new text(myscreen);
-	int lm = S_LEFT+4+43, tm=S_UP+15;  // left and top margins
-	int lines = 0;
+	Sint32 lm = S_LEFT+4+43, tm=S_UP+15;  // left and top margins
+	Sint32 lines = 0;
 
 	// Zardus: new margins
 	//myscreen->draw_button(S_LEFT+32,S_UP,S_RIGHT-1+16,S_DOWN-1,2, 1);
@@ -1179,9 +1179,9 @@ void do_help(screen * myscreen)
 	delete helptext;
 }
 
-char some_pix(int whatback)
+char some_pix(Sint32 whatback)
 {
-	int i;
+	Sint32 i;
 
 	i = random(4);  // max # of types of any particular ..
 
@@ -1318,9 +1318,9 @@ char some_pix(int whatback)
 	}
 }
 
-int save_scenario(char * filename, screen * master, char *gridname)
+Sint32 save_scenario(char * filename, screen * master, char *gridname)
 {
-	int currentx, currenty;
+	Sint32 currentx, currenty;
 	char temporder, tempfamily;
 	char tempteam, tempfacing, tempcommand;
 	short shortlevel;
@@ -1330,8 +1330,8 @@ int save_scenario(char * filename, screen * master, char *gridname)
 	char temp_grid[20] = "grid";  // default grid
 	char temp_scen_type = master->scenario_type;
 	oblink  * head = master->oblist;
-	int listsize;
-	int i;
+	Sint32 listsize;
+	Sint32 i;
 	char temp_version = VERSION_NUM;
 	char temp_filename[80];
 	char numlines, tempwidth;
@@ -1348,12 +1348,12 @@ int save_scenario(char * filename, screen * master, char *gridname)
 	// 30-byte scenario title
 	// 1-byte scenario_type
 	// 2-bytes par-value for level
-	// 2-bytes (int) = total objects to follow
+	// 2-bytes (Sint32) = total objects to follow
 	// List of n objects, each of 20-bytes of form:
 	// 1-byte ORDER
 	// 1-byte FAMILY
-	// 2-byte int xpos
-	// 2-byte int ypos
+	// 2-byte Sint32 xpos
+	// 2-byte Sint32 ypos
 	// 1-byte TEAM
 	// 1-byte current facing
 	// 1-byte current command
@@ -1366,7 +1366,7 @@ int save_scenario(char * filename, screen * master, char *gridname)
 	// 1-byte character width of line
 	// m bytes == characters on this line
 
-	// Zardus: PORT: no inter need to put in scen/ in this part
+	// Zardus: PORT: no longer need to put in scen/ in this part
 	//strcpy(temp_filename, scen_directory);
 	strcpy(temp_filename, filename);
 	//buffers: PORT: changed .FSS to .fss
@@ -1563,8 +1563,8 @@ int save_scenario(char * filename, screen * master, char *gridname)
 }
 
 // Copy of collide from obmap; used manually .. :(
-int check_collide(int x,  int y,  int xsize,  int ysize,
-                   int x2, int y2, int xsize2, int ysize2)
+Sint32 check_collide(Sint32 x,  Sint32 y,  Sint32 xsize,  Sint32 ysize,
+                   Sint32 x2, Sint32 y2, Sint32 xsize2, Sint32 ysize2)
 {
 	if (x < x2)
 	{
@@ -1600,7 +1600,7 @@ int check_collide(int x,  int y,  int xsize,  int ysize,
 }
 
 // The old-fashioned hit check ..
-walker * some_hit(int x, int y, walker  *ob, screen *screenp)
+walker * some_hit(Sint32 x, Sint32 y, walker  *ob, screen *screenp)
 {
 	oblink  *here;
 
@@ -1658,8 +1658,8 @@ walker * some_hit(int x, int y, walker  *ob, screen *screenp)
 void info_box(walker  *target,screen * myscreen)
 {
 	text *infotext = new text(myscreen);
-	int linesdown = 0;
-	int lm = 25+32;
+	Sint32 linesdown = 0;
+	Sint32 lm = 25+32;
 	char message[80];
 	treasure  *teleporter, *temp;
 
@@ -1889,9 +1889,9 @@ void set_facing(walker *target, screen *myscreen)
 
 
 // Load a grid or scenario ..
-int do_load(screen *ascreen)
+Sint32 do_load(screen *ascreen)
 {
-	int i;
+	Sint32 i;
 	text *loadtext = new text(ascreen);
 	char buffer[200],temp[200];
 
@@ -1952,10 +1952,10 @@ int do_load(screen *ascreen)
 	return 1;
 }
 
-int do_save(screen *ascreen)  // save a scenario or grid
+Sint32 do_save(screen *ascreen)  // save a scenario or grid
 {
 	text *savetext = new text(ascreen);
-	int result = 1;
+	Sint32 result = 1;
 
 	event = 1;
 	while (mykeyboard[SDLK_s])

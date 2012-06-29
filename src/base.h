@@ -76,7 +76,7 @@ class oblink
 
 #define DIFFICULTY_SETTINGS 3
 
-unsigned int random(unsigned int x);
+Uint32 random(Uint32 x);
 
 #define VIDEO_ADDRESS 0xA000
 #define VIDEO_LINEAR ( (VIDEO_ADDRESS) << 4)
@@ -352,7 +352,7 @@ char* read_one_line(FILE *infile, short length);
 #define COMMAND_ATTACK 12       // attack / move to a close, current foe
 #define COMMAND_RIGHT_WALK 13   // use right-hand rule ONLY; no direct walk
 #define COMMAND_UNCHARM 14      // recover from being 'charmed'
-#define REGEN (int) 4000       // used to calculate time between heals
+#define REGEN (Sint32) 4000       // used to calculate time between heals
 
 #define STANDARD_TEXT_TIME 75   // how many cycles to display text?
 #define TEXT_1 "text.pix"       // standard text pixie

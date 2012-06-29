@@ -27,7 +27,7 @@ class guy               // for the picker, loading team info
 		guy ();
 		guy (char whatfamily);
 		~guy();
-		int query_heart_value(); // how much are we worth?
+		Sint32 query_heart_value(); // how much are we worth?
 
 		char name[12];
 		char family;  // our family
@@ -37,12 +37,12 @@ class guy               // for the picker, loading team info
 		short intelligence;
 		short level;
 		short armor;
-		unsigned int exp;
+		Uint32 exp;
 		short kills;       // version 3+
-		int level_kills;  // version 3+
-		int total_damage; // version 4+
-		int total_hits;   // version 4+
-		int total_shots;  // version 4+
+		Sint32 level_kills;  // version 3+
+		Sint32 total_damage; // version 4+
+		Sint32 total_hits;   // version 4+
+		Sint32 total_shots;  // version 4+
 		short teamnum;     // version 5+
 		guy  *next;
 

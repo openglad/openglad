@@ -11,7 +11,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
+ * aSint32 with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #ifndef __BUTTON_H
@@ -28,7 +28,7 @@
 //#include "int32.h"
 #include "input.h"
 
-#define MEM_TIME (int) 2000
+#define MEM_TIME (Sint32) 2000
 class vbutton;
 
 // Definition of a button
@@ -50,18 +50,18 @@ class vbutton;
 //extern screen *myscreen;
 extern screen *myscreen;
 extern text *mytext;
-extern int *mymouse;
-extern unsigned int money[4];
+extern Sint32 *mymouse;
+extern Uint32 money[4];
 
 typedef struct
 {
 	char label[30];
 	unsigned char hotkey;
-	int x, y;
-	int sizex, sizey;
-	//int (*fun)(int arg1);
-	int myfun;
-	int arg1;     // argurment to function fun
+	Sint32 x, y;
+	Sint32 sizex, sizey;
+	//Sint32 (*fun)(Sint32 arg1);
+	Sint32 myfun;
+	Sint32 arg1;     // argurment to function fun
 }
 button;
 
@@ -69,34 +69,34 @@ class vbutton
 {
 	public:
 		vbutton();//this should only be used for pointers!!
-		vbutton(int xpos, int ypos, int wide, int high, int func(int),
-		        int pass, char *msg, unsigned char hot );
-		vbutton(int xpos, int ypos, int wide, int high, int func_code,
-		        int pass, char *msg, unsigned char hot );
-		vbutton(int xpos, int ypos, int wide, int high, int func_code,
-		        int pass, char *msg, char family, unsigned char hot );
+		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func(Sint32),
+		        Sint32 pass, char *msg, unsigned char hot );
+		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func_code,
+		        Sint32 pass, char *msg, unsigned char hot );
+		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func_code,
+		        Sint32 pass, char *msg, char family, unsigned char hot );
 		~vbutton();
 		void set_graphic(char family);
-		int leftclick(); //is called when the button is left clicked
-		int leftclick(int whichone);
-		int rightclick(); //is called when the button is right clicked
-		int rightclick(int whichone);
-		int mouse_on(); //determins if mouse is on this button, returns 1 if true
+		Sint32 leftclick(); //is called when the button is left clicked
+		Sint32 leftclick(Sint32 whichone);
+		Sint32 rightclick(); //is called when the button is right clicked
+		Sint32 rightclick(Sint32 whichone);
+		Sint32 mouse_on(); //determins if mouse is on this button, returns 1 if true
 		void vdisplay();
-		void vdisplay(int status); // display depressed
-		int do_call(int whatfunc, int arg);
-		int do_call_right(int whatfunc, int arg);  // for right-button
+		void vdisplay(Sint32 status); // display depressed
+		Sint32 do_call(Sint32 whatfunc, Sint32 arg);
+		Sint32 do_call_right(Sint32 whatfunc, Sint32 arg);  // for right-button
 
-		int xloc; //the xposition in screen-coords
-		int yloc; //the yposition in screen-coords
+		Sint32 xloc; //the xposition in screen-coords
+		Sint32 yloc; //the yposition in screen-coords
 		char label[80]; //the label on the button
-		int width; // the buttons width in pixels
-		int height; // the buttons height in pixels
-		int xend; //xloc+width
-		int yend; //yloc+height
-		int (*fun)(int arg1); //the function this button calls when clicked, with one arg
-		int myfunc;
-		int arg; //the arg to be passed to the function when called
+		Sint32 width; // the buttons width in pixels
+		Sint32 height; // the buttons height in pixels
+		Sint32 xend; //xloc+width
+		Sint32 yend; //yloc+height
+		Sint32 (*fun)(Sint32 arg1); //the function this button calls when clicked, with one arg
+		Sint32 myfunc;
+		Sint32 arg; //the arg to be passed to the function when called
 		vbutton * next; //a pointer to the next button
 		vbutton * prev; //a pointer to the previous button
 		char had_focus; // did we recently have focus?
@@ -111,60 +111,60 @@ extern vbutton *allbuttons[MAX_BUTTONS];
 
 short has_mouse_focus(button thisbutton);
 void clearmenu(button *buttons, short numbuttons);
-int add_money(int howmuch);
+Sint32 add_money(Sint32 howmuch);
 
-int ventermenu(vbutton *vbuttons);
-int vexitmenu(vbutton *vbuttons);
+Sint32 ventermenu(vbutton *vbuttons);
+Sint32 vexitmenu(vbutton *vbuttons);
 
-vbutton * buttonmenu(button * buttons, int numbuttons);
-vbutton * buttonmenu(button * buttons, int numbuttons, int redraw);
+vbutton * buttonmenu(button * buttons, Sint32 numbuttons);
+vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw);
 
 // These are for picker ..
-int score_panel(screen *myscreen);
-int mainmenu(int arg1);
-int beginmenu(int arg1);
-int loadmenu(int arg1);
-int newmenu(int arg1);
-void quit(int arg1);
-int nullmenu(int arg1);
-int load1(int arg1);  // Begin a preset scenario ..
-int load2(int arg1);
-int load3(int arg1);
-int create_team_menu(int arg1); // Create / modify team members
-int create_detail_menu(guy *arg1); // detailed character information
-int create_view_menu(int arg1); // View team members
-int create_buy_menu(int arg1);  // Purchase new team members
-int create_edit_menu(int arg1); // Edit or sell team members
-int create_load_menu(int arg1); // Load a team
-int create_save_menu(int arg1); // Save a team
-int go_menu(int arg1); // run glad..
-int increase_stat(int arg1, int howmuch=1); // increase a guy's stats
-int decrease_stat(int arg1, int howmuch=1); // decrease a guy's stats
-unsigned int calculate_cost();
-unsigned int calculate_cost(guy * oldguy);
-int cycle_guy(int whichway);
-int cycle_team_guy(int whichway);
-int add_guy(int ignoreme);
-int edit_guy(int arg1); // transfer stats .. hardcoded
-int do_save(int arg1);  // dummy function for save_team_list
-int save_team_list(const char * filename); // save the team list
-int do_load(int arg1); // dummy function for load_team_list_one
-int load_team_list_one(const char * filename); // load a team list
-int delete_all(); // delete entire team
-int delete_first(); // delete first guy on team list
-int how_many(int whatfamily);   // how many guys of family X on the team?
+Sint32 score_panel(screen *myscreen);
+Sint32 mainmenu(Sint32 arg1);
+Sint32 beginmenu(Sint32 arg1);
+Sint32 loadmenu(Sint32 arg1);
+Sint32 newmenu(Sint32 arg1);
+void quit(Sint32 arg1);
+Sint32 nullmenu(Sint32 arg1);
+Sint32 load1(Sint32 arg1);  // Begin a preset scenario ..
+Sint32 load2(Sint32 arg1);
+Sint32 load3(Sint32 arg1);
+Sint32 create_team_menu(Sint32 arg1); // Create / modify team members
+Sint32 create_detail_menu(guy *arg1); // detailed character information
+Sint32 create_view_menu(Sint32 arg1); // View team members
+Sint32 create_buy_menu(Sint32 arg1);  // Purchase new team members
+Sint32 create_edit_menu(Sint32 arg1); // Edit or sell team members
+Sint32 create_load_menu(Sint32 arg1); // Load a team
+Sint32 create_save_menu(Sint32 arg1); // Save a team
+Sint32 go_menu(Sint32 arg1); // run glad..
+Sint32 increase_stat(Sint32 arg1, Sint32 howmuch=1); // increase a guy's stats
+Sint32 decrease_stat(Sint32 arg1, Sint32 howmuch=1); // decrease a guy's stats
+Uint32 calculate_cost();
+Uint32 calculate_cost(guy * oldguy);
+Sint32 cycle_guy(Sint32 whichway);
+Sint32 cycle_team_guy(Sint32 whichway);
+Sint32 add_guy(Sint32 ignoreme);
+Sint32 edit_guy(Sint32 arg1); // transfer stats .. hardcoded
+Sint32 do_save(Sint32 arg1);  // dummy function for save_team_list
+Sint32 save_team_list(const char * filename); // save the team list
+Sint32 do_load(Sint32 arg1); // dummy function for load_team_list_one
+Sint32 load_team_list_one(const char * filename); // load a team list
+Sint32 delete_all(); // delete entire team
+Sint32 delete_first(); // delete first guy on team list
+Sint32 how_many(Sint32 whatfamily);   // how many guys of family X on the team?
 void statscopy(guy *dest, guy *source); //copy stats from source => dest
-int set_player_mode(int howmany);
-int calculate_level(unsigned int temp_exp);
-unsigned int calculate_exp(int level);
+Sint32 set_player_mode(Sint32 howmany);
+Sint32 calculate_level(Uint32 temp_exp);
+Uint32 calculate_exp(Sint32 level);
 void clear_levels();
-int return_menu(int arg);
-int name_guy(int arg); // name the current guy
-int do_set_scen_level(int arg1);
-int set_difficulty();
-int change_teamnum(int arg);
-int change_hire_teamnum(int arg);
-int change_allied();
+Sint32 return_menu(Sint32 arg);
+Sint32 name_guy(Sint32 arg); // name the current guy
+Sint32 do_set_scen_level(Sint32 arg1);
+Sint32 set_difficulty();
+Sint32 change_teamnum(Sint32 arg);
+Sint32 change_hire_teamnum(Sint32 arg);
+Sint32 change_allied();
 
 // Function definitions ..
 #define BEGINMENU               1

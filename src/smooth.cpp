@@ -36,7 +36,7 @@ void smoother::set_target(screen  *target)
 	//  buffer = target + 3; // where the data starts
 }
 
-int smoother::query_x_y(int x, int y)
+Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 {
 	// Are we set up yet?
 	if (!mygrid)
@@ -50,12 +50,12 @@ int smoother::query_x_y(int x, int y)
 		return PIX_GRASS1;
 
 	// Else, return our simple grid data ..
-	return (int) mygrid[x + y*maxx];
+	return (Sint32) mygrid[x + y*maxx];
 }
 
-int smoother::query_genre_x_y(int x, int y)
+Sint32 smoother::query_genre_x_y(Sint32 x, Sint32 y)
 {
-	int basetype;
+	Sint32 basetype;
 
 	basetype = query_x_y(x, y); // get our base type, like PIX_GRASS1
 
@@ -173,9 +173,9 @@ int smoother::query_genre_x_y(int x, int y)
 	}
 }
 
-int smoother::surrounds(int x, int y, int whatgenre)
+Sint32 smoother::surrounds(Sint32 x, Sint32 y, Sint32 whatgenre)
 {
-	int howmany = 0;
+	Sint32 howmany = 0;
 
 	if (query_genre_x_y(x, y-1) == whatgenre) // above
 		howmany += 1;
@@ -192,23 +192,23 @@ int smoother::surrounds(int x, int y, int whatgenre)
 	return howmany;
 }
 
-int smoother::smooth(int x, int y)
+Sint32 smoother::smooth(Sint32 x, Sint32 y)
 {
-	int here = query_genre_x_y(x, y);
-	int herepix = query_x_y(x, y), uppix;
+	Sint32 here = query_genre_x_y(x, y);
+	Sint32 herepix = query_x_y(x, y), uppix;
 
-	int up    = query_genre_x_y(x, y-1);
-	int down  = query_genre_x_y(x, y+1);
-	int left  = query_genre_x_y(x-1, y);
-	int right = query_genre_x_y(x+1, y);
+	Sint32 up    = query_genre_x_y(x, y-1);
+	Sint32 down  = query_genre_x_y(x, y+1);
+	Sint32 left  = query_genre_x_y(x-1, y);
+	Sint32 right = query_genre_x_y(x+1, y);
 
-	int upleft = query_genre_x_y(x-1, y-1);
-	int upright = query_genre_x_y(x+1, y-1);
-	int downleft = query_genre_x_y(x-1, y+1);
-	int downright = query_genre_x_y(x+1, y+1);
+	Sint32 upleft = query_genre_x_y(x-1, y-1);
+	Sint32 upright = query_genre_x_y(x+1, y-1);
+	Sint32 downleft = query_genre_x_y(x-1, y+1);
+	Sint32 downright = query_genre_x_y(x+1, y+1);
 
-	int around = surrounds(x, y, here);
-	int newvalue = PIX_GRASS1;
+	Sint32 around = surrounds(x, y, here);
+	Sint32 newvalue = PIX_GRASS1;
 
 
 	switch (here) // switch on genre
@@ -877,9 +877,9 @@ int smoother::smooth(int x, int y)
 	return 1;
 }
 
-int smoother::smooth()
+Sint32 smoother::smooth()
 {
-	int x, y;
+	Sint32 x, y;
 
 	if (!mygrid)
 		return 0;
@@ -892,7 +892,7 @@ int smoother::smooth()
 	return 1;
 }
 
-void smoother::set_x_y(int x, int y, int whatvalue)
+void smoother::set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue)
 {
 	if (!mygrid)
 		return;

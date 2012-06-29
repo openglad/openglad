@@ -33,10 +33,10 @@
 
 using namespace std;
 
-unsigned int start_time=0;
-unsigned int reset_value=0;
+Uint32 start_time=0;
+Uint32 reset_value=0;
 
-void change_time(unsigned int new_count)
+void change_time(Uint32 new_count)
 {}
 
 void grab_timer()
@@ -50,23 +50,23 @@ void reset_timer()
 	reset_value = SDL_GetTicks();
 }
 
-int query_timer()
+Sint32 query_timer()
 {
 	// Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
 	// that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
 	// or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
-	return (int) ((SDL_GetTicks() - reset_value) / 13.6);
+	return (Sint32) ((SDL_GetTicks() - reset_value) / 13.6);
 }
 
-int query_timer_control()
+Sint32 query_timer_control()
 {
-	return (int) (SDL_GetTicks() / 13.6);
+	return (Sint32) (SDL_GetTicks() / 13.6);
 }
 
-void time_delay(int delay)
+void time_delay(Sint32 delay)
 {
 	if (delay < 0) return;
-	SDL_Delay((unsigned int) (delay * 13.6));
+	SDL_Delay((Uint32) (delay * 13.6));
 }
 
 void lowercase(char * str)

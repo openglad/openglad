@@ -33,7 +33,7 @@
 using namespace std;
 
 // From picker.cpp
-extern int calculate_level(unsigned int temp_exp);
+extern Sint32 calculate_level(Uint32 temp_exp);
 
 // Screen window boundries
 #define MAX_VIEWS 5
@@ -47,8 +47,8 @@ extern int calculate_level(unsigned int temp_exp);
 
 #define VERSION_NUM 2
 #define MAX_SPREAD 10 //this controls find_near_foe
-#define TIME_BONUS (int) 5000
-#define LEVEL_BONUS (int) 120
+#define TIME_BONUS (Sint32) 5000
+#define LEVEL_BONUS (Sint32) 120
 //#define query_keyboard dumb
 //#define grab_keyboard yuck
 
@@ -69,11 +69,11 @@ FILE * open_misc_file(const char *, const char *);
 // These are globals for the packed files ..
 packfile scenpack;
 
-unsigned int random(unsigned int x)
+Uint32 random(Uint32 x)
 {
 	if (x < 1)
 		return 0;
-	return (unsigned int) ( ((unsigned int) rand()) % x);
+	return (Uint32) ( ((Uint32) rand()) % x);
 }
 
 // ************************************************************
@@ -87,10 +87,10 @@ unsigned int random(unsigned int x)
 
 screen::screen(short howmany):video()
 {
-	int i, j;
+	Sint32 i, j;
 	const char *qresult;
 	text first_text(this);
-	int left = 66;
+	Sint32 left = 66;
 
 	grab_timer();
 
@@ -341,7 +341,7 @@ screen::~screen()
 
 void screen::cleanup(short howmany)
 {
-	int i;
+	Sint32 i;
 	oblink *here, *templink;
 	walker *who;
 
@@ -453,7 +453,7 @@ void screen::cleanup(short howmany)
 
 void screen::reset(short howmany)
 {
-	int i;
+	Sint32 i;
 
 	if (!mysmoother)
 		mysmoother = new smoother();
@@ -541,16 +541,16 @@ void screen::reset(short howmany)
 
 short screen::query_grid_passable(short x, short y, walker  *ob)
 {
-	int i,j;
+	Sint32 i,j;
 	//  short xsize=ob->sizex, ysize=ob->sizey;
-	int xtrax = 1;
-	int xtray = 1;
-	int xtarg; //the for loop target
-	int ytarg; //the for loop target
-	int dist;
+	Sint32 xtrax = 1;
+	Sint32 xtray = 1;
+	Sint32 xtarg; //the for loop target
+	Sint32 ytarg; //the for loop target
+	Sint32 dist;
 	// NOTE: we're going to shrink dimensions by one in each..
-	//int xover = (int) (x+ob->sizex-1), yover = (int) (y+ob->sizey-1);
-	int xover = (int) (x+ob->sizex), yover = (int) (y+ob->sizey);
+	//Sint32 xover = (Sint32) (x+ob->sizex-1), yover = (Sint32) (y+ob->sizey-1);
+	Sint32 xover = (Sint32) (x+ob->sizex), yover = (Sint32) (y+ob->sizey);
 
 	// Again, this is for shrinking ...
 	//x+=1;
@@ -842,7 +842,7 @@ short screen::act()
 	oblink  *here,  *before;
 	here = oblist;
 	static char obmessage[80];
-	int printed_time = 0; // have we printed message yet?
+	Sint32 printed_time = 0; // have we printed message yet?
 	//  static short debug = 0;
 
 	level_done = 2; // unless we find valid foes while looping
@@ -1415,13 +1415,13 @@ short screen::endgame(short ending, short nextlevel)
 {
 	char temp[50];
 	text mytext(this, TEXT_1);
-	unsigned int bonuscash[4] = {0, 0, 0, 0};
+	Uint32 bonuscash[4] = {0, 0, 0, 0};
 	oblink *checklist = oblist;
 	walker *target;
-	int test1;
+	Sint32 test1;
 	Uint8* endkeys = query_keyboard();
 	int  i;
-	unsigned int allscore = 0, allbonuscash = 0;
+	Uint32 allscore = 0, allbonuscash = 0;
 
 	for (i=0; i < 4; i++)
 		allscore += m_score[i];
@@ -1434,7 +1434,7 @@ short screen::endgame(short ending, short nextlevel)
 			//buffers: set_palette(redpalette);
 			draw_dialog(30, 70, 290, 134, "Defeat!");
 			mytext.write_y(92,"YOUR MEN ARE CRUSHED!", DARK_BLUE, 1);
-			sprintf(temp,"YOUR SCORE IS %ld.\n", allscore);
+			sprintf(temp,"YOUR SCORE IS %u.\n", allscore);
 			mytext.write_y(100,temp, DARK_BLUE, 1);
 			mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 			buffer_to_screen(0, 0, 320, 200);
@@ -1493,7 +1493,7 @@ short screen::endgame(short ending, short nextlevel)
 		{
 			draw_dialog(30, 70, 290, 134, "Victory!");
 			mytext.write_y(92,"YOU WIN.", DARK_BLUE, 1);
-			sprintf(temp,"YOUR SCORE IS %ld.\n", allscore);
+			sprintf(temp,"YOUR SCORE IS %u.\n", allscore);
 			mytext.write_y(100,temp, DARK_BLUE, 1);
 		}
 		mytext.write_y(120,"**PRESS 'ESC' TO CONTINUE.**", DARK_BLUE, 1);
@@ -1505,7 +1505,7 @@ short screen::endgame(short ending, short nextlevel)
 		}
 		for (i=0; i < 4; i++)
 		{
-			bonuscash[i] = (m_score[i] * (TIME_BONUS + ((int)par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((int)par_value * LEVEL_BONUS)/2));
+			bonuscash[i] = (m_score[i] * (TIME_BONUS + ((Sint32)par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((Sint32)par_value * LEVEL_BONUS)/2));
 			if (bonuscash[i] < 0 || framecount > TIME_BONUS) // || framecount < 0)
 				bonuscash[i] = 0;
 			m_totalcash[i] += bonuscash[i];
@@ -1517,7 +1517,7 @@ short screen::endgame(short ending, short nextlevel)
 				bonuscash[i] = 0;
 			allbonuscash = 0;
 		}
-		sprintf(temp,"YOUR TIME BONUS IS %ld.\n",allbonuscash);
+		sprintf(temp,"YOUR TIME BONUS IS %u.\n",allbonuscash);
 		mytext.write_y(110,temp, DARK_BLUE, 1);
 		buffer_to_screen(0, 0, 320, 200);
 
@@ -1552,14 +1552,14 @@ short screen::endgame(short ending, short nextlevel)
 					if (target->myguy->level < calculate_level(target->myguy->exp))
 					{
 						draw_dialog(30, 70, 290, 134, "Congratulations!");
-						sprintf(temp, "%s reached level %ld",
+						sprintf(temp, "%s reached level %d",
 						        target->myguy->name,
 						        calculate_level(target->myguy->exp) );
 					}
 					else // we lost levels :>
 					{
 						draw_dialog(30, 70, 290, 134, "Alas!");
-						sprintf(temp, "%s fell to level %ld",
+						sprintf(temp, "%s fell to level %d",
 						        target->myguy->name,
 						        calculate_level(target->myguy->exp) );
 					}
@@ -1662,7 +1662,7 @@ walker *screen::find_near_foe(walker  *ob)
 walker  *screen::find_far_foe(walker  *ob)
 {
 	//short targx, targy;
-	int distance, tempdistance;
+	Sint32 distance, tempdistance;
 	oblink  *here;
 	walker  *foe,  *endfoe;
 
@@ -1775,7 +1775,7 @@ short load_scenario(const char * filename, screen * master)
 	FILE  *infile = NULL;
 	char temptext[10] = "XXX";
 	char versionnumber = 0;
-	int gotit;
+	Sint32 gotit;
 	short tempvalue;
 	string thefile(filename);
 
@@ -1915,6 +1915,7 @@ short load_version_2(FILE  *infile, screen * master)
 
 	// Get grid file to load
 	fread(newgrid, 8, 1, infile);
+	newgrid[8] = '\0';
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	strcpy(my_map_name, newgrid);
@@ -2396,7 +2397,7 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[1024] = "grid.pix";  // default grid
+	char newgrid[12] = "grid.pix";  // default grid
 	char new_scen_type; // read the scenario type
 	char oneline[80];
 	char numlines, tempwidth;
@@ -2628,7 +2629,7 @@ void screen::draw_panels(short howmany)
 walker  * screen::find_nearest_blood(walker  *who)
 {
 	oblink  *here;
-	int distance, newdistance;
+	Sint32 distance, newdistance;
 	walker  *returnob = NULL;
 
 	here = fxlist;
@@ -2643,7 +2644,7 @@ walker  * screen::find_nearest_blood(walker  *who)
 		if (here->ob && here->ob->query_order() == ORDER_TREASURE &&
 		        here->ob->query_family() == FAMILY_STAIN && !here->ob->dead)
 		{
-			newdistance = (unsigned int) who->distance_to_ob_center(here->ob);
+			newdistance = (Uint32) who->distance_to_ob_center(here->ob);
 			if (newdistance < distance)
 			{
 				distance = newdistance;
@@ -2656,12 +2657,12 @@ walker  * screen::find_nearest_blood(walker  *who)
 
 }
 
-oblink* screen::find_in_range(oblink *somelist, int range, short *howmany, walker  *ob)
+oblink* screen::find_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob)
 {
 	oblink *here;
 	oblink *newlist, *newhere;
 	//short obx, oby;
-	unsigned int distance;
+	Uint32 distance;
 
 	if (!somelist || !ob)
 	{
@@ -2681,8 +2682,8 @@ oblink* screen::find_in_range(oblink *somelist, int range, short *howmany, walke
 	{
 		if (here->ob && !here->ob->dead)
 		{
-			distance = (unsigned int) ob->distance_to_ob(here->ob);
-			if (distance <= (unsigned int) range)
+			distance = (Uint32) ob->distance_to_ob(here->ob);
+			if (distance <= (Uint32) range)
 			{
 				if (newlist) // existing list ..
 				{
@@ -2712,8 +2713,8 @@ walker* screen::find_nearest_player(walker *ob)
 {
 	oblink *here;
 	walker *returnob = NULL;
-	unsigned int distance = 32000;
-	unsigned int tempdistance;
+	Uint32 distance = 32000;
+	Uint32 tempdistance;
 
 	if (!ob)
 		return NULL;
@@ -2736,11 +2737,11 @@ walker* screen::find_nearest_player(walker *ob)
 	return returnob;
 }
 
-oblink* screen::find_foes_in_range(oblink *somelist, int range, short *howmany, walker  *ob)
+oblink* screen::find_foes_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob)
 {
 	oblink *here;
 	oblink *newlist, *newhere;
-	unsigned int distance;
+	Uint32 distance;
 
 	if (!somelist || !ob)
 	{
@@ -2761,8 +2762,8 @@ oblink* screen::find_foes_in_range(oblink *somelist, int range, short *howmany, 
 		        && (ob->is_friendly(here->ob) == 0)
 		   )
 		{
-			distance = (unsigned int) ob->distance_to_ob(here->ob);
-			if (distance <= (unsigned int) range)
+			distance = (Uint32) ob->distance_to_ob(here->ob);
+			if (distance <= (Uint32) range)
 			{
 				if (newlist) // existing list ..
 				{
@@ -2788,13 +2789,13 @@ oblink* screen::find_foes_in_range(oblink *somelist, int range, short *howmany, 
 	return newlist;
 }
 
-oblink* screen::find_friends_in_range(oblink *somelist, int range,
+oblink* screen::find_friends_in_range(oblink *somelist, Sint32 range,
                                       short *howmany, walker  *ob)
 {
 	oblink *here;
 	oblink *newlist, *newhere;
 	//short obx, oby;
-	unsigned int distance;
+	Uint32 distance;
 
 	if (!somelist || !ob)
 	{
@@ -2816,8 +2817,8 @@ oblink* screen::find_friends_in_range(oblink *somelist, int range,
 		        && ( ob->is_friendly(here->ob) )
 		   )
 		{
-			distance = (unsigned int) ob->distance_to_ob(here->ob);
-			if (distance <= (unsigned int) range)
+			distance = (Uint32) ob->distance_to_ob(here->ob);
+			if (distance <= (Uint32) range)
 			{
 				if (newlist) // existing list ..
 				{
@@ -2843,11 +2844,11 @@ oblink* screen::find_friends_in_range(oblink *somelist, int range,
 	return newlist;
 }
 
-oblink* screen::find_foe_weapons_in_range(oblink *somelist, int range, short *howmany, walker  *ob)
+oblink* screen::find_foe_weapons_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob)
 {
 	oblink *here;
 	oblink *newlist, *newhere;
-	unsigned int distance;
+	Uint32 distance;
 
 	if (!somelist || !ob)
 	{
@@ -2867,8 +2868,8 @@ oblink* screen::find_foe_weapons_in_range(oblink *somelist, int range, short *ho
 		        && ( ob->is_friendly(here->ob) )
 		   )
 		{
-			distance = (unsigned int) ob->distance_to_ob(here->ob);
-			if (distance <= (unsigned int) range)
+			distance = (Uint32) ob->distance_to_ob(here->ob);
+			if (distance <= (Uint32) range)
 			{
 				if (newlist) // existing list ..
 				{

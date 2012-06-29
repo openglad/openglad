@@ -38,7 +38,7 @@ class weap : public walker
 		}
 
 		// Weapons-only related variables; use with care
-		int do_bounce; // do we bounce?
+		Sint32 do_bounce; // do we bounce?
 
 };
 

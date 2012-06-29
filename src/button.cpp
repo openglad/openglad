@@ -24,8 +24,8 @@ short dumbcount;
 void get_input_events(bool);
 
 //vbutton functions, vbutton is a button class that will be self controlled
-vbutton::vbutton(int xpos, int ypos, int wide, int high,
-                 int func(int), int pass, char *msg, unsigned char hot )
+vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
+                 Sint32 func(Sint32), Sint32 pass, char *msg, unsigned char hot )
 {
 	arg = pass;
 	fun = func;
@@ -50,8 +50,8 @@ vbutton::vbutton(int xpos, int ypos, int wide, int high,
 	vdisplay();
 }
 
-vbutton::vbutton(int xpos, int ypos, int wide, int high,
-                 int func_code, int pass, char *msg, unsigned char hot )
+vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
+                 Sint32 func_code, Sint32 pass, char *msg, unsigned char hot )
 {
 	arg = pass;
 	fun = NULL; // don't use this!
@@ -76,8 +76,8 @@ vbutton::vbutton(int xpos, int ypos, int wide, int high,
 	vdisplay();
 }
 
-vbutton::vbutton(int xpos, int ypos, int wide, int high,
-                 int func_code, int pass, char *msg, char family,
+vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
+                 Sint32 func_code, Sint32 pass, char *msg, char family,
                  unsigned char hot )
 {
 	arg = pass;
@@ -176,7 +176,7 @@ void vbutton::vdisplay()
 	//grab_mouse();
 }
 
-void vbutton::vdisplay(int status)
+void vbutton::vdisplay(Sint32 status)
 {
 	if (!status) // do normal
 	{
@@ -223,10 +223,10 @@ void vbutton::vdisplay(int status)
 	grab_mouse();
 }
 
-int vbutton::leftclick()
+Sint32 vbutton::leftclick()
 {
-	int whichone=0;
-	int retvalue=0;
+	Sint32 whichone=0;
+	Sint32 retvalue=0;
 	// First check hotkeys ...
 	while (allbuttons[whichone])
 	{
@@ -247,10 +247,10 @@ int vbutton::leftclick()
 	return 0; // none worked
 }
 
-int vbutton::rightclick()
+Sint32 vbutton::rightclick()
 {
-	int whichone=0;
-	int retvalue=0;
+	Sint32 whichone=0;
+	Sint32 retvalue=0;
 	while (allbuttons[whichone])
 	{
 		retvalue = allbuttons[whichone]->rightclick(whichone);
@@ -261,9 +261,9 @@ int vbutton::rightclick()
 	return 0; // none worked
 }
 
-int vbutton::leftclick(int whichbutton)
+Sint32 vbutton::leftclick(Sint32 whichbutton)
 {
-	int retvalue=0;
+	Sint32 retvalue=0;
 	Uint8* mousekeys = query_keyboard();
 
 	if (whichbutton == 1) // hotkeys
@@ -304,9 +304,9 @@ int vbutton::leftclick(int whichbutton)
 	return -1; // wasn't focused on us
 }
 
-int vbutton::rightclick(int whichbutton)
+Sint32 vbutton::rightclick(Sint32 whichbutton)
 {
-	int retvalue=0;
+	Sint32 retvalue=0;
 
 	if (whichbutton)
 		whichbutton = 1;
@@ -325,9 +325,9 @@ int vbutton::rightclick(int whichbutton)
 	return -1; // wasn't focused on us
 }
 
-int vbutton::mouse_on()
+Sint32 vbutton::mouse_on()
 {
-	int mousex,mousey;
+	Sint32 mousex,mousey;
 	mymouse = query_mouse();
 	mousex = mymouse[MOUSE_X];
 	mousey = mymouse[MOUSE_Y];
@@ -367,7 +367,7 @@ int vbutton::mouse_on()
 	}
 }
 
-int ventermenu(vbutton * vbuttons)
+Sint32 ventermenu(vbutton * vbuttons)
 {
 	vbutton * here; // = new vbutton();
 	if (vbuttons == NULL)
@@ -381,7 +381,7 @@ int ventermenu(vbutton * vbuttons)
 	return 1;
 }
 
-int vexitmenu(vbutton * vbuttons)
+Sint32 vexitmenu(vbutton * vbuttons)
 {
 	vbutton * here; // = new vbutton();
 	vbutton * nextb; // = new vbutton();
@@ -397,15 +397,15 @@ int vexitmenu(vbutton * vbuttons)
 	return 1;
 }
 
-vbutton * buttonmenu(button * buttons, int numbuttons)
+vbutton * buttonmenu(button * buttons, Sint32 numbuttons)
 {
 	//buffers: return buttonmenu(buttons, numbuttons, 1); // default is redraw screen
 	return buttonmenu(buttons,numbuttons,0);
 }
 
-vbutton * buttonmenu(button * buttons, int numbuttons, int redraw)
+vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw)
 {
-	int i;
+	Sint32 i;
 
 	for (i=1; i < MAX_BUTTONS; i++) // skip # 0!
 	{
@@ -472,7 +472,7 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
   short i;
   //char input, temp;
   //short color = 1;
-  int inttemp = 0;
+  Sint32 longtemp = 0;
 //  short DARK_BLUE=0, green=0, blue=0;
 //  char rdelta, gdelta, bdelta;
   char *mykeyboard;
@@ -512,7 +512,7 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
  
   while(1)
   {
-         ++inttemp %= 90;
+         ++longtemp %= 90;
          // First cycle the colors ..
          if (!random(80))
                 myscreen->do_cycle(cyclestage++, 8);
@@ -522,12 +522,12 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
          {
                 if (mykeyboard[SDLK_KP_PLUS])
                 {
-                  add_money((int)2);
+                  add_money((Sint32)2);
                   return 1;
                 }
                 if (mykeyboard[SDLK_KP_MINUS])
                 {
-                  add_money((int)-2);
+                  add_money((Sint32)-2);
                   return 1;
                 }
                 if (mykeyboard[SDLK_LEFTBRACKET]) // lower scen num
@@ -713,7 +713,7 @@ short buttonmenu(button *buttons, short numbuttons, short no_clear)
 
 short has_mouse_focus(button thisbutton)
 {
-	int *thismouse;
+	Sint32 *thismouse;
 
 	thismouse = query_mouse();
 
@@ -728,7 +728,7 @@ short has_mouse_focus(button thisbutton)
 	return 0;
 }
 
-int vbutton::do_call(int whatfunc, int arg)
+Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 {
 	switch (whatfunc)
 	{
@@ -791,7 +791,7 @@ int vbutton::do_call(int whatfunc, int arg)
 }
 
 // For right-button
-int vbutton::do_call_right(int whatfunc, int arg)
+Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 arg)
 {
 	switch (whatfunc)
 	{
