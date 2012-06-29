@@ -139,6 +139,9 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	// Prepare screen for fade in
 	//myscreen->draw_panels(myscreen->numviews);
 
+    // This will update the 'control' so the screen centers on our guy
+    myscreen->continuous_input();
+    
 	//*******************************
 	// Fade in
 	//*******************************
@@ -728,12 +731,12 @@ short new_score_panel(screen *myscreen, short do_it)
 					scorecountup[control->team_num] = myscore;
 				myscreen->m_score[control->team_num] = myscore;
 				//above should count up the score towards the current amount
-				sprintf(message, "SC: %ld", scorecountup[control->team_num]);
+				sprintf(message, "SC: %u", scorecountup[control->team_num]);
 				mytext->write_xy(lm+2, bm-8, message, text_color, (short) 1);
 
 				// Level or exp, 2nd bottom left
 				if (control->myguy)
-					sprintf(message, "XP: %ld", control->myguy->exp);
+					sprintf(message, "XP: %u", control->myguy->exp);
 				else
 					sprintf(message, "LEVEL: %i", control->stats->level);
 				mytext->write_xy(lm+2, bm-16, message, text_color, (short) 1);
