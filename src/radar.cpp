@@ -62,8 +62,12 @@ void radar::start()
 		xview = sizex;
 	if (yview > sizey)
 		yview = sizey;
-	xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
-	yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+    
+    if(viewscreenp)
+    {
+        xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
+        yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+    }
 	bmp = new unsigned char[size];
 	update();
 
@@ -92,16 +96,15 @@ short radar::draw()
 	radarx = 0;
 	radary = 0;
 
-	if (!viewscreenp || !screenp)
+	if (!screenp)
 		return 0; //shouldn't be needed????
-
-	if (!viewscreenp->radarstart)
+	if (viewscreenp && !viewscreenp->radarstart)
 	{
 		start();
 		viewscreenp->radarstart = 1;
 	}
 
-	if (viewscreenp->control)
+	if (viewscreenp && viewscreenp->control)
 	{
 		radarx = (short) (viewscreenp->control->xpos/GRID_SIZE - xview/2);
 		radary = (short) (viewscreenp->control->ypos/GRID_SIZE - yview/2);
@@ -177,7 +180,7 @@ short radar::draw()
 						return 1;
 					}
 					tempcolor = (here->ob->query_team_color());
-					if (viewscreenp->control == here->ob)
+					if (viewscreenp && viewscreenp->control == here->ob)
 					{
 						tempcolor = (unsigned char) (random(256));
 						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
