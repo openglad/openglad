@@ -455,7 +455,7 @@ short viewscreen::input(const SDL_Event& event)
 		{
 			if (here->ob->query_order() == ORDER_LIVING &&
 			        here->ob->team_num == my_team &&
-			        here->ob->real_team_num == 255)
+			        here->ob->real_team_num == 255 && here->ob->user == -1)
 				break;
 			here = here->next;
 			if (!here)
@@ -497,7 +497,8 @@ short viewscreen::input(const SDL_Event& event)
 			if (here->ob->query_order() == ORDER_LIVING &&
 			        //   here->ob->query_act_type() != ACT_CONTROL &&
 			        here->ob->team_num == my_team &&
-			        here->ob->query_family() == newfam)
+			        here->ob->query_family() == newfam && 
+                    here->ob->user == -1)
 				break;
 			here = here->next;
 			if (!here)
