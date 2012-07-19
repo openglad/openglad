@@ -321,14 +321,13 @@ Druid:  Druids are the magicians of nature, and have
         in their way.  Although they cannot inflict damage
         from a distance, their chilling touch can bring
         death quickly at close range.
-        1.   Howl: More of a wail, really, a ghost's haunting howl
-             can cause even the bravest of warriors to flee in terror.
-             When invoked, all nearby enemies will flee away from the
-             ghost; how far they run, and how long the effect lasts, is
-             determined by the power of the ghost and the resistance of
-             the targets.
+        1.   Scare: A ghost's haunting wail can cause even the bravest 
+             of warriors to flee in terror.  When invoked, all nearby 
+             enemies will flee away from the ghost; how far they run, 
+             and how long the effect lasts, is determined by the power 
+             of the ghost and the resistance of the targets.
 
-® Faerie:The flying faerie are diminutive in stature, flying
+® Faerie: The flying faerie are diminutive in stature, flying
         above friends and enemies alike unnoticed.
         Although they are delicate and easily destroyed,
         faeries can sprinkle a magic powder which can

@@ -67,81 +67,16 @@ NOTE: While we try to keep this README file up to date, some
   [1.a] Description
   Gladiator is designed to allow up to four players to use the
   keyboard at once (although we admit it would be rather
-  cramped).  Each player has a number of 'action' keys, such as
-  movement or attacking, and also a set of preferences, which
-  are reached from the 'options menu,' and control things such
-  as game speed or viewport size.  Important to remember are the
-  'ESC' key, which will abort your current mission and return
-  you to the 'picker' screen, and the 'F1' key, which will bring
-  up a brief help display during the game.
-
-  [1.b] Movement keys
-  Player 1       Player 2       Player 3       Player 4
-  --------       --------       --------       -------- 
-  7  8  9        Q  W  E        U  I  O        R  T  Y
-   \ | /          \ | /          \ | /          \ | /
-  4-   -6        A-   -D        J-   -L        F-   -H
-   / | \          / | \          / | \          / | \
-  1  2  3        Z  X  C        M  ,  .        V  B  N
-
-  [1.c] Other 'action' keys
-  Other keys used 'actively' while playing the game are:
-  Action     Player 1       Player 2       Player 3       Player 4
-  ------     --------       --------       --------       -------- 
-
-  Fire       INSERT         CONTROL        SPACE          5 (non numeric)
-
-  Special    ENTER          ALT            Semicolon(;)   6 (non numeric)
-
-  Cycle      - (numeric)    1              7              3
-  Special
-
-  Switch     + (numeric)    TAB            BACKSPACE      EQUALS (=)
-  Character
-
-  Shifter    DELETE         LEFT-SHIFT     RIGHT-SHIFT    - (non numeric)
-
-  Yell       5 (numeric)    S              K              G
-
-  Options    Asterisk       2              8              4
-  Menu       (numeric)
-
-  Not all of these keys will work at all times.  For example, if
-  your special costs 100 magic points and you only have 50,
-  pressing your special key won't have an effect.  Similarly,
-  if you are a first-level mage and don't have the 'warp-space'
-  spell, you can't cycle through other specials because you don't
-  have them.
-
-  The 'shifter' key can be used in combination with others.  In
-  particular:
-   * Shifter + Yell    : Summon NPC's on your team to come fight with
-                         or protect you.
-   * Shifter + Switch  : Switch to next TYPE of team member; ie, jump
-                         to your first archer.
-   * Shifter + Special : Invoke a related version of a special ability.
-                         For example, shifter+special when a Mage has
-                         the Teleport ability selected will attempt to
-                         place a 'marker' for future teleports.
-                         Note that not all specials have an alternate!
-
-  [1.d] Options menu
-  From the options menu you can control several aspects of the
-  game.  Some of these affect only you, while others change the
-  game state for all players.  While the options menu is open,
-  gameplay pauses for all characters (and enemies!).
-
-   * +/- : Make the game run slower or faster (for all)
-   * [/] : Enlarge or shrink your viewscreen (player-specific)
-   * </> : Brighten or darken the game screen (for all)
-
-   *   C : Toggle color-cycling on or off (for all)
-   *   F : Toggle the foes/allies display on or off (player-specific)
-   *   H : Cycle through hitpoint/spellpoint display modes (player-spec.)
-   *   K : Change the default keyboard mapping (player-specific)
-   *   R : Toggle radar display on or off (player-specific)
-   *   S : Toggle the score/exp display on or off (player-specific)
-   *   T : Bring up an overview of your team's status
+  cramped) and to use joysticks/gamepads.  Each player has a 
+  number of 'action' keys, such as movement or attacking, and 
+  also a set of preferences, which are reached from the 
+  'options menu,' and control things such as game speed or 
+  viewport size.  Important to remember are the 'ESC' key, which 
+  will abort your current mission and return you to the 'picker' 
+  screen, and the 'F1' key, which will bring up a brief help 
+  display during the game.
+  
+  See glad.hlp for detailed controls.
 
 
 [2] Overview
@@ -479,7 +414,7 @@ E)  Don't forget to check how much it costs to train your character
     a scenario sooner, without much cost.
 
 [6] Credits
-  Current versions 3.5 and up programmed in Watcom C++ 10.0B by:
+  Versions 3.5 - 3.8K programmed in Watcom C++ 10.0B by:
 (In alphabetical order, and not in any way implying order of importance)
   -- Chad Lawrence
   -- Doug McCreary
@@ -496,6 +431,8 @@ E)  Don't forget to check how much it costs to train your character
   -- Loki, Ishara, and Mootz (well ... they tested the keyboard, anyway) :)
 
   Originally designed in Borland C++ 4.02
+  
+  See AUTHORS file for Openglad contributors.
 
 
 

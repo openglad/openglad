@@ -47,46 +47,46 @@ int player_keys[4][NUM_KEYS] = {
     {
          SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
          SDLK_x, SDLK_z, SDLK_a, SDLK_q,
-         SDLK_LCTRL, SDLK_LALT,                    // fire & special
-         SDLK_TAB,                               // switch guys
-         SDLK_1,                                 // change special
+         SDLK_LCTRL, SDLK_LALT,                  // fire & special
+         SDLK_BACKQUOTE,                         // switch guys
+         SDLK_TAB,                               // change special
          SDLK_s,                                 // Yell
-         SDLK_LSHIFT,                        // Shifter
+         SDLK_LSHIFT,                            // Shifter
          SDLK_1,                                 // Options menu
-         SDLK_F5,                                 // Cheat key
+         SDLK_F5,                                // Cheat key
     },
     {
          SDLK_UP, SDLK_UNKNOWN, SDLK_RIGHT, SDLK_UNKNOWN,  // movements
          SDLK_DOWN, SDLK_UNKNOWN, SDLK_LEFT, SDLK_UNKNOWN,
-         SDLK_PERIOD, SDLK_SLASH,                    // fire & special
-         SDLK_RETURN,                          // switch guys
-         SDLK_COMMA,                         // change special
-         SDLK_l,                                // Yell
-         SDLK_RSHIFT,                                // Shifter
-         SDLK_2,                         // Options menu
-         SDLK_F8,                                    // Cheat key
+         SDLK_PERIOD, SDLK_SLASH,                // fire & special
+         SDLK_RETURN,                            // switch guys
+         SDLK_QUOTE,                             // change special
+         SDLK_BACKSLASH,                         // Yell
+         SDLK_RSHIFT,                            // Shifter
+         SDLK_2,                                 // Options menu
+         SDLK_F6,                                // Cheat key
      },
      {
          SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,  // movements
          SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
-         SDLK_SPACE, SDLK_SEMICOLON,                    // fire & special
-         SDLK_BACKSPACE,                               // switch guys
-         SDLK_7,                                 // change special
+         SDLK_SPACE, SDLK_SEMICOLON,             // fire & special
+         SDLK_MINUS,                             // switch guys
+         SDLK_9,                                 // change special
          SDLK_k,                                 // Yell
-         SDLK_RSHIFT,                        // Shifter
+         SDLK_0,                                 // Shifter
          SDLK_3,                                 // Options menu
-         SDLK_F7,                                 // Cheat key
+         SDLK_F7,                                // Cheat key
      },
      {
          SDLK_t, SDLK_y, SDLK_h, SDLK_n,  // movements
          SDLK_b, SDLK_v, SDLK_f, SDLK_r,
-         SDLK_5, SDLK_6,                    // fire & special
-         SDLK_EQUALS,                               // switch guys
-         SDLK_3,                                 // change special
+         SDLK_5, SDLK_6,                         // fire & special
+         SDLK_EQUALS,                            // switch guys
+         SDLK_7,                                 // change special
          SDLK_g,                                 // Yell
-         SDLK_MINUS,                        // Shifter
+         SDLK_8,                                 // Shifter
          SDLK_4,                                 // Options menu
-         SDLK_F6,                                 // Cheat key
+         SDLK_F8,                                // Cheat key
      }
 };
 

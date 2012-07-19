@@ -5,8 +5,8 @@ and press an associated key.
 The following standard cheat codes are
 currently supported:
 
-Cheat key for player 1 is F8 (2 is F5,
-3 is F7, and 4 is F6); these may
+Cheat key for player 1 is F5 (2 is F6,
+3 is F7, and 4 is F8); these may
 be changed by using the "key preferences"
 option from the options menu (press *).
 
@@ -25,7 +25,7 @@ switch: (character switch) switch to a character
         on an opposing team, if availible
 
 Thus, to give yourself, as player 1, more
-hitpoints, you would hold down F8 and press
+hitpoints, you would hold down F5 and press
 the H key.
 
 To cheat while in the character picker, go to

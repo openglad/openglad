@@ -3,14 +3,14 @@
 ESC: Quit Gladiator
 
 
-Movement keys
+Movement keys (keyboard control)
 Player 1       Player 2
 --------       --------
-7  8  9        Q  W  E
+Q  W  E           UP  
  \ | /          \ | / 
-4-   -6        A-   -D
+A-   -D       LT-   -RT
  / | \          / | \ 
-1  2  3        Z  X  C
+Z  X  C           DN   
 
 Player 3       Player 4
 --------       -------- 
@@ -25,42 +25,42 @@ Other 'action' keys
 
 Action     Player 1       Player 2
 ------     --------       --------
- Fire      INSERT         CONTROL
+Fire       L_CTRL         PERIOD .
 
-Special    ENTER          ALT
+Special    L_ALT          SLASH /
 
-Cycle      - (numeric)    1
+Cycle      TAB            QUOTE '
 Special
 
-Switch     + (numeric)    TAB
+Switch     BACKQUOTE `    RETURN (ENTER)
 Character
 
-Shifter    DELETE         LEFT-SHIFT
+Shifter    L_SHIFT        R_SHIFT
 
-Yell       5 (numeric)    S (ess)
+Yell       S (letter)     BACKSLASH \
 
-Options    Asterisk       2
-Menu       (numeric)
+Options    1 (non numpad)  2 (non numpad)
+Menu       
 
 
 Action    Player 3       Player 4
 ------    --------       -------- 
 
-Fire      SPACE          5 (non num)
+Fire      SPACE          5 (non numpad)
 
-Special   Semicolon(;)   6 (non num)
+Special   Semicolon ;    6 (non numpad)
 
-Cycle     7              3
+Cycle     9 (non numpad) 7 (non numpad)
 Special 
 
-Switch    BACKSPACE      EQUALS (=)
+Switch    - (non numpad) EQUALS =
 Character
 
-Shifter   RIGHT-SHIFT    - (non num)
+Shifter   0 (non numpad) 8 (non numpad)
 
 Yell      K              G
 
-Options   8              4
+Options   3 (non numpad) 4 (non numpad)
 Menu       
 
 

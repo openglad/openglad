@@ -4,10 +4,13 @@ FSGames (http://fsgames.com) - wrote original game
 Zardus - zardus@users.sourceforge.net
 	* programmer and porter
 
-Sean Ford <aglswapbuffers> - wmd@isroot.com 
+Sean Ford <aglswapbuffers> - wmd@isroot.com
 	* programmer and porter
 
-Contributers:
+Jonathan Dearborn <grimfang4/Jonny D> - grimfang4@gmail.com
+	* programmer
+
+Contributions:
 Michael Bonfils <mom32@murlock.org> - created Visual C++ makefile
 Erik Hermansen <erikh2000@yahoo.com> and Mike Rimer - fading code
 Kari Pahula <kaolpa@utu.fi> - autoconf and optimization work, new config file handling
