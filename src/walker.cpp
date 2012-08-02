@@ -1062,7 +1062,7 @@ short walker::draw(viewscreen  *view_buf)
 		                        outline, //outline
 		                        0 ); //type of phantom
 		                        
-        //draw_smallHealthBar(this, view_buf);
+        draw_smallHealthBar(this, view_buf);
 	}
 	else
 	{
@@ -1071,7 +1071,7 @@ short walker::draw(viewscreen  *view_buf)
 		                       view_buf->endx, view_buf->endy,
 		                       bmp, query_team_color());
         
-        //draw_smallHealthBar(this, view_buf);
+        draw_smallHealthBar(this, view_buf);
 	}
 
 	return 1;
