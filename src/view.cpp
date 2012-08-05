@@ -1291,14 +1291,14 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	char teamnum = my_team;
 	char text_down = top+3;
 	oblink *here = screenp->oblist;
-	oblink *dude, *list, *temp;
+	oblink* dude = NULL;
+	oblink* list = NULL;
 	char message[30], hpcolor, mpcolor, namecolor, numguys = 0;
 	short hp, mp, maxhp, maxmp;
 	text mytext(screenp);
-	list = new oblink;
+	list = new oblink;  // Is this new oblink actually used?
 	list->ob = NULL;
 	list->next = NULL;
-	temp = new oblink;
 	Uint8* teamkeys;
 	Sint32 currentcycle = 0, cycletime = 30000;
 
@@ -1319,7 +1319,8 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	mytext.write_xy(left+190, text_down, message, (unsigned char) BLACK);
 
 	text_down+=6;
-
+    
+    // Build the list of characters backward
 	while(here)
 	{
 		if (here->ob && !here->ob->dead
@@ -1328,7 +1329,6 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		        && (here->ob->stats->name || here->ob->myguy)) //&& here->ob->owner == NULL)
 		{
 			dude = new oblink;
-			dude->next = NULL;
 			dude->ob = here->ob;
 			dude->next = list;
 			list = dude;
@@ -1339,15 +1339,16 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 				//(dude->ob->stats->hitpoints*10)/dude->ob->stats->max_hitpoints <=
 				//(dude->next->ob->stats->hitpoints*10)/dude->next->ob->stats->max_hitpoints)
 			{
-				temp->ob = dude->ob;
+				walker* temp_ob = dude->ob;
 				dude->ob = dude->next->ob;
-				dude->next->ob = temp->ob;
+				dude->next->ob = temp_ob;
 				dude = dude->next;
 			}
 		}
 		here = here->next;
 	}
-
+    
+    // Go through the list and draw the entries
 	dude = list;
 	while (dude)
 	{
@@ -1411,17 +1412,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 
 	while (list)
 	{
-		temp = list;
+        oblink* temp = list;
 		list = list->next;
 		delete temp;
-		temp = NULL;
 	}
-	delete temp;
-	temp = NULL;
-	delete dude;
-	dude = NULL;
-	delete list;
-	list = NULL;
 
 	//buffers: since we pretty much always draw to the back buffer,
 	//buffers: we need to swap the buffers to see the changes
