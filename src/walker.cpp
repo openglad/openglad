@@ -1014,7 +1014,12 @@ short walker::draw(viewscreen  *view_buf)
 		}
 	}
 	else
-		outline = 0;
+	{
+	    outline = 0;
+	}
+	
+    if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+        outline = OUTLINE_INVISIBLE;
 
 	if (stats->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
 		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,

@@ -342,8 +342,8 @@ button detailed[] =
 
 button editteam[] =
     {
-        { "NEXT", SDLK_n,  10, 40, 40, 20, CYCLE_TEAM_GUY, 1},
-        { "PREV", SDLK_p,  110, 40, 40, 20, CYCLE_TEAM_GUY, -1},
+        { "PREV", SDLK_p,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1},
+        { "NEXT", SDLK_n,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1},
         { "", SDLK_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR},
         { "", SDLK_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR},
         { "", SDLK_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX},
@@ -367,8 +367,8 @@ button editteam[] =
 
 button buyteam[] =
     {
-        { "NEXT", SDLK_n,  10, 40, 40, 20, CYCLE_GUY, 1},
-        { "PREV", SDLK_p,  110, 40, 40, 20, CYCLE_GUY, -1},
+        { "PREV", SDLK_p,  10, 40, 40, 20, CYCLE_GUY, -1},
+        { "NEXT", SDLK_n,  110, 40, 40, 20, CYCLE_GUY, 1},
         { "", SDLK_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR},
         { "", SDLK_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR},
         { "", SDLK_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX},
