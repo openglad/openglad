@@ -897,6 +897,9 @@ void walker::set_weapon_heading(walker *weapon)
 
 void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 {
+    if(w->query_order() != ORDER_LIVING && w->query_order() != ORDER_GENERATOR)
+        return;
+    
     short points = w->stats->hitpoints;
     char whatcolor;
     
@@ -915,18 +918,29 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 	Sint32 xscreen = (Sint32) (w->xpos - view_buf->topx + view_buf->xloc);
 	Sint32 yscreen = (Sint32) (w->ypos - view_buf->topy + view_buf->yloc);
     
-    SDL_Rect r = {xscreen + view_buf->xloc, yscreen + view_buf->yloc + w->sizey, w->sizex, 1};
+    
+    Sint32 walkerstartx = xscreen;
+    Sint32 walkerstarty = yscreen;
+    Sint32 portstartx = view_buf->xloc;
+    Sint32 portstarty = view_buf->yloc;
+    Sint32 portendx = view_buf->endx;
+    Sint32 portendy = view_buf->endy;
+    
+    
+    SDL_Rect r = {walkerstartx, walkerstarty + w->sizey + 1, w->sizex, 1};
+    if(r.x < portstartx || r.x > portendx
+       || r.y < portstarty || r.y > portendy)
+       return;
+           
     float ratio = float(points)/w->stats->max_hitpoints;
     if(ratio >= 0.0f)
     {
-        if(ratio < 0.95f
-            && r.x > view_buf->xloc && r.x + r.w < view_buf->endx
-             && r.y > view_buf->yloc && r.y + r.h < view_buf->endy)
+        if(ratio < 0.95f)
         {
             Uint16 max_w = r.w;
             r.w *= ratio;
             w->screenp->draw_box(r.x, r.y, r.x + r.w, r.y + r.h, whatcolor, 1);
-            w->screenp->draw_box(r.x-1, r.y-1, max_w+1, r.y + r.h+1, BLACK, 0);
+            w->screenp->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
         }
     }
 }
