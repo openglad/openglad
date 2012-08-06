@@ -37,6 +37,9 @@ extern Sint32 calculate_level(Uint32 temp_exp);
 extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
 extern Sint32 current_difficulty;
 
+// from glad.cpp
+short remaining_foes(screen *myscreen, char myteam);
+
 walker::walker(unsigned char  *data, screen  *myscreen): pixieN(data, myscreen)
 {
 	// Set our stats ..
@@ -1459,6 +1462,11 @@ short walker::attack(walker  *target)
 					        && (!target->owner) ) // do we have an NPC name?
 					{
 						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name);
+						screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
+					}
+					if(remaining_foes(screenp, playerteam) == 1)  // This is the last foe
+					{
+						sprintf(message, "All foes defeated!");
 						screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 					}
 				}
