@@ -68,8 +68,13 @@ int soundob::init()
 	// Do we have sounds on?
 	if (silence)
 		return 0;
-
-	if(Mix_OpenAudio(22050,AUDIO_S16,1,1024)==-1)
+    
+    int sample_rate = 22050;
+    int sample_format = AUDIO_S16;
+    int sample_buffer_size = 1024;
+    bool stereo = true;
+    
+	if(Mix_OpenAudio(sample_rate, sample_format, stereo? 2 : 1 , sample_buffer_size) == -1)
 	{
 		printf("ERROR: Mix_OpenAudio: %s\n",Mix_GetError());
 		exit(0);
@@ -119,6 +124,7 @@ void soundob::load_sound(Mix_Chunk **audio, char * file)
 {
 	char * filepath;
 	filepath = get_file_path(file, "sound/");
+	
 	*audio = Mix_LoadWAV(filepath);
 	if(!*audio)
 	{

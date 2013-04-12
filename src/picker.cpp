@@ -41,9 +41,6 @@
 
 //int matherr (struct exception *);
 
-FILE * open_misc_file(const char *, const char *);
-FILE * open_misc_file(const char *, const char *, const char *);
-
 void show_guy(Sint32 frames, Sint32 who); // shows the current guy ..
 Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
@@ -75,7 +72,7 @@ unsigned char playermode=1;
 unsigned char  *gladpic,*magepic;
 pixieN  *gladpix,*magepix;
 char levels[MAX_LEVELS];        // our level-completion status
-FILE *loadgame; //for loading the default game
+SDL_RWops *loadgame; //for loading the default game
 vbutton * localbuttons; //global so we can delete the buttons anywhere
 guy *ourteam[MAXTEAM];
 Sint32 teamsize = 0;
@@ -247,10 +244,10 @@ void picker_main(Sint32 argc, char  **argv)
 	clear_keyboard();
 
 	// Load the current saved game, if it exists .. (save0.gtl)
-	loadgame = open_misc_file("save0.gtl", "save/");
+	loadgame = open_user_file("save0.gtl", "save/");
 	if (loadgame)
 	{
-		fclose(loadgame);
+	    SDL_RWclose(loadgame);
 		load_team_list_one("save0");
 	}
 
@@ -1227,14 +1224,14 @@ Sint32 create_buy_menu(Sint32 arg1)
 		else if (clickvalue == 2)
 			retvalue=localbuttons->rightclick();
 
-		if (inputkeyboard[SDLK_LCTRL])
+		if (inputkeyboard[KEYSTATE_LCTRL])
 		{
-			if (inputkeyboard[SDLK_KP_PLUS])
+			if (inputkeyboard[KEYSTATE_KP_PLUS])
 			{
 				money[current_team_num] += 1000;
 				retvalue = OK;
 			}
-			if (inputkeyboard[SDLK_KP_MINUS])
+			if (inputkeyboard[KEYSTATE_KP_MINUS])
 			{
 				money[current_team_num] -= 1000;
 				retvalue = OK;
@@ -2375,7 +2372,7 @@ Sint32 do_load(Sint32 arg1)
 Sint32 save_team_list(const char * filename)
 {
 	char filler[50];// = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	FILE  *outfile;
+	SDL_RWops  *outfile;
 	char temp_filename[80];
 	char savedgame[40]; // for 38-byte saved game name
 	guy *here;
@@ -2452,7 +2449,7 @@ Sint32 save_team_list(const char * filename)
 
 	//buffers: PORT: dont need this? _disable(); //disable interrupts
 
-	outfile = open_misc_file(temp_filename, "save/", "wb");
+	outfile = open_user_file(temp_filename, "save/", "wb");
 	//myscreen->restore_ints();
 
 	//buffers: PORT: dont need this? _enable(); //enable interrupts
@@ -2462,53 +2459,53 @@ Sint32 save_team_list(const char * filename)
 		return 0;
 
 	// Write id header
-	fwrite(temptext, 3, 1, outfile);
+	SDL_RWwrite(outfile, temptext, 3, 1);
 
 	// Write version number
-	fwrite(&temp_version, 1, 1, outfile);
+	SDL_RWwrite(outfile, &temp_version, 1, 1);
 
 	// Versions 7+ include a mark for registered or not
 	temp_registered = 0;
 	temp_registered = 1;
-	fwrite(&temp_registered, 2, 1, outfile);
+	SDL_RWwrite(outfile, &temp_registered, 2, 1);
 
 	// Write the saved game name
 	strcpy(savedgame, save_file);  // save_file is global, 20-char name
 	for (i=strlen(savedgame); i < 40; i++)
 		savedgame[i] = 0;
-	fwrite(savedgame, 40, 1, outfile);
+	SDL_RWwrite(outfile, savedgame, 40, 1);
 
 	// Write scenario number
-	fwrite(&next_scenario, 2, 1, outfile);
+	SDL_RWwrite(outfile, &next_scenario, 2, 1);
 
 	// Write cash
-	fwrite(&newcash, 4, 1, outfile);
+	SDL_RWwrite(outfile, &newcash, 4, 1);
 	// Write score
-	fwrite(&newscore, 4, 1, outfile);
+	SDL_RWwrite(outfile, &newscore, 4, 1);
 
 	// Versions 6+ have a score for each possible team
 	for (i=0; i < 4; i++)
 	{
 		newcash = money[i];
-		fwrite(&newcash, 4, 1, outfile);
+		SDL_RWwrite(outfile, &newcash, 4, 1);
 		newscore = score[i];
-		fwrite(&newscore, 4, 1, outfile);
+		SDL_RWwrite(outfile, &newscore, 4, 1);
 	}
 
 	// Versions 7+ include the allied mode information
 	temp_allied = myscreen->allied_mode;
-	fwrite(&temp_allied, 2, 1, outfile);
+	SDL_RWwrite(outfile, &temp_allied, 2, 1);
 
 	// Determine size of team list ...
 	listsize = teamsize;
 
-	fwrite(&listsize, 2, 1, outfile);
+	SDL_RWwrite(outfile, &listsize, 2, 1);
 
 	//write number of players
-	fwrite(&temp_playermode,1,1,outfile);
+	SDL_RWwrite(outfile, &temp_playermode,1,1);
 
 	// Write the reserved area, 31 bytes
-	fwrite(filler, 31, 1, outfile);
+	SDL_RWwrite(outfile, filler, 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	for (i=0; i < MAXTEAM; i++)
@@ -2542,40 +2539,40 @@ Sint32 save_team_list(const char * filename)
 			temp_teamnum = here->teamnum; // v.5+
 
 			// Now write all those values
-			fwrite(&temp_order, 1, 1, outfile);
-			fwrite(&temp_family,1, 1, outfile);
-			fwrite(guyname, 12, 1, outfile);
-			fwrite(&temp_str, 2, 1, outfile);
-			fwrite(&temp_dex, 2, 1, outfile);
-			fwrite(&temp_con, 2, 1, outfile);
-			fwrite(&temp_int, 2, 1, outfile);
-			fwrite(&temp_arm, 2, 1, outfile);
-			fwrite(&temp_lev, 2, 1, outfile);
-			fwrite(&temp_exp, 4, 1, outfile);
-			fwrite(&temp_kills, 2, 1, outfile);
-			fwrite(&temp_level_kills, 4, 1, outfile);
-			fwrite(&temp_td, 4, 1, outfile); // v.4+
-			fwrite(&temp_th, 4, 1, outfile); // v.4+
-			fwrite(&temp_ts, 4, 1, outfile); // v.4+
-			fwrite(&temp_teamnum, 2, 1, outfile); // v.5+
+			SDL_RWwrite(outfile, &temp_order, 1, 1);
+			SDL_RWwrite(outfile, &temp_family,1, 1);
+			SDL_RWwrite(outfile, guyname, 12, 1);
+			SDL_RWwrite(outfile, &temp_str, 2, 1);
+			SDL_RWwrite(outfile, &temp_dex, 2, 1);
+			SDL_RWwrite(outfile, &temp_con, 2, 1);
+			SDL_RWwrite(outfile, &temp_int, 2, 1);
+			SDL_RWwrite(outfile, &temp_arm, 2, 1);
+			SDL_RWwrite(outfile, &temp_lev, 2, 1);
+			SDL_RWwrite(outfile, &temp_exp, 4, 1);
+			SDL_RWwrite(outfile, &temp_kills, 2, 1);
+			SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
+			SDL_RWwrite(outfile, &temp_td, 4, 1); // v.4+
+			SDL_RWwrite(outfile, &temp_th, 4, 1); // v.4+
+			SDL_RWwrite(outfile, &temp_ts, 4, 1); // v.4+
+			SDL_RWwrite(outfile, &temp_teamnum, 2, 1); // v.5+
 
 			// And the filler
-			fwrite(filler, 8, 1, outfile);
+			SDL_RWwrite(outfile, filler, 8, 1);
 
 		} // end of found valid guy in slot
 	}
 
 	// Write our level status ..
-	fwrite(levels, 500, 1, outfile);
+	SDL_RWwrite(outfile, levels, 500, 1);
 
-	fclose(outfile);
+    SDL_RWclose(outfile);
 	return 1;
 }
 
 Sint32 load_team_list_one(const char * filename)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	FILE  *infile;
+	SDL_RWops  *infile;
 	char temp_filename[80];
 
 	char temptext[10] = "GTL";
@@ -2651,7 +2648,7 @@ Sint32 load_team_list_one(const char * filename)
 	for (i=0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
-	if ( (infile = open_misc_file(temp_filename, "save/")) == NULL ) // open for write
+	if ( (infile = open_user_file(temp_filename, "save/")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
 		//buffers: DEBUG: uncommented following line
@@ -2660,22 +2657,22 @@ Sint32 load_team_list_one(const char * filename)
 	}
 
 	// Read id header
-	fread(temptext, 3, 1, infile);
+	SDL_RWread(infile, temptext, 3, 1);
 	if ( strcmp(temptext,"GTL"))
 	{
-		fclose(infile);
+	    SDL_RWclose(infile);
 		//buffers: DEBUG: uncommented following line
 		printf("Error, selected file is not a GTL file: %s\n",filename);
 		return 0; //not a gtl file
 	}
 
 	// Read version number
-	fread(&temp_version, 1, 1, infile);
+	SDL_RWread(infile, &temp_version, 1, 1);
 
 	// Versions 7+ have a registered mark ..
 	if (temp_version >= 7)
 	{
-		fread(&temp_registered, 2, 1, infile);
+		SDL_RWread(infile, &temp_registered, 2, 1);
 	}
 
 	// Do stuff based on the version number
@@ -2683,11 +2680,11 @@ Sint32 load_team_list_one(const char * filename)
 	{
 		if (temp_version >= 2)
 		{
-			fread(savedgame, 40, 1, infile);
+			SDL_RWread(infile, savedgame, 40, 1);
 		}
 		else
 		{
-			fclose(infile);
+            SDL_RWclose(infile);
 			//buffers: DEBUG: uncommented following line
 			printf("Error, selected file is not version one: %s\n",filename);
 			return 0;
@@ -2697,14 +2694,14 @@ Sint32 load_team_list_one(const char * filename)
 		strcpy(savedgame, "SAVED GAME"); // fake the game name
 
 	// Read scenario number
-	fread(&next_scenario, 2, 1, infile);
+	SDL_RWread(infile, &next_scenario, 2, 1);
 	scen_level = next_scenario;
 
 	// Read cash
-	fread(&newcash, 4, 1, infile);
+	SDL_RWread(infile, &newcash, 4, 1);
 	money[0] = newcash;
 	// Read score
-	fread(&newscore, 4, 1, infile);
+	SDL_RWread(infile, &newscore, 4, 1);
 	score[0] = newscore;
 
 	// Versions 6+ have a score for each possible team, 0-3
@@ -2712,9 +2709,9 @@ Sint32 load_team_list_one(const char * filename)
 	{
 		for (i=0; i < 4; i++)
 		{
-			fread(&newcash, 4, 1, infile);
+			SDL_RWread(infile, &newcash, 4, 1);
 			money[i] = newcash;
-			fread(&newscore, 4, 1, infile);
+			SDL_RWread(infile, &newscore, 4, 1);
 			score[i] = newscore;
 		}
 	}
@@ -2722,19 +2719,19 @@ Sint32 load_team_list_one(const char * filename)
 	// Versions 7+ have the allied information ..
 	if (temp_version >= 7)
 	{
-		fread(&temp_allied, 2, 1, infile);
+		SDL_RWread(infile, &temp_allied, 2, 1);
 		myscreen->allied_mode = temp_allied;
 	}
 
 	// Determine size of team list ...
-	fread(&listsize, 2, 1, infile);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	//read number of players
-	fread(&temp_playermode, 1, 1, infile);
+	SDL_RWread(infile, &temp_playermode, 1, 1);
 	playermode = temp_playermode;
 
 	// Read the reserved area, 31 bytes
-	fread(filler, 31, 1, infile);
+	SDL_RWread(infile, filler, 31, 1);
 
 	// Delete any team in memory ..
 	for (i=0; i < MAXTEAM; i++)
@@ -2765,25 +2762,25 @@ Sint32 load_team_list_one(const char * filename)
 		for (i=strlen(guyname); i < 12; i++)
 			guyname[i] = 0;
 		// Now write all those values
-		fread(&temp_order, 1, 1, infile);
-		fread(&temp_family,1, 1, infile);
-		fread(guyname, 12, 1, infile);
-		fread(&temp_str, 2, 1, infile);
-		fread(&temp_dex, 2, 1, infile);
-		fread(&temp_con, 2, 1, infile);
-		fread(&temp_int, 2, 1, infile);
-		fread(&temp_arm, 2, 1, infile);
-		fread(&temp_lev, 2, 1, infile);
-		fread(&temp_exp, 4, 1, infile);
-		fread(&temp_kills, 2, 1, infile);
-		fread(&temp_level_kills, 4, 1, infile);
-		fread(&temp_td, 4, 1, infile); // v.4+
-		fread(&temp_th, 4, 1, infile); // v.4+
-		fread(&temp_ts, 4, 1, infile); // v.4+
-		fread(&temp_teamnum, 2, 1, infile); // v.5+
+		SDL_RWread(infile, &temp_order, 1, 1);
+		SDL_RWread(infile, &temp_family,1, 1);
+		SDL_RWread(infile, guyname, 12, 1);
+		SDL_RWread(infile, &temp_str, 2, 1);
+		SDL_RWread(infile, &temp_dex, 2, 1);
+		SDL_RWread(infile, &temp_con, 2, 1);
+		SDL_RWread(infile, &temp_int, 2, 1);
+		SDL_RWread(infile, &temp_arm, 2, 1);
+		SDL_RWread(infile, &temp_lev, 2, 1);
+		SDL_RWread(infile, &temp_exp, 4, 1);
+		SDL_RWread(infile, &temp_kills, 2, 1);
+		SDL_RWread(infile, &temp_level_kills, 4, 1);
+		SDL_RWread(infile, &temp_td, 4, 1); // v.4+
+		SDL_RWread(infile, &temp_th, 4, 1); // v.4+
+		SDL_RWread(infile, &temp_ts, 4, 1); // v.4+
+		SDL_RWread(infile, &temp_teamnum, 2, 1); // v.5+
 
 		// And the filler
-		fread(filler, 8, 1, infile);
+		SDL_RWread(infile, filler, 8, 1);
 		// Now set the values ..
 		tempguy->family       = temp_family;
 		strcpy(tempguy->name,guyname);
@@ -2841,18 +2838,18 @@ Sint32 load_team_list_one(const char * filename)
 	// First, clear the status ..
 	memset( levels, 0, 500 );
 	if (temp_version >= 5)
-		fread(levels, 500, 1, infile);
+		SDL_RWread(infile, levels, 500, 1);
 	else
-		fread(levels, 200, 1, infile);
+		SDL_RWread(infile, levels, 200, 1);
 
-	fclose(infile);
+    SDL_RWclose(infile);
 
 	return 1;
 }
 
 const char* get_saved_name(const char * filename)
 {
-	FILE  *infile;
+	SDL_RWops  *infile;
 	char temp_filename[80];
 
 	char temptext[10] = "GTL";
@@ -2873,40 +2870,41 @@ const char* get_saved_name(const char * filename)
 	//buffers: PORT: changed .GTL to .gtl
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = open_misc_file(temp_filename, "save/")) == NULL ) // open for read
+	if ( (infile = open_user_file(temp_filename, "save/")) == NULL ) // open for read
 	{
 		return "EMPTY SLOT";
 	}
 
 	// Read id header
-	fread(temptext, 3, 1, infile);
+	SDL_RWread(infile, temptext, 3, 1);
 	if ( strcmp(temptext,"GTL"))
 	{
-		fclose(infile);
+	    SDL_RWclose(infile);
 		strcpy(savedgame, "EMPTY SLOT");
 		return savedgame;
 	}
 
 	// Read version number
-	fread(&temp_version, 1, 1, infile);
+	SDL_RWread(infile, &temp_version, 1, 1);
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
 		{
 			if (temp_version >= 7)
-				fread(&temp_registered, 2, 1, infile);
-			fread(savedgame, 40, 1, infile);
+				SDL_RWread(infile, &temp_registered, 2, 1);
+			SDL_RWread(infile, savedgame, 40, 1);
 		}
 		else
 		{
-			fclose(infile);
+            SDL_RWclose(infile);
 			strcpy(savedgame, "SAVED GAME");
+			return savedgame;
 		}
 	}
 	else
 		strcpy(savedgame, "SAVED GAME"); // fake the game name
 
-	fclose(infile);
+    SDL_RWclose(infile);
 	return (savedgame);
 }
 
@@ -3005,10 +3003,10 @@ Sint32 go_menu(Sint32 arg1)
 	myscreen->reset(1);
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 
-	loadgame = open_misc_file("save0.gtl", "save/");
+	loadgame = open_user_file("save0.gtl", "save/");
 	if (loadgame)
 	{
-		fclose(loadgame);
+	    SDL_RWclose(loadgame);
 		load_team_list_one("save0");
 	}
 	// Zardus: PORT: this obviously causes it to segfault
@@ -4147,10 +4145,10 @@ char* browse(screen *screenp)
 		get_input_events(POLL);
 		
 		// Quit if 'q' is pressed
-		if(mykeyboard[SDLK_q])
+		if(mykeyboard[KEYSTATE_q])
             done = true;
             
-		if(mykeyboard[SDLK_UP])
+		if(mykeyboard[KEYSTATE_UP])
 		{
 		    // Scroll up
 		    if(current_level_index > 0)
@@ -4165,10 +4163,10 @@ char* browse(screen *screenp)
                     entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
                 }
 		    }
-            while (mykeyboard[SDLK_UP])
+            while (mykeyboard[KEYSTATE_UP])
                 get_input_events(WAIT);
 		}
-		if(mykeyboard[SDLK_DOWN])
+		if(mykeyboard[KEYSTATE_DOWN])
 		{
 		    // Scroll down
 		    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
@@ -4183,7 +4181,7 @@ char* browse(screen *screenp)
                     entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
                 }
 		    }
-            while (mykeyboard[SDLK_DOWN])
+            while (mykeyboard[KEYSTATE_DOWN])
                 get_input_events(WAIT);
 		}
 		
@@ -4319,7 +4317,7 @@ char* browse(screen *screenp)
 		SDL_Delay(10);
 	}
 	
-    while (mykeyboard[SDLK_q])
+    while (mykeyboard[KEYSTATE_q])
         get_input_events(WAIT);
 	
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)

@@ -195,7 +195,7 @@ void pixie::init_sdl_surface(void)
 	int r,g,b,c,i,j,num;
 	SDL_Rect rect;
 
-	bmp_surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex*screenp->mult,sizey*screenp->mult,24,
+	bmp_surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex*screenp->mult,sizey*screenp->mult,32,
 	                                   0,0,0,0);
 	if(!bmp_surface)
 	{

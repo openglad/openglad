@@ -18,9 +18,18 @@
 
 void get_input_events(bool);
 
+static unsigned char  *letters1 = NULL;
+static unsigned char  *letters_big = NULL;
+
+
 text::text(screen * myscreen)
 {
-	letters = read_pixie_file(TEXT_1);
+    if(letters1 == NULL)
+        letters1 = read_pixie_file(TEXT_1);
+    if(letters_big == NULL)
+        letters_big = read_pixie_file(TEXT_BIG);
+    
+    letters = letters1;
 	if(!letters)
 		printf("letters is NULL\n");
 	sizex = letters[1];
@@ -31,10 +40,19 @@ text::text(screen * myscreen)
 
 text::text(screen * myscreen, const char * filename)
 {
+    if(letters1 == NULL)
+        letters1 = read_pixie_file(TEXT_1);
+    if(letters_big == NULL)
+        letters_big = read_pixie_file(TEXT_BIG);
+    
     const char* temp_filename = filename;
 	if (!temp_filename || strlen(temp_filename) < 2)
 		temp_filename = "text.pix";
-	letters = read_pixie_file(temp_filename);
+		
+    if(strcmp(temp_filename, TEXT_BIG) == 0)
+        letters = letters_big;
+    else
+        letters = letters1;
 	sizex = letters[1];
 	sizey = letters[2];
 	letters = letters+3;
@@ -43,8 +61,9 @@ text::text(screen * myscreen, const char * filename)
 
 text::~text()
 {
-	free(letters-3);  // letters is offset by 3 bytes on load
-	letters = NULL;
+    // TODO: Free letters somewhere better (it's a global leak for now, so no hurry)
+	//free(letters-3);  // letters is offset by 3 bytes on load
+	//letters = NULL;
 }
 short text::query_width(const char *string) // returns width, in pixels
 {

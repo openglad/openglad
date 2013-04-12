@@ -25,6 +25,7 @@
 #ifndef GLADPACK_H
 #define GLADPACK_H
 
+#include "SDL.h"
 #include "SDL_stdinc.h"
 #include <stdio.h>
 
@@ -38,7 +39,7 @@ class packfile
 {
 	private:
 
-		FILE *datafile;
+		SDL_RWops *datafile;
 
 		short numfiles;
 		short last_subfile;
@@ -60,7 +61,7 @@ class packfile
 		bool opened() {return numfiles > 0;}
 		int close();
 
-		FILE *get_subfile(const char *subfilename);
+		SDL_RWops *get_subfile(const char *subfilename);
 		Sint32 get_subfilesize();
 
 };

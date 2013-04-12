@@ -28,6 +28,7 @@
 #include "smooth.h"
 #include "gladpack.h"
 #include "util.h"
+#include "input.h"
 #include <string>
 
 using namespace std;
@@ -52,11 +53,11 @@ extern Sint32 calculate_level(Uint32 temp_exp);
 //#define query_keyboard dumb
 //#define grab_keyboard yuck
 
-short load_version_2(FILE  *infile, screen * master);
-short load_version_3(FILE  *infile, screen * master); // v.3 scen
-short load_version_4(FILE  *infile, screen * master); // v.4 scen: + names
-short load_version_5(FILE  *infile, screen * master); // v.5 scen: + type
-short load_version_6(FILE  *infile, screen * master, short version=6); // v.6 scen: + title
+short load_version_2(SDL_RWops  *infile, screen * master);
+short load_version_3(SDL_RWops  *infile, screen * master); // v.3 scen
+short load_version_4(SDL_RWops  *infile, screen * master); // v.4 scen: + names
+short load_version_5(SDL_RWops  *infile, screen * master); // v.5 scen: + type
+short load_version_6(SDL_RWops  *infile, screen * master, short version=6); // v.6 scen: + title
 
 //const char* get_scen_title(const char *filename, screen *master); // get the title
 
@@ -64,7 +65,6 @@ char  * query_my_map_name();
 
 char my_map_name[40];
 
-FILE * open_misc_file(const char *, const char *);
 
 // These are globals for the packed files ..
 packfile scenpack;
@@ -224,6 +224,7 @@ screen::screen(short howmany):video()
 	first_text.write_xy(left, 86, "Initializing Display...Done", DARK_BLUE, 1);
 	first_text.write_xy(left, 94, "Initializing Sound...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
+	
 
 	// Init the sound data
 	qresult = cfg.query("sound", "sound");
@@ -1439,7 +1440,7 @@ short screen::endgame(short ending, short nextlevel)
 			mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 			buffer_to_screen(0, 0, 320, 200);
 			// Zardus: all things should listen to get_input_events() for now until further notice
-			while (!endkeys[SDLK_ESCAPE])
+			while (!endkeys[KEYSTATE_ESCAPE])
 				get_input_events(WAIT);
 			end = 1;
 		}
@@ -1455,7 +1456,7 @@ short screen::endgame(short ending, short nextlevel)
 			mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 			buffer_to_screen(0, 0, 320, 200);
 			clear_keyboard();
-			while (!endkeys[SDLK_ESCAPE])
+			while (!endkeys[KEYSTATE_ESCAPE])
 				get_input_events(WAIT);
 			//while (query_key() != SDLK_ESCAPE);
 			end = 1;
@@ -1529,7 +1530,7 @@ short screen::endgame(short ending, short nextlevel)
 
 		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
 		// actions
-		while (!endkeys[SDLK_ESCAPE])
+		while (!endkeys[KEYSTATE_ESCAPE])
 			get_input_events(WAIT); // pause
 
 		// Check for guys who have gone up levels
@@ -1580,7 +1581,7 @@ short screen::endgame(short ending, short nextlevel)
 					mytext.write_y(120,"PRESS ESC TO CONTINUE", DARK_BLUE, 1);
 					buffer_to_screen(0, 0, 320, 200);
 					clear_keyboard();
-					wait_for_key(SDLK_ESCAPE);
+					wait_for_key(KEYSTATE_ESCAPE);
 					//while (query_key() != SDLK_ESCAPE);
 				}
 				checklist = checklist->next;
@@ -1713,7 +1714,7 @@ walker  *screen::find_far_foe(walker  *ob)
 
 const char* screen::get_scen_title(const char *filename, screen *master)
 {
-	FILE  *infile = NULL;
+	SDL_RWops  *infile = NULL;
 	char temptext[10] = "XXX";
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
@@ -1733,7 +1734,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 	strcat(tempfile, ".fss");
 
 	// Zardus: first get the file from scen/, then the packfile
-	if ((infile = open_misc_file(tempfile, "scen/")))
+	if ((infile = open_data_file(tempfile, "scen/")))
 		gotit = file;
 	else if (scenpack.opened())
 	{
@@ -1745,25 +1746,27 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 	}
 
 	// Are we a scenario file?
-	fread(temptext, 3, 1, infile);
+	SDL_RWread(infile, temptext, 3, 1);
 	if (strcmp(temptext, "FSS"))
 	{
 		return "none";
 	}
 
 	// Check the version number
-	fread(&versionnumber, 1, 1, infile);
+	SDL_RWread(infile, &versionnumber, 1, 1);
 	if (versionnumber < 6)
 		return "none";
 
 	// Discard the grid name ...
-	fread(buffer, 8, 1, infile);
+	SDL_RWread(infile, buffer, 8, 1);
 
 	// Return the title, 30 bytes
-	fread(buffer, 30, 1, infile);
+	SDL_RWread(infile, buffer, 30, 1);
 
 	if (gotit == file)
-		fclose(infile);
+    {
+	    SDL_RWclose(infile);
+    }
 	return buffer;
 
 }
@@ -1772,7 +1775,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 //buffers: rewrite it...
 short load_scenario(const char * filename, screen * master)
 {
-	FILE  *infile = NULL;
+	SDL_RWops  *infile = NULL;
 	char temptext[10] = "XXX";
 	char versionnumber = 0;
 	Sint32 gotit;
@@ -1800,7 +1803,7 @@ short load_scenario(const char * filename, screen * master)
 	gotit = 0;
 
 	// Zaradus: much much better this way
-	if ( (infile = open_misc_file(thefile.c_str(), "scen/")))
+	if ( (infile = open_data_file(thefile.c_str(), "scen/")))
 	{
 		gotit = 1;
 	}
@@ -1819,7 +1822,7 @@ short load_scenario(const char * filename, screen * master)
 	}
 
 	// Are we a scenario file?
-	fread(temptext, 3, 1, infile);
+	SDL_RWread(infile, temptext, 3, 1);
 	if (strcmp(temptext, "FSS"))
 	{
 		printf("File %s is not a scenario!\n", filename);
@@ -1830,59 +1833,75 @@ short load_scenario(const char * filename, screen * master)
 	strcpy(master->scenario_title, "none");  // default
 
 	// Check the version number
-	fread(&versionnumber, 1, 1, infile);
+	SDL_RWread(infile, &versionnumber, 1, 1);
 	switch (versionnumber)
 	{
 		case 2:
 			tempvalue = load_version_2(infile, master);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			return tempvalue;
 			//break;
 		case 3:
 			tempvalue = load_version_3(infile, master);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			return tempvalue;
 			//break;
 		case 4:
 			tempvalue = load_version_4(infile, master);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			return tempvalue;
 			//break;
 		case 5:
 			tempvalue = load_version_5(infile, master);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			return tempvalue;
 		case 6:
 			tempvalue = load_version_6(infile, master);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			return tempvalue;
 		case 7:
 			tempvalue = load_version_6(infile, master, 7);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			return tempvalue;
 		case 8:
 			tempvalue = load_version_6(infile, master, 8);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			return tempvalue;
 		default:
 			printf("Scenario %s is version-level %d, and cannot be read.\n",
 			       filename, versionnumber);
 			if (!gotit)
-				fclose(infile);
+            {
+                SDL_RWclose(infile);
+            }
 			//return 0;
 			break;
 	}
 	return 1;
 }
 
-short load_version_2(FILE  *infile, screen * master)
+short load_version_2(SDL_RWops  *infile, screen * master)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -1914,14 +1933,14 @@ short load_version_2(FILE  *infile, screen * master)
 	//printf("LV2: START\n");
 
 	// Get grid file to load
-	fread(newgrid, 8, 1, infile);
+	SDL_RWread(infile, newgrid, 8, 1);
 	newgrid[8] = '\0';
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	strcpy(my_map_name, newgrid);
 
 	// Determine number of objects to load ...
-	fread(&listsize, 2, 1, infile);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	//gotoxy(1,1);
 	//printf("Objects in file: %d  ", listsize);
@@ -1930,14 +1949,14 @@ short load_version_2(FILE  *infile, screen * master)
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		fread(&temporder, 1, 1, infile);
-		fread(&tempfamily, 1, 1, infile);
-		fread(&currentx, 2, 1, infile);
-		fread(&currenty, 2, 1, infile);
-		fread(&tempteam, 1, 1, infile);
-		fread(&tempfacing, 1, 1, infile);
-		fread(&tempcommand, 1, 1, infile);
-		fread(tempreserved, 11, 1, infile);
+		SDL_RWread(infile, &temporder, 1, 1);
+		SDL_RWread(infile, &tempfamily, 1, 1);
+		SDL_RWread(infile, &currentx, 2, 1);
+		SDL_RWread(infile, &currenty, 2, 1);
+		SDL_RWread(infile, &tempteam, 1, 1);
+		SDL_RWread(infile, &tempfacing, 1, 1);
+		SDL_RWread(infile, &tempcommand, 1, 1);
+		SDL_RWread(infile, tempreserved, 11, 1);
 		if (temporder == ORDER_TREASURE)
 			new_guy = master->add_fx_ob(temporder, tempfamily);  // create new object
 		else
@@ -1945,7 +1964,7 @@ short load_version_2(FILE  *infile, screen * master)
 		if (!new_guy)
 		{
 			printf("Error creating object!\n");
-			wait_for_key(SDLK_SPACE);
+			wait_for_key(KEYSTATE_SPACE);
 			return 0;
 		}
 		new_guy ->setxy(currentx, currenty);
@@ -2000,7 +2019,7 @@ short load_version_2(FILE  *infile, screen * master)
 // # of lines,
 //  1-byte character width
 //  n bytes specified from above
-short load_version_3(FILE  *infile, screen * master)
+short load_version_3(SDL_RWops  *infile, screen * master)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -2040,26 +2059,26 @@ short load_version_3(FILE  *infile, screen * master)
 
 
 	// Get grid file to load
-	fread(newgrid, 8, 1, infile);
+	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase((char *)newgrid);
 	strcpy(my_map_name, newgrid);
 
 	// Determine number of objects to load ...
-	fread(&listsize, 2, 1, infile);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		fread(&temporder, 1, 1, infile);
-		fread(&tempfamily, 1, 1, infile);
-		fread(&currentx, 2, 1, infile);
-		fread(&currenty, 2, 1, infile);
-		fread(&tempteam, 1, 1, infile);
-		fread(&tempfacing, 1, 1, infile);
-		fread(&tempcommand, 1, 1, infile);
-		fread(&templevel, 1, 1, infile);
-		fread(tempreserved, 10, 1, infile);
+		SDL_RWread(infile, &temporder, 1, 1);
+		SDL_RWread(infile, &tempfamily, 1, 1);
+		SDL_RWread(infile, &currentx, 2, 1);
+		SDL_RWread(infile, &currenty, 2, 1);
+		SDL_RWread(infile, &tempteam, 1, 1);
+		SDL_RWread(infile, &tempfacing, 1, 1);
+		SDL_RWread(infile, &tempcommand, 1, 1);
+		SDL_RWread(infile, &templevel, 1, 1);
+		SDL_RWread(infile, tempreserved, 10, 1);
 		if (temporder == ORDER_TREASURE)
 			//              new_guy = master->add_fx_ob(temporder, tempfamily);  // create new object
 			new_guy = master->add_ob(temporder, tempfamily, 1); // add to top of list
@@ -2068,7 +2087,7 @@ short load_version_3(FILE  *infile, screen * master)
 		if (!new_guy)
 		{
 			printf("Error creating object!\n");
-			wait_for_key(SDLK_SPACE);
+			wait_for_key(KEYSTATE_SPACE);
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
@@ -2077,14 +2096,14 @@ short load_version_3(FILE  *infile, screen * master)
 	}
 
 	// Now get the lines of text to read ..
-	fread(&numlines, 1, 1, infile);
+	SDL_RWread(infile, &numlines, 1, 1);
 	master->scentextlines = numlines;
 	//master->(*scentext) = new char(numlines);
 
 	for (i=0; i < numlines; i++)
 	{
-		fread(&tempwidth, 1, 1, infile);
-		fread(oneline, tempwidth, 1, infile);
+		SDL_RWread(infile, &tempwidth, 1, 1);
+		SDL_RWread(infile, oneline, tempwidth, 1);
 		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}
@@ -2120,7 +2139,7 @@ short load_version_3(FILE  *infile, screen * master)
 }
 
 // Version 4 scenarios include a 12-byte name for EVERY walker..
-short load_version_4(FILE  *infile, screen * master)
+short load_version_4(SDL_RWops  *infile, screen * master)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -2162,27 +2181,27 @@ short load_version_4(FILE  *infile, screen * master)
 
 
 	// Get grid file to load
-	fread(newgrid, 8, 1, infile);
+	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase((char *)newgrid);
 	strcpy(my_map_name, newgrid);
 
 	// Determine number of objects to load ...
-	fread(&listsize, 2, 1, infile);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		fread(&temporder, 1, 1, infile);
-		fread(&tempfamily, 1, 1, infile);
-		fread(&currentx, 2, 1, infile);
-		fread(&currenty, 2, 1, infile);
-		fread(&tempteam, 1, 1, infile);
-		fread(&tempfacing, 1, 1, infile);
-		fread(&tempcommand, 1, 1, infile);
-		fread(&templevel, 1, 1, infile);
-		fread(tempname, 12, 1, infile);
-		fread(tempreserved, 10, 1, infile);
+		SDL_RWread(infile, &temporder, 1, 1);
+		SDL_RWread(infile, &tempfamily, 1, 1);
+		SDL_RWread(infile, &currentx, 2, 1);
+		SDL_RWread(infile, &currenty, 2, 1);
+		SDL_RWread(infile, &tempteam, 1, 1);
+		SDL_RWread(infile, &tempfacing, 1, 1);
+		SDL_RWread(infile, &tempcommand, 1, 1);
+		SDL_RWread(infile, &templevel, 1, 1);
+		SDL_RWread(infile, tempname, 12, 1);
+		SDL_RWread(infile, tempreserved, 10, 1);
 		if (temporder == ORDER_TREASURE)
 			//new_guy = master->add_ob(temporder, tempfamily, 1); // add to top of list
 			new_guy = master->add_fx_ob(temporder, tempfamily);
@@ -2191,7 +2210,7 @@ short load_version_4(FILE  *infile, screen * master)
 		if (!new_guy)
 		{
 			printf("Error creating object!\n");
-			wait_for_key(SDLK_SPACE);
+			wait_for_key(KEYSTATE_SPACE);
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
@@ -2204,14 +2223,14 @@ short load_version_4(FILE  *infile, screen * master)
 	}
 
 	// Now get the lines of text to read ..
-	fread(&numlines, 1, 1, infile);
+	SDL_RWread(infile, &numlines, 1, 1);
 	master->scentextlines = numlines;
 	//master->(*scentext) = new char(numlines);
 
 	for (i=0; i < numlines; i++)
 	{
-		fread(&tempwidth, 1, 1, infile);
-		fread(oneline, tempwidth, 1, infile);
+		SDL_RWread(infile, &tempwidth, 1, 1);
+		SDL_RWread(infile, oneline, tempwidth, 1);
 		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}
@@ -2248,7 +2267,7 @@ short load_version_4(FILE  *infile, screen * master)
 
 // Version 5 scenarios include a 1-byte 'scenario-type' specifier after
 // the grid name.
-short load_version_5(FILE  *infile, screen * master)
+short load_version_5(SDL_RWops  *infile, screen * master)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -2292,31 +2311,31 @@ short load_version_5(FILE  *infile, screen * master)
 
 
 	// Get grid file to load
-	fread(newgrid, 8, 1, infile);
+	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase((char *)newgrid);
 	strcpy(my_map_name, newgrid);
 
 	// Get the scenario type information
-	fread(&new_scen_type, 1, 1, infile);
+	SDL_RWread(infile, &new_scen_type, 1, 1);
 	master->scenario_type = new_scen_type;
 
 	// Determine number of objects to load ...
-	fread(&listsize, 2, 1, infile);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		fread(&temporder, 1, 1, infile);
-		fread(&tempfamily, 1, 1, infile);
-		fread(&currentx, 2, 1, infile);
-		fread(&currenty, 2, 1, infile);
-		fread(&tempteam, 1, 1, infile);
-		fread(&tempfacing, 1, 1, infile);
-		fread(&tempcommand, 1, 1, infile);
-		fread(&templevel, 1, 1, infile);
-		fread(tempname, 12, 1, infile);
-		fread(tempreserved, 10, 1, infile);
+		SDL_RWread(infile, &temporder, 1, 1);
+		SDL_RWread(infile, &tempfamily, 1, 1);
+		SDL_RWread(infile, &currentx, 2, 1);
+		SDL_RWread(infile, &currenty, 2, 1);
+		SDL_RWread(infile, &tempteam, 1, 1);
+		SDL_RWread(infile, &tempfacing, 1, 1);
+		SDL_RWread(infile, &tempcommand, 1, 1);
+		SDL_RWread(infile, &templevel, 1, 1);
+		SDL_RWread(infile, tempname, 12, 1);
+		SDL_RWread(infile, tempreserved, 10, 1);
 		if (temporder == ORDER_TREASURE)
 			new_guy = master->add_fx_ob(temporder, tempfamily);
 		else
@@ -2324,7 +2343,7 @@ short load_version_5(FILE  *infile, screen * master)
 		if (!new_guy)
 		{
 			printf("Error creating object! Press Space\n");
-			wait_for_key(SDLK_SPACE);
+			wait_for_key(KEYSTATE_SPACE);
 			//fclose(infile);
 			return 0;
 		}
@@ -2338,14 +2357,14 @@ short load_version_5(FILE  *infile, screen * master)
 	}
 
 	// Now get the lines of text to read ..
-	fread(&numlines, 1, 1, infile);
+	SDL_RWread(infile, &numlines, 1, 1);
 	master->scentextlines = numlines;
 	//master->(*scentext) = new char(numlines);
 
 	for (i=0; i < numlines; i++)
 	{
-		fread(&tempwidth, 1, 1, infile);
-		fread(oneline, tempwidth, 1, infile);
+		SDL_RWread(infile, &tempwidth, 1, 1);
+		SDL_RWread(infile, oneline, tempwidth, 1);
 		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}
@@ -2385,7 +2404,7 @@ short load_version_5(FILE  *infile, screen * master)
 
 // Version 6 includes a 30-byte scenario title after the grid name.
 // Also load version 7 and 8 here, since it's a simple change ..
-short load_version_6(FILE  *infile, screen * master, short version)
+short load_version_6(SDL_RWops  *infile, screen * master, short version)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -2435,7 +2454,7 @@ short load_version_6(FILE  *infile, screen * master, short version)
 
 
 	// Get grid file to load
-	fread(newgrid, 8, 1, infile);
+	SDL_RWread(infile, newgrid, 8, 1);
 	// Zardus: FIX: make sure they're lowercased
 	lowercase((char *)newgrid);
 	strcpy(my_map_name, newgrid);
@@ -2443,39 +2462,39 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	// Get scenario title, if it exists
 	//for (i=0; i < strlen(scentitle); i++)
 	//	scentitle[i] = 0;
-	fread(scentitle, 30, 1, infile);
+	SDL_RWread(infile, scentitle, 30, 1);
 	strcpy(master->scenario_title, scentitle);
 
 	// Get the scenario type information
-	fread(&new_scen_type, 1, 1, infile);
+	SDL_RWread(infile, &new_scen_type, 1, 1);
 	master->scenario_type = new_scen_type;
 
 	if (version >= 8)
 	{
-		fread(&temp_par, 2, 1, infile);
+		SDL_RWread(infile, &temp_par, 2, 1);
 		master->par_value = temp_par;
 	}
 	// else we're using the value of the level ..
 
 	// Determine number of objects to load ...
-	fread(&listsize, 2, 1, infile);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		fread(&temporder, 1, 1, infile);
-		fread(&tempfamily, 1, 1, infile);
-		fread(&currentx, 2, 1, infile);
-		fread(&currenty, 2, 1, infile);
-		fread(&tempteam, 1, 1, infile);
-		fread(&tempfacing, 1, 1, infile);
-		fread(&tempcommand, 1, 1, infile);
+		SDL_RWread(infile, &temporder, 1, 1);
+		SDL_RWread(infile, &tempfamily, 1, 1);
+		SDL_RWread(infile, &currentx, 2, 1);
+		SDL_RWread(infile, &currenty, 2, 1);
+		SDL_RWread(infile, &tempteam, 1, 1);
+		SDL_RWread(infile, &tempfacing, 1, 1);
+		SDL_RWread(infile, &tempcommand, 1, 1);
 		if (version >= 7)
-			fread(&shortlevel, 2, 1, infile);
+			SDL_RWread(infile, &shortlevel, 2, 1);
 		else
-			fread(&templevel, 1, 1, infile);
-		fread(tempname, 12, 1, infile);
-		fread(tempreserved, 10, 1, infile);
+			SDL_RWread(infile, &templevel, 1, 1);
+		SDL_RWread(infile, tempname, 12, 1);
+		SDL_RWread(infile, tempreserved, 10, 1);
 		if (temporder == ORDER_TREASURE)
 			new_guy = master->add_fx_ob(temporder, tempfamily);
 		else
@@ -2483,7 +2502,7 @@ short load_version_6(FILE  *infile, screen * master, short version)
 		if (!new_guy)
 		{
 			printf("Error creating object! Press Space\n");
-			wait_for_key(SDLK_SPACE);
+			wait_for_key(KEYSTATE_SPACE);
 			//fclose(infile);
 			return 0;
 		}
@@ -2500,14 +2519,14 @@ short load_version_6(FILE  *infile, screen * master, short version)
 	}
 
 	// Now get the lines of text to read ..
-	fread(&numlines, 1, 1, infile);
+	SDL_RWread(infile, &numlines, 1, 1);
 	master->scentextlines = numlines;
 	//master->(*scentext) = new char(numlines);
 
 	for (i=0; i < numlines; i++)
 	{
-		fread(&tempwidth, 1, 1, infile);
-		fread(oneline, tempwidth, 1, infile);
+		SDL_RWread(infile, &tempwidth, 1, 1);
+		SDL_RWread(infile, oneline, tempwidth, 1);
 		oneline[(int)tempwidth] = 0;
 		strcpy(master->scentext[i], oneline);
 	}

@@ -113,10 +113,10 @@ extern packfile * pixpack;
 // Used for the help-text system:
 #define MAX_LINES 100   // maximum number of lines in helpfile
 #define HELP_WIDTH 100   // maximum length of display line
-short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], FILE *infile);
+short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile);
 short   read_help(const char *somefile,screen *myscreen);
 short   read_scenario(screen  *myscreen);
-char* read_one_line(FILE *infile, short length);
+char* read_one_line(SDL_RWops *infile, short length);
 
 //color defines:
 #define DEFAULT_TEXT_COLOR 88
@@ -356,6 +356,7 @@ char* read_one_line(FILE *infile, short length);
 
 #define STANDARD_TEXT_TIME 75   // how many cycles to display text?
 #define TEXT_1 "text.pix"       // standard text pixie
+#define TEXT_BIG "textbig.pix"       // standard text pixie
 
 #define DONT_DELETE 1
 

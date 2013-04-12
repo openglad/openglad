@@ -18,7 +18,7 @@
 
 /* ChangeLog
 	buffers: 7/31/02: *include cleanup
-	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_f			   ile
+	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_file
 */
 #include "graph.h"
 #include "gladpack.h"
@@ -31,7 +31,6 @@ using namespace std;
 //packfile *pixpack; // the packed pixies; perfect
 packfile tempack;
 
-FILE * open_misc_file(const char *, const char *);
 
 // ************************************************************
 //  Other graphics routines
@@ -54,9 +53,9 @@ unsigned char  * read_pixie_file(const char  * filename)
 
 	unsigned char numframes, x, y;
 	unsigned char  *newpic = NULL;
-	FILE  *infile = NULL;
+	SDL_RWops  *infile = NULL;
 	enum {notfound, file, pack} gotit = notfound;
-
+    
 	// Open the pixie-pack, if not already done ...
 	if (!tempack.opened())
 	{
@@ -69,10 +68,14 @@ unsigned char  * read_pixie_file(const char  * filename)
 	}
 
 	// Zardus: try to find file using open_misc_file, then resort to graphics.001
-	if ((infile = open_misc_file(filename, "pix/")) || (infile = open_misc_file(filename, "scen/")))
+	if ((infile = open_data_file(filename, "pix/")) || (infile = open_data_file(filename, "scen/")))
+    {
 		gotit = file;
+    }
 	else if (tempack.opened() && (infile=tempack.get_subfile((char *)filename)))
+    {
 		gotit = pack;
+    }
 
 	if(gotit==notfound)
 	{
@@ -80,9 +83,9 @@ unsigned char  * read_pixie_file(const char  * filename)
 		exit(0);
 	}
 
-	fread(&numframes, 1, 1, infile);
-	fread(&x, 1, 1, infile);
-	fread(&y, 1, 1, infile);
+	SDL_RWread(infile, &numframes, 1, 1);
+	SDL_RWread(infile, &x, 1, 1);
+	SDL_RWread(infile, &y, 1, 1);
 
 	newpic = (unsigned char*)calloc(x * y * numframes + 3 + 1, 1);
 	newpic[0] = numframes;
@@ -90,10 +93,13 @@ unsigned char  * read_pixie_file(const char  * filename)
 	newpic[2] = y;
 
 	// Now read the data in a big chunk
-	fread(&newpic[3], 1, (x*y*numframes), infile);
+	SDL_RWread(infile, &newpic[3], 1, (x*y*numframes));
 
-	if (gotit == file) // this means we're a 'manual' file
-		fclose(infile); // Close the data file
+	//if (gotit == file) // this means we're a 'manual' file
+	if(infile != NULL)
+    {
+	    SDL_RWclose(infile);
+    }
 	return newpic;
 
 } // End of image-reading routine

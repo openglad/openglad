@@ -31,6 +31,18 @@
 #include <sys/stat.h>
 #include "base.h"
 
+#ifdef WINDOWS
+#include "windows.h"
+#include <shlobj.h>
+#include <time.h>
+#include <direct.h>
+
+#ifndef mkdir
+#define mkdir(path, perms) _mkdir(path)
+#endif
+
+#endif
+
 using namespace std;
 
 Uint32 start_time=0;
@@ -47,161 +59,358 @@ void release_timer()
 
 void reset_timer()
 {
-	reset_value = SDL_GetTicks();
+    reset_value = SDL_GetTicks();
 }
 
 Sint32 query_timer()
 {
-	// Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
-	// that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
-	// or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
-	return (Sint32) ((SDL_GetTicks() - reset_value) / 13.6);
+    // Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
+    // that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
+    // or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
+    return (Sint32) ((SDL_GetTicks() - reset_value) / 13.6);
 }
 
 Sint32 query_timer_control()
 {
-	return (Sint32) (SDL_GetTicks() / 13.6);
+    return (Sint32) (SDL_GetTicks() / 13.6);
 }
 
 void time_delay(Sint32 delay)
 {
-	if (delay < 0) return;
-	SDL_Delay((Uint32) (delay * 13.6));
+    if (delay < 0) return;
+    SDL_Delay((Uint32) (delay * 13.6));
 }
 
 void lowercase(char * str)
 {
-	unsigned int i;
-	for (i = 0; i < strlen(str);i++)
-		str[i] = tolower(str[i]);
+    unsigned int i;
+    for (i = 0; i < strlen(str); i++)
+        str[i] = tolower(str[i]);
 }
 
 //buffers: add: another extra routine.
 void uppercase(char *str)
 {
-	unsigned int i;
-	for(i=0;i<strlen(str);i++)
-		str[i] = toupper(str[i]);
+    unsigned int i;
+    for(i=0; i<strlen(str); i++)
+        str[i] = toupper(str[i]);
 }
 
 // kari: yet two extra
 void lowercase(std::string &str)
 {
-	for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
-		*iter = tolower(*iter);
+    for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
+        *iter = tolower(*iter);
 }
 
 void uppercase(std::string &str)
 {
-	for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
-		*iter = toupper(*iter);
+    for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
+        *iter = toupper(*iter);
 }
 
-FILE * open_misc_file(const char * file, const char * pos_dir, const char * attr)
+SDL_RWops * open_user_file(const char * file, const char * pos_dir, const char * attr)
 {
-	FILE * infile;
-	char * filename = get_file_path(file, pos_dir, attr);
+    SDL_RWops * infile;
+    char * filename = get_user_file_path(file, pos_dir, attr);
+    if (filename && (infile = SDL_RWFromFile(filename, attr)))
+    {
+        free(filename);
+        return infile;
+    }
 
-	if (filename && (infile = fopen(filename, attr)))
-	{
-		free(filename);
-                return infile;
-	}
-
-	// if it got here, it didn't find the file
-	return NULL;
+    // if it got here, it didn't find the file
+    return NULL;
 }
 
-FILE * open_misc_file(const char * file, const char * pos_dir)
+SDL_RWops * open_user_file(const char * file, const char * pos_dir)
 {
-	return open_misc_file(file, pos_dir, "rb");
+    return open_user_file(file, pos_dir, "rb");
 }
 
-FILE * open_misc_file(const char * file)
+SDL_RWops * open_user_file(const char * file)
 {
-	return open_misc_file(file, "", "rb");
+    return open_user_file(file, "", "rb");
+}
+
+SDL_RWops * open_data_file(const char * file, const char * pos_dir, const char * attr)
+{
+    SDL_RWops * infile;
+    char * filename = get_file_path(file, pos_dir, attr);
+
+    if (filename && (infile = SDL_RWFromFile(filename, attr)))
+    {
+        free(filename);
+        return infile;
+    }
+
+    // if it got here, it didn't find the file
+    return NULL;
+}
+
+SDL_RWops * open_data_file(const char * file, const char * pos_dir)
+{
+    return open_data_file(file, pos_dir, "rb");
+}
+
+SDL_RWops * open_data_file(const char * file)
+{
+    return open_data_file(file, "", "rb");
 }
 
 void create_dataopenglad()
 {
-#ifndef WINDOWS
-	string path(getenv("HOME"));
-	path += "/.openglad/";
-	mkdir(path.c_str(), 0755);
-	path.reserve(path.size()+10);
-	string::iterator subdirpos = path.end();
-	path += "pix/";
-	mkdir(path.c_str(), 0755);
-	path.replace(subdirpos, path.end(), "scen/", 4);
-	mkdir(path.c_str(), 0755);
-	path.replace(subdirpos, path.end(), "save/", 5);
-	mkdir(path.c_str(), 0755);
-	path.replace(subdirpos, path.end(), "sound/", 5);
-	mkdir(path.c_str(), 0755);
+#ifdef ANDROID
+    // Assuming SDL2
+    string path(SDL_AndroidGetInternalStoragePath());
+    path += "save/";
+    mkdir(path.c_str(), 0755);
+#elif !defined(WINDOWS)
+    string path(getenv("HOME"));
+    path += "/.openglad/";
+    mkdir(path.c_str(), 0755);
+    path.reserve(path.size()+10);
+    string::iterator subdirpos = path.end();
+    path += "pix/";
+    mkdir(path.c_str(), 0755);
+    path.replace(subdirpos, path.end(), "scen/", 4);
+    mkdir(path.c_str(), 0755);
+    path.replace(subdirpos, path.end(), "save/", 5);
+    mkdir(path.c_str(), 0755);
+    path.replace(subdirpos, path.end(), "sound/", 5);
+    mkdir(path.c_str(), 0755);
+#else
+
+    {
+        char path[MAX_PATH];
+        HRESULT hr = SHGetFolderPath(
+                         0,                   // hwndOwner
+                         CSIDL_LOCAL_APPDATA, // nFolder
+                         0,                   // hToken
+                         0, //SHGFP_TYPE_CURRENT,  // dwFlags
+                         path);               // pszPath
+        if(SUCCEEDED(hr))
+        {
+            std::string s = path;
+            // Replace all backslashes
+            size_t pos = 0;
+            do
+            {
+                pos = s.find_first_of('\\', pos);
+                if(pos != std::string::npos)
+                    s[pos] = '/';
+            } while(pos != std::string::npos);
+
+            s += "/.openglad/";
+
+            mkdir(s.c_str(), 0755);
+            mkdir((s + "save/").c_str(), 0755);
+        }
+    }
 #endif
+}
+
+char * get_user_file_path(const char * file, const char * pos_dir, const char * attr)
+{
+    FILE * infile;
+    string filepath(file);
+#ifdef ANDROID
+
+    filepath.clear();
+    filepath += pos_dir;
+    filepath += file;
+
+    SDL_RWops* rwops = SDL_RWFromFile(filepath.c_str(), attr);
+
+    if(rwops != NULL)
+    {
+        SDL_RWclose(rwops);
+
+        return strdup(filepath.c_str());
+    }
+
+
+    filepath = SDL_AndroidGetInternalStoragePath();
+    filepath += "/";
+    filepath += pos_dir;
+    filepath += file;
+
+    rwops = SDL_RWFromFile(filepath.c_str(), attr);
+
+    if(rwops != NULL)
+    {
+        SDL_RWclose(rwops);
+
+        return strdup(filepath.c_str());
+    }
+    return NULL;
+
+#elif !defined(WINDOWS)
+    filepath = getenv("HOME");
+    filepath += "/.openglad/";
+    filepath += pos_dir;
+    filepath += file;
+
+    if ((infile = fopen(filepath.c_str(), attr)))
+    {
+        fclose(infile);
+        return strdup(filepath.c_str());
+    }
+#else
+    {
+        char path[MAX_PATH];
+        HRESULT hr = SHGetFolderPath(
+                         0,                   // hwndOwner
+                         CSIDL_LOCAL_APPDATA, // nFolder
+                         0,                   // hToken
+                         0, //SHGFP_TYPE_CURRENT,  // dwFlags
+                         path);               // pszPath
+        if(SUCCEEDED(hr))
+        {
+            std::string s = path;
+            // Replace all backslashes
+            size_t pos = 0;
+            do
+            {
+                pos = s.find_first_of('\\', pos);
+                if(pos != std::string::npos)
+                    s[pos] = '/';
+            } while(pos != std::string::npos);
+
+            filepath = s;
+            filepath += "/.openglad/";
+            filepath += pos_dir;
+            filepath += file;
+
+            if ((infile = fopen(filepath.c_str(), attr)))
+            {
+                fclose(infile);
+                return strdup(filepath.c_str());
+            }
+        }
+    }
+#endif
+
+    // Lets try the datadir option now.
+    if (cfg.query("dirs", "data"))
+    {
+        filepath = cfg.query("dirs", "data");
+        filepath += pos_dir;
+        filepath += file;
+
+        if ((infile = fopen(filepath.c_str(), attr)))
+        {
+            fclose(infile);
+            return strdup(filepath.c_str());
+        }
+    }
+
+    // as a last resort, look in ./posdir/file
+    filepath = pos_dir;
+    filepath += file;
+    if ((infile = fopen(filepath.c_str(), attr)))
+    {
+        fclose (infile);
+        return strdup(filepath.c_str());
+    }
+
+    // if it got here, it didn't find the file
+    return NULL;
 }
 
 char * get_file_path(const char * file, const char * pos_dir, const char * attr)
 {
-	FILE * infile;
-	string filepath(file);
+    FILE * infile;
+    string filepath(file);
+#ifdef ANDROID
 
-#ifndef	WINDOWS
-	filepath = getenv("HOME");
-	filepath += "/.openglad/";
-	filepath += pos_dir;
-	filepath += file;
+    filepath.clear();
+    filepath += pos_dir;
+    filepath += file;
 
-	if ((infile = fopen(filepath.c_str(), attr)))
-	{
-		fclose(infile);
-		return strdup(filepath.c_str());
-	}
+    SDL_RWops* rwops = SDL_RWFromFile(filepath.c_str(), attr);
+
+    if(rwops != NULL)
+    {
+        SDL_RWclose(rwops);
+
+        return strdup(filepath.c_str());
+    }
+
+
+    filepath = SDL_AndroidGetInternalStoragePath();
+    filepath += "/";
+    filepath += pos_dir;
+    filepath += file;
+
+    rwops = SDL_RWFromFile(filepath.c_str(), attr);
+
+    if(rwops != NULL)
+    {
+        SDL_RWclose(rwops);
+
+        return strdup(filepath.c_str());
+    }
+    return NULL;
+
+#elif !defined(WINDOWS)
+    filepath = getenv("HOME");
+    filepath += "/.openglad/";
+    filepath += pos_dir;
+    filepath += file;
+
+    if ((infile = fopen(filepath.c_str(), attr)))
+    {
+        fclose(infile);
+        return strdup(filepath.c_str());
+    }
+#else
+
 #endif
 
-	// Lets try the datadir option now.
-	if (cfg.query("dirs", "data"))
-	{
-		filepath = cfg.query("dirs", "data");
-		filepath += pos_dir;
-		filepath += file;
+    // Lets try the datadir option now.
+    if (cfg.query("dirs", "data"))
+    {
+        filepath = cfg.query("dirs", "data");
+        filepath += pos_dir;
+        filepath += file;
 
-		if ((infile = fopen(filepath.c_str(), attr)))
-		{
-			fclose(infile);
-			return strdup(filepath.c_str());
-		}
-	}
-    
-	filepath = DATADIR;
-	filepath += pos_dir;
-	filepath += file;
+        if ((infile = fopen(filepath.c_str(), attr)))
+        {
+            fclose(infile);
+            return strdup(filepath.c_str());
+        }
+    }
 
-	if ((infile = fopen(filepath.c_str(), attr)))
-	{
-		fclose(infile);
-		return strdup(filepath.c_str());
-	}
+    /*filepath = DATADIR;
+    filepath += pos_dir;
+    filepath += file;
 
-	// as a last resort, look in ./posdir/file
-	filepath = pos_dir;
-	filepath += file;
-	if ((infile = fopen(filepath.c_str(), attr)))
-	{
-		fclose (infile);
-		return strdup(filepath.c_str());
-	}
+    if ((infile = fopen(filepath.c_str(), attr)))
+    {
+    	fclose(infile);
+    	return strdup(filepath.c_str());
+    }*/
 
-	// if it got here, it didn't find the file
-	return NULL;
+    // as a last resort, look in ./posdir/file
+    filepath = pos_dir;
+    filepath += file;
+    if ((infile = fopen(filepath.c_str(), attr)))
+    {
+        fclose (infile);
+        return strdup(filepath.c_str());
+    }
+
+    // if it got here, it didn't find the file
+    return NULL;
 }
 
 char * get_file_path(const char * file, const char * pos_dir)
 {
-	return get_file_path(file, pos_dir, "rb");
+    return get_file_path(file, pos_dir, "rb");
 }
 
 char * get_file_path(const char * file)
 {
-	return get_file_path(file, "", "rb");
+    return get_file_path(file, "", "rb");
 }

@@ -25,7 +25,7 @@ class loader
 {
 	public:
 		loader();
-		~loader(void);
+		virtual ~loader(void);
 		walker  *create_walker(char order, char family, screen  *screenp);
 		pixieN *create_pixieN(char order, char family);
 		walker *set_walker(walker *ob, char order, char family);

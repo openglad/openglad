@@ -63,7 +63,9 @@ extern options *theprefs;
 
 int main(int argc, char *argv[])
 {
-    SDL_putenv(const_cast<char*>("SDL_VIDEO_CENTERED=center"));
+    #ifndef USE_SDL2
+        SDL_putenv(const_cast<char*>("SDL_VIDEO_CENTERED=center"));
+    #endif
     
 	char * filepath;
 	filepath = get_file_path("openglad.cfg");
@@ -216,10 +218,10 @@ void glad_main(screen *myscreen, Sint32 playermode)
                     gladtext.write_xy(dumbcount, 80+24, "Quit this Mission? (Y/N)",
                                       (unsigned char) DARK_BLUE, 1);
                     myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
-                    while (!keyboard[SDLK_y] && !keyboard[SDLK_n])
+                    while (!keyboard[KEYSTATE_y] && !keyboard[KEYSTATE_n])
                         get_input_events(WAIT);
                     myscreen->redrawme = 1;
-                    if (keyboard[SDLK_y]) // player wants to quit
+                    if (keyboard[KEYSTATE_y]) // player wants to quit
                         done = true;
                     else
                     {

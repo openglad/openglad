@@ -700,10 +700,30 @@ Screen::Screen( RenderEngine engine, int fullscreen)
 		ty=200;
 		break;
 	}
+	#ifndef USE_SDL2
 	if(!fullscreen)
 		render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF);
 	else
 		render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF|SDL_FULLSCREEN);
+    #else
+    window = SDL_CreateWindow("Gladiator",
+                        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                        tx, ty,
+                        SDL_WINDOW_SHOWN);
+    if(window == NULL)
+        exit(1);
+    
+    int w, h;
+    SDL_GetWindowSize(window, &w, &h);
+    
+    render = SDL_CreateRGBSurface(SDL_SWSURFACE, tx, ty, 32, 0, 0, 0, 0);
+    renderer = SDL_CreateRenderer(window, -1, 0);
+    
+    if(fullscreen)
+    {
+        SDL_SetWindowFullscreen(window, 1);
+    }
+    #endif
 	if(Engine != DOUBLE)
 		screen=SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
 	else
@@ -714,7 +734,7 @@ Screen::Screen( RenderEngine engine, int fullscreen)
 Screen::~Screen()
 {
 	if (screen)
-		Log("Error while trying to destroy ~Screen, Quit wasn't be called !\n");
+		Log("Error while trying to destroy Screen, Quit wasn't called!\n");
 }
 
 
@@ -734,77 +754,35 @@ void Screen::SaveBMP( char *filename )
 	SDL_SaveBMP( render, filename );
 }
 
-void Screen::Update()
+void Screen::Render(Sint16 x, Sint16 y, Uint16 w, Uint16 h)
 {
-	switch( Engine )
-	{
-	case SAI:
-		SDL_LockSurface( render );
-		Super2xSaI_ex2( 
-			(unsigned char*) screen->pixels, 0, 0, 320, 200, screen->pitch, 200,
-			(unsigned char*) render->pixels, 0, 0, render->pitch );
-		SDL_UnlockSurface( render );
-		break;
-	case EAGLE:
-		SDL_LockSurface( render );
-		Scale_SuperEagle( 
-			(unsigned char*) screen->pixels, 0, 0, 320,200, screen->pitch, 200,
-			(unsigned char*) render->pixels, 0, 0, render->pitch );
-		SDL_UnlockSurface( render );
-		break;
-	case DOUBLE:
-	case NoZoom:
-		SDL_BlitSurface(screen,NULL,render,NULL);
-		break;
-	}
-	SDL_UpdateRect(render, 0,0,0,0);
-}
-
-void Screen::Update( int x, int y, int w, int h )
-{
-	switch( Engine )
-	{
-	case DOUBLE:
-		SDL_UpdateRect(render,x*2,y*2,w*2,h*2);
-		break;
-	case NoZoom:
-		SDL_UpdateRect(render, x,y,w,h);
-		break;
-	case SAI:
-		SDL_LockSurface( render );
-		Super2xSaI_ex2( 
-			(unsigned char*) screen->pixels, x, y, w, h, screen->pitch, screen->h,
-			(unsigned char*) render->pixels, 2*x, 2*y, render->pitch );
-		SDL_UnlockSurface( render );
-		SDL_UpdateRect(render, x*2,y*2,w*2,h*2);
-		break;
-	case EAGLE:
-		SDL_LockSurface( render );
-		Scale_SuperEagle( 
-			(unsigned char*) screen->pixels, x, y, w, h, screen->pitch, screen->h,
-			(unsigned char*) render->pixels, 2*x, 2*y, render->pitch );
-		SDL_UnlockSurface( render );
-		SDL_UpdateRect(render, x*2,y*2,w*2,h*2);	
-		break;
-	default:
-		printf("error, default reached\n");
-	}
+	#ifndef USE_SDL2
+	SDL_UpdateRect(render, x,y,w,h);
+	#else
+	SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, render);
+	SDL_Rect dest = {0, 0, 0, 0};
+    SDL_GetWindowSize(window, &dest.w, &dest.h); // Fill up the whole window
+    
+	SDL_RenderCopy(renderer, tex, NULL, &dest);
+	SDL_DestroyTexture(tex);
+	SDL_RenderPresent(renderer);
+	#endif
+	
 }
 
 SDL_Surface *Screen::RenderAndReturn( int x, int y, int w, int h )
 {
         switch( Engine )
         {
-	case DOUBLE:
+        case DOUBLE:
         case NoZoom:
-		SDL_BlitSurface(screen,NULL,render,NULL);
+                SDL_BlitSurface(screen,NULL,render,NULL);
                 break;
         case SAI:
                 SDL_LockSurface( render );
                 Super2xSaI_ex2(
                         (unsigned char*) screen->pixels, x, y, w, h, screen->pitch, screen->h,
-                        (unsigned char*) render->pixels, 2*x, 2*y, render->pitch
- );
+                        (unsigned char*) render->pixels, 2*x, 2*y, render->pitch);
                 SDL_UnlockSurface( render );
                 break;
         case EAGLE:
@@ -814,6 +792,7 @@ SDL_Surface *Screen::RenderAndReturn( int x, int y, int w, int h )
                 break;
         default:
                 printf("error, default reached\n");
+                //SDL_BlitSurface(screen,NULL,render,NULL);
         }
 
 	return render;
@@ -823,15 +802,17 @@ void Screen::Swap(int x, int y, int w, int h)
 {
 	switch(Engine) {
 		case DOUBLE:
-			SDL_UpdateRect(render,x*2,y*2,w*2,h*2);
+			Render(x*2,y*2,w*2,h*2);
 			break;
 		case NoZoom:
-			SDL_UpdateRect(render,x,y,w,h);
+			Render(x,y,w,h);
 			break;
 		case SAI:
 		case EAGLE:
-			SDL_UpdateRect(render,x*2,y*2,w*2,h*2);
+			Render(x*2,y*2,w*2,h*2);
 			break;
+        //default:
+			//Render(x,y,w,h);
 	}
 }
 

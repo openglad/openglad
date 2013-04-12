@@ -26,13 +26,12 @@
 
 short end_of_file;                        // global flag ..
 char helptext[HELP_WIDTH][MAX_LINES];
-FILE * open_misc_file(const char *);
 
 
 // This function reads one text line from file infile,
 // stopping at length (length), or when encountering an
 // end-of-line character ..
-char* read_one_line(FILE *infile, short length)
+char* read_one_line(SDL_RWops *infile, short length)
 {
 	char *newline; // = new char(length);
 	char temp;
@@ -47,7 +46,7 @@ char* read_one_line(FILE *infile, short length)
 
 	for (i=0; i < length; i++)
 	{
-		readvalue = (short) fread(&temp, 1, 1, infile);
+		readvalue = (short) SDL_RWread(infile, &temp, 1, 1);
 		if (readvalue != 1)
 		{
 			end_of_file = 1;
@@ -61,7 +60,7 @@ char* read_one_line(FILE *infile, short length)
 	return newline;
 }
 
-// Note: this code has been redone to work in 'SDLKlines,'
+// Note: this code has been redone to work in 'scanlines,'
 //       so that the text scrolls by pixels rather than lines.
 short read_scenario(screen *myscreen)
 {
@@ -85,12 +84,12 @@ short read_scenario(screen *myscreen)
 
 	// Do the loop until person hits escape
 	// Make sure we're not pressing keys ..
-	mykeyboard[SDLK_DOWN] = mykeyboard[SDLK_UP] = 0;
-	mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
-	while (!mykeyboard[SDLK_ESCAPE])
+	mykeyboard[KEYSTATE_DOWN] = mykeyboard[KEYSTATE_UP] = 0;
+	mykeyboard[KEYSTATE_PAGEDOWN] = mykeyboard[KEYSTATE_PAGEUP] = 0;
+	while (!mykeyboard[KEYSTATE_ESCAPE])
 	{
 		get_input_events(POLL);
-		if (mykeyboard[SDLK_DOWN])    // scrolling down
+		if (mykeyboard[KEYSTATE_DOWN])    // scrolling down
 		{
 			now_time = query_timer();
 
@@ -100,9 +99,9 @@ short read_scenario(screen *myscreen)
 				linesdown++;
 				changed = 1;
 			}
-		} // end of SDLK_DOWN
+		} // end of KEYSTATE_DOWN
 
-		if (mykeyboard[SDLK_PAGEDOWN])    // scrolling one page down
+		if (mykeyboard[KEYSTATE_PAGEDOWN])    // scrolling one page down
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -119,7 +118,7 @@ short read_scenario(screen *myscreen)
 			}
 		} // end of PAGE DOWN
 
-		if (mykeyboard[SDLK_UP])      // scrolling up
+		if (mykeyboard[KEYSTATE_UP])      // scrolling up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
@@ -128,9 +127,9 @@ short read_scenario(screen *myscreen)
 				linesdown--;
 				changed = 1;
 			}
-		} // end of SDLK_UP
+		} // end of KEYSTATE_UP
 
-		if (mykeyboard[SDLK_PAGEUP])    // scrolling one page up
+		if (mykeyboard[KEYSTATE_PAGEUP])    // scrolling one page up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -183,9 +182,9 @@ short read_scenario(screen *myscreen)
 
 	}  // loop until ESC is pressed
 
-	while (mykeyboard[SDLK_ESCAPE])  // wait for key release
+	while (mykeyboard[KEYSTATE_ESCAPE])  // wait for key release
 		get_input_events(WAIT);
-	mykeyboard[SDLK_ESCAPE] = 0;
+	mykeyboard[KEYSTATE_ESCAPE] = 0;
 	delete mytext;
 	mytext = NULL;
 	return (short) numlines;
@@ -193,7 +192,7 @@ short read_scenario(screen *myscreen)
 
 short read_help(const char *somefile,screen * myscreen)
 {
-	FILE *infile;
+	SDL_RWops *infile;
 	Sint32 screenlines;
 	Sint32  numlines, j;
 	Sint32 linesdown;
@@ -206,7 +205,7 @@ short read_help(const char *somefile,screen * myscreen)
 	Sint32 start_time, now_time;
 	Sint32 bottomrow;
 
-	if ((infile = open_misc_file(somefile)) == NULL)
+	if ((infile = open_data_file(somefile)) == NULL)
 	{
 		fprintf(stderr, "Cannot open help file %s.\n", somefile);
 		//delete mytext;
@@ -220,7 +219,7 @@ short read_help(const char *somefile,screen * myscreen)
 	start_time = query_timer();
 
 	/* seek to the beginning of the file */
-	fseek(infile, SEEK_SET, 0);
+	SDL_RWseek(infile, SEEK_SET, 0);
 
 	// Fill the helptext array with data ..
 	numlines = (Sint32) (fill_help_array(helptext, infile));
@@ -229,16 +228,16 @@ short read_help(const char *somefile,screen * myscreen)
 	bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
 
 	// Close the help file
-	fclose(infile);
+    SDL_RWclose(infile);
 
 	// Do the loop until person hits escape
 	// Make sure we're not pressing keys ..
-	mykeyboard[SDLK_DOWN] = mykeyboard[SDLK_UP] = 0;
-	mykeyboard[SDLK_PAGEDOWN] = mykeyboard[SDLK_PAGEUP] = 0;
-	while (!mykeyboard[SDLK_ESCAPE])
+	mykeyboard[KEYSTATE_DOWN] = mykeyboard[KEYSTATE_UP] = 0;
+	mykeyboard[KEYSTATE_PAGEDOWN] = mykeyboard[KEYSTATE_PAGEUP] = 0;
+	while (!mykeyboard[KEYSTATE_ESCAPE])
 	{
 		get_input_events(POLL);
-		if (mykeyboard[SDLK_DOWN])    // scrolling down
+		if (mykeyboard[KEYSTATE_DOWN])    // scrolling down
 		{
 			now_time = query_timer();
 
@@ -248,9 +247,9 @@ short read_help(const char *somefile,screen * myscreen)
 				linesdown++;
 				changed = 1;
 			}
-		} // end of SDLK_DOWN
+		} // end of KEYSTATE_DOWN
 
-		if (mykeyboard[SDLK_PAGEDOWN])    // scrolling one page down
+		if (mykeyboard[KEYSTATE_PAGEDOWN])    // scrolling one page down
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -267,7 +266,7 @@ short read_help(const char *somefile,screen * myscreen)
 			}
 		} // end of PAGE DOWN
 
-		if (mykeyboard[SDLK_UP])      // scrolling up
+		if (mykeyboard[KEYSTATE_UP])      // scrolling up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
@@ -276,9 +275,9 @@ short read_help(const char *somefile,screen * myscreen)
 				linesdown--;
 				changed = 1;
 			}
-		} // end of SDLK_UP
+		} // end of KEYSTATE_UP
 
-		if (mykeyboard[SDLK_PAGEUP])    // scrolling one page up
+		if (mykeyboard[KEYSTATE_PAGEUP])    // scrolling one page up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -330,7 +329,7 @@ short read_help(const char *somefile,screen * myscreen)
 
 
 
-	while (mykeyboard[SDLK_ESCAPE])  // wait for key release
+	while (mykeyboard[KEYSTATE_ESCAPE])  // wait for key release
 		get_input_events(WAIT);
 	//delete mytext;
 	return (short) (numlines);
@@ -340,7 +339,7 @@ short read_help(const char *somefile,screen * myscreen)
 // This function fills the array with the help file
 // text ..
 // It returns the # of lines successfully filled ..
-short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], FILE *infile)
+short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 //short fill_help_array(char somearray[80][80], FILE *infile)
 {
 	short i;

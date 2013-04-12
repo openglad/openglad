@@ -104,12 +104,19 @@ video::video()
 	//}
 
 	//buffers: screen init
+	// For some reason, the SDL Android port is not happy with initializing here
+	#ifndef USE_SDL2
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
+	#endif
 
 	screen = SDL_CreateRGBSurface(SDL_SWSURFACE,320*mult,200*mult,32,0,0,0,0);
 	fontbuffer = SDL_CreateRGBSurface(SDL_SWSURFACE,320*font_mult,200*font_mult,32,0,0,0,0);
 	fontcolorkey = SDL_MapRGB(fontbuffer->format,20,0,0);
+	#ifndef USE_SDL2
 	SDL_SetColorKey(fontbuffer,SDL_SRCCOLORKEY,fontcolorkey);
+	#else
+	SDL_SetColorKey(fontbuffer, SDL_TRUE, fontcolorkey);
+	#endif
 	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
 	
 	E_Screen = new Screen(render,fullscreen);
@@ -123,6 +130,7 @@ video::video()
 #endif
 		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF);
 */
+
 }
 
 video::~video()
@@ -263,7 +271,7 @@ void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 borde
 Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
                         const char *header)
 {
-	static text dialogtext(myscreen, "textbig.pix"); // large text
+	static text dialogtext(myscreen, TEXT_BIG); // large text
 	Sint32 centerx = x1 + ( (x2-x1) /2 ), left;
 	short textwidth;
 
@@ -1211,8 +1219,8 @@ void video::buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
 	//      SDL_BlitSurface(screen,NULL,window,NULL);
 	//      SDL_UpdateRect(window,0,0,320,200);
      
-      	SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
-	render = (SDL_Surface *)E_Screen->RenderAndReturn(viewstartx,viewstarty,viewwidth,viewheight);
+    SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
+	render = E_Screen->RenderAndReturn(viewstartx,viewstarty,viewwidth,viewheight);
 	SDL_BlitSurface(fontbuffer,NULL,render,NULL);
 	E_Screen->Swap(viewstartx,viewstarty,viewwidth,viewheight);
 }
@@ -1331,8 +1339,12 @@ void video::FadeBetween24(
 		*(pw++) = (nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration;
 		pw++; pFrom++; pTo++;
 	}
-
+    
+    #ifndef USE_SDL2
 	SDL_UpdateRect (pSurface, 0, 0, 0, 0);
+	#else
+	// FIXME!  Need to pass in the Screen structure.
+	#endif
 }
 
 //*****************************************************************************
@@ -1427,7 +1439,11 @@ int video::FadeBetween(
 
 	//Show new screen entirely.
 	SDL_BlitSurface(pNewSurface, NULL, pOldSurface, NULL);
+    #ifndef USE_SDL2
 	SDL_UpdateRect(pOldSurface,0,0,CX_SCREEN, CY_SCREEN);
+	#else
+	// Screen::Swap() does the work
+	#endif
 	E_Screen->Swap(0,0,320,200);
 	
 	//Clean up.

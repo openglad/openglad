@@ -28,6 +28,44 @@
 #include <string>
 
 
+// SDL 2 compat
+#if SDL_VERSION_ATLEAST(2,0,0)
+    #define USE_SDL2
+#endif
+
+#ifdef USE_SDL2
+    #define SDLKey SDL_Keycode
+    
+    #define KEYSTATE_q SDL_SCANCODE_Q
+    #define KEYSTATE_y SDL_SCANCODE_Y
+    #define KEYSTATE_n SDL_SCANCODE_N
+    #define KEYSTATE_z SDL_SCANCODE_Z
+    #define KEYSTATE_DOWN SDL_SCANCODE_DOWN
+    #define KEYSTATE_UP SDL_SCANCODE_UP
+    #define KEYSTATE_PAGEDOWN SDL_SCANCODE_PAGEDOWN
+    #define KEYSTATE_PAGEUP SDL_SCANCODE_PAGEUP
+    #define KEYSTATE_ESCAPE SDL_SCANCODE_ESCAPE
+    #define KEYSTATE_SPACE SDL_SCANCODE_SPACE
+    #define KEYSTATE_LCTRL SDL_SCANCODE_LCTRL
+    #define KEYSTATE_KP_PLUS SDL_SCANCODE_KP_PLUS
+    #define KEYSTATE_KP_MINUS SDL_SCANCODE_KP_MINUS
+#else
+    #define KEYSTATE_q SDLK_q
+    #define KEYSTATE_y SDLK_y
+    #define KEYSTATE_n SDLK_n
+    #define KEYSTATE_z SDLK_z
+    #define KEYSTATE_DOWN SDLK_DOWN
+    #define KEYSTATE_UP SDLK_UP
+    #define KEYSTATE_PAGEDOWN SDLK_PAGEDOWN
+    #define KEYSTATE_PAGEUP SDLK_PAGEUP
+    #define KEYSTATE_ESCAPE SDLK_ESCAPE
+    #define KEYSTATE_SPACE SDLK_SPACE
+    #define KEYSTATE_LCTRL SDLK_LCTRL
+    #define KEYSTATE_KP_PLUS SDLK_KP_PLUS
+    #define KEYSTATE_KP_MINUS SDLK_KP_MINUS
+#endif
+
+
 // Zardus: defines for event getting method
 #define POLL 0
 #define WAIT 1
@@ -62,6 +100,7 @@
 #define KEY_PREFS               14
 #define KEY_CHEAT               15
 #define NUM_KEYS               16
+
 
 class JoyData
 {

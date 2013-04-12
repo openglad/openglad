@@ -54,7 +54,7 @@ class text
 		screen * screenp;
 
 	protected:
-		unsigned char  *letters;
+	    unsigned char* letters;
 		short sizex;
 		short sizey;
 };

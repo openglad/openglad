@@ -35,8 +35,6 @@ using namespace std;
 #define GLAD_HEADER_SIZE        8
 #define FILENAME_SIZE           13
 
-FILE * open_misc_file(const char *);
-
 class packfileinfo
 {
 	public:
@@ -50,22 +48,22 @@ int packfile::open(const char *filename)
 	char temp[GLAD_HEADER_SIZE+1];
 
 	// Zardus: first try in the current directory
-	if ( (datafile=open_misc_file((char *)filename)) == NULL)
+	if ( (datafile=open_data_file((char *)filename)) == NULL)
 	{
 		return -1;
 	}
 	
-	fread(temp, GLAD_HEADER_SIZE, 1, datafile);
+	SDL_RWread(datafile, temp, GLAD_HEADER_SIZE, 1);
 	temp[GLAD_HEADER_SIZE] = 0;
 	if ( strcmp(temp, GLAD_HEADER) != 0)
 		return -2;
 
-	fread(&numfiles, sizeof(short), 1, datafile);
+	SDL_RWread(datafile, &numfiles, sizeof(short), 1);
 
 	fileinfo = new packfileinfo[numfiles];
 	for (i=0; i < numfiles; i++)
-		fread(&(fileinfo[i]), FILENAME_SIZE + sizeof(Sint32), 1, datafile);
-	fread(&filesize, sizeof(Sint32), 1, datafile);
+		SDL_RWread(datafile, &(fileinfo[i]), FILENAME_SIZE + sizeof(Sint32), 1);
+	SDL_RWread(datafile, &filesize, sizeof(Sint32), 1);
 
 	return 1;
 }
@@ -74,21 +72,21 @@ int packfile::close()
 {
 	if (numfiles)
 	{
-		fclose(datafile);
+	    SDL_RWclose(datafile);
 		numfiles = 0;
 		delete[] fileinfo;
 	}
 	return 1;
 }
 
-FILE *packfile::get_subfile(const char *subfilename)
+SDL_RWops *packfile::get_subfile(const char *subfilename)
 {
 	short i;
 
 	for (i=numfiles; i--; )
 		if ( strcmp(subfilename, fileinfo[i].name) == 0 )
 		{
-			fseek(datafile, fileinfo[i].filepos, SEEK_SET);
+			SDL_RWseek(datafile, fileinfo[i].filepos, SEEK_SET);
 			last_subfile = i;
 			return datafile;
 		}

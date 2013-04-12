@@ -25,7 +25,7 @@ class video
 {
 	public:
 		video();
-		~video();
+		virtual ~video();
 		void clearscreen();
 		void clearbuffer();
 		void clearfontbuffer();

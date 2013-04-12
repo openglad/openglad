@@ -35,10 +35,19 @@
 #define VIEW_TEAM_BOTTOM 198
 #define VIEW_TEAM_RIGHT  280
 
+#ifdef USE_SDL2
+#define SDLK_KP0 SDLK_KP_0
+#define SDLK_KP1 SDLK_KP_1
+#define SDLK_KP2 SDLK_KP_2
+#define SDLK_KP3 SDLK_KP_3
+#define SDLK_KP4 SDLK_KP_4
+#define SDLK_KP5 SDLK_KP_5
+#define SDLK_KP6 SDLK_KP_6
+#define SDLK_KP7 SDLK_KP_7
+#define SDLK_KP8 SDLK_KP_8
+#define SDLK_KP9 SDLK_KP_9
+#endif
 
-
-FILE * open_misc_file(const char *, const char *, const char *);
-FILE * open_misc_file(const char *);
 
 // Zardus: these were originally static chars but are now ints
 // Now define the arrays with their default values
@@ -1874,7 +1883,7 @@ Sint32 viewscreen::change_gamma(Sint32 whichway)
 options::options()
 {
 	int i;
-	FILE *infile;
+	SDL_RWops *infile;
 	memcpy(allkeys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
 
 	// Set up preference defaults
@@ -1890,7 +1899,7 @@ options::options()
 		prefs[i][PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button behind text
 	}
 
-	infile = open_misc_file(KEY_FILE);
+	infile = open_user_file(KEY_FILE);
 
 	if (!infile) // failed to read
 		return;
@@ -1898,11 +1907,11 @@ options::options()
 	// Read the blobs of data ..
 	for (i=0; i < 4; i++)
 	{
-		fread(allkeys[i], 16 * sizeof(int), 1, infile);
-		fread(prefs[i], 10, 1, infile);
+		SDL_RWread(infile, allkeys[i], 16 * sizeof(int), 1);
+		SDL_RWread(infile, prefs[i], 10, 1);
 	}
 
-	fclose(infile);
+	SDL_RWclose(infile);
 	return;
 }
 
@@ -1929,13 +1938,13 @@ short options::save(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
 	Sint32 i;
-	FILE *outfile;
+	SDL_RWops *outfile;
 
 	// Yes, we are ACTUALLY COPYING the data
 	memcpy(prefs[prefnum], viewp->prefs, 10);
 	memcpy(allkeys[prefnum], viewp->mykeys, 16 * sizeof (int));
 
-	outfile = open_misc_file(KEY_FILE, "", "wb");
+	outfile = open_user_file(KEY_FILE, "", "wb");
 
 	if (!outfile) // failed to write
 		return 0;
@@ -1943,11 +1952,11 @@ short options::save(viewscreen *viewp)
 	// Write the blobs of data ..
 	for (i=0; i < 4; i++)
 	{
-		fwrite(allkeys[i], 16 * sizeof(int), 1, outfile);
-		fwrite(prefs[i], 10, 1, outfile);
+		SDL_RWwrite(outfile, allkeys[i], 16 * sizeof(int), 1);
+		SDL_RWwrite(outfile, prefs[i], 10, 1);
 	}
 
-	fclose(outfile);
+	SDL_RWclose(outfile);
 
 	return 1;
 }

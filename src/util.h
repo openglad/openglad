@@ -24,6 +24,10 @@
 #include <ctype.h>
 #include <string>
 
+// SDL 2 compat
+#if SDL_VERSION_ATLEAST(2,0,0)
+    #define USE_SDL2
+#endif
 
 void change_time(Uint32 new_count);
 
@@ -50,14 +54,19 @@ void uppercase(std::string &);
 void set_mult(int);
 
 // Zardus: for easy (and more portable) finding of files
-FILE * get_misc_file(const char *, const char *, const char *);
-FILE * get_misc_file(const char *, const char *);
-FILE * get_misc_file(const char *);
+SDL_RWops* open_user_file(const char *, const char *, const char *);
+SDL_RWops* open_user_file(const char *, const char *);
+SDL_RWops* open_user_file(const char *);
+
+SDL_RWops* open_data_file(const char *, const char *, const char *);
+SDL_RWops* open_data_file(const char *, const char *);
+SDL_RWops* open_data_file(const char *);
 
 // Zardus: create openglad data dirs:
 void create_dataopenglad();
 
 // Zardus: get a file path (portable and easy)
+char * get_user_file_path(const char *, const char *, const char *);
 char * get_file_path(const char *, const char *, const char *);
 char * get_file_path(const char *, const char *);
 char * get_file_path(const char *);

@@ -34,7 +34,7 @@ class screen : public video
 		screen(short howmany);
 
 		void reset(short howmany);
-		~screen();
+		virtual ~screen();
 		void cleanup(short);
 		void clear();
 		video * get_video_ob();

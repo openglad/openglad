@@ -26,6 +26,10 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 
+#ifdef USE_SDL2
+    #define SDL_GetKeyState SDL_GetKeyboardState
+#endif
+
 void quit(Sint32 arg1);
 
 int raw_key;
@@ -337,11 +341,19 @@ Uint8* query_keyboard()
 void wait_for_key(int somekey)
 {
 	// First wait for key press ..
+	#ifndef USE_SDL2
 	while (!keystates[somekey])
+    #else
+	while (!keystates[SDL_GetScancodeFromKey(somekey)])
+	#endif
 		get_input_events(WAIT);
 
 	// And now for the key to be released ..
-	while (keystates[somekey])
+	#ifndef USE_SDL2
+	while (!keystates[somekey])
+    #else
+	while (!keystates[SDL_GetScancodeFromKey(somekey)])
+	#endif
 		get_input_events(WAIT);
 }
 
@@ -627,7 +639,11 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     }
     else
     {
+	#ifndef USE_SDL2
         return keystates[player_keys[player_index][key_enum]];
+    #else
+        return keystates[SDL_GetScancodeFromKey(player_keys[player_index][key_enum])];
+	#endif
     }
 }
 
@@ -662,12 +678,16 @@ void clear_key_press_event()
 
 void enable_keyrepeat()
 {
-	SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,SDL_DEFAULT_REPEAT_INTERVAL);
+	#ifndef USE_SDL2
+        SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,SDL_DEFAULT_REPEAT_INTERVAL);
+	#endif
 }
 
 void disable_keyrepeat()
 {
-	SDL_EnableKeyRepeat(0,0);
+	#ifndef USE_SDL2
+        SDL_EnableKeyRepeat(0,0);
+	#endif
 }
 
 

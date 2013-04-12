@@ -26,7 +26,7 @@ class treasure : public walker
 {
 	public:
 		treasure(unsigned char  *data, screen  *myscreen);
-		~treasure();
+		virtual ~treasure();
 		short          act();
 		//short                    death(); // called upon destruction
 		short          eat_me(walker  * eater);

@@ -26,7 +26,7 @@ class pixie
 	public:
 		pixie(unsigned char *data,short xsize, short ysize,screen  *myscreen);
 		pixie(unsigned char *data,short x,short y,screen *myscreen,int doaccel);
-		~pixie();
+		virtual ~pixie();
 		short setxy(short x, short y);
 		virtual short move (short x, short y);
 		short draw (viewscreen  *view_buf);

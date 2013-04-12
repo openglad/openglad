@@ -5,6 +5,11 @@
 
 //#include "global.h"
 
+// SDL 2 compat
+#if SDL_VERSION_ATLEAST(2,0,0)
+    #define USE_SDL2
+#endif
+
 extern SDL_Surface *screen;
 
 typedef enum 
@@ -21,6 +26,10 @@ class Screen
 		SDL_Surface *screen;
 	private:
 		SDL_Surface		*render;		// the physical screen
+        #ifdef USE_SDL2
+		SDL_Window* window;
+		SDL_Renderer* renderer;
+		#endif
 		SDL_Surface		*tempo;			// used to render org_screen before
 										// update which is only a SDL_Update between
 										// render and tempo
@@ -40,11 +49,7 @@ class Screen
 	
 		void Blit( SDL_Surface *src, int dst_x, int dst_y);*/
 
-		void Update();
-
-		void Update( int x, int y, int w, int h );
-
-		void Update( SDL_Rect &r_upd );
+        void Render(Sint16 x, Sint16 y, Uint16 w, Uint16 h);
 
 		SDL_Surface *RenderAndReturn( int x, int y, int w, int h );
 
@@ -66,15 +71,6 @@ class Screen
 
 extern Screen *E_Screen;
 
-inline void UpdateRect( SDL_Surface *src, int x, int y, int w, int h )
-{
-	if ( src==screen)
-		E_Screen->Update( x,y,w,h);
-	else {
-		SDL_UpdateRect(src, x, y, w, h );
-		printf("normal update rect\n");
-	}
-}
 
 
 #endif

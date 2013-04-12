@@ -19,8 +19,6 @@
 #include "util.h"
 
 short next_scenario = 1;
-FILE * open_misc_file(const char *, const char *);
-FILE * open_misc_file(const char *, const char *, const char *);
 
 short load_saved_game(const char *filename, screen  *myscreen)
 {
@@ -286,7 +284,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 short load_team_list(const char * filename, screen  *myscreen)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	FILE  *infile;
+	SDL_RWops  *infile;
 	char temp_filename[80];
 	guy  *temp_guy;
 
@@ -355,7 +353,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 	strcpy(temp_filename, filename);
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = open_misc_file(temp_filename, "save/")) == NULL )
+	if ( (infile = open_user_file(temp_filename, "save/")) == NULL )
 	{
 		//gotoxy(1, 22);
 		//printf("Error in opening team file: %s\n", filename);
@@ -363,45 +361,45 @@ short load_team_list(const char * filename, screen  *myscreen)
 	}
 
 	// Read id header
-	fread(temptext, 3, 1, infile);
+	SDL_RWread(infile, temptext, 3, 1);
 	if ( strcmp(temptext,"GTL"))
 	{
-		fclose(infile);
+	    SDL_RWclose(infile);
 		printf("Error, selected file is not a GTL file: %s\n",filename);
 		return 0; //not a gtl file
 	}
 
 	// Read version number
-	fread(&temp_version, 1, 1, infile);
+	SDL_RWread(infile, &temp_version, 1, 1);
 
 	// Versions 7+ have a registered mark ..
 	if (temp_version >= 7)
 	{
-		fread(&temp_registered, 2, 1, infile);
+		SDL_RWread(infile, &temp_registered, 2, 1);
 	}
 
 	// Do other stuff based on version ..
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
-			fread(savedgame, 40, 1, infile); // read and ignore the name
+			SDL_RWread(infile, savedgame, 40, 1); // read and ignore the name
 		else
 		{
-			fclose(infile);
+            SDL_RWclose(infile);
 			printf("Error, selected files is not version one: %s\n",filename);
 			return 0;
 		}
 	}
 
 	// Read scenario number
-	fread(&next_scenario, 2, 1, infile);
+	SDL_RWread(infile, &next_scenario, 2, 1);
 	myscreen->scen_num = next_scenario;
 
 	// Read cash
-	fread(&newcash, 4, 1, infile);
+	SDL_RWread(infile, &newcash, 4, 1);
 	myscreen->totalcash = newcash;
 	// Read score
-	fread(&newscore, 4, 1, infile);
+	SDL_RWread(infile, &newscore, 4, 1);
 	myscreen->totalscore = newscore;
 
 	// Versions 6+ have a score for each possible team, 0-3
@@ -409,9 +407,9 @@ short load_team_list(const char * filename, screen  *myscreen)
 	{
 		for (i=0; i < 4; i++)
 		{
-			fread(&newcash, 4, 1, infile);
+			SDL_RWread(infile, &newcash, 4, 1);
 			myscreen->m_totalcash[i] = newcash;
-			fread(&newscore, 4, 1, infile);
+			SDL_RWread(infile, &newscore, 4, 1);
 			myscreen->m_totalscore[i] = newscore;
 		}
 	}
@@ -419,18 +417,18 @@ short load_team_list(const char * filename, screen  *myscreen)
 	// Versions 7+ have the allied information ..
 	if (temp_version >= 7)
 	{
-		fread(&temp_allied, 2, 1, infile);
+		SDL_RWread(infile, &temp_allied, 2, 1);
 		myscreen->allied_mode = temp_allied;
 	}
 
 	// Get # of guys to read
-	fread(&listsize, 2, 1, infile);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	// Read (and ignore) the # of players
-	fread(&numplayers, 1, 1, infile);
+	SDL_RWread(infile, &numplayers, 1, 1);
 
 	// Read the reserved area, 31 bytes
-	fread(filler, 31, 1, infile);
+	SDL_RWread(infile, filler, 31, 1);
 
 	// Okay, we've read header .. now read the team list data ..
 	if (myscreen->first_guy)
@@ -452,27 +450,27 @@ short load_team_list(const char * filename, screen  *myscreen)
 		for (i=(short) strlen(guyname); i < 12; i++)
 			guyname[i] = 0;
 		// Now write all those values
-		fread(&temp_order, 1, 1, infile);
-		fread(&temp_family,1, 1, infile);
-		fread(guyname, 12, 1, infile);
-		fread(&temp_str, 2, 1, infile);
-		fread(&temp_dex, 2, 1, infile);
-		fread(&temp_con, 2, 1, infile);
-		fread(&temp_short, 2, 1, infile);
-		fread(&temp_arm, 2, 1, infile);
-		fread(&temp_lev, 2, 1, infile);
-		fread(&temp_exp, 4, 1, infile);
+		SDL_RWread(infile, &temp_order, 1, 1);
+		SDL_RWread(infile, &temp_family,1, 1);
+		SDL_RWread(infile, guyname, 12, 1);
+		SDL_RWread(infile, &temp_str, 2, 1);
+		SDL_RWread(infile, &temp_dex, 2, 1);
+		SDL_RWread(infile, &temp_con, 2, 1);
+		SDL_RWread(infile, &temp_short, 2, 1);
+		SDL_RWread(infile, &temp_arm, 2, 1);
+		SDL_RWread(infile, &temp_lev, 2, 1);
+		SDL_RWread(infile, &temp_exp, 4, 1);
 		// Below here is version 3 and up..
-		fread(&temp_kills, 2, 1, infile); // how many kills we have
-		fread(&temp_level_kills, 4, 1, infile); // levels of kills
+		SDL_RWread(infile, &temp_kills, 2, 1); // how many kills we have
+		SDL_RWread(infile, &temp_level_kills, 4, 1); // levels of kills
 		// Below here is version 4 and up ..
-		fread(&temp_td, 4, 1, infile); // total damage
-		fread(&temp_th, 4, 1, infile); // total hits
-		fread(&temp_ts, 4, 1, infile); // total shots
-		fread(&temp_teamnum, 2, 1, infile); // team number
+		SDL_RWread(infile, &temp_td, 4, 1); // total damage
+		SDL_RWread(infile, &temp_th, 4, 1); // total hits
+		SDL_RWread(infile, &temp_ts, 4, 1); // total shots
+		SDL_RWread(infile, &temp_teamnum, 2, 1); // team number
 
 		// And the filler
-		fread(filler, 8, 1, infile);
+		SDL_RWread(infile, filler, 8, 1);
 		// Now set the values ..
 		temp_guy->family       = temp_family;
 		strcpy(temp_guy->name,guyname);
@@ -523,14 +521,14 @@ short load_team_list(const char * filename, screen  *myscreen)
 	}
 
 	if (temp_version >= 5)
-		fread( (myscreen->levelstatus), 500, 1, infile);
+		SDL_RWread(infile,  (myscreen->levelstatus), 500, 1);
 	else
 	{
 		memset( (myscreen->levelstatus), 0, 500);
-		fread((myscreen->levelstatus), 200, 1, infile);
+		SDL_RWread(infile, (myscreen->levelstatus), 200, 1);
 	}
 
-	fclose(infile);
+    SDL_RWclose(infile);
 
 	return 1;
 }
@@ -538,7 +536,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 short save_game(const char * filename, screen  *myscreen)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	FILE  *outfile;
+	SDL_RWops  *outfile;
 	char temp_filename[80];
 	oblink  *here = myscreen->oblist;
 	walker  * temp_walker;
@@ -608,8 +606,8 @@ short save_game(const char * filename, screen  *myscreen)
 	//strcpy(temp_filename, scen_directory);
 	strcpy(temp_filename, filename);
 	strcat(temp_filename, ".gtl"); // gladiator team list
-
-	if ( (outfile = open_misc_file(temp_filename, "save/", "wb")) == NULL ) // open for write
+	
+	if ( (outfile = open_user_file(temp_filename, "save/", "wb")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
 		printf("Error in writing team file %s\n", filename);
@@ -617,38 +615,38 @@ short save_game(const char * filename, screen  *myscreen)
 	}
 
 	// Write id header
-	fwrite(temptext, 3, 1, outfile);
+	SDL_RWwrite(outfile, temptext, 3, 1);
 
 	// Write version number
-	fwrite(&temp_version, 1, 1, outfile);
+	SDL_RWwrite(outfile, &temp_version, 1, 1);
 
 	// Versions 7+ include a mark for registered or not
 	temp_registered = 1;
-	fwrite(&temp_registered, 2, 1, outfile);
+	SDL_RWwrite(outfile, &temp_registered, 2, 1);
 
 	// Write the name
-	fwrite(savedgame, 40, 1, outfile);
+	SDL_RWwrite(outfile, savedgame, 40, 1);
 
 	// Write scenario number
-	fwrite(&next_scenario, 2, 1, outfile);
+	SDL_RWwrite(outfile, &next_scenario, 2, 1);
 
 	// Write cash
-	fwrite(&newcash, 4, 1, outfile);
+	SDL_RWwrite(outfile, &newcash, 4, 1);
 	// Write score
-	fwrite(&newscore, 4, 1, outfile);
+	SDL_RWwrite(outfile, &newscore, 4, 1);
 
 	// Versions 6+ have a score for each possible team
 	for (i=0; i < 4; i++)
 	{
 		newcash = myscreen->m_totalcash[i];
-		fwrite(&newcash, 4, 1, outfile);
+		SDL_RWwrite(outfile, &newcash, 4, 1);
 		newscore = myscreen->m_totalscore[i];
-		fwrite(&newscore, 4, 1, outfile);
+		SDL_RWwrite(outfile, &newscore, 4, 1);
 	}
 
 	// Versions 7+ include the allied mode information
 	temp_allied = myscreen->allied_mode;
-	fwrite(&temp_allied, 2, 1, outfile);
+	SDL_RWwrite(outfile, &temp_allied, 2, 1);
 
 	// Determine size of team list ...
 	listsize = 0;
@@ -666,12 +664,12 @@ short save_game(const char * filename, screen  *myscreen)
 
 	//gotoxy(1, 22);
 	//printf("Team size: %d  ", listsize);
-	fwrite(&listsize, 2, 1, outfile);
+	SDL_RWwrite(outfile, &listsize, 2, 1);
 
-	fwrite(&numplayers, 1, 1, outfile);
+	SDL_RWwrite(outfile, &numplayers, 1, 1);
 
 	// Write the reserved area, 31 bytes
-	fwrite(filler, 31, 1, outfile);
+	SDL_RWwrite(outfile, filler, 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	here = myscreen->oblist;  // back to head of list
@@ -708,33 +706,33 @@ short save_game(const char * filename, screen  *myscreen)
 			temp_teamnum = temp_walker->myguy->teamnum;
 
 			// Now write all those values
-			fwrite(&temp_order, 1, 1, outfile);
-			fwrite(&temp_family,1, 1, outfile);
-			fwrite(guyname, 12, 1, outfile);
-			fwrite(&temp_str, 2, 1, outfile);
-			fwrite(&temp_dex, 2, 1, outfile);
-			fwrite(&temp_con, 2, 1, outfile);
-			fwrite(&temp_short, 2, 1, outfile);
-			fwrite(&temp_arm, 2, 1, outfile);
-			fwrite(&temp_lev, 2, 1, outfile);
-			fwrite(&temp_exp, 4, 1, outfile);
-			fwrite(&temp_kills, 2, 1, outfile);
-			fwrite(&temp_level_kills, 4, 1, outfile);
-			fwrite(&temp_td, 4, 1, outfile);
-			fwrite(&temp_th, 4, 1, outfile);
-			fwrite(&temp_ts, 4, 1, outfile);
-			fwrite(&temp_teamnum, 2, 1, outfile);
+			SDL_RWwrite(outfile, &temp_order, 1, 1);
+			SDL_RWwrite(outfile, &temp_family,1, 1);
+			SDL_RWwrite(outfile, guyname, 12, 1);
+			SDL_RWwrite(outfile, &temp_str, 2, 1);
+			SDL_RWwrite(outfile, &temp_dex, 2, 1);
+			SDL_RWwrite(outfile, &temp_con, 2, 1);
+			SDL_RWwrite(outfile, &temp_short, 2, 1);
+			SDL_RWwrite(outfile, &temp_arm, 2, 1);
+			SDL_RWwrite(outfile, &temp_lev, 2, 1);
+			SDL_RWwrite(outfile, &temp_exp, 4, 1);
+			SDL_RWwrite(outfile, &temp_kills, 2, 1);
+			SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
+			SDL_RWwrite(outfile, &temp_td, 4, 1);
+			SDL_RWwrite(outfile, &temp_th, 4, 1);
+			SDL_RWwrite(outfile, &temp_ts, 4, 1);
+			SDL_RWwrite(outfile, &temp_teamnum, 2, 1);
 			// And the filler
-			fwrite(filler, 8, 1, outfile);
+			SDL_RWwrite(outfile, filler, 8, 1);
 		}
 		// Advance to the next guy ..
 		here = here->next;
 	}
 
 	// Write the level status ..
-	fwrite((myscreen->levelstatus), 500, 1, outfile);
+	SDL_RWwrite(outfile, (myscreen->levelstatus), 500, 1);
 
-	fclose(outfile);
+    SDL_RWclose(outfile);
 
 	return 1;
 }

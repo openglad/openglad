@@ -187,12 +187,12 @@ short treasure::eat_me(walker  * eater)
 				screenp->buffer_to_screen(0, 0, 320, 200);
 				eatkeys = query_keyboard();
 				clear_keyboard();
-				while (!eatkeys[SDLK_y] && !eatkeys[SDLK_n])
+				while (!eatkeys[KEYSTATE_y] && !eatkeys[KEYSTATE_n])
 					get_input_events(WAIT);
 				// Redraw screen ..
 				screenp->redrawme = 1;
 
-				if (eatkeys[SDLK_y]) // accepted level change
+				if (eatkeys[KEYSTATE_y]) // accepted level change
 				{
 					clear_keyboard();
 					screenp->levelstatus[screenp->scen_num] = 0;  // NOT done
@@ -239,12 +239,12 @@ short treasure::eat_me(walker  * eater)
 				eatkeys = query_keyboard();
 				clear_keyboard();
 				// Zardus: FIX: get_input_events instead of freezing and counting :-)
-				while (!eatkeys[SDLK_y] && !eatkeys[SDLK_n])
+				while (!eatkeys[KEYSTATE_y] && !eatkeys[KEYSTATE_n])
 					get_input_events(WAIT);
 				// Redraw screen ..
 				screenp->redrawme = 1;
 
-				if (eatkeys[SDLK_y]) // accepted level change
+				if (eatkeys[KEYSTATE_y]) // accepted level change
 				{
 					clear_keyboard();
 					//screenp->levelstatus[screenp->scen_num] = 1;

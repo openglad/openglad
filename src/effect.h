@@ -30,7 +30,7 @@ class effect : public walker
 {
 	public:
 		effect(unsigned char  *data, screen  *myscreen);
-		~effect();
+		virtual ~effect();
 		short          act();
 		short          animate();
 		short          death(); // called on destruction
