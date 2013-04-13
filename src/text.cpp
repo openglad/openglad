@@ -347,6 +347,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 	static char editstring[100], firststring[100];
 	//char *somekeyboard = grab_keyboard();
 	int tempchar;
+	char* temptext;
 	short has_typed = 0; // hasn't typed yet
 
 	for (i=0; i < 100; i++)
@@ -366,42 +367,74 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 
 	clear_keyboard();
 	clear_key_press_event();
+	clear_text_input_event();
 	enable_keyrepeat();
-
+    #ifdef USE_SDL2
+    SDL_StartTextInput();
+    #endif
+    
 	while ( !string_done )
 	{
 		
 		screenp->clearfontbuffer(x,y,maxlength*sizex,sizey);
 	
+        tempchar = 0;
+        temptext = NULL;
+        
 		// Wait for a key to be pressed ..
-		while (!query_key_press_event())
+		while (!query_key_press_event() && !query_text_input_event())
 			//dumbcount++;
 			get_input_events(WAIT);
-		tempchar = query_key();
-		clear_key_press_event();
-		if (tempchar == SDLK_RETURN)
-			string_done = 1;
-		else if (tempchar == SDLK_ESCAPE)
-		{
-			strcpy(editstring, firststring);
-			string_done = 1;
-		}
-		else if (tempchar == SDLK_BACKSPACE && current_length) {
-			editstring[current_length-1] = 0;
-			
-		} else if ( (convert_to_ascii(tempchar) != 255) &&
-		          (current_length < maxlength) )
-		{
-			if (!has_typed) // first char, so replace text
-			{
-				current_length = 0;
-				for (i=0; i < 100; i++)
-					editstring[i] = 0; // clear the string ...
-				screenp->draw_box(x, y, x+maxlength*(sizex+1),
-				                  y+sizey+1, backcolor, 1, 1);
-			}
-			editstring[current_length] = convert_to_ascii(tempchar);
-		}
+        if(query_key_press_event())
+        {
+            tempchar = query_key();
+            clear_key_press_event();
+            
+            if (tempchar == SDLK_RETURN)
+                string_done = 1;
+            else if (tempchar == SDLK_ESCAPE)
+            {
+                strcpy(editstring, firststring);
+                string_done = 1;
+            }
+            else if (tempchar == SDLK_BACKSPACE && current_length > 0) {
+                editstring[current_length-1] = 0;
+                
+            }
+        }
+        
+        if(query_text_input_event())
+        {
+            temptext = query_text_input();
+            
+            if ( temptext != NULL &&
+                      (current_length + short(strlen(temptext)) < maxlength) )
+            {
+                if (!has_typed) // first char, so replace text
+                {
+                    current_length = 0;
+                    for (i=0; i < 100; i++)
+                        editstring[i] = 0; // clear the string ...
+                    screenp->draw_box(x, y, x+maxlength*(sizex+1),
+                                      y+sizey+1, backcolor, 1, 1);
+                }
+                
+                int len = strlen(temptext);
+                int i;
+                for(i = 0; i < len; i++)
+                {
+                    unsigned char c = temptext[i];
+                    if(c != 255)
+                    {
+                        editstring[current_length] = c;
+                        current_length++;
+                        editstring[current_length] = '\0';
+                    }
+                }
+            }
+        }
+		
+        clear_text_input_event();
 		has_typed = 1;
 		current_length = (short) strlen(editstring);
 		screenp->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
@@ -409,109 +442,13 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 		screenp->buffer_to_screen(0, 0, 320, 200);
 	}
 
+    #ifdef USE_SDL2
+    SDL_StopTextInput();
+    #endif
 	disable_keyrepeat();
 	clear_keyboard();
 	return editstring;
 
 }
 
-// Convert from scancode to ascii, ie, SDLK_a to 'A'
-unsigned char text::convert_to_ascii(int scancode)
-{
-	switch (scancode)
-	{
-		case SDLK_a:
-			return 'A';
-		case SDLK_b:
-			return 'B';
-		case SDLK_c:
-			return 'C';
-		case SDLK_d:
-			return 'D';
-		case SDLK_e:
-			return 'E';
-		case SDLK_f:
-			return 'F';
-		case SDLK_g:
-			return 'G';
-		case SDLK_h:
-			return 'H';
-		case SDLK_i:
-			return 'I';
-		case SDLK_j:
-			return 'J';
-		case SDLK_k:
-			return 'K';
-		case SDLK_l:
-			return 'L';
-		case SDLK_m:
-			return 'M';
-		case SDLK_n:
-			return 'N';
-		case SDLK_o:
-			return 'O';
-		case SDLK_p:
-			return 'P';
-		case SDLK_q:
-			return 'Q';
-		case SDLK_r:
-			return 'R';
-		case SDLK_s:
-			return 'S';
-		case SDLK_t:
-			return 'T';
-		case SDLK_u:
-			return 'U';
-		case SDLK_v:
-			return 'V';
-		case SDLK_w:
-			return 'W';
-		case SDLK_x:
-			return 'X';
-		case SDLK_y:
-			return 'Y';
-		case SDLK_z:
-			return 'Z';
-
-		case SDLK_1:
-			return '1';
-		case SDLK_2:
-			return '2';
-		case SDLK_3:
-			return '3';
-		case SDLK_4:
-			return '4';
-		case SDLK_5:
-			return '5';
-		case SDLK_6:
-			return '6';
-		case SDLK_7:
-			return '7';
-		case SDLK_8:
-			return '8';
-		case SDLK_9:
-			return '9';
-		case SDLK_0:
-			return '0';
-
-		case SDLK_SPACE:
-			return 32;
-			//    case SDLK_BACKSPACE: return 8;
-		case SDLK_RETURN:
-			return 13;
-		case SDLK_ESCAPE:
-			return 27;
-		case SDLK_PERIOD:
-			return '.';
-		case SDLK_COMMA:
-			return ',';
-		case SDLK_QUOTE:
-			return '\'';
-		case SDLK_BACKQUOTE:
-			return '`';
-
-		default:
-			return 255;
-	}
-}
 

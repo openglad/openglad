@@ -26,8 +26,6 @@
 #define CY_SCREEN 200
 #define ASSERT(x) if (!(x)) return 0;
 
-// Zardus: set_mult in input.cpp sets input's mult value
-void set_mult(int);
 
 unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
 
@@ -35,6 +33,9 @@ SDL_Surface *screen; //buffers: this is what we draw in
 SDL_Surface *fontbuffer;
 int fontcolorkey;
 Screen *E_Screen;
+
+extern float mouse_scale_x;
+extern float mouse_scale_y;
 
 // Zardus: for the ugly retreat crash hack fix
 bool retreat;
@@ -79,7 +80,8 @@ video::video()
 		render = DOUBLE;
 	}
 
-	set_mult(mouse_mult);
+	mouse_scale_x = mouse_mult;
+	mouse_scale_y = mouse_mult;
 
 	fadeDuration = 500;
 

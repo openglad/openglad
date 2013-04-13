@@ -49,7 +49,8 @@ int main(int argc, char **argv)
 	int frame = 1, mult = 3, done = 0, redowindow = 1, redopicture = 1, refreshpicture = 1, leftclick = 0;
 	SDL_Surface *pixie;
 	SDL_Event event;
-
+    SDL_Color bg_color = {0, 0, 0, 255};
+    
 	if(argc != 2) {
 		printf("USAGE: pixedit file.pix\n");
 		exit(0);
@@ -82,6 +83,7 @@ int main(int argc, char **argv)
 			if (sizey < 64) sizey = 64;
 
 			pixie = SDL_SetVideoMode (sizex * mult, sizey * mult, 16, SDL_HWSURFACE | SDL_DOUBLEBUF);
+			SDL_FillRect(pixie, NULL, SDL_MapRGB(pixie->format, bg_color.r, bg_color.g, bg_color.b));
 			redopicture = 1;
 			redowindow = 0;
 		}
@@ -92,7 +94,10 @@ int main(int argc, char **argv)
 			sprintf(buffer, "Frame %i at %ix", frame, mult);
 
 			SDL_WM_SetCaption(buffer, NULL);
-
+			
+			SDL_FillRect(pixie, NULL, SDL_MapRGB(pixie->format, bg_color.r, bg_color.g, bg_color.b));
+            
+            // Draw sprite frame
 			for (i = 0; i < y; i++)
 			{
 				for (j = 0; j < x; j++)
@@ -109,13 +114,16 @@ int main(int argc, char **argv)
 					rect.y = i * mult;
 					rect.w = mult;
 					rect.h = mult;
+                    
+                    if(r > 0 || g > 0 || b > 0)
+                    {
+                        c = SDL_MapRGB(pixie->format, r, g, b);
 
-					c = SDL_MapRGB(pixie->format, r, g, b);
-
-					SDL_FillRect(pixie,&rect,c);
+                        SDL_FillRect(pixie,&rect,c);
+                    }
 				}
 			}
-
+            // Draw palette
 			for (i = 0; i < 32; i++)
 			{
 				for (j = x; j < x + 8; j++)
@@ -161,6 +169,12 @@ int main(int argc, char **argv)
 					FILE *outfile;
 					case SDLK_q:
 						done = 1;
+						break;
+					case SDLK_b:
+						bg_color.r = rand()%256;
+						bg_color.g = rand()%256;
+						bg_color.b = rand()%256;
+                        redopicture = 1;
 						break;
 					case SDLK_ESCAPE:
 						done = 1;

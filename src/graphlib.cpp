@@ -56,25 +56,29 @@ unsigned char  * read_pixie_file(const char  * filename)
 	SDL_RWops  *infile = NULL;
 	enum {notfound, file, pack} gotit = notfound;
     
-	// Open the pixie-pack, if not already done ...
-	if (!tempack.opened())
-	{
-		if (tempack.open("graphics.001") == -1)
-		{
-			printf("Cannot open graphics resource file!\n");
-			release_keyboard();
-			exit(0);
-		}
-	}
 
 	// Zardus: try to find file using open_misc_file, then resort to graphics.001
 	if ((infile = open_data_file(filename, "pix/")) || (infile = open_data_file(filename, "scen/")))
     {
 		gotit = file;
     }
-	else if (tempack.opened() && (infile=tempack.get_subfile((char *)filename)))
+	else
     {
-		gotit = pack;
+        // Open the pixie-pack, if not already done ...
+        if (!tempack.opened())
+        {
+            if (tempack.open("graphics.001") == -1)
+            {
+                printf("Cannot open graphics resource file!\n");
+                release_keyboard();
+                exit(0);
+            }
+        }
+        
+        if (tempack.opened() && (infile=tempack.get_subfile((char *)filename)))
+        {
+            gotit = pack;
+        }
     }
 
 	if(gotit==notfound)

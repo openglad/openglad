@@ -49,7 +49,6 @@ class text
 		char *input_string(short x, short y, short maxlength, char *begin);
 		char *input_string(short x, short y, short maxlength, char *begin,
 		                   unsigned char forecolor, unsigned char backcolor);
-		unsigned char convert_to_ascii(int scancode);
 		~text();
 		screen * screenp;
 

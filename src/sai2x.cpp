@@ -4,6 +4,9 @@
 
 #define Log(x) fprintf(stderr,x)
 
+extern float mouse_scale_x;
+extern float mouse_scale_y;
+
 // Private var for SAI2x
 static Uint32 colorMask = 0xF7DEF7DE;
 static Uint32 lowPixelMask = 0x08210821;
@@ -706,15 +709,27 @@ Screen::Screen( RenderEngine engine, int fullscreen)
 	else
 		render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF|SDL_FULLSCREEN);
     #else
+    
+    int w, h;
+    #ifdef ANDROID
+    w = 0;
+    h = 0;
+    fullscreen = true;
+    #else
+    w = tx;
+    h = ty;
+    #endif
+    
     window = SDL_CreateWindow("Gladiator",
                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                        tx, ty,
+                        w, h,
                         SDL_WINDOW_SHOWN);
     if(window == NULL)
         exit(1);
     
-    int w, h;
     SDL_GetWindowSize(window, &w, &h);
+    mouse_scale_x = float(w)/320;
+    mouse_scale_y = float(h)/200;
     
     render = SDL_CreateRGBSurface(SDL_SWSURFACE, tx, ty, 32, 0, 0, 0, 0);
     renderer = SDL_CreateRenderer(window, -1, 0);

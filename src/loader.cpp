@@ -24,6 +24,9 @@
 #include "effect.h"
 #include "gladpack.h"
 
+// Switch to "friendly" blood and stain pix files.
+//#define NO_BLOOD
+
 #define SIZE_ORDERS 7 // see graph.h
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in graph.h
 //#define PIX(a,b) (SIZE_FAMILIES*a+b)  //moved to graph.h
@@ -510,9 +513,17 @@ loader::loader()
 	graphics[PIX(ORDER_WEAPON, FAMILY_TREE)] = read_pixie_file("tree.pix");
 	graphics[PIX(ORDER_WEAPON, FAMILY_METEOR)] = read_pixie_file("meteor.pix");
 	graphics[PIX(ORDER_WEAPON, FAMILY_SPRINKLE)] = read_pixie_file("sparkle.pix");
+	#ifndef NO_BLOOD
 	graphics[PIX(ORDER_WEAPON, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
+	#else
+	graphics[PIX(ORDER_WEAPON, FAMILY_BLOOD)] = read_pixie_file("blood_friendly.pix");
+	#endif
 	graphics[PIX(ORDER_WEAPON, FAMILY_BONE)] = read_pixie_file("bone1.pix");
+	#ifndef NO_BLOOD
 	graphics[PIX(ORDER_TREASURE,FAMILY_STAIN)] = read_pixie_file("stain.pix");
+	#else
+	graphics[PIX(ORDER_TREASURE,FAMILY_STAIN)] = read_pixie_file("stain_friendly.pix");
+	#endif
 	graphics[PIX(ORDER_WEAPON, FAMILY_BLOB)] = read_pixie_file("sl_ball.pix");
 	graphics[PIX(ORDER_WEAPON, FAMILY_LIGHTNING)] = read_pixie_file("lightnin.pix");
 	graphics[PIX(ORDER_WEAPON, FAMILY_GLOW)] = read_pixie_file("clerglow.pix");

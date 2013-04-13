@@ -150,6 +150,7 @@ void handle_events(SDL_Event *event);
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.
 int query_key();                                                            // return last keypress
+char* query_text_input();                                                            // return last text input
 
 bool query_key_event(int key, const SDL_Event& event);
 bool isAnyPlayerKey(SDLKey key);
@@ -170,6 +171,8 @@ Uint8* query_keyboard();                                    // keyboard status
 void wait_for_key(int somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)
+short query_text_input_event();                       //query_ & clear_key_press_event
+void clear_text_input_event();                       // detect a key press :)
 bool query_key_code(int code);                       // OBSOLETE, use query_keyboard
 void clear_key_code(int code);
 void enable_keyrepeat();
@@ -179,5 +182,7 @@ void init_input();
 void grab_mouse();
 void release_mouse();
 Sint32 * query_mouse();
+
+unsigned char convert_to_ascii(int scancode);
 
 #endif
