@@ -178,8 +178,10 @@ void create_dataopenglad()
 #ifdef ANDROID
     // Assuming SDL2
     string path(SDL_AndroidGetInternalStoragePath());
+    path += "/";
+    mkdir(path.c_str(), 0770);
     path += "save/";
-    mkdir(path.c_str(), 0755);
+    mkdir(path.c_str(), 0770);
 #elif !defined(WINDOWS)
     string path(getenv("HOME"));
     path += "/.openglad/";
@@ -230,21 +232,8 @@ char * get_user_file_path(const char * file, const char * pos_dir, const char * 
     FILE * infile;
     string filepath(file);
 #ifdef ANDROID
-
-    filepath.clear();
-    filepath += pos_dir;
-    filepath += file;
-
-    SDL_RWops* rwops = SDL_RWFromFile(filepath.c_str(), attr);
-
-    if(rwops != NULL)
-    {
-        SDL_RWclose(rwops);
-
-        return strdup(filepath.c_str());
-    }
-
-
+    SDL_RWops* rwops;
+    
     filepath = SDL_AndroidGetInternalStoragePath();
     filepath += "/";
     filepath += pos_dir;
@@ -258,6 +247,20 @@ char * get_user_file_path(const char * file, const char * pos_dir, const char * 
 
         return strdup(filepath.c_str());
     }
+    
+    filepath = pos_dir;
+    filepath += file;
+    
+    rwops = SDL_RWFromFile(filepath.c_str(), attr);
+
+    if(rwops != NULL)
+    {
+        SDL_RWclose(rwops);
+
+        return strdup(filepath.c_str());
+    }
+
+    Log("Did not find %s", filepath.c_str());
     return NULL;
 
 #elif !defined(WINDOWS)
