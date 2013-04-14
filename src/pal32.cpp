@@ -49,13 +49,13 @@ short load_and_set_palette(const char *filename, unsigned char *newpalette)
 	//buffers: don't need this file stuff since we use our_pal_lookup instead
 	/*	if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
 		{
-			printf("Error in reading palette file %s\n", filename);
+			Log("Error in reading palette file %s\n", filename);
 			return 0;
 		}
 	 
 		if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
 		{
-			printf("Error: Corrupt palette file %s!\n", filename);
+			Log("Error: Corrupt palette file %s!\n", filename);
 			return 0;
 		}
 	 
@@ -94,13 +94,13 @@ short load_palette(const char *filename, unsigned char *newpalette)
 	/* buffers: we don't need this since we use our_pal_lookup() now
 		if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
 		{
-			printf("Error in reading palette file %s\n", filename);
+			Log("Error in reading palette file %s\n", filename);
 			return 0;
 		}
 	 
 		if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
 		{
-			printf("Error: Corrupt palette file %s!\n", filename);
+			Log("Error: Corrupt palette file %s!\n", filename);
 			return 0;
 		}
 	 

@@ -35,7 +35,7 @@ statistics::statistics(walker  * someguy)
 	else
 	{
 		controller = NULL;
-		printf("made a stats with no controller!\n");
+		Log("made a stats with no controller!\n");
 	}
 	hitpoints = max_hitpoints = 10;
 	magicpoints = max_magicpoints = 50;
@@ -118,7 +118,7 @@ void statistics::add_command(short whatcommand, short iterations,
 
 	if (whatcommand == COMMAND_FOLLOW)
 	{
-		printf("following\n");
+		Log("following\n");
 	}
 
 	// Add command to end of list
@@ -225,7 +225,7 @@ void statistics::set_command(short whatcommand, short iterations,
                              short info1, short info2)
 {
 	if (whatcommand == COMMAND_DIE)
-		printf("BLLLLLLLLLLLLLAAAAAAAAAAHHHHHHH!\n");
+		Log("BLLLLLLLLLLLLLAAAAAAAAAAHHHHHHH!\n");
 
 	force_command(whatcommand, iterations, info1, info2);
 
@@ -251,7 +251,7 @@ short statistics::do_command()
 	//if (!controller || controller->dead)
 	if (!controller) // allow dead controllers for now
 	{
-		printf("STATS:DO_COM: No controller!\n");
+		Log("STATS:DO_COM: No controller!\n");
 		wait_for_key(KEYSTATE_z);
 		return 0;
 	}
@@ -287,7 +287,7 @@ short statistics::do_command()
 		case COMMAND_FIRE:
 			if (!(controller->query_order() == ORDER_LIVING))
 			{
-				printf("commanding a non-living to fire?");
+				Log("commanding a non-living to fire?");
 				break;
 			}
 			if (!controller->fire_check(com1,com2))
@@ -299,7 +299,7 @@ short statistics::do_command()
 			break;
 		case COMMAND_DIE:  // debugging, not currently used
 			if (!controller->dead)
-				printf("Trying to make a living ob die!\n");
+				Log("Trying to make a living ob die!\n");
 			if (commandcount < 2)  // then delete us ..
 				delete_me = 1;
 			break;

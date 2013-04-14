@@ -1,8 +1,7 @@
 #include <SDL.h>
 #include "sai2x.h"
+#include "util.h"
 //#include "os_depend.h"
-
-#define Log(x) fprintf(stderr,x)
 
 extern float mouse_scale_x;
 extern float mouse_scale_y;
@@ -806,7 +805,7 @@ SDL_Surface *Screen::RenderAndReturn( int x, int y, int w, int h )
                 SDL_UnlockSurface( render );
                 break;
         default:
-                printf("error, default reached\n");
+                Log("error, default reached\n");
                 //SDL_BlitSurface(screen,NULL,render,NULL);
         }
 

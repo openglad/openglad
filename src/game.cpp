@@ -33,7 +33,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	// First load the team list ..
 	if (!load_team_list(filename, myscreen))
 	{
-		printf("Error loading saved game %s.\n", filename);
+		Log("Error loading saved game %s.\n", filename);
 		release_keyboard();
 		exit(0);
 	}
@@ -202,7 +202,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	// Have we already done this scenario?
 	if (myscreen->levelstatus[myscreen->scen_num])
 	{
-		//                printf("already done level\n");
+		//                Log("already done level\n");
 		here = myscreen->oblist;
 		while (here)
 		{
@@ -356,7 +356,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 	if ( (infile = open_user_file(temp_filename, "save/")) == NULL )
 	{
 		//gotoxy(1, 22);
-		//printf("Error in opening team file: %s\n", filename);
+		//Log("Error in opening team file: %s\n", filename);
 		return 0;
 	}
 
@@ -365,7 +365,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 	if ( strcmp(temptext,"GTL"))
 	{
 	    SDL_RWclose(infile);
-		printf("Error, selected file is not a GTL file: %s\n",filename);
+		Log("Error, selected file is not a GTL file: %s\n",filename);
 		return 0; //not a gtl file
 	}
 
@@ -386,7 +386,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 		else
 		{
             SDL_RWclose(infile);
-			printf("Error, selected files is not version one: %s\n",filename);
+			Log("Error, selected files is not version one: %s\n",filename);
 			return 0;
 		}
 	}
@@ -610,7 +610,7 @@ short save_game(const char * filename, screen  *myscreen)
 	if ( (outfile = open_user_file(temp_filename, "save/", "wb")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
-		printf("Error in writing team file %s\n", filename);
+		Log("Error in writing team file %s\n", filename);
 		return 0;
 	}
 
@@ -663,7 +663,7 @@ short save_game(const char * filename, screen  *myscreen)
 	}
 
 	//gotoxy(1, 22);
-	//printf("Team size: %d  ", listsize);
+	//Log("Team size: %d  ", listsize);
 	SDL_RWwrite(outfile, &listsize, 2, 1);
 
 	SDL_RWwrite(outfile, &numplayers, 1, 1);

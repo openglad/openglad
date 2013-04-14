@@ -1604,7 +1604,7 @@ walker *screen::find_near_foe(walker  *ob)
 
 	if (!ob)
 	{
-		printf("no ob in find near foe.\n");
+		Log("no ob in find near foe.\n");
 		return NULL;
 	}
 	targx = ob->xpos;
@@ -1669,7 +1669,7 @@ walker  *screen::find_far_foe(walker  *ob)
 
 	if (!ob)
 	{
-		printf("no ob in find far foe.\n");
+		Log("no ob in find far foe.\n");
 		return NULL;
 	}
 	here = oblist;  // Get list of all screen objects
@@ -1788,7 +1788,7 @@ short load_scenario(const char * filename, screen * master)
 		if (scenpack.open("levels.001") == -1) // doesn't exist
 		{
 			load_and_set_palette("our.pal", myscreen->ourpalette);
-			printf("Cannot open levels resource file!\n");
+			Log("Cannot open levels resource file!\n");
 			release_keyboard();
 			exit(0);
 		}
@@ -1808,7 +1808,7 @@ short load_scenario(const char * filename, screen * master)
 		gotit = 1;
 	}
 
-	printf("Looking for %s\n", thefile.c_str());
+	Log("Looking for %s\n", thefile.c_str());
 
 	//buffers: second, try to get the file from levels.001
 	if(!infile && scenpack.opened())
@@ -1817,7 +1817,7 @@ short load_scenario(const char * filename, screen * master)
 
 	if(gotit == 0 || !infile)
 	{
-		//printf("DEBUG: scenario %s was not found in levels.001 or in scen/ -- EXITING\n",temp);
+		//Log("DEBUG: scenario %s was not found in levels.001 or in scen/ -- EXITING\n",temp);
 		return 0;
 	}
 
@@ -1825,7 +1825,7 @@ short load_scenario(const char * filename, screen * master)
 	SDL_RWread(infile, temptext, 3, 1);
 	if (strcmp(temptext, "FSS"))
 	{
-		printf("File %s is not a scenario!\n", filename);
+		Log("File %s is not a scenario!\n", filename);
 		return 0;
 	}
 
@@ -1889,7 +1889,7 @@ short load_scenario(const char * filename, screen * master)
             }
 			return tempvalue;
 		default:
-			printf("Scenario %s is version-level %d, and cannot be read.\n",
+			Log("Scenario %s is version-level %d, and cannot be read.\n",
 			       filename, versionnumber);
 			if (!gotit)
             {
@@ -1930,7 +1930,7 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 	// ---
 	// 11 bytes reserved
 
-	//printf("LV2: START\n");
+	//Log("LV2: START\n");
 
 	// Get grid file to load
 	SDL_RWread(infile, newgrid, 8, 1);
@@ -1943,7 +1943,7 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 	SDL_RWread(infile, &listsize, 2, 1);
 
 	//gotoxy(1,1);
-	//printf("Objects in file: %d  ", listsize);
+	//Log("Objects in file: %d  ", listsize);
 	//wait_for_key(SDLK_SPACE);
 
 	// Now read in the objects one at a time
@@ -1963,16 +1963,16 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 			new_guy = master->add_ob(temporder, tempfamily);  // create new object
 		if (!new_guy)
 		{
-			printf("Error creating object!\n");
+			Log("Error creating object!\n");
 			wait_for_key(KEYSTATE_SPACE);
 			return 0;
 		}
 		new_guy ->setxy(currentx, currenty);
-		//       printf("X: %d  Y: %d  \n", currentx, currenty);
+		//       Log("X: %d  Y: %d  \n", currentx, currenty);
 		new_guy ->team_num = tempteam;
 	}
 
-	//printf("Read %d objects.\n", listsize);
+	//Log("Read %d objects.\n", listsize);
 	//wait_for_key(SDLK_SPACE);
 
 	//fclose(infile);
@@ -1986,15 +1986,15 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
 
-	//printf("LV2: read grid %s\n", newgrid);
+	//Log("LV2: read grid %s\n", newgrid);
 	//wait_for_key(SDLK_SPACE);
 
 	// This is a hack because we don't know where else it is loaded.
 	//  if (master->myradar[0])
 	//  {
-	//       printf("LV2: deleting old radar\n");
+	//       Log("LV2: deleting old radar\n");
 	//       delete master->myradar;
-	//       printf("LV2: deleted old radar\n");
+	//       Log("LV2: deleted old radar\n");
 	//  }
 	//  if (master->numviews == 1)
 	//         master->myradar[0] = new radar(master->grid, master->maxx, master->maxy,
@@ -2008,7 +2008,7 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 	//  }
 
 
-	//  printf("Read grid file\n");
+	//  Log("Read grid file\n");
 	//  wait_for_key(SDLK_SPACE);
 
 	return 1;
@@ -2086,7 +2086,7 @@ short load_version_3(SDL_RWops  *infile, screen * master)
 			new_guy = master->add_ob(temporder, tempfamily);  // create new object
 		if (!new_guy)
 		{
-			printf("Error creating object!\n");
+			Log("Error creating object!\n");
 			wait_for_key(KEYSTATE_SPACE);
 			return 0;
 		}
@@ -2209,7 +2209,7 @@ short load_version_4(SDL_RWops  *infile, screen * master)
 			new_guy = master->add_ob(temporder, tempfamily);  // create new object
 		if (!new_guy)
 		{
-			printf("Error creating object!\n");
+			Log("Error creating object!\n");
 			wait_for_key(KEYSTATE_SPACE);
 			return 0;
 		}
@@ -2342,7 +2342,7 @@ short load_version_5(SDL_RWops  *infile, screen * master)
 			new_guy = master->add_ob(temporder, tempfamily);  // create new object
 		if (!new_guy)
 		{
-			printf("Error creating object! Press Space\n");
+			Log("Error creating object! Press Space\n");
 			wait_for_key(KEYSTATE_SPACE);
 			//fclose(infile);
 			return 0;
@@ -2501,7 +2501,7 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 			new_guy = master->add_ob(temporder, tempfamily);  // create new object
 		if (!new_guy)
 		{
-			printf("Error creating object! Press Space\n");
+			Log("Error creating object! Press Space\n");
 			wait_for_key(KEYSTATE_SPACE);
 			//fclose(infile);
 			return 0;
@@ -2986,29 +2986,29 @@ void screen::report_mem()
 	//viewob[0]->set_display_text(memreport, STANDARD_TEXT_TIME);
 	sprintf(memreport, "Free Linear address: %u pages",
 	        Memory.FreeLinAddrSpace);
-	//  printf(memreport);
-	//  printf("\n");
+	//  Log(memreport);
+	//  Log("\n");
 	viewob[0]->set_display_text(memreport, 25);
 	/*
-	       printf( "Largest available block (in bytes): %lu\n",
+	       Log( "Largest available block (in bytes): %lu\n",
 	               MemInfo.LargestBlockAvail );
-	       printf( "Maximum unlocked page allocation: %lu\n",
+	       Log( "Maximum unlocked page allocation: %lu\n",
 	               MemInfo.MaxUnlockedPage );
-	       printf( "Pages that can be allocated and locked: "
+	       Log( "Pages that can be allocated and locked: "
 	               "%lu\n", MemInfo.LargestLockablePage );
-	       printf( "Total linear address space including "
+	       Log( "Total linear address space including "
 	               "allocated pages: %lu\n",
 	               MemInfo.LinAddrSpace );
-	       printf( "Number of free pages available: %lu\n",
+	       Log( "Number of free pages available: %lu\n",
 	                MemInfo.NumFreePagesAvail );
 
-	       printf( "Number of physical pages not in use: %lu\n",
+	       Log( "Number of physical pages not in use: %lu\n",
 	                MemInfo.NumPhysicalPagesFree );
-	       printf( "Total physical pages managed by host: %lu\n",
+	       Log( "Total physical pages managed by host: %lu\n",
 	                MemInfo.TotalPhysicalPages );
-	       printf( "Free linear address space (pages): %lu\n",
+	       Log( "Free linear address space (pages): %lu\n",
 	                MemInfo.FreeLinAddrSpace );
-	       printf( "Size of paging/file partition (pages): %lu\n",
+	       Log( "Size of paging/file partition (pages): %lu\n",
 	                MemInfo.SizeOfPageFile );
 	 */
 }

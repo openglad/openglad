@@ -31,7 +31,7 @@ text::text(screen * myscreen)
     
     letters = letters1;
 	if(!letters)
-		printf("letters is NULL\n");
+		Log("letters is NULL\n");
 	sizex = letters[1];
 	sizey = letters[2];
 	letters = letters+3;

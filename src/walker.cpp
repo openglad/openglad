@@ -169,7 +169,7 @@ walker::reset(void)
 
 walker::~walker()
 {
-	//  printf("(Death) Removed ORDER %d FAMILY %d, pos %dx%d\n", order, family,
+	//  Log("(Death) Removed ORDER %d FAMILY %d, pos %dx%d\n", order, family,
 	//    xpos, ypos); //debugging memory
 	foe = NULL;
 	leader = NULL;
@@ -263,7 +263,7 @@ short walker::shove(walker  *target, short x, short y)
 	// this code has been moved to living, we should only shove livings
 
 	if (x || y || target)
-		printf("Shoving a non-living. ORDER: %d FAMILY: %d\n",order,family);
+		Log("Shoving a non-living. ORDER: %d FAMILY: %d\n",order,family);
 	return -1;
 
 }
@@ -508,7 +508,7 @@ short walker::walk(short x, short y)
 
 	if ( !x && !y)
 	{
-		//printf("walker %d:%d walking 0,0\n",order, family);
+		//Log("walker %d:%d walking 0,0\n",order, family);
 		//this happens sometimes, and shouldn't, but it is non-fatal
 		return 1;
 	}
@@ -530,7 +530,7 @@ short walker::walk(short x, short y)
 			move(x,y);
 			cycle++;
 			//if (!ani || (curdir*cycle > sizeof(ani)) )
-			//  printf("WALKER::WALK: Bad ani!\n");
+			//  Log("WALKER::WALK: Bad ani!\n");
 			if (ani[curdir][cycle] == -1)
 				cycle = 0;
 			set_frame(ani[curdir][cycle]);
@@ -957,10 +957,10 @@ short walker::draw(viewscreen  *view_buf)
 	//if (!this) return 0;
 	if (dead)
 	{
-		printf("drawing a dead guy!\n");
+		Log("drawing a dead guy!\n");
 		return 0;
 	}
-	//if (!bmp) {printf("No bitmap!\n"); return 0;}
+	//if (!bmp) {Log("No bitmap!\n"); return 0;}
 	drawcycle++;
 
 	xscreen = (Sint32) (xpos - view_buf->topx + view_buf->xloc);
@@ -1206,7 +1206,7 @@ short walker::act()
 			break;
 		default:
 			{
-				printf("No act type set.\n");
+				Log("No act type set.\n");
 				return 0;
 			}
 	}  // END SWITCH
@@ -1760,14 +1760,14 @@ short walker::special()
 	// Are we somehow dead already?
 	if (dead)
 	{
-		printf("Dead guy doing special!\n");
+		Log("Dead guy doing special!\n");
 		return 0;
 	}
 
 	// Do we have a stats object? If not, freak out and exit :)
 	if (!stats)
 	{
-		printf("Special with no stats\n");
+		Log("Special with no stats\n");
 		return 0;
 	}
 
@@ -3115,7 +3115,7 @@ short walker::special()
 					if (howmany > 1) // some friends here ..
 					{
 						here = newlist;
-						//printf("Found %d friends\n", howmany-1);
+						//Log("Found %d friends\n", howmany-1);
 						while (here)
 						{
 							newob = here->ob;
@@ -3490,7 +3490,7 @@ short walker::fire_check(short xdelta, short ydelta)
 	//   of the weapon.
 	if (!foe)     // nobody to fire at?
 	{
-		//printf("fire check, no foe.\n");
+		//Log("fire check, no foe.\n");
 		//this does happen! but it appears harmless
 		return 0;
 	}
@@ -3967,7 +3967,7 @@ short walker::death()
 			break;
 		case ORDER_FX:
 			//case ORDER_TREASURE:
-			printf("Effect dying in walker?\n");
+			Log("Effect dying in walker?\n");
 			break;          // end of effect object case
 		default:
 			break;
@@ -4010,7 +4010,7 @@ void walker::generate_bloodspot()
 short walker::eat_me(walker  * eater)
 {
 	if (eater)
-		printf("EATING A NON-TREASURE!\n");
+		Log("EATING A NON-TREASURE!\n");
 	return 0;
 }
 
@@ -4027,13 +4027,13 @@ void walker::set_direct_frame(short whichframe)
 walker * walker::do_summon(char whatfamily, unsigned short lifetime)
 {
 	if (whatfamily || lifetime)
-		printf("Should not be hitting walker::do_summon!\n");
+		Log("Should not be hitting walker::do_summon!\n");
 	return NULL;
 }
 
 short walker::check_special()
 {
-	printf("Should not be hitting walker::check_special\n");
+	Log("Should not be hitting walker::check_special\n");
 	return 0;
 }
 

@@ -69,7 +69,7 @@ unsigned char  * read_pixie_file(const char  * filename)
         {
             if (tempack.open("graphics.001") == -1)
             {
-                printf("Cannot open graphics resource file!\n");
+                Log("Cannot open graphics resource file!\n");
                 release_keyboard();
                 exit(0);
             }
@@ -83,7 +83,7 @@ unsigned char  * read_pixie_file(const char  * filename)
 
 	if(gotit==notfound)
 	{
-		printf("ERROR: the pixie file %s wasn't found\n",filename);
+		Log("ERROR: the pixie file %s wasn't found\n",filename);
 		exit(0);
 	}
 
@@ -298,7 +298,7 @@ FILE * open_sound_file(char *filename)
 	{
 		if (soundpack.open("sound.001") == -1) // not in current directory
 		{
-			printf("Cannot open sound resource file!\n");
+			Log("Cannot open sound resource file!\n");
 			release_keyboard();
 			exit(0);
 		}

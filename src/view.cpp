@@ -1458,7 +1458,7 @@ void viewscreen::options_menu()
 
 	if (!control)
 	{
-	    printf("No control in viewscreen::options_menu()\n");
+	    Log("No control in viewscreen::options_menu()\n");
 		return;  // safety check; shouldn't happen
 	}
 

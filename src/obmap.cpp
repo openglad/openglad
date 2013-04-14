@@ -52,9 +52,9 @@ obmap::obmap(short maxx, short maxy)
 	short i, j;
 	short x,y;
 	// Be careful of this memory allocation
-	//  printf("New obmap.\n");
+	//  Log("New obmap.\n");
 	//  list = (oblink **) new double[maxy];
-	//  printf("%d\n", maxy);
+	//  Log("%d\n", maxy);
 	if (maxx)
 		maxx = 1; // to get rid of warnings; remove maxx, maxy
 	if (maxy)
@@ -111,7 +111,7 @@ short obmap::query_list(walker  *ob, short x, short y)
 	short numy, startnumy, endnumy;
 	if (!ob || ob->dead)
 	{
-		printf("Bad ob to query_list.\n");
+		Log("Bad ob to query_list.\n");
 		return 1;
 	}
 	startnumx = hash(x);
@@ -153,7 +153,7 @@ oblink  *remove_link(walker  *ob, oblink **row)
 		old = *row;
 		*row = old->next;
 		//old->next = NULL; // doesn't appear to be necessary?
-		//         printf("REM_LINK: we were first object\n");
+		//         Log("REM_LINK: we were first object\n");
 		return old;
 	}
 
@@ -165,12 +165,12 @@ oblink  *remove_link(walker  *ob, oblink **row)
 			old = here->next;
 			here->next = old->next;
 			// old->next = NULL; // doesn't appear to be necessary?
-			//                printf("REM_LINK: found ob\n");
+			//                Log("REM_LINK: found ob\n");
 			return old;
 		}
 		here = here->next;
 	}
-	//  printf("REM_LINK: Failed to find ob! push z\n");
+	//  Log("REM_LINK: Failed to find ob! push z\n");
 	//  wait_for_key(SDLK_z);
 	return NULL;
 }
@@ -180,7 +180,7 @@ short add_link(oblink  *newguy, oblink **row)
 	oblink  *here;
 
 	here = *row;
-	//  printf("  Adding link.\n");
+	//  Log("  Adding link.\n");
 	newguy->next = 0;
 	// Is this an empty list?
 	if (!here)
@@ -208,7 +208,7 @@ short obmap::remove
 	oblink  *old = NULL;
 	short found = 0;
 
-	//  printf("Deleting walker.\n");
+	//  Log("Deleting walker.\n");
 	//return 1;
 
 	startnumx = hash(ob->xpos);
@@ -217,7 +217,7 @@ short obmap::remove
 	endnumy   = hash((short) (ob->ypos +ob->sizey) );
 
 	// For each y grid row we are in...
-	//  printf("removing from %d to %d\n", startnum, endnum);
+	//  Log("removing from %d to %d\n", startnum, endnum);
 	//  wait_for_key(SDLK_z);
 	for (numx = startnumx; numx <= endnumx; numx++)
 		for (numy = startnumy; numy <= endnumy; numy++)
@@ -251,7 +251,7 @@ short obmap::add
 	startnumy = hash(y);
 	endnumy   = hash( (short) (y + ob->sizey) );
 
-	//  printf("ADDing to %d to %d\n", startnum, endnum);
+	//  Log("ADDing to %d to %d\n", startnum, endnum);
 	//  wait_for_key(SDLK_z);
 	// For each y grid row we are in...
 	for (numx = startnumx; numx <= endnumx; numx++)
@@ -362,7 +362,7 @@ short ob_pass_check(short x, short y, walker  *ob, oblink  *row)
 							ysize2 = here->ob->sizey;
 							if (collide(x,y,oxsize,oysize,x2,y2,xsize2,ysize2))
 							{
-								//                       printf("Ob at %d, %d   \n", x, y);
+								//                       Log("Ob at %d, %d   \n", x, y);
 								if ( targetorder == ORDER_TREASURE )
 								{
 									here->ob->eat_me(ob);

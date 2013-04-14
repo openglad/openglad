@@ -105,7 +105,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 	xend = xloc + width;
 	yend = yloc + height;
 	vdisplay();
-	printf("Created button\n");
+	Log("Created button\n");
 }
 
 vbutton::vbutton() //for pointers

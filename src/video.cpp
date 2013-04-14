@@ -551,7 +551,7 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 			rect.y = cury*font_mult;
 			rect.w = font_mult;
 			rect.h = font_mult;
-			printf("test\n");
+			Log("test\n");
 			SDL_FillRect(fontbuffer,&rect,color);
 		}
     	}
@@ -1292,7 +1292,7 @@ int video::get_pixel(int x, int y, int *index)
 		}
 	}
 
-	printf("DEBUG: could not find color: %d %d %d\n",r,g,b);
+	Log("DEBUG: could not find color: %d %d %d\n",r,g,b);
 	return 0;
 }
 

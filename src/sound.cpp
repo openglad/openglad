@@ -76,7 +76,7 @@ int soundob::init()
     
 	if(Mix_OpenAudio(sample_rate, sample_format, stereo? 2 : 1 , sample_buffer_size) == -1)
 	{
-		printf("ERROR: Mix_OpenAudio: %s\n",Mix_GetError());
+		Log("ERROR: Mix_OpenAudio: %s\n",Mix_GetError());
 		exit(0);
 	}
 
@@ -103,7 +103,7 @@ int soundob::init()
 	for (i=0; i < NUMSOUNDS; i++)
 	{
 #ifdef SOUND_DB
-		printf("Loading sound %d: %s\n", i, soundlist[i]);
+		Log("Loading sound %d: %s\n", i, soundlist[i]);
 #endif
 
 		load_sound( &sound[i], soundlist[i] );
@@ -114,7 +114,7 @@ int soundob::init()
 
 #ifdef SOUND_DB
 
-	printf("Done with sound initialization\n");
+	Log("Done with sound initialization\n");
 #endif
 
 	return 1;
@@ -128,7 +128,7 @@ void soundob::load_sound(Mix_Chunk **audio, char * file)
 	*audio = Mix_LoadWAV(filepath);
 	if(!*audio)
 	{
-		printf("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
+		Log("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
 		exit(0);
 	}
 	free(filepath);

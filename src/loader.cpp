@@ -841,11 +841,11 @@ walker  *loader::create_walker(char order,
 	walker  *ob;
 
 	//i = PIX(order, family);
-	//printf("PIX(order, family) = %d\n", i);
+	//Log("PIX(order, family) = %d\n", i);
 
 	if (!graphics[PIX(order, family)])
 	{
-		printf("Alert! No valid graphics\n");
+		Log("Alert! No valid graphics\n");
 		return NULL;
 	}
 
@@ -1179,7 +1179,7 @@ pixieN *loader::create_pixieN(char order, char family)
 
 	if (!graphics[PIX(order, family)])
 	{
-		printf("Alert! No valid graphics\n");
+		Log("Alert! No valid graphics\n");
 		return NULL;
 	}
 

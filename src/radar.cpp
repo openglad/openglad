@@ -176,7 +176,7 @@ short radar::draw()
 					tempz = (tempx+(tempy*320)); //this may need fixing
 					if (tempz > 64000 || tempz < 0)
 					{
-						printf("bad radar, bad\n");
+						Log("bad radar, bad\n");
 						return 1;
 					}
 					tempcolor = (here->ob->query_team_color());
@@ -303,7 +303,7 @@ short radar::draw()
 					tempz = (tempx+(tempy*320)); //this may need fixing
 					if (tempz > 64000 || tempz < 0)
 					{
-						printf("bad radar, bad\n");
+						Log("bad radar, bad\n");
 						return 1;
 					}
 					//buffers: PORT: screenp->videobuffer[tempz] = (char) do_show;

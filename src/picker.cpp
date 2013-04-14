@@ -2355,7 +2355,7 @@ Sint32 do_load(Sint32 arg1)
 
 	// First delete the old team ..
 	delete_all();
-	//printf("Guys deleted: %d\n", delete_all());
+	//Log("Guys deleted: %d\n", delete_all());
 	//commented out debugging done
 	//myscreen->soundp->play_sound(SOUND_YO);
 	strcpy(newname, "save");
@@ -2652,7 +2652,7 @@ Sint32 load_team_list_one(const char * filename)
 	{
 		//gotoxy(1, 22);
 		//buffers: DEBUG: uncommented following line
-		printf("Error in opening team file: %s\n", filename);
+		Log("Error in opening team file: %s\n", filename);
 		return 0;
 	}
 
@@ -2662,7 +2662,7 @@ Sint32 load_team_list_one(const char * filename)
 	{
 	    SDL_RWclose(infile);
 		//buffers: DEBUG: uncommented following line
-		printf("Error, selected file is not a GTL file: %s\n",filename);
+		Log("Error, selected file is not a GTL file: %s\n",filename);
 		return 0; //not a gtl file
 	}
 
@@ -2686,7 +2686,7 @@ Sint32 load_team_list_one(const char * filename)
 		{
             SDL_RWclose(infile);
 			//buffers: DEBUG: uncommented following line
-			printf("Error, selected file is not version one: %s\n",filename);
+			Log("Error, selected file is not version one: %s\n",filename);
 			return 0;
 		}
 	}

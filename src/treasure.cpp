@@ -350,7 +350,7 @@ walker  * treasure::find_teleport_target()
 	if (keep_looking) // didn't find us?
 		return NULL;
 
-	//printf("Teleporting from #%d ..", number);
+	//Log("Teleporting from #%d ..", number);
 
 	// Now search the rest of the loop ..
 	keep_looking = 1;
@@ -366,7 +366,7 @@ walker  * treasure::find_teleport_target()
 			{
 				target = here->ob;
 				keep_looking = 0;
-				//printf(" to target %d\n", number);
+				//Log(" to target %d\n", number);
 				return target;
 			}
 		}
@@ -386,7 +386,7 @@ walker  * treasure::find_teleport_target()
 			        here->ob->stats->level == stats->level)
 			{
 				target = here->ob;
-				//printf(" to looped target %d\n", number);
+				//Log(" to looped target %d\n", number);
 				return target;
 			}
 		}

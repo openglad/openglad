@@ -199,7 +199,7 @@ void pixie::init_sdl_surface(void)
 	                                   0,0,0,0);
 	if(!bmp_surface)
 	{
-		printf("ERROR: pixie::init_sdl_surface(): could not create bmp_surface\n");
+		Log("ERROR: pixie::init_sdl_surface(): could not create bmp_surface\n");
 	}
 
 	num=0;

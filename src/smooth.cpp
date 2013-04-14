@@ -758,7 +758,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else
 				newvalue = PIX_TREE_B1; // default case
 			//if (newvalue == PIX_TREE_T1)
-			//  printf("%dx%d = %d\n", x, y, around);
+			//  Log("%dx%d = %d\n", x, y, around);
 			break;
 		case TYPE_DIRT:
 			if (around == TO_AROUND ) // all around

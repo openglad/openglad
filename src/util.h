@@ -19,6 +19,8 @@
 //
 // misc helper functions, and timer
 //
+#ifndef _UTIL_H__
+#define _UTIL_H__
 
 #include <SDL.h>
 #include <ctype.h>
@@ -28,6 +30,8 @@
 #if SDL_VERSION_ATLEAST(2,0,0)
     #define USE_SDL2
 #endif
+
+void Log(const char* format, ...);
 
 void change_time(Uint32 new_count);
 
@@ -70,3 +74,5 @@ char * get_user_file_path(const char *, const char *, const char *);
 char * get_file_path(const char *, const char *, const char *);
 char * get_file_path(const char *, const char *);
 char * get_file_path(const char *);
+
+#endif

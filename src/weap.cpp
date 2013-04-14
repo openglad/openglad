@@ -52,7 +52,7 @@ short weap::act()
 	if (ani_type != ANI_WALK)
 		return animate();
 
-	//  printf("weap %d is ani %d\n", family, ani_type);
+	//  Log("weap %d is ani %d\n", family, ani_type);
 
 	if (mysmoother->query_genre_x_y(xpos, ypos) == TYPE_TREES)
 		if (lineofsight)
@@ -63,14 +63,14 @@ short weap::act()
 			// We are the control character
 		case ACT_CONTROL:
 			{
-				printf("Weapon is act_control?\n");
+				Log("Weapon is act_control?\n");
 				return 1;
 			}
 		case ACT_SIT: // for things like trees
 			{
 				if (family != FAMILY_TREE && family != FAMILY_BLOOD
 				        && family != FAMILY_DOOR)
-					//printf("weapon sitting\n");
+					//Log("weapon sitting\n");
 					myscreen->do_notify("Weapon sitting", this);
 				return 1;
 			}
@@ -78,7 +78,7 @@ short weap::act()
 			// We are a generator
 		case ACT_GENERATE:
 			{
-				printf("Weapon is act_generate?\n");
+				Log("Weapon is act_generate?\n");
 				//act_generate();
 				break;
 			}
@@ -93,7 +93,7 @@ short weap::act()
 
 		case ACT_GUARD:
 			{
-				printf("Weapon on guard mode?\n");
+				Log("Weapon on guard mode?\n");
 				//              act_guard();
 				break;
 			}
@@ -106,7 +106,7 @@ short weap::act()
 		case ACT_RANDOM:
 			{
 				sprintf(message, "Weapon %d doing act random?", family);
-				//printf("Weapon doing act_random?\n");
+				//Log("Weapon doing act_random?\n");
 				myscreen->do_notify(message, this);
 				return 1;
 			}  // END RANDOM
@@ -114,7 +114,7 @@ short weap::act()
 
 		default:
 			{
-				//printf("No act type set for weapon.\n");
+				//Log("No act type set for weapon.\n");
 				myscreen->do_notify("No act type set for weapon", this);
 				return 0;
 			}
@@ -250,7 +250,7 @@ short weap::animate()
 	// We never use ani_type as  as I can tell; always use 0
 	//  if (ani_type)
 	//  {
-	//       printf("weap ani_type = %d\n", ani_type);
+	//       Log("weap ani_type = %d\n", ani_type);
 	//       ani_type = 0;
 	//  }
 

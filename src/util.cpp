@@ -48,6 +48,21 @@ using namespace std;
 Uint32 start_time=0;
 Uint32 reset_value=0;
 
+
+void Log(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+#ifdef USE_SDL2
+    SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_ERROR, format, args);
+#else
+    char buf[300];
+    snprintf(buf, 300, "%s\n", format);  // Add a newline
+    vfprintf(stderr, buf, args);
+#endif
+    va_end(args);
+}
+
 void change_time(Uint32 new_count)
 {}
 

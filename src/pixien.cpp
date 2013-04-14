@@ -61,7 +61,7 @@ short pixieN::set_frame(short framenum)
 {
 	if (framenum < 0 || framenum >= frames)
 	{
-		//printf("setting frame less than 0.\n");
+		//Log("setting frame less than 0.\n");
 		return 0;
 	}
 	bmp = facings+framenum*size;

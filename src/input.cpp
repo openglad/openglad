@@ -171,7 +171,7 @@ void handle_events(SDL_Event *event)
 #ifndef ANDROID
         // Mouse event
     case SDL_MOUSEMOTION:
-        //printf("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
+        //Log("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
         //if (!(event.motion.x < 10 && mouse_state[MOUSE_X] * mult > 620)
         //	&& !(event.motion.y == 0 && mouse_state[MOUSE_Y] > 20))
         mouse_state[MOUSE_X] = event->motion.x / mouse_scale_x;
@@ -184,9 +184,9 @@ void handle_events(SDL_Event *event)
         if (event->button.button == SDL_BUTTON_RIGHT)
             mouse_state[MOUSE_RIGHT] = 0;
         //mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
-        //printf ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
+        //Log ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
         //mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
-        //printf ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
+        //Log ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT)

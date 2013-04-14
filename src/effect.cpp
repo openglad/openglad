@@ -670,7 +670,7 @@ short effect::death()
 			}
 			frylist = screenp->find_in_range(screenp->oblist, 15+generic,
 			                                 &howmany, this);
-			//printf("got in range, %d\n", howmany);
+			//Log("got in range, %d\n", howmany);
 			// Damage our tile location ..
 			screenp->damage_tile( (short) (xpos+(sizex/2)), (short) (ypos+(sizey/2)) );
 			if (howmany < 1)

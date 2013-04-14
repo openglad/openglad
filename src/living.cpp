@@ -113,7 +113,7 @@ short living::act()
 	/*
 	  if (ignore)
 	  {
-	         printf("ignoring living\n");
+	         Log("ignoring living\n");
 	         return 0;
 	  }
 	*/
@@ -294,14 +294,14 @@ short living::act()
 			// We are a generator
 		case ACT_GENERATE:
 			{
-				printf("LIVING Generator?\n");
+				Log("LIVING Generator?\n");
 				//              act_generate();
 				break;
 			}
 			// We are a weapon
 		case ACT_FIRE:
 			{
-				printf("Living think's it's a weapon (act_fire)\n");
+				Log("Living think's it's a weapon (act_fire)\n");
 				//              act_fire();
 				return 1;
 				//break;
@@ -365,7 +365,7 @@ short living::act()
 			break;
 		default:
 			{
-				printf("No act type set.\n");
+				Log("No act type set.\n");
 				return 0;
 			}
 	}  // END SWITCH
@@ -429,7 +429,7 @@ short living::walk(short x, short y)
 			move(x,y);
 			cycle++;
 			//if (!ani || (curdir*cycle > sizeof(ani)) )
-			//  printf("WALKER::WALK: Bad ani!\n");
+			//  Log("WALKER::WALK: Bad ani!\n");
 			if (ani[curdir][cycle] == -1)
 				cycle = 0;
 			set_frame(ani[curdir][cycle]);
@@ -501,7 +501,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 	newob->owner = this;
 	newob->lifetime = lifetime;
 	newob->transform_to(ORDER_LIVING, whatfamily);
-	//  printf("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
+	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
 
 	return newob;
 }
