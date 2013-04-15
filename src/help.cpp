@@ -86,7 +86,7 @@ short read_scenario(screen *myscreen)
 	// Make sure we're not pressing keys ..
 	mykeyboard[KEYSTATE_DOWN] = mykeyboard[KEYSTATE_UP] = 0;
 	mykeyboard[KEYSTATE_PAGEDOWN] = mykeyboard[KEYSTATE_PAGEUP] = 0;
-	while (!mykeyboard[KEYSTATE_ESCAPE])
+	while (!query_input_continue())
 	{
 		get_input_events(POLL);
 		if (mykeyboard[KEYSTATE_DOWN])    // scrolling down
@@ -175,7 +175,7 @@ short read_scenario(screen *myscreen)
 			mytext->write_xy(HELPTEXT_LEFT+40,
 			                 HELPTEXT_TOP-7, "SCENARIO INFORMATION", (unsigned char) RED, 1);
 			mytext->write_xy(HELPTEXT_LEFT+30,
-			                 HELPTEXT_TOP+98, "PRESS 'ESC' TO CONTINUE", (unsigned char) RED, 1);
+			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", (unsigned char) RED, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			changed = 0;
 		} // end of changed drawing loop
@@ -234,7 +234,7 @@ short read_help(const char *somefile,screen * myscreen)
 	// Make sure we're not pressing keys ..
 	mykeyboard[KEYSTATE_DOWN] = mykeyboard[KEYSTATE_UP] = 0;
 	mykeyboard[KEYSTATE_PAGEDOWN] = mykeyboard[KEYSTATE_PAGEUP] = 0;
-	while (!mykeyboard[KEYSTATE_ESCAPE])
+	while (!query_input_continue())
 	{
 		get_input_events(POLL);
 		if (mykeyboard[KEYSTATE_DOWN])    // scrolling down
@@ -317,7 +317,7 @@ short read_help(const char *somefile,screen * myscreen)
 			mytext->write_xy(HELPTEXT_LEFT+90,
 			                 HELPTEXT_TOP-7, "GLADIATOR", (unsigned char) RED, 1);
 			mytext->write_xy(HELPTEXT_LEFT+52,
-			                 HELPTEXT_TOP+98, "PRESS 'ESC' TO CONTINUE", (unsigned char) RED, 1);
+			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", (unsigned char) RED, 1);
 			//myscreen->buffer_to_screen(0, 0, 320, 200);
 			myscreen->buffer_to_screen(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,244,119);
 

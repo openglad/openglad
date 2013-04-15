@@ -1420,7 +1420,6 @@ short screen::endgame(short ending, short nextlevel)
 	oblink *checklist = oblist;
 	walker *target;
 	Sint32 test1;
-	Uint8* endkeys = query_keyboard();
 	int  i;
 	Uint32 allscore = 0, allbonuscash = 0;
 
@@ -1437,10 +1436,10 @@ short screen::endgame(short ending, short nextlevel)
 			mytext.write_y(92,"YOUR MEN ARE CRUSHED!", DARK_BLUE, 1);
 			sprintf(temp,"YOUR SCORE IS %u.\n", allscore);
 			mytext.write_y(100,temp, DARK_BLUE, 1);
-			mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
+			mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 			buffer_to_screen(0, 0, 320, 200);
 			// Zardus: all things should listen to get_input_events() for now until further notice
-			while (!endkeys[KEYSTATE_ESCAPE])
+			while (!query_input_continue())
 				get_input_events(WAIT);
 			end = 1;
 		}
@@ -1453,10 +1452,10 @@ short screen::endgame(short ending, short nextlevel)
 			mytext.write_y(92,temp, DARK_BLUE, 1);
 			sprintf(temp,"(You may take this field later)");
 			mytext.write_y(100,temp, DARK_BLUE, 1);
-			mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
+			mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 			buffer_to_screen(0, 0, 320, 200);
 			clear_keyboard();
-			while (!endkeys[KEYSTATE_ESCAPE])
+			while (!query_input_continue())
 				get_input_events(WAIT);
 			//while (query_key() != SDLK_ESCAPE);
 			end = 1;
@@ -1472,10 +1471,10 @@ short screen::endgame(short ending, short nextlevel)
 		mytext.write_y(92,"YOU ARE DEFEATED", DARK_BLUE, 1);
 		sprintf(temp,"(YOU FAILED TO KEEP THE NPC'S ALIVE)" );
 		mytext.write_y(100,temp, DARK_BLUE, 1);
-		mytext.write_y(110,"**PRESS 'ESC' TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
+		mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 		buffer_to_screen(0, 0, 320, 200);
-		while (query_key() != SDLK_ESCAPE)
-			;
+        while (!query_input_continue())
+            get_input_events(WAIT);
 		end = 1;
 	}
 	else if (ending == 0) // we won
@@ -1497,7 +1496,7 @@ short screen::endgame(short ending, short nextlevel)
 			sprintf(temp,"YOUR SCORE IS %u.\n", allscore);
 			mytext.write_y(100,temp, DARK_BLUE, 1);
 		}
-		mytext.write_y(120,"**PRESS 'ESC' TO CONTINUE.**", DARK_BLUE, 1);
+		mytext.write_y(120,"**" CONTINUE_ACTION_STRING " TO CONTINUE.**", DARK_BLUE, 1);
 		// Save the game status to a temp file (savetemp.gtl)
 		for (i=0; i < 4; i++)
 		{
@@ -1530,7 +1529,7 @@ short screen::endgame(short ending, short nextlevel)
 
 		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
 		// actions
-		while (!endkeys[KEYSTATE_ESCAPE])
+		while (!query_input_continue())
 			get_input_events(WAIT); // pause
 
 		// Check for guys who have gone up levels
@@ -1578,11 +1577,11 @@ short screen::endgame(short ending, short nextlevel)
 							mytext.write_y(110, temp, DARK_BLUE, 1);
 						}
 					}
-					mytext.write_y(120,"PRESS ESC TO CONTINUE", DARK_BLUE, 1);
+					mytext.write_y(120, CONTINUE_ACTION_STRING " TO CONTINUE", DARK_BLUE, 1);
 					buffer_to_screen(0, 0, 320, 200);
 					clear_keyboard();
-					wait_for_key(KEYSTATE_ESCAPE);
-					//while (query_key() != SDLK_ESCAPE);
+                    while (!query_input_continue())
+                        get_input_events(WAIT);
 				}
 				checklist = checklist->next;
 			} // end of while checklist

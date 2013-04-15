@@ -36,6 +36,14 @@ int raw_key;
 char* raw_text_input = NULL;
 short key_press_event = 0;    // used to signed key-press
 short text_input_event = 0;    // used to signal text input
+
+#ifdef ANDROID
+bool tapping = false;
+int start_tap_x = 0;
+int start_tap_y = 0;
+bool input_continue = false;  // Done with text popups, etc.
+#endif
+
 Uint8* keystates = NULL;
 
 Sint32 mouse_state[MSTATE];
@@ -201,9 +209,28 @@ void handle_events(SDL_Event *event)
         mouse_state[MOUSE_Y] = event->tfinger.y * 200;
         break;
     case SDL_FINGERUP:
+        if(tapping)
+        {
+            tapping = false;
+            int x = event->tfinger.x * 320;
+            int y = event->tfinger.y * 200;
+            if(abs(x - start_tap_x) < 2 && abs(y - start_tap_y) < 2)
+                input_continue = true;
+            else
+                input_continue = false;
+            start_tap_x = x;
+            start_tap_y = y;
+        }
+        
         mouse_state[MOUSE_LEFT] = 0;
         break;
     case SDL_FINGERDOWN:
+        
+        tapping = true;
+        start_tap_x = event->tfinger.x * 320;
+        start_tap_y = event->tfinger.y * 200;
+        input_continue = false;
+        
         key_press_event = 1;
         mouse_state[MOUSE_LEFT] = 1;
         mouse_state[MOUSE_X] = event->tfinger.x * 320;
@@ -374,11 +401,25 @@ void clear_keyboard()
     text_input_event = 0;
     free(raw_text_input);
     raw_text_input = NULL;
+    
+    #ifdef ANDROID
+    input_continue = false;
+    tapping = false;
+    #endif
 }
 
 Uint8* query_keyboard()
 {
     return keystates;
+}
+
+bool query_input_continue()
+{
+    #ifndef ANDROID
+    return keystates[KEYSTATE_ESCAPE];
+    #else
+    return input_continue;
+    #endif
 }
 
 void wait_for_key(int somekey)

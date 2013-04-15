@@ -152,6 +152,14 @@ void release_keyboard();                                    // restore normal sh
 int query_key();                                                            // return last keypress
 char* query_text_input();                                                            // return last text input
 
+bool query_input_continue();
+
+#ifdef ANDROID
+#define CONTINUE_ACTION_STRING "TAP"
+#else
+#define CONTINUE_ACTION_STRING "PRESS 'ESC'"
+#endif
+
 bool query_key_event(int key, const SDL_Event& event);
 bool isAnyPlayerKey(SDLKey key);
 bool isPlayerKey(int player_num, SDLKey key);
