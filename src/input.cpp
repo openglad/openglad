@@ -239,6 +239,14 @@ void handle_events(SDL_Event *event)
     {
         // Key pressed or released:
     case SDL_KEYDOWN:
+        #ifdef ANDROID
+        // Back button faking Escape key
+        if(event->key.keysym.scancode == SDL_SCANCODE_AC_BACK)
+        {
+            event->key.keysym.sym = SDLK_ESCAPE;
+            input_continue = true;
+        }
+        #endif
         raw_key = event->key.keysym.sym;
         key_press_event = 1;
 #ifndef USE_SDL2
