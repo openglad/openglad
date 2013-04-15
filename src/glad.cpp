@@ -162,11 +162,13 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	keyboard = query_keyboard();
 
 	//sprintf(somemessage, "SPEED SET TO %d", (20-myscreen->timer_wait)/2+1);
-
+    
+    #ifndef ANDROID
 	strcpy(somemessage, "OPENGLAD V.");
 	strcat(somemessage, PACKAGE_VERSION);
 	myscreen->viewob[0]->set_display_text(somemessage, 100);
 	myscreen->viewob[0]->set_display_text("PRESS F1 FOR HELP", 100);
+	#endif
 
 	myscreen->redraw();
 	myscreen->refresh();
@@ -714,6 +716,10 @@ short new_score_panel(screen *myscreen, short do_it)
 			if (myscreen->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON)
 			{
 				// Score, bottom left corner
+				#ifdef ANDROID
+				// Upper left on Android
+				int bm = tm + 54;
+				#endif
 
 				// Draw box, if needed
 				if (draw_button)
@@ -751,6 +757,7 @@ short new_score_panel(screen *myscreen, short do_it)
 					sprintf(message, "SPC: %s", myscreen->alternate_name[(int)control->query_family()][(int)control->current_special]);
 				else
 					sprintf(message, "SPC: %s", myscreen->special_name[(int)control->query_family()][(int)control->current_special]);
+                
 				if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
 					mytext->write_xy(lm+2, bm-24, message, text_color, (short) 1);
 				else
@@ -781,11 +788,19 @@ short new_score_panel(screen *myscreen, short do_it)
 					myscreen->draw_button(rm-57, tm+1, rm-2, tm+16, 1, 1);
 
 				sprintf(message, "TEAM: %d", tempallies);
+				#ifndef ANDROID
 				mytext->write_xy(rm - 55, tm+2, message, text_color, (short) 1);
+				#else
+				mytext->write_xy(rm - 55, tm+2 + 44 + 8, message, text_color, (short) 1);
+				#endif
 
 				// Number of foes, 2nd upper right
 				sprintf(message, "FOES: %d", tempfoes);
+				#ifndef ANDROID
 				mytext->write_xy(rm-55, tm+10, message, text_color, (short) 1);
+				#else
+				mytext->write_xy(rm-55, tm+10 + 44 + 8, message, text_color, (short) 1);
+				#endif
 			}
 
 			//if (do_it && 0) // redraw radar border

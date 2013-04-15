@@ -65,8 +65,13 @@ void radar::start()
     
     if(viewscreenp)
     {
+        #ifndef ANDROID
         xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
         yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+        #else
+        xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
+        yloc = (short) (viewscreenp->yloc + 4);
+        #endif
     }
 	bmp = new unsigned char[size];
 	update();
