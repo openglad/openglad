@@ -38,6 +38,7 @@ short key_press_event = 0;    // used to signed key-press
 short text_input_event = 0;    // used to signal text input
 
 #ifdef ANDROID
+bool moving = false;
 bool tapping = false;
 int start_tap_x = 0;
 int start_tap_y = 0;
@@ -105,6 +106,54 @@ int player_keys[4][NUM_KEYS] = {
     }
 };
 
+#ifdef ANDROID
+bool touch_keystate[4][NUM_KEYS] = {
+    {
+        false, false, false, false,  // movements
+        false, false, false, false,
+        false, false,                  // fire & special
+        false,                         // switch guys
+        false,                               // change special
+        false,                                 // Yell
+        false,                            // Shifter
+        false,                                 // Options menu
+        false,                                // Cheat key
+    },
+    {
+        false, false, false, false,  // movements
+        false, false, false, false,
+        false, false,                // fire & special
+        false,                            // switch guys
+        false,                             // change special
+        false,                         // Yell
+        false,                            // Shifter
+        false,                                 // Options menu
+        false,                                // Cheat key
+    },
+    {
+        false, false, false, false,  // movements
+        false, false, false, false,
+        false, false,             // fire & special
+        false,                             // switch guys
+        false,                                 // change special
+        false,                                 // Yell
+        false,                                 // Shifter
+        false,                                 // Options menu
+        false,                                // Cheat key
+    },
+    {
+        false, false, false, false,  // movements
+        false, false, false, false,
+        false, false,                         // fire & special
+        false,                            // switch guys
+        false,                                 // change special
+        false,                                 // Yell
+        false,                                 // Shifter
+        false,                                 // Options menu
+        false,                                // Cheat key
+    }
+};
+#endif
 
 
 //
@@ -149,6 +198,18 @@ void get_input_events(bool type)
         handle_events(&event);
     }
 }
+
+#ifdef ANDROID
+void draw_touch_controls(video* vob)
+{
+    if(moving)
+    {
+        //line(start_tap_x, start_tap_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
+        vob->fastbox(start_tap_x - 4, start_tap_y - 4, 8, 8, 15);
+        vob->fastbox(mouse_state[MOUSE_X] - 2, mouse_state[MOUSE_Y] - 2, 4, 4, 15);
+    }
+}
+#endif
 
 void handle_events(SDL_Event *event)
 {
@@ -205,13 +266,51 @@ void handle_events(SDL_Event *event)
 #else
         // Mouse event
     case SDL_FINGERMOTION:
-        mouse_state[MOUSE_X] = event->tfinger.x * 320;
-        mouse_state[MOUSE_Y] = event->tfinger.y * 200;
+        {
+        int x = event->tfinger.x * 320;
+        int y = event->tfinger.y * 200;
+        mouse_state[MOUSE_X] = x;
+        mouse_state[MOUSE_Y] = y;
+        
+        
+        touch_keystate[0][KEY_UP] = false;
+        touch_keystate[0][KEY_UP_RIGHT] = false;
+        touch_keystate[0][KEY_RIGHT] = false;
+        touch_keystate[0][KEY_DOWN_RIGHT] = false;
+        touch_keystate[0][KEY_DOWN] = false;
+        touch_keystate[0][KEY_DOWN_LEFT] = false;
+        touch_keystate[0][KEY_LEFT] = false;
+        touch_keystate[0][KEY_UP_LEFT] = false;
+        
+        if(moving)
+        {
+            float offset = -M_PI + M_PI/8;
+            float interval = M_PI/4;
+            float angle = atan2(y - start_tap_y, x - start_tap_x);
+            if(angle < -M_PI + M_PI/8 || angle >= M_PI - M_PI/8)
+                touch_keystate[0][KEY_LEFT] = true;
+            else if(angle >= offset && angle < offset + interval)
+                touch_keystate[0][KEY_UP_LEFT] = true;
+            else if(angle >= offset + interval && angle < offset + 2*interval)
+                touch_keystate[0][KEY_UP] = true;
+            else if(angle >= offset + 2*interval && angle < offset + 3*interval)
+                touch_keystate[0][KEY_UP_RIGHT] = true;
+            else if(angle >= offset + 3*interval && angle < offset + 4*interval)
+                touch_keystate[0][KEY_RIGHT] = true;
+            else if(angle >= offset + 4*interval && angle < offset + 5*interval)
+                touch_keystate[0][KEY_DOWN_RIGHT] = true;
+            else if(angle >= offset + 5*interval && angle < offset + 6*interval)
+                touch_keystate[0][KEY_DOWN] = true;
+            else if(angle >= offset + 6*interval && angle < offset + 7*interval)
+                touch_keystate[0][KEY_DOWN_LEFT] = true;
+        }
+        }
         break;
     case SDL_FINGERUP:
         if(tapping)
         {
             tapping = false;
+            moving = false;
             int x = event->tfinger.x * 320;
             int y = event->tfinger.y * 200;
             if(abs(x - start_tap_x) < 2 && abs(y - start_tap_y) < 2)
@@ -223,12 +322,24 @@ void handle_events(SDL_Event *event)
         }
         
         mouse_state[MOUSE_LEFT] = 0;
+        
+        // FIXME: Needs to track which finger is being used for movement
+        touch_keystate[0][KEY_UP] = false;
+        touch_keystate[0][KEY_UP_RIGHT] = false;
+        touch_keystate[0][KEY_RIGHT] = false;
+        touch_keystate[0][KEY_DOWN_RIGHT] = false;
+        touch_keystate[0][KEY_DOWN] = false;
+        touch_keystate[0][KEY_DOWN_LEFT] = false;
+        touch_keystate[0][KEY_LEFT] = false;
+        touch_keystate[0][KEY_UP_LEFT] = false;
         break;
     case SDL_FINGERDOWN:
         
         tapping = true;
         start_tap_x = event->tfinger.x * 320;
         start_tap_y = event->tfinger.y * 200;
+        if(start_tap_x < 320/2)  // Only move with the left side of the screen
+            moving = true;
         input_continue = false;
         
         key_press_event = 1;
@@ -726,7 +837,11 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
 #ifndef USE_SDL2
         return keystates[player_keys[player_index][key_enum]];
 #else
+    #ifndef ANDROID
         return keystates[SDL_GetScancodeFromKey(player_keys[player_index][key_enum])];
+    #else
+        return touch_keystate[player_index][key_enum];
+    #endif
 #endif
     }
 }

@@ -26,6 +26,7 @@
 #include <SDL.h>
 #include <ctype.h>
 #include <string>
+#include "video.h"
 
 
 // SDL 2 compat
@@ -155,6 +156,7 @@ char* query_text_input();                                                       
 bool query_input_continue();
 
 #ifdef ANDROID
+void draw_touch_controls(video* vob);
 #define CONTINUE_ACTION_STRING "TAP"
 #else
 #define CONTINUE_ACTION_STRING "PRESS 'ESC'"

@@ -200,14 +200,16 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		myscreen->redraw();
 		//         myscreen->buffer_to_screen(0, 0, 320, 200);
 		// this was for debugging illegal draws to bad areas.
+        #ifdef ANDROID
+        draw_touch_controls(myscreen);
+        #endif
 		score_panel(myscreen);
 		myscreen->refresh();
         
         SDL_Event event;
         while(SDL_PollEvent(&event))
         {
-            if(event.type == SDL_QUIT)
-                exit(0);
+            handle_events(&event);
             if(event.type == SDL_KEYDOWN)
             {
                 if(event.key.keysym.sym == SDLK_ESCAPE)
