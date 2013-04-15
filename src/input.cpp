@@ -38,11 +38,17 @@ short key_press_event = 0;    // used to signed key-press
 short text_input_event = 0;    // used to signal text input
 
 #ifdef ANDROID
-bool moving = false;
 bool tapping = false;
 int start_tap_x = 0;
 int start_tap_y = 0;
 bool input_continue = false;  // Done with text popups, etc.
+
+bool moving = false;
+int moving_touch_x = 0;
+int moving_touch_y = 0;
+SDL_FingerID movingTouch = 0;
+bool firing = false;
+SDL_FingerID firingTouch = 0;
 #endif
 
 Uint8* keystates = NULL;
@@ -200,14 +206,30 @@ void get_input_events(bool type)
 }
 
 #ifdef ANDROID
+
+#define MOVE_AREA_DIM 60
+#define MOVE_DEAD_ZONE 10
+
+#define FIRE_BUTTON_X 245
+#define FIRE_BUTTON_Y 165
+#define SPECIAL_BUTTON_X 285
+#define SPECIAL_BUTTON_Y 165
+#define BUTTON_DIM 30
+
 void draw_touch_controls(video* vob)
 {
     if(moving)
     {
-        //line(start_tap_x, start_tap_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
-        vob->fastbox(start_tap_x - 4, start_tap_y - 4, 8, 8, 15);
+        // Touch movement feedback
+        //line(moving_touch_x, moving_touch_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
+        vob->fastbox(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, MOVE_AREA_DIM, MOVE_AREA_DIM, 17);
+        vob->fastbox(moving_touch_x - 4, moving_touch_y - 4, 8, 8, 16);
         vob->fastbox(mouse_state[MOUSE_X] - 2, mouse_state[MOUSE_Y] - 2, 4, 4, 15);
     }
+    
+    // Touch buttons
+    vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 15);
+    vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 15);
 }
 #endif
 
@@ -273,79 +295,124 @@ void handle_events(SDL_Event *event)
         mouse_state[MOUSE_Y] = y;
         
         
-        touch_keystate[0][KEY_UP] = false;
-        touch_keystate[0][KEY_UP_RIGHT] = false;
-        touch_keystate[0][KEY_RIGHT] = false;
-        touch_keystate[0][KEY_DOWN_RIGHT] = false;
-        touch_keystate[0][KEY_DOWN] = false;
-        touch_keystate[0][KEY_DOWN_LEFT] = false;
-        touch_keystate[0][KEY_LEFT] = false;
-        touch_keystate[0][KEY_UP_LEFT] = false;
         
-        if(moving)
+        touch_keystate[0][KEY_SPECIAL] = (SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
+                                          && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM);
+        
+        if(moving && event->tfinger.fingerId == movingTouch)
         {
-            float offset = -M_PI + M_PI/8;
-            float interval = M_PI/4;
-            float angle = atan2(y - start_tap_y, x - start_tap_x);
-            if(angle < -M_PI + M_PI/8 || angle >= M_PI - M_PI/8)
-                touch_keystate[0][KEY_LEFT] = true;
-            else if(angle >= offset && angle < offset + interval)
-                touch_keystate[0][KEY_UP_LEFT] = true;
-            else if(angle >= offset + interval && angle < offset + 2*interval)
-                touch_keystate[0][KEY_UP] = true;
-            else if(angle >= offset + 2*interval && angle < offset + 3*interval)
-                touch_keystate[0][KEY_UP_RIGHT] = true;
-            else if(angle >= offset + 3*interval && angle < offset + 4*interval)
-                touch_keystate[0][KEY_RIGHT] = true;
-            else if(angle >= offset + 4*interval && angle < offset + 5*interval)
-                touch_keystate[0][KEY_DOWN_RIGHT] = true;
-            else if(angle >= offset + 5*interval && angle < offset + 6*interval)
-                touch_keystate[0][KEY_DOWN] = true;
-            else if(angle >= offset + 6*interval && angle < offset + 7*interval)
-                touch_keystate[0][KEY_DOWN_LEFT] = true;
+            touch_keystate[0][KEY_UP] = false;
+            touch_keystate[0][KEY_UP_RIGHT] = false;
+            touch_keystate[0][KEY_RIGHT] = false;
+            touch_keystate[0][KEY_DOWN_RIGHT] = false;
+            touch_keystate[0][KEY_DOWN] = false;
+            touch_keystate[0][KEY_DOWN_LEFT] = false;
+            touch_keystate[0][KEY_LEFT] = false;
+            touch_keystate[0][KEY_UP_LEFT] = false;
+            
+            if(abs(x - moving_touch_x) > MOVE_DEAD_ZONE || abs(y - moving_touch_y) > MOVE_DEAD_ZONE)
+            {
+                float offset = -M_PI + M_PI/8;
+                float interval = M_PI/4;
+                float angle = atan2(y - moving_touch_y, x - moving_touch_x);
+                if(angle < -M_PI + M_PI/8 || angle >= M_PI - M_PI/8)
+                    touch_keystate[0][KEY_LEFT] = true;
+                else if(angle >= offset && angle < offset + interval)
+                    touch_keystate[0][KEY_UP_LEFT] = true;
+                else if(angle >= offset + interval && angle < offset + 2*interval)
+                    touch_keystate[0][KEY_UP] = true;
+                else if(angle >= offset + 2*interval && angle < offset + 3*interval)
+                    touch_keystate[0][KEY_UP_RIGHT] = true;
+                else if(angle >= offset + 3*interval && angle < offset + 4*interval)
+                    touch_keystate[0][KEY_RIGHT] = true;
+                else if(angle >= offset + 4*interval && angle < offset + 5*interval)
+                    touch_keystate[0][KEY_DOWN_RIGHT] = true;
+                else if(angle >= offset + 5*interval && angle < offset + 6*interval)
+                    touch_keystate[0][KEY_DOWN] = true;
+                else if(angle >= offset + 6*interval && angle < offset + 7*interval)
+                    touch_keystate[0][KEY_DOWN_LEFT] = true;
+            }
         }
         }
         break;
     case SDL_FINGERUP:
-        if(tapping)
         {
-            tapping = false;
-            moving = false;
             int x = event->tfinger.x * 320;
             int y = event->tfinger.y * 200;
-            if(abs(x - start_tap_x) < 2 && abs(y - start_tap_y) < 2)
-                input_continue = true;
-            else
-                input_continue = false;
-            start_tap_x = x;
-            start_tap_y = y;
+            if(tapping)
+            {
+                tapping = false;
+                if(abs(x - start_tap_x) < 2 && abs(y - start_tap_y) < 2)
+                    input_continue = true;
+                else
+                    input_continue = false;
+                start_tap_x = x;
+                start_tap_y = y;
+            }
+            
+            if(moving && event->tfinger.fingerId == movingTouch)
+            {
+                moving = false;
+                
+                touch_keystate[0][KEY_UP] = false;
+                touch_keystate[0][KEY_UP_RIGHT] = false;
+                touch_keystate[0][KEY_RIGHT] = false;
+                touch_keystate[0][KEY_DOWN_RIGHT] = false;
+                touch_keystate[0][KEY_DOWN] = false;
+                touch_keystate[0][KEY_DOWN_LEFT] = false;
+                touch_keystate[0][KEY_LEFT] = false;
+                touch_keystate[0][KEY_UP_LEFT] = false;
+            }
+            if(firing && event->tfinger.fingerId == firingTouch)
+            {
+                firing = false;
+                touch_keystate[0][KEY_FIRE] = false;
+            }
+            
+            mouse_state[MOUSE_LEFT] = 0;
         }
-        
-        mouse_state[MOUSE_LEFT] = 0;
-        
-        // FIXME: Needs to track which finger is being used for movement
-        touch_keystate[0][KEY_UP] = false;
-        touch_keystate[0][KEY_UP_RIGHT] = false;
-        touch_keystate[0][KEY_RIGHT] = false;
-        touch_keystate[0][KEY_DOWN_RIGHT] = false;
-        touch_keystate[0][KEY_DOWN] = false;
-        touch_keystate[0][KEY_DOWN_LEFT] = false;
-        touch_keystate[0][KEY_LEFT] = false;
-        touch_keystate[0][KEY_UP_LEFT] = false;
         break;
     case SDL_FINGERDOWN:
-        
-        tapping = true;
-        start_tap_x = event->tfinger.x * 320;
-        start_tap_y = event->tfinger.y * 200;
-        if(start_tap_x < 320/2)  // Only move with the left side of the screen
-            moving = true;
-        input_continue = false;
-        
-        key_press_event = 1;
-        mouse_state[MOUSE_LEFT] = 1;
-        mouse_state[MOUSE_X] = event->tfinger.x * 320;
-        mouse_state[MOUSE_Y] = event->tfinger.y * 200;
+        {
+            tapping = true;
+            
+            int x = event->tfinger.x * 320;
+            int y = event->tfinger.y * 200;
+            
+            start_tap_x = x;
+            start_tap_y = y;
+            input_continue = false;
+            
+            if(!moving && x < 320/2)  // Only move with the left side of the screen
+            {
+                moving_touch_x = x;
+                moving_touch_y = y;
+                if(moving_touch_x < MOVE_AREA_DIM/2 + 1)
+                    moving_touch_x = MOVE_AREA_DIM/2 + 1;
+                if(moving_touch_y < MOVE_AREA_DIM/2 + 1)
+                    moving_touch_y = MOVE_AREA_DIM/2 + 1;
+                else if(moving_touch_y > 200 - (MOVE_AREA_DIM/2 + 1))
+                    moving_touch_y = 200 - (MOVE_AREA_DIM/2 + 1);
+                moving = true;
+                movingTouch = event->tfinger.fingerId;
+            }
+            
+            if(!firing && FIRE_BUTTON_X <= x && x <= FIRE_BUTTON_X + BUTTON_DIM
+                                              && FIRE_BUTTON_Y <= y && y <= FIRE_BUTTON_Y + BUTTON_DIM)
+              {
+                  firing = true;
+                  touch_keystate[0][KEY_FIRE] = true;
+                  firingTouch = event->tfinger.fingerId;
+              }
+              
+            touch_keystate[0][KEY_SPECIAL] = (SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
+                                              && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM);
+            
+            key_press_event = 1;
+            mouse_state[MOUSE_LEFT] = 1;
+            mouse_state[MOUSE_X] = event->tfinger.x * 320;
+            mouse_state[MOUSE_Y] = event->tfinger.y * 200;
+        }
         break;
 #endif
     case SDL_JOYAXISMOTION:
