@@ -154,6 +154,7 @@ int query_key();                                                            // r
 char* query_text_input();                                                            // return last text input
 
 bool query_input_continue();
+short get_and_reset_scroll_amount();
 
 #ifdef ANDROID
 void draw_touch_controls(video* vob);

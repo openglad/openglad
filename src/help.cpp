@@ -89,14 +89,20 @@ short read_scenario(screen *myscreen)
 	while (!query_input_continue())
 	{
 		get_input_events(POLL);
-		if (mykeyboard[KEYSTATE_DOWN])    // scrolling down
+		
+		short scroll_amount = get_and_reset_scroll_amount();
+		if (scroll_amount < 0)    // scrolling down
 		{
 			now_time = query_timer();
 
 			key_presses =  (now_time - start_time) % text_delay;
 			if (!key_presses && (linesdown < bottomrow) )
 			{
-				linesdown++;
+			    while(linesdown < bottomrow && scroll_amount != 0)
+                {
+                    linesdown++;
+                    scroll_amount++;
+                }
 				changed = 1;
 			}
 		} // end of KEYSTATE_DOWN
@@ -118,13 +124,17 @@ short read_scenario(screen *myscreen)
 			}
 		} // end of PAGE DOWN
 
-		if (mykeyboard[KEYSTATE_UP])      // scrolling up
+		if (scroll_amount > 0)      // scrolling up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
 			if (!key_presses && linesdown)
 			{
-				linesdown--;
+			    while(linesdown && scroll_amount != 0)
+                {
+                    linesdown--;
+                    scroll_amount--;
+                }
 				changed = 1;
 			}
 		} // end of KEYSTATE_UP
@@ -237,14 +247,20 @@ short read_help(const char *somefile,screen * myscreen)
 	while (!query_input_continue())
 	{
 		get_input_events(POLL);
-		if (mykeyboard[KEYSTATE_DOWN])    // scrolling down
+		
+		short scroll_amount = get_and_reset_scroll_amount();
+		if (scroll_amount < 0)    // scrolling down
 		{
 			now_time = query_timer();
 
 			key_presses =  (now_time - start_time) % text_delay;
 			if (!key_presses && (linesdown < bottomrow) )
 			{
-				linesdown++;
+			    while(linesdown < bottomrow && scroll_amount != 0)
+                {
+                    linesdown++;
+                    scroll_amount++;
+                }
 				changed = 1;
 			}
 		} // end of KEYSTATE_DOWN
@@ -266,13 +282,17 @@ short read_help(const char *somefile,screen * myscreen)
 			}
 		} // end of PAGE DOWN
 
-		if (mykeyboard[KEYSTATE_UP])      // scrolling up
+		if (scroll_amount > 0)      // scrolling up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % text_delay;
 			if (!key_presses && linesdown)
 			{
-				linesdown--;
+			    while(linesdown && scroll_amount != 0)
+                {
+                    linesdown--;
+                    scroll_amount--;
+                }
 				changed = 1;
 			}
 		} // end of KEYSTATE_UP

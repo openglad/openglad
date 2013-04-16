@@ -36,12 +36,14 @@ int raw_key;
 char* raw_text_input = NULL;
 short key_press_event = 0;    // used to signed key-press
 short text_input_event = 0;    // used to signal text input
+short scroll_amount = 0;  // for scrolling up and down text popups
+
+bool input_continue = false;  // Done with text popups, etc.
 
 #ifdef ANDROID
 bool tapping = false;
 int start_tap_x = 0;
 int start_tap_y = 0;
-bool input_continue = false;  // Done with text popups, etc.
 
 bool moving = false;
 int moving_touch_x = 0;
@@ -242,12 +244,11 @@ void handle_events(SDL_Event *event)
         #ifdef ANDROID
         // Back button faking Escape key
         if(event->key.keysym.scancode == SDL_SCANCODE_AC_BACK)
-        {
             event->key.keysym.sym = SDLK_ESCAPE;
-            input_continue = true;
-        }
         #endif
         raw_key = event->key.keysym.sym;
+        if(raw_key == SDLK_ESCAPE)
+            input_continue = true;
         key_press_event = 1;
 #ifndef USE_SDL2
         free(raw_text_input);
@@ -264,6 +265,10 @@ void handle_events(SDL_Event *event)
         free(raw_text_input);
         raw_text_input = strdup(event->text.text);
         text_input_event = 1;
+        break;
+    case SDL_MOUSEWHEEL:
+        scroll_amount = 5*event->wheel.y;
+        key_press_event = 1;
         break;
 #endif
 
@@ -290,8 +295,14 @@ void handle_events(SDL_Event *event)
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT)
             mouse_state[MOUSE_LEFT] = 1;
-        if (event->button.button == SDL_BUTTON_RIGHT)
+        else if (event->button.button == SDL_BUTTON_RIGHT)
             mouse_state[MOUSE_RIGHT] = 1;
+        #ifndef USE_SDL2
+        else if (event->button.button == SDL_BUTTON_WHEELUP)
+            scroll_amount = 5;
+        else if (event->button.button == SDL_BUTTON_WHEELDOWN)
+            scroll_amount = -5;
+        #endif
         break;
 #else
         // Mouse event
@@ -299,6 +310,9 @@ void handle_events(SDL_Event *event)
         {
         int x = event->tfinger.x * 320;
         int y = event->tfinger.y * 200;
+        
+        scroll_amount = y - mouse_state[MOUSE_Y];
+        
         mouse_state[MOUSE_X] = x;
         mouse_state[MOUSE_Y] = y;
         
@@ -588,8 +602,9 @@ void clear_keyboard()
     free(raw_text_input);
     raw_text_input = NULL;
     
-    #ifdef ANDROID
     input_continue = false;
+    
+    #ifdef ANDROID
     tapping = false;
     #endif
 }
@@ -601,11 +616,14 @@ Uint8* query_keyboard()
 
 bool query_input_continue()
 {
-    #ifndef ANDROID
-    return keystates[KEYSTATE_ESCAPE];
-    #else
     return input_continue;
-    #endif
+}
+
+short get_and_reset_scroll_amount()
+{
+    short temp = scroll_amount;
+    scroll_amount = 0;
+    return temp;
 }
 
 void wait_for_key(int somekey)
