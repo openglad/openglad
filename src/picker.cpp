@@ -1714,7 +1714,8 @@ Sint32 create_load_menu(Sint32 arg1)
 		if (leftmouse())
 		{
 			retvalue=localbuttons->leftclick();
-			return REDRAW;
+			if(retvalue == REDRAW)
+                return REDRAW;
 		}
 
 		if (localbuttons && (retvalue == REDRAW))
@@ -1799,7 +1800,8 @@ Sint32 create_save_menu(Sint32 arg1)
 		if (leftmouse())
 		{
 			retvalue=localbuttons->leftclick();
-			return REDRAW;
+			if(retvalue == REDRAW)
+                return REDRAW;
 		}
 
 		if (localbuttons && (retvalue == REDRAW))
