@@ -3854,20 +3854,22 @@ list<string> list_files(const string& dirname)
     DIR* dir = opendir(dirname.c_str());
     dirent* entry;
     
-    while ((entry = readdir(dir)) != NULL)
+    if(dir != NULL)
     {
-        #ifdef WIN32
-        if(!isDir(dirname + "/" + entry->d_name))
-        #else
-        if(entry->d_type != DT_DIR)
-        #endif
-            fileList.push_back(entry->d_name);
+        while ((entry = readdir(dir)) != NULL)
+        {
+            #ifdef WIN32
+            if(!isDir(dirname + "/" + entry->d_name))
+            #else
+            if(entry->d_type != DT_DIR)
+            #endif
+                fileList.push_back(entry->d_name);
+        }
+     
+        closedir(dir);
     }
- 
-    closedir(dir);
     
     fileList.sort();
-    
     
     return fileList;
 }
@@ -4177,7 +4179,10 @@ char* browse(screen *screenp)
     // Load the radars (minimaps)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
-        entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+        if(i < level_list_length)
+            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+        else
+            entries[i] = NULL;
     }
     
     int selected_entry = -1;
@@ -4219,8 +4224,11 @@ char* browse(screen *screenp)
                 
                 for(int i = 0; i < NUM_BROWSE_RADARS; i++)
                 {
-                    delete entries[i];
-                    entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                    if(i < level_list_length)
+                    {
+                        delete entries[i];
+                        entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                    }
                 }
 		    }
             while (mykeyboard[KEYSTATE_UP])
@@ -4237,8 +4245,11 @@ char* browse(screen *screenp)
                 
                 for(int i = 0; i < NUM_BROWSE_RADARS; i++)
                 {
-                    delete entries[i];
-                    entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                    if(i < level_list_length)
+                    {
+                        delete entries[i];
+                        entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                    }
                 }
 		    }
             while (mykeyboard[KEYSTATE_DOWN])
@@ -4268,8 +4279,11 @@ char* browse(screen *screenp)
                         
                         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
                         {
-                            delete entries[i];
-                            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                            if(i < level_list_length)
+                            {
+                                delete entries[i];
+                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                            }
                         }
                     }
                }
@@ -4284,8 +4298,11 @@ char* browse(screen *screenp)
                         
                         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
                         {
-                            delete entries[i];
-                            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                            if(i < level_list_length)
+                            {
+                                delete entries[i];
+                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                            }
                         }
                     }
                }
@@ -4314,17 +4331,20 @@ char* browse(screen *screenp)
                 // Select
                 for(int i = 0; i < NUM_BROWSE_RADARS; i++)
                 {
-                    int x = entries[i]->radars->xloc;
-                    int y = entries[i]->radars->yloc;
-                    int w = entries[i]->radars->xview;
-                    int h = entries[i]->radars->yview;
-                    SDL_Rect b = {x - 2, y - 2, w + 2, h + 2};
-                    if(b.x <= mx && mx <= b.x+b.w
-                       && b.y <= my && my <= b.y+b.h)
-                       {
-                           selected_entry = i;
-                           break;
-                       }
+                    if(i < level_list_length && entries[i] != NULL)
+                    {
+                        int x = entries[i]->radars->xloc;
+                        int y = entries[i]->radars->yloc;
+                        int w = entries[i]->radars->xview;
+                        int h = entries[i]->radars->yview;
+                        SDL_Rect b = {x - 2, y - 2, w + 2, h + 2};
+                        if(b.x <= mx && mx <= b.x+b.w
+                           && b.y <= my && my <= b.y+b.h)
+                           {
+                               selected_entry = i;
+                               break;
+                           }
+                    }
                 }
 			}
 		}
@@ -4337,7 +4357,7 @@ char* browse(screen *screenp)
         loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
         screenp->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
         loadtext->write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
-        if(selected_entry != -1)
+        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
         {
             screenp->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext->write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
@@ -4349,19 +4369,23 @@ char* browse(screen *screenp)
         if(selected_entry != -1)
         {
             int i = selected_entry;
-            int x = entries[i]->radars->xloc - 4;
-            int y = entries[i]->radars->yloc - 4;
-            int w = entries[i]->radars->xview + 8;
-            int h = entries[i]->radars->yview + 8;
-            screenp->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
+            if(i < level_list_length && entries[i] != NULL)
+            {
+                int x = entries[i]->radars->xloc - 4;
+                int y = entries[i]->radars->yloc - 4;
+                int w = entries[i]->radars->xview + 8;
+                int h = entries[i]->radars->yview + 8;
+                screenp->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
+            }
         }
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
-            entries[i]->draw(screenp, loadtext, level_list[current_level_index + i]);
+            if(i < level_list_length && entries[i] != NULL)
+                entries[i]->draw(screenp, loadtext, level_list[current_level_index + i]);
         }
         
         // Description
-        if(selected_entry != -1)
+        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
         {
             screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
             for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
