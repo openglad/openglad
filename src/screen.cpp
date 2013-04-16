@@ -1781,18 +1781,6 @@ short load_scenario(const char * filename, screen * master)
 	short tempvalue;
 	string thefile(filename);
 
-	// Open the pixie-pack, if not already done ...
-	if (!scenpack.opened())
-	{
-		if (scenpack.open("levels.001") == -1) // doesn't exist
-		{
-			load_and_set_palette("our.pal", myscreen->ourpalette);
-			Log("Cannot open levels resource file!\n");
-			release_keyboard();
-			exit(0);
-		}
-	}
-
 	//buffers: first look for the scenario in scen/, then in levels.001
 
 	//buffers: the file
@@ -1807,16 +1795,31 @@ short load_scenario(const char * filename, screen * master)
 		gotit = 1;
 	}
 
-	Log("Looking for %s\n", thefile.c_str());
 
 	//buffers: second, try to get the file from levels.001
-	if(!infile && scenpack.opened())
-		if ((infile = scenpack.get_subfile((char *)thefile.c_str())))
-			gotit = 1;
+	if(!infile)
+    {
+        Log("Looking in scenpack");
+
+	// Open the pixie-pack, if not already done ...
+        if (!scenpack.opened())
+        {
+            if (scenpack.open("levels.001") == -1) // doesn't exist
+            {
+                load_and_set_palette("our.pal", myscreen->ourpalette);
+                Log("Cannot open levels resource file!");
+                release_keyboard();
+                exit(0);
+            }
+        }
+        if(scenpack.opened())
+            if ((infile = scenpack.get_subfile((char *)thefile.c_str())))
+                gotit = 1;
+    }
 
 	if(gotit == 0 || !infile)
 	{
-		//Log("DEBUG: scenario %s was not found in levels.001 or in scen/ -- EXITING\n",temp);
+		Log("Scenario %s was not found in levels.001 or in scen/ -- EXITING", filename);
 		return 0;
 	}
 
@@ -1833,6 +1836,7 @@ short load_scenario(const char * filename, screen * master)
 
 	// Check the version number
 	SDL_RWread(infile, &versionnumber, 1, 1);
+    Log("Loading version %d scenario", versionnumber);
 	switch (versionnumber)
 	{
 		case 2:
@@ -2525,9 +2529,14 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 	for (i=0; i < numlines; i++)
 	{
 		SDL_RWread(infile, &tempwidth, 1, 1);
-		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[(int)tempwidth] = 0;
-		strcpy(master->scentext[i], oneline);
+		if(tempwidth > 0)
+        {
+            SDL_RWread(infile, oneline, tempwidth, 1);
+            oneline[(int)tempwidth] = 0;
+        }
+        else
+            oneline[0] = 0;
+        strcpy(master->scentext[i], oneline);
 	}
 
 	//fclose(infile);
@@ -2558,7 +2567,6 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 		}
 		here = here->next;
 	}
-
 	return 1;
 } // end load_version_5
 
