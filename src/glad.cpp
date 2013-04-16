@@ -32,6 +32,8 @@ using namespace std;
 
 // Z's script: #include <process.h>
 
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+
 void picker_main(Sint32 argc, char **argv);
 void intro_main(Sint32 argc, char **argv);
 
@@ -91,11 +93,8 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	char somemessage[80];
 	//  char soundpath[80];
 	//  short cyclemode = 1;            // color cycling on or off
-	Uint8* keyboard;
-	short dumbcount=0;
 	short numviews;
 	oblink *here, *before;
-	text gladtext(myscreen);
 
 	//Sint32 longtemp;
 	//char message[50];
@@ -159,7 +158,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	//
 	// This is the main program loop
 	//
-	keyboard = query_keyboard();
 
 	//sprintf(somemessage, "SPEED SET TO %d", (20-myscreen->timer_wait)/2+1);
     
@@ -216,17 +214,9 @@ void glad_main(screen *myscreen, Sint32 playermode)
             {
                 if(event.key.keysym.sym == SDLK_ESCAPE)
                 {
-                    //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
-                    myscreen->clearfontbuffer(160-80,80,160,40);
-                    dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, "Abort Mission");
-                    gladtext.write_xy(dumbcount, 80+24, "Quit this Mission? (Y/N)",
-                                      (unsigned char) DARK_BLUE, 1);
-                    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
-                    clear_keyboard();
-                    while (!query_input_continue() && !keyboard[KEYSTATE_y] && !keyboard[KEYSTATE_n])
-                        get_input_events(WAIT);
+                    bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
                     myscreen->redrawme = 1;
-                    if (keyboard[KEYSTATE_y]) // player wants to quit
+                    if (result) // player wants to quit
                         done = true;
                     else
                     {

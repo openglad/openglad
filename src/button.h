@@ -118,6 +118,7 @@ Sint32 vexitmenu(vbutton *vbuttons);
 
 vbutton * buttonmenu(button * buttons, Sint32 numbuttons);
 vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw);
+vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 redraw);
 
 // These are for picker ..
 Sint32 score_panel(screen *myscreen);
@@ -194,4 +195,5 @@ Sint32 change_allied();
 #define CHANGE_TEAM             25
 #define ALLIED_MODE             26
 #define CHANGE_HIRE_TEAM        27
+#define YES_OR_NO               28
 #endif

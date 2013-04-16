@@ -35,6 +35,11 @@
 #define REDRAW 2 //we just exited a menu, so redraw your buttons
 #define OK 4 //this function was successful, continue normal operation
 
+// For yes/no prompts
+#define YES 5
+#define NO 6
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+
 #define MAXTEAM 24 //max # of guys on a team
 
 #define BUTTON_HEIGHT 15
@@ -416,6 +421,13 @@ button loadteam[] =
         { "SLOT Ten", SDLK_0, 25, 160, 220, 10, DO_LOAD, 10},
         { "ESC", SDLK_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT},
 
+    };
+
+
+button yes_or_no_buttons[] =
+    {
+        { "YES", SDLK_1,  70, 130, 50, 20, YES_OR_NO, YES},
+        { "NO", SDLK_2,  320-50-70, 130, 50, 20, YES_OR_NO, NO}
     };
 
 Sint32 leftmouse()
@@ -1751,6 +1763,52 @@ Sint32 create_load_menu(Sint32 arg1)
 		}
 	}
 	return REDRAW;
+}
+
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
+{
+	text gladtext(myscreen);
+	
+    //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
+    myscreen->clearfontbuffer(160-80,80,160,40);
+    int dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, title);
+    gladtext.write_xy(dumbcount, 80+24, message,
+                      (unsigned char) DARK_BLUE, 1);
+
+	if (localbuttons)
+		delete (localbuttons);
+	localbuttons = buttonmenu_no_backdrop(yes_or_no_buttons, 2, 0);  // don't redraw!
+
+    int i;
+	for (i=0; i < 2; i++)
+	{
+		allbuttons[i]->vdisplay();
+	}
+
+    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
+
+	grab_mouse();
+    clear_keyboard();
+    Uint8* keyboard = query_keyboard();
+	
+    int retvalue = 0;
+	while (retvalue == 0)
+	{
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        else if(keyboard[KEYSTATE_y])
+            retvalue = YES;
+        else if(keyboard[KEYSTATE_n])
+            retvalue = NO;
+        else if(keyboard[KEYSTATE_ESCAPE])
+            break;
+	}
+	
+    if(retvalue == YES)
+        return true;
+    if(retvalue == NO)
+        return false;
+	return default_value;
 }
 
 Sint32 create_save_menu(Sint32 arg1)

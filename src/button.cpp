@@ -439,6 +439,39 @@ vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw)
 
 }
 
+vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 redraw)
+{
+	Sint32 i;
+
+	for (i=1; i < MAX_BUTTONS; i++) // skip # 0!
+	{
+		if (allbuttons[i])
+			delete allbuttons[i];
+		allbuttons[i] = NULL;
+	}
+
+
+	for (i=0; i < numbuttons; i++)
+	{
+		allbuttons[i] = new vbutton(buttons[i].x,buttons[i].y,
+		                            buttons[i].sizex, buttons[i].sizey,
+		                            buttons[i].myfun, buttons[i].arg1,
+		                            buttons[i].label, buttons[i].hotkey);
+		myscreen->draw_box(allbuttons[i]->xloc-1,
+		                   allbuttons[i]->yloc-1,
+		                   allbuttons[i]->xend,
+		                   allbuttons[i]->yend, 0, 0, 1);
+	}
+
+	release_mouse();
+
+	//if (redraw)
+	//	myscreen->buffer_to_screen(0, 0, 320, 200);
+	grab_mouse();
+	return allbuttons[0];
+
+}
+
 //after this point old code
 void clearmenu(button *buttons, short numbuttons)
 {
@@ -728,6 +761,11 @@ short has_mouse_focus(button thisbutton)
 	return 0;
 }
 
+Sint32 yes_or_no(Sint32 arg)
+{
+    return arg;
+}
+
 Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 {
 	switch (whatfunc)
@@ -785,6 +823,8 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 			return change_hire_teamnum(arg);
 		case ALLIED_MODE:
 			return change_allied();
+		case YES_OR_NO:
+			return yes_or_no(arg);
 		default:
 			return 4;
 	}

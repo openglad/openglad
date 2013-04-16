@@ -31,6 +31,8 @@
 // Zardus: this is the func to get events
 void get_input_events(bool);
 
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+
 // Zardus: from video.cpp for retreat crash ugly hack fix
 extern bool retreat;
 
@@ -57,7 +59,6 @@ short treasure::eat_me(walker  * eater)
 	oblink *here;
 	static text eattext(screenp);
 	char message[80];
-	Uint8* eatkeys;
 	Sint32 distance;
 	walker  *target, *flash;
 	static char exitname[40];
@@ -181,18 +182,14 @@ short treasure::eat_me(walker  * eater)
 			{
 				leftside -= 12;
 				rightside += 12;
-				screenp->draw_dialog(leftside, 20, rightside, 54, "Exit Field");
-				sprintf(message, "Withdraw to %s? (Y/N)", exitname);
-				eattext.write_y(42, message, DARK_BLUE, 1);
-				screenp->buffer_to_screen(0, 0, 320, 200);
-				eatkeys = query_keyboard();
-				clear_keyboard();
-				while (!query_input_continue() && !eatkeys[KEYSTATE_y] && !eatkeys[KEYSTATE_n])
-					get_input_events(WAIT);
+                
+                char buf[40];
+                snprintf(buf, 40, "Withdraw to %s?", exitname);
+                bool result = yes_or_no_prompt("Exit Field", buf, false);
 				// Redraw screen ..
 				screenp->redrawme = 1;
 
-				if (eatkeys[KEYSTATE_y]) // accepted level change
+				if (result) // accepted level change
 				{
 					clear_keyboard();
 					screenp->levelstatus[screenp->scen_num] = 0;  // NOT done
@@ -232,19 +229,13 @@ short treasure::eat_me(walker  * eater)
 			//buffers: also, allow exit if scenario_type == can exit
 			if (!guys_here || (screenp->scenario_type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
 			{
-				screenp->draw_dialog(30, 20, 290, 54, "Exit Field");
-				sprintf(message, "Exit to %s? (Y/N)", exitname);
-				eattext.write_y(42, message, DARK_BLUE, 1);
-				screenp->buffer_to_screen(0, 0, 320, 200);
-				eatkeys = query_keyboard();
-				clear_keyboard();
-				// Zardus: FIX: get_input_events instead of freezing and counting :-)
-				while (!query_input_continue() && !eatkeys[KEYSTATE_y] && !eatkeys[KEYSTATE_n])
-					get_input_events(WAIT);
+                char buf[40];
+                snprintf(buf, 40, "Exit to %s?", exitname);
+                bool result = yes_or_no_prompt("Exit Field", buf, false);
 				// Redraw screen ..
 				screenp->redrawme = 1;
 
-				if (eatkeys[KEYSTATE_y]) // accepted level change
+				if(result) // accepted level change
 				{
 					clear_keyboard();
 					//screenp->levelstatus[screenp->scen_num] = 1;
