@@ -3847,6 +3847,67 @@ bool isDir(const string& filename)
     return (status.st_mode & S_IFDIR);
 }
 
+#ifdef ANDROID
+list<string> list_scen_files_from_index()
+{
+    list<string> fileList;
+    SDL_RWops* rwops = open_data_file("scen_index.txt", "scen/", "r");
+    if(rwops == NULL)
+    {
+        return fileList;
+    }
+    
+    std::string s;
+    char c;
+    unsigned int data_bytes = SDL_RWseek(rwops, 0, SEEK_END);
+    SDL_RWseek(rwops, 0, SEEK_SET);
+    
+    for(unsigned int i = 0; i < data_bytes; i++)
+    {
+        SDL_RWread(rwops, &c, 1, 1);
+        bool save = false;
+        if(c == '\n')
+            save = true;
+        else if(c == '\r')
+        {
+            save = true;
+            if(i+1 < data_bytes)
+            {
+                // Chomp the line feed
+                SDL_RWread(rwops, &c, 1, 1);
+                if(c != '\n')
+                {
+                    // Oops, put it back
+                    SDL_RWseek(rwops, -1, SEEK_CUR);
+                }
+                else
+                    i++;
+            }
+        }
+        
+        if(save)
+        {
+            if(s.size() > 0)
+            {
+                fileList.push_back(s);
+                s.clear();
+            }
+            save = false;
+        }
+        else
+            s += c;
+    }
+    
+    if(s.size() > 0)
+    {
+        fileList.push_back(s);
+    }
+    
+    SDL_FreeRW(rwops);
+    return fileList;
+}
+#endif
+
 list<string> list_files(const string& dirname)
 {
     list<string> fileList;
@@ -3907,7 +3968,17 @@ bool sort_scen(const string& first, const string& second)
 void load_level_list(char**& level_list, int* level_list_length)
 {
     // Do some directory browsing
-    list<string> ls = list_files("scen");
+    const char* dir_path = get_file_path("", "scen/", "r");
+    if(dir_path == NULL)
+    {
+        Log("Level browser: load_level_list() got NULL dir_path");
+    }
+    #ifndef ANDROID
+    list<string> ls = list_files(dir_path != NULL? dir_path : "scen/");
+    #else
+    // Android needs a better way to list the scen files.  Using scenpack would work, presumably.  This is mostly just a hack.
+    list<string> ls = list_scen_files_from_index();
+    #endif
     for(list<string>::iterator e = ls.begin(); e != ls.end();)
     {
         if(e->size() > 4 && e->substr(e->size() - 4, 4) == ".fss")
