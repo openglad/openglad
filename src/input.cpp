@@ -216,6 +216,10 @@ void get_input_events(bool type)
 #define FIRE_BUTTON_Y 165
 #define SPECIAL_BUTTON_X 285
 #define SPECIAL_BUTTON_Y 165
+#define YO_BUTTON_X 160
+#define YO_BUTTON_Y 100
+#define SWITCH_CHARACTER_BUTTON_X 0
+#define SWITCH_CHARACTER_BUTTON_Y 0
 #define BUTTON_DIM 30
 
 void draw_touch_controls(video* vob)
@@ -320,6 +324,10 @@ void handle_events(SDL_Event *event)
         
         touch_keystate[0][KEY_SPECIAL] = (SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
                                           && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM);
+        touch_keystate[0][KEY_YELL] = (YO_BUTTON_X - BUTTON_DIM/2 <= x && x <= YO_BUTTON_X + BUTTON_DIM/2
+                                          && YO_BUTTON_Y - BUTTON_DIM/2 <= y && y <= YO_BUTTON_Y + BUTTON_DIM/2);
+        touch_keystate[0][KEY_SWITCH] = (SWITCH_CHARACTER_BUTTON_X <= x && x <= SWITCH_CHARACTER_BUTTON_X + BUTTON_DIM*2
+                                          && SWITCH_CHARACTER_BUTTON_Y <= y && y <= SWITCH_CHARACTER_BUTTON_Y + BUTTON_DIM*2);
         
         if(moving && event->tfinger.fingerId == movingTouch)
         {
@@ -405,7 +413,7 @@ void handle_events(SDL_Event *event)
             start_tap_y = y;
             input_continue = false;
             
-            if(!moving && x < 320/2)  // Only move with the left side of the screen
+            if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
             {
                 moving_touch_x = x;
                 moving_touch_y = y;
@@ -429,6 +437,10 @@ void handle_events(SDL_Event *event)
               
             touch_keystate[0][KEY_SPECIAL] = (SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
                                               && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM);
+            touch_keystate[0][KEY_YELL] = (YO_BUTTON_X - BUTTON_DIM/2 <= x && x <= YO_BUTTON_X + BUTTON_DIM/2
+                                              && YO_BUTTON_Y - BUTTON_DIM/2 <= y && y <= YO_BUTTON_Y + BUTTON_DIM/2);
+            touch_keystate[0][KEY_SWITCH] = (SWITCH_CHARACTER_BUTTON_X <= x && x <= SWITCH_CHARACTER_BUTTON_X + BUTTON_DIM*2
+                                              && SWITCH_CHARACTER_BUTTON_Y <= y && y <= SWITCH_CHARACTER_BUTTON_Y + BUTTON_DIM*2);
             
             key_press_event = 1;
             mouse_state[MOUSE_LEFT] = 1;
@@ -953,6 +965,15 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
         {
             return (event.key.keysym.sym == player_keys[player_index][key_enum]);
         }
+        #ifdef ANDROID
+            if(touch_keystate[player_index][key_enum])
+            {
+                // Take the event away for one-off buttons.  This would be better with just sending fake events to SDL.
+                if(key_enum == KEY_YELL || key_enum == KEY_SWITCH)
+                    touch_keystate[player_index][key_enum] = false;
+                return true;
+            }
+        #endif
         return false;
     }
 }

@@ -434,10 +434,9 @@ short viewscreen::input(const SDL_Event& event)
 
 
 	// TAB (ALONE) WILL SWITCH CONTROL TO THE NEXT GUY ON MY TEAM
-	if (!didPlayerPressKey(mynum, KEY_SWITCH, event))
+	if(!didPlayerPressKey(mynum, KEY_SWITCH, event))
 		changedchar[mynum] = 0;
-
-	if (didPlayerPressKey(mynum, KEY_SWITCH, event) && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
+    else if(!isPlayerHoldingKey(mynum, KEY_SHIFTER)
 	        && !changedchar[mynum] && !isPlayerHoldingKey(mynum, KEY_CHEAT))
 	{
 		changedchar[mynum] = 1;
