@@ -1769,11 +1769,13 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 {
 	text gladtext(myscreen);
 	
+	int pix_per_char = 3;
+    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
+    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
     //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
-    myscreen->clearfontbuffer(160-80,80,160,40);
-    int dumbcount = myscreen->draw_dialog(160-80, 80, 160+80, 120, title);
-    gladtext.write_xy(dumbcount, 80+24, message,
-                      (unsigned char) DARK_BLUE, 1);
+    myscreen->clearfontbuffer(leftside, 80, rightside, 40);
+    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
+    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
 
 	if (localbuttons)
 		delete (localbuttons);

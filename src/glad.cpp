@@ -707,9 +707,11 @@ short new_score_panel(screen *myscreen, short do_it)
 			if (myscreen->viewob[players]->prefs[PREF_SCORE] == PREF_SCORE_ON)
 			{
 				// Score, bottom left corner
+				int special_offset = -24;
 				#ifdef ANDROID
 				// Upper left on Android
 				int bm = tm + 54;
+				special_offset = 0;
 				#endif
 
 				// Draw box, if needed
@@ -750,9 +752,9 @@ short new_score_panel(screen *myscreen, short do_it)
 					sprintf(message, "SPC: %s", myscreen->special_name[(int)control->query_family()][(int)control->current_special]);
                 
 				if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
-					mytext->write_xy(lm+2, bm-24, message, text_color, (short) 1);
+					mytext->write_xy(lm+2, bm + special_offset, message, text_color, (short) 1);
 				else
-					mytext->write_xy(lm+2, bm-24, message, (unsigned char) RED, (short) 1);
+					mytext->write_xy(lm+2, bm + special_offset, message, (unsigned char) RED, (short) 1);
 
 			} // end of score/exp display
 
