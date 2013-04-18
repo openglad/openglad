@@ -979,10 +979,11 @@ short viewscreen::continuous_input()
 			}
 		*/
 
-		if (isPlayerHoldingKey(mynum, KEY_SPECIAL))
+        // Holding Special key
+		/*if (isPlayerHoldingKey(mynum, KEY_SPECIAL))
 		{
 			control->special();
-		}
+		}*/
 		
 		int walkx = 0;
 		int walky = 0;

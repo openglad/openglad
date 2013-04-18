@@ -974,6 +974,10 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
         // If the player is using KEYBOARD or doesn't have a joystick button set for this key, then check the keyboard.
         if(event.type == SDL_KEYDOWN)
         {
+            #ifdef USE_SDL2
+            if(event.key.repeat) // Repeats don't count!
+                return false;
+            #endif
             return (event.key.keysym.sym == player_keys[player_index][key_enum]);
         }
         return false;
