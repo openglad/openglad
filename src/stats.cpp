@@ -333,7 +333,7 @@ short statistics::do_command()
 				distance = controller->distance_to_ob(controller->leader);
 				if (distance < 60)
 				{
-					//controller->leader = NULL;
+					controller->leader = NULL;
 					return 1;  // don't get too close
 				}
 				newx = (short) (controller->leader->xpos - controller->xpos); // total horizontal distance..
