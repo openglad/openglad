@@ -226,8 +226,18 @@ void get_input_events(bool type)
 #define ALTERNATE_SPECIAL_BUTTON_Y 125
 #define BUTTON_DIM 30
 
-void draw_touch_controls(video* vob)
+#include "obmap.h"
+#include "screen.h"
+#include "view.h"
+#include "stats.h"
+#include "walker.h"
+
+void draw_touch_controls(screen* vob)
 {
+    walker* control = vob->viewob[0]->control;
+    if(control == NULL)
+        return;
+    
     if(moving)
     {
         // Touch movement feedback
@@ -240,13 +250,19 @@ void draw_touch_controls(video* vob)
     // Touch buttons
     vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 25);
     
-    // walker (viewscreen->control) has the current special, etc.
     //if(has_special)
-    vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
+    if(strcmp(vob->special_name[(int)control->query_family()][(int)control->current_special], "NONE"))
+        vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
+    
     //if(has_multiple_specials)
-    vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
+    if(control->current_special != 1 && !((control->current_special > (NUM_SPECIALS-1)
+		        || !(strcmp(vob->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
+		        || (((control->current_special-1)*3+1) > control->stats->level) )))
+        vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
+    
     //if(has_alternate)
-    vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
+    if(strcmp(vob->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE"))
+        vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
 }
 
 void sendFakeKeyDownEvent(int keycode)
@@ -254,6 +270,7 @@ void sendFakeKeyDownEvent(int keycode)
     SDL_Event event;
     
     event.type = SDL_KEYDOWN;
+    event.key.repeat = false;
     event.key.keysym.sym = keycode;
     event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
     SDL_PushEvent(&event);
@@ -449,13 +466,13 @@ void handle_events(SDL_Event *event)
             {
                 sendFakeKeyDownEvent(player_keys[0][KEY_SWITCH]);
             }
-            else if(NEXT_SPECIAL_BUTTON_X <= x && x <= NEXT_SPECIAL_BUTTON_X + BUTTON_DIM*2
-                && NEXT_SPECIAL_BUTTON_Y <= y && y <= NEXT_SPECIAL_BUTTON_Y + BUTTON_DIM*2)
+            else if(NEXT_SPECIAL_BUTTON_X <= x && x <= NEXT_SPECIAL_BUTTON_X + BUTTON_DIM
+                && NEXT_SPECIAL_BUTTON_Y <= y && y <= NEXT_SPECIAL_BUTTON_Y + BUTTON_DIM)
             {
                 sendFakeKeyDownEvent(player_keys[0][KEY_SPECIAL_SWITCH]);
             }
-            else if(ALTERNATE_SPECIAL_BUTTON_X <= x && x <= ALTERNATE_SPECIAL_BUTTON_X + BUTTON_DIM*2
-                && ALTERNATE_SPECIAL_BUTTON_Y <= y && y <= ALTERNATE_SPECIAL_BUTTON_Y + BUTTON_DIM*2)
+            else if(ALTERNATE_SPECIAL_BUTTON_X <= x && x <= ALTERNATE_SPECIAL_BUTTON_X + BUTTON_DIM
+                && ALTERNATE_SPECIAL_BUTTON_Y <= y && y <= ALTERNATE_SPECIAL_BUTTON_Y + BUTTON_DIM)
             {
                 // Treat KEY_SHIFTER as an action instead of a modifier
                 sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);

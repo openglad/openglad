@@ -157,7 +157,8 @@ bool query_input_continue();
 short get_and_reset_scroll_amount();
 
 #ifdef ANDROID
-void draw_touch_controls(video* vob);
+class screen;
+void draw_touch_controls(screen* vob);
 #define CONTINUE_ACTION_STRING "TAP"
 #else
 #define CONTINUE_ACTION_STRING "PRESS 'ESC'"
