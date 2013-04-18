@@ -220,6 +220,10 @@ void get_input_events(bool type)
 #define YO_BUTTON_Y 100
 #define SWITCH_CHARACTER_BUTTON_X 0
 #define SWITCH_CHARACTER_BUTTON_Y 0
+#define NEXT_SPECIAL_BUTTON_X 245
+#define NEXT_SPECIAL_BUTTON_Y 125
+#define ALTERNATE_SPECIAL_BUTTON_X 285
+#define ALTERNATE_SPECIAL_BUTTON_Y 125
 #define BUTTON_DIM 30
 
 void draw_touch_controls(video* vob)
@@ -234,8 +238,15 @@ void draw_touch_controls(video* vob)
     }
     
     // Touch buttons
-    vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 15);
-    vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 15);
+    vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 25);
+    
+    // walker (viewscreen->control) has the current special, etc.
+    //if(has_special)
+    vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
+    //if(has_multiple_specials)
+    vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
+    //if(has_alternate)
+    vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
 }
 
 void sendFakeKeyDownEvent(int keycode)
@@ -437,6 +448,17 @@ void handle_events(SDL_Event *event)
                 && SWITCH_CHARACTER_BUTTON_Y <= y && y <= SWITCH_CHARACTER_BUTTON_Y + BUTTON_DIM*2)
             {
                 sendFakeKeyDownEvent(player_keys[0][KEY_SWITCH]);
+            }
+            else if(NEXT_SPECIAL_BUTTON_X <= x && x <= NEXT_SPECIAL_BUTTON_X + BUTTON_DIM*2
+                && NEXT_SPECIAL_BUTTON_Y <= y && y <= NEXT_SPECIAL_BUTTON_Y + BUTTON_DIM*2)
+            {
+                sendFakeKeyDownEvent(player_keys[0][KEY_SPECIAL_SWITCH]);
+            }
+            else if(ALTERNATE_SPECIAL_BUTTON_X <= x && x <= ALTERNATE_SPECIAL_BUTTON_X + BUTTON_DIM*2
+                && ALTERNATE_SPECIAL_BUTTON_Y <= y && y <= ALTERNATE_SPECIAL_BUTTON_Y + BUTTON_DIM*2)
+            {
+                // Treat KEY_SHIFTER as an action instead of a modifier
+                sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
             }
             else if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
             {

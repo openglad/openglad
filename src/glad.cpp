@@ -750,11 +750,24 @@ short new_score_panel(screen *myscreen, short do_it)
 					sprintf(message, "SPC: %s", myscreen->alternate_name[(int)control->query_family()][(int)control->current_special]);
 				else
 					sprintf(message, "SPC: %s", myscreen->special_name[(int)control->query_family()][(int)control->current_special]);
+					
                 
 				if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
 					mytext->write_xy(lm+2, bm + special_offset, message, text_color, (short) 1);
 				else
 					mytext->write_xy(lm+2, bm + special_offset, message, (unsigned char) RED, (short) 1);
+                
+                #ifdef ANDROID
+                // Alternate special name (if not "NONE")
+				if (strcmp(myscreen->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE") )
+                {
+					sprintf(message, "ALT: %s", myscreen->alternate_name[(int)control->query_family()][(int)control->current_special]);
+                    if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
+                        mytext->write_xy(lm+2, bm + special_offset + 8, message, text_color, (short) 1);
+                    else
+                        mytext->write_xy(lm+2, bm + special_offset + 8, message, (unsigned char) RED, (short) 1);
+                }
+                #endif
 
 			} // end of score/exp display
 

@@ -808,11 +808,20 @@ short viewscreen::input(const SDL_Event& event)
 	// Make sure we're not performing some queued action ..
 	if (!control->stats->commandlist)
 	{
-
+	    #ifdef ANDROID
+	    // Treat this as an action, not a modifier
+		if (didPlayerPressKey(mynum, KEY_SHIFTER, event))
+        {
+            control->shifter_down = 1;
+			control->special();
+			control->shifter_down = 0;
+        }
+	    #else
 		if (didPlayerPressKey(mynum, KEY_SHIFTER, event))
 			control->shifter_down = 1;
 		else
 			control->shifter_down = 0;
+        #endif
 
 		if (didPlayerPressKey(mynum, KEY_SPECIAL, event))
 		{
@@ -965,11 +974,13 @@ short viewscreen::continuous_input()
 	// Make sure we're not performing some queued action ..
 	if (!control->stats->commandlist)
 	{
-
+        #ifndef ANDROID
+        // Android will handle this as an action in input() instead.
 		if (isPlayerHoldingKey(mynum, KEY_SHIFTER))
 			control->shifter_down = 1;
 		else
 			control->shifter_down = 0;
+        #endif
 
 		/* Danged testing code confused the hell out of me!! (Zardus) Who's idea was to put this in?
 		 * // Testing ..
@@ -979,7 +990,7 @@ short viewscreen::continuous_input()
 			}
 		*/
 
-        // Holding Special key
+        // Holding Special key for rapid use (I don't think that's a good idea - MP drain)
 		/*if (isPlayerHoldingKey(mynum, KEY_SPECIAL))
 		{
 			control->special();
