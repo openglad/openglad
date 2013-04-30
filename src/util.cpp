@@ -400,7 +400,7 @@ char * get_file_path(const char * file, const char * pos_dir, const char * attr)
         }
     }
 
-    /*filepath = DATADIR;
+    /*filepath = OG_DATADIR;
     filepath += pos_dir;
     filepath += file;
 

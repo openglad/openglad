@@ -11,7 +11,7 @@ test "x$datadir" = 'x${prefix}/share' && datadir=${prefix}/share/games/openglad
 test "x$bindir" = 'x${exec_prefix}/bin' && bindir=${exec_prefix}/games
 
 AC_DEFINE_UNQUOTED(SYSCONFDIR, "$sysconfdir/",  [Config file directory])
-AC_DEFINE_UNQUOTED(DATADIR, "$datadir/", [Data file directory])
+AC_DEFINE_UNQUOTED(OG_DATADIR, "$datadir/", [Data file directory])
 
 # Checks for programs.
 AC_PROG_CXX

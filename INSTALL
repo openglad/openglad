@@ -14,8 +14,8 @@ Linux/FreeBSD/OpenBSD/Other Unixes
 
 Note: if you are installing without use of autoconf,
 you will need to create a config.h file with proper
-defines (such as DATADIR), then install Openglad into
-DATADIR.
+defines (such as OG_DATADIR), then install Openglad into
+OG_DATADIR.
 
 =======
 Windows

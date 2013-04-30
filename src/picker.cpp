@@ -1793,6 +1793,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
     clear_keyboard();
     Uint8* keyboard = query_keyboard();
 	
+	// FIXME: Change this to use events instead of key states so the keyboard method works right again.
     int retvalue = 0;
 	while (retvalue == 0)
 	{
@@ -4261,14 +4262,14 @@ char* browse(screen *screenp)
     int selected_entry = -1;
     
     // Buttons
-    int screenW = 320;
-    int screenH = 200;
-    SDL_Rect prev = {screenW - 150, 20, 30, 10};
-    SDL_Rect next = {screenW - 150, screenH - 50, 30, 10};
-    SDL_Rect descbox = {prev.x - 40, prev.y + 15, 185, next.y - 10 - (prev.y + prev.h)};
+    Sint16 screenW = 320;
+    Sint16 screenH = 200;
+    SDL_Rect prev = {Sint16(screenW - 150), 20, 30, 10};
+    SDL_Rect next = {Sint16(screenW - 150), Sint16(screenH - 50), 30, 10};
+    SDL_Rect descbox = {Sint16(prev.x - 40), Sint16(prev.y + 15), 185, Uint16(next.y - 10 - (prev.y + prev.h))};
     
-    SDL_Rect choose = {screenW - 50, screenH - 30, 30, 10};
-    SDL_Rect cancel = {screenW - 100, screenH - 30, 38, 10};
+    SDL_Rect choose = {Sint16(screenW - 50), Sint16(screenH - 30), 30, 10};
+    SDL_Rect cancel = {Sint16(screenW - 100), Sint16(screenH - 30), 38, 10};
     
     bool done = false;
 	while (!done)
@@ -4410,7 +4411,7 @@ char* browse(screen *screenp)
                         int y = entries[i]->radars->yloc;
                         int w = entries[i]->radars->xview;
                         int h = entries[i]->radars->yview;
-                        SDL_Rect b = {x - 2, y - 2, w + 2, h + 2};
+                        SDL_Rect b = {Sint16(x - 2), Sint16(y - 2), Uint16(w + 2), Uint16(h + 2)};
                         if(b.x <= mx && mx <= b.x+b.w
                            && b.y <= my && my <= b.y+b.h)
                            {
