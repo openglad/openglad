@@ -52,16 +52,16 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
-					<Add directory="../../../bdcode/externals/SDL/include/SDL" />
-					<Add directory="../../../bdcode/externals/SDL_mixer/include" />
+					<Add directory="../../bdcode/externals/SDL/include/SDL" />
+					<Add directory="../../bdcode/externals/SDL_mixer/include" />
 				</Compiler>
 				<Linker>
 					<Add library="mingw32" />
 					<Add library="SDLmain" />
 					<Add library="SDL" />
 					<Add library="SDL_mixer" />
-					<Add directory="../../../bdcode/externals/SDL/lib_windows" />
-					<Add directory="../../../bdcode/externals/SDL_mixer/lib_windows" />
+					<Add directory="../../bdcode/externals/SDL/lib_windows" />
+					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
 				</Linker>
 				<ExtraCommands>
 					<Add after="util\gladpack.exe p graphics.001 pix\*.pix" />
@@ -98,16 +98,16 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
-					<Add directory="../../../bdcode/externals/SDL2/include/SDL2" />
-					<Add directory="../../../bdcode/externals/SDL_mixer/include" />
+					<Add directory="../../bdcode/externals/SDL2/include/SDL2" />
+					<Add directory="../../bdcode/externals/SDL_mixer/include" />
 				</Compiler>
 				<Linker>
 					<Add library="mingw32" />
 					<Add library="SDL2main" />
 					<Add library="SDL2" />
 					<Add library="SDL2_mixer" />
-					<Add directory="../../../bdcode/externals/SDL2/lib_windows" />
-					<Add directory="../../../bdcode/externals/SDL_mixer/lib_windows" />
+					<Add directory="../../bdcode/externals/SDL2/lib_windows" />
+					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
 				</Linker>
 				<ExtraCommands>
 					<Add after="util\gladpack.exe p graphics.001 pix\*.pix" />
