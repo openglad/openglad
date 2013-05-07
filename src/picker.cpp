@@ -3773,8 +3773,9 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
 {
     int num = 0;
     int level_sum = 0;
-    
-    int level_sum_friends = 0;
+    int difficulty_sum = 0;
+    int difficulty_sum_friends = 0;
+    int diff_per_level = 3;
     
     int max_level = 0;
     exits.clear();
@@ -3793,12 +3794,13 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
                     {
                         num++;
                         level_sum += ob->stats->level;
+                        difficulty_sum += diff_per_level*ob->stats->level;
                         if(ob->stats->level > max_level)
                             max_level = ob->stats->level;
                     }
                     else
                     {
-                        level_sum_friends += ob->stats->level;
+                        difficulty_sum_friends += diff_per_level*ob->stats->level;
                     }
                 break;
 		    }
@@ -3835,7 +3837,7 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
     else
         *average_enemy_level = level_sum/float(num);
     
-    *difficulty = level_sum - level_sum_friends;
+    *difficulty = difficulty_sum - difficulty_sum_friends;
     
     exits.sort();
     exits.unique();
@@ -4261,6 +4263,16 @@ char* browse(screen *screenp)
     
     int selected_entry = -1;
     
+    // Figure out how good the player's army is
+    int army_power = 0;
+	for(int i=0; i<MAXTEAM; i++)
+	{
+		if (ourteam[i])
+		{
+		    army_power += 3*ourteam[i]->level;
+		}
+	}
+    
     // Buttons
     Sint16 screenW = 320;
     Sint16 screenH = 200;
@@ -4426,6 +4438,10 @@ char* browse(screen *screenp)
         
         // Draw
         screenp->clearscreen();
+        
+        char buf[20];
+        snprintf(buf, 20, "Army power: %d", army_power);
+        loadtext->write_xy(prev.x + 50, prev.y + 2, buf, RED, 1);
         
         screenp->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
         loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
