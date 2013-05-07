@@ -60,13 +60,13 @@ void intro_main(Sint32 argc, char** argv)
 
 
 	myscreen->clear();
-	//gladdata = read_pixie_file("3mages2.pix");
-	//gladiator = new pixie(gladdata+3, gladdata[1],
-	//                      gladdata[2], myscreen);
-	//gladiator->drawMix(120,55,myscreen->viewob[0]);
-	mytext->write_y(100,"DinoMage Games presents", 230, myscreen->viewob[0]);
-	//delete gladiator;
-	//free(gladdata);
+	gladdata = read_pixie_file("dinomage.pix");
+	gladiator = new pixie(gladdata+3, gladdata[1],
+	                      gladdata[2], myscreen);
+	gladiator->drawMix(120,55,myscreen->viewob[0]);
+	mytext->write_y(120,"DinoMage Games presents", 230, myscreen->viewob[0]);
+	delete gladiator;
+	free(gladdata);
 
 	if (show() < 0)
 	{
@@ -97,24 +97,14 @@ void intro_main(Sint32 argc, char** argv)
 		cleanup();
 		return;
 	}
-
-	myscreen->clear();
-	mytext->write_y(70,"THOSE WHO ARE ABOUT TO DIE SALUTE YOU", 230, myscreen->viewob[0]);
-
-	if (show() < 0)
-	{
-		delete mytext;
-		cleanup();
-		return;
-	}
 	
 	myscreen->clear();
 	gladdata = read_pixie_file("3mages2.pix");
 	gladiator = new pixie(gladdata+3, gladdata[1],
 	                      gladdata[2], myscreen);
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
-	mytext->write_y(100,"GAME BY", 230, myscreen->viewob[0]);
-	mytext->write_y(120,"FORGOTTEN SAGES", 230, myscreen->viewob[0]);
+	mytext->write_y(100,"GAME BY   ", 230, myscreen->viewob[0]);
+	mytext->write_y(120,"FORGOTTEN SAGES   ", 230, myscreen->viewob[0]);
 	delete gladiator;
 	free(gladdata);
 
@@ -187,11 +177,9 @@ void intro_main(Sint32 argc, char** argv)
 
 	// Programming Credits, Page 2
 	myscreen->clear();
-	mytext->write_y(90,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
-	mytext->write_y(110,"SDL port by Odo and Zardus",230,myscreen->viewob[0]);
-	#ifdef ANDROID
-	mytext->write_y(130,"Android port by Jonathan Dearborn",230,myscreen->viewob[0]);
-	#endif
+	mytext->write_y(70,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
+	mytext->write_y(90,"SDL port by Odo and Zardus",230,myscreen->viewob[0]);
+	mytext->write_y(110,"Android port by Jonathan Dearborn",230,myscreen->viewob[0]);
 
 	if (show() < 0)
 	{
