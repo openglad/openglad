@@ -299,19 +299,12 @@ void picker_quit()
 
 button buttons1[] =
     {
-        { "", SDLK_b, 80, 50, 140, 20, BEGINMENU, -1 }, // BEGIN NEW GAME
-        { "CONTINUE GAME", SDLK_c, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 },
+        { "", SDLK_b, 80, 70, 140, 20, BEGINMENU, -1 }, // BEGIN NEW GAME
+        { "CONTINUE GAME", SDLK_c, 80, 95, 140, 20, CREATE_TEAM_MENU, -1 },
 
-        { "4 PLAYER", SDLK_4, 152,125,68,20, SET_PLAYER_MODE, 4 },
-        { "3 PLAYER", SDLK_3, 80,125,68,20, SET_PLAYER_MODE,3 },
-        { "2 PLAYER", SDLK_2, 152,100,68,20, SET_PLAYER_MODE,2 },
-        { "1 PLAYER", SDLK_1, 80,100,68,20, SET_PLAYER_MODE,1 },
+        { "DIFFICULTY", SDLK_d, 80, 120, 140, 10, SET_DIFFICULTY, -1},
 
-        { "DIFFICULTY", SDLK_d, 80, 148, 140, 10, SET_DIFFICULTY, -1},
-
-        { "Player-v-Player: Allied", SDLK_p, 80, 160, 140, 10, ALLIED_MODE, -1},
-
-        { "QUIT", SDLK_ESCAPE, 80, 175, 140, 20, QUIT_MENU, -1 },
+        { "QUIT", SDLK_ESCAPE, 80, 135, 140, 20, QUIT_MENU, -1 },
     };
 
 button bteam[] =
@@ -545,48 +538,14 @@ Sint32 mainmenu(Sint32 arg1)
 	if (localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
 
-	localbuttons = buttonmenu(buttons1, 9);
+	localbuttons = buttonmenu(buttons1, 4);
 	myscreen->clearbuffer();
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
 
 	tempbuttons = localbuttons;
 	count = 0;
-	if (playermode==4)
-	{
-		allbuttons[2]->do_outline = 1;
-		allbuttons[3]->do_outline = 0;
-		allbuttons[4]->do_outline = 0;
-		allbuttons[5]->do_outline = 0;
-	}
-	else if (playermode==3)
-	{
-		allbuttons[2]->do_outline = 0;
-		allbuttons[3]->do_outline = 1;
-		allbuttons[4]->do_outline = 0;
-		allbuttons[5]->do_outline = 0;
-	}
-	else if (playermode==2)
-	{
-		allbuttons[2]->do_outline = 0;
-		allbuttons[3]->do_outline = 0;
-		allbuttons[4]->do_outline = 1;
-		allbuttons[5]->do_outline = 0;
-	}
-	else
-	{
-		allbuttons[2]->do_outline = 0;
-		allbuttons[3]->do_outline = 0;
-		allbuttons[4]->do_outline = 0;
-		allbuttons[5]->do_outline = 1;
-	}
 	sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-	strcpy(allbuttons[6]->label, message);
-
-	// Show the allied mode
-	if (myscreen->allied_mode)
-		strcpy(allbuttons[7]->label, "Player-v-Player: Allied");
-	else
-		strcpy(allbuttons[7]->label, "Player-v-Player: Enemy");
+	strcpy(allbuttons[2]->label, message);
 
 	while (allbuttons[count])
 	{
@@ -626,19 +585,13 @@ Sint32 mainmenu(Sint32 arg1)
 			{
 				myscreen->clearbuffer();
 				delete(localbuttons);
-				localbuttons = buttonmenu(buttons1, 9);
+				localbuttons = buttonmenu(buttons1, 4);
 				
 				myscreen->clearfontbuffer();
 				
 				count = 0;
 				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-				strcpy(allbuttons[6]->label, message);
-
-				// Show the allied mode
-				if (myscreen->allied_mode)
-					strcpy(allbuttons[7]->label, "Player-v-Player: Allied");
-				else
-					strcpy(allbuttons[7]->label, "Player-v-Player: Enemy");
+				strcpy(allbuttons[2]->label, message);
 
 				while (allbuttons[count])
 				{
@@ -662,59 +615,8 @@ Sint32 mainmenu(Sint32 arg1)
 				//magepix->next_frame();
 
 
-				if (playermode==4)
-				{
-					allbuttons[2]->do_outline = 1;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (playermode==3)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 1;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (playermode==2)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 1;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 1;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-
 				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-				strcpy(allbuttons[6]->label, message);
-
-				// Show the allied mode
-				if (myscreen->allied_mode)
-					strcpy(allbuttons[7]->label, "Player-v-Player: Allied");
-				else
-					strcpy(allbuttons[7]->label, "Player-v-Player: Enemy");
+				strcpy(allbuttons[2]->label, message);
 
 				//myscreen->refresh();
 				grab_mouse();
@@ -724,60 +626,9 @@ Sint32 mainmenu(Sint32 arg1)
 			{
 				tempbuttons = localbuttons;
 				count = 0;
-				if (playermode==4)
-				{
-					allbuttons[2]->do_outline = 1;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (playermode==3)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 1;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (playermode==2)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 1;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 1;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
 
 				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-				strcpy(allbuttons[6]->label, message);
-
-				// Show the allied mode
-				if (myscreen->allied_mode)
-					sprintf(message, "Player-v-Player: Allied");
-				else
-					sprintf(message, "Player-v-Player: Enemy");
-				strcpy(allbuttons[7]->label, message);
+				strcpy(allbuttons[2]->label, message);
 
 				tempbuttons = localbuttons;
 				count = 0;
@@ -4575,9 +4426,9 @@ char* browse(screen *screenp)
 
 	           current_difficulty = (current_difficulty + 1) % DIFFICULTY_SETTINGS;
 	           sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-	           strcpy(allbuttons[6]->label, message);
+	           strcpy(allbuttons[2]->label, message);
 
-	           //allbuttons[6]->vdisplay();
+	           //allbuttons[2]->vdisplay();
 	           //myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	           return OK;
