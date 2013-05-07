@@ -28,6 +28,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "parser.h"
+#include "util.h"
 
 using namespace std;
 
@@ -40,8 +41,8 @@ bool cfg_store::parse(const char *filename)
 	ifstream in(filename);
 	if(!in)
 	{
-		cerr << "Could not open config file. Using defaults." << endl;
-		data["sound"]["sound"] = "off";
+		Log("Could not open config file. Using defaults.");
+		data["sound"]["sound"] = "on";
 		data["graphics"]["render"] = "normal";
 		return false;
 	}
@@ -58,7 +59,7 @@ bool cfg_store::parse(const char *filename)
 		{
 			if (section == NULL)
 			{
-				cerr << "entry outside section\n";
+				Log("entry outside section\n");
 				return false;
 			}
 			pair<string, string> entry(line.substr(0,pos),
@@ -68,7 +69,7 @@ bool cfg_store::parse(const char *filename)
 #if 0
 		else
 		{
-			cerr << "strange line:\n" << line << endl;
+			Log("strange line: %s\n", line);
 			return false;
 		}
 #endif
@@ -109,41 +110,41 @@ Usage: open(glad|scen) [-d -f ...]\n\
 			switch(argv[argnum][1])
 			{
 				case 'h':
-					std::cout << helpmsg;
+					Log("%s", helpmsg);
 					exit (0);
 				case 'v':
-					std::cout << versmsg;
+					Log("%s", versmsg);
 					exit (0);
 				case 's':
 					data["sound"]["sound"] = "on";
-					std::cout << "Sound is on." << std::endl;
+					Log("Sound is on.");
 					break;
 				case 'S':
 					data["sound"]["sound"] = "off";
-					std::cout << "Sound is off." << std::endl;
+					Log("Sound is off.");
 					break;
 				case 'n':
 					data["graphics"]["render"] = "normal";
-					std::cout << "Screen Resolution set to 320x200." << std::endl;
+					Log("Screen Resolution set to 320x200.");
 					break;
 				case 'd':
 					data["graphics"]["render"] = "double";
-					std::cout << "Screen Resolution set to 640x400 (basic mode)." << std::endl;
+					Log("Screen Resolution set to 640x400 (basic mode).");
 					break;
 				case 'e':
 					data["graphics"]["render"] = "eagle";
-					std::cout << "Screen Resolution set to 640x400 (eagle mode)." << std::endl;
+					Log("Screen Resolution set to 640x400 (eagle mode).");
 					break;
 				case 'x':
 					data["graphics"]["render"] = "sai";
-					std::cout << "Screen Resolution set to 640x400 (sai2x mode)." << std::endl;
+					Log("Screen Resolution set to 640x400 (sai2x mode).");
 					break;
 				case 'f':
 					data["graphics"]["fullscreen"] = "on";
-					std::cout << "Running in fullscreen mode." << std::endl;
+					Log("Running in fullscreen mode.");
 					break;
 				default:
-					std::cout << "Unknown argument " << argv[argnum] << " ignored." << std::endl;
+					Log("Unknown argument %s ignored.", argv[argnum]);
 			}
 		}
 	}
@@ -185,8 +186,7 @@ const char *cfg_store::query(const char *section, const char *entry)
 			return a2->second.c_str();
 	}
 #if 0	// desired behavior now.  null replies mean use the default.
-	cerr << "config variable not found: section: " << section
-	     << " entry: " << entry << endl;
+	Log("config variable not found: section: %s entry: %s", section, entry);
 #endif
 	return NULL;
 }
