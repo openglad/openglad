@@ -3298,6 +3298,24 @@ Sint32 return_menu(Sint32 arg)
 				           WR(8 ,"  strength of attacks. ");
 			           }
 			           break;
+		           case FAMILY_BARBARIAN:
+			           sprintf(message, "Level %d barbarian has:", thisguy->level);
+			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+			           // Level 1 things (hurl boulder)
+			           WL(2, " Hurl Boulder");
+			           WL(3, "  Throw a massive stone");
+			           WL(4, "  boulder at your      ");
+			           WL(5, "  enemies.             ");
+			           // Level 4 things (exploding boulder)
+			           if (thisguy->level >= 4)
+			           {
+				           WL(7, " Exploding Boulder");
+				           WL(8, "  Hurl a boulder so hard ");
+				           WL(9, "  that it explodes and   ");
+				           WL(10,"  hits foes all around.  ");
+			           }
+			           break;
 		           case FAMILY_ELF:
 			           sprintf(message, "Level %d elf has:", thisguy->level);
 			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);

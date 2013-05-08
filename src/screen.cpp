@@ -253,8 +253,8 @@ screen::screen(short howmany):video()
 	strcpy(special_name[FAMILY_SOLDIER][3], "WHIRLWIND");
 	strcpy(special_name[FAMILY_SOLDIER][4], "DISARM");
 
-	strcpy(special_name[FAMILY_BARBARIAN][1], "Hurl Boulder");
-	strcpy(special_name[FAMILY_BARBARIAN][2], "Exploding Boulder");
+	strcpy(special_name[FAMILY_BARBARIAN][1], "HURL BOULDER");
+	strcpy(special_name[FAMILY_BARBARIAN][2], "EXPLODING BOULDER");
 
 	strcpy(special_name[FAMILY_ELF][1], "ROCKS");
 	strcpy(special_name[FAMILY_ELF][2], "BOUNCING ROCKS");
@@ -288,7 +288,7 @@ screen::screen(short howmany):video()
 	strcpy(alternate_name[FAMILY_CLERIC][2], "TURN UNDEAD");
 	strcpy(special_name[FAMILY_CLERIC][3], "RAISE GHOST");
 	strcpy(alternate_name[FAMILY_CLERIC][3], "TURN UNDEAD");
-	strcpy(special_name[FAMILY_CLERIC][4], "RESSURECT");
+	strcpy(special_name[FAMILY_CLERIC][4], "RESURRECT");
 
 	strcpy(special_name[FAMILY_DRUID][1], "GROW TREE");
 	strcpy(special_name[FAMILY_DRUID][2], "SUMMON FAERIE");
