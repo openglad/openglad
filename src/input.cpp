@@ -238,10 +238,26 @@ void get_input_events(bool type)
 #include "walker.h"
 
 static bool loaded_touch_images = false;
+
 pixie* moving_base_pix = NULL;
 unsigned char* moving_base_pix_data = NULL;
-static const int touch_image_alpha = 50;
 
+pixie* moving_target_pix = NULL;
+unsigned char* moving_target_pix_data = NULL;
+
+pixie* fire_button_pix = NULL;
+unsigned char* fire_button_pix_data = NULL;
+pixie* special_button_pix = NULL;
+unsigned char* special_button_pix_data = NULL;
+pixie* next_special_button_pix = NULL;
+unsigned char* next_special_button_pix_data = NULL;
+pixie* alternate_special_button_pix = NULL;
+unsigned char* alternate_special_button_pix_data = NULL;
+
+static const int touch_motion_alpha = 100;
+static const int touch_button_alpha = 100;
+
+// TODO: Clean up the memory allocated here...
 void load_touch_images(screen* myscreen)
 {
     loaded_touch_images = true;
@@ -250,12 +266,32 @@ void load_touch_images(screen* myscreen)
 	moving_base_pix = new pixie(moving_base_pix_data + 3, (int)moving_base_pix_data[1],
 	                      (int)moving_base_pix_data[2], myscreen);
     
+    moving_target_pix_data = read_pixie_file("moving_target.pix");
+	moving_target_pix = new pixie(moving_target_pix_data + 3, (int)moving_target_pix_data[1],
+	                      (int)moving_target_pix_data[2], myscreen);
+    
+    fire_button_pix_data = read_pixie_file("fire_button.pix");
+	fire_button_pix = new pixie(fire_button_pix_data + 3, (int)fire_button_pix_data[1],
+	                      (int)fire_button_pix_data[2], myscreen);
+    
+    special_button_pix_data = read_pixie_file("special_button.pix");
+	special_button_pix = new pixie(special_button_pix_data + 3, (int)special_button_pix_data[1],
+	                      (int)special_button_pix_data[2], myscreen);
+    
+    next_special_button_pix_data = read_pixie_file("next_special_button.pix");
+	next_special_button_pix = new pixie(next_special_button_pix_data + 3, (int)next_special_button_pix_data[1],
+	                      (int)next_special_button_pix_data[2], myscreen);
+    
+    alternate_special_button_pix_data = read_pixie_file("alternate_button.pix");
+	alternate_special_button_pix = new pixie(alternate_special_button_pix_data + 3, (int)alternate_special_button_pix_data[1],
+	                      (int)alternate_special_button_pix_data[2], myscreen);
+    
 }
 
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
-    if(control == NULL)
+    if(control == NULL || control->dead)
         return;
     
     if(!loaded_touch_images)
@@ -265,28 +301,37 @@ void draw_touch_controls(screen* vob)
     {
         // Touch movement feedback
         //line(moving_touch_x, moving_touch_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
-        moving_base_pix->put_screen(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, touch_image_alpha);
+        moving_base_pix->put_screen(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, touch_motion_alpha);
         
-        vob->fastbox(moving_touch_x - 4, moving_touch_y - 4, 8, 8, 16);
-        vob->fastbox(mouse_state[MOUSE_X] - 2, mouse_state[MOUSE_Y] - 2, 4, 4, 15);
+        moving_target_pix->put_screen(mouse_state[MOUSE_X] - 15, mouse_state[MOUSE_Y] - 15, touch_motion_alpha);
     }
     
     // Touch buttons
-    vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 25);
+    fire_button_pix->put_screen(FIRE_BUTTON_X, FIRE_BUTTON_Y, touch_button_alpha);
     
     //if(has_special)
     if(strcmp(vob->special_name[(int)control->query_family()][(int)control->current_special], "NONE"))
-        vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
+    {
+        int alpha = touch_button_alpha;
+        if (control->stats->magicpoints < control->stats->special_cost[(int)control->current_special])
+            alpha /= 2;
+        special_button_pix->put_screen(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, alpha);
+    }
     
     //if(has_multiple_specials)
     if(control->current_special != 1 && !((control->current_special > (NUM_SPECIALS-1)
 		        || !(strcmp(vob->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
 		        || (((control->current_special-1)*3+1) > control->stats->level) )))
-        vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
+        next_special_button_pix->put_screen(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, touch_button_alpha);
     
     //if(has_alternate)
     if(strcmp(vob->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE"))
-        vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
+    {
+        int alpha = touch_button_alpha;
+        if (control->stats->magicpoints < control->stats->special_cost[(int)control->current_special])
+            alpha /= 2;
+        alternate_special_button_pix->put_screen(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, alpha);
+    }
 }
 
 void sendFakeKeyDownEvent(int keycode)
