@@ -119,6 +119,7 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 			<Add option="-DFAKE_TOUCH_EVENTS" />
+			<Add option="-DNO_BLOOD" />
 		</Compiler>
 		<Unit filename="src/base.h" />
 		<Unit filename="src/button.cpp" />
