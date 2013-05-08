@@ -348,6 +348,43 @@ void handle_events(SDL_Event *event)
         #endif
         break;
 #else
+#ifdef FAKE_TOUCH_EVENTS
+    case SDL_MOUSEMOTION:
+        {
+            SDL_Event e;
+            e.type = SDL_FINGERMOTION;
+            e.tfinger.x = event->motion.x/640.0f;
+            e.tfinger.y = event->motion.y/400.0f;
+            e.tfinger.dx = event->motion.xrel/640.0f;
+            e.tfinger.dy = event->motion.yrel/400.0f;
+            e.tfinger.touchId = 1;
+            e.tfinger.fingerId = 1;
+            SDL_PushEvent(&e);
+        }
+        break;
+    case SDL_MOUSEBUTTONUP:
+        {
+            SDL_Event e;
+            e.type = SDL_FINGERUP;
+            e.tfinger.x = event->button.x/640.0f;
+            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.touchId = 1;
+            e.tfinger.fingerId = 1;
+            SDL_PushEvent(&e);
+        }
+        break;
+    case SDL_MOUSEBUTTONDOWN:
+        {
+            SDL_Event e;
+            e.type = SDL_FINGERDOWN;
+            e.tfinger.x = event->button.x/640.0f;
+            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.touchId = 1;
+            e.tfinger.fingerId = 1;
+            SDL_PushEvent(&e);
+        }
+        break;
+#endif
         // Mouse event
     case SDL_FINGERMOTION:
         {
