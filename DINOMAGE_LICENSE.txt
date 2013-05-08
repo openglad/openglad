@@ -1,0 +1,7 @@
+Portions of this software are copyrighted by Jonathan Dearborn 2013.
+
+All source code is released under the GNU General Public License (GPL) version 2 or greater.  See COPYING file for details of that license.
+
+All non-source assets that are found in the dinomage-android branch and not in the master repository branch are not licensed for distribution.  This includes the DinoMage Games logo, pix files, image files, custom scenarios, sound effects, and potentially others.  You may use them for your own personal purposes, but distributing them in any form or distributing modified versions is not allowed.  The main reason for this is to make it clear that you are not allowed to distribute a version of these assets, implying that they are yours or that you are affiliated with DinoMage Games.
+
+If you need different licensing options, contact games@dinomage.com for info.
