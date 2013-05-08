@@ -571,7 +571,7 @@ short viewscreen::input(const SDL_Event& event)
 	oblink  *helpme;
 
 	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay
-     #if defined(ANDROID) || defined(FAKE_TOUCH_EVENTS)
+     #ifdef USE_TOUCH_INPUT
 	        && isPlayerHoldingKey(mynum, KEY_SHIFTER)  // inverted logic
      #else
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
@@ -601,7 +601,7 @@ short viewscreen::input(const SDL_Event& event)
 
 	//summon team defense
 	if (didPlayerPressKey(mynum, KEY_YELL, event)
-     #if defined(ANDROID) || defined(FAKE_TOUCH_EVENTS)
+     #ifdef USE_TOUCH_INPUT
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)  // inverted logic
      #else
 	        && isPlayerHoldingKey(mynum, KEY_SHIFTER)
@@ -626,7 +626,7 @@ short viewscreen::input(const SDL_Event& event)
 					helpme = helpme->next;
 				}
                     
-                #if defined(ANDROID) || defined(FAKE_TOUCH_EVENTS)
+                #ifdef USE_TOUCH_INPUT
                 control->screenp->soundp->play_sound(SOUND_YO);
                 #endif
 				control->screenp->do_notify("SUMMONING DEFENSE!", control);

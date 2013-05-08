@@ -31,9 +31,6 @@
 #endif
 
 
-#ifdef FAKE_TOUCH_EVENTS
-#define ANDROID
-#endif
 
 void quit(Sint32 arg1);
 
