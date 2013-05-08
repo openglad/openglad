@@ -52,75 +52,6 @@ static const char *get_filename_ext(const char *filename)
     return dot + 1;
 }
 
-void convert_pix_to_png(const char* filename)
-{
-	FILE *file;
-	unsigned char numframes, x, y;
-	unsigned char *data;
-	int i, j;
-	int frame = 1;
-    
-	if(!(file=fopen(filename,"rb"))) {
-		printf("error while trying to open %s\n", filename);
-		exit(0);
-	}
-
-	fread(&numframes,1,1,file);
-	fread(&x,1,1,file);
-	fread(&y,1,1,file);
-
-	data = (unsigned char *)malloc(numframes*x*y);
-	fread(data,1,(numframes*x*y),file);
-
-	printf("=================== %s ===================\n", filename);
-	printf("num of frames: %d\nx: %d\ny: %d\n",numframes,x,y);
-	
-	SDL_Init(SDL_INIT_VIDEO);
-	
-	printf("Saving pix frames to png\n");
-	for(frame = 1; frame <= numframes; frame++)
-    {
-        SDL_Surface* pixie = SDL_CreateRGBSurface(SDL_SWSURFACE, x, y, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
-        
-        // Draw sprite frame
-        for (i = 0; i < y; i++)
-        {
-            for (j = 0; j < x; j++)
-            {
-                SDL_Rect rect;
-                int r, g, b, c, d;
-
-                d = data[(frame - 1) * x * y + i * x + j];
-                r = ourcolors[d * 3] * 4;
-                g = ourcolors[d * 3 + 1] * 4;
-                b = ourcolors[d * 3 + 2] * 4;
-
-                rect.x = j;
-                rect.y = i;
-                rect.w = 1;
-                rect.h = 1;
-                
-                if(r > 0 || g > 0 || b > 0)
-                {
-                    c = SDL_MapRGB(pixie->format, r, g, b);
-
-                    SDL_FillRect(pixie,&rect,c);
-                }
-            }
-        }
-        
-        // Save result
-        char buf[200];
-        snprintf(buf, 200, "%s%d.png", filename, frame);
-        SDL_SavePNG(pixie, buf);
-        printf("Frame saved: %s\n", buf);
-    }
-
-
-	free(data);
-	fclose(file);
-}
-
 
 static inline Uint32 getPixel(SDL_Surface *Surface, int x, int y)
 {
@@ -196,34 +127,73 @@ int get_color_index(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
     return 0;
 }
 
-void convert_to_pix(const char* filename)
+// Raw data loader from any format
+unsigned char* load_pix_data(const char* filename, unsigned char* numframes, unsigned char* width, unsigned char* height)
 {
+    // A pix file to load
+    if(strcmp(get_filename_ext(filename), "pix") == 0)
+    {
+        printf("Reading pix file: %s\n",filename);
+        
+        FILE *file;
+        unsigned char *data;
+        
+        if(!(file=fopen(filename,"rb")))
+        {
+            printf("Failed to open %s\n", filename);
+            exit(1);
+        }
+
+        fread(numframes,1,1,file);
+        fread(width,1,1,file);
+        fread(height,1,1,file);
+        
+        int size = (*numframes)*(*width)*(*height);
+        data = (unsigned char *)malloc(size);
+        fread(data,1,size,file);
+        
+        fclose(file);
+        return data;
+    }
+    
+    // A standard image type to load
+    printf("Reading image: %s\n", filename);
+    
+    // An image file to load
     SDL_Surface* surface = IMG_Load(filename);
     if(surface == NULL)
     {
         printf("Failed to load %s\n", filename);
-        return;
+        exit(1);
     }
     
+    if(surface->w > 255)
+    {
+        printf("File %s has width that is too big for a pix (>255)\n", filename);
+        exit(1);
+    }
+    if(surface->h > 255)
+    {
+        printf("File %s has height that is too big for a pix (>255)\n", filename);
+        exit(1);
+    }
     
+    *numframes = 1;
+    *width = surface->w;
+    *height = surface->h;
     
-    char outname[200];
-    snprintf(outname, 200, "%s.pix", filename);
-    FILE* outfile;
-    int numframes = 1;
-    int x = surface->w;
-    int y = surface->h;
-    
-    
-	unsigned char* data = (unsigned char *)malloc(numframes*x*y);
-	int frame = 1;
+    int size = (*numframes)*(*width)*(*height);
+	unsigned char* data = (unsigned char *)malloc(size);
+	int frame = 1;  // Only one
 	
 	// Fill with pixel data
+	int x = *width;
+	int y = *height;
 	int i;
 	int j;
-    for (i = 0; i < y; i++)
+    for (i = 0; i < *height; i++)
     {
-        for (j = 0; j < x; j++)
+        for (j = 0; j < *width; j++)
         {
             Uint8 r, g, b, a;
             Uint32 c;
@@ -234,8 +204,21 @@ void convert_to_pix(const char* filename)
             data[(frame - 1) * x * y + i * x + j] = get_color_index(r, g, b, a);
         }
     }
-	
     
+    SDL_FreeSurface(surface);
+    return data;
+}
+
+void convert_to_pix(const char* filename)
+{
+    unsigned char numframes, x, y;
+    unsigned char* data = load_pix_data(filename, &numframes, &x, &y);
+    
+    // Save it to pix
+    char outname[200];
+    snprintf(outname, 200, "%s.pix", filename);
+    
+    FILE* outfile;
     outfile = fopen(outname, "wb");
     fwrite(&numframes, 1, 1, outfile);
     fwrite(&x, 1, 1, outfile);
@@ -246,29 +229,197 @@ void convert_to_pix(const char* filename)
     printf("File saved: %s\n", outname);
     
     free(data);
-    SDL_FreeSurface(surface);
+}
+
+
+void convert_to_png(const char* filename)
+{
+    unsigned char numframes, x, y;
+    unsigned char* data = load_pix_data(filename, &numframes, &x, &y);
+    
+	int i, j;
+	int frame;
+
+	printf("=================== %s ===================\n", filename);
+	printf("num of frames: %d\nx: %d\ny: %d\n",numframes,x,y);
+	
+	SDL_Init(SDL_INIT_VIDEO);
+	
+	printf("Saving pix frames to png\n");
+	for(frame = 1; frame <= numframes; frame++)
+    {
+        SDL_Surface* pixie = SDL_CreateRGBSurface(SDL_SWSURFACE, x, y, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
+        
+        // Draw sprite frame
+        for (i = 0; i < y; i++)
+        {
+            for (j = 0; j < x; j++)
+            {
+                SDL_Rect rect;
+                int r, g, b, c, d;
+
+                d = data[(frame - 1) * x * y + i * x + j];
+                r = ourcolors[d * 3] * 4;
+                g = ourcolors[d * 3 + 1] * 4;
+                b = ourcolors[d * 3 + 2] * 4;
+
+                rect.x = j;
+                rect.y = i;
+                rect.w = 1;
+                rect.h = 1;
+                
+                if(r > 0 || g > 0 || b > 0)
+                {
+                    c = SDL_MapRGB(pixie->format, r, g, b);
+
+                    SDL_FillRect(pixie,&rect,c);
+                }
+            }
+        }
+        
+        // Save result
+        char buf[200];
+        snprintf(buf, 200, "%s%d.png", filename, frame);
+        SDL_SavePNG(pixie, buf);
+        printf("Frame saved: %s\n", buf);
+    }
+
+
+	free(data);
+}
+
+void concatenate_pix(int numFiles, char** files)
+{
+    unsigned char total_frames = 0;
+    unsigned char numframes, width, height, w, h;
+    unsigned char* data;
+    
+    char outname[200];
+    FILE* outfile;
+    
+    char first = 1;
+    
+    int i;
+    for(i = 0; i < numFiles; i++)
+    {
+        char* filename = files[i];
+        data = load_pix_data(filename, &numframes, &w, &h);
+        
+        if(first)
+        {
+            first = 0;
+            
+            total_frames += numframes;
+            width = w;
+            height = h;
+            
+            // Open new file for writing
+            snprintf(outname, 200, "%s.pix", filename);
+            outfile = fopen(outname, "wb");
+            
+            fwrite(&total_frames, 1, 1, outfile);  // This will be rewritten later
+            fwrite(&width, 1, 1, outfile);
+            fwrite(&height, 1, 1, outfile);
+        }
+        else
+        {
+            if(w != width || h != height)
+            {
+                // Mismatched dims error
+                printf("File (%s) dimensions (%ux%u) do not match the output file (%ux%u).\n", filename, w, h, width, height);
+                fclose(outfile);
+                remove(outname);
+                exit(1);
+            }
+            
+            total_frames += numframes;
+        }
+        
+        fwrite(data, (numframes*w*h), 1, outfile);
+        free(data);
+    }
+    
+    // Go back to the beginning to update the number of frames
+    fseek(outfile, 0, SEEK_SET);
+    fwrite(&total_frames, 1, 1, outfile);
+    
+    printf("File saved: %s\n", outname);
+    fclose(outfile);
+}
+
+void parse_args(int argc, char **argv, int* mode, int* numFiles, char** files)
+{
+    int i = 1;
+    if(argc < 2)
+    {
+        // Error
+        *mode = 0;
+        return;
+    }
+    
+    // Normal conversion mode
+    *mode = 1;
+    
+    // Check for -c flag
+    if(strlen(argv[i]) == 2 && argv[i][0] == '-' && argv[i][1] == 'c')
+    {
+        // Concatenate files into one pix
+        *mode = 2;
+        i++;
+    }
+    
+    // Grab the rest of the files list
+    int j = 0;
+    while(i < argc)
+    {
+        files[j] = argv[i];
+        
+        j++;
+        i++;
+    }
+    
+    *numFiles = j;
 }
 
 int main(int argc, char **argv)
 {
-	if(argc != 2) {
-		printf("USAGE: pixconvert image.ext\n");
-		exit(0);
-	}
-    char* filename = argv[1];
-    Uint8 usingPix = (strcmp(get_filename_ext(filename), "pix") == 0);
+    int mode;
+    int numFiles;
+    char* files[argc];
+    parse_args(argc, argv, &mode, &numFiles, files);
     
-    if(usingPix)
+	switch(mode)
     {
-        printf("reading pixie: %s\n",filename);
-        convert_pix_to_png(filename);
-    }
-    else
-    {
-        printf("reading image: %s\n",filename);
-        convert_to_pix(filename);
-    }
+        case 0:
+            printf("USAGE:\n"
+                    "Convert image to pix:\n    pixconvert image.ext\n"
+                    "Convert pix to png:\n    pixconvert image.pix\n"
+                    "Concatenate pix into multiframe/animated pix:\n    pixconvert -c image1.ext image2.ext ...\n"
+                    );
+            return 1;
+        case 1:
+            {
+                int i;
+                for(i = 0; i < numFiles; i++)
+                {
+                    char* filename = files[i];
+                    Uint8 usingPix = (strcmp(get_filename_ext(filename), "pix") == 0);
+                    
+                    if(usingPix)
+                        convert_to_png(filename);
+                    else
+                        convert_to_pix(filename);
+                }
+            }
+            break;
+        case 2:
+            {
+                concatenate_pix(numFiles, files);
+            }
+            break;
+	}
+	
     
     SDL_Quit();
-	return 1;
+	return 0;
 }
