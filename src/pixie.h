@@ -34,6 +34,7 @@ class pixie
 		short drawMix (viewscreen *view_buf);
 		short drawMix (short x, short y, viewscreen *view_buf);
 		short put_screen(short x, short y);
+		short put_screen(short x, short y, unsigned char alpha);
 		void init_sdl_surface(void);
 		void set_accel(int a);
 		short sizex, sizey;

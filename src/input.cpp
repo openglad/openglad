@@ -30,6 +30,11 @@
 #define SDL_GetKeyState SDL_GetKeyboardState
 #endif
 
+
+#ifdef FAKE_TOUCH_EVENTS
+#define ANDROID
+#endif
+
 void quit(Sint32 arg1);
 
 int raw_key;
@@ -232,17 +237,36 @@ void get_input_events(bool type)
 #include "stats.h"
 #include "walker.h"
 
+static bool loaded_touch_images = false;
+pixie* moving_base_pix = NULL;
+unsigned char* moving_base_pix_data = NULL;
+static const int touch_image_alpha = 50;
+
+void load_touch_images(screen* myscreen)
+{
+    loaded_touch_images = true;
+    
+    moving_base_pix_data = read_pixie_file("moving_base.pix");
+	moving_base_pix = new pixie(moving_base_pix_data + 3, (int)moving_base_pix_data[1],
+	                      (int)moving_base_pix_data[2], myscreen);
+    
+}
+
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
     if(control == NULL)
         return;
     
+    if(!loaded_touch_images)
+        load_touch_images(vob);
+    
     if(moving)
     {
         // Touch movement feedback
         //line(moving_touch_x, moving_touch_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
-        vob->fastbox(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, MOVE_AREA_DIM, MOVE_AREA_DIM, 17);
+        moving_base_pix->put_screen(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, touch_image_alpha);
+        
         vob->fastbox(moving_touch_x - 4, moving_touch_y - 4, 8, 8, 16);
         vob->fastbox(mouse_state[MOUSE_X] - 2, mouse_state[MOUSE_Y] - 2, 4, 4, 15);
     }
@@ -348,6 +372,43 @@ void handle_events(SDL_Event *event)
         #endif
         break;
 #else
+#ifdef FAKE_TOUCH_EVENTS
+    case SDL_MOUSEMOTION:
+        {
+            SDL_Event e;
+            e.type = SDL_FINGERMOTION;
+            e.tfinger.x = event->motion.x/640.0f;
+            e.tfinger.y = event->motion.y/400.0f;
+            e.tfinger.dx = event->motion.xrel/640.0f;
+            e.tfinger.dy = event->motion.yrel/400.0f;
+            e.tfinger.touchId = 1;
+            e.tfinger.fingerId = 1;
+            SDL_PushEvent(&e);
+        }
+        break;
+    case SDL_MOUSEBUTTONUP:
+        {
+            SDL_Event e;
+            e.type = SDL_FINGERUP;
+            e.tfinger.x = event->button.x/640.0f;
+            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.touchId = 1;
+            e.tfinger.fingerId = 1;
+            SDL_PushEvent(&e);
+        }
+        break;
+    case SDL_MOUSEBUTTONDOWN:
+        {
+            SDL_Event e;
+            e.type = SDL_FINGERDOWN;
+            e.tfinger.x = event->button.x/640.0f;
+            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.touchId = 1;
+            e.tfinger.fingerId = 1;
+            SDL_PushEvent(&e);
+        }
+        break;
+#endif
         // Mouse event
     case SDL_FINGERMOTION:
         {
@@ -1072,7 +1133,9 @@ void grab_mouse()
 
 void release_mouse()
 {
+    #ifndef FAKE_TOUCH_EVENTS
     SDL_ShowCursor(SDL_DISABLE);
+    #endif
 }
 
 Sint32 * query_mouse()

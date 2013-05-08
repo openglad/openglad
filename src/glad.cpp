@@ -200,7 +200,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		myscreen->redraw();
 		//         myscreen->buffer_to_screen(0, 0, 320, 200);
 		// this was for debugging illegal draws to bad areas.
-        #ifdef ANDROID
+        #if defined(ANDROID) || defined(FAKE_TOUCH_EVENTS)
         draw_touch_controls(myscreen);
         #endif
 		score_panel(myscreen);
