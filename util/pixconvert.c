@@ -42,6 +42,13 @@ char ourcolors[] = {
                           18,18,30,20,20,32,22,22,34,24,24,36,26,26,38,28,28,40,30,30,42,32,32
 		};
 
+// Color cycling colors indices
+#define WATER_START  208
+#define WATER_END    223
+#define ORANGE_START 224
+#define ORANGE_END   231
+
+static char no_cycling_colors = 0;
 
 // From http://stackoverflow.com/questions/5309471/getting-file-extension-in-c
 static const char *get_filename_ext(const char *filename)
@@ -116,6 +123,15 @@ int get_color_index(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
             return 8; // (1,1,1)
         for(i = 0; i < numcolors; i++)
         {
+            // Don't match with cycling colors
+            if(no_cycling_colors)
+            {
+                if(WATER_START <= i && i <= WATER_END)
+                    continue;
+                if(ORANGE_START <= i && i <= ORANGE_END)
+                    continue;
+            }
+            
             if(is_in_range(ourcolors[i * 3], rr, slop) && is_in_range(ourcolors[i * 3 + 1], gg, slop) && is_in_range(ourcolors[i * 3 + 2], bb, slop))
                 return i;
         }
@@ -360,21 +376,35 @@ void parse_args(int argc, char **argv, int* mode, int* numFiles, char** files)
     // Normal conversion mode
     *mode = 1;
     
-    // Check for -c flag
-    if(strlen(argv[i]) == 2 && argv[i][0] == '-' && argv[i][1] == 'c')
-    {
-        // Concatenate files into one pix
-        *mode = 2;
-        i++;
-    }
     
     // Grab the rest of the files list
     int j = 0;
     while(i < argc)
     {
-        files[j] = argv[i];
+        char* arg = argv[i];
+        int len = strlen(arg);
         
-        j++;
+        if(len > 1 && arg[0] == '-')
+        {
+            // It's a flag
+            if(arg[1] == 'c' || strcmp(arg, "--cat") == 0 || strcmp(arg, "--concat") == 0 || strcmp(arg, "--concatenate") == 0)
+            {
+                // Concatenate files into one pix
+                *mode = 2;
+            }
+            else if(arg[1] == 'n' || strcmp(arg, "--no-cycle") == 0 || strcmp(arg, "--no-cycling") == 0)
+            {
+                // Disable matching cycling colors in image -> pix conversions
+                no_cycling_colors = 1;
+            }
+        }
+        else
+        {
+            // It's a file
+            files[j] = arg;
+            j++;
+        }
+        
         i++;
     }
     
@@ -391,10 +421,13 @@ int main(int argc, char **argv)
 	switch(mode)
     {
         case 0:
-            printf("USAGE:\n"
+            printf("\nUSAGE\n"
                     "Convert image to pix:\n    pixconvert image.ext\n"
                     "Convert pix to png:\n    pixconvert image.pix\n"
                     "Concatenate pix into multiframe/animated pix:\n    pixconvert -c image1.ext image2.ext ...\n"
+                    "\nOPTIONS\n"
+                    " -c, --cat, --concat, --concatenate\n    Combines the listed files into one pix file as frames.  Every listed file must have the same width and height.\n\n"
+                    " -n, --no-cycling\n    Disables matching cycling colors when converting an image file to pix.\n\n"
                     );
             return 1;
         case 1:
