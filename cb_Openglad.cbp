@@ -118,6 +118,7 @@
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
+			<Add option="-DFAKE_TOUCH_EVENTS" />
 		</Compiler>
 		<Unit filename="src/base.h" />
 		<Unit filename="src/button.cpp" />

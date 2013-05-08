@@ -571,7 +571,11 @@ short viewscreen::input(const SDL_Event& event)
 	oblink  *helpme;
 
 	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay
+     #if defined(ANDROID) || defined(FAKE_TOUCH_EVENTS)
+	        && isPlayerHoldingKey(mynum, KEY_SHIFTER)  // inverted logic
+     #else
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
+     #endif
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
 		helpme = screenp->oblist;
@@ -596,7 +600,12 @@ short viewscreen::input(const SDL_Event& event)
 	} //end of yo for friends
 
 	//summon team defense
-	if (isPlayerHoldingKey(mynum, KEY_SHIFTER) && didPlayerPressKey(mynum, KEY_YELL, event)
+	if (didPlayerPressKey(mynum, KEY_YELL, event)
+     #if defined(ANDROID) || defined(FAKE_TOUCH_EVENTS)
+	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)  // inverted logic
+     #else
+	        && isPlayerHoldingKey(mynum, KEY_SHIFTER)
+     #endif
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // change guys' behavior
 	{
 		switch (control->action)
@@ -616,6 +625,10 @@ short viewscreen::input(const SDL_Event& event)
 					}
 					helpme = helpme->next;
 				}
+                    
+                #if defined(ANDROID) || defined(FAKE_TOUCH_EVENTS)
+                control->screenp->soundp->play_sound(SOUND_YO);
+                #endif
 				control->screenp->do_notify("SUMMONING DEFENSE!", control);
 				break;
 			case ACTION_FOLLOW:  // turn back to normal mode..
