@@ -118,6 +118,7 @@
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
+			<Add option="-DUSE_TOUCH_INPUT" />
 			<Add option="-DFAKE_TOUCH_EVENTS" />
 			<Add option="-DNO_BLOOD" />
 		</Compiler>
