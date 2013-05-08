@@ -58,8 +58,14 @@ pixie::pixie(unsigned char *data, short x, short y, screen  *myscreen)
 //buffers: new constructor that automatically calls init_sdl_surface
 pixie::pixie(unsigned char *data, short x, short y, screen *myscreen, int doaccel)
 {
-	pixie(data,x,y,myscreen);
-
+	screenp = myscreen;
+	bmp = data;
+	sizex = x;
+	sizey = y;
+	size = (unsigned short) (sizex*sizey);
+	//  oldbmp = (unsigned char *)new char[size];
+	accel = 0;
+	
 	if(doaccel)
 		init_sdl_surface();
 }
