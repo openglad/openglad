@@ -355,7 +355,6 @@ button editteam[] =
         { "ACCEPT", SDLK_a,  80, 170, 80, 20, EDIT_GUY, -1},
         { "RENAME", SDLK_r, 174,  8, 64, 22, NAME_GUY, 1},
         { "DETAILS..", SDLK_d, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0},
-        { "Playing on Team X", SDLK_t, 174, 138, 133, 22, CHANGE_TEAM, 1},
         { "ESC", SDLK_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
 
     };
@@ -378,7 +377,6 @@ button buyteam[] =
         { "", SDLK_l,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL},
         { "VIEW TEAM", SDLK_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1},
         { "HIRE ME", SDLK_h,  80, 170, 80, 20, ADD_GUY, -1},
-        { "Select Team", SDLK_t, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1},
         { "ESC", SDLK_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
 
     };
@@ -975,7 +973,7 @@ Sint32 create_buy_menu(Sint32 arg1)
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu(buyteam, 18);
+	localbuttons = buttonmenu(buyteam, 17);
 	for (i=2; i < 14; i++)
 	{
 		if (!(i%2)) // 2, 4, ..., 12
@@ -1110,7 +1108,7 @@ Sint32 create_buy_menu(Sint32 arg1)
 				delete(localbuttons);
 				//myscreen->clear();
 				myscreen->clearfontbuffer();
-				localbuttons = buttonmenu(buyteam, 18);
+				localbuttons = buttonmenu(buyteam, 17);
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
@@ -1246,7 +1244,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 
 	if (localbuttons)
 		delete localbuttons;
-	localbuttons = buttonmenu(editteam, 20, 0);  // don't refresh yet
+	localbuttons = buttonmenu(editteam, 19, 0);  // don't refresh yet
 	for (i=2; i < 14; i++)
 	{
 		if (!(i%2)) // 2, 4, ..., 12
@@ -1289,14 +1287,14 @@ Sint32 create_edit_menu(Sint32 arg1)
 	myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
 	myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
 	myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
-	sprintf(message, "Total Kills: %d", current_guy->kills);
+	sprintf(message, "    Tallies: %d", current_guy->kills);
 	mytext->write_xy(180, 48, message, DARK_BLUE, 1);
 	if (current_guy->kills) // are we a veteran?
 	{
 		sprintf(message, "Avg. Victim: %.2lf ",
 		        (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
 		mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-		sprintf(message, " Exp / Kill: %u ",
+		sprintf(message, "  Exp/Tally: %u ",
 		        (current_guy->exp / current_guy->kills) );
 		mytext->write_xy(180, 62, message, DARK_BLUE, 1);
 	}
@@ -1304,7 +1302,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 	{
 		sprintf(message, "Avg. Victim: N/A ");
 		mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-		sprintf(message, " Exp / Kill: N/A ");
+		sprintf(message, "  Exp/Tally: N/A ");
 		mytext->write_xy(180, 62, message, DARK_BLUE, 1);
 	}
 	if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
@@ -1336,11 +1334,6 @@ Sint32 create_edit_menu(Sint32 arg1)
 		mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
 	sprintf(message, "TOTAL SCORE: %u", score[current_guy->teamnum]);
 	mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
-
-	// Display our team setting ..
-	sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
-	strcpy(allbuttons[18]->label, message);
-	allbuttons[18]->vdisplay();
 
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
@@ -1374,7 +1367,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 				myscreen->clearfontbuffer();
 				
 				delete(localbuttons);
-				localbuttons = buttonmenu(editteam, 20, 0); // don't redraw yet
+				localbuttons = buttonmenu(editteam, 19, 0); // don't redraw yet
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
@@ -1464,14 +1457,14 @@ Sint32 create_edit_menu(Sint32 arg1)
 			myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
 			myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
 			myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
-			sprintf(message, "Total Kills: %d", current_guy->kills);
+			sprintf(message, "    Tallies: %d", current_guy->kills);
 			mytext->write_xy(180, 48, message, DARK_BLUE, 1);
 			if (current_guy->kills) // are we a veteran?
 			{
 				sprintf(message, "Avg. Victim: %.2lf ",
 				        (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
 				mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-				sprintf(message, " Exp / Kill: %u ",
+				sprintf(message, "  Exp/Tally: %u ",
 				        (current_guy->exp / current_guy->kills) );
 				mytext->write_xy(180, 62, message, DARK_BLUE, 1);
 			}
@@ -1479,7 +1472,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 			{
 				sprintf(message, "Avg. Victim: N/A ");
 				mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-				sprintf(message, " Exp / Kill: N/A ");
+				sprintf(message, "  Exp/Tally: N/A ");
 				mytext->write_xy(180, 62, message, DARK_BLUE, 1);
 			}
 			if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
@@ -1512,11 +1505,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 			sprintf(message, "TOTAL SCORE: %u", score[current_guy->teamnum]);
 			mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
 
-			// Display our team setting ..
-			myscreen->clearfontbuffer(174, 138, 133, 22); 
-			sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
-			strcpy(allbuttons[18]->label, message);
-			allbuttons[18]->vdisplay();
+			myscreen->clearfontbuffer(174, 138, 133, 22);
 
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			grab_mouse();
@@ -3273,7 +3262,7 @@ Sint32 return_menu(Sint32 arg)
 			           {
 				           WR(0, " Freeze Time   ");
 				           WR(1, "  Freeze time for all   ");
-				           WR(2, "  but your team and kill");
+				           WR(2, "  but your team and fell");
 				           WR(3 ,"  enemies with ease.    ");
 			           }
 			           // Level 10 things
@@ -3352,7 +3341,7 @@ Sint32 return_menu(Sint32 arg)
 			           if (thisguy->level >= 4)
 			           {
 				           WL(7, " Raise/Turn Undead");
-				           WL(8, "  Raise the gore of any ");
+				           WL(8, "  Raise remains of any  ");
 				           WL(9, "  victim to a skeleton. ");
 				           WL(10,"  Alternate (turning)   ");
 				           WL(11,"  requires 65 Int.      ");
@@ -3464,9 +3453,9 @@ Sint32 return_menu(Sint32 arg)
 			           // Level 4 things
 			           if (thisguy->level >= 4)
 			           {
-				           WL(7, " Devour Corpse    ");
+				           WL(7, " Devour Remains    ");
 				           WL(8, "  Regain health by      ");
-				           WL(9, "  devouring the corpses ");
+				           WL(9, "  devouring the remains ");
 				           WL(10,"  of your foes.         ");
 			           }
 			           // Can we change to orc captain?
@@ -4472,7 +4461,6 @@ char* browse(screen *screenp)
            {
 	           // Change the team number of the current guy
 	           short current_team;
-	           char  message[80];
 
 	           // What is our current team number?
 	           if (!current_guy)
@@ -4486,13 +4474,6 @@ char* browse(screen *screenp)
 
 	           // Set our team number ..
 	           current_guy->teamnum = current_team;
-
-	           // Update our button display
-	           sprintf(message, "Playing on Team %d", current_team + 1);
-
-	           strcpy(allbuttons[18]->label, message);
-	           allbuttons[18]->do_outline = 1;
-	           //allbuttons[18]->vdisplay();
 	           //myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	           return OK;
@@ -4501,7 +4482,6 @@ char* browse(screen *screenp)
            Sint32 change_hire_teamnum(Sint32 arg)
            {
 	           // Change the team number of the hiring menu ..
-	           char  message[80];
 
 	           current_team_num += arg;
 	           current_team_num %= 4;
@@ -4512,13 +4492,8 @@ char* browse(screen *screenp)
 		           current_guy->teamnum = current_team_num;
 	           }
 
-	           // Update our button display
-	           sprintf(message, "Hiring For Team %d", current_team_num + 1);
-
 		myscreen->clearfontbuffer(170, 130, 133, 22);
 
-	           strcpy(allbuttons[16]->label, message);
-	           allbuttons[16]->vdisplay();
 	           myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	           return OK;
