@@ -3277,7 +3277,7 @@ Sint32 return_menu(Sint32 arg)
 			           if (thisguy->level >= 4)
 			           {
 				           WL(7, " Boomerang");
-				           WL(8, "  The boomerang files  ");
+				           WL(8, "  The boomerang flies  ");
 				           WL(9, "  out in a spiral,     ");
 				           WL(10,"  hurting nearby foes. ");
 			           }
@@ -3475,7 +3475,7 @@ Sint32 return_menu(Sint32 arg)
 			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
 			           // Level 1 things
 			           WL(2, " Heal            ");
-			           WL(3, "  Heal all teammages who ");
+			           WL(3, "  Heal all teammates who ");
 			           WL(4, "  are close to you, for  ");
 			           WL(5, "  as much as you have SP.");
 			           //WL(6, "  lets you move in trees.");
@@ -3499,7 +3499,7 @@ Sint32 return_menu(Sint32 arg)
 			           // Level 10 things
 			           if (thisguy->level >= 10)
 			           {
-				           WR(5, " Ressurection");
+				           WR(5, " Resurrection");
 				           WR(6, "  The ultimate Healing, ");
 				           WR(7, "  this restores dead    ");
 				           WR(8 ,"  friends to life, or   ");
