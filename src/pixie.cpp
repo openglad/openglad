@@ -163,6 +163,12 @@ short pixie::put_screen(short x, short y)
 	return 1;
 }
 
+short pixie::put_screen(short x, short y, unsigned char alpha)
+{
+	screenp->putdata_alpha(x, y, sizex, sizey, bmp, alpha);
+	return 1;
+}
+
 short pixie::on_screen()
 {
 	short i;
