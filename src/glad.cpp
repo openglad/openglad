@@ -161,7 +161,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 
 	//sprintf(somemessage, "SPEED SET TO %d", (20-myscreen->timer_wait)/2+1);
     
-    #ifndef ANDROID
+    #ifndef USE_TOUCH_INPUT
 	strcpy(somemessage, "OPENGLAD V.");
 	strcat(somemessage, PACKAGE_VERSION);
 	myscreen->viewob[0]->set_display_text(somemessage, 100);
@@ -200,7 +200,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		myscreen->redraw();
 		//         myscreen->buffer_to_screen(0, 0, 320, 200);
 		// this was for debugging illegal draws to bad areas.
-        #ifdef ANDROID
+        #ifdef USE_TOUCH_INPUT
         draw_touch_controls(myscreen);
         #endif
 		score_panel(myscreen);
@@ -708,8 +708,8 @@ short new_score_panel(screen *myscreen, short do_it)
 			{
 				// Score, bottom left corner
 				int special_offset = -24;
-				#ifdef ANDROID
-				// Upper left on Android
+				#ifdef USE_TOUCH_INPUT
+				// Upper left instead
 				int bm = tm + 54;
 				special_offset = 0;
 				#endif
@@ -757,7 +757,7 @@ short new_score_panel(screen *myscreen, short do_it)
 				else
 					mytext->write_xy(lm+2, bm + special_offset, message, (unsigned char) RED, (short) 1);
                 
-                #ifdef ANDROID
+                #ifdef USE_TOUCH_INPUT
                 // Alternate special name (if not "NONE")
 				if (strcmp(myscreen->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE") )
                 {
@@ -794,7 +794,7 @@ short new_score_panel(screen *myscreen, short do_it)
 					myscreen->draw_button(rm-57, tm+1, rm-2, tm+16, 1, 1);
 
 				sprintf(message, "TEAM: %d", tempallies);
-				#ifndef ANDROID
+				#ifndef USE_TOUCH_INPUT
 				mytext->write_xy(rm - 55, tm+2, message, text_color, (short) 1);
 				#else
 				mytext->write_xy(rm - 55, tm+2 + 44 + 8, message, text_color, (short) 1);
@@ -802,7 +802,7 @@ short new_score_panel(screen *myscreen, short do_it)
 
 				// Number of foes, 2nd upper right
 				sprintf(message, "FOES: %d", tempfoes);
-				#ifndef ANDROID
+				#ifndef USE_TOUCH_INPUT
 				mytext->write_xy(rm-55, tm+10, message, text_color, (short) 1);
 				#else
 				mytext->write_xy(rm-55, tm+10 + 44 + 8, message, text_color, (short) 1);

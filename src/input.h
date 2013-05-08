@@ -156,7 +156,7 @@ char* query_text_input();                                                       
 bool query_input_continue();
 short get_and_reset_scroll_amount();
 
-#ifdef ANDROID
+#ifdef USE_TOUCH_INPUT
 class screen;
 void draw_touch_controls(screen* vob);
 #define CONTINUE_ACTION_STRING "TAP"

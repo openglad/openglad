@@ -40,7 +40,7 @@ short scroll_amount = 0;  // for scrolling up and down text popups
 
 bool input_continue = false;  // Done with text popups, etc.
 
-#ifdef ANDROID
+#ifdef USE_TOUCH_INPUT
 bool tapping = false;
 int start_tap_x = 0;
 int start_tap_y = 0;
@@ -114,7 +114,7 @@ int player_keys[4][NUM_KEYS] = {
     }
 };
 
-#ifdef ANDROID
+#ifdef USE_TOUCH_INPUT
 bool touch_keystate[4][NUM_KEYS] = {
     {
         false, false, false, false,  // movements
@@ -207,7 +207,7 @@ void get_input_events(bool type)
     }
 }
 
-#ifdef ANDROID
+#ifdef USE_TOUCH_INPUT
 
 #define MOVE_AREA_DIM 60
 #define MOVE_DEAD_ZONE 10
@@ -284,7 +284,7 @@ void handle_events(SDL_Event *event)
     {
         // Key pressed or released:
     case SDL_KEYDOWN:
-        #ifdef ANDROID
+        #ifdef USE_TOUCH_INPUT
         // Back button faking Escape key
         if(event->key.keysym.scancode == SDL_SCANCODE_AC_BACK)
             event->key.keysym.sym = SDLK_ESCAPE;
@@ -315,7 +315,7 @@ void handle_events(SDL_Event *event)
         break;
 #endif
 
-#ifndef ANDROID
+#ifndef USE_TOUCH_INPUT
         // Mouse event
     case SDL_MOUSEMOTION:
         //Log("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
@@ -666,7 +666,7 @@ void clear_keyboard()
     
     input_continue = false;
     
-    #ifdef ANDROID
+    #ifdef USE_TOUCH_INPUT
     tapping = false;
     #endif
 }
@@ -992,7 +992,7 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
 #ifndef USE_SDL2
         return keystates[player_keys[player_index][key_enum]];
 #else
-    #ifndef ANDROID
+    #ifndef USE_TOUCH_INPUT
         return keystates[SDL_GetScancodeFromKey(player_keys[player_index][key_enum])];
     #else
         return touch_keystate[player_index][key_enum];
