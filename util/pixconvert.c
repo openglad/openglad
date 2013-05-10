@@ -50,6 +50,39 @@ char ourcolors[] = {
 
 static char no_cycling_colors = 0;
 
+/* For reference, here are the converted RGB values for the cycling colors.
+If you use one of these colors without the -n flag, it should start at that color
+and cycle through the rest.
+
+WATER: 
+(100,164,228) : 0x64A4E4
+(92,156,220) : 0x5C9CDC
+(84,148,212) : 0x5494D4
+(76,140,204) : 0x4C8CCC
+(68,132,196) : 0x4484C4
+(60,124,188) : 0x3C7CBC
+(52,116,180) : 0x3474B4
+(44,108,172) : 0x2C6CAC
+(36,100,164) : 0x2464A4
+(28,92,156) : 0x1C5C9C
+(20,84,148) : 0x145494
+(12,76,140) : 0x0C4C8C
+(4,68,132) : 0x044484
+(0,60,124) : 0x003C7C
+(0,52,116) : 0x003474
+(0,44,108) : 0x002C6C
+
+ORANGE: 
+(228,60,0) : 0xE43C00
+(228,84,0) : 0xE45400
+(228,108,0) : 0xE46C00
+(228,132,0) : 0xE48400
+(228,156,0) : 0xE49C00
+(228,180,0) : 0xE4B400
+(228,204,0) : 0xE4CC00
+(228,228,0) : 0xE4E400
+*/
+
 // From http://stackoverflow.com/questions/5309471/getting-file-extension-in-c
 static const char *get_filename_ext(const char *filename)
 {
