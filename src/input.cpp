@@ -20,6 +20,9 @@
 // input code
 //
 
+#include "base.h"
+#include "obmap.h"
+#include "screen.h"
 #include "input.h"
 #include <stdio.h>
 #include <time.h>
