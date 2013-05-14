@@ -22,8 +22,8 @@
 
 //#include "\wfiles\glad\graph.h"
 //buffers: took out absolute locations in the includes of base.h and smooth.h
-#include "base.h"
-#include "smooth.h"
+#include "../base.h"
+#include "../smooth.h"
 
 /* Zardus: why these values?
 #define S_LEFT 12

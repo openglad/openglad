@@ -15,8 +15,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include "scen.h"
-#include "input.h"
-#include "util.h"
+#include "../input.h"
+#include "../util.h"
 
 /* Changelog
  * 	8/8/02: Zardus: added scrolling-by-minimap
@@ -62,6 +62,18 @@ Sint32 costlist[NUM_FAMILIES];
 Sint32 calculate_level(Uint32 howmuch)
 {
 	return (Sint32) (howmuch/10);
+}
+
+// Replace the missing one from picker.cpp with a dummy
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
+{
+    return true;
+}
+
+// Replace the missing one from glad.cpp
+short remaining_foes(screen *myscreen, char myteam)
+{
+    return 0;
 }
 
 Sint32 *mymouse;
@@ -259,66 +271,66 @@ int main(int argc, char **argv)
 		// Zardus: COMMENT: I went through and replaced dumbcounts with get_input_events.
 
 		// Delete all with ^D
-		if (mykeyboard[SDLK_d] && mykeyboard[SDLK_LCTRL])
+		if (mykeyboard[KEYSTATE_d] && mykeyboard[KEYSTATE_LCTRL])
 		{
 			remove_all_objects(myscreen);
 			event = 1;
 		}
 
 		// Change teams ..
-		if (mykeyboard[SDLK_0])
+		if (mykeyboard[KEYSTATE_0])
 		{
 			currentteam = 0;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_1])
+		if (mykeyboard[KEYSTATE_1])
 		{
 			currentteam = 1;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_2])
+		if (mykeyboard[KEYSTATE_2])
 		{
 			currentteam = 2;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_3])
+		if (mykeyboard[KEYSTATE_3])
 		{
 			currentteam = 3;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_4])
+		if (mykeyboard[KEYSTATE_4])
 		{
 			currentteam = 4;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_5])
+		if (mykeyboard[KEYSTATE_5])
 		{
 			currentteam = 5;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_6])
+		if (mykeyboard[KEYSTATE_6])
 		{
 			currentteam = 6;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_7])
+		if (mykeyboard[KEYSTATE_7])
 		{
 			currentteam = 7;
 			event = 1;
 		}
 
 		// Toggle grid alignment
-		if (mykeyboard[SDLK_g])
+		if (mykeyboard[KEYSTATE_g])
 		{
 			grid_aligned = (grid_aligned+1)%3;
 			event = 1;
-			while (mykeyboard[SDLK_g])
+			while (mykeyboard[KEYSTATE_g])
 				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 
 		// Show help
-		if (mykeyboard[SDLK_h])
+		if (mykeyboard[KEYSTATE_h])
 		{
 			release_mouse();
 			do_help(myscreen);
@@ -327,7 +339,7 @@ int main(int argc, char **argv)
 			event = 1;
 		}
 
-		if (mykeyboard[SDLK_KP_MULTIPLY]) // options menu
+		if (mykeyboard[KEYSTATE_KP_MULTIPLY]) // options menu
 		{
 			release_mouse();
 			scenario_options(myscreen);
@@ -336,16 +348,16 @@ int main(int argc, char **argv)
 		}
 
 		// Load scenario, etc. ..
-		if (mykeyboard[SDLK_l])
+		if (mykeyboard[KEYSTATE_l])
 		{
 			if (levelchanged)
 			{
 				myscreen->draw_button(30, 15, 220, 25, 1, 1);
 				scentext->write_xy(32, 17, "Save level first? [Y/N]", DARK_BLUE, 1);
 				myscreen->buffer_to_screen(0, 0, 320, 200);
-				while ( !mykeyboard[SDLK_y] && !mykeyboard[SDLK_n])
+				while ( !mykeyboard[KEYSTATE_y] && !mykeyboard[KEYSTATE_n])
 					get_input_events(WAIT);
-				if (mykeyboard[SDLK_y]) // save first
+				if (mykeyboard[KEYSTATE_y]) // save first
 					do_save(myscreen);
 			}
 			myscreen->draw_button(30, 15, 220, 25, 1, 1);
@@ -355,52 +367,52 @@ int main(int argc, char **argv)
 		}
 
 		// Save scenario or grid..
-		if (mykeyboard[SDLK_s])
+		if (mykeyboard[KEYSTATE_s])
 		{
 			do_save(myscreen);
 		}  // end of saving routines
 
 
 		// Switch modes ..
-		if (mykeyboard[SDLK_m])        // switch to map or guys ..
+		if (mykeyboard[KEYSTATE_m])        // switch to map or guys ..
 		{
 			event = 1;
 			currentmode = (currentmode+1) %2;
-			while (mykeyboard[SDLK_m])
+			while (mykeyboard[KEYSTATE_m])
 				get_input_events(WAIT);
 		}
 
 		// New names
-		if (mykeyboard[SDLK_n])
+		if (mykeyboard[KEYSTATE_n])
 		{
 			event = 1;
 			//gotoxy(1, 23);
 			myscreen->draw_button(50, 30, 200, 40, 1, 1);
 			scentext->write_xy(52, 32, "New name [G/S] : ", DARK_BLUE, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
-			while ( !mykeyboard[SDLK_g] && !mykeyboard[SDLK_s] )
+			while ( !mykeyboard[KEYSTATE_g] && !mykeyboard[KEYSTATE_s] )
 				get_input_events(WAIT);
-			if (mykeyboard[SDLK_s])
+			if (mykeyboard[KEYSTATE_s])
 			{
 				myscreen->draw_button(50, 30, 200, 40, 1, 1);
 				myscreen->buffer_to_screen(0, 0, 320, 200);
 				new_scenario_name();
-				while (mykeyboard[SDLK_s])
+				while (mykeyboard[KEYSTATE_s])
 					get_input_events(WAIT);
 			} // end new scenario name
-			else if (mykeyboard[SDLK_g])
+			else if (mykeyboard[KEYSTATE_g])
 			{
 				myscreen->draw_button(50, 30, 200, 40, 1, 1);
 				myscreen->buffer_to_screen(0, 0, 320, 200);
 				new_grid_name();
-				while (mykeyboard[SDLK_g])
+				while (mykeyboard[KEYSTATE_g])
 					get_input_events(WAIT);
 			} // end new grid name
 			myscreen->clearfontbuffer(50,30,150,10);
 		}
 
 		// Enter scenario text ..
-		if (mykeyboard[SDLK_t])
+		if (mykeyboard[KEYSTATE_t])
 		{
 #define TEXT_DOWN(x)  (14+((x)*7))
    #define TL 4
@@ -456,7 +468,7 @@ int main(int argc, char **argv)
 		}
 
 		// Display the scenario help..
-		if (mykeyboard[SDLK_SLASH] && (mykeyboard[SDLK_RSHIFT] || mykeyboard[SDLK_LSHIFT]))
+		if (mykeyboard[KEYSTATE_SLASH] && (mykeyboard[KEYSTATE_RSHIFT] || mykeyboard[KEYSTATE_LSHIFT]))
 		{
 			read_scenario(myscreen);
 			myscreen->clearfontbuffer();
@@ -464,23 +476,23 @@ int main(int argc, char **argv)
 		}
 
 		// Change level of current guy being placed ..
-		if (mykeyboard[SDLK_RIGHTBRACKET])
+		if (mykeyboard[KEYSTATE_RIGHTBRACKET])
 		{
 			currentlevel++;
-			//while (mykeyboard[SDLK_RIGHTBRACKET])
+			//while (mykeyboard[KEYSTATE_RIGHTBRACKET])
 			//  dumbcount++;
 			event = 1;
 		}
-		if (mykeyboard[SDLK_LEFTBRACKET] && currentlevel > 1)
+		if (mykeyboard[KEYSTATE_LEFTBRACKET] && currentlevel > 1)
 		{
 			currentlevel--;
-			//while (mykeyboard[SDLK_LEFTBRACKET])
+			//while (mykeyboard[KEYSTATE_LEFTBRACKET])
 			//  dumbcount++;
 			event = 1;
 		}
 
 		// Change between generator and living orders
-		if (mykeyboard[SDLK_o])        // this is letter o
+		if (mykeyboard[KEYSTATE_o])        // this is letter o
 		{
 			if (myorder == ORDER_LIVING)
 			{
@@ -500,24 +512,24 @@ int main(int argc, char **argv)
 				myorder = ORDER_LIVING;
 			currentmode = OBJECT_MODE;
 			event = 1; // change score panel
-			while (mykeyboard[SDLK_o])
+			while (mykeyboard[KEYSTATE_o])
 				get_input_events(WAIT);
 		}
 
 		// Slide tile selector down ..
-		if (mykeyboard[SDLK_DOWN])
+		if (mykeyboard[KEYSTATE_DOWN])
 		{
 			rowsdown++;
 			event = 1;
 			if (rowsdown >= maxrows)
 				rowsdown -= maxrows;
 			score_panel(myscreen);
-			while (mykeyboard[SDLK_DOWN])
+			while (mykeyboard[KEYSTATE_DOWN])
 				get_input_events(WAIT);
 		}
 
 		// Slide tile selector up ..
-		if (mykeyboard[SDLK_UP])
+		if (mykeyboard[KEYSTATE_UP])
 		{
 			rowsdown--;
 			event = 1;
@@ -526,38 +538,38 @@ int main(int argc, char **argv)
 			if (rowsdown <0 || rowsdown >= maxrows) // bad case
 				rowsdown = 0;
 			score_panel(myscreen);
-			while (mykeyboard[SDLK_UP])
+			while (mykeyboard[KEYSTATE_UP])
 				get_input_events(WAIT);
 		}
 
 		// Smooth current map, F5
-		if (mykeyboard[SDLK_F5])
+		if (mykeyboard[KEYSTATE_F5])
 		{
 			if (mysmoother)
 				delete mysmoother;
 			mysmoother = new smoother();
 			mysmoother->set_target(myscreen);
 			mysmoother->smooth();
-			while (mykeyboard[SDLK_F5])
+			while (mykeyboard[KEYSTATE_F5])
 				get_input_events(WAIT);
 			event = 1;
 			levelchanged = 1;
 		}
 
 		// Change to new palette ..
-		if (mykeyboard[SDLK_F9])
+		if (mykeyboard[KEYSTATE_F9])
 		{
 			load_and_set_palette("our.pal", scenpalette);
-			while (mykeyboard[SDLK_F9])
+			while (mykeyboard[KEYSTATE_F9])
 				get_input_events(WAIT);
 		}
 
 		// Toggle color cycling
-		if (mykeyboard[SDLK_F10])
+		if (mykeyboard[KEYSTATE_F10])
 		{
 			cyclemode++;
 			cyclemode %= 2;
-			while (mykeyboard[SDLK_F10])
+			while (mykeyboard[KEYSTATE_F10])
 				get_input_events(WAIT);
 		}
 		// Now perform color cycling if selected
@@ -573,19 +585,19 @@ int main(int argc, char **argv)
 		// Scroll the screen ..
 		// Zardus: ADD: added scrolling by keyboard
 		// Zardus: PORT: disabled mouse scrolling
-		if ((mykeyboard[SDLK_KP8] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP9]) // || mymouse[MOUSE_Y]< 2)
+		if ((mykeyboard[KEYSTATE_KP_8] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_9]) // || mymouse[MOUSE_Y]< 2)
 		        && myscreen->topy >= 0) // top of the screen
 			set_screen_pos(myscreen, myscreen->topx,
 			               myscreen->topy-SCROLLSIZE);
-		if ((mykeyboard[SDLK_KP2] || mykeyboard[SDLK_KP1] || mykeyboard[SDLK_KP3]) // || mymouse[MOUSE_Y]> 198)
+		if ((mykeyboard[KEYSTATE_KP_2] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_KP_3]) // || mymouse[MOUSE_Y]> 198)
 		        && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
 			set_screen_pos(myscreen, myscreen->topx,
 			               myscreen->topy+SCROLLSIZE);
-		if ((mykeyboard[SDLK_KP4] || mykeyboard[SDLK_KP7] || mykeyboard[SDLK_KP1]) // || mymouse[MOUSE_X]< 2)
+		if ((mykeyboard[KEYSTATE_KP_4] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_1]) // || mymouse[MOUSE_X]< 2)
 		        && myscreen->topx >= 0) // scroll left
 			set_screen_pos(myscreen, myscreen->topx-SCROLLSIZE,
 			               myscreen->topy);
-		if ((mykeyboard[SDLK_KP6] || mykeyboard[SDLK_KP3] || mykeyboard[SDLK_KP9]) // || mymouse[MOUSE_X] > 318)
+		if ((mykeyboard[KEYSTATE_KP_6] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_KP_9]) // || mymouse[MOUSE_X] > 318)
 		        && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
 			set_screen_pos(myscreen, myscreen->topx+SCROLLSIZE,
 			               myscreen->topy);
@@ -617,7 +629,7 @@ int main(int argc, char **argv)
 				windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
 				if (grid_aligned==1)
 					windowy -= (windowy%GRID_SIZE);
-				if (mykeyboard[SDLK_i]) // get info on current object
+				if (mykeyboard[KEYSTATE_i]) // get info on current object
 				{
 					newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
 					newob->setxy(windowx, windowy);
@@ -626,7 +638,7 @@ int main(int argc, char **argv)
 					myscreen->remove_ob(newob,0);
 					continue;
 				}  // end of info mode
-				if (mykeyboard[SDLK_f]) // set facing of current object
+				if (mykeyboard[KEYSTATE_f]) // set facing of current object
 				{
 					newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
 					newob->setxy(windowx, windowy);
@@ -636,7 +648,7 @@ int main(int argc, char **argv)
 					continue;
 				}  // end of set facing
 
-				if (mykeyboard[SDLK_r]) // (re)name the current object
+				if (mykeyboard[KEYSTATE_r]) // (re)name the current object
 				{
 					newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
 					newob->setxy(windowx, windowy);
@@ -657,7 +669,7 @@ int main(int argc, char **argv)
 					newob->collide_ob = 0;
 					if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, myscreen))
 					{
-						if (mykeyboard[SDLK_LCTRL] &&    // are we holding the erase?
+						if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
 						        newob->collide_ob )                    // and hit a guy?
 						{
 							myscreen->remove_ob(newob->collide_ob,0);
@@ -684,7 +696,7 @@ int main(int argc, char **argv)
 						}
 						levelchanged = 1;
 					}
-					if (mykeyboard[SDLK_LCTRL] && newob)
+					if (mykeyboard[KEYSTATE_LCTRL] && newob)
 					{
 						myscreen->remove_ob(newob,0);
 						newob = NULL;
@@ -699,7 +711,7 @@ int main(int argc, char **argv)
 					// Set to our current selection
 					myscreen->grid[windowy*(myscreen->maxx)+windowx] = some_pix(backcount);
 					levelchanged = 1;
-					if (!mykeyboard[SDLK_LCTRL]) // smooth a few squares, if not control
+					if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
 					{
 						if (mysmoother)
 						{
@@ -780,7 +792,7 @@ int main(int argc, char **argv)
 		}
 		event = 0;
 
-		if (mykeyboard[SDLK_ESCAPE])
+		if (mykeyboard[KEYSTATE_ESCAPE])
 			quit(0);
 
 	}
@@ -1038,21 +1050,21 @@ Sint32 save_map_file(char  * filename, screen *master)
 	char numframes, x, y;
 	//  char  *newpic;
 	string fullpath(filename);
-	FILE  *outfile;
+	SDL_RWops  *outfile;
 
 	// Create the full pathname for the pixie file
 	fullpath += ".pix";
 
 	lowercase (fullpath);
 
-	if ( (outfile = open_misc_file(fullpath.c_str(), "pix/", "wb")) == NULL )
+	if ( (outfile = open_data_file(fullpath.c_str(), "pix/", "wb")) == NULL )
 	{
 		master->draw_button(30, 30, 220, 60, 1, 1);
 		scentext->write_xy(32, 32, "Error in saving map file", DARK_BLUE, 1);
 		scentext->write_xy(32, 42, fullpath.c_str(), DARK_BLUE, 1);
 		scentext->write_xy(32, 52, "Press SPACE to continue", DARK_BLUE, 1);
 		master->buffer_to_screen(0, 0, 320, 200);
-		while (!mykeyboard[SDLK_SPACE])
+		while (!mykeyboard[KEYSTATE_SPACE])
 			get_input_events(WAIT);
 		return 0;
 	}
@@ -1060,13 +1072,13 @@ Sint32 save_map_file(char  * filename, screen *master)
 	x = master->maxx;
 	y = master->maxy;
 	numframes = 1;
-	fwrite(&numframes, 1, 1, outfile);
-	fwrite(&x, 1, 1, outfile);
-	fwrite(&y, 1, 1, outfile);
+	SDL_RWwrite(outfile, &numframes, 1, 1);
+	SDL_RWwrite(outfile, &x, 1, 1);
+	SDL_RWwrite(outfile, &y, 1, 1);
 
-	fwrite(master->grid, 1, (x*y), outfile);
+	SDL_RWwrite(outfile, master->grid, 1, (x*y));
 
-	fclose(outfile);        // Close the data file
+	SDL_RWclose(outfile);        // Close the data file
 	return 1;
 
 } // End of map-saving routine
@@ -1174,7 +1186,7 @@ void do_help(screen * myscreen)
 
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
-	wait_for_key(SDLK_SPACE);
+	wait_for_key(KEYSTATE_SPACE);
 
 	delete helptext;
 }
@@ -1325,7 +1337,7 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 	char tempteam, tempfacing, tempcommand;
 	short shortlevel;
 	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
-	FILE  *outfile;
+	SDL_RWops  *outfile;
 	char temptext[10] = "FSS";
 	char temp_grid[20] = "grid";  // default grid
 	char temp_scen_type = master->scenario_type;
@@ -1372,7 +1384,7 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 	//buffers: PORT: changed .FSS to .fss
 	strcat(temp_filename, ".fss");
 
-	if ( (outfile = open_misc_file(temp_filename, "scen/", "wb")) == NULL ) // open for write
+	if ( (outfile = open_data_file(temp_filename, "scen/", "wb")) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
 		printf("Error in writing file %s\n", filename);
@@ -1385,17 +1397,17 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 		sprintf(buffer, "Press SPACE to continue");
 		scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
 		master->buffer_to_screen(0, 0, 320, 200);
-		while (!mykeyboard[SDLK_SPACE])
+		while (!mykeyboard[KEYSTATE_SPACE])
 			get_input_events(WAIT);
 
 		return 0;
 	}
 
 	// Write id header
-	fwrite(temptext, 3, 1, outfile);
+	SDL_RWwrite(outfile, temptext, 3, 1);
 
 	// Write version number
-	fwrite(&temp_version, 1, 1, outfile);
+	SDL_RWwrite(outfile, &temp_version, 1, 1);
 
 	// Write name of current grid...
 	strcpy(temp_grid, gridname);  // Do NOT include extension
@@ -1403,20 +1415,20 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 	// Set any chars under 8 not used to 0 ..
 	for (i=strlen(temp_grid); i < 8; i++)
 		temp_grid[i] = 0;
-	fwrite(temp_grid, 8, 1, outfile);
+	SDL_RWwrite(outfile, temp_grid, 8, 1);
 
 	// Write the scenario title, if it exists
 	for (i=0; i < int(strlen(scentitle)); i++)
 		scentitle[i] = 0;
 	strcpy(scentitle, master->scenario_title);
-	fwrite(scentitle, 30, 1, outfile);
+	SDL_RWwrite(outfile, scentitle, 30, 1);
 
 	// Write the scenario type info
-	fwrite(&temp_scen_type, 1, 1, outfile);
+	SDL_RWwrite(outfile, &temp_scen_type, 1, 1);
 
 	// Write our par value (version 8+)
 	temp_par = master->par_value;
-	fwrite(&temp_par, 2, 1, outfile);
+	SDL_RWwrite(outfile, &temp_par, 2, 1);
 
 	// Determine size of object list ...
 	listsize = 0;
@@ -1445,7 +1457,7 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 		head = head->next;
 	} // end of weaplist-size check
 
-	fwrite(&listsize, 2, 1, outfile);
+	SDL_RWwrite(outfile, &listsize, 2, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	head = master->oblist;  // back to head of list
@@ -1465,16 +1477,16 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 			//templevel = head->ob->stats->level;
 			shortlevel = head->ob->stats->level;
 			strcpy(tempname, head->ob->stats->name);
-			fwrite(&temporder, 1, 1, outfile);
-			fwrite(&tempfamily, 1, 1, outfile);
-			fwrite(&currentx, 2, 1, outfile);
-			fwrite(&currenty, 2, 1, outfile);
-			fwrite(&tempteam, 1, 1, outfile);
-			fwrite(&tempfacing, 1, 1, outfile);
-			fwrite(&tempcommand, 1, 1, outfile);
-			fwrite(&shortlevel, 2, 1, outfile);
-			fwrite(tempname, 12, 1, outfile);
-			fwrite(filler, 10, 1, outfile);
+			SDL_RWwrite(outfile, &temporder, 1, 1);
+			SDL_RWwrite(outfile, &tempfamily, 1, 1);
+			SDL_RWwrite(outfile, &currentx, 2, 1);
+			SDL_RWwrite(outfile, &currenty, 2, 1);
+			SDL_RWwrite(outfile, &tempteam, 1, 1);
+			SDL_RWwrite(outfile, &tempfacing, 1, 1);
+			SDL_RWwrite(outfile, &tempcommand, 1, 1);
+			SDL_RWwrite(outfile, &shortlevel, 2, 1);
+			SDL_RWwrite(outfile, tempname, 12, 1);
+			SDL_RWwrite(outfile, filler, 10, 1);
 		}
 		// Advance to next object ..
 		head = head->next;
@@ -1498,16 +1510,16 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 			//templevel = head->ob->stats->level;
 			shortlevel = head->ob->stats->level;
 			strcpy(tempname, head->ob->stats->name);
-			fwrite(&temporder, 1, 1, outfile);
-			fwrite(&tempfamily, 1, 1, outfile);
-			fwrite(&currentx, 2, 1, outfile);
-			fwrite(&currenty, 2, 1, outfile);
-			fwrite(&tempteam, 1, 1, outfile);
-			fwrite(&tempfacing, 1, 1, outfile);
-			fwrite(&tempcommand, 1, 1, outfile);
-			fwrite(&shortlevel, 2, 1, outfile);
-			fwrite(tempname, 12, 1, outfile);
-			fwrite(filler, 10, 1, outfile);
+			SDL_RWwrite(outfile, &temporder, 1, 1);
+			SDL_RWwrite(outfile, &tempfamily, 1, 1);
+			SDL_RWwrite(outfile, &currentx, 2, 1);
+			SDL_RWwrite(outfile, &currenty, 2, 1);
+			SDL_RWwrite(outfile, &tempteam, 1, 1);
+			SDL_RWwrite(outfile, &tempfacing, 1, 1);
+			SDL_RWwrite(outfile, &tempcommand, 1, 1);
+			SDL_RWwrite(outfile, &shortlevel, 2, 1);
+			SDL_RWwrite(outfile, tempname, 12, 1);
+			SDL_RWwrite(outfile, filler, 10, 1);
 		}
 		// Advance to next object ..
 		head = head->next;
@@ -1530,16 +1542,16 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 			currenty  = head->ob->ypos;
 			shortlevel = head->ob->stats->level;
 			strcpy(tempname, head->ob->stats->name);
-			fwrite(&temporder, 1, 1, outfile);
-			fwrite(&tempfamily, 1, 1, outfile);
-			fwrite(&currentx, 2, 1, outfile);
-			fwrite(&currenty, 2, 1, outfile);
-			fwrite(&tempteam, 1, 1, outfile);
-			fwrite(&tempfacing, 1, 1, outfile);
-			fwrite(&tempcommand, 1, 1, outfile);
-			fwrite(&shortlevel, 2, 1, outfile);
-			fwrite(tempname, 12, 1, outfile);
-			fwrite(filler, 10, 1, outfile);
+			SDL_RWwrite(outfile, &temporder, 1, 1);
+			SDL_RWwrite(outfile, &tempfamily, 1, 1);
+			SDL_RWwrite(outfile, &currentx, 2, 1);
+			SDL_RWwrite(outfile, &currenty, 2, 1);
+			SDL_RWwrite(outfile, &tempteam, 1, 1);
+			SDL_RWwrite(outfile, &tempfacing, 1, 1);
+			SDL_RWwrite(outfile, &tempcommand, 1, 1);
+			SDL_RWwrite(outfile, &shortlevel, 2, 1);
+			SDL_RWwrite(outfile, tempname, 12, 1);
+			SDL_RWwrite(outfile, filler, 10, 1);
 		}
 		// Advance to next object ..
 		head = head->next;
@@ -1548,16 +1560,16 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 	numlines = master->scentextlines;
 	//printf("saving %d lines\n", numlines);
 
-	fwrite(&numlines, 1, 1, outfile);
+	SDL_RWwrite(outfile, &numlines, 1, 1);
 	for (i=0; i < numlines; i++)
 	{
 		strcpy(oneline, master->scentext[i]);
 		tempwidth = strlen(oneline);
-		fwrite(&tempwidth, 1, 1, outfile);
-		fwrite(oneline, tempwidth, 1, outfile);
+		SDL_RWwrite(outfile, &tempwidth, 1, 1);
+		SDL_RWwrite(outfile, oneline, tempwidth, 1);
 	}
 
-	fclose(outfile);
+	SDL_RWclose(outfile);
 
 	return 1;
 }
@@ -1743,9 +1755,9 @@ void info_box(walker  *target,screen * myscreen)
 	grab_mouse();
 
 	// Wait for press and release of ESC
-	while (!mykeyboard[SDLK_ESCAPE])
+	while (!mykeyboard[KEYSTATE_ESCAPE])
 		get_input_events(WAIT);
-	while (mykeyboard[SDLK_ESCAPE])
+	while (mykeyboard[KEYSTATE_ESCAPE])
 		get_input_events(WAIT);
 }
 
@@ -1779,7 +1791,7 @@ void set_name(walker  *target, screen * master)
 	master->buffer_to_screen(0, 0, 320, 200);
 
 	// wait for key release
-	while (mykeyboard[SDLK_r])
+	while (mykeyboard[KEYSTATE_r])
 		get_input_events(WAIT);
 
 	strcpy(newname, scentext->input_string(115, 62, 9, oldname) );
@@ -1803,7 +1815,7 @@ void scenario_options(screen *myscreen)
 	tm = 45;
 
 #define OPT_LD(x) (short) (tm + (x*8) )
-while (!opt_keys[SDLK_ESCAPE])
+while (!opt_keys[KEYSTATE_ESCAPE])
         {
 
 
@@ -1833,39 +1845,39 @@ while (!opt_keys[SDLK_ESCAPE])
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	get_input_events(WAIT);
-	if (opt_keys[SDLK_e]) // toggle exit mode
+	if (opt_keys[KEYSTATE_e]) // toggle exit mode
 	{
 		if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT) // already set
 			myscreen->scenario_type -= SCEN_TYPE_CAN_EXIT;
 		else
 			myscreen->scenario_type += SCEN_TYPE_CAN_EXIT;
 	}
-	if (opt_keys[SDLK_g]) // toggle exit mode -- generators
+	if (opt_keys[KEYSTATE_g]) // toggle exit mode -- generators
 	{
 		if (myscreen->scenario_type & SCEN_TYPE_GEN_EXIT) // already set
 			myscreen->scenario_type -= SCEN_TYPE_GEN_EXIT;
 		else
 			myscreen->scenario_type += SCEN_TYPE_GEN_EXIT;
 	}
-	if (opt_keys[SDLK_n]) // toggle fail mode -- named guys
+	if (opt_keys[KEYSTATE_n]) // toggle fail mode -- named guys
 	{
 		if (myscreen->scenario_type & SCEN_TYPE_SAVE_ALL) // already set
 			myscreen->scenario_type -= SCEN_TYPE_SAVE_ALL;
 		else
 			myscreen->scenario_type += SCEN_TYPE_SAVE_ALL;
 	}
-	if (opt_keys[SDLK_KP_MINUS]) // lower the par value
+	if (opt_keys[KEYSTATE_KP_MINUS]) // lower the par value
 	{
 		if (myscreen->par_value > 1)
 			myscreen->par_value--;
 	}
-	if (opt_keys[SDLK_KP_PLUS]) // raise the par value
+	if (opt_keys[KEYSTATE_KP_PLUS]) // raise the par value
 	{
 		myscreen->par_value++;
 	}
 }
 
-while (opt_keys[SDLK_ESCAPE])
+while (opt_keys[KEYSTATE_ESCAPE])
 	get_input_events(WAIT); // wait for key release
 
 	myscreen->clearfontbuffer(lm-5, tm-5, 260-(lm-5), 160-(tm-5));
@@ -1882,7 +1894,7 @@ void set_facing(walker *target, screen *myscreen)
 	myscreen->draw_dialog(100, 50, 220, 170, "Set Facing");
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
-	while (setkeys[SDLK_f])
+	while (setkeys[KEYSTATE_f])
 		get_input_events(WAIT);
 
 }
@@ -1899,9 +1911,9 @@ Sint32 do_load(screen *ascreen)
 	ascreen->draw_button(50, 30, 200, 40, 1, 1);
 	loadtext->write_xy(52, 32, "Load [G/S] : ", DARK_BLUE, 1);
 	ascreen->buffer_to_screen(0, 0, 320, 200);
-	while ( !mykeyboard[SDLK_g] && !mykeyboard[SDLK_s] )
+	while ( !mykeyboard[KEYSTATE_g] && !mykeyboard[KEYSTATE_s] )
 		get_input_events(WAIT);
-	if (mykeyboard[SDLK_s])
+	if (mykeyboard[KEYSTATE_s])
 	{
 		ascreen->draw_button(50, 30, 200, 40, 1, 1);
 		ascreen->buffer_to_screen(0, 0, 320, 200);
@@ -1916,7 +1928,7 @@ Sint32 do_load(screen *ascreen)
 		ascreen->viewob[0]->myradar->start();
 		ascreen->viewob[0]->myradar->update();
 		strcpy(grid_name, query_my_map_name());
-		while (mykeyboard[SDLK_s])
+		while (mykeyboard[KEYSTATE_s])
 			//buffers: dumbcount++;
 			get_input_events(WAIT);
 		//buffers: PORT: stricmp isn't compiling... need to find replacement func
@@ -1933,16 +1945,16 @@ Sint32 do_load(screen *ascreen)
 			loadtext->write_xy(12, 33, buffer, DARK_BLUE, 1);
 			loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
 			ascreen->buffer_to_screen(0, 0, 320, 200);
-			while (!mykeyboard[SDLK_SPACE])
+			while (!mykeyboard[KEYSTATE_SPACE])
 				get_input_events(WAIT);
 		}
 	} // end load scenario
-	else if (mykeyboard[SDLK_g])
+	else if (mykeyboard[KEYSTATE_g])
 	{
 		ascreen->draw_button(50, 30, 200, 40, 1, 1);
 		ascreen->buffer_to_screen(0, 0, 320, 200);
 		load_new_grid(ascreen);
-		while (mykeyboard[SDLK_g])
+		while (mykeyboard[KEYSTATE_g])
 			//dumbcount++;
 			get_input_events(WAIT);
 	} // end load new grid
@@ -1958,16 +1970,16 @@ Sint32 do_save(screen *ascreen)  // save a scenario or grid
 	Sint32 result = 1;
 
 	event = 1;
-	while (mykeyboard[SDLK_s])
+	while (mykeyboard[KEYSTATE_s])
 		get_input_events(WAIT);
 	ascreen->draw_button(50, 30, 200, 40, 1, 1);
 	savetext->write_xy(52, 32, "Save [G/S] ", DARK_BLUE, 1);
 	ascreen->buffer_to_screen(0, 0, 320, 200);
-	while ( !mykeyboard[SDLK_s] && !mykeyboard[SDLK_g] )
+	while ( !mykeyboard[KEYSTATE_s] && !mykeyboard[KEYSTATE_g] )
 		get_input_events(WAIT);
-	if (mykeyboard[SDLK_s]) // save scenario
+	if (mykeyboard[KEYSTATE_s]) // save scenario
 	{
-		while (mykeyboard[SDLK_s])
+		while (mykeyboard[KEYSTATE_s])
 			get_input_events(WAIT);
 
 		// Allow us to set the title, if desired
@@ -1990,7 +2002,7 @@ Sint32 do_save(screen *ascreen)  // save a scenario or grid
 		ascreen->clearfontbuffer();
 		clear_keyboard();
 	} // end of save scenario
-	else if (mykeyboard[SDLK_g]) // save current grid
+	else if (mykeyboard[KEYSTATE_g]) // save current grid
 	{
 		ascreen->clearfontbuffer(50, 30, 150, 10);
 		savetext->write_xy(52, 32, "Saving grid..");
