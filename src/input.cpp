@@ -309,8 +309,36 @@ void draw_touch_controls(screen* vob)
     if(moving)
     {
         // Touch movement feedback
-        //line(moving_touch_x, moving_touch_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
         moving_base_pix->put_screen(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, touch_motion_alpha);
+        
+        // Draw line snapped to 45 degree increments
+        if(abs(mouse_state[MOUSE_X] - moving_touch_x) > MOVE_DEAD_ZONE || abs(mouse_state[MOUSE_Y] - moving_touch_y) > MOVE_DEAD_ZONE)
+        {
+            float offset = -M_PI + M_PI/8;
+            float interval = M_PI/4;
+            float angle = atan2(mouse_state[MOUSE_Y] - moving_touch_y, mouse_state[MOUSE_X] - moving_touch_x);
+            int x = moving_touch_x;
+            int y = moving_touch_y;
+            char color = 15;
+            int length = 15;
+            
+            if(angle < -M_PI + M_PI/8 || angle >= M_PI - M_PI/8)
+                vob->hor_line(x - MOVE_AREA_DIM/2 - length, y, length, color);
+            else if(angle >= offset && angle < offset + interval)
+                vob->diag_line(x - MOVE_AREA_DIM/2, y - MOVE_AREA_DIM/2, 315, length*0.707f, color);
+            else if(angle >= offset + interval && angle < offset + 2*interval)
+                vob->ver_line(x, y - MOVE_AREA_DIM/2 - length, length, color);
+            else if(angle >= offset + 2*interval && angle < offset + 3*interval)
+                vob->diag_line(x + MOVE_AREA_DIM/2, y - MOVE_AREA_DIM/2, 45, length*0.707f, color);
+            else if(angle >= offset + 3*interval && angle < offset + 4*interval)
+                vob->hor_line(x + MOVE_AREA_DIM/2, y, length, color);
+            else if(angle >= offset + 4*interval && angle < offset + 5*interval)
+                vob->diag_line(x + MOVE_AREA_DIM/2, y + MOVE_AREA_DIM/2, 135, length*0.707f, color);
+            else if(angle >= offset + 5*interval && angle < offset + 6*interval)
+                vob->ver_line(x, y + MOVE_AREA_DIM/2, length, color);
+            else if(angle >= offset + 6*interval && angle < offset + 7*interval)
+                vob->diag_line(x - MOVE_AREA_DIM/2, y + MOVE_AREA_DIM/2, 225, length*0.707f, color);
+        }
         
         moving_target_pix->put_screen(mouse_state[MOUSE_X] - 15, mouse_state[MOUSE_Y] - 15, touch_motion_alpha);
     }

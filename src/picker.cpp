@@ -881,7 +881,7 @@ Sint32 create_team_menu(Sint32 arg1)
 
 	myscreen->buffer_to_screen(0,0,320,200);
 	
-	
+	retvalue = REDRAW;
 
 	//myscreen->soundp->play_sound(SOUND_CHARGE);
 	while ( !(retvalue & EXIT) )
@@ -902,6 +902,7 @@ Sint32 create_team_menu(Sint32 arg1)
 			retvalue = 0;
 		}
 
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 
 	myscreen->clearfontbuffer();
@@ -927,6 +928,8 @@ Sint32 create_view_menu(Sint32 arg1)
 	myscreen->refresh();
 	grab_mouse();
 
+	retvalue = REDRAW;
+	
 	while ( !(retvalue & EXIT) )
 	{
 
@@ -944,6 +947,7 @@ Sint32 create_view_menu(Sint32 arg1)
 			grab_mouse();
 
 		}
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 	myscreen->clearbuffer();
 
