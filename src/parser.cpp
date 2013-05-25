@@ -29,6 +29,7 @@
 #include <cstring>
 #include "parser.h"
 #include "util.h"
+#include "yam.h"
 
 using namespace std;
 
@@ -36,44 +37,39 @@ cfg_store cfg;
 
 bool cfg_store::parse(const char *filename)
 {
-	string line;
-	map<string, string> *section = NULL;
-	ifstream in(filename);
-	if(!in)
+    SDL_RWops* rwops = open_read_file(filename);
+    if(rwops == NULL)
 	{
 		Log("Could not open config file. Using defaults.");
 		data["sound"]["sound"] = "on";
 		data["graphics"]["render"] = "normal";
 		return false;
 	}
-	while(std::getline(in, line, '\n'))
-	{
-		size_t pos = line.find(';');
-		if (pos != string::npos)
-			line.erase(pos);
-		if((pos=line.find('[')) != std::string::npos)
-		{
-			section = &data[line.substr(pos+1, line.find(']', pos)-1)];
-		}
-		else if((pos=line.find('=')) != std::string::npos)
-		{
-			if (section == NULL)
-			{
-				Log("entry outside section\n");
-				return false;
-			}
-			pair<string, string> entry(line.substr(0,pos),
-						   line.substr(pos+1, line.size()));
-			section->insert(entry);
-		}
-#if 0
-		else
-		{
-			Log("strange line: %s\n", line);
-			return false;
-		}
-#endif
-	}
+    
+    Yam yam;
+    yam.set_input(rwops_read_handler, rwops);
+    
+    
+    while(yam.parse_next() == Yam::OK)
+    {
+        switch(yam.event.type)
+        {
+            case Yam::PAIR:
+                if(strcmp(yam.event.scalar, "sound") == 0)
+                    data["sound"]["sound"] = strdup(yam.event.value);
+                else if(strcmp(yam.event.scalar, "render") == 0)
+                    data["graphics"]["render"] = strdup(yam.event.value);
+                else if(strcmp(yam.event.scalar, "fullscreen") == 0)
+                    data["graphics"]["fullscreen"] = strdup(yam.event.value);
+            break;
+            default:
+                break;
+        }
+    }
+    
+    yam.close_input();
+    SDL_RWclose(rwops);
+    
 	return true;
 }
 

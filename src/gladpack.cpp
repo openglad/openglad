@@ -48,7 +48,7 @@ int packfile::open(const char *filename)
 	char temp[GLAD_HEADER_SIZE+1];
 
 	// Zardus: first try in the current directory
-	if ( (datafile=open_data_file((char *)filename)) == NULL)
+	if ( (datafile=open_read_file(filename)) == NULL)
 	{
 		return -1;
 	}

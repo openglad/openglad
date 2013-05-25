@@ -249,7 +249,7 @@ void picker_main(Sint32 argc, char  **argv)
 	clear_keyboard();
 
 	// Load the current saved game, if it exists .. (save0.gtl)
-	loadgame = open_user_file("save0.gtl", "save/");
+	loadgame = open_read_file("save/", "save0.gtl");
 	if (loadgame)
 	{
 	    SDL_RWclose(loadgame);
@@ -2512,7 +2512,7 @@ Sint32 save_team_list(const char * filename)
 
 	//buffers: PORT: dont need this? _disable(); //disable interrupts
 
-	outfile = open_user_file(temp_filename, "save/", "wb");
+	outfile = open_write_file("save/", temp_filename);
 	//myscreen->restore_ints();
 
 	//buffers: PORT: dont need this? _enable(); //enable interrupts
@@ -2711,7 +2711,7 @@ Sint32 load_team_list_one(const char * filename)
 	for (i=0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
-	if ( (infile = open_user_file(temp_filename, "save/")) == NULL ) // open for write
+	if ( (infile = open_read_file("save/", temp_filename)) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
 		//buffers: DEBUG: uncommented following line
@@ -2933,7 +2933,7 @@ const char* get_saved_name(const char * filename)
 	//buffers: PORT: changed .GTL to .gtl
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = open_user_file(temp_filename, "save/")) == NULL ) // open for read
+	if ( (infile = open_read_file("save/", temp_filename)) == NULL ) // open for read
 	{
 		return "EMPTY SLOT";
 	}
@@ -3066,7 +3066,7 @@ Sint32 go_menu(Sint32 arg1)
 	myscreen->reset(1);
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 
-	loadgame = open_user_file("save0.gtl", "save/");
+	loadgame = open_read_file("save/", "save0.gtl");
 	if (loadgame)
 	{
 	    SDL_RWclose(loadgame);
@@ -3870,93 +3870,6 @@ bool isDir(const string& filename)
     return (status.st_mode & S_IFDIR);
 }
 
-#ifdef ANDROID
-list<string> list_scen_files_from_index()
-{
-    list<string> fileList;
-    SDL_RWops* rwops = open_data_file("scen_index.txt", "scen/", "r");
-    if(rwops == NULL)
-    {
-        return fileList;
-    }
-    
-    std::string s;
-    char c;
-    unsigned int data_bytes = SDL_RWseek(rwops, 0, SEEK_END);
-    SDL_RWseek(rwops, 0, SEEK_SET);
-    
-    for(unsigned int i = 0; i < data_bytes; i++)
-    {
-        SDL_RWread(rwops, &c, 1, 1);
-        bool save = false;
-        if(c == '\n')
-            save = true;
-        else if(c == '\r')
-        {
-            save = true;
-            if(i+1 < data_bytes)
-            {
-                // Chomp the line feed
-                SDL_RWread(rwops, &c, 1, 1);
-                if(c != '\n')
-                {
-                    // Oops, put it back
-                    SDL_RWseek(rwops, -1, SEEK_CUR);
-                }
-                else
-                    i++;
-            }
-        }
-        
-        if(save)
-        {
-            if(s.size() > 0)
-            {
-                fileList.push_back(s);
-                s.clear();
-            }
-            save = false;
-        }
-        else
-            s += c;
-    }
-    
-    if(s.size() > 0)
-    {
-        fileList.push_back(s);
-    }
-    
-    SDL_FreeRW(rwops);
-    return fileList;
-}
-#endif
-
-list<string> list_files(const string& dirname)
-{
-    list<string> fileList;
-    
-    DIR* dir = opendir(dirname.c_str());
-    dirent* entry;
-    
-    if(dir != NULL)
-    {
-        while ((entry = readdir(dir)) != NULL)
-        {
-            #ifdef WIN32
-            if(!isDir(dirname + "/" + entry->d_name))
-            #else
-            if(entry->d_type != DT_DIR)
-            #endif
-                fileList.push_back(entry->d_name);
-        }
-     
-        closedir(dir);
-    }
-    
-    fileList.sort();
-    
-    return fileList;
-}
 
 bool sort_scen(const string& first, const string& second)
 {
@@ -3991,17 +3904,7 @@ bool sort_scen(const string& first, const string& second)
 void load_level_list(char**& level_list, int* level_list_length)
 {
     // Do some directory browsing
-    const char* dir_path = get_file_path("", "scen/", "r");
-    if(dir_path == NULL)
-    {
-        Log("Level browser: load_level_list() got NULL dir_path");
-    }
-    #ifndef ANDROID
-    list<string> ls = list_files(dir_path != NULL? dir_path : "scen/");
-    #else
-    // Android needs a better way to list the scen files.  Using scenpack would work, presumably.  This is mostly just a hack.
-    list<string> ls = list_scen_files_from_index();
-    #endif
+    list<string> ls = list_files("scen/");
     for(list<string>::iterator e = ls.begin(); e != ls.end();)
     {
         if(e->size() > 4 && e->substr(e->size() - 4, 4) == ".fss")

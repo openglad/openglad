@@ -215,7 +215,7 @@ short read_help(const char *somefile,screen * myscreen)
 	Sint32 start_time, now_time;
 	Sint32 bottomrow;
 
-	if ((infile = open_data_file(somefile)) == NULL)
+	if ((infile = open_read_file(somefile)) == NULL)
 	{
 		Log( "Cannot open help file %s.\n", somefile);
 		//delete mytext;

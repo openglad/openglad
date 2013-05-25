@@ -122,16 +122,15 @@ int soundob::init()
 
 void soundob::load_sound(Mix_Chunk **audio, char * file)
 {
-	char * filepath;
-	filepath = get_file_path(file, "sound/");
+    SDL_RWops* rw = open_read_file("sound/", file);
 	
-	*audio = Mix_LoadWAV(filepath);
+	*audio = Mix_LoadWAV_RW(rw, 0);
 	if(!*audio)
 	{
 		Log("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
 		exit(0);
 	}
-	free(filepath);
+	SDL_RWclose(rw);
 
 	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
 }

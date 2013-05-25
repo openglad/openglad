@@ -55,7 +55,6 @@ void draw_gem(short x, short y, short color, screen * myscreen);
 unsigned char *radarpic;
 pixie *radarpix;
 
-void create_dataopenglad();
 
 void glad_main(screen *myscreen, Sint32 playermode);
 
@@ -69,12 +68,10 @@ int main(int argc, char *argv[])
         SDL_putenv(const_cast<char*>("SDL_VIDEO_CENTERED=center"));
     #endif
     
-	char * filepath;
-	filepath = get_file_path("openglad.cfg");
-	cfg.parse(filepath);
-	free(filepath);
+	io_init(argc, argv);
+	
+	cfg.parse("cfg/openglad.yaml");
 	cfg.commandline(argc, argv);
-	create_dataopenglad();
 
 	theprefs = new options;
 	myscreen = new screen(1);
@@ -85,6 +82,8 @@ int main(int argc, char *argv[])
 	init_input();
 	intro_main(argc, argv);
 	picker_main(argc, argv);
+	
+	io_exit();
 	return 0;
 }
 

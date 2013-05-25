@@ -1733,7 +1733,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 	strcat(tempfile, ".fss");
 
 	// Zardus: first get the file from scen/, then the packfile
-	if ((infile = open_data_file(tempfile, "scen/")))
+	if ((infile = open_read_file("scen/", tempfile)))
 		gotit = file;
 	else if (scenpack.opened())
 	{
@@ -1790,31 +1790,14 @@ short load_scenario(const char * filename, screen * master)
 	gotit = 0;
 
 	// Zaradus: much much better this way
-	if ( (infile = open_data_file(thefile.c_str(), "scen/")))
+	if ( (infile = open_read_file("scen/", thefile.c_str())))
 	{
 		gotit = 1;
 	}
-
-
-	//buffers: second, try to get the file from levels.001
-	if(!infile)
+	else
     {
-        Log("Looking in scenpack");
-
-	// Open the pixie-pack, if not already done ...
-        if (!scenpack.opened())
-        {
-            if (scenpack.open("levels.001") == -1) // doesn't exist
-            {
-                load_and_set_palette("our.pal", myscreen->ourpalette);
-                Log("Cannot open levels resource file!");
-                release_keyboard();
-                exit(0);
-            }
-        }
-        if(scenpack.opened())
-            if ((infile = scenpack.get_subfile((char *)thefile.c_str())))
-                gotit = 1;
+        Log("Cannot open levels resource file %s!", thefile.c_str());
+        exit(1);
     }
 
 	if(gotit == 0 || !infile)

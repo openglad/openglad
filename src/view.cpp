@@ -1910,7 +1910,7 @@ options::options()
 		prefs[i][PREF_OVERLAY] = PREF_OVERLAY_OFF; // no button behind text
 	}
 
-	infile = open_user_file(KEY_FILE);
+	infile = open_read_file(KEY_FILE);
 
 	if (!infile) // failed to read
 		return;
@@ -1955,7 +1955,7 @@ short options::save(viewscreen *viewp)
 	memcpy(prefs[prefnum], viewp->prefs, 10);
 	memcpy(allkeys[prefnum], viewp->mykeys, 16 * sizeof (int));
 
-	outfile = open_user_file(KEY_FILE, "", "wb");
+	outfile = open_write_file(KEY_FILE);
 
 	if (!outfile) // failed to write
 		return 0;

@@ -353,7 +353,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 	strcpy(temp_filename, filename);
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = open_user_file(temp_filename, "save/")) == NULL )
+	if ( (infile = open_read_file("save/", temp_filename)) == NULL )
 	{
 		//gotoxy(1, 22);
 		//Log("Error in opening team file: %s\n", filename);
@@ -607,7 +607,7 @@ short save_game(const char * filename, screen  *myscreen)
 	strcpy(temp_filename, filename);
 	strcat(temp_filename, ".gtl"); // gladiator team list
 	
-	if ( (outfile = open_user_file(temp_filename, "save/", "wb")) == NULL ) // open for write
+	if ( (outfile = open_write_file("save/", temp_filename)) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
 		Log("Error in writing team file %s\n", filename);

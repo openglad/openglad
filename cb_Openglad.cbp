@@ -63,10 +63,6 @@
 					<Add directory="../../bdcode/externals/SDL/lib_windows" />
 					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
 				</Linker>
-				<ExtraCommands>
-					<Add after="util\gladpack.exe p graphics.001 pix\*.pix" />
-					<Add after="util\gladpack.exe p levels.001 scen\*.fss" />
-				</ExtraCommands>
 			</Target>
 			<Target title="Windows Release">
 				<Option platforms="Windows;" />
@@ -85,10 +81,6 @@
 					<Add library="SDL" />
 					<Add library="SDL_mixer" />
 				</Linker>
-				<ExtraCommands>
-					<Add after="util\gladpack.exe p graphics.001 pix\*.pix" />
-					<Add after="util\gladpack.exe p levels.001 scen\*.fss" />
-				</ExtraCommands>
 			</Target>
 			<Target title="Windows Debug SDL2">
 				<Option platforms="Windows;" />
@@ -109,15 +101,17 @@
 					<Add directory="../../bdcode/externals/SDL2/lib_windows" />
 					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
 				</Linker>
-				<ExtraCommands>
-					<Add after="util\gladpack.exe p graphics.001 pix\*.pix" />
-					<Add after="util\gladpack.exe p levels.001 scen\*.fss" />
-				</ExtraCommands>
 			</Target>
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
+			<Add option="-DPHYSFS_SUPPORTS_ZIP" />
+			<Add directory="src/external/libyaml/include" />
+			<Add directory="src/external/physfs" />
+			<Add directory="src/external/physfs/zlib123" />
+			<Add directory="src/external/physfs/extras" />
+			<Add directory="src/external/yam" />
 		</Compiler>
 		<Unit filename="src/base.h" />
 		<Unit filename="src/button.cpp" />
@@ -125,6 +119,115 @@
 		<Unit filename="src/colors.h" />
 		<Unit filename="src/effect.cpp" />
 		<Unit filename="src/effect.h" />
+		<Unit filename="src/external/libyaml/include/yaml.h" />
+		<Unit filename="src/external/libyaml/src/api.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/config.h" />
+		<Unit filename="src/external/libyaml/src/dumper.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/emitter.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/loader.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/parser.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/reader.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/scanner.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/writer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libyaml/src/yaml_private.h" />
+		<Unit filename="src/external/physfs/archivers/dir.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/archivers/zip.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/extras/physfsrwops.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/extras/physfsrwops.h" />
+		<Unit filename="src/external/physfs/physfs.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/physfs.h" />
+		<Unit filename="src/external/physfs/physfs_byteorder.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/physfs_casefolding.h" />
+		<Unit filename="src/external/physfs/physfs_internal.h" />
+		<Unit filename="src/external/physfs/physfs_platforms.h" />
+		<Unit filename="src/external/physfs/physfs_unicode.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/platform/unix.c">
+			<Option compilerVar="CC" />
+			<Option target="Linux Debug" />
+			<Option target="Linux Release" />
+		</Unit>
+		<Unit filename="src/external/physfs/platform/windows.c">
+			<Option compilerVar="CC" />
+			<Option target="Windows Debug" />
+			<Option target="Windows Release" />
+			<Option target="Windows Debug SDL2" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/adler32.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/compress.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/crc32.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/crc32.h" />
+		<Unit filename="src/external/physfs/zlib123/deflate.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/deflate.h" />
+		<Unit filename="src/external/physfs/zlib123/gzio.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/infback.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/inffast.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/inffast.h" />
+		<Unit filename="src/external/physfs/zlib123/inffixed.h" />
+		<Unit filename="src/external/physfs/zlib123/inflate.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/inflate.h" />
+		<Unit filename="src/external/physfs/zlib123/inftrees.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/inftrees.h" />
+		<Unit filename="src/external/physfs/zlib123/trees.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/trees.h" />
+		<Unit filename="src/external/physfs/zlib123/uncompr.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/zconf.h" />
+		<Unit filename="src/external/physfs/zlib123/zlib.h" />
+		<Unit filename="src/external/physfs/zlib123/zutil.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/physfs/zlib123/zutil.h" />
+		<Unit filename="src/external/yam/yam.cpp" />
+		<Unit filename="src/external/yam/yam.h" />
 		<Unit filename="src/game.cpp" />
 		<Unit filename="src/glad.cpp" />
 		<Unit filename="src/gladpack.cpp" />
@@ -137,6 +240,8 @@
 		<Unit filename="src/input.cpp" />
 		<Unit filename="src/input.h" />
 		<Unit filename="src/intro.cpp" />
+		<Unit filename="src/io.cpp" />
+		<Unit filename="src/io.h" />
 		<Unit filename="src/living.cpp" />
 		<Unit filename="src/living.h" />
 		<Unit filename="src/loader.cpp" />

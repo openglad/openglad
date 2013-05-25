@@ -1,0 +1,7 @@
+/src/config.h
+/cb_Openglad.depend
+/cb_Openglad.layout
+obj
+*.exe
+stdout.txt
+stderr.txt
