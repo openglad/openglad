@@ -229,7 +229,7 @@ short read_help(const char *somefile,screen * myscreen)
 	start_time = query_timer();
 
 	/* seek to the beginning of the file */
-	SDL_RWseek(infile, SEEK_SET, 0);
+	SDL_RWseek(infile, 0, SEEK_SET);
 
 	// Fill the helptext array with data ..
 	numlines = (Sint32) (fill_help_array(helptext, infile));

@@ -74,7 +74,7 @@ std::string get_user_path()
 #endif
 }
 
-std::string get_data_path()
+std::string get_asset_path()
 {
 #ifdef ANDROID
     // RWops will look in the app's assets directory for this path
@@ -88,14 +88,12 @@ std::string get_data_path()
 #endif
 }
 
-std::string get_asset_path()
-{
-    return "";
-}
-
 SDL_RWops* open_read_file(const char* file)
 {
-    return PHYSFSRWOPS_openRead(file);
+    SDL_RWops* rwops = PHYSFSRWOPS_openRead(file);
+    if(rwops != NULL)
+        return rwops;
+    return SDL_RWFromFile(file, "rb");
 }
 
 SDL_RWops* open_read_file(const char* path, const char* file)
@@ -105,7 +103,10 @@ SDL_RWops* open_read_file(const char* path, const char* file)
 
 SDL_RWops* open_write_file(const char* file)
 {
-    return PHYSFSRWOPS_openWrite(file);
+    SDL_RWops* rwops = PHYSFSRWOPS_openWrite(file);
+    if(rwops != NULL)
+        return rwops;
+    return SDL_RWFromFile(file, "wb");
 }
 
 SDL_RWops* open_write_file(const char* path, const char* file)
@@ -118,7 +119,7 @@ void create_dataopenglad()
 {
     std::string user_path = get_user_path();
     mkdir(user_path.c_str(), 0770);
-    mkdir((user_path + "scen/").c_str(), 0770);
+    mkdir((user_path + "campaigns/").c_str(), 0770);
     mkdir((user_path + "save/").c_str(), 0770);
     mkdir((user_path + "cfg/").c_str(), 0770);
 }
@@ -141,6 +142,45 @@ std::list<std::string> list_files(const std::string& dirname)
     return fileList;
 }
 
+void copy_file(const std::string& filename, const std::string& dest_filename)
+{
+    Log("Copying file: %s\n", filename.c_str());
+    SDL_RWops* in = SDL_RWFromFile(filename.c_str(), "rb");
+    if(in == NULL)
+    {
+        Log("Could not open file to copy.\n");
+        return;
+    }
+    
+    long size = 100;
+    // Grab the data
+    unsigned char* data = (unsigned char*)malloc(size);
+    
+    // Save it to another file
+    Log("Copying to: %s\n", dest_filename.c_str());
+    SDL_RWops* out = SDL_RWFromFile(dest_filename.c_str(), "wb");
+    if(out == NULL)
+    {
+        Log("Could not open destination file.\n");
+        SDL_RWclose(in);
+        return;
+    }
+    
+    long total = 0;
+    long len = 0;
+    while((len = SDL_RWread(in, data, 1, size)) > 0)
+    {
+        SDL_RWwrite(out, data, 1, len);
+        total += len;
+    }
+    
+    SDL_RWclose(in);
+    SDL_RWclose(out);
+    free(data);
+    
+    Log("Copied %d bytes.\n", total);
+}
+
 void io_init(int argc, char* argv[])
 {
     // Make sure our directory tree exists and is set up
@@ -149,49 +189,48 @@ void io_init(int argc, char* argv[])
     PHYSFS_init(argv[0]);
     PHYSFS_setWriteDir(get_user_path().c_str());
     
-    
-    if(!PHYSFS_mount((get_user_path() + "save/").c_str(), "save/", 1))
+    if(!PHYSFS_mount(get_user_path().c_str(), NULL, 1))
     {
-        Log("Failed to mount user save path.\n");
+        Log("Failed to mount user data path.\n");
         exit(1);
     }
     
-    // Custom campaigns will be found here
-    if(!PHYSFS_mount((get_user_path() + "scen/").c_str(), "scen/", 1))
-    {
-        Log("Failed to mount user scen path.\n");
-        exit(1);
-    }
-    
-    if(!PHYSFS_mount((get_user_path() + "cfg/").c_str(), "cfg/", 1))
-    {
-        Log("Failed to mount user cfg path.\n");
-        exit(1);
-    }
+    // NOTES!
+    // PhysFS cannot grab files from the assets folder because they're actually inside the apk.
+    // SDL_RWops does some magic to figure out a file descriptor from JNI.
+    // This means that I cannot use PhysFS to get any assets at all.
+    // So for simple assets, I need to check PhysFS first, then fall back to SDL_RWops from the assets folder.
+    // For campaign packages, I can copy them to the internal storage and they'll live happily there, accessed by PhysFS.
+    // SDL_RWops size checking on Android doesn't seem to work!
     
     // Open up the default campaign
     // TODO: Let us change the campaign directory (store this one and unmount it when changing)
-    if(!PHYSFS_mount((get_asset_path() + "scen/" + "org.openglad.gladiator.glad").c_str(), NULL, 1))
+    if(!PHYSFS_mount((get_asset_path() + "scen/org.openglad.gladiator.glad").c_str(), NULL, 1)
+       && !PHYSFS_mount((get_user_path() + "campaigns/org.openglad.gladiator.glad").c_str(), NULL, 1))
     {
-        Log("Failed to mount default campaign path.\n");
-        exit(1);
+        Log("Failed to mount default campaign path: %s\n", PHYSFS_getLastError());
+        
+        copy_file("scen/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+        
+        if(!PHYSFS_mount((get_user_path() + "campaigns/org.openglad.gladiator.glad").c_str(), NULL, 1))
+        {
+            Log("Really failed to mount default campaign path: %s\n", PHYSFS_getLastError());
+            exit(1);
+        }
     }
     
     // Set up paths for default assets
     if(!PHYSFS_mount((get_asset_path() + "pix/").c_str(), "pix/", 1))
     {
         Log("Failed to mount default pix path.\n");
-        exit(1);
     }
     if(!PHYSFS_mount((get_asset_path() + "sound/").c_str(), "sound/", 1))
     {
         Log("Failed to mount default sound path.\n");
-        exit(1);
     }
     if(!PHYSFS_mount((get_asset_path() + "cfg/").c_str(), "cfg/", 1))
     {
         Log("Failed to mount default cfg path.\n");
-        exit(1);
     }
     
     
