@@ -212,7 +212,7 @@ short viewscreen::redraw()
 	unsigned short maxx = screenp->maxx;
 	unsigned short maxy = screenp->maxy;
 
-	// check if we are partially shorto a grid square and require
+	// check if we are partially into a grid square and require
 	//   extra row
 	if (controlob)
 	{
@@ -799,7 +799,7 @@ short viewscreen::input(const SDL_Event& event)
 		control->stats->clear_command();
 
 	// If we're frozen ..
-	if (control->stats->frozen_delay)
+	if (control->dead || control->stats->frozen_delay)
 	{
 		return 1;
 	}

@@ -22,7 +22,7 @@
 #ifndef _UTIL_H__
 #define _UTIL_H__
 
-#include <SDL.h>
+#include "SDL.h"
 #include <ctype.h>
 #include <string>
 

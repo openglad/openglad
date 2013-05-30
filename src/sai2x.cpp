@@ -1,4 +1,4 @@
-#include <SDL.h>
+#include "SDL.h"
 #include "sai2x.h"
 #include "util.h"
 //#include "os_depend.h"

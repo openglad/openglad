@@ -978,6 +978,20 @@ short screen::act()
 	{
 		if (here->ob && here->ob->dead)
 		{
+		    // Delete the dead thing safely
+		    
+			// Is it a player?
+			if(here->ob->user != -1)
+			{
+			    // Remove it from its viewscreen
+			    for(int i = 0; i < numviews; i++)
+			    {
+			        if(here->ob == viewob[i]->control)
+                        viewob[i]->control = NULL;
+			    }
+			}
+			
+			// Delete it
 			delete here->ob;
 			here->ob = NULL;
 		}

@@ -122,6 +122,12 @@ void __PHYSFS_platformDetectAvailableCDs(PHYSFS_StringCallback cb, void *data)
     endmntent(mounts);
 
 } /* __PHYSFS_platformDetectAvailableCDs */
+#else
+#warning No CD-ROM support detected.
+/* Stub version for platforms without CD-ROM support. */
+void __PHYSFS_platformDetectAvailableCDs(PHYSFS_StringCallback cb, void *data)
+{
+} /* __PHYSFS_platformDetectAvailableCDs */
 
 #endif
 

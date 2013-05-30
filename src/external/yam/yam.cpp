@@ -6,7 +6,7 @@ The Yam source code is released under the Boost Software License v1.0.
 See LICENSE for details.
 */
 
-#include "Yam.h"
+#include "yam.h"
 
 
 Yam::Yam()

@@ -23,7 +23,7 @@
 #ifndef _INPUT_H__
 #define _INPUT_H__
 
-#include <SDL.h>
+#include "SDL.h"
 #include <ctype.h>
 #include <string>
 #include "video.h"
