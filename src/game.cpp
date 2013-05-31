@@ -200,7 +200,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	}
 
 	// Have we already done this scenario?
-	if (myscreen->levelstatus[myscreen->scen_num])
+	if (myscreen->is_level_completed(myscreen->scen_num))
 	{
 		//                Log("already done level\n");
 		here = myscreen->oblist;
@@ -290,7 +290,10 @@ short load_team_list(const char * filename, screen  *myscreen)
 
 	char temptext[10] = "GTL";
 	char savedgame[40];
-	char temp_version = 7;
+	char temp_campaign[41];
+	strcpy(temp_campaign, "org.openglad.gladiator");
+	temp_campaign[40] = '\0';
+	char temp_version = 8;
 	Uint32 newcash;
 	Uint32 newscore = 0;
 	//  short numguys;
@@ -316,6 +319,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 	// 1-byte version number
 	// 2-bytes registered mark            // Versions 7+
 	// 40-bytes saved game name, version 2 and up
+	// 40-bytes current campaign ID       // Version 8+
 	// 2-bytes (short) = scenario number
 	// 4-bytes (Sint32)= cash (unsigned)
 	// 4-bytes (Sint32)= score (unsigned)
@@ -347,8 +351,17 @@ short load_team_list(const char * filename, screen  *myscreen)
 	// 4-bytes total shots made, v.4+
 	// 2-bytes team number
 	// 2*4 = 8 bytes RESERVED
-	// List of 200 or 500 (max levels) 1-byte scenario-level status
-
+	// List of 200 or 500 (max levels) 1-byte scenario-level status  // Versions 1-7
+	// 2-bytes Number of campaigns in list      // Version 8+
+	// List of n campaigns                      // Version 8+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of level indices in list
+	//   List of n level indices
+	//     2-bytes Level index
+    
+    
+    myscreen->completed_levels.clear();
+    
 	//strcpy(temp_filename, scen_directory);
 	strcpy(temp_filename, filename);
 	strcat(temp_filename, ".gtl"); // gladiator team list
@@ -391,6 +404,17 @@ short load_team_list(const char * filename, screen  *myscreen)
 		}
 	}
 
+    // Read campaign ID
+	if (temp_version >= 8)
+	{
+		SDL_RWread(infile, temp_campaign, 1, 40);
+		temp_campaign[40] = '\0';
+		if(strlen(temp_campaign) > 3)
+            strcpy(myscreen->current_campaign, temp_campaign);
+        else
+            strcpy(myscreen->current_campaign, "org.openglad.gladiator");
+	}
+	
 	// Read scenario number
 	SDL_RWread(infile, &next_scenario, 2, 1);
 	myscreen->scen_num = next_scenario;
@@ -520,13 +544,51 @@ short load_team_list(const char * filename, screen  *myscreen)
 		}
 	}
 
-	if (temp_version >= 5)
-		SDL_RWread(infile,  (myscreen->levelstatus), 500, 1);
-	else
-	{
-		memset( (myscreen->levelstatus), 0, 500);
-		SDL_RWread(infile, (myscreen->levelstatus), 200, 1);
-	}
+    if(temp_version < 8)
+    {
+        char levelstatus[MAX_LEVELS];
+        
+        if (temp_version >= 5)
+            SDL_RWread(infile, levelstatus, 500, 1);
+        else
+        {
+            memset(levelstatus, 0, 500);
+            SDL_RWread(infile, levelstatus, 200, 1);
+        }
+        
+        // Guaranteed to be the default campaign if version < 8
+        for(int i = 0; i < 500; i++)
+        {
+            if(levelstatus[i])
+                myscreen->add_level_completed(myscreen->current_campaign, i);
+        }
+    }
+    else
+    {
+        short num_campaigns = 0;
+        char campaign[41];
+        short num_levels = 0;
+        // How many campaigns are stored?
+        SDL_RWread(infile, &num_campaigns, 2, 1);
+        for(int i = 0; i < num_campaigns; i++)
+        {
+            // Get the campaign ID (40 chars)
+            SDL_RWread(infile, campaign, 1, 40);
+            campaign[40] = '\0';
+            
+            // Get the number of cleared levels
+            SDL_RWread(infile, &num_levels, 2, 1);
+            for(int j = 0; j < num_levels; j++)
+            {
+                // Get the level index
+                short index = 0;
+                SDL_RWread(infile, &index, 2, 1);
+                
+                // Add it to our list
+                myscreen->add_level_completed(campaign, index);
+            }
+        }
+    }
 
     SDL_RWclose(infile);
 
@@ -543,7 +605,7 @@ short save_game(const char * filename, screen  *myscreen)
 	char savedgame[40];
 
 	char temptext[10] = "GTL";
-	char temp_version = 7;
+	char temp_version = 8;
 	short next_scenario = (short) ( myscreen->scen_num + 1 );
 	Uint32 newcash = myscreen->totalcash;
 	Uint32 newscore = myscreen->totalscore;
@@ -570,6 +632,7 @@ short save_game(const char * filename, screen  *myscreen)
 	// 1-byte version number
 	// 2-bytes Registered or not          // Version 7+
 	// 40-bytes saved-game name, dummy here
+	// 40-bytes current campaign ID       // Version 8+
 	// 2-bytes (short) = scenario number
 	// 4-bytes (Sint32)= cash (unsigned)
 	// 4-bytes (Sint32)= score (unsigned)
@@ -601,7 +664,13 @@ short save_game(const char * filename, screen  *myscreen)
 	// 4-bytes total shots made, v.4+
 	// 2-bytes team number, v.5+
 	// 2*4 = 8 bytes RESERVED
-	// List of 500 (max scenarios) 1-byte scenario-level status
+	// List of 500 (max scenarios) 1-byte scenario-level status  // Versions 1-7
+	// 2-bytes Number of campaigns in list      // Version 8+
+	// List of n campaigns                      // Version 8+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of level indices in list
+	//   List of n level indices
+	//     2-bytes Level index
 
 	//strcpy(temp_filename, scen_directory);
 	strcpy(temp_filename, filename);
@@ -626,6 +695,9 @@ short save_game(const char * filename, screen  *myscreen)
 
 	// Write the name
 	SDL_RWwrite(outfile, savedgame, 40, 1);
+	
+	// Write current campaign
+	SDL_RWwrite(outfile, myscreen->current_campaign, 40, 1);
 
 	// Write scenario number
 	SDL_RWwrite(outfile, &next_scenario, 2, 1);
@@ -729,8 +801,28 @@ short save_game(const char * filename, screen  *myscreen)
 		here = here->next;
 	}
 
-	// Write the level status ..
-	SDL_RWwrite(outfile, (myscreen->levelstatus), 500, 1);
+	// Write the completed levels
+	// Number of campaigns
+	short num_campaigns = myscreen->completed_levels.size();
+    SDL_RWwrite(outfile, &num_campaigns, 2, 1);
+	for(std::map<std::string, std::set<int> >::const_iterator e = myscreen->completed_levels.begin(); e != myscreen->completed_levels.end(); e++)
+    {
+        // Campaign ID
+        char campaign[41];
+        memset(campaign, 0, 41);
+        strcpy(campaign, e->first.c_str());
+        SDL_RWwrite(outfile, campaign, 1, 40);
+        
+        // Number of levels
+        short num_levels = e->second.size();
+        SDL_RWwrite(outfile, &num_levels, 2, 1);
+        for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
+        {
+            // Level index
+            short index = *f;
+            SDL_RWwrite(outfile, &index, 2, 1);
+        }
+    }
 
     SDL_RWclose(outfile);
 

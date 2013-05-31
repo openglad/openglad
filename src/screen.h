@@ -22,6 +22,9 @@
 #include "base.h"
 #include "video.h"
 #include "loader.h"
+#include <map>
+#include <string>
+#include <set>
 
 // Goddamned function doesn't belong in screen, much less as a C style extern!
 //   I'll fix this eventually, if I ever get hold of that part of the code.
@@ -84,7 +87,9 @@ class screen : public video
 		unsigned short enemy_freeze; // stops enemies from acting
 		soundob *soundp;
 		short redrawme;
-		char levelstatus[MAX_LEVELS];
+		bool is_level_completed(int level_index) const;
+		void add_level_completed(const std::string& campaign, int level_index);
+		std::map<std::string, std::set<int> > completed_levels;
 		char scentext[80][80];                         // Array to hold scenario information
 		char scentextlines;                    // How many lines of text in scenario info
 
@@ -108,6 +113,7 @@ class screen : public video
 		Sint32 numobs;
 		obmap  *myobmap;
 		signed char timer_wait;
+        char current_campaign[41];
 		short scen_num;
 		Uint32 score;
 		Uint32 m_score[4];

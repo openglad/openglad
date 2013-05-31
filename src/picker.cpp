@@ -70,13 +70,14 @@ Sint32 *mymouse;     // hold mouse information
 guy  *current_guy;// = new guy();
 Uint32 money[4] = {5000, 5000, 5000, 5000};
 Uint32 score[4] = {0, 0, 0, 0};
+char current_campaign[41];
 Sint32 scen_level = 1;
+std::map<std::string, std::set<int> > completed_levels;
 char  message[80];
 Sint32 editguy = 0;        // Global for editing guys ..
 unsigned char playermode=1;
 unsigned char  *gladpic,*magepic;
 pixieN  *gladpix,*magepix;
-char levels[MAX_LEVELS];        // our level-completion status
 SDL_RWops *loadgame; //for loading the default game
 vbutton * localbuttons; //global so we can delete the buttons anywhere
 guy *ourteam[MAXTEAM];
@@ -831,6 +832,7 @@ Sint32 beginmenu(Sint32 arg1)
 	}
 
 	scen_level = 1;
+	strcpy(current_campaign, "org.openglad.gladiator");
 	delete_all();
 	current_guy = NULL;
 	clear_levels();
@@ -2442,7 +2444,7 @@ Sint32 save_team_list(const char * filename)
 	Sint32 i, j;
 
 	char temptext[10];
-	char temp_version = 7;
+	char temp_version = 8;
 	unsigned char temp_playermode = playermode;
 	Sint32 next_scenario = scen_level;
 	Uint32 newcash = money[0];
@@ -2471,6 +2473,7 @@ Sint32 save_team_list(const char * filename)
 	// 1-byte version number (from graph.h)
 	// 2-bytes Registered or not          // Version 7+
 	// 40-byte saved game name (version 2 and up only!)
+	// 40-bytes current campaign ID       // Version 8+
 	// 2-bytes (int) = scenario number
 	// 4-bytes (Sint32)= cash (unsigned)
 	// 4-bytes (Sint32)= score (unsigned)
@@ -2502,7 +2505,13 @@ Sint32 save_team_list(const char * filename)
 	// 4-bytes total shots, v.4+
 	// 2-bytes team number, v.5+
 	// 2*4 = 8 bytes RESERVED
-	// List of 500 (max levels) 1-byte scenario status flags
+	// List of 500 (max levels) 1-byte scenario status flags  // Versions 1-7
+	// 2-bytes Number of campaigns in list      // Version 8+
+	// List of n campaigns                      // Version 8+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of level indices in list
+	//   List of n level indices
+	//     2-bytes Level index
 
 	//strcpy(temp_filename, scen_directory);
 	strcpy(temp_filename, filename);
@@ -2537,6 +2546,9 @@ Sint32 save_team_list(const char * filename)
 	for (i=strlen(savedgame); i < 40; i++)
 		savedgame[i] = 0;
 	SDL_RWwrite(outfile, savedgame, 40, 1);
+	
+	// Write current campaign
+	SDL_RWwrite(outfile, current_campaign, 40, 1);
 
 	// Write scenario number
 	SDL_RWwrite(outfile, &next_scenario, 2, 1);
@@ -2625,11 +2637,57 @@ Sint32 save_team_list(const char * filename)
 		} // end of found valid guy in slot
 	}
 
-	// Write our level status ..
-	SDL_RWwrite(outfile, levels, 500, 1);
+
+	// Write the completed levels
+	// Number of campaigns
+	short num_campaigns = completed_levels.size();
+    SDL_RWwrite(outfile, &num_campaigns, 2, 1);
+	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
+    {
+        // Campaign ID
+        char campaign[41];
+        memset(campaign, 0, 41);
+        strcpy(campaign, e->first.c_str());
+        SDL_RWwrite(outfile, campaign, 1, 40);
+        
+        // Number of levels
+        short num_levels = e->second.size();
+        SDL_RWwrite(outfile, &num_levels, 2, 1);
+        for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
+        {
+            // Level index
+            short index = *f;
+            SDL_RWwrite(outfile, &index, 2, 1);
+        }
+    }
 
     SDL_RWclose(outfile);
 	return 1;
+}
+
+
+bool is_level_completed(const std::map<std::string, std::set<int> >& completed_levels, const std::string& campaign, int level_index)
+{
+    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(campaign);
+    // Campaign not found?  Then this level is not done.
+    if(e == completed_levels.end())
+        return false;
+    
+    // If the level is listed, then it is completed.
+    std::set<int>::const_iterator f = e->second.find(level_index);
+    return (f != e->second.end());
+}
+
+void add_level_completed(std::map<std::string, std::set<int> >& completed_levels, const std::string& campaign, int level_index)
+{
+    std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
+    
+    // Campaign not found?  Add it in.
+    if(e == completed_levels.end())
+        e = completed_levels.insert(std::make_pair(campaign, std::set<int>())).first;
+    
+    // Add the completed level
+    e->second.insert(level_index);
 }
 
 Sint32 load_team_list_one(const char * filename)
@@ -2640,7 +2698,10 @@ Sint32 load_team_list_one(const char * filename)
 
 	char temptext[10] = "GTL";
 	char savedgame[40];
-	char temp_version = 7;
+	char temp_version = 8;
+	char temp_campaign[41];
+	strcpy(temp_campaign, "org.openglad.gladiator");
+	temp_campaign[40] = '\0';
 	Sint32 next_scenario = 1;
 	Uint32 newcash = money[0];
 	Uint32 newscore = 0;
@@ -2670,6 +2731,7 @@ Sint32 load_team_list_one(const char * filename)
 	// 1-byte version number (from graph.h)
 	// 2-bytes registered mark            // Versions 7+
 	// 40-byte saved-game name (version 2 and up only!)
+	// 40-bytes current campaign ID       // Version 8+
 	// 2-bytes (int) = scenario number
 	// 4-bytes (Sint32)= cash (unsigned)
 	// 4-bytes (Sint32)= score (unsigned)
@@ -2701,7 +2763,13 @@ Sint32 load_team_list_one(const char * filename)
 	// 4-bytes total shots made, v.4+
 	// 2-bytes team number, v.5+
 	// 2*4 = 8 bytes RESERVED
-	// List of 200 or 500 (max levels) 1-byte scenario-level status
+	// List of 200 or 500 (max levels) 1-byte scenario-level status  // Versions 1-7
+	// 2-bytes Number of campaigns in list      // Version 8+
+	// List of n campaigns                      // Version 8+
+	//   40-bytes Campaign ID string
+	//   2-bytes Number of level indices in list
+	//   List of n level indices
+	//     2-bytes Level index
 
 	strcpy(temp_filename, filename);
 	//buffers: PORT: changed .GTL to .gtl
@@ -2755,6 +2823,17 @@ Sint32 load_team_list_one(const char * filename)
 	}
 	else
 		strcpy(savedgame, "SAVED GAME"); // fake the game name
+
+    // Read campaign ID
+	if (temp_version >= 8)
+	{
+		SDL_RWread(infile, temp_campaign, 1, 40);
+		temp_campaign[40] = '\0';
+		if(strlen(temp_campaign) > 3)
+            strcpy(current_campaign, temp_campaign);
+        else
+            strcpy(current_campaign, "org.openglad.gladiator");
+	}
 
 	// Read scenario number
 	SDL_RWread(infile, &next_scenario, 2, 1);
@@ -2897,13 +2976,51 @@ Sint32 load_team_list_one(const char * filename)
 		add_guy(tempguy);
 	}
 
-	// Read the level status
-	// First, clear the status ..
-	memset( levels, 0, 500 );
-	if (temp_version >= 5)
-		SDL_RWread(infile, levels, 500, 1);
-	else
-		SDL_RWread(infile, levels, 200, 1);
+    if(temp_version < 8)
+    {
+        char levels[MAX_LEVELS];
+        
+        // Read the level status
+        // First, clear the status ..
+        memset( levels, 0, 500 );
+        if (temp_version >= 5)
+            SDL_RWread(infile, levels, 500, 1);
+        else
+            SDL_RWread(infile, levels, 200, 1);
+        
+        // Guaranteed to be the default campaign if version < 8
+        for(int i = 0; i < 500; i++)
+        {
+            if(levels[i])
+                add_level_completed(completed_levels, current_campaign, i);
+        }
+    }
+    else
+    {
+        short num_campaigns = 0;
+        char campaign[41];
+        short num_levels = 0;
+        // How many campaigns are stored?
+        SDL_RWread(infile, &num_campaigns, 2, 1);
+        for(int i = 0; i < num_campaigns; i++)
+        {
+            // Get the campaign ID (40 chars)
+            SDL_RWread(infile, campaign, 1, 40);
+            campaign[40] = '\0';
+            
+            // Get the number of cleared levels
+            SDL_RWread(infile, &num_levels, 2, 1);
+            for(int j = 0; j < num_levels; j++)
+            {
+                // Get the level index
+                short index = 0;
+                SDL_RWread(infile, &index, 2, 1);
+                
+                // Add it to our list
+                add_level_completed(completed_levels, campaign, index);
+            }
+        }
+    }
 
     SDL_RWclose(infile);
 
@@ -2920,12 +3037,14 @@ const char* get_saved_name(const char * filename)
 	char temp_version = 1;
 	short temp_registered;
 
+	// This only uses the first segment of the save format.
+	// See load_team_list() for full format
+	
 	// Format of a team list file is:
 	// 3-byte header: 'GTL'
 	// 1-byte version number (from graph.h)
 	// 2-bytes registered mark, version 7+ only
 	// 40-byte saved-game name (version 2 and up only!)
-	//   .
 	//   .
 	//   .
 
@@ -3213,12 +3332,8 @@ Uint32 calculate_exp(Sint32 level)
 
 void clear_levels()
 {
-	Sint32 i;
-
 	// Set all of our level-completion status to off
-	for (i=0; i < MAX_LEVELS; i++)
-		levels[i] = 0;
-
+	completed_levels.clear();
 }
 
 

@@ -492,6 +492,9 @@ void screen::reset(short howmany)
 	end = 0;
 
 	redrawme = 1;
+	
+	strcpy(current_campaign, "org.openglad.gladiator");
+	completed_levels.clear();
 
 	score = totalcash = totalscore = 0;
 	for (i=0; i < 4; i++)
@@ -1495,7 +1498,7 @@ short screen::endgame(short ending, short nextlevel)
 	{
 		//buffers: we will port the red pal stuff later
 		//buffers: set_palette(redpalette);
-		if (levelstatus[scen_num] == 1) // this scenario is completed ..
+		if (is_level_completed(scen_num)) // this scenario is completed ..
 		{
 			draw_dialog(30, 70, 290, 134, "Traveling On..");
 			// Zardus: FIX: what the hell is this supposed to mean?
@@ -1525,7 +1528,7 @@ short screen::endgame(short ending, short nextlevel)
 			m_totalcash[i] += bonuscash[i];
 			allbonuscash += bonuscash[i];
 		}
-		if (levelstatus[scen_num] == 1) // already won, no bonus
+		if (is_level_completed(scen_num)) // already won, no bonus
 		{
 			for (i=0; i < 4; i++)
 				bonuscash[i] = 0;
@@ -1536,7 +1539,7 @@ short screen::endgame(short ending, short nextlevel)
 		buffer_to_screen(0, 0, 320, 200);
 
 		// Save the level to disk ..
-		levelstatus[scen_num] = 1; // this scenario is completed ..
+		add_level_completed(current_campaign, scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
 			scen_num = (short) (nextlevel-1);    // Fake jumping to next level ..
 		save_game("save0", this);
@@ -1782,6 +1785,30 @@ const char* screen::get_scen_title(const char *filename, screen *master)
     }
 	return buffer;
 
+}
+
+bool screen::is_level_completed(int level_index) const
+{
+    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(current_campaign);
+    // Campaign not found?  Then this level is not done.
+    if(e == completed_levels.end())
+        return false;
+    
+    // If the level is listed, then it is completed.
+    std::set<int>::const_iterator f = e->second.find(level_index);
+    return (f != e->second.end());
+}
+
+void screen::add_level_completed(const std::string& campaign, int level_index)
+{
+    std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
+    
+    // Campaign not found?  Add it in.
+    if(e == completed_levels.end())
+        e = completed_levels.insert(std::make_pair(campaign, std::set<int>())).first;
+    
+    // Add the completed level
+    e->second.insert(level_index);
 }
 
 //buffers: the file finding and loading code is pretty ugly... i should

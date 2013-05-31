@@ -175,8 +175,8 @@ short treasure::eat_me(walker  * eater)
 			//    somewhere we've been, in which case we abort
 			//    this level, and set our current level to
 			//    that pointed to by the exit ...
-			if ( (screenp->levelstatus[stats->level] == 1)
-			        && (screenp->levelstatus[screenp->scen_num] == 0)
+			if ( screenp->is_level_completed(stats->level)
+			        && !screenp->is_level_completed(screenp->scen_num)
 			        && (guys_here != 0)
 			   ) // okay to leave
 			{
@@ -192,7 +192,6 @@ short treasure::eat_me(walker  * eater)
 				if (result) // accepted level change
 				{
 					clear_keyboard();
-					screenp->levelstatus[screenp->scen_num] = 0;  // NOT done
 					// Delete all of our current information and abort ..
 					here = myscreen->oblist;
 					while (here)
