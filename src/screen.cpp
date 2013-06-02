@@ -1735,16 +1735,13 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 	char temptext[10] = "XXX";
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
-	enum {notfound, file, pack} gotit = notfound;
 	static char buffer[30];
 
 	strcpy(tempfile, filename);
 	strcat(tempfile, ".fss");
 
 	// Zardus: first get the file from scen/, then the packfile
-	if ((infile = open_read_file("scen/", tempfile)))
-		gotit = file;
-	else
+	if (!(infile = open_read_file("scen/", tempfile)))
 	{
         return "none";
 	}
@@ -1816,7 +1813,6 @@ short load_scenario(const char * filename, screen * master)
 	SDL_RWops  *infile = NULL;
 	char temptext[10] = "XXX";
 	char versionnumber = 0;
-	Sint32 gotit;
 	short tempvalue;
 	string thefile(filename);
 
@@ -1826,14 +1822,8 @@ short load_scenario(const char * filename, screen * master)
 	thefile += ".fss";
 	lowercase(thefile);
 
-	gotit = 0;
-
-	// Zaradus: much much better this way
-	if ( (infile = open_read_file("scen/", thefile.c_str())))
-	{
-		gotit = 1;
-	}
-	else
+	// Zardus: much much better this way
+	if ( !(infile = open_read_file("scen/", thefile.c_str())))
     {
         Log("Cannot open levels resource file %s!", thefile.c_str());
         exit(1);

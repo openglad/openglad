@@ -74,6 +74,7 @@ Uint32 score[4] = {0, 0, 0, 0};
 char current_campaign[41];
 Sint32 scen_level = 1;
 std::map<std::string, std::set<int> > completed_levels;
+std::map<std::string, int> current_levels;
 char  message[80];
 Sint32 editguy = 0;        // Global for editing guys ..
 unsigned char playermode=1;
@@ -2513,6 +2514,7 @@ Sint32 save_team_list(const char * filename)
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
 	//   40-bytes Campaign ID string
+	//   2-bytes Current level in this campaign
 	//   2-bytes Number of level indices in list
 	//   List of n level indices
 	//     2-bytes Level index
@@ -2654,6 +2656,12 @@ Sint32 save_team_list(const char * filename)
         strcpy(campaign, e->first.c_str());
         SDL_RWwrite(outfile, campaign, 1, 40);
         
+        short index = 1;
+        std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
+        if(g != current_levels.end())
+            index = g->second;
+        SDL_RWwrite(outfile, &index, 2, 1);
+        
         // Number of levels
         short num_levels = e->second.size();
         SDL_RWwrite(outfile, &num_levels, 2, 1);
@@ -2771,6 +2779,7 @@ Sint32 load_team_list_one(const char * filename)
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
 	//   40-bytes Campaign ID string
+	//   2-bytes Current level in this campaign
 	//   2-bytes Number of level indices in list
 	//   List of n level indices
 	//     2-bytes Level index
@@ -2829,6 +2838,7 @@ Sint32 load_team_list_one(const char * filename)
 		strcpy(savedgame, "SAVED GAME"); // fake the game name
 
     // Read campaign ID
+    std::string old_campaign = current_campaign;
 	if (temp_version >= 8)
 	{
 		SDL_RWread(infile, temp_campaign, 1, 40);
@@ -3012,12 +3022,16 @@ Sint32 load_team_list_one(const char * filename)
             SDL_RWread(infile, campaign, 1, 40);
             campaign[40] = '\0';
             
+            short index = 1;
+            // Get the current level for this campaign
+            SDL_RWread(infile, &index, 2, 1);
+            current_levels.insert(std::make_pair(campaign, index));
+            
             // Get the number of cleared levels
             SDL_RWread(infile, &num_levels, 2, 1);
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
-                short index = 0;
                 SDL_RWread(infile, &index, 2, 1);
                 
                 // Add it to our list
@@ -3025,6 +3039,8 @@ Sint32 load_team_list_one(const char * filename)
             }
         }
     }
+    
+    load_campaign(old_campaign, current_campaign, current_levels);
 
     SDL_RWclose(infile);
 

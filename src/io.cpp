@@ -146,6 +146,9 @@ bool mount_campaign_package(const std::string& id)
 
 bool unmount_campaign_package(const std::string& id)
 {
+    if(id.size() == 0)
+        return true;
+    
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_removeFromSearchPath(filename.c_str()))
     {

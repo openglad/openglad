@@ -18,6 +18,21 @@ int toInt(const std::string& s)
     return atoi(s.c_str());
 }
 
+int load_campaign(const std::string& old_campaign, const std::string& campaign, std::map<std::string, int>& current_levels)
+{
+    if(!unmount_campaign_package(old_campaign))
+        return -1;
+    
+    if(!mount_campaign_package(campaign))
+        return -2;
+    
+    std::map<std::string, int>::const_iterator g = current_levels.find(campaign);
+    if(g != current_levels.end())
+        return g->second;
+    else
+        return 1;
+}
+
 class CampaignEntry
 {
 public:

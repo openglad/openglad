@@ -17,6 +17,7 @@
 #include "graph.h"
 #include "smooth.h"
 #include "util.h"
+#include "campaign_picker.h"
 
 short next_scenario = 1;
 
@@ -355,6 +356,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
 	//   40-bytes Campaign ID string
+	//   2-bytes Current level in this campaign
 	//   2-bytes Number of level indices in list
 	//   List of n level indices
 	//     2-bytes Level index
@@ -405,6 +407,7 @@ short load_team_list(const char * filename, screen  *myscreen)
 	}
 
     // Read campaign ID
+    std::string old_campaign = myscreen->current_campaign;
 	if (temp_version >= 8)
 	{
 		SDL_RWread(infile, temp_campaign, 1, 40);
@@ -576,12 +579,16 @@ short load_team_list(const char * filename, screen  *myscreen)
             SDL_RWread(infile, campaign, 1, 40);
             campaign[40] = '\0';
             
+            short index = 1;
+            // Get the current level for this campaign
+            SDL_RWread(infile, &index, 2, 1);
+            myscreen->current_levels.insert(std::make_pair(campaign, index));
+            
             // Get the number of cleared levels
             SDL_RWread(infile, &num_levels, 2, 1);
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
-                short index = 0;
                 SDL_RWread(infile, &index, 2, 1);
                 
                 // Add it to our list
@@ -589,6 +596,8 @@ short load_team_list(const char * filename, screen  *myscreen)
             }
         }
     }
+    
+    load_campaign(old_campaign, myscreen->current_campaign, myscreen->current_levels);
 
     SDL_RWclose(infile);
 
@@ -668,6 +677,7 @@ short save_game(const char * filename, screen  *myscreen)
 	// 2-bytes Number of campaigns in list      // Version 8+
 	// List of n campaigns                      // Version 8+
 	//   40-bytes Campaign ID string
+	//   2-bytes Current level in this campaign
 	//   2-bytes Number of level indices in list
 	//   List of n level indices
 	//     2-bytes Level index
@@ -813,13 +823,19 @@ short save_game(const char * filename, screen  *myscreen)
         strcpy(campaign, e->first.c_str());
         SDL_RWwrite(outfile, campaign, 1, 40);
         
+        short index = 1;
+        std::map<std::string, int>::const_iterator g = myscreen->current_levels.find(e->first);
+        if(g != myscreen->current_levels.end())
+            index = g->second;
+        SDL_RWwrite(outfile, &index, 2, 1);
+        
         // Number of levels
         short num_levels = e->second.size();
         SDL_RWwrite(outfile, &num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
         {
             // Level index
-            short index = *f;
+            index = *f;
             SDL_RWwrite(outfile, &index, 2, 1);
         }
     }
