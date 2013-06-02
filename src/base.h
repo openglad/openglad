@@ -62,7 +62,6 @@ class radar;
 
 class soundob;
 class smoother;
-class packfile;
 
 class oblink
 {
@@ -98,7 +97,6 @@ struct meminfo
 
 extern screen * myscreen; // global, availible to anyone
 extern smoother * mysmoother; // global, availible to anyone
-extern packfile * pixpack;
 
 #define MAX_LEVELS 500 // Maximum number of scenarios allowed ..
 

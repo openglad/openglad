@@ -21,15 +21,12 @@
 	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_file
 */
 #include "graph.h"
-#include "gladpack.h"
 #include <string>
 #include "util.h"
 using namespace std;
 
 // Use this for globally setting the graphics dir, etc..
 //char pix_directory[80];
-//packfile *pixpack; // the packed pixies; perfect
-packfile tempack;
 
 
 // ************************************************************
@@ -260,37 +257,3 @@ void load_map_data(unsigned char **whereto)
 
 }
 
-#if (0)
-// Testing for the sound modules
-packfile soundpack;
-Sint32 sound_opened = 0;  // use with soundpack
-
-FILE * open_sound_file(char *filename)
-{
-	FILE *infile = NULL;
-
-	// Open the pixie-pack, if not already done ...
-	if (!sound_opened)
-	{
-		if (soundpack.open("sound.001") == -1) // not in current directory
-		{
-			Log("Cannot open sound resource file!\n");
-			release_keyboard();
-			exit(0);
-		}
-		sound_opened = 1;
-	}
-
-	// First try to get info from the pack-file ..
-	if (sound_opened)
-		infile = soundpack.get_subfile(filename);
-
-	if (infile)
-		return infile;
-
-	// Else, we return NULL
-	//infile = fopen(filename, "rb");
-	//return infile;
-	return NULL;
-}
-#endif

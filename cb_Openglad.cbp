@@ -259,8 +259,6 @@
 		<Unit filename="src/external/yam/yam.h" />
 		<Unit filename="src/game.cpp" />
 		<Unit filename="src/glad.cpp" />
-		<Unit filename="src/gladpack.cpp" />
-		<Unit filename="src/gladpack.h" />
 		<Unit filename="src/graph.h" />
 		<Unit filename="src/graphlib.cpp" />
 		<Unit filename="src/guy.cpp" />

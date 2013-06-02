@@ -26,7 +26,6 @@
 
 #include "graph.h"
 #include "smooth.h"
-#include "gladpack.h"
 #include "util.h"
 #include "input.h"
 #include <string>
@@ -66,8 +65,6 @@ char  * query_my_map_name();
 char my_map_name[40];
 
 
-// These are globals for the packed files ..
-packfile scenpack;
 
 Uint32 random(Uint32 x)
 {
@@ -1746,7 +1743,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 	strcpy(tempfile, filename);
 	strcat(tempfile, ".fss");
 
-	// Zardus: first get the file from scen/, then the packfile
+	// Zardus: first get the file from scen/
 	if (!(infile = open_read_file("scen/", tempfile)))
 	{
         return "none";

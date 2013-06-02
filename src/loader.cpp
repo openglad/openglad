@@ -22,7 +22,6 @@
 #include "treasure.h"
 #include "weap.h"
 #include "effect.h"
-#include "gladpack.h"
 
 // Switch to "friendly" blood and stain pix files.
 //#define NO_BLOOD
