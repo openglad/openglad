@@ -15,6 +15,11 @@ SDL_RWops* open_write_file(const char* path, const char* file);
 
 std::list<std::string> list_files(const std::string& dirname);
 
+bool mount_campaign_package(const std::string& id);
+bool unmount_campaign_package(const std::string& id);
+std::list<std::string> list_campaigns();
+std::list<std::string> list_levels();
+
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 

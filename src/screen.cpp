@@ -109,6 +109,7 @@ screen::screen(short howmany):video()
 	first_guy = NULL;
 	//myradar[0] = myradar[1] = NULL; // very important! :)
 	control_hp = 0;
+	strcpy(current_campaign, "org.openglad.gladiator");
 	scen_num = 1; // default scenario
 	scenario_type = 0; // default, must kill all
 
@@ -1737,28 +1738,15 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 	enum {notfound, file, pack} gotit = notfound;
 	static char buffer[30];
 
-	// Open the pixie-pack, if not already done ...
-	if (!scenpack.opened())
-	{
-		if (scenpack.open("levels.001") == -1) // not in current directory
-		{
-			return "none";
-		}
-	}
-
 	strcpy(tempfile, filename);
 	strcat(tempfile, ".fss");
 
 	// Zardus: first get the file from scen/, then the packfile
 	if ((infile = open_read_file("scen/", tempfile)))
 		gotit = file;
-	else if (scenpack.opened())
+	else
 	{
-		infile = scenpack.get_subfile(tempfile);
-		if (infile)
-            gotit = pack;
-		else
-            return "none";
+        return "none";
 	}
 
 	// Are we a scenario file?
@@ -1779,7 +1767,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 	// Return the title, 30 bytes
 	SDL_RWread(infile, buffer, 30, 1);
 
-	if (gotit == file)
+	if (infile)
     {
 	    SDL_RWclose(infile);
     }
@@ -1797,6 +1785,16 @@ bool screen::is_level_completed(int level_index) const
     // If the level is listed, then it is completed.
     std::set<int>::const_iterator f = e->second.find(level_index);
     return (f != e->second.end());
+}
+
+int screen::get_num_levels_completed(const std::string& campaign) const
+{
+    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(campaign);
+    // Campaign not found?
+    if(e == completed_levels.end())
+        return 0;
+    
+    return e->second.size();
 }
 
 void screen::add_level_completed(const std::string& campaign, int level_index)
@@ -1841,17 +1839,12 @@ short load_scenario(const char * filename, screen * master)
         exit(1);
     }
 
-	if(gotit == 0 || !infile)
-	{
-		Log("Scenario %s was not found in levels.001 or in scen/ -- EXITING", filename);
-		return 0;
-	}
-
 	// Are we a scenario file?
 	SDL_RWread(infile, temptext, 3, 1);
 	if (strcmp(temptext, "FSS"))
 	{
 		Log("File %s is not a scenario!\n", filename);
+		SDL_RWclose(infile);
 		return 0;
 	}
 
@@ -1865,63 +1858,39 @@ short load_scenario(const char * filename, screen * master)
 	{
 		case 2:
 			tempvalue = load_version_2(infile, master);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+			SDL_RWclose(infile);
 			return tempvalue;
 			//break;
 		case 3:
 			tempvalue = load_version_3(infile, master);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+            SDL_RWclose(infile);
 			return tempvalue;
 			//break;
 		case 4:
 			tempvalue = load_version_4(infile, master);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+			SDL_RWclose(infile);
 			return tempvalue;
 			//break;
 		case 5:
 			tempvalue = load_version_5(infile, master);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+			SDL_RWclose(infile);
 			return tempvalue;
 		case 6:
 			tempvalue = load_version_6(infile, master);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+			SDL_RWclose(infile);
 			return tempvalue;
 		case 7:
 			tempvalue = load_version_6(infile, master, 7);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+			SDL_RWclose(infile);
 			return tempvalue;
 		case 8:
 			tempvalue = load_version_6(infile, master, 8);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+			SDL_RWclose(infile);
 			return tempvalue;
 		default:
 			Log("Scenario %s is version-level %d, and cannot be read.\n",
 			       filename, versionnumber);
-			if (!gotit)
-            {
-                SDL_RWclose(infile);
-            }
+            SDL_RWclose(infile);
 			//return 0;
 			break;
 	}

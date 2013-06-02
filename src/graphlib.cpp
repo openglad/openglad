@@ -57,7 +57,7 @@ unsigned char  * read_pixie_file(const char  * filename)
     
 
 	// Zardus: try to find file using open_read_file, then resort to graphics.001
-	if (!((infile = open_read_file("pix/", filename)) || (infile = open_read_file("scen/", filename))))
+	if (!((infile = open_read_file("pix/", filename)) || (infile = open_read_file(filename))))
     {
         Log("Cannot open pixie file %s!\n", filename);
         exit(0);

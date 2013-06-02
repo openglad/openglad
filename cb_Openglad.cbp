@@ -135,6 +135,8 @@
 		<Unit filename="src/base.h" />
 		<Unit filename="src/button.cpp" />
 		<Unit filename="src/button.h" />
+		<Unit filename="src/campaign_picker.cpp" />
+		<Unit filename="src/campaign_picker.h" />
 		<Unit filename="src/colors.h" />
 		<Unit filename="src/effect.cpp" />
 		<Unit filename="src/effect.h" />

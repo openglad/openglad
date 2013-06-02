@@ -115,15 +115,6 @@ SDL_RWops* open_write_file(const char* path, const char* file)
 }
 
 
-void create_dataopenglad()
-{
-    std::string user_path = get_user_path();
-    mkdir(user_path.c_str(), 0770);
-    mkdir((user_path + "campaigns/").c_str(), 0770);
-    mkdir((user_path + "save/").c_str(), 0770);
-    mkdir((user_path + "cfg/").c_str(), 0770);
-}
-
 
 std::list<std::string> list_files(const std::string& dirname)
 {
@@ -140,6 +131,43 @@ std::list<std::string> list_files(const std::string& dirname)
     fileList.sort();
     
     return fileList;
+}
+
+bool mount_campaign_package(const std::string& id)
+{
+    std::string filename = get_user_path() + "campaigns/" + id + ".glad";
+    if(!PHYSFS_mount(filename.c_str(), NULL, 0))
+    {
+        Log("Failed to mount campaign %s: %s\n", filename.c_str(), PHYSFS_getLastError());
+        return false;
+    }
+    return true;
+}
+
+bool unmount_campaign_package(const std::string& id)
+{
+    std::string filename = get_user_path() + "campaigns/" + id + ".glad";
+    if(!PHYSFS_removeFromSearchPath(filename.c_str()))
+    {
+        Log("Failed to unmount campaign file %s: %s\n", filename.c_str(), PHYSFS_getLastError());
+        return false;
+    }
+    return true;
+}
+
+std::list<std::string> list_campaigns()
+{
+    std::list<std::string> ls = list_files("campaigns/");
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        *e = e->substr(0, e->rfind(".glad"));
+    }
+    return ls;
+}
+
+std::list<std::string> list_levels()
+{
+    return list_files("scen/");
 }
 
 void copy_file(const std::string& filename, const std::string& dest_filename)
@@ -181,6 +209,15 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     Log("Copied %d bytes.\n", total);
 }
 
+void create_dataopenglad()
+{
+    std::string user_path = get_user_path();
+    mkdir(user_path.c_str(), 0770);
+    mkdir((user_path + "campaigns/").c_str(), 0770);
+    mkdir((user_path + "save/").c_str(), 0770);
+    mkdir((user_path + "cfg/").c_str(), 0770);
+}
+
 void io_init(int argc, char* argv[])
 {
     // Make sure our directory tree exists and is set up
@@ -195,6 +232,10 @@ void io_init(int argc, char* argv[])
         exit(1);
     }
     
+    
+    if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
+        copy_file("scen/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+    
     // NOTES!
     // PhysFS cannot grab files from the assets folder because they're actually inside the apk.
     // SDL_RWops does some magic to figure out a file descriptor from JNI.
@@ -205,18 +246,10 @@ void io_init(int argc, char* argv[])
     
     // Open up the default campaign
     // TODO: Let us change the campaign directory (store this one and unmount it when changing)
-    if(!PHYSFS_mount((get_asset_path() + "scen/org.openglad.gladiator.glad").c_str(), NULL, 1)
-       && !PHYSFS_mount((get_user_path() + "campaigns/org.openglad.gladiator.glad").c_str(), NULL, 1))
+    if(!PHYSFS_mount((get_user_path() + "campaigns/org.openglad.gladiator.glad").c_str(), NULL, 1))
     {
         Log("Failed to mount default campaign path: %s\n", PHYSFS_getLastError());
-        
-        copy_file("scen/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
-        
-        if(!PHYSFS_mount((get_user_path() + "campaigns/org.openglad.gladiator.glad").c_str(), NULL, 1))
-        {
-            Log("Really failed to mount default campaign path: %s\n", PHYSFS_getLastError());
-            exit(1);
-        }
+        exit(1);
     }
     
     // Set up paths for default assets

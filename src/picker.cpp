@@ -24,6 +24,7 @@
 
 #include "SDL.h"
 #include "parser.h"
+#include "campaign_picker.h"
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
@@ -1729,7 +1730,9 @@ Sint32 create_load_menu(Sint32 arg1)
 		{
 			retvalue=localbuttons->leftclick();
 			if(retvalue == REDRAW)
+            {
                 return REDRAW;
+            }
 		}
 
 		if (localbuttons && (retvalue == REDRAW))
@@ -1764,6 +1767,7 @@ Sint32 create_load_menu(Sint32 arg1)
 			retvalue = 0;
 		}
 	}
+	
 	return REDRAW;
 }
 

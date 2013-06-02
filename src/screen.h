@@ -22,6 +22,7 @@
 #include "base.h"
 #include "video.h"
 #include "loader.h"
+#include "obmap.h"
 #include <map>
 #include <string>
 #include <set>
@@ -88,6 +89,7 @@ class screen : public video
 		soundob *soundp;
 		short redrawme;
 		bool is_level_completed(int level_index) const;
+		int get_num_levels_completed(const std::string& campaign) const;
 		void add_level_completed(const std::string& campaign, int level_index);
 		std::map<std::string, std::set<int> > completed_levels;
 		char scentext[80][80];                         // Array to hold scenario information
