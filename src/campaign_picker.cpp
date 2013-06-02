@@ -376,9 +376,19 @@ void pick_campaign(screen *screenp)
         mount_campaign_package(result->id);
         if(old_campaign_id != result->id)
         {
-            // FIXME: Need to store the current level in the save file so we can use that if the campaign is already started
-            screenp->scen_num = result->first_level;
-            scen_level = result->first_level;
+            std::map<std::string, int>::const_iterator g = screenp->current_levels.find(result->id);
+            if(g != screenp->current_levels.end())
+            {
+                // Start where we left off
+                screenp->scen_num = g->second;
+                scen_level = g->second;
+            }
+            else
+            {
+                // Start from the beginning
+                screenp->scen_num = result->first_level;
+                scen_level = result->first_level;
+            }
         }
     }
     else  // Restore old campaign

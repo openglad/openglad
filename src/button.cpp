@@ -105,7 +105,6 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 	xend = xloc + width;
 	yend = yloc + height;
 	vdisplay();
-	Log("Created button\n");
 }
 
 vbutton::vbutton() //for pointers
@@ -815,6 +814,8 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 			return create_detail_menu(NULL);
 		case DO_SET_SCEN_LEVEL:
 			return do_set_scen_level(arg);
+		case DO_PICK_CAMPAIGN:
+			return do_pick_campaign(arg);
 		case SET_DIFFICULTY:
 			return set_difficulty();
 		case CHANGE_TEAM:

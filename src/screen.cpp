@@ -110,6 +110,8 @@ screen::screen(short howmany):video()
 	//myradar[0] = myradar[1] = NULL; // very important! :)
 	control_hp = 0;
 	strcpy(current_campaign, "org.openglad.gladiator");
+    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 	scen_num = 1; // default scenario
 	scenario_type = 0; // default, must kill all
 
@@ -496,6 +498,10 @@ void screen::reset(short howmany)
 	
 	strcpy(current_campaign, "org.openglad.gladiator");
 	completed_levels.clear();
+    current_levels.clear();
+    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+	
 
 	score = totalcash = totalscore = 0;
 	for (i=0; i < 4; i++)

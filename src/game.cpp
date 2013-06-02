@@ -363,6 +363,7 @@ short load_team_list(const char * filename, screen  *myscreen)
     
     
     myscreen->completed_levels.clear();
+    myscreen->current_levels.clear();
     
 	//strcpy(temp_filename, scen_directory);
 	strcpy(temp_filename, filename);
@@ -597,7 +598,16 @@ short load_team_list(const char * filename, screen  *myscreen)
         }
     }
     
-    load_campaign(old_campaign, myscreen->current_campaign, myscreen->current_levels);
+    // Make sure the default campaign is included
+	myscreen->completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+	myscreen->current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+	
+    int current_level = load_campaign(old_campaign, myscreen->current_campaign, myscreen->current_levels);
+    if(current_level >= 0)
+    {
+        myscreen->scen_num = current_level;
+        next_scenario = current_level;
+    }
 
     SDL_RWclose(infile);
 

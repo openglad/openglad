@@ -162,6 +162,7 @@ void clear_levels();
 Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg); // name the current guy
 Sint32 do_set_scen_level(Sint32 arg1);
+Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 set_difficulty();
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
@@ -196,4 +197,5 @@ Sint32 change_allied();
 #define ALLIED_MODE             26
 #define CHANGE_HIRE_TEAM        27
 #define YES_OR_NO               28
+#define DO_PICK_CAMPAIGN        29
 #endif

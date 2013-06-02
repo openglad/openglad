@@ -52,6 +52,7 @@ Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
 void glad_main(screen *myscreen, Sint32 playermode);
 const char* get_saved_name(const char * filename);
+Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 
 Sint32 leftmouse();
@@ -326,8 +327,9 @@ button bteam[] =
         { "SAVE TEAM", SDLK_s, 120, 100, 80, 15, CREATE_SAVE_MENU, -1},
         { "GO", SDLK_g,        210, 100, 80, 15, GO_MENU, -1},
 
-        { "ESC", SDLK_ESCAPE, 100, 130, 120, 20, RETURN_MENU, EXIT},
-        { "SET LEVEL", SDLK_s, 100, 170, 120, 20, DO_SET_SCEN_LEVEL, EXIT},
+        { "QUIT", SDLK_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT},
+        { "SET LEVEL", SDLK_e, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT},
+        { "SET CAMPAIGN", SDLK_c, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT},
 
     };
 
@@ -819,7 +821,7 @@ Sint32 beginmenu(Sint32 arg1)
 	grab_mouse();
 	myscreen->clear();
 
-	localbuttons = buttonmenu(bteam, 8);
+	localbuttons = buttonmenu(bteam, 9);
 
 	myscreen->swap();
 
@@ -838,6 +840,7 @@ Sint32 beginmenu(Sint32 arg1)
 	delete_all();
 	current_guy = NULL;
 	clear_levels();
+	
 	for (i=0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
@@ -852,7 +855,7 @@ Sint32 beginmenu(Sint32 arg1)
 		{
 			myscreen->clearbuffer();
 			delete(localbuttons);
-			localbuttons = buttonmenu(bteam, 8);
+			localbuttons = buttonmenu(bteam, 9);
 			myscreen->swap();
 			retvalue = 0;
 		}
@@ -1030,7 +1033,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	myscreen->clearfontbuffer();
 
 	//  myscreen->clear();
-	localbuttons = buttonmenu(bteam,8);
+	localbuttons = buttonmenu(bteam,9);
 	
 	myscreen->fadeblack(1);
 
@@ -1052,7 +1055,7 @@ Sint32 create_team_menu(Sint32 arg1)
 			delete(localbuttons);
 			//      myscreen->clear();
 			myscreen->clearfontbuffer();
-			localbuttons = buttonmenu(bteam, 8);
+			localbuttons = buttonmenu(bteam, 9);
 			myscreen->buffer_to_screen(0,0,320,200);
 			retvalue = 0;
 		}
@@ -3040,7 +3043,13 @@ Sint32 load_team_list_one(const char * filename)
         }
     }
     
-    load_campaign(old_campaign, current_campaign, current_levels);
+    // Make sure the default campaign is included
+	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+	current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+	
+    int current_level = load_campaign(old_campaign, current_campaign, current_levels);
+    if(current_level >= 0)
+        scen_level = current_level;
 
     SDL_RWclose(infile);
 
@@ -3354,6 +3363,9 @@ void clear_levels()
 {
 	// Set all of our level-completion status to off
 	completed_levels.clear();
+	current_levels.clear();
+    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 }
 
 
@@ -4589,7 +4601,12 @@ char* browse(screen *screenp)
            }
            
            
-           // scenbrowse now!
+           Sint32 do_pick_campaign(Sint32 arg1)
+           {
+               pick_campaign(myscreen);
+               return REDRAW;
+           }
+           
            Sint32 do_set_scen_level(Sint32 arg1)
            {
 	           static text savetext(myscreen);
