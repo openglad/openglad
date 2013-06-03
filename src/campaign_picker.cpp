@@ -128,20 +128,90 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
     int y = area.y;
     int w = area.w;
     int h = area.h;
-    screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
-    
-    // TODO: Draw icon
-	icon->drawMix(x, y, screenp->viewob[0]);
 
-    // TODO: Print important details
-    char buf[30];
+    // Print title
+    char buf[60];
     snprintf(buf, 30, "%s", title.c_str());
-    loadtext->write_xy(x + w + 5, y, buf, WHITE, 1);
-    snprintf(buf, 30, "Sugg. Power: %d", suggested_power);
-    loadtext->write_xy(x + w + 5, y + 8, buf, (team_power >= suggested_power? WHITE : RED), 1);
-    snprintf(buf, 30, "Completed: %d/%d", num_levels_completed, num_levels);
-    loadtext->write_xy(x + w + 5, y + 16, buf, WHITE, 1);
-
+    loadtext->write_xy(x + w/2 - title.size()*3, y - 22, buf, WHITE, 1);
+    
+    // Rating stars
+    std::string rating_text = "";
+    for(int i = 0; i < int(rating); i++)
+    {
+        rating_text += '*';
+    }
+    snprintf(buf, 30, "%s", rating_text.c_str());
+    loadtext->write_xy(x + w/2 - rating_text.size()*3, y - 14, buf, WHITE, 1);
+    
+    // Print version
+    snprintf(buf, 30, "v%s", version.c_str());
+    if(rating_text.size() > 0)
+        loadtext->write_xy(x + w/2 + rating_text.size()*3 + 6, y - 14, buf, WHITE, 1);
+    else
+        loadtext->write_xy(x + w/2 - strlen(buf)*3, y - 14, buf, WHITE, 1);
+    
+    // Draw icon button
+    screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
+    // Draw icon
+	icon->drawMix(x, y, screenp->viewob[0]);
+	y += h + 4;
+	
+	// Print suggested power
+    {
+        char buf2[30];
+        snprintf(buf, 30, "Your Power: %d", team_power);
+        if(suggested_power > 0)
+            snprintf(buf2, 30, ", Suggested Power: %d", suggested_power);
+        else
+            buf2[0] = '\0';
+        
+        int len = strlen(buf);
+        int len2 = strlen(buf2);
+        loadtext->write_xy(x + w/2 - (len + len2)*3, y, buf, LIGHT_GREEN, 1);
+        loadtext->write_xy(x + w/2 - (len + len2)*3 + len*6, y, buf2, (team_power >= suggested_power? LIGHT_GREEN : RED), 1);
+    }
+    y += 8;
+    
+    // Print completion progress
+    snprintf(buf, 30, "%d out of %d completed", num_levels_completed, num_levels);
+    loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+    y += 8;
+    
+    // Print authors
+    if(authors.size() > 0)
+    {
+        snprintf(buf, 30, "By %s", authors.c_str());
+        loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+    }
+    
+    // Draw description box
+    SDL_Rect descbox = {160 - 225/2, Sint16(area.y + area.h + 35), 225, 60};
+    screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+    
+    // Print description
+    std::string desc = description;
+    int j = 10;
+    while(desc.size() > 0)
+    {
+        if(j + 10 > descbox.h)
+            break;
+        size_t pos = desc.find_first_of('\n');
+        std::string line = desc.substr(0, pos);
+        loadtext->write_xy(descbox.x + 5, descbox.y + j, line.c_str(), BLACK, 1);
+        if(pos == std::string::npos)
+            break;
+        desc = desc.substr(pos+1, std::string::npos);
+        j += 10;
+    }
+    y = descbox.y + descbox.h + 2;
+    
+    // Print contributors
+    if(contributors.size() > 0)
+    {
+        snprintf(buf, 60, "Thanks to %s", contributors.c_str());
+        loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+    }
+    
 }
 
 
@@ -169,7 +239,6 @@ void pick_campaign(screen *screenp)
     }
     
     unsigned int current_campaign_index = 0;
-    int selected_entry = -1;
 
     // Figure out how good the player's army is
     int army_power = 0;
@@ -182,24 +251,20 @@ void pick_campaign(screen *screenp)
     }
     
     // Campaign icon positioning
-    SDL_Rect area[3];
-    for(int i = 0; i < 3; i++)
-    {
-        area[i].x = 10;
-        area[i].y = 10 + 40*i;
-        area[i].w = 40;
-        area[i].h = 30;
-    }
+    SDL_Rect area;
+    area.x = 160 - 16;
+    area.y = 15 + 20;
+    area.w = 32;
+    area.h = 32;
 
     // Buttons
     Sint16 screenW = 320;
     Sint16 screenH = 200;
-    SDL_Rect prev = {Sint16(screenW - 150), 20, 30, 10};
-    SDL_Rect next = {Sint16(screenW - 150), Sint16(screenH - 50), 30, 10};
-    SDL_Rect descbox = {Sint16(prev.x - 40), Sint16(prev.y + 15), 185, Uint16(next.y - 10 - (prev.y + prev.h))};
+    SDL_Rect prev = {Sint16(area.x - 30 - 20), Sint16(area.y), 30, 10};
+    SDL_Rect next = {Sint16(area.x + area.w + 20), Sint16(area.y), 30, 10};
 
-    SDL_Rect choose = {Sint16(screenW - 50), Sint16(screenH - 30), 30, 10};
-    SDL_Rect cancel = {Sint16(screenW - 100), Sint16(screenH - 30), 38, 10};
+    SDL_Rect choose = {Sint16(screenW/2 + 20), Sint16(screenH - 15), 30, 10};
+    SDL_Rect cancel = {Sint16(screenW/2 - 38 - 20), Sint16(screenH - 15), 38, 10};
 
     bool done = false;
     while (!done)
@@ -217,28 +282,24 @@ void pick_campaign(screen *screenp)
         if(mykeyboard[KEYSTATE_q])
             done = true;
 
-        if(mykeyboard[KEYSTATE_UP])
+        if(mykeyboard[KEYSTATE_LEFT])
         {
             // Scroll up
             if(current_campaign_index > 0)
             {
-                selected_entry = -1;
-
                 current_campaign_index--;
             }
-            while (mykeyboard[KEYSTATE_UP])
+            while (mykeyboard[KEYSTATE_LEFT])
                 get_input_events(WAIT);
         }
-        if(mykeyboard[KEYSTATE_DOWN])
+        if(mykeyboard[KEYSTATE_RIGHT])
         {
             // Scroll down
-            if(current_campaign_index < entries.size() - 3)
+            if(current_campaign_index + 1 < entries.size())
             {
-                selected_entry = -1;
-
                 current_campaign_index++;
             }
-            while (mykeyboard[KEYSTATE_DOWN])
+            while (mykeyboard[KEYSTATE_RIGHT])
                 get_input_events(WAIT);
         }
 
@@ -260,7 +321,6 @@ void pick_campaign(screen *screenp)
             {
                 if(current_campaign_index > 0)
                 {
-                    selected_entry = -1;
                     current_campaign_index--;
                 }
             }
@@ -268,9 +328,8 @@ void pick_campaign(screen *screenp)
             else if(next.x <= mx && mx <= next.x + next.w
                     && next.y <= my && my <= next.y + next.h)
             {
-                if(current_campaign_index < entries.size() - 3)
+                if(current_campaign_index + 1 < entries.size())
                 {
-                    selected_entry = -1;
                     current_campaign_index++;
                 }
             }
@@ -278,9 +337,9 @@ void pick_campaign(screen *screenp)
             else if(choose.x <= mx && mx <= choose.x + choose.w
                     && choose.y <= my && my <= choose.y + choose.h)
             {
-                if(selected_entry != -1)
+                if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
                 {
-                    result = entries[current_campaign_index + selected_entry];
+                    result = entries[current_campaign_index];
                     done = true;
                     break;
                 }
@@ -292,75 +351,35 @@ void pick_campaign(screen *screenp)
                 done = true;
                 break;
             }
-            else
-            {
-                selected_entry = -1;
-                // Select
-                for(int i = 0; i < 3; i++)
-                {
-                    if(current_campaign_index + i < entries.size() && entries[current_campaign_index + i] != NULL)
-                    {
-                        SDL_Rect b = area[i];
-                        if(b.x <= mx && mx <= b.x+b.w
-                                && b.y <= my && my <= b.y+b.h)
-                        {
-                            selected_entry = i;
-                            break;
-                        }
-                    }
-                }
-            }
         }
 
 
         // Draw
         screenp->clearscreen();
 
-        char buf[20];
-        snprintf(buf, 20, "Army power: %d", army_power);
-        loadtext->write_xy(prev.x + 50, prev.y + 2, buf, RED, 1);
-
-        screenp->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
-        loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
-        screenp->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
-        loadtext->write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
-        if(selected_entry != -1 && current_campaign_index + selected_entry < entries.size() && entries[current_campaign_index + selected_entry] != NULL)
+        if(current_campaign_index > 0)
+        {
+            screenp->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
+            loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
+        }
+        
+        if(current_campaign_index + 1 < entries.size())
+        {
+            screenp->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
+            loadtext->write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
+        }
+        
+        if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
         {
             screenp->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext->write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
-            loadtext->write_xy(next.x, choose.y + 20, entries[current_campaign_index + selected_entry]->title.c_str(), DARK_GREEN, 1);
         }
         screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
-
-        if(selected_entry != -1)
-        {
-            int i = selected_entry;
-            if(current_campaign_index + i < entries.size() && entries[current_campaign_index + i] != NULL)
-            {
-                SDL_Rect b = area[i];
-                screenp->draw_box(b.x, b.y, b.x + b.w, b.y + b.h, DARK_BLUE, 1, 1);
-            }
-        }
-        for(int i = 0; i < 3; i++)
-        {
-            if(current_campaign_index + i < entries.size() && entries[current_campaign_index + i] != NULL)
-                entries[current_campaign_index + i]->draw(screenp, area[i], loadtext, army_power);
-        }
-
-        // Description
-        if(selected_entry != -1 && current_campaign_index + selected_entry < entries.size() && entries[current_campaign_index + selected_entry] != NULL)
-        {
-            screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
-            // TODO: Print description
-            /*for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
-            {
-                if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
-                    break;
-                loadtext->write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i], BLACK, 1);
-            }*/
-        }
-
+        
+        // Draw entry
+        if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
+            entries[current_campaign_index]->draw(screenp, area, loadtext, army_power);
 
         screenp->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
