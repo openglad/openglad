@@ -1,8 +1,0 @@
-Known memory leaks:
-
-screen.cpp:168
-	- I put in a fix on line 333, but it makes it segfault
-
-screen.cpp: in find_foes_in_range and find_friends_in_range or in
-	one of the functions it calls or is called by. This is like
-	the leak from hell.

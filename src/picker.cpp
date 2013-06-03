@@ -313,7 +313,8 @@ button buttons1[] =
 
         { "DIFFICULTY", SDLK_d, 80, 148, 140, 10, SET_DIFFICULTY, -1},
 
-        { "Player-v-Player: Allied", SDLK_p, 80, 160, 140, 10, ALLIED_MODE, -1},
+        { "PVP: Allied", SDLK_p, 80, 160, 68, 10, ALLIED_MODE, -1},
+        { "Level Edit", SDLK_l, 152, 160, 68, 10, DO_LEVEL_EDIT, -1},
 
         { "QUIT", SDLK_ESCAPE, 80, 175, 140, 20, QUIT_MENU, -1 },
     };
@@ -550,7 +551,7 @@ Sint32 mainmenu(Sint32 arg1)
 	if (localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
 
-	localbuttons = buttonmenu(buttons1, 9);
+	localbuttons = buttonmenu(buttons1, 10);
 	myscreen->clearbuffer();
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
 
@@ -589,9 +590,9 @@ Sint32 mainmenu(Sint32 arg1)
 
 	// Show the allied mode
 	if (myscreen->allied_mode)
-		strcpy(allbuttons[7]->label, "Player-v-Player: Allied");
+		strcpy(allbuttons[7]->label, "PVP: Ally");
 	else
-		strcpy(allbuttons[7]->label, "Player-v-Player: Enemy");
+		strcpy(allbuttons[7]->label, "PVP: Enemy");
 
 	while (allbuttons[count])
 	{
@@ -631,7 +632,7 @@ Sint32 mainmenu(Sint32 arg1)
 			{
 				myscreen->clearbuffer();
 				delete(localbuttons);
-				localbuttons = buttonmenu(buttons1, 9);
+				localbuttons = buttonmenu(buttons1, 10);
 				
 				myscreen->clearfontbuffer();
 				
@@ -641,9 +642,9 @@ Sint32 mainmenu(Sint32 arg1)
 
 				// Show the allied mode
 				if (myscreen->allied_mode)
-					strcpy(allbuttons[7]->label, "Player-v-Player: Allied");
+					strcpy(allbuttons[7]->label, "PVP: Ally");
 				else
-					strcpy(allbuttons[7]->label, "Player-v-Player: Enemy");
+					strcpy(allbuttons[7]->label, "PVP: Enemy");
 
 				while (allbuttons[count])
 				{
@@ -717,9 +718,9 @@ Sint32 mainmenu(Sint32 arg1)
 
 				// Show the allied mode
 				if (myscreen->allied_mode)
-					strcpy(allbuttons[7]->label, "Player-v-Player: Allied");
+					strcpy(allbuttons[7]->label, "PVP: Ally");
 				else
-					strcpy(allbuttons[7]->label, "Player-v-Player: Enemy");
+					strcpy(allbuttons[7]->label, "PVP: Enemy");
 
 				//myscreen->refresh();
 				grab_mouse();
@@ -779,9 +780,9 @@ Sint32 mainmenu(Sint32 arg1)
 
 				// Show the allied mode
 				if (myscreen->allied_mode)
-					sprintf(message, "Player-v-Player: Allied");
+					sprintf(message, "PVP: Ally");
 				else
-					sprintf(message, "Player-v-Player: Enemy");
+					sprintf(message, "PVP: Enemy");
 				strcpy(allbuttons[7]->label, message);
 
 				tempbuttons = localbuttons;
@@ -4101,6 +4102,7 @@ class BrowserEntry
     
     void draw(screen* screenp, text* loadtext, const char* filename);
 };
+
 void remove_all_objects(screen *master)
 {
 	oblink *fx = master->fxlist;
@@ -4737,9 +4739,9 @@ char* browse(screen *screenp)
 	           myscreen->allied_mode %= 2;
 
 	           if (myscreen->allied_mode)
-		           sprintf(message, "Player-v-Player: Allied");
+		           sprintf(message, "PVP: Ally");
 	           else
-		           sprintf(message, "Player-v-Player: Enemy");
+		           sprintf(message, "PVP: Enemy");
 
 	           // Update our button display
 	           strcpy(allbuttons[7]->label, message);

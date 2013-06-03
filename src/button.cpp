@@ -824,6 +824,8 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 			return change_hire_teamnum(arg);
 		case ALLIED_MODE:
 			return change_allied();
+		case DO_LEVEL_EDIT:
+			return level_editor();
 		case YES_OR_NO:
 			return yes_or_no(arg);
 		default:

@@ -133,7 +133,7 @@ class screen : public video
 		short allied_mode;
 		short par_value;
 		short level_done; // set true when all our foes are dead
-	protected:
+		
 		unsigned char  *pixdata[PIX_MAX];
 };
 

@@ -167,6 +167,7 @@ Sint32 set_difficulty();
 Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
+Sint32 level_editor();
 
 // Function definitions ..
 #define BEGINMENU               1
@@ -198,4 +199,5 @@ Sint32 change_allied();
 #define CHANGE_HIRE_TEAM        27
 #define YES_OR_NO               28
 #define DO_PICK_CAMPAIGN        29
+#define DO_LEVEL_EDIT           30
 #endif

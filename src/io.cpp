@@ -163,14 +163,27 @@ std::list<std::string> list_campaigns()
     std::list<std::string> ls = list_files("campaigns/");
     for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
     {
-        *e = e->substr(0, e->rfind(".glad"));
+        size_t pos = e->rfind(".glad");
+        if(pos == std::string::npos)
+            e = ls.erase(e);  // Not a campaign package
+        else
+            *e = e->substr(0, pos);  // Remove the extension
     }
     return ls;
 }
 
 std::list<std::string> list_levels()
 {
-    return list_files("scen/");
+    std::list<std::string> ls = list_files("scen/");
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        size_t pos = e->rfind(".fss");
+        if(pos == std::string::npos)
+            e = ls.erase(e);  // Not a scen file
+        else
+            *e = e->substr(0, pos);  // Remove the extension
+    }
+    return ls;
 }
 
 void copy_file(const std::string& filename, const std::string& dest_filename)
@@ -237,7 +250,7 @@ void io_init(int argc, char* argv[])
     
     
     if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
-        copy_file("scen/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+        copy_file("builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
     
     // NOTES!
     // PhysFS cannot grab files from the assets folder because they're actually inside the apk.
