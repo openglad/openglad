@@ -1545,7 +1545,7 @@ short screen::endgame(short ending, short nextlevel)
 		// Save the level to disk ..
 		add_level_completed(current_campaign, scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
-			scen_num = (short) (nextlevel-1);    // Fake jumping to next level ..
+			scen_num = nextlevel;    // Fake jumping to next level ..
 		save_game("save0", this);
 
 		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for

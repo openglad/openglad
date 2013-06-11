@@ -41,15 +41,15 @@ short load_saved_game(const char *filename, screen  *myscreen)
 
 	// Determine the scenario name to load
 	sprintf(scenfile, "scen%d", next_scenario);
+	
 	// And our default par value ..
 	myscreen->par_value = next_scenario;
 	// And load the scenario ..
 	if (!load_scenario(scenfile, myscreen))
 	{
 		myscreen->par_value = 1;
-		load_scenario("scen0", myscreen);
-		myscreen->scen_num = 0;
-		mysmoother->set_target(myscreen);
+		load_scenario("scen1", myscreen);
+		myscreen->scen_num = 1;
 	}
 	mysmoother->set_target(myscreen);
 
@@ -547,6 +547,10 @@ short load_team_list(const char * filename, screen  *myscreen)
 			temp_guy = temp_guy->next;
 		}
 	}
+	
+    // Make sure the default campaign is included
+	myscreen->completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+	myscreen->current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 
     if(temp_version < 8)
     {
@@ -583,7 +587,7 @@ short load_team_list(const char * filename, screen  *myscreen)
             short index = 1;
             // Get the current level for this campaign
             SDL_RWread(infile, &index, 2, 1);
-            myscreen->current_levels.insert(std::make_pair(campaign, index));
+            myscreen->current_levels[campaign] = index;
             
             // Get the number of cleared levels
             SDL_RWread(infile, &num_levels, 2, 1);
@@ -598,9 +602,6 @@ short load_team_list(const char * filename, screen  *myscreen)
         }
     }
     
-    // Make sure the default campaign is included
-	myscreen->completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-	myscreen->current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 	
     int current_level = load_campaign(old_campaign, myscreen->current_campaign, myscreen->current_levels);
     if(current_level >= 0)
@@ -625,7 +626,7 @@ short save_game(const char * filename, screen  *myscreen)
 
 	char temptext[10] = "GTL";
 	char temp_version = 8;
-	short next_scenario = (short) ( myscreen->scen_num + 1 );
+	//next_scenario = myscreen->scen_num;
 	Uint32 newcash = myscreen->totalcash;
 	Uint32 newscore = myscreen->totalscore;
 	//  short numguys;
@@ -822,6 +823,16 @@ short save_game(const char * filename, screen  *myscreen)
 	}
 
 	// Write the completed levels
+	
+	// Make sure our current level is saved
+	std::map<std::string, int>::iterator cur = myscreen->current_levels.find(myscreen->current_campaign);
+	if(cur != myscreen->current_levels.end())
+    {
+        cur->second = myscreen->scen_num;
+    }
+    else
+        myscreen->current_levels.insert(std::make_pair(myscreen->current_campaign, myscreen->scen_num));
+    
 	// Number of campaigns
 	short num_campaigns = myscreen->completed_levels.size();
     SDL_RWwrite(outfile, &num_campaigns, 2, 1);

@@ -2647,8 +2647,16 @@ Sint32 save_team_list(const char * filename)
 		} // end of found valid guy in slot
 	}
 
-
 	// Write the completed levels
+	// Make sure our current level is saved
+	std::map<std::string, int>::iterator cur = current_levels.find(current_campaign);
+	if(cur != current_levels.end())
+    {
+        cur->second = scen_level;
+    }
+    else
+        current_levels.insert(std::make_pair(current_campaign, scen_level));
+    
 	// Number of campaigns
 	short num_campaigns = completed_levels.size();
     SDL_RWwrite(outfile, &num_campaigns, 2, 1);
@@ -2993,6 +3001,10 @@ Sint32 load_team_list_one(const char * filename)
 		// Advance to the next guy ..
 		add_guy(tempguy);
 	}
+    
+    // Make sure the default campaign is included
+	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+	current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 
     if(temp_version < 8)
     {
@@ -3029,7 +3041,7 @@ Sint32 load_team_list_one(const char * filename)
             short index = 1;
             // Get the current level for this campaign
             SDL_RWread(infile, &index, 2, 1);
-            current_levels.insert(std::make_pair(campaign, index));
+            current_levels[campaign] = index;
             
             // Get the number of cleared levels
             SDL_RWread(infile, &num_levels, 2, 1);
@@ -3043,10 +3055,6 @@ Sint32 load_team_list_one(const char * filename)
             }
         }
     }
-    
-    // Make sure the default campaign is included
-	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-	current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 	
     int current_level = load_campaign(old_campaign, current_campaign, current_levels);
     if(current_level >= 0)
@@ -4320,7 +4328,19 @@ char* browse(screen *screenp)
     char** level_list = NULL;
     load_level_list(level_list, &level_list_length);
     
-    int current_level_index = 1;
+    // This indexes into the level_list.
+    int current_level_index = 0;
+    
+    // Figure out the list index for the current scen_level, so we can jump straight there.
+    {
+        char buf[20];
+        snprintf(buf, 20, "scen%d", scen_level);
+        for(int i = 0; i < level_list_length; i++)
+        {
+            if(strcmp(level_list[i], buf) == 0)
+                current_level_index = i;
+        }
+    }
     
     // Load the radars (minimaps)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
