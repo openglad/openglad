@@ -131,6 +131,7 @@
 			<Add directory="src/external/physfs/zlib123" />
 			<Add directory="src/external/physfs/extras" />
 			<Add directory="src/external/yam" />
+			<Add directory="src/external/libzip" />
 		</Compiler>
 		<Unit filename="src/base.h" />
 		<Unit filename="src/button.cpp" />
@@ -167,6 +168,262 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="src/external/libyaml/src/yaml_private.h" />
+		<Unit filename="src/external/libzip/config.h" />
+		<Unit filename="src/external/libzip/mkstemp.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip.h" />
+		<Unit filename="src/external/libzip/zip_add.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_add_dir.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_add_entry.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_close.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_delete.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_dir_add.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_dirent.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_discard.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_entry.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_err_str.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_error.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_error_clear.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_error_get.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_error_get_sys_type.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_error_strerror.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_error_to_str.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_extra_field.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_extra_field_api.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_fclose.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_fdopen.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_add.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_error_clear.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_error_get.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_get_comment.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_get_offset.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_rename.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_replace.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_set_comment.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_file_strerror.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_filerange_crc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_fopen.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_fopen_encrypted.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_fopen_index.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_fopen_index_encrypted.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_fread.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_archive_comment.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_archive_flag.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_compression_implementation.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_encryption_implementation.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_file_comment.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_name.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_num_entries.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_get_num_files.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_memdup.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_name_locate.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_new.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_open.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_rename.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_replace.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_set_archive_comment.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_set_archive_flag.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_set_default_password.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_set_file_comment.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_set_file_compression.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_set_name.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_buffer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_close.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_crc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_deflate.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_error.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_file.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_filep.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_free.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_function.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_layered.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_open.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_pkware.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_pop.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_read.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_stat.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_window.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_zip.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_source_zip_new.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_stat.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_stat_index.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_stat_init.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_strerror.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_string.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_unchange.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_unchange_all.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_unchange_archive.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_unchange_data.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zip_utf-8.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="src/external/libzip/zipconf.h" />
+		<Unit filename="src/external/libzip/zipint.h" />
 		<Unit filename="src/external/physfs/archivers/dir.c">
 			<Option compilerVar="CC" />
 		</Unit>

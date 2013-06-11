@@ -23,4 +23,7 @@ std::list<std::string> list_levels();
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 
+bool zip_contents(const std::string& indirectory, const std::string& outfile);
+bool unzip_into(const std::string& infile, const std::string& outdirectory);
+
 #endif

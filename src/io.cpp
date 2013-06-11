@@ -261,7 +261,6 @@ void io_init(int argc, char* argv[])
     // SDL_RWops size checking on Android doesn't seem to work!
     
     // Open up the default campaign
-    // TODO: Let us change the campaign directory (store this one and unmount it when changing)
     if(!PHYSFS_mount((get_user_path() + "campaigns/org.openglad.gladiator.glad").c_str(), NULL, 1))
     {
         Log("Failed to mount default campaign path: %s\n", PHYSFS_getLastError());
@@ -288,4 +287,247 @@ void io_init(int argc, char* argv[])
 void io_exit()
 {
     PHYSFS_deinit();
+}
+
+
+
+
+
+// Zip utils
+
+#include "zip.h"
+#include <sys/stat.h>
+#include <dirent.h>
+
+// Need to implement for real
+// PhysFS would work, but the paths would have to be in the search path
+//   and the RWops would have to be gotten from PhysFS and I would have to rewire the zip input (could the archive be opened through PhysFS too?)
+// Doing it with goodio would be nice.
+std::list<std::string> list_paths_recursively(const std::string& dirname)
+{
+    std::string _dirname = dirname;
+    if(_dirname.size() > 0 && _dirname[_dirname.size()-1] != '/')
+        _dirname += '/';
+    
+    std::list<std::string> ls;
+
+    DIR* dir = opendir(_dirname.c_str());
+    dirent* entry;
+    
+    if(dir == NULL)
+        return ls;
+    
+    while ((entry = readdir(dir)) != NULL)
+    {
+        if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+        
+        
+        #ifdef WIN32
+        struct stat status;
+        stat((_dirname + entry->d_name).c_str(), &status);
+        if(status.st_mode & S_IFDIR)
+        #else
+        if(entry->d_type == DT_DIR)
+        #endif
+        {
+            std::list<std::string> sublist = list_paths_recursively(_dirname + entry->d_name);
+            std::string subdir = entry->d_name;
+            if(subdir.size() > 0 && subdir[subdir.size()-1] != '/')
+                subdir += '/';
+            ls.push_back(subdir);
+            for(std::list<std::string>::iterator e = sublist.begin(); e != sublist.end(); e++)
+            {
+                ls.push_back(subdir + *e);
+            }
+        }
+        else
+            ls.push_back(entry->d_name);
+    }
+
+    closedir(dir);
+
+    return ls;
+}
+
+bool zip_contents(const std::string& indirectory, const std::string& outfile)
+{
+    std::string indir = indirectory;
+    if(indir.size() > 0 && indir[indir.size()-1] != '/')
+        indir += '/';
+    //Log("Zipping %s as %s\n", indir.c_str(), outfile.c_str());
+    
+    int err = 0;
+    zip* archive = zip_open(outfile.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
+    if(archive == NULL)
+        return false;
+    
+    struct zip_source *s;
+    char src_name[512];
+    char dest_name[512];
+    
+    std::list<std::string> files = list_paths_recursively(indir);
+    for(std::list<std::string>::iterator e = files.begin(); e != files.end(); e++)
+    {
+        snprintf(src_name, 512, "%s%s", indir.c_str(), e->c_str());
+        snprintf(dest_name, 512, "%s", e->c_str());
+        
+        if(src_name[strlen(src_name)-1] == '/')
+        {
+            if(zip_dir_add(archive, dest_name, ZIP_FL_ENC_GUESS) < 0)
+            {
+                // Error
+                Log("error adding dir: %s\n", zip_strerror(archive));
+            }
+        }
+        else
+        {
+            if((s=zip_source_file(archive, src_name, 0, -1)) == NULL || zip_file_add(archive, dest_name, s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
+            {
+                // Error
+                zip_source_free(s);
+                Log("error adding file: %s\n", zip_strerror(archive));
+            }
+        }
+    }
+    
+    return (zip_close(archive) >= 0);
+}
+
+
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <libgen.h>
+#include <string.h>
+
+// From http://niallohiggins.com/2009/01/08/mkpath-mkdir-p-alike-in-c-for-unix/
+/* Function with behaviour like `mkdir -p'  */
+int mkpath(const char *s, mode_t mode)
+{
+    char *q, *r = NULL, *path = NULL, *up = NULL;
+    int rv;
+
+    rv = -1;
+    if (strcmp(s, ".") == 0 || strcmp(s, "/") == 0)
+        return (0);
+
+    if ((path = strdup(s)) == NULL)
+        exit(1);
+ 
+    if ((q = strdup(s)) == NULL)
+        exit(1);
+
+    if ((r = dirname(q)) == NULL)
+        goto out;
+    
+    if ((up = strdup(r)) == NULL)
+        exit(1);
+
+    if ((mkpath(up, mode) == -1) && (errno != EEXIST))
+        goto out;
+
+    if ((mkdir(path, mode) == -1) && (errno != EEXIST))
+        rv = -1;
+    else
+        rv = 0;
+
+out:
+    if (up != NULL)
+        free(up);
+    free(q);
+    free(path);
+    return (rv);
+}
+
+bool create_path_to_file(const char* filename)
+{
+    const char* c = strrchr(filename, '/');
+    if(c == NULL)
+        c = strrchr(filename, '\\');
+    if(c == NULL)
+        return true;
+    
+    char buf[512];
+    snprintf(buf, 512, filename);
+    buf[c - filename] = '\0';
+    
+    return (mkpath(buf, 0755) >= 0);
+}
+
+bool create_dir(const char* dirname)
+{
+    return (mkdir(dirname, 0755) >= 0);
+}
+
+bool unzip_into(const std::string& infile, const std::string& outdirectory)
+{
+    std::string outdir = outdirectory;
+    if(outdir.size() > 0 && outdir[outdir.size()-1] != '/')
+        outdir += '/';
+    
+    //Log("Unzipping %s\n", infile.c_str());
+    
+    int err = 0;
+    zip* archive = zip_open(infile.c_str(), 0, &err);
+    if(archive == NULL)
+        return false;
+    
+    struct zip_stat status;
+    struct zip_file* file;
+    int buf_size = 512;
+    char buf[buf_size];
+    
+    for(int i = 0; i < zip_get_num_entries(archive, 0); i++)
+    {
+        if(zip_stat_index(archive, i, 0, &status) == 0)
+        {
+            int len = strlen(status.name);
+            if(status.name[len - 1] == '/')
+            {
+                snprintf(buf, buf_size, "%s%s", outdir.c_str(), status.name);
+                create_dir(buf);
+            }
+            else
+            {
+                file = zip_fopen_index(archive, i, 0);
+                if(file == NULL)
+                {
+                    // Error
+                    continue;
+                }
+                
+                snprintf(buf, buf_size, "%s%s", outdir.c_str(), status.name);
+                create_path_to_file(buf);
+                SDL_RWops* rwops = open_write_file(outdir.c_str(), status.name);
+                if(rwops == NULL)
+                {
+                    // Error
+                    continue;
+                }
+ 
+                size_t sum = 0;
+                while(sum < status.size)
+                {
+                    len = zip_fread(file, buf, buf_size);
+                    if(len < 0)
+                    {
+                        // Error
+                        
+                    }
+                    SDL_RWwrite(rwops, buf, 1, len);
+                    sum += len;
+                }
+                SDL_RWclose(rwops);
+                zip_fclose(file);
+            }
+        }
+        else
+        {
+            // Error
+        }
+    }
+    
+    return (zip_close(archive) >= 0);
 }
