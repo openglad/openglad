@@ -2252,7 +2252,6 @@ Sint32 add_guy(guy *newguy)
 Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 {
 	text nametext(myscreen);
-	char tempnum[30];  // don't ask
 	guy *someguy;
 
 	if (arg)
@@ -2272,8 +2271,10 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	//grab_keyboard();
 	clear_keyboard();
-	strcpy(tempnum, nametext.input_string(176, 20, 11, someguy->name) );
-	strcpy(someguy->name, tempnum);
+	char* new_text = nametext.input_string(176, 20, 11, someguy->name);
+	if(new_text == NULL)
+        new_text = someguy->name;
+	memmove(someguy->name, new_text, strlen(new_text)+1);  // Could be overlapping strings
 	//release_keyboard();
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
 
@@ -2315,7 +2316,10 @@ Sint32 add_guy(Sint32 ignoreme)
 			addtext.write_xy(176, 24, "NAME THIS CHARACTER:", DARK_BLUE, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			clear_keyboard();
-			strcpy(tempnum, addtext.input_string(176, 32, 11, ourteam[i]->name) );
+			char* new_text = addtext.input_string(176, 32, 11, ourteam[i]->name);
+			if(new_text == NULL)
+                new_text = ourteam[i]->name;
+			strcpy(tempnum, new_text);
 			strcpy(ourteam[i]->name, tempnum);
 			myscreen->draw_button(174, 20, 306, 42, 1, 1); // text box
 
@@ -2424,7 +2428,10 @@ Sint32 do_save(Sint32 arg1)
 	myscreen->clearfontbuffer(xloc,yloc,x2loc-xloc,y2loc-yloc);
 	
 	savetext.write_xy(xloc+5, yloc+4, "NAME YOUR SAVED GAME:", DARK_BLUE, 1);
-	strcpy(save_file, savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label) );
+	char* new_text = savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label);
+	if(new_text == NULL)
+        new_text = allbuttons[arg1-1]->label;
+	strcpy(save_file, new_text);
 	myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	save_team_list(newname);
@@ -3870,67 +3877,6 @@ Sint32 return_menu(Sint32 arg)
 	           return REDRAW;  // back to edit menu
            }
 
-
-           /*Sint32 do_set_scen_level(Sint32 arg1)
-           {
-	           char newname[8];
-	           char newnum[8];
-	           static text savetext(myscreen);
-	           Sint32 xloc, yloc, x2loc, y2loc;
-	           Sint32 templevel;
-	           Sint32 temptime;
-
-
-	           //myscreen->soundp->play_sound(SOUND_YO);
-
-	           release_mouse();
-	           //grab_keyboard();
-	           clear_keyboard();
-
-	           xloc = 100;
-	           yloc = 170;
-	           x2loc = 220;
-	           y2loc = 190;
-
-		myscreen->clearfontbuffer(xloc,yloc,x2loc,y2loc);
-
-	           myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
-	           savetext.write_xy(xloc+5, yloc+4, "ENTER LEVEL NUMBER:", DARK_BLUE, 1);
-
-	           //buffers: changed itoa to sprintf
-	           //itoa(scen_level, newnum, 10);
-	           sprintf(newnum,"%d",scen_level);
-
-	           templevel = atoi(savetext.input_string(xloc+50, yloc+11, 8, newnum) );
-
-	           //buffers: changed itoa to sprintf
-	           //itoa(templevel, newnum, 10);
-	           sprintf(newnum,"%d",templevel);
-
-	           strcpy(newname, "scen");
-	           strcat(newname, newnum);
-	           if (!load_scenario(newname, myscreen))
-	           {
-		           myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-		           savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
-		           myscreen->buffer_to_screen(0, 0, 320, 200);
-		           temptime = query_timer();
-		           while(query_timer() < temptime + 100)
-			           ;
-	           }
-	           else
-	           {
-		           myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-		           myscreen->buffer_to_screen(0, 0, 320, 200);
-		           scen_level = templevel;
-	           }
-
-	           //release_keyboard();
-	           grab_mouse();
-	           //myscreen->soundp->play_sound(SOUND_CHARGE);
-
-	           return REDRAW;
-           }*/
            
            
            

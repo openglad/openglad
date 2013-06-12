@@ -349,6 +349,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
 	int tempchar;
 	char* temptext;
 	short has_typed = 0; // hasn't typed yet
+	bool return_null = false;
 
 	for (i=0; i < 100; i++)
 		editstring[i] = 0; // clear the string ...
@@ -396,6 +397,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
             {
                 strcpy(editstring, firststring);
                 string_done = 1;
+                return_null = true;
             }
             else if (tempchar == SDLK_BACKSPACE && current_length > 0) {
                 editstring[current_length-1] = 0;
@@ -447,6 +449,8 @@ char * text::input_string(short x, short y, short maxlength, char *begin,
     #endif
 	disable_keyrepeat();
 	clear_keyboard();
+	if(return_null)
+        return NULL;
 	return editstring;
 
 }

@@ -415,7 +415,10 @@ Sint32 level_editor()
 					extra++;
 					myscreen->buffer_to_screen(0, 0, 320, 200);
 				}
-				strcpy(mystring, scentext->input_string(TL, TEXT_DOWN(count), 30, myscreen->scentext[i]) );
+				char* new_text = scentext->input_string(TL, TEXT_DOWN(count), 30, myscreen->scentext[i]);
+				if(new_text == NULL)
+                    new_text = myscreen->scentext[i];
+				strcpy(mystring, new_text);
 				strcpy(myscreen->scentext[i], mystring);
 				if (!strcmp(".", mystring)) // says end ..
 				{
@@ -988,11 +991,13 @@ Sint32 save_map_file(char  * filename, screen *master)
 Sint32 load_new_grid(screen *master)
 {
 	string tempstring;
-	//char tempstring[80];
 
 	scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
-	tempstring = scentext->input_string(115, 32, 8, grid_name);
-	//NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
+    char* new_text = scentext->input_string(115, 32, 8, grid_name);
+    if(new_text == NULL)
+        new_text = grid_name;
+	tempstring = new_text;
+	
 	if (tempstring.empty())
 	{
 		//buffers: our grid files are all lowercase...
@@ -1001,22 +1006,19 @@ Sint32 load_new_grid(screen *master)
 		tempstring += grid_name;
 	}
 
-	//printf("DB: loading %s\n", grid_name);
-
 	//buffers: PORT: changed .PIX to .pix
 	tempstring += ".pix";
 	master->grid = read_pixie_file(tempstring.c_str());
 	master->maxx = master->grid[1];
 	master->maxy = master->grid[2];
 	master->grid = master->grid + 3;
-	//printf("DB: loaded data to grid\n");
+	
 	//master->viewob[0]->myradar = new radar(master->viewob[0],
 	//  master, 0);
 
 	master->viewob[0]->myradar->start();
 	master->viewob[0]->myradar->update();
 
-	//printf("DB: made new radar\n");
 	return 1;
 }
 
@@ -1025,8 +1027,11 @@ Sint32 new_scenario_name()
 	char tempstring[80];
 
 	scentext->write_xy(52, 32, "Scenario name: ", DARK_BLUE, 1);
-	strcpy(tempstring, scentext->input_string(135, 32, 8, scen_name));
-	//NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
+	char* new_text = scentext->input_string(135, 32, 8, scen_name);
+	if(new_text == NULL)
+        new_text = scen_name;
+	strcpy(tempstring, new_text);
+	
 	if (strlen(tempstring))
 	{
 		strcpy(scen_name, tempstring);
@@ -1042,7 +1047,10 @@ Sint32 new_grid_name()
 	char tempstring[80];
 
 	scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
-	strcpy(tempstring, scentext->input_string(117, 32, 8, grid_name));
+	char* new_text = scentext->input_string(117, 32, 8, grid_name);
+	if(new_text == NULL)
+        new_text = grid_name;
+	strcpy(tempstring, new_text);
 	//NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
 	if (strlen(tempstring))
 		strcpy(grid_name, tempstring);
@@ -1709,8 +1717,11 @@ void set_name(walker  *target, screen * master)
 	// wait for key release
 	while (mykeyboard[KEYSTATE_r])
 		get_input_events(WAIT);
-
-	strcpy(newname, scentext->input_string(115, 62, 9, oldname) );
+    
+    char* new_text = scentext->input_string(115, 62, 9, oldname);
+    if(new_text == NULL)
+        new_text = oldname;
+	strcpy(newname, new_text);
 	newname[10] = 0;
 
 	if (strcmp(newname, ".")) // didn't type '.'
@@ -1824,12 +1835,8 @@ Sint32 do_load(screen *ascreen)
 	char buffer[200],temp[200];
 
 	event = 1;
-	ascreen->draw_button(50, 30, 200, 40, 1, 1);
-	loadtext->write_xy(52, 32, "Load [G/S] : ", DARK_BLUE, 1);
-	ascreen->buffer_to_screen(0, 0, 320, 200);
-	while ( !mykeyboard[KEYSTATE_g] && !mykeyboard[KEYSTATE_s] )
-		get_input_events(WAIT);
-	if (mykeyboard[KEYSTATE_s])
+	
+	// Load scenario
 	{
 		ascreen->draw_button(50, 30, 200, 40, 1, 1);
 		ascreen->buffer_to_screen(0, 0, 320, 200);
@@ -1868,15 +1875,6 @@ Sint32 do_load(screen *ascreen)
             }
         }
 	} // end load scenario
-	else if (mykeyboard[KEYSTATE_g])
-	{
-		ascreen->draw_button(50, 30, 200, 40, 1, 1);
-		ascreen->buffer_to_screen(0, 0, 320, 200);
-		load_new_grid(ascreen);
-		while (mykeyboard[KEYSTATE_g])
-			//dumbcount++;
-			get_input_events(WAIT);
-	} // end load new grid
 
 	delete loadtext;
 	levelchanged = 0;
@@ -1889,14 +1887,8 @@ Sint32 do_save(screen *ascreen)  // save a scenario or grid
 	Sint32 result = 1;
 
 	event = 1;
-	while (mykeyboard[KEYSTATE_s])
-		get_input_events(WAIT);
-	ascreen->draw_button(50, 30, 200, 40, 1, 1);
-	savetext->write_xy(52, 32, "Save [G/S] ", DARK_BLUE, 1);
-	ascreen->buffer_to_screen(0, 0, 320, 200);
-	while ( !mykeyboard[KEYSTATE_s] && !mykeyboard[KEYSTATE_g] )
-		get_input_events(WAIT);
-	if (mykeyboard[KEYSTATE_s]) // save scenario
+	
+	// save scenario
 	{
 		while (mykeyboard[KEYSTATE_s])
 			get_input_events(WAIT);
@@ -1905,57 +1897,63 @@ Sint32 do_save(screen *ascreen)  // save a scenario or grid
 		ascreen->draw_button(20, 30, 235, 41, 1, 1);
 		savetext->write_xy(22, 33, "Title:", DARK_BLUE, 1);
 		ascreen->buffer_to_screen(0, 0, 320, 200);
-		strcpy(ascreen->scenario_title,
-		       savetext->input_string(58, 33, 29, ascreen->scenario_title) );
-
-		ascreen->clearfontbuffer(20, 30, 215, 15);
-		savetext->write_xy(52, 33, "Saving scenario..");
-		ascreen->buffer_to_screen(0, 0, 320, 200);
-		
-		if(unpack_campaign(ascreen->current_campaign))
+		char* new_name = savetext->input_string(58, 33, 29, ascreen->scenario_title);
+		if(new_name == NULL)
         {
-            // Save the map file ..
-            if (!save_map_file(grid_name, ascreen) )
-            {
-                Log("Save failed: Could not save grid.\n");
-                result = 0;
-            }
-            else
-            {
-                save_scenario(scen_name, ascreen, grid_name);
-                
-                if(!repack_campaign(ascreen->current_campaign))
-                {
-                    Log("Save failed: Could not repack campaign: %s\n", ascreen->current_campaign);
-                    result = 0;
-                }
-            }
+            Log("Save canceled.\n");
+            ascreen->clearfontbuffer(20, 30, 215, 15);
+            savetext->write_xy(52, 33, "Save canceled.");
+            ascreen->buffer_to_screen(0, 0, 320, 200);
+            result = 0;
         }
         else
         {
-            Log("Save failed: Could not unpack campaign: %s\n", ascreen->current_campaign);
-            result = 0;
+            strcpy(ascreen->scenario_title, new_name);
+
+            ascreen->clearfontbuffer(20, 30, 215, 15);
+            savetext->write_xy(52, 33, "Saving scenario..");
+            ascreen->buffer_to_screen(0, 0, 320, 200);
+            
+            if(unpack_campaign(ascreen->current_campaign))
+            {
+                // Save the map file ..
+                if (!save_map_file(grid_name, ascreen) )
+                {
+                    Log("Save failed: Could not save grid.\n");
+                    result = 0;
+                }
+                else
+                {
+                    save_scenario(scen_name, ascreen, grid_name);
+                    
+                    // Unmount campaign while it is changed
+                    unmount_campaign_package(ascreen->current_campaign);
+                    
+                    if(!repack_campaign(ascreen->current_campaign))
+                    {
+                        Log("Save failed: Could not repack campaign: %s\n", ascreen->current_campaign);
+                        result = 0;
+                    }
+                    
+                    // Remount the new campaign package
+                    mount_campaign_package(ascreen->current_campaign);
+                }
+            }
+            else
+            {
+                Log("Save failed: Could not unpack campaign: %s\n", ascreen->current_campaign);
+                result = 0;
+            }
+            cleanup_unpacked_campaign();
+
+            ascreen->clearfontbuffer();
+            clear_keyboard();
         }
-        cleanup_unpacked_campaign();
-
-		ascreen->clearfontbuffer();
-		clear_keyboard();
 	} // end of save scenario
-	else if (mykeyboard[KEYSTATE_g]) // save current grid
-	{
-		ascreen->clearfontbuffer(50, 30, 150, 10);
-		savetext->write_xy(52, 32, "Saving grid..");
-		ascreen->buffer_to_screen(0, 0, 320, 200);
-		if (!save_map_file(grid_name, ascreen) )
-			//printf("\nError saving map!\n");
-			result = 0;
-
-		ascreen->clearfontbuffer();
-		clear_keyboard();
-	} // end of save grid
 
 	delete savetext;
 
+    // If it saved, then it is not changed anymore.
 	if(result)
 		levelchanged = 0;
 	return result;
