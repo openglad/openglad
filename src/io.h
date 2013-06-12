@@ -26,4 +26,9 @@ int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *s
 bool zip_contents(const std::string& indirectory, const std::string& outfile);
 bool unzip_into(const std::string& infile, const std::string& outdirectory);
 
+bool unpack_campaign(const std::string& campaign_id);
+bool repack_campaign(const std::string& campaign_id);
+
+void cleanup_unpacked_campaign();
+
 #endif

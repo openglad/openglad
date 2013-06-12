@@ -391,7 +391,13 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
         }
     }
     
-    return (zip_close(archive) >= 0);
+    if(zip_close(archive) < 0)
+    {
+        Log("Error flushing zip file output: %s\n", zip_strerror(archive));
+        return false;
+    }
+    
+    return true;
 }
 
 
@@ -406,12 +412,12 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
 /* Function with behaviour like `mkdir -p'  */
 int mkpath(const char *s, mode_t mode)
 {
-    char *q, *r = NULL, *path = NULL, *up = NULL;
+    char *q, *parent = NULL, *path = NULL, *up = NULL;
     int rv;
 
     rv = -1;
-    if (strcmp(s, ".") == 0 || strcmp(s, "/") == 0)
-        return (0);
+    if (strcmp(s, ".") == 0 || strcmp(s, "/") == 0 || (strlen(s) == 3 && s[2] == '/'))
+        return 0;
 
     if ((path = strdup(s)) == NULL)
         exit(1);
@@ -419,10 +425,10 @@ int mkpath(const char *s, mode_t mode)
     if ((q = strdup(s)) == NULL)
         exit(1);
 
-    if ((r = dirname(q)) == NULL)
+    if ((parent = dirname(q)) == NULL)
         goto out;
     
-    if ((up = strdup(r)) == NULL)
+    if ((up = strdup(parent)) == NULL)
         exit(1);
 
     if ((mkpath(up, mode) == -1) && (errno != EEXIST))
@@ -530,4 +536,31 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
     }
     
     return (zip_close(archive) >= 0);
+}
+
+
+bool unpack_campaign(const std::string& campaign_id)
+{
+    return unzip_into(get_user_path() + "campaigns/" + campaign_id + ".glad", get_user_path() + "temp/");
+}
+
+bool repack_campaign(const std::string& campaign_id)
+{
+    std::string outfile = get_user_path() + "campaigns/" + campaign_id + ".glad";
+    remove(outfile.c_str());
+    return zip_contents(get_user_path() + "temp/", outfile);
+}
+
+void cleanup_unpacked_campaign()
+{
+    // Recursive delete
+    std::list<std::string> ls = list_paths_recursively(get_user_path() + "temp");
+    for(std::list<std::string>::reverse_iterator e = ls.rbegin(); e != ls.rend(); e++)
+    {
+        std::string path = get_user_path() + "temp/" + *e;
+        remove(path.c_str());
+        rmdir(path.c_str());
+    }
+    
+    rmdir((get_user_path() + "temp").c_str());
 }

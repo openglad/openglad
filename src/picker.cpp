@@ -728,6 +728,9 @@ Sint32 mainmenu(Sint32 arg1)
 			}
 			if (localbuttons && retvalue == OK)
 			{
+				delete(localbuttons);
+				localbuttons = buttonmenu(buttons1, 10);
+				
 				tempbuttons = localbuttons;
 				count = 0;
 				if (playermode==4)
@@ -1803,19 +1806,27 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 	grab_mouse();
     clear_keyboard();
     Uint8* keyboard = query_keyboard();
+    
+    clear_key_press_event();
 	
 	// FIXME: Change this to use events instead of key states so the keyboard method works right again.
     int retvalue = 0;
 	while (retvalue == 0)
 	{
+		get_input_events(POLL);
+		
 		if(leftmouse())
 			retvalue = localbuttons->leftclick();
-        else if(keyboard[KEYSTATE_y])
-            retvalue = YES;
-        else if(keyboard[KEYSTATE_n])
-            retvalue = NO;
-        else if(keyboard[KEYSTATE_ESCAPE])
-            break;
+        
+        if(query_key_press_event())
+        {
+            if(keyboard[KEYSTATE_y])
+                retvalue = YES;
+            else if(keyboard[KEYSTATE_n])
+                retvalue = NO;
+            else if(keyboard[KEYSTATE_ESCAPE])
+                break;
+        }
 	}
 	
     if(retvalue == YES)

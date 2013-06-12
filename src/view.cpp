@@ -540,7 +540,7 @@ short viewscreen::input(const SDL_Event& event)
 		strcat(somemessage, PACKAGE_VERSION); //append the version num
 		set_display_text(somemessage, STANDARD_TEXT_TIME);
 
-		while (query_keyboard()[SDLK_F1])
+		while (query_keyboard()[KEYSTATE_F1])
 			get_input_events(WAIT);
 
 		//buffers: lets borrow the somemessage buffer for some work
