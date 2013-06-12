@@ -1814,29 +1814,34 @@ void screen::add_level_completed(const std::string& campaign, int level_index)
 short load_scenario(const char * filename, screen * master)
 {
 	SDL_RWops  *infile = NULL;
-	char temptext[10] = "XXX";
+	char temptext[10];
+	memset(temptext, 0, 10);
 	char versionnumber = 0;
 	short tempvalue;
 	string thefile(filename);
+	
+	if(thefile.size() == 0)
+    {
+        Log("Cannot load scenario without a proper file name.\n");
+        return 0;
+    }
 
-	//buffers: first look for the scenario in scen/, then in levels.001
-
-	//buffers: the file
+    // Attach the extension to the base name
 	thefile += ".fss";
 	lowercase(thefile);
 
 	// Zardus: much much better this way
 	if ( !(infile = open_read_file("scen/", thefile.c_str())))
     {
-        Log("Cannot open levels resource file %s!", thefile.c_str());
-        exit(1);
+        Log("Cannot open level file for reading: %s", thefile.c_str());
+        return 0;
     }
 
 	// Are we a scenario file?
-	SDL_RWread(infile, temptext, 3, 1);
-	if (strcmp(temptext, "FSS"))
+	SDL_RWread(infile, temptext, 1, 3);
+	if (strcmp(temptext, "FSS") != 0)
 	{
-		Log("File %s is not a scenario!\n", filename);
+		Log("File %s is not a valid scenario!\n", filename);
 		SDL_RWclose(infile);
 		return 0;
 	}
@@ -2490,9 +2495,7 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 			new_guy = master->add_ob(temporder, tempfamily);  // create new object
 		if (!new_guy)
 		{
-			Log("Error creating object! Press Space\n");
-			wait_for_key(KEYSTATE_SPACE);
-			//fclose(infile);
+			Log("Error creating object when loading.\n");
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);

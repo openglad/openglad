@@ -80,8 +80,8 @@ Uint8 *mykeyboard;
 //scenario *myscen = new scenario;
 Sint32 currentmode = OBJECT_MODE;
 Uint32 currentlevel = 1;
-char scen_name[10] = "test";
-char grid_name[10] = "test";
+char scen_name[10];
+char grid_name[10];
 
 unsigned char scenpalette[768];
 Sint32 backcount=0, forecount = 0;
@@ -172,6 +172,10 @@ Sint32 level_editor()
 	char mystring[80];
 	short count;
 	
+	
+    memset(scen_name, 0, 10);
+    memset(grid_name, 0, 10);
+	
 	scentext = new text(myscreen);
 	// Set the un-set text to empty ..
 	for (i=0; i < 60; i ++)
@@ -182,6 +186,8 @@ Sint32 level_editor()
 	// Set our default par value ..
 	myscreen->par_value = 1;
 	load_scenario(levels.front().c_str(), myscreen);
+	strncpy(scen_name, levels.front().c_str(), 10);
+    strcpy(grid_name, query_my_map_name());
 
 	myscreen->clearfontbuffer();
 	myscreen->redraw();
@@ -212,7 +218,10 @@ Sint32 level_editor()
         
         if(query_key_press_event() && mykeyboard[KEYSTATE_ESCAPE])
         {
-            if(yes_or_no_prompt("Exit", "Quit level editor?", false))
+            if(!levelchanged)
+                break;
+            
+            if(yes_or_no_prompt("Exit", "Quit without saving?", false))
                 break;
             
             delete scentext;
@@ -220,12 +229,17 @@ Sint32 level_editor()
             
             myscreen->clearfontbuffer();
             event = 1;
+            
+            // Wait until release
+            while (mykeyboard[KEYSTATE_ESCAPE])
+                get_input_events(WAIT);
         }
         
 		// Delete all with ^D
 		if (mykeyboard[KEYSTATE_d] && mykeyboard[KEYSTATE_LCTRL])
 		{
 			remove_all_objects(myscreen);
+			levelchanged = 1;
 			event = 1;
 		}
 
@@ -524,12 +538,6 @@ Sint32 level_editor()
 			while (mykeyboard[KEYSTATE_F10])
 				get_input_events(WAIT);
 		}
-		// Now perform color cycling if selected
-		if (cyclemode)
-		{
-			cycle_palette(scenpalette, WATER_START, WATER_END, 1);
-			cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
-		}
 
 		// Mouse stuff ..
 		mymouse = query_mouse();
@@ -595,7 +603,10 @@ Sint32 level_editor()
 					newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
 					newob->setxy(windowx, windowy);
 					if (some_hit(windowx, windowy, newob, myscreen))
+                    {
 						set_facing(newob->collide_ob,myscreen);
+                        levelchanged = 1;
+                    }
 					myscreen->remove_ob(newob,0);
 					continue;
 				}  // end of set facing
@@ -613,6 +624,7 @@ Sint32 level_editor()
 				}  // end of info mode
 				else if (currentmode == OBJECT_MODE)
 				{
+                    levelchanged = 1;
 					newob = myscreen->add_ob(myorder, forecount);
 					newob->setxy(windowx, windowy);
 					newob->team_num = currentteam;
@@ -733,6 +745,14 @@ Sint32 level_editor()
 			}
 		}
 
+		// Now perform color cycling if selected
+		if (cyclemode)
+		{
+			cycle_palette(scenpalette, WATER_START, WATER_END, 1);
+			cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
+		}
+		
+		// Redraw screen
 		if (event)
 		{
 			release_mouse();
@@ -1269,7 +1289,7 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 	if ( (outfile = open_write_file("temp/scen/", temp_filename)) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
-		printf("Error in writing file %s\n", filename);
+		Log("Could not open file for writing: %s\n", filename);
 
 		master->draw_button(30, 30, 220, 60, 1, 1);
 		sprintf(buffer, "Error in saving scenario file");
@@ -1348,7 +1368,11 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 		if (head->ob)
 		{
 			if (!head)
+            {
+                Log("Unexpected NULL object.\n");
+                SDL_RWclose(outfile);
 				return 0;  // Something wrong! Too few objects..
+            }
 			temporder = head->ob->query_order();
 			tempfacing= head->ob->curdir;
 			tempfamily= head->ob->query_family();
@@ -1381,7 +1405,11 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 		if (head->ob)
 		{
 			if (!head)
+            {
+                Log("Unexpected NULL fx object.\n");
+                SDL_RWclose(outfile);
 				return 0;  // Something wrong! Too few objects..
+            }
 			temporder = head->ob->query_order();
 			tempfacing= head->ob->curdir;
 			tempfamily= head->ob->query_family();
@@ -1414,7 +1442,11 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 		if (head->ob)
 		{
 			if (!head)
+            {
+                Log("Unexpected NULL weap object.\n");
+                SDL_RWclose(outfile);
 				return 0;  // Something wrong! Too few objects..
+            }
 			temporder = head->ob->query_order();
 			tempfacing= head->ob->curdir;
 			tempfamily= head->ob->query_family();
@@ -1452,6 +1484,8 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 	}
 
 	SDL_RWclose(outfile);
+	
+	Log("Scenario saved.\n");
 
 	return 1;
 }
@@ -1806,30 +1840,33 @@ Sint32 do_load(screen *ascreen)
 		remove_all_objects(ascreen);  // kill   current obs
 		for (i=0; i < 60; i ++)
 			ascreen->scentext[i][0] = 0;
-		load_scenario(scen_name, ascreen);
+		short load_result = load_scenario(scen_name, ascreen);
 		ascreen->viewob[0]->myradar->start();
 		ascreen->viewob[0]->myradar->update();
 		strcpy(grid_name, query_my_map_name());
 		while (mykeyboard[KEYSTATE_s])
 			//buffers: dumbcount++;
 			get_input_events(WAIT);
-		//buffers: PORT: stricmp isn't compiling... need to find replacement func
-		//buffers: workaround: copy scenario_title to new buffer and make it all
-		//buffers: lowercase and then compare it to lowercase 'none'
-		strcpy(temp,ascreen->scenario_title);
-		lowercase(temp);
-		if (strlen(ascreen->scenario_title) &&
-		        strcmp(temp, "none") )
-		{
-			ascreen->draw_button(10, 30, 238, 51, 1, 1);
-			ascreen->clearfontbuffer(10, 30, 228, 21);
-			sprintf(buffer, "Loaded: %s", ascreen->scenario_title);
-			loadtext->write_xy(12, 33, buffer, DARK_BLUE, 1);
-			loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
-			ascreen->buffer_to_screen(0, 0, 320, 200);
-			while (!mykeyboard[KEYSTATE_SPACE])
-				get_input_events(WAIT);
-		}
+        if(load_result > 0)
+        {
+            //buffers: PORT: stricmp isn't compiling... need to find replacement func
+            //buffers: workaround: copy scenario_title to new buffer and make it all
+            //buffers: lowercase and then compare it to lowercase 'none'
+            strcpy(temp,ascreen->scenario_title);
+            lowercase(temp);
+            if (strlen(ascreen->scenario_title) &&
+                    strcmp(temp, "none") )
+            {
+                ascreen->draw_button(10, 30, 238, 51, 1, 1);
+                ascreen->clearfontbuffer(10, 30, 228, 21);
+                sprintf(buffer, "Loaded: %s", ascreen->scenario_title);
+                loadtext->write_xy(12, 33, buffer, DARK_BLUE, 1);
+                loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
+                ascreen->buffer_to_screen(0, 0, 320, 200);
+                while (!mykeyboard[KEYSTATE_SPACE])
+                    get_input_events(WAIT);
+            }
+        }
 	} // end load scenario
 	else if (mykeyboard[KEYSTATE_g])
 	{
@@ -1919,7 +1956,7 @@ Sint32 do_save(screen *ascreen)  // save a scenario or grid
 
 	delete savetext;
 
-	if (result)
+	if(result)
 		levelchanged = 0;
 	return result;
 }
