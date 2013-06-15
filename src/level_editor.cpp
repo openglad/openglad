@@ -787,7 +787,12 @@ Sint32 level_editor()
 	    start_ticks = SDL_GetTicks();
 
 	}
-
+	
+	// Reset the screen position so it doesn't ruin the main menu
+    set_screen_pos(myscreen, 0, 0);
+    // Update the screen's position
+    myscreen->redraw();
+    
 	return OK;
 }
 
