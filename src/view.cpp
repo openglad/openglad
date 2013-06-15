@@ -817,10 +817,7 @@ short viewscreen::input(const SDL_Event& event)
 			control->shifter_down = 0;
         }
 	    #else
-		if (didPlayerPressKey(mynum, KEY_SHIFTER, event))
-			control->shifter_down = 1;
-		else
-			control->shifter_down = 0;
+	    control->shifter_down = isPlayerHoldingKey(mynum, KEY_SHIFTER);
         #endif
 
 		if (didPlayerPressKey(mynum, KEY_SPECIAL, event))

@@ -143,7 +143,9 @@ static SDL_RWops *create_rwops(PHYSFS_File *handle)
         retval = SDL_AllocRW();
         if (retval != NULL)
         {
+            #if SDL_VERSION_ATLEAST(2,0,0)            
             retval->size  = physfsrwops_size;
+            #endif
             retval->seek  = physfsrwops_seek;
             retval->read  = physfsrwops_read;
             retval->write = physfsrwops_write;

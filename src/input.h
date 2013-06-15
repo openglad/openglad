@@ -104,8 +104,8 @@
     #define KEYSTATE_i SDLK_i
     #define KEYSTATE_f SDLK_f
     #define KEYSTATE_r SDLK_r
-    #define KEYSTATE_m SDLk_m
-    #define KEYSTATE_o SDLk_o
+    #define KEYSTATE_m SDLK_m
+    #define KEYSTATE_o SDLK_o
     #define KEYSTATE_t SDLK_t
     #define KEYSTATE_q SDLK_q
     #define KEYSTATE_y SDLK_y
