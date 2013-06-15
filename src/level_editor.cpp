@@ -792,6 +792,8 @@ Sint32 level_editor()
     set_screen_pos(myscreen, 0, 0);
     // Update the screen's position
     myscreen->redraw();
+    // Clear the background
+    myscreen->clearscreen();
     
 	return OK;
 }

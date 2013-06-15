@@ -79,8 +79,8 @@ std::map<std::string, int> current_levels;
 char  message[80];
 Sint32 editguy = 0;        // Global for editing guys ..
 unsigned char playermode=1;
-unsigned char  *gladpic,*magepic;
-pixieN  *gladpix,*magepix;
+unsigned char  *main_title_logo_data,*main_columns_data;
+pixieN  *main_title_logo_pix,*main_columns_pix;
 SDL_RWops *loadgame; //for loading the default game
 vbutton * localbuttons; //global so we can delete the buttons anywhere
 guy *ourteam[MAXTEAM];
@@ -237,14 +237,14 @@ void picker_main(Sint32 argc, char  **argv)
 	myscreen->clearbuffer();
 	myscreen->clearscreen();
 
-	//gladpic = read_pixie_file("glad.pix");
-	gladpic = read_pixie_file("title.pix"); // marbled gladiator title
-	gladpix = new pixieN(gladpic, myscreen);
+	//main_title_logo_data = read_pixie_file("glad.pix");
+	main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
+	main_title_logo_pix = new pixieN(main_title_logo_data, myscreen);
 
 
-	//magepic = read_pixie_file("mage.pix");
-	magepic = read_pixie_file("columns.pix");
-	magepix = new pixieN(magepic, myscreen);
+	//main_columns_data = read_pixie_file("mage.pix");
+	main_columns_data = read_pixie_file("columns.pix");
+	main_columns_pix = new pixieN(main_columns_data, myscreen);
 
 	// Get the mouse, timer, & keyboard ..
 	grab_mouse();
@@ -290,10 +290,10 @@ void picker_quit()
 	delete_all();
 	delete mytext;
 	delete myscreen;
-	delete magepix;
-	free(magepic);
-	delete gladpix;
-	free(gladpic);
+	delete main_columns_pix;
+	free(main_columns_data);
+	delete main_title_logo_pix;
+	free(main_title_logo_data);
 
 #if 0
 	if (cfgfile)
@@ -551,7 +551,7 @@ Sint32 mainmenu(Sint32 arg1)
 	if (localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
 
-	localbuttons = buttonmenu(buttons1, 10);
+	localbuttons = buttonmenu_no_backdrop(buttons1, 10, 0);
 	myscreen->clearbuffer();
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
 
@@ -603,14 +603,14 @@ Sint32 mainmenu(Sint32 arg1)
 	if (localbuttons == NULL)
 		return 1;
 
-	gladpix->set_frame(0);
-	gladpix->drawMix(15,  8, myscreen->viewob[0]);
-	gladpix->set_frame(1);
-	gladpix->drawMix(151,  8, myscreen->viewob[0]);
-	magepix->set_frame(0);
-	magepix->drawMix(12,40, myscreen->viewob[0]);
-	magepix->set_frame(1);
-	magepix->drawMix(242,40, myscreen->viewob[0]);
+	main_title_logo_pix->set_frame(0);
+	main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
+	main_title_logo_pix->set_frame(1);
+	main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
+	main_columns_pix->set_frame(0);
+	main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
+	main_columns_pix->set_frame(1);
+	main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
 	//myscreen->refresh();
 
 	clear_keyboard();
@@ -632,7 +632,7 @@ Sint32 mainmenu(Sint32 arg1)
 			{
 				myscreen->clearbuffer();
 				delete(localbuttons);
-				localbuttons = buttonmenu(buttons1, 10);
+				localbuttons = buttonmenu_no_backdrop(buttons1, 10, 0);
 				
 				myscreen->clearfontbuffer();
 				
@@ -657,15 +657,15 @@ Sint32 mainmenu(Sint32 arg1)
 				count = 0;
 
 				release_mouse();
-				gladpix->set_frame(0);
-				gladpix->drawMix(15,  8, myscreen->viewob[0]);
-				gladpix->set_frame(1);
-				gladpix->drawMix(151,  8, myscreen->viewob[0]);
-				magepix->set_frame(0);
-				magepix->drawMix(12,40, myscreen->viewob[0]);
-				magepix->set_frame(1);
-				magepix->drawMix(242,40, myscreen->viewob[0]);
-				//magepix->next_frame();
+				main_title_logo_pix->set_frame(0);
+				main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
+				main_title_logo_pix->set_frame(1);
+				main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
+				main_columns_pix->set_frame(0);
+				main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
+				main_columns_pix->set_frame(1);
+				main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
+				//main_columns_pix->next_frame();
 
 
 				if (playermode==4)
@@ -729,10 +729,21 @@ Sint32 mainmenu(Sint32 arg1)
 			if (localbuttons && retvalue == OK)
 			{
 				delete(localbuttons);
-				localbuttons = buttonmenu(buttons1, 10);
+				localbuttons = buttonmenu_no_backdrop(buttons1, 10, 0);
 				
 				tempbuttons = localbuttons;
 				count = 0;
+				
+				main_title_logo_pix->set_frame(0);
+				main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
+				main_title_logo_pix->set_frame(1);
+				main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
+				main_columns_pix->set_frame(0);
+				main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
+				main_columns_pix->set_frame(1);
+				main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
+				//main_columns_pix->next_frame();
+				
 				if (playermode==4)
 				{
 					allbuttons[2]->do_outline = 1;
@@ -796,6 +807,7 @@ Sint32 mainmenu(Sint32 arg1)
 					allbuttons[count]->vdisplay();
 					count++;
 				}
+				allbuttons[0]->set_graphic(FAMILY_NORMAL1);
 			} // end of "OK" buttons
 		}
 	}

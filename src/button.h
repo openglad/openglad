@@ -110,7 +110,6 @@ class vbutton
 extern vbutton *allbuttons[MAX_BUTTONS];
 
 short has_mouse_focus(button thisbutton);
-void clearmenu(button *buttons, short numbuttons);
 Sint32 add_money(Sint32 howmuch);
 
 Sint32 ventermenu(vbutton *vbuttons);
