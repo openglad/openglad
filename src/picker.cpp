@@ -3602,7 +3602,7 @@ Sint32 return_menu(Sint32 arg)
 			           // Level 10 things
 			           if (thisguy->level >= 10)
 			           {
-				           WR(4, " Energy Burst");
+				           WR(4, " Energy Wave");
 				           WR(5, "  Send a growing ripple ");
 				           WR(6, "  of energy through     ");
 				           WR(7 ,"  walls and foes.       ");

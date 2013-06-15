@@ -962,7 +962,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats->special_cost[2] = 60; // warp space
 					ob->stats->special_cost[3] = 500;  // freeze time
 					ob->stats->special_cost[4] = 70; // energy wave
-					ob->stats->special_cost[5] = 100; // burst
+					ob->stats->special_cost[5] = 100; // heartburst
 					ob->stats->weapon_cost = 5;
 					ob->default_weapon = FAMILY_FIREBALL;
 					break;
