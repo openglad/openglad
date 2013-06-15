@@ -959,7 +959,7 @@ walker  *loader::set_walker(walker *ob,
 					break;
 				case FAMILY_MAGE:
 					ob->stats->special_cost[1] = 15;  // cost to teleport
-					ob->stats->special_cost[2] = 60; // glowing thing
+					ob->stats->special_cost[2] = 60; // warp space
 					ob->stats->special_cost[3] = 500;  // freeze time
 					ob->stats->special_cost[4] = 70; // energy wave
 					ob->stats->special_cost[5] = 100; // burst
@@ -971,7 +971,6 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats->special_cost[2] = 80; // heartburst
 					ob->stats->special_cost[3] = 500;  // summon elemental
 					ob->stats->special_cost[4] = 150; // Mind-control enemies
-					//ob->stats->special_cost[5] = 100; // burst
 					ob->stats->weapon_cost = 12;
 					ob->default_weapon = FAMILY_FIREBALL;
 					break;

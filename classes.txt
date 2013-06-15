@@ -109,7 +109,7 @@ Mage:   Mages are slow, nearly defenseless, and horrible at
              mage's team.  Although this can be immensely powerful, be
              warned, as no magic will be generated during this frozen
              moment.
-        4. ® Energy Blast: Somewhat akin to a modern-day flame-
+        4. ® Energy Wave: Somewhat akin to a modern-day flame-
              thrower, a mage's energy blast releases an enormous,
              expanding flood of energy outward.  The energy blast, being
              non-corporeal, will pass through walls and other

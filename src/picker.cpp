@@ -3647,17 +3647,9 @@ Sint32 return_menu(Sint32 arg)
 			           // Level 10 things
 			           if (thisguy->level >= 10)
 			           {
-				           WR(5, " Energy Burst");
-				           WR(6, "  Send a growing ripple ");
-				           WR(7, "  of energy through     ");
-				           WR(8 ,"  walls and foes.       ");
-			           }
-			           // Level 13 things
-			           if (thisguy->level >= 13)
-			           {
-				           WR(9, " Mind Control");
-				           WR(10,"  Convert nearby foes to");
-				           WR(11,"  your team, for a time.");
+				           WR(5, " Mind Control");
+				           WR(6,"  Convert nearby foes to");
+				           WR(7,"  your team, for a time.");
 			           }
 			           break;
 
