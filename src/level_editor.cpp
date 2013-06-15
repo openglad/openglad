@@ -175,6 +175,9 @@ Sint32 level_editor()
 	
     memset(scen_name, 0, 10);
     memset(grid_name, 0, 10);
+    
+    // Initialize palette for cycling
+    load_and_set_palette("our.pal", scenpalette);
 	
 	scentext = new text(myscreen);
 	// Set the un-set text to empty ..
@@ -196,9 +199,12 @@ Sint32 level_editor()
 	//******************************
 	// Keyboard loop
 	//******************************
-
+    
+    float cycletimer = 0.0f;
 	grab_mouse();
 	mykeyboard = query_keyboard();
+	Uint32 last_ticks = SDL_GetTicks();
+	Uint32 start_ticks = last_ticks;
 
 	//
 	// This is the main program loop
@@ -751,24 +757,34 @@ Sint32 level_editor()
 		// Now perform color cycling if selected
 		if (cyclemode)
 		{
-			cycle_palette(scenpalette, WATER_START, WATER_END, 1);
-			cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
+		    cycletimer -= (start_ticks - last_ticks)/1000.0f;
+		    if(cycletimer <= 0)
+            {
+                cycletimer = 0.5f;
+                cycle_palette(scenpalette, WATER_START, WATER_END, 1);
+                cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
+            }
+			event = 1;
 		}
 		
 		// Redraw screen
 		if (event)
 		{
-			release_mouse();
+			//release_mouse();
 			myscreen->redraw();
 			display_panel(myscreen);
 			myscreen->refresh();
 			//    display_panel(myscreen);
-			grab_mouse();
+			//grab_mouse();
+			SDL_Delay(10);
 		}
 		event = 0;
 
 		if (mykeyboard[KEYSTATE_ESCAPE])
 			quit_level_editor(0);
+        
+	    last_ticks = start_ticks;
+	    start_ticks = SDL_GetTicks();
 
 	}
 
@@ -815,7 +831,7 @@ Sint32 display_panel(screen *myscreen)
 	    };
 
 	// Hide the mouse ..
-	release_mouse();
+	//release_mouse();
 
 	// Draw the bounding box
 	//myscreen->draw_dialog(lm-4, L_D(-1), 310, L_D(8), "Info");
@@ -912,7 +928,7 @@ Sint32 display_panel(screen *myscreen)
 	                   S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	// Restore the mouse
-	grab_mouse();
+	//grab_mouse();
 
 	return 1;
 }
