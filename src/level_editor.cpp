@@ -162,6 +162,103 @@ Sint32 rowsdown = 0;
 Sint32 maxrows = ((sizeof(backgrounds)/4) / 4);
 text *scentext;
 
+
+
+class SimpleButton
+{
+public:
+    SDL_Rect area;
+    const std::string _text;
+    bool remove_border;
+    int color;
+    bool centered;
+    
+    SimpleButton(const std::string& _text, int x, int y, unsigned int w, unsigned int h, bool remove_border = false, int color = DARK_BLUE);
+    
+    void draw(screen* myscreen, text* mytext);
+    bool contains(int x, int y) const;
+};
+
+
+SimpleButton::SimpleButton(const std::string& _text, int x, int y, unsigned int w, unsigned int h, bool remove_border, int color)
+    : _text(_text), remove_border(remove_border), color(color), centered(false)
+{
+    area.x = x;
+    area.y = y;
+    area.w = w;
+    area.h = h;
+}
+
+void SimpleButton::draw(screen* myscreen, text* mytext)
+{
+    myscreen->draw_button(area.x, area.y, area.x + area.w, area.y + area.h, (remove_border? 0 : 1), 1);
+    if(centered)
+        mytext->write_xy(area.x + area.w/2 - 3*_text.size(), area.y + area.h/2 - 2, _text.c_str(), color, 1);
+    else
+        mytext->write_xy(area.x + 2, area.y + area.h/2 - 2, _text.c_str(), color, 1);
+}
+
+bool SimpleButton::contains(int x, int y) const
+{
+    return (area.x < x && x < area.x + area.w
+            && area.y < y && y < area.y + area.h);
+}
+
+bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& ls, SimpleButton* elem)
+{
+    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        const std::set<SimpleButton*>& s = e->second;
+        if(s.find(elem) != s.end())
+            return true;
+    }
+    return false;
+}
+
+bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu, SimpleButton& button, bool is_in_top_menu = false)
+{
+    // Make sure it is showing
+    if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(current_menu, &button)))
+        return false;
+    
+    while (mymouse[MOUSE_LEFT])
+        get_input_events(WAIT);
+    
+    // Close menu if already open
+    if(current_menu.back().first == &button)
+    {
+        current_menu.pop_back();
+        return false;
+    }
+    
+    // Remove all menus up to the parent
+    while(current_menu.size() > 0)
+    {
+        std::set<SimpleButton*>& s = current_menu.back().second;
+        if(s.find(&button) == s.end())
+            current_menu.pop_back();
+        else
+            return true; // Open this menu
+    }
+    
+    // No parent!
+    return is_in_top_menu;
+}
+
+bool activate_menu_choice(int mx, int my, std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu, SimpleButton& button, bool is_in_top_menu = false)
+{
+    // Make sure it is showing
+    if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(current_menu, &button)))
+        return false;
+    
+    while (mymouse[MOUSE_LEFT])
+        get_input_events(WAIT);
+    
+    // Close menu
+    current_menu.clear();
+    return true;
+}
+
 Sint32 level_editor()
 {
 	Sint32 i,j;
@@ -195,6 +292,90 @@ Sint32 level_editor()
 	myscreen->clearfontbuffer();
 	myscreen->redraw();
 	myscreen->refresh();
+	
+	// GUI
+	using std::set;
+	using std::pair;
+	using std::list;
+	
+	// File menu
+	SimpleButton fileButton("File", 0, 0, 30, 15);
+	SimpleButton fileCampaignButton("Campaign >", 0, fileButton.area.y + fileButton.area.h + 1, 65, 15, true);
+	SimpleButton fileLevelButton("Level >", 0, fileCampaignButton.area.y + fileCampaignButton.area.h + 1, 65, 15, true);
+	SimpleButton fileQuitButton("Exit", 0, fileLevelButton.area.y + fileLevelButton.area.h + 1, 65, 15, true);
+	
+	// File > Campaign submenu
+	SimpleButton fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w + 1, fileCampaignButton.area.y, 65, 15, true);
+	SimpleButton fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h + 1, 65, 15, true);
+	SimpleButton fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h + 1, 65, 15, true);
+	SimpleButton fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, fileCampaignNewButton.area.y + fileCampaignNewButton.area.h + 1, 65, 15, true);
+	SimpleButton fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, fileCampaignLoadButton.area.y + fileCampaignLoadButton.area.h + 1, 65, 15, true);
+	SimpleButton fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, fileCampaignSaveButton.area.y + fileCampaignSaveButton.area.h + 1, 65, 15, true);
+	
+	// File > Level submenu
+	SimpleButton fileLevelNewButton("New", fileLevelButton.area.x + fileLevelButton.area.w + 1, fileLevelButton.area.y, 65, 15, true);
+	SimpleButton fileLevelLoadButton("Load...", fileLevelNewButton.area.x, fileLevelNewButton.area.y + fileLevelNewButton.area.h + 1, 65, 15, true);
+	SimpleButton fileLevelSaveButton("Save", fileLevelNewButton.area.x, fileLevelLoadButton.area.y + fileLevelLoadButton.area.h + 1, 65, 15, true);
+	SimpleButton fileLevelSaveAsButton("Save As...", fileLevelNewButton.area.x, fileLevelSaveButton.area.y + fileLevelSaveButton.area.h + 1, 65, 15, true);
+	
+	// Campaign menu
+	SimpleButton campaignButton("Campaign", fileButton.area.x + fileButton.area.w + 1, 0, 55, 15);
+	SimpleButton campaignProfileButton("Profile >", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h + 1, 59, 15, true);
+	SimpleButton campaignDetailsButton("Details >", campaignButton.area.x, campaignProfileButton.area.y + campaignProfileButton.area.h + 1, 59, 15, true);
+	SimpleButton campaignValidateButton("Validate", campaignButton.area.x, campaignDetailsButton.area.y + campaignDetailsButton.area.h + 1, 59, 15, true);
+	
+	// Campaign > Profile submenu
+	SimpleButton campaignProfileTitleButton("Title...", campaignProfileButton.area.x + campaignProfileButton.area.w + 1, campaignProfileButton.area.y, 95, 15, true);
+	SimpleButton campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, campaignProfileTitleButton.area.y + campaignProfileTitleButton.area.h + 1, 95, 15, true);
+	SimpleButton campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h + 1, 95, 15, true);
+	SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h + 1, 95, 15, true);
+	SimpleButton campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, campaignProfileAuthorsButton.area.y + campaignProfileAuthorsButton.area.h + 1, 95, 15, true);
+	
+	// Campaign > Details submenu
+	SimpleButton campaignDetailsVersionButton("Version...", campaignDetailsButton.area.x + campaignDetailsButton.area.w + 1, campaignDetailsButton.area.y, 113, 15, true);
+	SimpleButton campaignDetailsSuggestedPowerButton("Suggested power...", campaignDetailsVersionButton.area.x, campaignDetailsVersionButton.area.y + campaignDetailsVersionButton.area.h + 1, 113, 15, true);
+	SimpleButton campaignDetailsFirstLevelButton("First level...", campaignDetailsVersionButton.area.x, campaignDetailsSuggestedPowerButton.area.y + campaignDetailsSuggestedPowerButton.area.h + 1, 113, 15, true);
+	
+	
+	// Level menu
+	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w + 1, 0, 40, 15);
+	SimpleButton levelLevelNumberButton("Level number...", levelButton.area.x, levelButton.area.y + levelButton.area.h + 1, 95, 15, true);
+	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelLevelNumberButton.area.y + levelLevelNumberButton.area.h + 1, 95, 15, true);
+	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h + 1, 95, 15, true);
+	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h + 1, 95, 15, true);
+	
+	// Selection menu
+	SimpleButton selectionButton("Selection", levelButton.area.x + levelButton.area.w + 1, 0, 65, 15);
+	SimpleButton selectionLevelButton("Level >", selectionButton.area.x, selectionButton.area.y + selectionButton.area.h + 1, 47, 15, true);
+	SimpleButton selectionTeamButton("Team >", selectionButton.area.x, selectionLevelButton.area.y + selectionLevelButton.area.h + 1, 47, 15, true);
+	SimpleButton selectionClassButton("Class >", selectionButton.area.x, selectionTeamButton.area.y + selectionTeamButton.area.h + 1, 47, 15, true);
+	SimpleButton selectionCopyButton("Copy", selectionButton.area.x, selectionClassButton.area.y + selectionClassButton.area.h + 1, 47, 15, true);
+	SimpleButton selectionPasteButton("Paste", selectionButton.area.x, selectionCopyButton.area.y + selectionCopyButton.area.h + 1, 47, 15, true);
+	SimpleButton selectionDeleteButton("Delete", selectionButton.area.x, selectionPasteButton.area.y + selectionPasteButton.area.h + 1, 47, 15, true);
+	
+	// Selection > Level submenu
+	SimpleButton selectionLevelIncreaseButton("Increase", selectionLevelButton.area.x + selectionLevelButton.area.w + 1, selectionLevelButton.area.y, 53, 15, true);
+	SimpleButton selectionLevelDecreaseButton("Decrease", selectionLevelIncreaseButton.area.x, selectionLevelIncreaseButton.area.y + selectionLevelIncreaseButton.area.h + 1, 53, 15, true);
+	
+	// Selection > Team submenu
+	SimpleButton selectionTeamPreviousButton("Previous", selectionTeamButton.area.x + selectionTeamButton.area.w + 1, selectionTeamButton.area.y, 53, 15, true);
+	SimpleButton selectionTeamNextButton("Next", selectionTeamPreviousButton.area.x, selectionTeamPreviousButton.area.y + selectionTeamPreviousButton.area.h + 1, 53, 15, true);
+	
+	// Selection > Class submenu
+	SimpleButton selectionClassPreviousButton("Previous", selectionClassButton.area.x + selectionClassButton.area.w + 1, selectionClassButton.area.y, 53, 15, true);
+	SimpleButton selectionClassNextButton("Next", selectionClassPreviousButton.area.x, selectionClassPreviousButton.area.y + selectionClassPreviousButton.area.h + 1, 53, 15, true);
+	
+	
+	// Top menu
+	set<SimpleButton*> menu_buttons;
+	menu_buttons.insert(&fileButton);
+	menu_buttons.insert(&campaignButton);
+	menu_buttons.insert(&levelButton);
+	menu_buttons.insert(&selectionButton);
+	
+	// The active menu buttons
+	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
+	
 
 	//******************************
 	// Keyboard loop
@@ -576,149 +757,394 @@ Sint32 level_editor()
 			event = 1;
 			mx = mymouse[MOUSE_X];
 			my = mymouse[MOUSE_Y];
+            
+            // Clicking on menu items
+            // FILE
+            if(activate_sub_menu_button(mx, my, current_menu, fileButton, true))
+            {
+                set<SimpleButton*> s;
+                s.insert(&fileCampaignButton);
+                s.insert(&fileLevelButton);
+                s.insert(&fileQuitButton);
+                current_menu.push_back(std::make_pair(&fileButton, s));
+            }
+            // Campaign >
+            else if(activate_sub_menu_button(mx, my, current_menu, fileCampaignButton))
+            {
+                set<SimpleButton*> s;
+                s.insert(&fileCampaignImportButton);
+                s.insert(&fileCampaignShareButton);
+                s.insert(&fileCampaignNewButton);
+                s.insert(&fileCampaignLoadButton);
+                s.insert(&fileCampaignSaveButton);
+                s.insert(&fileCampaignSaveAsButton);
+                current_menu.push_back(std::make_pair(&fileCampaignButton, s));
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileCampaignImportButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileCampaignNewButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveAsButton))
+            {
+                
+            }
+            // Level >
+            else if(activate_sub_menu_button(mx, my, current_menu, fileLevelButton))
+            {
+                set<SimpleButton*> s;
+                s.insert(&fileLevelNewButton);
+                s.insert(&fileLevelLoadButton);
+                s.insert(&fileLevelSaveButton);
+                s.insert(&fileLevelSaveAsButton);
+                current_menu.push_back(std::make_pair(&fileLevelButton, s));
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileLevelNewButton))
+            {
+                remove_all_objects(myscreen);
+                //clear_terrain(myscreen);
+                //clear_details(myscreen);
+                levelchanged = 1;
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
+            {
+                quit_level_editor(0);
+                break;
+            }
+            // CAMPAIGN
+            else if(activate_sub_menu_button(mx, my, current_menu, campaignButton, true))
+            {
+                set<SimpleButton*> s;
+                s.insert(&campaignProfileButton);
+                s.insert(&campaignDetailsButton);
+                s.insert(&campaignValidateButton);
+                current_menu.push_back(std::make_pair(&campaignButton, s));
+            }
+            // Profile >
+            else if(activate_sub_menu_button(mx, my, current_menu, campaignProfileButton))
+            {
+                set<SimpleButton*> s;
+                s.insert(&campaignProfileTitleButton);
+                s.insert(&campaignProfileDescriptionButton);
+                s.insert(&campaignProfileIconButton);
+                s.insert(&campaignProfileAuthorsButton);
+                s.insert(&campaignProfileContributorsButton);
+                current_menu.push_back(std::make_pair(&campaignProfileButton, s));
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignProfileTitleButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignProfileDescriptionButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignProfileIconButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignProfileAuthorsButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignProfileContributorsButton))
+            {
+                
+            }
+            // Details >
+            else if(activate_sub_menu_button(mx, my, current_menu, campaignDetailsButton))
+            {
+                set<SimpleButton*> s;
+                s.insert(&campaignDetailsVersionButton);
+                s.insert(&campaignDetailsSuggestedPowerButton);
+                s.insert(&campaignDetailsFirstLevelButton);
+                current_menu.push_back(std::make_pair(&campaignDetailsButton, s));
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignDetailsVersionButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignDetailsSuggestedPowerButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, campaignDetailsFirstLevelButton))
+            {
+                
+            }
+            // LEVEL
+            else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
+            {
+                set<SimpleButton*> s;
+                s.insert(&levelLevelNumberButton);
+                s.insert(&levelTitleButton);
+                s.insert(&levelDescriptionButton);
+                s.insert(&levelMapSizeButton);
+                current_menu.push_back(std::make_pair(&levelButton, s));
+            }
+            else if(activate_menu_choice(mx, my, current_menu, levelLevelNumberButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, levelDescriptionButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
+            {
+                
+            }
+            // SELECTION
+            else if(activate_sub_menu_button(mx, my, current_menu, selectionButton, true))
+            {
+                set<SimpleButton*> s;
+                s.insert(&selectionLevelButton);
+                s.insert(&selectionTeamButton);
+                s.insert(&selectionClassButton);
+                s.insert(&selectionCopyButton);
+                s.insert(&selectionPasteButton);
+                s.insert(&selectionDeleteButton);
+                current_menu.push_back(std::make_pair(&selectionButton, s));
+            }
+            // Level >
+            else if(activate_sub_menu_button(mx, my, current_menu, selectionLevelButton))
+            {
+                set<SimpleButton*> s;
+                s.insert(&selectionLevelIncreaseButton);
+                s.insert(&selectionLevelDecreaseButton);
+                current_menu.push_back(std::make_pair(&selectionLevelButton, s));
+            }
+            // Team >
+            else if(activate_sub_menu_button(mx, my, current_menu, selectionTeamButton))
+            {
+                set<SimpleButton*> s;
+                s.insert(&selectionTeamPreviousButton);
+                s.insert(&selectionTeamNextButton);
+                current_menu.push_back(std::make_pair(&selectionTeamButton, s));
+            }
+            // Class >
+            else if(activate_sub_menu_button(mx, my, current_menu, selectionClassButton))
+            {
+                set<SimpleButton*> s;
+                s.insert(&selectionClassPreviousButton);
+                s.insert(&selectionClassNextButton);
+                current_menu.push_back(std::make_pair(&selectionClassButton, s));
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionCopyButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionPasteButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionDeleteButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionLevelIncreaseButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionLevelDecreaseButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionTeamPreviousButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionTeamNextButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionClassPreviousButton))
+            {
+                
+            }
+            else if(activate_menu_choice(mx, my, current_menu, selectionClassNextButton))
+            {
+                
+            }
+            else
+            {
+                // No menu click
+                current_menu.clear();
+                
+                // Zardus: ADD: can move map by clicking on minimap
+                if (mx > myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4
+                        && my > myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4
+                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
+                {
+                    mx -= myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4;
+                    my -= myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4;
 
-			// Zardus: ADD: can move map by clicking on minimap
-			if (mx > myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4
-			        && my > myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4
-			        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
-			{
-				mx -= myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4;
-				my -= myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4;
-
-				// Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
-				set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - 160,
-				                myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - 100);
-			}
-			else if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
-			          (my >= S_UP) && (my <= S_DOWN) )      // in the main window
-			{
-				windowx = mymouse[MOUSE_X] + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
-				if (grid_aligned==1)
-					windowx -= (windowx%GRID_SIZE);
-				windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
-				if (grid_aligned==1)
-					windowy -= (windowy%GRID_SIZE);
-				if (mykeyboard[KEYSTATE_i]) // get info on current object
-				{
-					newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
-					newob->setxy(windowx, windowy);
-					if (some_hit(windowx, windowy, newob, myscreen))
-						info_box(newob->collide_ob,myscreen);
-					myscreen->remove_ob(newob,0);
-					continue;
-				}  // end of info mode
-				if (mykeyboard[KEYSTATE_f]) // set facing of current object
-				{
-					newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
-					newob->setxy(windowx, windowy);
-					if (some_hit(windowx, windowy, newob, myscreen))
+                    // Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
+                    set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - 160,
+                                    myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - 100);
+                }
+                else if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
+                          (my >= S_UP) && (my <= S_DOWN) )      // in the main window
+                {
+                    windowx = mymouse[MOUSE_X] + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+                    if (grid_aligned==1)
+                        windowx -= (windowx%GRID_SIZE);
+                    windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
+                    if (grid_aligned==1)
+                        windowy -= (windowy%GRID_SIZE);
+                    if (mykeyboard[KEYSTATE_i]) // get info on current object
                     {
-						set_facing(newob->collide_ob,myscreen);
-                        levelchanged = 1;
-                    }
-					myscreen->remove_ob(newob,0);
-					continue;
-				}  // end of set facing
+                        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
+                        newob->setxy(windowx, windowy);
+                        if (some_hit(windowx, windowy, newob, myscreen))
+                            info_box(newob->collide_ob,myscreen);
+                        myscreen->remove_ob(newob,0);
+                        continue;
+                    }  // end of info mode
+                    if (mykeyboard[KEYSTATE_f]) // set facing of current object
+                    {
+                        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
+                        newob->setxy(windowx, windowy);
+                        if (some_hit(windowx, windowy, newob, myscreen))
+                        {
+                            set_facing(newob->collide_ob,myscreen);
+                            levelchanged = 1;
+                        }
+                        myscreen->remove_ob(newob,0);
+                        continue;
+                    }  // end of set facing
 
-				if (mykeyboard[KEYSTATE_r]) // (re)name the current object
-				{
-					newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
-					newob->setxy(windowx, windowy);
-					if (some_hit(windowx, windowy, newob, myscreen))
-					{
-						set_name(newob->collide_ob,myscreen);
-						levelchanged = 1;
-					}
-					myscreen->remove_ob(newob,0);
-				}  // end of info mode
-				else if (currentmode == OBJECT_MODE)
-				{
-                    levelchanged = 1;
-					newob = myscreen->add_ob(myorder, forecount);
-					newob->setxy(windowx, windowy);
-					newob->team_num = currentteam;
-					newob->stats->level = currentlevel;
-					newob->dead = 0; // just in case
-					newob->collide_ob = 0;
-					if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, myscreen))
-					{
-						if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
-						        newob->collide_ob )                    // and hit a guy?
-						{
-							myscreen->remove_ob(newob->collide_ob,0);
-							while (mymouse[MOUSE_LEFT])
-							{
-								mymouse = query_mouse();
-							}
-							levelchanged = 1;
-						} // end of deleting guy
-						if (newob)
-						{
-							myscreen->remove_ob(newob,0);
-							newob = NULL;
-						}
-					}  // end of failure to put guy
-					else if (grid_aligned == 2)
-					{
-						newob->draw(myscreen->viewob[0]);
-						myscreen->buffer_to_screen(0, 0, 320, 200);
-						start_time_s = query_timer();
-						while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
-						{
-							mymouse = query_mouse();
-						}
-						levelchanged = 1;
-					}
-					if (mykeyboard[KEYSTATE_LCTRL] && newob)
-					{
-						myscreen->remove_ob(newob,0);
-						newob = NULL;
-					}
-					//       while (mymouse[MOUSE_LEFT])
-					//         mymouse = query_mouse();
-				}  // end of putting a guy
-				if (currentmode == MAP_MODE)
-				{
-					windowx /= GRID_SIZE;  // get the map position ..
-					windowy /= GRID_SIZE;
-					// Set to our current selection
-					myscreen->grid[windowy*(myscreen->maxx)+windowx] = some_pix(backcount);
-					levelchanged = 1;
-					if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
-					{
-						if (mysmoother)
-						{
-							delete mysmoother;
-							mysmoother = new smoother();
-							mysmoother->set_target(myscreen);
-						}
-						for (i=windowx-1; i <= windowx+1; i++)
-							for (j=windowy-1; j <=windowy+1; j++)
-								if (i >= 0 && i < myscreen->maxx &&
-								        j >= 0 && j < myscreen->maxy)
-									mysmoother->smooth(i, j);
-					}
-					else if (mysmoother) // update smoother anyway
-					{
-						delete mysmoother;
-						mysmoother = new smoother();
-						mysmoother->set_target(myscreen);
-					}
-					myscreen->viewob[0]->myradar->update();
-				}  // end of setting grid square
-			} // end of main window
-			//    if ( (mx >= PIX_LEFT) && (mx <= PIX_RIGHT) &&
-			//        (my >= PIX_TOP) && (my <= PIX_BOTTOM) ) // grid menu
-			if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
-			{
-				//windowx = (mx - PIX_LEFT) / GRID_SIZE;
-				windowx = (mx-S_RIGHT) / GRID_SIZE;
-				windowy = (my - PIX_TOP) / GRID_SIZE;
-				backcount = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
-				                         % (sizeof(backgrounds)/4)];
-				backcount %= NUM_BACKGROUNDS;
-				currentmode = MAP_MODE;
-			} // end of background grid window
+                    if (mykeyboard[KEYSTATE_r]) // (re)name the current object
+                    {
+                        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
+                        newob->setxy(windowx, windowy);
+                        if (some_hit(windowx, windowy, newob, myscreen))
+                        {
+                            set_name(newob->collide_ob,myscreen);
+                            levelchanged = 1;
+                        }
+                        myscreen->remove_ob(newob,0);
+                    }  // end of info mode
+                    else if (currentmode == OBJECT_MODE)
+                    {
+                        levelchanged = 1;
+                        newob = myscreen->add_ob(myorder, forecount);
+                        newob->setxy(windowx, windowy);
+                        newob->team_num = currentteam;
+                        newob->stats->level = currentlevel;
+                        newob->dead = 0; // just in case
+                        newob->collide_ob = 0;
+                        if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, myscreen))
+                        {
+                            if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
+                                    newob->collide_ob )                    // and hit a guy?
+                            {
+                                myscreen->remove_ob(newob->collide_ob,0);
+                                while (mymouse[MOUSE_LEFT])
+                                {
+                                    mymouse = query_mouse();
+                                }
+                                levelchanged = 1;
+                            } // end of deleting guy
+                            if (newob)
+                            {
+                                myscreen->remove_ob(newob,0);
+                                newob = NULL;
+                            }
+                        }  // end of failure to put guy
+                        else if (grid_aligned == 2)
+                        {
+                            newob->draw(myscreen->viewob[0]);
+                            myscreen->buffer_to_screen(0, 0, 320, 200);
+                            start_time_s = query_timer();
+                            while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
+                            {
+                                mymouse = query_mouse();
+                            }
+                            levelchanged = 1;
+                        }
+                        if (mykeyboard[KEYSTATE_LCTRL] && newob)
+                        {
+                            myscreen->remove_ob(newob,0);
+                            newob = NULL;
+                        }
+                        //       while (mymouse[MOUSE_LEFT])
+                        //         mymouse = query_mouse();
+                    }  // end of putting a guy
+                    if (currentmode == MAP_MODE)
+                    {
+                        windowx /= GRID_SIZE;  // get the map position ..
+                        windowy /= GRID_SIZE;
+                        // Set to our current selection
+                        myscreen->grid[windowy*(myscreen->maxx)+windowx] = some_pix(backcount);
+                        levelchanged = 1;
+                        if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
+                        {
+                            if (mysmoother)
+                            {
+                                delete mysmoother;
+                                mysmoother = new smoother();
+                                mysmoother->set_target(myscreen);
+                            }
+                            for (i=windowx-1; i <= windowx+1; i++)
+                                for (j=windowy-1; j <=windowy+1; j++)
+                                    if (i >= 0 && i < myscreen->maxx &&
+                                            j >= 0 && j < myscreen->maxy)
+                                        mysmoother->smooth(i, j);
+                        }
+                        else if (mysmoother) // update smoother anyway
+                        {
+                            delete mysmoother;
+                            mysmoother = new smoother();
+                            mysmoother->set_target(myscreen);
+                        }
+                        myscreen->viewob[0]->myradar->update();
+                    }  // end of setting grid square
+                } // end of main window
+                //    if ( (mx >= PIX_LEFT) && (mx <= PIX_RIGHT) &&
+                //        (my >= PIX_TOP) && (my <= PIX_BOTTOM) ) // grid menu
+                if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
+                {
+                    //windowx = (mx - PIX_LEFT) / GRID_SIZE;
+                    windowx = (mx-S_RIGHT) / GRID_SIZE;
+                    windowy = (my - PIX_TOP) / GRID_SIZE;
+                    backcount = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
+                                             % (sizeof(backgrounds)/4)];
+                    backcount %= NUM_BACKGROUNDS;
+                    currentmode = MAP_MODE;
+                } // end of background grid window
+            }
 
 		}      // end of left mouse button
 
@@ -772,10 +1198,19 @@ Sint32 level_editor()
 		{
 			//release_mouse();
 			myscreen->redraw();
+			for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+                (*e)->draw(myscreen, scentext);
+            for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
+            {
+                set<SimpleButton*>& s = e->second;
+                for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
+                    (*f)->draw(myscreen, scentext);
+            }
 			display_panel(myscreen);
 			myscreen->refresh();
 			//    display_panel(myscreen);
 			//grab_mouse();
+			myscreen->clearfontbuffer();
 			SDL_Delay(10);
 		}
 		event = 0;
