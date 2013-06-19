@@ -191,7 +191,7 @@ SimpleButton::SimpleButton(const std::string& _text, int x, int y, unsigned int 
 
 void SimpleButton::draw(screen* myscreen, text* mytext)
 {
-    myscreen->draw_button(area.x, area.y, area.x + area.w, area.y + area.h, (remove_border? 0 : 1), 1);
+    myscreen->draw_button(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, (remove_border? 0 : 1), 1);
     if(centered)
         mytext->write_xy(area.x + area.w/2 - 3*_text.size(), area.y + area.h/2 - 2, _text.c_str(), color, 1);
     else
@@ -200,8 +200,8 @@ void SimpleButton::draw(screen* myscreen, text* mytext)
 
 bool SimpleButton::contains(int x, int y) const
 {
-    return (area.x < x && x < area.x + area.w
-            && area.y < y && y < area.y + area.h);
+    return (area.x <= x && x < area.x + area.w
+            && area.y <= y && y < area.y + area.h);
 }
 
 bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& ls, SimpleButton* elem)
@@ -212,6 +212,28 @@ bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButt
         if(s.find(elem) != s.end())
             return true;
     }
+    return false;
+}
+
+// Wouldn't spatial partitioning be nice?  Too bad!
+bool mouse_on_menus(int mx, int my, const set<SimpleButton*>& menu_buttons, const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu)
+{
+    for(set<SimpleButton*>::const_iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+    {
+        if((*e)->contains(mx, my))
+            return true;
+    }
+    
+    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = current_menu.begin(); e != current_menu.end(); e++)
+    {
+        const set<SimpleButton*>& s = e->second;
+        for(set<SimpleButton*>::const_iterator f = s.begin(); f != s.end(); f++)
+        {
+            if((*f)->contains(mx, my))
+                return true;
+        }
+    }
+    
     return false;
 }
 
@@ -300,70 +322,70 @@ Sint32 level_editor()
 	
 	// File menu
 	SimpleButton fileButton("File", 0, 0, 30, 15);
-	SimpleButton fileCampaignButton("Campaign >", 0, fileButton.area.y + fileButton.area.h + 1, 65, 15, true);
-	SimpleButton fileLevelButton("Level >", 0, fileCampaignButton.area.y + fileCampaignButton.area.h + 1, 65, 15, true);
-	SimpleButton fileQuitButton("Exit", 0, fileLevelButton.area.y + fileLevelButton.area.h + 1, 65, 15, true);
+	SimpleButton fileCampaignButton("Campaign >", 0, fileButton.area.y + fileButton.area.h, 65, 15, true);
+	SimpleButton fileLevelButton("Level >", 0, fileCampaignButton.area.y + fileCampaignButton.area.h, 65, 15, true);
+	SimpleButton fileQuitButton("Exit", 0, fileLevelButton.area.y + fileLevelButton.area.h, 65, 15, true);
 	
 	// File > Campaign submenu
-	SimpleButton fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w + 1, fileCampaignButton.area.y, 65, 15, true);
-	SimpleButton fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h + 1, 65, 15, true);
-	SimpleButton fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h + 1, 65, 15, true);
-	SimpleButton fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, fileCampaignNewButton.area.y + fileCampaignNewButton.area.h + 1, 65, 15, true);
-	SimpleButton fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, fileCampaignLoadButton.area.y + fileCampaignLoadButton.area.h + 1, 65, 15, true);
-	SimpleButton fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, fileCampaignSaveButton.area.y + fileCampaignSaveButton.area.h + 1, 65, 15, true);
+	SimpleButton fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, 15, true);
+	SimpleButton fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h, 65, 15, true);
+	SimpleButton fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h, 65, 15, true);
+	SimpleButton fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, fileCampaignNewButton.area.y + fileCampaignNewButton.area.h, 65, 15, true);
+	SimpleButton fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, fileCampaignLoadButton.area.y + fileCampaignLoadButton.area.h, 65, 15, true);
+	SimpleButton fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, fileCampaignSaveButton.area.y + fileCampaignSaveButton.area.h, 65, 15, true);
 	
 	// File > Level submenu
-	SimpleButton fileLevelNewButton("New", fileLevelButton.area.x + fileLevelButton.area.w + 1, fileLevelButton.area.y, 65, 15, true);
-	SimpleButton fileLevelLoadButton("Load...", fileLevelNewButton.area.x, fileLevelNewButton.area.y + fileLevelNewButton.area.h + 1, 65, 15, true);
-	SimpleButton fileLevelSaveButton("Save", fileLevelNewButton.area.x, fileLevelLoadButton.area.y + fileLevelLoadButton.area.h + 1, 65, 15, true);
-	SimpleButton fileLevelSaveAsButton("Save As...", fileLevelNewButton.area.x, fileLevelSaveButton.area.y + fileLevelSaveButton.area.h + 1, 65, 15, true);
+	SimpleButton fileLevelNewButton("New", fileLevelButton.area.x + fileLevelButton.area.w, fileLevelButton.area.y, 65, 15, true);
+	SimpleButton fileLevelLoadButton("Load...", fileLevelNewButton.area.x, fileLevelNewButton.area.y + fileLevelNewButton.area.h, 65, 15, true);
+	SimpleButton fileLevelSaveButton("Save", fileLevelNewButton.area.x, fileLevelLoadButton.area.y + fileLevelLoadButton.area.h, 65, 15, true);
+	SimpleButton fileLevelSaveAsButton("Save As...", fileLevelNewButton.area.x, fileLevelSaveButton.area.y + fileLevelSaveButton.area.h, 65, 15, true);
 	
 	// Campaign menu
-	SimpleButton campaignButton("Campaign", fileButton.area.x + fileButton.area.w + 1, 0, 55, 15);
-	SimpleButton campaignProfileButton("Profile >", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h + 1, 59, 15, true);
-	SimpleButton campaignDetailsButton("Details >", campaignButton.area.x, campaignProfileButton.area.y + campaignProfileButton.area.h + 1, 59, 15, true);
-	SimpleButton campaignValidateButton("Validate", campaignButton.area.x, campaignDetailsButton.area.y + campaignDetailsButton.area.h + 1, 59, 15, true);
+	SimpleButton campaignButton("Campaign", fileButton.area.x + fileButton.area.w, 0, 55, 15);
+	SimpleButton campaignProfileButton("Profile >", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h, 59, 15, true);
+	SimpleButton campaignDetailsButton("Details >", campaignButton.area.x, campaignProfileButton.area.y + campaignProfileButton.area.h, 59, 15, true);
+	SimpleButton campaignValidateButton("Validate", campaignButton.area.x, campaignDetailsButton.area.y + campaignDetailsButton.area.h, 59, 15, true);
 	
 	// Campaign > Profile submenu
-	SimpleButton campaignProfileTitleButton("Title...", campaignProfileButton.area.x + campaignProfileButton.area.w + 1, campaignProfileButton.area.y, 95, 15, true);
-	SimpleButton campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, campaignProfileTitleButton.area.y + campaignProfileTitleButton.area.h + 1, 95, 15, true);
-	SimpleButton campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h + 1, 95, 15, true);
-	SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h + 1, 95, 15, true);
-	SimpleButton campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, campaignProfileAuthorsButton.area.y + campaignProfileAuthorsButton.area.h + 1, 95, 15, true);
+	SimpleButton campaignProfileTitleButton("Title...", campaignProfileButton.area.x + campaignProfileButton.area.w, campaignProfileButton.area.y, 95, 15, true);
+	SimpleButton campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, campaignProfileTitleButton.area.y + campaignProfileTitleButton.area.h, 95, 15, true);
+	SimpleButton campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h, 95, 15, true);
+	SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h, 95, 15, true);
+	SimpleButton campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, campaignProfileAuthorsButton.area.y + campaignProfileAuthorsButton.area.h, 95, 15, true);
 	
 	// Campaign > Details submenu
-	SimpleButton campaignDetailsVersionButton("Version...", campaignDetailsButton.area.x + campaignDetailsButton.area.w + 1, campaignDetailsButton.area.y, 113, 15, true);
-	SimpleButton campaignDetailsSuggestedPowerButton("Suggested power...", campaignDetailsVersionButton.area.x, campaignDetailsVersionButton.area.y + campaignDetailsVersionButton.area.h + 1, 113, 15, true);
-	SimpleButton campaignDetailsFirstLevelButton("First level...", campaignDetailsVersionButton.area.x, campaignDetailsSuggestedPowerButton.area.y + campaignDetailsSuggestedPowerButton.area.h + 1, 113, 15, true);
+	SimpleButton campaignDetailsVersionButton("Version...", campaignDetailsButton.area.x + campaignDetailsButton.area.w, campaignDetailsButton.area.y, 113, 15, true);
+	SimpleButton campaignDetailsSuggestedPowerButton("Suggested power...", campaignDetailsVersionButton.area.x, campaignDetailsVersionButton.area.y + campaignDetailsVersionButton.area.h, 113, 15, true);
+	SimpleButton campaignDetailsFirstLevelButton("First level...", campaignDetailsVersionButton.area.x, campaignDetailsSuggestedPowerButton.area.y + campaignDetailsSuggestedPowerButton.area.h, 113, 15, true);
 	
 	
 	// Level menu
-	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w + 1, 0, 40, 15);
-	SimpleButton levelLevelNumberButton("Level number...", levelButton.area.x, levelButton.area.y + levelButton.area.h + 1, 95, 15, true);
-	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelLevelNumberButton.area.y + levelLevelNumberButton.area.h + 1, 95, 15, true);
-	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h + 1, 95, 15, true);
-	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h + 1, 95, 15, true);
+	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, 15);
+	SimpleButton levelLevelNumberButton("Level number...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 95, 15, true);
+	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelLevelNumberButton.area.y + levelLevelNumberButton.area.h, 95, 15, true);
+	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 95, 15, true);
+	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 95, 15, true);
 	
 	// Selection menu
-	SimpleButton selectionButton("Selection", levelButton.area.x + levelButton.area.w + 1, 0, 65, 15);
-	SimpleButton selectionLevelButton("Level >", selectionButton.area.x, selectionButton.area.y + selectionButton.area.h + 1, 47, 15, true);
-	SimpleButton selectionTeamButton("Team >", selectionButton.area.x, selectionLevelButton.area.y + selectionLevelButton.area.h + 1, 47, 15, true);
-	SimpleButton selectionClassButton("Class >", selectionButton.area.x, selectionTeamButton.area.y + selectionTeamButton.area.h + 1, 47, 15, true);
-	SimpleButton selectionCopyButton("Copy", selectionButton.area.x, selectionClassButton.area.y + selectionClassButton.area.h + 1, 47, 15, true);
-	SimpleButton selectionPasteButton("Paste", selectionButton.area.x, selectionCopyButton.area.y + selectionCopyButton.area.h + 1, 47, 15, true);
-	SimpleButton selectionDeleteButton("Delete", selectionButton.area.x, selectionPasteButton.area.y + selectionPasteButton.area.h + 1, 47, 15, true);
+	SimpleButton selectionButton("Selection", levelButton.area.x + levelButton.area.w, 0, 65, 15);
+	SimpleButton selectionLevelButton("Level >", selectionButton.area.x, selectionButton.area.y + selectionButton.area.h, 47, 15, true);
+	SimpleButton selectionTeamButton("Team >", selectionButton.area.x, selectionLevelButton.area.y + selectionLevelButton.area.h, 47, 15, true);
+	SimpleButton selectionClassButton("Class >", selectionButton.area.x, selectionTeamButton.area.y + selectionTeamButton.area.h, 47, 15, true);
+	SimpleButton selectionCopyButton("Copy", selectionButton.area.x, selectionClassButton.area.y + selectionClassButton.area.h, 47, 15, true);
+	SimpleButton selectionPasteButton("Paste", selectionButton.area.x, selectionCopyButton.area.y + selectionCopyButton.area.h, 47, 15, true);
+	SimpleButton selectionDeleteButton("Delete", selectionButton.area.x, selectionPasteButton.area.y + selectionPasteButton.area.h, 47, 15, true);
 	
 	// Selection > Level submenu
-	SimpleButton selectionLevelIncreaseButton("Increase", selectionLevelButton.area.x + selectionLevelButton.area.w + 1, selectionLevelButton.area.y, 53, 15, true);
-	SimpleButton selectionLevelDecreaseButton("Decrease", selectionLevelIncreaseButton.area.x, selectionLevelIncreaseButton.area.y + selectionLevelIncreaseButton.area.h + 1, 53, 15, true);
+	SimpleButton selectionLevelIncreaseButton("Increase", selectionLevelButton.area.x + selectionLevelButton.area.w, selectionLevelButton.area.y, 53, 15, true);
+	SimpleButton selectionLevelDecreaseButton("Decrease", selectionLevelIncreaseButton.area.x, selectionLevelIncreaseButton.area.y + selectionLevelIncreaseButton.area.h, 53, 15, true);
 	
 	// Selection > Team submenu
-	SimpleButton selectionTeamPreviousButton("Previous", selectionTeamButton.area.x + selectionTeamButton.area.w + 1, selectionTeamButton.area.y, 53, 15, true);
-	SimpleButton selectionTeamNextButton("Next", selectionTeamPreviousButton.area.x, selectionTeamPreviousButton.area.y + selectionTeamPreviousButton.area.h + 1, 53, 15, true);
+	SimpleButton selectionTeamPreviousButton("Previous", selectionTeamButton.area.x + selectionTeamButton.area.w, selectionTeamButton.area.y, 53, 15, true);
+	SimpleButton selectionTeamNextButton("Next", selectionTeamPreviousButton.area.x, selectionTeamPreviousButton.area.y + selectionTeamPreviousButton.area.h, 53, 15, true);
 	
 	// Selection > Class submenu
-	SimpleButton selectionClassPreviousButton("Previous", selectionClassButton.area.x + selectionClassButton.area.w + 1, selectionClassButton.area.y, 53, 15, true);
-	SimpleButton selectionClassNextButton("Next", selectionClassPreviousButton.area.x, selectionClassPreviousButton.area.y + selectionClassPreviousButton.area.h + 1, 53, 15, true);
+	SimpleButton selectionClassPreviousButton("Previous", selectionClassButton.area.x + selectionClassButton.area.w, selectionClassButton.area.y, 53, 15, true);
+	SimpleButton selectionClassNextButton("Next", selectionClassPreviousButton.area.x, selectionClassPreviousButton.area.y + selectionClassPreviousButton.area.h, 53, 15, true);
 	
 	
 	// Top menu
@@ -759,243 +781,246 @@ Sint32 level_editor()
 			my = mymouse[MOUSE_Y];
             
             // Clicking on menu items
-            // FILE
-            if(activate_sub_menu_button(mx, my, current_menu, fileButton, true))
+            if(mouse_on_menus(mx, my, menu_buttons, current_menu))
             {
-                set<SimpleButton*> s;
-                s.insert(&fileCampaignButton);
-                s.insert(&fileLevelButton);
-                s.insert(&fileQuitButton);
-                current_menu.push_back(std::make_pair(&fileButton, s));
-            }
-            // Campaign >
-            else if(activate_sub_menu_button(mx, my, current_menu, fileCampaignButton))
-            {
-                set<SimpleButton*> s;
-                s.insert(&fileCampaignImportButton);
-                s.insert(&fileCampaignShareButton);
-                s.insert(&fileCampaignNewButton);
-                s.insert(&fileCampaignLoadButton);
-                s.insert(&fileCampaignSaveButton);
-                s.insert(&fileCampaignSaveAsButton);
-                current_menu.push_back(std::make_pair(&fileCampaignButton, s));
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileCampaignImportButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileCampaignNewButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveAsButton))
-            {
-                
-            }
-            // Level >
-            else if(activate_sub_menu_button(mx, my, current_menu, fileLevelButton))
-            {
-                set<SimpleButton*> s;
-                s.insert(&fileLevelNewButton);
-                s.insert(&fileLevelLoadButton);
-                s.insert(&fileLevelSaveButton);
-                s.insert(&fileLevelSaveAsButton);
-                current_menu.push_back(std::make_pair(&fileLevelButton, s));
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileLevelNewButton))
-            {
-                remove_all_objects(myscreen);
-                //clear_terrain(myscreen);
-                //clear_details(myscreen);
-                levelchanged = 1;
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
-            {
-                quit_level_editor(0);
-                break;
-            }
-            // CAMPAIGN
-            else if(activate_sub_menu_button(mx, my, current_menu, campaignButton, true))
-            {
-                set<SimpleButton*> s;
-                s.insert(&campaignProfileButton);
-                s.insert(&campaignDetailsButton);
-                s.insert(&campaignValidateButton);
-                current_menu.push_back(std::make_pair(&campaignButton, s));
-            }
-            // Profile >
-            else if(activate_sub_menu_button(mx, my, current_menu, campaignProfileButton))
-            {
-                set<SimpleButton*> s;
-                s.insert(&campaignProfileTitleButton);
-                s.insert(&campaignProfileDescriptionButton);
-                s.insert(&campaignProfileIconButton);
-                s.insert(&campaignProfileAuthorsButton);
-                s.insert(&campaignProfileContributorsButton);
-                current_menu.push_back(std::make_pair(&campaignProfileButton, s));
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignProfileTitleButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignProfileDescriptionButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignProfileIconButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignProfileAuthorsButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignProfileContributorsButton))
-            {
-                
-            }
-            // Details >
-            else if(activate_sub_menu_button(mx, my, current_menu, campaignDetailsButton))
-            {
-                set<SimpleButton*> s;
-                s.insert(&campaignDetailsVersionButton);
-                s.insert(&campaignDetailsSuggestedPowerButton);
-                s.insert(&campaignDetailsFirstLevelButton);
-                current_menu.push_back(std::make_pair(&campaignDetailsButton, s));
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignDetailsVersionButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignDetailsSuggestedPowerButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, campaignDetailsFirstLevelButton))
-            {
-                
-            }
-            // LEVEL
-            else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
-            {
-                set<SimpleButton*> s;
-                s.insert(&levelLevelNumberButton);
-                s.insert(&levelTitleButton);
-                s.insert(&levelDescriptionButton);
-                s.insert(&levelMapSizeButton);
-                current_menu.push_back(std::make_pair(&levelButton, s));
-            }
-            else if(activate_menu_choice(mx, my, current_menu, levelLevelNumberButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, levelDescriptionButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
-            {
-                
-            }
-            // SELECTION
-            else if(activate_sub_menu_button(mx, my, current_menu, selectionButton, true))
-            {
-                set<SimpleButton*> s;
-                s.insert(&selectionLevelButton);
-                s.insert(&selectionTeamButton);
-                s.insert(&selectionClassButton);
-                s.insert(&selectionCopyButton);
-                s.insert(&selectionPasteButton);
-                s.insert(&selectionDeleteButton);
-                current_menu.push_back(std::make_pair(&selectionButton, s));
-            }
-            // Level >
-            else if(activate_sub_menu_button(mx, my, current_menu, selectionLevelButton))
-            {
-                set<SimpleButton*> s;
-                s.insert(&selectionLevelIncreaseButton);
-                s.insert(&selectionLevelDecreaseButton);
-                current_menu.push_back(std::make_pair(&selectionLevelButton, s));
-            }
-            // Team >
-            else if(activate_sub_menu_button(mx, my, current_menu, selectionTeamButton))
-            {
-                set<SimpleButton*> s;
-                s.insert(&selectionTeamPreviousButton);
-                s.insert(&selectionTeamNextButton);
-                current_menu.push_back(std::make_pair(&selectionTeamButton, s));
-            }
-            // Class >
-            else if(activate_sub_menu_button(mx, my, current_menu, selectionClassButton))
-            {
-                set<SimpleButton*> s;
-                s.insert(&selectionClassPreviousButton);
-                s.insert(&selectionClassNextButton);
-                current_menu.push_back(std::make_pair(&selectionClassButton, s));
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionCopyButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionPasteButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionDeleteButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionLevelIncreaseButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionLevelDecreaseButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionTeamPreviousButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionTeamNextButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionClassPreviousButton))
-            {
-                
-            }
-            else if(activate_menu_choice(mx, my, current_menu, selectionClassNextButton))
-            {
-                
+                // FILE
+                if(activate_sub_menu_button(mx, my, current_menu, fileButton, true))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&fileCampaignButton);
+                    s.insert(&fileLevelButton);
+                    s.insert(&fileQuitButton);
+                    current_menu.push_back(std::make_pair(&fileButton, s));
+                }
+                // Campaign >
+                else if(activate_sub_menu_button(mx, my, current_menu, fileCampaignButton))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&fileCampaignImportButton);
+                    s.insert(&fileCampaignShareButton);
+                    s.insert(&fileCampaignNewButton);
+                    s.insert(&fileCampaignLoadButton);
+                    s.insert(&fileCampaignSaveButton);
+                    s.insert(&fileCampaignSaveAsButton);
+                    current_menu.push_back(std::make_pair(&fileCampaignButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileCampaignImportButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileCampaignNewButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveAsButton))
+                {
+                    
+                }
+                // Level >
+                else if(activate_sub_menu_button(mx, my, current_menu, fileLevelButton))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&fileLevelNewButton);
+                    s.insert(&fileLevelLoadButton);
+                    s.insert(&fileLevelSaveButton);
+                    s.insert(&fileLevelSaveAsButton);
+                    current_menu.push_back(std::make_pair(&fileLevelButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileLevelNewButton))
+                {
+                    remove_all_objects(myscreen);
+                    //clear_terrain(myscreen);
+                    //clear_details(myscreen);
+                    levelchanged = 1;
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
+                {
+                    quit_level_editor(0);
+                    break;
+                }
+                // CAMPAIGN
+                else if(activate_sub_menu_button(mx, my, current_menu, campaignButton, true))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&campaignProfileButton);
+                    s.insert(&campaignDetailsButton);
+                    s.insert(&campaignValidateButton);
+                    current_menu.push_back(std::make_pair(&campaignButton, s));
+                }
+                // Profile >
+                else if(activate_sub_menu_button(mx, my, current_menu, campaignProfileButton))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&campaignProfileTitleButton);
+                    s.insert(&campaignProfileDescriptionButton);
+                    s.insert(&campaignProfileIconButton);
+                    s.insert(&campaignProfileAuthorsButton);
+                    s.insert(&campaignProfileContributorsButton);
+                    current_menu.push_back(std::make_pair(&campaignProfileButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignProfileTitleButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignProfileDescriptionButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignProfileIconButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignProfileAuthorsButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignProfileContributorsButton))
+                {
+                    
+                }
+                // Details >
+                else if(activate_sub_menu_button(mx, my, current_menu, campaignDetailsButton))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&campaignDetailsVersionButton);
+                    s.insert(&campaignDetailsSuggestedPowerButton);
+                    s.insert(&campaignDetailsFirstLevelButton);
+                    current_menu.push_back(std::make_pair(&campaignDetailsButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignDetailsVersionButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignDetailsSuggestedPowerButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignDetailsFirstLevelButton))
+                {
+                    
+                }
+                // LEVEL
+                else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&levelLevelNumberButton);
+                    s.insert(&levelTitleButton);
+                    s.insert(&levelDescriptionButton);
+                    s.insert(&levelMapSizeButton);
+                    current_menu.push_back(std::make_pair(&levelButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, levelLevelNumberButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, levelDescriptionButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
+                {
+                    
+                }
+                // SELECTION
+                else if(activate_sub_menu_button(mx, my, current_menu, selectionButton, true))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&selectionLevelButton);
+                    s.insert(&selectionTeamButton);
+                    s.insert(&selectionClassButton);
+                    s.insert(&selectionCopyButton);
+                    s.insert(&selectionPasteButton);
+                    s.insert(&selectionDeleteButton);
+                    current_menu.push_back(std::make_pair(&selectionButton, s));
+                }
+                // Level >
+                else if(activate_sub_menu_button(mx, my, current_menu, selectionLevelButton))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&selectionLevelIncreaseButton);
+                    s.insert(&selectionLevelDecreaseButton);
+                    current_menu.push_back(std::make_pair(&selectionLevelButton, s));
+                }
+                // Team >
+                else if(activate_sub_menu_button(mx, my, current_menu, selectionTeamButton))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&selectionTeamPreviousButton);
+                    s.insert(&selectionTeamNextButton);
+                    current_menu.push_back(std::make_pair(&selectionTeamButton, s));
+                }
+                // Class >
+                else if(activate_sub_menu_button(mx, my, current_menu, selectionClassButton))
+                {
+                    set<SimpleButton*> s;
+                    s.insert(&selectionClassPreviousButton);
+                    s.insert(&selectionClassNextButton);
+                    current_menu.push_back(std::make_pair(&selectionClassButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionCopyButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionPasteButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionDeleteButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionLevelIncreaseButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionLevelDecreaseButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionTeamPreviousButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionTeamNextButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionClassPreviousButton))
+                {
+                    
+                }
+                else if(activate_menu_choice(mx, my, current_menu, selectionClassNextButton))
+                {
+                    
+                }
             }
             else
             {
