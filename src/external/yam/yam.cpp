@@ -20,6 +20,7 @@ Yam::Yam()
     event.value = NULL;
     
     yaml_emitter_initialize(&_emitter);
+    yaml_emitter_set_encoding(&_emitter, YAML_UTF8_ENCODING);
 }
 
 Yam::~Yam()
@@ -87,9 +88,25 @@ void Yam::close_input()
     }
 }
 
-void Yam::set_output(Yam_Write_Handler* handler, void* data)
+bool Yam::set_output(Yam_Write_Handler* handler, void* data)
 {
+    close_output();
+    
+    if(!yaml_emitter_initialize(&_emitter))
+        return false;
+    yaml_emitter_set_encoding(&_emitter, YAML_UTF8_ENCODING);
+    
     yaml_emitter_set_output(&_emitter, handler, data);
+    if(!yaml_emitter_open(&_emitter))
+        return false;
+    
+    yaml_event_t output_event;
+        
+    if(!yaml_document_start_event_initialize(&output_event, NULL, NULL, NULL, 0))
+        return false;
+    
+    yaml_emitter_emit(&_emitter, &output_event);
+    return true;
 }
 
 bool Yam::open_output_file(const char* filename)
@@ -102,6 +119,7 @@ bool Yam::open_output_file(const char* filename)
     
     if(!yaml_emitter_initialize(&_emitter))
         return false;
+    yaml_emitter_set_encoding(&_emitter, YAML_UTF8_ENCODING);
     
     yaml_emitter_set_output_file(&_emitter, _outfile);
     if(!yaml_emitter_open(&_emitter))

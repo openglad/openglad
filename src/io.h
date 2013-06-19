@@ -22,10 +22,12 @@ std::list<std::string> list_levels();
 
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
+int rwops_write_handler(void *data, unsigned char *buffer, size_t size);
 
 bool zip_contents(const std::string& indirectory, const std::string& outfile);
 bool unzip_into(const std::string& infile, const std::string& outdirectory);
 
+bool create_new_campaign(const std::string& campaign_id);
 bool unpack_campaign(const std::string& campaign_id);
 bool repack_campaign(const std::string& campaign_id);
 

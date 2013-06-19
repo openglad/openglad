@@ -39,6 +39,15 @@ int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *s
     return 1;
 }
 
+
+int rwops_write_handler(void *data, unsigned char *buffer, size_t size)
+{
+    SDL_RWops *rwops = (SDL_RWops*)data;
+
+    SDL_RWwrite(rwops, buffer, 1, size);
+    return 1;
+}
+
 std::string get_user_path()
 {
 #ifdef ANDROID
@@ -462,9 +471,9 @@ bool create_path_to_file(const char* filename)
     return (mkpath(buf, 0755) >= 0);
 }
 
-bool create_dir(const char* dirname)
+bool create_dir(const std::string& dirname)
 {
-    return (mkdir(dirname, 0755) >= 0);
+    return (mkpath(dirname.c_str(), 0755) >= 0);
 }
 
 bool unzip_into(const std::string& infile, const std::string& outdirectory)
@@ -538,6 +547,160 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
     return (zip_close(archive) >= 0);
 }
 
+bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color = 0)
+{
+	// File data in form:
+	// <# of frames>      1 byte
+	// <x size>                   1 byte
+	// <y size>                   1 byte
+	// <pixie data>               <x*y*frames> bytes
+	
+	unsigned char c;
+	SDL_RWops* outfile = open_write_file(filename.c_str());
+	if(outfile == NULL)
+        return false;
+    
+    c = 1;  // Frames
+	SDL_RWwrite(outfile, &c, 1, 1);
+    c = w;  // x size
+	SDL_RWwrite(outfile, &c, 1, 1);
+    c = h;  // y size
+	SDL_RWwrite(outfile, &c, 1, 1);
+	
+	c = fill_color;  // Color
+	int size = w*h;
+	for(int i = 0; i < size; i++)
+    {
+        SDL_RWwrite(outfile, &c, 1, 1);
+    }
+    
+    SDL_RWclose(outfile);
+    return true;
+}
+
+bool create_new_campaign_descriptor(const std::string& filename)
+{
+	SDL_RWops* outfile = open_write_file(filename.c_str());
+	if(outfile == NULL)
+        return false;
+    
+    Yam yam;
+    yam.set_output(rwops_write_handler, outfile);
+    
+    yam.emit_pair("format_version", "1");
+    yam.emit_pair("title", "New Campaign");
+    yam.emit_pair("version", "1");
+    yam.emit_pair("first_level", "1");
+    yam.emit_pair("suggested_power", "0");
+    yam.emit_pair("authors", "");
+    yam.emit_pair("contributors", "");
+    yam.emit_pair("description", "A new campaign.");
+    
+    yam.close_output();
+    SDL_RWclose(outfile);
+    return true;
+}
+
+bool create_new_scen_file(const std::string& scenfile, const std::string& gridname)
+{
+    // TODO: It would be nice to store all the level data in a class, then have saving code all in one place.
+    
+	// Format of a scenario object list file is: (ver. 8)
+	// 3-byte header: 'FSS'
+	// 1-byte version number (from graph.h)
+	// 8-byte grid file name
+	// 30-byte scenario title
+	// 1-byte scenario_type
+	// 2-bytes par-value for level
+	// 2-bytes (Sint32) = total objects to follow
+	// List of n objects, each of 20-bytes of form:
+	// 1-byte ORDER
+	// 1-byte FAMILY
+	// 2-byte Sint32 xpos
+	// 2-byte Sint32 ypos
+	// 1-byte TEAM
+	// 1-byte current facing
+	// 1-byte current command
+	// 1-byte level // this is 2 bytes in version 7+
+	// 12-bytes name
+	// 10 bytes RESERVED
+	// ---
+	// 1-byte # of lines of text to load
+	// List of n lines of text, each of form:
+	// 1-byte character width of line
+	// m bytes == characters on this line
+	
+	const char* header = "FSS";
+	unsigned char version = 8;
+	
+	char grid_file_name[8];
+	strncpy(grid_file_name, gridname.c_str(), 8);
+	
+	char scenario_title[30];
+	strncpy(scenario_title, "New Level", 30);
+	
+	unsigned char scenario_type = 1;//SCEN_TYPE_CAN_EXIT;
+	
+	short par_value = 1;
+	
+	short num_objects = 0;
+	
+	//char reserved[20] = "MSTRMSTRMSTRMSTR";
+	
+	unsigned char num_lines = 1;
+	char line_text[50] = "A new scenario.";
+	unsigned char line_length = strlen(line_text);
+	
+	SDL_RWops* outfile;
+	if((outfile = open_write_file(scenfile.c_str())) == NULL)
+	{
+		Log("Could not open file for writing: %s\n", scenfile.c_str());
+		return false;
+	}
+	
+	// Write it out
+	SDL_RWwrite(outfile, header, 1, 3);
+	SDL_RWwrite(outfile, &version, 1, 1);
+	SDL_RWwrite(outfile, grid_file_name, 1, 8);
+	SDL_RWwrite(outfile, scenario_title, 1, 30);
+	SDL_RWwrite(outfile, &scenario_type, 1, 1);
+	SDL_RWwrite(outfile, &par_value, 2, 1);
+
+	SDL_RWwrite(outfile, &num_objects, 2, 1);
+    // No objects to write
+    
+	SDL_RWwrite(outfile, &num_lines, 1, 1);
+    SDL_RWwrite(outfile, &line_length, 1, 1);
+    SDL_RWwrite(outfile, line_text, line_length, 1);
+
+	SDL_RWclose(outfile);
+	
+    return true;
+}
+
+bool create_new_campaign(const std::string& campaign_id)
+{
+    // Delete the temp directory
+    cleanup_unpacked_campaign();
+    
+    // Create the necessities in the temp directory
+    create_dir(get_user_path() + "temp/");
+    create_dir(get_user_path() + "temp/pix");
+    create_dir(get_user_path() + "temp/scen");
+    create_dir(get_user_path() + "temp/sound");
+    create_new_pix(get_user_path() + "temp/icon.pix", 32, 32);
+    create_new_campaign_descriptor(get_user_path() + "temp/campaign.yaml");
+    create_new_scen_file(get_user_path() + "temp/scen/scen1.fss", "scen0001");
+    // Create the map file (grid)
+    create_new_pix(get_user_path() + "temp/pix/scen0001.pix", 40, 60, 1);
+    
+    bool result = repack_campaign(campaign_id);
+    if(!result)
+        return result;
+    
+    cleanup_unpacked_campaign();
+    return true;
+}
 
 bool unpack_campaign(const std::string& campaign_id)
 {

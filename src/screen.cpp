@@ -1841,7 +1841,7 @@ short load_scenario(const char * filename, screen * master)
 	SDL_RWread(infile, temptext, 1, 3);
 	if (strcmp(temptext, "FSS") != 0)
 	{
-		Log("File %s is not a valid scenario!\n", filename);
+		Log("File %s is not a valid scenario!\n", thefile.c_str());
 		SDL_RWclose(infile);
 		return 0;
 	}

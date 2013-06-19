@@ -41,7 +41,7 @@ public:
     
     ParseResultEnum parse_next();
     
-    void set_output(Yam_Write_Handler* handler, void* data);
+    bool set_output(Yam_Write_Handler* handler, void* data);
     bool open_output_file(const char* filename);
     void close_output();
     

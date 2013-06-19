@@ -307,6 +307,7 @@ Sint32 level_editor()
     
 	// Set our default par value ..
 	myscreen->par_value = 1;
+	// Loading the first level automatically
 	load_scenario(levels.front().c_str(), myscreen);
 	strncpy(scen_name, levels.front().c_str(), 10);
     strcpy(grid_name, query_my_map_name());
@@ -814,7 +815,29 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignNewButton))
                 {
+                    // TODO: Confirm if unsaved
+                    // TODO: Ask for campaign ID
                     
+                    char campaign[50] = "org.openglad.testing";
+                    create_new_campaign(campaign);
+                    
+                    // Mount new campaign
+                    unmount_campaign_package(myscreen->current_campaign);
+                    mount_campaign_package(campaign);
+                    
+                    // Load first scenario
+                    levels = list_levels();
+                    
+                    if(levels.size() > 0)
+                    {
+                        load_scenario(levels.front().c_str(), myscreen);
+                        strncpy(scen_name, levels.front().c_str(), 10);
+                        strcpy(grid_name, query_my_map_name());
+                    }
+                    else
+                    {
+                        Log("Campaign has no scenarios!\n");
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
                 {
