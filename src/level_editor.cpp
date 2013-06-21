@@ -59,6 +59,7 @@ char  * query_my_map_name();
 
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+void popup_dialog(const char* title, const char* message);
 
 Sint32 do_load(screen *ascreen);  // load a scenario or grid
 Sint32 do_save(screen *ascreen);  // save a scenario or grid
@@ -95,7 +96,6 @@ Sint32 grid_aligned = 1;  // aligned by grid, default is on
 //input.cpp
 Sint32 start_time_s; // for timer ops
 
-extern smoother  *mysmoother;
 
 Sint32 backgrounds[] = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
@@ -162,6 +162,57 @@ Sint32 rowsdown = 0;
 Sint32 maxrows = ((sizeof(backgrounds)/4) / 4);
 text *scentext;
 
+
+bool create_new_campaign(const std::string& campaign_id)
+{
+    // Delete the temp directory
+    cleanup_unpacked_campaign();
+    
+    // Create the necessities in the temp directory
+    create_dir(get_user_path() + "temp/");
+    create_dir(get_user_path() + "temp/pix");
+    create_dir(get_user_path() + "temp/scen");
+    create_dir(get_user_path() + "temp/sound");
+    create_new_pix(get_user_path() + "temp/icon.pix", 32, 32);
+    create_new_campaign_descriptor(get_user_path() + "temp/campaign.yaml");
+    create_new_scen_file(get_user_path() + "temp/scen/scen1.fss", "scen0001");
+    // Create the map file (grid)
+    create_new_map_pix(get_user_path() + "temp/pix/scen0001.pix", 40, 60);
+    
+    bool result = repack_campaign(campaign_id);
+    if(!result)
+        return result;
+    
+    cleanup_unpacked_campaign();
+    return true;
+}
+
+void importCampaignPicker()
+{
+    
+}
+
+void shareCampaign(screen* myscreen)
+{
+    
+}
+
+void resmooth_map(screen* myscreen)
+{
+    myscreen->mysmoother.set_target(myscreen);
+    myscreen->mysmoother.smooth();
+}
+
+void clear_terrain(screen* myscreen)
+{
+    int w = myscreen->maxx;
+    int h = myscreen->maxy;
+    
+    memset(myscreen->grid, 1, w*h);
+    resmooth_map(myscreen);
+    
+    myscreen->viewob[0]->myradar->update();
+}
 
 
 class SimpleButton
@@ -524,7 +575,7 @@ Sint32 level_editor()
 		}
 
 		// Load scenario, etc. ..
-		if (mykeyboard[KEYSTATE_l])
+		if (mykeyboard[KEYSTATE_l] && mykeyboard[KEYSTATE_LCTRL])
 		{
 			if (levelchanged)
 			{
@@ -542,8 +593,8 @@ Sint32 level_editor()
 			myscreen->clearfontbuffer();
 		}
 
-		// Save scenario or grid..
-		if (mykeyboard[KEYSTATE_s])
+		// Save scenario
+		if (mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
 		{
 			do_save(myscreen);
 		}  // end of saving routines
@@ -724,11 +775,7 @@ Sint32 level_editor()
 		// Smooth current map, F5
 		if (mykeyboard[KEYSTATE_F5])
 		{
-			if (mysmoother)
-				delete mysmoother;
-			mysmoother = new smoother();
-			mysmoother->set_target(myscreen);
-			mysmoother->smooth();
+		    resmooth_map(myscreen);
 			while (mykeyboard[KEYSTATE_F5])
 				get_input_events(WAIT);
 			event = 1;
@@ -807,49 +854,81 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignImportButton))
                 {
-                    
+                    popup_dialog("Import Campaign", "Not yet implemented.");
+                    importCampaignPicker();
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
                 {
+                    if (levelchanged)
+                    {
+                        if(yes_or_no_prompt("Share", "Save level first?", false))
+                            do_save(myscreen);
+                    }
                     
+                    popup_dialog("Share Campaign", "Not yet implemented.");
+                    shareCampaign(myscreen);
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignNewButton))
                 {
-                    // TODO: Confirm if unsaved
-                    // TODO: Ask for campaign ID
-                    
-                    char campaign[50] = "org.openglad.testing";
-                    create_new_campaign(campaign);
-                    
-                    // Mount new campaign
-                    unmount_campaign_package(myscreen->current_campaign);
-                    mount_campaign_package(campaign);
-                    
-                    // Load first scenario
-                    levels = list_levels();
-                    
-                    if(levels.size() > 0)
+                    // Confirm if unsaved
+                    bool cancel = false;
+                    if (levelchanged)
                     {
-                        load_scenario(levels.front().c_str(), myscreen);
-                        strncpy(scen_name, levels.front().c_str(), 10);
-                        strcpy(grid_name, query_my_map_name());
+                        cancel = !yes_or_no_prompt("New Campaign", "Discard unsaved changes?", false);
                     }
-                    else
+                    
+                    
+                    if(!cancel)
                     {
-                        Log("Campaign has no scenarios!\n");
+                        // Ask for campaign ID
+                        char* campaign = scentext->input_string(58, 33, 29, "com.example.new_campaign");
+                        if(campaign != NULL)
+                        {
+                            // TODO: Check if campaign already exists and prompt the user to overwrite
+                            
+                            create_new_campaign(campaign);
+                            
+                            // Mount new campaign
+                            unmount_campaign_package(myscreen->current_campaign);
+                            mount_campaign_package(campaign);
+                            
+                            // Tell the game to use this one
+                            // TODO: Use level editor's campaign data instead
+                            strcpy(myscreen->current_campaign, campaign);
+                            
+                            // Load first scenario
+                            levels = list_levels();
+                            
+                            if(levels.size() > 0)
+                            {
+                                remove_all_objects(myscreen);
+                                load_scenario(levels.front().c_str(), myscreen);
+                                strncpy(scen_name, levels.front().c_str(), 10);
+                                strcpy(grid_name, query_my_map_name());
+                                // Update minimap
+                                myscreen->viewob[0]->myradar->update();
+                            }
+                            else
+                            {
+                                Log("Campaign has no scenarios!\n");
+                            }
+                        }
+                        
                     }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
                 {
-                    
+                    // TODO: Use campaign picker here
+                    popup_dialog("Load Campaign", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveButton))
                 {
-                    
+                    // TODO: The level editor needs to hold some temporary campaign data so it can save it.
+                    popup_dialog("Save Campaign", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveAsButton))
                 {
-                    
+                    popup_dialog("Save Campaign As", "Not yet implemented.");
                 }
                 // Level >
                 else if(activate_sub_menu_button(mx, my, current_menu, fileLevelButton))
@@ -863,22 +942,39 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelNewButton))
                 {
+                    // New level
                     remove_all_objects(myscreen);
-                    //clear_terrain(myscreen);
+                    clear_terrain(myscreen);
+                    // TODO: Reset all the details: level num, title, map size, etc.
                     //clear_details(myscreen);
                     levelchanged = 1;
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
+                else if(activate_menu_choice(mx, my, current_menu, fileLevelLoadButton))
                 {
+                    // Confirm if unsaved
+                    bool cancel = false;
+                    if (levelchanged)
+                    {
+                        cancel = !yes_or_no_prompt("Load Level", "Discard unsaved changes?", false);
+                    }
                     
+                    if(!cancel)
+                    {
+                        // TODO: Use level picker here
+                        myscreen->draw_button(30, 15, 220, 25, 1, 1);
+                        scentext->write_xy(32, 17, "Loading Level...", DARK_BLUE, 1);
+                        do_load(myscreen);
+                        myscreen->clearfontbuffer();
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
                 {
-                    
+                    do_save(myscreen);
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
                 {
-                    
+                    // TODO: It would be nice to use the level browser for this
+                    popup_dialog("Save Level As", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
                 {
@@ -970,6 +1066,9 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
                 {
+                    // TODO: Prompt for width and height
+                    
+                    // TODO: Resize the grid
                     
                 }
                 // SELECTION
@@ -1159,24 +1258,15 @@ Sint32 level_editor()
                         levelchanged = 1;
                         if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
                         {
-                            if (mysmoother)
-                            {
-                                delete mysmoother;
-                                mysmoother = new smoother();
-                                mysmoother->set_target(myscreen);
-                            }
+                            myscreen->mysmoother.set_target(myscreen);
+                            
                             for (i=windowx-1; i <= windowx+1; i++)
                                 for (j=windowy-1; j <=windowy+1; j++)
                                     if (i >= 0 && i < myscreen->maxx &&
                                             j >= 0 && j < myscreen->maxy)
-                                        mysmoother->smooth(i, j);
+                                        myscreen->mysmoother.smooth(i, j);
                         }
-                        else if (mysmoother) // update smoother anyway
-                        {
-                            delete mysmoother;
-                            mysmoother = new smoother();
-                            mysmoother->set_target(myscreen);
-                        }
+                        
                         myscreen->viewob[0]->myradar->update();
                     }  // end of setting grid square
                 } // end of main window

@@ -96,7 +96,6 @@ struct meminfo
 };
 
 extern screen * myscreen; // global, availible to anyone
-extern smoother * mysmoother; // global, availible to anyone
 
 #define MAX_LEVELS 500 // Maximum number of scenarios allowed ..
 

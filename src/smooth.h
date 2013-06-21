@@ -20,7 +20,7 @@
 #ifndef SMOOTH_H
 #define SMOOTH_H
 
-#include "graph.h"
+#include "SDL.h"
 
 // Used for deciding cases
 #define TO_UP 1
@@ -42,24 +42,28 @@
 #define TYPE_GRASS_LIGHT 10
 #define TYPE_UNKNOWN 50
 
+class screen;
 
 class smoother
 {
 	public:
 		smoother();
-		~smoother();
-
+        
+        void reset();
 		void set_target(screen  *target);     // set our target grid to smooth ..
+		Sint32 smooth();                        // smooths entire target grid
+		Sint32 smooth(Sint32 x, Sint32 y);          // smooth at x, y; returns changed or not
 		Sint32 query_x_y(Sint32 x, Sint32 y);       // return target type, ie PIX_GRASS1
 		Sint32 query_genre_x_y(Sint32 x, Sint32 y); // returns target genre, ie TYPE_GRASS
+    
+    protected:
 		Sint32 surrounds(Sint32 x, Sint32 y, Sint32 whatgenre); // returns 0-15 of 4 surroundings
-		Sint32 smooth(Sint32 x, Sint32 y);          // smooth at x, y; returns changed or not
-		Sint32 smooth();                        // smooths entire target grid
 		void set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue);  // sets grid location to whatvalue
-
+		
 		unsigned char  *mygrid; // our grid to change
 		Sint32 maxx, maxy;   // dimensions of our grid ..
-		unsigned char  *buffer; // start of the data in the target grid
 };
+
+#include "graph.h"
 
 #endif

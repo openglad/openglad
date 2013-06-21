@@ -18,22 +18,22 @@
 
 #include "smooth.h"
 
-//smoother * mysmoother; //ignored?????
-
 smoother::smoother()
-{
-	mygrid = NULL;
-}
-
-smoother::~smoother()
+    : mygrid(NULL), maxx(0), maxy(0)
 {}
+
+void smoother::reset()
+{
+    mygrid = NULL;
+    maxx = 0;
+    maxy = 0;
+}
 
 void smoother::set_target(screen  *target)
 {
 	mygrid = target->grid;
 	maxx = target->maxx;
 	maxy = target->maxy;
-	//  buffer = target + 3; // where the data starts
 }
 
 Sint32 smoother::query_x_y(Sint32 x, Sint32 y)

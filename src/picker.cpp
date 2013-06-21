@@ -436,6 +436,11 @@ button yes_or_no_buttons[] =
         { "NO", SDLK_2,  320-50-70, 130, 50, 20, YES_OR_NO, NO}
     };
 
+button popup_dialog_buttons[] =
+    {
+        { "OK", SDLK_1,  160 - 25, 130, 50, 20, YES_OR_NO, YES}
+    };
+
 Sint32 leftmouse()
 {
 	Sint32 i = 0;
@@ -1799,7 +1804,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
     int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
     int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
     //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
-    myscreen->clearfontbuffer(leftside, 80, rightside, 40);
+    //myscreen->clearfontbuffer(leftside, 80, rightside, 40);
     int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
     gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
 
@@ -1821,7 +1826,6 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
     
     clear_key_press_event();
 	
-	// FIXME: Change this to use events instead of key states so the keyboard method works right again.
     int retvalue = 0;
 	while (retvalue == 0)
 	{
@@ -1841,11 +1845,56 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
         }
 	}
 	
+	myscreen->clearfontbuffer();
+	
     if(retvalue == YES)
         return true;
     if(retvalue == NO)
         return false;
 	return default_value;
+}
+
+void popup_dialog(const char* title, const char* message)
+{
+	text gladtext(myscreen);
+	
+	int pix_per_char = 3;
+    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
+    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
+    
+    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
+    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+
+	if (localbuttons)
+		delete (localbuttons);
+	localbuttons = buttonmenu_no_backdrop(popup_dialog_buttons, 1, 0);  // don't redraw!
+
+    allbuttons[0]->vdisplay();
+
+    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
+
+	grab_mouse();
+    clear_keyboard();
+    Uint8* keyboard = query_keyboard();
+    
+    clear_key_press_event();
+	
+    int retvalue = 0;
+	while (retvalue == 0)
+	{
+		get_input_events(POLL);
+		
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        
+        if(query_key_press_event())
+        {
+            if(keyboard[KEYSTATE_RETURN] || keyboard[KEYSTATE_SPACE] || keyboard[KEYSTATE_ESCAPE])
+                break;
+        }
+	}
+	
+	myscreen->clearfontbuffer();
 }
 
 Sint32 create_save_menu(Sint32 arg1)

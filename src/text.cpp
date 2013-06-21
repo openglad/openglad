@@ -329,7 +329,7 @@ short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
 }
 
 // This version passes DARK_BLUE and a grey color as defaults ..
-char * text::input_string(short x, short y, short maxlength, char *begin)
+char * text::input_string(short x, short y, short maxlength, const char *begin)
 {
 	return input_string(x, y, maxlength, begin, DARK_BLUE, 13);
 }
@@ -339,7 +339,7 @@ char * text::input_string(short x, short y, short maxlength, char *begin)
 // is maxlength, and any string in 'begin' will automatically be
 // entered at the start.  Fore- and backcolor are used for the
 // text foreground and background color
-char * text::input_string(short x, short y, short maxlength, char *begin,
+char * text::input_string(short x, short y, short maxlength, const char *begin,
                           unsigned char forecolor, unsigned char backcolor)
 {
 	short current_length, i;

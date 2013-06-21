@@ -51,7 +51,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		load_scenario("scen1", myscreen);
 		myscreen->scen_num = 1;
 	}
-	mysmoother->set_target(myscreen);
+	myscreen->mysmoother.set_target(myscreen);
 
 	here = myscreen->oblist;
 	while (here)

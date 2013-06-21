@@ -23,6 +23,7 @@
 #include "video.h"
 #include "loader.h"
 #include "obmap.h"
+#include "smooth.h"
 #include <map>
 #include <string>
 #include <set>
@@ -135,6 +136,8 @@ class screen : public video
 		short level_done; // set true when all our foes are dead
 		
 		unsigned char  *pixdata[PIX_MAX];
+		
+		smoother mysmoother;
 };
 
 #endif

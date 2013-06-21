@@ -1060,8 +1060,8 @@ short walker::draw(viewscreen  *view_buf)
 			                        outline,  //outline
 			                        0 ); //type of phantom
 	}
-	else if (stats->query_bit_flags(BIT_FORESTWALK) && mysmoother &&
-	         mysmoother->query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
+	         screenp->mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats->query_bit_flags(BIT_FLYING)
 	         && (flight_left < 1) )
 		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,

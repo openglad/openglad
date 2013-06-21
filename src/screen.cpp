@@ -82,7 +82,8 @@ Uint32 random(Uint32 x)
 // ************************************************************
 
 
-screen::screen(short howmany):video()
+screen::screen(short howmany)
+    : video()
 {
 	Sint32 i, j;
 	const char *qresult;
@@ -92,7 +93,6 @@ screen::screen(short howmany):video()
 	grab_timer();
 
 	grid = NULL;
-	mysmoother = new smoother();
 	timerstart = query_timer_control();
 	framecount = 0;
 	oblist = NULL;
@@ -325,7 +325,6 @@ screen::~screen()
 	release_timer();
 	delete soundp;
 	delete myloader;
-	delete mysmoother;
 
 	for (i = 0; i < PIX_MAX; i++)
 	{
@@ -456,9 +455,7 @@ void screen::reset(short howmany)
 {
 	Sint32 i;
 
-	if (!mysmoother)
-		mysmoother = new smoother();
-	mysmoother->mygrid = NULL;
+	mysmoother.reset();
 
 	// Set up the viewscreen poshorters
 	numviews = howmany; // # of viewscreens
@@ -2373,9 +2370,7 @@ short load_version_5(SDL_RWops  *infile, screen * master)
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
-	if (!mysmoother)
-		mysmoother = new smoother();
-	mysmoother->set_target(master);
+	master->mysmoother.set_target(master);
 
 	// Fix up doors, etc.
 	here = master->weaplist;
@@ -2383,7 +2378,7 @@ short load_version_5(SDL_RWops  *infile, screen * master)
 	{
 		if (here->ob && here->ob->query_family()==FAMILY_DOOR)
 		{
-			if (mysmoother && mysmoother->query_genre_x_y(here->ob->xpos/GRID_SIZE,
+			if (master->mysmoother.query_genre_x_y(here->ob->xpos/GRID_SIZE,
 			        (here->ob->ypos/GRID_SIZE)-1)==TYPE_WALL)
 			{
 				here->ob->set_frame(1);  // turn sideways ..
@@ -2538,9 +2533,7 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 	master->pixmaxx = master->maxx * GRID_SIZE;
 	master->pixmaxy = master->maxy * GRID_SIZE;
 	master->grid += 3;
-	if (!mysmoother)
-		mysmoother = new smoother();
-	mysmoother->set_target(master);
+	master->mysmoother.set_target(master);
 
 	// Fix up doors, etc.
 	here = master->weaplist;
@@ -2548,7 +2541,7 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 	{
 		if (here->ob && here->ob->query_family()==FAMILY_DOOR)
 		{
-			if (mysmoother && mysmoother->query_genre_x_y(here->ob->xpos/GRID_SIZE,
+			if (master->mysmoother.query_genre_x_y(here->ob->xpos/GRID_SIZE,
 			        (here->ob->ypos/GRID_SIZE)-1)==TYPE_WALL)
 			{
 				here->ob->set_frame(1);  // turn sideways ..

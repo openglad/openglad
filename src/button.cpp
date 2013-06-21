@@ -462,11 +462,11 @@ vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 red
 		                   allbuttons[i]->yend, 0, 0, 1);
 	}
 
-	release_mouse();
+	//release_mouse();
 
 	//if (redraw)
 	//	myscreen->buffer_to_screen(0, 0, 320, 200);
-	grab_mouse();
+	//grab_mouse();
 	return allbuttons[0];
 
 }

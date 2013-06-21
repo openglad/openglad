@@ -1,5 +1,6 @@
 #include "io.h"
 #include "util.h"
+#include "pixdefs.h"
 
 #include "yam.h"
 #include "physfs.h"
@@ -547,7 +548,53 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
     return (zip_close(archive) >= 0);
 }
 
-bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color = 0)
+bool create_new_map_pix(const std::string& filename, int w, int h)
+{
+	// File data in form:
+	// <# of frames>      1 byte
+	// <x size>                   1 byte
+	// <y size>                   1 byte
+	// <pixie data>               <x*y*frames> bytes
+	
+	unsigned char c;
+	SDL_RWops* outfile = open_write_file(filename.c_str());
+	if(outfile == NULL)
+        return false;
+    
+    c = 1;  // Frames
+	SDL_RWwrite(outfile, &c, 1, 1);
+    c = w;  // x size
+	SDL_RWwrite(outfile, &c, 1, 1);
+    c = h;  // y size
+	SDL_RWwrite(outfile, &c, 1, 1);
+	
+	int size = w*h;
+	for(int i = 0; i < size; i++)
+    {
+        // Color
+        switch(rand()%4)
+        {
+            case 0:
+            c = PIX_GRASS1;
+            break;
+            case 1:
+            c = PIX_GRASS2;
+            break;
+            case 2:
+            c = PIX_GRASS3;
+            break;
+            case 3:
+            c = PIX_GRASS4;
+            break;
+        }
+        SDL_RWwrite(outfile, &c, 1, 1);
+    }
+    
+    SDL_RWclose(outfile);
+    return true;
+}
+
+bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color)
 {
 	// File data in form:
 	// <# of frames>      1 byte
@@ -675,30 +722,6 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 
 	SDL_RWclose(outfile);
 	
-    return true;
-}
-
-bool create_new_campaign(const std::string& campaign_id)
-{
-    // Delete the temp directory
-    cleanup_unpacked_campaign();
-    
-    // Create the necessities in the temp directory
-    create_dir(get_user_path() + "temp/");
-    create_dir(get_user_path() + "temp/pix");
-    create_dir(get_user_path() + "temp/scen");
-    create_dir(get_user_path() + "temp/sound");
-    create_new_pix(get_user_path() + "temp/icon.pix", 32, 32);
-    create_new_campaign_descriptor(get_user_path() + "temp/campaign.yaml");
-    create_new_scen_file(get_user_path() + "temp/scen/scen1.fss", "scen0001");
-    // Create the map file (grid)
-    create_new_pix(get_user_path() + "temp/pix/scen0001.pix", 40, 60, 1);
-    
-    bool result = repack_campaign(campaign_id);
-    if(!result)
-        return result;
-    
-    cleanup_unpacked_campaign();
     return true;
 }
 
