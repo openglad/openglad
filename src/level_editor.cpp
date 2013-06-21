@@ -1003,23 +1003,23 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileTitleButton))
                 {
-                    
+                    popup_dialog("Edit Title", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileDescriptionButton))
                 {
-                    
+                    popup_dialog("Edit Description", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileIconButton))
                 {
-                    
+                    popup_dialog("Edit Icon", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileAuthorsButton))
                 {
-                    
+                    popup_dialog("Edit Authors", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileContributorsButton))
                 {
-                    
+                    popup_dialog("Edit Contributors", "Not yet implemented.");
                 }
                 // Details >
                 else if(activate_sub_menu_button(mx, my, current_menu, campaignDetailsButton))
@@ -1032,15 +1032,19 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsVersionButton))
                 {
-                    
+                    popup_dialog("Edit Version", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsSuggestedPowerButton))
                 {
-                    
+                    popup_dialog("Edit Sugg. Power", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsFirstLevelButton))
                 {
-                    
+                    popup_dialog("Edit First Level", "Not yet implemented.");
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignValidateButton))
+                {
+                    popup_dialog("Validate Campaign", "Not yet implemented.");
                 }
                 // LEVEL
                 else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
@@ -1054,15 +1058,15 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelLevelNumberButton))
                 {
-                    
+                    popup_dialog("Edit Level Number", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
                 {
-                    
+                    popup_dialog("Edit Title", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelDescriptionButton))
                 {
-                    
+                    popup_dialog("Edit Description", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
                 {
@@ -1070,6 +1074,7 @@ Sint32 level_editor()
                     
                     // TODO: Resize the grid
                     
+                    popup_dialog("Edit Map Size", "Not yet implemented.");
                 }
                 // SELECTION
                 else if(activate_sub_menu_button(mx, my, current_menu, selectionButton, true))
@@ -1109,39 +1114,39 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionCopyButton))
                 {
-                    
+                    popup_dialog("Copy", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionPasteButton))
                 {
-                    
+                    popup_dialog("Paste", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionDeleteButton))
                 {
-                    
+                    popup_dialog("Delete", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionLevelIncreaseButton))
                 {
-                    
+                    popup_dialog("Level +", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionLevelDecreaseButton))
                 {
-                    
+                    popup_dialog("Level -", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionTeamPreviousButton))
                 {
-                    
+                    popup_dialog("Team <-", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionTeamNextButton))
                 {
-                    
+                    popup_dialog("Team ->", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionClassPreviousButton))
                 {
-                    
+                    popup_dialog("Class <-", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, selectionClassNextButton))
                 {
-                    
+                    popup_dialog("Class ->", "Not yet implemented.");
                 }
             }
             else
