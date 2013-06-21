@@ -162,6 +162,19 @@ Sint32 rowsdown = 0;
 Sint32 maxrows = ((sizeof(backgrounds)/4) / 4);
 text *scentext;
 
+bool save_level_and_map(screen* ascreen);
+
+bool does_campaign_exist(const std::string& campaign_id)
+{
+    std::list<std::string> ls = list_campaigns();
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        if(campaign_id == *e)
+            return true;
+    }
+    
+    return false;
+}
 
 bool create_new_campaign(const std::string& campaign_id)
 {
@@ -575,28 +588,23 @@ Sint32 level_editor()
 		}
 
 		// Load scenario, etc. ..
-		if (mykeyboard[KEYSTATE_l] && mykeyboard[KEYSTATE_LCTRL])
+		if(mykeyboard[KEYSTATE_l] && mykeyboard[KEYSTATE_LCTRL])
 		{
-			if (levelchanged)
-			{
-				myscreen->draw_button(30, 15, 220, 25, 1, 1);
-				scentext->write_xy(32, 17, "Save level first? [Y/N]", DARK_BLUE, 1);
-				myscreen->buffer_to_screen(0, 0, 320, 200);
-				while ( !mykeyboard[KEYSTATE_y] && !mykeyboard[KEYSTATE_n])
-					get_input_events(WAIT);
-				if (mykeyboard[KEYSTATE_y]) // save first
-					do_save(myscreen);
-			}
-			myscreen->draw_button(30, 15, 220, 25, 1, 1);
-			scentext->write_xy(32, 17, "Loading Level...", DARK_BLUE, 1);
-			do_load(myscreen);
-			myscreen->clearfontbuffer();
+		    bool cancel = false;
+            if(levelchanged)
+            {
+                if(!yes_or_no_prompt("Load Level", "Discard current changes?", false))
+                    cancel = true;
+            }
+            
+            if(!cancel)
+                do_load(myscreen);
 		}
 
 		// Save scenario
-		if (mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
+		if(mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
 		{
-			do_save(myscreen);
+			save_level_and_map(myscreen);
 		}  // end of saving routines
 
 
@@ -854,8 +862,17 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignImportButton))
                 {
-                    popup_dialog("Import Campaign", "Not yet implemented.");
-                    importCampaignPicker();
+                    bool cancel = false;
+                    if (levelchanged)
+                    {
+                        cancel = !yes_or_no_prompt("Import Campaign", "Discard unsaved changes?", false);
+                    }
+                    
+                    if(!cancel)
+                    {
+                        popup_dialog("Import Campaign", "Not yet implemented.");
+                        importCampaignPicker();
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
                 {
@@ -885,32 +902,39 @@ Sint32 level_editor()
                         if(campaign != NULL)
                         {
                             // TODO: Check if campaign already exists and prompt the user to overwrite
-                            
-                            create_new_campaign(campaign);
-                            
-                            // Mount new campaign
-                            unmount_campaign_package(myscreen->current_campaign);
-                            mount_campaign_package(campaign);
-                            
-                            // Tell the game to use this one
-                            // TODO: Use level editor's campaign data instead
-                            strcpy(myscreen->current_campaign, campaign);
-                            
-                            // Load first scenario
-                            levels = list_levels();
-                            
-                            if(levels.size() > 0)
+                            if(does_campaign_exist(campaign) && !yes_or_no_prompt("Overwrite?", "Overwrite existing campaign with that ID?", false))
                             {
-                                remove_all_objects(myscreen);
-                                load_scenario(levels.front().c_str(), myscreen);
-                                strncpy(scen_name, levels.front().c_str(), 10);
-                                strcpy(grid_name, query_my_map_name());
-                                // Update minimap
-                                myscreen->viewob[0]->myradar->update();
+                                cancel = true;
                             }
-                            else
+                            
+                            if(!cancel)
                             {
-                                Log("Campaign has no scenarios!\n");
+                                create_new_campaign(campaign);
+                                
+                                // Mount new campaign
+                                unmount_campaign_package(myscreen->current_campaign);
+                                mount_campaign_package(campaign);
+                                
+                                // Tell the game to use this one
+                                // TODO: Use level editor's campaign data instead
+                                strcpy(myscreen->current_campaign, campaign);
+                                
+                                // Load first scenario
+                                levels = list_levels();
+                                
+                                if(levels.size() > 0)
+                                {
+                                    remove_all_objects(myscreen);
+                                    load_scenario(levels.front().c_str(), myscreen);
+                                    strncpy(scen_name, levels.front().c_str(), 10);
+                                    strcpy(grid_name, query_my_map_name());
+                                    // Update minimap
+                                    myscreen->viewob[0]->myradar->update();
+                                }
+                                else
+                                {
+                                    Log("Campaign has no scenarios!\n");
+                                }
                             }
                         }
                         
@@ -2482,6 +2506,44 @@ Sint32 do_load(screen *ascreen)
 	return 1;
 }
 
+bool save_level_and_map(screen* ascreen)
+{
+    bool result = true;
+    if(unpack_campaign(ascreen->current_campaign))
+    {
+        // Save the map file ..
+        if (!save_map_file(grid_name, ascreen) )
+        {
+            Log("Save failed: Could not save grid.\n");
+            result = false;
+        }
+        else
+        {
+            save_scenario(scen_name, ascreen, grid_name);
+            
+            // Unmount campaign while it is changed
+            unmount_campaign_package(ascreen->current_campaign);
+            
+            if(!repack_campaign(ascreen->current_campaign))
+            {
+                Log("Save failed: Could not repack campaign: %s\n", ascreen->current_campaign);
+                result = false;
+            }
+            
+            // Remount the new campaign package
+            mount_campaign_package(ascreen->current_campaign);
+        }
+    }
+    else
+    {
+        Log("Save failed: Could not unpack campaign: %s\n", ascreen->current_campaign);
+        result = false;
+    }
+    cleanup_unpacked_campaign();
+    
+    return result;
+}
+
 Sint32 do_save(screen *ascreen)  // save a scenario or grid
 {
 	text *savetext = new text(ascreen);
@@ -2515,37 +2577,8 @@ Sint32 do_save(screen *ascreen)  // save a scenario or grid
             savetext->write_xy(52, 33, "Saving scenario..");
             ascreen->buffer_to_screen(0, 0, 320, 200);
             
-            if(unpack_campaign(ascreen->current_campaign))
-            {
-                // Save the map file ..
-                if (!save_map_file(grid_name, ascreen) )
-                {
-                    Log("Save failed: Could not save grid.\n");
-                    result = 0;
-                }
-                else
-                {
-                    save_scenario(scen_name, ascreen, grid_name);
-                    
-                    // Unmount campaign while it is changed
-                    unmount_campaign_package(ascreen->current_campaign);
-                    
-                    if(!repack_campaign(ascreen->current_campaign))
-                    {
-                        Log("Save failed: Could not repack campaign: %s\n", ascreen->current_campaign);
-                        result = 0;
-                    }
-                    
-                    // Remount the new campaign package
-                    mount_campaign_package(ascreen->current_campaign);
-                }
-            }
-            else
-            {
-                Log("Save failed: Could not unpack campaign: %s\n", ascreen->current_campaign);
+            if(!save_level_and_map(ascreen))
                 result = 0;
-            }
-            cleanup_unpacked_campaign();
 
             ascreen->clearfontbuffer();
             clear_keyboard();

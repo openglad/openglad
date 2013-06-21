@@ -1796,6 +1796,7 @@ Sint32 create_load_menu(Sint32 arg1)
 	return REDRAW;
 }
 
+// TODO: Multi-line messages would be nice...
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
 {
 	text gladtext(myscreen);
