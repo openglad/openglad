@@ -45,7 +45,6 @@ extern Sint32 calculate_level(Uint32 temp_exp);
 #define S_HEIGHT (S_DOWN - S_UP)
 //#define BUF_SIZE (unsigned) ((S_DOWN-S_UP)*(S_RIGHT-S_LEFT))
 
-#define VERSION_NUM 2
 #define MAX_SPREAD 10 //this controls find_near_foe
 #define TIME_BONUS (Sint32) 5000
 #define LEVEL_BONUS (Sint32) 120
@@ -2550,7 +2549,7 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 		here = here->next;
 	}
 	return 1;
-} // end load_version_5
+} // end load_version_6
 
 
 char  * query_my_map_name()

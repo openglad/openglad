@@ -36,6 +36,13 @@ void smoother::set_target(screen  *target)
 	maxy = target->maxy;
 }
 
+void smoother::set_target(unsigned char* grid, Sint32 maxX, Sint32 maxY)
+{
+	mygrid = grid;
+	maxx = maxX;
+	maxy = maxY;
+}
+
 Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 {
 	// Are we set up yet?

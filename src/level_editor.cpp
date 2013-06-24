@@ -7,6 +7,7 @@
 #include "smooth.h"
 #include "input.h"
 #include "util.h"
+#include "level_data.h"
 
 /* Changelog
  * 	8/8/02: Zardus: added scrolling-by-minimap
@@ -345,8 +346,47 @@ bool activate_menu_choice(int mx, int my, std::list<std::pair<SimpleButton*, std
     return true;
 }
 
+class LevelEditorData
+{
+public:
+    CampaignData* campaign;
+    LevelData* level;
+    
+    LevelEditorData();
+    ~LevelEditorData();
+    
+    bool loadCampaign(const std::string& id);
+    bool loadLevel(int id);
+    bool saveCampaign(const std::string& id);
+    bool saveLevel(int id);
+};
+
+LevelEditorData::LevelEditorData()
+    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1))
+{
+    
+}
+
+LevelEditorData::~LevelEditorData()
+{
+    delete campaign;
+    delete level;
+}
+
 Sint32 level_editor()
 {
+    /*static LevelEditorData data;
+    if(data.campaign->load())
+        Log("Loaded campaign data successfully.\n");
+    else
+        Log("Failed to load campaign data.\n");
+    mount_campaign_package(data.campaign->id);
+    if(data.level->load())
+        Log("Loaded level data successfully.\n");
+    else
+        Log("Failed to load level data.\n");*/
+    //unmount_campaign_package(data.campaign->id);
+    
 	Sint32 i,j;
 	Sint32 extra;
 	Sint32 windowx, windowy;

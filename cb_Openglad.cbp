@@ -526,6 +526,8 @@
 		<Unit filename="src/intro.cpp" />
 		<Unit filename="src/io.cpp" />
 		<Unit filename="src/io.h" />
+		<Unit filename="src/level_data.cpp" />
+		<Unit filename="src/level_data.h" />
 		<Unit filename="src/level_editor.cpp" />
 		<Unit filename="src/living.cpp" />
 		<Unit filename="src/living.h" />

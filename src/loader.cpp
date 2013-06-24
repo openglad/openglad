@@ -835,7 +835,7 @@ loader::~loader(void)
 
 walker  *loader::create_walker(char order,
                                char family,
-                               screen  *myscreen)
+                               screen  *myscreen, bool cache_weapons)
 {
 	walker  *ob;
 
@@ -852,7 +852,7 @@ walker  *loader::create_walker(char order,
 		ob = new living(graphics[PIX(order, family)], myscreen);
 	else if (order == ORDER_WEAPON)
 	{
-		if (myscreen->weapfree) //there is one available
+		if (cache_weapons && myscreen->weapfree) //there is one available
 		{
 			ob = myscreen->weapfree; //get the ob
 			myscreen->weapfree = myscreen->weapfree->cachenext; //move up weapfree
