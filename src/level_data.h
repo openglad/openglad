@@ -65,14 +65,18 @@ public:
     std::list<std::string> description;
     
     LevelData(int id);
+    ~LevelData();
     
     bool load();
     bool save();
     
-    walker* add_ob(char order, char family);
+    walker* add_ob(char order, char family, bool atstart = false);
     walker* add_fx_ob(char order, char family);
     walker* add_weap_ob(char order, char family);
-    void clear_objects();
+    
+    void delete_grid();
+    void delete_objects();
+    void clear();
 };
 
 

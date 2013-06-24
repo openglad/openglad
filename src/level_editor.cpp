@@ -385,7 +385,6 @@ Sint32 level_editor()
         Log("Loaded level data successfully.\n");
     else
         Log("Failed to load level data.\n");*/
-    //unmount_campaign_package(data.campaign->id);
     
 	Sint32 i,j;
 	Sint32 extra;
@@ -1436,6 +1435,8 @@ Sint32 level_editor()
     myscreen->redraw();
     // Clear the background
     myscreen->clearscreen();
+    
+    //unmount_campaign_package(data.campaign->id);
     
 	return OK;
 }
