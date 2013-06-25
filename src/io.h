@@ -23,7 +23,7 @@ std::string get_mounted_campaign();
 bool mount_campaign_package(const std::string& id);
 bool unmount_campaign_package(const std::string& id);
 std::list<std::string> list_campaigns();
-std::list<std::string> list_levels();
+std::list<int> list_levels();
 
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);

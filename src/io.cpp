@@ -195,18 +195,34 @@ std::list<std::string> list_campaigns()
     return ls;
 }
 
-std::list<std::string> list_levels()
+std::list<int> list_levels()
 {
     std::list<std::string> ls = list_files("scen/");
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    std::list<int> result;
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); )
     {
         size_t pos = e->rfind(".fss");
         if(pos == std::string::npos)
+        {
             e = ls.erase(e);  // Not a scen file
+            continue;
+        }
         else
+        {
             *e = e->substr(0, pos);  // Remove the extension
+            if(e->substr(0, 4) != "scen")
+            {
+                e = ls.erase(e);
+                continue;
+            }
+            *e = e->substr(4, std::string::npos);
+            result.push_back(atoi(e->c_str()));
+        }
+        e++;
     }
-    return ls;
+    
+    result.sort();
+    return result;
 }
 
 void copy_file(const std::string& filename, const std::string& dest_filename)

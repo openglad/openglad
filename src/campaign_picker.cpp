@@ -109,7 +109,7 @@ CampaignEntry::CampaignEntry(screen* screenp, const std::string& id, int num_lev
             icon = new pixie(icondata+3, icondata[1], icondata[2], screenp);
         
         // Count the number of levels
-        std::list<std::string> levels = list_levels();
+        std::list<int> levels = list_levels();
         num_levels = levels.size();
         
         unmount_campaign_package(id);

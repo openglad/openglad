@@ -21,9 +21,11 @@ CampaignData::~CampaignData()
 }
 
 
-// Must unmount old campaign before doing this!
 bool CampaignData::load()
 {
+    std::string old_campaign = get_mounted_campaign();
+    unmount_campaign_package(old_campaign);
+    
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package(id))
     {
@@ -69,11 +71,13 @@ bool CampaignData::load()
             icon = new pixie(icondata+3, icondata[1], icondata[2], myscreen);
         
         // Count the number of levels
-        std::list<std::string> levels = list_levels();
+        std::list<int> levels = list_levels();
         num_levels = levels.size();
         
         unmount_campaign_package(id);
     }
+    
+    mount_campaign_package(old_campaign);
     
     return true;
 }
@@ -130,12 +134,6 @@ LevelData::~LevelData()
     delete myloader;
     
     delete myobmap;
-}
-
-void LevelData::clear()
-{
-    delete_objects();
-    delete_grid();
     
         
     for (int i = 0; i < PIX_MAX; i++)
@@ -152,6 +150,12 @@ void LevelData::clear()
             back[i] = NULL;
         }
     }
+}
+
+void LevelData::clear()
+{
+    delete_objects();
+    delete_grid();
     
     delete myobmap;
 	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
@@ -1205,6 +1209,21 @@ bool LevelData::load()
     
     // Load background tiles
     {
+        // Delete old tiles
+        for (int i = 0; i < PIX_MAX; i++)
+        {
+            if(pixdata[i])
+            {
+                free(pixdata[i]);
+                pixdata[i] = NULL;
+            }
+            
+            if (back[i])
+            {
+                delete back[i];
+                back[i] = NULL;
+            }
+        }
         
         // Load map data from a pixie format
         load_map_data(pixdata);

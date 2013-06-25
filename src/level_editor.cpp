@@ -314,9 +314,12 @@ bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*,
     if(current_menu.back().first == &button)
     {
         current_menu.pop_back();
+        myscreen->clearfontbuffer();
         return false;
     }
     
+    if(current_menu.size() > 0)
+        myscreen->clearfontbuffer();
     // Remove all menus up to the parent
     while(current_menu.size() > 0)
     {
@@ -341,6 +344,7 @@ bool activate_menu_choice(int mx, int my, std::list<std::pair<SimpleButton*, std
         get_input_events(WAIT);
     
     // Close menu
+    myscreen->clearfontbuffer();
     current_menu.clear();
     return true;
 }
@@ -448,8 +452,6 @@ Sint32 level_editor()
 	// Set the un-set text to empty ..
 	for (i=0; i < 60; i ++)
 		myscreen->scentext[i][0] = 0;
-
-    std::list<std::string> levels = list_levels();
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -461,10 +463,19 @@ Sint32 level_editor()
         unmount_campaign_package(old_campaign);
     mount_campaign_package(data.campaign->id);
     
-    if(data.reloadLevel())
-        Log("Loaded level data successfully.\n");
+
+    std::list<int> levels = list_levels();
+    if(levels.size() > 0)
+    {
+        if(data.loadLevel(levels.front()))
+        {
+            Log("Loaded level data successfully.\n");
+        }
+        else
+            Log("Failed to load level data.\n");
+    }
     else
-        Log("Failed to load level data.\n");
+        Log("Campaign has no valid levels!\n");
 
 	myscreen->clearfontbuffer();
 	event = 1;  // Redraw right away
@@ -1013,32 +1024,32 @@ Sint32 level_editor()
                             
                             if(!cancel)
                             {
-                                create_new_campaign(campaign);
-                                
-                                // Mount new campaign
-                                unmount_campaign_package(myscreen->current_campaign);
-                                mount_campaign_package(campaign);
-                                
-                                // Tell the game to use this one
-                                // TODO: Use level editor's campaign data instead
-                                strcpy(myscreen->current_campaign, campaign);
-                                
-                                // Load first scenario
-                                levels = list_levels();
-                                
-                                if(levels.size() > 0)
+                                if(create_new_campaign(campaign))
                                 {
-                                    remove_all_objects(myscreen);
-                                    load_scenario(levels.front().c_str(), myscreen);
-                                    strncpy(scen_name, levels.front().c_str(), 10);
-                                    strcpy(grid_name, query_my_map_name());
-                                    // Update minimap
-                                    //myscreen->viewob[0]->myradar->update(data.level);
-                                    myradar.update(data.level);
+                                    // Mount new campaign
+                                    unmount_campaign_package(get_mounted_campaign());
+                                    mount_campaign_package(campaign);
+                                    
+                                    // Tell the game to use this one
+                                    data.loadCampaign(campaign);
+                                    
+                                    // Load first scenario
+                                    levels = list_levels();
+                                    
+                                    if(levels.size() > 0)
+                                    {
+                                        data.loadLevel(levels.front());
+                                        // Update minimap
+                                        myradar.update(data.level);
+                                    }
+                                    else
+                                    {
+                                        Log("Campaign has no scenarios!\n");
+                                    }
                                 }
                                 else
                                 {
-                                    Log("Campaign has no scenarios!\n");
+                                    Log("Failed to create new campaign.\n");
                                 }
                             }
                         }
@@ -1074,6 +1085,7 @@ Sint32 level_editor()
                     // New level
                     data.level->clear();
                     data.level->create_new_grid();
+                    myradar.update(data.level);
                     levelchanged = 1;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelLoadButton))
@@ -1281,7 +1293,11 @@ Sint32 level_editor()
             else
             {
                 // No menu click
-                current_menu.clear();
+                if(current_menu.size() > 0)
+                {
+                    myscreen->clearfontbuffer();  // Erase menu text that isn't there anymore
+                    current_menu.clear();
+                }
                 
                 // Zardus: ADD: can move map by clicking on minimap
                 if (mx > myscreen->viewob[0]->endx - myradar.xview - 4
@@ -1467,8 +1483,6 @@ Sint32 level_editor()
 		// Redraw screen
 		if (event)
 		{
-			//release_mouse();
-			//myscreen->redraw();
 			data.level->draw(myscreen);
 			myradar.draw(data.level);
 			for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
@@ -1481,12 +1495,11 @@ Sint32 level_editor()
             }
 			display_panel(myscreen);
 			myscreen->refresh();
-			//    display_panel(myscreen);
-			//grab_mouse();
-			myscreen->clearfontbuffer();
-			SDL_Delay(10);
+			
+            event = 0;
 		}
-		event = 0;
+        
+        SDL_Delay(10);
 
 		if (mykeyboard[KEYSTATE_ESCAPE])
 			quit_level_editor(0);

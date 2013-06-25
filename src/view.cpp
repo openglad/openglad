@@ -307,7 +307,7 @@ short viewscreen::redraw(LevelData* data)
 				else                                                                  // show only top of wall
 					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 			}
-			else
+			else if(gridp != NULL && backp[(int)gridp[i + maxx * j]] != NULL)
 				backp[(int)gridp[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 		}
 
