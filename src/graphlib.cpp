@@ -39,7 +39,38 @@ using namespace std;
 // ************* Editor related functions? ************************
 // have also been moved to video
 
-unsigned char  * read_pixie_file(const char  * filename)
+
+PixieData::PixieData()
+    : frames(0), w(0), h(0), data(NULL)
+{}
+
+PixieData::PixieData(unsigned char frames, unsigned char w, unsigned char h, unsigned char* data)
+    : frames(frames), w(w), h(h), data(data)
+{}
+
+bool PixieData::valid() const
+{
+    return (data != NULL && frames != 0 && w != 0 && h != 0);
+}
+
+void PixieData::clear()
+{
+    frames = 0;
+    w = 0;
+    h = 0;
+    data = NULL;
+}
+
+void PixieData::free()
+{
+    frames = 0;
+    w = 0;
+    h = 0;
+    delete[] data;
+    data = NULL;
+}
+
+PixieData read_pixie_file(const char  * filename)
 {
 	// Create a file stream, and read the image
 	// File data in form:
@@ -47,43 +78,35 @@ unsigned char  * read_pixie_file(const char  * filename)
 	// <x size>                   1 byte
 	// <y size>                   1 byte
 	// <pixie data>               <x*y*frames> bytes
-
-	unsigned char numframes, x, y;
-	unsigned char  *newpic = NULL;
-	SDL_RWops  *infile = NULL;
     
+    PixieData result;
+	SDL_RWops  *infile = NULL;
 
-	// Zardus: try to find file using open_read_file, then resort to graphics.001
+	// Zardus: try to find file using open_read_file
 	if (!((infile = open_read_file("pix/", filename)) || (infile = open_read_file(filename))))
     {
-        Log("Cannot open pixie file %s!\n", filename);
-        exit(0);
+        Log("Cannot open pixie file %s%s!\n", "pix/", filename);
+        exit(5);
     }
 
-	SDL_RWread(infile, &numframes, 1, 1);
-	SDL_RWread(infile, &x, 1, 1);
-	SDL_RWread(infile, &y, 1, 1);
+	SDL_RWread(infile, &result.frames, 1, 1);
+	SDL_RWread(infile, &result.w, 1, 1);
+	SDL_RWread(infile, &result.h, 1, 1);
 
-	newpic = (unsigned char*)calloc(x * y * numframes + 3 + 1, 1);
-	newpic[0] = numframes;
-	newpic[1] = x;
-	newpic[2] = y;
+    size_t size = result.w * result.h * result.frames;
+	result.data = new unsigned char(size);
 
 	// Now read the data in a big chunk
-	SDL_RWread(infile, &newpic[3], 1, (x*y*numframes));
-
-	//if (gotit == file) // this means we're a 'manual' file
-	if(infile != NULL)
-    {
-	    SDL_RWclose(infile);
-    }
-	return newpic;
-
+	SDL_RWread(infile, result.data, 1, size);
+    
+    SDL_RWclose(infile);
+    
+	return result;
 } // End of image-reading routine
 
 
 
-void load_map_data(unsigned char **whereto)
+void load_map_data(PixieData* whereto)
 {
 	// load the pixie graphics data shorto memory
 	whereto[0] = read_pixie_file("16tile.pix");             //done

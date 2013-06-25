@@ -91,7 +91,6 @@ screen::screen(short howmany)
 
 	grab_timer();
 
-	grid = NULL;
 	timerstart = query_timer_control();
 	framecount = 0;
 	oblist = NULL;
@@ -327,8 +326,7 @@ screen::~screen()
 
 	for (i = 0; i < PIX_MAX; i++)
 	{
-		if(pixdata[i])
-			free(pixdata[i]);
+		pixdata[i].free();
 		// Zardus: FIXME: this should be here cause it leaks, but this makes it segfault
 		if (back[i])
 			delete back[i];
@@ -352,13 +350,7 @@ void screen::cleanup(short howmany)
                 viewob[i] = NULL;
         }
 
-        if (grid)
-        {
-                // Zardus: PORT: this segfaults while deleting grid!
-                //buffers: commented free() so openglad will cleanly exit
-                free(grid-3);  // grid is offset on load
-                grid = NULL;
-        }
+        grid.free();
 
         if (oblist)
         {
@@ -568,7 +560,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 		return 1; //moved up to avoid unneeded calculation
 
 	// Zardus: PORT: Does the grid exist?
-	if (!grid)
+	if (!grid.valid())
 		return 0;
 
 	// Check if our butt hangs over shorto next grid square
@@ -588,7 +580,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 
 		{
 			// Check if item in background grid
-			switch ((unsigned char)grid[i+maxx*j])
+			switch ((unsigned char)grid.data[i+grid.w*j])
 			{
 				case PIX_GRASS1:  // grass is pass..
 				case PIX_GRASS2:
@@ -1970,11 +1962,8 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
-	master->pixmaxx = master->maxx * GRID_SIZE;
-	master->pixmaxy = master->maxy * GRID_SIZE;
-	master->grid += 3;
+	master->pixmaxx = master->grid.w * GRID_SIZE;
+	master->pixmaxy = master->grid.h * GRID_SIZE;
 
 	//Log("LV2: read grid %s\n", newgrid);
 	//wait_for_key(SDLK_SPACE);
@@ -2103,11 +2092,8 @@ short load_version_3(SDL_RWops  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
-	master->pixmaxx = master->maxx * GRID_SIZE;
-	master->pixmaxy = master->maxy * GRID_SIZE;
-	master->grid += 3;
+	master->pixmaxx = master->grid.w * GRID_SIZE;
+	master->pixmaxy = master->grid.h * GRID_SIZE;
 
 	// This is a hack because we don't know where else it is loaded.
 	//  if (master->myradar[0])
@@ -2230,11 +2216,8 @@ short load_version_4(SDL_RWops  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = (unsigned char)master->grid[1];
-	master->maxy = (unsigned char)master->grid[2];
-	master->pixmaxx = master->maxx * GRID_SIZE;
-	master->pixmaxy = master->maxy * GRID_SIZE;
-	master->grid += 3;
+	master->pixmaxx = master->grid.w * GRID_SIZE;
+	master->pixmaxy = master->grid.h * GRID_SIZE;
 
 	// This is a hack because we don't know where else it is loaded.
 	//  if (master->myradar[0])
@@ -2364,12 +2347,9 @@ short load_version_5(SDL_RWops  *infile, screen * master)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
-	master->pixmaxx = master->maxx * GRID_SIZE;
-	master->pixmaxy = master->maxy * GRID_SIZE;
-	master->grid += 3;
-	master->mysmoother.set_target(master);
+	master->pixmaxx = master->grid.w * GRID_SIZE;
+	master->pixmaxy = master->grid.h * GRID_SIZE;
+	master->mysmoother.set_target(master->grid);
 
 	// Fix up doors, etc.
 	here = master->weaplist;
@@ -2527,12 +2507,9 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 	// Now read the grid file to our master screen ..
 	strcat(newgrid, ".pix");
 	master->grid = read_pixie_file(newgrid);
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
-	master->pixmaxx = master->maxx * GRID_SIZE;
-	master->pixmaxy = master->maxy * GRID_SIZE;
-	master->grid += 3;
-	master->mysmoother.set_target(master);
+	master->pixmaxx = master->grid.w * GRID_SIZE;
+	master->pixmaxy = master->grid.h * GRID_SIZE;
+	master->mysmoother.set_target(master->grid);
 
 	// Fix up doors, etc.
 	here = master->weaplist;
@@ -2914,24 +2891,24 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 
 	if (xover < 0 || yover < 0)
 		return 0;
-	if (xover >= maxx || yover >= maxy)
+	if (xover >= grid.w || yover >= grid.h)
 		return 0;
 
-	gridloc = (short) (yover*maxx+xover);
+	gridloc = (short) (yover*grid.w+xover);
 
-	switch ((unsigned char)grid[gridloc])
+	switch ((unsigned char)grid.data[gridloc])
 	{
 		case PIX_GRASS1: // grass
 		case PIX_GRASS2:
 		case PIX_GRASS3:
 		case PIX_GRASS4:
-			grid[gridloc] = PIX_GRASS1_DAMAGED;
+			grid.data[gridloc] = PIX_GRASS1_DAMAGED;
 			break;
 		default:
 			break;
 	}
 
-	return grid[gridloc];
+	return grid.data[gridloc];
 }
 
 void screen::do_notify(const char *message, walker  *who)

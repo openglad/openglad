@@ -21,6 +21,7 @@
 #define SMOOTH_H
 
 #include "SDL.h"
+#include "base.h"
 
 // Used for deciding cases
 #define TO_UP 1
@@ -50,8 +51,7 @@ class smoother
 		smoother();
         
         void reset();
-		void set_target(screen  *target);     // set our target grid to smooth ..
-		void set_target(unsigned char* grid, Sint32 maxX, Sint32 maxY);
+		void set_target(const PixieData& data);     // set our target grid to smooth ..
 		Sint32 smooth();                        // smooths entire target grid
 		Sint32 smooth(Sint32 x, Sint32 y);          // smooth at x, y; returns changed or not
 		Sint32 query_x_y(Sint32 x, Sint32 y);       // return target type, ie PIX_GRASS1

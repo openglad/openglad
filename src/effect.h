@@ -29,12 +29,12 @@
 class effect : public walker
 {
 	public:
-		effect(unsigned char  *data, screen  *myscreen);
+		effect(const PixieData& data, screen* myscreen);
 		virtual ~effect();
-		short          act();
-		short          animate();
-		short          death(); // called on destruction
-		char         query_order()
+		short act();
+		short animate();
+		short death(); // called on destruction
+		char query_order()
 		{
 			return ORDER_FX;
 		}

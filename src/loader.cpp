@@ -291,28 +291,31 @@ signed char  *anifood[] = { food1, food1, food1, food1,
                             food1, food1, food1, food1,
                             food1, food1, food1, food1 };
 
-unsigned char* data_copy(unsigned char* d)
+PixieData data_copy(const PixieData& d)
 {
-    if(d == NULL)
-        return NULL;
-    unsigned char numframes = d[2];
-    unsigned char x = d[0];
-    unsigned char y = d[1];
+    PixieData result;
     
-    Sint32 len = x * y * numframes + 3 + 1;
-    unsigned char* result = (unsigned char*)malloc(len);
-    memcpy(result, d, len);
+    if(!d.valid())
+        return result;
+    
+    result.frames = d.frames;
+    result.w = d.w;
+    result.h = d.h;
+    
+    Sint32 len = d.w * d.h * d.frames;
+    result.data = new unsigned char(len);
+    memcpy(result.data, d.data, len);
+    
     return result;
 }
 
 
 loader::loader()
+    : graphics(NULL), animations(NULL), stepsizes(NULL), lineofsight(NULL), act_types(NULL), damage(NULL), fire_frequency(NULL)
 {
-	graphics = new unsigned char*[SIZE_ORDERS*SIZE_FAMILIES];
-	
-	//memset(graphics, 0, SIZE_ORDERS*SIZE_FAMILIES);
-	for(int i = 0; i < SIZE_ORDERS*SIZE_FAMILIES; i++)
-        graphics[i] = NULL;
+	memset(hitpoints, 0, 200*sizeof(short));
+    
+	graphics = new PixieData[SIZE_ORDERS*SIZE_FAMILIES];
         
 	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
@@ -820,7 +823,7 @@ loader::~loader(void)
 {
 	int i;
 	for(i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
-	    free(graphics[i]);
+	    graphics[i].free();
 	}
 	
 	delete[] graphics;
@@ -842,9 +845,9 @@ walker  *loader::create_walker(char order,
 	//i = PIX(order, family);
 	//Log("PIX(order, family) = %d\n", i);
 
-	if (!graphics[PIX(order, family)])
+	if (!graphics[PIX(order, family)].valid())
 	{
-		Log("Alert! No valid graphics\n");
+		Log("Alert! No valid graphics for walker\n");
 		return NULL;
 	}
 
@@ -1175,9 +1178,9 @@ pixieN *loader::create_pixieN(char order, char family)
 {
 	pixieN *newpixie;
 
-	if (!graphics[PIX(order, family)])
+	if (!graphics[PIX(order, family)].valid())
 	{
-		Log("Alert! No valid graphics\n");
+		Log("Alert! No valid graphics for pixieN\n");
 		return NULL;
 	}
 

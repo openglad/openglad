@@ -11,13 +11,13 @@ int toInt(const std::string& s);
 
 
 CampaignData::CampaignData(const std::string& id)
-    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icondata(NULL), icon(NULL)
+    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icon(NULL)
 {}
 
 CampaignData::~CampaignData()
 {
 	delete icon;
-	free(icondata);
+	icondata.free();
 }
 
 
@@ -67,8 +67,8 @@ bool CampaignData::load()
         
         std::string icon_file = "icon.pix";
         icondata = read_pixie_file(icon_file.c_str());
-        if(icondata != NULL)
-            icon = new pixie(icondata+3, icondata[1], icondata[2], myscreen);
+        if(icondata.valid())
+            icon = new pixie(icondata, myscreen);
         
         // Count the number of levels
         std::list<int> levels = list_levels();
@@ -115,12 +115,11 @@ bool CampaignData::save()
 
 
 LevelData::LevelData(int id)
-    : id(id), title("New Level"), type(0), par_value(1), grid(NULL), maxx(0), maxy(0), pixmaxx(0), pixmaxy(0)
+    : id(id), title("New Level"), type(0), par_value(1), pixmaxx(0), pixmaxy(0)
     , myloader(NULL), numobs(0), oblist(NULL), fxlist(NULL), weaplist(NULL), topx(0), topy(0)
 {
     for (int i = 0; i < PIX_MAX; i++)
     {
-        pixdata[i] = NULL;
         back[i] = NULL;
     }
     
@@ -138,11 +137,7 @@ LevelData::~LevelData()
         
     for (int i = 0; i < PIX_MAX; i++)
     {
-        if(pixdata[i])
-        {
-            free(pixdata[i]);
-            pixdata[i] = NULL;
-        }
+        pixdata[i].free();
         
         if (back[i])
         {
@@ -379,41 +374,38 @@ short LevelData::remove_ob(walker  *ob, short no_delete)
 
 void LevelData::delete_grid()
 {
-    free(grid);
-    grid = NULL;
-    maxx = 0;
-    maxy = 0;
+    grid.free();
     pixmaxx = 0;
     pixmaxy = 0;
 }
 
 void LevelData::create_new_grid()
 {
-    free(grid);
+    grid.free();
     
-    maxx = 40;
-    maxy = 60;
-	pixmaxx = maxx * GRID_SIZE;
-	pixmaxy = maxy * GRID_SIZE;
+    grid.w = 40;
+    grid.h = 60;
+	pixmaxx = grid.w * GRID_SIZE;
+	pixmaxy = grid.h * GRID_SIZE;
 	
-	int size = maxx*maxy;
-    grid = (unsigned char*)calloc(size, 1);
+	int size = grid.w*grid.h;
+    grid.data = new unsigned char(size);
 	for(int i = 0; i < size; i++)
     {
         // Color
         switch(rand()%4)
         {
             case 0:
-            grid[i] = PIX_GRASS1;
+            grid.data[i] = PIX_GRASS1;
             break;
             case 1:
-            grid[i] = PIX_GRASS2;
+            grid.data[i] = PIX_GRASS2;
             break;
             case 2:
-            grid[i] = PIX_GRASS3;
+            grid.data[i] = PIX_GRASS3;
             break;
             case 3:
-            grid[i] = PIX_GRASS4;
+            grid.data[i] = PIX_GRASS4;
             break;
         }
     }
@@ -430,16 +422,16 @@ void LevelData::resize_grid(int width, int height)
     
     // Create new grid
 	int size = width*height;
-    unsigned char* new_grid = (unsigned char*)calloc(size, 1);
+    unsigned char* new_grid = new unsigned char(size);
     
     // Copy the map data
 	for(int i = 0; i < width; i++)
     {
         for(int j = 0; j < height; j++)
         {
-            if(i < maxx && j < maxy)
+            if(i < grid.w && j < grid.h)
             {
-                new_grid[j*width + i] = grid[j*maxx + i];
+                new_grid[j*width + i] = grid.data[j*grid.w + i];
             }
             else
             {
@@ -463,12 +455,12 @@ void LevelData::resize_grid(int width, int height)
     }
     
     // Delete the old, use the new
-    free(grid);
-    grid = new_grid;
-    maxx = width;
-    maxy = height;
-	pixmaxx = maxx * GRID_SIZE;
-	pixmaxy = maxy * GRID_SIZE;
+    grid.free();
+    grid.data = new_grid;
+    grid.w = width;
+    grid.h = height;
+	pixmaxx = grid.w * GRID_SIZE;
+	pixmaxy = grid.h * GRID_SIZE;
     
     
     // TODO: Delete objects that fell off the map
@@ -596,13 +588,10 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 	strcat(newgrid, ".pix");
 	
     data->delete_grid();
-    
+	
 	data->grid = read_pixie_file(newgrid);
-	data->maxx = data->grid[1];
-	data->maxy = data->grid[2];
-	data->grid += 3;
-	data->pixmaxx = data->maxx * GRID_SIZE;
-	data->pixmaxy = data->maxy * GRID_SIZE;
+	data->pixmaxx = data->grid.w * GRID_SIZE;
+	data->pixmaxy = data->grid.h * GRID_SIZE;
 
 	return 1;
 }
@@ -707,11 +696,8 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
     data->delete_grid();
     
 	data->grid = read_pixie_file(newgrid);
-	data->maxx = data->grid[1];
-	data->maxy = data->grid[2];
-	data->pixmaxx = data->maxx * GRID_SIZE;
-	data->pixmaxy = data->maxy * GRID_SIZE;
-	data->grid += 3;
+	data->pixmaxx = data->grid.w * GRID_SIZE;
+	data->pixmaxy = data->grid.h * GRID_SIZE;
 
 	return 1;
 }
@@ -818,11 +804,8 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
     data->delete_grid();
     
 	data->grid = read_pixie_file(newgrid);
-	data->maxx = (unsigned char)data->grid[1];
-	data->maxy = (unsigned char)data->grid[2];
-	data->pixmaxx = data->maxx * GRID_SIZE;
-	data->pixmaxy = data->maxy * GRID_SIZE;
-	data->grid += 3;
+	data->pixmaxx = data->grid.w * GRID_SIZE;
+	data->pixmaxy = data->grid.h * GRID_SIZE;
 
 	return 1;
 } // end load_version_4
@@ -935,12 +918,10 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
     data->delete_grid();
     
 	data->grid = read_pixie_file(newgrid);
-	data->maxx = data->grid[1];
-	data->maxy = data->grid[2];
-	data->pixmaxx = data->maxx * GRID_SIZE;
-	data->pixmaxy = data->maxy * GRID_SIZE;
-	data->grid += 3;
-	data->mysmoother.set_target(data->grid, data->maxx, data->maxy);
+	data->pixmaxx = data->grid.w * GRID_SIZE;
+	data->pixmaxy = data->grid.h * GRID_SIZE;
+	
+	data->mysmoother.set_target(data->grid);
 
 	// Fix up doors, etc.
 	here = data->weaplist;
@@ -1018,6 +999,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     // Zardus: FIX: make sure they're lowercased
     lowercase((char *)newgrid);
     strcpy(my_map_name, newgrid);
+	data->grid_file = newgrid;
 
     // Get scenario title, if it exists
     //for (i=0; i < strlen(scentitle); i++)
@@ -1035,8 +1017,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
     // Determine number of objects to load ...
     SDL_RWread(infile, &listsize, 2, 1);
-    
-    data->delete_objects();
+	Log("Reading %d objects\n", listsize);
 
     // Now read in the objects one at a time
     for (i=0; i < listsize; i++)
@@ -1063,6 +1044,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
             Log("Error creating object when loading.\n");
             return 0;
         }
+        Log("%d: (%d, %d)\n", i, currentx/GRID_SIZE, currenty/GRID_SIZE);
         new_guy->setxy(currentx, currenty);
         new_guy->team_num = tempteam;
         if (version >= 7)
@@ -1096,21 +1078,16 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     // Now read the grid file to our master screen ..
     strcat(newgrid, ".pix");
     
-    data->delete_grid();
-    
     data->grid = read_pixie_file(newgrid);
-    data->maxx = data->grid[1];
-    data->maxy = data->grid[2];
-    data->grid += 3;
-    data->pixmaxx = data->maxx * GRID_SIZE;
-    data->pixmaxy = data->maxy * GRID_SIZE;
+    data->pixmaxx = data->grid.w * GRID_SIZE;
+    data->pixmaxy = data->grid.h * GRID_SIZE;
     
     // The collected data so far
     data->title = scentitle;
     data->type = new_scen_type;
     data->par_value = temp_par;
     data->description = desc_lines;
-    data->mysmoother.set_target(data->grid, data->maxx, data->maxy);
+    data->mysmoother.set_target(data->grid);
 
     // Fix up doors, etc.
     here = data->weaplist;
@@ -1212,11 +1189,7 @@ bool LevelData::load()
         // Delete old tiles
         for (int i = 0; i < PIX_MAX; i++)
         {
-            if(pixdata[i])
-            {
-                free(pixdata[i]);
-                pixdata[i] = NULL;
-            }
+            pixdata[i].free();
             
             if (back[i])
             {
@@ -1252,6 +1225,42 @@ bool LevelData::load()
     }
     
 	return (tempvalue != 0);
+}
+
+bool save_grid_file(const char* gridname, const PixieData& grid)
+{
+	// File data in form:
+	// <# of frames>      1 byte
+	// <x size>                   1 byte
+	// <y size>                   1 byte
+	// <pixie data>               <x*y*frames> bytes
+
+	char numframes, x, y;
+	std::string fullpath(gridname);
+	SDL_RWops  *outfile;
+
+	// Create the full pathname for the pixie file
+	fullpath += ".pix";
+
+	lowercase (fullpath);
+
+	if ( (outfile = open_write_file("temp/pix/", fullpath.c_str())) == NULL )
+	{
+		Log("Failed to save map file: %s%s\n", "temp/pix/", fullpath.c_str());
+		return false;
+	}
+
+	x = grid.w;
+	y = grid.h;
+	numframes = 1;
+	SDL_RWwrite(outfile, &numframes, 1, 1);
+	SDL_RWwrite(outfile, &x, 1, 1);
+	SDL_RWwrite(outfile, &y, 1, 1);
+
+	SDL_RWwrite(outfile, grid.data, 1, (x*y));
+
+	SDL_RWclose(outfile);        // Close the data file
+	return true;
 }
 
 bool LevelData::save()
@@ -1307,7 +1316,7 @@ bool LevelData::save()
 
 	if ( (outfile = open_write_file("temp/scen/", temp_filename)) == NULL ) // open for write
 	{
-		Log("Could not open file for writing: %s\n", temp_filename);
+		Log("Could not open file for writing: %s%s\n", "temp/scen/", temp_filename);
 		return false;
 	}
 
@@ -1368,6 +1377,7 @@ bool LevelData::save()
 	} // end of weaplist-size check
 
 	SDL_RWwrite(outfile, &listsize, 2, 1);
+	Log("Writing %d objects\n", listsize);
 
 	// Okay, we've written header .. now dump the data ..
 	head = this->oblist;  // back to head of list
@@ -1388,6 +1398,7 @@ bool LevelData::save()
 			tempcommand=head->ob->query_act_type();
 			currentx  = head->ob->xpos;
 			currenty  = head->ob->ypos;
+            Log("%d: (%d, %d)\n", i++, currentx/GRID_SIZE, currenty/GRID_SIZE);
 			//templevel = head->ob->stats->level;
 			shortlevel = head->ob->stats->level;
 			strcpy(tempname, head->ob->stats->name);
@@ -1493,6 +1504,10 @@ bool LevelData::save()
 	}
 
 	SDL_RWclose(outfile);
+	
+	// Save map (grid) file
+	save_grid_file(grid_file.c_str(), grid);
+	
 	
 	Log("Scenario saved.\n");
 

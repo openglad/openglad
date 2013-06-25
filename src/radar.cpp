@@ -49,8 +49,8 @@ radar::radar(viewscreen * myview, screen * myscreen, short whatnum)
 
 void radar::start()
 {
-	sizex = (unsigned short) screenp->maxx;
-	sizey = (unsigned short) screenp->maxy;
+	sizex = (unsigned short) screenp->grid.w;
+	sizey = (unsigned short) screenp->grid.h;
 	size = (unsigned short) (((unsigned short) sizex)*((unsigned short) sizey));
 	xview = RADAR_X;
 	yview = RADAR_Y;
@@ -82,8 +82,8 @@ void radar::start()
 
 void radar::start(LevelData* data)
 {
-	sizex = (unsigned short) data->maxx;
-	sizey = (unsigned short) data->maxy;
+	sizex = (unsigned short) data->grid.w;
+	sizey = (unsigned short) data->grid.h;
 	size = (unsigned short) (((unsigned short) sizex)*((unsigned short) sizey));
 	xview = RADAR_X;
 	yview = RADAR_Y;
@@ -622,7 +622,7 @@ void radar::update()
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch ((unsigned char)screenp->grid[i+sizex*j])
+			switch ((unsigned char)screenp->grid.data[i+sizex*j])
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:
@@ -805,7 +805,7 @@ void radar::update(LevelData* data)
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch ((unsigned char)data->grid[i+sizex*j])
+			switch ((unsigned char)data->grid.data[i+sizex*j])
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:

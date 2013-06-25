@@ -25,8 +25,8 @@
 class pixieN : public pixie
 {
 	public:
-		pixieN(unsigned char  *data, screen  *myscreen);
-		pixieN(unsigned char  *data, screen  *myscreen, int doaccel);
+		pixieN(const PixieData& data, screen  *myscreen);
+		pixieN(const PixieData& data, screen  *myscreen, int doaccel);
 		virtual ~pixieN();
 		short set_frame(short framenum);
 		short query_frame();

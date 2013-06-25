@@ -49,13 +49,14 @@ class text
 		char *input_string(short x, short y, short maxlength, const char *begin);
 		char *input_string(short x, short y, short maxlength, const char *begin,
 		                   unsigned char forecolor, unsigned char backcolor);
+        char* input_string_ex(short x, short y, short maxlength, const char* message, const char *begin);
+        char* input_string_ex(short x, short y, short maxlength, const char* message, const char *begin,
+                          unsigned char forecolor, unsigned char backcolor);
 		~text();
 		screen * screenp;
 
-	protected:
-	    unsigned char* letters;
-		short sizex;
-		short sizey;
+	    PixieData letters;
+	    short sizex, sizey;
 };
 
 #endif

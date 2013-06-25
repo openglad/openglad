@@ -49,7 +49,7 @@ public:
     
     int num_levels;
     
-    unsigned char* icondata;
+    PixieData icondata;
     pixie* icon;
     
     // Player-specific
@@ -62,7 +62,7 @@ public:
 };
 
 CampaignEntry::CampaignEntry(screen* screenp, const std::string& id, int num_levels_completed)
-    : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icondata(NULL), icon(NULL), num_levels_completed(num_levels_completed)
+    : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icon(NULL), num_levels_completed(num_levels_completed)
 {
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package(id))
@@ -105,8 +105,8 @@ CampaignEntry::CampaignEntry(screen* screenp, const std::string& id, int num_lev
         
         std::string icon_file = "icon.pix";
         icondata = read_pixie_file(icon_file.c_str());
-        if(icondata != NULL)
-            icon = new pixie(icondata+3, icondata[1], icondata[2], screenp);
+        if(icondata.valid())
+            icon = new pixie(icondata, screenp);
         
         // Count the number of levels
         std::list<int> levels = list_levels();
@@ -119,7 +119,7 @@ CampaignEntry::CampaignEntry(screen* screenp, const std::string& id, int num_lev
 CampaignEntry::~CampaignEntry()
 {
 	delete icon;
-	free(icondata);
+	icondata.free();
 }
 
 void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, int team_power)

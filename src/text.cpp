@@ -18,31 +18,32 @@
 
 void get_input_events(bool);
 
-static unsigned char  *letters1 = NULL;
-static unsigned char  *letters_big = NULL;
+static PixieData letters1;
+static PixieData letters_big;
 
 
 text::text(screen * myscreen)
+    : sizex(0), sizey(0)
 {
-    if(letters1 == NULL)
+    if(!letters1.valid())
         letters1 = read_pixie_file(TEXT_1);
-    if(letters_big == NULL)
+    if(!letters_big.valid())
         letters_big = read_pixie_file(TEXT_BIG);
     
     letters = letters1;
-	if(!letters)
+	if(!letters.valid())
 		Log("letters is NULL\n");
-	sizex = letters[1];
-	sizey = letters[2];
-	letters = letters+3;
+    sizex = letters.w;
+    sizey = letters.h;
 	screenp = myscreen;
 }
 
 text::text(screen * myscreen, const char * filename)
+    : sizex(0), sizey(0)
 {
-    if(letters1 == NULL)
+    if(!letters1.valid())
         letters1 = read_pixie_file(TEXT_1);
-    if(letters_big == NULL)
+    if(!letters_big.valid())
         letters_big = read_pixie_file(TEXT_BIG);
     
     const char* temp_filename = filename;
@@ -53,9 +54,9 @@ text::text(screen * myscreen, const char * filename)
         letters = letters_big;
     else
         letters = letters1;
-	sizex = letters[1];
-	sizey = letters[2];
-	letters = letters+3;
+    sizex = letters.w;
+    sizey = letters.h;
+    
 	screenp = myscreen;
 }
 
@@ -274,7 +275,7 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, (unsigned char) color);
 
-	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters[letter * sizex * sizey], (unsigned char) color);
+	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters.data[letter * sizex * sizey], (unsigned char) color);
 	//screenp->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -284,20 +285,20 @@ short text::write_char_xy(short x, short y, char letter, short to_buffer)
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, (unsigned char) DEFAULT_TEXT_COLOR);
 
-	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters[letter * sizex * sizey], (unsigned char) DEFAULT_TEXT_COLOR);
+	screenp->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters.data[letter * sizex * sizey], (unsigned char) DEFAULT_TEXT_COLOR);
 	//screenp->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter, unsigned char color)
 {
-	screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey], (unsigned char) color);
+	screenp->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey], (unsigned char) color);
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter)
 {
-	screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey]);
+	screenp->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey]);
 	return 1;
 }
 
@@ -305,11 +306,11 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
 	if (!whereto)
-		screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey], (unsigned char) color);
+		screenp->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey], (unsigned char) color);
 	else
 		screenp->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       &letters[letter *sizex*sizey], (unsigned char) color);
+		                       &letters.data[letter *sizex*sizey], (unsigned char) color);
 	//         screenp->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
@@ -318,11 +319,11 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
 {
 	if (!whereto)
-		screenp->putdatatext(x, y, sizex, sizey, &letters[letter *sizex*sizey]);
+		screenp->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey]);
 	else
 		screenp->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       &letters[letter *sizex*sizey], (unsigned char) DEFAULT_TEXT_COLOR);
+		                       &letters.data[letter *sizex*sizey], (unsigned char) DEFAULT_TEXT_COLOR);
 	//         screenp->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
@@ -440,6 +441,131 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 		has_typed = 1;
 		current_length = (short) strlen(editstring);
 		screenp->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
+		write_xy(x, y, editstring, forecolor, 1);
+		screenp->buffer_to_screen(0, 0, 320, 200);
+	}
+
+    #ifdef USE_SDL2
+    SDL_StopTextInput();
+    #endif
+	disable_keyrepeat();
+	clear_keyboard();
+	if(return_null)
+        return NULL;
+	return editstring;
+
+}
+
+
+// This version passes DARK_BLUE and a grey color as defaults ..
+char * text::input_string_ex(short x, short y, short maxlength, const char* message, const char *begin)
+{
+	return input_string_ex(x, y, maxlength, message, begin, DARK_BLUE, 13);
+}
+
+char * text::input_string_ex(short x, short y, short maxlength, const char* message, const char *begin,
+                          unsigned char forecolor, unsigned char backcolor)
+{
+	short current_length, i;
+	short string_done = 0;
+	static char editstring[100], firststring[100];
+	//char *somekeyboard = grab_keyboard();
+	int tempchar;
+	char* temptext;
+	short has_typed = 0; // hasn't typed yet
+	bool return_null = false;
+
+	for (i=0; i < 100; i++)
+		editstring[i] = 0; // clear the string ...
+
+	if (begin)
+	{
+		strcpy(editstring, begin);
+	}
+	strcpy(firststring, begin); // default case
+	current_length = (short) strlen(editstring);
+	screenp->draw_button(x, y, x+maxlength*(sizex+1), y+sizey, 1);
+	if (strlen(begin))
+		screenp->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
+	write_xy(x, y - 10, message, DARK_GREEN, 1);
+	write_xy(x, y, editstring, WHITE, 1);
+	screenp->buffer_to_screen(0, 0, 320, 200);
+
+	clear_keyboard();
+	clear_key_press_event();
+	clear_text_input_event();
+	enable_keyrepeat();
+    #ifdef USE_SDL2
+    SDL_StartTextInput();
+    #endif
+    
+	while ( !string_done )
+	{
+		
+		screenp->clearfontbuffer(x,y,maxlength*sizex,sizey);
+	
+        tempchar = 0;
+        temptext = NULL;
+        
+		// Wait for a key to be pressed ..
+		while (!query_key_press_event() && !query_text_input_event())
+			//dumbcount++;
+			get_input_events(WAIT);
+        if(query_key_press_event())
+        {
+            tempchar = query_key();
+            clear_key_press_event();
+            
+            if (tempchar == SDLK_RETURN)
+                string_done = 1;
+            else if (tempchar == SDLK_ESCAPE)
+            {
+                strcpy(editstring, firststring);
+                string_done = 1;
+                return_null = true;
+            }
+            else if (tempchar == SDLK_BACKSPACE && current_length > 0) {
+                editstring[current_length-1] = 0;
+                
+            }
+        }
+        
+        if(query_text_input_event())
+        {
+            temptext = query_text_input();
+            
+            if ( temptext != NULL &&
+                      (current_length + short(strlen(temptext)) < maxlength) )
+            {
+                if (!has_typed) // first char, so replace text
+                {
+                    current_length = 0;
+                    for (i=0; i < 100; i++)
+                        editstring[i] = 0; // clear the string ...
+                    screenp->draw_button(x, y, x+maxlength*(sizex+1),
+                                      y+sizey+1, 1);
+                }
+                
+                int len = strlen(temptext);
+                int i;
+                for(i = 0; i < len; i++)
+                {
+                    unsigned char c = temptext[i];
+                    if(c != 255)
+                    {
+                        editstring[current_length] = c;
+                        current_length++;
+                        editstring[current_length] = '\0';
+                    }
+                }
+            }
+        }
+		
+        clear_text_input_event();
+		has_typed = 1;
+		current_length = (short) strlen(editstring);
+		screenp->draw_button(x, y, x+maxlength*(sizex+1), y+sizey+1, 1);
+        write_xy(x, y - 10, message, DARK_GREEN, 1);
 		write_xy(x, y, editstring, forecolor, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
 	}

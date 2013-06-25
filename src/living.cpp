@@ -25,7 +25,8 @@
 extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
 extern Sint32 current_difficulty;
 
-living::living(unsigned char  *data, screen  *myscreen) : walker(data, myscreen)
+living::living(const PixieData& data, screen  *myscreen)
+    : walker(data, myscreen)
 {
 	current_special = 1;
 	lifetime = 0;
@@ -413,9 +414,9 @@ short living::walk(short x, short y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= screenp->maxx*GRID_SIZE ||
+		        x+xpos >= screenp->grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= screenp->maxy*GRID_SIZE)
+		        y+ypos >= screenp->grid.h*GRID_SIZE)
 		{
 			return 0;
 		}

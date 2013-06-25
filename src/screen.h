@@ -103,8 +103,7 @@ class screen : public video
 		short palmode;
 		short my_team;
 		guy  *first_guy;
-		unsigned char  *grid;
-		Sint32 maxx,maxy;
+		PixieData grid;
 		Sint32 pixmaxx,pixmaxy;
 		Sint32 topx, topy;
 		short control_hp; // last turn's hitpoints
@@ -135,7 +134,7 @@ class screen : public video
 		short par_value;
 		short level_done; // set true when all our foes are dead
 		
-		unsigned char  *pixdata[PIX_MAX];
+		PixieData pixdata[PIX_MAX];
 		
 		smoother mysmoother;
 };

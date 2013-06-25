@@ -40,7 +40,7 @@ extern Sint32 current_difficulty;
 // from glad.cpp
 short remaining_foes(screen *myscreen, char myteam);
 
-walker::walker(unsigned char  *data, screen  *myscreen)
+walker::walker(const PixieData& data, screen  *myscreen)
     : pixieN(data, myscreen)
 {
 	// Set our stats ..
@@ -513,9 +513,9 @@ short walker::walk(short x, short y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= screenp->maxx*GRID_SIZE ||
+		        x+xpos >= screenp->grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= screenp->maxy*GRID_SIZE)
+		        y+ypos >= screenp->grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
@@ -3374,13 +3374,13 @@ short walker::teleport()
 		newlist = newlist->next;
 	} // end of checking for marker (we failed)
 
-	newx = random(screenp->maxx)*GRID_SIZE;
-	newy = random(screenp->maxy)*GRID_SIZE;
+	newx = random(screenp->grid.w)*GRID_SIZE;
+	newy = random(screenp->grid.h)*GRID_SIZE;
 
 	while(!screenp->query_passable(newx, newy, this))
 	{
-		newx = random(screenp->maxx)*GRID_SIZE;
-		newy = random(screenp->maxy)*GRID_SIZE;
+		newx = random(screenp->grid.w)*GRID_SIZE;
+		newy = random(screenp->grid.h)*GRID_SIZE;
 	}
 	setxy(newx,newy);
 	return 1;
@@ -3796,7 +3796,7 @@ void walker::transfer_stats(walker  *newob)
 
 void walker::transform_to(char whatorder, char whatfamily)
 {
-	unsigned char * data;
+	PixieData data;
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
 	short reset = 0;
@@ -3825,9 +3825,9 @@ void walker::transform_to(char whatorder, char whatfamily)
 
 	// Reset the graphics
 	data = screenp->myloader->graphics[PIX(order, family)];
-	facings = data+3;
-	bmp = (data+3);
-	frames = data[0];
+	facings = data.data;
+	bmp = data.data;
+	frames = data.frames;
 	frame = 0;
 	cycle = 0;
 
@@ -3835,8 +3835,8 @@ void walker::transform_to(char whatorder, char whatfamily)
 	xcenter = xpos + sizex/2;
 	ycenter = ypos + sizey/2;
 
-	sizex = data[1];
-	sizey = data[2];
+	sizex = data.w;
+	sizey = data.h;
 	size = sizex*sizey;
 
 	tempxpos = xcenter - sizex/2;
@@ -4012,11 +4012,11 @@ short walker::eat_me(walker  * eater)
 
 void walker::set_direct_frame(short whichframe)
 {
-	unsigned char * data;
-	frame =whichframe;
+	PixieData data;
+	frame = whichframe;
 
 	data = screenp->myloader->graphics[PIX(order, family)];
-	bmp = (data+3 + frame*size);
+	bmp = data.data + frame*size;
 
 }
 

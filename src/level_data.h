@@ -28,7 +28,7 @@ public:
     
     int num_levels;
     
-    unsigned char* icondata;
+    PixieData icondata;
     pixie* icon;
     
     CampaignData(const std::string& id);
@@ -53,8 +53,7 @@ public:
     
     std::string grid_file;
     short par_value;
-    unsigned char* grid;
-    Sint32 maxx, maxy;
+    PixieData grid;
     Sint32 pixmaxx, pixmaxy;
     
     smoother mysmoother;
@@ -67,7 +66,7 @@ public:
     std::list<std::string> description;
     
     // Drawing details
-    unsigned char* pixdata[PIX_MAX];
+    PixieData pixdata[PIX_MAX];
     pixieN* back[PIX_MAX];
     Sint32 topx, topy;
     

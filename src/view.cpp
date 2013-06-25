@@ -208,9 +208,9 @@ short viewscreen::redraw()
 	short yneg = 0;
 	walker  *controlob = control;
 	pixieN  **backp = screenp->back;
-	unsigned char  * gridp = screenp->grid;
-	unsigned short maxx = screenp->maxx;
-	unsigned short maxy = screenp->maxy;
+	PixieData& gridp = screenp->grid;
+	unsigned short maxx = gridp.w;
+	unsigned short maxy = gridp.h;
 
 	// check if we are partially into a grid square and require
 	//   extra row
@@ -248,8 +248,8 @@ short viewscreen::redraw()
 				else                                                                  // show only top of wall
 					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 			}
-			else if(gridp != NULL)
-				backp[(int)gridp[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+			else if(gridp.valid())
+				backp[(int)gridp.data[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
@@ -267,9 +267,9 @@ short viewscreen::redraw(LevelData* data)
 	short yneg = 0;
 	walker  *controlob = control;
 	pixieN  **backp = data->back;
-	unsigned char  * gridp = data->grid;
-	unsigned short maxx = data->maxx;
-	unsigned short maxy = data->maxy;
+	PixieData& gridp = data->grid;
+	unsigned short maxx = gridp.w;
+	unsigned short maxy = gridp.h;
 
 	// check if we are partially into a grid square and require
 	//   extra row
@@ -307,8 +307,8 @@ short viewscreen::redraw(LevelData* data)
 				else                                                                  // show only top of wall
 					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 			}
-			else if(gridp != NULL && backp[(int)gridp[i + maxx * j]] != NULL)
-				backp[(int)gridp[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+			else if(gridp.valid())
+				backp[(int)gridp.data[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 		}
 
 	draw_obs(data); //moved here to put the radar on top of obs

@@ -29,7 +29,7 @@ class loader
 		walker  *create_walker(char order, char family, screen  *screenp, bool cache_weapons = true);
 		pixieN *create_pixieN(char order, char family);
 		walker *set_walker(walker *ob, char order, char family);
-		unsigned char **graphics;
+		PixieData* graphics;
 		signed char  ***animations;
 		Sint32  *stepsizes;
 		Sint32  *lineofsight;

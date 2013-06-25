@@ -44,26 +44,26 @@
 // Pixie -- this initializes the graphics data for the pixie,
 // as well as its graphics x and y size.  In addition, it informs
 // the pixie of the screen object it is linked to.
-pixie::pixie(unsigned char *data, short x, short y, screen  *myscreen)
+pixie::pixie(const PixieData& data, screen* myscreen)
 {
 	screenp = myscreen;
-	bmp = data;
-	sizex = x;
-	sizey = y;
+	bmp = data.data;
+	sizex = data.w;
+	sizey = data.h;
 	size = (unsigned short) (sizex*sizey);
-	//  oldbmp = (unsigned char *)new char[size];
+	
 	accel = 0;
 }
 
 //buffers: new constructor that automatically calls init_sdl_surface
-pixie::pixie(unsigned char *data, short x, short y, screen *myscreen, int doaccel)
+pixie::pixie(const PixieData& data, screen *myscreen, int doaccel)
 {
 	screenp = myscreen;
-	bmp = data;
-	sizex = x;
-	sizey = y;
+	bmp = data.data;
+	sizex = data.w;
+	sizey = data.h;
 	size = (unsigned short) (sizex*sizey);
-	//  oldbmp = (unsigned char *)new char[size];
+	
 	accel = 0;
 	
 	if(doaccel)

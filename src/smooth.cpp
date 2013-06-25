@@ -29,18 +29,11 @@ void smoother::reset()
     maxy = 0;
 }
 
-void smoother::set_target(screen  *target)
+void smoother::set_target(const PixieData& data)
 {
-	mygrid = target->grid;
-	maxx = target->maxx;
-	maxy = target->maxy;
-}
-
-void smoother::set_target(unsigned char* grid, Sint32 maxX, Sint32 maxY)
-{
-	mygrid = grid;
-	maxx = maxX;
-	maxy = maxY;
+	mygrid = data.data;
+	maxx = data.w;
+	maxy = data.h;
 }
 
 Sint32 smoother::query_x_y(Sint32 x, Sint32 y)

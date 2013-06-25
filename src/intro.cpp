@@ -44,8 +44,8 @@ void intro_main(Sint32 argc, char** argv)
 	pixie *gladiator;
 	pixie *bigfoot;
 	pixie *ul, *ur, *ll, *lr; // for full-screen displays
-	unsigned char *uldata, *urdata, *lldata, *lrdata;
-	unsigned char *gladdata, *bigdata;
+	PixieData uldata, urdata, lldata, lrdata;
+	PixieData gladdata, bigdata;
 	char message[80];
 
 #if 0
@@ -69,13 +69,12 @@ void intro_main(Sint32 argc, char** argv)
 	myscreen->clear();
 
 	gladdata = read_pixie_file("3mages2.pix");
-	gladiator = new pixie(gladdata+3, gladdata[1],
-	                      gladdata[2], myscreen);
+	gladiator = new pixie(gladdata, myscreen);
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
 	mytext->write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0]);
 	//myscreen->refresh();
 	delete gladiator;
-	free(gladdata);
+	gladdata.free();
 
 	if (show() < 0)
 	{
@@ -86,21 +85,19 @@ void intro_main(Sint32 argc, char** argv)
 
 	//gladdata = read_pixie_file("glad.pix");
 	gladdata = read_pixie_file("glad2.pix");
-	gladiator = new pixie(&(gladdata[3]), (int)gladdata[1],
-	                      (int)gladdata[2], myscreen);
+	gladiator = new pixie(gladdata, myscreen);
 	bigdata = read_pixie_file("bigfoot.pix");
-	bigfoot = new pixie(&(bigdata[3]), (int)bigdata[1],
-	                    (int)bigdata[2], myscreen);
+	bigfoot = new pixie(bigdata, myscreen);
 	myscreen->clear();
 	bigfoot->drawMix(120,50,myscreen->viewob[0]);
 	//gladiator->drawMix(110,65,myscreen->viewob[0]);
 	gladiator->drawMix(100, 110, myscreen->viewob[0]);
 	//myscreen->refresh();
 
-	free(gladdata);
+	gladdata.free();
 	delete gladiator;
 	delete bigfoot;
-	free(bigdata);
+	bigdata.free();
 
 	if (show() < 0)
 	{
@@ -138,39 +135,35 @@ void intro_main(Sint32 argc, char** argv)
 	// First 'interlude' snapshot
 	myscreen->clear();
 	uldata = read_pixie_file("game2ul.pix");
-	ul = new pixie(uldata+3, uldata[1],
-	               uldata[2], myscreen);
+	ul = new pixie(uldata, myscreen);
 	ul->setxy(41, 12);
 	ul->draw(myscreen->viewob[0]);
 	delete ul;
-	delete uldata;
+	uldata.free();
 	ul = NULL;
 
 	urdata = read_pixie_file("game2ur.pix");
-	ur = new pixie(&(urdata[3]), (int)urdata[1],
-	               (int)urdata[2], myscreen);
+	ur = new pixie(urdata, myscreen);
 	ur->setxy(160, 12);
 	ur->draw(myscreen->viewob[0]);
 	delete ur;
-	delete urdata;
+	urdata.free();
 	ur = NULL;
 
 	lldata = read_pixie_file("game2ll.pix");
-	ll = new pixie(&(lldata[3]), (int)lldata[1],
-	               (int)lldata[2], myscreen);
+	ll = new pixie(lldata, myscreen);
 	ll->setxy(41, 103);
 	ll->draw(myscreen->viewob[0]);
 	delete ll;
-	delete lldata;
+	lldata.free();
 	ll = NULL;
 
 	lrdata = read_pixie_file("game2lr.pix");
-	lr = new pixie(&(lrdata[3]), (int)lrdata[1],
-	               (int)lrdata[2], myscreen);
+	lr = new pixie(lrdata, myscreen);
 	lr->setxy(160, 103);
 	lr->draw(myscreen->viewob[0]);
 	delete lr;
-	delete lrdata;
+	lrdata.free();
 	lr = NULL;
 
 	//myscreen->refresh();
@@ -199,21 +192,19 @@ void intro_main(Sint32 argc, char** argv)
 	// Second 'interlude' & extra credits
 	myscreen->clear();
 	uldata = read_pixie_file("game4.pix");
-	ul = new pixie(&(uldata[3]), (int)uldata[1],
-	               (int)uldata[2], myscreen);
+	ul = new pixie(uldata, myscreen);
 	ul->setxy(0, 0);
 	ul->draw(myscreen->viewob[0]);
 	delete ul;
-	delete uldata;
+	uldata.free();
 	ul = NULL;
 
 	lldata = read_pixie_file("game5.pix");
-	ll = new pixie(&(lldata[3]), (int)lldata[1],
-	               (int)lldata[2], myscreen);
+	ll = new pixie(lldata, myscreen);
 	ll->setxy(160, 78);
 	ll->draw(myscreen->viewob[0]);
 	delete ll;
-	delete lldata;
+	lldata.free();
 	ll = NULL;
 
 	strcpy(message, "Additional Artwork By:");

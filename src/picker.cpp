@@ -59,7 +59,7 @@ Sint32 leftmouse();
 void family_name_copy(char *name, short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
-unsigned char *backpics[5];
+PixieData backpics[5];
 pixieN *backdrops[5];
 
 // Zardus: FIX: this is from view.cpp, so that we can delete it here
@@ -79,7 +79,7 @@ std::map<std::string, int> current_levels;
 char  message[80];
 Sint32 editguy = 0;        // Global for editing guys ..
 unsigned char playermode=1;
-unsigned char  *main_title_logo_data,*main_columns_data;
+PixieData main_title_logo_data, main_columns_data;
 pixieN  *main_title_logo_pix,*main_columns_pix;
 SDL_RWops *loadgame; //for loading the default game
 vbutton * localbuttons; //global so we can delete the buttons anywhere
@@ -274,11 +274,8 @@ void picker_quit()
 			delete backdrops[i];
 			backdrops[i] = NULL;
 		}
-		if (backpics[i])
-		{
-			free(backpics[i]);
-			backpics[i] = NULL;
-		}
+		
+        backpics[i].free();
 	}
 
 	for (i = 0; i < MAX_BUTTONS; i++)
@@ -291,9 +288,9 @@ void picker_quit()
 	delete mytext;
 	delete myscreen;
 	delete main_columns_pix;
-	free(main_columns_data);
+	main_columns_data.free();
 	delete main_title_logo_pix;
-	free(main_title_logo_data);
+	main_title_logo_data.free();
 
 #if 0
 	if (cfgfile)

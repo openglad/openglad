@@ -218,10 +218,10 @@ void resmooth_map(LevelData* data)
 
 void clear_terrain(LevelData* data)
 {
-    int w = data->maxx;
-    int h = data->maxy;
+    int w = data->grid.w;
+    int h = data->grid.h;
     
-    memset(data->grid, 1, w*h);
+    memset(data->grid.data, 1, w*h);
     resmooth_map(data);
     
     myscreen->viewob[0]->myradar->update();
@@ -266,6 +266,29 @@ bool SimpleButton::contains(int x, int y) const
 {
     return (area.x <= x && x < area.x + area.w
             && area.y <= y && y < area.y + area.h);
+}
+
+
+
+bool prompt_for_string(text* mytext, const std::string& message, std::string& result)
+{
+    int max_chars = 29;
+    
+    int x = 58;
+    int y = 60;
+    int w = max_chars*6;
+    int h = 10;
+    
+    myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
+    
+    char* str = mytext->input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
+    myscreen->clearfontbuffer();
+    
+    if(str == NULL)
+        return false;
+    
+    result = str;
+    return true;
 }
 
 bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& ls, SimpleButton* elem)
@@ -422,12 +445,30 @@ bool LevelEditorData::saveCampaign()
 bool LevelEditorData::saveLevelAs(int id)
 {
     level->id = id;
-    return level->save();
+    char buf[20];
+    snprintf(buf, 20, "scen%d", id);
+    level->grid_file = buf;
+    
+    unpack_campaign(get_mounted_campaign());
+    bool result = level->save();
+    if(result)
+        result = repack_campaign(get_mounted_campaign());
+    cleanup_unpacked_campaign();
+    return result;
 }
 
 bool LevelEditorData::saveLevel()
 {
-    return level->save();
+    char buf[20];
+    snprintf(buf, 20, "scen%d", level->id);
+    level->grid_file = buf;
+    
+    unpack_campaign(get_mounted_campaign());
+    bool result = level->save();
+    if(result)
+        result = repack_campaign(get_mounted_campaign());
+    cleanup_unpacked_campaign();
+    return result;
 }
 
 
@@ -691,23 +732,6 @@ Sint32 level_editor()
 			event = 1; // redraw screen
 		}
 
-		// Load scenario, etc. ..
-		if(mykeyboard[KEYSTATE_l] && mykeyboard[KEYSTATE_LCTRL])
-		{
-		    bool cancel = false;
-            if(levelchanged)
-            {
-                if(!yes_or_no_prompt("Load Level", "Discard current changes?", false))
-                    cancel = true;
-            }
-            
-            if(!cancel)
-            {
-                // TODO: Prompt for new level num or browse for level
-                data.loadLevel(1);
-            }
-		}
-
 		// Save scenario
 		if(mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
 		{
@@ -722,35 +746,6 @@ Sint32 level_editor()
 			currentmode = (currentmode+1) %2;
 			while (mykeyboard[KEYSTATE_m])
 				get_input_events(WAIT);
-		}
-
-		// New names
-		if (mykeyboard[KEYSTATE_n])
-		{
-			event = 1;
-			//gotoxy(1, 23);
-			myscreen->draw_button(50, 30, 200, 40, 1, 1);
-			scentext->write_xy(52, 32, "New name [G/S] : ", DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			while ( !mykeyboard[KEYSTATE_g] && !mykeyboard[KEYSTATE_s] )
-				get_input_events(WAIT);
-			if (mykeyboard[KEYSTATE_s])
-			{
-				myscreen->draw_button(50, 30, 200, 40, 1, 1);
-				myscreen->buffer_to_screen(0, 0, 320, 200);
-				new_scenario_name();
-				while (mykeyboard[KEYSTATE_s])
-					get_input_events(WAIT);
-			} // end new scenario name
-			else if (mykeyboard[KEYSTATE_g])
-			{
-				myscreen->draw_button(50, 30, 200, 40, 1, 1);
-				myscreen->buffer_to_screen(0, 0, 320, 200);
-				new_grid_name();
-				while (mykeyboard[KEYSTATE_g])
-					get_input_events(WAIT);
-			} // end new grid name
-			myscreen->clearfontbuffer(50,30,150,10);
 		}
 
 		// Enter scenario text ..
@@ -927,7 +922,7 @@ Sint32 level_editor()
 			data.level->add_draw_pos(0, -SCROLLSIZE);
         }
 		if ((mykeyboard[KEYSTATE_KP_2] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_KP_3]) // || mymouse[MOUSE_Y]> 198)
-		        && data.level->topy <= (GRID_SIZE*data.level->maxy)-18) // scroll down
+		        && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
         {
             event = 1;
 			data.level->add_draw_pos(0, SCROLLSIZE);
@@ -939,7 +934,7 @@ Sint32 level_editor()
 			data.level->add_draw_pos(-SCROLLSIZE, 0);
         }
 		if ((mykeyboard[KEYSTATE_KP_6] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_KP_9]) // || mymouse[MOUSE_X] > 318)
-		        && data.level->topx <= (GRID_SIZE*data.level->maxx)-18) // scroll right
+		        && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
         {
             event = 1;
 			data.level->add_draw_pos(SCROLLSIZE, 0);
@@ -1030,7 +1025,7 @@ Sint32 level_editor()
                                     unmount_campaign_package(get_mounted_campaign());
                                     mount_campaign_package(campaign);
                                     
-                                    // Tell the game to use this one
+                                    // Load campaign data for the editor
                                     data.loadCampaign(campaign);
                                     
                                     // Load first scenario
@@ -1059,16 +1054,35 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
                 {
                     // TODO: Use campaign picker here
-                    popup_dialog("Load Campaign", "Not yet implemented.");
+                    std::string campaign = "com.example.new_campaign";
+                    if(prompt_for_string(scentext, "Load Campaign", campaign))
+                    {
+                        if(data.loadCampaign(campaign))
+                            Log("Campaign loaded.\n");
+                        else
+                            Log("Failed to load campaign.\n");
+                        
+                        myradar.update(data.level);
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveButton))
                 {
-                    // TODO: The level editor needs to hold some temporary campaign data so it can save it.
-                    popup_dialog("Save Campaign", "Not yet implemented.");
+                    if(data.saveCampaign())
+                        Log("Campaign saved.\n");
+                    else
+                        Log("Failed to save campaign.\n");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveAsButton))
                 {
-                    popup_dialog("Save Campaign As", "Not yet implemented.");
+                    // TODO: Use campaign picker
+                    std::string campaign = data.campaign->id;
+                    if(prompt_for_string(scentext, "Save Campaign As", campaign))
+                    {
+                        if(data.saveCampaignAs(campaign))
+                            Log("Campaign saved.\n");
+                        else
+                            Log("Failed to save campaign.\n");
+                    }
                 }
                 // Level >
                 else if(activate_sub_menu_button(mx, my, current_menu, fileLevelButton))
@@ -1100,22 +1114,43 @@ Sint32 level_editor()
                     if(!cancel)
                     {
                         // TODO: Use level picker here
-                        myscreen->draw_button(30, 15, 220, 25, 1, 1);
-                        scentext->write_xy(32, 17, "Loading Level...", DARK_BLUE, 1);
-                        data.loadLevel(1);
-                        myscreen->clearfontbuffer();
+                        char buf[20];
+                        snprintf(buf, 20, "%d", data.level->id);
+                        
+                        std::string level = buf;
+                        if(prompt_for_string(scentext, "Load Level (num)", level))
+                        {
+                            if(data.loadLevel(atoi(level.c_str())))
+                                Log("Level loaded.\n");
+                            else
+                                Log("Failed to load level %d.\n", atoi(level.c_str()));
+                            
+                            myradar.update(data.level);
+                        }
                     }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
                 {
-                    data.saveLevel();
+                    if(data.saveLevel())
+                        Log("Level saved.\n");
+                    else
+                        Log("Failed to save level.\n");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
                 {
                     // TODO: It would be nice to use the level browser for this
-                    popup_dialog("Save Level As", "Not yet implemented.");
-                    //int num = level_browse();
-                    //data.saveLevelAs(num);
+                    
+                    char buf[20];
+                    snprintf(buf, 20, "%d", data.level->id);
+                    
+                    std::string level = buf;
+                    if(prompt_for_string(scentext, "Save Level (num)", level))
+                    {
+                        if(data.saveLevelAs(atoi(level.c_str())))
+                            Log("Level saved.\n");
+                        else
+                            Log("Failed to save level %d.\n", atoi(level.c_str()));
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
                 {
@@ -1404,14 +1439,14 @@ Sint32 level_editor()
                         windowx /= GRID_SIZE;  // get the map position ..
                         windowy /= GRID_SIZE;
                         // Set to our current selection
-                        data.level->grid[windowy*(data.level->maxx)+windowx] = some_pix(backcount);
+                        data.level->grid.data[windowy*(data.level->grid.w)+windowx] = some_pix(backcount);
                         levelchanged = 1;
                         if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
                         {
                             for (i=windowx-1; i <= windowx+1; i++)
                                 for (j=windowy-1; j <=windowy+1; j++)
-                                    if (i >= 0 && i < data.level->maxx &&
-                                            j >= 0 && j < data.level->maxy)
+                                    if (i >= 0 && i < data.level->grid.w &&
+                                            j >= 0 && j < data.level->grid.h)
                                         data.level->mysmoother.smooth(i, j);
                         }
                         
@@ -1459,7 +1494,7 @@ Sint32 level_editor()
 				windowy -= (windowy%GRID_SIZE);
 				windowx /= GRID_SIZE;
 				windowy /= GRID_SIZE;
-				backcount = data.level->grid[windowy*(data.level->maxx)+windowx];
+				backcount = data.level->grid.data[windowy*(data.level->grid.w)+windowx];
 			}
 			while (mymouse[MOUSE_RIGHT])
 			{
@@ -1638,7 +1673,7 @@ Sint32 display_panel(screen *myscreen)
 
 	// Show the background grid ..
 	myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
-	                    0, 0, 320, 200, myscreen->pixdata[backcount]+3);
+	                    0, 0, 320, 200, myscreen->pixdata[backcount].data);
 
 	//   rowsdown = (NUM_BACKGROUNDS / 4) + 1;
 	//   rowsdown = 0; // hack for now
@@ -1652,7 +1687,7 @@ Sint32 display_panel(screen *myscreen)
 			myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
 			                    GRID_SIZE, GRID_SIZE,
 			                    0, 0, 320, 200,
-			                    myscreen->pixdata[ backgrounds[whichback] ]+3);
+			                    myscreen->pixdata[ backgrounds[whichback] ].data);
 		}
 	}
 	myscreen->draw_box(S_RIGHT, PIX_TOP,
@@ -1721,14 +1756,14 @@ Sint32 save_map_file(char  * filename, screen *master)
 		return 0;
 	}
 
-	x = master->maxx;
-	y = master->maxy;
+	x = master->grid.w;
+	y = master->grid.h;
 	numframes = 1;
 	SDL_RWwrite(outfile, &numframes, 1, 1);
 	SDL_RWwrite(outfile, &x, 1, 1);
 	SDL_RWwrite(outfile, &y, 1, 1);
 
-	SDL_RWwrite(outfile, master->grid, 1, (x*y));
+	SDL_RWwrite(outfile, master->grid.data, 1, (x*y));
 
 	SDL_RWclose(outfile);        // Close the data file
 	return 1;
@@ -1756,9 +1791,6 @@ Sint32 load_new_grid(screen *master)
 	//buffers: PORT: changed .PIX to .pix
 	tempstring += ".pix";
 	master->grid = read_pixie_file(tempstring.c_str());
-	master->maxx = master->grid[1];
-	master->maxy = master->grid[2];
-	master->grid = master->grid + 3;
 	
 	//master->viewob[0]->myradar = new radar(master->viewob[0],
 	//  master, 0);
@@ -2044,7 +2076,7 @@ Sint32 save_scenario(char * filename, screen * master, char *gridname)
 	if ( (outfile = open_write_file("temp/scen/", temp_filename)) == NULL ) // open for write
 	{
 		//gotoxy(1, 22);
-		Log("Could not open file for writing: %s\n", filename);
+		Log("Could not open file for writing: %s%s\n", "temp/scen/", filename);
 
 		master->draw_button(30, 30, 220, 60, 1, 1);
 		sprintf(buffer, "Error in saving scenario file");
