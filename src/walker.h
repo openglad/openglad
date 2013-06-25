@@ -21,6 +21,7 @@
 
 #include "base.h"
 #include "pixien.h"
+#include "obmap.h"
 
 class walker : public pixieN
 {
@@ -140,6 +141,7 @@ class walker : public pixieN
 		short speed_bonus_left;        // speed potions, etc.
 		// Zardus: ADD: in_act should be set while in an action
 		bool in_act;
+		obmap* myobmap;
 
 	protected:
 		short act_generate();

@@ -54,7 +54,7 @@ void do_help(screen * myscreen);
 Sint32 new_scenario_name();
 Sint32 new_grid_name();
 void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y);
-walker * some_hit(Sint32 x, Sint32 y, walker  *ob, screen *screenp);
+walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
 char some_pix(Sint32 whatback);
 char  * query_my_map_name();
 
@@ -211,19 +211,18 @@ void shareCampaign(screen* myscreen)
     
 }
 
-void resmooth_map(screen* myscreen)
+void resmooth_map(LevelData* data)
 {
-    myscreen->mysmoother.set_target(myscreen);
-    myscreen->mysmoother.smooth();
+    data->mysmoother.smooth();
 }
 
-void clear_terrain(screen* myscreen)
+void clear_terrain(LevelData* data)
 {
-    int w = myscreen->maxx;
-    int h = myscreen->maxy;
+    int w = data->maxx;
+    int h = data->maxy;
     
-    memset(myscreen->grid, 1, w*h);
-    resmooth_map(myscreen);
+    memset(data->grid, 1, w*h);
+    resmooth_map(data);
     
     myscreen->viewob[0]->myradar->update();
 }
@@ -356,9 +355,16 @@ public:
     ~LevelEditorData();
     
     bool loadCampaign(const std::string& id);
+    bool reloadCampaign();
+    
     bool loadLevel(int id);
-    bool saveCampaign(const std::string& id);
-    bool saveLevel(int id);
+    bool reloadLevel();
+    
+    bool saveCampaignAs(const std::string& id);
+    bool saveCampaign();
+    
+    bool saveLevelAs(int id);
+    bool saveLevel();
 };
 
 LevelEditorData::LevelEditorData()
@@ -373,18 +379,59 @@ LevelEditorData::~LevelEditorData()
     delete level;
 }
 
+bool LevelEditorData::loadCampaign(const std::string& id)
+{
+    campaign->id = id;
+    return campaign->load();
+}
+
+bool LevelEditorData::reloadCampaign()
+{
+    return campaign->load();
+}
+
+
+bool LevelEditorData::loadLevel(int id)
+{
+    level->id = id;
+    return level->load();
+}
+
+bool LevelEditorData::reloadLevel()
+{
+    return level->load();
+}
+
+
+bool LevelEditorData::saveCampaignAs(const std::string& id)
+{
+    campaign->id = id;
+    return campaign->save();
+}
+
+bool LevelEditorData::saveCampaign()
+{
+    return campaign->save();
+}
+
+
+bool LevelEditorData::saveLevelAs(int id)
+{
+    level->id = id;
+    return level->save();
+}
+
+bool LevelEditorData::saveLevel()
+{
+    return level->save();
+}
+
+
+
+
 Sint32 level_editor()
 {
-    /*static LevelEditorData data;
-    if(data.campaign->load())
-        Log("Loaded campaign data successfully.\n");
-    else
-        Log("Failed to load campaign data.\n");
-    mount_campaign_package(data.campaign->id);
-    if(data.level->load())
-        Log("Loaded level data successfully.\n");
-    else
-        Log("Failed to load level data.\n");*/
+    static LevelEditorData data;
     
 	Sint32 i,j;
 	Sint32 extra;
@@ -393,10 +440,6 @@ Sint32 level_editor()
 	Sint32 mx, my;
 	char mystring[80];
 	short count;
-	
-	
-    memset(scen_name, 0, 10);
-    memset(grid_name, 0, 10);
     
     // Initialize palette for cycling
     load_and_set_palette("our.pal", scenpalette);
@@ -408,16 +451,27 @@ Sint32 level_editor()
 
     std::list<std::string> levels = list_levels();
     
-	// Set our default par value ..
-	myscreen->par_value = 1;
-	// Loading the first level automatically
-	load_scenario(levels.front().c_str(), myscreen);
-	strncpy(scen_name, levels.front().c_str(), 10);
-    strcpy(grid_name, query_my_map_name());
+    if(data.reloadCampaign())
+        Log("Loaded campaign data successfully.\n");
+    else
+        Log("Failed to load campaign data.\n");
+    
+    std::string old_campaign = get_mounted_campaign();
+    if(old_campaign.size() > 0)
+        unmount_campaign_package(old_campaign);
+    mount_campaign_package(data.campaign->id);
+    
+    if(data.reloadLevel())
+        Log("Loaded level data successfully.\n");
+    else
+        Log("Failed to load level data.\n");
 
 	myscreen->clearfontbuffer();
-	myscreen->redraw();
-	myscreen->refresh();
+	event = 1;  // Redraw right away
+	
+	// Minimap
+	radar myradar(myscreen->viewob[0], myscreen, 0);
+	myradar.start(data.level);
 	
 	// GUI
 	using std::set;
@@ -551,7 +605,7 @@ Sint32 level_editor()
 		// Delete all with ^D
 		if (mykeyboard[KEYSTATE_d] && mykeyboard[KEYSTATE_LCTRL])
 		{
-			remove_all_objects(myscreen);
+		    data.level->delete_objects();
 			levelchanged = 1;
 			event = 1;
 		}
@@ -621,7 +675,7 @@ Sint32 level_editor()
 		if (mykeyboard[KEYSTATE_KP_MULTIPLY]) // options menu
 		{
 			release_mouse();
-			scenario_options(myscreen);
+			//scenario_options(myscreen);
 			grab_mouse();
 			event = 1; // redraw screen
 		}
@@ -637,13 +691,16 @@ Sint32 level_editor()
             }
             
             if(!cancel)
-                do_load(myscreen);
+            {
+                // TODO: Prompt for new level num or browse for level
+                data.loadLevel(1);
+            }
 		}
 
 		// Save scenario
 		if(mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
 		{
-			save_level_and_map(myscreen);
+		    data.saveLevel();
 		}  // end of saving routines
 
 
@@ -747,7 +804,7 @@ Sint32 level_editor()
 		// Display the scenario help..
 		if (mykeyboard[KEYSTATE_SLASH] && (mykeyboard[KEYSTATE_RSHIFT] || mykeyboard[KEYSTATE_LSHIFT]))
 		{
-			read_scenario(myscreen);
+			//read_scenario(myscreen);
 			myscreen->clearfontbuffer();
 			event = 1;
 		}
@@ -822,7 +879,7 @@ Sint32 level_editor()
 		// Smooth current map, F5
 		if (mykeyboard[KEYSTATE_F5])
 		{
-		    resmooth_map(myscreen);
+		    resmooth_map(data.level);
 			while (mykeyboard[KEYSTATE_F5])
 				get_input_events(WAIT);
 			event = 1;
@@ -853,21 +910,29 @@ Sint32 level_editor()
 		// Zardus: ADD: added scrolling by keyboard
 		// Zardus: PORT: disabled mouse scrolling
 		if ((mykeyboard[KEYSTATE_KP_8] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_9]) // || mymouse[MOUSE_Y]< 2)
-		        && myscreen->topy >= 0) // top of the screen
-			set_screen_pos(myscreen, myscreen->topx,
-			               myscreen->topy-SCROLLSIZE);
+		        && data.level->topy >= 0) // top of the screen
+        {
+            event = 1;
+			data.level->add_draw_pos(0, -SCROLLSIZE);
+        }
 		if ((mykeyboard[KEYSTATE_KP_2] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_KP_3]) // || mymouse[MOUSE_Y]> 198)
-		        && myscreen->topy <= (GRID_SIZE*myscreen->maxy)-18) // scroll down
-			set_screen_pos(myscreen, myscreen->topx,
-			               myscreen->topy+SCROLLSIZE);
+		        && data.level->topy <= (GRID_SIZE*data.level->maxy)-18) // scroll down
+        {
+            event = 1;
+			data.level->add_draw_pos(0, SCROLLSIZE);
+        }
 		if ((mykeyboard[KEYSTATE_KP_4] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_1]) // || mymouse[MOUSE_X]< 2)
-		        && myscreen->topx >= 0) // scroll left
-			set_screen_pos(myscreen, myscreen->topx-SCROLLSIZE,
-			               myscreen->topy);
+		        && data.level->topx >= 0) // scroll left
+        {
+            event = 1;
+			data.level->add_draw_pos(-SCROLLSIZE, 0);
+        }
 		if ((mykeyboard[KEYSTATE_KP_6] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_KP_9]) // || mymouse[MOUSE_X] > 318)
-		        && myscreen->topx <= (GRID_SIZE*myscreen->maxx)-18) // scroll right
-			set_screen_pos(myscreen, myscreen->topx+SCROLLSIZE,
-			               myscreen->topy);
+		        && data.level->topx <= (GRID_SIZE*data.level->maxx)-18) // scroll right
+        {
+            event = 1;
+			data.level->add_draw_pos(SCROLLSIZE, 0);
+        }
 
 		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
 		{
@@ -968,7 +1033,8 @@ Sint32 level_editor()
                                     strncpy(scen_name, levels.front().c_str(), 10);
                                     strcpy(grid_name, query_my_map_name());
                                     // Update minimap
-                                    myscreen->viewob[0]->myradar->update();
+                                    //myscreen->viewob[0]->myradar->update(data.level);
+                                    myradar.update(data.level);
                                 }
                                 else
                                 {
@@ -1006,10 +1072,8 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelNewButton))
                 {
                     // New level
-                    remove_all_objects(myscreen);
-                    clear_terrain(myscreen);
-                    // TODO: Reset all the details: level num, title, map size, etc.
-                    //clear_details(myscreen);
+                    data.level->clear();
+                    data.level->create_new_grid();
                     levelchanged = 1;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelLoadButton))
@@ -1026,18 +1090,20 @@ Sint32 level_editor()
                         // TODO: Use level picker here
                         myscreen->draw_button(30, 15, 220, 25, 1, 1);
                         scentext->write_xy(32, 17, "Loading Level...", DARK_BLUE, 1);
-                        do_load(myscreen);
+                        data.loadLevel(1);
                         myscreen->clearfontbuffer();
                     }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
                 {
-                    do_save(myscreen);
+                    data.saveLevel();
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
                 {
                     // TODO: It would be nice to use the level browser for this
                     popup_dialog("Save Level As", "Not yet implemented.");
+                    //int num = level_browse();
+                    //data.saveLevelAs(num);
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
                 {
@@ -1134,9 +1200,9 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
                 {
                     // TODO: Prompt for width and height
-                    
-                    // TODO: Resize the grid
-                    
+                    //int width, height;
+                    //if(prompt_for_width_and_height(&width, &height))
+                    //data.level->resize_grid(width, height);
                     popup_dialog("Edit Map Size", "Not yet implemented.");
                 }
                 // SELECTION
@@ -1218,74 +1284,74 @@ Sint32 level_editor()
                 current_menu.clear();
                 
                 // Zardus: ADD: can move map by clicking on minimap
-                if (mx > myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4
-                        && my > myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4
+                if (mx > myscreen->viewob[0]->endx - myradar.xview - 4
+                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
                         && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
                 {
-                    mx -= myscreen->viewob[0]->endx - myscreen->viewob[0]->myradar->xview - 4;
-                    my -= myscreen->viewob[0]->endy - myscreen->viewob[0]->myradar->yview - 4;
+                    mx -= myscreen->viewob[0]->endx - myradar.xview - 4;
+                    my -= myscreen->viewob[0]->endy - myradar.yview - 4;
 
                     // Zardus: above set_screen_pos doesn't take into account that minimap scrolls too. This one does.
-                    set_screen_pos (myscreen, myscreen->viewob[0]->myradar->radarx * GRID_SIZE + mx * GRID_SIZE - 160,
-                                    myscreen->viewob[0]->myradar->radary * GRID_SIZE + my * GRID_SIZE - 100);
+                    data.level->set_draw_pos(myradar.radarx * GRID_SIZE + mx * GRID_SIZE - 160,
+                                    myradar.radary * GRID_SIZE + my * GRID_SIZE - 100);
                 }
                 else if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
                           (my >= S_UP) && (my <= S_DOWN) )      // in the main window
                 {
-                    windowx = mymouse[MOUSE_X] + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+                    windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
                     if (grid_aligned==1)
                         windowx -= (windowx%GRID_SIZE);
-                    windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
+                    windowy = mymouse[MOUSE_Y] + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
                     if (grid_aligned==1)
                         windowy -= (windowy%GRID_SIZE);
                     if (mykeyboard[KEYSTATE_i]) // get info on current object
                     {
-                        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
+                        newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, myscreen))
+                        if (some_hit(windowx, windowy, newob, data.level))
                             info_box(newob->collide_ob,myscreen);
-                        myscreen->remove_ob(newob,0);
+                        data.level->remove_ob(newob,0);
                         continue;
                     }  // end of info mode
                     if (mykeyboard[KEYSTATE_f]) // set facing of current object
                     {
-                        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
+                        newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, myscreen))
+                        if (some_hit(windowx, windowy, newob, data.level))
                         {
                             set_facing(newob->collide_ob,myscreen);
                             levelchanged = 1;
                         }
-                        myscreen->remove_ob(newob,0);
+                        data.level->remove_ob(newob,0);
                         continue;
                     }  // end of set facing
 
                     if (mykeyboard[KEYSTATE_r]) // (re)name the current object
                     {
-                        newob = myscreen->add_ob(ORDER_LIVING, FAMILY_ELF);
+                        newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, myscreen))
+                        if (some_hit(windowx, windowy, newob, data.level))
                         {
                             set_name(newob->collide_ob,myscreen);
                             levelchanged = 1;
                         }
-                        myscreen->remove_ob(newob,0);
+                        data.level->remove_ob(newob,0);
                     }  // end of info mode
                     else if (currentmode == OBJECT_MODE)
                     {
                         levelchanged = 1;
-                        newob = myscreen->add_ob(myorder, forecount);
+                        newob = data.level->add_ob(myorder, forecount);
                         newob->setxy(windowx, windowy);
                         newob->team_num = currentteam;
                         newob->stats->level = currentlevel;
                         newob->dead = 0; // just in case
                         newob->collide_ob = 0;
-                        if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, myscreen))
+                        if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, data.level))
                         {
                             if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
                                     newob->collide_ob )                    // and hit a guy?
                             {
-                                myscreen->remove_ob(newob->collide_ob,0);
+                                data.level->remove_ob(newob->collide_ob,0);
                                 while (mymouse[MOUSE_LEFT])
                                 {
                                     mymouse = query_mouse();
@@ -1294,7 +1360,7 @@ Sint32 level_editor()
                             } // end of deleting guy
                             if (newob)
                             {
-                                myscreen->remove_ob(newob,0);
+                                data.level->remove_ob(newob,0);
                                 newob = NULL;
                             }
                         }  // end of failure to put guy
@@ -1311,7 +1377,7 @@ Sint32 level_editor()
                         }
                         if (mykeyboard[KEYSTATE_LCTRL] && newob)
                         {
-                            myscreen->remove_ob(newob,0);
+                            data.level->remove_ob(newob,0);
                             newob = NULL;
                         }
                         //       while (mymouse[MOUSE_LEFT])
@@ -1322,20 +1388,19 @@ Sint32 level_editor()
                         windowx /= GRID_SIZE;  // get the map position ..
                         windowy /= GRID_SIZE;
                         // Set to our current selection
-                        myscreen->grid[windowy*(myscreen->maxx)+windowx] = some_pix(backcount);
+                        data.level->grid[windowy*(data.level->maxx)+windowx] = some_pix(backcount);
                         levelchanged = 1;
                         if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
                         {
-                            myscreen->mysmoother.set_target(myscreen);
-                            
                             for (i=windowx-1; i <= windowx+1; i++)
                                 for (j=windowy-1; j <=windowy+1; j++)
-                                    if (i >= 0 && i < myscreen->maxx &&
-                                            j >= 0 && j < myscreen->maxy)
-                                        myscreen->mysmoother.smooth(i, j);
+                                    if (i >= 0 && i < data.level->maxx &&
+                                            j >= 0 && j < data.level->maxy)
+                                        data.level->mysmoother.smooth(i, j);
                         }
                         
-                        myscreen->viewob[0]->myradar->update();
+                        //myscreen->viewob[0]->myradar->update(data.level);
+                        myradar.update(data.level);
                     }  // end of setting grid square
                 } // end of main window
                 //    if ( (mx >= PIX_LEFT) && (mx <= PIX_RIGHT) &&
@@ -1372,13 +1437,13 @@ Sint32 level_editor()
 			} // end of if object mode
 			if (currentmode == MAP_MODE)
 			{
-				windowx = mymouse[MOUSE_X] + myscreen->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+				windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
 				windowx -= (windowx%GRID_SIZE);
-				windowy = mymouse[MOUSE_Y] + myscreen->topy - myscreen->viewob[0]->yloc; // - S_UP
+				windowy = mymouse[MOUSE_Y] + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
 				windowy -= (windowy%GRID_SIZE);
 				windowx /= GRID_SIZE;
 				windowy /= GRID_SIZE;
-				backcount = myscreen->grid[windowy*(myscreen->maxx)+windowx];
+				backcount = data.level->grid[windowy*(data.level->maxx)+windowx];
 			}
 			while (mymouse[MOUSE_RIGHT])
 			{
@@ -1403,7 +1468,9 @@ Sint32 level_editor()
 		if (event)
 		{
 			//release_mouse();
-			myscreen->redraw();
+			//myscreen->redraw();
+			data.level->draw(myscreen);
+			myradar.draw(data.level);
 			for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
                 (*e)->draw(myscreen, scentext);
             for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
@@ -1436,7 +1503,8 @@ Sint32 level_editor()
     // Clear the background
     myscreen->clearscreen();
     
-    //unmount_campaign_package(data.campaign->id);
+    unmount_campaign_package(data.campaign->id);
+    mount_campaign_package(old_campaign);
     
 	return OK;
 }
@@ -2202,11 +2270,11 @@ Sint32 check_collide(Sint32 x,  Sint32 y,  Sint32 xsize,  Sint32 ysize,
 }
 
 // The old-fashioned hit check ..
-walker * some_hit(Sint32 x, Sint32 y, walker  *ob, screen *screenp)
+walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 {
 	oblink  *here;
 
-	here = screenp->oblist;
+	here = data->oblist;
 
 	while (here)
 	{
@@ -2222,7 +2290,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, screen *screenp)
 	}
 
 	// Also check the fx list ..
-	here = screenp->fxlist;
+	here = data->fxlist;
 	while (here)
 	{
 		if (here->ob && here->ob != ob)
@@ -2237,7 +2305,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, screen *screenp)
 	}
 
 	// Also check the weapons list ..
-	here = screenp->weaplist;
+	here = data->weaplist;
 	while (here)
 	{
 		if (here->ob && !here->ob->dead && here->ob != ob)

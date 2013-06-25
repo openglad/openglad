@@ -20,6 +20,7 @@
 // Definition of VIEWSCREEN class
 
 #include "base.h"
+#include "level_data.h"
 
 // Viewscreen-related defines
 #define PREF_LIFE (signed char) 0
@@ -83,6 +84,7 @@ class viewscreen
 		void clear();
 		short draw ();
 		short redraw();
+		short redraw(LevelData* data);
 		short refresh();
 		short input(const SDL_Event& event);
 		short continuous_input();
@@ -91,6 +93,7 @@ class viewscreen
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
 		short draw_obs(); //moved here to fix radar
+		short draw_obs(LevelData* data);
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
 		void view_team();

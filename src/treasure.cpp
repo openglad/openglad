@@ -200,8 +200,7 @@ short treasure::eat_me(walker  * eater)
 						{
 							//myscreen->remove_ob(here->ob);
 							here->ob->dead = 1;
-							myscreen->myobmap->remove
-							(here->ob);
+							myscreen->myobmap->remove(here->ob);
 							//myscreen->remove_obmap(here->ob);
 						}
 						here = here->next;

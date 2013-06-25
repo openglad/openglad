@@ -143,14 +143,26 @@ std::list<std::string> list_files(const std::string& dirname)
     return fileList;
 }
 
+static std::string mounted_campaign;
+
+std::string get_mounted_campaign()
+{
+    return mounted_campaign;
+}
+
 bool mount_campaign_package(const std::string& id)
 {
+    if(id.size() == 0)
+        return false;
+    
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_mount(filename.c_str(), NULL, 0))
     {
         Log("Failed to mount campaign %s: %s\n", filename.c_str(), PHYSFS_getLastError());
+        mounted_campaign.clear();
         return false;
     }
+    mounted_campaign = id;
     return true;
 }
 
@@ -165,6 +177,7 @@ bool unmount_campaign_package(const std::string& id)
         Log("Failed to unmount campaign file %s: %s\n", filename.c_str(), PHYSFS_getLastError());
         return false;
     }
+    mounted_campaign.clear();
     return true;
 }
 

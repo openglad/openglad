@@ -78,20 +78,58 @@ bool CampaignData::load()
     return true;
 }
 
+bool CampaignData::save()
+{
+    cleanup_unpacked_campaign();
+    
+    bool result = true;
+    if(unpack_campaign(id))
+    {
+        // Unmount campaign while it is changed
+        //unmount_campaign_package(ascreen->current_campaign);
+        
+        if(!repack_campaign(id))
+        {
+            Log("Save failed: Could not repack campaign: %s\n", id.c_str());
+            result = false;
+        }
+        
+        // Remount the new campaign package
+        //mount_campaign_package(ascreen->current_campaign);
+    }
+    else
+    {
+        Log("Save failed: Could not unpack campaign: %s\n", id.c_str());
+        result = false;
+    }
+    cleanup_unpacked_campaign();
+    
+    return result;
+}
 
 
 
 
 LevelData::LevelData(int id)
     : id(id), title("New Level"), type(0), par_value(1), grid(NULL), maxx(0), maxy(0), pixmaxx(0), pixmaxy(0)
-    , myloader(NULL), numobs(0), oblist(NULL), fxlist(NULL), weaplist(NULL)
-{}
+    , myloader(NULL), numobs(0), oblist(NULL), fxlist(NULL), weaplist(NULL), topx(0), topy(0)
+{
+    for (int i = 0; i < PIX_MAX; i++)
+    {
+        pixdata[i] = NULL;
+        back[i] = NULL;
+    }
+    
+	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
+}
 
 LevelData::~LevelData()
 {
     delete_objects();
     delete_grid();
     delete myloader;
+    
+    delete myobmap;
 }
 
 void LevelData::clear()
@@ -99,9 +137,31 @@ void LevelData::clear()
     delete_objects();
     delete_grid();
     
+        
+    for (int i = 0; i < PIX_MAX; i++)
+    {
+        if(pixdata[i])
+        {
+            free(pixdata[i]);
+            pixdata[i] = NULL;
+        }
+        
+        if (back[i])
+        {
+            delete back[i];
+            back[i] = NULL;
+        }
+    }
+    
+    delete myobmap;
+	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
+    
     title = "New Level";
     type = 0;
     par_value = 1;
+    
+    topx = 0;
+    topy = 0;
 }
 
 walker* LevelData::add_ob(char order, char family, bool atstart)
@@ -127,6 +187,7 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
 		here->ob = myloader->create_walker(order, family, myscreen);
 		if (!here->ob)
 			return NULL;
+        here->ob->myobmap = this->myobmap;
 		here->next = oblist;
 		oblist = here;
 		if (order == ORDER_LIVING)
@@ -139,6 +200,7 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
 		here->ob = myloader->create_walker(order, family, myscreen);
 		if (!here->ob)
 			return NULL;
+        here->ob->myobmap = this->myobmap;
 		here->next = NULL;
 		oblist = here;
 		if (order == ORDER_LIVING)
@@ -163,6 +225,7 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
 
 	here->next = NULL;
 	here->ob = myloader->create_walker(order, family, myscreen);
+    here->ob->myobmap = this->myobmap;
 
 	if (order == ORDER_LIVING)
 		numobs++;
@@ -189,6 +252,7 @@ walker* LevelData::add_fx_ob(char order, char family)
 
 	here->next = NULL;
 	here->ob = myloader->create_walker(order, family, myscreen, false);
+    here->ob->myobmap = this->myobmap;
 
 	//numobs++;
 	//here->ob->ignore = 1;
@@ -200,10 +264,113 @@ walker* LevelData::add_weap_ob(char order, char family)
 	oblink *here = new oblink;
 
 	here->ob = myloader->create_walker(order, family, myscreen);
+    here->ob->myobmap = this->myobmap;
 	here->next = weaplist;
 	weaplist = here;
 
 	return here->ob;
+}
+
+short LevelData::remove_ob(walker  *ob, short no_delete)
+{
+	oblink  *here, *prev;
+
+	if (ob && ob->query_order() == ORDER_LIVING)
+		numobs--;
+
+	here = weaplist; //most common case
+	if (here)
+		if (here->ob && here->ob == ob) // this is the ob we want
+		{
+			if (!no_delete)
+			{
+				delete here->ob;
+			}
+			weaplist = weaplist->next;
+			delete here;
+			return 1;
+		}
+
+	prev = here;
+	while (here)
+	{
+		if (here->ob && here->ob == ob) //this is the ob we want
+		{
+			if (!no_delete)
+			{
+				delete here->ob;
+			}
+			prev->next = here->next; // remove this link
+			delete here;
+			return 1; //we found it, at least
+		}
+		prev = here;
+		here = here->next;
+	}
+
+
+	here = fxlist; //less common
+	if (here)
+		if (here->ob && here->ob == ob) // this is the ob we want
+		{
+			if (!no_delete)
+			{
+				delete here->ob;
+			}
+			fxlist = fxlist->next;
+			delete here;
+			return 1;
+		}
+
+	prev = here;
+	while (here)
+	{
+		if (here->ob && here->ob == ob) //this is the ob we want
+		{
+			if (!no_delete)
+			{
+				delete here->ob;
+			}
+			prev->next = here->next; // remove this link
+			delete here;
+			return 1; //we found it, at least
+		}
+		prev = here;
+		here = here->next;
+	}
+
+
+	here = oblist; //less common
+	if (here)
+		if (here->ob && here->ob == ob) // this is the ob we want
+		{
+			if (!no_delete)
+			{
+				delete here->ob;
+			}
+			oblist = oblist->next;
+			delete here;
+			return 1;
+		}
+
+	prev = here;
+	while (here)
+	{
+		if (here->ob && here->ob == ob) //this is the ob we want
+		{
+			if (!no_delete)
+			{
+				delete here->ob;
+			}
+			prev->next = here->next; // remove this link
+			delete here;
+			return 1; //we found it, at least
+		}
+		prev = here;
+		here = here->next;
+	}
+
+	return 0;
 }
 
 void LevelData::delete_grid()
@@ -214,6 +381,93 @@ void LevelData::delete_grid()
     maxy = 0;
     pixmaxx = 0;
     pixmaxy = 0;
+}
+
+void LevelData::create_new_grid()
+{
+    free(grid);
+    
+    maxx = 40;
+    maxy = 60;
+	pixmaxx = maxx * GRID_SIZE;
+	pixmaxy = maxy * GRID_SIZE;
+	
+	int size = maxx*maxy;
+    grid = (unsigned char*)calloc(size, 1);
+	for(int i = 0; i < size; i++)
+    {
+        // Color
+        switch(rand()%4)
+        {
+            case 0:
+            grid[i] = PIX_GRASS1;
+            break;
+            case 1:
+            grid[i] = PIX_GRASS2;
+            break;
+            case 2:
+            grid[i] = PIX_GRASS3;
+            break;
+            case 3:
+            grid[i] = PIX_GRASS4;
+            break;
+        }
+    }
+}
+
+void LevelData::resize_grid(int width, int height)
+{
+    // Size is limited to one byte in the file format
+    if(width < 3 || height < 3 || width > 255 || height > 255)
+    {
+        Log("Can't resize grid to these dimensions: %dx%d\n", width, height);
+        return;
+    }
+    
+    // Create new grid
+	int size = width*height;
+    unsigned char* new_grid = (unsigned char*)calloc(size, 1);
+    
+    // Copy the map data
+	for(int i = 0; i < width; i++)
+    {
+        for(int j = 0; j < height; j++)
+        {
+            if(i < maxx && j < maxy)
+            {
+                new_grid[j*width + i] = grid[j*maxx + i];
+            }
+            else
+            {
+                switch(rand()%4)
+                {
+                    case 0:
+                    new_grid[j*width + i] = PIX_GRASS1;
+                    break;
+                    case 1:
+                    new_grid[j*width + i] = PIX_GRASS2;
+                    break;
+                    case 2:
+                    new_grid[j*width + i] = PIX_GRASS3;
+                    break;
+                    case 3:
+                    new_grid[j*width + i] = PIX_GRASS4;
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Delete the old, use the new
+    free(grid);
+    grid = new_grid;
+    maxx = width;
+    maxy = height;
+	pixmaxx = maxx * GRID_SIZE;
+	pixmaxy = maxy * GRID_SIZE;
+    
+    
+    // TODO: Delete objects that fell off the map
 }
 
 void LevelData::delete_objects()
@@ -945,8 +1199,38 @@ bool LevelData::load()
     
     // Do the rest of the loading
     clear();
+    
     short tempvalue = load_scenario_version(infile, this, versionnumber);
     SDL_RWclose(infile);
+    
+    // Load background tiles
+    {
+        
+        // Load map data from a pixie format
+        load_map_data(pixdata);
+
+        // Initialize a pixie for each background piece
+        for(int i = 0; i < PIX_MAX; i++)
+            back[i] = new pixieN(pixdata[i], myscreen, 1);
+
+        //buffers: after we set all the tiles to use acceleration, we go
+        //through the tiles that have pal cycling to turn of the accel.
+        back[PIX_WATER1]->set_accel(0);
+        back[PIX_WATER2]->set_accel(0);
+        back[PIX_WATER3]->set_accel(0);
+        back[PIX_WATERGRASS_LL]->set_accel(0);
+        back[PIX_WATERGRASS_LR]->set_accel(0);
+        back[PIX_WATERGRASS_UL]->set_accel(0);
+        back[PIX_WATERGRASS_UR]->set_accel(0);
+        back[PIX_WATERGRASS_U]->set_accel(0);
+        back[PIX_WATERGRASS_D]->set_accel(0);
+        back[PIX_WATERGRASS_L]->set_accel(0);
+        back[PIX_WATERGRASS_R]->set_accel(0);
+        back[PIX_GRASSWATER_LL]->set_accel(0);
+        back[PIX_GRASSWATER_LR]->set_accel(0);
+        back[PIX_GRASSWATER_UL]->set_accel(0);
+        back[PIX_GRASSWATER_UR]->set_accel(0);
+    }
     
 	return (tempvalue != 0);
 }
@@ -1194,4 +1478,25 @@ bool LevelData::save()
 	Log("Scenario saved.\n");
 
 	return true;
+}
+
+void LevelData::set_draw_pos(Sint32 topx, Sint32 topy)
+{
+    this->topx = topx;
+    this->topy = topy;
+}
+
+void LevelData::add_draw_pos(Sint32 topx, Sint32 topy)
+{
+    this->topx += topx;
+    this->topy += topy;
+}
+
+void LevelData::draw(screen* myscreen)
+{
+	short i;
+	for (i=0; i < myscreen->numviews; i++)
+    {
+        myscreen->viewob[i]->redraw(this);
+    }
 }

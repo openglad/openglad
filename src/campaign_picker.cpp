@@ -21,8 +21,7 @@ int toInt(const std::string& s)
 // Unmounts old campaign, mounts new one, and returns the current level (scenario) that the player is on
 int load_campaign(const std::string& old_campaign, const std::string& campaign, std::map<std::string, int>& current_levels)
 {
-    if(!unmount_campaign_package(old_campaign))
-        return -1;
+    unmount_campaign_package(old_campaign);
     
     if(!mount_campaign_package(campaign))
         return -2;

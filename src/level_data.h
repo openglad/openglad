@@ -1,6 +1,7 @@
 #ifndef _LEVEL_DATA_H__
 #define _LEVEL_DATA_H__
 
+class LevelData;
 
 #include <list>
 #include <string>
@@ -62,7 +63,13 @@ public:
     oblink* oblist;
     oblink* fxlist;  // fx--explosions, etc.
     oblink* weaplist;  // weapons
+    obmap* myobmap;
     std::list<std::string> description;
+    
+    // Drawing details
+    unsigned char* pixdata[PIX_MAX];
+    pixieN* back[PIX_MAX];
+    Sint32 topx, topy;
     
     LevelData(int id);
     ~LevelData();
@@ -73,10 +80,17 @@ public:
     walker* add_ob(char order, char family, bool atstart = false);
     walker* add_fx_ob(char order, char family);
     walker* add_weap_ob(char order, char family);
+    short remove_ob(walker  *ob, short no_delete);
     
+    void create_new_grid();
+    void resize_grid(int width, int height);
     void delete_grid();
     void delete_objects();
     void clear();
+    
+    void set_draw_pos(Sint32 topx, Sint32 topy);
+    void add_draw_pos(Sint32 topx, Sint32 topy);
+    void draw(screen* myscreen);
 };
 
 

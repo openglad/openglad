@@ -40,7 +40,8 @@ extern Sint32 current_difficulty;
 // from glad.cpp
 short remaining_foes(screen *myscreen, char myteam);
 
-walker::walker(unsigned char  *data, screen  *myscreen): pixieN(data, myscreen)
+walker::walker(unsigned char  *data, screen  *myscreen)
+    : pixieN(data, myscreen)
 {
 	// Set our stats ..
 	stats = new statistics(this);
@@ -97,8 +98,7 @@ walker::walker(unsigned char  *data, screen  *myscreen): pixieN(data, myscreen)
 	weapons_left = 1; // default, used for fighters
 
 	cachenext = NULL;
-
-
+    myobmap = myscreen->myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
 }
 
 short
@@ -176,9 +176,8 @@ walker::~walker()
 	owner = NULL;
 	collide_ob = NULL;
 	dead = 1;
-	screenp->myobmap->remove
-	(this); // remove ourselves from obmap lists
-	//screenp->myobmap->remove_all(this); // remove ALL cases, anywhere
+	myobmap->remove(this); // remove ourselves from obmap lists
+	//myobmap->remove_all(this); // remove ALL cases, anywhere
 	delete stats;
 	stats = NULL;
 	bmp = NULL;
@@ -197,12 +196,10 @@ short walker::move(short x, short y)
 
 short walker::setxy(short x, short y)
 {
-
 	if (!ignore)
-		screenp->myobmap->move(this, x, y);
+		myobmap->move(this, x, y);
 	else // just remove us, in case :)
-		screenp->myobmap->remove
-		(this);
+		myobmap->remove(this);
 
 	return pixie::setxy(x, y);
 }
@@ -3806,8 +3803,7 @@ void walker::transform_to(char whatorder, char whatfamily)
 	short tempact = query_act_type();;
 
 	// First remove us from the collision table..
-	screenp->myobmap->remove
-	(this);
+	myobmap->remove(this);
 
 	if (order == whatorder) // same object type
 	{

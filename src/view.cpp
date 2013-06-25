@@ -248,13 +248,72 @@ short viewscreen::redraw()
 				else                                                                  // show only top of wall
 					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 			}
-			else
+			else if(gridp != NULL)
 				backp[(int)gridp[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
 	if (prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
+	display_text();
+	return 1;
+
+}
+
+short viewscreen::redraw(LevelData* data)
+{
+	short i,j;
+	short xneg = 0;
+	short yneg = 0;
+	walker  *controlob = control;
+	pixieN  **backp = data->back;
+	unsigned char  * gridp = data->grid;
+	unsigned short maxx = data->maxx;
+	unsigned short maxy = data->maxy;
+
+	// check if we are partially into a grid square and require
+	//   extra row
+	if (controlob)
+	{
+		topx = controlob->xpos - (xview - controlob->sizex)/2;
+		topy = controlob->ypos - (yview - controlob->sizey)/2;
+	}
+	else // no control object now ..
+	{
+		topx = data->topx;
+		topy = data->topy;
+	}
+
+
+	if (topx < 0)
+		xneg = 1;
+	if (topy < 0)
+		yneg = 1;
+
+	//note  >> 4 is equivalent to /16 but faster, since it doesn't divide
+	//likewise <<4 is equivalent to *16, but faster
+
+	for (j=(topy/GRID_SIZE)-yneg;j < ((topy+(yview))/GRID_SIZE) +1; j++)
+		for (i=(topx/GRID_SIZE)-xneg;i < ((topx+(xview))/GRID_SIZE) +1; i++)
+		{
+			// NOTE: back is a PIXIEN.
+			// background graphic [grid(x,y)] -> put in buffer
+			if (i<0 || j<0 || i>=maxx || j>=maxy)
+			{
+				if (j == -1 && i>-1 && i<maxx)  // show side of wall
+					backp[PIX_WALLSIDE1]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+				else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
+					backp[PIX_H_WALL1]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+				else                                                                  // show only top of wall
+					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+			}
+			else
+				backp[(int)gridp[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+		}
+
+	draw_obs(data); //moved here to put the radar on top of obs
+	if (prefs[PREF_RADAR] == PREF_RADAR_ON)
+		myradar->draw(data);
 	display_text();
 	return 1;
 
@@ -1107,6 +1166,44 @@ short viewscreen::draw_obs()
 
 	// Finally draw the weapons
 	here = screenp->weaplist;
+	while(here)
+	{
+		if (here->ob && !here->ob->dead)
+			here->ob->draw(this);
+		here = here->next;
+	}
+
+	return 1;
+}
+
+short viewscreen::draw_obs(LevelData* data)
+{
+	oblink  *here;
+
+	// First draw the special effects
+	here = data->fxlist;
+	while(here)
+	{
+		if (here->ob && !here->ob->dead)
+		{
+			here->ob->draw(this);
+		}
+		here = here->next;
+	}
+
+	// Now do real objects
+	here = data->oblist;
+	while(here)
+	{
+		if (here->ob && !here->ob->dead)
+		{
+			here->ob->draw(this);
+		}
+		here = here->next;
+	}
+
+	// Finally draw the weapons
+	here = data->weaplist;
 	while(here)
 	{
 		if (here->ob && !here->ob->dead)

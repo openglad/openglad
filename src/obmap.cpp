@@ -276,10 +276,8 @@ short obmap::move(walker  *ob, short x, short y)  // This goes in walker's setxy
 		if ( x == ob->xpos )
 			return 1;      // do nothing for horizontal
 
-	remove
-		(ob);
-	add
-		(ob, x, y);
+	remove(ob);
+	add(ob, x, y);
 	return 1;
 }
 
