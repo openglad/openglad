@@ -1964,6 +1964,7 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 	master->grid = read_pixie_file(newgrid);
 	master->pixmaxx = master->grid.w * GRID_SIZE;
 	master->pixmaxy = master->grid.h * GRID_SIZE;
+	master->mysmoother.set_target(master->grid);
 
 	//Log("LV2: read grid %s\n", newgrid);
 	//wait_for_key(SDLK_SPACE);
@@ -2094,6 +2095,7 @@ short load_version_3(SDL_RWops  *infile, screen * master)
 	master->grid = read_pixie_file(newgrid);
 	master->pixmaxx = master->grid.w * GRID_SIZE;
 	master->pixmaxy = master->grid.h * GRID_SIZE;
+	master->mysmoother.set_target(master->grid);
 
 	// This is a hack because we don't know where else it is loaded.
 	//  if (master->myradar[0])
@@ -2218,6 +2220,7 @@ short load_version_4(SDL_RWops  *infile, screen * master)
 	master->grid = read_pixie_file(newgrid);
 	master->pixmaxx = master->grid.w * GRID_SIZE;
 	master->pixmaxy = master->grid.h * GRID_SIZE;
+	master->mysmoother.set_target(master->grid);
 
 	// This is a hack because we don't know where else it is loaded.
 	//  if (master->myradar[0])

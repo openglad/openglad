@@ -383,6 +383,7 @@ void LevelData::create_new_grid()
 {
     grid.free();
     
+    grid.frames = 1;
     grid.w = 40;
     grid.h = 60;
 	pixmaxx = grid.w * GRID_SIZE;
@@ -457,6 +458,7 @@ void LevelData::resize_grid(int width, int height)
     // Delete the old, use the new
     grid.free();
     grid.data = new_grid;
+    grid.frames = 1;
     grid.w = width;
     grid.h = height;
 	pixmaxx = grid.w * GRID_SIZE;

@@ -738,7 +738,10 @@ Sint32 level_editor()
 		// Save scenario
 		if(mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
 		{
-		    data.saveLevel();
+		    if(data.saveLevel())
+            {
+                levelchanged = 0;
+            }
 		}  // end of saving routines
 
 
@@ -1104,6 +1107,7 @@ Sint32 level_editor()
                     data.level->create_new_grid();
                     myradar.update(data.level);
                     levelchanged = 1;
+                    event = 1;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelLoadButton))
                 {
@@ -1129,13 +1133,17 @@ Sint32 level_editor()
                                 Log("Failed to load level %d.\n", atoi(level.c_str()));
                             
                             myradar.update(data.level);
+                            event = 1;
                         }
                     }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
                 {
                     if(data.saveLevel())
+                    {
                         Log("Level saved.\n");
+                        levelchanged = 0;
+                    }
                     else
                         Log("Failed to save level.\n");
                 }
@@ -1150,7 +1158,10 @@ Sint32 level_editor()
                     if(prompt_for_string(scentext, "Save Level (num)", level))
                     {
                         if(data.saveLevelAs(atoi(level.c_str())))
+                        {
                             Log("Level saved.\n");
+                            levelchanged = 0;
+                        }
                         else
                             Log("Failed to save level %d.\n", atoi(level.c_str()));
                     }
@@ -1521,6 +1532,7 @@ Sint32 level_editor()
 		// Redraw screen
 		if (event)
 		{
+		    myscreen->clearscreen();
 			data.level->draw(myscreen);
 			myradar.draw(data.level);
 			for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
