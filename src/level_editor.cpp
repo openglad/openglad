@@ -61,6 +61,7 @@ char  * query_my_map_name();
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 void popup_dialog(const char* title, const char* message);
+void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
 Sint32 do_load(screen *ascreen);  // load a scenario or grid
 Sint32 do_save(screen *ascreen);  // save a scenario or grid
@@ -436,12 +437,26 @@ bool LevelEditorData::reloadLevel()
 bool LevelEditorData::saveCampaignAs(const std::string& id)
 {
     campaign->id = id;
-    return campaign->save();
+    bool result = campaign->save();
+    
+    // Remount for consistency in PhysFS
+    std::string old_campaign = get_mounted_campaign();
+    unmount_campaign_package(old_campaign);
+    mount_campaign_package(old_campaign);
+    
+    return result;
 }
 
 bool LevelEditorData::saveCampaign()
 {
-    return campaign->save();
+    bool result = campaign->save();
+    
+    // Remount for consistency in PhysFS
+    std::string old_campaign = get_mounted_campaign();
+    unmount_campaign_package(old_campaign);
+    mount_campaign_package(old_campaign);
+    
+    return result;
 }
 
 
@@ -452,11 +467,17 @@ bool LevelEditorData::saveLevelAs(int id)
     snprintf(buf, 20, "scen%d", id);
     level->grid_file = buf;
     
-    unpack_campaign(get_mounted_campaign());
+    std::string old_campaign = get_mounted_campaign();
+    unpack_campaign(old_campaign);
     bool result = level->save();
     if(result)
-        result = repack_campaign(get_mounted_campaign());
+        result = repack_campaign(old_campaign);
     cleanup_unpacked_campaign();
+    
+    // Remount for consistency in PhysFS
+    unmount_campaign_package(old_campaign);
+    mount_campaign_package(old_campaign);
+    
     return result;
 }
 
@@ -466,11 +487,17 @@ bool LevelEditorData::saveLevel()
     snprintf(buf, 20, "scen%d", level->id);
     level->grid_file = buf;
     
-    unpack_campaign(get_mounted_campaign());
+    std::string old_campaign = get_mounted_campaign();
+    unpack_campaign(old_campaign);
     bool result = level->save();
     if(result)
         result = repack_campaign(get_mounted_campaign());
     cleanup_unpacked_campaign();
+    
+    // Remount for consistency in PhysFS
+    unmount_campaign_package(old_campaign);
+    mount_campaign_package(old_campaign);
+    
     return result;
 }
 
@@ -740,7 +767,16 @@ Sint32 level_editor()
 		{
 		    if(data.saveLevel())
             {
+                Log("Level saved.\n");
+                timed_dialog("Level saved.");
+                event = 1;
                 levelchanged = 0;
+            }
+            else
+            {
+                Log("Save failed.\n");
+                timed_dialog("Save failed.");
+                event = 1;
             }
 		}  // end of saving routines
 
@@ -1142,10 +1178,16 @@ Sint32 level_editor()
                     if(data.saveLevel())
                     {
                         Log("Level saved.\n");
+                        timed_dialog("Level saved.");
+                        event = 1;
                         levelchanged = 0;
                     }
                     else
+                    {
                         Log("Failed to save level.\n");
+                        timed_dialog("Save failed.");
+                        event = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
                 {
@@ -1160,10 +1202,16 @@ Sint32 level_editor()
                         if(data.saveLevelAs(atoi(level.c_str())))
                         {
                             Log("Level saved.\n");
+                            timed_dialog("Level saved.");
+                            event = 1;
                             levelchanged = 0;
                         }
                         else
+                        {
                             Log("Failed to save level %d.\n", atoi(level.c_str()));
+                            timed_dialog("Save failed.");
+                            event = 1;
+                        }
                     }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))

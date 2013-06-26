@@ -41,6 +41,7 @@
 #define NO 6
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
+
 #define MAXTEAM 24 //max # of guys on a team
 
 #define BUTTON_HEIGHT 15
@@ -1791,6 +1792,45 @@ Sint32 create_load_menu(Sint32 arg1)
 	}
 	
 	return REDRAW;
+}
+
+
+void timed_dialog(const char* message, float delay_seconds)
+{
+	text gladtext(myscreen);
+	
+	int pix_per_char = 3;
+    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
+    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
+    
+    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, "");
+    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+
+    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
+
+	grab_mouse();
+    clear_keyboard();
+    Uint8* keyboard = query_keyboard();
+    
+    clear_key_press_event();
+	
+	Uint32 start_time = SDL_GetTicks();
+	while ((SDL_GetTicks() - start_time)/1000.0f < delay_seconds)
+	{
+		get_input_events(POLL);
+		
+        // Includes button checking, but the existing buttons are used, so it is all messed up.
+        // They would need to be deleted first and possibly restored afterward.
+        //if(leftmouse())
+        //    break;
+        
+        if(query_mouse()[MOUSE_LEFT] || query_key_press_event())
+            break;
+        
+        SDL_Delay(10);
+	}
+	
+	myscreen->clearfontbuffer();
 }
 
 // TODO: Multi-line messages would be nice...

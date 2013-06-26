@@ -943,6 +943,14 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	return 1;
 } // end load_version_5
 
+#define READ_OR_RETURN(ctx, ptr, size, n) \
+do{ \
+    if(!SDL_RWread(ctx, ptr, size, n)) \
+    { \
+        Log("Read error: %s\n", SDL_GetError()); \
+        return 0; \
+    } \
+} while(0)
 
 // Version 6 includes a 30-byte scenario title after the grid name.
 // Also load version 7 and 8 here, since it's a simple change ..
@@ -999,42 +1007,42 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
 
     // Get grid file to load
-    SDL_RWread(infile, newgrid, 8, 1);
+    READ_OR_RETURN(infile, newgrid, 8, 1);
     // Zardus: FIX: make sure they're lowercased
     lowercase((char *)newgrid);
 	data->grid_file = newgrid;
 
     // Get scenario title, if it exists
-    SDL_RWread(infile, scentitle, 30, 1);
+    READ_OR_RETURN(infile, scentitle, 30, 1);
 
     // Get the scenario type information
-    SDL_RWread(infile, &new_scen_type, 1, 1);
+    READ_OR_RETURN(infile, &new_scen_type, 1, 1);
 
     if (version >= 8)
     {
-        SDL_RWread(infile, &temp_par, 2, 1);
+        READ_OR_RETURN(infile, &temp_par, 2, 1);
     }
     // else we're using the value of the level ..
 
     // Determine number of objects to load ...
-    SDL_RWread(infile, &listsize, 2, 1);
+    READ_OR_RETURN(infile, &listsize, 2, 1);
 
     // Now read in the objects one at a time
     for (i=0; i < listsize; i++)
     {
-        SDL_RWread(infile, &temporder, 1, 1);
-        SDL_RWread(infile, &tempfamily, 1, 1);
-        SDL_RWread(infile, &currentx, 2, 1);
-        SDL_RWread(infile, &currenty, 2, 1);
-        SDL_RWread(infile, &tempteam, 1, 1);
-        SDL_RWread(infile, &tempfacing, 1, 1);
-        SDL_RWread(infile, &tempcommand, 1, 1);
+        READ_OR_RETURN(infile, &temporder, 1, 1);
+        READ_OR_RETURN(infile, &tempfamily, 1, 1);
+        READ_OR_RETURN(infile, &currentx, 2, 1);
+        READ_OR_RETURN(infile, &currenty, 2, 1);
+        READ_OR_RETURN(infile, &tempteam, 1, 1);
+        READ_OR_RETURN(infile, &tempfacing, 1, 1);
+        READ_OR_RETURN(infile, &tempcommand, 1, 1);
         if (version >= 7)
-            SDL_RWread(infile, &shortlevel, 2, 1);
+            READ_OR_RETURN(infile, &shortlevel, 2, 1);
         else
-            SDL_RWread(infile, &templevel, 1, 1);
-        SDL_RWread(infile, tempname, 12, 1);
-        SDL_RWread(infile, tempreserved, 10, 1);
+            READ_OR_RETURN(infile, &templevel, 1, 1);
+        READ_OR_RETURN(infile, tempname, 12, 1);
+        READ_OR_RETURN(infile, tempreserved, 10, 1);
         if (temporder == ORDER_TREASURE)
             new_guy = data->add_fx_ob(temporder, tempfamily);
         else
@@ -1059,14 +1067,14 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     
     
     // Now get the lines of text to read ..
-    SDL_RWread(infile, &numlines, 1, 1);
+    READ_OR_RETURN(infile, &numlines, 1, 1);
     std::list<std::string> desc_lines;
     for (i=0; i < numlines; i++)
     {
-        SDL_RWread(infile, &tempwidth, 1, 1);
+        READ_OR_RETURN(infile, &tempwidth, 1, 1);
         if(tempwidth > 0)
         {
-            SDL_RWread(infile, oneline, tempwidth, 1);
+            READ_OR_RETURN(infile, oneline, tempwidth, 1);
             oneline[(int)tempwidth] = 0;
         }
         else
