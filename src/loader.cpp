@@ -303,7 +303,7 @@ PixieData data_copy(const PixieData& d)
     result.h = d.h;
     
     Sint32 len = d.w * d.h * d.frames;
-    result.data = new unsigned char(len);
+    result.data = new unsigned char[len];
     memcpy(result.data, d.data, len);
     
     return result;

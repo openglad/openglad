@@ -389,7 +389,7 @@ void LevelData::create_new_grid()
 	pixmaxy = grid.h * GRID_SIZE;
 	
 	int size = grid.w*grid.h;
-    grid.data = new unsigned char(size);
+    grid.data = new unsigned char[size];
 	for(int i = 0; i < size; i++)
     {
         // Color
@@ -422,7 +422,7 @@ void LevelData::resize_grid(int width, int height)
     
     // Create new grid
 	int size = width*height;
-    unsigned char* new_grid = new unsigned char(size);
+    unsigned char* new_grid = new unsigned char[size];
     
     // Copy the map data
 	for(int i = 0; i < width; i++)
@@ -1017,7 +1017,6 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
     // Determine number of objects to load ...
     SDL_RWread(infile, &listsize, 2, 1);
-	Log("Reading %d objects\n", listsize);
 
     // Now read in the objects one at a time
     for (i=0; i < listsize; i++)
@@ -1044,7 +1043,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
             Log("Error creating object when loading.\n");
             return 0;
         }
-        Log("%d: (%d, %d)\n", i, currentx/GRID_SIZE, currenty/GRID_SIZE);
+        
         new_guy->setxy(currentx, currenty);
         new_guy->team_num = tempteam;
         if (version >= 7)
@@ -1377,7 +1376,6 @@ bool LevelData::save()
 	} // end of weaplist-size check
 
 	SDL_RWwrite(outfile, &listsize, 2, 1);
-	Log("Writing %d objects\n", listsize);
 
 	// Okay, we've written header .. now dump the data ..
 	head = this->oblist;  // back to head of list
@@ -1398,7 +1396,6 @@ bool LevelData::save()
 			tempcommand=head->ob->query_act_type();
 			currentx  = head->ob->xpos;
 			currenty  = head->ob->ypos;
-            Log("%d: (%d, %d)\n", i++, currentx/GRID_SIZE, currenty/GRID_SIZE);
 			//templevel = head->ob->stats->level;
 			shortlevel = head->ob->stats->level;
 			strcpy(tempname, head->ob->stats->name);
