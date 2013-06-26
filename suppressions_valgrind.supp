@@ -1,8 +1,17 @@
- 
+# Suppressions for Openglad
+# A personal favorite way to run valgrind:
+#   valgrind --track-origins=yes --suppressions=./suppressions_valgrind.supp ./openglad > grind.txt 2>&1
+
 {
    Suppress writev() via SDL
    Memcheck:Param
    writev(vector[...])
    fun:writev
    obj:*
+}
+
+{
+   zlib 1.2.3 longest_match intentionally uses uninitialized memory (see https://bugzilla.mozilla.org/show_bug.cgi?id=407860#c1 or https://bugzilla.mozilla.org/show_bug.cgi?id=549224#c2)
+   Memcheck:Cond
+   fun:longest_match
 }

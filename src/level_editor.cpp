@@ -333,24 +333,27 @@ bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*,
     while (mymouse[MOUSE_LEFT])
         get_input_events(WAIT);
     
-    // Close menu if already open
-    if(current_menu.back().first == &button)
-    {
-        current_menu.pop_back();
-        myscreen->clearfontbuffer();
-        return false;
-    }
-    
     if(current_menu.size() > 0)
-        myscreen->clearfontbuffer();
-    // Remove all menus up to the parent
-    while(current_menu.size() > 0)
     {
-        std::set<SimpleButton*>& s = current_menu.back().second;
-        if(s.find(&button) == s.end())
+        // Close menu if already open
+        if(current_menu.back().first == &button)
+        {
             current_menu.pop_back();
-        else
-            return true; // Open this menu
+            myscreen->clearfontbuffer();
+            return false;
+        }
+        
+        myscreen->clearfontbuffer();
+        
+        // Remove all menus up to the parent
+        while(current_menu.size() > 0)
+        {
+            std::set<SimpleButton*>& s = current_menu.back().second;
+            if(s.find(&button) == s.end())
+                current_menu.pop_back();
+            else
+                return true; // Open this menu
+        }
     }
     
     // No parent!

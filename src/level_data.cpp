@@ -956,16 +956,18 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     short listsize;
     short i;
     walker * new_guy;
-    char newgrid[12] = "grid.pix";  // default grid
+    char newgrid[12];
+    memset(newgrid, 0, 12);
     char new_scen_type; // read the scenario type
     char oneline[80];
-    char numlines, tempwidth;
+    memset(oneline, 0, 80);
+    char numlines = 0, tempwidth;
     char tempname[12];
+    memset(tempname, 0, 12);
     oblink *here;
     char scentitle[30];
     memset(scentitle, 0, 30);
     short temp_par;
-    char my_map_name[40];
 
     // Format of a scenario object list file version 6/7 is:
     // 3-byte header: 'FSS'
@@ -998,12 +1000,9 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     SDL_RWread(infile, newgrid, 8, 1);
     // Zardus: FIX: make sure they're lowercased
     lowercase((char *)newgrid);
-    strcpy(my_map_name, newgrid);
 	data->grid_file = newgrid;
 
     // Get scenario title, if it exists
-    //for (i=0; i < strlen(scentitle); i++)
-    //	scentitle[i] = 0;
     SDL_RWread(infile, scentitle, 30, 1);
 
     // Get the scenario type information
@@ -1271,7 +1270,8 @@ bool LevelData::save()
 	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
 	SDL_RWops  *outfile;
 	char temptext[10] = "FSS";
-	char temp_grid[20] = "grid";  // default grid
+	char temp_grid[20];
+    memset(temp_grid, 0, 20);
 	char temp_scen_type = 0;
 	oblink* head = NULL;
 	Sint32 listsize;
@@ -1281,7 +1281,9 @@ bool LevelData::save()
 	char numlines, tempwidth;
 	char oneline[80];
 	char tempname[12];
+    memset(tempname, 0, 12);
 	char scentitle[30];
+    memset(scentitle, 0, 30);
 	short temp_par;
 
 	// Format of a scenario object list file is: (ver. 8)
@@ -1326,16 +1328,10 @@ bool LevelData::save()
 	SDL_RWwrite(outfile, &temp_version, 1, 1);
 
 	// Write name of current grid...
-	strcpy(temp_grid, this->grid_file.c_str());  // Do NOT include extension
-
-	// Set any chars under 8 not used to 0 ..
-	for (i=strlen(temp_grid); i < 8; i++)
-		temp_grid[i] = 0;
+	strncpy(temp_grid, this->grid_file.c_str(), 8);  // Do NOT include extension
 	SDL_RWwrite(outfile, temp_grid, 8, 1);
 
 	// Write the scenario title, if it exists
-	for (i=0; i < int(strlen(scentitle)); i++)
-		scentitle[i] = 0;
 	strcpy(scentitle, this->title.c_str());
 	SDL_RWwrite(outfile, scentitle, 30, 1);
 

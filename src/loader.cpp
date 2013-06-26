@@ -319,6 +319,7 @@ loader::loader()
         
 	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
+	memset(act_types, ACT_RANDOM, SIZE_ORDERS*SIZE_FAMILIES);
 	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
 	memset(animations, 0, SIZE_ORDERS*SIZE_FAMILIES);
 	stepsizes = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
