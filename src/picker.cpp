@@ -1797,6 +1797,8 @@ Sint32 create_load_menu(Sint32 arg1)
 
 void timed_dialog(const char* message, float delay_seconds)
 {
+    Log("%s\n", message);
+    
 	text gladtext(myscreen);
 	
 	int pix_per_char = 3;
@@ -1896,12 +1898,34 @@ void popup_dialog(const char* title, const char* message)
 {
 	text gladtext(myscreen);
 	
-	int pix_per_char = 3;
-    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
-    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
+	int pix_per_char = 6;
+	
+	// Break message into lines
+    std::list<std::string> ls = explode(message, '\n');
     
-    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
-    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+    // Get the max dimensions needed to display it
+    int w = strlen(title)*9;
+    int h = 30 + 10*ls.size();
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        if(int(e->size()*pix_per_char) > w)
+            w = e->size()*pix_per_char;
+    }
+    
+    // Centered bounds
+    int leftside  = 160 - w/2 - 12;
+    int rightside = 160 + w/2 + 12;
+    
+    // Draw background
+    int dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+    
+    // Draw message
+    int j = 0;
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+        j++;
+    }
 
 	if (localbuttons)
 		delete (localbuttons);

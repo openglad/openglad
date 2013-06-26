@@ -582,7 +582,8 @@ Sint32 level_editor()
 	
 	// Campaign menu
 	SimpleButton campaignButton("Campaign", fileButton.area.x + fileButton.area.w, 0, 55, 15);
-	SimpleButton campaignProfileButton("Profile >", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h, 59, 15, true);
+	SimpleButton campaignInfoButton("Info...", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h, 59, 15, true);
+	SimpleButton campaignProfileButton("Profile >", campaignButton.area.x, campaignInfoButton.area.y + campaignInfoButton.area.h, 59, 15, true);
 	SimpleButton campaignDetailsButton("Details >", campaignButton.area.x, campaignProfileButton.area.y + campaignProfileButton.area.h, 59, 15, true);
 	SimpleButton campaignValidateButton("Validate", campaignButton.area.x, campaignDetailsButton.area.y + campaignDetailsButton.area.h, 59, 15, true);
 	
@@ -601,7 +602,8 @@ Sint32 level_editor()
 	
 	// Level menu
 	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, 15);
-	SimpleButton levelLevelNumberButton("Level number...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 95, 15, true);
+	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 95, 15, true);
+	SimpleButton levelLevelNumberButton("Level number...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 95, 15, true);
 	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelLevelNumberButton.area.y + levelLevelNumberButton.area.h, 95, 15, true);
 	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 95, 15, true);
 	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 95, 15, true);
@@ -767,14 +769,12 @@ Sint32 level_editor()
 		{
 		    if(data.saveLevel())
             {
-                Log("Level saved.\n");
                 timed_dialog("Level saved.");
                 event = 1;
                 levelchanged = 0;
             }
             else
             {
-                Log("Save failed.\n");
                 timed_dialog("Save failed.");
                 event = 1;
             }
@@ -1050,8 +1050,8 @@ Sint32 level_editor()
                     if(!cancel)
                     {
                         // Ask for campaign ID
-                        char* campaign = scentext->input_string(58, 33, 29, "com.example.new_campaign");
-                        if(campaign != NULL)
+                        std::string campaign = "com.example.new_campaign";
+                        if(prompt_for_string(scentext, "New Campaign", campaign))
                         {
                             // TODO: Check if campaign already exists and prompt the user to overwrite
                             if(does_campaign_exist(campaign) && !yes_or_no_prompt("Overwrite?", "Overwrite existing campaign with that ID?", false))
@@ -1081,12 +1081,12 @@ Sint32 level_editor()
                                     }
                                     else
                                     {
-                                        Log("Campaign has no scenarios!\n");
+                                        timed_dialog("Campaign has no scenarios!");
                                     }
                                 }
                                 else
                                 {
-                                    Log("Failed to create new campaign.\n");
+                                    timed_dialog("Failed to create new campaign.");
                                 }
                             }
                         }
@@ -1100,9 +1100,15 @@ Sint32 level_editor()
                     if(prompt_for_string(scentext, "Load Campaign", campaign))
                     {
                         if(data.loadCampaign(campaign))
-                            Log("Campaign loaded.\n");
+                        {
+                            timed_dialog("Campaign loaded.");
+                            event = 1;
+                        }
                         else
-                            Log("Failed to load campaign.\n");
+                        {
+                            timed_dialog("Failed to load campaign.");
+                            event = 1;
+                        }
                         
                         myradar.update(data.level);
                     }
@@ -1110,9 +1116,15 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveButton))
                 {
                     if(data.saveCampaign())
-                        Log("Campaign saved.\n");
+                    {
+                        timed_dialog("Campaign saved.");
+                        event = 1;
+                    }
                     else
-                        Log("Failed to save campaign.\n");
+                    {
+                        timed_dialog("Failed to save campaign.");
+                        event = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveAsButton))
                 {
@@ -1121,9 +1133,15 @@ Sint32 level_editor()
                     if(prompt_for_string(scentext, "Save Campaign As", campaign))
                     {
                         if(data.saveCampaignAs(campaign))
-                            Log("Campaign saved.\n");
+                        {
+                            timed_dialog("Campaign saved.");
+                            event = 1;
+                        }
                         else
-                            Log("Failed to save campaign.\n");
+                        {
+                            timed_dialog("Failed to save campaign.");
+                            event = 1;
+                        }
                     }
                 }
                 // Level >
@@ -1164,9 +1182,15 @@ Sint32 level_editor()
                         if(prompt_for_string(scentext, "Load Level (num)", level))
                         {
                             if(data.loadLevel(atoi(level.c_str())))
-                                Log("Level loaded.\n");
+                            {
+                                timed_dialog("Level loaded.");
+                                event = 1;
+                            }
                             else
-                                Log("Failed to load level %d.\n", atoi(level.c_str()));
+                            {
+                                timed_dialog("Failed to load level.");
+                                event = 1;
+                            }
                             
                             myradar.update(data.level);
                             event = 1;
@@ -1177,14 +1201,12 @@ Sint32 level_editor()
                 {
                     if(data.saveLevel())
                     {
-                        Log("Level saved.\n");
                         timed_dialog("Level saved.");
                         event = 1;
                         levelchanged = 0;
                     }
                     else
                     {
-                        Log("Failed to save level.\n");
                         timed_dialog("Save failed.");
                         event = 1;
                     }
@@ -1201,14 +1223,12 @@ Sint32 level_editor()
                     {
                         if(data.saveLevelAs(atoi(level.c_str())))
                         {
-                            Log("Level saved.\n");
                             timed_dialog("Level saved.");
                             event = 1;
                             levelchanged = 0;
                         }
                         else
                         {
-                            Log("Failed to save level %d.\n", atoi(level.c_str()));
                             timed_dialog("Save failed.");
                             event = 1;
                         }
@@ -1223,10 +1243,18 @@ Sint32 level_editor()
                 else if(activate_sub_menu_button(mx, my, current_menu, campaignButton, true))
                 {
                     set<SimpleButton*> s;
+                    s.insert(&campaignInfoButton);
                     s.insert(&campaignProfileButton);
                     s.insert(&campaignDetailsButton);
                     s.insert(&campaignValidateButton);
                     current_menu.push_back(std::make_pair(&campaignButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, campaignInfoButton))
+                {
+                    char buf[512];
+                    snprintf(buf, 512, "ID: %s\nTitle: %s\nVersion: %s\nAuthors: %s\nContributors: %s\nSugg. Power: %d\nFirst level: %d", 
+                                data.campaign->id.c_str(), data.campaign->title.c_str(), data.campaign->version.c_str(), data.campaign->authors.c_str(), data.campaign->contributors.c_str(), data.campaign->suggested_power, data.campaign->first_level);
+                    popup_dialog("Campaign Info", buf);
                 }
                 // Profile >
                 else if(activate_sub_menu_button(mx, my, current_menu, campaignProfileButton))
@@ -1288,11 +1316,18 @@ Sint32 level_editor()
                 else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
                 {
                     set<SimpleButton*> s;
+                    s.insert(&levelInfoButton);
                     s.insert(&levelLevelNumberButton);
                     s.insert(&levelTitleButton);
                     s.insert(&levelDescriptionButton);
                     s.insert(&levelMapSizeButton);
                     current_menu.push_back(std::make_pair(&levelButton, s));
+                }
+                else if(activate_menu_choice(mx, my, current_menu, levelInfoButton))
+                {
+                    char buf[512];
+                    snprintf(buf, 512, "ID number: %d\nTitle: %s\nSize: %ux%u", data.level->id, data.level->title.c_str(), data.level->grid.w, data.level->grid.h);
+                    popup_dialog("Level Info", buf);
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelLevelNumberButton))
                 {

@@ -225,6 +225,25 @@ std::list<int> list_levels()
     return result;
 }
 
+
+std::list<std::string> explode(const std::string& str, char delimiter)
+{
+    std::list<std::string> result;
+
+    size_t oldPos = 0;
+    size_t pos = str.find_first_of(delimiter);
+    while(pos != std::string::npos)
+    {
+        result.push_back(str.substr(oldPos, pos - oldPos));
+        oldPos = pos+1;
+        pos = str.find_first_of(delimiter, oldPos);
+    }
+
+    result.push_back(str.substr(oldPos, std::string::npos));
+
+    return result;
+}
+
 void copy_file(const std::string& filename, const std::string& dest_filename)
 {
     Log("Copying file: %s\n", filename.c_str());
