@@ -11,8 +11,10 @@ int toInt(const std::string& s);
 
 
 CampaignData::CampaignData(const std::string& id)
-    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icon(NULL)
-{}
+    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0), icon(NULL)
+{
+    description.push_back("No description.");
+}
 
 CampaignData::~CampaignData()
 {
@@ -48,7 +50,10 @@ bool CampaignData::load()
                     else if(strcmp(yam.event.scalar, "contributors") == 0)
                         contributors = yam.event.value;
                     else if(strcmp(yam.event.scalar, "description") == 0)
-                        description = yam.event.value;
+                    {
+                        std::string desc = yam.event.value;
+                        description = explode(desc, '\n');
+                    }
                     else if(strcmp(yam.event.scalar, "suggested_power") == 0)
                         suggested_power = toInt(yam.event.value);
                     else if(strcmp(yam.event.scalar, "first_level") == 0)
@@ -92,10 +97,60 @@ bool CampaignData::save()
         // Unmount campaign while it is changed
         //unmount_campaign_package(ascreen->current_campaign);
         
-        if(!repack_campaign(id))
+        SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
+        if(outfile != NULL)
         {
-            Log("Save failed: Could not repack campaign: %s\n", id.c_str());
+            char buf[40];
+            
+            Yam yam;
+            yam.set_output(rwops_write_handler, outfile);
+            
+            yam.emit_pair("format_version", "1");
+            yam.emit_pair("title", title.c_str());
+            yam.emit_pair("version", version.c_str());
+            
+            snprintf(buf, 40, "%d", first_level);
+            yam.emit_pair("first_level", buf);
+            
+            snprintf(buf, 40, "%d", suggested_power);
+            yam.emit_pair("suggested_power", buf);
+            
+            yam.emit_pair("authors", authors.c_str());
+            yam.emit_pair("contributors", contributors.c_str());
+            
+            std::string desc;
+            for(std::list<std::string>::const_iterator e = description.begin(); e != description.end();)
+            {
+                desc += *e;
+                
+                e++;
+                if(e != description.end())
+                    desc += '\n';
+            }
+            
+            yam.emit_pair("description", desc.c_str());
+            
+            yam.close_output();
+            SDL_RWclose(outfile);
+            
+        }
+        else
+        {
+            Log("Couldn't open temp/campaign.yaml for writing.\n");
             result = false;
+        }
+        
+        if(result)
+        {
+            if(repack_campaign(id))
+            {
+                Log("Campaign saved.\n");
+            }
+            else
+            {
+                Log("Save failed: Could not repack campaign: %s\n", id.c_str());
+                result = false;
+            }
         }
         
         // Remount the new campaign package

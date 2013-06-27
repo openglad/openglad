@@ -22,7 +22,7 @@ public:
     std::string version;
     std::string authors;
     std::string contributors;
-    std::string description;
+    std::list<std::string> description;
     int suggested_power;
     int first_level;
     

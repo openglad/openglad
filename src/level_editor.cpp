@@ -89,6 +89,7 @@ Sint32 backcount=0, forecount = 0;
 Sint32 myorder = ORDER_LIVING;
 char currentteam = 0;
 Sint32 event = 1;  // need to redraw?
+Sint32 campaignchanged = 0;  // has campaign changed?
 Sint32 levelchanged = 0;  // has level changed?
 Sint32 cyclemode = 0;      // for color cycling
 Sint32 grid_aligned = 1;  // aligned by grid, default is on
@@ -268,6 +269,210 @@ bool SimpleButton::contains(int x, int y) const
 }
 
 
+
+bool prompt_for_string_block(text* mytext, const std::string& message, std::list<std::string>& result)
+{
+    int max_chars = 40;
+    int max_lines = 8;
+    
+    int w = max_chars*6;
+    int h = max_lines*10;
+    int x = 160 - w/2;
+    int y = 100 - h/2;
+    
+    // Background
+    myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
+    
+    unsigned char forecolor = DARK_BLUE;
+    //unsigned char backcolor = 13;
+    
+
+	clear_keyboard();
+	clear_key_press_event();
+	clear_text_input_event();
+	enable_keyrepeat();
+    #ifdef USE_SDL2
+    SDL_StartTextInput();
+    #endif
+    
+    if(result.size() == 0)
+        result.push_back("");
+    
+    std::list<std::string>::iterator s = result.begin();
+    size_t cursor_pos = 0;
+    size_t current_line = 0;
+    
+    bool cancel = false;
+    bool done = false;
+	while (!done)
+	{
+        
+        // TODO: Need swipe controls for touch input
+        // TODO: Needs a button for done
+        if(query_key_press_event())
+        {
+            char c = query_key();
+            clear_key_press_event();
+            
+            if (c == SDLK_RETURN)
+            {
+                std::string rest_of_line = s->substr(cursor_pos);
+                s->erase(cursor_pos);
+                s++;
+                s = result.insert(s, rest_of_line);
+                current_line++;
+                cursor_pos = 0;
+            }
+            else if (c == SDLK_ESCAPE)
+            {
+                done = true;
+                //cancel = true;
+            }
+            else if (c == SDLK_BACKSPACE)
+            {
+                // At the beginning of the line?
+                if(cursor_pos == 0)
+                {
+                    // Deleting a line break
+                    // Not at the first line?
+                    if(result.size() > 1 && current_line > 0)
+                    {
+                        // Then move up into the previous line, copying the old line
+                        current_line--;
+                        std::string old_line = *s;
+                        s = result.erase(s);
+                        s--;
+                        cursor_pos = s->size();
+                        // Append the old line
+                        *s += old_line;
+                    }
+                }
+                else
+                {
+                    // Delete previous character
+                    cursor_pos--;
+                    s->erase(cursor_pos, 1);
+                }
+            }
+        }
+        
+        if(mykeyboard[KEYSTATE_DELETE])
+        {
+            if(cursor_pos < s->size())
+                s->erase(cursor_pos, 1);
+            
+            while(mykeyboard[KEYSTATE_DELETE])
+                get_input_events(WAIT);
+        }
+        if(mykeyboard[KEYSTATE_UP])
+        {
+            if(current_line > 0)
+            {
+                current_line--;
+                s--;
+                if(s->size() < cursor_pos)
+                    cursor_pos = s->size();
+            }
+            
+            while(mykeyboard[KEYSTATE_UP])
+                get_input_events(WAIT);
+        }
+        if(mykeyboard[KEYSTATE_DOWN])
+        {
+            if(current_line+1 < result.size())
+            {
+                current_line++;
+                s++;
+            }
+            else  // At the bottom already
+                cursor_pos = s->size();
+            
+            if(s->size() < cursor_pos)
+                cursor_pos = s->size();
+            
+            while(mykeyboard[KEYSTATE_DOWN])
+                get_input_events(WAIT);
+        }
+        if(mykeyboard[KEYSTATE_LEFT])
+        {
+            if(cursor_pos > 0)
+                cursor_pos--;
+            else if(current_line > 0)
+            {
+                current_line--;
+                s--;
+                cursor_pos = s->size();
+            }
+            
+            while(mykeyboard[KEYSTATE_LEFT])
+                get_input_events(WAIT);
+        }
+        if(mykeyboard[KEYSTATE_RIGHT])
+        {
+            cursor_pos++;
+            if(cursor_pos > s->size())
+            {
+                if(current_line+1 < result.size())
+                {
+                    // Go to next line
+                    current_line++;
+                    s++;
+                    cursor_pos = 0;
+                }
+                else  // No next line
+                    cursor_pos = s->size();
+            }
+            
+            while(mykeyboard[KEYSTATE_RIGHT])
+                get_input_events(WAIT);
+        }
+        
+        if(query_text_input_event())
+        {
+            char* temptext = query_text_input();
+            
+            if(temptext != NULL)
+            {
+                s->insert(cursor_pos, temptext);
+                cursor_pos += strlen(temptext);
+            }
+        }
+		
+        clear_text_input_event();
+        myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
+        mytext->write_xy(x, y - 13, message.c_str(), BLACK, 1);
+        myscreen->hor_line(x, y - 5, w, BLACK);
+        
+        int offset = 0;
+        if(current_line > 3)
+            offset = (current_line - 3)*10;
+        int j = 0;
+        for(std::list<std::string>::iterator e = result.begin(); e != result.end(); e++)
+        {
+            int ypos = y + j*10 - offset;
+            if(y <= ypos && ypos <= y + h)
+                mytext->write_xy(x, ypos, e->c_str(), forecolor, 1);
+            j++;
+        }
+        myscreen->ver_line(x + cursor_pos*6, y + current_line*10 - 2 - offset, 10, RED);
+		myscreen->buffer_to_screen(0, 0, 320, 200);
+		
+		myscreen->clearfontbuffer(x,y,w,h);
+        
+		// Wait for a key to be pressed ..
+		while (!query_key_press_event() && !query_text_input_event())
+			get_input_events(WAIT);
+	}
+
+    #ifdef USE_SDL2
+    SDL_StopTextInput();
+    #endif
+	disable_keyrepeat();
+	clear_keyboard();
+    myscreen->clearfontbuffer();
+    
+    return !cancel;
+}
 
 bool prompt_for_string(text* mytext, const std::string& message, std::string& result)
 {
@@ -831,15 +1036,44 @@ Sint32 level_editor()
 		// Save scenario
 		if(mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
 		{
-		    if(data.saveLevel())
+		    bool saved = false;
+		    if(levelchanged)
             {
-                timed_dialog("Level saved.");
-                event = 1;
-                levelchanged = 0;
+                if(data.saveLevel())
+                {
+                    event = 1;
+                    levelchanged = 0;
+                    saved = true;
+                }
+                else
+                {
+                    timed_dialog("Failed to save level.");
+                    event = 1;
+                }
             }
-            else
+            if(campaignchanged)
             {
-                timed_dialog("Save failed.");
+                if(data.saveCampaign())
+                {
+                    event = 1;
+                    campaignchanged = 0;
+                    saved = true;
+                }
+                else
+                {
+                    timed_dialog("Failed to save campaign.");
+                    event = 1;
+                }
+            }
+            
+            if(saved)
+            {
+                timed_dialog("Saved.");
+                event = 1;
+            }
+            else if(!levelchanged && !campaignchanged)
+            {
+                timed_dialog("No changes to save.");
                 event = 1;
             }
 		}  // end of saving routines
@@ -1079,9 +1313,14 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignImportButton))
                 {
                     bool cancel = false;
-                    if (levelchanged)
+                    if(levelchanged)
                     {
-                        cancel = !yes_or_no_prompt("Import Campaign", "Discard unsaved changes?", false);
+                        cancel = !yes_or_no_prompt("Import", "Discard unsaved level changes?", false);
+                    }
+                    
+                    if(campaignchanged)
+                    {
+                        cancel = !yes_or_no_prompt("Import", "Discard unsaved campaign changes?", false);
                     }
                     
                     if(!cancel)
@@ -1093,7 +1332,7 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
                 {
                     bool cancel = false;
-                    if (levelchanged)
+                    if(levelchanged)
                     {
                         if(yes_or_no_prompt("Share", "Save level first?", false))
                         {
@@ -1102,6 +1341,26 @@ Sint32 level_editor()
                                 timed_dialog("Level saved.");
                                 event = 1;
                                 levelchanged = 0;
+                            }
+                            else
+                            {
+                                timed_dialog("Save failed.");
+                                event = 1;
+                                
+                                cancel = true;
+                            }
+                        }
+                    }
+                    
+                    if(campaignchanged)
+                    {
+                        if(yes_or_no_prompt("Share", "Save campaign first?", false))
+                        {
+                            if(data.saveCampaign())
+                            {
+                                timed_dialog("Campaign saved.");
+                                event = 1;
+                                campaignchanged = 0;
                             }
                             else
                             {
@@ -1161,6 +1420,9 @@ Sint32 level_editor()
                                             data.loadLevel(levels.front());
                                             // Update minimap
                                             myradar.update(data.level);
+                                            timed_dialog("Campaign created.");
+                                            campaignchanged = 0;
+                                            levelchanged = 0;
                                         }
                                         else
                                         {
@@ -1196,6 +1458,7 @@ Sint32 level_editor()
                             mount_campaign_package(campaign);
                             
                             timed_dialog("Campaign loaded.");
+                            campaignchanged = 0;
                             event = 1;
                         }
                         else
@@ -1212,6 +1475,7 @@ Sint32 level_editor()
                     if(data.saveCampaign())
                     {
                         timed_dialog("Campaign saved.");
+                        campaignchanged = 0;
                         event = 1;
                     }
                     else
@@ -1229,6 +1493,7 @@ Sint32 level_editor()
                         if(data.saveCampaignAs(campaign))
                         {
                             timed_dialog("Campaign saved.");
+                            campaignchanged = 0;
                             event = 1;
                         }
                         else
@@ -1278,6 +1543,7 @@ Sint32 level_editor()
                             if(data.loadLevel(atoi(level.c_str())))
                             {
                                 timed_dialog("Level loaded.");
+                                levelchanged = 0;
                                 event = 1;
                             }
                             else
@@ -1365,11 +1631,19 @@ Sint32 level_editor()
                 {
                     std::string title = data.campaign->title;
                     if(prompt_for_string(scentext, "Campaign Title", title))
+                    {
                         data.campaign->title = title;
+                        campaignchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileDescriptionButton))
                 {
-                    popup_dialog("Edit Description", "Not yet implemented.");
+                    std::list<std::string> desc = data.campaign->description;
+                    if(prompt_for_string_block(scentext, "Campaign Description", desc))
+                    {
+                        data.campaign->description = desc;
+                        campaignchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileIconButton))
                 {
@@ -1379,13 +1653,19 @@ Sint32 level_editor()
                 {
                     std::string authors = data.campaign->authors;
                     if(prompt_for_string(scentext, "Campaign Authors", authors))
+                    {
                         data.campaign->authors = authors;
+                        campaignchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileContributorsButton))
                 {
                     std::string contributors = data.campaign->contributors;
                     if(prompt_for_string(scentext, "Campaign Contributors", contributors))
+                    {
                         data.campaign->contributors = contributors;
+                        campaignchanged = 1;
+                    }
                 }
                 // Details >
                 else if(activate_sub_menu_button(mx, my, current_menu, campaignDetailsButton))
@@ -1400,7 +1680,10 @@ Sint32 level_editor()
                 {
                     std::string version = data.campaign->version;
                     if(prompt_for_string(scentext, "Campaign Version", version))
+                    {
                         data.campaign->version = version;
+                        campaignchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsSuggestedPowerButton))
                 {
@@ -1408,15 +1691,21 @@ Sint32 level_editor()
                     snprintf(buf, 20, "%d", data.campaign->suggested_power);
                     std::string power = buf;
                     if(prompt_for_string(scentext, "Suggested Power", power))
+                    {
                         data.campaign->suggested_power = toInt(power);
+                        campaignchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsFirstLevelButton))
                 {
                     char buf[20];
                     snprintf(buf, 20, "%d", data.campaign->first_level);
                     std::string level = buf;
-                    if(prompt_for_string(scentext, "Suggested Power", level))
+                    if(prompt_for_string(scentext, "First Level", level))
+                    {
                         data.campaign->first_level = toInt(level);
+                        campaignchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignValidateButton))
                 {
@@ -1491,11 +1780,19 @@ Sint32 level_editor()
                 {
                     std::string title = data.level->title;
                     if(prompt_for_string(scentext, "Level Title", title))
+                    {
                         data.level->title = title;
+                        levelchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelDescriptionButton))
                 {
-                    popup_dialog("Edit Description", "Not yet implemented.");
+                    std::list<std::string> desc = data.level->description;
+                    if(prompt_for_string_block(scentext, "Level Description", desc))
+                    {
+                        data.level->description = desc;
+                        levelchanged = 1;
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
                 {
