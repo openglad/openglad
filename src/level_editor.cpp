@@ -481,6 +481,73 @@ bool LevelEditorData::saveLevelAs(int id)
     return result;
 }
 
+// Recursively get the connected levels
+void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems)
+{
+    // Stopping condition
+    if(connected.find(current_level) != connected.end())
+        return;
+    
+    connected.insert(current_level);
+    
+    // Load level
+    LevelData d(current_level);
+    if(!d.load())
+    {
+        char buf[40];
+        snprintf(buf, 40, "Level %d failed to load.", current_level);
+        problems.push_back(buf);
+        return;
+    }
+    
+    // Get the exits
+    std::set<int> exits;
+    oblink* fx = d.fxlist;
+    while(fx != NULL)
+    {
+        if(fx->ob != NULL)
+        {
+            if(fx->ob->query_order() == ORDER_TREASURE && fx->ob->query_family() == FAMILY_EXIT && fx->ob->stats != NULL)
+                exits.insert(fx->ob->stats->level);
+        }
+        
+        fx = fx->next;
+    }
+    
+    // With no exits, we'll progress directly to the next sequential level
+    if(exits.size() == 0)
+    {
+        // Does the next sequential level exist?
+        bool has_next = false;
+        for(std::list<int>::const_iterator e = levels.begin(); e != levels.end(); e++)
+        {
+            if(current_level+1 == *e)
+            {
+                has_next = true;
+                break;
+            }
+        }
+        
+        if(has_next)
+        {
+            exits.insert(current_level+1);
+        }
+        else
+        {
+            char buf[40];
+            snprintf(buf, 40, "Level %d has no exits.", current_level);
+            problems.push_back(buf);
+            return;
+        }
+    }
+    
+    // Recursively call on exits
+    for(std::set<int>::iterator e = exits.begin(); e != exits.end(); e++)
+    {
+        get_connected_level_exits(*e, levels, connected, problems);
+    }
+}
+
 bool LevelEditorData::saveLevel()
 {
     char buf[20];
@@ -606,7 +673,7 @@ Sint32 level_editor()
 	SimpleButton levelLevelNumberButton("Level number...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 95, 15, true);
 	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelLevelNumberButton.area.y + levelLevelNumberButton.area.h, 95, 15, true);
 	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 95, 15, true);
-	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 95, 15, true);
+	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 95, 15, true);
 	
 	// Selection menu
 	SimpleButton selectionButton("Selection", levelButton.area.x + levelButton.area.w, 0, 65, 15);
@@ -1063,30 +1130,39 @@ Sint32 level_editor()
                             {
                                 if(create_new_campaign(campaign))
                                 {
-                                    // Mount new campaign
-                                    unmount_campaign_package(get_mounted_campaign());
-                                    mount_campaign_package(campaign);
                                     
                                     // Load campaign data for the editor
-                                    data.loadCampaign(campaign);
-                                    
-                                    // Load first scenario
-                                    levels = list_levels();
-                                    
-                                    if(levels.size() > 0)
+                                    if(data.loadCampaign(campaign))
                                     {
-                                        data.loadLevel(levels.front());
-                                        // Update minimap
-                                        myradar.update(data.level);
+                                        // Mount new campaign
+                                        unmount_campaign_package(get_mounted_campaign());
+                                        mount_campaign_package(campaign);
+                                        
+                                        // Load first scenario
+                                        levels = list_levels();
+                                        
+                                        if(levels.size() > 0)
+                                        {
+                                            data.loadLevel(levels.front());
+                                            // Update minimap
+                                            myradar.update(data.level);
+                                        }
+                                        else
+                                        {
+                                            timed_dialog("Campaign has no scenarios!");
+                                            event = 1;
+                                        }
                                     }
                                     else
                                     {
-                                        timed_dialog("Campaign has no scenarios!");
+                                        timed_dialog("Failed to load new campaign.");
+                                        event = 1;
                                     }
                                 }
                                 else
                                 {
                                     timed_dialog("Failed to create new campaign.");
+                                    event = 1;
                                 }
                             }
                         }
@@ -1101,6 +1177,9 @@ Sint32 level_editor()
                     {
                         if(data.loadCampaign(campaign))
                         {
+                            unmount_campaign_package(get_mounted_campaign());
+                            mount_campaign_package(campaign);
+                            
                             timed_dialog("Campaign loaded.");
                             event = 1;
                         }
@@ -1310,7 +1389,56 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignValidateButton))
                 {
-                    popup_dialog("Validate Campaign", "Not yet implemented.");
+                    std::list<int> levels = list_levels();
+                    std::set<int> connected;
+                    std::list<std::string> problems;
+                    
+                    // Are the levels all connected to the first level?
+                    int current_level = data.campaign->first_level;
+                    get_connected_level_exits(current_level, levels, connected, problems);
+                    
+                    for(std::list<int>::iterator e = levels.begin(); e != levels.end(); e++)
+                    {
+                        if(connected.find(*e) == connected.end())
+                        {
+                            char buf[40];
+                            snprintf(buf, 40, "Level %d is not connected.", *e);
+                            problems.push_back(buf);
+                        }
+                    }
+                    
+                    // Get ready to show the user the problems
+                    char buf[512];
+                    if(problems.size() == 0)
+                    {
+                        snprintf(buf, 512, "No problems!");
+                    }
+                    else
+                    {
+                        // Only show the first 6 problems and "More problems..."
+                        if(problems.size() > 6)
+                        {
+                            int num_over = problems.size() - 6;
+                            while(problems.size() > 6)
+                                problems.pop_back();
+                            char buf[40];
+                            snprintf(buf, 40, "%d more problems...", num_over);
+                            problems.push_back(buf);
+                        }
+                        
+                        // Put all the problems together for the printer
+                        buf[0] = '\0';
+                        for(std::list<std::string>::iterator e = problems.begin(); e != problems.end(); e++)
+                        {
+                            if(e->size() + strlen(buf) + 1 >= 512)
+                                break;
+                            strcat(buf, e->c_str());
+                            strcat(buf, "\n");
+                        }
+                    }
+                    
+                    // Show user the problems
+                    popup_dialog("Validate Campaign", buf);
                 }
                 // LEVEL
                 else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
