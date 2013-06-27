@@ -322,11 +322,6 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
                 current_line++;
                 cursor_pos = 0;
             }
-            else if (c == SDLK_ESCAPE)
-            {
-                done = true;
-                //cancel = true;
-            }
             else if (c == SDLK_BACKSPACE)
             {
                 // At the beginning of the line?
@@ -355,6 +350,14 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
             }
         }
         
+        if(mykeyboard[KEYSTATE_ESCAPE])
+        {
+            while(mykeyboard[KEYSTATE_ESCAPE])
+                get_input_events(WAIT);
+            
+            done = true;
+            break;
+        }
         if(mykeyboard[KEYSTATE_DELETE])
         {
             if(cursor_pos < s->size())
@@ -942,14 +945,12 @@ Sint32 level_editor()
         
         if(query_key_press_event() && mykeyboard[KEYSTATE_ESCAPE])
         {
-            if(!levelchanged)
+            if((!levelchanged && !campaignchanged)
+                || yes_or_no_prompt("Exit", "Quit without saving?", false))
+            {
+                done = true;
                 break;
-            
-            if(yes_or_no_prompt("Exit", "Quit without saving?", false))
-                break;
-            
-            delete scentext;
-            scentext = new text(myscreen);
+            }
             
             myscreen->clearfontbuffer();
             event = 1;
@@ -1616,8 +1617,8 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, campaignInfoButton))
                 {
                     char buf[512];
-                    snprintf(buf, 512, "ID: %s\nTitle: %s\nVersion: %s\nAuthors: %s\nContributors: %s\nSugg. Power: %d\nFirst level: %d", 
-                                data.campaign->id.c_str(), data.campaign->title.c_str(), data.campaign->version.c_str(), data.campaign->authors.c_str(), data.campaign->contributors.c_str(), data.campaign->suggested_power, data.campaign->first_level);
+                    snprintf(buf, 512, "%s\nID: %s\nTitle: %s\nVersion: %s\nAuthors: %s\nContributors: %s\nSugg. Power: %d\nFirst level: %d", 
+                                (campaignchanged? "(unsaved)" : ""), data.campaign->id.c_str(), data.campaign->title.c_str(), data.campaign->version.c_str(), data.campaign->authors.c_str(), data.campaign->contributors.c_str(), data.campaign->suggested_power, data.campaign->first_level);
                     popup_dialog("Campaign Info", buf);
                 }
                 // Profile >
@@ -1648,6 +1649,7 @@ Sint32 level_editor()
                         data.campaign->description = desc;
                         campaignchanged = 1;
                     }
+                    event = 1;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileIconButton))
                 {
@@ -1777,7 +1779,8 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, levelInfoButton))
                 {
                     char buf[512];
-                    snprintf(buf, 512, "ID number: %d\nTitle: %s\nSize: %ux%u", data.level->id, data.level->title.c_str(), data.level->grid.w, data.level->grid.h);
+                    snprintf(buf, 512, "%s\nID number: %d\nTitle: %s\nSize: %ux%u",
+                             (levelchanged? "(unsaved)" : ""), data.level->id, data.level->title.c_str(), data.level->grid.w, data.level->grid.h);
                     popup_dialog("Level Info", buf);
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
@@ -1797,6 +1800,7 @@ Sint32 level_editor()
                         data.level->description = desc;
                         levelchanged = 1;
                     }
+                    event = 1;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
                 {
@@ -2155,9 +2159,6 @@ Sint32 level_editor()
 		}
         
         SDL_Delay(10);
-
-		if (mykeyboard[KEYSTATE_ESCAPE])
-			done = true;
         
 	    last_ticks = start_ticks;
 	    start_ticks = SDL_GetTicks();
