@@ -1534,6 +1534,6 @@ void LevelData::draw(screen* myscreen)
 	short i;
 	for (i=0; i < myscreen->numviews; i++)
     {
-        myscreen->viewob[i]->redraw(this);
+        myscreen->viewob[i]->redraw(this, false);  // Don't draw the radar here
     }
 }

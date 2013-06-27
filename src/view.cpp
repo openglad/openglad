@@ -260,7 +260,7 @@ short viewscreen::redraw()
 
 }
 
-short viewscreen::redraw(LevelData* data)
+short viewscreen::redraw(LevelData* data, bool draw_radar)
 {
 	short i,j;
 	short xneg = 0;
@@ -312,7 +312,7 @@ short viewscreen::redraw(LevelData* data)
 		}
 
 	draw_obs(data); //moved here to put the radar on top of obs
-	if (prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (draw_radar && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
 	return 1;

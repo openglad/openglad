@@ -64,10 +64,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
-Sint32 do_load(screen *ascreen);  // load a scenario or grid
-Sint32 do_save(screen *ascreen);  // save a scenario or grid
 Sint32 display_panel(screen *myscreen);
-Sint32 save_scenario(char * filename, screen * master, char *gridname);
 void info_box(walker  *target, screen * myscreen);
 void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
@@ -1096,14 +1093,32 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
                 {
+                    bool cancel = false;
                     if (levelchanged)
                     {
                         if(yes_or_no_prompt("Share", "Save level first?", false))
-                            do_save(myscreen);
+                        {
+                            if(data.saveLevel())
+                            {
+                                timed_dialog("Level saved.");
+                                event = 1;
+                                levelchanged = 0;
+                            }
+                            else
+                            {
+                                timed_dialog("Save failed.");
+                                event = 1;
+                                
+                                cancel = true;
+                            }
+                        }
                     }
                     
-                    popup_dialog("Share Campaign", "Not yet implemented.");
-                    shareCampaign(myscreen);
+                    if(!cancel)
+                    {
+                        popup_dialog("Share Campaign", "Not yet implemented.");
+                        shareCampaign(myscreen);
+                    }
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileCampaignNewButton))
                 {
@@ -1490,11 +1505,76 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
                 {
-                    // TODO: Prompt for width and height
-                    //int width, height;
-                    //if(prompt_for_width_and_height(&width, &height))
-                    //data.level->resize_grid(width, height);
-                    popup_dialog("Edit Map Size", "Not yet implemented.");
+                    // Using two prompts sequentially
+                    
+                    char buf[20];
+                    snprintf(buf, 20, "%u", data.level->grid.w);
+                    std::string width = buf;
+                    snprintf(buf, 20, "%u", data.level->grid.h);
+                    std::string height = buf;
+                    
+                    if(prompt_for_string(scentext, "Map Width", width))
+                    {
+                        int w = toInt(width);
+                        int h;
+                        
+                        if(prompt_for_string(scentext, "Map Height", height))
+                        {
+                            h = toInt(height);
+                            
+                            // Validate here so we can tell the user
+                            // Size is limited to one byte in the file format
+                            if(w < 3 || h < 3 || w > 255 || h > 255)
+                            {
+                                char buf[200];
+                                snprintf(buf, 200, "Can't resize grid to %dx%d\n", w, h);
+                                if(w < 3)
+                                    strcat(buf, "Width is too small.\n");
+                                if(h < 3)
+                                    strcat(buf, "Height is too small.\n");
+                                if(w > 255)
+                                    strcat(buf, "Width is too big (max 255).\n");
+                                if(h > 255)
+                                    strcat(buf, "Height is too big (max 255).\n");
+                                
+                                popup_dialog("Resize Map", buf);
+                            }
+                            else
+                            {
+                                if((w >= data.level->grid.w && h >= data.level->grid.h) || 
+                                   yes_or_no_prompt("Resize Map", "Delete objects outside of map?", false))
+                                {
+                                    // Now change it
+                                    data.level->resize_grid(w, h);
+                                    
+                                    // Reset the minimap
+                                    myradar.start(data.level);
+                                    myradar.update(data.level);
+                                    
+                                    char buf[30];
+                                    snprintf(buf, 30, "Resized map to %ux%u", data.level->grid.w, data.level->grid.h);
+                                    timed_dialog(buf);
+                                    event = 1;
+                                    levelchanged = 1;
+                                }
+                                else
+                                {
+                                    timed_dialog("Resize canceled.");
+                                    event = 1;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            timed_dialog("Resize canceled.");
+                            event = 1;
+                        }
+                    }
+                    else
+                    {
+                        timed_dialog("Resize canceled.");
+                        event = 1;
+                    }
                 }
                 // SELECTION
                 else if(activate_sub_menu_button(mx, my, current_menu, selectionButton, true))
@@ -2015,37 +2095,6 @@ Sint32 save_map_file(char  * filename, screen *master)
 
 } // End of map-saving routine
 
-Sint32 load_new_grid(screen *master)
-{
-	string tempstring;
-
-	scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
-    char* new_text = scentext->input_string(115, 32, 8, grid_name);
-    if(new_text == NULL)
-        new_text = grid_name;
-	tempstring = new_text;
-	
-	if (tempstring.empty())
-	{
-		//buffers: our grid files are all lowercase...
-		lowercase(tempstring);
-
-		tempstring += grid_name;
-	}
-
-	//buffers: PORT: changed .PIX to .pix
-	tempstring += ".pix";
-	master->grid = read_pixie_file(tempstring.c_str());
-	
-	//master->viewob[0]->myradar = new radar(master->viewob[0],
-	//  master, 0);
-
-	master->viewob[0]->myradar->start();
-	master->viewob[0]->myradar->update();
-
-	return 1;
-}
-
 Sint32 new_scenario_name()
 {
 	char tempstring[80];
@@ -2262,264 +2311,6 @@ char some_pix(Sint32 whatback)
 		default:
 			return whatback;
 	}
-}
-
-Sint32 save_scenario(char * filename, screen * master, char *gridname)
-{
-	Sint32 currentx, currenty;
-	char temporder, tempfamily;
-	char tempteam, tempfacing, tempcommand;
-	short shortlevel;
-	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
-	SDL_RWops  *outfile;
-	char temptext[10] = "FSS";
-	char temp_grid[20] = "grid";  // default grid
-	char temp_scen_type = master->scenario_type;
-	oblink  * head = master->oblist;
-	Sint32 listsize;
-	Sint32 i;
-	char temp_version = VERSION_NUM;
-	char temp_filename[80];
-	char numlines, tempwidth;
-	char oneline[80];
-	char tempname[12];
-	char buffer[200];
-	char scentitle[30];
-	short temp_par;
-
-	// Format of a scenario object list file is: (ver. 8)
-	// 3-byte header: 'FSS'
-	// 1-byte version number (from graph.h)
-	// 8-byte grid file name
-	// 30-byte scenario title
-	// 1-byte scenario_type
-	// 2-bytes par-value for level
-	// 2-bytes (Sint32) = total objects to follow
-	// List of n objects, each of 20-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte Sint32 xpos
-	// 2-byte Sint32 ypos
-	// 1-byte TEAM
-	// 1-byte current facing
-	// 1-byte current command
-	// 1-byte level // this is 2 bytes in version 7+
-	// 12-bytes name
-	// ---
-	// 10 bytes RESERVED
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-	// Zardus: PORT: no longer need to put in scen/ in this part
-	//strcpy(temp_filename, scen_directory);
-	strcpy(temp_filename, filename);
-	//buffers: PORT: changed .FSS to .fss
-	strcat(temp_filename, ".fss");
-
-	if ( (outfile = open_write_file("temp/scen/", temp_filename)) == NULL ) // open for write
-	{
-		//gotoxy(1, 22);
-		Log("Could not open file for writing: %s%s\n", "temp/scen/", filename);
-
-		master->draw_button(30, 30, 220, 60, 1, 1);
-		sprintf(buffer, "Error in saving scenario file");
-		scentext->write_xy(32, 32, buffer, DARK_BLUE, 1);
-		sprintf(buffer, "%s", temp_filename);
-		scentext->write_xy(32, 42, buffer, DARK_BLUE, 1);
-		sprintf(buffer, "Press SPACE to continue");
-		scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
-		master->buffer_to_screen(0, 0, 320, 200);
-		while (!mykeyboard[KEYSTATE_SPACE])
-			get_input_events(WAIT);
-
-		return 0;
-	}
-
-	// Write id header
-	SDL_RWwrite(outfile, temptext, 3, 1);
-
-	// Write version number
-	SDL_RWwrite(outfile, &temp_version, 1, 1);
-
-	// Write name of current grid...
-	strcpy(temp_grid, gridname);  // Do NOT include extension
-
-	// Set any chars under 8 not used to 0 ..
-	for (i=strlen(temp_grid); i < 8; i++)
-		temp_grid[i] = 0;
-	SDL_RWwrite(outfile, temp_grid, 8, 1);
-
-	// Write the scenario title, if it exists
-	for (i=0; i < int(strlen(scentitle)); i++)
-		scentitle[i] = 0;
-	strcpy(scentitle, master->scenario_title);
-	SDL_RWwrite(outfile, scentitle, 30, 1);
-
-	// Write the scenario type info
-	SDL_RWwrite(outfile, &temp_scen_type, 1, 1);
-
-	// Write our par value (version 8+)
-	temp_par = master->par_value;
-	SDL_RWwrite(outfile, &temp_par, 2, 1);
-
-	// Determine size of object list ...
-	listsize = 0;
-	while (head)
-	{
-		if (head->ob)
-			listsize++;
-		head = head->next;
-	} // end of oblist-size check
-
-	// Also check the fx list ..
-	head = master->fxlist;
-	while (head)
-	{
-		if (head->ob)
-			listsize++;
-		head = head->next;
-	} // end of fxlist-size check
-
-	// And the weapon list ..
-	head = master->weaplist;
-	while (head)
-	{
-		if (head->ob)
-			listsize++;
-		head = head->next;
-	} // end of weaplist-size check
-
-	SDL_RWwrite(outfile, &listsize, 2, 1);
-
-	// Okay, we've written header .. now dump the data ..
-	head = master->oblist;  // back to head of list
-	while (head)
-	{
-		if (head->ob)
-		{
-			if (!head)
-            {
-                Log("Unexpected NULL object.\n");
-                SDL_RWclose(outfile);
-				return 0;  // Something wrong! Too few objects..
-            }
-			temporder = head->ob->query_order();
-			tempfacing= head->ob->curdir;
-			tempfamily= head->ob->query_family();
-			tempteam  = head->ob->team_num;
-			tempcommand=head->ob->query_act_type();
-			currentx  = head->ob->xpos;
-			currenty  = head->ob->ypos;
-			//templevel = head->ob->stats->level;
-			shortlevel = head->ob->stats->level;
-			strcpy(tempname, head->ob->stats->name);
-			SDL_RWwrite(outfile, &temporder, 1, 1);
-			SDL_RWwrite(outfile, &tempfamily, 1, 1);
-			SDL_RWwrite(outfile, &currentx, 2, 1);
-			SDL_RWwrite(outfile, &currenty, 2, 1);
-			SDL_RWwrite(outfile, &tempteam, 1, 1);
-			SDL_RWwrite(outfile, &tempfacing, 1, 1);
-			SDL_RWwrite(outfile, &tempcommand, 1, 1);
-			SDL_RWwrite(outfile, &shortlevel, 2, 1);
-			SDL_RWwrite(outfile, tempname, 12, 1);
-			SDL_RWwrite(outfile, filler, 10, 1);
-		}
-		// Advance to next object ..
-		head = head->next;
-	}
-
-	// Now dump the fxlist data ..
-	head = master->fxlist;  // back to head of list
-	while (head)
-	{
-		if (head->ob)
-		{
-			if (!head)
-            {
-                Log("Unexpected NULL fx object.\n");
-                SDL_RWclose(outfile);
-				return 0;  // Something wrong! Too few objects..
-            }
-			temporder = head->ob->query_order();
-			tempfacing= head->ob->curdir;
-			tempfamily= head->ob->query_family();
-			tempteam  = head->ob->team_num;
-			tempcommand=head->ob->query_act_type();
-			currentx  = head->ob->xpos;
-			currenty  = head->ob->ypos;
-			//templevel = head->ob->stats->level;
-			shortlevel = head->ob->stats->level;
-			strcpy(tempname, head->ob->stats->name);
-			SDL_RWwrite(outfile, &temporder, 1, 1);
-			SDL_RWwrite(outfile, &tempfamily, 1, 1);
-			SDL_RWwrite(outfile, &currentx, 2, 1);
-			SDL_RWwrite(outfile, &currenty, 2, 1);
-			SDL_RWwrite(outfile, &tempteam, 1, 1);
-			SDL_RWwrite(outfile, &tempfacing, 1, 1);
-			SDL_RWwrite(outfile, &tempcommand, 1, 1);
-			SDL_RWwrite(outfile, &shortlevel, 2, 1);
-			SDL_RWwrite(outfile, tempname, 12, 1);
-			SDL_RWwrite(outfile, filler, 10, 1);
-		}
-		// Advance to next object ..
-		head = head->next;
-	}
-
-	// Now dump the weaplist data ..
-	head = master->weaplist;  // back to head of list
-	while (head)
-	{
-		if (head->ob)
-		{
-			if (!head)
-            {
-                Log("Unexpected NULL weap object.\n");
-                SDL_RWclose(outfile);
-				return 0;  // Something wrong! Too few objects..
-            }
-			temporder = head->ob->query_order();
-			tempfacing= head->ob->curdir;
-			tempfamily= head->ob->query_family();
-			tempteam  = head->ob->team_num;
-			tempcommand=head->ob->query_act_type();
-			currentx  = head->ob->xpos;
-			currenty  = head->ob->ypos;
-			shortlevel = head->ob->stats->level;
-			strcpy(tempname, head->ob->stats->name);
-			SDL_RWwrite(outfile, &temporder, 1, 1);
-			SDL_RWwrite(outfile, &tempfamily, 1, 1);
-			SDL_RWwrite(outfile, &currentx, 2, 1);
-			SDL_RWwrite(outfile, &currenty, 2, 1);
-			SDL_RWwrite(outfile, &tempteam, 1, 1);
-			SDL_RWwrite(outfile, &tempfacing, 1, 1);
-			SDL_RWwrite(outfile, &tempcommand, 1, 1);
-			SDL_RWwrite(outfile, &shortlevel, 2, 1);
-			SDL_RWwrite(outfile, tempname, 12, 1);
-			SDL_RWwrite(outfile, filler, 10, 1);
-		}
-		// Advance to next object ..
-		head = head->next;
-	}
-
-	numlines = master->scentextlines;
-	//printf("saving %d lines\n", numlines);
-
-	SDL_RWwrite(outfile, &numlines, 1, 1);
-	for (i=0; i < numlines; i++)
-	{
-		strcpy(oneline, master->scentext[i]);
-		tempwidth = strlen(oneline);
-		SDL_RWwrite(outfile, &tempwidth, 1, 1);
-		SDL_RWwrite(outfile, oneline, tempwidth, 1);
-	}
-
-	SDL_RWclose(outfile);
-	
-	Log("Scenario saved.\n");
-
-	return 1;
 }
 
 // Copy of collide from obmap; used manually .. :(
@@ -2848,146 +2639,4 @@ void set_facing(walker *target, screen *myscreen)
 	while (setkeys[KEYSTATE_f])
 		get_input_events(WAIT);
 
-}
-
-
-// Load a grid or scenario ..
-Sint32 do_load(screen *ascreen)
-{
-	Sint32 i;
-	text *loadtext = new text(ascreen);
-	char buffer[200],temp[200];
-
-	event = 1;
-	
-	// Load scenario
-	{
-		ascreen->draw_button(50, 30, 200, 40, 1, 1);
-		ascreen->buffer_to_screen(0, 0, 320, 200);
-		new_scenario_name();
-		ascreen->clearfontbuffer(50, 30, 150, 10);
-		loadtext->write_xy(52, 32, "Loading scenario..", DARK_BLUE, 1);
-		ascreen->buffer_to_screen(0, 0, 320, 200);
-		remove_all_objects(ascreen);  // kill   current obs
-		for (i=0; i < 60; i ++)
-			ascreen->scentext[i][0] = 0;
-		short load_result = load_scenario(scen_name, ascreen);
-		ascreen->viewob[0]->myradar->start();
-		ascreen->viewob[0]->myradar->update();
-		strcpy(grid_name, query_my_map_name());
-		while (mykeyboard[KEYSTATE_s])
-			//buffers: dumbcount++;
-			get_input_events(WAIT);
-        if(load_result > 0)
-        {
-            //buffers: PORT: stricmp isn't compiling... need to find replacement func
-            //buffers: workaround: copy scenario_title to new buffer and make it all
-            //buffers: lowercase and then compare it to lowercase 'none'
-            strcpy(temp,ascreen->scenario_title);
-            lowercase(temp);
-            if (strlen(ascreen->scenario_title) &&
-                    strcmp(temp, "none") )
-            {
-                ascreen->draw_button(10, 30, 238, 51, 1, 1);
-                ascreen->clearfontbuffer(10, 30, 228, 21);
-                sprintf(buffer, "Loaded: %s", ascreen->scenario_title);
-                loadtext->write_xy(12, 33, buffer, DARK_BLUE, 1);
-                loadtext->write_xy(12, 43, "Press space to continue", RED, 1);
-                ascreen->buffer_to_screen(0, 0, 320, 200);
-                while (!mykeyboard[KEYSTATE_SPACE])
-                    get_input_events(WAIT);
-            }
-        }
-	} // end load scenario
-
-	delete loadtext;
-	levelchanged = 0;
-	return 1;
-}
-
-bool save_level_and_map(screen* ascreen)
-{
-    bool result = true;
-    if(unpack_campaign(ascreen->current_campaign))
-    {
-        // Save the map file ..
-        if (!save_map_file(grid_name, ascreen) )
-        {
-            Log("Save failed: Could not save grid.\n");
-            result = false;
-        }
-        else
-        {
-            save_scenario(scen_name, ascreen, grid_name);
-            
-            // Unmount campaign while it is changed
-            unmount_campaign_package(ascreen->current_campaign);
-            
-            if(!repack_campaign(ascreen->current_campaign))
-            {
-                Log("Save failed: Could not repack campaign: %s\n", ascreen->current_campaign);
-                result = false;
-            }
-            
-            // Remount the new campaign package
-            mount_campaign_package(ascreen->current_campaign);
-        }
-    }
-    else
-    {
-        Log("Save failed: Could not unpack campaign: %s\n", ascreen->current_campaign);
-        result = false;
-    }
-    cleanup_unpacked_campaign();
-    
-    return result;
-}
-
-Sint32 do_save(screen *ascreen)  // save a scenario or grid
-{
-	text *savetext = new text(ascreen);
-	Sint32 result = 1;
-
-	event = 1;
-	
-	// save scenario
-	{
-		while (mykeyboard[KEYSTATE_s])
-			get_input_events(WAIT);
-
-		// Allow us to set the title, if desired
-		ascreen->draw_button(20, 30, 235, 41, 1, 1);
-		savetext->write_xy(22, 33, "Title:", DARK_BLUE, 1);
-		ascreen->buffer_to_screen(0, 0, 320, 200);
-		char* new_name = savetext->input_string(58, 33, 29, ascreen->scenario_title);
-		if(new_name == NULL)
-        {
-            Log("Save canceled.\n");
-            ascreen->clearfontbuffer(20, 30, 215, 15);
-            savetext->write_xy(52, 33, "Save canceled.");
-            ascreen->buffer_to_screen(0, 0, 320, 200);
-            result = 0;
-        }
-        else
-        {
-            strcpy(ascreen->scenario_title, new_name);
-
-            ascreen->clearfontbuffer(20, 30, 215, 15);
-            savetext->write_xy(52, 33, "Saving scenario..");
-            ascreen->buffer_to_screen(0, 0, 320, 200);
-            
-            if(!save_level_and_map(ascreen))
-                result = 0;
-
-            ascreen->clearfontbuffer();
-            clear_keyboard();
-        }
-	} // end of save scenario
-
-	delete savetext;
-
-    // If it saved, then it is not changed anymore.
-	if(result)
-		levelchanged = 0;
-	return result;
 }

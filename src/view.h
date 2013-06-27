@@ -84,7 +84,7 @@ class viewscreen
 		void clear();
 		short draw ();
 		short redraw();
-		short redraw(LevelData* data);
+		short redraw(LevelData* data, bool draw_radar = true);
 		short refresh();
 		short input(const SDL_Event& event);
 		short continuous_input();

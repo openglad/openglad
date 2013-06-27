@@ -50,7 +50,7 @@ class radar
 	protected:
 		short mynum; // what is my viewscreen-related number?
 		//         char  *buffer;
-		short size;
+		unsigned short size;
 };
 
 #endif

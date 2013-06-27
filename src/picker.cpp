@@ -1812,7 +1812,6 @@ void timed_dialog(const char* message, float delay_seconds)
 
 	grab_mouse();
     clear_keyboard();
-    Uint8* keyboard = query_keyboard();
     
     clear_key_press_event();
 	
@@ -1820,11 +1819,6 @@ void timed_dialog(const char* message, float delay_seconds)
 	while ((SDL_GetTicks() - start_time)/1000.0f < delay_seconds)
 	{
 		get_input_events(POLL);
-		
-        // Includes button checking, but the existing buttons are used, so it is all messed up.
-        // They would need to be deleted first and possibly restored afterward.
-        //if(leftmouse())
-        //    break;
         
         if(query_mouse()[MOUSE_LEFT] || query_key_press_event())
             break;
