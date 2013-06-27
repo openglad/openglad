@@ -668,8 +668,7 @@ Sint32 level_editor()
 	// Level menu
 	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, 15);
 	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 95, 15, true);
-	SimpleButton levelLevelNumberButton("Level number...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 95, 15, true);
-	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelLevelNumberButton.area.y + levelLevelNumberButton.area.h, 95, 15, true);
+	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 95, 15, true);
 	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 95, 15, true);
 	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 95, 15, true);
 	
@@ -1477,7 +1476,6 @@ Sint32 level_editor()
                 {
                     set<SimpleButton*> s;
                     s.insert(&levelInfoButton);
-                    s.insert(&levelLevelNumberButton);
                     s.insert(&levelTitleButton);
                     s.insert(&levelDescriptionButton);
                     s.insert(&levelMapSizeButton);
@@ -1488,10 +1486,6 @@ Sint32 level_editor()
                     char buf[512];
                     snprintf(buf, 512, "ID number: %d\nTitle: %s\nSize: %ux%u", data.level->id, data.level->title.c_str(), data.level->grid.w, data.level->grid.h);
                     popup_dialog("Level Info", buf);
-                }
-                else if(activate_menu_choice(mx, my, current_menu, levelLevelNumberButton))
-                {
-                    popup_dialog("Edit Level Number", "Not yet implemented.");
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
                 {
