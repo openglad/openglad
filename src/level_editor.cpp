@@ -69,7 +69,6 @@ void info_box(walker  *target, screen * myscreen);
 void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
 void scenario_options(screen * myscreen);
-Sint32 quit_level_editor(Sint32);
 
 extern screen *myscreen;  // global for scen?
 
@@ -790,6 +789,7 @@ Sint32 level_editor()
     load_and_set_palette("our.pal", scenpalette);
 	
 	scentext = new text(myscreen);
+	
 	// Set the un-set text to empty ..
 	for (i=0; i < 60; i ++)
 		myscreen->scentext[i][0] = 0;
@@ -923,13 +923,17 @@ Sint32 level_editor()
 	//
 	// This is the main program loop
 	//
-	while(1)
+	bool done = false;
+	while(!done)
 	{
 		// Reset the timer count to zero ...
 		reset_timer();
 
 		if (myscreen->end)
+		{
+		    done = true;
 			break;
+		}
 
 		//buffers: get keys and stuff
 		get_input_events(POLL);
@@ -1596,7 +1600,7 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
                 {
-                    quit_level_editor(0);
+                    done = true;
                     break;
                 }
                 // CAMPAIGN
@@ -2153,7 +2157,7 @@ Sint32 level_editor()
         SDL_Delay(10);
 
 		if (mykeyboard[KEYSTATE_ESCAPE])
-			quit_level_editor(0);
+			done = true;
         
 	    last_ticks = start_ticks;
 	    start_ticks = SDL_GetTicks();
@@ -2161,24 +2165,18 @@ Sint32 level_editor()
 	}
 	
 	// Reset the screen position so it doesn't ruin the main menu
-    set_screen_pos(myscreen, 0, 0);
+    data.level->set_draw_pos(0, 0);
     // Update the screen's position
-    myscreen->redraw();
+    data.level->draw(myscreen);
     // Clear the background
     myscreen->clearscreen();
     
     unmount_campaign_package(data.campaign->id);
     mount_campaign_package(old_campaign);
     
+    delete scentext;
+    
 	return OK;
-}
-
-Sint32 quit_level_editor(Sint32 num)
-{
-	// Delete scentext
-	delete scentext;
-	
-	return num;
 }
 
 Sint32 display_panel(screen *myscreen)

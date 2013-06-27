@@ -514,7 +514,7 @@ bool create_path_to_file(const char* filename)
         return true;
     
     char buf[512];
-    snprintf(buf, 512, filename);
+    snprintf(buf, 512, "%s", filename);
     buf[c - filename] = '\0';
     
     return (mkpath(buf, 0755) >= 0);
