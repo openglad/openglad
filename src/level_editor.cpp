@@ -875,39 +875,27 @@ Sint32 level_editor()
 	
 	// Level menu
 	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, 15);
-	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 95, 15, true);
-	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 95, 15, true);
-	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 95, 15, true);
-	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 95, 15, true);
+	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 100, 15, true);
+	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 100, 15, true);
+	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 100, 15, true);
+	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 100, 15, true);
+	SimpleButton levelResmoothButton("Resmooth terrain", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 100, 15, true);
 	
-	// Selection menu
-	SimpleButton selectionButton("Selection", levelButton.area.x + levelButton.area.w, 0, 65, 15);
-	SimpleButton selectionLevelButton("Level >", selectionButton.area.x, selectionButton.area.y + selectionButton.area.h, 47, 15, true);
-	SimpleButton selectionTeamButton("Team >", selectionButton.area.x, selectionLevelButton.area.y + selectionLevelButton.area.h, 47, 15, true);
-	SimpleButton selectionClassButton("Class >", selectionButton.area.x, selectionTeamButton.area.y + selectionTeamButton.area.h, 47, 15, true);
-	SimpleButton selectionCopyButton("Copy", selectionButton.area.x, selectionClassButton.area.y + selectionClassButton.area.h, 47, 15, true);
-	SimpleButton selectionPasteButton("Paste", selectionButton.area.x, selectionCopyButton.area.y + selectionCopyButton.area.h, 47, 15, true);
-	SimpleButton selectionDeleteButton("Delete", selectionButton.area.x, selectionPasteButton.area.y + selectionPasteButton.area.h, 47, 15, true);
 	
-	// Selection > Level submenu
-	SimpleButton selectionLevelIncreaseButton("Increase", selectionLevelButton.area.x + selectionLevelButton.area.w, selectionLevelButton.area.y, 53, 15, true);
-	SimpleButton selectionLevelDecreaseButton("Decrease", selectionLevelIncreaseButton.area.x, selectionLevelIncreaseButton.area.y + selectionLevelIncreaseButton.area.h, 53, 15, true);
-	
-	// Selection > Team submenu
-	SimpleButton selectionTeamPreviousButton("Previous", selectionTeamButton.area.x + selectionTeamButton.area.w, selectionTeamButton.area.y, 53, 15, true);
-	SimpleButton selectionTeamNextButton("Next", selectionTeamPreviousButton.area.x, selectionTeamPreviousButton.area.y + selectionTeamPreviousButton.area.h, 53, 15, true);
-	
-	// Selection > Class submenu
-	SimpleButton selectionClassPreviousButton("Previous", selectionClassButton.area.x + selectionClassButton.area.w, selectionClassButton.area.y, 53, 15, true);
-	SimpleButton selectionClassNextButton("Next", selectionClassPreviousButton.area.x, selectionClassPreviousButton.area.y + selectionClassPreviousButton.area.h, 53, 15, true);
-	
+	// Mode menu
+	enum ModeEnum {TERRAIN, OBJECT, SELECT};
+	ModeEnum mode = TERRAIN;
+	SimpleButton modeButton("Mode (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, 15);
+	SimpleButton modeTerrainButton("Terrain", modeButton.area.x, modeButton.area.y + modeButton.area.h, 47, 15, true);
+	SimpleButton modeObjectButton("Object", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 47, 15, true);
+	SimpleButton modeSelectButton("Select", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 47, 15, true);
 	
 	// Top menu
 	set<SimpleButton*> menu_buttons;
 	menu_buttons.insert(&fileButton);
 	menu_buttons.insert(&campaignButton);
 	menu_buttons.insert(&levelButton);
-	menu_buttons.insert(&selectionButton);
+	menu_buttons.insert(&modeButton);
 	
 	// The active menu buttons
 	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
@@ -1774,6 +1762,7 @@ Sint32 level_editor()
                     s.insert(&levelTitleButton);
                     s.insert(&levelDescriptionButton);
                     s.insert(&levelMapSizeButton);
+                    s.insert(&levelResmoothButton);
                     current_menu.push_back(std::make_pair(&levelButton, s));
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelInfoButton))
@@ -1875,77 +1864,32 @@ Sint32 level_editor()
                         event = 1;
                     }
                 }
-                // SELECTION
-                else if(activate_sub_menu_button(mx, my, current_menu, selectionButton, true))
+                else if(activate_menu_choice(mx, my, current_menu, levelResmoothButton))
+                {
+                    resmooth_map(data.level);
+                    levelchanged = 1;
+                    event = 1;
+                }
+                // MODE
+                else if(activate_sub_menu_button(mx, my, current_menu, modeButton, true))
                 {
                     set<SimpleButton*> s;
-                    s.insert(&selectionLevelButton);
-                    s.insert(&selectionTeamButton);
-                    s.insert(&selectionClassButton);
-                    s.insert(&selectionCopyButton);
-                    s.insert(&selectionPasteButton);
-                    s.insert(&selectionDeleteButton);
-                    current_menu.push_back(std::make_pair(&selectionButton, s));
+                    s.insert(&modeTerrainButton);
+                    s.insert(&modeObjectButton);
+                    s.insert(&modeSelectButton);
+                    current_menu.push_back(std::make_pair(&modeButton, s));
                 }
-                // Level >
-                else if(activate_sub_menu_button(mx, my, current_menu, selectionLevelButton))
+                else if(activate_menu_choice(mx, my, current_menu, modeTerrainButton))
                 {
-                    set<SimpleButton*> s;
-                    s.insert(&selectionLevelIncreaseButton);
-                    s.insert(&selectionLevelDecreaseButton);
-                    current_menu.push_back(std::make_pair(&selectionLevelButton, s));
+                    mode = TERRAIN;
                 }
-                // Team >
-                else if(activate_sub_menu_button(mx, my, current_menu, selectionTeamButton))
+                else if(activate_menu_choice(mx, my, current_menu, modeObjectButton))
                 {
-                    set<SimpleButton*> s;
-                    s.insert(&selectionTeamPreviousButton);
-                    s.insert(&selectionTeamNextButton);
-                    current_menu.push_back(std::make_pair(&selectionTeamButton, s));
+                    mode = OBJECT;
                 }
-                // Class >
-                else if(activate_sub_menu_button(mx, my, current_menu, selectionClassButton))
+                else if(activate_menu_choice(mx, my, current_menu, modeSelectButton))
                 {
-                    set<SimpleButton*> s;
-                    s.insert(&selectionClassPreviousButton);
-                    s.insert(&selectionClassNextButton);
-                    current_menu.push_back(std::make_pair(&selectionClassButton, s));
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionCopyButton))
-                {
-                    popup_dialog("Copy", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionPasteButton))
-                {
-                    popup_dialog("Paste", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionDeleteButton))
-                {
-                    popup_dialog("Delete", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionLevelIncreaseButton))
-                {
-                    popup_dialog("Level +", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionLevelDecreaseButton))
-                {
-                    popup_dialog("Level -", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionTeamPreviousButton))
-                {
-                    popup_dialog("Team <-", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionTeamNextButton))
-                {
-                    popup_dialog("Team ->", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionClassPreviousButton))
-                {
-                    popup_dialog("Class <-", "Not yet implemented.");
-                }
-                else if(activate_menu_choice(mx, my, current_menu, selectionClassNextButton))
-                {
-                    popup_dialog("Class ->", "Not yet implemented.");
+                    mode = SELECT;
                 }
             }
             else
