@@ -58,6 +58,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
 char some_pix(Sint32 whatback);
 char  * query_my_map_name();
 
+int toInt(const std::string& s);
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 void popup_dialog(const char* title, const char* message);
@@ -1348,7 +1349,9 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileTitleButton))
                 {
-                    popup_dialog("Edit Title", "Not yet implemented.");
+                    std::string title = data.campaign->title;
+                    if(prompt_for_string(scentext, "Campaign Title", title))
+                        data.campaign->title = title;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileDescriptionButton))
                 {
@@ -1360,11 +1363,15 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileAuthorsButton))
                 {
-                    popup_dialog("Edit Authors", "Not yet implemented.");
+                    std::string authors = data.campaign->authors;
+                    if(prompt_for_string(scentext, "Campaign Authors", authors))
+                        data.campaign->authors = authors;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignProfileContributorsButton))
                 {
-                    popup_dialog("Edit Contributors", "Not yet implemented.");
+                    std::string contributors = data.campaign->contributors;
+                    if(prompt_for_string(scentext, "Campaign Contributors", contributors))
+                        data.campaign->contributors = contributors;
                 }
                 // Details >
                 else if(activate_sub_menu_button(mx, my, current_menu, campaignDetailsButton))
@@ -1377,15 +1384,25 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsVersionButton))
                 {
-                    popup_dialog("Edit Version", "Not yet implemented.");
+                    std::string version = data.campaign->version;
+                    if(prompt_for_string(scentext, "Campaign Version", version))
+                        data.campaign->version = version;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsSuggestedPowerButton))
                 {
-                    popup_dialog("Edit Sugg. Power", "Not yet implemented.");
+                    char buf[20];
+                    snprintf(buf, 20, "%d", data.campaign->suggested_power);
+                    std::string power = buf;
+                    if(prompt_for_string(scentext, "Suggested Power", power))
+                        data.campaign->suggested_power = toInt(power);
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignDetailsFirstLevelButton))
                 {
-                    popup_dialog("Edit First Level", "Not yet implemented.");
+                    char buf[20];
+                    snprintf(buf, 20, "%d", data.campaign->first_level);
+                    std::string level = buf;
+                    if(prompt_for_string(scentext, "Suggested Power", level))
+                        data.campaign->first_level = toInt(level);
                 }
                 else if(activate_menu_choice(mx, my, current_menu, campaignValidateButton))
                 {
@@ -1463,7 +1480,9 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
                 {
-                    popup_dialog("Edit Title", "Not yet implemented.");
+                    std::string title = data.level->title;
+                    if(prompt_for_string(scentext, "Level Title", title))
+                        data.level->title = title;
                 }
                 else if(activate_menu_choice(mx, my, current_menu, levelDescriptionButton))
                 {
