@@ -57,7 +57,9 @@ void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y);
 walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
 char get_random_matching_tile(Sint32 whatback);
 
-Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode);
+class EditorTerrainBrush;
+class EditorObjectBrush;
+Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode, const EditorTerrainBrush& terrain_brush, const EditorObjectBrush& object_brush);
 void info_box(walker  *target, screen * myscreen);
 void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
@@ -70,20 +72,12 @@ extern options * theprefs;
 
 extern Sint32 *mymouse;
 Uint8 *mykeyboard;
-//scenario *myscen = new scenario;
-Uint32 currentlevel = 1;
-char scen_name[10];
-char grid_name[10];
 
 unsigned char scenpalette[768];
-Sint32 backcount=0, forecount = 0;
-Sint32 myorder = ORDER_LIVING;
-char currentteam = 0;
 Sint32 event = 1;  // need to redraw?
 Sint32 campaignchanged = 0;  // has campaign changed?
 Sint32 levelchanged = 0;  // has level changed?
 Sint32 cyclemode = 1;      // for color cycling
-Sint32 grid_aligned = 1;  // aligned by grid, default is on
 //buffers: PORT: changed start_time to start_time_s to avoid conflict with
 //input.cpp
 Sint32 start_time_s; // for timer ops
@@ -811,10 +805,38 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 }
 
 
+class EditorTerrainBrush
+{
+public:
+    
+    Sint32 terrain;
+    
+    EditorTerrainBrush()
+        : terrain(PIX_GRASS1)
+    {}
+};
+
+class EditorObjectBrush
+{
+public:
+    
+    bool snap_to_grid;
+    Sint32 order;
+    Sint32 family;
+    char team;
+    unsigned short level;
+    
+    EditorObjectBrush()
+        : snap_to_grid(true), order(ORDER_LIVING), family(0), team(1), level(1)
+    {}
+};
+
 
 Sint32 level_editor()
 {
     static LevelEditorData data;
+    EditorTerrainBrush terrain_brush;
+    EditorObjectBrush object_brush;
     
 	Sint32 i,j;
 	Sint32 extra;
@@ -994,52 +1016,51 @@ Sint32 level_editor()
 		// Change teams ..
 		if (mykeyboard[KEYSTATE_0])
 		{
-			currentteam = 0;
+			object_brush.team = 0;
 			event = 1;
 		}
 		if (mykeyboard[KEYSTATE_1])
 		{
-			currentteam = 1;
+			object_brush.team = 1;
 			event = 1;
 		}
 		if (mykeyboard[KEYSTATE_2])
 		{
-			currentteam = 2;
+			object_brush.team = 2;
 			event = 1;
 		}
 		if (mykeyboard[KEYSTATE_3])
 		{
-			currentteam = 3;
+			object_brush.team = 3;
 			event = 1;
 		}
 		if (mykeyboard[KEYSTATE_4])
 		{
-			currentteam = 4;
+			object_brush.team = 4;
 			event = 1;
 		}
 		if (mykeyboard[KEYSTATE_5])
 		{
-			currentteam = 5;
+			object_brush.team = 5;
 			event = 1;
 		}
 		if (mykeyboard[KEYSTATE_6])
 		{
-			currentteam = 6;
+			object_brush.team = 6;
 			event = 1;
 		}
 		if (mykeyboard[KEYSTATE_7])
 		{
-			currentteam = 7;
+			object_brush.team = 7;
 			event = 1;
 		}
 
 		// Toggle grid alignment
 		if (mykeyboard[KEYSTATE_g])
 		{
-			grid_aligned = (grid_aligned+1)%3;
+			object_brush.snap_to_grid = !object_brush.snap_to_grid;
 			event = 1;
 			while (mykeyboard[KEYSTATE_g])
-				//buffers: dumbcount++;
 				get_input_events(WAIT);
 		}
 
@@ -1155,49 +1176,41 @@ Sint32 level_editor()
 			event = 1;
 		}
 
-		// Display the scenario help..
-		if (mykeyboard[KEYSTATE_SLASH] && (mykeyboard[KEYSTATE_RSHIFT] || mykeyboard[KEYSTATE_LSHIFT]))
-		{
-			//read_scenario(myscreen);
-			myscreen->clearfontbuffer();
-			event = 1;
-		}
-
 		// Change level of current guy being placed ..
 		if (mykeyboard[KEYSTATE_RIGHTBRACKET])
 		{
-			currentlevel++;
-			//while (mykeyboard[KEYSTATE_RIGHTBRACKET])
-			//  dumbcount++;
+			object_brush.level++;
+			while (mykeyboard[KEYSTATE_RIGHTBRACKET])
+				get_input_events(WAIT);
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_LEFTBRACKET] && currentlevel > 1)
+		if (mykeyboard[KEYSTATE_LEFTBRACKET] && object_brush.level > 1)
 		{
-			currentlevel--;
-			//while (mykeyboard[KEYSTATE_LEFTBRACKET])
-			//  dumbcount++;
+			object_brush.level--;
+			while (mykeyboard[KEYSTATE_LEFTBRACKET])
+				get_input_events(WAIT);
 			event = 1;
 		}
 
 		// Change between generator and living orders
 		if (mykeyboard[KEYSTATE_o])        // this is letter o
 		{
-			if (myorder == ORDER_LIVING)
+			if (object_brush.order == ORDER_LIVING)
 			{
-				myorder = ORDER_GENERATOR;
-				forecount = FAMILY_TENT;
+				object_brush.order = ORDER_GENERATOR;
+				object_brush.family = FAMILY_TENT;
 			}
-			else if (myorder == ORDER_GENERATOR)
-				myorder = ORDER_SPECIAL;   // for placing team guys ..
-			else if (myorder == ORDER_SPECIAL)
+			else if (object_brush.order == ORDER_GENERATOR)
+				object_brush.order = ORDER_SPECIAL;   // for placing team guys ..
+			else if (object_brush.order == ORDER_SPECIAL)
 			{
-				myorder = ORDER_TREASURE;
-				forecount = FAMILY_DRUMSTICK;
+				object_brush.order = ORDER_TREASURE;
+				object_brush.family = FAMILY_DRUMSTICK;
 			}
-			else if (myorder == ORDER_TREASURE)
-				myorder = ORDER_WEAPON;
-			else if (myorder == ORDER_WEAPON)
-				myorder = ORDER_LIVING;
+			else if (object_brush.order == ORDER_TREASURE)
+				object_brush.order = ORDER_WEAPON;
+			else if (object_brush.order == ORDER_WEAPON)
+				object_brush.order = ORDER_LIVING;
 			mode = OBJECT;
             modeButton.label = "Mode (Object)";
 			event = 1; // change score panel
@@ -1212,7 +1225,7 @@ Sint32 level_editor()
 			event = 1;
 			if (rowsdown >= maxrows)
 				rowsdown -= maxrows;
-			display_panel(myscreen, data.level, mode);
+			display_panel(myscreen, data.level, mode, terrain_brush, object_brush);
 			while (mykeyboard[KEYSTATE_DOWN])
 				get_input_events(WAIT);
 		}
@@ -1226,7 +1239,7 @@ Sint32 level_editor()
 				rowsdown += maxrows;
 			if (rowsdown <0 || rowsdown >= maxrows) // bad case
 				rowsdown = 0;
-			display_panel(myscreen, data.level, mode);
+			display_panel(myscreen, data.level, mode, terrain_brush, object_brush);
 			while (mykeyboard[KEYSTATE_UP])
 				get_input_events(WAIT);
 		}
@@ -1928,10 +1941,10 @@ Sint32 level_editor()
                           (my >= S_UP) && (my <= S_DOWN) )      // in the main window
                 {
                     windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
-                    if (grid_aligned==1)
+                    if (object_brush.snap_to_grid)
                         windowx -= (windowx%GRID_SIZE);
                     windowy = mymouse[MOUSE_Y] + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
-                    if (grid_aligned==1)
+                    if (object_brush.snap_to_grid)
                         windowy -= (windowy%GRID_SIZE);
                     if (mykeyboard[KEYSTATE_i]) // get info on current object
                     {
@@ -1969,13 +1982,13 @@ Sint32 level_editor()
                     else if (mode == OBJECT)
                     {
                         levelchanged = 1;
-                        newob = data.level->add_ob(myorder, forecount);
+                        newob = data.level->add_ob(object_brush.order, object_brush.family);
                         newob->setxy(windowx, windowy);
-                        newob->team_num = currentteam;
-                        newob->stats->level = currentlevel;
+                        newob->team_num = object_brush.team;
+                        newob->stats->level = object_brush.level;
                         newob->dead = 0; // just in case
                         newob->collide_ob = 0;
-                        if ( (grid_aligned==1) && some_hit(windowx, windowy, newob, data.level))
+                        if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, data.level))
                         {
                             if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
                                     newob->collide_ob )                    // and hit a guy?
@@ -1993,7 +2006,7 @@ Sint32 level_editor()
                                 newob = NULL;
                             }
                         }  // end of failure to put guy
-                        else if (grid_aligned == 2)
+                        else if (!object_brush.snap_to_grid)
                         {
                             newob->draw(myscreen->viewob[0]);
                             myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -2017,7 +2030,7 @@ Sint32 level_editor()
                         windowx /= GRID_SIZE;  // get the map position ..
                         windowy /= GRID_SIZE;
                         // Set to our current selection
-                        data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(backcount);
+                        data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
                         levelchanged = 1;
                         if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
                         {
@@ -2039,9 +2052,9 @@ Sint32 level_editor()
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
-                    backcount = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
+                    terrain_brush.terrain = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
                                              % (sizeof(backgrounds)/4)];
-                    backcount %= NUM_BACKGROUNDS;
+                    terrain_brush.terrain %= NUM_BACKGROUNDS;
                     mode = TERRAIN;
                     modeButton.label = "Mode (Terrain)";
                 } // end of background grid window
@@ -2054,16 +2067,16 @@ Sint32 level_editor()
 			event = 1;
 			if (mode == OBJECT)
 			{
-				if (myorder == ORDER_LIVING)
-					forecount = (forecount+1) % NUM_FAMILIES;
-				else if (myorder == ORDER_TREASURE)
-					forecount = (forecount+1) % (MAX_TREASURE+1);
-				else if (myorder == ORDER_GENERATOR)
-					forecount = (forecount+1) % 4;
-				else if (myorder == ORDER_WEAPON)
-					forecount = (forecount+1) % (FAMILY_DOOR+1); // use largest weapon
+				if (object_brush.order == ORDER_LIVING)
+					object_brush.family = (object_brush.family+1) % NUM_FAMILIES;
+				else if (object_brush.order == ORDER_TREASURE)
+					object_brush.family = (object_brush.family+1) % (MAX_TREASURE+1);
+				else if (object_brush.order == ORDER_GENERATOR)
+					object_brush.family = (object_brush.family+1) % 4;
+				else if (object_brush.order == ORDER_WEAPON)
+					object_brush.family = (object_brush.family+1) % (FAMILY_DOOR+1); // use largest weapon
 				else
-					forecount = 0;
+					object_brush.family = 0;
 			} // end of if object mode
 			if (mode == TERRAIN)
 			{
@@ -2073,7 +2086,7 @@ Sint32 level_editor()
 				windowy -= (windowy%GRID_SIZE);
 				windowx /= GRID_SIZE;
 				windowy /= GRID_SIZE;
-				backcount = data.level->grid.data[windowy*(data.level->grid.w)+windowx];
+				terrain_brush.terrain = data.level->grid.data[windowy*(data.level->grid.w)+windowx];
 			}
 			while (mymouse[MOUSE_RIGHT])
 			{
@@ -2108,7 +2121,7 @@ Sint32 level_editor()
                 for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
                     (*f)->draw(myscreen, scentext);
             }
-			display_panel(myscreen, data.level, mode);
+			display_panel(myscreen, data.level, mode, terrain_brush, object_brush);
 			myscreen->refresh();
 			
             event = 0;
@@ -2136,7 +2149,7 @@ Sint32 level_editor()
 	return OK;
 }
 
-Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode)
+Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode, const EditorTerrainBrush& terrain_brush, const EditorObjectBrush& object_brush)
 {
 	char message[50];
 	Sint32 i, j; // for loops
@@ -2174,11 +2187,11 @@ Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode)
 	myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
 
 	// Get team number ..
-	sprintf(message, "%d:", currentteam);
-	if (myorder == ORDER_LIVING)
-		strcat(message, livings[forecount]);
-	else if (myorder == ORDER_GENERATOR)
-		switch (forecount)      // who are we?
+	sprintf(message, "%d:", object_brush.team);
+	if (object_brush.order == ORDER_LIVING)
+		strcat(message, livings[object_brush.family]);
+	else if (object_brush.order == ORDER_GENERATOR)
+		switch (object_brush.family)      // who are we?
 		{
 			case FAMILY_TENT:
 				strcat(message, "TENT");
@@ -2196,27 +2209,25 @@ Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode)
 				strcat(message, "GENERATOR");
 				break;
 		}
-	else if (myorder == ORDER_SPECIAL)
+	else if (object_brush.order == ORDER_SPECIAL)
 		strcat(message, "PLAYER");
-	else if (myorder == ORDER_TREASURE)
-		strcat(message, treasures[forecount]);
-	else if (myorder == ORDER_WEAPON)
-		strcat(message, weapons[forecount]);
+	else if (object_brush.order == ORDER_TREASURE)
+		strcat(message, treasures[object_brush.family]);
+	else if (object_brush.order == ORDER_WEAPON)
+		strcat(message, weapons[object_brush.family]);
 	else
 		strcat(message, "UNKNOWN");
 	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
 	// Level display
-	sprintf(message, "LVL: %u", currentlevel);
+	sprintf(message, "LVL: %u", object_brush.level);
 	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
 	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
 	// Is grid alignment on?
 	//myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
-	if (grid_aligned==1)
+	if (object_brush.snap_to_grid)
 		scentext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
-	else if (grid_aligned==2)
-		scentext->write_xy(lm, L_D(curline++), "ALIGN: STACK", DARK_BLUE, 1);
 	else
 		scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
 
@@ -2227,7 +2238,7 @@ Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode)
 
 	// Show the background grid ..
 	myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
-	                    0, 0, 320, 200, myscreen->pixdata[backcount].data);
+	                    0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
 
 	//   rowsdown = (NUM_BACKGROUNDS / 4) + 1;
 	//   rowsdown = 0; // hack for now
