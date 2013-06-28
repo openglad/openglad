@@ -1801,12 +1801,14 @@ void timed_dialog(const char* message, float delay_seconds)
     
 	text gladtext(myscreen);
 	
-	int pix_per_char = 3;
-    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
-    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
+	int pix_per_char = 6;
+	int len = strlen(message);
+	int width = len * pix_per_char;
+    int leftside  = 160 - width/2 - 12;
+    int rightside = 160 + width/2 + 12;
     
-    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, "");
-    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+    myscreen->draw_button(leftside, 80, rightside, 110, 1);
+    gladtext.write_xy(160 - width/2, 94, message, (unsigned char) DARK_BLUE, 1);
 
     myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
 

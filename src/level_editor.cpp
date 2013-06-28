@@ -146,7 +146,6 @@ Sint32 backgrounds[] = {
 
 Sint32 rowsdown = 0;
 Sint32 maxrows = ((sizeof(backgrounds)/4) / 4);
-text *scentext;
 
 bool save_level_and_map(screen* ascreen);
 
@@ -483,95 +482,53 @@ bool prompt_for_string(text* mytext, const std::string& message, std::string& re
     return true;
 }
 
-bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& ls, SimpleButton* elem)
-{
-    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = ls.begin(); e != ls.end(); e++)
-    {
-        const std::set<SimpleButton*>& s = e->second;
-        if(s.find(elem) != s.end())
-            return true;
-    }
-    return false;
-}
 
-// Wouldn't spatial partitioning be nice?  Too bad!
-bool mouse_on_menus(int mx, int my, const set<SimpleButton*>& menu_buttons, const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu)
-{
-    for(set<SimpleButton*>::const_iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
-    {
-        if((*e)->contains(mx, my))
-            return true;
-    }
-    
-    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = current_menu.begin(); e != current_menu.end(); e++)
-    {
-        const set<SimpleButton*>& s = e->second;
-        for(set<SimpleButton*>::const_iterator f = s.begin(); f != s.end(); f++)
-        {
-            if((*f)->contains(mx, my))
-                return true;
-        }
-    }
-    
-    return false;
-}
 
-bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu, SimpleButton& button, bool is_in_top_menu = false)
-{
-    // Make sure it is showing
-    if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(current_menu, &button)))
-        return false;
-    
-    while (mymouse[MOUSE_LEFT])
-        get_input_events(WAIT);
-    
-    if(current_menu.size() > 0)
-    {
-        // Close menu if already open
-        if(current_menu.back().first == &button)
-        {
-            current_menu.pop_back();
-            myscreen->clearfontbuffer();
-            return false;
-        }
-        
-        myscreen->clearfontbuffer();
-        
-        // Remove all menus up to the parent
-        while(current_menu.size() > 0)
-        {
-            std::set<SimpleButton*>& s = current_menu.back().second;
-            if(s.find(&button) == s.end())
-                current_menu.pop_back();
-            else
-                return true; // Open this menu
-        }
-    }
-    
-    // No parent!
-    return is_in_top_menu;
-}
 
-bool activate_menu_choice(int mx, int my, std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu, SimpleButton& button, bool is_in_top_menu = false)
+
+class EditorTerrainBrush
 {
-    // Make sure it is showing
-    if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(current_menu, &button)))
-        return false;
+public:
     
-    while (mymouse[MOUSE_LEFT])
-        get_input_events(WAIT);
+    Sint32 terrain;
     
-    // Close menu
-    myscreen->clearfontbuffer();
-    current_menu.clear();
-    return true;
-}
+    EditorTerrainBrush()
+        : terrain(PIX_GRASS1)
+    {}
+};
+
+class EditorObjectBrush
+{
+public:
+    
+    bool snap_to_grid;
+    Sint32 order;
+    Sint32 family;
+    char team;
+    unsigned short level;
+    
+    EditorObjectBrush()
+        : snap_to_grid(true), order(ORDER_LIVING), family(0), team(1), level(1)
+    {}
+};
+
 
 class LevelEditorData
 {
 public:
     CampaignData* campaign;
     LevelData* level;
+    
+    text* scentext;
+	ModeEnum mode;
+    EditorTerrainBrush terrain_brush;
+    EditorObjectBrush object_brush;
+    
+	radar myradar;
+	
+	set<SimpleButton*> menu_buttons;
+	// The active menu buttons
+	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
     
     LevelEditorData();
     ~LevelEditorData();
@@ -587,10 +544,13 @@ public:
     
     bool saveLevelAs(int id);
     bool saveLevel();
+    
+    void draw(screen* myscreen);
+    Sint32 display_panel(screen* myscreen);
 };
 
 LevelEditorData::LevelEditorData()
-    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1))
+    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
 {
     
 }
@@ -670,6 +630,93 @@ bool LevelEditorData::saveLevelAs(int id)
     mount_campaign_package(old_campaign);
     
     return result;
+}
+
+
+
+bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& ls, SimpleButton* elem)
+{
+    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        const std::set<SimpleButton*>& s = e->second;
+        if(s.find(elem) != s.end())
+            return true;
+    }
+    return false;
+}
+
+// Wouldn't spatial partitioning be nice?  Too bad!
+bool mouse_on_menus(int mx, int my, const set<SimpleButton*>& menu_buttons, const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu)
+{
+    for(set<SimpleButton*>::const_iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+    {
+        if((*e)->contains(mx, my))
+            return true;
+    }
+    
+    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = current_menu.begin(); e != current_menu.end(); e++)
+    {
+        const set<SimpleButton*>& s = e->second;
+        for(set<SimpleButton*>::const_iterator f = s.begin(); f != s.end(); f++)
+        {
+            if((*f)->contains(mx, my))
+                return true;
+        }
+    }
+    
+    return false;
+}
+
+bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu, SimpleButton& button, bool is_in_top_menu = false)
+{
+    // Make sure it is showing
+    if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(current_menu, &button)))
+        return false;
+    
+    while (mymouse[MOUSE_LEFT])
+        get_input_events(WAIT);
+    
+    if(current_menu.size() > 0)
+    {
+        // Close menu if already open
+        if(current_menu.back().first == &button)
+        {
+            current_menu.pop_back();
+            myscreen->clearfontbuffer();
+            return false;
+        }
+        
+        myscreen->clearfontbuffer();
+        
+        // Remove all menus up to the parent
+        while(current_menu.size() > 0)
+        {
+            std::set<SimpleButton*>& s = current_menu.back().second;
+            if(s.find(&button) == s.end())
+                current_menu.pop_back();
+            else
+                return true; // Open this menu
+        }
+    }
+    
+    // No parent!
+    return is_in_top_menu;
+}
+
+bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& button, bool is_in_top_menu = false)
+{
+    // Make sure it is showing
+    if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(data.current_menu, &button)))
+        return false;
+    
+    while (mymouse[MOUSE_LEFT])
+        get_input_events(WAIT);
+    
+    // Close menu
+    myscreen->clearfontbuffer();
+    data.current_menu.clear();
+    data.draw(myscreen);
+    return true;
 }
 
 // Recursively get the connected levels
@@ -759,6 +806,138 @@ bool LevelEditorData::saveLevel()
     return result;
 }
 
+void LevelEditorData::draw(screen* myscreen)
+{
+    myscreen->clearscreen();
+    level->draw(myscreen);
+    myradar.draw(level);
+    for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+        (*e)->draw(myscreen, scentext);
+    for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
+    {
+        set<SimpleButton*>& s = e->second;
+        for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
+            (*f)->draw(myscreen, scentext);
+    }
+    display_panel(myscreen);
+    myscreen->refresh();
+}
+
+Sint32 LevelEditorData::display_panel(screen* myscreen)
+{
+	char message[50];
+	Sint32 i, j; // for loops
+	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
+	static Sint32 numobs = myscreen->numobs;
+	static Sint32 lm = 245;
+	Sint32 curline = 0;
+	Sint32 whichback;
+	static char treasures[20][NUM_FAMILIES] =
+	    { "BLOOD", "DRUMSTICK", "GOLD", "SILVER",
+	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
+	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED", "CC",
+	    };
+	static char weapons[20][NUM_FAMILIES] =
+	    { "KNIFE", "ROCK", "ARROW", "FIREBALL",
+	      "TREE", "METEOR", "SPRINKLE", "BONE",
+	      "BLOOD", "BLOB", "FIRE ARROW", "LIGHTNING",
+	      "GLOW", "WAVE 1", "WAVE 2", "WAVE 3",
+	      "PROTECTION", "HAMMER", "DOOR",
+	    };
+
+	static char livings[NUM_FAMILIES][20] =
+	    {  "SOLDIER", "ELF", "ARCHER", "MAGE",
+	       "SKELETON", "CLERIC", "ELEMENTAL",
+	       "FAERIE", "L SLIME", "S SLIME", "M SLIME",
+	       "THIEF", "GHOST", "DRUID", "ORC",
+	       "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
+	       "GOLEM", "G SKELETON", "TOWER1",
+	    };
+
+	// Hide the mouse ..
+	//release_mouse();
+
+	// Draw the bounding box
+	myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
+
+	// Get team number ..
+	sprintf(message, "%d:", object_brush.team);
+	if (object_brush.order == ORDER_LIVING)
+		strcat(message, livings[object_brush.family]);
+	else if (object_brush.order == ORDER_GENERATOR)
+		switch (object_brush.family)      // who are we?
+		{
+			case FAMILY_TENT:
+				strcat(message, "TENT");
+				break;
+			case FAMILY_TOWER:
+				strcat(message, "TOWER");
+				break;
+			case FAMILY_BONES:
+				strcat(message, "BONEPILE");
+				break;
+			case FAMILY_TREEHOUSE:
+				strcat(message, "TREEHOUSE");
+				break;
+			default:
+				strcat(message, "GENERATOR");
+				break;
+		}
+	else if (object_brush.order == ORDER_SPECIAL)
+		strcat(message, "PLAYER");
+	else if (object_brush.order == ORDER_TREASURE)
+		strcat(message, treasures[object_brush.family]);
+	else if (object_brush.order == ORDER_WEAPON)
+		strcat(message, weapons[object_brush.family]);
+	else
+		strcat(message, "UNKNOWN");
+	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+
+	// Level display
+	sprintf(message, "LVL: %u", object_brush.level);
+	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
+	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+
+	// Is grid alignment on?
+	//myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
+	if (object_brush.snap_to_grid)
+		scentext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
+	else
+		scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
+
+	numobs = myscreen->numobs;
+	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
+	sprintf(message, "OB: %d", numobs);
+	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
+
+	// Show the background grid ..
+	myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
+	                    0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
+
+	//   rowsdown = (NUM_BACKGROUNDS / 4) + 1;
+	//   rowsdown = 0; // hack for now
+	for (i=0; i < PIX_OVER; i++)
+	{
+		for (j=0; j < 4; j++)
+		{
+			//myscreen->back[i]->draw( S_RIGHT+(i*8), S_UP+100);
+			//myscreen->back[0]->draw(64, 64);
+			whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
+			myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
+			                    GRID_SIZE, GRID_SIZE,
+			                    0, 0, 320, 200,
+			                    myscreen->pixdata[ backgrounds[whichback] ].data);
+		}
+	}
+	myscreen->draw_box(S_RIGHT, PIX_TOP,
+	                   S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
+	// Restore the mouse
+	//grab_mouse();
+
+	return 1;
+}
+
 bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 {
     x *= GRID_SIZE;
@@ -805,38 +984,17 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 }
 
 
-class EditorTerrainBrush
-{
-public:
-    
-    Sint32 terrain;
-    
-    EditorTerrainBrush()
-        : terrain(PIX_GRASS1)
-    {}
-};
-
-class EditorObjectBrush
-{
-public:
-    
-    bool snap_to_grid;
-    Sint32 order;
-    Sint32 family;
-    char team;
-    unsigned short level;
-    
-    EditorObjectBrush()
-        : snap_to_grid(true), order(ORDER_LIVING), family(0), team(1), level(1)
-    {}
-};
-
 
 Sint32 level_editor()
 {
     static LevelEditorData data;
-    EditorTerrainBrush terrain_brush;
-    EditorObjectBrush object_brush;
+    EditorTerrainBrush& terrain_brush = data.terrain_brush;
+    EditorObjectBrush& object_brush = data.object_brush;
+    text*& scentext = data.scentext;
+    ModeEnum& mode = data.mode;
+    radar& myradar = data.myradar;
+	set<SimpleButton*>& menu_buttons = data.menu_buttons;
+	list<pair<SimpleButton*, set<SimpleButton*> > >& current_menu = data.current_menu;
     
 	Sint32 i,j;
 	Sint32 extra;
@@ -883,7 +1041,6 @@ Sint32 level_editor()
 	event = 1;  // Redraw right away
 	
 	// Minimap
-	radar myradar(myscreen->viewob[0], myscreen, 0);
 	myradar.start(data.level);
 	
 	// GUI
@@ -941,21 +1098,17 @@ Sint32 level_editor()
 	
 	
 	// Mode menu
-	ModeEnum mode = TERRAIN;
 	SimpleButton modeButton("Mode (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, 15);
 	SimpleButton modeTerrainButton("Terrain", modeButton.area.x, modeButton.area.y + modeButton.area.h, 47, 15, true);
 	SimpleButton modeObjectButton("Object", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 47, 15, true);
 	SimpleButton modeSelectButton("Select", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 47, 15, true);
 	
 	// Top menu
-	set<SimpleButton*> menu_buttons;
 	menu_buttons.insert(&fileButton);
 	menu_buttons.insert(&campaignButton);
 	menu_buttons.insert(&levelButton);
 	menu_buttons.insert(&modeButton);
 	
-	// The active menu buttons
-	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
 	
 
 	//******************************
@@ -1222,10 +1375,11 @@ Sint32 level_editor()
 		if (mykeyboard[KEYSTATE_DOWN])
 		{
 			rowsdown++;
-			event = 1;
 			if (rowsdown >= maxrows)
 				rowsdown -= maxrows;
-			display_panel(myscreen, data.level, mode, terrain_brush, object_brush);
+            
+            event = 1;
+            
 			while (mykeyboard[KEYSTATE_DOWN])
 				get_input_events(WAIT);
 		}
@@ -1234,12 +1388,13 @@ Sint32 level_editor()
 		if (mykeyboard[KEYSTATE_UP])
 		{
 			rowsdown--;
-			event = 1;
 			if (rowsdown < 0)
 				rowsdown += maxrows;
 			if (rowsdown <0 || rowsdown >= maxrows) // bad case
 				rowsdown = 0;
-			display_panel(myscreen, data.level, mode, terrain_brush, object_brush);
+            
+            event = 1;
+            
 			while (mykeyboard[KEYSTATE_UP])
 				get_input_events(WAIT);
 		}
@@ -1323,7 +1478,7 @@ Sint32 level_editor()
                     s.insert(&fileCampaignSaveAsButton);
                     current_menu.push_back(std::make_pair(&fileCampaignButton, s));
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileCampaignImportButton))
+                else if(activate_menu_choice(mx, my, data, fileCampaignImportButton))
                 {
                     bool cancel = false;
                     if(levelchanged)
@@ -1342,7 +1497,7 @@ Sint32 level_editor()
                         importCampaignPicker();
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileCampaignShareButton))
+                else if(activate_menu_choice(mx, my, data, fileCampaignShareButton))
                 {
                     bool cancel = false;
                     if(levelchanged)
@@ -1391,7 +1546,7 @@ Sint32 level_editor()
                         shareCampaign(myscreen);
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileCampaignNewButton))
+                else if(activate_menu_choice(mx, my, data, fileCampaignNewButton))
                 {
                     // Confirm if unsaved
                     bool cancel = false;
@@ -1459,7 +1614,7 @@ Sint32 level_editor()
                         
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileCampaignLoadButton))
+                else if(activate_menu_choice(mx, my, data, fileCampaignLoadButton))
                 {
                     // TODO: Use campaign picker here
                     std::string campaign = "com.example.new_campaign";
@@ -1483,7 +1638,7 @@ Sint32 level_editor()
                         myradar.update(data.level);
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveButton))
+                else if(activate_menu_choice(mx, my, data, fileCampaignSaveButton))
                 {
                     if(data.saveCampaign())
                     {
@@ -1497,7 +1652,7 @@ Sint32 level_editor()
                         event = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileCampaignSaveAsButton))
+                else if(activate_menu_choice(mx, my, data, fileCampaignSaveAsButton))
                 {
                     // TODO: Use campaign picker
                     std::string campaign = data.campaign->id;
@@ -1526,7 +1681,7 @@ Sint32 level_editor()
                     s.insert(&fileLevelSaveAsButton);
                     current_menu.push_back(std::make_pair(&fileLevelButton, s));
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileLevelNewButton))
+                else if(activate_menu_choice(mx, my, data, fileLevelNewButton))
                 {
                     // New level
                     data.level->clear();
@@ -1535,7 +1690,7 @@ Sint32 level_editor()
                     levelchanged = 1;
                     event = 1;
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileLevelLoadButton))
+                else if(activate_menu_choice(mx, my, data, fileLevelLoadButton))
                 {
                     // Confirm if unsaved
                     bool cancel = false;
@@ -1570,7 +1725,7 @@ Sint32 level_editor()
                         }
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveButton))
+                else if(activate_menu_choice(mx, my, data, fileLevelSaveButton))
                 {
                     if(data.saveLevel())
                     {
@@ -1584,7 +1739,7 @@ Sint32 level_editor()
                         event = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileLevelSaveAsButton))
+                else if(activate_menu_choice(mx, my, data, fileLevelSaveAsButton))
                 {
                     // TODO: It would be nice to use the level browser for this
                     
@@ -1607,7 +1762,7 @@ Sint32 level_editor()
                         }
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, fileQuitButton))
+                else if(activate_menu_choice(mx, my, data, fileQuitButton))
                 {
                     done = true;
                     break;
@@ -1622,7 +1777,7 @@ Sint32 level_editor()
                     s.insert(&campaignValidateButton);
                     current_menu.push_back(std::make_pair(&campaignButton, s));
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignInfoButton))
+                else if(activate_menu_choice(mx, my, data, campaignInfoButton))
                 {
                     char buf[512];
                     snprintf(buf, 512, "%s\nID: %s\nTitle: %s\nVersion: %s\nAuthors: %s\nContributors: %s\nSugg. Power: %d\nFirst level: %d", 
@@ -1640,7 +1795,7 @@ Sint32 level_editor()
                     s.insert(&campaignProfileContributorsButton);
                     current_menu.push_back(std::make_pair(&campaignProfileButton, s));
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignProfileTitleButton))
+                else if(activate_menu_choice(mx, my, data, campaignProfileTitleButton))
                 {
                     std::string title = data.campaign->title;
                     if(prompt_for_string(scentext, "Campaign Title", title))
@@ -1649,7 +1804,7 @@ Sint32 level_editor()
                         campaignchanged = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignProfileDescriptionButton))
+                else if(activate_menu_choice(mx, my, data, campaignProfileDescriptionButton))
                 {
                     std::list<std::string> desc = data.campaign->description;
                     if(prompt_for_string_block(scentext, "Campaign Description", desc))
@@ -1659,11 +1814,11 @@ Sint32 level_editor()
                     }
                     event = 1;
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignProfileIconButton))
+                else if(activate_menu_choice(mx, my, data, campaignProfileIconButton))
                 {
                     popup_dialog("Edit Icon", "Not yet implemented.");
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignProfileAuthorsButton))
+                else if(activate_menu_choice(mx, my, data, campaignProfileAuthorsButton))
                 {
                     std::string authors = data.campaign->authors;
                     if(prompt_for_string(scentext, "Campaign Authors", authors))
@@ -1672,7 +1827,7 @@ Sint32 level_editor()
                         campaignchanged = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignProfileContributorsButton))
+                else if(activate_menu_choice(mx, my, data, campaignProfileContributorsButton))
                 {
                     std::string contributors = data.campaign->contributors;
                     if(prompt_for_string(scentext, "Campaign Contributors", contributors))
@@ -1690,7 +1845,7 @@ Sint32 level_editor()
                     s.insert(&campaignDetailsFirstLevelButton);
                     current_menu.push_back(std::make_pair(&campaignDetailsButton, s));
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignDetailsVersionButton))
+                else if(activate_menu_choice(mx, my, data, campaignDetailsVersionButton))
                 {
                     std::string version = data.campaign->version;
                     if(prompt_for_string(scentext, "Campaign Version", version))
@@ -1699,7 +1854,7 @@ Sint32 level_editor()
                         campaignchanged = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignDetailsSuggestedPowerButton))
+                else if(activate_menu_choice(mx, my, data, campaignDetailsSuggestedPowerButton))
                 {
                     char buf[20];
                     snprintf(buf, 20, "%d", data.campaign->suggested_power);
@@ -1710,7 +1865,7 @@ Sint32 level_editor()
                         campaignchanged = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignDetailsFirstLevelButton))
+                else if(activate_menu_choice(mx, my, data, campaignDetailsFirstLevelButton))
                 {
                     char buf[20];
                     snprintf(buf, 20, "%d", data.campaign->first_level);
@@ -1721,7 +1876,7 @@ Sint32 level_editor()
                         campaignchanged = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, campaignValidateButton))
+                else if(activate_menu_choice(mx, my, data, campaignValidateButton))
                 {
                     std::list<int> levels = list_levels();
                     std::set<int> connected;
@@ -1785,14 +1940,14 @@ Sint32 level_editor()
                     s.insert(&levelResmoothButton);
                     current_menu.push_back(std::make_pair(&levelButton, s));
                 }
-                else if(activate_menu_choice(mx, my, current_menu, levelInfoButton))
+                else if(activate_menu_choice(mx, my, data, levelInfoButton))
                 {
                     char buf[512];
                     snprintf(buf, 512, "%s\nID number: %d\nTitle: %s\nSize: %ux%u",
                              (levelchanged? "(unsaved)" : ""), data.level->id, data.level->title.c_str(), data.level->grid.w, data.level->grid.h);
                     popup_dialog("Level Info", buf);
                 }
-                else if(activate_menu_choice(mx, my, current_menu, levelTitleButton))
+                else if(activate_menu_choice(mx, my, data, levelTitleButton))
                 {
                     std::string title = data.level->title;
                     if(prompt_for_string(scentext, "Level Title", title))
@@ -1801,7 +1956,7 @@ Sint32 level_editor()
                         levelchanged = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, levelDescriptionButton))
+                else if(activate_menu_choice(mx, my, data, levelDescriptionButton))
                 {
                     std::list<std::string> desc = data.level->description;
                     if(prompt_for_string_block(scentext, "Level Description", desc))
@@ -1811,7 +1966,7 @@ Sint32 level_editor()
                     }
                     event = 1;
                 }
-                else if(activate_menu_choice(mx, my, current_menu, levelMapSizeButton))
+                else if(activate_menu_choice(mx, my, data, levelMapSizeButton))
                 {
                     // Using two prompts sequentially
                     
@@ -1860,6 +2015,8 @@ Sint32 level_editor()
                                     myradar.start(data.level);
                                     myradar.update(data.level);
                                     
+                                    data.draw(myscreen);
+                                    
                                     char buf[30];
                                     snprintf(buf, 30, "Resized map to %ux%u", data.level->grid.w, data.level->grid.h);
                                     timed_dialog(buf);
@@ -1885,7 +2042,7 @@ Sint32 level_editor()
                         event = 1;
                     }
                 }
-                else if(activate_menu_choice(mx, my, current_menu, levelResmoothButton))
+                else if(activate_menu_choice(mx, my, data, levelResmoothButton))
                 {
                     resmooth_map(data.level);
                     levelchanged = 1;
@@ -1900,17 +2057,17 @@ Sint32 level_editor()
                     s.insert(&modeSelectButton);
                     current_menu.push_back(std::make_pair(&modeButton, s));
                 }
-                else if(activate_menu_choice(mx, my, current_menu, modeTerrainButton))
+                else if(activate_menu_choice(mx, my, data, modeTerrainButton))
                 {
                     mode = TERRAIN;
                     modeButton.label = "Mode (Terrain)";
                 }
-                else if(activate_menu_choice(mx, my, current_menu, modeObjectButton))
+                else if(activate_menu_choice(mx, my, data, modeObjectButton))
                 {
                     mode = OBJECT;
                     modeButton.label = "Mode (Object)";
                 }
-                else if(activate_menu_choice(mx, my, current_menu, modeSelectButton))
+                else if(activate_menu_choice(mx, my, data, modeSelectButton))
                 {
                     mode = SELECT;
                     modeButton.label = "Mode (Select)";
@@ -1974,8 +2131,13 @@ Sint32 level_editor()
                         newob->setxy(windowx, windowy);
                         if (some_hit(windowx, windowy, newob, data.level))
                         {
-                            set_name(newob->collide_ob,myscreen);
-                            levelchanged = 1;
+                            std::string name = newob->collide_ob->stats->name;
+                            if(prompt_for_string(scentext, "Rename", name))
+                            {
+                                strncpy(newob->collide_ob->stats->name, name.c_str(), 11);
+                                newob->collide_ob->stats->name[11] = '\0';
+                                levelchanged = 1;
+                            }
                         }
                         data.level->remove_ob(newob,0);
                     }  // end of info mode
@@ -2110,20 +2272,7 @@ Sint32 level_editor()
 		// Redraw screen
 		if (event)
 		{
-		    myscreen->clearscreen();
-			data.level->draw(myscreen);
-			myradar.draw(data.level);
-			for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
-                (*e)->draw(myscreen, scentext);
-            for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
-            {
-                set<SimpleButton*>& s = e->second;
-                for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
-                    (*f)->draw(myscreen, scentext);
-            }
-			display_panel(myscreen, data.level, mode, terrain_brush, object_brush);
-			myscreen->refresh();
-			
+			data.draw(myscreen);
             event = 0;
 		}
         
@@ -2147,121 +2296,6 @@ Sint32 level_editor()
     delete scentext;
     
 	return OK;
-}
-
-Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode, const EditorTerrainBrush& terrain_brush, const EditorObjectBrush& object_brush)
-{
-	char message[50];
-	Sint32 i, j; // for loops
-	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
-	static Sint32 numobs = myscreen->numobs;
-	static Sint32 lm = 245;
-	Sint32 curline = 0;
-	Sint32 whichback;
-	static char treasures[20][NUM_FAMILIES] =
-	    { "BLOOD", "DRUMSTICK", "GOLD", "SILVER",
-	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
-	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED", "CC",
-	    };
-	static char weapons[20][NUM_FAMILIES] =
-	    { "KNIFE", "ROCK", "ARROW", "FIREBALL",
-	      "TREE", "METEOR", "SPRINKLE", "BONE",
-	      "BLOOD", "BLOB", "FIRE ARROW", "LIGHTNING",
-	      "GLOW", "WAVE 1", "WAVE 2", "WAVE 3",
-	      "PROTECTION", "HAMMER", "DOOR",
-	    };
-
-	static char livings[NUM_FAMILIES][20] =
-	    {  "SOLDIER", "ELF", "ARCHER", "MAGE",
-	       "SKELETON", "CLERIC", "ELEMENTAL",
-	       "FAERIE", "L SLIME", "S SLIME", "M SLIME",
-	       "THIEF", "GHOST", "DRUID", "ORC",
-	       "ORC CAPTAIN", "BARBARIAN", "ARCHMAGE",
-	       "GOLEM", "G SKELETON", "TOWER1",
-	    };
-
-	// Hide the mouse ..
-	//release_mouse();
-
-	// Draw the bounding box
-	myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
-
-	// Get team number ..
-	sprintf(message, "%d:", object_brush.team);
-	if (object_brush.order == ORDER_LIVING)
-		strcat(message, livings[object_brush.family]);
-	else if (object_brush.order == ORDER_GENERATOR)
-		switch (object_brush.family)      // who are we?
-		{
-			case FAMILY_TENT:
-				strcat(message, "TENT");
-				break;
-			case FAMILY_TOWER:
-				strcat(message, "TOWER");
-				break;
-			case FAMILY_BONES:
-				strcat(message, "BONEPILE");
-				break;
-			case FAMILY_TREEHOUSE:
-				strcat(message, "TREEHOUSE");
-				break;
-			default:
-				strcat(message, "GENERATOR");
-				break;
-		}
-	else if (object_brush.order == ORDER_SPECIAL)
-		strcat(message, "PLAYER");
-	else if (object_brush.order == ORDER_TREASURE)
-		strcat(message, treasures[object_brush.family]);
-	else if (object_brush.order == ORDER_WEAPON)
-		strcat(message, weapons[object_brush.family]);
-	else
-		strcat(message, "UNKNOWN");
-	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
-
-	// Level display
-	sprintf(message, "LVL: %u", object_brush.level);
-	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
-
-	// Is grid alignment on?
-	//myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
-	if (object_brush.snap_to_grid)
-		scentext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
-	else
-		scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
-
-	numobs = myscreen->numobs;
-	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-	sprintf(message, "OB: %d", numobs);
-	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
-
-	// Show the background grid ..
-	myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
-	                    0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
-
-	//   rowsdown = (NUM_BACKGROUNDS / 4) + 1;
-	//   rowsdown = 0; // hack for now
-	for (i=0; i < PIX_OVER; i++)
-	{
-		for (j=0; j < 4; j++)
-		{
-			//myscreen->back[i]->draw( S_RIGHT+(i*8), S_UP+100);
-			//myscreen->back[0]->draw(64, 64);
-			whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
-			myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
-			                    GRID_SIZE, GRID_SIZE,
-			                    0, 0, 320, 200,
-			                    myscreen->pixdata[ backgrounds[whichback] ].data);
-		}
-	}
-	myscreen->draw_box(S_RIGHT, PIX_TOP,
-	                   S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
-	myscreen->buffer_to_screen(0, 0, 320, 200);
-	// Restore the mouse
-	//grab_mouse();
-
-	return 1;
 }
 
 
@@ -2290,50 +2324,6 @@ void remove_first_ob(screen *master)
 			here = here->next;
 	}
 }
-
-Sint32 save_map_file(char  * filename, screen *master)
-{
-	// File data in form:
-	// <# of frames>      1 byte
-	// <x size>                   1 byte
-	// <y size>                   1 byte
-	// <pixie data>               <x*y*frames> bytes
-
-	char numframes, x, y;
-	//  char  *newpic;
-	string fullpath(filename);
-	SDL_RWops  *outfile;
-
-	// Create the full pathname for the pixie file
-	fullpath += ".pix";
-
-	lowercase (fullpath);
-
-	if ( (outfile = open_write_file("temp/pix/", fullpath.c_str())) == NULL )
-	{
-		master->draw_button(30, 30, 220, 60, 1, 1);
-		scentext->write_xy(32, 32, "Error in saving map file", DARK_BLUE, 1);
-		scentext->write_xy(32, 42, fullpath.c_str(), DARK_BLUE, 1);
-		scentext->write_xy(32, 52, "Press SPACE to continue", DARK_BLUE, 1);
-		master->buffer_to_screen(0, 0, 320, 200);
-		while (!mykeyboard[KEYSTATE_SPACE])
-			get_input_events(WAIT);
-		return 0;
-	}
-
-	x = master->grid.w;
-	y = master->grid.h;
-	numframes = 1;
-	SDL_RWwrite(outfile, &numframes, 1, 1);
-	SDL_RWwrite(outfile, &x, 1, 1);
-	SDL_RWwrite(outfile, &y, 1, 1);
-
-	SDL_RWwrite(outfile, master->grid.data, 1, (x*y));
-
-	SDL_RWclose(outfile);        // Close the data file
-	return 1;
-
-} // End of map-saving routine
 
 char get_random_matching_tile(Sint32 whatback)
 {
@@ -2659,52 +2649,6 @@ void info_box(walker  *target,screen * myscreen)
 		get_input_events(WAIT);
 	while (mykeyboard[KEYSTATE_ESCAPE])
 		get_input_events(WAIT);
-}
-
-// Set the stats->name value of a walker ..
-void set_name(walker  *target, screen * master)
-{
-	char newname[11];
-	char oldname[20];
-	char buffer[200];
-
-	//gotoxy(1,20);
-	master->draw_button(30, 30, 220, 70, 1, 1);
-	sprintf(buffer, "Renaming object");
-	scentext->write_xy(32, 32, buffer, DARK_BLUE, 1);
-	sprintf(buffer, "Enter '.' to not change.");
-	scentext->write_xy(32, 42, buffer, DARK_BLUE, 1);
-
-	if (strlen(target->stats->name))
-	{
-		sprintf(buffer, "Current name: %s", target->stats->name);
-		strcpy(oldname, target->stats->name);
-	}
-	else
-	{
-		sprintf(buffer, "Current name: NOT SET");
-		strcpy(oldname, "NOT SET");
-	}
-	scentext->write_xy(32, 52, buffer, DARK_BLUE, 1);
-	scentext->write_xy(32, 62, "    New name:", DARK_BLUE, 1);
-
-	master->buffer_to_screen(0, 0, 320, 200);
-
-	// wait for key release
-	while (mykeyboard[KEYSTATE_r])
-		get_input_events(WAIT);
-    
-    char* new_text = scentext->input_string(115, 62, 9, oldname);
-    if(new_text == NULL)
-        new_text = oldname;
-	strcpy(newname, new_text);
-	newname[10] = 0;
-
-	if (strcmp(newname, ".")) // didn't type '.'
-		strcpy(target->stats->name, newname);
-
-	info_box(target,master);
-
 }
 
 void scenario_options(screen *myscreen)
