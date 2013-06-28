@@ -30,9 +30,6 @@ using namespace std;
 #define VERSION_NUM (char) 8 // save scenario type info
 #define SCROLLSIZE 8
 
-#define OBJECT_MODE 0
-#define MAP_MODE 1
-
 #define NUM_BACKGROUNDS PIX_MAX
 
 #define PIX_LEFT   (S_RIGHT+18)
@@ -47,16 +44,6 @@ using namespace std;
 #define L_W(x) (x*8 + 9)
 #define L_H(x) (x*8)
 
-#define NORMAL_KEYBOARD(x)  clear_keyboard(); release_keyboard(); x grab_keyboard();
-
-void remove_all_objects(screen *master);
-void do_help(screen * myscreen);
-Sint32 new_scenario_name();
-Sint32 new_grid_name();
-void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y);
-walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
-char some_pix(Sint32 whatback);
-char  * query_my_map_name();
 
 int toInt(const std::string& s);
 
@@ -64,7 +51,13 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
-Sint32 display_panel(screen *myscreen);
+enum ModeEnum {TERRAIN, OBJECT, SELECT};
+
+void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y);
+walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
+char get_random_matching_tile(Sint32 whatback);
+
+Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode);
 void info_box(walker  *target, screen * myscreen);
 void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
@@ -78,7 +71,6 @@ extern options * theprefs;
 extern Sint32 *mymouse;
 Uint8 *mykeyboard;
 //scenario *myscen = new scenario;
-Sint32 currentmode = OBJECT_MODE;
 Uint32 currentlevel = 1;
 char scen_name[10];
 char grid_name[10];
@@ -90,7 +82,7 @@ char currentteam = 0;
 Sint32 event = 1;  // need to redraw?
 Sint32 campaignchanged = 0;  // has campaign changed?
 Sint32 levelchanged = 0;  // has level changed?
-Sint32 cyclemode = 0;      // for color cycling
+Sint32 cyclemode = 1;      // for color cycling
 Sint32 grid_aligned = 1;  // aligned by grid, default is on
 //buffers: PORT: changed start_time to start_time_s to avoid conflict with
 //input.cpp
@@ -231,20 +223,20 @@ class SimpleButton
 {
 public:
     SDL_Rect area;
-    const std::string _text;
+    std::string label;
     bool remove_border;
     int color;
     bool centered;
     
-    SimpleButton(const std::string& _text, int x, int y, unsigned int w, unsigned int h, bool remove_border = false, int color = DARK_BLUE);
+    SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border = false, int color = DARK_BLUE);
     
     void draw(screen* myscreen, text* mytext);
     bool contains(int x, int y) const;
 };
 
 
-SimpleButton::SimpleButton(const std::string& _text, int x, int y, unsigned int w, unsigned int h, bool remove_border, int color)
-    : _text(_text), remove_border(remove_border), color(color), centered(false)
+SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border, int color)
+    : label(label), remove_border(remove_border), color(color), centered(false)
 {
     area.x = x;
     area.y = y;
@@ -256,9 +248,9 @@ void SimpleButton::draw(screen* myscreen, text* mytext)
 {
     myscreen->draw_button(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, (remove_border? 0 : 1), 1);
     if(centered)
-        mytext->write_xy(area.x + area.w/2 - 3*_text.size(), area.y + area.h/2 - 2, _text.c_str(), color, 1);
+        mytext->write_xy(area.x + area.w/2 - 3*label.size(), area.y + area.h/2 - 2, label.c_str(), color, 1);
     else
-        mytext->write_xy(area.x + 2, area.y + area.h/2 - 2, _text.c_str(), color, 1);
+        mytext->write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), color, 1);
 }
 
 bool SimpleButton::contains(int x, int y) const
@@ -773,6 +765,45 @@ bool LevelEditorData::saveLevel()
     return result;
 }
 
+bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
+{
+	oblink* here;
+
+	here = level->oblist;
+	while(here)
+	{
+		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+		{
+		    return true;
+		}
+		
+		here = here->next;
+	}
+
+	here = level->fxlist;
+	while(here)
+	{
+		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+		{
+		    return true;
+		}
+		
+		here = here->next;
+	}
+
+	here = level->weaplist;
+	while(here)
+	{
+		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+		{
+		    return true;
+		}
+		
+		here = here->next;
+	}
+	
+	return false;
+}
 
 
 
@@ -883,7 +914,6 @@ Sint32 level_editor()
 	
 	
 	// Mode menu
-	enum ModeEnum {TERRAIN, OBJECT, SELECT};
 	ModeEnum mode = TERRAIN;
 	SimpleButton modeButton("Mode (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, 15);
 	SimpleButton modeTerrainButton("Terrain", modeButton.area.x, modeButton.area.y + modeButton.area.h, 47, 15, true);
@@ -1008,16 +1038,6 @@ Sint32 level_editor()
 				get_input_events(WAIT);
 		}
 
-		// Show help
-		if (mykeyboard[KEYSTATE_h])
-		{
-			release_mouse();
-			do_help(myscreen);
-			myscreen->clearfontbuffer();
-			grab_mouse();
-			event = 1;
-		}
-
 		if (mykeyboard[KEYSTATE_KP_MULTIPLY]) // options menu
 		{
 			release_mouse();
@@ -1070,16 +1090,6 @@ Sint32 level_editor()
                 event = 1;
             }
 		}  // end of saving routines
-
-
-		// Switch modes ..
-		if (mykeyboard[KEYSTATE_m])        // switch to map or guys ..
-		{
-			event = 1;
-			currentmode = (currentmode+1) %2;
-			while (mykeyboard[KEYSTATE_m])
-				get_input_events(WAIT);
-		}
 
 		// Enter scenario text ..
 		if (mykeyboard[KEYSTATE_t])
@@ -1183,7 +1193,7 @@ Sint32 level_editor()
 				myorder = ORDER_WEAPON;
 			else if (myorder == ORDER_WEAPON)
 				myorder = ORDER_LIVING;
-			currentmode = OBJECT_MODE;
+			mode = OBJECT;
 			event = 1; // change score panel
 			while (mykeyboard[KEYSTATE_o])
 				get_input_events(WAIT);
@@ -1196,7 +1206,7 @@ Sint32 level_editor()
 			event = 1;
 			if (rowsdown >= maxrows)
 				rowsdown -= maxrows;
-			display_panel(myscreen);
+			display_panel(myscreen, data.level, mode);
 			while (mykeyboard[KEYSTATE_DOWN])
 				get_input_events(WAIT);
 		}
@@ -1210,7 +1220,7 @@ Sint32 level_editor()
 				rowsdown += maxrows;
 			if (rowsdown <0 || rowsdown >= maxrows) // bad case
 				rowsdown = 0;
-			display_panel(myscreen);
+			display_panel(myscreen, data.level, mode);
 			while (mykeyboard[KEYSTATE_UP])
 				get_input_events(WAIT);
 		}
@@ -1230,15 +1240,6 @@ Sint32 level_editor()
 		{
 			load_and_set_palette("our.pal", scenpalette);
 			while (mykeyboard[KEYSTATE_F9])
-				get_input_events(WAIT);
-		}
-
-		// Toggle color cycling
-		if (mykeyboard[KEYSTATE_F10])
-		{
-			cyclemode++;
-			cyclemode %= 2;
-			while (mykeyboard[KEYSTATE_F10])
 				get_input_events(WAIT);
 		}
 
@@ -1829,8 +1830,9 @@ Sint32 level_editor()
                             }
                             else
                             {
-                                if((w >= data.level->grid.w && h >= data.level->grid.h) || 
-                                   yes_or_no_prompt("Resize Map", "Delete objects outside of map?", false))
+                                if((w >= data.level->grid.w && h >= data.level->grid.h)
+                                    || !are_objects_outside_area(data.level, 0, 0, w, h)
+                                    || yes_or_no_prompt("Resize Map", "Delete objects outside of map?", false))
                                 {
                                     // Now change it
                                     data.level->resize_grid(w, h);
@@ -1882,14 +1884,17 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, current_menu, modeTerrainButton))
                 {
                     mode = TERRAIN;
+                    modeButton.label = "Mode (Terrain)";
                 }
                 else if(activate_menu_choice(mx, my, current_menu, modeObjectButton))
                 {
                     mode = OBJECT;
+                    modeButton.label = "Mode (Object)";
                 }
                 else if(activate_menu_choice(mx, my, current_menu, modeSelectButton))
                 {
                     mode = SELECT;
+                    modeButton.label = "Mode (Select)";
                 }
             }
             else
@@ -1955,7 +1960,7 @@ Sint32 level_editor()
                         }
                         data.level->remove_ob(newob,0);
                     }  // end of info mode
-                    else if (currentmode == OBJECT_MODE)
+                    else if (mode == OBJECT)
                     {
                         levelchanged = 1;
                         newob = data.level->add_ob(myorder, forecount);
@@ -2001,12 +2006,12 @@ Sint32 level_editor()
                         //       while (mymouse[MOUSE_LEFT])
                         //         mymouse = query_mouse();
                     }  // end of putting a guy
-                    if (currentmode == MAP_MODE)
+                    if (mode == TERRAIN)
                     {
                         windowx /= GRID_SIZE;  // get the map position ..
                         windowy /= GRID_SIZE;
                         // Set to our current selection
-                        data.level->grid.data[windowy*(data.level->grid.w)+windowx] = some_pix(backcount);
+                        data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(backcount);
                         levelchanged = 1;
                         if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
                         {
@@ -2031,7 +2036,7 @@ Sint32 level_editor()
                     backcount = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
                                              % (sizeof(backgrounds)/4)];
                     backcount %= NUM_BACKGROUNDS;
-                    currentmode = MAP_MODE;
+                    mode = TERRAIN;
                 } // end of background grid window
             }
 
@@ -2040,7 +2045,7 @@ Sint32 level_editor()
 		if (mymouse[MOUSE_RIGHT])      // cycle through things ...
 		{
 			event = 1;
-			if (currentmode == OBJECT_MODE)
+			if (mode == OBJECT)
 			{
 				if (myorder == ORDER_LIVING)
 					forecount = (forecount+1) % NUM_FAMILIES;
@@ -2053,7 +2058,7 @@ Sint32 level_editor()
 				else
 					forecount = 0;
 			} // end of if object mode
-			if (currentmode == MAP_MODE)
+			if (mode == TERRAIN)
 			{
 				windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
 				windowx -= (windowx%GRID_SIZE);
@@ -2096,7 +2101,7 @@ Sint32 level_editor()
                 for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
                     (*f)->draw(myscreen, scentext);
             }
-			display_panel(myscreen);
+			display_panel(myscreen, data.level, mode);
 			myscreen->refresh();
 			
             event = 0;
@@ -2124,7 +2129,7 @@ Sint32 level_editor()
 	return OK;
 }
 
-Sint32 display_panel(screen *myscreen)
+Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode)
 {
 	char message[50];
 	Sint32 i, j; // for loops
@@ -2159,24 +2164,7 @@ Sint32 display_panel(screen *myscreen)
 	//release_mouse();
 
 	// Draw the bounding box
-	//myscreen->draw_dialog(lm-4, L_D(-1), 310, L_D(8), "Info");
 	myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
-
-	// Show scenario and grid info
-	strcpy(message, scen_name);
-	uppercase(message);
-
-	//myscreen->fastbox(lm, S_UP, 70, 8*5, 27, 1);
-	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
-
-	strcpy(message, grid_name);
-	uppercase(message);
-	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
-
-	if (currentmode==MAP_MODE)
-		scentext->write_xy(lm,L_D(curline++), "MODE: MAP", DARK_BLUE, 1);
-	else if (currentmode==OBJECT_MODE)
-		scentext->write_xy(lm,L_D(curline++), "MODE: OBS", DARK_BLUE, 1);
 
 	// Get team number ..
 	sprintf(message, "%d:", currentteam);
@@ -2329,86 +2317,7 @@ Sint32 save_map_file(char  * filename, screen *master)
 
 } // End of map-saving routine
 
-Sint32 new_scenario_name()
-{
-	char tempstring[80];
-
-	scentext->write_xy(52, 32, "Scenario name: ", DARK_BLUE, 1);
-	char* new_text = scentext->input_string(135, 32, 8, scen_name);
-	if(new_text == NULL)
-        new_text = scen_name;
-	strcpy(tempstring, new_text);
-	
-	if (strlen(tempstring))
-	{
-		strcpy(scen_name, tempstring);
-		//buffers: all our files are lowercase....
-		lowercase(scen_name);
-	}
-
-	return 1;
-}
-
-Sint32 new_grid_name()
-{
-	char tempstring[80];
-
-	scentext->write_xy(52, 32, "Grid name: ", DARK_BLUE, 1);
-	char* new_text = scentext->input_string(117, 32, 8, grid_name);
-	if(new_text == NULL)
-        new_text = grid_name;
-	strcpy(tempstring, new_text);
-	//NORMAL_KEYBOARD(SDLKf("%s", tempstring);)
-	if (strlen(tempstring))
-		strcpy(grid_name, tempstring);
-
-	return 1;
-}
-
-void do_help(screen * myscreen)
-{
-	text *helptext = new text(myscreen);
-	Sint32 lm = S_LEFT+4+43, tm=S_UP+15;  // left and top margins
-	Sint32 lines = 0;
-
-	// Zardus: new margins
-	//myscreen->draw_button(S_LEFT+32,S_UP,S_RIGHT-1+16,S_DOWN-1,2, 1);
-	myscreen->draw_button(S_LEFT+43,S_UP + 11,S_RIGHT-1+16,S_DOWN-1,2, 1);
-
-	helptext->write_xy(lm + L_W(10), tm, "**HELP**", DARK_BLUE, 1);
-
-	helptext->write_xy(lm, tm+L_H(++lines), "G : TOGGLE GRID ALIGNMENT", DARK_BLUE, 1);
-	helptext->write_xy(lm, tm+L_H(++lines), "H : HELP", DARK_BLUE, 1);
-	helptext->write_xy(lm, tm+L_H(++lines), "I : INFO ON CLICKED OBJECT", DARK_BLUE, 1);
-	helptext->write_xy(lm, tm+L_H(++lines), "L : LOAD NEW SCEN OR GRID", DARK_BLUE, 1);
-	helptext->write_xy(lm, tm+L_H(++lines), "M : TOGGLE OBJECT OR MAP MODE", DARK_BLUE, 1);
-	helptext->write_xy(lm, tm+L_H(++lines), "N : NEW SCEN OR GRID NAME", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "O : TOGGLE LIVING/TENT/ETC", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "R : RENAME OBJECT", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "S : SAVE SCEN OR GRID", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "T : ENTER SCEN TEXT", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "* : TOGGLE SCENARIO OPTIONS", DARK_BLUE, 1);
-
-	//lines +=1;
-	helptext->write_xy(lm, tm+L_H(++lines), "ESC         : QUIT", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "LEFT CLICK  : PUT OB OR BACKGD", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "CTRL + LEFT : Remove Object", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "CTRL + D    : Remove all Obs", DARK_BLUE,1);
-
-	helptext->write_xy(lm, tm+L_H(++lines), "RIGHT CLICK : CYCLE THRU OBS", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "KEYS 0-7    : CYCLE TEAM NUMBER", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "F5          : SMOOTH MAP TILES", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "[,]         : LOWER/RAISE OB LEVEL", DARK_BLUE,1);
-	helptext->write_xy(lm, tm+L_H(++lines), "?           : DISPLAY SCEN TEXT", DARK_BLUE,1);
-
-	myscreen->buffer_to_screen(0, 0, 320, 200);
-
-	wait_for_key(KEYSTATE_SPACE);
-
-	delete helptext;
-}
-
-char some_pix(Sint32 whatback)
+char get_random_matching_tile(Sint32 whatback)
 {
 	Sint32 i;
 

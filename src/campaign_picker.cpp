@@ -210,7 +210,11 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
     {
         snprintf(buf, 60, "Thanks to %s", contributors.c_str());
         loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+        y += 10;
     }
+    
+    snprintf(buf, 60, "%s", id.c_str());
+    loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
     
 }
 

@@ -57,12 +57,6 @@ short load_version_4(SDL_RWops  *infile, screen * master); // v.4 scen: + names
 short load_version_5(SDL_RWops  *infile, screen * master); // v.5 scen: + type
 short load_version_6(SDL_RWops  *infile, screen * master, short version=6); // v.6 scen: + title
 
-//const char* get_scen_title(const char *filename, screen *master); // get the title
-
-char  * query_my_map_name();
-
-char my_map_name[40];
-
 
 
 Uint32 random(Uint32 x)
@@ -1919,7 +1913,6 @@ short load_version_2(SDL_RWops  *infile, screen * master)
 	newgrid[8] = '\0';
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
-	strcpy(my_map_name, newgrid);
 
 	// Determine number of objects to load ...
 	SDL_RWread(infile, &listsize, 2, 1);
@@ -2042,7 +2035,6 @@ short load_version_3(SDL_RWops  *infile, screen * master)
 	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase((char *)newgrid);
-	strcpy(my_map_name, newgrid);
 
 	// Determine number of objects to load ...
 	SDL_RWread(infile, &listsize, 2, 1);
@@ -2162,7 +2154,6 @@ short load_version_4(SDL_RWops  *infile, screen * master)
 	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase((char *)newgrid);
-	strcpy(my_map_name, newgrid);
 
 	// Determine number of objects to load ...
 	SDL_RWread(infile, &listsize, 2, 1);
@@ -2290,7 +2281,6 @@ short load_version_5(SDL_RWops  *infile, screen * master)
 	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase((char *)newgrid);
-	strcpy(my_map_name, newgrid);
 
 	// Get the scenario type information
 	SDL_RWread(infile, &new_scen_type, 1, 1);
@@ -2428,7 +2418,6 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 	SDL_RWread(infile, newgrid, 8, 1);
 	// Zardus: FIX: make sure they're lowercased
 	lowercase((char *)newgrid);
-	strcpy(my_map_name, newgrid);
 
 	// Get scenario title, if it exists
 	//for (i=0; i < strlen(scentitle); i++)
@@ -2531,11 +2520,6 @@ short load_version_6(SDL_RWops  *infile, screen * master, short version)
 	return 1;
 } // end load_version_6
 
-
-char  * query_my_map_name()
-{
-	return my_map_name;
-}
 
 // Look for the first non-dead instance of a given walker ..
 walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,

@@ -521,6 +521,19 @@ void LevelData::resize_grid(int width, int height)
     
     
     // TODO: Delete objects that fell off the map
+	/*oblink* here;
+
+	here = oblist;
+	while (here)
+	{
+		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+		{
+			delete here->ob;
+			if(last != NULL)
+			delete here;
+		}
+		here = here->next;
+	}*/
 }
 
 void LevelData::delete_objects()
