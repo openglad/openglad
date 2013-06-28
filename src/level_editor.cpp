@@ -195,22 +195,6 @@ void shareCampaign(screen* myscreen)
     
 }
 
-void resmooth_map(LevelData* data)
-{
-    data->mysmoother.smooth();
-}
-
-void clear_terrain(LevelData* data)
-{
-    int w = data->grid.w;
-    int h = data->grid.h;
-    
-    memset(data->grid.data, 1, w*h);
-    resmooth_map(data);
-    
-    myscreen->viewob[0]->myradar->update();
-}
-
 
 class SimpleButton
 {
@@ -547,6 +531,9 @@ public:
     
     void draw(screen* myscreen);
     Sint32 display_panel(screen* myscreen);
+    
+    void clear_terrain();
+    void resmooth_terrain();
 };
 
 LevelEditorData::LevelEditorData()
@@ -937,6 +924,24 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 
 	return 1;
 }
+
+
+void LevelEditorData::clear_terrain()
+{
+    int w = level->grid.w;
+    int h = level->grid.h;
+    
+    memset(level->grid.data, 1, w*h);
+    resmooth_terrain();
+}
+
+void LevelEditorData::resmooth_terrain()
+{
+    level->mysmoother.smooth();
+    myradar.update(level);
+}
+
+
 
 bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 {
@@ -1402,7 +1407,7 @@ Sint32 level_editor()
 		// Smooth current map, F5
 		if (mykeyboard[KEYSTATE_F5])
 		{
-		    resmooth_map(data.level);
+		    data.resmooth_terrain();
 			while (mykeyboard[KEYSTATE_F5])
 				get_input_events(WAIT);
 			event = 1;
@@ -1764,8 +1769,12 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, data, fileQuitButton))
                 {
-                    done = true;
-                    break;
+                    if((!levelchanged && !campaignchanged)
+                        || yes_or_no_prompt("Exit", "Quit without saving?", false))
+                    {
+                        done = true;
+                        break;
+                    }
                 }
                 // CAMPAIGN
                 else if(activate_sub_menu_button(mx, my, current_menu, campaignButton, true))
@@ -2044,7 +2053,7 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, data, levelResmoothButton))
                 {
-                    resmooth_map(data.level);
+                    data.resmooth_terrain();
                     levelchanged = 1;
                     event = 1;
                 }
@@ -2203,7 +2212,6 @@ Sint32 level_editor()
                                         data.level->mysmoother.smooth(i, j);
                         }
                         
-                        //myscreen->viewob[0]->myradar->update(data.level);
                         myradar.update(data.level);
                     }  // end of setting grid square
                 } // end of main window
