@@ -520,66 +520,118 @@ void LevelData::resize_grid(int width, int height)
 	pixmaxy = grid.h * GRID_SIZE;
     
     
-    // TODO: Delete objects that fell off the map
-	/*oblink* here;
-
+    // Delete objects that fell off the map
+	oblink* here;
+	oblink* next;
+	oblink* prev = NULL;
+    
+    int x = 0;
+    int y = 0;
+    int w = grid.w * GRID_SIZE;
+    int h = grid.h * GRID_SIZE;
 	here = oblist;
 	while (here)
 	{
-		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+        next = here->next;
+		if(here->ob == NULL || (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
 		{
+		    // Delete the object and the node.  Prev doesn't change
 			delete here->ob;
-			if(last != NULL)
+			here->ob = NULL;
+			if(prev == NULL)
+                oblist = next;
+            else
+                prev->next = next;
 			delete here;
 		}
-		here = here->next;
-	}*/
+		else
+            prev = here;
+		
+		here = next;
+	}
+	
+	here = fxlist;
+	while (here)
+	{
+        next = here->next;
+		if(here->ob == NULL || (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+		{
+		    // Delete the object and the node.  Prev doesn't change
+			delete here->ob;
+			here->ob = NULL;
+			if(prev == NULL)
+                fxlist = next;
+            else
+                prev->next = next;
+			delete here;
+		}
+		else
+            prev = here;
+		
+		here = next;
+	}
+	
+	here = weaplist;
+	while (here)
+	{
+        next = here->next;
+		if(here->ob == NULL || (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+		{
+		    // Delete the object and the node.  Prev doesn't change
+			delete here->ob;
+			here->ob = NULL;
+			if(prev == NULL)
+                weaplist = next;
+            else
+                prev->next = next;
+			delete here;
+		}
+		else
+            prev = here;
+		
+		here = next;
+	}
 }
 
 void LevelData::delete_objects()
 {
+    oblink* next;
 	oblink *fx = fxlist;
 
 	while (fx)
 	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
+	    next = fx->next;
+	    
+        delete fx->ob;
+        fx->ob = NULL;
+        delete fx;
+		
+		fx = next;
 	}
-	if (fx && fx->ob)
-		delete fx->ob;
 
 	fx = oblist;
 	while (fx)
 	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
+	    next = fx->next;
+	    
+        delete fx->ob;
+        fx->ob = NULL;
+        delete fx;
+		
+		fx = next;
 	}
-	if (fx && fx->ob)
-		delete fx->ob;
 
 	fx = weaplist;
 	while (fx)
 	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
+	    next = fx->next;
+	    
+        delete fx->ob;
+        fx->ob = NULL;
+        delete fx;
+		
+		fx = next;
 	}
-	if (fx && fx->ob)
-		delete fx->ob;
     
     oblist = NULL;
     fxlist = NULL;

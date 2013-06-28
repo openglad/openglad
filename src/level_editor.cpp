@@ -767,6 +767,11 @@ bool LevelEditorData::saveLevel()
 
 bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 {
+    x *= GRID_SIZE;
+    y *= GRID_SIZE;
+    w *= GRID_SIZE;
+    h *= GRID_SIZE;
+    
 	oblink* here;
 
 	here = level->oblist;
@@ -1194,6 +1199,7 @@ Sint32 level_editor()
 			else if (myorder == ORDER_WEAPON)
 				myorder = ORDER_LIVING;
 			mode = OBJECT;
+            modeButton.label = "Mode (Object)";
 			event = 1; // change score panel
 			while (mykeyboard[KEYSTATE_o])
 				get_input_events(WAIT);
@@ -2037,6 +2043,7 @@ Sint32 level_editor()
                                              % (sizeof(backgrounds)/4)];
                     backcount %= NUM_BACKGROUNDS;
                     mode = TERRAIN;
+                    modeButton.label = "Mode (Terrain)";
                 } // end of background grid window
             }
 
