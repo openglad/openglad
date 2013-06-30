@@ -17,6 +17,7 @@
 #define OK 4 //this function was successful, continue normal operation
 
 #include <string>
+#include <vector>
 using namespace std;
 #include <stdlib.h>
 #define MINIMUM_TIME 0
@@ -82,6 +83,31 @@ Sint32 cyclemode = 1;      // for color cycling
 //input.cpp
 Sint32 start_time_s; // for timer ops
 
+class Rect
+{
+public:
+    
+    int x, y;
+    unsigned int w, h;
+    
+    Rect();
+    Rect(int x, int y, unsigned int w, unsigned int h);
+    
+    bool contains(int x, int y) const;
+};
+
+Rect::Rect()
+    : x(0), y(0), w(0), h(0)
+{}
+
+Rect::Rect(int x, int y, unsigned int w, unsigned int h)
+    : x(x), y(y), w(w), h(h)
+{}
+
+bool Rect::contains(int x, int y) const
+{
+    return (this->x <= x && x < this->x + w && this->y <= y && y < this->y + h);
+}
 
 Sint32 backgrounds[] = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
@@ -143,6 +169,22 @@ Sint32 backgrounds[] = {
                          PIX_CLIFF_LEFT, PIX_CLIFF_BOTTOM, PIX_CLIFF_TOP, PIX_CLIFF_RIGHT,
                          PIX_CLIFF_LEFT, PIX_CLIFF_TOP_L, PIX_CLIFF_TOP_R, PIX_CLIFF_RIGHT,
                      };
+
+class ObjectType
+{
+public:
+    unsigned char order;
+    unsigned char family;
+    
+    ObjectType()
+        : order(0), family(0)
+    {}
+    ObjectType(unsigned char order, unsigned char family)
+        : order(order), family(family)
+    {}
+};
+
+std::vector<ObjectType> object_pane;
 
 Sint32 rowsdown = 0;
 Sint32 maxrows = ((sizeof(backgrounds)/4) / 4);
@@ -844,80 +886,147 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	// Hide the mouse ..
 	//release_mouse();
 
-	// Draw the bounding box
-	myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
+    if(mode == OBJECT)
+    {
 
-	// Get team number ..
-	sprintf(message, "%d:", object_brush.team);
-	if (object_brush.order == ORDER_LIVING)
-		strcat(message, livings[object_brush.family]);
-	else if (object_brush.order == ORDER_GENERATOR)
-		switch (object_brush.family)      // who are we?
-		{
-			case FAMILY_TENT:
-				strcat(message, "TENT");
-				break;
-			case FAMILY_TOWER:
-				strcat(message, "TOWER");
-				break;
-			case FAMILY_BONES:
-				strcat(message, "BONEPILE");
-				break;
-			case FAMILY_TREEHOUSE:
-				strcat(message, "TREEHOUSE");
-				break;
-			default:
-				strcat(message, "GENERATOR");
-				break;
-		}
-	else if (object_brush.order == ORDER_SPECIAL)
-		strcat(message, "PLAYER");
-	else if (object_brush.order == ORDER_TREASURE)
-		strcat(message, treasures[object_brush.family]);
-	else if (object_brush.order == ORDER_WEAPON)
-		strcat(message, weapons[object_brush.family]);
-	else
-		strcat(message, "UNKNOWN");
-	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+        // Draw the bounding box
+        myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
+        
+        // Get team number ..
+        sprintf(message, "%d:", object_brush.team);
+        if (object_brush.order == ORDER_LIVING)
+            strcat(message, livings[object_brush.family]);
+        else if (object_brush.order == ORDER_GENERATOR)
+            switch (object_brush.family)      // who are we?
+            {
+                case FAMILY_TENT:
+                    strcat(message, "TENT");
+                    break;
+                case FAMILY_TOWER:
+                    strcat(message, "TOWER");
+                    break;
+                case FAMILY_BONES:
+                    strcat(message, "BONEPILE");
+                    break;
+                case FAMILY_TREEHOUSE:
+                    strcat(message, "TREEHOUSE");
+                    break;
+                default:
+                    strcat(message, "GENERATOR");
+                    break;
+            }
+        else if (object_brush.order == ORDER_SPECIAL)
+            strcat(message, "PLAYER");
+        else if (object_brush.order == ORDER_TREASURE)
+            strcat(message, treasures[object_brush.family]);
+        else if (object_brush.order == ORDER_WEAPON)
+            strcat(message, weapons[object_brush.family]);
+        else
+            strcat(message, "UNKNOWN");
+        scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
-	// Level display
-	sprintf(message, "LVL: %u", object_brush.level);
-	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-	scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+        // Level display
+        sprintf(message, "LVL: %u", object_brush.level);
+        //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
+        scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
-	// Is grid alignment on?
-	//myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
-	if (object_brush.snap_to_grid)
-		scentext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
-	else
-		scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
+        // Is grid alignment on?
+        //myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
+        if (object_brush.snap_to_grid)
+            scentext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
+        else
+            scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
+        
+        numobs = myscreen->numobs;
+        //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
+        sprintf(message, "OB: %d", numobs);
+        scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
+    }
+    
+    if(mode == TERRAIN)
+    {
 
-	numobs = myscreen->numobs;
-	//myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-	sprintf(message, "OB: %d", numobs);
-	scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
-
-	// Show the background grid ..
-	myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
-	                    0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
-
-	//   rowsdown = (NUM_BACKGROUNDS / 4) + 1;
-	//   rowsdown = 0; // hack for now
-	for (i=0; i < PIX_OVER; i++)
-	{
-		for (j=0; j < 4; j++)
-		{
-			//myscreen->back[i]->draw( S_RIGHT+(i*8), S_UP+100);
-			//myscreen->back[0]->draw(64, 64);
-			whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
-			myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
-			                    GRID_SIZE, GRID_SIZE,
-			                    0, 0, 320, 200,
-			                    myscreen->pixdata[ backgrounds[whichback] ].data);
-		}
-	}
-	myscreen->draw_box(S_RIGHT, PIX_TOP,
-	                   S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
+        // Show the background grid ..
+        myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
+                            0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
+        
+        //   rowsdown = (NUM_BACKGROUNDS / 4) + 1;
+        //   rowsdown = 0; // hack for now
+        for (i=0; i < PIX_OVER; i++)
+        {
+            for (j=0; j < 4; j++)
+            {
+                //myscreen->back[i]->draw( S_RIGHT+(i*8), S_UP+100);
+                //myscreen->back[0]->draw(64, 64);
+                whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
+                myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
+                                    GRID_SIZE, GRID_SIZE,
+                                    0, 0, 320, 200,
+                                    myscreen->pixdata[ backgrounds[whichback] ].data);
+            }
+        }
+        myscreen->draw_box(S_RIGHT, PIX_TOP,
+                           S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
+    }
+    else if(mode == OBJECT)
+    {
+        myscreen->draw_box(S_RIGHT, PIX_TOP,
+                           S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 1, 1);
+        myscreen->draw_box(S_RIGHT, PIX_TOP,
+                           S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, WHITE, 0, 1);
+        
+        walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+        
+        for (i=0; i < PIX_OVER; i++)
+        {
+            for (j=0; j < 4; j++)
+            {
+                int index = (i + ((j+rowsdown) * PIX_OVER)) % (PIX_MAX/4);
+                if(index < object_pane.size())
+                {
+                    newob->setxy(S_RIGHT+i*GRID_SIZE + level->topx, PIX_TOP+j*GRID_SIZE + level->topy);
+                    newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
+                    level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
+                    newob->team_num = object_brush.team;
+                    newob->draw(myscreen->viewob[0]);
+                }
+            }
+        }
+        
+        #ifndef USE_TOUCH_INPUT
+        
+        // Draw cursor
+        int mx, my;
+        mx = mymouse[MOUSE_X];
+        my = mymouse[MOUSE_Y];
+        bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
+                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
+                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
+        bool over_info = Rect(lm-4, L_D(-1)+4, 315 - (lm-4), L_D(7)-2 - L_D(-1)).contains(mx, my);
+        if(!over_radar && !over_info && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
+        {
+            // Draw target tile
+            if(object_brush.snap_to_grid)
+            {
+                int gridx = mx - GRID_SIZE/2 - (mx + GRID_SIZE/2)%GRID_SIZE + (level->topx)%GRID_SIZE;
+                int gridy = my - GRID_SIZE/2 - (my + GRID_SIZE/2)%GRID_SIZE + (level->topy)%GRID_SIZE;
+                myscreen->draw_box(gridx, gridy, gridx + GRID_SIZE, gridy + GRID_SIZE, YELLOW, 0, 1);
+            }
+            
+            // Draw current brush
+            newob->setxy(mx + level->topx, my + level->topy);
+            newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
+            level->myloader->set_walker(newob, object_brush.order, object_brush.family);
+            newob->team_num = object_brush.team;
+            newob->draw(myscreen->viewob[0]);
+        }
+        #endif
+        
+        level->remove_ob(newob,0);
+    }
+    
+    
+    
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	// Restore the mouse
 	//grab_mouse();
@@ -1044,6 +1153,24 @@ Sint32 level_editor()
 
 	myscreen->clearfontbuffer();
 	event = 1;  // Redraw right away
+	
+	object_pane.clear();
+	for(int i = 0; i < NUM_FAMILIES; i++)
+    {
+        object_pane.push_back(ObjectType(ORDER_LIVING, i));
+    }
+	for(int i = 0; i < MAX_TREASURE+1; i++)
+    {
+        object_pane.push_back(ObjectType(ORDER_TREASURE, i));
+    }
+	for(int i = 0; i < 4; i++)
+    {
+        object_pane.push_back(ObjectType(ORDER_GENERATOR, i));
+    }
+	for(int i = 0; i < FAMILY_DOOR+1; i++)
+    {
+        object_pane.push_back(ObjectType(ORDER_WEAPON, i));
+    }
 	
 	// Minimap
 	myradar.start(data.level);
@@ -2217,17 +2344,33 @@ Sint32 level_editor()
                 } // end of main window
                 //    if ( (mx >= PIX_LEFT) && (mx <= PIX_RIGHT) &&
                 //        (my >= PIX_TOP) && (my <= PIX_BOTTOM) ) // grid menu
-                if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
+                if(mode == TERRAIN)
                 {
-                    //windowx = (mx - PIX_LEFT) / GRID_SIZE;
-                    windowx = (mx-S_RIGHT) / GRID_SIZE;
-                    windowy = (my - PIX_TOP) / GRID_SIZE;
-                    terrain_brush.terrain = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
-                                             % (sizeof(backgrounds)/4)];
-                    terrain_brush.terrain %= NUM_BACKGROUNDS;
-                    mode = TERRAIN;
-                    modeButton.label = "Mode (Terrain)";
-                } // end of background grid window
+                    if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
+                    {
+                        //windowx = (mx - PIX_LEFT) / GRID_SIZE;
+                        windowx = (mx-S_RIGHT) / GRID_SIZE;
+                        windowy = (my - PIX_TOP) / GRID_SIZE;
+                        terrain_brush.terrain = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
+                                                 % (sizeof(backgrounds)/4)];
+                        terrain_brush.terrain %= NUM_BACKGROUNDS;
+                    } // end of background grid window
+                }
+                else if(mode == OBJECT)
+                {
+                    if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
+                    {
+                        //windowx = (mx - PIX_LEFT) / GRID_SIZE;
+                        windowx = (mx-S_RIGHT) / GRID_SIZE;
+                        windowy = (my - PIX_TOP) / GRID_SIZE;
+                        int index =  (windowx + ((windowy+rowsdown) * PIX_OVER)) % (PIX_MAX/4);
+                        if(index < object_pane.size())
+                        {
+                            object_brush.order = object_pane[index].order;
+                            object_brush.family = object_pane[index].family;
+                        }
+                    } // end of background grid window
+                }
             }
 
 		}      // end of left mouse button
@@ -2235,19 +2378,6 @@ Sint32 level_editor()
 		if (mymouse[MOUSE_RIGHT])      // cycle through things ...
 		{
 			event = 1;
-			if (mode == OBJECT)
-			{
-				if (object_brush.order == ORDER_LIVING)
-					object_brush.family = (object_brush.family+1) % NUM_FAMILIES;
-				else if (object_brush.order == ORDER_TREASURE)
-					object_brush.family = (object_brush.family+1) % (MAX_TREASURE+1);
-				else if (object_brush.order == ORDER_GENERATOR)
-					object_brush.family = (object_brush.family+1) % 4;
-				else if (object_brush.order == ORDER_WEAPON)
-					object_brush.family = (object_brush.family+1) % (FAMILY_DOOR+1); // use largest weapon
-				else
-					object_brush.family = 0;
-			} // end of if object mode
 			if (mode == TERRAIN)
 			{
 				windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT

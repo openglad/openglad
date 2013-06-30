@@ -47,10 +47,7 @@
 pixie::pixie(const PixieData& data, screen* myscreen)
 {
 	screenp = myscreen;
-	bmp = data.data;
-	sizex = data.w;
-	sizey = data.h;
-	size = (unsigned short) (sizex*sizey);
+	set_data(data);
 	
 	accel = 0;
 }
@@ -59,10 +56,7 @@ pixie::pixie(const PixieData& data, screen* myscreen)
 pixie::pixie(const PixieData& data, screen *myscreen, int doaccel)
 {
 	screenp = myscreen;
-	bmp = data.data;
-	sizex = data.w;
-	sizey = data.h;
-	size = (unsigned short) (sizex*sizey);
+	set_data(data);
 	
 	accel = 0;
 	
@@ -76,6 +70,14 @@ pixie::~pixie()
 	if(accel)
 		SDL_FreeSurface(bmp_surface);
 	//  delete oldbmp;
+}
+
+void pixie::set_data(const PixieData& data)
+{
+	bmp = data.data;
+	sizex = data.w;
+	sizey = data.h;
+	size = (unsigned short) (sizex*sizey);
 }
 
 // Set the pixie's x and y positon without drawing.

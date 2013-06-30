@@ -36,6 +36,7 @@ class pixie
 		short put_screen(short x, short y);
 		void init_sdl_surface(void);
 		void set_accel(int a);
+		void set_data(const PixieData& data);
 		short sizex, sizey;
 		short xpos,ypos;
 		//buffers: is SDL_Surface acceleration on/off, 1/0
