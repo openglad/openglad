@@ -37,21 +37,31 @@
 #ifdef USE_SDL2
     #define SDLKey SDL_Keycode
     
+    #define KEYSTATE_a SDL_SCANCODE_A
+    #define KEYSTATE_b SDL_SCANCODE_B
+    #define KEYSTATE_c SDL_SCANCODE_C
     #define KEYSTATE_d SDL_SCANCODE_D
     #define KEYSTATE_e SDL_SCANCODE_E
+    #define KEYSTATE_f SDL_SCANCODE_F
     #define KEYSTATE_g SDL_SCANCODE_G
     #define KEYSTATE_h SDL_SCANCODE_H
-    #define KEYSTATE_l SDL_SCANCODE_L
-    #define KEYSTATE_s SDL_SCANCODE_S
     #define KEYSTATE_i SDL_SCANCODE_I
-    #define KEYSTATE_f SDL_SCANCODE_F
-    #define KEYSTATE_r SDL_SCANCODE_R
+    #define KEYSTATE_j SDL_SCANCODE_J
+    #define KEYSTATE_k SDL_SCANCODE_K
+    #define KEYSTATE_l SDL_SCANCODE_L
     #define KEYSTATE_m SDL_SCANCODE_M
-    #define KEYSTATE_o SDL_SCANCODE_O
-    #define KEYSTATE_t SDL_SCANCODE_T
-    #define KEYSTATE_q SDL_SCANCODE_Q
-    #define KEYSTATE_y SDL_SCANCODE_Y
     #define KEYSTATE_n SDL_SCANCODE_N
+    #define KEYSTATE_o SDL_SCANCODE_O
+    #define KEYSTATE_p SDL_SCANCODE_P
+    #define KEYSTATE_q SDL_SCANCODE_Q
+    #define KEYSTATE_r SDL_SCANCODE_R
+    #define KEYSTATE_s SDL_SCANCODE_S
+    #define KEYSTATE_t SDL_SCANCODE_T
+    #define KEYSTATE_u SDL_SCANCODE_U
+    #define KEYSTATE_v SDL_SCANCODE_V
+    #define KEYSTATE_w SDL_SCANCODE_W
+    #define KEYSTATE_x SDL_SCANCODE_X
+    #define KEYSTATE_y SDL_SCANCODE_Y
     #define KEYSTATE_z SDL_SCANCODE_Z
     #define KEYSTATE_0 SDL_SCANCODE_0
     #define KEYSTATE_1 SDL_SCANCODE_1
@@ -97,21 +107,31 @@
     #define KEYSTATE_F9 SDL_SCANCODE_F9
     #define KEYSTATE_F10 SDL_SCANCODE_F10
 #else
+    #define KEYSTATE_a SDLK_a
+    #define KEYSTATE_b SDLK_b
+    #define KEYSTATE_c SDLK_c
     #define KEYSTATE_d SDLK_d
     #define KEYSTATE_e SDLK_e
+    #define KEYSTATE_f SDLK_f
     #define KEYSTATE_g SDLK_g
     #define KEYSTATE_h SDLK_h
-    #define KEYSTATE_l SDLK_l
-    #define KEYSTATE_s SDLK_s
     #define KEYSTATE_i SDLK_i
-    #define KEYSTATE_f SDLK_f
-    #define KEYSTATE_r SDLK_r
+    #define KEYSTATE_j SDLK_j
+    #define KEYSTATE_k SDLK_k
+    #define KEYSTATE_l SDLK_l
     #define KEYSTATE_m SDLK_m
-    #define KEYSTATE_o SDLK_o
-    #define KEYSTATE_t SDLK_t
-    #define KEYSTATE_q SDLK_q
-    #define KEYSTATE_y SDLK_y
     #define KEYSTATE_n SDLK_n
+    #define KEYSTATE_o SDLK_o
+    #define KEYSTATE_p SDLK_p
+    #define KEYSTATE_q SDLK_q
+    #define KEYSTATE_r SDLK_r
+    #define KEYSTATE_s SDLK_s
+    #define KEYSTATE_t SDLK_t
+    #define KEYSTATE_u SDLK_u
+    #define KEYSTATE_v SDLK_v
+    #define KEYSTATE_w SDLK_w
+    #define KEYSTATE_x SDLK_x
+    #define KEYSTATE_y SDLK_y
     #define KEYSTATE_z SDLK_z
     #define KEYSTATE_0 SDLK_0
     #define KEYSTATE_1 SDLK_1

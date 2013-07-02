@@ -1561,8 +1561,9 @@ Sint32 level_editor()
 				get_input_events(WAIT);
 		}
 
+		short scroll_amount = get_and_reset_scroll_amount();
 		// Slide tile selector down ..
-		if (mykeyboard[KEYSTATE_DOWN])
+		if (mykeyboard[KEYSTATE_DOWN] || scroll_amount < 0)
 		{
 			rowsdown++;
 			if (rowsdown >= maxrows)
@@ -1575,7 +1576,7 @@ Sint32 level_editor()
 		}
 
 		// Slide tile selector up ..
-		if (mykeyboard[KEYSTATE_UP])
+		if (mykeyboard[KEYSTATE_UP] || scroll_amount > 0)
 		{
 			rowsdown--;
 			if (rowsdown < 0)
@@ -1613,25 +1614,25 @@ Sint32 level_editor()
 		// Scroll the screen ..
 		// Zardus: ADD: added scrolling by keyboard
 		// Zardus: PORT: disabled mouse scrolling
-		if ((mykeyboard[KEYSTATE_KP_8] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_9]) // || mymouse[MOUSE_Y]< 2)
+		if ((mykeyboard[KEYSTATE_KP_8] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_9] || mykeyboard[KEYSTATE_w]) // || mymouse[MOUSE_Y]< 2)
 		        && data.level->topy >= 0) // top of the screen
         {
             event = 1;
 			data.level->add_draw_pos(0, -SCROLLSIZE);
         }
-		if ((mykeyboard[KEYSTATE_KP_2] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_KP_3]) // || mymouse[MOUSE_Y]> 198)
+		if ((mykeyboard[KEYSTATE_KP_2] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_s]) // || mymouse[MOUSE_Y]> 198)
 		        && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
         {
             event = 1;
 			data.level->add_draw_pos(0, SCROLLSIZE);
         }
-		if ((mykeyboard[KEYSTATE_KP_4] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_1]) // || mymouse[MOUSE_X]< 2)
+		if ((mykeyboard[KEYSTATE_KP_4] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_a]) // || mymouse[MOUSE_X]< 2)
 		        && data.level->topx >= 0) // scroll left
         {
             event = 1;
 			data.level->add_draw_pos(-SCROLLSIZE, 0);
         }
-		if ((mykeyboard[KEYSTATE_KP_6] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_KP_9]) // || mymouse[MOUSE_X] > 318)
+		if ((mykeyboard[KEYSTATE_KP_6] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_KP_9] || mykeyboard[KEYSTATE_d]) // || mymouse[MOUSE_X] > 318)
 		        && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
         {
             event = 1;

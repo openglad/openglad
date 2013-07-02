@@ -927,7 +927,7 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
     Sint32 portendy = view_buf->endy;
     
     
-    SDL_Rect r = {walkerstartx, walkerstarty + w->sizey + 1, w->sizex, 1};
+    SDL_Rect r = {Sint16(walkerstartx), Sint16(walkerstarty + w->sizey + 1), Uint16(w->sizex), 1};
     if(r.x < portstartx || r.x > portendx
        || r.y < portstarty || r.y > portendy)
        return;
