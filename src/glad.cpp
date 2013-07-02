@@ -108,12 +108,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	//     exit(1);
 	//strcpy(soundpath, get_cfg_item("directories", "sound") );
 
-#if 0
-	// Do this BEFORE getting interrupts ..
-	if (!get_pix_directory())
-		exit(1);
-#endif
-
 	// Zardus: PORT: fade out
 	clear_keyboard();
 	myscreen->fadeblack(0);

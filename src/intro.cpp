@@ -48,11 +48,6 @@ void intro_main(Sint32 argc, char** argv)
 	PixieData gladdata, bigdata;
 	char message[80];
 
-#if 0
-	if (!get_pix_directory())
-		exit(1);
-#endif
-
 	ul = ur = ll = lr = NULL;
 
 	if (!myscreen)

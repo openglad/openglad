@@ -368,8 +368,6 @@ class PixieData;
 //most of these are graphlib and are being ported to video
 void load_map_data(PixieData* whereto);
 char* get_cfg_item(char *section, char *item);
-short get_pix_directory();
-short get_pix_directory(char *whereto); // copies to whereto, returns OKAY..
 
 // Functions in game.cpp
 short load_team_list(const char * filename, screen  *myscreen);

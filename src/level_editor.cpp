@@ -106,7 +106,7 @@ Rect::Rect(int x, int y, unsigned int w, unsigned int h)
 
 bool Rect::contains(int x, int y) const
 {
-    return (this->x <= x && x < this->x + w && this->y <= y && y < this->y + h);
+    return (this->x <= x && x < int(this->x + w) && this->y <= y && y < int(this->y + h));
 }
 
 Sint32 backgrounds[] = {
@@ -903,7 +903,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     strcat(message, "TENT");
                     break;
                 case FAMILY_TOWER:
-                    strcat(message, "TOWER");
+                    strcat(message, "MAGE TOWER");
                     break;
                 case FAMILY_BONES:
                     strcat(message, "BONEPILE");
@@ -981,8 +981,8 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         {
             for (j=0; j < 4; j++)
             {
-                int index = (i + ((j+rowsdown) * PIX_OVER)) % (PIX_MAX/4);
-                if(index < object_pane.size())
+                int index = (i + ((j+rowsdown) * PIX_OVER)) % (object_pane.size());
+                if(index < int(object_pane.size()))
                 {
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->topx, PIX_TOP+j*GRID_SIZE + level->topy);
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
@@ -1167,10 +1167,9 @@ Sint32 level_editor()
     {
         object_pane.push_back(ObjectType(ORDER_GENERATOR, i));
     }
-	for(int i = 0; i < FAMILY_DOOR+1; i++)
-    {
-        object_pane.push_back(ObjectType(ORDER_WEAPON, i));
-    }
+    
+    object_pane.push_back(ObjectType(ORDER_WEAPON, FAMILY_DOOR));
+    object_pane.push_back(ObjectType(ORDER_SPECIAL, FAMILY_RESERVED_TEAM));
 	
 	// Minimap
 	myradar.start(data.level);
@@ -2363,8 +2362,8 @@ Sint32 level_editor()
                         //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                         windowx = (mx-S_RIGHT) / GRID_SIZE;
                         windowy = (my - PIX_TOP) / GRID_SIZE;
-                        int index =  (windowx + ((windowy+rowsdown) * PIX_OVER)) % (PIX_MAX/4);
-                        if(index < object_pane.size())
+                        int index =  (windowx + ((windowy+rowsdown) * PIX_OVER)) % (object_pane.size());
+                        if(index < int(object_pane.size()))
                         {
                             object_brush.order = object_pane[index].order;
                             object_brush.family = object_pane[index].family;
