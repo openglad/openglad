@@ -1008,9 +1008,13 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
         {
             // Draw target tile
-            int gridx = mx - GRID_SIZE/2 - (mx + GRID_SIZE/2)%GRID_SIZE + (level->topx)%GRID_SIZE;
-            int gridy = my - GRID_SIZE/2 - (my + GRID_SIZE/2)%GRID_SIZE + (level->topy)%GRID_SIZE;
-            myscreen->draw_box(gridx, gridy, gridx + GRID_SIZE, gridy + GRID_SIZE, YELLOW, 0, 1);
+            int worldx = mx + level->topx;
+            int worldy = my + level->topy;
+            int gridx = worldx - (worldx)%GRID_SIZE;
+            int gridy = worldy - (worldy)%GRID_SIZE;
+            int screenx = gridx - level->topx;
+            int screeny = gridy - level->topy;
+            myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
         }
         #endif
     }
@@ -1054,9 +1058,13 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             // Draw target tile
             if(object_brush.snap_to_grid)
             {
-                int gridx = mx - GRID_SIZE/2 - (mx + GRID_SIZE/2)%GRID_SIZE + (level->topx)%GRID_SIZE;
-                int gridy = my - GRID_SIZE/2 - (my + GRID_SIZE/2)%GRID_SIZE + (level->topy)%GRID_SIZE;
-                myscreen->draw_box(gridx, gridy, gridx + GRID_SIZE, gridy + GRID_SIZE, YELLOW, 0, 1);
+                int worldx = mx + level->topx;
+                int worldy = my + level->topy;
+                int gridx = worldx - (worldx)%GRID_SIZE;
+                int gridy = worldy - (worldy)%GRID_SIZE;
+                int screenx = gridx - level->topx;
+                int screeny = gridy - level->topy;
+                myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
             }
             
             // Draw current brush
