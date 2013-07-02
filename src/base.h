@@ -157,17 +157,6 @@ char* read_one_line(SDL_RWops *infile, short length);
 // Generators are limited by this number
 #define MAXOBS 150
 
-// Zardus: PORT: this shouldn't be neccessary anymore thanx to SDL
-// // Define scan codes
-//#define SCAN_UP_LEFT 71
-//#define SCAN_UP 72
-//#define SCAN_UP_RIGHT 73
-//#define SCAN_LEFT 75
-//#define SCAN_RIGHT 77
-//#define SCAN_DOWN_LEFT 79
-//#define SCAN_DOWN 80
-//#define SCAN_DOWN_RIGHT 81
-
 
 //Screen window boundaries, two player
 #define T_LEFT_ONE 0
@@ -213,7 +202,7 @@ char* read_one_line(SDL_RWops *infile, short length);
 
 // These are for effect objects ..
 #define ANI_EXPAND_8 1 //1
-#define ANI_DOOR_OPEN 1 // Door openning
+#define ANI_DOOR_OPEN 1 // Door opening
 #define ANI_SCARE    1 // 2 ghost scare
 #define ANI_BOMB     1 // 3 thief's bomb
 #define ANI_EXPLODE  1 // 4
@@ -228,7 +217,7 @@ char* read_one_line(SDL_RWops *infile, short length);
 #define ORDER_SPECIAL 5
 #define ORDER_BUTTON1 6
 
-// Living familes
+// Living families
 #define FAMILY_SOLDIER 0
 #define FAMILY_ELF 1
 #define FAMILY_ARCHER 2
@@ -256,7 +245,7 @@ char* read_one_line(SDL_RWops *infile, short length);
 
 #define PIX(a,b) (NUM_FAMILIES*a+b)
 
-//Weapon familes
+//Weapon families
 #define FAMILY_KNIFE 0
 #define FAMILY_ROCK 1
 #define FAMILY_ARROW 2

@@ -926,9 +926,37 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
         // Level display
-        sprintf(message, "LVL: %u", object_brush.level);
-        //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-        scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+        message[0] = '\0';
+        switch(object_brush.order)
+        {
+            case ORDER_LIVING:
+            case ORDER_GENERATOR:
+                sprintf(message, "LEVEL: %u", object_brush.level);
+                break;
+            case ORDER_TREASURE:
+                if(object_brush.family == FAMILY_GOLD_BAR || object_brush.family == FAMILY_SILVER_BAR)
+                    sprintf(message, "VALUE: %u", object_brush.level);
+                else if(object_brush.family == FAMILY_KEY)
+                    sprintf(message, "DOOR ID: %u", object_brush.level);
+                else if(object_brush.family == FAMILY_TELEPORTER)
+                    sprintf(message, "GROUP: %u", object_brush.level);
+                else if(object_brush.family == FAMILY_EXIT)
+                    sprintf(message, "EXIT TO: %u", object_brush.level);
+                else if(object_brush.family != FAMILY_STAIN)
+                    sprintf(message, "POWER: %u", object_brush.level);
+                break;
+            case ORDER_WEAPON:
+                if(object_brush.family == FAMILY_DOOR)
+                    sprintf(message, "DOOR ID: %u", object_brush.level);
+                else
+                    sprintf(message, "POWER: %u", object_brush.level);
+                break;
+            default:
+                break;
+        }
+        
+        if(strlen(message) > 0)
+            scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
         // Is grid alignment on?
         //myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
@@ -967,6 +995,24 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         }
         myscreen->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
+        
+        #ifndef USE_TOUCH_INPUT
+        
+        // Draw cursor
+        int mx, my;
+        mx = mymouse[MOUSE_X];
+        my = mymouse[MOUSE_Y];
+        bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
+                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
+                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
+        if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
+        {
+            // Draw target tile
+            int gridx = mx - GRID_SIZE/2 - (mx + GRID_SIZE/2)%GRID_SIZE + (level->topx)%GRID_SIZE;
+            int gridy = my - GRID_SIZE/2 - (my + GRID_SIZE/2)%GRID_SIZE + (level->topy)%GRID_SIZE;
+            myscreen->draw_box(gridx, gridy, gridx + GRID_SIZE, gridy + GRID_SIZE, YELLOW, 0, 1);
+        }
+        #endif
     }
     else if(mode == OBJECT)
     {
