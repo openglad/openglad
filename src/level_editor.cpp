@@ -1287,11 +1287,11 @@ Sint32 level_editor()
 	SimpleButton levelResmoothButton("Resmooth terrain", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 100, 15, true);
 	
 	
-	// Mode menu
-	SimpleButton modeButton("Mode (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, 15);
-	SimpleButton modeTerrainButton("Terrain", modeButton.area.x, modeButton.area.y + modeButton.area.h, 47, 15, true);
-	SimpleButton modeObjectButton("Object", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 47, 15, true);
-	SimpleButton modeSelectButton("Select", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 47, 15, true);
+	// Edit menu
+	SimpleButton modeButton("Edit (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, 15);
+	SimpleButton modeTerrainButton("Terrain Mode", modeButton.area.x, modeButton.area.y + modeButton.area.h, 75, 15, true);
+	SimpleButton modeObjectButton("Object Mode", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 75, 15, true);
+	SimpleButton modeSelectButton("Select Mode", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 75, 15, true);
 	
 	// Top menu
 	menu_buttons.insert(&fileButton);
@@ -1555,7 +1555,7 @@ Sint32 level_editor()
 			else if (object_brush.order == ORDER_WEAPON)
 				object_brush.order = ORDER_LIVING;
 			mode = OBJECT;
-            modeButton.label = "Mode (Object)";
+            modeButton.label = "Edit (Objects)";
 			event = 1; // change score panel
 			while (mykeyboard[KEYSTATE_o])
 				get_input_events(WAIT);
@@ -2255,17 +2255,17 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, data, modeTerrainButton))
                 {
                     mode = TERRAIN;
-                    modeButton.label = "Mode (Terrain)";
+                    modeButton.label = "Edit (Terrain)";
                 }
                 else if(activate_menu_choice(mx, my, data, modeObjectButton))
                 {
                     mode = OBJECT;
-                    modeButton.label = "Mode (Object)";
+                    modeButton.label = "Edit (Objects)";
                 }
                 else if(activate_menu_choice(mx, my, data, modeSelectButton))
                 {
                     mode = SELECT;
-                    modeButton.label = "Mode (Select)";
+                    modeButton.label = "Edit (Select)";
                 }
             }
             else
