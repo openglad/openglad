@@ -60,7 +60,6 @@ char get_random_matching_tile(Sint32 whatback);
 
 class EditorTerrainBrush;
 class EditorObjectBrush;
-Sint32 display_panel(screen* myscreen, LevelData* level, ModeEnum mode, const EditorTerrainBrush& terrain_brush, const EditorObjectBrush& object_brush);
 void info_box(walker  *target, screen * myscreen);
 void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
@@ -1115,7 +1114,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
                             0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
         // Border
-        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_WHITE, 0, 1);
+        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
         // Show the background grid
         for (i=0; i < PIX_OVER; i++)
@@ -1157,6 +1156,9 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     else if(mode == OBJECT)
     {
         // Draw current brush
+        // Background
+        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_BLACK, 1, 1);
+        // Guy
         walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
         newob->setxy(lm+25 + level->topx, PIX_TOP-16-1 + level->topy);
         newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
@@ -1164,10 +1166,10 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         newob->team_num = object_brush.team;
         newob->draw_tile(myscreen->viewob[0]);
         // Border
-        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_WHITE, 0, 1);
+        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
         myscreen->draw_box(S_RIGHT, PIX_TOP,
-                           S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 1, 1);
+                           S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, PURE_BLACK, 1, 1);
         myscreen->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, WHITE, 0, 1);
         
