@@ -538,6 +538,48 @@ public:
     {}
 };
 
+class SelectionInfo
+{
+public:
+    bool valid;
+    std::string name;
+    short x, y;
+    unsigned char order;
+    unsigned char family;
+    unsigned short level;
+    
+    
+    SelectionInfo()
+        : valid(false), x(0), y(0), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1)
+    {}
+    
+    void clear()
+    {
+        valid = false;
+        name.clear();
+        x = 0;
+        y = 0;
+        order = ORDER_LIVING;
+        family = FAMILY_SOLDIER;
+        level = 1;
+    }
+    void set(walker* target)
+    {
+        if(target == NULL)
+            clear();
+        else
+        {
+            valid = true;
+            name = target->stats->name;
+            x = target->xpos;
+            y = target->ypos;
+            order = target->query_order();
+            family = target->query_family();
+            level = target->stats->level;
+        }
+    }
+};
+
 
 class LevelEditorData
 {
@@ -549,6 +591,7 @@ public:
 	ModeEnum mode;
     EditorTerrainBrush terrain_brush;
     EditorObjectBrush object_brush;
+    SelectionInfo selection;
     
 	radar myradar;
 	
@@ -885,9 +928,105 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 
 	// Hide the mouse ..
 	//release_mouse();
+    if(mode == SELECT && selection.valid)
+    {
+        // Draw the bounding box
+        myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
+        
+        if(selection.name.size() > 0)
+            scentext->write_xy(lm, L_D(curline++), ("\"" + selection.name + "\"").c_str(), DARK_BLUE, 1);
+        
+        // Get team number ..
+        message[0] = '\0';
+        if (selection.order == ORDER_LIVING)
+            strcat(message, livings[selection.family]);
+        else if (selection.order == ORDER_GENERATOR)
+            switch (selection.family)      // who are we?
+            {
+                case FAMILY_TENT:
+                    strcat(message, "TENT");
+                    break;
+                case FAMILY_TOWER:
+                    strcat(message, "MAGE TOWER");
+                    break;
+                case FAMILY_BONES:
+                    strcat(message, "BONEPILE");
+                    break;
+                case FAMILY_TREEHOUSE:
+                    strcat(message, "TREEHOUSE");
+                    break;
+                default:
+                    strcat(message, "GENERATOR");
+                    break;
+            }
+        else if (selection.order == ORDER_SPECIAL)
+            strcat(message, "PLAYER");
+        else if (selection.order == ORDER_TREASURE)
+            strcat(message, treasures[selection.family]);
+        else if (selection.order == ORDER_WEAPON)
+            strcat(message, weapons[selection.family]);
+        else
+            strcat(message, "UNKNOWN");
+        scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+
+        // Level display
+        message[0] = '\0';
+        switch(selection.order)
+        {
+            case ORDER_LIVING:
+            case ORDER_GENERATOR:
+                sprintf(message, "LEVEL: %u", selection.level);
+                break;
+            case ORDER_TREASURE:
+                if(selection.family == FAMILY_GOLD_BAR || selection.family == FAMILY_SILVER_BAR)
+                    sprintf(message, "VALUE: %u", selection.level);
+                else if(selection.family == FAMILY_KEY)
+                    sprintf(message, "DOOR ID: %u", selection.level);
+                else if(selection.family == FAMILY_TELEPORTER)
+                    sprintf(message, "GROUP: %u", selection.level);
+                else if(selection.family == FAMILY_EXIT)
+                    sprintf(message, "EXIT TO: %u", selection.level);
+                else if(selection.family != FAMILY_STAIN)
+                    sprintf(message, "POWER: %u", selection.level);
+                break;
+            case ORDER_WEAPON:
+                if(selection.family == FAMILY_DOOR)
+                    sprintf(message, "DOOR ID: %u", selection.level);
+                else
+                    sprintf(message, "POWER: %u", selection.level);
+                break;
+            default:
+                break;
+        }
+        
+        if(strlen(message) > 0)
+            scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+        
+        #ifndef USE_TOUCH_INPUT
+        
+        // Draw cursor
+        int mx, my;
+        mx = selection.x - level->topx;
+        my = selection.y - level->topy;
+        bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
+                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
+                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
+        if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
+        {
+            // Draw target tile
+            int worldx = mx + level->topx;
+            int worldy = my + level->topy;
+            int gridx = worldx - (worldx)%GRID_SIZE;
+            int gridy = worldy - (worldy)%GRID_SIZE;
+            int screenx = gridx - level->topx;
+            int screeny = gridy - level->topy;
+            myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
+        }
+        #endif
+    }
+    
     if(mode == OBJECT)
     {
-
         // Draw the bounding box
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
@@ -2243,8 +2382,7 @@ Sint32 level_editor()
                     data.level->set_draw_pos(myradar.radarx * GRID_SIZE + mx * GRID_SIZE - 160,
                                     myradar.radary * GRID_SIZE + my * GRID_SIZE - 100);
                 }
-                else if ( (mx >= S_LEFT) && (mx <= S_RIGHT) &&
-                          (my >= S_UP) && (my <= S_DOWN) )      // in the main window
+                else  // in the main window
                 {
                     windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
                     if (object_brush.snap_to_grid)
@@ -2252,138 +2390,142 @@ Sint32 level_editor()
                     windowy = mymouse[MOUSE_Y] + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
                     if (object_brush.snap_to_grid)
                         windowy -= (windowy%GRID_SIZE);
-                    if (mykeyboard[KEYSTATE_i]) // get info on current object
-                    {
-                        newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
-                        newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, data.level))
-                            info_box(newob->collide_ob,myscreen);
-                        data.level->remove_ob(newob,0);
-                        continue;
-                    }  // end of info mode
-                    if (mykeyboard[KEYSTATE_f]) // set facing of current object
-                    {
-                        newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
-                        newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, data.level))
-                        {
-                            set_facing(newob->collide_ob,myscreen);
-                            levelchanged = 1;
-                        }
-                        data.level->remove_ob(newob,0);
-                        continue;
-                    }  // end of set facing
 
-                    if (mykeyboard[KEYSTATE_r]) // (re)name the current object
+                    if (mode == SELECT)
                     {
-                        newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
-                        newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, data.level))
+                        if (mykeyboard[KEYSTATE_f]) // set facing of current object
                         {
-                            std::string name = newob->collide_ob->stats->name;
-                            if(prompt_for_string(scentext, "Rename", name))
+                            newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
+                            newob->setxy(windowx, windowy);
+                            if (some_hit(windowx, windowy, newob, data.level))
                             {
-                                strncpy(newob->collide_ob->stats->name, name.c_str(), 11);
-                                newob->collide_ob->stats->name[11] = '\0';
+                                set_facing(newob->collide_ob,myscreen);
                                 levelchanged = 1;
                             }
+                            data.level->remove_ob(newob,0);
+                        }  // end of set facing
+                        else if (mykeyboard[KEYSTATE_r]) // (re)name the current object
+                        {
+                            newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
+                            newob->setxy(windowx, windowy);
+                            if (some_hit(windowx, windowy, newob, data.level))
+                            {
+                                std::string name = newob->collide_ob->stats->name;
+                                if(prompt_for_string(scentext, "Rename", name))
+                                {
+                                    strncpy(newob->collide_ob->stats->name, name.c_str(), 11);
+                                    newob->collide_ob->stats->name[11] = '\0';
+                                    levelchanged = 1;
+                                }
+                            }
+                            data.level->remove_ob(newob,0);
                         }
-                        data.level->remove_ob(newob,0);
-                    }  // end of info mode
+                        else // get info on current object
+                        {
+                            if(!data.selection.valid || mx < 245-4 || my > L_D(7)-2)
+                            {
+                                newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
+                                newob->setxy(windowx, windowy);
+                                if (some_hit(windowx, windowy, newob, data.level))
+                                    data.selection.set(newob->collide_ob);
+                                else
+                                    data.selection.clear();
+                                data.level->remove_ob(newob,0);
+                            }
+                        }  // end of info mode
+                    }
                     else if (mode == OBJECT)
                     {
-                        levelchanged = 1;
-                        newob = data.level->add_ob(object_brush.order, object_brush.family);
-                        newob->setxy(windowx, windowy);
-                        newob->team_num = object_brush.team;
-                        newob->stats->level = object_brush.level;
-                        newob->dead = 0; // just in case
-                        newob->collide_ob = 0;
-                        if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, data.level))
+                        if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
                         {
-                            if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
-                                    newob->collide_ob )                    // and hit a guy?
+                            //windowx = (mx - PIX_LEFT) / GRID_SIZE;
+                            windowx = (mx-S_RIGHT) / GRID_SIZE;
+                            windowy = (my - PIX_TOP) / GRID_SIZE;
+                            int index =  (windowx + ((windowy+rowsdown) * PIX_OVER)) % (object_pane.size());
+                            if(index < int(object_pane.size()))
                             {
-                                data.level->remove_ob(newob->collide_ob,0);
-                                while (mymouse[MOUSE_LEFT])
+                                object_brush.order = object_pane[index].order;
+                                object_brush.family = object_pane[index].family;
+                            }
+                        } // end of background grid window
+                        else if(mx < 245-4 || my > L_D(7)-2)
+                        {
+                            levelchanged = 1;
+                            newob = data.level->add_ob(object_brush.order, object_brush.family);
+                            newob->setxy(windowx, windowy);
+                            newob->team_num = object_brush.team;
+                            newob->stats->level = object_brush.level;
+                            newob->dead = 0; // just in case
+                            newob->collide_ob = 0;
+                            if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, data.level))
+                            {
+                                if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
+                                        newob->collide_ob )                    // and hit a guy?
+                                {
+                                    data.level->remove_ob(newob->collide_ob,0);
+                                    while (mymouse[MOUSE_LEFT])
+                                    {
+                                        mymouse = query_mouse();
+                                    }
+                                    levelchanged = 1;
+                                } // end of deleting guy
+                                if (newob)
+                                {
+                                    data.level->remove_ob(newob,0);
+                                    newob = NULL;
+                                }
+                            }  // end of failure to put guy
+                            else if (!object_brush.snap_to_grid)
+                            {
+                                newob->draw(myscreen->viewob[0]);
+                                myscreen->buffer_to_screen(0, 0, 320, 200);
+                                start_time_s = query_timer();
+                                while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
                                 {
                                     mymouse = query_mouse();
                                 }
                                 levelchanged = 1;
-                            } // end of deleting guy
-                            if (newob)
+                            }
+                            if (mykeyboard[KEYSTATE_LCTRL] && newob)
                             {
                                 data.level->remove_ob(newob,0);
                                 newob = NULL;
                             }
-                        }  // end of failure to put guy
-                        else if (!object_brush.snap_to_grid)
-                        {
-                            newob->draw(myscreen->viewob[0]);
-                            myscreen->buffer_to_screen(0, 0, 320, 200);
-                            start_time_s = query_timer();
-                            while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
-                            {
-                                mymouse = query_mouse();
-                            }
-                            levelchanged = 1;
+                            //       while (mymouse[MOUSE_LEFT])
+                            //         mymouse = query_mouse();
                         }
-                        if (mykeyboard[KEYSTATE_LCTRL] && newob)
-                        {
-                            data.level->remove_ob(newob,0);
-                            newob = NULL;
-                        }
-                        //       while (mymouse[MOUSE_LEFT])
-                        //         mymouse = query_mouse();
                     }  // end of putting a guy
                     if (mode == TERRAIN)
                     {
-                        windowx /= GRID_SIZE;  // get the map position ..
-                        windowy /= GRID_SIZE;
-                        // Set to our current selection
-                        data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
-                        levelchanged = 1;
-                        if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
+                        if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
                         {
-                            for (i=windowx-1; i <= windowx+1; i++)
-                                for (j=windowy-1; j <=windowy+1; j++)
-                                    if (i >= 0 && i < data.level->grid.w &&
-                                            j >= 0 && j < data.level->grid.h)
-                                        data.level->mysmoother.smooth(i, j);
+                            //windowx = (mx - PIX_LEFT) / GRID_SIZE;
+                            windowx = (mx-S_RIGHT) / GRID_SIZE;
+                            windowy = (my - PIX_TOP) / GRID_SIZE;
+                            terrain_brush.terrain = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
+                                                     % (sizeof(backgrounds)/4)];
+                            terrain_brush.terrain %= NUM_BACKGROUNDS;
+                        } // end of background grid window
+                        else
+                        {
+                            windowx /= GRID_SIZE;  // get the map position ..
+                            windowy /= GRID_SIZE;
+                            // Set to our current selection
+                            data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
+                            levelchanged = 1;
+                            if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
+                            {
+                                for (i=windowx-1; i <= windowx+1; i++)
+                                    for (j=windowy-1; j <=windowy+1; j++)
+                                        if (i >= 0 && i < data.level->grid.w &&
+                                                j >= 0 && j < data.level->grid.h)
+                                            data.level->mysmoother.smooth(i, j);
+                            }
+                            
+                            myradar.update(data.level);
                         }
-                        
-                        myradar.update(data.level);
                     }  // end of setting grid square
                 } // end of main window
-                //    if ( (mx >= PIX_LEFT) && (mx <= PIX_RIGHT) &&
-                //        (my >= PIX_TOP) && (my <= PIX_BOTTOM) ) // grid menu
-                if(mode == TERRAIN)
-                {
-                    if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
-                    {
-                        //windowx = (mx - PIX_LEFT) / GRID_SIZE;
-                        windowx = (mx-S_RIGHT) / GRID_SIZE;
-                        windowy = (my - PIX_TOP) / GRID_SIZE;
-                        terrain_brush.terrain = backgrounds[ (windowx + ((windowy+rowsdown) * PIX_OVER))
-                                                 % (sizeof(backgrounds)/4)];
-                        terrain_brush.terrain %= NUM_BACKGROUNDS;
-                    } // end of background grid window
-                }
-                else if(mode == OBJECT)
-                {
-                    if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
-                    {
-                        //windowx = (mx - PIX_LEFT) / GRID_SIZE;
-                        windowx = (mx-S_RIGHT) / GRID_SIZE;
-                        windowy = (my - PIX_TOP) / GRID_SIZE;
-                        int index =  (windowx + ((windowy+rowsdown) * PIX_OVER)) % (object_pane.size());
-                        if(index < int(object_pane.size()))
-                        {
-                            object_brush.order = object_pane[index].order;
-                            object_brush.family = object_pane[index].family;
-                        }
-                    } // end of background grid window
-                }
             }
 
 		}      // end of left mouse button
@@ -2706,101 +2848,6 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 	return NULL;
 }
 
-// Display info about the target object ..
-#define INFO_DOWN(x) (25+7*x)
-void info_box(walker  *target,screen * myscreen)
-{
-	text *infotext = new text(myscreen);
-	Sint32 linesdown = 0;
-	Sint32 lm = 25+32;
-	char message[80];
-	treasure  *teleporter, *temp;
-
-	static const char *orders[] =
-	    { "LIVING", "WEAPON", "TREASURE", "GENERATOR", "FX", "SPECIAL", };
-	static const char *livings[] =
-	    { "SOLDIER", "ELF", "ARCHER", "MAGE",
-	      "SKELETON", "CLERIC", "ELEMENTAL",
-	      "FAERIE", "L-SLIME", "S-SLIME",
-	      "M-SLIME", "THIEF", "GHOST",
-	      "DRUID",
-	    };
-	static const char *treasures[] =
-	    { "BLOODSTAIN", "DRUMSTICK: FOOD",
-	      "GOLD BAR", "SILVER BAR",
-	      "MAGIC POTION", "INVISIBILITY POTION",
-	      "INVULNERABILITY POTION",
-	      "FLIGHT POTION", "EXIT", "TELEPORTER",
-	      "LIFE GEM", "KEY", "SPEED", "CC",
-	    };
-
-	release_mouse();
-	myscreen->draw_button(20+32, 20, 220+32, 170, 1, 1);
-
-	infotext->write_xy(lm, INFO_DOWN(linesdown++), "INFO TEXT", DARK_BLUE,1);
-	linesdown++;
-
-	if (strlen(target->stats->name)) // it has a name
-	{
-		sprintf(message, "Name    : %s", target->stats->name);
-		infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
-	}
-
-	sprintf(message, "Order   : %s", orders[(int)target->query_order()] );
-	infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
-
-	if (target->query_order() == ORDER_LIVING)
-		sprintf(message, "Family  : %s",
-		        livings[(int)target->query_family()] );
-	else if (target->query_order() == ORDER_TREASURE)
-		sprintf(message, "Family  : %s",
-		        treasures[(int)target->query_family()] );
-	else
-		sprintf(message, "Family  : %d", target->query_family());
-	infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
-
-	sprintf(message, "Team Num: %d", target->team_num);
-	infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE, 1);
-
-	sprintf(message, "Position: %dx%d (%dx%d)", target->xpos, target->ypos,
-	        (target->xpos/GRID_SIZE), (target->ypos/GRID_SIZE) );
-	infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
-
-	if (target->query_order() == ORDER_TREASURE &&
-	        target->query_family()== FAMILY_EXIT)
-		sprintf(message, "Exits to: Level %d", target->stats->level);
-	else if (target->query_order() == ORDER_TREASURE &&
-	         target->query_family() == FAMILY_TELEPORTER)
-	{
-		sprintf(message, "Group # : %d", target->stats->level);
-		infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
-		temp = (treasure  *) target;
-		teleporter = (treasure  *) temp->find_teleport_target();
-		if (!teleporter || teleporter == target)
-			infotext->write_xy(lm, INFO_DOWN(linesdown++), "Goes to : Itself!", DARK_BLUE,1);
-		else
-		{
-			sprintf(message, "Goes to : %dx%d (%dx%d)", teleporter->xpos,
-			        teleporter->ypos, teleporter->xpos/GRID_SIZE, teleporter->ypos/GRID_SIZE);
-		}
-	}
-	else
-		sprintf(message, "Level   : %d", target->stats->level);
-	infotext->write_xy(lm, INFO_DOWN(linesdown++), message, DARK_BLUE,1);
-
-	linesdown++;
-	infotext->write_xy(lm, INFO_DOWN(linesdown++),
-	                   "PRESS ESC TO EXIT", DARK_BLUE,1);
-
-	myscreen->buffer_to_screen(0, 0, 320, 200);
-	grab_mouse();
-
-	// Wait for press and release of ESC
-	while (!mykeyboard[KEYSTATE_ESCAPE])
-		get_input_events(WAIT);
-	while (mykeyboard[KEYSTATE_ESCAPE])
-		get_input_events(WAIT);
-}
 
 void scenario_options(screen *myscreen)
 {
