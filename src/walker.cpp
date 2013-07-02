@@ -1096,6 +1096,157 @@ short walker::draw(viewscreen  *view_buf)
 	return 1;
 }
 
+short walker::draw_tile(viewscreen  *view_buf)
+{
+	Sint32 xscreen, yscreen;
+
+	//no need for on screen check, it will be checked at the draw level
+	//and the draw level code is cleaner anyway
+	//if (!this) return 0;
+	if (dead)
+	{
+		Log("drawing a dead guy!\n");
+		return 0;
+	}
+	//if (!bmp) {Log("No bitmap!\n"); return 0;}
+	drawcycle++;
+
+	xscreen = (Sint32) (xpos - view_buf->topx + view_buf->xloc);
+	yscreen = (Sint32) (ypos - view_buf->topy + view_buf->yloc);
+
+	if (stats->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
+	{
+		if (outline == OUTLINE_INVULNERABLE)
+		{
+			if      (flight_left)
+				outline = OUTLINE_FLYING;
+			else if (view_buf->control)
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
+
+			if (outline != OUTLINE_NAMED)
+				if (invisibility_left)
+					outline = OUTLINE_INVISIBLE;
+		}
+		else if (outline == OUTLINE_FLYING)
+		{
+			//if      (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
+			//else if (invisibility_left) outline = OUTLINE_INVISIBLE;
+			//else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
+
+			if (view_buf->control)
+				if      (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
+
+			if (outline != OUTLINE_NAMED)
+			{
+				if (invisibility_left)
+					outline = OUTLINE_INVISIBLE;
+				else if (invulnerable_left)
+					outline = OUTLINE_INVULNERABLE;
+			}
+		}
+		else if (outline == OUTLINE_NAMED)
+		{
+			if      (invisibility_left)
+				outline = OUTLINE_INVISIBLE;
+			else if (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
+		}
+		else if (outline == OUTLINE_INVISIBLE)
+		{
+			if      (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
+			else if (view_buf->control)
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
+		}
+		else
+		{
+			if      (invisibility_left)
+				outline = OUTLINE_INVISIBLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
+			else if (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
+			else if (view_buf->control)
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
+		}
+	}
+	else
+	{
+	    outline = 0;
+	}
+	
+    if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+        outline = OUTLINE_INVISIBLE;
+
+	if (stats->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
+		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		                        view_buf->xloc, view_buf->yloc,
+		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
+		                        bmp, query_team_color(),
+		                        PHANTOM_MODE, //mode
+		                        0, //invisibility
+		                        0, //outline
+		                        SHIFT_RANDOM); //type of phantom
+
+	else if (invisibility_left)  //WE ARE INVISIBLE
+	{
+		if (this->team_num == view_buf->control->team_num)
+			screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+			                        view_buf->xloc, view_buf->yloc,
+		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
+			                        bmp, query_team_color(),
+			                        INVISIBLE_MODE,  //mode
+			                        ( invisibility_left + 10 ), //invisibility
+			                        outline,  //outline
+			                        0 ); //type of phantom
+	}
+	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
+	         screenp->mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	         && !stats->query_bit_flags(BIT_FLYING)
+	         && (flight_left < 1) )
+		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		                        view_buf->xloc, view_buf->yloc,
+		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
+		                        bmp, query_team_color(),
+		                        INVISIBLE_MODE,  //mode
+		                        1000, //invisibility
+		                        1,  //outline
+		                        0 ); //type of phantom
+
+	else if (outline)    // WE HAVE SOME OUTLINE
+	{
+		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		                        view_buf->xloc, view_buf->yloc,
+		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
+		                        bmp, query_team_color(),
+		                        OUTLINE_MODE, //mode
+		                        0, //invisibility
+		                        outline, //outline
+		                        0 ); //type of phantom
+		                        
+        draw_smallHealthBar(this, view_buf);
+	}
+	else
+	{
+		screenp->walkputbuffer(xscreen, yscreen, sizex, sizey,
+		                       view_buf->xloc, view_buf->yloc,
+		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
+		                       bmp, query_team_color());
+        
+        draw_smallHealthBar(this, view_buf);
+	}
+
+	return 1;
+}
+
 short walker::act()
 {
 	short temp;

@@ -885,7 +885,6 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 
 	// Hide the mouse ..
 	//release_mouse();
-
     if(mode == OBJECT)
     {
 
@@ -973,19 +972,17 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     if(mode == TERRAIN)
     {
-
-        // Show the background grid ..
-        myscreen->putbuffer(lm+40, PIX_TOP-16, GRID_SIZE, GRID_SIZE,
+        // Show the current brush
+        myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
                             0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
+        // Border
+        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_WHITE, 0, 1);
         
-        //   rowsdown = (NUM_BACKGROUNDS / 4) + 1;
-        //   rowsdown = 0; // hack for now
+        // Show the background grid
         for (i=0; i < PIX_OVER; i++)
         {
             for (j=0; j < 4; j++)
             {
-                //myscreen->back[i]->draw( S_RIGHT+(i*8), S_UP+100);
-                //myscreen->back[0]->draw(64, 64);
                 whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
                 myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                     GRID_SIZE, GRID_SIZE,
@@ -1020,12 +1017,20 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     }
     else if(mode == OBJECT)
     {
+        // Draw current brush
+        walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+        newob->setxy(lm+25 + level->topx, PIX_TOP-16-1 + level->topy);
+        newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
+        level->myloader->set_walker(newob, object_brush.order, object_brush.family);
+        newob->team_num = object_brush.team;
+        newob->draw_tile(myscreen->viewob[0]);
+        // Border
+        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_WHITE, 0, 1);
+        
         myscreen->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 1, 1);
         myscreen->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, WHITE, 0, 1);
-        
-        walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
         
         for (i=0; i < PIX_OVER; i++)
         {
@@ -1038,7 +1043,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
                     level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
                     newob->team_num = object_brush.team;
-                    newob->draw(myscreen->viewob[0]);
+                    newob->draw_tile(myscreen->viewob[0]);
                 }
             }
         }
@@ -1067,7 +1072,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
             }
             
-            // Draw current brush
+            // Draw current brush near cursor
             newob->setxy(mx + level->topx, my + level->topy);
             newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
             level->myloader->set_walker(newob, object_brush.order, object_brush.family);

@@ -37,6 +37,7 @@ class walker : public pixieN
 		short walkstep(short x, short y);
 		virtual short walk(short x, short y);
 		short draw(viewscreen  *view_buf);
+		short draw_tile(viewscreen  *view_buf);
 		short init_fire();
 		short init_fire(short xdir, short ydir);
 		void set_weapon_heading(walker *weapon);

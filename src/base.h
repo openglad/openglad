@@ -118,6 +118,8 @@ char* read_one_line(SDL_RWops *infile, short length);
 //color defines:
 #define DEFAULT_TEXT_COLOR 88
 
+#define PURE_WHITE   15
+#define PURE_BLACK   0
 #define WHITE        24
 #define BLACK        160
 #define GREY         23
