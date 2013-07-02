@@ -1170,12 +1170,9 @@ Sint32 level_editor()
 	list<pair<SimpleButton*, set<SimpleButton*> > >& current_menu = data.current_menu;
     
 	Sint32 i,j;
-	Sint32 extra;
 	Sint32 windowx, windowy;
 	walker  *newob;
 	Sint32 mx, my;
-	char mystring[80];
-	short count;
     
     // Initialize palette for cycling
     load_and_set_palette("our.pal", scenpalette);
@@ -1280,11 +1277,13 @@ Sint32 level_editor()
 	
 	// Level menu
 	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, 15);
-	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 100, 15, true);
-	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 100, 15, true);
-	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 100, 15, true);
-	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 100, 15, true);
-	SimpleButton levelResmoothButton("Resmooth terrain", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 100, 15, true);
+	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 110, 15, true);
+	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, 15, true);
+	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 110, 15, true);
+	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 110, 15, true);
+	SimpleButton levelResmoothButton("Resmooth terrain", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 110, 15, true);
+	SimpleButton levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, levelResmoothButton.area.y + levelResmoothButton.area.h, 110, 15, true);
+	SimpleButton levelDeleteObjectsButton("Clear all objects", levelButton.area.x, levelDeleteTerrainButton.area.y + levelDeleteTerrainButton.area.h, 110, 15, true);
 	
 	
 	// Edit menu
@@ -1347,14 +1346,6 @@ Sint32 level_editor()
             while (mykeyboard[KEYSTATE_ESCAPE])
                 get_input_events(WAIT);
         }
-        
-		// Delete all with ^D
-		if (mykeyboard[KEYSTATE_d] && mykeyboard[KEYSTATE_LCTRL])
-		{
-		    data.level->delete_objects();
-			levelchanged = 1;
-			event = 1;
-		}
 
 		// Change teams ..
 		if (mykeyboard[KEYSTATE_0])
@@ -1407,14 +1398,6 @@ Sint32 level_editor()
 				get_input_events(WAIT);
 		}
 
-		if (mykeyboard[KEYSTATE_KP_MULTIPLY]) // options menu
-		{
-			release_mouse();
-			//scenario_options(myscreen);
-			grab_mouse();
-			event = 1; // redraw screen
-		}
-
 		// Save scenario
 		if(mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
 		{
@@ -1460,65 +1443,6 @@ Sint32 level_editor()
             }
 		}  // end of saving routines
 
-		// Enter scenario text ..
-		if (mykeyboard[KEYSTATE_t])
-		{
-#define TEXT_DOWN(x)  (14+((x)*7))
-   #define TL 4
-			//gotoxy(1, 1);
-			myscreen->draw_button(0, 10, 200, 200, 2, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			scentext->write_xy(TL, TEXT_DOWN(0), "Enter new scenario text;", DARK_BLUE, 1);
-			scentext->write_xy(TL, TEXT_DOWN(1), " PERIOD (.) alone to end.", DARK_BLUE, 1);
-			scentext->write_xy(TL, TEXT_DOWN(2), "*--------*---------*---------*", DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			myscreen->scentextlines = 0;
-			count = 2;
-			for (i=0; i < 23; i++)
-				if (strlen(myscreen->scentext[i]))
-					scentext->write_xy(TL, TEXT_DOWN(i+3), myscreen->scentext[i], DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			extra = 1;
-			for (i=0; i < 60; i++)
-			{
-				count++;
-				mystring[0] = 0;
-				if (! (count%26) )
-				{
-					myscreen->draw_box(TL, TEXT_DOWN(3), 196, 196, 27, 1, 1);
-					myscreen->buffer_to_screen(0, 0, 320, 200);
-					for (j=0; j < 23; j++)
-					{
-						count = j+(23*extra);
-						if (count < 60)
-							if (strlen(myscreen->scentext[count]))
-								scentext->write_xy(TL, TEXT_DOWN(j+3), myscreen->scentext[count], DARK_BLUE, 1);
-					}
-					count = 3;
-					extra++;
-					myscreen->buffer_to_screen(0, 0, 320, 200);
-				}
-				char* new_text = scentext->input_string(TL, TEXT_DOWN(count), 30, myscreen->scentext[i]);
-				if(new_text == NULL)
-                    new_text = myscreen->scentext[i];
-				strcpy(mystring, new_text);
-				strcpy(myscreen->scentext[i], mystring);
-				if (!strcmp(".", mystring)) // says end ..
-				{
-					i = 70;
-					myscreen->draw_box(0, 10, 200, 200, 0, 1, 1);
-					myscreen->buffer_to_screen(0, 0, 320, 200);
-					myscreen->scentext[i][0] = 0;
-					event = 1;
-				}
-				else
-					myscreen->scentextlines++;
-			}
-			myscreen->draw_box(0, 10, 200, 200, 0, 1, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			event = 1;
-		}
-
 		// Change level of current guy being placed ..
 		if (mykeyboard[KEYSTATE_RIGHTBRACKET])
 		{
@@ -1535,29 +1459,37 @@ Sint32 level_editor()
 			event = 1;
 		}
 
-		// Change between generator and living orders
-		if (mykeyboard[KEYSTATE_o])        // this is letter o
+		if (mykeyboard[KEYSTATE_o])
 		{
-			if (object_brush.order == ORDER_LIVING)
-			{
-				object_brush.order = ORDER_GENERATOR;
-				object_brush.family = FAMILY_TENT;
-			}
-			else if (object_brush.order == ORDER_GENERATOR)
-				object_brush.order = ORDER_SPECIAL;   // for placing team guys ..
-			else if (object_brush.order == ORDER_SPECIAL)
-			{
-				object_brush.order = ORDER_TREASURE;
-				object_brush.family = FAMILY_DRUMSTICK;
-			}
-			else if (object_brush.order == ORDER_TREASURE)
-				object_brush.order = ORDER_WEAPON;
-			else if (object_brush.order == ORDER_WEAPON)
-				object_brush.order = ORDER_LIVING;
-			mode = OBJECT;
-            modeButton.label = "Edit (Objects)";
+		    if(mode == OBJECT)
+            {
+                mode = SELECT;
+                modeButton.label = "Edit (Select)";
+            }
+            else
+            {
+                mode = OBJECT;
+                modeButton.label = "Edit (Objects)";
+            }
 			event = 1; // change score panel
 			while (mykeyboard[KEYSTATE_o])
+				get_input_events(WAIT);
+		}
+		
+		if (mykeyboard[KEYSTATE_t])
+		{
+		    if(mode == TERRAIN)
+            {
+                mode = SELECT;
+                modeButton.label = "Edit (Select)";
+            }
+            else
+            {
+                mode = TERRAIN;
+                modeButton.label = "Edit (Terrain)";
+            }
+			event = 1; // change score panel
+			while (mykeyboard[KEYSTATE_t])
 				get_input_events(WAIT);
 		}
 
@@ -2133,6 +2065,8 @@ Sint32 level_editor()
                     s.insert(&levelDescriptionButton);
                     s.insert(&levelMapSizeButton);
                     s.insert(&levelResmoothButton);
+                    s.insert(&levelDeleteTerrainButton);
+                    s.insert(&levelDeleteObjectsButton);
                     current_menu.push_back(std::make_pair(&levelButton, s));
                 }
                 else if(activate_menu_choice(mx, my, data, levelInfoButton))
@@ -2241,6 +2175,26 @@ Sint32 level_editor()
                 {
                     data.resmooth_terrain();
                     levelchanged = 1;
+                    event = 1;
+                }
+                else if(activate_menu_choice(mx, my, data, levelDeleteTerrainButton))
+                {
+                    if(yes_or_no_prompt("Clear Terrain", "Delete all terrain?", false))
+                    {
+                        data.clear_terrain();
+                        myradar.update(data.level);
+                        levelchanged = 1;
+                    }
+                    event = 1;
+                }
+                else if(activate_menu_choice(mx, my, data, levelDeleteObjectsButton))
+                {
+                    if(yes_or_no_prompt("Clear Objects", "Delete all objects?", false))
+                    {
+                        data.level->delete_objects();
+                        myradar.update(data.level);
+                        levelchanged = 1;
+                    }
                     event = 1;
                 }
                 // MODE
