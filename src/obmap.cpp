@@ -85,6 +85,7 @@ obmap::~obmap()
 					templink = here;
 					if (here->ob)
 					{
+					    here->ob->myobmap = NULL;
 						delete here->ob;
 						here->ob = NULL;
 					}
@@ -94,6 +95,7 @@ obmap::~obmap()
 				}
 				if (here->ob)
 				{
+                    here->ob->myobmap = NULL;
 					delete here->ob;
 					here->ob = NULL;
 				}
@@ -203,15 +205,15 @@ short add_link(oblink  *newguy, oblink **row)
 short obmap::remove
 	(walker  *ob)  // This goes in walker's destructor
 {
-	short numx, startnumx, endnumx;
-	short numy, startnumy, endnumy;
+	//short numx, startnumx, endnumx;
+	//short numy, startnumy, endnumy;
 	oblink  *old = NULL;
 	short found = 0;
 
 	//  Log("Deleting walker.\n");
 	//return 1;
 
-	startnumx = hash(ob->xpos);
+	/*startnumx = hash(ob->xpos);
 	endnumx   = hash((short) (ob->xpos + ob->sizex) );
 	startnumy = hash(ob->ypos);
 	endnumy   = hash((short) (ob->ypos +ob->sizey) );
@@ -230,7 +232,21 @@ short obmap::remove
 				delete old;
 				old = NULL;
 			}
-		}
+		}*/
+    
+    // The above code does not always find all of the instances of the object, so we get a double-free error when the obmap is deleted.
+    // FIXME: This is slower, but more sure for now...
+    for(int i = 0; i < 200; i++)
+        for(int j = 0; j < 200; j++)
+        {
+			old = remove_link(ob, &list[i][j]);
+			if (old)
+			{
+				found = 1;
+				delete old;
+				old = NULL;
+			}
+        }
 	if (found)
 		totalobs --;
 	return 1;
