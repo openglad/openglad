@@ -53,28 +53,27 @@ extern text *mytext;
 extern Sint32 *mymouse;
 extern Uint32 money[4];
 
-typedef struct
+struct button
 {
 	char label[30];
-	unsigned char hotkey;
+	int hotkey;
 	Sint32 x, y;
 	Sint32 sizex, sizey;
 	//Sint32 (*fun)(Sint32 arg1);
 	Sint32 myfun;
 	Sint32 arg1;     // argurment to function fun
-}
-button;
+};
 
 class vbutton
 {
 	public:
 		vbutton();//this should only be used for pointers!!
 		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func(Sint32),
-		        Sint32 pass, char *msg, unsigned char hot );
+		        Sint32 pass, char *msg, int hot );
 		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func_code,
-		        Sint32 pass, char *msg, unsigned char hot );
+		        Sint32 pass, char *msg, int hot );
 		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func_code,
-		        Sint32 pass, char *msg, char family, unsigned char hot );
+		        Sint32 pass, char *msg, char family, int hot );
 		~vbutton();
 		void set_graphic(char family);
 		Sint32 leftclick(); //is called when the button is left clicked
@@ -103,7 +102,7 @@ class vbutton
 		char do_outline; // force an outline
 		char depressed;
 		pixieN *mypixie;
-		unsigned char hotkey;
+		int hotkey;
 };
 
 #define MAX_BUTTONS 50  // max buttons per screen

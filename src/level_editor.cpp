@@ -577,6 +577,22 @@ public:
             level = target->stats->level;
         }
     }
+    
+    walker* get_object(LevelData* level)
+    {
+        if(!valid)
+            return NULL;
+        
+        walker* result = NULL;
+        walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+        newob->setxy(x, y);
+        if (some_hit(x, y, newob, level))
+        {
+            result = newob->collide_ob;
+        }
+        level->remove_ob(newob,0);
+        return result;
+    }
 };
 
 
@@ -1593,6 +1609,23 @@ Sint32 level_editor()
 			while (mykeyboard[KEYSTATE_LEFTBRACKET])
 				get_input_events(WAIT);
 			event = 1;
+		}
+
+		if (mykeyboard[KEYSTATE_DELETE])
+		{
+		    if(mode == SELECT)
+            {
+                // Delete the selected guy
+                walker* obj = data.selection.get_object(data.level);
+                if(obj != NULL)
+                {
+                    data.level->remove_ob(obj);
+                    levelchanged = 1;
+                    event = 1;
+                }
+            }
+			while (mykeyboard[KEYSTATE_DELETE])
+				get_input_events(WAIT);
 		}
 
 		if (mykeyboard[KEYSTATE_o])

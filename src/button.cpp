@@ -25,7 +25,7 @@ void get_input_events(bool);
 
 //vbutton functions, vbutton is a button class that will be self controlled
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
-                 Sint32 func(Sint32), Sint32 pass, char *msg, unsigned char hot )
+                 Sint32 func(Sint32), Sint32 pass, char *msg, int hot )
 {
 	arg = pass;
 	fun = func;
@@ -51,7 +51,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 }
 
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
-                 Sint32 func_code, Sint32 pass, char *msg, unsigned char hot )
+                 Sint32 func_code, Sint32 pass, char *msg, int hot )
 {
 	arg = pass;
 	fun = NULL; // don't use this!
@@ -78,7 +78,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
                  Sint32 func_code, Sint32 pass, char *msg, char family,
-                 unsigned char hot )
+                 int hot )
 {
 	arg = pass;
 	fun = NULL; // don't use this!
