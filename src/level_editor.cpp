@@ -1001,8 +1001,6 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         if(strlen(message) > 0)
             scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
         
-        #ifndef USE_TOUCH_INPUT
-        
         // Draw cursor
         int mx, my;
         mx = selection.x - level->topx;
@@ -1015,13 +1013,10 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             // Draw target tile
             int worldx = mx + level->topx;
             int worldy = my + level->topy;
-            int gridx = worldx - (worldx)%GRID_SIZE;
-            int gridy = worldy - (worldy)%GRID_SIZE;
-            int screenx = gridx - level->topx;
-            int screeny = gridy - level->topy;
+            int screenx = worldx - level->topx;
+            int screeny = worldy - level->topy;
             myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
         }
-        #endif
     }
     
     if(mode == OBJECT)
