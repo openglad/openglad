@@ -96,7 +96,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 	do_outline = 0;
 	depressed = 0;
 
-	mypixie = myscreen->myloader->create_pixieN(ORDER_BUTTON1, family);
+	mypixie = myscreen->level_data.myloader->create_pixieN(ORDER_BUTTON1, family);
 
 	hotkey = hot;
 
@@ -137,7 +137,7 @@ void vbutton::set_graphic(char family)
 {
 	if (mypixie)
 		delete mypixie;
-	mypixie = myscreen->myloader->create_pixieN(ORDER_BUTTON1, family);
+	mypixie = myscreen->level_data.myloader->create_pixieN(ORDER_BUTTON1, family);
 	width = mypixie->sizex;
 	height= mypixie->sizey;
 	xend = xloc + width;

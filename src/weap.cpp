@@ -55,7 +55,7 @@ short weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-	if (myscreen->mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
+	if (myscreen->level_data.mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
 		if (lineofsight)
 			lineofsight--;
 
@@ -225,7 +225,7 @@ short weap::death()
 			newob->team_num = team_num;
 			//      newob->ignore = 1;
 			// What way are we 'facing'?
-			if (screenp->mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
+			if (screenp->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
 			        == TYPE_WALL) // a wall above us?
 			{
 				newob->curdir = FACE_RIGHT;

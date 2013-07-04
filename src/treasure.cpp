@@ -194,14 +194,14 @@ short treasure::eat_me(walker  * eater)
 				{
 					clear_keyboard();
 					// Delete all of our current information and abort ..
-					here = myscreen->oblist;
+					here = myscreen->level_data.oblist;
 					while (here)
 					{
 						if (here->ob && here->ob->query_order() == ORDER_LIVING)
 						{
 							//myscreen->remove_ob(here->ob);
 							here->ob->dead = 1;
-							myscreen->myobmap->remove(here->ob);
+							myscreen->level_data.myobmap->remove(here->ob);
 							//myscreen->remove_obmap(here->ob);
 						}
 						here = here->next;
@@ -217,7 +217,7 @@ short treasure::eat_me(walker  * eater)
 					load_saved_game("save0", myscreen);
 					myscreen->save_data.scen_num = (short) (stats->level-1);
 					myscreen->end = 1;
-                    myscreen->save_data.save("save0", myscreen->oblist);
+                    myscreen->save_data.save("save0", myscreen->level_data.oblist);
 					retreat = 1;
 
 					return screenp->endgame(1, stats->level); // retreat
@@ -226,7 +226,7 @@ short treasure::eat_me(walker  * eater)
 			} // end of checking for withdrawal to completed level
 
 			//buffers: also, allow exit if scenario_type == can exit
-			if (!guys_here || (screenp->scenario_type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
+			if (!guys_here || (screenp->level_data.type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
 			{
                 char buf[40];
                 snprintf(buf, 40, "Exit to %s?", exitname);
@@ -313,7 +313,7 @@ void treasure::set_direct_frame(short whatframe)
 	PixieData data;
 	frame = whatframe;
 
-	data = screenp->myloader->graphics[PIX(order, family)];
+	data = screenp->level_data.myloader->graphics[PIX(order, family)];
 	bmp = data.data + frame*size;
 
 }
@@ -321,7 +321,7 @@ void treasure::set_direct_frame(short whatframe)
 walker  * treasure::find_teleport_target()
 {
 	walker  *target = NULL;
-	oblink  *here = screenp->fxlist;
+	oblink  *here = screenp->level_data.fxlist;
 	short keep_looking = 1;
 	short number = 0;
 
@@ -365,7 +365,7 @@ walker  * treasure::find_teleport_target()
 	}
 
 	// Hit the end of the list, look from top down now ..
-	here = screenp->fxlist;
+	here = screenp->level_data.fxlist;
 	number = 0;
 	while (here)
 	{

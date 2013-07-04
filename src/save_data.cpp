@@ -8,7 +8,7 @@
 
 
 SaveData::SaveData()
-    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), first_guy(NULL), allied_mode(0)
+    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), first_guy(NULL), numplayers(1), allied_mode(0)
 {
     completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
     current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
@@ -48,6 +48,7 @@ void SaveData::reset()
 	first_guy = NULL;
 	scen_num = 1;
 	my_team = 0;
+    numplayers = 1;
 	allied_mode = 0;
 }
 
@@ -75,7 +76,7 @@ bool SaveData::load(const std::string& filename)
 	char temp_order, temp_family;
 	short temp_str, temp_dex, temp_con;
 	short temp_short, temp_arm, temp_lev;
-	char numplayers;
+	unsigned char numplayers;
 	Uint32 temp_exp;
 	short temp_kills;
 	Sint32 temp_level_kills;
@@ -411,7 +412,7 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	char temp_order, temp_family;
 	short temp_str, temp_dex, temp_con;
 	short temp_short, temp_arm, temp_lev;
-	char numplayers = (char) this->numplayers;
+	unsigned char numplayers = this->numplayers;
 	Uint32 temp_exp;
 	short temp_kills;
 	Sint32 temp_level_kills;
@@ -534,6 +535,7 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	//Log("Team size: %d  ", listsize);
 	SDL_RWwrite(outfile, &listsize, 2, 1);
 
+    Log("Writing numplayers: %u\n", numplayers);
 	SDL_RWwrite(outfile, &numplayers, 1, 1);
 
 	// Write the reserved area, 31 bytes

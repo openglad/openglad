@@ -917,8 +917,8 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	char message[50];
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
-	static Sint32 numobs = myscreen->numobs;
-	static Sint32 lm = 245;
+	Sint32 numobs = myscreen->level_data.numobs;
+	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
 	static char treasures[20][NUM_FAMILIES] =
@@ -1115,7 +1115,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         else
             scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
         
-        numobs = myscreen->numobs;
+        numobs = myscreen->level_data.numobs;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         sprintf(message, "OB: %d", numobs);
         scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
@@ -1125,7 +1125,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     {
         // Show the current brush
         myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
-                            0, 0, 320, 200, myscreen->pixdata[terrain_brush.terrain].data);
+                            0, 0, 320, 200, myscreen->level_data.pixdata[terrain_brush.terrain].data);
         // Border
         myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
@@ -1138,7 +1138,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                     GRID_SIZE, GRID_SIZE,
                                     0, 0, 320, 200,
-                                    myscreen->pixdata[ backgrounds[whichback] ].data);
+                                    myscreen->level_data.pixdata[ backgrounds[whichback] ].data);
             }
         }
         myscreen->draw_box(S_RIGHT, PIX_TOP,
@@ -1332,10 +1332,6 @@ Sint32 level_editor()
     load_and_set_palette("our.pal", scenpalette);
 	
 	scentext = new text(myscreen);
-	
-	// Set the un-set text to empty ..
-	for (i=0; i < 60; i ++)
-		myscreen->scentext[i][0] = 0;
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -2626,8 +2622,8 @@ Sint32 level_editor()
 
 void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y)
 {
-	myscreen->topx = x;
-	myscreen->topy = y;
+	myscreen->level_data.topx = x;
+	myscreen->level_data.topy = y;
 	event = 1;
 }
 
@@ -2636,7 +2632,7 @@ void remove_first_ob(screen *master)
 {
 	oblink  *here;
 
-	here = master->oblist;
+	here = master->level_data.oblist;
 
 	while (here)
 	{
@@ -2900,22 +2896,22 @@ while (!opt_keys[KEYSTATE_ESCAPE])
 
 	opt_text.write_xy(lm, OPT_LD(0), "SCENARIO OPTIONS", DARK_BLUE, 1);
 
-	if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT)
+	if (myscreen->level_data.type & SCEN_TYPE_CAN_EXIT)
 		opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : Yes", DARK_BLUE, 1);
 	else
 		opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : No ", DARK_BLUE, 1);
 
-	if (myscreen->scenario_type & SCEN_TYPE_GEN_EXIT)
+	if (myscreen->level_data.type & SCEN_TYPE_GEN_EXIT)
 		opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): Yes", DARK_BLUE, 1);
 	else
 		opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): No ", DARK_BLUE, 1);
 
-	if (myscreen->scenario_type & SCEN_TYPE_SAVE_ALL)
+	if (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
 		opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : Yes", DARK_BLUE, 1);
 	else
 		opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : No ", DARK_BLUE, 1);
 
-	sprintf(message, " Level Par Value (+,-)      : %d ", myscreen->par_value);
+	sprintf(message, " Level Par Value (+,-)      : %d ", myscreen->level_data.par_value);
 	opt_text.write_xy(lm, OPT_LD(5), message, DARK_BLUE, 1);
 
 
@@ -2924,33 +2920,33 @@ while (!opt_keys[KEYSTATE_ESCAPE])
 	get_input_events(WAIT);
 	if (opt_keys[KEYSTATE_e]) // toggle exit mode
 	{
-		if (myscreen->scenario_type & SCEN_TYPE_CAN_EXIT) // already set
-			myscreen->scenario_type -= SCEN_TYPE_CAN_EXIT;
+		if (myscreen->level_data.type & SCEN_TYPE_CAN_EXIT) // already set
+			myscreen->level_data.type -= SCEN_TYPE_CAN_EXIT;
 		else
-			myscreen->scenario_type += SCEN_TYPE_CAN_EXIT;
+			myscreen->level_data.type += SCEN_TYPE_CAN_EXIT;
 	}
 	if (opt_keys[KEYSTATE_g]) // toggle exit mode -- generators
 	{
-		if (myscreen->scenario_type & SCEN_TYPE_GEN_EXIT) // already set
-			myscreen->scenario_type -= SCEN_TYPE_GEN_EXIT;
+		if (myscreen->level_data.type & SCEN_TYPE_GEN_EXIT) // already set
+			myscreen->level_data.type -= SCEN_TYPE_GEN_EXIT;
 		else
-			myscreen->scenario_type += SCEN_TYPE_GEN_EXIT;
+			myscreen->level_data.type += SCEN_TYPE_GEN_EXIT;
 	}
 	if (opt_keys[KEYSTATE_n]) // toggle fail mode -- named guys
 	{
-		if (myscreen->scenario_type & SCEN_TYPE_SAVE_ALL) // already set
-			myscreen->scenario_type -= SCEN_TYPE_SAVE_ALL;
+		if (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL) // already set
+			myscreen->level_data.type -= SCEN_TYPE_SAVE_ALL;
 		else
-			myscreen->scenario_type += SCEN_TYPE_SAVE_ALL;
+			myscreen->level_data.type += SCEN_TYPE_SAVE_ALL;
 	}
 	if (opt_keys[KEYSTATE_KP_MINUS]) // lower the par value
 	{
-		if (myscreen->par_value > 1)
-			myscreen->par_value--;
+		if (myscreen->level_data.par_value > 1)
+			myscreen->level_data.par_value--;
 	}
 	if (opt_keys[KEYSTATE_KP_PLUS]) // raise the par value
 	{
-		myscreen->par_value++;
+		myscreen->level_data.par_value++;
 	}
 }
 

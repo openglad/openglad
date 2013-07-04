@@ -534,7 +534,7 @@ void statistics::hit_response(walker  *who)
 					foe->foe = controller;
 					last_distance = current_distance = 15000;
 				}
-				newlist = myscreen->find_foes_in_range(myscreen->oblist,
+				newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 				                                       200, &howmany, controller);
 				// Delete the list to save memory, not needed now
 				/* This clean-up code is broken .. why? <- Zardus says "Because you're trying to delete
@@ -656,7 +656,7 @@ void statistics::yell_for_help(walker *foe)
 
 	controller->yo_delay += 80;
 	helplist = controller->screenp->find_friends_in_range(
-	               controller->screenp->oblist, 160, &howmany, controller);
+	               controller->screenp->level_data.oblist, 160, &howmany, controller);
 	here = helplist;
 	while (here)
 	{
@@ -1151,7 +1151,7 @@ short statistics::walk_to_foe()
 		tempdistance = (Uint32) controller->distance_to_ob(foe);
 		if (tempdistance < 200 || (tempdistance < last_distance) )
 		{
-			foelist = controller->screenp->find_foes_in_range(controller->screenp->oblist,
+			foelist = controller->screenp->find_foes_in_range(controller->screenp->level_data.oblist,
 			          200, &howmany, controller);
 			if (howmany > 0)
 			{

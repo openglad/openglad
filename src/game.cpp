@@ -36,28 +36,34 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		release_keyboard();
 		exit(1);
 	}
+	
+	myscreen->numviews = myscreen->save_data.numplayers;
+	
+	myscreen->cleanup(myscreen->numviews);
+	myscreen->initialize_views();
 
 	// Determine the scenario name to load
 	sprintf(scenfile, "scen%d", myscreen->save_data.scen_num);
 	
 	// And our default par value ..
-	myscreen->par_value = myscreen->save_data.scen_num;
+	myscreen->level_data.par_value = myscreen->save_data.scen_num;
 	// And load the scenario ..
-	if (!load_scenario(scenfile, myscreen))
+	myscreen->level_data.id = myscreen->save_data.scen_num;
+	if(!myscreen->level_data.load())
 	{
 	    Log("Failed to load \"%s\".  Falling back to loading scenario 1.\n", scenfile);
 	    // Failed?  Try level 1.
-		myscreen->par_value = 1;
+		myscreen->level_data.par_value = 1;
 		myscreen->save_data.scen_num = 1;
-		if(!load_scenario("scen1", myscreen))
+        myscreen->level_data.id = 1;
+        if(!myscreen->level_data.load())
         {
             Log("Fallback loading failed to load scenario 1.\n");
             exit(2);
         }
 	}
-	myscreen->mysmoother.set_target(myscreen->grid);
 
-	here = myscreen->oblist;
+	here = myscreen->level_data.oblist;
 	while (here)
 	{
 		if (here->ob)
@@ -196,7 +202,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);
 	}
 	// Remove the links between 'guys'
-	here = myscreen->oblist;
+	here = myscreen->level_data.oblist;
 	while (here)
 	{
 		if (here->ob && here->ob->myguy)
@@ -208,7 +214,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	if (myscreen->save_data.is_level_completed(myscreen->save_data.scen_num))
 	{
 		//                Log("already done level\n");
-		here = myscreen->oblist;
+		here = myscreen->level_data.oblist;
 		while (here)
 		{
 			if (here->ob)
@@ -227,7 +233,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			}
 			here = here->next;
 		}
-		here = myscreen->weaplist;
+		here = myscreen->level_data.weaplist;
 		while (here)
 		{
 			if (here->ob)
@@ -248,7 +254,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			here = here->next;
 		}
 
-		here = myscreen->fxlist;
+		here = myscreen->level_data.fxlist;
 		while (here)
 		{
 			if (here->ob)

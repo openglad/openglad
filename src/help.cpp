@@ -64,7 +64,7 @@ char* read_one_line(SDL_RWops *infile, short length)
 //       so that the text scrolls by pixels rather than lines.
 short read_scenario(screen *myscreen)
 {
-	Sint32 screenlines = myscreen->scentextlines * 8;
+	Sint32 screenlines = myscreen->level_data.description.size() * 8;
 	Sint32  numlines, j;
 	Sint32 linesdown;
 	Sint32 changed;
@@ -162,9 +162,12 @@ short read_scenario(screen *myscreen)
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                      HELPTEXT_LEFT+200, HELPTEXT_TOP+107, 3, 1);
 			for (j=0; j < DISPLAY_LINES; j++)
-				if (strlen(myscreen->scentext[j+templines]))
+            {
+                std::string s = myscreen->level_data.get_description_line(j+templines);
+				if(s.size() > 0)
 					mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
-					                 myscreen->scentext[j+templines], (unsigned char) DARK_BLUE, 1 ); // to buffer!
+					                 s.c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
+            }
 
 			myscreen->clearfontbuffer(HELPTEXT_LEFT, 
 						HELPTEXT_TOP-8,

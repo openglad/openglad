@@ -3,6 +3,7 @@
 
 #include "SDL.h"
 #include <list>
+#include <vector>
 #include <string>
 
 void io_init(int argc, char* argv[]);
@@ -26,6 +27,7 @@ bool mount_campaign_package(const std::string& id);
 bool unmount_campaign_package(const std::string& id);
 std::list<std::string> list_campaigns();
 std::list<int> list_levels();
+std::vector<int> list_levels_v();
 
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);

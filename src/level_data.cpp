@@ -186,6 +186,33 @@ LevelData::LevelData(int id)
     }
     
 	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
+	
+    myloader = new loader;
+	
+    // Load map data from a pixie format
+    load_map_data(pixdata);
+
+    // Initialize a pixie for each background piece
+    for(int i = 0; i < PIX_MAX; i++)
+        back[i] = new pixieN(pixdata[i], myscreen, 1);
+
+    //buffers: after we set all the tiles to use acceleration, we go
+    //through the tiles that have pal cycling to turn of the accel.
+    back[PIX_WATER1]->set_accel(0);
+    back[PIX_WATER2]->set_accel(0);
+    back[PIX_WATER3]->set_accel(0);
+    back[PIX_WATERGRASS_LL]->set_accel(0);
+    back[PIX_WATERGRASS_LR]->set_accel(0);
+    back[PIX_WATERGRASS_UL]->set_accel(0);
+    back[PIX_WATERGRASS_UR]->set_accel(0);
+    back[PIX_WATERGRASS_U]->set_accel(0);
+    back[PIX_WATERGRASS_D]->set_accel(0);
+    back[PIX_WATERGRASS_L]->set_accel(0);
+    back[PIX_WATERGRASS_R]->set_accel(0);
+    back[PIX_GRASSWATER_LL]->set_accel(0);
+    back[PIX_GRASSWATER_LR]->set_accel(0);
+    back[PIX_GRASSWATER_UL]->set_accel(0);
+    back[PIX_GRASSWATER_UR]->set_accel(0);
 }
 
 LevelData::~LevelData()
@@ -1663,4 +1690,18 @@ void LevelData::draw(screen* myscreen)
     {
         myscreen->viewob[i]->redraw(this, false);  // Don't draw the radar here
     }
+}
+
+std::string LevelData::get_description_line(int i)
+{
+    if(i >= int(description.size()))
+        return "";
+    
+    std::list<std::string>::iterator e = description.begin();
+    while(i > 0 && e != description.end())
+    {
+        i--;
+        e++;
+    }
+    return *e;
 }

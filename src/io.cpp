@@ -6,6 +6,7 @@
 #include "physfs.h"
 #include "physfsrwops.h"
 #include <string>
+#include <algorithm>
 #include <stdio.h>
 #include <sys/stat.h>
 
@@ -222,6 +223,36 @@ std::list<int> list_levels()
     }
     
     result.sort();
+    return result;
+}
+
+std::vector<int> list_levels_v()
+{
+    std::list<std::string> ls = list_files("scen/");
+    std::vector<int> result;
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); )
+    {
+        size_t pos = e->rfind(".fss");
+        if(pos == std::string::npos)
+        {
+            e = ls.erase(e);  // Not a scen file
+            continue;
+        }
+        else
+        {
+            *e = e->substr(0, pos);  // Remove the extension
+            if(e->substr(0, 4) != "scen")
+            {
+                e = ls.erase(e);
+                continue;
+            }
+            *e = e->substr(4, std::string::npos);
+            result.push_back(atoi(e->c_str()));
+        }
+        e++;
+    }
+    
+    std::sort(result.begin(), result.end());
     return result;
 }
 

@@ -25,7 +25,7 @@ public:
     Uint32 m_totalscore[4];
     short my_team;
     guy  *first_guy;  // not saved (that's what the oblist is for, but is loaded for holding character data
-    short numplayers; //numviews
+    unsigned char numplayers; //numviews
     short allied_mode;
     
     SaveData();

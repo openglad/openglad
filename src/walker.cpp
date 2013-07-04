@@ -98,7 +98,7 @@ walker::walker(const PixieData& data, screen  *myscreen)
 	weapons_left = 1; // default, used for fighters
 
 	cachenext = NULL;
-    myobmap = myscreen->myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
+    myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
 }
 
 short
@@ -514,9 +514,9 @@ short walker::walk(short x, short y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= screenp->grid.w*GRID_SIZE ||
+		        x+xpos >= screenp->level_data.grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= screenp->grid.h*GRID_SIZE)
+		        y+ypos >= screenp->level_data.grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
@@ -1059,7 +1059,7 @@ short walker::draw(viewscreen  *view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
-	         screenp->mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	         screenp->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats->query_bit_flags(BIT_FLYING)
 	         && (flight_left < 1) )
 		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
@@ -1210,7 +1210,7 @@ short walker::draw_tile(viewscreen  *view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
-	         screenp->mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	         screenp->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats->query_bit_flags(BIT_FLYING)
 	         && (flight_left < 1) )
 		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
@@ -2020,7 +2020,7 @@ short walker::special()
 					stats->add_command(COMMAND_WALK, 1, -1, 1);
 					stats->add_command(COMMAND_WALK, 1, -1, 0);
 					stats->add_command(COMMAND_WALK, 1, -1, -1);
-					newlist = screenp->find_foes_in_range(screenp->oblist,
+					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      32+stats->level*2, &howmany, this);
 					here = newlist;
 					while (here)
@@ -2047,7 +2047,7 @@ short walker::special()
 						return 0;
 					if (!stats->forward_blocked())
 						return 0; // can't do this if no frontal enemy
-					newlist = screenp->find_foes_in_range(screenp->oblist,
+					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      28, &howmany, this);
 					if (!newlist)
 						return 0;
@@ -2086,7 +2086,7 @@ short walker::special()
 				case 1:  // heal / mystic mace
 					if (!shifter_down) // then do normal heal
 					{
-						newlist = screenp->find_friends_in_range(screenp->oblist,
+						newlist = screenp->find_friends_in_range(screenp->level_data.oblist,
 						          60, &howmany, this);
 						didheal = 0;
 						if (howmany > 1) // some friends here ..
@@ -2364,7 +2364,7 @@ short walker::special()
 							return 0; // so as not to charge player
 						}
 						// Remove a marker, if present
-						newlist = screenp->oblist;
+						newlist = screenp->level_data.oblist;
 						generic = 0; // used to check progress
 						while (newlist)
 						{
@@ -2475,7 +2475,7 @@ short walker::special()
 						screenp->viewob[0]->refresh();
 						//screenp->buffer_to_screen(0, 0, 320, 200);
 						newlist = screenp->find_friends_in_range(
-						              screenp->oblist, 30000, &howmany, this);
+						              screenp->level_data.oblist, 30000, &howmany, this);
 						here = newlist;
 						while (here)
 						{
@@ -2501,7 +2501,7 @@ short walker::special()
 					break;
 				case 5:
 				default: // Burst enemies into flame ..
-					newlist = screenp->find_foes_in_range(screenp->oblist,
+					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      80+2*stats->level, &howmany, this);
 					if (!howmany)
 						return 0; // didn't find any enemies..
@@ -2553,7 +2553,7 @@ short walker::special()
 							return 0; // so as not to charge player
 						}
 						// Remove a marker, if present
-						newlist = screenp->oblist;
+						newlist = screenp->level_data.oblist;
 						generic = 0; // used to check progress
 						while (newlist)
 						{
@@ -2618,7 +2618,7 @@ short walker::special()
 					}
 					else
 						generic = 80;
-					newlist = screenp->find_foes_in_range(screenp->oblist,
+					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      generic+2*stats->level, &howmany, this);
 					if (!howmany)
 						return 0; // didn't find any enemies..
@@ -2904,7 +2904,7 @@ short walker::special()
 				case 4: // Mind-control enemies
 					if (busy)
 						return 0;
-					newlist = screenp->find_foes_in_range(screenp->oblist,
+					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      80+4*stats->level, &howmany, this);
 					if (howmany < 1)
 						return 0; // noone to influence
@@ -3058,7 +3058,7 @@ short walker::special()
 					{
 						if (busy)
 							return 0;
-						newlist = screenp->find_foes_in_range(screenp->oblist,
+						newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 						                                      80+4*stats->level, &howmany, this);
 						here = newlist;
 						while (here)
@@ -3090,7 +3090,7 @@ short walker::special()
 					{
 						if (busy)
 							return 0;
-						newlist = screenp->find_foes_in_range(screenp->oblist,
+						newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 						                                      16+4*stats->level, &howmany, this);
 						if (howmany < 1)
 							return 0; // noone to influence
@@ -3258,7 +3258,7 @@ short walker::special()
 				default:
 					if (busy)
 						return 0;
-					newlist = screenp->find_friends_in_range(screenp->oblist,
+					newlist = screenp->find_friends_in_range(screenp->level_data.oblist,
 					          60, &howmany, this);
 					didheal = 0;
 					if (howmany > 1) // some friends here ..
@@ -3271,7 +3271,7 @@ short walker::special()
 							if (newob != this) // not for ourselves
 							{
 								// First see if this person already has protection (slow)
-								list2 = screenp->oblist;
+								list2 = screenp->level_data.oblist;
 								tempwalk = NULL;
 								while (list2 && !tempwalk)
 								{
@@ -3354,7 +3354,7 @@ short walker::special()
 					if (busy)
 						return 0;
 					busy += 2;
-					newlist = screenp->find_foes_in_range(screenp->oblist,
+					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      160+(20*stats->level), &howmany, this);
 					here = newlist;
 					while (here)
@@ -3494,7 +3494,7 @@ short walker::teleport()
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
-	newlist = screenp->oblist;
+	newlist = screenp->level_data.oblist;
 	while (newlist)
 	{
 		if (newlist->ob &&
@@ -3526,13 +3526,13 @@ short walker::teleport()
 		newlist = newlist->next;
 	} // end of checking for marker (we failed)
 
-	newx = random(screenp->grid.w)*GRID_SIZE;
-	newy = random(screenp->grid.h)*GRID_SIZE;
+	newx = random(screenp->level_data.grid.w)*GRID_SIZE;
+	newy = random(screenp->level_data.grid.h)*GRID_SIZE;
 
 	while(!screenp->query_passable(newx, newy, this))
 	{
-		newx = random(screenp->grid.w)*GRID_SIZE;
-		newy = random(screenp->grid.h)*GRID_SIZE;
+		newx = random(screenp->level_data.grid.w)*GRID_SIZE;
+		newy = random(screenp->level_data.grid.h)*GRID_SIZE;
 	}
 	setxy(newx,newy);
 	return 1;
@@ -3569,7 +3569,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 	Sint32 killed = 0;
 	short targets;
 
-	deadlist = screenp->find_foes_in_range(screenp->oblist, range,
+	deadlist = screenp->find_foes_in_range(screenp->level_data.oblist, range,
 	                                       &targets, this);
 	if (!targets)
 		return -1;
@@ -3750,8 +3750,8 @@ short walker::fire_check(short xdelta, short ydelta)
 short
 walker::act_generate()
 {
-	if ( screenp->numobs < MAXOBS &&
-	        (random(stats->level*3) > (random(300+(screenp->numobs*8)) ) )
+	if ( screenp->level_data.numobs < MAXOBS &&
+	        (random(stats->level*3) > (random(300+(screenp->level_data.numobs*8)) ) )
 	   )
 	{
 		lastx = 1-random(3);
@@ -3976,7 +3976,7 @@ void walker::transform_to(char whatorder, char whatfamily)
 	screenp->set_walker(this, whatorder, whatfamily);
 
 	// Reset the graphics
-	data = screenp->myloader->graphics[PIX(order, family)];
+	data = screenp->level_data.myloader->graphics[PIX(order, family)];
 	facings = data.data;
 	bmp = data.data;
 	frames = data.frames;
@@ -4038,7 +4038,7 @@ short walker::death()
 	{
 		case ORDER_LIVING:
 			if (   (team_num == 0 || myguy) // our team
-			        && (screenp->scenario_type & SCEN_TYPE_SAVE_ALL)
+			        && (screenp->level_data.type & SCEN_TYPE_SAVE_ALL)
 			        && (strlen(stats->name)) // we were named
 			   )
 				return screenp->endgame(SCEN_TYPE_SAVE_ALL); // failed
@@ -4167,7 +4167,7 @@ void walker::set_direct_frame(short whichframe)
 	PixieData data;
 	frame = whichframe;
 
-	data = screenp->myloader->graphics[PIX(order, family)];
+	data = screenp->level_data.myloader->graphics[PIX(order, family)];
 	bmp = data.data + frame*size;
 
 }

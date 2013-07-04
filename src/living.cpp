@@ -193,10 +193,10 @@ short living::act()
 
 	if ( stats->query_bit_flags(BIT_FORESTWALK) &&
 	        (
-	            myscreen->mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || myscreen->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || myscreen->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
-	            || myscreen->mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            myscreen->level_data.mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || myscreen->level_data.mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || myscreen->level_data.mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            || myscreen->level_data.mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
 	        )
 	   )
 	{
@@ -414,9 +414,9 @@ short living::walk(short x, short y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= screenp->grid.w*GRID_SIZE ||
+		        x+xpos >= screenp->level_data.grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= screenp->grid.h*GRID_SIZE)
+		        y+ypos >= screenp->level_data.grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
@@ -579,7 +579,7 @@ short living::check_special()
 				}
 				else // get a new foe ..
 				{
-					enemylist = screenp->find_foes_in_range(screenp->oblist,
+					enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                        110, &howmany, this);
 					// Zardus: TAG: this seems to just delete the list. lets use delete_list
 					/*while(enemylist)
@@ -604,7 +604,7 @@ short living::check_special()
 				else               // charm
 					myrange = 16 + 4*stats->level;
 
-				enemylist = screenp->find_foes_in_range(screenp->oblist,
+				enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
 				                                        myrange, &howmany, this);
 				delete_list(enemylist);
 				if (howmany < 1)
@@ -616,7 +616,7 @@ short living::check_special()
 				return 1;  // default is go for it
 		case FAMILY_MAGE:  // TP if  away from guys ..
 			howmany = 0;
-			enemylist = screenp->find_foes_in_range(screenp->oblist,
+			enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
 			                                        110, &howmany, this);
 
 			// Zardus: TAG: lets use delete_list here too
@@ -636,14 +636,14 @@ short living::check_special()
 			return 0;
 			//break; // end of fighter case
 		case FAMILY_SLIME:
-			if (screenp->numobs < MAXOBS)
+			if (screenp->level_data.numobs < MAXOBS)
 				return 1;
 			else
 				return 0;
 		case FAMILY_CLERIC: // any friends?
 			if (current_special == 1) // healing
 			{
-				enemylist = screenp->find_friends_in_range(screenp->oblist,
+				enemylist = screenp->find_friends_in_range(screenp->level_data.oblist,
 				            60, &howmany, this);
 
 				// Zardus: TAG: lets use delete_list here as well
@@ -675,7 +675,7 @@ short living::check_special()
 			//break;
 		case FAMILY_SKELETON:  // Tunnel if no foes near ..
 			howmany = 0;
-			enemylist = screenp->find_foes_in_range(screenp->oblist,
+			enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
 			                                        5*GRID_SIZE, &howmany, this);
 			// Zardus: TAG: delete_list strikes again!
 			/*while(enemylist)

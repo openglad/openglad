@@ -28,6 +28,19 @@
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
+#define SDL_RWread_log(ctx, ptr, size, n) \
+do{ \
+Log("Reading %d bytes\n", (size*n)); \
+SDL_RWread(ctx, ptr, size, n); \
+} while(0)
+
+#define SDL_RWwrite_log(ctx, ptr, size, n) \
+do{ \
+Log("Writing %d bytes\n", (size*n)); \
+SDL_RWwrite(ctx, ptr, size, n); \
+} while(0)
+
+
 #define DOWN(x) (72+x*15)
 #define VIEW_DOWN(x) (10+x*20)
 #define RAISE 1.85  // please also change in guy.cpp
@@ -2285,7 +2298,7 @@ void show_guy(Sint32 frames, Sint32 who) // shows the current guy ..
 		newfamily = ourteam[editguy]->family;
 	newfamily = current_guy->family;
 
-	mywalker = myscreen->myloader->create_walker(ORDER_LIVING,
+	mywalker = myscreen->level_data.myloader->create_walker(ORDER_LIVING,
 	           newfamily,myscreen);
 	mywalker->stats->bit_flags = 0;
 	mywalker->curdir = ((frames/192) + FACE_DOWN)%8;
@@ -2678,56 +2691,57 @@ Sint32 save_team_list(const char * filename)
 		return 0;
 
 	// Write id header
-	SDL_RWwrite(outfile, temptext, 3, 1);
+	SDL_RWwrite_log(outfile, temptext, 3, 1);
 
 	// Write version number
-	SDL_RWwrite(outfile, &temp_version, 1, 1);
+	SDL_RWwrite_log(outfile, &temp_version, 1, 1);
 
 	// Versions 7+ include a mark for registered or not
 	temp_registered = 0;
 	temp_registered = 1;
-	SDL_RWwrite(outfile, &temp_registered, 2, 1);
+	SDL_RWwrite_log(outfile, &temp_registered, 2, 1);
 
 	// Write the saved game name
 	strcpy(savedgame, save_file);  // save_file is global, 20-char name
 	for (i=strlen(savedgame); i < 40; i++)
 		savedgame[i] = 0;
-	SDL_RWwrite(outfile, savedgame, 40, 1);
+	SDL_RWwrite_log(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
-	SDL_RWwrite(outfile, current_campaign, 40, 1);
+	SDL_RWwrite_log(outfile, current_campaign, 40, 1);
 
 	// Write scenario number
-	SDL_RWwrite(outfile, &next_scenario, 2, 1);
+	SDL_RWwrite_log(outfile, &next_scenario, 2, 1);
 
 	// Write cash
-	SDL_RWwrite(outfile, &newcash, 4, 1);
+	SDL_RWwrite_log(outfile, &newcash, 4, 1);
 	// Write score
-	SDL_RWwrite(outfile, &newscore, 4, 1);
+	SDL_RWwrite_log(outfile, &newscore, 4, 1);
 
 	// Versions 6+ have a score for each possible team
 	for (i=0; i < 4; i++)
 	{
 		newcash = money[i];
-		SDL_RWwrite(outfile, &newcash, 4, 1);
+		SDL_RWwrite_log(outfile, &newcash, 4, 1);
 		newscore = score[i];
-		SDL_RWwrite(outfile, &newscore, 4, 1);
+		SDL_RWwrite_log(outfile, &newscore, 4, 1);
 	}
 
 	// Versions 7+ include the allied mode information
 	temp_allied = myscreen->save_data.allied_mode;
-	SDL_RWwrite(outfile, &temp_allied, 2, 1);
+	SDL_RWwrite_log(outfile, &temp_allied, 2, 1);
 
 	// Determine size of team list ...
 	listsize = teamsize;
 
-	SDL_RWwrite(outfile, &listsize, 2, 1);
+	SDL_RWwrite_log(outfile, &listsize, 2, 1);
 
 	//write number of players
-	SDL_RWwrite(outfile, &temp_playermode,1,1);
+	Log("Writing playermode: %u\n", temp_playermode);
+	SDL_RWwrite_log(outfile, &temp_playermode,1,1);
 
 	// Write the reserved area, 31 bytes
-	SDL_RWwrite(outfile, filler, 31, 1);
+	SDL_RWwrite_log(outfile, filler, 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	for (i=0; i < MAXTEAM; i++)
@@ -2761,25 +2775,25 @@ Sint32 save_team_list(const char * filename)
 			temp_teamnum = here->teamnum; // v.5+
 
 			// Now write all those values
-			SDL_RWwrite(outfile, &temp_order, 1, 1);
-			SDL_RWwrite(outfile, &temp_family,1, 1);
-			SDL_RWwrite(outfile, guyname, 12, 1);
-			SDL_RWwrite(outfile, &temp_str, 2, 1);
-			SDL_RWwrite(outfile, &temp_dex, 2, 1);
-			SDL_RWwrite(outfile, &temp_con, 2, 1);
-			SDL_RWwrite(outfile, &temp_int, 2, 1);
-			SDL_RWwrite(outfile, &temp_arm, 2, 1);
-			SDL_RWwrite(outfile, &temp_lev, 2, 1);
-			SDL_RWwrite(outfile, &temp_exp, 4, 1);
-			SDL_RWwrite(outfile, &temp_kills, 2, 1);
-			SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
-			SDL_RWwrite(outfile, &temp_td, 4, 1); // v.4+
-			SDL_RWwrite(outfile, &temp_th, 4, 1); // v.4+
-			SDL_RWwrite(outfile, &temp_ts, 4, 1); // v.4+
-			SDL_RWwrite(outfile, &temp_teamnum, 2, 1); // v.5+
+			SDL_RWwrite_log(outfile, &temp_order, 1, 1);
+			SDL_RWwrite_log(outfile, &temp_family,1, 1);
+			SDL_RWwrite_log(outfile, guyname, 12, 1);
+			SDL_RWwrite_log(outfile, &temp_str, 2, 1);
+			SDL_RWwrite_log(outfile, &temp_dex, 2, 1);
+			SDL_RWwrite_log(outfile, &temp_con, 2, 1);
+			SDL_RWwrite_log(outfile, &temp_int, 2, 1);
+			SDL_RWwrite_log(outfile, &temp_arm, 2, 1);
+			SDL_RWwrite_log(outfile, &temp_lev, 2, 1);
+			SDL_RWwrite_log(outfile, &temp_exp, 4, 1);
+			SDL_RWwrite_log(outfile, &temp_kills, 2, 1);
+			SDL_RWwrite_log(outfile, &temp_level_kills, 4, 1);
+			SDL_RWwrite_log(outfile, &temp_td, 4, 1); // v.4+
+			SDL_RWwrite_log(outfile, &temp_th, 4, 1); // v.4+
+			SDL_RWwrite_log(outfile, &temp_ts, 4, 1); // v.4+
+			SDL_RWwrite_log(outfile, &temp_teamnum, 2, 1); // v.5+
 
 			// And the filler
-			SDL_RWwrite(outfile, filler, 8, 1);
+			SDL_RWwrite_log(outfile, filler, 8, 1);
 
 		} // end of found valid guy in slot
 	}
@@ -2796,29 +2810,29 @@ Sint32 save_team_list(const char * filename)
     
 	// Number of campaigns
 	short num_campaigns = completed_levels.size();
-    SDL_RWwrite(outfile, &num_campaigns, 2, 1);
+    SDL_RWwrite_log(outfile, &num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
         // Campaign ID
         char campaign[41];
         memset(campaign, 0, 41);
         strcpy(campaign, e->first.c_str());
-        SDL_RWwrite(outfile, campaign, 1, 40);
+        SDL_RWwrite_log(outfile, campaign, 1, 40);
         
         short index = 1;
         std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
         if(g != current_levels.end())
             index = g->second;
-        SDL_RWwrite(outfile, &index, 2, 1);
+        SDL_RWwrite_log(outfile, &index, 2, 1);
         
         // Number of levels
         short num_levels = e->second.size();
-        SDL_RWwrite(outfile, &num_levels, 2, 1);
+        SDL_RWwrite_log(outfile, &num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
         {
             // Level index
             short index = *f;
-            SDL_RWwrite(outfile, &index, 2, 1);
+            SDL_RWwrite_log(outfile, &index, 2, 1);
         }
     }
 
@@ -2950,7 +2964,7 @@ Sint32 load_team_list_one(const char * filename)
 	}
 
 	// Read id header
-	SDL_RWread(infile, temptext, 3, 1);
+	SDL_RWread_log(infile, temptext, 3, 1);
 	if ( strcmp(temptext,"GTL"))
 	{
 	    SDL_RWclose(infile);
@@ -2960,12 +2974,12 @@ Sint32 load_team_list_one(const char * filename)
 	}
 
 	// Read version number
-	SDL_RWread(infile, &temp_version, 1, 1);
+	SDL_RWread_log(infile, &temp_version, 1, 1);
 
 	// Versions 7+ have a registered mark ..
 	if (temp_version >= 7)
 	{
-		SDL_RWread(infile, &temp_registered, 2, 1);
+		SDL_RWread_log(infile, &temp_registered, 2, 1);
 	}
 
 	// Do stuff based on the version number
@@ -2973,7 +2987,7 @@ Sint32 load_team_list_one(const char * filename)
 	{
 		if (temp_version >= 2)
 		{
-			SDL_RWread(infile, savedgame, 40, 1);
+			SDL_RWread_log(infile, savedgame, 40, 1);
 		}
 		else
 		{
@@ -2990,7 +3004,7 @@ Sint32 load_team_list_one(const char * filename)
     std::string old_campaign = current_campaign;
 	if (temp_version >= 8)
 	{
-		SDL_RWread(infile, temp_campaign, 1, 40);
+		SDL_RWread_log(infile, temp_campaign, 1, 40);
 		temp_campaign[40] = '\0';
 		if(strlen(temp_campaign) > 3)
             strcpy(current_campaign, temp_campaign);
@@ -2999,14 +3013,14 @@ Sint32 load_team_list_one(const char * filename)
 	}
 
 	// Read scenario number
-	SDL_RWread(infile, &next_scenario, 2, 1);
+	SDL_RWread_log(infile, &next_scenario, 2, 1);
 	scen_level = next_scenario;
 
 	// Read cash
-	SDL_RWread(infile, &newcash, 4, 1);
+	SDL_RWread_log(infile, &newcash, 4, 1);
 	money[0] = newcash;
 	// Read score
-	SDL_RWread(infile, &newscore, 4, 1);
+	SDL_RWread_log(infile, &newscore, 4, 1);
 	score[0] = newscore;
 
 	// Versions 6+ have a score for each possible team, 0-3
@@ -3014,9 +3028,9 @@ Sint32 load_team_list_one(const char * filename)
 	{
 		for (i=0; i < 4; i++)
 		{
-			SDL_RWread(infile, &newcash, 4, 1);
+			SDL_RWread_log(infile, &newcash, 4, 1);
 			money[i] = newcash;
-			SDL_RWread(infile, &newscore, 4, 1);
+			SDL_RWread_log(infile, &newscore, 4, 1);
 			score[i] = newscore;
 		}
 	}
@@ -3024,19 +3038,24 @@ Sint32 load_team_list_one(const char * filename)
 	// Versions 7+ have the allied information ..
 	if (temp_version >= 7)
 	{
-		SDL_RWread(infile, &temp_allied, 2, 1);
+		SDL_RWread_log(infile, &temp_allied, 2, 1);
 		myscreen->save_data.allied_mode = temp_allied;
 	}
 
 	// Determine size of team list ...
-	SDL_RWread(infile, &listsize, 2, 1);
+	SDL_RWread_log(infile, &listsize, 2, 1);
 
 	//read number of players
-	SDL_RWread(infile, &temp_playermode, 1, 1);
+	SDL_RWread_log(infile, &temp_playermode, 1, 1);
 	playermode = temp_playermode;
+	if(playermode == 0 || playermode > 4)
+    {
+        Log("Loading error: playermode is %u\n", playermode);
+        playermode = 1;
+    }
 
 	// Read the reserved area, 31 bytes
-	SDL_RWread(infile, filler, 31, 1);
+	SDL_RWread_log(infile, filler, 31, 1);
 
 	// Delete any team in memory ..
 	for (i=0; i < MAXTEAM; i++)
@@ -3067,25 +3086,25 @@ Sint32 load_team_list_one(const char * filename)
 		for (i=strlen(guyname); i < 12; i++)
 			guyname[i] = 0;
 		// Now write all those values
-		SDL_RWread(infile, &temp_order, 1, 1);
-		SDL_RWread(infile, &temp_family,1, 1);
-		SDL_RWread(infile, guyname, 12, 1);
-		SDL_RWread(infile, &temp_str, 2, 1);
-		SDL_RWread(infile, &temp_dex, 2, 1);
-		SDL_RWread(infile, &temp_con, 2, 1);
-		SDL_RWread(infile, &temp_int, 2, 1);
-		SDL_RWread(infile, &temp_arm, 2, 1);
-		SDL_RWread(infile, &temp_lev, 2, 1);
-		SDL_RWread(infile, &temp_exp, 4, 1);
-		SDL_RWread(infile, &temp_kills, 2, 1);
-		SDL_RWread(infile, &temp_level_kills, 4, 1);
-		SDL_RWread(infile, &temp_td, 4, 1); // v.4+
-		SDL_RWread(infile, &temp_th, 4, 1); // v.4+
-		SDL_RWread(infile, &temp_ts, 4, 1); // v.4+
-		SDL_RWread(infile, &temp_teamnum, 2, 1); // v.5+
+		SDL_RWread_log(infile, &temp_order, 1, 1);
+		SDL_RWread_log(infile, &temp_family,1, 1);
+		SDL_RWread_log(infile, guyname, 12, 1);
+		SDL_RWread_log(infile, &temp_str, 2, 1);
+		SDL_RWread_log(infile, &temp_dex, 2, 1);
+		SDL_RWread_log(infile, &temp_con, 2, 1);
+		SDL_RWread_log(infile, &temp_int, 2, 1);
+		SDL_RWread_log(infile, &temp_arm, 2, 1);
+		SDL_RWread_log(infile, &temp_lev, 2, 1);
+		SDL_RWread_log(infile, &temp_exp, 4, 1);
+		SDL_RWread_log(infile, &temp_kills, 2, 1);
+		SDL_RWread_log(infile, &temp_level_kills, 4, 1);
+		SDL_RWread_log(infile, &temp_td, 4, 1); // v.4+
+		SDL_RWread_log(infile, &temp_th, 4, 1); // v.4+
+		SDL_RWread_log(infile, &temp_ts, 4, 1); // v.4+
+		SDL_RWread_log(infile, &temp_teamnum, 2, 1); // v.5+
 
 		// And the filler
-		SDL_RWread(infile, filler, 8, 1);
+		SDL_RWread_log(infile, filler, 8, 1);
 		// Now set the values ..
 		tempguy->family       = temp_family;
 		strcpy(tempguy->name,guyname);
@@ -3151,9 +3170,9 @@ Sint32 load_team_list_one(const char * filename)
         // First, clear the status ..
         memset( levels, 0, 500 );
         if (temp_version >= 5)
-            SDL_RWread(infile, levels, 500, 1);
+            SDL_RWread_log(infile, levels, 500, 1);
         else
-            SDL_RWread(infile, levels, 200, 1);
+            SDL_RWread_log(infile, levels, 200, 1);
         
         // Guaranteed to be the default campaign if version < 8
         for(int i = 0; i < 500; i++)
@@ -3168,24 +3187,24 @@ Sint32 load_team_list_one(const char * filename)
         char campaign[41];
         short num_levels = 0;
         // How many campaigns are stored?
-        SDL_RWread(infile, &num_campaigns, 2, 1);
+        SDL_RWread_log(infile, &num_campaigns, 2, 1);
         for(int i = 0; i < num_campaigns; i++)
         {
             // Get the campaign ID (40 chars)
-            SDL_RWread(infile, campaign, 1, 40);
+            SDL_RWread_log(infile, campaign, 1, 40);
             campaign[40] = '\0';
             
             short index = 1;
             // Get the current level for this campaign
-            SDL_RWread(infile, &index, 2, 1);
+            SDL_RWread_log(infile, &index, 2, 1);
             current_levels[campaign] = index;
             
             // Get the number of cleared levels
-            SDL_RWread(infile, &num_levels, 2, 1);
+            SDL_RWread_log(infile, &num_levels, 2, 1);
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
-                SDL_RWread(infile, &index, 2, 1);
+                SDL_RWread_log(infile, &index, 2, 1);
                 
                 // Add it to our list
                 add_level_completed(completed_levels, campaign, index);
@@ -3233,7 +3252,7 @@ const char* get_saved_name(const char * filename)
 	}
 
 	// Read id header
-	SDL_RWread(infile, temptext, 3, 1);
+	SDL_RWread_log(infile, temptext, 3, 1);
 	if ( strcmp(temptext,"GTL"))
 	{
 	    SDL_RWclose(infile);
@@ -3242,14 +3261,14 @@ const char* get_saved_name(const char * filename)
 	}
 
 	// Read version number
-	SDL_RWread(infile, &temp_version, 1, 1);
+	SDL_RWread_log(infile, &temp_version, 1, 1);
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
 		{
 			if (temp_version >= 7)
-				SDL_RWread(infile, &temp_registered, 2, 1);
-			SDL_RWread(infile, savedgame, 40, 1);
+				SDL_RWread_log(infile, &temp_registered, 2, 1);
+			SDL_RWread_log(infile, savedgame, 40, 1);
 		}
 		else
 		{
@@ -4023,7 +4042,7 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
     exits.clear();
     
     // Go through objects
-    oblink* fx = screenp->oblist;
+    oblink* fx = screenp->level_data.oblist;
 	while(fx)
 	{
 		if(fx->ob)
@@ -4052,7 +4071,7 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
 	}
 	
 	// Go through effects
-	fx = screenp->fxlist;
+	fx = screenp->level_data.fxlist;
 	while(fx)
 	{
 		if(fx->ob)
@@ -4173,15 +4192,15 @@ class BrowserEntry
     char scentext[80][80];                         // Array to hold scenario information
     char scentextlines;                    // How many lines of text in scenario info
     
-    BrowserEntry(screen* screenp, int index, const char* filename);
+    BrowserEntry(screen* screenp, int index, int scen_num);
     ~BrowserEntry();
     
-    void draw(screen* screenp, text* loadtext, const char* filename);
+    void draw(screen* screenp, text* loadtext, int scen_num);
 };
 
 void remove_all_objects(screen *master)
 {
-	oblink *fx = master->fxlist;
+	oblink *fx = master->level_data.fxlist;
 
 	while (fx)
 	{
@@ -4196,7 +4215,7 @@ void remove_all_objects(screen *master)
 	if (fx && fx->ob)
 		delete fx->ob;
 
-	fx = master->oblist;
+	fx = master->level_data.oblist;
 	while (fx)
 	{
 		if (fx->ob)
@@ -4210,7 +4229,7 @@ void remove_all_objects(screen *master)
 	if (fx && fx->ob)
 		delete fx->ob;
 
-	fx = master->weaplist;
+	fx = master->level_data.weaplist;
 	while (fx)
 	{
 		if (fx->ob)
@@ -4224,18 +4243,15 @@ void remove_all_objects(screen *master)
 	if (fx && fx->ob)
 		delete fx->ob;
 
-	master->numobs = 0;
+	master->level_data.numobs = 0;
 } // end remove_all_objects
 
-BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
+BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
 {
     // Clear the level so we can load the next one
-    remove_all_objects(screenp);  // kill current obs
-    for (int j=0; j < 60; j++)
-        screenp->scentext[j][0] = 0;
-        
-    // bool loaded = load_scenario(filename, screenp);
-    load_scenario(filename, screenp);
+    screenp->level_data.clear();
+    screenp->level_data.id = scen_num;
+    screenp->level_data.load();
     
     radar* r = new radar(NULL, screenp, 0);
     r->start();
@@ -4257,14 +4273,14 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
     getLevelStats(screenp, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
     
     // Store this level's objects
-    oblist = screenp->oblist;
-    screenp->oblist = NULL;
-    fxlist = screenp->fxlist;
-    screenp->fxlist = NULL;
-    weaplist = screenp->weaplist;
-    screenp->weaplist = NULL;
+    oblist = screenp->level_data.oblist;
+    screenp->level_data.oblist = NULL;
+    fxlist = screenp->level_data.fxlist;
+    screenp->level_data.fxlist = NULL;
+    weaplist = screenp->level_data.weaplist;
+    screenp->level_data.weaplist = NULL;
     level_name = new char[24];
-    strncpy(level_name, screenp->scenario_title, 23);
+    strncpy(level_name, screenp->level_data.title.c_str(), 23);
     if(level_name[20] != '\0')
     {
         level_name[20] = '.';
@@ -4273,10 +4289,14 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, const char* filename)
         level_name[23] = '\0';
     }
     
-    scentextlines = screenp->scentextlines;
-    for(int i = 0; i < scentextlines; i++)
+    scentextlines = screenp->level_data.description.size();
+    int i = 0;
+    for(std::list<std::string>::iterator e = screenp->level_data.description.begin(); e != screenp->level_data.description.end(); e++)
     {
-        strncpy(scentext[i], screenp->scentext[i], 80);
+        strncpy(scentext[i], e->c_str(), 80);
+        i++;
+        if(i >= 80)
+            break;
     }
 }
 
@@ -4322,12 +4342,12 @@ BrowserEntry::~BrowserEntry()
     delete[] level_name;
 }
 
-void BrowserEntry::draw(screen* screenp, text* loadtext, const char* filename)
+void BrowserEntry::draw(screen* screenp, text* loadtext, int scen_num)
 {
     // Set the current objects
-    screenp->oblist = oblist;
-    screenp->fxlist = fxlist;
-    screenp->weaplist = weaplist;
+    screenp->level_data.oblist = oblist;
+    screenp->level_data.fxlist = fxlist;
+    screenp->level_data.weaplist = weaplist;
     
     int x = radars->xloc;
     int y = radars->yloc;
@@ -4339,7 +4359,7 @@ void BrowserEntry::draw(screen* screenp, text* loadtext, const char* filename)
     loadtext->write_xy(mapAreas.x, mapAreas.y, level_name, DARK_BLUE, 1);
     
     char buf[30];
-    snprintf(buf, 30, "%s", filename);
+    snprintf(buf, 30, "ID: %d", scen_num);
     loadtext->write_xy(x + w + 5, y, buf, WHITE, 1);
     snprintf(buf, 30, "Enemies: %d", num_enemies);
     loadtext->write_xy(x + w + 5, y + 8, buf, WHITE, 1);
@@ -4376,38 +4396,31 @@ void BrowserEntry::draw(screen* screenp, text* loadtext, const char* filename)
 #define NUM_BROWSE_RADARS 3
 
 // Load a grid or scenario ..
-char* browse(screen *screenp)
+int browse(screen *screenp)
 {
-    char* result = NULL;
+    int result = screenp->level_data.id;
     
     Uint8* mykeyboard = query_keyboard();
     
     // Clear all objects from the current level
-    remove_all_objects(screenp);  // kill current obs
-    for (int j=0; j < 60; j++)
-        screenp->scentext[j][0] = 0;
+    screenp->level_data.clear();
     
 	text* loadtext = new text(screenp);
     
     // Here are the browser variables
     BrowserEntry* entries[NUM_BROWSE_RADARS];
     
-    int level_list_length = 0;
-    char** level_list = NULL;
-    load_level_list(level_list, &level_list_length);
+    std::vector<int> level_list = list_levels_v();
+    int level_list_length = level_list.size();
     
     // This indexes into the level_list.
     int current_level_index = 0;
     
     // Figure out the list index for the current scen_level, so we can jump straight there.
+    for(int i = 0; i < level_list_length; i++)
     {
-        char buf[20];
-        snprintf(buf, 20, "scen%d", scen_level);
-        for(int i = 0; i < level_list_length; i++)
-        {
-            if(strcmp(level_list[i], buf) == 0)
-                current_level_index = i;
-        }
+        if(level_list[i] == scen_level)
+            current_level_index = i;
     }
     
     // Load the radars (minimaps)
@@ -4556,8 +4569,7 @@ char* browse(screen *screenp)
                {
                    if(selected_entry != -1)
                    {
-                       result = new char[strlen(level_list[current_level_index + selected_entry])+1];
-                       strcpy(result, level_list[current_level_index + selected_entry]);
+                       result = level_list[current_level_index + selected_entry];
                        done = true;
                        break;
                    }
@@ -4659,17 +4671,9 @@ char* browse(screen *screenp)
     
     delete loadtext;
     
-    for(int i = 0; i < level_list_length; i++)
-    {
-        delete[] level_list[i];
-    }
-    delete[] level_list;
-    
     
     // Clear all objects from the current level
-    remove_all_objects(screenp);  // kill current obs
-    for (int j=0; j < 60; j++)
-        screenp->scentext[j][0] = 0;
+    screenp->level_data.clear();
     
 	return result;
 }
@@ -4711,31 +4715,27 @@ char* browse(screen *screenp)
 
                 myscreen->clearfontbuffer(xloc,yloc,x2loc,y2loc);
                
-	           char* newname = browse(myscreen);
-	           if(newname)
-	           {
-	               templevel = get_scen_num_from_filename(newname);
-                   if (templevel < 0 || !load_scenario(newname, myscreen))
-                   {
-                       myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-                       savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
-                       myscreen->buffer_to_screen(0, 0, 320, 200);
-                       temptime = query_timer();
-                       while(query_timer() < temptime + 100)
-                           ;
-                   }
-                   else
-                   {
-                       myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-                       savetext.write_xy(xloc+15, yloc+4, "LEVEL LOADED", DARK_BLUE, 1);
-                       myscreen->buffer_to_screen(0, 0, 320, 200);
-                       temptime = query_timer();
-                       while(query_timer() < temptime + 100)
-                           ;
-                       scen_level = templevel;
-                   }
-                   delete[] newname;
-	           }
+	           templevel = browse(myscreen);
+	           myscreen->level_data.id = templevel;
+               if (templevel < 0 || !myscreen->level_data.load())
+               {
+                   myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
+                   savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
+                   myscreen->buffer_to_screen(0, 0, 320, 200);
+                   temptime = query_timer();
+                   while(query_timer() < temptime + 100)
+                       ;
+               }
+               else
+               {
+                   myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
+                   savetext.write_xy(xloc+15, yloc+4, "LEVEL LOADED", DARK_BLUE, 1);
+                   myscreen->buffer_to_screen(0, 0, 320, 200);
+                   temptime = query_timer();
+                   while(query_timer() < temptime + 100)
+                       ;
+                   scen_level = templevel;
+               }
 
 	           return REDRAW;
            }

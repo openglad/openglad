@@ -87,17 +87,12 @@ screen::screen(short howmany)
 
 	timerstart = query_timer_control();
 	framecount = 0;
-	oblist = NULL;
-	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
-	fxlist = NULL;
-	weaplist = NULL;
-
+	
 	weapfree = NULL;
 
 	//  control = NULL;
 	//myradar[0] = myradar[1] = NULL; // very important! :)
 	control_hp = 0;
-	scenario_type = 0; // default, must kill all
 
 	// Load the palette ..
 	load_and_set_palette("our.pal", newpalette);
@@ -112,92 +107,36 @@ screen::screen(short howmany)
 
 	first_text.write_xy(left, 70, "Loading Graphics...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
-
-	myloader = new loader;
+    // FIXME: Loader used to be created here...  but now it's in level_data.
 	first_text.write_xy(left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
 	first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
 	palmode = 0;
-	topx = 0;
-	topy = 0;
 
 	end = 0;
-	numobs = 0;
 	timer_wait = 6;       // 'moderate' speed setting
 
 	redrawme = 1;
 	cyclemode = 1; //color cycling on by default
-	par_value = 1;
-
-	for (i=0; i < 30; i++)
-		scentext[i][0] = 0;
-
-	scentextlines = 0;
+	
 	enemy_freeze = 0;
 
 	level_done = 0;
 
 	// Load map data from a pixie format
-	load_map_data(pixdata);
+	// FIXME: This was moved into level_data
+	//load_map_data(pixdata);
 	first_text.write_xy(left, 78, "Loading Gameplay Info...Done", DARK_BLUE, 1);
 	first_text.write_xy(left, 86, "Initializing Display...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
-
-	// Initialize a pixie for each background piece
-	for(i = 0; i < PIX_MAX; i++)
-		back[i] = new pixieN(pixdata[i], this,1);
-
-	//buffers: after we set all the tiles to use acceleration, we go
-	//through the tiles that have pal cycling to turn of the accel.
-	back[PIX_WATER1]->set_accel(0);
-	back[PIX_WATER2]->set_accel(0);
-	back[PIX_WATER3]->set_accel(0);
-	back[PIX_WATERGRASS_LL]->set_accel(0);
-	back[PIX_WATERGRASS_LR]->set_accel(0);
-	back[PIX_WATERGRASS_UL]->set_accel(0);
-	back[PIX_WATERGRASS_UR]->set_accel(0);
-	back[PIX_WATERGRASS_U]->set_accel(0);
-	back[PIX_WATERGRASS_D]->set_accel(0);
-	back[PIX_WATERGRASS_L]->set_accel(0);
-	back[PIX_WATERGRASS_R]->set_accel(0);
-	back[PIX_GRASSWATER_LL]->set_accel(0);
-	back[PIX_GRASSWATER_LR]->set_accel(0);
-	back[PIX_GRASSWATER_UL]->set_accel(0);
-	back[PIX_GRASSWATER_UR]->set_accel(0);
-
-
-
-
 
 
 	// Set up the viewscreen poshorters
 	numviews = howmany; // # of viewscreens
 	for (i=0; i < MAX_VIEWS; i++)
 		viewob[i] = NULL;
-
-	if (numviews == 1)
-	{
-		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
-	}
-	else if (numviews == 2)
-	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-
-	}
-	else if (numviews == 3)
-	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
-	}
-	else if (numviews == 4)
-	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
-		viewob[3] = new viewscreen( 112, 16, 100, 168, 3, this);
-	}
+    
+    initialize_views();
 
 	first_text.write_xy(left, 86, "Initializing Display...Done", DARK_BLUE, 1);
 	first_text.write_xy(left, 94, "Initializing Sound...", DARK_BLUE, 1);
@@ -298,136 +237,67 @@ screen::screen(short howmany)
 
 screen::~screen()
 {
-	int i;
-
 	release_timer();
 	delete soundp;
-	delete myloader;
-
-	for (i = 0; i < PIX_MAX; i++)
-	{
-		pixdata[i].free();
-		// Zardus: FIXME: this should be here cause it leaks, but this makes it segfault
-		if (back[i])
-			delete back[i];
-	}
 
 	soundp = NULL;
 	cleanup(1); //make sure we've cleaned up
 }
 
+void screen::initialize_views()
+{
+	if (numviews == 1)
+	{
+		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
+	}
+	else if (numviews == 2)
+	{
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+	}
+	else if (numviews == 3)
+	{
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
+	}
+	else if (numviews == 4)
+	{
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
+		viewob[3] = new viewscreen( 112, 16, 100, 168, 3, this);
+	}
+	else
+    {
+        Log("Error initializing screen views.  numviews is %d\n", numviews);
+    }
+}
+
 void screen::cleanup(short howmany)
 {
 	Sint32 i;
-	oblink *here, *templink;
 	walker *who;
 
-        numviews = howmany; // # of viewscreens
-        for (i=0; i < MAX_VIEWS; i++)
-        {
-                if (viewob[i])
-                        delete (viewob[i]);
-                viewob[i] = NULL;
-        }
+    numviews = howmany; // # of viewscreens
+    for (i=0; i < MAX_VIEWS; i++)
+    {
+            delete (viewob[i]);
+            viewob[i] = NULL;
+    }
 
-        grid.free();
-
-        if (oblist)
-        {
-                here = oblist;
-                while (here->next)
-                {
-                        templink = here;
-                        if (templink->ob)
-                        {
-                                delete templink->ob;
-                                templink->ob = NULL;
-                        }
-                        here = here->next;
-                        delete templink;
-                        templink = NULL;
-                }
-                if (here->ob)
-                {
-                        delete here->ob;
-                        here->ob = NULL;
-                }
-                delete here;
-                here = NULL;
-        }
-        oblist = NULL;
-        if (weaplist)
-        {
-                here = weaplist;
-                while (here->next)
-                {
-                        templink = here;
-                        if (templink->ob)
-                        {
-                                delete templink->ob;
-                                templink->ob = NULL;
-                        }
-                        here = here->next;
-                        delete templink;
-                        templink = NULL;
-                }
-                if (here->ob)
-                {
-                        delete here->ob;
-                        here->ob = NULL;
-                }
-                delete here;
-                here = NULL;
-        }
-        weaplist = NULL;
-        if (fxlist)
-        {
-                here = fxlist;
-                while (here->next)
-                {
-                        templink = here;
-                        if (templink->ob)
-                        {
-                                delete templink->ob;
-                                templink->ob = NULL;
-                        }
-                        here = here->next;
-                        delete templink;
-                        templink = NULL;
-                }
-                if (here->ob)
-                {
-                        delete here->ob;
-                        here->ob = NULL;
-                }
-                delete here;
-                here = NULL;
-        }
-        fxlist = NULL;
-
-        while (weapfree)
-        {
-                who = weapfree;
-                weapfree = weapfree->cachenext; //cachenext points to next ob
-                delete who;
-                who = NULL;
-        }
-        weapfree = NULL;
-
-        if (myobmap)
-        {
-                delete myobmap;
-                myobmap = NULL;
-        }
-
+    while (weapfree)
+    {
+            who = weapfree;
+            weapfree = weapfree->cachenext; //cachenext points to next ob
+            delete who;
+            who = NULL;
+    }
+    weapfree = NULL;
 }
 
 void screen::reset(short howmany)
 {
-	Sint32 i;
-
-	mysmoother.reset();
-
 	// Set up the viewscreen poshorters
 	numviews = howmany; // # of viewscreens
 
@@ -462,32 +332,19 @@ void screen::reset(short howmany)
 	redrawme = 1;
 	
 	save_data.reset();
+	level_data.clear();
 
 	timerstart = query_timer_control();
 	framecount = 0;
 	enemy_freeze = 0;
 
-	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
-	fxlist = oblist = NULL;
-
 	control_hp = 0;
-	scenario_type = 0; // default, must kill all
 
 	palmode = 0;
-	topx = 0;
-	topy = 0;
 
 	end = 0;
-	numobs = 0;
 
 	redrawme = 1;
-
-	par_value = 1;
-
-	for (i=0; i < 30; i++)
-		scentext[i][0] = 0;
-
-	scentextlines = 0;
 
 }
 
@@ -508,7 +365,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 	//x+=1;
 	//y+=1;
 
-	if (x < 0 || y < 0 || xover >= pixmaxx || yover >= pixmaxy)
+	if (x < 0 || y < 0 || xover >= level_data.pixmaxx || yover >= level_data.pixmaxy)
 		return 0;
 
 	// Are we ethereal?
@@ -516,7 +373,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 		return 1; //moved up to avoid unneeded calculation
 
 	// Zardus: PORT: Does the grid exist?
-	if (!grid.valid())
+	if (!level_data.grid.valid())
 		return 0;
 
 	// Check if our butt hangs over shorto next grid square
@@ -536,7 +393,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 
 		{
 			// Check if item in background grid
-			switch ((unsigned char)grid.data[i+grid.w*j])
+			switch ((unsigned char)level_data.grid.data[i+level_data.grid.w*j])
 			{
 				case PIX_GRASS1:  // grass is pass..
 				case PIX_GRASS2:
@@ -712,7 +569,7 @@ short screen::query_object_passable(short x, short y, walker  *ob)
 {
 	if (ob->dead)
 		return 1;
-	return myobmap->query_list(ob, x, y);
+	return level_data.myobmap->query_list(ob, x, y);
 }
 
 short screen::query_passable(short x,short y,walker  *ob)
@@ -792,7 +649,7 @@ short screen::continuous_input()
 short screen::act()
 {
 	oblink  *here,  *before;
-	here = oblist;
+	here = level_data.oblist;
 	static char obmessage[80];
 	Sint32 printed_time = 0; // have we printed message yet?
 	//  static short debug = 0;
@@ -853,7 +710,7 @@ short screen::act()
 	}
 
 	// Let the weapons act ...
-	here = weaplist;
+	here = level_data.weaplist;
 	while(here)
 	{
 		if (here->ob && !here->ob->dead)
@@ -870,7 +727,7 @@ short screen::act()
 	}  // end of weapons acting
 
 	// Quickly check the background for exits, etc.
-	here = fxlist;
+	here = level_data.fxlist;
 	while (here)
 	{
 		if (here->ob && !here->ob->dead)
@@ -886,10 +743,10 @@ short screen::act()
 	}
 
 	if (level_done == 2)
-		return endgame(0);
+		return endgame(0, level_data.id + 1);  // No exits and no enemies: Go to next sequential level.
 
 	// Make sure we're all pointing to legal targets
-	here = oblist;
+	here = level_data.oblist;
 	while (here)
 	{
 		if (here->ob)
@@ -905,7 +762,7 @@ short screen::act()
 		}
 		here = here->next;
 	}
-	here = weaplist;
+	here = level_data.weaplist;
 	while (here)
 	{
 		if (here->ob)
@@ -924,7 +781,7 @@ short screen::act()
 
 
 	// Remove dead objects
-	here = oblist;
+	here = level_data.oblist;
 	while (here)
 	{
 		if (here->ob && here->ob->dead)
@@ -948,7 +805,7 @@ short screen::act()
 		}
 		here = here->next;
 	}
-	here = fxlist;
+	here = level_data.fxlist;
 	while (here)
 	{
 		if (here->ob && here->ob->dead)
@@ -959,7 +816,7 @@ short screen::act()
 		}
 		here = here->next;
 	}
-	here = weaplist;
+	here = level_data.weaplist;
 	while (here)
 	{
 		if (here->ob && here->ob->dead)
@@ -981,16 +838,16 @@ short screen::act()
 
 	// ** Remove empty objects **
 	// ** First the normal list **
-	here = oblist;
+	here = level_data.oblist;
 	// Make first element clean
 	while (!here->ob)
 	{
-		oblist = oblist->next;
+		level_data.oblist = level_data.oblist->next;
 		delete here;
-		here = oblist;
+		here = level_data.oblist;
 	}
 	// Fix rest of elements
-	before = oblist;
+	before = level_data.oblist;
 	here = before->next;
 	while (here)
 	{
@@ -1007,16 +864,16 @@ short screen::act()
 		}
 	}
 	// ** Now the weapons list **
-	here = weaplist;
+	here = level_data.weaplist;
 	// Make first element clean
 	while (here && !here->ob)
 	{
-		weaplist = weaplist->next;
+		level_data.weaplist = level_data.weaplist->next;
 		delete here;
-		here = weaplist;
+		here = level_data.weaplist;
 	}
 	// Fix rest of weapon elements
-	before = weaplist;
+	before = level_data.weaplist;
 	if (before)
 		here = before->next;
 	else
@@ -1061,34 +918,34 @@ walker  *screen::add_ob(char order, char family, short atstart)
 
 	// Going to force at head of list for now, for speed, if it works
 	//if (atstart) // add to the end of the list instead of the end ..
-	if (oblist)
+	if (level_data.oblist)
 	{
 		here = new oblink;
-		here->ob = myloader->create_walker(order, family, this);
+		here->ob = level_data.myloader->create_walker(order, family, this);
 		if (!here->ob)
 			return NULL;
-		here->next = oblist;
-		oblist = here;
+		here->next = level_data.oblist;
+		level_data.oblist = here;
 		if (order == ORDER_LIVING)
-			numobs++;
+			level_data.numobs++;
 		return here->ob;
 	}
 	else // we're the first and only ..
 	{
 		here = new oblink;
-		here->ob = myloader->create_walker(order, family, this);
+		here->ob = level_data.myloader->create_walker(order, family, this);
 		if (!here->ob)
 			return NULL;
 		here->next = NULL;
-		oblist = here;
+		level_data.oblist = here;
 		if (order == ORDER_LIVING)
-			numobs++;
+			level_data.numobs++;
 		return here->ob;
 	}
 
-	here = oblist;
+	here = level_data.oblist;
 
-	if (oblist)
+	if (level_data.oblist)
 	{
 		while(here->next)
 			here = here->next;
@@ -1098,14 +955,14 @@ walker  *screen::add_ob(char order, char family, short atstart)
 	else  // oblink is null
 	{
 		here = new oblink;
-		oblist = here;
+		level_data.oblist = here;
 	}
 
 	here->next = NULL;
-	here->ob = myloader->create_walker(order, family, this);
+	here->ob = level_data.myloader->create_walker(order, family, this);
 
 	if (order == ORDER_LIVING)
-		numobs++;
+		level_data.numobs++;
 	return here->ob;
 }
 
@@ -1139,26 +996,26 @@ walker  *screen::add_ob(walker  *newob)
 	         oblist = here;
 	  }
 	*/
-	if (oblist)
+	if (level_data.oblist)
 	{
 		here = new oblink;
 		here->ob = newob;
-		here->next = oblist;
-		oblist = here;
+		here->next = level_data.oblist;
+		level_data.oblist = here;
 	}
 	else // first element on list
 	{
 		here = new oblink;
 		here->ob = newob;
 		here->next = NULL;
-		oblist = here;
+		level_data.oblist = here;
 	}
 
 	//here->next = NULL;
 	//here->ob = newob;
 
 	if (newob->query_order() == ORDER_LIVING)
-		numobs++;
+		level_data.numobs++;
 	return here->ob;
 }
 
@@ -1166,8 +1023,8 @@ walker  *screen::add_fx_ob(walker  *newob)
 {
 	oblink  *here = NULL;
 
-	here = fxlist;
-	if (fxlist)
+	here = level_data.fxlist;
+	if (level_data.fxlist)
 	{
 		while(here->next)
 			here = here->next;
@@ -1177,7 +1034,7 @@ walker  *screen::add_fx_ob(walker  *newob)
 	else  // oblink is null
 	{
 		here = new oblink;
-		fxlist = here;
+		level_data.fxlist = here;
 	}
 
 	here->next = NULL;
@@ -1191,8 +1048,8 @@ walker  *screen::add_fx_ob(char order, char family)
 {
 	oblink  *here = NULL;
 
-	here = fxlist;
-	if (fxlist)
+	here = level_data.fxlist;
+	if (level_data.fxlist)
 	{
 		while(here->next)
 			here = here->next;
@@ -1202,11 +1059,11 @@ walker  *screen::add_fx_ob(char order, char family)
 	else  // oblink is null
 	{
 		here = new oblink;
-		fxlist = here;
+		level_data.fxlist = here;
 	}
 
 	here->next = NULL;
-	here->ob = myloader->create_walker(order, family, this);
+	here->ob = level_data.myloader->create_walker(order, family, this);
 
 	//numobs++;
 	//here->ob->ignore = 1;
@@ -1220,8 +1077,8 @@ walker  *screen::add_weap_ob(walker  *newob)
 	// We can add to the front, making things faster ..
 	here = new oblink;
 	here->ob = newob;
-	here->next = weaplist;
-	weaplist = here; // set weaplist to top of list again
+	here->next = level_data.weaplist;
+	level_data.weaplist = here; // set weaplist to top of list again
 
 	return here->ob;
 }
@@ -1230,9 +1087,9 @@ walker  *screen::add_weap_ob(char order, char family)
 {
 	oblink *here = new oblink;
 
-	here->ob = myloader->create_walker(order, family, this);
-	here->next = weaplist;
-	weaplist = here;
+	here->ob = level_data.myloader->create_walker(order, family, this);
+	here->next = level_data.weaplist;
+	level_data.weaplist = here;
 
 	return here->ob;
 }
@@ -1250,9 +1107,9 @@ short screen::remove_ob(walker  *ob, short no_delete)
 	oblink  *here, *prev;
 
 	if (ob && ob->query_order() == ORDER_LIVING)
-		numobs--;
+		level_data.numobs--;
 
-	here = weaplist; //most common case
+	here = level_data.weaplist; //most common case
 	if (here)
 		if (here->ob && here->ob == ob) // this is the ob we want
 		{
@@ -1260,7 +1117,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 			{
 				delete here->ob;
 			}
-			weaplist = weaplist->next;
+			level_data.weaplist = level_data.weaplist->next;
 			delete here;
 			return 1;
 		}
@@ -1283,7 +1140,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 	}
 
 
-	here = fxlist; //less common
+	here = level_data.fxlist; //less common
 	if (here)
 		if (here->ob && here->ob == ob) // this is the ob we want
 		{
@@ -1291,7 +1148,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 			{
 				delete here->ob;
 			}
-			fxlist = fxlist->next;
+			level_data.fxlist = level_data.fxlist->next;
 			delete here;
 			return 1;
 		}
@@ -1314,7 +1171,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 	}
 
 
-	here = oblist; //less common
+	here = level_data.oblist; //less common
 	if (here)
 		if (here->ob && here->ob == ob) // this is the ob we want
 		{
@@ -1322,7 +1179,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 			{
 				delete here->ob;
 			}
-			oblist = oblist->next;
+			level_data.oblist = level_data.oblist->next;
 			delete here;
 			return 1;
 		}
@@ -1382,7 +1239,7 @@ short screen::endgame(short ending, short nextlevel)
 	char temp[50];
 	text mytext(this, TEXT_1);
 	Uint32 bonuscash[4] = {0, 0, 0, 0};
-	oblink *checklist = oblist;
+	oblink *checklist = level_data.oblist;
 	walker *target;
 	Sint32 test1;
 	int  i;
@@ -1470,7 +1327,7 @@ short screen::endgame(short ending, short nextlevel)
 		}
 		for (i=0; i < 4; i++)
 		{
-			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((Sint32)par_value * LEVEL_BONUS)/2));
+			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)level_data.par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((Sint32)level_data.par_value * LEVEL_BONUS)/2));
 			if (bonuscash[i] < 0 || framecount > TIME_BONUS) // || framecount < 0)
 				bonuscash[i] = 0;
 			save_data.m_totalcash[i] += bonuscash[i];
@@ -1490,7 +1347,7 @@ short screen::endgame(short ending, short nextlevel)
 		save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
-		save_data.save("save0", this->oblist);
+		save_data.save("save0", level_data.oblist);
 
 		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
 		// actions
@@ -1564,7 +1421,7 @@ walker *screen::find_near_foe(walker  *ob)
 	oblink  *here;
 	short spread=1,xchange=0;
 	short loop=0;
-	short resolution = myobmap->obmapres;
+	short resolution = level_data.myobmap->obmapres;
 
 	if (!ob)
 	{
@@ -1584,7 +1441,7 @@ walker *screen::find_near_foe(walker  *ob)
 				targx += resolution; //changex is 0 or a mult of 2
 				if (targx<=0)
 					return find_far_foe(ob); //left edge of screen
-				if (targx>=pixmaxx)
+				if (targx>=level_data.pixmaxx)
 					return find_far_foe(ob); //right edge of screen
 			}
 			else
@@ -1592,11 +1449,11 @@ walker *screen::find_near_foe(walker  *ob)
 				targy += resolution; //changex is odd
 				if (targy<=0)
 					return find_far_foe(ob); //top of screen
-				if (targy>=pixmaxy)
+				if (targy>=level_data.pixmaxy)
 					return find_far_foe(ob); //bottom of screen
 			}
 
-			here = myobmap->obmap_get_list(targx,targy);
+			here = level_data.myobmap->obmap_get_list(targx,targy);
 			while(here) //go through the list we received
 			{
 				if (here->ob && !(here->ob->dead) && (ob->is_friendly(here->ob)==0)  &&
@@ -1636,7 +1493,7 @@ walker  *screen::find_far_foe(walker  *ob)
 		Log("no ob in find far foe.\n");
 		return NULL;
 	}
-	here = oblist;  // Get list of all screen objects
+	here = level_data.oblist;  // Get list of all screen objects
 
 	// Get our current coordinates
 	//targx = ob->xpos;
@@ -1675,6 +1532,10 @@ walker  *screen::find_far_foe(walker  *ob)
 	return endfoe;
 }
 
+walker* screen::set_walker(walker *ob, char order, char family)
+{
+    return level_data.myloader->set_walker(ob, order, family);
+}
 
 const char* screen::get_scen_title(const char *filename, screen *master)
 {
@@ -1719,741 +1580,12 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 
 }
 
-//buffers: the file finding and loading code is pretty ugly... i should
-//buffers: rewrite it...
-short load_scenario(const char * filename, screen * master)
-{
-	SDL_RWops  *infile = NULL;
-	char temptext[10];
-	memset(temptext, 0, 10);
-	char versionnumber = 0;
-	short tempvalue;
-	string thefile(filename);
-	
-	if(thefile.size() == 0)
-    {
-        Log("Cannot load scenario without a proper file name.\n");
-        return 0;
-    }
-
-    // Attach the extension to the base name
-	thefile += ".fss";
-	lowercase(thefile);
-
-	// Zardus: much much better this way
-	if ( !(infile = open_read_file("scen/", thefile.c_str())))
-    {
-        Log("Cannot open level file for reading: %s", thefile.c_str());
-        return 0;
-    }
-
-	// Are we a scenario file?
-	SDL_RWread(infile, temptext, 1, 3);
-	if (strcmp(temptext, "FSS") != 0)
-	{
-		Log("File %s is not a valid scenario!\n", thefile.c_str());
-		SDL_RWclose(infile);
-		return 0;
-	}
-
-	master->scenario_type = 0; // default unless overridden
-	strcpy(master->scenario_title, "none");  // default
-
-	// Check the version number
-	SDL_RWread(infile, &versionnumber, 1, 1);
-    Log("Loading version %d scenario", versionnumber);
-	switch (versionnumber)
-	{
-		case 2:
-			tempvalue = load_version_2(infile, master);
-			SDL_RWclose(infile);
-			return tempvalue;
-			//break;
-		case 3:
-			tempvalue = load_version_3(infile, master);
-            SDL_RWclose(infile);
-			return tempvalue;
-			//break;
-		case 4:
-			tempvalue = load_version_4(infile, master);
-			SDL_RWclose(infile);
-			return tempvalue;
-			//break;
-		case 5:
-			tempvalue = load_version_5(infile, master);
-			SDL_RWclose(infile);
-			return tempvalue;
-		case 6:
-			tempvalue = load_version_6(infile, master);
-			SDL_RWclose(infile);
-			return tempvalue;
-		case 7:
-			tempvalue = load_version_6(infile, master, 7);
-			SDL_RWclose(infile);
-			return tempvalue;
-		case 8:
-			tempvalue = load_version_6(infile, master, 8);
-			SDL_RWclose(infile);
-			return tempvalue;
-		default:
-			Log("Scenario %s is version-level %d, and cannot be read.\n",
-			       filename, versionnumber);
-            SDL_RWclose(infile);
-			//return 0;
-			break;
-	}
-	return 1;
-}
-
-short load_version_2(SDL_RWops  *infile, screen * master)
-{
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
-
-	// Format of a scenario object list file version 2 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// ---
-	// 11 bytes reserved
-
-	//Log("LV2: START\n");
-
-	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
-	newgrid[8] = '\0';
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase(newgrid);
-
-	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
-
-	//gotoxy(1,1);
-	//Log("Objects in file: %d  ", listsize);
-	//wait_for_key(SDLK_SPACE);
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, tempreserved, 11, 1);
-		if (temporder == ORDER_TREASURE)
-			new_guy = master->add_fx_ob(temporder, tempfamily);  // create new object
-		else
-			new_guy = master->add_ob(temporder, tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object!\n");
-			wait_for_key(KEYSTATE_SPACE);
-			return 0;
-		}
-		new_guy ->setxy(currentx, currenty);
-		//       Log("X: %d  Y: %d  \n", currentx, currenty);
-		new_guy ->team_num = tempteam;
-	}
-
-	//Log("Read %d objects.\n", listsize);
-	//wait_for_key(SDLK_SPACE);
-
-	//fclose(infile);
-
-	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	master->grid = read_pixie_file(newgrid);
-	master->pixmaxx = master->grid.w * GRID_SIZE;
-	master->pixmaxy = master->grid.h * GRID_SIZE;
-	master->mysmoother.set_target(master->grid);
-
-	//Log("LV2: read grid %s\n", newgrid);
-	//wait_for_key(SDLK_SPACE);
-
-	// This is a hack because we don't know where else it is loaded.
-	//  if (master->myradar[0])
-	//  {
-	//       Log("LV2: deleting old radar\n");
-	//       delete master->myradar;
-	//       Log("LV2: deleted old radar\n");
-	//  }
-	//  if (master->numviews == 1)
-	//         master->myradar[0] = new radar(master->grid, master->maxx, master->maxy,
-	//                249, 145, 0, master);
-	//  else
-	//  {
-	//         master->myradar[0] = new radar(master->grid, master->maxx, master->maxy,
-	//                249, 10, 0, master);
-	//         master->myradar[1] = new radar(master->grid, master->maxx, master->maxy,
-	//                249-153, 10, 1, master);
-	//  }
-
-
-	//  Log("Read grid file\n");
-	//  wait_for_key(SDLK_SPACE);
-
-	return 1;
-}
-
-// Version 3 scenarios have a block of text which can be displayed
-// at the start, etc.  Format is
-// # of lines,
-//  1-byte character width
-//  n bytes specified from above
-short load_version_3(SDL_RWops  *infile, screen * master)
-{
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char templevel;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
-	char oneline[80];
-	char numlines, tempwidth;
-
-
-	// Format of a scenario object list file version 2 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// 1-byte level
-	// ---
-	// 10 bytes reserved
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-
-	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase((char *)newgrid);
-
-	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, &templevel, 1, 1);
-		SDL_RWread(infile, tempreserved, 10, 1);
-		if (temporder == ORDER_TREASURE)
-			//              new_guy = master->add_fx_ob(temporder, tempfamily);  // create new object
-			new_guy = master->add_ob(temporder, tempfamily, 1); // add to top of list
-		else
-			new_guy = master->add_ob(temporder, tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object!\n");
-			wait_for_key(KEYSTATE_SPACE);
-			return 0;
-		}
-		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
-		new_guy->stats->level = templevel;
-	}
-
-	// Now get the lines of text to read ..
-	SDL_RWread(infile, &numlines, 1, 1);
-	master->scentextlines = numlines;
-	//master->(*scentext) = new char(numlines);
-
-	for (i=0; i < numlines; i++)
-	{
-		SDL_RWread(infile, &tempwidth, 1, 1);
-		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[(int)tempwidth] = 0;
-		strcpy(master->scentext[i], oneline);
-	}
-
-	//fclose(infile);
-
-	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	master->grid = read_pixie_file(newgrid);
-	master->pixmaxx = master->grid.w * GRID_SIZE;
-	master->pixmaxy = master->grid.h * GRID_SIZE;
-	master->mysmoother.set_target(master->grid);
-
-	// This is a hack because we don't know where else it is loaded.
-	//  if (master->myradar[0])
-	//  {
-	//  }
-	//  if (master->numviews == 1)
-	//         master->myradar[0] = new radar(master->grid, master->maxx, master->maxy,
-	//                249, 145, 0, master);
-	//  else
-	//  {
-	//         master->myradar[0] = new radar(master->grid, master->maxx, master->maxy,
-	//                249, 10, 0, master);
-	//         master->myradar[1] = new radar(master->grid, master->maxx, master->maxy,
-	//                249-153, 10, 1, master);
-	//  }
-
-
-	return 1;
-}
-
-// Version 4 scenarios include a 12-byte name for EVERY walker..
-short load_version_4(SDL_RWops  *infile, screen * master)
-{
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char templevel;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
-	char oneline[80];
-	char numlines, tempwidth;
-	char tempname[12];
-
-
-	// Format of a scenario object list file version 4 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// 1-byte level
-	// 12-bytes name
-	// ---
-	// 10 bytes reserved
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-
-	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase((char *)newgrid);
-
-	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, &templevel, 1, 1);
-		SDL_RWread(infile, tempname, 12, 1);
-		SDL_RWread(infile, tempreserved, 10, 1);
-		if (temporder == ORDER_TREASURE)
-			//new_guy = master->add_ob(temporder, tempfamily, 1); // add to top of list
-			new_guy = master->add_fx_ob(temporder, tempfamily);
-		else
-			new_guy = master->add_ob(temporder, tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object!\n");
-			wait_for_key(KEYSTATE_SPACE);
-			return 0;
-		}
-		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
-		new_guy->stats->level = templevel;
-		strcpy(new_guy->stats->name, tempname);
-		if (strlen(tempname) > 1)                      //chad 5/25/95
-			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
-
-	}
-
-	// Now get the lines of text to read ..
-	SDL_RWread(infile, &numlines, 1, 1);
-	master->scentextlines = numlines;
-	//master->(*scentext) = new char(numlines);
-
-	for (i=0; i < numlines; i++)
-	{
-		SDL_RWread(infile, &tempwidth, 1, 1);
-		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[(int)tempwidth] = 0;
-		strcpy(master->scentext[i], oneline);
-	}
-
-	//fclose(infile);
-
-	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	master->grid = read_pixie_file(newgrid);
-	master->pixmaxx = master->grid.w * GRID_SIZE;
-	master->pixmaxy = master->grid.h * GRID_SIZE;
-	master->mysmoother.set_target(master->grid);
-
-	// This is a hack because we don't know where else it is loaded.
-	//  if (master->myradar[0])
-	//  {
-	//  }
-	//  if (master->numviews == 1)
-	//         master->myradar[0] = new radar(master->grid, master->maxx, master->maxy,
-	//                249, 145, 0, master);
-	//  else
-	//  {
-	//         master->myradar[0] = new radar(master->grid, master->maxx, master->maxy,
-	//                249, 10, 0, master);
-	//         master->myradar[1] = new radar(master->grid, master->maxx, master->maxy,
-	//                249-153, 10, 1, master);
-	//  }
-
-
-	return 1;
-} // end load_version_4
-
-// Version 5 scenarios include a 1-byte 'scenario-type' specifier after
-// the grid name.
-short load_version_5(SDL_RWops  *infile, screen * master)
-{
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char templevel;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
-	char new_scen_type; // read the scenario type
-	char oneline[80];
-	char numlines, tempwidth;
-	char tempname[12];
-	oblink *here;
-
-	// Format of a scenario object list file version 5 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 1-byte char = scenario type, default is 0
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// 1-byte level
-	// 12-bytes name
-	// ---
-	// 10 bytes reserved
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-
-	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
-	//buffers: PORT: make sure grid name is lowercase
-	lowercase((char *)newgrid);
-
-	// Get the scenario type information
-	SDL_RWread(infile, &new_scen_type, 1, 1);
-	master->scenario_type = new_scen_type;
-
-	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, &templevel, 1, 1);
-		SDL_RWread(infile, tempname, 12, 1);
-		SDL_RWread(infile, tempreserved, 10, 1);
-		if (temporder == ORDER_TREASURE)
-			new_guy = master->add_fx_ob(temporder, tempfamily);
-		else
-			new_guy = master->add_ob(temporder, tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object! Press Space\n");
-			wait_for_key(KEYSTATE_SPACE);
-			//fclose(infile);
-			return 0;
-		}
-		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
-		new_guy->stats->level = templevel;
-		strcpy(new_guy->stats->name, tempname);
-		if (strlen(tempname) > 1)                      //chad 5/25/95
-			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
-
-	}
-
-	// Now get the lines of text to read ..
-	SDL_RWread(infile, &numlines, 1, 1);
-	master->scentextlines = numlines;
-	//master->(*scentext) = new char(numlines);
-
-	for (i=0; i < numlines; i++)
-	{
-		SDL_RWread(infile, &tempwidth, 1, 1);
-		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[(int)tempwidth] = 0;
-		strcpy(master->scentext[i], oneline);
-	}
-
-	//fclose(infile);
-
-	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	master->grid = read_pixie_file(newgrid);
-	master->pixmaxx = master->grid.w * GRID_SIZE;
-	master->pixmaxy = master->grid.h * GRID_SIZE;
-	master->mysmoother.set_target(master->grid);
-
-	// Fix up doors, etc.
-	here = master->weaplist;
-	while (here)
-	{
-		if (here->ob && here->ob->query_family()==FAMILY_DOOR)
-		{
-			if (master->mysmoother.query_genre_x_y(here->ob->xpos/GRID_SIZE,
-			        (here->ob->ypos/GRID_SIZE)-1)==TYPE_WALL)
-			{
-				here->ob->set_frame(1);  // turn sideways ..
-			}
-		}
-		here = here->next;
-	}
-
-	return 1;
-} // end load_version_5
-
-
-// Version 6 includes a 30-byte scenario title after the grid name.
-// Also load version 7 and 8 here, since it's a simple change ..
-short load_version_6(SDL_RWops  *infile, screen * master, short version)
-{
-	short currentx, currenty;
-	unsigned char temporder, tempfamily;
-	unsigned char tempteam;
-	char tempfacing, tempcommand;
-	char templevel;
-	short shortlevel;
-	char tempreserved[20];
-	short listsize;
-	short i;
-	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
-	char new_scen_type; // read the scenario type
-	char oneline[80];
-	char numlines, tempwidth;
-	char tempname[12];
-	oblink *here;
-	char scentitle[30];
-	memset(scentitle, 0, 30);
-	short temp_par;
-
-	// Format of a scenario object list file version 6/7 is:
-	// 3-byte header: 'FSS'
-	// 1-byte version #
-	// ----- (above is already determined by now)
-	// 8-byte string = grid name to load
-	// 30-byte scenario title (ver 6+)
-	// 1-byte char = scenario type, default is 0
-	// 2-bytes par-value, v.8+
-	// 2-bytes (short) = total objects to follow
-	// List of n objects, each of 7-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 2-byte short xpos
-	// 2-byte short ypos
-	// 1-byte TEAM
-	// 1-byte facing
-	// 1-byte command
-	// 1-byte level // 2 bytes in version 7+
-	// 12-bytes name
-	// ---
-	// 10 bytes reserved
-	// 1-byte # of lines of text to load
-	// List of n lines of text, each of form:
-	// 1-byte character width of line
-	// m bytes == characters on this line
-
-
-	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
-	// Zardus: FIX: make sure they're lowercased
-	lowercase((char *)newgrid);
-
-	// Get scenario title, if it exists
-	//for (i=0; i < strlen(scentitle); i++)
-	//	scentitle[i] = 0;
-	SDL_RWread(infile, scentitle, 30, 1);
-	strcpy(master->scenario_title, scentitle);
-
-	// Get the scenario type information
-	SDL_RWread(infile, &new_scen_type, 1, 1);
-	master->scenario_type = new_scen_type;
-
-	if (version >= 8)
-	{
-		SDL_RWread(infile, &temp_par, 2, 1);
-		master->par_value = temp_par;
-	}
-	// else we're using the value of the level ..
-
-	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
-
-	// Now read in the objects one at a time
-	for (i=0; i < listsize; i++)
-	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		if (version >= 7)
-			SDL_RWread(infile, &shortlevel, 2, 1);
-		else
-			SDL_RWread(infile, &templevel, 1, 1);
-		SDL_RWread(infile, tempname, 12, 1);
-		SDL_RWread(infile, tempreserved, 10, 1);
-		if (temporder == ORDER_TREASURE)
-			new_guy = master->add_fx_ob(temporder, tempfamily);
-		else
-			new_guy = master->add_ob(temporder, tempfamily);  // create new object
-		if (!new_guy)
-		{
-			Log("Error creating object when loading.\n");
-			return 0;
-		}
-		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
-		if (version >= 7)
-			new_guy->stats->level = shortlevel;
-		else
-			new_guy->stats->level = templevel;
-		strcpy(new_guy->stats->name, tempname);
-		if (strlen(tempname) > 1)                      //chad 5/25/95
-			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
-
-	}
-
-	// Now get the lines of text to read ..
-	SDL_RWread(infile, &numlines, 1, 1);
-	master->scentextlines = numlines;
-	//master->(*scentext) = new char(numlines);
-
-	for (i=0; i < numlines; i++)
-	{
-		SDL_RWread(infile, &tempwidth, 1, 1);
-		if(tempwidth > 0)
-        {
-            SDL_RWread(infile, oneline, tempwidth, 1);
-            oneline[(int)tempwidth] = 0;
-        }
-        else
-            oneline[0] = 0;
-        strcpy(master->scentext[i], oneline);
-	}
-
-	//fclose(infile);
-
-	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	master->grid = read_pixie_file(newgrid);
-	master->pixmaxx = master->grid.w * GRID_SIZE;
-	master->pixmaxy = master->grid.h * GRID_SIZE;
-	master->mysmoother.set_target(master->grid);
-
-	// Fix up doors, etc.
-	here = master->weaplist;
-	while (here)
-	{
-		if (here->ob && here->ob->query_family()==FAMILY_DOOR)
-		{
-			if (master->mysmoother.query_genre_x_y(here->ob->xpos/GRID_SIZE,
-			        (here->ob->ypos/GRID_SIZE)-1)==TYPE_WALL)
-			{
-				here->ob->set_frame(1);  // turn sideways ..
-			}
-		}
-		here = here->next;
-	}
-	return 1;
-} // end load_version_6
-
 
 // Look for the first non-dead instance of a given walker ..
 walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,
                            int team_num)
 {
-	oblink  * here = oblist;
+	oblink  * here = level_data.oblist;
 
 	if (!here)
 		return NULL;
@@ -2478,7 +1610,7 @@ walker  * screen::get_new_control()
 {
 	oblink  * here;
 
-	here = oblist;
+	here = level_data.oblist;
 	while(here)
 	{
 		if (here->ob &&
@@ -2531,7 +1663,7 @@ walker  * screen::find_nearest_blood(walker  *who)
 	Sint32 distance, newdistance;
 	walker  *returnob = NULL;
 
-	here = fxlist;
+	here = level_data.fxlist;
 
 	if (!who)
 		return NULL;
@@ -2618,7 +1750,7 @@ walker* screen::find_nearest_player(walker *ob)
 	if (!ob)
 		return NULL;
 
-	here = oblist;
+	here = level_data.oblist;
 	while (here)
 	{
 		if (here->ob && (here->ob->user != -1) )
@@ -2806,24 +1938,24 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 
 	if (xover < 0 || yover < 0)
 		return 0;
-	if (xover >= grid.w || yover >= grid.h)
+	if (xover >= level_data.grid.w || yover >= level_data.grid.h)
 		return 0;
 
-	gridloc = (short) (yover*grid.w+xover);
+	gridloc = (short) (yover*level_data.grid.w+xover);
 
-	switch ((unsigned char)grid.data[gridloc])
+	switch ((unsigned char)level_data.grid.data[gridloc])
 	{
 		case PIX_GRASS1: // grass
 		case PIX_GRASS2:
 		case PIX_GRASS3:
 		case PIX_GRASS4:
-			grid.data[gridloc] = PIX_GRASS1_DAMAGED;
+			level_data.grid.data[gridloc] = PIX_GRASS1_DAMAGED;
 			break;
 		default:
 			break;
 	}
 
-	return grid.data[gridloc];
+	return level_data.grid.data[gridloc];
 }
 
 void screen::do_notify(const char *message, walker  *who)

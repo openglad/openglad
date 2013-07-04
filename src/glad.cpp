@@ -255,7 +255,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	clear_keyboard();
 
 	// Delete all of our current information and abort ..
-	here = myscreen->oblist;
+	here = myscreen->level_data.oblist;
 	while (here)
 	{
 		if (here->ob)
@@ -264,9 +264,9 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		before = here;
 		here = here->next;
 		delete before;
-		myscreen->oblist = here;
+		myscreen->level_data.oblist = here;
 	}
-	here = myscreen->weaplist; // do the weapons
+	here = myscreen->level_data.weaplist; // do the weapons
 	while (here)
 	{
 		if (here->ob)
@@ -275,9 +275,9 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		before = here;
 		here = here->next;
 		delete before;
-		myscreen->weaplist = here;
+		myscreen->level_data.weaplist = here;
 	}
-	here = myscreen->fxlist; // do the fx's
+	here = myscreen->level_data.fxlist; // do the fx's
 	while (here)
 	{
 		if (here->ob)
@@ -286,7 +286,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		before = here;
 		here = here->next;
 		delete before;
-		myscreen->fxlist = here;
+		myscreen->level_data.fxlist = here;
 	}
 	return; // return to picker
 	//  return 1;
@@ -298,7 +298,7 @@ short remaining_foes(screen *myscreen, char myteam)
 	oblink  *here;
 	short myfoes = 0;
 
-	here = myscreen->oblist;
+	here = myscreen->level_data.oblist;
 	while (here)
 	{
 		if (here->ob && !here->ob->dead &&
@@ -317,7 +317,7 @@ short remaining_team(screen *myscreen, char myteam)
 	oblink  *here;
 	short myfoes = 0;
 
-	here = myscreen->oblist;
+	here = myscreen->level_data.oblist;
 	while (here)
 	{
 		if (here->ob && !here->ob->dead &&

@@ -144,7 +144,7 @@ short effect::act()
 			center_on(owner);
 			setxy( (short)( xpos+xd ), (short) (ypos+yd) );
 			foelist = screenp->find_foe_weapons_in_range(
-			              screenp->oblist, sizex, &temp, this);
+			              screenp->level_data.oblist, sizex, &temp, this);
 			here = foelist;
 			while (foelist)  // first weapons
 			{
@@ -155,7 +155,7 @@ short effect::act()
 			}
 			delete_list(here);
 			foelist = screenp->find_foes_in_range(
-			              screenp->oblist, sizex, &temp, this);
+			              screenp->level_data.oblist, sizex, &temp, this);
 			here = foelist;
 			while (foelist) // second enemies
 			{
@@ -259,7 +259,7 @@ short effect::act()
 			center_on(owner);
 			setxy((short) (xpos+xd), (short) (ypos+yd) );
 			foelist = screenp->find_foe_weapons_in_range(
-			              screenp->oblist, sizex*2, &temp, this);
+			              screenp->level_data.oblist, sizex*2, &temp, this);
 			here = foelist;
 			while (foelist)  // first weapons
 			{
@@ -270,7 +270,7 @@ short effect::act()
 			}
 			delete_list(here);
 			foelist = screenp->find_foes_in_range(
-			              screenp->oblist, sizex, &temp, this);
+			              screenp->level_data.oblist, sizex, &temp, this);
 			here = foelist;
 			while (foelist) // second enemies
 			{
@@ -365,7 +365,7 @@ short effect::act()
 				invisibility_left--;
 			// Hit any nearby foes (not friends, for now)
 			foelist = screenp->find_foes_in_range(
-			              screenp->oblist, sizex, &temp, this);
+			              screenp->level_data.oblist, sizex, &temp, this);
 			here = foelist;
 			while (foelist) //
 			{
@@ -425,10 +425,10 @@ short effect::act()
 				// First, are our offspring powerful enough at 1/2 our power?
 				generic = (damage)/2;
 				if (owner->myguy)
-					foelist = screenp->find_foes_in_range(screenp->oblist,
+					foelist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      240+(owner->myguy->intelligence/2), &temp, this);
 				else
-					foelist = screenp->find_foes_in_range(screenp->oblist,
+					foelist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      240+stats->level*5, &temp, this);
 				if (temp && generic>20) // more foes to find ..
 				{
@@ -616,7 +616,7 @@ short effect::death()
 		case FAMILY_GHOST_SCARE: // the ghost's scare
 			if (!owner || owner->dead)
 				return 0;
-			scarelist = screenp->find_foes_in_range(screenp->oblist, 50+(10*owner->stats->level),
+			scarelist = screenp->find_foes_in_range(screenp->level_data.oblist, 50+(10*owner->stats->level),
 			                                        &howmany, owner);
 			if (howmany < 1)
 				return 0;
@@ -669,7 +669,7 @@ short effect::death()
 			{
 				generic = 16;
 			}
-			frylist = screenp->find_in_range(screenp->oblist, 15+generic,
+			frylist = screenp->find_in_range(screenp->level_data.oblist, 15+generic,
 			                                 &howmany, this);
 			//Log("got in range, %d\n", howmany);
 			// Damage our tile location ..

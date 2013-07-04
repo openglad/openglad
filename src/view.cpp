@@ -207,8 +207,8 @@ short viewscreen::redraw()
 	short xneg = 0;
 	short yneg = 0;
 	walker  *controlob = control;
-	pixieN  **backp = screenp->back;
-	PixieData& gridp = screenp->grid;
+	pixieN  **backp = screenp->level_data.back;
+	PixieData& gridp = screenp->level_data.grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
 
@@ -221,8 +221,8 @@ short viewscreen::redraw()
 	}
 	else // no control object now ..
 	{
-		topx = screenp->topx;
-		topy = screenp->topy;
+		topx = screenp->level_data.topx;
+		topy = screenp->level_data.topy;
 	}
 
 
@@ -389,7 +389,7 @@ short viewscreen::input(const SDL_Event& event)
 	if (!control || control->dead)
 	{
 		// First look for a player character, not already controlled
-		here = screenp->oblist;
+		here = screenp->level_data.oblist;
 		counter = 0;
 		while(counter < 2)
 		{
@@ -405,13 +405,13 @@ short viewscreen::input(const SDL_Event& event)
 			{
 				counter++;
 				if (counter < 2)
-					here = screenp->oblist;
+					here = screenp->level_data.oblist;
 			}
 		}
 		if (!here)
 		{
 			// Second, look for anyone on our team, NPC or not
-			here = screenp->oblist;
+			here = screenp->level_data.oblist;
 			counter = 0;
 			while(counter < 2)
 			{
@@ -426,7 +426,7 @@ short viewscreen::input(const SDL_Event& event)
 				{
 					counter++;
 					if (counter < 2)
-						here = screenp->oblist;
+						here = screenp->level_data.oblist;
 				}
 			}
 		}  // done with second search
@@ -434,7 +434,7 @@ short viewscreen::input(const SDL_Event& event)
 		if (!here)
 		{
 			// Now try for ANYONE who's left alive ..
-			here = screenp->oblist;
+			here = screenp->level_data.oblist;
 			counter = 0;
 			while(counter < 2)
 			{
@@ -448,7 +448,7 @@ short viewscreen::input(const SDL_Event& event)
 				{
 					counter++;
 					if (counter < 2)
-						here = screenp->oblist;
+						here = screenp->level_data.oblist;
 				}
 			}
 		}  // done with all searches
@@ -504,7 +504,7 @@ short viewscreen::input(const SDL_Event& event)
 			control->restore_act_type();
 			control->user = -1;
 		}
-		here = screenp->oblist;
+		here = screenp->level_data.oblist;
 		while(here)
 		{
 			if (here->ob == control)
@@ -514,7 +514,7 @@ short viewscreen::input(const SDL_Event& event)
 			here = here->next;
 		}
 		if (!here->next)
-			here = screenp->oblist;
+			here = screenp->level_data.oblist;
 		else
 			here = here->next;
 		counter = 0;
@@ -527,7 +527,7 @@ short viewscreen::input(const SDL_Event& event)
 			here = here->next;
 			if (!here)
 			{
-				here = screenp->oblist;
+				here = screenp->level_data.oblist;
 				counter++;
 			}
 			if (counter >= 3)
@@ -557,7 +557,7 @@ short viewscreen::input(const SDL_Event& event)
 			control->restore_act_type();
 			control->user = -1;
 		}
-		here = screenp->oblist;
+		here = screenp->level_data.oblist;
 		counter = 0;
 		while(1)
 		{
@@ -570,7 +570,7 @@ short viewscreen::input(const SDL_Event& event)
 			here = here->next;
 			if (!here)
 			{
-				here = screenp->oblist;
+				here = screenp->level_data.oblist;
 				newfam++;
 				newfam %= NUM_FAMILIES;
 				counter++;
@@ -633,7 +633,7 @@ short viewscreen::input(const SDL_Event& event)
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
-		helpme = screenp->oblist;
+		helpme = screenp->level_data.oblist;
 		while (helpme)
 		{
 			if (helpme->ob && (helpme->ob->query_order() == ORDER_LIVING) &&
@@ -661,7 +661,7 @@ short viewscreen::input(const SDL_Event& event)
 		switch (control->action)
 		{
 			case 0:   // not set ..
-				helpme = screenp->oblist;
+				helpme = screenp->level_data.oblist;
 				while (helpme)
 				{
 					if (helpme->ob &&
@@ -678,7 +678,7 @@ short viewscreen::input(const SDL_Event& event)
 				control->screenp->do_notify("SUMMONING DEFENSE!", control);
 				break;
 			case ACTION_FOLLOW:  // turn back to normal mode..
-				helpme = screenp->oblist;
+				helpme = screenp->level_data.oblist;
 				while (helpme)
 				{
 					if (helpme->ob && (helpme->ob->query_order() == ORDER_LIVING) &&
@@ -717,7 +717,7 @@ short viewscreen::input(const SDL_Event& event)
 			changedteam[mynum] = 1;  // to debounce keys
 			screenp->save_data.my_team++;
 			screenp->save_data.my_team %= MAX_TEAM;
-			tempobj = screenp->oblist;
+			tempobj = screenp->level_data.oblist;
 			//              control = NULL;
 			control->user = -1;
 			control->set_act_type(ACT_RANDOM); // hope this works
@@ -731,7 +731,7 @@ short viewscreen::input(const SDL_Event& event)
 				tempobj = tempobj->next;
 				if (!tempobj)
 				{
-					tempobj = screenp->oblist;
+					tempobj = screenp->level_data.oblist;
 					screenp->save_data.my_team++;
 					screenp->save_data.my_team %= MAX_TEAM;
 				}
@@ -750,7 +750,7 @@ short viewscreen::input(const SDL_Event& event)
 		// Testing effect object ..
 		if (query_key_event(SDLK_F12, event)) // kill living bad guys
 		{
-			templink = screenp->oblist;
+			templink = screenp->level_data.oblist;
 			while (templink)
 			{
 				if (templink->ob)
@@ -914,7 +914,7 @@ short viewscreen::continuous_input()
 	if (!control || control->dead)
 	{
 		// First look for a player character, not already controlled
-		here = screenp->oblist;
+		here = screenp->level_data.oblist;
 		counter = 0;
 		while(counter < 2)
 		{
@@ -930,13 +930,13 @@ short viewscreen::continuous_input()
 			{
 				counter++;
 				if (counter < 2)
-					here = screenp->oblist;
+					here = screenp->level_data.oblist;
 			}
 		}
 		if (!here)
 		{
 			// Second, look for anyone on our team, NPC or not
-			here = screenp->oblist;
+			here = screenp->level_data.oblist;
 			counter = 0;
 			while(counter < 2)
 			{
@@ -951,7 +951,7 @@ short viewscreen::continuous_input()
 				{
 					counter++;
 					if (counter < 2)
-						here = screenp->oblist;
+						here = screenp->level_data.oblist;
 				}
 			}
 		}  // done with second search
@@ -959,7 +959,7 @@ short viewscreen::continuous_input()
 		if (!here)
 		{
 			// Now try for ANYONE who's left alive ..
-			here = screenp->oblist;
+			here = screenp->level_data.oblist;
 			counter = 0;
 			while(counter < 2)
 			{
@@ -973,7 +973,7 @@ short viewscreen::continuous_input()
 				{
 					counter++;
 					if (counter < 2)
-						here = screenp->oblist;
+						here = screenp->level_data.oblist;
 				}
 			}
 		}  // done with all searches
@@ -1143,7 +1143,7 @@ short viewscreen::draw_obs()
 	oblink  *here;
 
 	// First draw the special effects
-	here = screenp->fxlist;
+	here = screenp->level_data.fxlist;
 	while(here)
 	{
 		if (here->ob && !here->ob->dead)
@@ -1154,7 +1154,7 @@ short viewscreen::draw_obs()
 	}
 
 	// Now do real objects
-	here = screenp->oblist;
+	here = screenp->level_data.oblist;
 	while(here)
 	{
 		if (here->ob && !here->ob->dead)
@@ -1165,7 +1165,7 @@ short viewscreen::draw_obs()
 	}
 
 	// Finally draw the weapons
-	here = screenp->weaplist;
+	here = screenp->level_data.weaplist;
 	while(here)
 	{
 		if (here->ob && !here->ob->dead)
@@ -1404,7 +1404,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 {
 	char teamnum = my_team;
 	char text_down = top+3;
-	oblink *here = screenp->oblist;
+	oblink *here = screenp->level_data.oblist;
 	oblink* dude = NULL;
 	oblink* list = NULL;
 	char message[30], hpcolor, mpcolor, namecolor, numguys = 0;

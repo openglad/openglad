@@ -30,10 +30,6 @@
 #include "level_data.h"
 #include "save_data.h"
 
-// Goddamned function doesn't belong in screen, much less as a C style extern!
-//   I'll fix this eventually, if I ever get hold of that part of the code.
-short load_scenario(const char * filename, screen * master);
-
 
 class screen : public video
 {
@@ -43,6 +39,7 @@ class screen : public video
 
 		void reset(short howmany);
 		virtual ~screen();
+		void initialize_views();
 		void cleanup(short);
 		void clear();
 		video * get_video_ob();
@@ -80,10 +77,7 @@ class screen : public video
 		char damage_tile(short xloc, short yloc); // damage the specified tile
 		void do_notify(const char *message, walker  *who);  // printing text
 		void report_mem();
-		inline walker *set_walker(walker *ob, char order, char family)
-		{
-			return myloader->set_walker(ob, order, family);
-		}
+		walker *set_walker(walker *ob, char order, char family);
 		const char* get_scen_title(const char *filename, screen *master);
 		bool is_level_completed(int level_index) const;
 		int get_num_levels_completed(const std::string& campaign) const;
@@ -95,27 +89,6 @@ class screen : public video
 		
 		// Level data
 		LevelData level_data;
-		char scenario_title[30]; // used in scenarios v. 6+
-		char scenario_type; // 0 is default
-		char scentext[80][80];                         // Array to hold scenario information
-		char scentextlines;                    // How many lines of text in scenario info
-		short par_value;
-		
-		Sint32 numobs;
-		oblink  *oblist;
-		oblink  *fxlist;  // fx--explosions, etc.
-		oblink  *weaplist;  // weapons
-		loader * myloader;
-		obmap  *myobmap;
-		
-		// Level drawing data
-		PixieData grid;
-		Sint32 pixmaxx,pixmaxy;
-		Sint32 topx, topy;
-		pixieN  *back[PIX_MAX];
-		PixieData pixdata[PIX_MAX];
-		
-		smoother mysmoother;
 		
 		// Save data
 		SaveData save_data;
