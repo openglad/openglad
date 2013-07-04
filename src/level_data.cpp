@@ -1,6 +1,13 @@
 #include "level_data.h"
 #include "yam.h"
 
+#include "pixie.h"
+#include "loader.h"
+#include "walker.h"
+#include "stats.h"
+#include "smooth.h"
+#include "screen.h"
+#include "view.h"
 
 
 int toInt(const std::string& s);

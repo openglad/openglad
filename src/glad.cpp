@@ -610,10 +610,10 @@ short new_score_panel(screen *myscreen, short do_it)
 
 	Uint32 myscore;
 	static Uint32 scorecountup[4] = {
-	                                           myscreen->m_score[0],
-	                                           myscreen->m_score[1],
-	                                           myscreen->m_score[2],
-	                                           myscreen->m_score[3],
+	                                           myscreen->save_data.m_score[0],
+	                                           myscreen->save_data.m_score[1],
+	                                           myscreen->save_data.m_score[2],
+	                                           myscreen->save_data.m_score[3],
 	                                       }
 	                                       ;
 
@@ -713,7 +713,7 @@ short new_score_panel(screen *myscreen, short do_it)
 
 				// Get our score ..
 				if (control)
-					myscore = myscreen->m_score[control->team_num];
+					myscore = myscreen->save_data.m_score[control->team_num];
 				else
 					myscore = 0;
 				if (scorecountup[control->team_num] > myscore)
@@ -725,7 +725,7 @@ short new_score_panel(screen *myscreen, short do_it)
 				}
 				if (scorecountup[control->team_num] > myscore)
 					scorecountup[control->team_num] = myscore;
-				myscreen->m_score[control->team_num] = myscore;
+				myscreen->save_data.m_score[control->team_num] = myscore;
 				//above should count up the score towards the current amount
 				sprintf(message, "SC: %u", scorecountup[control->team_num]);
 				mytext->write_xy(lm+2, bm-8, message, text_color, (short) 1);

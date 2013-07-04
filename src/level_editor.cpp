@@ -7,6 +7,8 @@
 #include "smooth.h"
 #include "input.h"
 #include "util.h"
+#include "text.h"
+#include "stats.h"
 #include "level_data.h"
 
 /* Changelog

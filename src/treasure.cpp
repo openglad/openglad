@@ -83,7 +83,7 @@ short treasure::eat_me(walker  * eater)
 		case FAMILY_GOLD_BAR:
 			if (eater->team_num == 0 || eater->myguy)
 			{
-				myscreen->m_score[eater->team_num] += (200*stats->level);
+				myscreen->save_data.m_score[eater->team_num] += (200*stats->level);
 				dead = 1;
 				if (on_screen())
 					screenp->soundp->play_sound(SOUND_MONEY);
@@ -92,7 +92,7 @@ short treasure::eat_me(walker  * eater)
 		case FAMILY_SILVER_BAR:
 			if (eater->team_num == 0 || eater->myguy)
 			{
-				myscreen->m_score[eater->team_num] += (50*stats->level);
+				myscreen->save_data.m_score[eater->team_num] += (50*stats->level);
 				dead = 1;
 				if (on_screen())
 					screenp->soundp->play_sound(SOUND_MONEY);
@@ -176,8 +176,8 @@ short treasure::eat_me(walker  * eater)
 			//    somewhere we've been, in which case we abort
 			//    this level, and set our current level to
 			//    that pointed to by the exit ...
-			if ( screenp->is_level_completed(stats->level)
-			        && !screenp->is_level_completed(screenp->scen_num)
+			if ( screenp->save_data.is_level_completed(stats->level)
+			        && !screenp->save_data.is_level_completed(screenp->save_data.scen_num)
 			        && (guys_here != 0)
 			   ) // okay to leave
 			{
@@ -215,9 +215,9 @@ short treasure::eat_me(walker  * eater)
 					//}
 					// Now load the game as it was ...
 					load_saved_game("save0", myscreen);
-					myscreen->scen_num = (short) (stats->level-1);
+					myscreen->save_data.scen_num = (short) (stats->level-1);
 					myscreen->end = 1;
-					save_game("save0", myscreen);
+                    myscreen->save_data.save("save0", myscreen->oblist);
 					retreat = 1;
 
 					return screenp->endgame(1, stats->level); // retreat
@@ -279,7 +279,7 @@ short treasure::eat_me(walker  * eater)
 		case FAMILY_LIFE_GEM: // get back some of lost man's xp ..
 			if (eater->team_num != team_num) // only our team can get these
 				return 1;
-			myscreen->m_score[eater->team_num] += stats->hitpoints;
+			myscreen->save_data.m_score[eater->team_num] += stats->hitpoints;
 			flash = screenp->add_ob(ORDER_FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);

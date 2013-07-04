@@ -13,6 +13,8 @@ extern guy *ourteam[MAXTEAM];
 extern Sint32 *mymouse;
 extern Sint32 scen_level;
 
+Sint32 load_team_list_one(const char * filename);
+
 int toInt(const std::string& s)
 {
     return atoi(s.c_str());
@@ -21,7 +23,11 @@ int toInt(const std::string& s)
 // Unmounts old campaign, mounts new one, and returns the current level (scenario) that the player is on
 int load_campaign(const std::string& old_campaign, const std::string& campaign, std::map<std::string, int>& current_levels)
 {
-    unmount_campaign_package(old_campaign);
+    if(!unmount_campaign_package(old_campaign))
+    {
+        Log("Failed to unmount campaign %s, which caused loading %s to fail.\n", old_campaign.c_str(), campaign.c_str());
+        return -3;
+    }
     
     if(!mount_campaign_package(campaign))
         return -2;
@@ -221,9 +227,9 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
 
 
 
-void pick_campaign(screen *screenp)
+void pick_campaign(screen* screenp, SaveData& save_data)
 {
-    std::string old_campaign_id = screenp->current_campaign;
+    std::string old_campaign_id = save_data.current_campaign;
     CampaignEntry* result = NULL;
 
     Uint8* mykeyboard = query_keyboard();
@@ -239,7 +245,7 @@ void pick_campaign(screen *screenp)
     std::list<std::string> campaign_ids = list_campaigns();
     for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
     {
-        entries.push_back(new CampaignEntry(screenp, *e, screenp->get_num_levels_completed(*e)));
+        entries.push_back(new CampaignEntry(screenp, *e, screenp->save_data.get_num_levels_completed(*e)));
     }
     
     unsigned int current_campaign_index = 0;
@@ -395,24 +401,29 @@ void pick_campaign(screen *screenp)
     if(result != NULL)
     {
         // Load new campaign
-        strcpy(screenp->current_campaign, result->id.c_str());
+        save_data.current_campaign = result->id;
         mount_campaign_package(result->id);
         if(old_campaign_id != result->id)
         {
-            std::map<std::string, int>::const_iterator g = screenp->current_levels.find(result->id);
-            if(g != screenp->current_levels.end())
+            std::map<std::string, int>::const_iterator g = save_data.current_levels.find(result->id);
+            if(g != save_data.current_levels.end())
             {
                 // Start where we left off
-                screenp->scen_num = g->second;
+                save_data.scen_num = g->second;
                 scen_level = g->second;
             }
             else
             {
                 // Start from the beginning
-                screenp->scen_num = result->first_level;
+                save_data.scen_num = result->first_level;
                 scen_level = result->first_level;
             }
         }
+        
+        // FIXME: Save team data so it will reload in this campaign?
+        /*
+		save_data.save("save0", this->oblist);
+		load_team_list_one("save0");*/
     }
     else  // Restore old campaign
         mount_campaign_package(old_campaign_id);

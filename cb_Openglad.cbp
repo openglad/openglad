@@ -545,12 +545,16 @@
 		<Unit filename="src/pixdefs.h" />
 		<Unit filename="src/pixie.cpp" />
 		<Unit filename="src/pixie.h" />
+		<Unit filename="src/pixie_data.cpp" />
+		<Unit filename="src/pixie_data.h" />
 		<Unit filename="src/pixien.cpp" />
 		<Unit filename="src/pixien.h" />
 		<Unit filename="src/radar.cpp" />
 		<Unit filename="src/radar.h" />
 		<Unit filename="src/sai2x.cpp" />
 		<Unit filename="src/sai2x.h" />
+		<Unit filename="src/save_data.cpp" />
+		<Unit filename="src/save_data.h" />
 		<Unit filename="src/screen.cpp" />
 		<Unit filename="src/screen.h" />
 		<Unit filename="src/smooth.cpp" />

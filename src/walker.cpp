@@ -1526,7 +1526,7 @@ short walker::attack(walker  *target)
 				myguy->exp += newexp;
 				if (getscore)
 				{
-					screenp->m_score[team_num] += tempdamage + target->stats->level;
+					screenp->save_data.m_score[team_num] += tempdamage + target->stats->level;
 				}
 			}
 		}
@@ -1575,7 +1575,7 @@ short walker::attack(walker  *target)
 		{
 			if (getscore)
 			{
-				screenp->m_score[team_num] += tempdamage + target->stats->level; // / 2;
+				screenp->save_data.m_score[team_num] += tempdamage + target->stats->level; // / 2;
 			}
 			if (headguy->myguy)
 				headguy->myguy->exp += newexp;
@@ -1604,7 +1604,7 @@ short walker::attack(walker  *target)
 					//}
 					if (getscore)
 					{
-						screenp->m_score[team_num] += tempdamage + (10 * target->stats->level);
+						screenp->save_data.m_score[team_num] += tempdamage + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
 					if (strlen(target->stats->name) && !(target->lifetime)
@@ -4305,7 +4305,7 @@ Sint32 walker::is_friendly(walker *target)
 	// Is allied mode set to zero (enemy)?
 	// If so, then if our team numbers don't match,
 	// we are not friendly
-	if (myscreen->allied_mode == 0 || has_myguy == 0)
+	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == headtarget->team_num);
 	} // end of allied_mode OFF

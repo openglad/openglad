@@ -592,7 +592,7 @@ Sint32 mainmenu(Sint32 arg1)
 	strcpy(allbuttons[6]->label, message);
 
 	// Show the allied mode
-	if (myscreen->allied_mode)
+	if (myscreen->save_data.allied_mode)
 		strcpy(allbuttons[7]->label, "PVP: Ally");
 	else
 		strcpy(allbuttons[7]->label, "PVP: Enemy");
@@ -644,7 +644,7 @@ Sint32 mainmenu(Sint32 arg1)
 				strcpy(allbuttons[6]->label, message);
 
 				// Show the allied mode
-				if (myscreen->allied_mode)
+				if (myscreen->save_data.allied_mode)
 					strcpy(allbuttons[7]->label, "PVP: Ally");
 				else
 					strcpy(allbuttons[7]->label, "PVP: Enemy");
@@ -720,7 +720,7 @@ Sint32 mainmenu(Sint32 arg1)
 				strcpy(allbuttons[6]->label, message);
 
 				// Show the allied mode
-				if (myscreen->allied_mode)
+				if (myscreen->save_data.allied_mode)
 					strcpy(allbuttons[7]->label, "PVP: Ally");
 				else
 					strcpy(allbuttons[7]->label, "PVP: Enemy");
@@ -796,7 +796,7 @@ Sint32 mainmenu(Sint32 arg1)
 				strcpy(allbuttons[6]->label, message);
 
 				// Show the allied mode
-				if (myscreen->allied_mode)
+				if (myscreen->save_data.allied_mode)
 					sprintf(message, "PVP: Ally");
 				else
 					sprintf(message, "PVP: Enemy");
@@ -2715,7 +2715,7 @@ Sint32 save_team_list(const char * filename)
 	}
 
 	// Versions 7+ include the allied mode information
-	temp_allied = myscreen->allied_mode;
+	temp_allied = myscreen->save_data.allied_mode;
 	SDL_RWwrite(outfile, &temp_allied, 2, 1);
 
 	// Determine size of team list ...
@@ -3025,7 +3025,7 @@ Sint32 load_team_list_one(const char * filename)
 	if (temp_version >= 7)
 	{
 		SDL_RWread(infile, &temp_allied, 2, 1);
-		myscreen->allied_mode = temp_allied;
+		myscreen->save_data.allied_mode = temp_allied;
 	}
 
 	// Determine size of team list ...
@@ -4693,7 +4693,7 @@ char* browse(screen *screenp)
            
            Sint32 do_pick_campaign(Sint32 arg1)
            {
-               pick_campaign(myscreen);
+               pick_campaign(myscreen, myscreen->save_data);
                return REDRAW;
            }
            
@@ -4823,10 +4823,10 @@ char* browse(screen *screenp)
 	           // Change our allied mode (on or off)
 	           char message[80];
 
-	           myscreen->allied_mode += 1;
-	           myscreen->allied_mode %= 2;
+	           myscreen->save_data.allied_mode += 1;
+	           myscreen->save_data.allied_mode %= 2;
 
-	           if (myscreen->allied_mode)
+	           if (myscreen->save_data.allied_mode)
 		           sprintf(message, "PVP: Ally");
 	           else
 		           sprintf(message, "PVP: Enemy");

@@ -21,7 +21,7 @@
 #define SMOOTH_H
 
 #include "SDL.h"
-#include "base.h"
+#include "pixie_data.h"
 
 // Used for deciding cases
 #define TO_UP 1
@@ -43,7 +43,6 @@
 #define TYPE_GRASS_LIGHT 10
 #define TYPE_UNKNOWN 50
 
-class screen;
 
 class smoother
 {
@@ -64,7 +63,5 @@ class smoother
 		unsigned char  *mygrid; // our grid to change
 		Sint32 maxx, maxy;   // dimensions of our grid ..
 };
-
-#include "graph.h"
 
 #endif

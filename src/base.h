@@ -361,9 +361,7 @@ void load_map_data(PixieData* whereto);
 char* get_cfg_item(char *section, char *item);
 
 // Functions in game.cpp
-short load_team_list(const char * filename, screen  *myscreen);
 short load_saved_game(const char *filename, screen  *myscreen);
-short save_game(const char *filename, screen  *myscreen);
 
 #define NORMAL_MODE    0     // #defines for walkputbuffer mode type
 #define INVISIBLE_MODE 1     //
@@ -390,22 +388,7 @@ short save_game(const char *filename, screen  *myscreen);
 
 #define ACTION_FOLLOW (char) 1
 
-class PixieData
-{
-    public:
-    
-    unsigned char frames;
-    unsigned char w, h;
-    unsigned char* data;
-    
-    PixieData();
-    PixieData(unsigned char frames, unsigned char w, unsigned char h, unsigned char* data);
-    
-    bool valid() const;
-    
-    void clear();
-    void free();
-};
+#include "pixie_data.h"
 
 PixieData read_pixie_file(const char  * filename);
 

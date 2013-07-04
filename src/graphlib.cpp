@@ -40,36 +40,6 @@ using namespace std;
 // have also been moved to video
 
 
-PixieData::PixieData()
-    : frames(0), w(0), h(0), data(NULL)
-{}
-
-PixieData::PixieData(unsigned char frames, unsigned char w, unsigned char h, unsigned char* data)
-    : frames(frames), w(w), h(h), data(data)
-{}
-
-bool PixieData::valid() const
-{
-    return (data != NULL && frames != 0 && w != 0 && h != 0);
-}
-
-void PixieData::clear()
-{
-    frames = 0;
-    w = 0;
-    h = 0;
-    data = NULL;
-}
-
-void PixieData::free()
-{
-    frames = 0;
-    w = 0;
-    h = 0;
-    delete[] data;
-    data = NULL;
-}
-
 PixieData read_pixie_file(const char  * filename)
 {
 	// Create a file stream, and read the image

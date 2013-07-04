@@ -76,7 +76,7 @@ Uint32 random(Uint32 x)
 
 
 screen::screen(short howmany)
-    : video()
+    : video(), level_data(1)
 {
 	Sint32 i, j;
 	const char *qresult;
@@ -95,13 +95,8 @@ screen::screen(short howmany)
 	weapfree = NULL;
 
 	//  control = NULL;
-	first_guy = NULL;
 	//myradar[0] = myradar[1] = NULL; // very important! :)
 	control_hp = 0;
-	strcpy(current_campaign, "org.openglad.gladiator");
-    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
-	scen_num = 1; // default scenario
 	scenario_type = 0; // default, must kill all
 
 	// Load the palette ..
@@ -123,7 +118,6 @@ screen::screen(short howmany)
 	first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
 	palmode = 0;
-	my_team = 0;
 	topx = 0;
 	topy = 0;
 
@@ -133,14 +127,6 @@ screen::screen(short howmany)
 
 	redrawme = 1;
 	cyclemode = 1; //color cycling on by default
-	score = totalcash = totalscore = 0;
-	for (i=0; i < 4; i++)
-	{
-		m_score[i] = 0;             // For Player-v-Player
-		m_totalcash[i] = 0;
-		m_totalscore[i] = 0;
-	}
-	allied_mode = 0;              // allied mode is off by default
 	par_value = 1;
 
 	for (i=0; i < 30; i++)
@@ -475,20 +461,7 @@ void screen::reset(short howmany)
 
 	redrawme = 1;
 	
-	strcpy(current_campaign, "org.openglad.gladiator");
-	completed_levels.clear();
-    current_levels.clear();
-    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
-	
-
-	score = totalcash = totalscore = 0;
-	for (i=0; i < 4; i++)
-	{
-		m_score[i] = 0;
-		m_totalcash[i] = 0;
-		m_totalscore[i] = 0;
-	}
+	save_data.reset();
 
 	timerstart = query_timer_control();
 	framecount = 0;
@@ -497,13 +470,10 @@ void screen::reset(short howmany)
 	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
 	fxlist = oblist = NULL;
 
-	first_guy = NULL;
 	control_hp = 0;
-	scen_num = 1; // default scenario
 	scenario_type = 0; // default, must kill all
 
 	palmode = 0;
-	my_team = 0;
 	topx = 0;
 	topy = 0;
 
@@ -512,14 +482,6 @@ void screen::reset(short howmany)
 
 	redrawme = 1;
 
-	score = totalcash = totalscore = 0;
-	for (i=0; i < 4; i++)
-	{
-		m_score[i] = 0;
-		m_totalcash[i] = 0;
-		m_totalscore[i] = 0;
-	}
-	allied_mode = 0;              // allied mode is off by default
 	par_value = 1;
 
 	for (i=0; i < 30; i++)
@@ -853,7 +815,7 @@ short screen::act()
 				here->ob->in_act = 0;
 				if (here->ob && !here->ob->dead)
 				{
-					if (here->ob->team_num != my_team &&
+					if (here->ob->team_num != save_data.my_team &&
 					        here->ob->query_order() == ORDER_LIVING)
 						level_done = 0;
 					// Testing .. trying to FORCE foes :)
@@ -880,7 +842,7 @@ short screen::act()
 				here->ob->act();
 				if (here->ob && !here->ob->dead)
 				{
-					if (here->ob->team_num != my_team &&
+					if (here->ob->team_num != save_data.my_team &&
 					        here->ob->query_order() == ORDER_LIVING)
 						level_done = 0;
 				}
@@ -899,7 +861,7 @@ short screen::act()
 			here->ob->act();
 			if (here->ob && !here->ob->dead)
 			{
-				if (here->ob->team_num != my_team &&
+				if (here->ob->team_num != save_data.my_team &&
 				        here->ob->query_order() == ORDER_LIVING)
 					level_done = 0;
 			}
@@ -1427,7 +1389,7 @@ short screen::endgame(short ending, short nextlevel)
 	Uint32 allscore = 0, allbonuscash = 0;
 
 	for (i=0; i < 4; i++)
-		allscore += m_score[i];
+		allscore += save_data.m_score[i];
 
 	if (ending == 1)  // 1 = lose, for some reason
 	{
@@ -1484,7 +1446,7 @@ short screen::endgame(short ending, short nextlevel)
 	{
 		//buffers: we will port the red pal stuff later
 		//buffers: set_palette(redpalette);
-		if (is_level_completed(scen_num)) // this scenario is completed ..
+		if (save_data.is_level_completed(save_data.scen_num)) // this scenario is completed ..
 		{
 			draw_dialog(30, 70, 290, 134, "Traveling On..");
 			// Zardus: FIX: what the hell is this supposed to mean?
@@ -1503,18 +1465,18 @@ short screen::endgame(short ending, short nextlevel)
 		// Save the game status to a temp file (savetemp.gtl)
 		for (i=0; i < 4; i++)
 		{
-			m_totalscore[i] += m_score[i];
-			m_totalcash[i] += (m_score[i]*2);
+			save_data.m_totalscore[i] += save_data.m_score[i];
+			save_data.m_totalcash[i] += (save_data.m_score[i]*2);
 		}
 		for (i=0; i < 4; i++)
 		{
-			bonuscash[i] = (m_score[i] * (TIME_BONUS + ((Sint32)par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((Sint32)par_value * LEVEL_BONUS)/2));
+			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((Sint32)par_value * LEVEL_BONUS)/2));
 			if (bonuscash[i] < 0 || framecount > TIME_BONUS) // || framecount < 0)
 				bonuscash[i] = 0;
-			m_totalcash[i] += bonuscash[i];
+			save_data.m_totalcash[i] += bonuscash[i];
 			allbonuscash += bonuscash[i];
 		}
-		if (is_level_completed(scen_num)) // already won, no bonus
+		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
 		{
 			for (i=0; i < 4; i++)
 				bonuscash[i] = 0;
@@ -1525,10 +1487,10 @@ short screen::endgame(short ending, short nextlevel)
 		buffer_to_screen(0, 0, 320, 200);
 
 		// Save the level to disk ..
-		add_level_completed(current_campaign, scen_num); // this scenario is completed ..
+		save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
-			scen_num = nextlevel;    // Fake jumping to next level ..
-		save_game("save0", this);
+			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
+		save_data.save("save0", this->oblist);
 
 		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
 		// actions
@@ -1755,40 +1717,6 @@ const char* screen::get_scen_title(const char *filename, screen *master)
     }
 	return buffer;
 
-}
-
-bool screen::is_level_completed(int level_index) const
-{
-    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(current_campaign);
-    // Campaign not found?  Then this level is not done.
-    if(e == completed_levels.end())
-        return false;
-    
-    // If the level is listed, then it is completed.
-    std::set<int>::const_iterator f = e->second.find(level_index);
-    return (f != e->second.end());
-}
-
-int screen::get_num_levels_completed(const std::string& campaign) const
-{
-    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(campaign);
-    // Campaign not found?
-    if(e == completed_levels.end())
-        return 0;
-    
-    return e->second.size();
-}
-
-void screen::add_level_completed(const std::string& campaign, int level_index)
-{
-    std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
-    
-    // Campaign not found?  Add it in.
-    if(e == completed_levels.end())
-        e = completed_levels.insert(std::make_pair(campaign, std::set<int>())).first;
-    
-    // Add the completed level
-    e->second.insert(level_index);
 }
 
 //buffers: the file finding and loading code is pretty ugly... i should
@@ -2556,7 +2484,7 @@ walker  * screen::get_new_control()
 		if (here->ob &&
 		        here->ob->query_order() == ORDER_LIVING &&
 		        here->ob->query_act_type() != ACT_CONTROL &&
-		        here->ob->team_num == my_team)
+		        here->ob->team_num == save_data.my_team)
 			break;
 		here = here->next;
 	}

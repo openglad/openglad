@@ -715,8 +715,8 @@ short viewscreen::input(const SDL_Event& event)
 		if (didPlayerPressKey(mynum, KEY_SWITCH, event) && !changedteam[mynum] )
 		{
 			changedteam[mynum] = 1;  // to debounce keys
-			screenp->my_team++;
-			screenp->my_team %= MAX_TEAM;
+			screenp->save_data.my_team++;
+			screenp->save_data.my_team %= MAX_TEAM;
 			tempobj = screenp->oblist;
 			//              control = NULL;
 			control->user = -1;
@@ -724,7 +724,7 @@ short viewscreen::input(const SDL_Event& event)
 
 			while(1)
 			{
-				if ( (tempobj->ob->team_num == screenp->my_team) &&
+				if ( (tempobj->ob->team_num == screenp->save_data.my_team) &&
 				        (tempobj->ob->query_order() == ORDER_LIVING)
 				   )
 					break;  // out of while(1) loop; we found someone
@@ -732,8 +732,8 @@ short viewscreen::input(const SDL_Event& event)
 				if (!tempobj)
 				{
 					tempobj = screenp->oblist;
-					screenp->my_team++;
-					screenp->my_team %= MAX_TEAM;
+					screenp->save_data.my_team++;
+					screenp->save_data.my_team %= MAX_TEAM;
 				}
 			}
 			// By here we know that tempobj->ob is valid

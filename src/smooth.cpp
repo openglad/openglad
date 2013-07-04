@@ -18,6 +18,9 @@
 
 #include "smooth.h"
 
+#include "base.h"
+#include "graph.h"
+
 smoother::smoother()
     : mygrid(NULL), maxx(0), maxy(0)
 {}

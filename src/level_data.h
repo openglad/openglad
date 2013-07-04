@@ -1,16 +1,22 @@
 #ifndef _LEVEL_DATA_H__
 #define _LEVEL_DATA_H__
 
-class LevelData;
-
+#include "SDL.h"
 #include <list>
 #include <string>
-#include "pixie.h"
-#include "loader.h"
-#include "walker.h"
-#include "stats.h"
-#include "smooth.h"
 
+class screen;
+class pixie;
+class pixieN;
+class loader;
+class walker;
+class statistics;
+class oblink;
+class obmap;
+
+#include "smooth.h"
+#include "pixie_data.h"
+#include "pixdefs.h"
 
 class CampaignData
 {

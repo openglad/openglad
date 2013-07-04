@@ -27,10 +27,13 @@
 #include <map>
 #include <string>
 #include <set>
+#include "level_data.h"
+#include "save_data.h"
 
 // Goddamned function doesn't belong in screen, much less as a C style extern!
 //   I'll fix this eventually, if I ever get hold of that part of the code.
 short load_scenario(const char * filename, screen * master);
+
 
 class screen : public video
 {
@@ -82,61 +85,60 @@ class screen : public video
 			return myloader->set_walker(ob, order, family);
 		}
 		const char* get_scen_title(const char *filename, screen *master);
+		bool is_level_completed(int level_index) const;
+		int get_num_levels_completed(const std::string& campaign) const;
+		void add_level_completed(const std::string& campaign, int level_index);
 
+        // General drawing data
+		unsigned char newpalette[768];
+		short palmode;
+		
+		// Level data
+		LevelData level_data;
+		char scenario_title[30]; // used in scenarios v. 6+
 		char scenario_type; // 0 is default
+		char scentext[80][80];                         // Array to hold scenario information
+		char scentextlines;                    // How many lines of text in scenario info
+		short par_value;
+		
+		Sint32 numobs;
+		oblink  *oblist;
+		oblink  *fxlist;  // fx--explosions, etc.
+		oblink  *weaplist;  // weapons
+		loader * myloader;
+		obmap  *myobmap;
+		
+		// Level drawing data
+		PixieData grid;
+		Sint32 pixmaxx,pixmaxy;
+		Sint32 topx, topy;
+		pixieN  *back[PIX_MAX];
+		PixieData pixdata[PIX_MAX];
+		
+		smoother mysmoother;
+		
+		// Save data
+		SaveData save_data;
+		
+		
+		// Game state
+		short control_hp; // last turn's hitpoints
+		char end;
+		signed char timer_wait;
+		short level_done; // set true when all our foes are dead
+		walker * weapfree; //free weapons for re-allocation
+		
+		
+
 		char special_name[NUM_FAMILIES][NUM_SPECIALS][20];
 		char alternate_name[NUM_FAMILIES][NUM_SPECIALS][20];
 		unsigned short enemy_freeze; // stops enemies from acting
 		soundob *soundp;
 		short redrawme;
-		bool is_level_completed(int level_index) const;
-		int get_num_levels_completed(const std::string& campaign) const;
-		void add_level_completed(const std::string& campaign, int level_index);
-		std::map<std::string, std::set<int> > completed_levels;
-		std::map<std::string, int> current_levels;
-		char scentext[80][80];                         // Array to hold scenario information
-		char scentextlines;                    // How many lines of text in scenario info
-
-		unsigned char newpalette[768];
-
-
-		short palmode;
-		short my_team;
-		guy  *first_guy;
-		PixieData grid;
-		Sint32 pixmaxx,pixmaxy;
-		Sint32 topx, topy;
-		short control_hp; // last turn's hitpoints
-		oblink  *oblist;
-		oblink  *fxlist;  // fx--explosions, etc.
-		oblink  *weaplist;  // weapons
-		loader * myloader;
-		char end;
-		pixieN  *back[PIX_MAX];
-		Sint32 numobs;
-		obmap  *myobmap;
-		signed char timer_wait;
-        char current_campaign[41];
-		short scen_num;
-		Uint32 score;
-		Uint32 m_score[4];
-		Uint32 totalcash;
-		Uint32 m_totalcash[4];
-		Uint32 totalscore;
-		Uint32 m_totalscore[4];
 		viewscreen  * viewob[5];
 		short numviews;
 		Uint32 timerstart;
 		Uint32 framecount;
-		walker * weapfree; //free weapons for re-allocation
-		char scenario_title[30]; // used in scenarios v. 6+
-		short allied_mode;
-		short par_value;
-		short level_done; // set true when all our foes are dead
-		
-		PixieData pixdata[PIX_MAX];
-		
-		smoother mysmoother;
 };
 
 #endif
