@@ -25,21 +25,9 @@
 #include "SDL.h"
 #include "parser.h"
 #include "campaign_picker.h"
+#include "level_picker.h"
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
-
-#define SDL_RWread_log(ctx, ptr, size, n) \
-do{ \
-Log("Reading %d bytes\n", (size*n)); \
-SDL_RWread(ctx, ptr, size, n); \
-} while(0)
-
-#define SDL_RWwrite_log(ctx, ptr, size, n) \
-do{ \
-Log("Writing %d bytes\n", (size*n)); \
-SDL_RWwrite(ctx, ptr, size, n); \
-} while(0)
-
 
 #define DOWN(x) (72+x*15)
 #define VIEW_DOWN(x) (10+x*20)
@@ -2691,57 +2679,57 @@ Sint32 save_team_list(const char * filename)
 		return 0;
 
 	// Write id header
-	SDL_RWwrite_log(outfile, temptext, 3, 1);
+	SDL_RWwrite(outfile, temptext, 3, 1);
 
 	// Write version number
-	SDL_RWwrite_log(outfile, &temp_version, 1, 1);
+	SDL_RWwrite(outfile, &temp_version, 1, 1);
 
 	// Versions 7+ include a mark for registered or not
 	temp_registered = 0;
 	temp_registered = 1;
-	SDL_RWwrite_log(outfile, &temp_registered, 2, 1);
+	SDL_RWwrite(outfile, &temp_registered, 2, 1);
 
 	// Write the saved game name
 	strcpy(savedgame, save_file);  // save_file is global, 20-char name
 	for (i=strlen(savedgame); i < 40; i++)
 		savedgame[i] = 0;
-	SDL_RWwrite_log(outfile, savedgame, 40, 1);
+	SDL_RWwrite(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
-	SDL_RWwrite_log(outfile, current_campaign, 40, 1);
+	SDL_RWwrite(outfile, current_campaign, 40, 1);
 
 	// Write scenario number
-	SDL_RWwrite_log(outfile, &next_scenario, 2, 1);
+	SDL_RWwrite(outfile, &next_scenario, 2, 1);
 
 	// Write cash
-	SDL_RWwrite_log(outfile, &newcash, 4, 1);
+	SDL_RWwrite(outfile, &newcash, 4, 1);
 	// Write score
-	SDL_RWwrite_log(outfile, &newscore, 4, 1);
+	SDL_RWwrite(outfile, &newscore, 4, 1);
 
 	// Versions 6+ have a score for each possible team
 	for (i=0; i < 4; i++)
 	{
 		newcash = money[i];
-		SDL_RWwrite_log(outfile, &newcash, 4, 1);
+		SDL_RWwrite(outfile, &newcash, 4, 1);
 		newscore = score[i];
-		SDL_RWwrite_log(outfile, &newscore, 4, 1);
+		SDL_RWwrite(outfile, &newscore, 4, 1);
 	}
 
 	// Versions 7+ include the allied mode information
 	temp_allied = myscreen->save_data.allied_mode;
-	SDL_RWwrite_log(outfile, &temp_allied, 2, 1);
+	SDL_RWwrite(outfile, &temp_allied, 2, 1);
 
 	// Determine size of team list ...
 	listsize = teamsize;
 
-	SDL_RWwrite_log(outfile, &listsize, 2, 1);
+	SDL_RWwrite(outfile, &listsize, 2, 1);
 
 	//write number of players
 	Log("Writing playermode: %u\n", temp_playermode);
-	SDL_RWwrite_log(outfile, &temp_playermode,1,1);
+	SDL_RWwrite(outfile, &temp_playermode,1,1);
 
 	// Write the reserved area, 31 bytes
-	SDL_RWwrite_log(outfile, filler, 31, 1);
+	SDL_RWwrite(outfile, filler, 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	for (i=0; i < MAXTEAM; i++)
@@ -2775,25 +2763,25 @@ Sint32 save_team_list(const char * filename)
 			temp_teamnum = here->teamnum; // v.5+
 
 			// Now write all those values
-			SDL_RWwrite_log(outfile, &temp_order, 1, 1);
-			SDL_RWwrite_log(outfile, &temp_family,1, 1);
-			SDL_RWwrite_log(outfile, guyname, 12, 1);
-			SDL_RWwrite_log(outfile, &temp_str, 2, 1);
-			SDL_RWwrite_log(outfile, &temp_dex, 2, 1);
-			SDL_RWwrite_log(outfile, &temp_con, 2, 1);
-			SDL_RWwrite_log(outfile, &temp_int, 2, 1);
-			SDL_RWwrite_log(outfile, &temp_arm, 2, 1);
-			SDL_RWwrite_log(outfile, &temp_lev, 2, 1);
-			SDL_RWwrite_log(outfile, &temp_exp, 4, 1);
-			SDL_RWwrite_log(outfile, &temp_kills, 2, 1);
-			SDL_RWwrite_log(outfile, &temp_level_kills, 4, 1);
-			SDL_RWwrite_log(outfile, &temp_td, 4, 1); // v.4+
-			SDL_RWwrite_log(outfile, &temp_th, 4, 1); // v.4+
-			SDL_RWwrite_log(outfile, &temp_ts, 4, 1); // v.4+
-			SDL_RWwrite_log(outfile, &temp_teamnum, 2, 1); // v.5+
+			SDL_RWwrite(outfile, &temp_order, 1, 1);
+			SDL_RWwrite(outfile, &temp_family,1, 1);
+			SDL_RWwrite(outfile, guyname, 12, 1);
+			SDL_RWwrite(outfile, &temp_str, 2, 1);
+			SDL_RWwrite(outfile, &temp_dex, 2, 1);
+			SDL_RWwrite(outfile, &temp_con, 2, 1);
+			SDL_RWwrite(outfile, &temp_int, 2, 1);
+			SDL_RWwrite(outfile, &temp_arm, 2, 1);
+			SDL_RWwrite(outfile, &temp_lev, 2, 1);
+			SDL_RWwrite(outfile, &temp_exp, 4, 1);
+			SDL_RWwrite(outfile, &temp_kills, 2, 1);
+			SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
+			SDL_RWwrite(outfile, &temp_td, 4, 1); // v.4+
+			SDL_RWwrite(outfile, &temp_th, 4, 1); // v.4+
+			SDL_RWwrite(outfile, &temp_ts, 4, 1); // v.4+
+			SDL_RWwrite(outfile, &temp_teamnum, 2, 1); // v.5+
 
 			// And the filler
-			SDL_RWwrite_log(outfile, filler, 8, 1);
+			SDL_RWwrite(outfile, filler, 8, 1);
 
 		} // end of found valid guy in slot
 	}
@@ -2810,29 +2798,29 @@ Sint32 save_team_list(const char * filename)
     
 	// Number of campaigns
 	short num_campaigns = completed_levels.size();
-    SDL_RWwrite_log(outfile, &num_campaigns, 2, 1);
+    SDL_RWwrite(outfile, &num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
         // Campaign ID
         char campaign[41];
         memset(campaign, 0, 41);
         strcpy(campaign, e->first.c_str());
-        SDL_RWwrite_log(outfile, campaign, 1, 40);
+        SDL_RWwrite(outfile, campaign, 1, 40);
         
         short index = 1;
         std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
         if(g != current_levels.end())
             index = g->second;
-        SDL_RWwrite_log(outfile, &index, 2, 1);
+        SDL_RWwrite(outfile, &index, 2, 1);
         
         // Number of levels
         short num_levels = e->second.size();
-        SDL_RWwrite_log(outfile, &num_levels, 2, 1);
+        SDL_RWwrite(outfile, &num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
         {
             // Level index
             short index = *f;
-            SDL_RWwrite_log(outfile, &index, 2, 1);
+            SDL_RWwrite(outfile, &index, 2, 1);
         }
     }
 
@@ -2964,7 +2952,7 @@ Sint32 load_team_list_one(const char * filename)
 	}
 
 	// Read id header
-	SDL_RWread_log(infile, temptext, 3, 1);
+	SDL_RWread(infile, temptext, 3, 1);
 	if ( strcmp(temptext,"GTL"))
 	{
 	    SDL_RWclose(infile);
@@ -2974,12 +2962,12 @@ Sint32 load_team_list_one(const char * filename)
 	}
 
 	// Read version number
-	SDL_RWread_log(infile, &temp_version, 1, 1);
+	SDL_RWread(infile, &temp_version, 1, 1);
 
 	// Versions 7+ have a registered mark ..
 	if (temp_version >= 7)
 	{
-		SDL_RWread_log(infile, &temp_registered, 2, 1);
+		SDL_RWread(infile, &temp_registered, 2, 1);
 	}
 
 	// Do stuff based on the version number
@@ -2987,7 +2975,7 @@ Sint32 load_team_list_one(const char * filename)
 	{
 		if (temp_version >= 2)
 		{
-			SDL_RWread_log(infile, savedgame, 40, 1);
+			SDL_RWread(infile, savedgame, 40, 1);
 		}
 		else
 		{
@@ -3004,7 +2992,7 @@ Sint32 load_team_list_one(const char * filename)
     std::string old_campaign = current_campaign;
 	if (temp_version >= 8)
 	{
-		SDL_RWread_log(infile, temp_campaign, 1, 40);
+		SDL_RWread(infile, temp_campaign, 1, 40);
 		temp_campaign[40] = '\0';
 		if(strlen(temp_campaign) > 3)
             strcpy(current_campaign, temp_campaign);
@@ -3013,14 +3001,14 @@ Sint32 load_team_list_one(const char * filename)
 	}
 
 	// Read scenario number
-	SDL_RWread_log(infile, &next_scenario, 2, 1);
+	SDL_RWread(infile, &next_scenario, 2, 1);
 	scen_level = next_scenario;
 
 	// Read cash
-	SDL_RWread_log(infile, &newcash, 4, 1);
+	SDL_RWread(infile, &newcash, 4, 1);
 	money[0] = newcash;
 	// Read score
-	SDL_RWread_log(infile, &newscore, 4, 1);
+	SDL_RWread(infile, &newscore, 4, 1);
 	score[0] = newscore;
 
 	// Versions 6+ have a score for each possible team, 0-3
@@ -3028,9 +3016,9 @@ Sint32 load_team_list_one(const char * filename)
 	{
 		for (i=0; i < 4; i++)
 		{
-			SDL_RWread_log(infile, &newcash, 4, 1);
+			SDL_RWread(infile, &newcash, 4, 1);
 			money[i] = newcash;
-			SDL_RWread_log(infile, &newscore, 4, 1);
+			SDL_RWread(infile, &newscore, 4, 1);
 			score[i] = newscore;
 		}
 	}
@@ -3038,15 +3026,15 @@ Sint32 load_team_list_one(const char * filename)
 	// Versions 7+ have the allied information ..
 	if (temp_version >= 7)
 	{
-		SDL_RWread_log(infile, &temp_allied, 2, 1);
+		SDL_RWread(infile, &temp_allied, 2, 1);
 		myscreen->save_data.allied_mode = temp_allied;
 	}
 
 	// Determine size of team list ...
-	SDL_RWread_log(infile, &listsize, 2, 1);
+	SDL_RWread(infile, &listsize, 2, 1);
 
 	//read number of players
-	SDL_RWread_log(infile, &temp_playermode, 1, 1);
+	SDL_RWread(infile, &temp_playermode, 1, 1);
 	playermode = temp_playermode;
 	if(playermode == 0 || playermode > 4)
     {
@@ -3055,7 +3043,7 @@ Sint32 load_team_list_one(const char * filename)
     }
 
 	// Read the reserved area, 31 bytes
-	SDL_RWread_log(infile, filler, 31, 1);
+	SDL_RWread(infile, filler, 31, 1);
 
 	// Delete any team in memory ..
 	for (i=0; i < MAXTEAM; i++)
@@ -3086,25 +3074,25 @@ Sint32 load_team_list_one(const char * filename)
 		for (i=strlen(guyname); i < 12; i++)
 			guyname[i] = 0;
 		// Now write all those values
-		SDL_RWread_log(infile, &temp_order, 1, 1);
-		SDL_RWread_log(infile, &temp_family,1, 1);
-		SDL_RWread_log(infile, guyname, 12, 1);
-		SDL_RWread_log(infile, &temp_str, 2, 1);
-		SDL_RWread_log(infile, &temp_dex, 2, 1);
-		SDL_RWread_log(infile, &temp_con, 2, 1);
-		SDL_RWread_log(infile, &temp_int, 2, 1);
-		SDL_RWread_log(infile, &temp_arm, 2, 1);
-		SDL_RWread_log(infile, &temp_lev, 2, 1);
-		SDL_RWread_log(infile, &temp_exp, 4, 1);
-		SDL_RWread_log(infile, &temp_kills, 2, 1);
-		SDL_RWread_log(infile, &temp_level_kills, 4, 1);
-		SDL_RWread_log(infile, &temp_td, 4, 1); // v.4+
-		SDL_RWread_log(infile, &temp_th, 4, 1); // v.4+
-		SDL_RWread_log(infile, &temp_ts, 4, 1); // v.4+
-		SDL_RWread_log(infile, &temp_teamnum, 2, 1); // v.5+
+		SDL_RWread(infile, &temp_order, 1, 1);
+		SDL_RWread(infile, &temp_family,1, 1);
+		SDL_RWread(infile, guyname, 12, 1);
+		SDL_RWread(infile, &temp_str, 2, 1);
+		SDL_RWread(infile, &temp_dex, 2, 1);
+		SDL_RWread(infile, &temp_con, 2, 1);
+		SDL_RWread(infile, &temp_int, 2, 1);
+		SDL_RWread(infile, &temp_arm, 2, 1);
+		SDL_RWread(infile, &temp_lev, 2, 1);
+		SDL_RWread(infile, &temp_exp, 4, 1);
+		SDL_RWread(infile, &temp_kills, 2, 1);
+		SDL_RWread(infile, &temp_level_kills, 4, 1);
+		SDL_RWread(infile, &temp_td, 4, 1); // v.4+
+		SDL_RWread(infile, &temp_th, 4, 1); // v.4+
+		SDL_RWread(infile, &temp_ts, 4, 1); // v.4+
+		SDL_RWread(infile, &temp_teamnum, 2, 1); // v.5+
 
 		// And the filler
-		SDL_RWread_log(infile, filler, 8, 1);
+		SDL_RWread(infile, filler, 8, 1);
 		// Now set the values ..
 		tempguy->family       = temp_family;
 		strcpy(tempguy->name,guyname);
@@ -3170,9 +3158,9 @@ Sint32 load_team_list_one(const char * filename)
         // First, clear the status ..
         memset( levels, 0, 500 );
         if (temp_version >= 5)
-            SDL_RWread_log(infile, levels, 500, 1);
+            SDL_RWread(infile, levels, 500, 1);
         else
-            SDL_RWread_log(infile, levels, 200, 1);
+            SDL_RWread(infile, levels, 200, 1);
         
         // Guaranteed to be the default campaign if version < 8
         for(int i = 0; i < 500; i++)
@@ -3187,24 +3175,24 @@ Sint32 load_team_list_one(const char * filename)
         char campaign[41];
         short num_levels = 0;
         // How many campaigns are stored?
-        SDL_RWread_log(infile, &num_campaigns, 2, 1);
+        SDL_RWread(infile, &num_campaigns, 2, 1);
         for(int i = 0; i < num_campaigns; i++)
         {
             // Get the campaign ID (40 chars)
-            SDL_RWread_log(infile, campaign, 1, 40);
+            SDL_RWread(infile, campaign, 1, 40);
             campaign[40] = '\0';
             
             short index = 1;
             // Get the current level for this campaign
-            SDL_RWread_log(infile, &index, 2, 1);
+            SDL_RWread(infile, &index, 2, 1);
             current_levels[campaign] = index;
             
             // Get the number of cleared levels
-            SDL_RWread_log(infile, &num_levels, 2, 1);
+            SDL_RWread(infile, &num_levels, 2, 1);
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
-                SDL_RWread_log(infile, &index, 2, 1);
+                SDL_RWread(infile, &index, 2, 1);
                 
                 // Add it to our list
                 add_level_completed(completed_levels, campaign, index);
@@ -3252,7 +3240,7 @@ const char* get_saved_name(const char * filename)
 	}
 
 	// Read id header
-	SDL_RWread_log(infile, temptext, 3, 1);
+	SDL_RWread(infile, temptext, 3, 1);
 	if ( strcmp(temptext,"GTL"))
 	{
 	    SDL_RWclose(infile);
@@ -3261,14 +3249,14 @@ const char* get_saved_name(const char * filename)
 	}
 
 	// Read version number
-	SDL_RWread_log(infile, &temp_version, 1, 1);
+	SDL_RWread(infile, &temp_version, 1, 1);
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
 		{
 			if (temp_version >= 7)
-				SDL_RWread_log(infile, &temp_registered, 2, 1);
-			SDL_RWread_log(infile, savedgame, 40, 1);
+				SDL_RWread(infile, &temp_registered, 2, 1);
+			SDL_RWread(infile, savedgame, 40, 1);
 		}
 		else
 		{
@@ -3536,1305 +3524,638 @@ void clear_levels()
 
 //new functions
 Sint32 return_menu(Sint32 arg)
-           {
-	           return arg;
-           }
+{
+   return arg;
+}
 
-           Sint32 create_detail_menu(guy *arg1)
-           {
+Sint32 create_detail_menu(guy *arg1)
+{
 #define DETAIL_LM 11             // left edge margin ..
 #define DETAIL_MM 164            // center margin
 #define DETAIL_LD(x) (90+(x*6))  // vertical line for text
 #define WL(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, DARK_BLUE, 1)
 #define WR(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, DARK_BLUE, 1)
 
-	           Sint32 retvalue = 0;
-	           guy *thisguy;
-	           Sint32 start_time = query_timer();
-	           Sint32 *detailmouse;
+   Sint32 retvalue = 0;
+   guy *thisguy;
+   Sint32 start_time = query_timer();
+   Sint32 *detailmouse;
 
-	           release_mouse();
+   release_mouse();
 
-			myscreen->clearfontbuffer();
+   myscreen->clearfontbuffer();
 
-	           if (localbuttons)
-		           delete localbuttons;
-	           localbuttons = buttonmenu(detailed, 1, 0);
+   if (localbuttons)
+       delete localbuttons;
+   localbuttons = buttonmenu(detailed, 1, 0);
 
-	           if (arg1)
-		           thisguy = arg1;
-	           else
-		           thisguy = ourteam[editguy];
+   if (arg1)
+       thisguy = arg1;
+   else
+       thisguy = ourteam[editguy];
 
-	           myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
-	           myscreen->draw_text_bar(36, 10, 124, 22);
-	           mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
-	                            current_guy->name,(unsigned char) DARK_BLUE, 1);
-	           myscreen->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
-	           myscreen->draw_text_bar(160, 90, 162, 160);
+   myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
+   myscreen->draw_text_bar(36, 10, 124, 22);
+   mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
+                    current_guy->name,(unsigned char) DARK_BLUE, 1);
+   myscreen->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
+   myscreen->draw_text_bar(160, 90, 162, 160);
 
-	           // Text stuff, determined by character class & level
-	           switch (thisguy->family)
-	           {
-		           case FAMILY_SOLDIER:
-			           sprintf(message, "Level %d soldier has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things (charge)
-			           WL(2, " Charge");
-			           WL(3, "  Charge causes you to ");
-			           WL(4, "  run forward, damaging");
-			           WL(5, "  anything in your way.");
-			           // Level 4 things (boomerang)
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Boomerang");
-				           WL(8, "  The boomerang flies  ");
-				           WL(9, "  out in a spiral,     ");
-				           WL(10,"  hurting nearby foes. ");
-			           }
-			           // Level 7 things (whirl)
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Whirl    ");
-				           WR(1, "  The fighter whirls in");
-				           WR(2, "  a spiral, hurting or ");
-				           WR(3 ,"  stunning melee foes. ");
-			           }
-			           // Level 10 things (disarm)
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, " Disarm   ");
-				           WR(6, "  Cause a melee foe to ");
-				           WR(7, "  temporarily lose the ");
-				           WR(8 ,"  strength of attacks. ");
-			           }
-			           break;
-		           case FAMILY_BARBARIAN:
-			           sprintf(message, "Level %d barbarian has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things (hurl boulder)
-			           WL(2, " Hurl Boulder");
-			           WL(3, "  Throw a massive stone");
-			           WL(4, "  boulder at your      ");
-			           WL(5, "  enemies.             ");
-			           // Level 4 things (exploding boulder)
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Exploding Boulder");
-				           WL(8, "  Hurl a boulder so hard ");
-				           WL(9, "  that it explodes and   ");
-				           WL(10,"  hits foes all around.  ");
-			           }
-			           break;
-		           case FAMILY_ELF:
-			           sprintf(message, "Level %d elf has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things (rocks)
-			           WL(2, " Rocks/Forestwalk");
-			           WL(3, "  Rocks hurls a few rocks");
-			           WL(4, "  at the enemy.  Forest- ");
-			           WL(5, "  walk, dexterity-based, ");
-			           WL(6, "  lets you move in trees.");
-			           // Level 4 things (more rocks)
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " More Rocks");
-				           WL(8, "  Like #1, but these    ");
-				           WL(9, "  rocks bounce off walls");
-				           WL(10,"  and other barricades. ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Lots of Rocks");
-				           WR(1, "  Like #2, but more     ");
-				           WR(2, "  rocks, with a longer  ");
-				           WR(3 ,"  thrown range.         ");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, " MegaRocks");
-				           WR(6, "  This giant handful of ");
-				           WR(7, "  rocks bounces far away");
-				           WR(8 ,"  and packs a big punch.");
-			           }
-			           break;
-		           case FAMILY_ARCHER:
-			           sprintf(message, "Level %d archer has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things
-			           WL(2, " Fire Arrows     ");
-			           WL(3, "  An archer can spin in a");
-			           WL(4, "  circle, firing off a   ");
-			           WL(5, "  ring of flaming bolts. ");
-			           //WL(6, "  lets you move in trees.");
-			           // Level 4 things
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Barrage   ");
-				           WL(8, "  Rather than a single  ");
-				           WL(9, "  bolt, the archer sends");
-				           WL(10,"  3 deadly bolts ahead. ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Exploding Bolt");
-				           WR(1, "  This fatal bolt will  ");
-				           WR(2, "  explode on contact,   ");
-				           WR(3 ,"  dealing death to all. ");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, "          ");
-				           WR(6, "                        ");
-				           WR(7, "                        ");
-				           WR(8 ,"                        ");
-			           }
-			           break;
-		           case FAMILY_MAGE:
-			           sprintf(message, "Level %d Mage has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things
-			           WL(2, " Teleport/Marker ");
-			           WL(3, "  Any mage can teleport  ");
-			           WL(4, "  randomly away easily.  ");
-			           WL(5, "  Leaving a marker for   ");
-			           WL(6, "  anchor requires 75 int.");
-			           // Level 4 things
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Warp Space");
-				           WL(8, "  Twist the fabric of   ");
-				           WL(9, "  space around you to   ");
-				           WL(10,"  deal death to enemies.");
-			           }
-			           // Can we change to archmage?
-			           if (thisguy->level >= 6)
-			           {
-				           sprintf(message,"Level %d Archmage. This",
-				                   (thisguy->level-6)/2+1);
-				           myscreen->draw_dialog(158, 4, 315, 66, "Become ArchMage");
-				           WR(-10,"Your Mage is now of high");
-				           WR( -9,"enough level to become a");
-				           //WR( -8,"Level 1 Archmage. This  ");
-				           WR(-8, message);
-				           WR( -7,"change CANNOT be undone!");
-				           WR( -6," Click here to change.  ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Freeze Time   ");
-				           WR(1, "  Freeze time for all   ");
-				           WR(2, "  but your team and kill");
-				           WR(3 ,"  enemies with ease.    ");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(4, " Energy Wave");
-				           WR(5, "  Send a growing ripple ");
-				           WR(6, "  of energy through     ");
-				           WR(7 ,"  walls and foes.       ");
-			           }
-			           // Level 13 things
-			           if (thisguy->level >= 13)
-			           {
-				           WR(8, " HeartBurst  ");
-				           WR(9, "  Burst your enemies    ");
-				           WR(10,"  into flame. More magic");
-				           WR(11,"  means a bigger effect.");
-			           }
-			           break;
-		           case FAMILY_ARCHMAGE:
-			           sprintf(message, "Level %d ArchMage has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things
-			           WL(2, " Teleport/Marker ");
-			           WL(3, "  Any mage can teleport  ");
-			           WL(4, "  randomly away easily.  ");
-			           WL(5, "  Leaving a marker for   ");
-			           WL(6, "  anchor requires 75 int.");
-			           // Level 4 things
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " HeartBurst/Lightning");
-				           WL(8, "  Burst your enemies    ");
-				           WL(9, "  into flame around you.");
-				           WL(10,"  ALT: Chain lightning  ");
-				           WL(11,"  bounces through foes. ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Summon Image/Sum. Elem.");
-				           WR(1, "  Summon an illusionary ");
-				           WR(2, "  ally to fight for you.");
-				           WR(3 ,"  ALT: Summon a daemon, ");
-				           WR(4 ,"  who uses your stamina.");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, " Mind Control");
-				           WR(6,"  Convert nearby foes to");
-				           WR(7,"  your team, for a time.");
-			           }
-			           break;
-
-		           case FAMILY_CLERIC:
-			           sprintf(message, "Level %d Cleric has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things
-			           WL(2, " Heal            ");
-			           WL(3, "  Heal all teammates who ");
-			           WL(4, "  are close to you, for  ");
-			           WL(5, "  as much as you have SP.");
-			           //WL(6, "  lets you move in trees.");
-			           // Level 4 things
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Raise/Turn Undead");
-				           WL(8, "  Raise the gore of any ");
-				           WL(9, "  victim to a skeleton. ");
-				           WL(10,"  Alternate (turning)   ");
-				           WL(11,"  requires 65 Int.      ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Raise/Turn Ghost");
-				           WR(1, "  A more powerful raise,");
-				           WR(2, "  you can now get ghosts");
-				           WR(3 ,"  to fly and wail.      ");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, " Resurrection");
-				           WR(6, "  The ultimate Healing, ");
-				           WR(7, "  this restores dead    ");
-				           WR(8 ,"  friends to life, or   ");
-				           WR(9 ,"  enemies to undead.    ");
-				           WR(10,"  Beware: this will use ");
-				           WR(11,"  your own EXP to cast! ");
-			           }
-			           break;
-		           case FAMILY_DRUID:
-			           sprintf(message, "Level %d Druid has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things
-			           WL(2, " Plant Tree      ");
-			           WL(3, "  These magical trees    ");
-			           WL(4, "  will resist the enemy, ");
-			           WL(5, "  while allowing friends ");
-			           WL(6, "  to pass.               ");
-			           // Level 4 things
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Summon Faerie");
-				           WL(8, "  This spell brings to  ");
-				           WL(9, "  you a small flying    ");
-				           WL(10,"  faerie to stun foes.  ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Circle of Protection");
-				           WR(1, "  Calls the winds to aid");
-				           WR(2, "  your nearby friends by");
-				           WR(3 ,"  circling them with a  ");
-				           WR(4 ,"  shield of moving air. ");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, " Reveal   ");
-				           WR(6, "  Gives you a magical   ");
-				           WR(7, "  view to see treasure, ");
-				           WR(8 ,"  potions, outposts, and");
-				           WR(9 ,"  invisible enemies.    ");
-			           }
-			           break;
-		           case FAMILY_THIEF:
-			           sprintf(message, "Level %d Thief has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things
-			           WL(2, " Drop Bomb       ");
-			           WL(3, "  Leave a burning bomb to");
-			           WL(4, "  explode and hurt the   ");
-			           WL(5, "  unwary, friend or foe! ");
-			           //WL(6, "  to pass.               ");
-			           // Level 4 things
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Cloak of Darkness");
-				           WL(8, "  Cloak yourself in the ");
-				           WL(9, "  shadows, slipping past");
-				           WL(10,"  your enemies.         ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, " Taunt Enemies       ");
-				           WR(1, "  Beckon your enemies   ");
-				           WR(2, "  to you with jeers, and");
-				           WR(3 ,"  confuse their attack. ");
-				           //WR(4 ,"  shield of moving air. ");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, " Poison Cloud");
-				           WR(6, "  Release a cloud of    ");
-				           WR(7, "  poisonous gas to roam ");
-				           WR(8 ,"  at will and sicken    ");
-				           WR(9 ,"  your foes.            ");
-			           }
-			           break;
-		           case FAMILY_ORC:
-			           sprintf(message, "Level %d Orc has:", thisguy->level);
-			           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-			           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
-			           // Level 1 things
-			           WL(2, " Howl            ");
-			           WL(3, "  Howl in rage, stunning ");
-			           WL(4, "  nearby enemies in their");
-			           WL(5, "  tracks.                ");
-			           //WL(6, "  to pass.               ");
-			           // Level 4 things
-			           if (thisguy->level >= 4)
-			           {
-				           WL(7, " Devour Corpse    ");
-				           WL(8, "  Regain health by      ");
-				           WL(9, "  devouring the corpses ");
-				           WL(10,"  of your foes.         ");
-			           }
-			           // Can we change to orc captain?
-			           if (thisguy->level >= 6)
-			           {
-				           myscreen->draw_dialog(158, 4, 315, 66, "Become Orc Captain");
-				           WR(-10,"Your Orc is now of high ");
-				           WR( -9,"enough level to become a");
-				           WR( -8,"Level 1 Orc Captain. You");
-				           WR( -7,"CANNOT undo this action!");
-				           WR( -6," Click here to change.  ");
-			           }
-			           // Level 7 things
-			           if (thisguy->level >= 7)
-			           {
-				           WR(0, "                     ");
-				           //WR(1, "  Beckon your enemies   ");
-				           //WR(2, "  to you with jeers, and");
-				           //WR(3 ,"  confuse their attack. ");
-				           //WR(4 ,"  shield of moving air. ");
-			           }
-			           // Level 10 things
-			           if (thisguy->level >= 10)
-			           {
-				           WR(5, "             ");
-				           //WR(6, "  Release a cloud of    ");
-				           //WR(7, "  poisonous gas to roam ");
-				           //WR(8 ,"  at will and sicken    ");
-				           //WR(9 ,"  your foes.            ");
-			           }
-			           break;
-		           default:
-			           break;
-	           }
-
-	           show_guy(0, 1);
-	           release_mouse();
-	           myscreen->buffer_to_screen(0, 0, 320, 200);
-	           grab_mouse();
-
-	           leftmouse();
-	           localbuttons->leftclick();
-
-	           while ( !(retvalue & EXIT) )
-	           {
-		           show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
-
-		           if (leftmouse())
-		           {
-			           detailmouse = query_mouse();
-			           if (detailmouse[MOUSE_X] >= 160 &&
-			                   detailmouse[MOUSE_X] <= 315 &&
-			                   detailmouse[MOUSE_Y] >= 4   &&
-			                   detailmouse[MOUSE_Y] <= 66)
-			           {
-				           if (thisguy->family == FAMILY_MAGE &&
-				                   thisguy->level >= 6)
-				           {
-					           // Become an archmage!
-					           thisguy->level = ( (thisguy->level-6) / 2) + 1;
-					           thisguy->exp = calculate_exp(thisguy->level);
-					           thisguy->family = FAMILY_ARCHMAGE;
-					           myscreen->soundp->play_sound(SOUND_EXPLODE);
-					           myscreen->soundp->play_sound(SOUND_EXPLODE);
-					           myscreen->soundp->play_sound(SOUND_EXPLODE);
-					           return REDRAW;
-				           }  // end of mage->archmage
-				           else if (thisguy->family == FAMILY_ORC &&
-				                    thisguy->level >= 5)
-				           {
-					           // Become an Orcish Captain!
-					           thisguy->exp = 0;
-					           thisguy->level = 1;
-					           thisguy->family = FAMILY_BIG_ORC; // fake for now
-					           myscreen->soundp->play_sound(SOUND_DIE1);
-					           myscreen->soundp->play_sound(SOUND_DIE2);
-					           myscreen->soundp->play_sound(SOUND_DIE1);
-					           return REDRAW;
-				           } // end of orc->orc-captain
-			           }
-
-			           retvalue=localbuttons->leftclick();
-		           }
-	           }
-	           return REDRAW;  // back to edit menu
+   // Text stuff, determined by character class & level
+   switch (thisguy->family)
+   {
+       case FAMILY_SOLDIER:
+           sprintf(message, "Level %d soldier has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things (charge)
+           WL(2, " Charge");
+           WL(3, "  Charge causes you to ");
+           WL(4, "  run forward, damaging");
+           WL(5, "  anything in your way.");
+           // Level 4 things (boomerang)
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Boomerang");
+               WL(8, "  The boomerang flies  ");
+               WL(9, "  out in a spiral,     ");
+               WL(10,"  hurting nearby foes. ");
            }
+           // Level 7 things (whirl)
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Whirl    ");
+               WR(1, "  The fighter whirls in");
+               WR(2, "  a spiral, hurting or ");
+               WR(3 ,"  stunning melee foes. ");
+           }
+           // Level 10 things (disarm)
+           if (thisguy->level >= 10)
+           {
+               WR(5, " Disarm   ");
+               WR(6, "  Cause a melee foe to ");
+               WR(7, "  temporarily lose the ");
+               WR(8 ,"  strength of attacks. ");
+           }
+           break;
+       case FAMILY_BARBARIAN:
+           sprintf(message, "Level %d barbarian has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things (hurl boulder)
+           WL(2, " Hurl Boulder");
+           WL(3, "  Throw a massive stone");
+           WL(4, "  boulder at your      ");
+           WL(5, "  enemies.             ");
+           // Level 4 things (exploding boulder)
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Exploding Boulder");
+               WL(8, "  Hurl a boulder so hard ");
+               WL(9, "  that it explodes and   ");
+               WL(10,"  hits foes all around.  ");
+           }
+           break;
+       case FAMILY_ELF:
+           sprintf(message, "Level %d elf has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things (rocks)
+           WL(2, " Rocks/Forestwalk");
+           WL(3, "  Rocks hurls a few rocks");
+           WL(4, "  at the enemy.  Forest- ");
+           WL(5, "  walk, dexterity-based, ");
+           WL(6, "  lets you move in trees.");
+           // Level 4 things (more rocks)
+           if (thisguy->level >= 4)
+           {
+               WL(7, " More Rocks");
+               WL(8, "  Like #1, but these    ");
+               WL(9, "  rocks bounce off walls");
+               WL(10,"  and other barricades. ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Lots of Rocks");
+               WR(1, "  Like #2, but more     ");
+               WR(2, "  rocks, with a longer  ");
+               WR(3 ,"  thrown range.         ");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(5, " MegaRocks");
+               WR(6, "  This giant handful of ");
+               WR(7, "  rocks bounces far away");
+               WR(8 ,"  and packs a big punch.");
+           }
+           break;
+       case FAMILY_ARCHER:
+           sprintf(message, "Level %d archer has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things
+           WL(2, " Fire Arrows     ");
+           WL(3, "  An archer can spin in a");
+           WL(4, "  circle, firing off a   ");
+           WL(5, "  ring of flaming bolts. ");
+           //WL(6, "  lets you move in trees.");
+           // Level 4 things
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Barrage   ");
+               WL(8, "  Rather than a single  ");
+               WL(9, "  bolt, the archer sends");
+               WL(10,"  3 deadly bolts ahead. ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Exploding Bolt");
+               WR(1, "  This fatal bolt will  ");
+               WR(2, "  explode on contact,   ");
+               WR(3 ,"  dealing death to all. ");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(5, "          ");
+               WR(6, "                        ");
+               WR(7, "                        ");
+               WR(8 ,"                        ");
+           }
+           break;
+       case FAMILY_MAGE:
+           sprintf(message, "Level %d Mage has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things
+           WL(2, " Teleport/Marker ");
+           WL(3, "  Any mage can teleport  ");
+           WL(4, "  randomly away easily.  ");
+           WL(5, "  Leaving a marker for   ");
+           WL(6, "  anchor requires 75 int.");
+           // Level 4 things
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Warp Space");
+               WL(8, "  Twist the fabric of   ");
+               WL(9, "  space around you to   ");
+               WL(10,"  deal death to enemies.");
+           }
+           // Can we change to archmage?
+           if (thisguy->level >= 6)
+           {
+               sprintf(message,"Level %d Archmage. This",
+                       (thisguy->level-6)/2+1);
+               myscreen->draw_dialog(158, 4, 315, 66, "Become ArchMage");
+               WR(-10,"Your Mage is now of high");
+               WR( -9,"enough level to become a");
+               //WR( -8,"Level 1 Archmage. This  ");
+               WR(-8, message);
+               WR( -7,"change CANNOT be undone!");
+               WR( -6," Click here to change.  ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Freeze Time   ");
+               WR(1, "  Freeze time for all   ");
+               WR(2, "  but your team and kill");
+               WR(3 ,"  enemies with ease.    ");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(4, " Energy Wave");
+               WR(5, "  Send a growing ripple ");
+               WR(6, "  of energy through     ");
+               WR(7 ,"  walls and foes.       ");
+           }
+           // Level 13 things
+           if (thisguy->level >= 13)
+           {
+               WR(8, " HeartBurst  ");
+               WR(9, "  Burst your enemies    ");
+               WR(10,"  into flame. More magic");
+               WR(11,"  means a bigger effect.");
+           }
+           break;
+       case FAMILY_ARCHMAGE:
+           sprintf(message, "Level %d ArchMage has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things
+           WL(2, " Teleport/Marker ");
+           WL(3, "  Any mage can teleport  ");
+           WL(4, "  randomly away easily.  ");
+           WL(5, "  Leaving a marker for   ");
+           WL(6, "  anchor requires 75 int.");
+           // Level 4 things
+           if (thisguy->level >= 4)
+           {
+               WL(7, " HeartBurst/Lightning");
+               WL(8, "  Burst your enemies    ");
+               WL(9, "  into flame around you.");
+               WL(10,"  ALT: Chain lightning  ");
+               WL(11,"  bounces through foes. ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Summon Image/Sum. Elem.");
+               WR(1, "  Summon an illusionary ");
+               WR(2, "  ally to fight for you.");
+               WR(3 ,"  ALT: Summon a daemon, ");
+               WR(4 ,"  who uses your stamina.");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(5, " Mind Control");
+               WR(6,"  Convert nearby foes to");
+               WR(7,"  your team, for a time.");
+           }
+           break;
 
-           
-           
-           
-           
-           // scenbrowse stuff
-           
+       case FAMILY_CLERIC:
+           sprintf(message, "Level %d Cleric has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things
+           WL(2, " Heal            ");
+           WL(3, "  Heal all teammates who ");
+           WL(4, "  are close to you, for  ");
+           WL(5, "  as much as you have SP.");
+           //WL(6, "  lets you move in trees.");
+           // Level 4 things
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Raise/Turn Undead");
+               WL(8, "  Raise the gore of any ");
+               WL(9, "  victim to a skeleton. ");
+               WL(10,"  Alternate (turning)   ");
+               WL(11,"  requires 65 Int.      ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Raise/Turn Ghost");
+               WR(1, "  A more powerful raise,");
+               WR(2, "  you can now get ghosts");
+               WR(3 ,"  to fly and wail.      ");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(5, " Resurrection");
+               WR(6, "  The ultimate Healing, ");
+               WR(7, "  this restores dead    ");
+               WR(8 ,"  friends to life, or   ");
+               WR(9 ,"  enemies to undead.    ");
+               WR(10,"  Beware: this will use ");
+               WR(11,"  your own EXP to cast! ");
+           }
+           break;
+       case FAMILY_DRUID:
+           sprintf(message, "Level %d Druid has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things
+           WL(2, " Plant Tree      ");
+           WL(3, "  These magical trees    ");
+           WL(4, "  will resist the enemy, ");
+           WL(5, "  while allowing friends ");
+           WL(6, "  to pass.               ");
+           // Level 4 things
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Summon Faerie");
+               WL(8, "  This spell brings to  ");
+               WL(9, "  you a small flying    ");
+               WL(10,"  faerie to stun foes.  ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Circle of Protection");
+               WR(1, "  Calls the winds to aid");
+               WR(2, "  your nearby friends by");
+               WR(3 ,"  circling them with a  ");
+               WR(4 ,"  shield of moving air. ");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(5, " Reveal   ");
+               WR(6, "  Gives you a magical   ");
+               WR(7, "  view to see treasure, ");
+               WR(8 ,"  potions, outposts, and");
+               WR(9 ,"  invisible enemies.    ");
+           }
+           break;
+       case FAMILY_THIEF:
+           sprintf(message, "Level %d Thief has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things
+           WL(2, " Drop Bomb       ");
+           WL(3, "  Leave a burning bomb to");
+           WL(4, "  explode and hurt the   ");
+           WL(5, "  unwary, friend or foe! ");
+           //WL(6, "  to pass.               ");
+           // Level 4 things
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Cloak of Darkness");
+               WL(8, "  Cloak yourself in the ");
+               WL(9, "  shadows, slipping past");
+               WL(10,"  your enemies.         ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, " Taunt Enemies       ");
+               WR(1, "  Beckon your enemies   ");
+               WR(2, "  to you with jeers, and");
+               WR(3 ,"  confuse their attack. ");
+               //WR(4 ,"  shield of moving air. ");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(5, " Poison Cloud");
+               WR(6, "  Release a cloud of    ");
+               WR(7, "  poisonous gas to roam ");
+               WR(8 ,"  at will and sicken    ");
+               WR(9 ,"  your foes.            ");
+           }
+           break;
+       case FAMILY_ORC:
+           sprintf(message, "Level %d Orc has:", thisguy->level);
+           mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+           mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+           // Level 1 things
+           WL(2, " Howl            ");
+           WL(3, "  Howl in rage, stunning ");
+           WL(4, "  nearby enemies in their");
+           WL(5, "  tracks.                ");
+           //WL(6, "  to pass.               ");
+           // Level 4 things
+           if (thisguy->level >= 4)
+           {
+               WL(7, " Devour Corpse    ");
+               WL(8, "  Regain health by      ");
+               WL(9, "  devouring the corpses ");
+               WL(10,"  of your foes.         ");
+           }
+           // Can we change to orc captain?
+           if (thisguy->level >= 6)
+           {
+               myscreen->draw_dialog(158, 4, 315, 66, "Become Orc Captain");
+               WR(-10,"Your Orc is now of high ");
+               WR( -9,"enough level to become a");
+               WR( -8,"Level 1 Orc Captain. You");
+               WR( -7,"CANNOT undo this action!");
+               WR( -6," Click here to change.  ");
+           }
+           // Level 7 things
+           if (thisguy->level >= 7)
+           {
+               WR(0, "                     ");
+               //WR(1, "  Beckon your enemies   ");
+               //WR(2, "  to you with jeers, and");
+               //WR(3 ,"  confuse their attack. ");
+               //WR(4 ,"  shield of moving air. ");
+           }
+           // Level 10 things
+           if (thisguy->level >= 10)
+           {
+               WR(5, "             ");
+               //WR(6, "  Release a cloud of    ");
+               //WR(7, "  poisonous gas to roam ");
+               //WR(8 ,"  at will and sicken    ");
+               //WR(9 ,"  your foes.            ");
+           }
+           break;
+       default:
+           break;
+   }
 
+   show_guy(0, 1);
+   release_mouse();
+   myscreen->buffer_to_screen(0, 0, 320, 200);
+   grab_mouse();
 
-#include <list>
-#include <string>
+   leftmouse();
+   localbuttons->leftclick();
 
-#include <cstdio>
-#include <sys/stat.h>
-#include <dirent.h>
+   while ( !(retvalue & EXIT) )
+   {
+       show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
 
-using namespace std;
-
-
-
-
-
-
-
-void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, list<int>& exits)
-{
-    int num = 0;
-    int level_sum = 0;
-    int difficulty_sum = 0;
-    int difficulty_sum_friends = 0;
-    int diff_per_level = 3;
-    
-    int max_level = 0;
-    exits.clear();
-    
-    // Go through objects
-    oblink* fx = screenp->level_data.oblist;
-	while(fx)
-	{
-		if(fx->ob)
-		{
-		    walker* ob = fx->ob;
-		    switch(ob->query_order())
-		    {
-		        case ORDER_LIVING:
-                    if(ob->team_num != 0)
-                    {
-                        num++;
-                        level_sum += ob->stats->level;
-                        difficulty_sum += diff_per_level*ob->stats->level;
-                        if(ob->stats->level > max_level)
-                            max_level = ob->stats->level;
-                    }
-                    else
-                    {
-                        difficulty_sum_friends += diff_per_level*ob->stats->level;
-                    }
-                break;
-		    }
-		}
-		
-		fx = fx->next;
-	}
-	
-	// Go through effects
-	fx = screenp->level_data.fxlist;
-	while(fx)
-	{
-		if(fx->ob)
-		{
-		    walker* ob = fx->ob;
-		    switch(ob->query_order())
-		    {
-                case ORDER_TREASURE:
-                    if(ob->query_family() == FAMILY_EXIT)
-                    {
-                        exits.push_back(ob->stats->level);
-                    }
-                break;
-		    }
-		}
-		
-		fx = fx->next;
-	}
-	
-	*num_enemies = num;
-	*max_enemy_level = max_level;
-	if(num == 0)
-        *average_enemy_level = 0;
-    else
-        *average_enemy_level = level_sum/float(num);
-    
-    *difficulty = difficulty_sum - difficulty_sum_friends;
-    
-    exits.sort();
-    exits.unique();
-}
-
-
-bool isDir(const string& filename)
-{
-    struct stat status;
-    stat(filename.c_str(), &status);
-
-    return (status.st_mode & S_IFDIR);
-}
-
-
-bool sort_scen(const string& first, const string& second)
-{
-    string s1;
-    string s1num;
-    string s2;
-    string s2num;
-    
-    bool gotNum = false;
-    for(string::const_iterator e = first.begin(); e != first.end(); e++)
-    {
-        if(!gotNum && isalpha(*e))
-            s1 += *e;
-        else
-            s1num += *e;
-    }
-    
-    gotNum = false;
-    for(string::const_iterator e = second.begin(); e != second.end(); e++)
-    {
-        if(!gotNum && isalpha(*e))
-            s2 += *e;
-        else
-            s2num += *e;
-    }
-    
-    if(s1 == s2)
-        return (atoi(s1num.c_str()) < atoi(s2num.c_str()));
-    return (first < second);
-}
-
-void load_level_list(char**& level_list, int* level_list_length)
-{
-    // Do some directory browsing
-    list<string> ls = list_files("scen/");
-    for(list<string>::iterator e = ls.begin(); e != ls.end();)
-    {
-        if(e->size() > 4 && e->substr(e->size() - 4, 4) == ".fss")
-        {
-            *e = e->substr(0, e->size() - 4);
-            e++;
-        }
-        else
-            e = ls.erase(e);
-    }
-    
-    ls.sort(sort_scen);
-    
-    *level_list_length = ls.size();
-    level_list = new char*[ls.size()];
-    
-    list<string>::iterator e = ls.begin();
-    for(unsigned int i = 0; i < ls.size(); i++)
-    {
-        level_list[i] = new char[40];
-        strncpy(level_list[i], e->c_str(), 40);
-        e++;
-    }
-}
-
-
-class BrowserEntry
-{
-    public:
-    
-    SDL_Rect mapAreas;
-    radar* radars;
-    int max_enemy_level;
-    float average_enemy_level;
-    int num_enemies;
-    float difficulty;
-    oblink* oblist;
-    oblink* fxlist;
-    oblink* weaplist;
-    char* level_name;
-    list<int> exits;
-    char scentext[80][80];                         // Array to hold scenario information
-    char scentextlines;                    // How many lines of text in scenario info
-    
-    BrowserEntry(screen* screenp, int index, int scen_num);
-    ~BrowserEntry();
-    
-    void draw(screen* screenp, text* loadtext, int scen_num);
-};
-
-void remove_all_objects(screen *master)
-{
-	oblink *fx = master->level_data.fxlist;
-
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
-	}
-	if (fx && fx->ob)
-		delete fx->ob;
-
-	fx = master->level_data.oblist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
-	}
-	if (fx && fx->ob)
-		delete fx->ob;
-
-	fx = master->level_data.weaplist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
-	}
-	if (fx && fx->ob)
-		delete fx->ob;
-
-	master->level_data.numobs = 0;
-} // end remove_all_objects
-
-BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
-{
-    // Clear the level so we can load the next one
-    screenp->level_data.clear();
-    screenp->level_data.id = scen_num;
-    screenp->level_data.load();
-    
-    radar* r = new radar(NULL, screenp, 0);
-    r->start();
-    radars = r;
-    
-
-    int w = radars->xview;
-    int h = radars->yview;
-    
-    mapAreas.w = w;
-    mapAreas.h = h;
-    mapAreas.x = 10;
-    mapAreas.y = 5 + (53 + 12)*index;
-    
-    r->xloc = mapAreas.x + mapAreas.w/2 - w/2;
-    r->yloc = mapAreas.y + 10;
-    
-    
-    getLevelStats(screenp, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
-    
-    // Store this level's objects
-    oblist = screenp->level_data.oblist;
-    screenp->level_data.oblist = NULL;
-    fxlist = screenp->level_data.fxlist;
-    screenp->level_data.fxlist = NULL;
-    weaplist = screenp->level_data.weaplist;
-    screenp->level_data.weaplist = NULL;
-    level_name = new char[24];
-    strncpy(level_name, screenp->level_data.title.c_str(), 23);
-    if(level_name[20] != '\0')
-    {
-        level_name[20] = '.';
-        level_name[21] = '.';
-        level_name[22] = '.';
-        level_name[23] = '\0';
-    }
-    
-    scentextlines = screenp->level_data.description.size();
-    int i = 0;
-    for(std::list<std::string>::iterator e = screenp->level_data.description.begin(); e != screenp->level_data.description.end(); e++)
-    {
-        strncpy(scentext[i], e->c_str(), 80);
-        i++;
-        if(i >= 80)
-            break;
-    }
-}
-
-
-BrowserEntry::~BrowserEntry()
-{
-    // Delete all objects
-    oblink *fx = fxlist;
-
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		fx = fx->next;
-	}
-
-	fx = oblist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		fx = fx->next;
-	}
-
-	fx = weaplist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		fx = fx->next;
-	}
-    
-    delete radars;
-    delete[] level_name;
-}
-
-void BrowserEntry::draw(screen* screenp, text* loadtext, int scen_num)
-{
-    // Set the current objects
-    screenp->level_data.oblist = oblist;
-    screenp->level_data.fxlist = fxlist;
-    screenp->level_data.weaplist = weaplist;
-    
-    int x = radars->xloc;
-    int y = radars->yloc;
-    int w = radars->xview;
-    int h = radars->yview;
-    screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
-    // Draw radar
-    radars->draw();
-    loadtext->write_xy(mapAreas.x, mapAreas.y, level_name, DARK_BLUE, 1);
-    
-    char buf[30];
-    snprintf(buf, 30, "ID: %d", scen_num);
-    loadtext->write_xy(x + w + 5, y, buf, WHITE, 1);
-    snprintf(buf, 30, "Enemies: %d", num_enemies);
-    loadtext->write_xy(x + w + 5, y + 8, buf, WHITE, 1);
-    snprintf(buf, 30, "Max level: %d", max_enemy_level);
-    loadtext->write_xy(x + w + 5, y + 16, buf, WHITE, 1);
-    snprintf(buf, 30, "Avg level: %.1f", average_enemy_level);
-    loadtext->write_xy(x + w + 5, y + 24, buf, WHITE, 1);
-    snprintf(buf, 30, "Difficulty: %.0f", difficulty);
-    loadtext->write_xy(x + w + 5, y + 32, buf, RED, 1);
-    
-    if(exits.size() > 0)
-    {
-        snprintf(buf, 30, "Exits: ");
-        bool first = true;
-        for(list<int>::iterator e = exits.begin(); e != exits.end(); e++)
-        {
-            char buf2[10];
-            snprintf(buf2, 10, (first? "%d" : ", %d"), *e);
-            strncat(buf, buf2, 30);
-            first = false;
-        }
-        if(strlen(buf) > 19)
-        {
-            buf[17] = '.';
-            buf[18] = '.';
-            buf[19] = '.';
-            buf[20] = '\0';
-        }
-        loadtext->write_xy(x + w + 5, y + 40, buf, WHITE, 1);
-    }
-}
-
-
-#define NUM_BROWSE_RADARS 3
-
-// Load a grid or scenario ..
-int browse(screen *screenp)
-{
-    int result = screenp->level_data.id;
-    
-    Uint8* mykeyboard = query_keyboard();
-    
-    // Clear all objects from the current level
-    screenp->level_data.clear();
-    
-	text* loadtext = new text(screenp);
-    
-    // Here are the browser variables
-    BrowserEntry* entries[NUM_BROWSE_RADARS];
-    
-    std::vector<int> level_list = list_levels_v();
-    int level_list_length = level_list.size();
-    
-    // This indexes into the level_list.
-    int current_level_index = 0;
-    
-    // Figure out the list index for the current scen_level, so we can jump straight there.
-    for(int i = 0; i < level_list_length; i++)
-    {
-        if(level_list[i] == scen_level)
-            current_level_index = i;
-    }
-    
-    // Load the radars (minimaps)
-    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-    {
-        if(i < level_list_length)
-            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-        else
-            entries[i] = NULL;
-    }
-    
-    int selected_entry = -1;
-    
-    // Figure out how good the player's army is
-    int army_power = 0;
-	for(int i=0; i<MAXTEAM; i++)
-	{
-		if (ourteam[i])
-		{
-		    army_power += 3*ourteam[i]->level;
-		}
-	}
-    
-    // Buttons
-    Sint16 screenW = 320;
-    Sint16 screenH = 200;
-    SDL_Rect prev = {Sint16(screenW - 150), 20, 30, 10};
-    SDL_Rect next = {Sint16(screenW - 150), Sint16(screenH - 50), 30, 10};
-    SDL_Rect descbox = {Sint16(prev.x - 40), Sint16(prev.y + 15), 185, Uint16(next.y - 10 - (prev.y + prev.h))};
-    
-    SDL_Rect choose = {Sint16(screenW - 50), Sint16(screenH - 30), 30, 10};
-    SDL_Rect cancel = {Sint16(screenW - 100), Sint16(screenH - 30), 38, 10};
-    
-    bool done = false;
-	while (!done)
-	{
-		// Reset the timer count to zero ...
-		reset_timer();
-
-		if (screenp->end)
-			break;
-
-		// Get keys and stuff
-		get_input_events(POLL);
-		
-		// Quit if 'q' is pressed
-		if(mykeyboard[KEYSTATE_q])
-            done = true;
-            
-		if(mykeyboard[KEYSTATE_UP])
-		{
-		    // Scroll up
-		    if(current_level_index > 0)
-		    {
-                selected_entry = -1;
-		    
-                current_level_index--;
-                
-                for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-                {
-                    if(i < level_list_length)
-                    {
-                        delete entries[i];
-                        entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                    }
-                }
-		    }
-            while (mykeyboard[KEYSTATE_UP])
-                get_input_events(WAIT);
-		}
-		if(mykeyboard[KEYSTATE_DOWN])
-		{
-		    // Scroll down
-		    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
-		    {
-                selected_entry = -1;
-		    
-                current_level_index++;
-                
-                for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-                {
-                    if(i < level_list_length)
-                    {
-                        delete entries[i];
-                        entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                    }
-                }
-		    }
-            while (mykeyboard[KEYSTATE_DOWN])
-                get_input_events(WAIT);
-		}
-		
-		// Mouse stuff ..
-		mymouse = query_mouse();
-		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
-		{
-		    while(mymouse[MOUSE_LEFT])
-                get_input_events(WAIT);
-		    
-			int mx = mymouse[MOUSE_X];
-			int my = mymouse[MOUSE_Y];
-			
-		    
-            
-            // Prev
-            if(prev.x <= mx && mx <= prev.x + prev.w
-               && prev.y <= my && my <= prev.y + prev.h)
+       if (leftmouse())
+       {
+           detailmouse = query_mouse();
+           if (detailmouse[MOUSE_X] >= 160 &&
+                   detailmouse[MOUSE_X] <= 315 &&
+                   detailmouse[MOUSE_Y] >= 4   &&
+                   detailmouse[MOUSE_Y] <= 66)
+           {
+               if (thisguy->family == FAMILY_MAGE &&
+                       thisguy->level >= 6)
                {
-                    if(current_level_index > 0)
-                    {
-                        selected_entry = -1;
-                        current_level_index--;
-                        
-                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-                        {
-                            if(i < level_list_length)
-                            {
-                                delete entries[i];
-                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                            }
-                        }
-                    }
-               }
-            // Next
-            else if(next.x <= mx && mx <= next.x + next.w
-               && next.y <= my && my <= next.y + next.h)
+                   // Become an archmage!
+                   thisguy->level = ( (thisguy->level-6) / 2) + 1;
+                   thisguy->exp = calculate_exp(thisguy->level);
+                   thisguy->family = FAMILY_ARCHMAGE;
+                   myscreen->soundp->play_sound(SOUND_EXPLODE);
+                   myscreen->soundp->play_sound(SOUND_EXPLODE);
+                   myscreen->soundp->play_sound(SOUND_EXPLODE);
+                   return REDRAW;
+               }  // end of mage->archmage
+               else if (thisguy->family == FAMILY_ORC &&
+                        thisguy->level >= 5)
                {
-                    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
-                    {
-                        selected_entry = -1;
-                        current_level_index++;
-                        
-                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-                        {
-                            if(i < level_list_length)
-                            {
-                                delete entries[i];
-                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                            }
-                        }
-                    }
-               }
-            // Choose
-			else if(choose.x <= mx && mx <= choose.x + choose.w
-               && choose.y <= my && my <= choose.y + choose.h)
-               {
-                   if(selected_entry != -1)
-                   {
-                       result = level_list[current_level_index + selected_entry];
-                       done = true;
-                       break;
-                   }
-               }
-            // Cancel
-			else if(cancel.x <= mx && mx <= cancel.x + cancel.w
-               && cancel.y <= my && my <= cancel.y + cancel.h)
-               {
-                   done = true;
-                   break;
-               }
-			else
-			{
-                selected_entry = -1;
-                // Select
-                for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-                {
-                    if(i < level_list_length && entries[i] != NULL)
-                    {
-                        int x = entries[i]->radars->xloc;
-                        int y = entries[i]->radars->yloc;
-                        int w = entries[i]->radars->xview;
-                        int h = entries[i]->radars->yview;
-                        SDL_Rect b = {Sint16(x - 2), Sint16(y - 2), Uint16(w + 2), Uint16(h + 2)};
-                        if(b.x <= mx && mx <= b.x+b.w
-                           && b.y <= my && my <= b.y+b.h)
-                           {
-                               selected_entry = i;
-                               break;
-                           }
-                    }
-                }
-			}
-		}
-		
-        
-        // Draw
-        screenp->clearscreen();
-        
-        char buf[20];
-        snprintf(buf, 20, "Army power: %d", army_power);
-        loadtext->write_xy(prev.x + 50, prev.y + 2, buf, RED, 1);
-        
-        screenp->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
-        loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
-        screenp->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
-        loadtext->write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
-        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
-        {
-            screenp->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
-            loadtext->write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
-            loadtext->write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name, DARK_GREEN, 1);
-        }
-        screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
-        loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
-        
-        if(selected_entry != -1)
-        {
-            int i = selected_entry;
-            if(i < level_list_length && entries[i] != NULL)
-            {
-                int x = entries[i]->radars->xloc - 4;
-                int y = entries[i]->radars->yloc - 4;
-                int w = entries[i]->radars->xview + 8;
-                int h = entries[i]->radars->yview + 8;
-                screenp->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
-            }
-        }
-        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-        {
-            if(i < level_list_length && entries[i] != NULL)
-                entries[i]->draw(screenp, loadtext, level_list[current_level_index + i]);
-        }
-        
-        // Description
-        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
-        {
-            screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
-            for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
-            {
-                if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
-                    break;
-                loadtext->write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i], BLACK, 1);
-            }
-        }
-        
-        
-		screenp->buffer_to_screen(0, 0, 320, 200);
-		SDL_Delay(10);
-	}
-	
-    while (mykeyboard[KEYSTATE_q])
-        get_input_events(WAIT);
-	
-    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-    {
-        delete entries[i];
-    }
-    
-    delete loadtext;
-    
-    
-    // Clear all objects from the current level
-    screenp->level_data.clear();
-    
-	return result;
+                   // Become an Orcish Captain!
+                   thisguy->exp = 0;
+                   thisguy->level = 1;
+                   thisguy->family = FAMILY_BIG_ORC; // fake for now
+                   myscreen->soundp->play_sound(SOUND_DIE1);
+                   myscreen->soundp->play_sound(SOUND_DIE2);
+                   myscreen->soundp->play_sound(SOUND_DIE1);
+                   return REDRAW;
+               } // end of orc->orc-captain
+           }
+
+           retvalue=localbuttons->leftclick();
+       }
+   }
+   return REDRAW;  // back to edit menu
 }
-           
-           int get_scen_num_from_filename(const char* name)
-           {
-               if(!name)
-                return -1;
-                
-               const char* n = name;
-               while(isalpha(*n))
-               {
-                   n++;
-               }
-               if(*n == '\0')
-                return -1;
-               else
-                return atoi(n);
-           }
-           
-           
-           Sint32 do_pick_campaign(Sint32 arg1)
-           {
-               pick_campaign(myscreen, myscreen->save_data);
-               return REDRAW;
-           }
-           
-           Sint32 do_set_scen_level(Sint32 arg1)
-           {
-	           static text savetext(myscreen);
-	           Sint32 xloc, yloc, x2loc, y2loc;
-	           Sint32 templevel = scen_level;
-	           Sint32 temptime;
 
-	           xloc = 100;
-	           yloc = 170;
-	           x2loc = 220;
-	           y2loc = 190;
 
-                myscreen->clearfontbuffer(xloc,yloc,x2loc,y2loc);
-               
-	           templevel = browse(myscreen);
-	           myscreen->level_data.id = templevel;
-               if (templevel < 0 || !myscreen->level_data.load())
-               {
-                   myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-                   savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
-                   myscreen->buffer_to_screen(0, 0, 320, 200);
-                   temptime = query_timer();
-                   while(query_timer() < temptime + 100)
-                       ;
-               }
-               else
-               {
-                   myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-                   savetext.write_xy(xloc+15, yloc+4, "LEVEL LOADED", DARK_BLUE, 1);
-                   myscreen->buffer_to_screen(0, 0, 320, 200);
-                   temptime = query_timer();
-                   while(query_timer() < temptime + 100)
-                       ;
-                   scen_level = templevel;
-               }
 
-	           return REDRAW;
-           }
 
-           /*
-           int matherr(struct exception *problem)
-           {
-             // Do nothing
-             return 0;
-           }
-           */
 
-           Sint32 set_difficulty()
-           {
-	           char message[80];
+int get_scen_num_from_filename(const char* name)
+{
+   if(!name)
+    return -1;
+    
+   const char* n = name;
+   while(isalpha(*n))
+   {
+       n++;
+   }
+   if(*n == '\0')
+    return -1;
+   else
+    return atoi(n);
+}
 
-	           current_difficulty = (current_difficulty + 1) % DIFFICULTY_SETTINGS;
-	           sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-	           strcpy(allbuttons[6]->label, message);
 
-	           //allbuttons[6]->vdisplay();
-	           //myscreen->buffer_to_screen(0, 0, 320, 200);
+Sint32 do_pick_campaign(Sint32 arg1)
+{
+   pick_campaign(myscreen, myscreen->save_data);
+   return REDRAW;
+}
 
-	           return OK;
-           }
+Sint32 do_set_scen_level(Sint32 arg1)
+{
+   static text savetext(myscreen);
+   Sint32 xloc, yloc, x2loc, y2loc;
+   Sint32 templevel = scen_level;
+   Sint32 temptime;
 
-           Sint32 change_teamnum(Sint32 arg)
-           {
-	           // Change the team number of the current guy
-	           short current_team;
-	           char  message[80];
+   xloc = 100;
+   yloc = 170;
+   x2loc = 220;
+   y2loc = 190;
 
-	           // What is our current team number?
-	           if (!current_guy)
-		           return 0;
-	           current_team = current_guy->teamnum;
+    myscreen->clearfontbuffer(xloc,yloc,x2loc,y2loc);
+   
+   templevel = pick_level(myscreen);
+   myscreen->level_data.id = templevel;
+   if (templevel < 0 || !myscreen->level_data.load())
+   {
+       myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
+       savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
+       myscreen->buffer_to_screen(0, 0, 320, 200);
+       temptime = query_timer();
+       while(query_timer() < temptime + 100)
+           ;
+   }
+   else
+   {
+       myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
+       savetext.write_xy(xloc+15, yloc+4, "LEVEL LOADED", DARK_BLUE, 1);
+       myscreen->buffer_to_screen(0, 0, 320, 200);
+       temptime = query_timer();
+       while(query_timer() < temptime + 100)
+           ;
+       scen_level = templevel;
+   }
 
-	           // We can be from team 0 (default) to team 3 .. make sure
-	           // we don't exceed this range.
-	           current_team += (short)arg;
-	           current_team %= 4;
+   return REDRAW;
+}
 
-	           // Set our team number ..
-	           current_guy->teamnum = current_team;
+/*
+int matherr(struct exception *problem)
+{
+ // Do nothing
+ return 0;
+}
+*/
 
-	           // Update our button display
-	           sprintf(message, "Playing on Team %d", current_team + 1);
+Sint32 set_difficulty()
+{
+   char message[80];
 
-	           strcpy(allbuttons[18]->label, message);
-	           allbuttons[18]->do_outline = 1;
-	           //allbuttons[18]->vdisplay();
-	           //myscreen->buffer_to_screen(0, 0, 320, 200);
+   current_difficulty = (current_difficulty + 1) % DIFFICULTY_SETTINGS;
+   sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
+   strcpy(allbuttons[6]->label, message);
 
-	           return OK;
-           }
+   //allbuttons[6]->vdisplay();
+   //myscreen->buffer_to_screen(0, 0, 320, 200);
 
-           Sint32 change_hire_teamnum(Sint32 arg)
-           {
-	           // Change the team number of the hiring menu ..
-	           char  message[80];
+   return OK;
+}
 
-	           current_team_num += arg;
-	           current_team_num %= 4;
+Sint32 change_teamnum(Sint32 arg)
+{
+   // Change the team number of the current guy
+   short current_team;
+   char  message[80];
 
-	           // Change our guy, if he exists ..
-	           if (current_guy)
-	           {
-		           current_guy->teamnum = current_team_num;
-	           }
+   // What is our current team number?
+   if (!current_guy)
+       return 0;
+   current_team = current_guy->teamnum;
 
-	           // Update our button display
-	           sprintf(message, "Hiring For Team %d", current_team_num + 1);
+   // We can be from team 0 (default) to team 3 .. make sure
+   // we don't exceed this range.
+   current_team += (short)arg;
+   current_team %= 4;
 
-		myscreen->clearfontbuffer(170, 130, 133, 22);
+   // Set our team number ..
+   current_guy->teamnum = current_team;
 
-	           strcpy(allbuttons[16]->label, message);
-	           allbuttons[16]->vdisplay();
-	           myscreen->buffer_to_screen(0, 0, 320, 200);
+   // Update our button display
+   sprintf(message, "Playing on Team %d", current_team + 1);
 
-	           return OK;
-           }
+   strcpy(allbuttons[18]->label, message);
+   allbuttons[18]->do_outline = 1;
+   //allbuttons[18]->vdisplay();
+   //myscreen->buffer_to_screen(0, 0, 320, 200);
 
-           Sint32 change_allied()
-           {
-	           // Change our allied mode (on or off)
-	           char message[80];
+   return OK;
+}
 
-	           myscreen->save_data.allied_mode += 1;
-	           myscreen->save_data.allied_mode %= 2;
+Sint32 change_hire_teamnum(Sint32 arg)
+{
+   // Change the team number of the hiring menu ..
+   char  message[80];
 
-	           if (myscreen->save_data.allied_mode)
-		           sprintf(message, "PVP: Ally");
-	           else
-		           sprintf(message, "PVP: Enemy");
+   current_team_num += arg;
+   current_team_num %= 4;
 
-	           // Update our button display
-	           strcpy(allbuttons[7]->label, message);
-	           //buffers: allbuttons[7]->vdisplay();
-	           //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
+   // Change our guy, if he exists ..
+   if (current_guy)
+   {
+       current_guy->teamnum = current_team_num;
+   }
 
-	           return OK;
-           }
+   // Update our button display
+   sprintf(message, "Hiring For Team %d", current_team_num + 1);
+
+myscreen->clearfontbuffer(170, 130, 133, 22);
+
+   strcpy(allbuttons[16]->label, message);
+   allbuttons[16]->vdisplay();
+   myscreen->buffer_to_screen(0, 0, 320, 200);
+
+   return OK;
+}
+
+Sint32 change_allied()
+{
+   // Change our allied mode (on or off)
+   char message[80];
+
+   myscreen->save_data.allied_mode += 1;
+   myscreen->save_data.allied_mode %= 2;
+
+   if (myscreen->save_data.allied_mode)
+       sprintf(message, "PVP: Ally");
+   else
+       sprintf(message, "PVP: Enemy");
+
+   // Update our button display
+   strcpy(allbuttons[7]->label, message);
+   //buffers: allbuttons[7]->vdisplay();
+   //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
+
+   return OK;
+}

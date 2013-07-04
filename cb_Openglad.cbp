@@ -529,6 +529,8 @@
 		<Unit filename="src/level_data.cpp" />
 		<Unit filename="src/level_data.h" />
 		<Unit filename="src/level_editor.cpp" />
+		<Unit filename="src/level_picker.cpp" />
+		<Unit filename="src/level_picker.h" />
 		<Unit filename="src/living.cpp" />
 		<Unit filename="src/living.h" />
 		<Unit filename="src/loader.cpp" />
