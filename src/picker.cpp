@@ -43,7 +43,6 @@
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
 
-#define MAXTEAM 24 //max # of guys on a team
 
 #define BUTTON_HEIGHT 15
 
@@ -72,22 +71,13 @@ text  *mytext;
 Sint32 *mymouse;     // hold mouse information
 //char main_dir[80];
 guy  *current_guy;// = new guy();
-Uint32 money[4] = {5000, 5000, 5000, 5000};
-Uint32 score[4] = {0, 0, 0, 0};
-char current_campaign[41];
-Sint32 scen_level = 1;
-std::map<std::string, std::set<int> > completed_levels;
-std::map<std::string, int> current_levels;
+
 char  message[80];
 Sint32 editguy = 0;        // Global for editing guys ..
-unsigned char playermode=1;
 PixieData main_title_logo_data, main_columns_data;
 pixieN  *main_title_logo_pix,*main_columns_pix;
-SDL_RWops *loadgame; //for loading the default game
+
 vbutton * localbuttons; //global so we can delete the buttons anywhere
-guy *ourteam[MAXTEAM];
-Sint32 teamsize = 0;
-char save_file[40] = "SAVED GAME";
 short current_team_num = 0;
 
 Sint32 allowable_guys[] =
@@ -206,9 +196,6 @@ void picker_main(Sint32 argc, char  **argv)
 	for (i=0; i < MAX_BUTTONS; i++)
 		allbuttons[i] = NULL;
 
-	for (i=0; i < MAXTEAM; i++)
-		ourteam[i] = NULL;
-
 	// Get main dir ..
 	//strcpy(main_dir, "");
 
@@ -255,11 +242,11 @@ void picker_main(Sint32 argc, char  **argv)
 	clear_keyboard();
 
 	// Load the current saved game, if it exists .. (save0.gtl)
-	loadgame = open_read_file("save/", "save0.gtl");
+	SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
 	if (loadgame)
 	{
 	    SDL_RWclose(loadgame);
-		load_team_list_one("save0");
+		myscreen->save_data.load("save0");
 	}
 
 	mainmenu(1);
@@ -499,12 +486,12 @@ void view_team(short left, short top, short right, short bottom)
 
 	text_down+=6;
 
-	for(i=0; i<MAXTEAM; i++)
+	for(i=0; i < myscreen->save_data.team_size; i++)
 	{
+	    guy** ourteam = myscreen->save_data.team_list;
 		if (ourteam[i])
 		{
-			if (numguys++ > 24)
-				break;
+			numguys++;
 
 			strcpy(message, ourteam[i]->name);
 			// Pick a nice dark color based on family type
@@ -561,21 +548,21 @@ Sint32 mainmenu(Sint32 arg1)
 
 	tempbuttons = localbuttons;
 	count = 0;
-	if (playermode==4)
+	if (myscreen->save_data.numplayers==4)
 	{
 		allbuttons[2]->do_outline = 1;
 		allbuttons[3]->do_outline = 0;
 		allbuttons[4]->do_outline = 0;
 		allbuttons[5]->do_outline = 0;
 	}
-	else if (playermode==3)
+	else if (myscreen->save_data.numplayers==3)
 	{
 		allbuttons[2]->do_outline = 0;
 		allbuttons[3]->do_outline = 1;
 		allbuttons[4]->do_outline = 0;
 		allbuttons[5]->do_outline = 0;
 	}
-	else if (playermode==2)
+	else if (myscreen->save_data.numplayers==2)
 	{
 		allbuttons[2]->do_outline = 0;
 		allbuttons[3]->do_outline = 0;
@@ -672,7 +659,7 @@ Sint32 mainmenu(Sint32 arg1)
 				//main_columns_pix->next_frame();
 
 
-				if (playermode==4)
+				if (myscreen->save_data.numplayers==4)
 				{
 					allbuttons[2]->do_outline = 1;
 					allbuttons[3]->do_outline = 0;
@@ -683,7 +670,7 @@ Sint32 mainmenu(Sint32 arg1)
 					allbuttons[4]->vdisplay();
 					allbuttons[5]->vdisplay();
 				}
-				else if (playermode==3)
+				else if (myscreen->save_data.numplayers==3)
 				{
 					allbuttons[2]->do_outline = 0;
 					allbuttons[3]->do_outline = 1;
@@ -694,7 +681,7 @@ Sint32 mainmenu(Sint32 arg1)
 					allbuttons[4]->vdisplay();
 					allbuttons[5]->vdisplay();
 				}
-				else if (playermode==2)
+				else if (myscreen->save_data.numplayers==2)
 				{
 					allbuttons[2]->do_outline = 0;
 					allbuttons[3]->do_outline = 0;
@@ -748,7 +735,7 @@ Sint32 mainmenu(Sint32 arg1)
 				main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
 				//main_columns_pix->next_frame();
 				
-				if (playermode==4)
+				if (myscreen->save_data.numplayers==4)
 				{
 					allbuttons[2]->do_outline = 1;
 					allbuttons[3]->do_outline = 0;
@@ -759,7 +746,7 @@ Sint32 mainmenu(Sint32 arg1)
 					allbuttons[4]->vdisplay();
 					allbuttons[5]->vdisplay();
 				}
-				else if (playermode==3)
+				else if (myscreen->save_data.numplayers==3)
 				{
 					allbuttons[2]->do_outline = 0;
 					allbuttons[3]->do_outline = 1;
@@ -770,7 +757,7 @@ Sint32 mainmenu(Sint32 arg1)
 					allbuttons[4]->vdisplay();
 					allbuttons[5]->vdisplay();
 				}
-				else if (playermode==2)
+				else if (myscreen->save_data.numplayers==2)
 				{
 					allbuttons[2]->do_outline = 0;
 					allbuttons[3]->do_outline = 0;
@@ -851,12 +838,12 @@ Sint32 beginmenu(Sint32 arg1)
 
 	for (i=0; i < 4; i++)
 	{
-		money[i] = 5000;
-		score[i] = 0;
+		myscreen->save_data.m_totalcash[i] = 5000;
+		myscreen->save_data.m_totalscore[i] = 0;
 	}
 
-	scen_level = 1;
-	strcpy(current_campaign, "org.openglad.gladiator");
+	myscreen->save_data.scen_num = 1;
+	myscreen->save_data.current_campaign = "org.openglad.gladiator";
 	delete_all();
 	current_guy = NULL;
 	clear_levels();
@@ -1239,17 +1226,17 @@ Sint32 create_buy_menu(Sint32 arg1)
 	mytext->write_xy(240 - (strlen(message)*6/2), 51, message, (unsigned char) RED, 1);
 	myscreen->draw_text_bar(178, 60, 302, 110); // main text box
 	myscreen->draw_text_bar(188, 94, 292, 95); // dividing line
-	sprintf(message, "CASH: %u", money[current_team_num]);
+	sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_team_num]);
 	mytext->write_xy(180, 62, message,(unsigned char) DARK_BLUE, 1);
 	current_cost = calculate_cost();
 	mytext->write_xy(180, 72, "COST: ", DARK_BLUE, 1);
 	sprintf(message, "      %u", current_cost );
-	if (current_cost > money[current_team_num])
+	if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
 		mytext->write_xy(180, 72, message, STAT_CHANGED, 1);
 	else
 		mytext->write_xy(180, 72, message, STAT_COLOR, 1);
 
-	sprintf(message, "TOTAL SCORE: %u", score[current_team_num]);
+	sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_team_num]);
 	mytext->write_xy(180, 102, message,(unsigned char) DARK_BLUE, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	grab_mouse();
@@ -1267,12 +1254,12 @@ Sint32 create_buy_menu(Sint32 arg1)
 		{
 			if (inputkeyboard[KEYSTATE_KP_PLUS])
 			{
-				money[current_team_num] += 1000;
+				myscreen->save_data.m_totalcash[current_team_num] += 1000;
 				retvalue = OK;
 			}
 			if (inputkeyboard[KEYSTATE_KP_MINUS])
 			{
-				money[current_team_num] -= 1000;
+				myscreen->save_data.m_totalcash[current_team_num] -= 1000;
 				retvalue = OK;
 			}
 		}
@@ -1313,17 +1300,17 @@ Sint32 create_buy_menu(Sint32 arg1)
 			mytext->write_xy(240 - (strlen(message)*6/2), 51, message, (unsigned char) RED, 1);
 			myscreen->draw_text_bar(178, 60, 302, 110); // main text box
 			myscreen->draw_text_bar(188, 94, 292, 95); // dividing line
-			sprintf(message, "CASH: %u", money[current_team_num]);
+			sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_team_num]);
 			mytext->write_xy(180, 62, message,(unsigned char) DARK_BLUE, 1);
 			current_cost = calculate_cost();
 			mytext->write_xy(180, 72, "COST: ", DARK_BLUE, 1);
 			sprintf(message, "      %u", current_cost );
-			if (current_cost > money[current_team_num])
+			if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
 				mytext->write_xy(180, 72, message, STAT_CHANGED, 1);
 			else
 				mytext->write_xy(180, 72, message, STAT_COLOR, 1);
 
-			sprintf(message, "TOTAL SCORE: %u", score[current_team_num]);
+			sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_team_num]);
 			mytext->write_xy(180, 102, message,(unsigned char) DARK_BLUE, 1);
 			myscreen->clearfontbuffer(34,8,126-34,24-8);
 			myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
@@ -1415,7 +1402,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
-	if (teamsize < 1)
+	if (myscreen->save_data.team_size < 1)
 		return OK;
 
 	myscreen->clearbuffer();
@@ -1433,7 +1420,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 
 	// Set to first guy on list using global variable ..
 	cycle_team_guy(0);
-	here = ourteam[editguy];
+	here = myscreen->save_data.team_list[editguy];
 
 	linesdown = 0;
 	release_mouse();
@@ -1501,16 +1488,16 @@ Sint32 create_edit_menu(Sint32 arg1)
 	}
 	sprintf(message, " EXPERIENCE: %u", current_guy->exp);
 	mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "CASH: %u", money[current_guy->teamnum]);
+	sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
 	mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
 	current_cost = calculate_cost(here);
 	mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
 	sprintf(message, "      %u", current_cost );
-	if (current_cost > money[current_guy->teamnum])
+	if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
 		mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
 	else
 		mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
-	sprintf(message, "TOTAL SCORE: %u", score[current_guy->teamnum]);
+	sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_guy->teamnum]);
 	mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
 
 	// Display our team setting ..
@@ -1521,6 +1508,8 @@ Sint32 create_edit_menu(Sint32 arg1)
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	grab_mouse();
+	
+	guy** ourteam = myscreen->save_data.team_list;
 
 	while ( !(retvalue & EXIT) )
 	{
@@ -1676,16 +1665,16 @@ Sint32 create_edit_menu(Sint32 arg1)
 			}
 			sprintf(message, " EXPERIENCE: %u", current_guy->exp);
 			mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
-			sprintf(message, "CASH: %u", money[current_guy->teamnum]);
+			sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
 			mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
 			current_cost = calculate_cost(here);
 			mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
 			sprintf(message, "      %u", current_cost );
-			if (current_cost > money[current_guy->teamnum])
+			if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
 				mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
 			else
 				mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
-			sprintf(message, "TOTAL SCORE: %u", score[current_guy->teamnum]);
+			sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_guy->teamnum]);
 			mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
 
 			// Display our team setting ..
@@ -2283,7 +2272,7 @@ void show_guy(Sint32 frames, Sint32 who) // shows the current guy ..
 	if (who == 0) // use current_type of guy
 		newfamily = allowable_guys[current_type];
 	else
-		newfamily = ourteam[editguy]->family;
+		newfamily = myscreen->save_data.team_list[editguy]->family;
 	newfamily = current_guy->family;
 
 	mywalker = myscreen->level_data.myloader->create_walker(ORDER_LIVING,
@@ -2312,18 +2301,20 @@ void show_guy(Sint32 frames, Sint32 who) // shows the current guy ..
 // returns a COPY of him as the function result
 Sint32 cycle_team_guy(Sint32 whichway)
 {
-	if (teamsize < 1)
+	if (myscreen->save_data.team_size < 1)
 		return -1;
-
+    
+    guy** ourteam = myscreen->save_data.team_list;
+    
 	editguy += whichway;
-	if (editguy <0)
+	if (editguy < 0)
 	{
-		editguy += MAXTEAM;
+		editguy += MAX_TEAM_SIZE;
 		while (!ourteam[editguy])
 			editguy--;
 	}
 
-	if (editguy < 0 || editguy >= MAXTEAM)
+	if (editguy < 0 || editguy >= MAX_TEAM_SIZE)
 		editguy = 0;
 
 	if (!whichway && !ourteam[editguy])
@@ -2332,7 +2323,7 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	while (!ourteam[editguy])
 	{
 		editguy += whichway;
-		if (editguy < 0 || editguy >= MAXTEAM)
+		if (editguy < 0 || editguy >= MAX_TEAM_SIZE)
 			editguy = 0;
 	}
 
@@ -2357,13 +2348,15 @@ Sint32 add_guy(guy *newguy)
 {
 	Sint32 i;
 
-	for (i=0; i < MAXTEAM; i++)
-		if (!ourteam[i])
+	for (i=0; i < MAX_TEAM_SIZE; i++)
+    {
+		if (!myscreen->save_data.team_list[i])
 		{
-			ourteam[i] = newguy;
-			teamsize++;
+			myscreen->save_data.team_list[i] = newguy;
+			myscreen->save_data.team_size++;
 			return i;
 		}
+    }
 
 	// failed the case; too many guys
 	return -1;
@@ -2375,7 +2368,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	guy *someguy;
 
 	if (arg)
-		someguy = ourteam[editguy];
+		someguy = myscreen->save_data.team_list[editguy];
 	else
 		someguy = current_guy;
 
@@ -2413,23 +2406,25 @@ Sint32 add_guy(Sint32 ignoreme)
 	static text addtext(myscreen);
 	Sint32 i;
 
-	if (teamsize >= MAXTEAM) // abort abort!
+	if (myscreen->save_data.team_size >= MAX_TEAM_SIZE) // abort abort!
 		return -1;
 
 	if (!current_guy) // we should be adding current_guy
 		return -1;
 
-	if (calculate_cost() > money[current_team_num] || calculate_cost() == 0)
+	if (calculate_cost() > myscreen->save_data.m_totalcash[current_team_num] || calculate_cost() == 0)
 		return OK;
 
-	money[current_team_num] -= calculate_cost();
-
-	for (i=0; i < MAXTEAM; i++)
+	myscreen->save_data.m_totalcash[current_team_num] -= calculate_cost();
+    
+    guy** ourteam = myscreen->save_data.team_list;
+	for (i=0; i < MAX_TEAM_SIZE; i++)
+    {
 		if (!ourteam[i]) // found an empty slot
 		{
 			current_guy->teamnum = current_team_num;
 			ourteam[i] = current_guy;
-			teamsize++;
+			myscreen->save_data.team_size++;
 			current_guy = NULL;
 			release_mouse();
 			myscreen->draw_button(174, 20, 306, 42, 1, 1); // text box
@@ -2465,6 +2460,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			// Return okay status
 			return OK;
 		}
+    }
 
 	return OK;
 }
@@ -2481,7 +2477,7 @@ Sint32 edit_guy(Sint32 arg1)
 	if (!current_guy)
 		return -1;
 
-	here = ourteam[editguy];
+	here = myscreen->save_data.team_list[editguy];
 	if (!here)
 		return -1;  // error case; should never happen
 
@@ -2495,11 +2491,11 @@ Sint32 edit_guy(Sint32 arg1)
 		return OK;
 	}
 
-	if ( (calculate_cost(here) > money[current_guy->teamnum]) ||  // compare cost of here to current_guy
+	if ( (calculate_cost(here) > myscreen->save_data.m_totalcash[current_guy->teamnum]) ||  // compare cost of here to current_guy
 	        (calculate_cost(here) < 0) )
 		return OK;
 
-	money[current_guy->teamnum] -= calculate_cost(here);  // cost of new - old (current_guy - here)
+	myscreen->save_data.m_totalcash[current_guy->teamnum] -= calculate_cost(here);  // cost of new - old (current_guy - here)
 
 	if (here->level != current_guy->level)
 		current_guy->exp = calculate_exp(current_guy->level);
@@ -2516,9 +2512,11 @@ Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 	Sint32 counter = 0;
 	Sint32 i;
 
-	for (i=0; i < MAXTEAM; i++)
-		if (ourteam[i] && ourteam[i]->family == whatfamily)
+	for (i=0; i < MAX_TEAM_SIZE; i++)
+    {
+		if (myscreen->save_data.team_list[i] && myscreen->save_data.team_list[i]->family == whatfamily)
 			counter++;
+    }
 
 	return counter;
 }
@@ -2526,17 +2524,12 @@ Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 Sint32 do_save(Sint32 arg1)
 {
 	char newname[8];
-	char newnum[8];
+	
 	static text savetext(myscreen);
 	Sint32 xloc, yloc, x2loc, y2loc;
 
-	strcpy(newname, "save");
+	snprintf(newname, 8, "save%d",arg1);
 
-	//buffers: PORT: changed itoa to sprintf, might be BUGGY
-	//itoa(arg1, newnum, 10);
-	sprintf(newnum,"%d",arg1);
-
-	strcat(newname, newnum);
 	release_mouse();
 	clear_keyboard();
 	xloc = allbuttons[arg1-1]->xloc;
@@ -2551,10 +2544,11 @@ Sint32 do_save(Sint32 arg1)
 	char* new_text = savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label);
 	if(new_text == NULL)
         new_text = allbuttons[arg1-1]->label;
-	strcpy(save_file, new_text);
 	myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
-	save_team_list(newname);
+	
+	myscreen->save_data.save_name = new_text;
+	myscreen->save_data.save(newname);
 	grab_mouse();
 
 	return REDRAW;
@@ -2563,650 +2557,16 @@ Sint32 do_save(Sint32 arg1)
 Sint32 do_load(Sint32 arg1)
 {
 	char newname[8];
-	char newnum[8];
 
 	// First delete the old team ..
 	delete_all();
 	//Log("Guys deleted: %d\n", delete_all());
 	//commented out debugging done
 	//myscreen->soundp->play_sound(SOUND_YO);
-	strcpy(newname, "save");
+	snprintf(newname, 8, "save%d", arg1);
 
-	//buffers: PORT: changed itoa to sprintf
-	//itoa(arg1, newnum, 10);
-	sprintf(newnum,"%d",arg1);
-
-	strcat(newname, newnum);
-	load_team_list_one(newname);
+	myscreen->save_data.load(newname);
 	return REDRAW;
-}
-
-Sint32 save_team_list(const char * filename)
-{
-	char filler[50];// = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	SDL_RWops  *outfile;
-	char temp_filename[80];
-	char savedgame[40]; // for 38-byte saved game name
-	guy *here;
-	Sint32 i, j;
-
-	char temptext[10];
-	char temp_version = 8;
-	unsigned char temp_playermode = playermode;
-	Sint32 next_scenario = scen_level;
-	Uint32 newcash = money[0];
-	Uint32 newscore = score[0];
-	//  Sint32 numguys;
-	Sint32 listsize;
-
-	char tempname[12] = "FRED";
-	char guyname[12] = "JOE";
-	char temp_order, temp_family;
-	Sint32 temp_str, temp_dex, temp_con;
-	Sint32 temp_int, temp_arm, temp_lev;
-	Uint32 temp_exp;
-	Sint32 temp_kills, temp_level_kills;
-	Sint32 temp_td, temp_th, temp_ts;
-	short temp_teamnum;
-	short temp_allied;
-	short temp_registered;
-
-	outfile = NULL;
-	strcpy(temptext, "GTL");
-	strcpy(filler, "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL");
-
-	// Format of a team list file is:
-	// 3-byte header: 'GTL'
-	// 1-byte version number (from graph.h)
-	// 2-bytes Registered or not          // Version 7+
-	// 40-byte saved game name (version 2 and up only!)
-	// 40-bytes current campaign ID       // Version 8+
-	// 2-bytes (int) = scenario number
-	// 4-bytes (Sint32)= cash (unsigned)
-	// 4-bytes (Sint32)= score (unsigned)
-	// 4-bytes (Sint32)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (Sint32)= score-B (unsigned)  // version 6+
-	// 4-bytes (Sint32)= cash-C (unsigned)
-	// 4-bytes (Sint32)= score-C (unsigned)
-	// 4-bytes (Sint32)= cash-D (unsigned)
-	// 4-bytes (Sint32)= score-D (unsigned)
-	// 2-bytes allied setting              // Version 7+
-	// 2-bytes (int) = # of team members in list
-	// 1-byte number of players
-	// 31-bytes RESERVED
-	// List of n objects, each of 58-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 12-byte name
-	// 2-bytes strength
-	// 2-bytes dexterity
-	// 2-bytes constitution
-	// 2-bytes intelligence
-	// 2-bytes armor
-	// 2-bytes level
-	// 4-bytes Uint32 exp
-	// 2-bytes # kills, v.3+
-	// 4-bytes # level kills, v.3+
-	// 4-bytes total damage done, v.4+
-	// 4-bytes total hits, v.4+
-	// 4-bytes total shots, v.4+
-	// 2-bytes team number, v.5+
-	// 2*4 = 8 bytes RESERVED
-	// List of 500 (max levels) 1-byte scenario status flags  // Versions 1-7
-	// 2-bytes Number of campaigns in list      // Version 8+
-	// List of n campaigns                      // Version 8+
-	//   40-bytes Campaign ID string
-	//   2-bytes Current level in this campaign
-	//   2-bytes Number of level indices in list
-	//   List of n level indices
-	//     2-bytes Level index
-
-	//strcpy(temp_filename, scen_directory);
-	strcpy(temp_filename, filename);
-	strcat(temp_filename, ".gtl"); // gladiator team list
-
-	release_mouse();
-
-	//buffers: PORT: dont need this? _disable(); //disable interrupts
-
-	outfile = open_write_file("save/", temp_filename);
-	//myscreen->restore_ints();
-
-	//buffers: PORT: dont need this? _enable(); //enable interrupts
-	grab_mouse();
-
-	if (!outfile)
-		return 0;
-
-	// Write id header
-	SDL_RWwrite(outfile, temptext, 3, 1);
-
-	// Write version number
-	SDL_RWwrite(outfile, &temp_version, 1, 1);
-
-	// Versions 7+ include a mark for registered or not
-	temp_registered = 0;
-	temp_registered = 1;
-	SDL_RWwrite(outfile, &temp_registered, 2, 1);
-
-	// Write the saved game name
-	strcpy(savedgame, save_file);  // save_file is global, 20-char name
-	for (i=strlen(savedgame); i < 40; i++)
-		savedgame[i] = 0;
-	SDL_RWwrite(outfile, savedgame, 40, 1);
-	
-	// Write current campaign
-	SDL_RWwrite(outfile, current_campaign, 40, 1);
-
-	// Write scenario number
-	SDL_RWwrite(outfile, &next_scenario, 2, 1);
-
-	// Write cash
-	SDL_RWwrite(outfile, &newcash, 4, 1);
-	// Write score
-	SDL_RWwrite(outfile, &newscore, 4, 1);
-
-	// Versions 6+ have a score for each possible team
-	for (i=0; i < 4; i++)
-	{
-		newcash = money[i];
-		SDL_RWwrite(outfile, &newcash, 4, 1);
-		newscore = score[i];
-		SDL_RWwrite(outfile, &newscore, 4, 1);
-	}
-
-	// Versions 7+ include the allied mode information
-	temp_allied = myscreen->save_data.allied_mode;
-	SDL_RWwrite(outfile, &temp_allied, 2, 1);
-
-	// Determine size of team list ...
-	listsize = teamsize;
-
-	SDL_RWwrite(outfile, &listsize, 2, 1);
-
-	//write number of players
-	Log("Writing playermode: %u\n", temp_playermode);
-	SDL_RWwrite(outfile, &temp_playermode,1,1);
-
-	// Write the reserved area, 31 bytes
-	SDL_RWwrite(outfile, filler, 31, 1);
-
-	// Okay, we've written header .. now dump the data ..
-	for (i=0; i < MAXTEAM; i++)
-	{
-		if (ourteam[i])
-		{
-			here = ourteam[i];
-			// Get temp values to be saved
-			temp_order = ORDER_LIVING; // may be changed later
-			temp_family= here->family;
-			// Write name of current guy...
-			if (strlen(here->name))
-				strcpy(guyname, here->name);
-			else
-				strcpy(guyname, tempname);
-			// Set any chars under 12 not used to 0 ..
-			for (j=strlen(guyname); j < 12; j++)
-				guyname[j] = 0;
-			temp_str = here->strength;
-			temp_dex = here->dexterity;
-			temp_con = here->constitution;
-			temp_int = here->intelligence;
-			temp_arm = here->armor;
-			temp_lev = here->level;
-			temp_exp = here->exp;
-			temp_kills = here->kills; // v.3+
-			temp_level_kills = here->level_kills; // v.3+
-			temp_td = here->total_damage; // v.4+
-			temp_th = here->total_hits;   // v.4+
-			temp_ts = here->total_shots;  // v.4+
-			temp_teamnum = here->teamnum; // v.5+
-
-			// Now write all those values
-			SDL_RWwrite(outfile, &temp_order, 1, 1);
-			SDL_RWwrite(outfile, &temp_family,1, 1);
-			SDL_RWwrite(outfile, guyname, 12, 1);
-			SDL_RWwrite(outfile, &temp_str, 2, 1);
-			SDL_RWwrite(outfile, &temp_dex, 2, 1);
-			SDL_RWwrite(outfile, &temp_con, 2, 1);
-			SDL_RWwrite(outfile, &temp_int, 2, 1);
-			SDL_RWwrite(outfile, &temp_arm, 2, 1);
-			SDL_RWwrite(outfile, &temp_lev, 2, 1);
-			SDL_RWwrite(outfile, &temp_exp, 4, 1);
-			SDL_RWwrite(outfile, &temp_kills, 2, 1);
-			SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
-			SDL_RWwrite(outfile, &temp_td, 4, 1); // v.4+
-			SDL_RWwrite(outfile, &temp_th, 4, 1); // v.4+
-			SDL_RWwrite(outfile, &temp_ts, 4, 1); // v.4+
-			SDL_RWwrite(outfile, &temp_teamnum, 2, 1); // v.5+
-
-			// And the filler
-			SDL_RWwrite(outfile, filler, 8, 1);
-
-		} // end of found valid guy in slot
-	}
-
-	// Write the completed levels
-	// Make sure our current level is saved
-	std::map<std::string, int>::iterator cur = current_levels.find(current_campaign);
-	if(cur != current_levels.end())
-    {
-        cur->second = scen_level;
-    }
-    else
-        current_levels.insert(std::make_pair(current_campaign, scen_level));
-    
-	// Number of campaigns
-	short num_campaigns = completed_levels.size();
-    SDL_RWwrite(outfile, &num_campaigns, 2, 1);
-	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
-    {
-        // Campaign ID
-        char campaign[41];
-        memset(campaign, 0, 41);
-        strcpy(campaign, e->first.c_str());
-        SDL_RWwrite(outfile, campaign, 1, 40);
-        
-        short index = 1;
-        std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
-        if(g != current_levels.end())
-            index = g->second;
-        SDL_RWwrite(outfile, &index, 2, 1);
-        
-        // Number of levels
-        short num_levels = e->second.size();
-        SDL_RWwrite(outfile, &num_levels, 2, 1);
-        for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
-        {
-            // Level index
-            short index = *f;
-            SDL_RWwrite(outfile, &index, 2, 1);
-        }
-    }
-
-    SDL_RWclose(outfile);
-	return 1;
-}
-
-
-bool is_level_completed(const std::map<std::string, std::set<int> >& completed_levels, const std::string& campaign, int level_index)
-{
-    std::map<std::string, std::set<int> >::const_iterator e = completed_levels.find(campaign);
-    // Campaign not found?  Then this level is not done.
-    if(e == completed_levels.end())
-        return false;
-    
-    // If the level is listed, then it is completed.
-    std::set<int>::const_iterator f = e->second.find(level_index);
-    return (f != e->second.end());
-}
-
-void add_level_completed(std::map<std::string, std::set<int> >& completed_levels, const std::string& campaign, int level_index)
-{
-    std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
-    
-    // Campaign not found?  Add it in.
-    if(e == completed_levels.end())
-        e = completed_levels.insert(std::make_pair(campaign, std::set<int>())).first;
-    
-    // Add the completed level
-    e->second.insert(level_index);
-}
-
-Sint32 load_team_list_one(const char * filename)
-{
-	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	SDL_RWops  *infile;
-	char temp_filename[80];
-
-	char temptext[10] = "GTL";
-	char savedgame[40];
-	char temp_version = 8;
-	char temp_campaign[41];
-	strcpy(temp_campaign, "org.openglad.gladiator");
-	temp_campaign[40] = '\0';
-	Sint32 next_scenario = 1;
-	Uint32 newcash = money[0];
-	Uint32 newscore = 0;
-	//  Sint32 numguys;
-	Sint32 listsize = 0;
-	Sint32 i;
-	unsigned char temp_playermode;
-
-	char tempname[12] = "FRED";
-	char guyname[12] = "JOE";
-	char temp_order, temp_family;
-
-	Sint32 temp_str, temp_dex, temp_con;
-	Sint32 temp_int, temp_arm, temp_lev;
-	Uint32 temp_exp;
-	guy  *tempguy;
-	Sint32 temp_kills, temp_level_kills;
-	Sint32 temp_td, temp_th, temp_ts;
-	short temp_teamnum;           // v.5+
-	short temp_allied;            // v.7+
-	short temp_registered;        // v.7+
-
-	teamsize = 0;  // reset our current team size; this is added in add_guy
-
-	// Format of a team list file is:
-	// 3-byte header: 'GTL'
-	// 1-byte version number (from graph.h)
-	// 2-bytes registered mark            // Versions 7+
-	// 40-byte saved-game name (version 2 and up only!)
-	// 40-bytes current campaign ID       // Version 8+
-	// 2-bytes (int) = scenario number
-	// 4-bytes (Sint32)= cash (unsigned)
-	// 4-bytes (Sint32)= score (unsigned)
-	// 4-bytes (Sint32)= cash-B (unsigned)   // All alternate scores
-	// 4-bytes (Sint32)= score-B (unsigned)  // version 6+
-	// 4-bytes (Sint32)= cash-C (unsigned)
-	// 4-bytes (Sint32)= score-C (unsigned)
-	// 4-bytes (Sint32)= cash-D (unsigned)
-	// 4-bytes (Sint32)= score-D (unsigned)
-	// 2-bytes Allied mode                // Versions 7+
-	// 2-bytes (int) = # of team members in list
-	// 1-byte number of players
-	// 31-bytes RESERVED
-	// List of n objects, each of 58-bytes of form:
-	// 1-byte ORDER
-	// 1-byte FAMILY
-	// 12-byte name
-	// 2-bytes strength
-	// 2-bytes dexterity
-	// 2-bytes constitution
-	// 2-bytes intelligence
-	// 2-bytes armor
-	// 2-bytes level
-	// 4-bytes Uint32 exp
-	// 2-bytes # kills, v. 3+
-	// 4-bytes total level kills, v. 3+
-	// 4-bytes total damage done, v.4+
-	// 4-bytes total hits inflicted, v.4+
-	// 4-bytes total shots made, v.4+
-	// 2-bytes team number, v.5+
-	// 2*4 = 8 bytes RESERVED
-	// List of 200 or 500 (max levels) 1-byte scenario-level status  // Versions 1-7
-	// 2-bytes Number of campaigns in list      // Version 8+
-	// List of n campaigns                      // Version 8+
-	//   40-bytes Campaign ID string
-	//   2-bytes Current level in this campaign
-	//   2-bytes Number of level indices in list
-	//   List of n level indices
-	//     2-bytes Level index
-
-	strcpy(temp_filename, filename);
-	//buffers: PORT: changed .GTL to .gtl
-	strcat(temp_filename, ".gtl"); // gladiator team list
-
-	// Reset the number of guys bought ..
-	for (i=0; i < NUM_FAMILIES; i++)
-		numbought[i] = 0;
-
-	if ( (infile = open_read_file("save/", temp_filename)) == NULL ) // open for write
-	{
-		//gotoxy(1, 22);
-		//buffers: DEBUG: uncommented following line
-		Log("Error in opening team file: %s\n", filename);
-		return 0;
-	}
-
-	// Read id header
-	SDL_RWread(infile, temptext, 3, 1);
-	if ( strcmp(temptext,"GTL"))
-	{
-	    SDL_RWclose(infile);
-		//buffers: DEBUG: uncommented following line
-		Log("Error, selected file is not a GTL file: %s\n",filename);
-		return 0; //not a gtl file
-	}
-
-	// Read version number
-	SDL_RWread(infile, &temp_version, 1, 1);
-
-	// Versions 7+ have a registered mark ..
-	if (temp_version >= 7)
-	{
-		SDL_RWread(infile, &temp_registered, 2, 1);
-	}
-
-	// Do stuff based on the version number
-	if (temp_version != 1)
-	{
-		if (temp_version >= 2)
-		{
-			SDL_RWread(infile, savedgame, 40, 1);
-		}
-		else
-		{
-            SDL_RWclose(infile);
-			//buffers: DEBUG: uncommented following line
-			Log("Error, selected file is not version one: %s\n",filename);
-			return 0;
-		}
-	}
-	else
-		strcpy(savedgame, "SAVED GAME"); // fake the game name
-
-    // Read campaign ID
-    std::string old_campaign = current_campaign;
-	if (temp_version >= 8)
-	{
-		SDL_RWread(infile, temp_campaign, 1, 40);
-		temp_campaign[40] = '\0';
-		if(strlen(temp_campaign) > 3)
-            strcpy(current_campaign, temp_campaign);
-        else
-            strcpy(current_campaign, "org.openglad.gladiator");
-	}
-
-	// Read scenario number
-	SDL_RWread(infile, &next_scenario, 2, 1);
-	scen_level = next_scenario;
-
-	// Read cash
-	SDL_RWread(infile, &newcash, 4, 1);
-	money[0] = newcash;
-	// Read score
-	SDL_RWread(infile, &newscore, 4, 1);
-	score[0] = newscore;
-
-	// Versions 6+ have a score for each possible team, 0-3
-	if (temp_version >= 6)
-	{
-		for (i=0; i < 4; i++)
-		{
-			SDL_RWread(infile, &newcash, 4, 1);
-			money[i] = newcash;
-			SDL_RWread(infile, &newscore, 4, 1);
-			score[i] = newscore;
-		}
-	}
-
-	// Versions 7+ have the allied information ..
-	if (temp_version >= 7)
-	{
-		SDL_RWread(infile, &temp_allied, 2, 1);
-		myscreen->save_data.allied_mode = temp_allied;
-	}
-
-	// Determine size of team list ...
-	SDL_RWread(infile, &listsize, 2, 1);
-
-	//read number of players
-	SDL_RWread(infile, &temp_playermode, 1, 1);
-	playermode = temp_playermode;
-	if(playermode == 0 || playermode > 4)
-    {
-        Log("Loading error: playermode is %u\n", playermode);
-        playermode = 1;
-    }
-
-	// Read the reserved area, 31 bytes
-	SDL_RWread(infile, filler, 31, 1);
-
-	// Delete any team in memory ..
-	for (i=0; i < MAXTEAM; i++)
-		if (ourteam[i])
-		{
-			delete ourteam[i];
-			ourteam[i] = NULL;
-		}
-
-	// Okay, we've read header .. now read the team list data ..
-
-	if (current_guy)
-	{
-		delete current_guy;
-		current_guy = NULL;
-	}
-
-	//current_guy = new guy();
-
-	while (listsize--)
-	{
-		tempguy = new guy();
-		// Get temp values to be read
-		temp_order = ORDER_LIVING; // may be changed later
-		// Read name of current guy...
-		strcpy(guyname, tempname);
-		// Set any chars under 12 not used to 0 ..
-		for (i=strlen(guyname); i < 12; i++)
-			guyname[i] = 0;
-		// Now write all those values
-		SDL_RWread(infile, &temp_order, 1, 1);
-		SDL_RWread(infile, &temp_family,1, 1);
-		SDL_RWread(infile, guyname, 12, 1);
-		SDL_RWread(infile, &temp_str, 2, 1);
-		SDL_RWread(infile, &temp_dex, 2, 1);
-		SDL_RWread(infile, &temp_con, 2, 1);
-		SDL_RWread(infile, &temp_int, 2, 1);
-		SDL_RWread(infile, &temp_arm, 2, 1);
-		SDL_RWread(infile, &temp_lev, 2, 1);
-		SDL_RWread(infile, &temp_exp, 4, 1);
-		SDL_RWread(infile, &temp_kills, 2, 1);
-		SDL_RWread(infile, &temp_level_kills, 4, 1);
-		SDL_RWread(infile, &temp_td, 4, 1); // v.4+
-		SDL_RWread(infile, &temp_th, 4, 1); // v.4+
-		SDL_RWread(infile, &temp_ts, 4, 1); // v.4+
-		SDL_RWread(infile, &temp_teamnum, 2, 1); // v.5+
-
-		// And the filler
-		SDL_RWread(infile, filler, 8, 1);
-		// Now set the values ..
-		tempguy->family       = temp_family;
-		strcpy(tempguy->name,guyname);
-		tempguy->strength     = temp_str;
-		tempguy->dexterity    = temp_dex;
-		tempguy->constitution = temp_con;
-		tempguy->intelligence = temp_int;
-		tempguy->armor        = temp_arm;
-		tempguy->level        = temp_lev;
-		tempguy->exp          = temp_exp;
-		if (temp_version >= 3)
-		{
-			tempguy->kills = temp_kills;
-			tempguy->level_kills = temp_level_kills;
-		}
-		else
-		{
-			tempguy->kills = 0;
-			tempguy->level_kills = 0;
-		}
-		// Version 4+ stuff:
-		if (temp_version >= 4)
-		{
-			tempguy->total_damage = temp_td;
-			tempguy->total_hits   = temp_th;
-			tempguy->total_shots  = temp_ts;
-		}
-		else
-		{
-			tempguy->total_damage = 0;
-			tempguy->total_hits   = 0;
-			tempguy->total_shots  = 0;
-		}
-		// Version 5.+ stuff:
-		if (temp_version >= 5)
-		{
-			tempguy->teamnum = temp_teamnum;
-		}
-		else
-		{
-			tempguy->teamnum = 0;
-		}
-
-		// Recalculate guy's level ..
-		tempguy->level = calculate_level(temp_exp);
-
-		// Count him as 'bought'
-		numbought[(int)temp_family]++;
-
-		// Advance to the next guy ..
-		add_guy(tempguy);
-	}
-    
-    // Make sure the default campaign is included
-	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-	current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
-
-    if(temp_version < 8)
-    {
-        char levels[MAX_LEVELS];
-        
-        // Read the level status
-        // First, clear the status ..
-        memset( levels, 0, 500 );
-        if (temp_version >= 5)
-            SDL_RWread(infile, levels, 500, 1);
-        else
-            SDL_RWread(infile, levels, 200, 1);
-        
-        // Guaranteed to be the default campaign if version < 8
-        for(int i = 0; i < 500; i++)
-        {
-            if(levels[i])
-                add_level_completed(completed_levels, current_campaign, i);
-        }
-    }
-    else
-    {
-        short num_campaigns = 0;
-        char campaign[41];
-        short num_levels = 0;
-        // How many campaigns are stored?
-        SDL_RWread(infile, &num_campaigns, 2, 1);
-        for(int i = 0; i < num_campaigns; i++)
-        {
-            // Get the campaign ID (40 chars)
-            SDL_RWread(infile, campaign, 1, 40);
-            campaign[40] = '\0';
-            
-            short index = 1;
-            // Get the current level for this campaign
-            SDL_RWread(infile, &index, 2, 1);
-            current_levels[campaign] = index;
-            
-            // Get the number of cleared levels
-            SDL_RWread(infile, &num_levels, 2, 1);
-            for(int j = 0; j < num_levels; j++)
-            {
-                // Get the level index
-                SDL_RWread(infile, &index, 2, 1);
-                
-                // Add it to our list
-                add_level_completed(completed_levels, campaign, index);
-            }
-        }
-    }
-	
-    int current_level = load_campaign(old_campaign, current_campaign, current_levels);
-    if(current_level >= 0)
-        scen_level = current_level;
-
-    SDL_RWclose(infile);
-
-	return 1;
 }
 
 const char* get_saved_name(const char * filename)
@@ -3275,24 +2635,23 @@ const char* get_saved_name(const char * filename)
 Sint32 delete_all()
 {
 	Sint32 i;
-	Sint32 counter = teamsize;
+	Sint32 counter = myscreen->save_data.team_size;
 
-	for (i=0; i < MAXTEAM; i++)
-		if (ourteam[i])
-		{
-			delete ourteam[i];
-			ourteam[i] = NULL;
-		}
-
-	teamsize = 0;
+	for (int i = 0; i < myscreen->save_data.team_size; i++)
+    {
+        delete myscreen->save_data.team_list[i];
+        myscreen->save_data.team_list[i] = NULL;
+    }
+    
+    myscreen->save_data.team_size = 0;
 
 	return counter;
 }
 
 Sint32 add_money(Sint32 howmuch)
 {
-	money[current_guy->teamnum] += (Sint32) howmuch;
-	return money[current_guy->teamnum];
+	myscreen->save_data.m_totalcash[current_guy->teamnum] += (Sint32) howmuch;
+	return myscreen->save_data.m_totalcash[current_guy->teamnum];
 }
 
 Sint32 go_menu(Sint32 arg1)
@@ -3306,7 +2665,7 @@ Sint32 go_menu(Sint32 arg1)
 		arg1 = 1;
 
 	// Make sure we have a valid team
-	if (!ourteam[0])
+	if (myscreen->save_data.team_size < 1)
 	{
 		release_mouse();
 		myscreen->clearfontbuffer(100,65,220-100,125-65);
@@ -3323,7 +2682,7 @@ Sint32 go_menu(Sint32 arg1)
 		
 		return REDRAW;
 	}
-	save_team_list("save0");
+	myscreen->save_data.save("save0");
 	release_mouse();
 	//grab_keyboard();
 	//*******************************
@@ -3338,9 +2697,9 @@ Sint32 go_menu(Sint32 arg1)
 	current_guy = NULL;
 
 	// Reset viewscreen prefs
-	myscreen->reset(playermode);
+	myscreen->reset(myscreen->save_data.numplayers);
 
-	glad_main(myscreen, playermode);
+	glad_main(myscreen, myscreen->save_data.numplayers);
 	//release_keyboard();
 	//*******************************
 	// Fade out from ACTION loop
@@ -3367,15 +2726,12 @@ Sint32 go_menu(Sint32 arg1)
 	myscreen->reset(1);
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 
-	loadgame = open_read_file("save/", "save0.gtl");
+	SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
 	if (loadgame)
 	{
 	    SDL_RWclose(loadgame);
-		load_team_list_one("save0");
+		myscreen->save_data.load("save0");
 	}
-	// Zardus: PORT: this obviously causes it to segfault
-	//else
-	//	fclose(loadgame);
 
 	return CREATE_TEAM_MENU;
 }
@@ -3417,7 +2773,7 @@ void quit(Sint32 arg1)
 Sint32 set_player_mode(Sint32 howmany)
 {
 	Sint32 count = 0;
-	playermode = howmany;
+	myscreen->save_data.numplayers = howmany;
 
 	while (allbuttons[count])
 	{
@@ -3515,10 +2871,10 @@ Uint32 calculate_exp(Sint32 level)
 void clear_levels()
 {
 	// Set all of our level-completion status to off
-	completed_levels.clear();
-	current_levels.clear();
-    completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
+	myscreen->save_data.completed_levels.clear();
+	myscreen->save_data.current_levels.clear();
+    myscreen->save_data.completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
+    myscreen->save_data.current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 }
 
 
@@ -3552,7 +2908,7 @@ Sint32 create_detail_menu(guy *arg1)
    if (arg1)
        thisguy = arg1;
    else
-       thisguy = ourteam[editguy];
+       thisguy = myscreen->save_data.team_list[editguy];
 
    myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
    myscreen->draw_text_bar(36, 10, 124, 22);
@@ -4026,7 +3382,7 @@ Sint32 do_set_scen_level(Sint32 arg1)
 {
    static text savetext(myscreen);
    Sint32 xloc, yloc, x2loc, y2loc;
-   Sint32 templevel = scen_level;
+   Sint32 templevel = myscreen->save_data.scen_num;
    Sint32 temptime;
 
    xloc = 100;
@@ -4055,7 +3411,7 @@ Sint32 do_set_scen_level(Sint32 arg1)
        temptime = query_timer();
        while(query_timer() < temptime + 100)
            ;
-       scen_level = templevel;
+       myscreen->save_data.scen_num = templevel;
    }
 
    return REDRAW;

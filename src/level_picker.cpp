@@ -33,8 +33,7 @@
 using namespace std;
 
 
-#define MAXTEAM 24 //max # of guys on a team
-extern guy *ourteam[MAXTEAM];
+#define MAX_TEAM_SIZE 24 //max # of guys on a team
 extern Sint32 *mymouse;
 
 
@@ -418,11 +417,11 @@ int pick_level(screen *screenp)
     
     // Figure out how good the player's army is
     int army_power = 0;
-	for(int i=0; i<MAXTEAM; i++)
+	for(int i=0; i<MAX_TEAM_SIZE; i++)
 	{
-		if (ourteam[i])
+		if (myscreen->save_data.team_list[i])
 		{
-		    army_power += 3*ourteam[i]->level;
+		    army_power += 3*myscreen->save_data.team_list[i]->level;
 		}
 	}
     

@@ -51,7 +51,6 @@ class vbutton;
 extern screen *myscreen;
 extern text *mytext;
 extern Sint32 *mymouse;
-extern Uint32 money[4];
 
 struct button
 {

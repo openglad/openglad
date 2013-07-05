@@ -28,6 +28,8 @@ class guy               // for the picker, loading team info
 		guy (char whatfamily);
 		~guy();
 		Sint32 query_heart_value(); // how much are we worth?
+		walker* create_walker(screen* myscreen);
+		walker* create_and_add_walker(screen* myscreen);
 
 		char name[12];
 		char family;  // our family

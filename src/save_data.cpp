@@ -25,7 +25,7 @@
 
 
 SaveData::SaveData()
-    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), first_guy(NULL), numplayers(1), allied_mode(0)
+    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(0)
 {
     completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
     current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
@@ -36,12 +36,20 @@ SaveData::SaveData()
 		m_totalcash[i] = 0;
 		m_totalscore[i] = 0;
 	}
+	
+	team_size = 0;
+	for(int i = 0; i < MAX_TEAM_SIZE; i++)
+    {
+        team_list[i] = NULL;
+    }
 }
 
 SaveData::~SaveData()
 {
-    // FIXME: Need to actually delete the whole list
-    delete first_guy;
+	for(int i = 0; i < MAX_TEAM_SIZE; i++)
+    {
+        delete team_list[i];
+    }
 }
 
 void SaveData::reset()
@@ -61,8 +69,13 @@ void SaveData::reset()
 		m_totalscore[i] = 0;
 	}
 	
-	// FIXME: Doesn't this need to be deleted?
-	first_guy = NULL;
+	for(int i = 0; i < team_size; i++)
+    {
+        delete team_list[i];
+        team_list[i] = NULL;
+    }
+	team_size = 0;
+	
 	scen_num = 1;
 	my_team = 0;
     numplayers = 1;
@@ -149,19 +162,24 @@ bool SaveData::load(const std::string& filename)
 	//     2-bytes Level index
     
     
-    completed_levels.clear();
-    current_levels.clear();
-    
-	//strcpy(temp_filename, scen_directory);
 	strcpy(temp_filename, filename.c_str());
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
 	if ( (infile = open_read_file("save/", temp_filename)) == NULL )
 	{
-		//gotoxy(1, 22);
-		//Log("Error in opening team file: %s\n", filename);
+		Log("Failed to open save file: %s\n", filename.c_str());
 		return 0;
 	}
+    
+    completed_levels.clear();
+    current_levels.clear();
+    
+	for(int i = 0; i < team_size; i++)
+    {
+        delete team_list[i];
+        team_list[i] = NULL;
+    }
+    team_size = 0;
 
 	// Read id header
 	SDL_RWread(infile, temptext, 3, 1);
@@ -193,6 +211,7 @@ bool SaveData::load(const std::string& filename)
 			return 0;
 		}
 	}
+	save_name = savedgame;
 
     // Read campaign ID
     std::string old_campaign = current_campaign;
@@ -247,25 +266,17 @@ bool SaveData::load(const std::string& filename)
 	SDL_RWread(infile, filler, 31, 1);
 
 	// Okay, we've read header .. now read the team list data ..
-	if (first_guy)
-	{
-	    // FIXME: This does not currently delete the whole list of guys
-		delete first_guy;  // delete the old list of guys
-		first_guy = NULL;
-	}
-
-	// Make a new 'head' guy ..
-	first_guy = new guy();
-	temp_guy = first_guy;
-	while (listsize--)
-	{
+    for(int i = 0; i < listsize; i++)
+    {
+        guy* temp_guy = new guy;
+        team_list[i] = temp_guy;
+        team_size++;
+        
 		// Get temp values to be read
 		temp_order = ORDER_LIVING; // may be changed later
 		// Read name of current guy...
+		memset(guyname, 0, 12);
 		strcpy(guyname, tempname);
-		// Set any chars under 12 not used to 0 ..
-		for (i=(short) strlen(guyname); i < 12; i++)
-			guyname[i] = 0;
 		// Now write all those values
 		SDL_RWread(infile, &temp_order, 1, 1);
 		SDL_RWread(infile, &temp_family,1, 1);
@@ -327,13 +338,6 @@ bool SaveData::load(const std::string& filename)
 		else
 		{
 			temp_guy->teamnum = 0;
-		}
-
-		// Advance to the next guy ..
-		if (listsize)
-		{
-			temp_guy->next = new guy();
-			temp_guy = temp_guy->next;
 		}
 	}
 	
@@ -397,7 +401,7 @@ bool SaveData::load(const std::string& filename)
     {
         if(scen_num != current_level)
             Log("Error: Loaded scen_num %d, but found current_level %d\n", scen_num, current_level);
-        scen_num = current_level;
+        //scen_num = current_level;
     }
 
     SDL_RWclose(infile);
@@ -412,6 +416,37 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *outfile;
 	char temp_filename[80];
+	bool delete_oblist = false;
+	if(oblist == NULL)
+    {
+        // Make temporary oblist
+        delete_oblist = true;
+        oblink* temp_oblist = NULL;
+        
+        // Get team from team_list
+        for(int i = 0; i < team_size; i++)
+        {
+            guy* g = team_list[i];
+            if(g != NULL)
+            {
+                walker* w = g->create_walker(myscreen);
+                // Create a new node
+                if(temp_oblist == NULL)
+                {
+                    temp_oblist = new oblink;
+                    oblist = temp_oblist;  // Head node stored in oblist
+                }
+                else
+                {
+                    temp_oblist->next = new oblink;
+                    temp_oblist = temp_oblist->next;
+                }
+                // Store this walker
+                temp_oblist->ob = w;
+            }
+        }
+    }
+    
 	oblink  *here = oblist;
 	walker  * temp_walker;
 	char savedgame[40];
@@ -507,6 +542,7 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	SDL_RWwrite(outfile, &temp_registered, 2, 1);
 
 	// Write the name
+	strcpy(savedgame, save_name.c_str());
 	SDL_RWwrite(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
@@ -552,7 +588,6 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	//Log("Team size: %d  ", listsize);
 	SDL_RWwrite(outfile, &listsize, 2, 1);
 
-    Log("Writing numplayers: %u\n", numplayers);
 	SDL_RWwrite(outfile, &numplayers, 1, 1);
 
 	// Write the reserved area, 31 bytes
@@ -656,7 +691,12 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
     }
 
     SDL_RWclose(outfile);
-
+    
+    if(delete_oblist)
+    {
+        delete_list(oblist);
+    }
+    
 	return 1;
 }
 

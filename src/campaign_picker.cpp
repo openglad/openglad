@@ -25,8 +25,6 @@
 #include <vector>
 #include <string>
 
-#define MAXTEAM 24 //max # of guys on a team
-extern guy *ourteam[MAXTEAM];
 extern Sint32 *mymouse;
 extern Sint32 scen_level;
 
@@ -269,11 +267,11 @@ void pick_campaign(screen* screenp, SaveData& save_data)
 
     // Figure out how good the player's army is
     int army_power = 0;
-    for(int i=0; i<MAXTEAM; i++)
+    for(int i=0; i<MAX_TEAM_SIZE; i++)
     {
-        if (ourteam[i])
+        if (myscreen->save_data.team_list[i])
         {
-            army_power += 3*ourteam[i]->level;
+            army_power += 3*myscreen->save_data.team_list[i]->level;
         }
     }
     
@@ -427,13 +425,11 @@ void pick_campaign(screen* screenp, SaveData& save_data)
             {
                 // Start where we left off
                 save_data.scen_num = g->second;
-                scen_level = g->second;
             }
             else
             {
                 // Start from the beginning
                 save_data.scen_num = result->first_level;
-                scen_level = result->first_level;
             }
         }
         

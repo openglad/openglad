@@ -98,7 +98,9 @@ walker::walker(const PixieData& data, screen  *myscreen)
 	weapons_left = 1; // default, used for fighters
 
 	cachenext = NULL;
-    myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
+	myobmap = NULL;
+	if(myscreen != NULL)
+        myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
 }
 
 short

@@ -26,10 +26,13 @@
 class oblink;
 class guy;
 
+#define MAX_TEAM_SIZE 24 //max # of guys on a team
+
 class SaveData
 {
 public:
     
+    std::string save_name;
     std::string current_campaign;
     short scen_num;
     std::map<std::string, std::set<int> > completed_levels;
@@ -41,7 +44,9 @@ public:
     Uint32 totalscore;
     Uint32 m_totalscore[4];
     short my_team;
-    guy  *first_guy;  // not saved (that's what the oblist is for, but is loaded for holding character data
+    // Guys used for training and stuff.  After a mission, the team is picked from the LevelData's oblist for saving.
+    guy* team_list[MAX_TEAM_SIZE];
+    unsigned char team_size;
     unsigned char numplayers; //numviews
     short allied_mode;
     
@@ -51,7 +56,7 @@ public:
     void reset();
     
     bool load(const std::string& filename);
-    bool save(const std::string& filename, oblink* oblist);
+    bool save(const std::string& filename, oblink* oblist = NULL);
     
     bool is_level_completed(int level_index) const;
     int get_num_levels_completed(const std::string& campaign) const;

@@ -290,6 +290,200 @@ Sint32 guy::query_heart_value() // how much are we worth?
 
 }
 
+walker* guy::create_walker(screen* myscreen)
+{
+    guy* temp_guy = this;
+    walker* temp_walker = myscreen->level_data.myloader->create_walker(ORDER_LIVING, temp_guy->family, NULL);
+    temp_walker->myguy = temp_guy;
+    temp_walker->stats->level = temp_guy->level;
+
+    // Set hitpoints based on stats:
+    temp_walker->stats->max_hitpoints = (short)
+                                        (10 + (temp_guy->constitution*3 +
+                                               ((temp_guy->strength)/2) + (short) (25*temp_guy->level))  );
+    temp_walker->stats->hitpoints = temp_walker->stats->max_hitpoints;
+
+    // Set damage based on strength and level
+    temp_walker->damage += (temp_guy->strength/4) + temp_guy->level
+                           + (temp_guy->dexterity/11);
+    // Set magicpoints based on stats:
+    temp_walker->stats->max_magicpoints = (short)
+                                          (10 + (temp_guy->intelligence*3) + ( 25 * temp_guy->level) +(short) (temp_guy->dexterity) );
+    temp_walker->stats->magicpoints = temp_walker->stats->max_magicpoints;
+
+    // Set our armor level ..
+    temp_walker->stats->armor =(short)  ( temp_guy->armor + (temp_guy->dexterity / 14) + temp_guy->level );
+
+    // Set the heal delay ..
+
+    temp_walker->stats->max_heal_delay = REGEN;
+    temp_walker->stats->current_heal_delay =
+        (temp_guy->constitution) + (temp_guy->strength/6) +
+        (temp_guy->level * 2) + 20; //for purposes of calculation only
+
+    while (temp_walker->stats->current_heal_delay > REGEN)
+    {
+        temp_walker->stats->current_heal_delay -= REGEN;
+        temp_walker->stats->heal_per_round++;
+    } // this takes care of the integer part, now calculate the fraction
+
+    if (temp_walker->stats->current_heal_delay > 1)
+    {
+        temp_walker->stats->max_heal_delay /=
+            (Sint32) (temp_walker->stats->current_heal_delay + 1);
+    }
+    temp_walker->stats->current_heal_delay = 0; //start off without healing
+
+    //make sure we have at least a 2 wait, otherwise we should have
+    //calculated our heal_per_round as one higher, and the math must
+    //have been screwed up some how
+    if (temp_walker->stats->max_heal_delay < 2)
+        temp_walker->stats->max_heal_delay = 2;
+
+    // Set the magic delay ..
+    temp_walker->stats->max_magic_delay = REGEN;
+    temp_walker->stats->current_magic_delay = (Sint32)
+            (temp_guy->intelligence * 45) + (temp_guy->level*60) +
+            (temp_guy->dexterity * 15) + 200;
+
+    while (temp_walker->stats->current_magic_delay > REGEN)
+    {
+        temp_walker->stats->current_magic_delay -= REGEN;
+        temp_walker->stats->magic_per_round++;
+    } // this takes care of the integer part, now calculate the fraction
+
+    if (temp_walker->stats->current_magic_delay > 1)
+    {
+        temp_walker->stats->max_magic_delay /=
+            (Sint32) (temp_walker->stats->current_magic_delay + 1);
+    }
+    temp_walker->stats->current_magic_delay = 0; //start off without magic regen
+
+    //make sure we have at least a 2 wait, otherwise we should have
+    //calculated our magic_per_round as one higher, and the math must
+    //have been screwed up some how
+    if (temp_walker->stats->max_magic_delay < 2)
+        temp_walker->stats->max_magic_delay = 2;
+
+    //stepsize makes us run faster, max for a non-weapon is 12
+    temp_walker->stepsize += (temp_guy->dexterity/54);
+    if (temp_walker->stepsize > 12)
+        temp_walker->stepsize = 12;
+    temp_walker->normal_stepsize = temp_walker->stepsize;
+
+    //fire_frequency makes us fire faster, min is 1
+    temp_walker->fire_frequency -= (temp_guy->dexterity / 47);
+    if (temp_walker->fire_frequency < 1)
+        temp_walker->fire_frequency = 1;
+
+    // Fighters: limited weapons
+    if (temp_walker->query_family() == FAMILY_SOLDIER)
+        temp_walker->weapons_left = (short) ((temp_walker->stats->level+1) / 2);
+
+    // Set our team number ..
+    temp_walker->team_num = temp_guy->teamnum;
+    temp_walker->real_team_num = 255;
+    
+    return temp_walker;
+}
+
+walker* guy::create_and_add_walker(screen* myscreen)
+{
+    guy* temp_guy = this;
+    walker* temp_walker = myscreen->add_ob(ORDER_LIVING, temp_guy->family);
+    temp_walker->myguy = temp_guy;
+    temp_walker->stats->level = temp_guy->level;
+
+    // Set hitpoints based on stats:
+    temp_walker->stats->max_hitpoints = (short)
+                                        (10 + (temp_guy->constitution*3 +
+                                               ((temp_guy->strength)/2) + (short) (25*temp_guy->level))  );
+    temp_walker->stats->hitpoints = temp_walker->stats->max_hitpoints;
+
+    // Set damage based on strength and level
+    temp_walker->damage += (temp_guy->strength/4) + temp_guy->level
+                           + (temp_guy->dexterity/11);
+    // Set magicpoints based on stats:
+    temp_walker->stats->max_magicpoints = (short)
+                                          (10 + (temp_guy->intelligence*3) + ( 25 * temp_guy->level) +(short) (temp_guy->dexterity) );
+    temp_walker->stats->magicpoints = temp_walker->stats->max_magicpoints;
+
+    // Set our armor level ..
+    temp_walker->stats->armor =(short)  ( temp_guy->armor + (temp_guy->dexterity / 14) + temp_guy->level );
+
+    // Set the heal delay ..
+
+    temp_walker->stats->max_heal_delay = REGEN;
+    temp_walker->stats->current_heal_delay =
+        (temp_guy->constitution) + (temp_guy->strength/6) +
+        (temp_guy->level * 2) + 20; //for purposes of calculation only
+
+    while (temp_walker->stats->current_heal_delay > REGEN)
+    {
+        temp_walker->stats->current_heal_delay -= REGEN;
+        temp_walker->stats->heal_per_round++;
+    } // this takes care of the integer part, now calculate the fraction
+
+    if (temp_walker->stats->current_heal_delay > 1)
+    {
+        temp_walker->stats->max_heal_delay /=
+            (Sint32) (temp_walker->stats->current_heal_delay + 1);
+    }
+    temp_walker->stats->current_heal_delay = 0; //start off without healing
+
+    //make sure we have at least a 2 wait, otherwise we should have
+    //calculated our heal_per_round as one higher, and the math must
+    //have been screwed up some how
+    if (temp_walker->stats->max_heal_delay < 2)
+        temp_walker->stats->max_heal_delay = 2;
+
+    // Set the magic delay ..
+    temp_walker->stats->max_magic_delay = REGEN;
+    temp_walker->stats->current_magic_delay = (Sint32)
+            (temp_guy->intelligence * 45) + (temp_guy->level*60) +
+            (temp_guy->dexterity * 15) + 200;
+
+    while (temp_walker->stats->current_magic_delay > REGEN)
+    {
+        temp_walker->stats->current_magic_delay -= REGEN;
+        temp_walker->stats->magic_per_round++;
+    } // this takes care of the integer part, now calculate the fraction
+
+    if (temp_walker->stats->current_magic_delay > 1)
+    {
+        temp_walker->stats->max_magic_delay /=
+            (Sint32) (temp_walker->stats->current_magic_delay + 1);
+    }
+    temp_walker->stats->current_magic_delay = 0; //start off without magic regen
+
+    //make sure we have at least a 2 wait, otherwise we should have
+    //calculated our magic_per_round as one higher, and the math must
+    //have been screwed up some how
+    if (temp_walker->stats->max_magic_delay < 2)
+        temp_walker->stats->max_magic_delay = 2;
+
+    //stepsize makes us run faster, max for a non-weapon is 12
+    temp_walker->stepsize += (temp_guy->dexterity/54);
+    if (temp_walker->stepsize > 12)
+        temp_walker->stepsize = 12;
+    temp_walker->normal_stepsize = temp_walker->stepsize;
+
+    //fire_frequency makes us fire faster, min is 1
+    temp_walker->fire_frequency -= (temp_guy->dexterity / 47);
+    if (temp_walker->fire_frequency < 1)
+        temp_walker->fire_frequency = 1;
+
+    // Fighters: limited weapons
+    if (temp_walker->query_family() == FAMILY_SOLDIER)
+        temp_walker->weapons_left = (short) ((temp_walker->stats->level+1) / 2);
+
+    // Set our team number ..
+    temp_walker->team_num = temp_guy->teamnum;
+    temp_walker->real_team_num = 255;
+    
+    return temp_walker;
+}
+
 // Zardus: PORT: still no exception struct
 //int matherr(struct exception *problem)
 //{
