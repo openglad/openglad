@@ -65,7 +65,7 @@ void SaveData::reset()
 	for (int i = 0; i < 4; i++)
 	{
 		m_score[i] = 0;
-		m_totalcash[i] = 0;
+		m_totalcash[i] = 5000;
 		m_totalscore[i] = 0;
 	}
 	
@@ -87,7 +87,6 @@ bool SaveData::load(const std::string& filename)
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *infile;
 	char temp_filename[80];
-	guy  *temp_guy;
 
 	char temptext[10] = "GTL";
 	char savedgame[40];

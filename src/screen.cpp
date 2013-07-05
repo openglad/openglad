@@ -296,6 +296,55 @@ void screen::cleanup(short howmany)
     weapfree = NULL;
 }
 
+void screen::ready_for_battle(short howmany)
+{
+	// Set up the viewscreen poshorters
+	numviews = howmany; // # of viewscreens
+
+	// Clean stuff up
+	cleanup(howmany);
+
+	if (numviews == 1)
+	{
+		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
+	}
+	else if (numviews == 2)
+	{
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+	}
+	else if (numviews == 3)
+	{
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
+	}
+	else if (numviews == 4)
+	{
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
+		viewob[3] = new viewscreen( 112, 16, 100, 168, 3, this);
+	}
+
+	end = 0;
+
+	redrawme = 1;
+
+	timerstart = query_timer_control();
+	framecount = 0;
+	enemy_freeze = 0;
+
+	control_hp = 0;
+
+	palmode = 0;
+
+	end = 0;
+
+	redrawme = 1;
+
+}
+
 void screen::reset(short howmany)
 {
 	// Set up the viewscreen poshorters

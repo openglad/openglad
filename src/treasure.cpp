@@ -213,10 +213,13 @@ short treasure::eat_me(walker  * eater)
 					//    myscreen->remove_fx_ob(here->ob);
 					//  here = here->next;
 					//}
-					// Now load the game as it was ...
-					load_saved_game("save0", myscreen);
-					myscreen->save_data.scen_num = (short) (stats->level-1);
+					
+					// Now reload the autosave to revert our changes during battle
+                    myscreen->save_data.load("save0");
+                    // Go to the exit's level
+					myscreen->save_data.scen_num = stats->level;
 					myscreen->end = 1;
+					// Save with the new current level
                     myscreen->save_data.save("save0", myscreen->level_data.oblist);
 					retreat = 1;
 

@@ -38,6 +38,7 @@ class screen : public video
 		screen(short howmany);
 
 		void reset(short howmany);
+		void ready_for_battle(short howmany);
 		virtual ~screen();
 		void initialize_views();
 		void cleanup(short);

@@ -26,9 +26,6 @@
 #include <string>
 
 extern Sint32 *mymouse;
-extern Sint32 scen_level;
-
-Sint32 load_team_list_one(const char * filename);
 
 int toInt(const std::string& s)
 {
@@ -434,9 +431,7 @@ void pick_campaign(screen* screenp, SaveData& save_data)
         }
         
         // FIXME: Save team data so it will reload in this campaign?
-        /*
-		save_data.save("save0", this->oblist);
-		load_team_list_one("save0");*/
+        // save_data.save("save0", this->oblist);
     }
     else  // Restore old campaign
         mount_campaign_package(old_campaign_id);

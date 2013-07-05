@@ -915,24 +915,31 @@ short viewscreen::continuous_input()
 	{
 		// First look for a player character, not already controlled
 		here = screenp->level_data.oblist;
-		counter = 0;
-		while(counter < 2)
-		{
-			if (here->ob &&
-			        !here->ob->dead &&
-			        here->ob->query_order() == ORDER_LIVING &&
-			        here->ob->user == -1 && // mean's we're not player-controlled
-			        here->ob->myguy &&
-			        here->ob->team_num == my_team) // makes a difference for PvP
-				break;
-			here = here->next;
-			if (!here)
-			{
-				counter++;
-				if (counter < 2)
-					here = screenp->level_data.oblist;
-			}
-		}
+		if(here == NULL)
+        {
+            Log("Error: Level object list is empty!\n");
+            return screenp->endgame(1);  // lose
+        }
+        
+        counter = 0;
+        while(counter < 2)
+        {
+            if (here->ob &&
+                    !here->ob->dead &&
+                    here->ob->query_order() == ORDER_LIVING &&
+                    here->ob->user == -1 && // mean's we're not player-controlled
+                    here->ob->myguy &&
+                    here->ob->team_num == my_team) // makes a difference for PvP
+                break;
+            here = here->next;
+            if (!here)
+            {
+                counter++;
+                if (counter < 2)
+                    here = screenp->level_data.oblist;
+            }
+        }
+        
 		if (!here)
 		{
 			// Second, look for anyone on our team, NPC or not

@@ -1360,6 +1360,9 @@ bool LevelData::load()
     // Do the rest of the loading
     clear();
     
+    // Set default par_value
+    par_value = id;
+    
     short tempvalue = load_scenario_version(infile, this, versionnumber);
     SDL_RWclose(infile);
     

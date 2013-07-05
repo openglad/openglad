@@ -99,7 +99,8 @@ Sint32 allowable_guys[] =
 
 Sint32 current_type = 0; // guy type we're looking at
 
-Sint32 numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,0,0};
+// Used to label new hires, like "SOLDIER5"
+Sint32 numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 Sint32 costlist[NUM_FAMILIES] =
     {
@@ -273,7 +274,6 @@ void picker_quit()
 			delete allbuttons[i];
 	}
 
-	delete_all();
 	delete mytext;
 	delete myscreen;
 	delete main_columns_pix;
@@ -836,18 +836,11 @@ Sint32 beginmenu(Sint32 arg1)
 		return 1;
 
 
-	for (i=0; i < 4; i++)
-	{
-		myscreen->save_data.m_totalcash[i] = 5000;
-		myscreen->save_data.m_totalscore[i] = 0;
-	}
-
-	myscreen->save_data.scen_num = 1;
-	myscreen->save_data.current_campaign = "org.openglad.gladiator";
-	delete_all();
+    // Reset the save data so we have a fresh, new team
+	myscreen->save_data.reset();
 	current_guy = NULL;
-	clear_levels();
 	
+	// Clear the labeling counter
 	for (i=0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
@@ -2248,11 +2241,10 @@ Sint32 cycle_guy(Sint32 whichway)
 
 	show_guy(0, 0);
 
-	//myscreen->refresh();
 	myscreen->buffer_to_screen(52, 24, 108, 64);
 
 	grab_mouse();
-	//myscreen->refresh();
+	
 	return OK;
 }
 
@@ -2558,11 +2550,6 @@ Sint32 do_load(Sint32 arg1)
 {
 	char newname[8];
 
-	// First delete the old team ..
-	delete_all();
-	//Log("Guys deleted: %d\n", delete_all());
-	//commented out debugging done
-	//myscreen->soundp->play_sound(SOUND_YO);
 	snprintf(newname, 8, "save%d", arg1);
 
 	myscreen->save_data.load(newname);
@@ -2634,7 +2621,6 @@ const char* get_saved_name(const char * filename)
 
 Sint32 delete_all()
 {
-	Sint32 i;
 	Sint32 counter = myscreen->save_data.team_size;
 
 	for (int i = 0; i < myscreen->save_data.team_size; i++)
@@ -2697,7 +2683,7 @@ Sint32 go_menu(Sint32 arg1)
 	current_guy = NULL;
 
 	// Reset viewscreen prefs
-	myscreen->reset(myscreen->save_data.numplayers);
+	myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
 	glad_main(myscreen, myscreen->save_data.numplayers);
 	//release_keyboard();
@@ -2866,15 +2852,6 @@ Uint32 calculate_exp(Sint32 level)
 		return (Sint32) 8000;
 	else
 		return (Sint32) 0;
-}
-
-void clear_levels()
-{
-	// Set all of our level-completion status to off
-	myscreen->save_data.completed_levels.clear();
-	myscreen->save_data.current_levels.clear();
-    myscreen->save_data.completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
-    myscreen->save_data.current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
 }
 
 

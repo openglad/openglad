@@ -144,10 +144,8 @@ Sint32 cycle_guy(Sint32 whichway);
 Sint32 cycle_team_guy(Sint32 whichway);
 Sint32 add_guy(Sint32 ignoreme);
 Sint32 edit_guy(Sint32 arg1); // transfer stats .. hardcoded
-Sint32 do_save(Sint32 arg1);  // dummy function for save_team_list
-Sint32 save_team_list(const char * filename); // save the team list
-Sint32 do_load(Sint32 arg1); // dummy function for load_team_list_one
-Sint32 load_team_list_one(const char * filename); // load a team list
+Sint32 do_save(Sint32 arg1);  // dummy function for saving team list
+Sint32 do_load(Sint32 arg1); // dummy function for loading team list
 Sint32 delete_all(); // delete entire team
 Sint32 delete_first(); // delete first guy on team list
 Sint32 how_many(Sint32 whatfamily);   // how many guys of family X on the team?
@@ -155,7 +153,6 @@ void statscopy(guy *dest, guy *source); //copy stats from source => dest
 Sint32 set_player_mode(Sint32 howmany);
 Sint32 calculate_level(Uint32 temp_exp);
 Uint32 calculate_exp(Sint32 level);
-void clear_levels();
 Sint32 return_menu(Sint32 arg);
 Sint32 name_guy(Sint32 arg); // name the current guy
 Sint32 do_set_scen_level(Sint32 arg1);

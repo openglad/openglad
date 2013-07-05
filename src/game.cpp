@@ -30,12 +30,12 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	int           i;
 
 	// First load the team list ..
-	if (!myscreen->save_data.load(filename))
+	/*if (!myscreen->save_data.load(filename))
 	{
 		Log("Error loading saved game %s.\n", filename);
 		release_keyboard();
 		exit(1);
-	}
+	}*/
 	
 	myscreen->numviews = myscreen->save_data.numplayers;
 	
@@ -45,15 +45,12 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	// Determine the scenario name to load
 	sprintf(scenfile, "scen%d", myscreen->save_data.scen_num);
 	
-	// And our default par value ..
-	myscreen->level_data.par_value = myscreen->save_data.scen_num;
 	// And load the scenario ..
 	myscreen->level_data.id = myscreen->save_data.scen_num;
 	if(!myscreen->level_data.load())
 	{
 	    Log("Failed to load \"%s\".  Falling back to loading scenario 1.\n", scenfile);
 	    // Failed?  Try level 1.
-		myscreen->level_data.par_value = 1;
 		myscreen->save_data.scen_num = 1;
         myscreen->level_data.id = 1;
         if(!myscreen->level_data.load())
@@ -72,6 +69,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	}
 
 	// Cycle through the team list ..
+	Log("Creating %u team members.\n", myscreen->save_data.team_size);
 	for(int i = 0; i < myscreen->save_data.team_size; i++)
     {
 	    temp_guy = myscreen->save_data.team_list[i];
@@ -101,14 +99,15 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			temp_walker->teleport();
 		}
 	}
-
-	// Now remove any extra guys .. (set to dead)
+    
+    // Destroy all player markers (by setting them to dead)
 	replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);
 	while (replace_walker)
 	{
 		replace_walker->dead = 1;
 		replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);
 	}
+	
 	// Remove the links between 'guys'
 	here = myscreen->level_data.oblist;
 	while (here)
