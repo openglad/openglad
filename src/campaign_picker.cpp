@@ -429,9 +429,6 @@ void pick_campaign(screen* screenp, SaveData& save_data)
                 save_data.scen_num = result->first_level;
             }
         }
-        
-        // FIXME: Save team data so it will reload in this campaign?
-        // save_data.save("save0", this->oblist);
     }
     else  // Restore old campaign
         mount_campaign_package(old_campaign_id);

@@ -3940,8 +3940,7 @@ void walker::transfer_stats(walker  *newob)
 		newguy->total_damage = myguy->total_damage;
 		newguy->total_hits = myguy->total_hits;
 		newguy->total_shots = myguy->total_shots;
-
-		newguy->next = myguy->next;
+		
 		newob->myguy = newguy;
 	}
 }

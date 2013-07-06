@@ -45,7 +45,6 @@ guy::guy()
 	level_kills = 0;
 	total_damage = total_hits = total_shots = 0;
 	teamnum = 0;
-	next = NULL;
 }
 
 // Set defaults for various types
@@ -56,7 +55,6 @@ guy::guy(char whatfamily)
 	kills = 0;
 	level_kills = 0;
 	total_damage = total_hits = total_shots = 0;
-	next = NULL;
 	exp = 0;
 	teamnum = 0;
 
@@ -237,12 +235,21 @@ guy::guy(char whatfamily)
 	}
 }
 
+
+guy::guy(const guy& copy)
+    : family(copy.family)
+    , strength(copy.strength), dexterity(copy.dexterity), constitution(copy.constitution), intelligence(copy.intelligence)
+    , level(copy.level), armor(copy.armor)
+    , exp(copy.exp), kills(copy.kills), level_kills(copy.level_kills)
+    , total_damage(copy.total_damage), total_hits(copy.total_hits), total_shots(copy.total_shots)
+    , teamnum(copy.teamnum)
+{
+    strcpy(name, copy.name);
+}
+
 guy::~guy()
 {
-	// If I have a link, delete it (recursively)
-	//if (next)
-	//     delete next;
-	next = NULL;
+    
 }
 
 Sint32 guy::query_heart_value() // how much are we worth?
@@ -294,7 +301,7 @@ Sint32 guy::query_heart_value() // how much are we worth?
 
 walker* guy::create_walker(screen* myscreen)
 {
-    guy* temp_guy = this;
+    guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->level_data.myloader->create_walker(ORDER_LIVING, temp_guy->family, NULL);
     temp_walker->myguy = temp_guy;
     temp_walker->stats->level = temp_guy->level;
@@ -391,7 +398,7 @@ walker* guy::create_walker(screen* myscreen)
 
 walker* guy::create_and_add_walker(screen* myscreen)
 {
-    guy* temp_guy = this;
+    guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->add_ob(ORDER_LIVING, temp_guy->family);
     temp_walker->myguy = temp_guy;
     temp_walker->stats->level = temp_guy->level;

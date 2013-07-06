@@ -55,8 +55,9 @@ public:
     
     void reset();
     
+    void update_guys(oblink* oblist);  // Copy team from the guys in an oblist
     bool load(const std::string& filename);
-    bool save(const std::string& filename, oblink* oblist = NULL);
+    bool save(const std::string& filename);
     
     bool is_level_completed(int level_index) const;
     int get_num_levels_completed(const std::string& campaign) const;

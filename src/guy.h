@@ -17,15 +17,17 @@
 #ifndef __GUY_H
 #define __GUY_H
 
-// Definition of GUY class
-
 #include "base.h"
 
-class guy               // for the picker, loading team info
+// Holds attributes for characters.
+// Used to store character data in SaveData's team_list.
+// Used as walker::myguy in-game for various attribute-dependent effects for walkers who are on the player team.
+class guy
 {
 	public:
 		guy ();
 		guy (char whatfamily);
+		guy (const guy& copy);
 		~guy();
 		Sint32 query_heart_value(); // how much are we worth?
 		walker* create_walker(screen* myscreen);
@@ -46,7 +48,6 @@ class guy               // for the picker, loading team info
 		Sint32 total_hits;   // version 4+
 		Sint32 total_shots;  // version 4+
 		short teamnum;     // version 5+
-		guy  *next;
 
 };
 

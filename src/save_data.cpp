@@ -409,45 +409,36 @@ bool SaveData::load(const std::string& filename)
 }
 
 
+void SaveData::update_guys(oblink* oblist)
+{
+    // Delete our old guys
+	for(int i = 0; i < team_size; i++)
+    {
+        delete team_list[i];
+        team_list[i] = NULL;
+    }
+    team_size = 0;
+    
+    
+    // Remove new (or existing) "guys" from the list and store them in this SaveData to be saved and trained.
+    oblink* here = oblist;  // back to head of list
+	while (here)
+	{
+		if (here->ob && !here->ob->dead && here->ob->myguy)
+		{
+		    // Take this one
+			team_list[team_size] = new guy(*here->ob->myguy);
+			team_size++;
+		}
+	}
+}
 
-bool SaveData::save(const std::string& filename, oblink* oblist)
+
+bool SaveData::save(const std::string& filename)
 {
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *outfile;
 	char temp_filename[80];
-	bool delete_oblist = false;
-	if(oblist == NULL)
-    {
-        // Make temporary oblist
-        delete_oblist = true;
-        oblink* temp_oblist = NULL;
-        
-        // Get team from team_list
-        for(int i = 0; i < team_size; i++)
-        {
-            guy* g = team_list[i];
-            if(g != NULL)
-            {
-                walker* w = g->create_walker(myscreen);
-                // Create a new node
-                if(temp_oblist == NULL)
-                {
-                    temp_oblist = new oblink;
-                    oblist = temp_oblist;  // Head node stored in oblist
-                }
-                else
-                {
-                    temp_oblist->next = new oblink;
-                    temp_oblist = temp_oblist->next;
-                }
-                // Store this walker
-                temp_oblist->ob = w;
-            }
-        }
-    }
-    
-	oblink  *here = oblist;
-	walker  * temp_walker;
 	char savedgame[41];
 	memset(savedgame, 0, 41);
 	char temp_campaign[41];
@@ -574,18 +565,7 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	SDL_RWwrite(outfile, &temp_allied, 2, 1);
 
 	// Determine size of team list ...
-	listsize = 0;
-	while (here)
-	{
-		if (here->ob && !here->ob->dead && here->ob->myguy)
-			//if (here->ob && !here->ob->dead && here->ob->myguy &&
-			//    (here->ob->real_team_num==0 || (here->ob->real_team_num==255
-			//                                    && here->ob->team_num==0)
-			//    )
-			//   )
-			listsize++;
-		here = here->next;
-	}
+	listsize = team_size;
 
 	//gotoxy(1, 22);
 	//Log("Team size: %d  ", listsize);
@@ -597,61 +577,55 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	SDL_RWwrite(outfile, filler, 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
-	here = oblist;  // back to head of list
-	while (here)
+	for(int i = 0; i < team_size; i++)
 	{
-		if (here->ob && !here->ob->dead && here->ob->myguy)
-		{
-			temp_walker = here->ob;
+	    guy* temp_guy = team_list[i];
+	    
+        // Get temp values to be saved
+        temp_order = ORDER_LIVING;
+        temp_family= temp_guy->family;
+        // Write name of current guy...
+        strcpy(guyname, temp_guy->name);
+        // Set any chars under 12 not used to 0 ..
+        for (i=(short) strlen(guyname); i < 12; i++)
+            guyname[i] = 0;
+        temp_str = temp_guy->strength;
+        temp_dex = temp_guy->dexterity;
+        temp_con = temp_guy->constitution;
+        temp_short = temp_guy->intelligence;
+        temp_arm = temp_guy->armor;
+        temp_lev = temp_guy->level;
+        temp_exp = temp_guy->exp;
+        // Version 3+ below here
+        temp_kills = temp_guy->kills;
+        temp_level_kills = temp_guy->level_kills;
+        // Version 4+ below here
+        temp_td = temp_guy->total_damage;
+        temp_th = temp_guy->total_hits;
+        temp_ts = temp_guy->total_shots;
 
-			// Get temp values to be saved
-			temp_order = temp_walker->query_order(); // may be changed later
-			temp_family= temp_walker->query_family();
-			// Write name of current guy...
-			strcpy(guyname, temp_walker->myguy->name);
-			// Set any chars under 12 not used to 0 ..
-			for (i=(short) strlen(guyname); i < 12; i++)
-				guyname[i] = 0;
-			temp_str = temp_walker->myguy->strength;
-			temp_dex = temp_walker->myguy->dexterity;
-			temp_con = temp_walker->myguy->constitution;
-			temp_short = temp_walker->myguy->intelligence;
-			temp_arm = temp_walker->myguy->armor;
-			temp_lev = temp_walker->myguy->level;
-			temp_exp = temp_walker->myguy->exp;
-			// Version 3+ below here
-			temp_kills = temp_walker->myguy->kills;
-			temp_level_kills = temp_walker->myguy->level_kills;
-			// Version 4+ below here
-			temp_td = temp_walker->myguy->total_damage;
-			temp_th = temp_walker->myguy->total_hits;
-			temp_ts = temp_walker->myguy->total_shots;
+        // Version 5+ below here
+        temp_teamnum = temp_guy->teamnum;
 
-			// Version 5+ below here
-			temp_teamnum = temp_walker->myguy->teamnum;
-
-			// Now write all those values
-			SDL_RWwrite(outfile, &temp_order, 1, 1);
-			SDL_RWwrite(outfile, &temp_family,1, 1);
-			SDL_RWwrite(outfile, guyname, 12, 1);
-			SDL_RWwrite(outfile, &temp_str, 2, 1);
-			SDL_RWwrite(outfile, &temp_dex, 2, 1);
-			SDL_RWwrite(outfile, &temp_con, 2, 1);
-			SDL_RWwrite(outfile, &temp_short, 2, 1);
-			SDL_RWwrite(outfile, &temp_arm, 2, 1);
-			SDL_RWwrite(outfile, &temp_lev, 2, 1);
-			SDL_RWwrite(outfile, &temp_exp, 4, 1);
-			SDL_RWwrite(outfile, &temp_kills, 2, 1);
-			SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
-			SDL_RWwrite(outfile, &temp_td, 4, 1);
-			SDL_RWwrite(outfile, &temp_th, 4, 1);
-			SDL_RWwrite(outfile, &temp_ts, 4, 1);
-			SDL_RWwrite(outfile, &temp_teamnum, 2, 1);
-			// And the filler
-			SDL_RWwrite(outfile, filler, 8, 1);
-		}
-		// Advance to the next guy ..
-		here = here->next;
+        // Now write all those values
+        SDL_RWwrite(outfile, &temp_order, 1, 1);
+        SDL_RWwrite(outfile, &temp_family,1, 1);
+        SDL_RWwrite(outfile, guyname, 12, 1);
+        SDL_RWwrite(outfile, &temp_str, 2, 1);
+        SDL_RWwrite(outfile, &temp_dex, 2, 1);
+        SDL_RWwrite(outfile, &temp_con, 2, 1);
+        SDL_RWwrite(outfile, &temp_short, 2, 1);
+        SDL_RWwrite(outfile, &temp_arm, 2, 1);
+        SDL_RWwrite(outfile, &temp_lev, 2, 1);
+        SDL_RWwrite(outfile, &temp_exp, 4, 1);
+        SDL_RWwrite(outfile, &temp_kills, 2, 1);
+        SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
+        SDL_RWwrite(outfile, &temp_td, 4, 1);
+        SDL_RWwrite(outfile, &temp_th, 4, 1);
+        SDL_RWwrite(outfile, &temp_ts, 4, 1);
+        SDL_RWwrite(outfile, &temp_teamnum, 2, 1);
+        // And the filler
+        SDL_RWwrite(outfile, filler, 8, 1);
 	}
 
 	// Write the completed levels
@@ -694,11 +668,6 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
     }
 
     SDL_RWclose(outfile);
-    
-    if(delete_oblist)
-    {
-        delete_list(oblist);
-    }
     
 	return 1;
 }

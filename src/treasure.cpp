@@ -214,13 +214,15 @@ short treasure::eat_me(walker  * eater)
 					//  here = here->next;
 					//}
 					
-					// Now reload the autosave to revert our changes during battle
+					// Now reload the autosave to revert our changes during battle (don't use SaveData::update_guys())
                     myscreen->save_data.load("save0");
                     // Go to the exit's level
 					myscreen->save_data.scen_num = stats->level;
 					myscreen->end = 1;
+					
+                    // Autosave because we escaped to a new level
 					// Save with the new current level
-                    myscreen->save_data.save("save0", myscreen->level_data.oblist);
+                    myscreen->save_data.save("save0");
 					retreat = 1;
 
 					return screenp->endgame(1, stats->level); // retreat

@@ -107,15 +107,6 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		replace_walker->dead = 1;
 		replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);
 	}
-	
-	// Remove the links between 'guys'
-	here = myscreen->level_data.oblist;
-	while (here)
-	{
-		if (here->ob && here->ob->myguy)
-			here->ob->myguy->next = NULL;
-		here = here->next;
-	}
 
 	// Have we already done this scenario?
 	if (myscreen->save_data.is_level_completed(myscreen->save_data.scen_num))
@@ -126,6 +117,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		{
 			if (here->ob)
 			{
+			    // Kill everything except for our team, exits, and teleporters
 				myfam = here->ob->query_family();
 				myord = here->ob->query_order();
 				if ( ( (here->ob->team_num==0 || here->ob->myguy) && myord==ORDER_LIVING) || //living team member

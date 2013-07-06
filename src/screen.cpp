@@ -1396,7 +1396,12 @@ short screen::endgame(short ending, short nextlevel)
 		save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
-		save_data.save("save0", level_data.oblist);
+        
+        // Autosave because we won
+        // Grab our team out of the level
+        save_data.update_guys(level_data.oblist);
+        // Save it
+		save_data.save("save0");
 
 		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
 		// actions
@@ -1404,59 +1409,57 @@ short screen::endgame(short ending, short nextlevel)
 			get_input_events(WAIT); // pause
 
 		// Check for guys who have gone up levels
-		if (checklist) // should always be true, but just in case
-		{
-			while (checklist)
-			{
-				if (checklist->ob)
-					target = checklist->ob;
-				else
-					target = NULL;
-				if (target && target->team_num==0
-				        && target->query_order()==ORDER_LIVING
-				        && !target->dead
-				        && target->myguy
-				        && target->myguy->level != calculate_level(target->myguy->exp)
-				   ) // check for living guy on our team, with guy pointer
-				{
-					//draw_button(30,82,290,132,4);
-					if (target->myguy->level < calculate_level(target->myguy->exp))
-					{
-						draw_dialog(30, 70, 290, 134, "Congratulations!");
-						sprintf(temp, "%s reached level %d",
-						        target->myguy->name,
-						        calculate_level(target->myguy->exp) );
-					}
-					else // we lost levels :>
-					{
-						draw_dialog(30, 70, 290, 134, "Alas!");
-						sprintf(temp, "%s fell to level %d",
-						        target->myguy->name,
-						        calculate_level(target->myguy->exp) );
-					}
-					mytext.write_y(100,temp, DARK_BLUE, 1);
-					test1 = calculate_level(target->myguy->exp) - 1;
-					if ( !(test1%3) ) // we're on a special-gaining level
-					{
-						test1 = (test1 / 3) + 1; // this is the special #
-						if ( (test1 <= 4) // raise this when we have more than 4 specials
-						        && (strcmp(special_name[(int)target->query_family()][test1], "NONE") )
-						   )
-						{
-							sprintf(temp, "New Ability: %s!",
-							        special_name[(int)target->query_family()][test1]);
-							mytext.write_y(110, temp, DARK_BLUE, 1);
-						}
-					}
-					mytext.write_y(120, CONTINUE_ACTION_STRING " TO CONTINUE", DARK_BLUE, 1);
-					buffer_to_screen(0, 0, 320, 200);
-					clear_keyboard();
-                    while (!query_input_continue())
-                        get_input_events(WAIT);
-				}
-				checklist = checklist->next;
-			} // end of while checklist
-		} // end of full 'check for raised levels' routine
+        while (checklist)
+        {
+            if (checklist->ob)
+                target = checklist->ob;
+            else
+                target = NULL;
+            if (target && target->team_num==0
+                    && target->query_order()==ORDER_LIVING
+                    && !target->dead
+                    && target->myguy
+                    && target->myguy->level != calculate_level(target->myguy->exp)
+               ) // check for living guy on our team, with guy pointer
+            {
+                //draw_button(30,82,290,132,4);
+                if (target->myguy->level < calculate_level(target->myguy->exp))
+                {
+                    draw_dialog(30, 70, 290, 134, "Congratulations!");
+                    sprintf(temp, "%s reached level %d",
+                            target->myguy->name,
+                            calculate_level(target->myguy->exp) );
+                }
+                else // we lost levels :>
+                {
+                    draw_dialog(30, 70, 290, 134, "Alas!");
+                    sprintf(temp, "%s fell to level %d",
+                            target->myguy->name,
+                            calculate_level(target->myguy->exp) );
+                }
+                mytext.write_y(100,temp, DARK_BLUE, 1);
+                test1 = calculate_level(target->myguy->exp) - 1;
+                if ( !(test1%3) ) // we're on a special-gaining level
+                {
+                    test1 = (test1 / 3) + 1; // this is the special #
+                    if ( (test1 <= 4) // raise this when we have more than 4 specials
+                            && (strcmp(special_name[(int)target->query_family()][test1], "NONE") )
+                       )
+                    {
+                        sprintf(temp, "New Ability: %s!",
+                                special_name[(int)target->query_family()][test1]);
+                        mytext.write_y(110, temp, DARK_BLUE, 1);
+                    }
+                }
+                mytext.write_y(120, CONTINUE_ACTION_STRING " TO CONTINUE", DARK_BLUE, 1);
+                buffer_to_screen(0, 0, 320, 200);
+                clear_keyboard();
+                while (!query_input_continue())
+                    get_input_events(WAIT);
+            }
+            checklist = checklist->next;
+        } // end of while checklist
+        // end of full 'check for raised levels' routine
 
 		end = 1;
 	}
