@@ -587,8 +587,8 @@ bool SaveData::save(const std::string& filename)
         // Write name of current guy...
         strcpy(guyname, temp_guy->name);
         // Set any chars under 12 not used to 0 ..
-        for (i=(short) strlen(guyname); i < 12; i++)
-            guyname[i] = 0;
+        for (int j = strlen(guyname); j < 12; j++)
+            guyname[j] = 0;
         temp_str = temp_guy->strength;
         temp_dex = temp_guy->dexterity;
         temp_con = temp_guy->constitution;
