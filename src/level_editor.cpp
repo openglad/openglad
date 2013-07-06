@@ -88,7 +88,6 @@ extern screen *myscreen;  // global for scen?
 extern options * theprefs;
 
 extern Sint32 *mymouse;
-const Uint8 *mykeyboard;
 
 unsigned char scenpalette[768];
 Sint32 event = 1;  // need to redraw?
@@ -377,23 +376,23 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
             }
         }
         
-        if(mykeyboard[KEYSTATE_ESCAPE])
+        if(keystates[KEYSTATE_ESCAPE])
         {
-            while(mykeyboard[KEYSTATE_ESCAPE])
+            while(keystates[KEYSTATE_ESCAPE])
                 get_input_events(WAIT);
             
             done = true;
             break;
         }
-        if(mykeyboard[KEYSTATE_DELETE])
+        if(keystates[KEYSTATE_DELETE])
         {
             if(cursor_pos < s->size())
                 s->erase(cursor_pos, 1);
             
-            while(mykeyboard[KEYSTATE_DELETE])
+            while(keystates[KEYSTATE_DELETE])
                 get_input_events(WAIT);
         }
-        if(mykeyboard[KEYSTATE_UP])
+        if(keystates[KEYSTATE_UP])
         {
             if(current_line > 0)
             {
@@ -403,10 +402,10 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
                     cursor_pos = s->size();
             }
             
-            while(mykeyboard[KEYSTATE_UP])
+            while(keystates[KEYSTATE_UP])
                 get_input_events(WAIT);
         }
-        if(mykeyboard[KEYSTATE_DOWN])
+        if(keystates[KEYSTATE_DOWN])
         {
             if(current_line+1 < result.size())
             {
@@ -419,10 +418,10 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
             if(s->size() < cursor_pos)
                 cursor_pos = s->size();
             
-            while(mykeyboard[KEYSTATE_DOWN])
+            while(keystates[KEYSTATE_DOWN])
                 get_input_events(WAIT);
         }
-        if(mykeyboard[KEYSTATE_LEFT])
+        if(keystates[KEYSTATE_LEFT])
         {
             if(cursor_pos > 0)
                 cursor_pos--;
@@ -433,10 +432,10 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
                 cursor_pos = s->size();
             }
             
-            while(mykeyboard[KEYSTATE_LEFT])
+            while(keystates[KEYSTATE_LEFT])
                 get_input_events(WAIT);
         }
-        if(mykeyboard[KEYSTATE_RIGHT])
+        if(keystates[KEYSTATE_RIGHT])
         {
             cursor_pos++;
             if(cursor_pos > s->size())
@@ -452,7 +451,7 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
                     cursor_pos = s->size();
             }
             
-            while(mykeyboard[KEYSTATE_RIGHT])
+            while(keystates[KEYSTATE_RIGHT])
                 get_input_events(WAIT);
         }
         
@@ -1471,7 +1470,6 @@ Sint32 level_editor()
     
     float cycletimer = 0.0f;
 	grab_mouse();
-	mykeyboard = query_keyboard();
 	Uint32 last_ticks = SDL_GetTicks();
 	Uint32 start_ticks = last_ticks;
 
@@ -1495,7 +1493,7 @@ Sint32 level_editor()
 
 		// Zardus: COMMENT: I went through and replaced dumbcounts with get_input_events.
         
-        if(query_key_press_event() && mykeyboard[KEYSTATE_ESCAPE])
+        if(query_key_press_event() && keystates[KEYSTATE_ESCAPE])
         {
             if((!levelchanged && !campaignchanged)
                 || yes_or_no_prompt("Exit", "Quit without saving?", false))
@@ -1508,63 +1506,63 @@ Sint32 level_editor()
             event = 1;
             
             // Wait until release
-            while (mykeyboard[KEYSTATE_ESCAPE])
+            while (keystates[KEYSTATE_ESCAPE])
                 get_input_events(WAIT);
         }
 
 		// Change teams ..
-		if (mykeyboard[KEYSTATE_0])
+		if (keystates[KEYSTATE_0])
 		{
 			object_brush.team = 0;
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_1])
+		if (keystates[KEYSTATE_1])
 		{
 			object_brush.team = 1;
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_2])
+		if (keystates[KEYSTATE_2])
 		{
 			object_brush.team = 2;
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_3])
+		if (keystates[KEYSTATE_3])
 		{
 			object_brush.team = 3;
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_4])
+		if (keystates[KEYSTATE_4])
 		{
 			object_brush.team = 4;
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_5])
+		if (keystates[KEYSTATE_5])
 		{
 			object_brush.team = 5;
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_6])
+		if (keystates[KEYSTATE_6])
 		{
 			object_brush.team = 6;
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_7])
+		if (keystates[KEYSTATE_7])
 		{
 			object_brush.team = 7;
 			event = 1;
 		}
 
 		// Toggle grid alignment
-		if (mykeyboard[KEYSTATE_g])
+		if (keystates[KEYSTATE_g])
 		{
 			object_brush.snap_to_grid = !object_brush.snap_to_grid;
 			event = 1;
-			while (mykeyboard[KEYSTATE_g])
+			while (keystates[KEYSTATE_g])
 				get_input_events(WAIT);
 		}
 
 		// Save scenario
-		if(mykeyboard[KEYSTATE_s] && mykeyboard[KEYSTATE_LCTRL])
+		if(keystates[KEYSTATE_s] && keystates[KEYSTATE_LCTRL])
 		{
 		    bool saved = false;
 		    if(levelchanged)
@@ -1609,22 +1607,22 @@ Sint32 level_editor()
 		}  // end of saving routines
 
 		// Change level of current guy being placed ..
-		if (mykeyboard[KEYSTATE_RIGHTBRACKET])
+		if (keystates[KEYSTATE_RIGHTBRACKET])
 		{
 			object_brush.level++;
-			while (mykeyboard[KEYSTATE_RIGHTBRACKET])
+			while (keystates[KEYSTATE_RIGHTBRACKET])
 				get_input_events(WAIT);
 			event = 1;
 		}
-		if (mykeyboard[KEYSTATE_LEFTBRACKET] && object_brush.level > 1)
+		if (keystates[KEYSTATE_LEFTBRACKET] && object_brush.level > 1)
 		{
 			object_brush.level--;
-			while (mykeyboard[KEYSTATE_LEFTBRACKET])
+			while (keystates[KEYSTATE_LEFTBRACKET])
 				get_input_events(WAIT);
 			event = 1;
 		}
 
-		if (mykeyboard[KEYSTATE_DELETE])
+		if (keystates[KEYSTATE_DELETE])
 		{
 		    if(mode == SELECT)
             {
@@ -1637,11 +1635,11 @@ Sint32 level_editor()
                     event = 1;
                 }
             }
-			while (mykeyboard[KEYSTATE_DELETE])
+			while (keystates[KEYSTATE_DELETE])
 				get_input_events(WAIT);
 		}
 
-		if (mykeyboard[KEYSTATE_o])
+		if (keystates[KEYSTATE_o])
 		{
 		    if(mode == OBJECT)
             {
@@ -1654,11 +1652,11 @@ Sint32 level_editor()
                 modeButton.label = "Edit (Objects)";
             }
 			event = 1; // change score panel
-			while (mykeyboard[KEYSTATE_o])
+			while (keystates[KEYSTATE_o])
 				get_input_events(WAIT);
 		}
 		
-		if (mykeyboard[KEYSTATE_t])
+		if (keystates[KEYSTATE_t])
 		{
 		    if(mode == TERRAIN)
             {
@@ -1671,13 +1669,13 @@ Sint32 level_editor()
                 modeButton.label = "Edit (Terrain)";
             }
 			event = 1; // change score panel
-			while (mykeyboard[KEYSTATE_t])
+			while (keystates[KEYSTATE_t])
 				get_input_events(WAIT);
 		}
 
 		short scroll_amount = get_and_reset_scroll_amount();
 		// Slide tile selector down ..
-		if (mykeyboard[KEYSTATE_DOWN] || scroll_amount < 0)
+		if (keystates[KEYSTATE_DOWN] || scroll_amount < 0)
 		{
 			rowsdown++;
 			if (rowsdown >= maxrows)
@@ -1685,12 +1683,12 @@ Sint32 level_editor()
             
             event = 1;
             
-			while (mykeyboard[KEYSTATE_DOWN])
+			while (keystates[KEYSTATE_DOWN])
 				get_input_events(WAIT);
 		}
 
 		// Slide tile selector up ..
-		if (mykeyboard[KEYSTATE_UP] || scroll_amount > 0)
+		if (keystates[KEYSTATE_UP] || scroll_amount > 0)
 		{
 			rowsdown--;
 			if (rowsdown < 0)
@@ -1700,25 +1698,25 @@ Sint32 level_editor()
             
             event = 1;
             
-			while (mykeyboard[KEYSTATE_UP])
+			while (keystates[KEYSTATE_UP])
 				get_input_events(WAIT);
 		}
 
 		// Smooth current map, F5
-		if (mykeyboard[KEYSTATE_F5])
+		if (keystates[KEYSTATE_F5])
 		{
 		    data.resmooth_terrain();
-			while (mykeyboard[KEYSTATE_F5])
+			while (keystates[KEYSTATE_F5])
 				get_input_events(WAIT);
 			event = 1;
 			levelchanged = 1;
 		}
 
 		// Change to new palette ..
-		if (mykeyboard[KEYSTATE_F9])
+		if (keystates[KEYSTATE_F9])
 		{
 			load_and_set_palette("our.pal", scenpalette);
-			while (mykeyboard[KEYSTATE_F9])
+			while (keystates[KEYSTATE_F9])
 				get_input_events(WAIT);
 		}
 
@@ -1728,25 +1726,25 @@ Sint32 level_editor()
 		// Scroll the screen ..
 		// Zardus: ADD: added scrolling by keyboard
 		// Zardus: PORT: disabled mouse scrolling
-		if ((mykeyboard[KEYSTATE_KP_8] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_9] || mykeyboard[KEYSTATE_w]) // || mymouse[MOUSE_Y]< 2)
+		if ((keystates[KEYSTATE_KP_8] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_w]) // || mymouse[MOUSE_Y]< 2)
 		        && data.level->topy >= 0) // top of the screen
         {
             event = 1;
 			data.level->add_draw_pos(0, -SCROLLSIZE);
         }
-		if ((mykeyboard[KEYSTATE_KP_2] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_s]) // || mymouse[MOUSE_Y]> 198)
+		if ((keystates[KEYSTATE_KP_2] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_s]) // || mymouse[MOUSE_Y]> 198)
 		        && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
         {
             event = 1;
 			data.level->add_draw_pos(0, SCROLLSIZE);
         }
-		if ((mykeyboard[KEYSTATE_KP_4] || mykeyboard[KEYSTATE_KP_7] || mykeyboard[KEYSTATE_KP_1] || mykeyboard[KEYSTATE_a]) // || mymouse[MOUSE_X]< 2)
+		if ((keystates[KEYSTATE_KP_4] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_a]) // || mymouse[MOUSE_X]< 2)
 		        && data.level->topx >= 0) // scroll left
         {
             event = 1;
 			data.level->add_draw_pos(-SCROLLSIZE, 0);
         }
-		if ((mykeyboard[KEYSTATE_KP_6] || mykeyboard[KEYSTATE_KP_3] || mykeyboard[KEYSTATE_KP_9] || mykeyboard[KEYSTATE_d]) // || mymouse[MOUSE_X] > 318)
+		if ((keystates[KEYSTATE_KP_6] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_d]) // || mymouse[MOUSE_X] > 318)
 		        && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
         {
             event = 1;
@@ -2436,7 +2434,7 @@ Sint32 level_editor()
 
                     if (mode == SELECT)
                     {
-                        if (mykeyboard[KEYSTATE_f]) // set facing of current object
+                        if (keystates[KEYSTATE_f]) // set facing of current object
                         {
                             newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
                             newob->setxy(windowx, windowy);
@@ -2447,7 +2445,7 @@ Sint32 level_editor()
                             }
                             data.level->remove_ob(newob,0);
                         }  // end of set facing
-                        else if (mykeyboard[KEYSTATE_r]) // (re)name the current object
+                        else if (keystates[KEYSTATE_r]) // (re)name the current object
                         {
                             newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
                             newob->setxy(windowx, windowy);
@@ -2502,7 +2500,7 @@ Sint32 level_editor()
                             newob->collide_ob = 0;
                             if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, data.level))
                             {
-                                if (mykeyboard[KEYSTATE_LCTRL] &&    // are we holding the erase?
+                                if (keystates[KEYSTATE_LCTRL] &&    // are we holding the erase?
                                         newob->collide_ob )                    // and hit a guy?
                                 {
                                     data.level->remove_ob(newob->collide_ob,0);
@@ -2529,7 +2527,7 @@ Sint32 level_editor()
                                 }
                                 levelchanged = 1;
                             }
-                            if (mykeyboard[KEYSTATE_LCTRL] && newob)
+                            if (keystates[KEYSTATE_LCTRL] && newob)
                             {
                                 data.level->remove_ob(newob,0);
                                 newob = NULL;
@@ -2556,7 +2554,7 @@ Sint32 level_editor()
                             // Set to our current selection
                             data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
                             levelchanged = 1;
-                            if (!mykeyboard[KEYSTATE_LCTRL]) // smooth a few squares, if not control
+                            if (!keystates[KEYSTATE_LCTRL]) // smooth a few squares, if not control
                             {
                                 for (i=windowx-1; i <= windowx+1; i++)
                                     for (j=windowy-1; j <=windowy+1; j++)
@@ -2895,7 +2893,6 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 void scenario_options(screen *myscreen)
 {
 	static text opt_text(myscreen);
-	const Uint8 *opt_keys = query_keyboard();
 	short lm, tm;
 	char message[80];
 
@@ -2903,7 +2900,7 @@ void scenario_options(screen *myscreen)
 	tm = 45;
 
 #define OPT_LD(x) (short) (tm + (x*8) )
-while (!opt_keys[KEYSTATE_ESCAPE])
+while (!keystates[KEYSTATE_ESCAPE])
         {
 
 
@@ -2933,39 +2930,39 @@ while (!opt_keys[KEYSTATE_ESCAPE])
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	get_input_events(WAIT);
-	if (opt_keys[KEYSTATE_e]) // toggle exit mode
+	if (keystates[KEYSTATE_e]) // toggle exit mode
 	{
 		if (myscreen->level_data.type & SCEN_TYPE_CAN_EXIT) // already set
 			myscreen->level_data.type -= SCEN_TYPE_CAN_EXIT;
 		else
 			myscreen->level_data.type += SCEN_TYPE_CAN_EXIT;
 	}
-	if (opt_keys[KEYSTATE_g]) // toggle exit mode -- generators
+	if (keystates[KEYSTATE_g]) // toggle exit mode -- generators
 	{
 		if (myscreen->level_data.type & SCEN_TYPE_GEN_EXIT) // already set
 			myscreen->level_data.type -= SCEN_TYPE_GEN_EXIT;
 		else
 			myscreen->level_data.type += SCEN_TYPE_GEN_EXIT;
 	}
-	if (opt_keys[KEYSTATE_n]) // toggle fail mode -- named guys
+	if (keystates[KEYSTATE_n]) // toggle fail mode -- named guys
 	{
 		if (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL) // already set
 			myscreen->level_data.type -= SCEN_TYPE_SAVE_ALL;
 		else
 			myscreen->level_data.type += SCEN_TYPE_SAVE_ALL;
 	}
-	if (opt_keys[KEYSTATE_KP_MINUS]) // lower the par value
+	if (keystates[KEYSTATE_KP_MINUS]) // lower the par value
 	{
 		if (myscreen->level_data.par_value > 1)
 			myscreen->level_data.par_value--;
 	}
-	if (opt_keys[KEYSTATE_KP_PLUS]) // raise the par value
+	if (keystates[KEYSTATE_KP_PLUS]) // raise the par value
 	{
 		myscreen->level_data.par_value++;
 	}
 }
 
-while (opt_keys[KEYSTATE_ESCAPE])
+while (keystates[KEYSTATE_ESCAPE])
 	get_input_events(WAIT); // wait for key release
 
 	myscreen->clearfontbuffer(lm-5, tm-5, 260-(lm-5), 160-(tm-5));
@@ -2974,15 +2971,13 @@ while (opt_keys[KEYSTATE_ESCAPE])
 // Set an object's facing ..
 void set_facing(walker *target, screen *myscreen)
 {
-	const Uint8 *setkeys = query_keyboard();
-
 	if (target)
 		target = target;  // dummy code
 
 	myscreen->draw_dialog(100, 50, 220, 170, "Set Facing");
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
-	while (setkeys[KEYSTATE_f])
+	while (keystates[KEYSTATE_f])
 		get_input_events(WAIT);
 
 }

@@ -431,7 +431,6 @@ Sint32 leftmouse()
 {
 	Sint32 i = 0;
 	Sint32 somebutton = -1;
-	const Uint8* mousekeys = query_keyboard();
 
 	grab_mouse();
 	mymouse = query_mouse();
@@ -439,7 +438,7 @@ Sint32 leftmouse()
 	while (allbuttons[i])
 	{
 		allbuttons[i]->mouse_on();
-		if (mousekeys[allbuttons[i]->hotkey])
+		if (keystates[allbuttons[i]->hotkey])
 			somebutton = i;
 		i++;
 	}
@@ -1111,7 +1110,6 @@ Sint32 create_view_menu(Sint32 arg1)
 Sint32 create_buy_menu(Sint32 arg1)
 {
 	Sint32 linesdown, retvalue = 0;
-	const Uint8* inputkeyboard = query_keyboard();
 	Sint32 i;
 	Sint32 start_time = query_timer();
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
@@ -1243,14 +1241,14 @@ Sint32 create_buy_menu(Sint32 arg1)
 		else if (clickvalue == 2)
 			retvalue=localbuttons->rightclick();
 
-		if (inputkeyboard[KEYSTATE_LCTRL])
+		if (keystates[KEYSTATE_LCTRL])
 		{
-			if (inputkeyboard[KEYSTATE_KP_PLUS])
+			if (keystates[KEYSTATE_KP_PLUS])
 			{
 				myscreen->save_data.m_totalcash[current_team_num] += 1000;
 				retvalue = OK;
 			}
-			if (inputkeyboard[KEYSTATE_KP_MINUS])
+			if (keystates[KEYSTATE_KP_MINUS])
 			{
 				myscreen->save_data.m_totalcash[current_team_num] -= 1000;
 				retvalue = OK;
@@ -1841,7 +1839,6 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
 	grab_mouse();
     clear_keyboard();
-    const Uint8* keyboard = query_keyboard();
     
     clear_key_press_event();
 	
@@ -1855,11 +1852,11 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
         
         if(query_key_press_event())
         {
-            if(keyboard[KEYSTATE_y])
+            if(keystates[KEYSTATE_y])
                 retvalue = YES;
-            else if(keyboard[KEYSTATE_n])
+            else if(keystates[KEYSTATE_n])
                 retvalue = NO;
-            else if(keyboard[KEYSTATE_ESCAPE])
+            else if(keystates[KEYSTATE_ESCAPE])
                 break;
         }
 	}
@@ -1916,7 +1913,6 @@ void popup_dialog(const char* title, const char* message)
 
 	grab_mouse();
     clear_keyboard();
-    const Uint8* keyboard = query_keyboard();
     
     clear_key_press_event();
 	
@@ -1930,7 +1926,7 @@ void popup_dialog(const char* title, const char* message)
         
         if(query_key_press_event())
         {
-            if(keyboard[KEYSTATE_RETURN] || keyboard[KEYSTATE_SPACE] || keyboard[KEYSTATE_ESCAPE])
+            if(keystates[KEYSTATE_RETURN] || keystates[KEYSTATE_SPACE] || keystates[KEYSTATE_ESCAPE])
                 break;
         }
 	}

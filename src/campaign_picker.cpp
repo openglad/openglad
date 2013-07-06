@@ -244,8 +244,6 @@ void pick_campaign(screen* screenp, SaveData& save_data)
     std::string old_campaign_id = save_data.current_campaign;
     CampaignEntry* result = NULL;
 
-    const Uint8* mykeyboard = query_keyboard();
-
     text* loadtext = new text(screenp);
     
     unmount_campaign_package(old_campaign_id);
@@ -301,27 +299,27 @@ void pick_campaign(screen* screenp, SaveData& save_data)
         get_input_events(POLL);
 
         // Quit if 'q' is pressed
-        if(mykeyboard[KEYSTATE_q])
+        if(keystates[KEYSTATE_q])
             done = true;
 
-        if(mykeyboard[KEYSTATE_LEFT])
+        if(keystates[KEYSTATE_LEFT])
         {
             // Scroll up
             if(current_campaign_index > 0)
             {
                 current_campaign_index--;
             }
-            while (mykeyboard[KEYSTATE_LEFT])
+            while (keystates[KEYSTATE_LEFT])
                 get_input_events(WAIT);
         }
-        if(mykeyboard[KEYSTATE_RIGHT])
+        if(keystates[KEYSTATE_RIGHT])
         {
             // Scroll down
             if(current_campaign_index + 1 < entries.size())
             {
                 current_campaign_index++;
             }
-            while (mykeyboard[KEYSTATE_RIGHT])
+            while (keystates[KEYSTATE_RIGHT])
                 get_input_events(WAIT);
         }
 
@@ -407,7 +405,7 @@ void pick_campaign(screen* screenp, SaveData& save_data)
         SDL_Delay(10);
     }
 
-    while (mykeyboard[KEYSTATE_q])
+    while (keystates[KEYSTATE_q])
         get_input_events(WAIT);
 
     if(result != NULL)

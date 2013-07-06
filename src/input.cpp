@@ -710,11 +710,6 @@ void clear_keyboard()
     #endif
 }
 
-const Uint8* query_keyboard()
-{
-    return keystates;
-}
-
 bool query_input_continue()
 {
     return input_continue;

@@ -73,6 +73,8 @@
     #define KEYSTATE_7 SDL_SCANCODE_7
     #define KEYSTATE_8 SDL_SCANCODE_8
     #define KEYSTATE_9 SDL_SCANCODE_9
+    #define KEYSTATE_COMMA SDL_SCANCODE_COMMA
+    #define KEYSTATE_PERIOD SDL_SCANCODE_PERIOD
     #define KEYSTATE_DELETE SDL_SCANCODE_DELETE
     #define KEYSTATE_UP SDL_SCANCODE_UP
     #define KEYSTATE_DOWN SDL_SCANCODE_DOWN
@@ -143,6 +145,8 @@
     #define KEYSTATE_7 SDLK_7
     #define KEYSTATE_8 SDLK_8
     #define KEYSTATE_9 SDLK_9
+    #define KEYSTATE_COMMA SDLK_COMMA
+    #define KEYSTATE_PERIOD SDLK_PERIOD
     #define KEYSTATE_DELETE SDLK_DELETE
     #define KEYSTATE_UP SDLK_UP
     #define KEYSTATE_DOWN SDLK_DOWN
@@ -291,7 +295,6 @@ void clear_events();  // Clears the SDL event queue
 void assignKeyFromWaitEvent(int player_num, int key_enum);
 
 void clear_keyboard();                                              // set keyboard to none pressed
-const Uint8* query_keyboard();                                    // keyboard status
 void wait_for_key(int somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)
@@ -308,5 +311,7 @@ void release_mouse();
 Sint32 * query_mouse();
 
 unsigned char convert_to_ascii(int scancode);
+
+extern const Uint8* keystates;
 
 #endif

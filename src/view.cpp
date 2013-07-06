@@ -598,7 +598,7 @@ short viewscreen::input(const SDL_Event& event)
 		strcat(somemessage, OPENGLAD_VERSION_STRING); //append the version num
 		set_display_text(somemessage, STANDARD_TEXT_TIME);
 
-		while (query_keyboard()[KEYSTATE_F1])
+		while (keystates[KEYSTATE_F1])
 			get_input_events(WAIT);
 
 		//buffers: lets borrow the somemessage buffer for some work
@@ -1419,7 +1419,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	list = new oblink;  // Is this new oblink actually used?
 	list->ob = NULL;
 	list->next = NULL;
-	const Uint8* teamkeys;
+	
 	Sint32 currentcycle = 0, cycletime = 30000;
 
 	screenp->redrawme = 1;
@@ -1541,13 +1541,12 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	//buffers: we need to swap the buffers to see the changes
 	screenp->swap();
 
-	teamkeys = query_keyboard();
-	while (!teamkeys[SDLK_ESCAPE])
+	while (!keystates[KEYSTATE_ESCAPE])
 	{
 		screenp->do_cycle(currentcycle++, cycletime);
 		get_input_events(POLL);
 	}
-	while (teamkeys[SDLK_ESCAPE])
+	while (keystates[KEYSTATE_ESCAPE])
 		get_input_events(WAIT);
 
 	return;
@@ -1556,7 +1555,6 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 void viewscreen::options_menu()
 {
 	static text optiontext(screenp);
-	static const Uint8* opkeys;
 	Sint32 gamespeed;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];
@@ -1573,7 +1571,6 @@ void viewscreen::options_menu()
 		return;  // safety check; shouldn't happen
 	}
 
-	opkeys = query_keyboard();
 	clear_keyboard();
 
 	// Draw the menu button
@@ -1690,30 +1687,30 @@ void viewscreen::options_menu()
 	screenp->buffer_to_screen(0, 0, 320, 200);
 
 	// Wait for esc for now
-	while (!opkeys[SDLK_ESCAPE])
+	while (!keystates[KEYSTATE_ESCAPE])
 	{
 		get_input_events(POLL);
-		if (opkeys[SDLK_KP_PLUS]) // faster game speed
+		if (keystates[KEYSTATE_KP_PLUS]) // faster game speed
 		{
 			gamespeed = change_speed(1);
 			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
 			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_KP_PLUS])
+			while (keystates[KEYSTATE_KP_PLUS])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_KP_MINUS]) // slower game speed
+		if (keystates[KEYSTATE_KP_MINUS]) // slower game speed
 		{
 			gamespeed = change_speed(-1);
 			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
 			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_KP_MINUS])
+			while (keystates[KEYSTATE_KP_MINUS])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_LEFTBRACKET]) // smaller view size
+		if (keystates[KEYSTATE_LEFTBRACKET]) // smaller view size
 		{
 			prefs[PREF_VIEW] = prefs[PREF_VIEW]+1;
 			if (prefs[PREF_VIEW] > 4)
@@ -1745,10 +1742,10 @@ void viewscreen::options_menu()
 			screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_LEFTBRACKET])
+			while (keystates[KEYSTATE_LEFTBRACKET])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_RIGHTBRACKET]) // larger view size
+		if (keystates[KEYSTATE_RIGHTBRACKET]) // larger view size
 		{
 			prefs[PREF_VIEW] = prefs[PREF_VIEW]-1;
 			if (prefs[PREF_VIEW] < 0)
@@ -1780,30 +1777,30 @@ void viewscreen::options_menu()
 			screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_RIGHTBRACKET])
+			while (keystates[KEYSTATE_RIGHTBRACKET])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_COMMA]) // darken screen
+		if (keystates[KEYSTATE_COMMA]) // darken screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(-2);
 			sprintf(message, "Change Brightness (<,>): %d ", gamma);
 			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_COMMA])
+			while (keystates[KEYSTATE_COMMA])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_PERIOD]) // lighten screen
+		if (keystates[KEYSTATE_PERIOD]) // lighten screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(+2);
 			sprintf(message, "Change Brightness (<,>): %d ", gamma);
 			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_PERIOD])
+			while (keystates[KEYSTATE_PERIOD])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_r]) // toggle radar display
+		if (keystates[KEYSTATE_r]) // toggle radar display
 		{
 			prefs[PREF_RADAR] = (prefs[PREF_RADAR]+1)%2;
 			if (prefs[PREF_RADAR])
@@ -1813,10 +1810,10 @@ void viewscreen::options_menu()
 			screenp->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_r])
+			while (keystates[KEYSTATE_r])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_h]) // toggle HP display
+		if (keystates[KEYSTATE_h]) // toggle HP display
 		{
 			prefs[PREF_LIFE] = (prefs[PREF_LIFE]+1) %5;
 			switch (prefs[PREF_LIFE])
@@ -1842,10 +1839,10 @@ void viewscreen::options_menu()
 			screenp->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_h])
+			while (keystates[KEYSTATE_h])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_f]) // toggle foes display
+		if (keystates[KEYSTATE_f]) // toggle foes display
 		{
 			prefs[PREF_FOES] = (prefs[PREF_FOES]+1)%2;
 			if (prefs[PREF_FOES])
@@ -1855,10 +1852,10 @@ void viewscreen::options_menu()
 			screenp->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_f])
+			while (keystates[KEYSTATE_f])
 				get_input_events(WAIT);
 		}
-		if (opkeys[SDLK_s]) // toggle score display
+		if (keystates[KEYSTATE_s]) // toggle score display
 		{
 			prefs[PREF_SCORE] = (prefs[PREF_SCORE]+1)%2;
 			if (prefs[PREF_SCORE])
@@ -1868,11 +1865,11 @@ void viewscreen::options_menu()
 			screenp->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_s])
+			while (keystates[KEYSTATE_s])
 				get_input_events(WAIT);
 		}
 
-		if (opkeys[SDLK_t])      // View the teamlist
+		if (keystates[KEYSTATE_t])      // View the teamlist
 		{
 			view_team();
 			screenp->redraw();
@@ -1880,10 +1877,10 @@ void viewscreen::options_menu()
 			return;
 		}
 
-		if (opkeys[SDLK_c])
+		if (keystates[KEYSTATE_c])
 		{
 			screenp->cyclemode= (short) ((screenp->cyclemode+1) %2);
-			while (opkeys[SDLK_c])
+			while (keystates[KEYSTATE_c])
 				get_input_events(WAIT);
 			if (screenp->cyclemode)
 				sprintf(message,"Color Cycling (C)      : ON ");
@@ -1895,7 +1892,7 @@ void viewscreen::options_menu()
 
 		}
 
-		if (opkeys[SDLK_j]) // toggle joystick display
+		if (keystates[KEYSTATE_j]) // toggle joystick display
 		{
 		    if(playerHasJoystick(mynum))
                 disablePlayerJoystick(mynum);
@@ -1915,7 +1912,7 @@ void viewscreen::options_menu()
             clear_events();
 		}
 
-		if (opkeys[SDLK_k])      // Edit the keyboard mappings
+		if (keystates[KEYSTATE_k])      // Edit the keyboard mappings
 		{
 			if (set_key_prefs())
 			{
@@ -1926,7 +1923,7 @@ void viewscreen::options_menu()
 			options_menu();
 			return;
 		}
-		if (opkeys[SDLK_b]) // toggle button display
+		if (keystates[KEYSTATE_b]) // toggle button display
 		{
 			prefs[PREF_OVERLAY] = (prefs[PREF_OVERLAY]+1)%2;
 			if (prefs[PREF_OVERLAY])
@@ -1936,13 +1933,13 @@ void viewscreen::options_menu()
 			screenp->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
 			screenp->buffer_to_screen(0, 0, 320, 200);
-			while (opkeys[SDLK_b])
+			while (keystates[KEYSTATE_b])
 				get_input_events(WAIT);
 		}
 
 	}  // end of wait for ESC press
 
-	while (opkeys[SDLK_ESCAPE])
+	while (keystates[KEYSTATE_ESCAPE])
 		get_input_events(WAIT);
 	screenp->redrawme = 1;
 	prefsob->save(this);

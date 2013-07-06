@@ -71,7 +71,7 @@ short read_scenario(screen *myscreen)
 	Sint32 templines;
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
-	const Uint8* mykeyboard = query_keyboard();
+	
 	text *mytext = new text(myscreen, TEXT_1);
 	Sint32 start_time, now_time;
 	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
@@ -104,7 +104,7 @@ short read_scenario(screen *myscreen)
 			}
 		} // end of KEYSTATE_DOWN
 
-		if (mykeyboard[KEYSTATE_PAGEDOWN])    // scrolling one page down
+		if (keystates[KEYSTATE_PAGEDOWN])    // scrolling one page down
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -136,7 +136,7 @@ short read_scenario(screen *myscreen)
 			}
 		} // end of KEYSTATE_UP
 
-		if (mykeyboard[KEYSTATE_PAGEUP])    // scrolling one page up
+		if (keystates[KEYSTATE_PAGEUP])    // scrolling one page up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -192,7 +192,7 @@ short read_scenario(screen *myscreen)
 
 	}  // loop until ESC is pressed
 
-	while (mykeyboard[KEYSTATE_ESCAPE])  // wait for key release
+	while (keystates[KEYSTATE_ESCAPE])  // wait for key release
 		get_input_events(WAIT);
 	delete mytext;
 	mytext = NULL;
@@ -209,7 +209,7 @@ short read_help(const char *somefile,screen * myscreen)
 	Sint32 templines;
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
-	const Uint8* mykeyboard = query_keyboard();
+	
 	static text *mytext = new text(myscreen, TEXT_1);
 	Sint32 start_time, now_time;
 	Sint32 bottomrow;
@@ -261,7 +261,7 @@ short read_help(const char *somefile,screen * myscreen)
 			}
 		} // end of KEYSTATE_DOWN
 
-		if (mykeyboard[KEYSTATE_PAGEDOWN])    // scrolling one page down
+		if (keystates[KEYSTATE_PAGEDOWN])    // scrolling one page down
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -293,7 +293,7 @@ short read_help(const char *somefile,screen * myscreen)
 			}
 		} // end of KEYSTATE_UP
 
-		if (mykeyboard[KEYSTATE_PAGEUP])    // scrolling one page up
+		if (keystates[KEYSTATE_PAGEUP])    // scrolling one page up
 		{
 			now_time = query_timer();
 			key_presses = (now_time - start_time) % (10*text_delay);
@@ -345,7 +345,7 @@ short read_help(const char *somefile,screen * myscreen)
 
 
 
-	while (mykeyboard[KEYSTATE_ESCAPE])  // wait for key release
+	while (keystates[KEYSTATE_ESCAPE])  // wait for key release
 		get_input_events(WAIT);
 	//delete mytext;
 	return (short) (numlines);

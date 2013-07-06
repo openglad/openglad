@@ -381,8 +381,6 @@ int pick_level(screen *screenp)
 {
     int result = screenp->level_data.id;
     
-    const Uint8* mykeyboard = query_keyboard();
-    
     // Clear all objects from the current level
     screenp->level_data.clear();
     
@@ -448,10 +446,10 @@ int pick_level(screen *screenp)
 		get_input_events(POLL);
 		
 		// Quit if 'q' is pressed
-		if(mykeyboard[KEYSTATE_q])
+		if(keystates[KEYSTATE_q])
             done = true;
             
-		if(mykeyboard[KEYSTATE_UP])
+		if(keystates[KEYSTATE_UP])
 		{
 		    // Scroll up
 		    if(current_level_index > 0)
@@ -469,10 +467,10 @@ int pick_level(screen *screenp)
                     }
                 }
 		    }
-            while (mykeyboard[KEYSTATE_UP])
+            while (keystates[KEYSTATE_UP])
                 get_input_events(WAIT);
 		}
-		if(mykeyboard[KEYSTATE_DOWN])
+		if(keystates[KEYSTATE_DOWN])
 		{
 		    // Scroll down
 		    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
@@ -490,7 +488,7 @@ int pick_level(screen *screenp)
                     }
                 }
 		    }
-            while (mykeyboard[KEYSTATE_DOWN])
+            while (keystates[KEYSTATE_DOWN])
                 get_input_events(WAIT);
 		}
 		
@@ -642,7 +640,7 @@ int pick_level(screen *screenp)
 		SDL_Delay(10);
 	}
 	
-    while (mykeyboard[KEYSTATE_q])
+    while (keystates[KEYSTATE_q])
         get_input_events(WAIT);
 	
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)

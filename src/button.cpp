@@ -263,11 +263,10 @@ Sint32 vbutton::rightclick()
 Sint32 vbutton::leftclick(Sint32 whichbutton)
 {
 	Sint32 retvalue=0;
-	const Uint8* mousekeys = query_keyboard();
 
 	if (whichbutton == 1) // hotkeys
 	{
-		if (mousekeys[hotkey])
+		if (keystates[hotkey])
 		{
 			myscreen->soundp->play_sound(SOUND_BOW);
 			vdisplay(1);
@@ -276,7 +275,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
 			{
 				retvalue = do_call(myfunc, arg);
 			}
-			while (mousekeys[hotkey])
+			while (keystates[hotkey])
 				get_input_events(WAIT);
 			return retvalue;
 		}
