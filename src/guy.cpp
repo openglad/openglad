@@ -251,7 +251,7 @@ Sint32 guy::query_heart_value() // how much are we worth?
 	Sint32 cost=0, temp;
 
 	if (!normal)
-		return 0l;
+		return 0;
 
 	// Get strength cost ..
 	temp = strength - normal->strength; // difference..
@@ -285,6 +285,8 @@ Sint32 guy::query_heart_value() // how much are we worth?
 
 	// Add in the base cost value for the guy ..
 	cost += (Sint32) costlist[(int)family];
+	
+	delete normal;
 
 	return cost;
 

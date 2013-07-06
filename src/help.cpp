@@ -369,7 +369,7 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 		//somearray[i] = read_one_line(infile, HELP_WIDTH);
 		someline = read_one_line(infile, HELP_WIDTH);
 		strcpy(somearray[i], someline);
-		delete someline;
+		delete[] someline;
 		if (end_of_file)
 			return i;
 	}

@@ -448,7 +448,10 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
     
 	oblink  *here = oblist;
 	walker  * temp_walker;
-	char savedgame[40];
+	char savedgame[41];
+	memset(savedgame, 0, 41);
+	char temp_campaign[41];
+	memset(temp_campaign, 0, 41);
 
 	char temptext[10] = "GTL";
 	char temp_version = 8;
@@ -541,11 +544,12 @@ bool SaveData::save(const std::string& filename, oblink* oblist)
 	SDL_RWwrite(outfile, &temp_registered, 2, 1);
 
 	// Write the name
-	strcpy(savedgame, save_name.c_str());
+	strncpy(savedgame, save_name.c_str(), 40);
 	SDL_RWwrite(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
-	SDL_RWwrite(outfile, current_campaign.c_str(), 40, 1);
+	strncpy(temp_campaign, current_campaign.c_str(), 40);
+	SDL_RWwrite(outfile, temp_campaign, 40, 1);
 
 	// Write scenario number
 	short temp_scenario = scen_num;
