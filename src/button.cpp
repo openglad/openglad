@@ -263,7 +263,7 @@ Sint32 vbutton::rightclick()
 Sint32 vbutton::leftclick(Sint32 whichbutton)
 {
 	Sint32 retvalue=0;
-	Uint8* mousekeys = query_keyboard();
+	const Uint8* mousekeys = query_keyboard();
 
 	if (whichbutton == 1) // hotkeys
 	{

@@ -24,8 +24,7 @@
 #include "graph.h"
 #include "colors.h"
 
-// Notice: If config.h does not exist, copy src/config.h-<platform> to config.h or run autoconf.
-#include "config.h"
+#include "version.h"
 
 #include "util.h"
 
@@ -596,7 +595,7 @@ short viewscreen::input(const SDL_Event& event)
 	if (query_key_event(SDLK_F1, event) && !isPlayerHoldingKey(mynum, KEY_CHEAT) )
 	{
 		strcpy(somemessage,"OPENGLAD V.");
-		strcat(somemessage, PACKAGE_VERSION); //append the version num
+		strcat(somemessage, OPENGLAD_VERSION_STRING); //append the version num
 		set_display_text(somemessage, STANDARD_TEXT_TIME);
 
 		while (query_keyboard()[KEYSTATE_F1])
@@ -1420,7 +1419,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	list = new oblink;  // Is this new oblink actually used?
 	list->ob = NULL;
 	list->next = NULL;
-	Uint8* teamkeys;
+	const Uint8* teamkeys;
 	Sint32 currentcycle = 0, cycletime = 30000;
 
 	screenp->redrawme = 1;
@@ -1557,7 +1556,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 void viewscreen::options_menu()
 {
 	static text optiontext(screenp);
-	static Uint8* opkeys;
+	static const Uint8* opkeys;
 	Sint32 gamespeed;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];

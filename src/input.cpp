@@ -26,8 +26,8 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 
-#ifdef USE_SDL2
-#define SDL_GetKeyState SDL_GetKeyboardState
+#ifndef USE_SDL2
+#define SDL_GetKeyboardState SDL_GetKeyState
 #endif
 
 void quit(Sint32 arg1);
@@ -53,7 +53,7 @@ bool firing = false;
 SDL_FingerID firingTouch = 0;
 #endif
 
-Uint8* keystates = NULL;
+const Uint8* keystates = NULL;
 
 Sint32 mouse_state[MSTATE];
 Sint32 mouse_buttons;
@@ -170,7 +170,7 @@ bool touch_keystate[4][NUM_KEYS] = {
 
 void init_input()
 {
-    keystates = SDL_GetKeyState(NULL);
+    keystates = SDL_GetKeyboardState(NULL);
 
     // Set up joysticks
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
@@ -710,7 +710,7 @@ void clear_keyboard()
     #endif
 }
 
-Uint8* query_keyboard()
+const Uint8* query_keyboard()
 {
     return keystates;
 }

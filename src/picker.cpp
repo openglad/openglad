@@ -431,7 +431,7 @@ Sint32 leftmouse()
 {
 	Sint32 i = 0;
 	Sint32 somebutton = -1;
-	Uint8* mousekeys = query_keyboard();
+	const Uint8* mousekeys = query_keyboard();
 
 	grab_mouse();
 	mymouse = query_mouse();
@@ -1111,7 +1111,7 @@ Sint32 create_view_menu(Sint32 arg1)
 Sint32 create_buy_menu(Sint32 arg1)
 {
 	Sint32 linesdown, retvalue = 0;
-	Uint8* inputkeyboard = query_keyboard();
+	const Uint8* inputkeyboard = query_keyboard();
 	Sint32 i;
 	Sint32 start_time = query_timer();
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
@@ -1841,7 +1841,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
 	grab_mouse();
     clear_keyboard();
-    Uint8* keyboard = query_keyboard();
+    const Uint8* keyboard = query_keyboard();
     
     clear_key_press_event();
 	
@@ -1916,7 +1916,7 @@ void popup_dialog(const char* title, const char* message)
 
 	grab_mouse();
     clear_keyboard();
-    Uint8* keyboard = query_keyboard();
+    const Uint8* keyboard = query_keyboard();
     
     clear_key_press_event();
 	

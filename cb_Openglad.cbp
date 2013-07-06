@@ -572,6 +572,7 @@
 		<Unit filename="src/treasure.h" />
 		<Unit filename="src/util.cpp" />
 		<Unit filename="src/util.h" />
+		<Unit filename="src/version.h" />
 		<Unit filename="src/video.cpp" />
 		<Unit filename="src/video.h" />
 		<Unit filename="src/view.cpp" />

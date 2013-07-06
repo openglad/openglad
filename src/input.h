@@ -291,7 +291,7 @@ void clear_events();  // Clears the SDL event queue
 void assignKeyFromWaitEvent(int player_num, int key_enum);
 
 void clear_keyboard();                                              // set keyboard to none pressed
-Uint8* query_keyboard();                                    // keyboard status
+const Uint8* query_keyboard();                                    // keyboard status
 void wait_for_key(int somekey); // wait for key SOMEKEY
 short query_key_press_event();                       //query_ & clear_key_press_event
 void clear_key_press_event();                       // detect a key press :)

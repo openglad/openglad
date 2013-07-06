@@ -21,8 +21,7 @@
 //
 #include "util.h"
 
-// Notice: If config.h does not exist, copy src/config.h-<platform> to config.h or run autoconf.
-#include "config.h"
+#include "version.h"
 
 #include <stdio.h>
 #include <time.h>

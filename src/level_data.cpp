@@ -211,7 +211,7 @@ LevelData::LevelData(int id)
 
     // Initialize a pixie for each background piece
     for(int i = 0; i < PIX_MAX; i++)
-        back[i] = new pixieN(pixdata[i], myscreen, 1);
+        back[i] = new pixieN(pixdata[i], myscreen, 0);
 
     //buffers: after we set all the tiles to use acceleration, we go
     //through the tiles that have pal cycling to turn of the accel.
@@ -1385,7 +1385,7 @@ bool LevelData::load()
 
         // Initialize a pixie for each background piece
         for(int i = 0; i < PIX_MAX; i++)
-            back[i] = new pixieN(pixdata[i], myscreen, 1);
+            back[i] = new pixieN(pixdata[i], myscreen, 0);
 
         //buffers: after we set all the tiles to use acceleration, we go
         //through the tiles that have pal cycling to turn of the accel.

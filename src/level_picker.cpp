@@ -381,7 +381,7 @@ int pick_level(screen *screenp)
 {
     int result = screenp->level_data.id;
     
-    Uint8* mykeyboard = query_keyboard();
+    const Uint8* mykeyboard = query_keyboard();
     
     // Clear all objects from the current level
     screenp->level_data.clear();

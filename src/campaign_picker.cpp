@@ -244,7 +244,7 @@ void pick_campaign(screen* screenp, SaveData& save_data)
     std::string old_campaign_id = save_data.current_campaign;
     CampaignEntry* result = NULL;
 
-    Uint8* mykeyboard = query_keyboard();
+    const Uint8* mykeyboard = query_keyboard();
 
     text* loadtext = new text(screenp);
     

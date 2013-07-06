@@ -71,7 +71,7 @@ short read_scenario(screen *myscreen)
 	Sint32 templines;
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
-	Uint8* mykeyboard = query_keyboard();
+	const Uint8* mykeyboard = query_keyboard();
 	text *mytext = new text(myscreen, TEXT_1);
 	Sint32 start_time, now_time;
 	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
@@ -83,9 +83,6 @@ short read_scenario(screen *myscreen)
 	numlines = screenlines;
 
 	// Do the loop until person hits escape
-	// Make sure we're not pressing keys ..
-	mykeyboard[KEYSTATE_DOWN] = mykeyboard[KEYSTATE_UP] = 0;
-	mykeyboard[KEYSTATE_PAGEDOWN] = mykeyboard[KEYSTATE_PAGEUP] = 0;
 	while (!query_input_continue())
 	{
 		get_input_events(POLL);
@@ -197,7 +194,6 @@ short read_scenario(screen *myscreen)
 
 	while (mykeyboard[KEYSTATE_ESCAPE])  // wait for key release
 		get_input_events(WAIT);
-	mykeyboard[KEYSTATE_ESCAPE] = 0;
 	delete mytext;
 	mytext = NULL;
 	return (short) numlines;
@@ -213,7 +209,7 @@ short read_help(const char *somefile,screen * myscreen)
 	Sint32 templines;
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
-	Uint8* mykeyboard = query_keyboard();
+	const Uint8* mykeyboard = query_keyboard();
 	static text *mytext = new text(myscreen, TEXT_1);
 	Sint32 start_time, now_time;
 	Sint32 bottomrow;
@@ -244,9 +240,6 @@ short read_help(const char *somefile,screen * myscreen)
     SDL_RWclose(infile);
 
 	// Do the loop until person hits escape
-	// Make sure we're not pressing keys ..
-	mykeyboard[KEYSTATE_DOWN] = mykeyboard[KEYSTATE_UP] = 0;
-	mykeyboard[KEYSTATE_PAGEDOWN] = mykeyboard[KEYSTATE_PAGEUP] = 0;
 	while (!query_input_continue())
 	{
 		get_input_events(POLL);

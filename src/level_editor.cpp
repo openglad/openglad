@@ -88,7 +88,7 @@ extern screen *myscreen;  // global for scen?
 extern options * theprefs;
 
 extern Sint32 *mymouse;
-Uint8 *mykeyboard;
+const Uint8 *mykeyboard;
 
 unsigned char scenpalette[768];
 Sint32 event = 1;  // need to redraw?
@@ -2895,7 +2895,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 void scenario_options(screen *myscreen)
 {
 	static text opt_text(myscreen);
-	Uint8 *opt_keys = query_keyboard();
+	const Uint8 *opt_keys = query_keyboard();
 	short lm, tm;
 	char message[80];
 
@@ -2974,7 +2974,7 @@ while (opt_keys[KEYSTATE_ESCAPE])
 // Set an object's facing ..
 void set_facing(walker *target, screen *myscreen)
 {
-	Uint8 *setkeys = query_keyboard();
+	const Uint8 *setkeys = query_keyboard();
 
 	if (target)
 		target = target;  // dummy code

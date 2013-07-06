@@ -15,8 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-// Notice: If config.h does not exist, copy src/config.h-<platform> to config.h or run autoconf.
-#include "config.h"
+#include "version.h"
 
 #include "graph.h"
 
@@ -156,7 +155,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
     
     #ifndef USE_TOUCH_INPUT
 	strcpy(somemessage, "OPENGLAD V.");
-	strcat(somemessage, PACKAGE_VERSION);
+	strcat(somemessage, OPENGLAD_VERSION_STRING);
 	myscreen->viewob[0]->set_display_text(somemessage, 100);
 	myscreen->viewob[0]->set_display_text("PRESS F1 FOR HELP", 100);
 	#endif

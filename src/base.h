@@ -32,10 +32,10 @@
 #include <math.h>
 #include <ctype.h>
 #include "sounds.h"
+#include "SDL.h"
 #include "input.h"
 #include "util.h"
 #include "parser.h"
-#include "SDL.h"
 #include "pal32.h"
 #include "pixdefs.h"
 #include "soundob.h" // sound defines

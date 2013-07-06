@@ -19,8 +19,7 @@
 	#pragma warning(disable : 4786)
 #endif
 
-// Notice: If config.h does not exist, copy src/config.h-<platform> to config.h or run autoconf.
-#include "config.h"
+#include "version.h"
 
 #include <iostream>
 #include <fstream>
@@ -88,7 +87,7 @@ Usage: open(glad|scen) [-d -f ...]\n\
   -v		Print the version number\n\
 ";
 
-	const char versmsg[] = "openglad version " PACKAGE_VERSION "\n";
+	const char versmsg[] = "openglad version " OPENGLAD_VERSION_STRING "\n";
 
 	// Begin changes by David Storey (Deathifier)
 	// FIX: Handle mutually exclusive arguments being used at the same time?
