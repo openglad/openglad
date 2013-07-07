@@ -65,6 +65,7 @@ class statistics
 		void hit_response(walker * who);
 		void yell_for_help(walker *foe);  // yell and run away
 		short query_bit_flags(Sint32 myvalue);
+        void clear_bit_flags();
 		void set_bit_flags(Sint32 someflag, short newvalue); // sets a single flag
 		short right_blocked(); // is our right blocked?
 		short right_forward_blocked();

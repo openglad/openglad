@@ -691,6 +691,11 @@ short statistics::query_bit_flags(Sint32 myvalue)
 	return (short) (myvalue & bit_flags);
 }
 
+void statistics::clear_bit_flags()
+{
+    bit_flags = 0;
+}
+
 void statistics::set_bit_flags(Sint32 someflag, short newvalue)
 {
 	if (newvalue)

@@ -679,6 +679,7 @@ public:
 	SimpleButton setNameButton;
 	SimpleButton prevTeamButton, nextTeamButton;
 	SimpleButton prevLevelButton, nextLevelButton;
+	SimpleButton prevClassButton, nextClassButton;
 	SimpleButton facingButton;
 	SimpleButton deleteButton;
     
@@ -717,7 +718,9 @@ LevelEditorData::LevelEditorData()
     , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
     , prevLevelButton("< Lvl", 0, prevTeamButton.area.y+prevTeamButton.area.h, 40, 15)
     , nextLevelButton("Lvl >", prevLevelButton.area.w, prevLevelButton.area.y, 40, 15)
-    , facingButton("Facing >", 0, prevLevelButton.area.y+prevLevelButton.area.h, 52, 15)
+    , prevClassButton("< Class", 0, prevLevelButton.area.y+prevLevelButton.area.h, 40, 15)
+    , nextClassButton("Class >", prevClassButton.area.w, prevClassButton.area.y, 40, 15)
+    , facingButton("Facing >", 0, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
     , deleteButton("Delete", 0, 10+facingButton.area.y+facingButton.area.h, 40, 15)
 {
     gridSnapButton.set_colors_enabled();
@@ -863,6 +866,8 @@ void LevelEditorData::reset_mode_buttons()
             mode_buttons.insert(&nextTeamButton);
             mode_buttons.insert(&prevLevelButton);
             mode_buttons.insert(&nextLevelButton);
+            mode_buttons.insert(&prevClassButton);
+            mode_buttons.insert(&nextClassButton);
             mode_buttons.insert(&facingButton);
             mode_buttons.insert(&deleteButton);
         }
@@ -953,6 +958,50 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             {
                 obj->stats->level++;
                 e->level = obj->stats->level;
+                levelchanged = 1;
+            }
+        }
+    }
+    else if(button == &prevClassButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL && obj->query_order() == ORDER_LIVING)
+            {
+                if(e->family > 0)
+                    e->family--;
+                else
+                    e->family = NUM_FAMILIES-1;
+                level->myloader->set_walker(obj, e->order, e->family);
+                obj->ani_type = ANI_WALK;
+                obj->transform_to(e->order, e->family);
+                obj->set_frame(obj->ani[obj->curdir][0]);
+                obj->setxy(e->x, e->y);
+                e->set(obj);
+                
+                levelchanged = 1;
+            }
+        }
+    }
+    else if(button == &nextClassButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL && obj->query_order() == ORDER_LIVING)
+            {
+                if(e->family+1 < NUM_FAMILIES)
+                    e->family++;
+                else
+                    e->family = 0;
+                level->myloader->set_walker(obj, e->order, e->family);
+                obj->ani_type = ANI_WALK;
+                obj->transform_to(e->order, e->family);
+                obj->set_frame(obj->ani[obj->curdir][0]);
+                obj->setxy(e->x, e->y);
+                e->set(obj);
+                
                 levelchanged = 1;
             }
         }

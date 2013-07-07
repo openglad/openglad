@@ -3964,11 +3964,7 @@ void walker::transform_to(char whatorder, char whatfamily)
 	}
 
 	// Reset bit flags
-	//stats->set_bit_flags(BIT_ANIMATE, 0);
-	//stats->set_bit_flags(BIT_FLYING, 0);
-	//stats->set_bit_flags(BIT_NO_RANGED, 0);
-	// Do this faster, for ALL flags:
-	stats->bit_flags = 0;
+	stats->clear_bit_flags();
 
 	// Do this before resetting graphic so illegal
 	//  family values don't try to set graphics.
