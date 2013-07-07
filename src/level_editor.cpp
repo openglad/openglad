@@ -923,21 +923,48 @@ void LevelEditorData::draw(screen* myscreen)
 {
     myscreen->clearscreen();
     level->draw(myscreen);
-    myradar.draw(level);
-    for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
-        (*e)->draw(myscreen, scentext);
-    for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
-    {
-        set<SimpleButton*>& s = e->second;
-        for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
-            (*f)->draw(myscreen, scentext);
-    }
     display_panel(myscreen);
     myscreen->refresh();
 }
 
 Sint32 LevelEditorData::display_panel(screen* myscreen)
 {
+    // Draw selection indicators
+    if(mode == SELECT && selection.size() > 0)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            // Draw cursor
+            int mx, my;
+            mx = e->x - level->topx;
+            my = e->y - level->topy;
+            
+            {
+                // Draw target tile
+                int worldx = mx + level->topx;
+                int worldy = my + level->topy;
+                int screenx = worldx - level->topx;
+                int screeny = worldy - level->topy;
+                myscreen->draw_box(screenx, screeny, screenx + e->w, screeny + e->h, YELLOW, 0, 1);
+            }
+        }
+    }
+    
+    // Draw minimap
+    myradar.draw(level);
+    
+    // Draw top menu
+    for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+        (*e)->draw(myscreen, scentext);
+    
+    // Draw submenus
+    for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
+    {
+        set<SimpleButton*>& s = e->second;
+        for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
+            (*f)->draw(myscreen, scentext);
+    }
+    
 	char message[50];
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
@@ -967,31 +994,9 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	       "GOLEM", "G SKELETON", "TOWER1",
 	    };
 
-	// Hide the mouse ..
-	//release_mouse();
+    // Info box for select mode
     if(mode == SELECT && selection.size() > 0)
     {
-        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
-        {
-            // Draw cursor
-            int mx, my;
-            mx = e->x - level->topx;
-            my = e->y - level->topy;
-            bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
-                            && my > myscreen->viewob[0]->endy - myradar.yview - 4
-                            && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
-            if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
-            {
-                // Draw target tile
-                int worldx = mx + level->topx;
-                int worldy = my + level->topy;
-                int screenx = worldx - level->topx;
-                int screeny = worldy - level->topy;
-                myscreen->draw_box(screenx, screeny, screenx + e->w, screeny + e->h, YELLOW, 0, 1);
-            }
-        }
-        
-        
         // Draw the info box background
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
@@ -1306,8 +1311,6 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     
 	myscreen->buffer_to_screen(0, 0, 320, 200);
-	// Restore the mouse
-	//grab_mouse();
 
 	return 1;
 }
