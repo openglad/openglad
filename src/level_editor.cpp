@@ -565,9 +565,10 @@ class EditorTerrainBrush
 public:
     
     Sint32 terrain;
+    bool use_smoothing;
     
     EditorTerrainBrush()
-        : terrain(PIX_GRASS1)
+        : terrain(PIX_GRASS1), use_smoothing(true)
     {}
 };
 
@@ -676,11 +677,14 @@ public:
 	set<SimpleButton*> mode_buttons;
 	
 	SimpleButton gridSnapButton;
+	SimpleButton terrainSmoothButton;
+	
 	SimpleButton setNameButton;
 	SimpleButton prevTeamButton, nextTeamButton;
 	SimpleButton prevLevelButton, nextLevelButton;
 	SimpleButton prevClassButton, nextClassButton;
 	SimpleButton facingButton;
+	
 	SimpleButton deleteButton;
     
     
@@ -713,6 +717,7 @@ public:
 LevelEditorData::LevelEditorData()
     : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
     , gridSnapButton("Snap", 0, 30, 27, 15)
+    , terrainSmoothButton("Smooth", 0, 30, 39, 15)  // Same place as gridSnapButton
     , setNameButton("Set Name", 0, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
     , prevTeamButton("< Team", 0, setNameButton.area.y+setNameButton.area.h, 40, 15)
     , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
@@ -724,6 +729,7 @@ LevelEditorData::LevelEditorData()
     , deleteButton("Delete", 0, 10+facingButton.area.y+facingButton.area.h, 40, 15)
 {
     gridSnapButton.set_colors_enabled();
+    terrainSmoothButton.set_colors_enabled();
 }
 
 LevelEditorData::~LevelEditorData()
@@ -850,6 +856,7 @@ void LevelEditorData::reset_mode_buttons()
     switch(mode)
     {
         case TERRAIN:
+        mode_buttons.insert(&terrainSmoothButton);
         break;
         case OBJECT:
         mode_buttons.insert(&gridSnapButton);
@@ -884,6 +891,14 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             gridSnapButton.set_colors_enabled();
         else
             gridSnapButton.set_colors_normal();
+    }
+    else if(button == &terrainSmoothButton)
+    {
+        terrain_brush.use_smoothing = !terrain_brush.use_smoothing;
+        if(terrain_brush.use_smoothing)
+            terrainSmoothButton.set_colors_enabled();
+        else
+            terrainSmoothButton.set_colors_normal();
     }
     else if(button == &setNameButton)
     {
@@ -1865,7 +1880,9 @@ Sint32 level_editor()
 		// Toggle grid alignment
 		if (keystates[KEYSTATE_g])
 		{
-			object_brush.snap_to_grid = !object_brush.snap_to_grid;
+		    if(mode == OBJECT || mode == SELECT)
+                data.activate_mode_button(&data.gridSnapButton);
+            
 			event = 1;
 			while (keystates[KEYSTATE_g])
 				get_input_events(WAIT);
@@ -1942,18 +1959,7 @@ Sint32 level_editor()
 		{
 		    if(mode == SELECT)
             {
-                // Delete the selected guys
-                for(std::vector<SelectionInfo>::iterator e = data.selection.begin(); e != data.selection.end(); e++)
-                {
-                    walker* obj = e->get_object(data.level);
-                    if(obj != NULL)
-                    {
-                        data.level->remove_ob(obj);
-                        levelchanged = 1;
-                        event = 1;
-                    }
-                }
-                data.selection.clear();
+                data.activate_mode_button(&data.deleteButton);
             }
 			while (keystates[KEYSTATE_DELETE])
 				get_input_events(WAIT);
@@ -2867,6 +2873,7 @@ Sint32 level_editor()
                         } // end of background grid window
                         else if(mx < 245-4 || my > L_D(7)-2)
                         {
+                            // Create new object here
                             levelchanged = 1;
                             newob = data.level->add_ob(object_brush.order, object_brush.family);
                             newob->setxy(windowx, windowy);
@@ -2874,18 +2881,9 @@ Sint32 level_editor()
                             newob->stats->level = object_brush.level;
                             newob->dead = 0; // just in case
                             newob->collide_ob = 0;
+                            // Is there already something there?
                             if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, data.level))
                             {
-                                if (keystates[KEYSTATE_LCTRL] &&    // are we holding the erase?
-                                        newob->collide_ob )                    // and hit a guy?
-                                {
-                                    data.level->remove_ob(newob->collide_ob,0);
-                                    while (mymouse[MOUSE_LEFT])
-                                    {
-                                        mymouse = query_mouse();
-                                    }
-                                    levelchanged = 1;
-                                } // end of deleting guy
                                 if (newob)
                                 {
                                     data.level->remove_ob(newob,0);
@@ -2902,11 +2900,6 @@ Sint32 level_editor()
                                     mymouse = query_mouse();
                                 }
                                 levelchanged = 1;
-                            }
-                            if (keystates[KEYSTATE_LCTRL] && newob)
-                            {
-                                data.level->remove_ob(newob,0);
-                                newob = NULL;
                             }
                             //       while (mymouse[MOUSE_LEFT])
                             //         mymouse = query_mouse();
@@ -2930,7 +2923,7 @@ Sint32 level_editor()
                             // Set to our current selection
                             data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
                             levelchanged = 1;
-                            if (!keystates[KEYSTATE_LCTRL]) // smooth a few squares, if not control
+                            if (terrain_brush.use_smoothing) // smooth a few squares, if not control
                             {
                                 for (i=windowx-1; i <= windowx+1; i++)
                                     for (j=windowy-1; j <=windowy+1; j++)
