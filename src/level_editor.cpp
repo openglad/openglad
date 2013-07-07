@@ -559,13 +559,14 @@ public:
     bool valid;
     std::string name;
     short x, y;
+    unsigned short w, h;
     unsigned char order;
     unsigned char family;
     unsigned short level;
     
     
     SelectionInfo()
-        : valid(false), x(0), y(0), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1)
     {}
     
     void clear()
@@ -574,6 +575,8 @@ public:
         name.clear();
         x = 0;
         y = 0;
+        w = GRID_SIZE;
+        h = GRID_SIZE;
         order = ORDER_LIVING;
         family = FAMILY_SOLDIER;
         level = 1;
@@ -588,6 +591,8 @@ public:
             name = target->stats->name;
             x = target->xpos;
             y = target->ypos;
+            w = target->sizex;
+            h = target->sizey;
             order = target->query_order();
             family = target->query_family();
             level = target->stats->level;
@@ -991,7 +996,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     break;
             }
         else if (selection.order == ORDER_SPECIAL)
-            strcat(message, "PLAYER");
+            strcat(message, "START TILE");
         else if (selection.order == ORDER_TREASURE)
             strcat(message, treasures[selection.family]);
         else if (selection.order == ORDER_WEAPON)
@@ -1047,7 +1052,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             int worldy = my + level->topy;
             int screenx = worldx - level->topx;
             int screeny = worldy - level->topy;
-            myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
+            myscreen->draw_box(screenx, screeny, screenx + selection.w, screeny + selection.h, YELLOW, 0, 1);
         }
     }
     
@@ -1057,7 +1062,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
         // Get team number ..
-        sprintf(message, "%d:", object_brush.team);
+        message[0] = '\0';
         if (object_brush.order == ORDER_LIVING)
             strcat(message, livings[object_brush.family]);
         else if (object_brush.order == ORDER_GENERATOR)
@@ -1080,7 +1085,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     break;
             }
         else if (object_brush.order == ORDER_SPECIAL)
-            strcat(message, "PLAYER");
+            strcat(message, "START TILE");
         else if (object_brush.order == ORDER_TREASURE)
             strcat(message, treasures[object_brush.family]);
         else if (object_brush.order == ORDER_WEAPON)
@@ -1228,6 +1233,18 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         bool over_info = Rect(lm-4, L_D(-1)+4, 315 - (lm-4), L_D(7)-2 - L_D(-1)).contains(mx, my);
         if(!over_radar && !over_info && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
         {
+            // Prepare object sprite
+            newob->setxy(mx + level->topx, my + level->topy);
+            newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
+            level->myloader->set_walker(newob, object_brush.order, object_brush.family);
+            newob->team_num = object_brush.team;
+            
+            // Get size rounded up to nearest GRID_SIZE
+            int w = newob->sizex;
+            int h = newob->sizey;
+            w += GRID_SIZE - (w%GRID_SIZE == 0? GRID_SIZE : w%GRID_SIZE);
+            h += GRID_SIZE - (h%GRID_SIZE == 0? GRID_SIZE : h%GRID_SIZE);
+            
             // Draw target tile
             if(object_brush.snap_to_grid)
             {
@@ -1237,14 +1254,10 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 int gridy = worldy - (worldy)%GRID_SIZE;
                 int screenx = gridx - level->topx;
                 int screeny = gridy - level->topy;
-                myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
+                myscreen->draw_box(screenx, screeny, screenx + w, screeny + h, YELLOW, 0, 1);
             }
             
             // Draw current brush near cursor
-            newob->setxy(mx + level->topx, my + level->topy);
-            newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
-            level->myloader->set_walker(newob, object_brush.order, object_brush.family);
-            newob->team_num = object_brush.team;
             newob->draw(myscreen->viewob[0]);
         }
         #endif
