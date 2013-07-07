@@ -430,6 +430,7 @@ void SaveData::update_guys(oblink* oblist)
 			team_list[team_size] = new guy(*here->ob->myguy);
 			team_size++;
 		}
+		here = here->next;
 	}
 }
 

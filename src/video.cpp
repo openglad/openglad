@@ -37,9 +37,6 @@ Screen *E_Screen;
 extern float mouse_scale_x;
 extern float mouse_scale_y;
 
-// Zardus: for the ugly retreat crash hack fix
-bool retreat;
-
 video::video()
 {
 	Sint32 i;
@@ -1460,36 +1457,20 @@ int video::FadeBetween(
 	return i;
 }
 
-int video::fadeblack(bool way)
+int video::fadeblack(bool fade_in)
 {
 
-	SDL_Surface *black = NULL;
-	int c = 0;
-	
-	if (retreat)
-	{
-		while (!black)
-		{
-			black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
-		}
-		retreat = 0;
-	}
-
-	black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
-
-	c = SDL_MapRGB(black->format, 0, 0, 0);
-
-	SDL_Surface *render;
+	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
 	int i;
 
-	SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
-	render = (SDL_Surface *)E_Screen->RenderAndReturn(0,0,320,200);
-	SDL_BlitSurface(fontbuffer,NULL,render,NULL);
+	SDL_BlitSurface(screen, NULL, E_Screen->screen, NULL);
+	SDL_Surface* render = E_Screen->RenderAndReturn(0, 0, 320, 200);
+	SDL_BlitSurface(fontbuffer, NULL, render, NULL);
 
-	SDL_FillRect(black, NULL, c);
-
-	if (way == 1) i = FadeBetween(black, render, render); // fade from black
-	if (way == 0) i = FadeBetween(render, black, render); // fade to black
+	if(fade_in)
+        i = FadeBetween(black, render, render); // fade from black
+	else
+        i = FadeBetween(render, black, render); // fade to black
 
 	SDL_FreeSurface(black);
 	return i;

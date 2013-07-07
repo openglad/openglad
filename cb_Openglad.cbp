@@ -78,10 +78,6 @@
 					<Add library="SDLmain" />
 					<Add library="SDL" />
 				</Linker>
-				<ExtraCommands>
-					<Add after="cd pix; ../util/gladpack p ../graphics.001 *.pix" />
-					<Add after="cd scen; ../util/gladpack p ../levels.001 *.fss" />
-				</ExtraCommands>
 			</Target>
 			<Target title="Linux Debug SDL2">
 				<Option platforms="Unix;Mac;" />
@@ -97,10 +93,6 @@
 					<Add option="`sdl2-config --libs`" />
 					<Add library="SDL2_mixer" />
 				</Linker>
-				<ExtraCommands>
-					<Add after="cd pix; ../util/gladpack p ../graphics.001 *.pix" />
-					<Add after="cd scen; ../util/gladpack p ../levels.001 *.fss" />
-				</ExtraCommands>
 			</Target>
 			<Target title="Linux Debug">
 				<Option platforms="Unix;Mac;" />
@@ -116,10 +108,6 @@
 					<Add option="`sdl-config --libs`" />
 					<Add library="SDL_mixer" />
 				</Linker>
-				<ExtraCommands>
-					<Add after="cd pix; ../util/gladpack p ../graphics.001 *.pix" />
-					<Add after="cd scen; ../util/gladpack p ../levels.001 *.fss" />
-				</ExtraCommands>
 			</Target>
 		</Build>
 		<Compiler>

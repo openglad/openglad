@@ -33,9 +33,6 @@ void get_input_events(bool);
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
-// Zardus: from video.cpp for retreat crash ugly hack fix
-extern bool retreat;
-
 treasure::treasure(const PixieData& data, screen  *myscreen)
     : walker(data, myscreen)
 {
@@ -223,7 +220,6 @@ short treasure::eat_me(walker  * eater)
                     // Autosave because we escaped to a new level
 					// Save with the new current level
                     myscreen->save_data.save("save0");
-					retreat = 1;
 
 					return screenp->endgame(1, stats->level); // retreat
 				}  // end of accepted withdraw to new level ..
