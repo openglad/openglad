@@ -723,8 +723,8 @@ LevelEditorData::LevelEditorData()
     , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
     , prevLevelButton("< Lvl", 0, prevTeamButton.area.y+prevTeamButton.area.h, 40, 15)
     , nextLevelButton("Lvl >", prevLevelButton.area.w, prevLevelButton.area.y, 40, 15)
-    , prevClassButton("< Class", 0, prevLevelButton.area.y+prevLevelButton.area.h, 40, 15)
-    , nextClassButton("Class >", prevClassButton.area.w, prevClassButton.area.y, 40, 15)
+    , prevClassButton("< Class", 0, prevLevelButton.area.y+prevLevelButton.area.h, 48, 15)
+    , nextClassButton("Class >", prevClassButton.area.w, prevClassButton.area.y, 48, 15)
     , facingButton("Facing >", 0, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
     , deleteButton("Delete", 0, 10+facingButton.area.y+facingButton.area.h, 40, 15)
 {
@@ -860,10 +860,12 @@ void LevelEditorData::reset_mode_buttons()
         break;
         case OBJECT:
         mode_buttons.insert(&gridSnapButton);
+        mode_buttons.insert(&prevTeamButton);
+        mode_buttons.insert(&nextTeamButton);
         break;
         case SELECT:
         mode_buttons.insert(&gridSnapButton);
-        if(selection.size() == 1)
+        if(selection.size() == 1 && selection.front().order == ORDER_LIVING)
         {
             mode_buttons.insert(&setNameButton);
         }
@@ -902,7 +904,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     }
     else if(button == &setNameButton)
     {
-        if(selection.size() == 1)
+        if(selection.size() == 1 && selection.front().order == ORDER_LIVING)
         {
             walker* obj = selection.front().get_object(level);
             if(obj != NULL)
@@ -920,32 +922,52 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     }
     else if(button == &prevTeamButton)
     {
-        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        if(mode == SELECT)
         {
-            walker* obj = e->get_object(level);
-            if(obj != NULL)
+            for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
             {
-                if(obj->team_num > 0)
-                    obj->team_num--;
-                else
-                    obj->team_num = MAX_TEAM;
-                levelchanged = 1;
+                walker* obj = e->get_object(level);
+                if(obj != NULL)
+                {
+                    if(obj->team_num > 0)
+                        obj->team_num--;
+                    else
+                        obj->team_num = MAX_TEAM;
+                    levelchanged = 1;
+                }
             }
+        }
+        else if(mode == OBJECT)
+        {
+            if(object_brush.team > 0)
+                object_brush.team--;
+            else
+                object_brush.team = MAX_TEAM;
         }
     }
     else if(button == &nextTeamButton)
     {
-        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        if(mode == SELECT)
         {
-            walker* obj = e->get_object(level);
-            if(obj != NULL)
+            for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
             {
-                if(obj->team_num < MAX_TEAM)
-                    obj->team_num++;
-                else
-                    obj->team_num = 0;
-                levelchanged = 1;
+                walker* obj = e->get_object(level);
+                if(obj != NULL)
+                {
+                    if(obj->team_num < MAX_TEAM)
+                        obj->team_num++;
+                    else
+                        obj->team_num = 0;
+                    levelchanged = 1;
+                }
             }
+        }
+        else if(mode == OBJECT)
+        {
+            if(object_brush.team < MAX_TEAM)
+                object_brush.team++;
+            else
+                object_brush.team = 0;
         }
     }
     else if(button == &prevLevelButton)
@@ -1276,25 +1298,29 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         // Draw the info box background
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
+        if(selection.size() > 1)
+            scentext->write_xy(lm, L_D(curline++), "Selected:", RED, 1);
         int i = 0;
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
             bool showing_name = false;
             
             // Too many names to show?
-            if(i+1 == 7 && selection.size() > 7)
+            if(i+1 == 6 && selection.size() > 6)
             {
                 char buf[20];
-                snprintf(buf, 20, "+%d more", selection.size() - 6);
+                snprintf(buf, 20, "+%d more", selection.size() - 5);
                 scentext->write_xy(lm, L_D(curline++), buf, DARK_BLUE, 1);
                 break;  // No more
             }
             // Show name
-            else if(e->name.size() > 0)
+            else if(e->name.size() > 0 && e->order == ORDER_LIVING)
             {
                 scentext->write_xy(lm, L_D(curline++), ("\"" + e->name + "\"").c_str(), DARK_BLUE, 1);
                 showing_name = true;
             }
+            else if(selection.size() == 0)
+                curline++;  // Skip name line for guy with no name
             
             if(selection.size() == 1 || !showing_name)
             {
