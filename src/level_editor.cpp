@@ -568,6 +568,11 @@ public:
     SelectionInfo()
         : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1)
     {}
+    SelectionInfo(walker* target)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1)
+    {
+        set(target);
+    }
     
     void clear()
     {
@@ -627,7 +632,7 @@ public:
 	ModeEnum mode;
     EditorTerrainBrush terrain_brush;
     EditorObjectBrush object_brush;
-    SelectionInfo selection;
+    std::vector<SelectionInfo> selection;
     
 	radar myradar;
 	
@@ -964,96 +969,129 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 
 	// Hide the mouse ..
 	//release_mouse();
-    if(mode == SELECT && selection.valid)
+    if(mode == SELECT && selection.size() > 0)
     {
-        // Draw the bounding box
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            // Draw cursor
+            int mx, my;
+            mx = e->x - level->topx;
+            my = e->y - level->topy;
+            bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
+                            && my > myscreen->viewob[0]->endy - myradar.yview - 4
+                            && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
+            if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
+            {
+                // Draw target tile
+                int worldx = mx + level->topx;
+                int worldy = my + level->topy;
+                int screenx = worldx - level->topx;
+                int screeny = worldy - level->topy;
+                myscreen->draw_box(screenx, screeny, screenx + e->w, screeny + e->h, YELLOW, 0, 1);
+            }
+        }
+        
+        
+        // Draw the info box background
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
-        if(selection.name.size() > 0)
-            scentext->write_xy(lm, L_D(curline++), ("\"" + selection.name + "\"").c_str(), DARK_BLUE, 1);
-        
-        // Get team number ..
-        message[0] = '\0';
-        if (selection.order == ORDER_LIVING)
-            strcat(message, livings[selection.family]);
-        else if (selection.order == ORDER_GENERATOR)
-            switch (selection.family)      // who are we?
+        int i = 0;
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            bool showing_name = false;
+            
+            // Too many names to show?
+            if(i+1 == 7 && selection.size() > 7)
             {
-                case FAMILY_TENT:
-                    strcat(message, "TENT");
+                char buf[20];
+                snprintf(buf, 20, "+%d more", selection.size() - 6);
+                scentext->write_xy(lm, L_D(curline++), buf, DARK_BLUE, 1);
+                break;  // No more
+            }
+            // Show name
+            else if(e->name.size() > 0)
+            {
+                scentext->write_xy(lm, L_D(curline++), ("\"" + e->name + "\"").c_str(), DARK_BLUE, 1);
+                showing_name = true;
+            }
+            
+            if(selection.size() == 1 || !showing_name)
+            {
+                // Show family name
+                message[0] = '\0';
+                if (e->order == ORDER_LIVING)
+                    strcat(message, livings[e->family]);
+                else if (e->order == ORDER_GENERATOR)
+                    switch (e->family)      // who are we?
+                    {
+                        case FAMILY_TENT:
+                            strcat(message, "TENT");
+                            break;
+                        case FAMILY_TOWER:
+                            strcat(message, "MAGE TOWER");
+                            break;
+                        case FAMILY_BONES:
+                            strcat(message, "BONEPILE");
+                            break;
+                        case FAMILY_TREEHOUSE:
+                            strcat(message, "TREEHOUSE");
+                            break;
+                        default:
+                            strcat(message, "GENERATOR");
+                            break;
+                    }
+                else if (e->order == ORDER_SPECIAL)
+                    strcat(message, "START TILE");
+                else if (e->order == ORDER_TREASURE)
+                    strcat(message, treasures[e->family]);
+                else if (e->order == ORDER_WEAPON)
+                    strcat(message, weapons[e->family]);
+                else
+                    strcat(message, "UNKNOWN");
+                scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+            }
+            
+            i++;
+            
+            // Only show extended info for a single selection
+            if(selection.size() > 1)
+                continue;
+            
+            // More info for a single selection
+            // Level display
+            message[0] = '\0';
+            switch(e->order)
+            {
+                case ORDER_LIVING:
+                case ORDER_GENERATOR:
+                    sprintf(message, "LEVEL: %u", e->level);
                     break;
-                case FAMILY_TOWER:
-                    strcat(message, "MAGE TOWER");
+                case ORDER_TREASURE:
+                    if(e->family == FAMILY_GOLD_BAR || e->family == FAMILY_SILVER_BAR)
+                        sprintf(message, "VALUE: %u", e->level);
+                    else if(e->family == FAMILY_KEY)
+                        sprintf(message, "DOOR ID: %u", e->level);
+                    else if(e->family == FAMILY_TELEPORTER)
+                        sprintf(message, "GROUP: %u", e->level);
+                    else if(e->family == FAMILY_EXIT)
+                        sprintf(message, "EXIT TO: %u", e->level);
+                    else if(e->family != FAMILY_STAIN)
+                        sprintf(message, "POWER: %u", e->level);
                     break;
-                case FAMILY_BONES:
-                    strcat(message, "BONEPILE");
-                    break;
-                case FAMILY_TREEHOUSE:
-                    strcat(message, "TREEHOUSE");
+                case ORDER_WEAPON:
+                    if(e->family == FAMILY_DOOR)
+                        sprintf(message, "DOOR ID: %u", e->level);
+                    else
+                        sprintf(message, "POWER: %u", e->level);
                     break;
                 default:
-                    strcat(message, "GENERATOR");
                     break;
             }
-        else if (selection.order == ORDER_SPECIAL)
-            strcat(message, "START TILE");
-        else if (selection.order == ORDER_TREASURE)
-            strcat(message, treasures[selection.family]);
-        else if (selection.order == ORDER_WEAPON)
-            strcat(message, weapons[selection.family]);
-        else
-            strcat(message, "UNKNOWN");
-        scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
-
-        // Level display
-        message[0] = '\0';
-        switch(selection.order)
-        {
-            case ORDER_LIVING:
-            case ORDER_GENERATOR:
-                sprintf(message, "LEVEL: %u", selection.level);
-                break;
-            case ORDER_TREASURE:
-                if(selection.family == FAMILY_GOLD_BAR || selection.family == FAMILY_SILVER_BAR)
-                    sprintf(message, "VALUE: %u", selection.level);
-                else if(selection.family == FAMILY_KEY)
-                    sprintf(message, "DOOR ID: %u", selection.level);
-                else if(selection.family == FAMILY_TELEPORTER)
-                    sprintf(message, "GROUP: %u", selection.level);
-                else if(selection.family == FAMILY_EXIT)
-                    sprintf(message, "EXIT TO: %u", selection.level);
-                else if(selection.family != FAMILY_STAIN)
-                    sprintf(message, "POWER: %u", selection.level);
-                break;
-            case ORDER_WEAPON:
-                if(selection.family == FAMILY_DOOR)
-                    sprintf(message, "DOOR ID: %u", selection.level);
-                else
-                    sprintf(message, "POWER: %u", selection.level);
-                break;
-            default:
-                break;
+            
+            if(strlen(message) > 0)
+                scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
         }
         
-        if(strlen(message) > 0)
-            scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
-        
-        // Draw cursor
-        int mx, my;
-        mx = selection.x - level->topx;
-        my = selection.y - level->topy;
-        bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
-                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
-                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
-        if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
-        {
-            // Draw target tile
-            int worldx = mx + level->topx;
-            int worldy = my + level->topy;
-            int screenx = worldx - level->topx;
-            int screeny = worldy - level->topy;
-            myscreen->draw_box(screenx, screeny, screenx + selection.w, screeny + selection.h, YELLOW, 0, 1);
-        }
     }
     
     if(mode == OBJECT)
@@ -1575,7 +1613,7 @@ Sint32 level_editor()
 		}
 
 		// Save scenario
-		if(keystates[KEYSTATE_s] && keystates[KEYSTATE_LCTRL])
+		if(keystates[KEYSTATE_s] && (keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL]))
 		{
 		    bool saved = false;
 		    if(levelchanged)
@@ -1622,31 +1660,41 @@ Sint32 level_editor()
 		// Change level of current guy being placed ..
 		if (keystates[KEYSTATE_RIGHTBRACKET])
 		{
-			object_brush.level++;
-			while (keystates[KEYSTATE_RIGHTBRACKET])
-				get_input_events(WAIT);
-			event = 1;
+		    if(mode == OBJECT)
+		    {
+                object_brush.level++;
+                while (keystates[KEYSTATE_RIGHTBRACKET])
+                    get_input_events(WAIT);
+                event = 1;
+		    }
 		}
-		if (keystates[KEYSTATE_LEFTBRACKET] && object_brush.level > 1)
+		if (keystates[KEYSTATE_LEFTBRACKET])
 		{
-			object_brush.level--;
-			while (keystates[KEYSTATE_LEFTBRACKET])
-				get_input_events(WAIT);
-			event = 1;
+		    if(mode == OBJECT && object_brush.level > 1)
+		    {
+                object_brush.level--;
+                while (keystates[KEYSTATE_LEFTBRACKET])
+                    get_input_events(WAIT);
+                event = 1;
+		    }
 		}
 
 		if (keystates[KEYSTATE_DELETE])
 		{
 		    if(mode == SELECT)
             {
-                // Delete the selected guy
-                walker* obj = data.selection.get_object(data.level);
-                if(obj != NULL)
+                // Delete the selected guys
+                for(std::vector<SelectionInfo>::iterator e = data.selection.begin(); e != data.selection.end(); e++)
                 {
-                    data.level->remove_ob(obj);
-                    levelchanged = 1;
-                    event = 1;
+                    walker* obj = e->get_object(data.level);
+                    if(obj != NULL)
+                    {
+                        data.level->remove_ob(obj);
+                        levelchanged = 1;
+                        event = 1;
+                    }
                 }
+                data.selection.clear();
             }
 			while (keystates[KEYSTATE_DELETE])
 				get_input_events(WAIT);
@@ -2474,17 +2522,47 @@ Sint32 level_editor()
                             }
                             data.level->remove_ob(newob,0);
                         }
-                        else // get info on current object
+                        else // select this object
                         {
-                            if(!data.selection.valid || mx < 245-4 || my > L_D(7)-2)
+                            if(mx < 245-4 || my > L_D(7)-2)
                             {
                                 newob = data.level->add_ob(ORDER_LIVING, FAMILY_ELF);
                                 newob->setxy(windowx, windowy);
                                 if (some_hit(windowx, windowy, newob, data.level))
-                                    data.selection.set(newob->collide_ob);
+                                {
+                                    // Clicked on a guy
+                                    walker* w = newob->collide_ob;
+                                    if(keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL])
+                                    {
+                                        // Select/deselect another guy
+                                        bool deselected = false;
+                                        for(std::vector<SelectionInfo>::iterator e = data.selection.begin(); e != data.selection.end(); e++)
+                                        {
+                                            // Identify the guy.  Not the best way...
+                                            if(e->x == w->xpos && e->y == w->ypos && e->w == w->sizex && e->h == w->sizey)
+                                            {
+                                                deselected = true;
+                                                data.selection.erase(e);
+                                                break;
+                                            }
+                                        }
+                                        if(!deselected)
+                                            data.selection.push_back(SelectionInfo(w));
+                                    }
+                                    else
+                                    {
+                                        // Choose a single guy
+                                        data.selection.clear();
+                                        data.selection.push_back(SelectionInfo(w));
+                                    }
+                                }
                                 else
                                     data.selection.clear();
                                 data.level->remove_ob(newob,0);
+                                
+                                // Wait for mouse button to be released
+                                while(mymouse[MOUSE_LEFT])
+                                    get_input_events(WAIT);
                             }
                         }  // end of info mode
                     }
