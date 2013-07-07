@@ -676,6 +676,10 @@ public:
 	set<SimpleButton*> mode_buttons;
 	
 	SimpleButton gridSnapButton;
+	SimpleButton setNameButton;
+	SimpleButton prevTeamButton, nextTeamButton;
+	SimpleButton prevLevelButton, nextLevelButton;
+	SimpleButton deleteButton;
     
     
     LevelEditorData();
@@ -706,7 +710,13 @@ public:
 
 LevelEditorData::LevelEditorData()
     : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
-    , gridSnapButton("Snap", 5, 20, 30, 15)
+    , gridSnapButton("Snap", 0, 30, 27, 15)
+    , setNameButton("Set Name", 0, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
+    , prevTeamButton("< Team", 0, setNameButton.area.y+setNameButton.area.h, 40, 15)
+    , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
+    , prevLevelButton("< Lvl", 0, prevTeamButton.area.y+prevTeamButton.area.h, 40, 15)
+    , nextLevelButton("Lvl >", prevLevelButton.area.w, prevLevelButton.area.y, 40, 15)
+    , deleteButton("Delete", 0, prevLevelButton.area.y+prevLevelButton.area.h, 40, 15)
 {
     gridSnapButton.set_colors_enabled();
 }
@@ -841,6 +851,18 @@ void LevelEditorData::reset_mode_buttons()
         break;
         case SELECT:
         mode_buttons.insert(&gridSnapButton);
+        if(selection.size() == 1)
+        {
+            mode_buttons.insert(&setNameButton);
+        }
+        if(selection.size() > 0)
+        {
+            mode_buttons.insert(&prevTeamButton);
+            mode_buttons.insert(&nextTeamButton);
+            mode_buttons.insert(&prevLevelButton);
+            mode_buttons.insert(&nextLevelButton);
+            mode_buttons.insert(&deleteButton);
+        }
         break;
     }
 }
@@ -854,6 +876,83 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             gridSnapButton.set_colors_enabled();
         else
             gridSnapButton.set_colors_normal();
+    }
+    else if(button == &setNameButton)
+    {
+        if(selection.size() == 1)
+        {
+            walker* obj = selection.front().get_object(level);
+            if(obj != NULL)
+            {
+                std::string name = obj->stats->name;
+                if(prompt_for_string(scentext, "Rename", name))
+                {
+                    strncpy(obj->stats->name, name.c_str(), 11);
+                    obj->stats->name[11] = '\0';
+                    selection.front().name = obj->stats->name;
+                    levelchanged = 1;
+                }
+            }
+        }
+    }
+    else if(button == &prevTeamButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL)
+            {
+                if(obj->team_num > 0)
+                    obj->team_num--;
+                else
+                    obj->team_num = MAX_TEAM;
+                levelchanged = 1;
+            }
+        }
+    }
+    else if(button == &nextTeamButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL)
+            {
+                if(obj->team_num < MAX_TEAM)
+                    obj->team_num++;
+                else
+                    obj->team_num = 0;
+                levelchanged = 1;
+            }
+        }
+    }
+    else if(button == &prevLevelButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL)
+            {
+                if(obj->stats->level > 1)
+                {
+                    obj->stats->level--;
+                    e->level = obj->stats->level;
+                    levelchanged = 1;
+                }
+            }
+        }
+    }
+    else if(button == &nextLevelButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL)
+            {
+                obj->stats->level++;
+                e->level = obj->stats->level;
+                levelchanged = 1;
+            }
+        }
     }
 }
 
@@ -2662,6 +2761,8 @@ Sint32 level_editor()
                                 else
                                     data.selection.clear();
                                 data.level->remove_ob(newob,0);
+                                
+                                data.reset_mode_buttons();
                                 
                                 // Wait for mouse button to be released
                                 while(mymouse[MOUSE_LEFT])
