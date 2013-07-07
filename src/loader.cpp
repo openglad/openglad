@@ -885,6 +885,9 @@ walker  *loader::create_walker(char order,
 	ob->stats->weapon_cost = 1; // default value
 
 	set_walker(ob, order, family);
+	
+	if(order == ORDER_LIVING)
+        ob->set_frame(ob->ani[ob->curdir][0]);
 	return ob;
 }
 

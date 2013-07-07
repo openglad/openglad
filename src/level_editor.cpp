@@ -679,6 +679,7 @@ public:
 	SimpleButton setNameButton;
 	SimpleButton prevTeamButton, nextTeamButton;
 	SimpleButton prevLevelButton, nextLevelButton;
+	SimpleButton facingButton;
 	SimpleButton deleteButton;
     
     
@@ -716,7 +717,8 @@ LevelEditorData::LevelEditorData()
     , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
     , prevLevelButton("< Lvl", 0, prevTeamButton.area.y+prevTeamButton.area.h, 40, 15)
     , nextLevelButton("Lvl >", prevLevelButton.area.w, prevLevelButton.area.y, 40, 15)
-    , deleteButton("Delete", 0, prevLevelButton.area.y+prevLevelButton.area.h, 40, 15)
+    , facingButton("Facing >", 0, prevLevelButton.area.y+prevLevelButton.area.h, 52, 15)
+    , deleteButton("Delete", 0, 10+facingButton.area.y+facingButton.area.h, 40, 15)
 {
     gridSnapButton.set_colors_enabled();
 }
@@ -861,6 +863,7 @@ void LevelEditorData::reset_mode_buttons()
             mode_buttons.insert(&nextTeamButton);
             mode_buttons.insert(&prevLevelButton);
             mode_buttons.insert(&nextLevelButton);
+            mode_buttons.insert(&facingButton);
             mode_buttons.insert(&deleteButton);
         }
         break;
@@ -953,6 +956,35 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 levelchanged = 1;
             }
         }
+    }
+    else if(button == &facingButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL)
+            {
+                if(obj->curdir < FACE_UP_LEFT)
+                    obj->curdir++;
+                else
+                    obj->curdir = FACE_UP;
+				obj->set_frame(obj->ani[obj->curdir][0]);
+                levelchanged = 1;
+            }
+        }
+    }
+    else if(button == &deleteButton)
+    {
+        for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+        {
+            walker* obj = e->get_object(level);
+            if(obj != NULL)
+            {
+                level->remove_ob(obj);
+                levelchanged = 1;
+            }
+        }
+        selection.clear();
     }
 }
 

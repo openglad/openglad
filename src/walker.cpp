@@ -46,8 +46,8 @@ walker::walker(const PixieData& data, screen  *myscreen)
 	// Set our stats ..
 	stats = new statistics(this);
 
-	curdir = 0;  // We are facing UP
-	enddir = 0;  // We are trying to face UP
+	curdir = FACE_DOWN;  // We are facing DOWN
+	enddir = FACE_DOWN;  // We are trying to face DOWN
 	lastx = 0;
 	lasty = 0;
 	act_type = ACT_RANDOM;
@@ -63,7 +63,6 @@ walker::walker(const PixieData& data, screen  *myscreen)
 	owner = NULL;
 	myguy = NULL;
 	myself = this;
-	ani = NULL;
 	dead = 0; // we're alive
 
 	death_called = 0;

@@ -33,10 +33,7 @@ living::living(const PixieData& data, screen  *myscreen)
 }
 
 living::~living()
-{
-	// Zardus: PORT: this tries to delte its parent class (I think), and g++ doesn't
-	// seem to like chicken and egg problems: walker::~walker();
-}
+{}
 
 short living::act()
 {
