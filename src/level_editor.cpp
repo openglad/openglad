@@ -675,6 +675,7 @@ public:
 	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
 	// The mode-specific buttons
 	set<SimpleButton*> mode_buttons;
+	set<SimpleButton*> pan_buttons;
 	
 	SimpleButton gridSnapButton;
 	SimpleButton terrainSmoothButton;
@@ -686,6 +687,8 @@ public:
 	SimpleButton facingButton;
 	
 	SimpleButton deleteButton;
+	
+	SimpleButton panUpButton, panDownButton, panLeftButton, panRightButton;
     
     
     LevelEditorData();
@@ -716,8 +719,8 @@ public:
 
 LevelEditorData::LevelEditorData()
     : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
-    , gridSnapButton("Snap", 0, 30, 27, 15)
-    , terrainSmoothButton("Smooth", 0, 30, 39, 15)  // Same place as gridSnapButton
+    , gridSnapButton("Snap", 0, 20, 27, 15)
+    , terrainSmoothButton("Smooth", 0, 20, 39, 15)  // Same place as gridSnapButton
     , setNameButton("Set Name", 0, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
     , prevTeamButton("< Team", 0, setNameButton.area.y+setNameButton.area.h, 40, 15)
     , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
@@ -727,9 +730,20 @@ LevelEditorData::LevelEditorData()
     , nextClassButton("Class >", prevClassButton.area.w, prevClassButton.area.y, 48, 15)
     , facingButton("Facing >", 0, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
     , deleteButton("Delete", 0, 10+facingButton.area.y+facingButton.area.h, 40, 15)
+    , panUpButton("U", 15, 200 - 45, 15, 15)
+    , panDownButton("D", 15, 200 - 15, 15, 15)
+    , panLeftButton("L", 0, 200 - 30, 15, 15)
+    , panRightButton("R", 30, 200 - 30, 15, 15)
 {
     gridSnapButton.set_colors_enabled();
     terrainSmoothButton.set_colors_enabled();
+    
+    #ifdef USE_TOUCH_INPUT
+    pan_buttons.insert(&panUpButton);
+    pan_buttons.insert(&panDownButton);
+    pan_buttons.insert(&panLeftButton);
+    pan_buttons.insert(&panRightButton);
+    #endif
 }
 
 LevelEditorData::~LevelEditorData()
@@ -832,6 +846,12 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
     }
     
     for(set<SimpleButton*>::const_iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
+    {
+        if((*e)->contains(mx, my))
+            return true;
+    }
+    
+    for(set<SimpleButton*>::const_iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
     {
         if((*e)->contains(mx, my))
             return true;
@@ -1249,6 +1269,8 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     // Draw mode-specific buttons
     for(set<SimpleButton*>::iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
+        (*e)->draw(myscreen, scentext);
+    for(set<SimpleButton*>::iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
         (*e)->draw(myscreen, scentext);
     
     // Draw top menu
@@ -2079,7 +2101,7 @@ Sint32 level_editor()
 		// Mouse stuff ..
 		mymouse = query_mouse();
 
-		// Scroll the screen ..
+		// Scroll the screen (panning)
 		// Zardus: ADD: added scrolling by keyboard
 		// Zardus: PORT: disabled mouse scrolling
 		if ((keystates[KEYSTATE_KP_8] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_w]) // || mymouse[MOUSE_Y]< 2)
@@ -2776,6 +2798,29 @@ Sint32 level_editor()
                             break;
                         }
                     }
+                    
+                    // Panning with mouse (touch)
+                    if(data.panUpButton.contains(mx, my) && data.level->topy >= 0) // top of the screen
+                    {
+                        event = 1;
+                        data.level->add_draw_pos(0, -SCROLLSIZE);
+                    }
+                    if(data.panDownButton.contains(mx, my) && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
+                    {
+                        event = 1;
+                        data.level->add_draw_pos(0, SCROLLSIZE);
+                    }
+                    if(data.panLeftButton.contains(mx, my) && data.level->topx >= 0) // scroll left
+                    {
+                        event = 1;
+                        data.level->add_draw_pos(-SCROLLSIZE, 0);
+                    }
+                    if(data.panRightButton.contains(mx, my) && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
+                    {
+                        event = 1;
+                        data.level->add_draw_pos(SCROLLSIZE, 0);
+                    }
+                        
                 }
             }
             else
