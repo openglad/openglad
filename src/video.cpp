@@ -265,6 +265,35 @@ void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 borde
 	}
 }
 
+void video::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool use_border, int base_color, int high_color, int shadow_color)
+{
+	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs
+	Sint32 ylength = y2 - y1 + 1;
+	Sint32 i;
+	Sint32 tobuffer = 1;
+
+	clearfontbuffer(x1,y1,xlength,ylength);
+    
+    if(use_border)
+    {
+        // Fill
+        for (i = 0; i < ylength-2; i++)
+            hor_line(x1+1, y1+1+i, xlength-2, base_color, tobuffer); // facing
+
+        // Borders
+        hor_line(x1, y1, xlength, high_color, tobuffer); // top
+        hor_line(x1, y2, xlength, shadow_color, tobuffer); // bottom
+        ver_line(x1, y1, ylength, high_color, tobuffer); // left
+        ver_line(x2, y1, ylength, shadow_color, tobuffer); // right
+    }
+    else
+    {
+        // Fill
+        for (i = 0; i < ylength; i++)
+            hor_line(x1, y1+i, xlength, base_color, tobuffer); // facing
+    }
+}
+
 // Draws an empty but headed dialog box, returns the edge at
 // which to draw text ... does NOT display to screen.
 Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,

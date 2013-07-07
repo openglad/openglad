@@ -259,19 +259,28 @@ public:
     SDL_Rect area;
     std::string label;
     bool remove_border;
-    int color;
+    int base_color;
+    int high_color;
+    int shadow_color;
+    int text_color;
     bool centered;
     
-    SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border = false, int color = DARK_BLUE);
+    SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border = false);
     
     void draw(screen* myscreen, text* mytext);
     bool contains(int x, int y) const;
+    
+    void set_colors_normal();
+    void set_colors_enabled();
+    void set_colors_disabled();
 };
 
 
-SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border, int color)
-    : label(label), remove_border(remove_border), color(color), centered(false)
+SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border)
+    : label(label), remove_border(remove_border), centered(false)
 {
+    set_colors_normal();
+    
     area.x = x;
     area.y = y;
     area.w = w;
@@ -280,17 +289,41 @@ SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int 
 
 void SimpleButton::draw(screen* myscreen, text* mytext)
 {
-    myscreen->draw_button(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, (remove_border? 0 : 1), 1);
+    myscreen->draw_button_colored(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, !remove_border, base_color, high_color, shadow_color);
     if(centered)
-        mytext->write_xy(area.x + area.w/2 - 3*label.size(), area.y + area.h/2 - 2, label.c_str(), color, 1);
+        mytext->write_xy(area.x + area.w/2 - 3*label.size(), area.y + area.h/2 - 2, label.c_str(), text_color, 1);
     else
-        mytext->write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), color, 1);
+        mytext->write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), text_color, 1);
 }
 
 bool SimpleButton::contains(int x, int y) const
 {
     return (area.x <= x && x < area.x + area.w
             && area.y <= y && y < area.y + area.h);
+}
+
+void SimpleButton::set_colors_normal()
+{
+    text_color = DARK_BLUE;
+    base_color = 13;
+    high_color = 14;
+    shadow_color = 12;
+}
+
+void SimpleButton::set_colors_enabled()
+{
+    text_color = 80;
+    base_color = 64;
+    high_color = 72;
+    shadow_color = 74;
+}
+
+void SimpleButton::set_colors_disabled()
+{
+    text_color = 3;
+    base_color = 10;
+    high_color = 12;
+    shadow_color = 14;
 }
 
 
@@ -639,6 +672,11 @@ public:
 	set<SimpleButton*> menu_buttons;
 	// The active menu buttons
 	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
+	// The mode-specific buttons
+	set<SimpleButton*> mode_buttons;
+	
+	SimpleButton gridSnapButton;
+    
     
     LevelEditorData();
     ~LevelEditorData();
@@ -658,14 +696,19 @@ public:
     void draw(screen* myscreen);
     Sint32 display_panel(screen* myscreen);
     
+    bool mouse_on_menus(int mx, int my);
+    void reset_mode_buttons();
+    void activate_mode_button(SimpleButton* button);
+    
     void clear_terrain();
     void resmooth_terrain();
 };
 
 LevelEditorData::LevelEditorData()
     : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
+    , gridSnapButton("Snap", 5, 20, 30, 15)
 {
-    
+    gridSnapButton.set_colors_enabled();
 }
 
 LevelEditorData::~LevelEditorData()
@@ -759,9 +802,15 @@ bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButt
 }
 
 // Wouldn't spatial partitioning be nice?  Too bad!
-bool mouse_on_menus(int mx, int my, const set<SimpleButton*>& menu_buttons, const std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu)
+bool LevelEditorData::mouse_on_menus(int mx, int my)
 {
     for(set<SimpleButton*>::const_iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+    {
+        if((*e)->contains(mx, my))
+            return true;
+    }
+    
+    for(set<SimpleButton*>::const_iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
     {
         if((*e)->contains(mx, my))
             return true;
@@ -778,6 +827,34 @@ bool mouse_on_menus(int mx, int my, const set<SimpleButton*>& menu_buttons, cons
     }
     
     return false;
+}
+
+void LevelEditorData::reset_mode_buttons()
+{
+    mode_buttons.clear();
+    switch(mode)
+    {
+        case TERRAIN:
+        break;
+        case OBJECT:
+        mode_buttons.insert(&gridSnapButton);
+        break;
+        case SELECT:
+        mode_buttons.insert(&gridSnapButton);
+        break;
+    }
+}
+
+void LevelEditorData::activate_mode_button(SimpleButton* button)
+{
+    if(button == &gridSnapButton)
+    {
+        object_brush.snap_to_grid = !object_brush.snap_to_grid;
+        if(object_brush.snap_to_grid)
+            gridSnapButton.set_colors_enabled();
+        else
+            gridSnapButton.set_colors_normal();
+    }
 }
 
 bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >& current_menu, SimpleButton& button, bool is_in_top_menu = false)
@@ -952,6 +1029,10 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     // Draw minimap
     myradar.draw(level);
+    
+    // Draw mode-specific buttons
+    for(set<SimpleButton*>::iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
+        (*e)->draw(myscreen, scentext);
     
     // Draw top menu
     for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
@@ -1169,13 +1250,6 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         
         if(strlen(message) > 0)
             scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
-
-        // Is grid alignment on?
-        //myscreen->fastbox(lm, L_D(curline),65, 7, 27, 1);
-        if (object_brush.snap_to_grid)
-            scentext->write_xy(lm, L_D(curline++), "ALIGN: ON", DARK_BLUE, 1);
-        else
-            scentext->write_xy(lm, L_D(curline++), "ALIGN: OFF", DARK_BLUE, 1);
         
         numobs = myscreen->level_data.numobs;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
@@ -1215,7 +1289,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
                         && my > myscreen->viewob[0]->endy - myradar.yview - 4
                         && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
-        if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
+        if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my))
         {
             // Draw target tile
             int worldx = mx + level->topx;
@@ -1274,7 +1348,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                         && my > myscreen->viewob[0]->endy - myradar.yview - 4
                         && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
         bool over_info = Rect(lm-4, L_D(-1)+4, 315 - (lm-4), L_D(7)-2 - L_D(-1)).contains(mx, my);
-        if(!over_radar && !over_info && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my, menu_buttons, current_menu))
+        if(!over_radar && !over_info && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my))
         {
             // Prepare object sprite
             newob->setxy(mx + level->topx, my + level->topy);
@@ -1388,6 +1462,7 @@ Sint32 level_editor()
     text*& scentext = data.scentext;
     ModeEnum& mode = data.mode;
     radar& myradar = data.myradar;
+	set<SimpleButton*>& mode_buttons = data.mode_buttons;
 	set<SimpleButton*>& menu_buttons = data.menu_buttons;
 	list<pair<SimpleButton*, set<SimpleButton*> > >& current_menu = data.current_menu;
     
@@ -1516,6 +1591,7 @@ Sint32 level_editor()
 	menu_buttons.insert(&levelButton);
 	menu_buttons.insert(&modeButton);
 	
+	data.reset_mode_buttons();
 	
 
 	//******************************
@@ -1715,6 +1791,8 @@ Sint32 level_editor()
                 mode = OBJECT;
                 modeButton.label = "Edit (Objects)";
             }
+            data.reset_mode_buttons();
+            
 			event = 1; // change score panel
 			while (keystates[KEYSTATE_o])
 				get_input_events(WAIT);
@@ -1732,6 +1810,8 @@ Sint32 level_editor()
                 mode = TERRAIN;
                 modeButton.label = "Edit (Terrain)";
             }
+            data.reset_mode_buttons();
+            
 			event = 1; // change score panel
 			while (keystates[KEYSTATE_t])
 				get_input_events(WAIT);
@@ -1822,7 +1902,7 @@ Sint32 level_editor()
 			my = mymouse[MOUSE_Y];
             
             // Clicking on menu items
-            if(mouse_on_menus(mx, my, menu_buttons, current_menu))
+            if(data.mouse_on_menus(mx, my))
             {
                 // FILE
                 if(activate_sub_menu_button(mx, my, current_menu, fileButton, true))
@@ -2454,16 +2534,36 @@ Sint32 level_editor()
                 {
                     mode = TERRAIN;
                     modeButton.label = "Edit (Terrain)";
+                    data.reset_mode_buttons();
                 }
                 else if(activate_menu_choice(mx, my, data, modeObjectButton))
                 {
                     mode = OBJECT;
                     modeButton.label = "Edit (Objects)";
+                    data.reset_mode_buttons();
                 }
                 else if(activate_menu_choice(mx, my, data, modeSelectButton))
                 {
                     mode = SELECT;
                     modeButton.label = "Edit (Select)";
+                    data.reset_mode_buttons();
+                }
+                else
+                {
+                    // Check mode-specific buttons
+                    for(std::set<SimpleButton*>::iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
+                    {
+                        if((*e)->contains(mx, my))
+                        {
+                            data.activate_mode_button(*e);
+                            event = 1;
+                            
+                            // Wait for mouse button to be released
+                            while(mymouse[MOUSE_LEFT])
+                                get_input_events(WAIT);
+                            break;
+                        }
+                    }
                 }
             }
             else
