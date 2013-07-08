@@ -3655,7 +3655,6 @@ Sint32 change_teamnum(Sint32 arg)
 {
    // Change the team number of the current guy
    short current_team;
-   char  message[80];
 
    // What is our current team number?
    if (!current_guy)
