@@ -372,6 +372,25 @@ void handle_events(SDL_Event *event)
     case SDL_KEYUP:
         break;
 #ifdef USE_SDL2
+    case SDL_WINDOWEVENT:
+    {
+        SDL_WindowEvent& window = event->window;
+        if(window.event == SDL_WINDOWEVENT_MINIMIZED)
+        {
+            // Save state here on Android
+        }
+        else if(window.event == SDL_WINDOWEVENT_CLOSE)
+        {
+            // Save state here on Android
+        }
+        else if(window.event == SDL_WINDOWEVENT_RESTORED)
+        {
+            // Restore state here on Android.
+            // Redraw the screen so it's not blank
+            myscreen->refresh();
+        }
+    }
+    break;
     case SDL_TEXTINPUT:
         free(raw_text_input);
         raw_text_input = strdup(event->text.text);
