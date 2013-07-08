@@ -1673,7 +1673,7 @@ short walker::attack(walker  *target)
 					if (strlen(target->stats->name) && !(target->lifetime)
 					        && (!target->owner) ) // do we have an NPC name?
 					{
-						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name);
+						sprintf(message, "ENEMY DEFEATED: %s FELL!", target->stats->name);
 						screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 					}
 					if(remaining_foes(screenp, this) == 1)  // This is the last foe
@@ -1689,32 +1689,32 @@ short walker::attack(walker  *target)
 					        && (strlen(target->stats->name) ) ) // and have name
 						sprintf(message, "%s Dispelled!", target->stats->name);
 					else if (strlen(target->stats->name)) // do we have an NPC name?
-						sprintf(message, "%s DIED!", target->stats->name);
+						sprintf(message, "%s FELL!", target->stats->name);
 					else if (target->myguy && strlen(target->myguy->name) )
-						sprintf(message, "%s Died!", target->myguy->name);
+						sprintf(message, "%s Fell!", target->myguy->name);
 					else
 						switch (target->query_family())
 						{
 							case FAMILY_SOLDIER:
-								strcpy(message, "SOLDIER SLAIN");
+								strcpy(message, "SOLDIER FELL");
 								break;
 							case FAMILY_ARCHER:
-								strcpy(message, "ARCHER DIED");
+								strcpy(message, "ARCHER FELL");
 								break;
 							case FAMILY_THIEF:
-								strcpy(message, "THIEF KILLED");
+								strcpy(message, "THIEF FELL");
 								break;
 							case FAMILY_ELF:
-								strcpy(message, "ELF KILLED");
+								strcpy(message, "ELF FELL");
 								break;
 							case FAMILY_MAGE:
-								strcpy(message, "MAGE DIED");
+								strcpy(message, "MAGE FELL");
 								break;
 							case FAMILY_SKELETON:
 								strcpy(message, "SKELETON CRUMBLED");
 								break;
 							case FAMILY_CLERIC:
-								strcpy(message, "CLERIC DIED");
+								strcpy(message, "CLERIC FELL");
 								break;
 							case FAMILY_FIREELEMENTAL:
 								strcpy(message, "FIRE ELEMENTAL EXTINGUISHED");
@@ -1734,10 +1734,10 @@ short walker::attack(walker  *target)
 								strcpy(message,"DRUID VANQUISHED");
 								break;
 							case FAMILY_ORC:
-								strcpy(message,"ORC DIED");
+								strcpy(message,"ORC FELL");
 								break;
 							default :
-								strcpy(message, "SOMEONE DIED");
+								strcpy(message, "SOMEONE FELL");
 								break;
 						}
 					screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
@@ -3465,7 +3465,7 @@ short walker::special()
 						strcpy(message, stats->name);
 					else
 						strcpy(message, "Orc");
-					strcat(message, " ate a corpse.");
+					strcat(message, " ate remains.");
 					screenp->do_notify(message, this);
 					if (stats->hitpoints > stats->max_hitpoints)
 						stats->hitpoints = stats->max_hitpoints;
