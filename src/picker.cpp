@@ -2803,7 +2803,7 @@ Sint32 create_detail_menu(guy *arg1)
            {
                WR(0, " Freeze Time   ");
                WR(1, "  Freeze time for all   ");
-               WR(2, "  but your team and kill");
+               WR(2, "  but your team and fell");
                WR(3 ,"  enemies with ease.    ");
            }
            // Level 10 things
@@ -2874,7 +2874,7 @@ Sint32 create_detail_menu(guy *arg1)
            if (thisguy->level >= 4)
            {
                WL(7, " Raise/Turn Undead");
-               WL(8, "  Raise the gore of any ");
+               WL(8, "  Raise remains of any  ");
                WL(9, "  victim to a skeleton. ");
                WL(10,"  Alternate (turning)   ");
                WL(11,"  requires 65 Int.      ");
@@ -2986,9 +2986,9 @@ Sint32 create_detail_menu(guy *arg1)
            // Level 4 things
            if (thisguy->level >= 4)
            {
-               WL(7, " Devour Corpse    ");
+               WL(7, " Devour Remains    ");
                WL(8, "  Regain health by      ");
-               WL(9, "  devouring the corpses ");
+               WL(9, "  devouring the remains ");
                WL(10,"  of your foes.         ");
            }
            // Can we change to orc captain?
@@ -3183,7 +3183,6 @@ Sint32 change_teamnum(Sint32 arg)
 {
    // Change the team number of the current guy
    short current_team;
-   char  message[80];
 
    // What is our current team number?
    if (!current_guy)
@@ -3247,11 +3246,6 @@ Sint32 change_allied()
        sprintf(message, "PVP: Ally");
    else
        sprintf(message, "PVP: Enemy");
-
-   // Update our button display
-   strcpy(allbuttons[7]->label, message);
-   //buffers: allbuttons[7]->vdisplay();
-   //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
    return OK;
 }

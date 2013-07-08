@@ -224,7 +224,7 @@ screen::screen(short howmany)
 	strcpy(special_name[FAMILY_FIREELEMENTAL][1], "STARBURST");
 
 	strcpy(special_name[FAMILY_ORC][1], "HOWL");
-	strcpy(special_name[FAMILY_ORC][2], "EAT CORPSE");
+	strcpy(special_name[FAMILY_ORC][2], "EAT REMAINS");
 
 	strcpy(special_name[FAMILY_SMALL_SLIME][1], "GROW");
 
