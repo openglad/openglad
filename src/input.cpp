@@ -1172,7 +1172,9 @@ void grab_mouse()
 
 void release_mouse()
 {
+    #ifndef FAKE_TOUCH_EVENTS
     SDL_ShowCursor(SDL_DISABLE);
+    #endif
 }
 
 Sint32 * query_mouse()
