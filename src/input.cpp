@@ -250,6 +250,8 @@ pixie* next_special_button_pix = NULL;
 PixieData next_special_button_pix_data;
 pixie* alternate_special_button_pix = NULL;
 PixieData alternate_special_button_pix_data;
+pixie* switch_char_button_pix = NULL;
+PixieData switch_char_button_pix_data;
 
 static const int touch_motion_alpha = 100;
 static const int touch_button_alpha = 100;
@@ -276,6 +278,9 @@ void load_touch_images(screen* myscreen)
     
     alternate_special_button_pix_data = read_pixie_file("alternate_button.pix");
 	alternate_special_button_pix = new pixie(alternate_special_button_pix_data, myscreen);
+	
+	switch_char_button_pix_data = read_pixie_file("switch_char_button.pix");
+	switch_char_button_pix = new pixie(switch_char_button_pix_data, myscreen);
     
 }
 
@@ -287,6 +292,9 @@ void draw_touch_controls(screen* vob)
     
     if(!loaded_touch_images)
         load_touch_images(vob);
+    
+    // Switch character area
+    switch_char_button_pix->put_screen(SWITCH_CHARACTER_BUTTON_X, SWITCH_CHARACTER_BUTTON_Y, touch_button_alpha);
     
     if(moving)
     {
