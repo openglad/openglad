@@ -620,34 +620,29 @@ void video::diag_line(Sint32 x, Sint32 y, Sint32 degrees, Sint32 length, unsigne
 		return;
 	}
 	
-    clearfontbuffer(x,y,1,length);
 	switch(degrees)
 	{
 	    case 45:
             for (i = 0; i < length; i++)
             {
-                clearfontbuffer(x+i,y-i,1,1);
                 pointb(x+i,y-i,color);
             }
             break;
 	    case 135:
             for (i = 0; i < length; i++)
             {
-                clearfontbuffer(x+i,y+i,1,1);
                 pointb(x+i,y+i,color);
             }
             break;
 	    case 225:
             for (i = 0; i < length; i++)
             {
-                clearfontbuffer(x-i,y+i,1,1);
                 pointb(x-i,y+i,color);
             }
             break;
 	    case 315:
             for (i = 0; i < length; i++)
             {
-                clearfontbuffer(x-i,y-i,1,1);
                 pointb(x-i,y-i,color);
             }
             break;
