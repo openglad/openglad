@@ -39,6 +39,7 @@ class video
 		void point(Sint32 x, Sint32 y, unsigned char color);
 		//buffers: PORT: added below prototype
 		void pointb(Sint32 x, Sint32 y, unsigned char color);
+		void pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha);
 		void pointb(int offset, unsigned char color);
 		void pointb(Sint32 x, Sint32 y, int r, int g, int b);
 		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color);
@@ -48,11 +49,12 @@ class video
 		void do_cycle(Sint32 curmode, Sint32 maxmode);
 		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		             unsigned char  *sourcedata);
+        void putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char  *sourcedata, unsigned char alpha);
 		void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		                             unsigned char  *sourcedata);
 		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		             unsigned char  *sourcedata, unsigned char color);
-
+           
 		 void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		                              unsigned char  *sourcedata, unsigned char color);
 
