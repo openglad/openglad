@@ -62,14 +62,12 @@ void intro_main(Sint32 argc, char** argv)
 	//buffers: PORT:  for (i=0;i<256;i++)
 	//buffers: PORT:         set_palette_reg(i,0,0,0);
 	myscreen->clear();
-
-	gladdata = read_pixie_file("3mages2.pix");
-	gladiator = new pixie(gladdata, myscreen);
-	gladiator->drawMix(120,55,myscreen->viewob[0]);
-	mytext->write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0]);
-	//myscreen->refresh();
-	delete gladiator;
-	gladdata.free();
+	//gladdata = read_pixie_file("3mages2.pix");
+	//gladiator = new pixie(gladdata, myscreen);
+	//gladiator->drawMix(120,55,myscreen->viewob[0]);
+	mytext->write_y(100,"DinoMage Games presents", 230, myscreen->viewob[0]);
+	//delete gladiator;
+	//gladdata.free();
 
 	if (show() < 0)
 	{
@@ -78,16 +76,14 @@ void intro_main(Sint32 argc, char** argv)
 		return;
 	}
 
-	//gladdata = read_pixie_file("glad.pix");
+	myscreen->clear();
 	gladdata = read_pixie_file("glad2.pix");
 	gladiator = new pixie(gladdata, myscreen);
 	bigdata = read_pixie_file("bigfoot.pix");
 	bigfoot = new pixie(bigdata, myscreen);
-	myscreen->clear();
+	                    
 	bigfoot->drawMix(120,50,myscreen->viewob[0]);
-	//gladiator->drawMix(110,65,myscreen->viewob[0]);
 	gladiator->drawMix(100, 110, myscreen->viewob[0]);
-	//myscreen->refresh();
 
 	gladdata.free();
 	delete gladiator;
@@ -104,6 +100,22 @@ void intro_main(Sint32 argc, char** argv)
 	myscreen->clear();
 	mytext->write_y(70,"THOSE WHO ARE ABOUT TO DIE SALUTE YOU", 230, myscreen->viewob[0]);
 	//myscreen->refresh();
+
+	if (show() < 0)
+	{
+		delete mytext;
+		cleanup();
+		return;
+	}
+	
+	myscreen->clear();
+	gladdata = read_pixie_file("3mages2.pix");
+	gladiator = new pixie(gladdata, myscreen);
+	gladiator->drawMix(120,55,myscreen->viewob[0]);
+	mytext->write_y(100,"GAME BY", 230, myscreen->viewob[0]);
+	mytext->write_y(120,"FORGOTTEN SAGES", 230, myscreen->viewob[0]);
+	delete gladiator;
+	gladdata.free();
 
 	if (show() < 0)
 	{
@@ -175,6 +187,7 @@ void intro_main(Sint32 argc, char** argv)
 	mytext->write_y(90,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
 	//buffers: PORT: w00t w00t
 	mytext->write_y(110,"SDL port by Odo and Zardus",230,myscreen->viewob[0]);
+	mytext->write_y(130,"Android port by Jonathan Dearborn",230,myscreen->viewob[0]);
 	//myscreen->refresh();
 
 	if (show() < 0)
@@ -223,7 +236,6 @@ void intro_main(Sint32 argc, char** argv)
 	strcpy(message, "And many others!");
 	mytext->write_xy(2, 180, message, 230, myscreen->viewob[0]);
 
-	//myscreen->refresh();
 
 	if (show(SHOW_TIME*4) < 0)
 	{
