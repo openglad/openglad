@@ -325,9 +325,9 @@ void draw_touch_controls(screen* vob)
     }
     
     //if(has_multiple_specials)
-    if(control->current_special != 1 && !((control->current_special > (NUM_SPECIALS-1)
-		        || !(strcmp(vob->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
-		        || (((control->current_special-1)*3+1) > control->stats->level) )))
+    // We have multiple specials if our level is at least 4 and special #2 is not "NONE"
+    if(control->current_special > 1  // Already know we have multiple
+       || (control->stats->level >= 4 && strcmp(vob->special_name[(int)control->query_family()][2],"NONE") != 0))
         next_special_button_pix->put_screen(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, touch_button_alpha);
     
     //if(has_alternate)
