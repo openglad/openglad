@@ -109,6 +109,28 @@
 					<Add library="SDL_mixer" />
 				</Linker>
 			</Target>
+			<Target title="Windows Debug SDL2 - Touch">
+				<Option platforms="Windows;" />
+				<Option output="openglad" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug2-touch/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="-DUSE_TOUCH_INPUT" />
+					<Add option="-DFAKE_TOUCH_EVENTS" />
+					<Add directory="../../bdcode/externals/SDL2/include/SDL2" />
+					<Add directory="../../bdcode/externals/SDL_mixer/include" />
+				</Compiler>
+				<Linker>
+					<Add library="mingw32" />
+					<Add library="SDL2main" />
+					<Add library="SDL2" />
+					<Add library="SDL2_mixer" />
+					<Add directory="../../bdcode/externals/SDL2/lib_windows" />
+					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
+				</Linker>
+			</Target>
 		</Build>
 		<Compiler>
 			<Add option="-Wall" />
