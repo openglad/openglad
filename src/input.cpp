@@ -21,6 +21,7 @@
 //
 
 #include "input.h"
+#include "screen.h"
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen
@@ -48,6 +49,8 @@ int start_tap_y = 0;
 bool moving = false;
 int moving_touch_x = 0;
 int moving_touch_y = 0;
+int moving_touch_target_x = 0;
+int moving_touch_target_y = 0;
 SDL_FingerID movingTouch = 0;
 bool firing = false;
 SDL_FingerID firingTouch = 0;
@@ -237,7 +240,7 @@ void get_input_events(bool type)
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
-    if(control == NULL)
+    if(control == NULL || control->dead)
         return;
     
     if(moving)
@@ -246,7 +249,7 @@ void draw_touch_controls(screen* vob)
         //line(moving_touch_x, moving_touch_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
         vob->fastbox(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, MOVE_AREA_DIM, MOVE_AREA_DIM, 17);
         vob->fastbox(moving_touch_x - 4, moving_touch_y - 4, 8, 8, 16);
-        vob->fastbox(mouse_state[MOUSE_X] - 2, mouse_state[MOUSE_Y] - 2, 4, 4, 15);
+        vob->fastbox(moving_touch_target_x - 2, moving_touch_target_y - 2, 4, 4, 15);
     }
     
     // Touch buttons
@@ -306,6 +309,25 @@ void handle_events(SDL_Event *event)
     case SDL_KEYUP:
         break;
 #ifdef USE_SDL2
+    case SDL_WINDOWEVENT:
+    {
+        SDL_WindowEvent& window = event->window;
+        if(window.event == SDL_WINDOWEVENT_MINIMIZED)
+        {
+            // Save state here on Android
+        }
+        else if(window.event == SDL_WINDOWEVENT_CLOSE)
+        {
+            // Save state here on Android
+        }
+        else if(window.event == SDL_WINDOWEVENT_RESTORED)
+        {
+            // Restore state here on Android.
+            // Redraw the screen so it's not blank
+            myscreen->refresh();
+        }
+    }
+    break;
     case SDL_TEXTINPUT:
         free(raw_text_input);
         raw_text_input = strdup(event->text.text);
@@ -336,6 +358,8 @@ void handle_events(SDL_Event *event)
         //Log ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
         //mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
         //Log ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
+        mouse_state[MOUSE_X] = event->button.x / mouse_scale_x;
+        mouse_state[MOUSE_Y] = event->button.y / mouse_scale_y;
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT)
@@ -348,6 +372,8 @@ void handle_events(SDL_Event *event)
         else if (event->button.button == SDL_BUTTON_WHEELDOWN)
             scroll_amount = -5;
         #endif
+        mouse_state[MOUSE_X] = event->button.x / mouse_scale_x;
+        mouse_state[MOUSE_Y] = event->button.y / mouse_scale_y;
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -355,10 +381,10 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERMOTION;
-            e.tfinger.x = event->motion.x/640.0f;
-            e.tfinger.y = event->motion.y/400.0f;
-            e.tfinger.dx = event->motion.xrel/640.0f;
-            e.tfinger.dy = event->motion.yrel/400.0f;
+            e.tfinger.x = event->motion.x/(320*mouse_scale_x);
+            e.tfinger.y = event->motion.y/(200*mouse_scale_y);
+            e.tfinger.dx = event->motion.xrel/(320*mouse_scale_x);
+            e.tfinger.dy = event->motion.yrel/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -368,8 +394,8 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERUP;
-            e.tfinger.x = event->button.x/640.0f;
-            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.x = event->button.x/(320*mouse_scale_x);
+            e.tfinger.y = event->button.y/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -379,8 +405,8 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERDOWN;
-            e.tfinger.x = event->button.x/640.0f;
-            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.x = event->button.x/(320*mouse_scale_x);
+            e.tfinger.y = event->button.y/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -400,6 +426,9 @@ void handle_events(SDL_Event *event)
         
         if(moving && event->tfinger.fingerId == movingTouch)
         {
+            moving_touch_target_x = x;
+            moving_touch_target_y = y;
+            
             touch_keystate[0][KEY_UP] = false;
             touch_keystate[0][KEY_UP_RIGHT] = false;
             touch_keystate[0][KEY_RIGHT] = false;
@@ -520,6 +549,8 @@ void handle_events(SDL_Event *event)
             {
                 moving_touch_x = x;
                 moving_touch_y = y;
+                moving_touch_target_x = x;
+                moving_touch_target_y = y;
                 if(moving_touch_x < MOVE_AREA_DIM/2 + 1)
                     moving_touch_x = MOVE_AREA_DIM/2 + 1;
                 if(moving_touch_y < MOVE_AREA_DIM/2 + 1)

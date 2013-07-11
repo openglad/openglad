@@ -69,7 +69,6 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	}
 
 	// Cycle through the team list ..
-	Log("Creating %u team members.\n", myscreen->save_data.team_size);
 	for(int i = 0; i < myscreen->save_data.team_size; i++)
     {
 	    temp_guy = myscreen->save_data.team_list[i];
