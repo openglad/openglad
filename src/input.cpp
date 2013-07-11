@@ -453,6 +453,8 @@ void handle_events(SDL_Event *event)
         //Log ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
         //mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
         //Log ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
+        mouse_state[MOUSE_X] = event->button.x / mouse_scale_x;
+        mouse_state[MOUSE_Y] = event->button.y / mouse_scale_y;
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT)
@@ -465,6 +467,8 @@ void handle_events(SDL_Event *event)
         else if (event->button.button == SDL_BUTTON_WHEELDOWN)
             scroll_amount = -5;
         #endif
+        mouse_state[MOUSE_X] = event->button.x / mouse_scale_x;
+        mouse_state[MOUSE_Y] = event->button.y / mouse_scale_y;
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -472,10 +476,10 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERMOTION;
-            e.tfinger.x = event->motion.x/640.0f;
-            e.tfinger.y = event->motion.y/400.0f;
-            e.tfinger.dx = event->motion.xrel/640.0f;
-            e.tfinger.dy = event->motion.yrel/400.0f;
+            e.tfinger.x = event->motion.x/(320*mouse_scale_x);
+            e.tfinger.y = event->motion.y/(200*mouse_scale_y);
+            e.tfinger.dx = event->motion.xrel/(320*mouse_scale_x);
+            e.tfinger.dy = event->motion.yrel/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -485,8 +489,8 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERUP;
-            e.tfinger.x = event->button.x/640.0f;
-            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.x = event->button.x/(320*mouse_scale_x);
+            e.tfinger.y = event->button.y/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -496,8 +500,8 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERDOWN;
-            e.tfinger.x = event->button.x/640.0f;
-            e.tfinger.y = event->button.y/400.0f;
+            e.tfinger.x = event->button.x/(320*mouse_scale_x);
+            e.tfinger.y = event->button.y/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
