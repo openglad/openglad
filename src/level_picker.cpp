@@ -40,7 +40,7 @@ extern Sint32 *mymouse;
 
 
 
-void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, list<int>& exits)
+void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, list<int>& exits)
 {
     int num = 0;
     int level_sum = 0;
@@ -52,7 +52,7 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
     exits.clear();
     
     // Go through objects
-    oblink* fx = screenp->level_data.oblist;
+    oblink* fx = level_data.oblist;
 	while(fx)
 	{
 		if(fx->ob)
@@ -81,7 +81,7 @@ void getLevelStats(screen* screenp, int* max_enemy_level, float* average_enemy_l
 	}
 	
 	// Go through effects
-	fx = screenp->level_data.fxlist;
+	fx = level_data.fxlist;
 	while(fx)
 	{
 		if(fx->ob)
@@ -159,16 +159,14 @@ class BrowserEntry
 {
     public:
     
+    LevelData level_data;
     SDL_Rect mapAreas;
-    radar* radars;
+    radar myradar;
+    char level_name[24];
     int max_enemy_level;
     float average_enemy_level;
     int num_enemies;
     float difficulty;
-    oblink* oblist;
-    oblink* fxlist;
-    oblink* weaplist;
-    char* level_name;
     list<int> exits;
     char scentext[80][80];                         // Array to hold scenario information
     char scentextlines;                    // How many lines of text in scenario info
@@ -176,7 +174,7 @@ class BrowserEntry
     BrowserEntry(screen* screenp, int index, int scen_num);
     ~BrowserEntry();
     
-    void draw(screen* screenp, text* loadtext, int scen_num);
+    void draw(screen* screenp, text* loadtext);
 };
 
 void remove_all_objects(screen *master)
@@ -228,40 +226,29 @@ void remove_all_objects(screen *master)
 } // end remove_all_objects
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
+    : level_data(scen_num), myradar(NULL, screenp, 0)
 {
-    // Clear the level so we can load the next one
-    screenp->level_data.clear();
-    screenp->level_data.id = scen_num;
-    screenp->level_data.load();
+    level_data.load();
     
-    radar* r = new radar(NULL, screenp, 0);
-    r->start();
-    radars = r;
+    myradar.start(&level_data);
     
 
-    int w = radars->xview;
-    int h = radars->yview;
+    int w = myradar.xview;
+    int h = myradar.yview;
     
     mapAreas.w = w;
     mapAreas.h = h;
     mapAreas.x = 10;
     mapAreas.y = 5 + (53 + 12)*index;
     
-    r->xloc = mapAreas.x + mapAreas.w/2 - w/2;
-    r->yloc = mapAreas.y + 10;
+    myradar.xloc = mapAreas.x + mapAreas.w/2 - w/2;
+    myradar.yloc = mapAreas.y + 10;
     
     
-    getLevelStats(screenp, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
+    getLevelStats(level_data, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
     
-    // Store this level's objects
-    oblist = screenp->level_data.oblist;
-    screenp->level_data.oblist = NULL;
-    fxlist = screenp->level_data.fxlist;
-    screenp->level_data.fxlist = NULL;
-    weaplist = screenp->level_data.weaplist;
-    screenp->level_data.weaplist = NULL;
-    level_name = new char[24];
-    strncpy(level_name, screenp->level_data.title.c_str(), 23);
+    // Store this level's info
+    strncpy(level_name, level_data.title.c_str(), 23);
     if(level_name[20] != '\0')
     {
         level_name[20] = '.';
@@ -270,9 +257,9 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
         level_name[23] = '\0';
     }
     
-    scentextlines = screenp->level_data.description.size();
+    scentextlines = level_data.description.size();
     int i = 0;
-    for(std::list<std::string>::iterator e = screenp->level_data.description.begin(); e != screenp->level_data.description.end(); e++)
+    for(std::list<std::string>::iterator e = level_data.description.begin(); e != level_data.description.end(); e++)
     {
         strncpy(scentext[i], e->c_str(), 80);
         i++;
@@ -283,64 +270,21 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
 
 
 BrowserEntry::~BrowserEntry()
+{}
+
+void BrowserEntry::draw(screen* screenp, text* loadtext)
 {
-    // Delete all objects
-    oblink *fx = fxlist;
-
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		fx = fx->next;
-	}
-
-	fx = oblist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		fx = fx->next;
-	}
-
-	fx = weaplist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		fx = fx->next;
-	}
-    
-    delete radars;
-    delete[] level_name;
-}
-
-void BrowserEntry::draw(screen* screenp, text* loadtext, int scen_num)
-{
-    // Set the current objects
-    screenp->level_data.oblist = oblist;
-    screenp->level_data.fxlist = fxlist;
-    screenp->level_data.weaplist = weaplist;
-    
-    int x = radars->xloc;
-    int y = radars->yloc;
-    int w = radars->xview;
-    int h = radars->yview;
+    int x = myradar.xloc;
+    int y = myradar.yloc;
+    int w = myradar.xview;
+    int h = myradar.yview;
     screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
-    radars->draw();
+    myradar.draw(&level_data);
     loadtext->write_xy(mapAreas.x, mapAreas.y, level_name, DARK_BLUE, 1);
     
     char buf[30];
-    snprintf(buf, 30, "ID: %d", scen_num);
+    snprintf(buf, 30, "ID: %d", level_data.id);
     loadtext->write_xy(x + w + 5, y, buf, WHITE, 1);
     snprintf(buf, 30, "Enemies: %d", num_enemies);
     loadtext->write_xy(x + w + 5, y + 8, buf, WHITE, 1);
@@ -376,13 +320,10 @@ void BrowserEntry::draw(screen* screenp, text* loadtext, int scen_num)
 
 #define NUM_BROWSE_RADARS 3
 
-// Load a grid or scenario ..
-int pick_level(screen *screenp)
+// Load a scenario...
+int pick_level(screen *screenp, int default_level)
 {
-    int result = screenp->level_data.id;
-    
-    // Clear all objects from the current level
-    screenp->level_data.clear();
+    int result = default_level;
     
 	text* loadtext = new text(screenp);
     
@@ -395,10 +336,10 @@ int pick_level(screen *screenp)
     // This indexes into the level_list.
     int current_level_index = 0;
     
-    // Figure out the list index for the current scen_level, so we can jump straight there.
+    // Figure out the list index for the current scen_level, so we can start there.
     for(int i = 0; i < level_list_length; i++)
     {
-        if(level_list[i] == screenp->level_data.id)
+        if(level_list[i] == default_level)
             current_level_index = i;
     }
     
@@ -417,9 +358,9 @@ int pick_level(screen *screenp)
     int army_power = 0;
 	for(int i=0; i<MAX_TEAM_SIZE; i++)
 	{
-		if (myscreen->save_data.team_list[i])
+		if (screenp->save_data.team_list[i])
 		{
-		    army_power += 3*myscreen->save_data.team_list[i]->level;
+		    army_power += 3*screenp->save_data.team_list[i]->level;
 		}
 	}
     
@@ -568,10 +509,10 @@ int pick_level(screen *screenp)
                 {
                     if(i < level_list_length && entries[i] != NULL)
                     {
-                        int x = entries[i]->radars->xloc;
-                        int y = entries[i]->radars->yloc;
-                        int w = entries[i]->radars->xview;
-                        int h = entries[i]->radars->yview;
+                        int x = entries[i]->myradar.xloc;
+                        int y = entries[i]->myradar.yloc;
+                        int w = entries[i]->myradar.xview;
+                        int h = entries[i]->myradar.yview;
                         SDL_Rect b = {Sint16(x - 2), Sint16(y - 2), Uint16(w + 2), Uint16(h + 2)};
                         if(b.x <= mx && mx <= b.x+b.w
                            && b.y <= my && my <= b.y+b.h)
@@ -610,17 +551,17 @@ int pick_level(screen *screenp)
             int i = selected_entry;
             if(i < level_list_length && entries[i] != NULL)
             {
-                int x = entries[i]->radars->xloc - 4;
-                int y = entries[i]->radars->yloc - 4;
-                int w = entries[i]->radars->xview + 8;
-                int h = entries[i]->radars->yview + 8;
+                int x = entries[i]->myradar.xloc - 4;
+                int y = entries[i]->myradar.yloc - 4;
+                int w = entries[i]->myradar.xview + 8;
+                int h = entries[i]->myradar.yview + 8;
                 screenp->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
             }
         }
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
             if(i < level_list_length && entries[i] != NULL)
-                entries[i]->draw(screenp, loadtext, level_list[current_level_index + i]);
+                entries[i]->draw(screenp, loadtext);
         }
         
         // Description
@@ -649,10 +590,6 @@ int pick_level(screen *screenp)
     }
     
     delete loadtext;
-    
-    
-    // Clear all objects from the current level
-    screenp->level_data.clear();
     
 	return result;
 }
