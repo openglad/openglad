@@ -244,12 +244,12 @@ bool create_new_campaign(const std::string& campaign_id)
 
 void importCampaignPicker()
 {
-    
+    // TODO: Browse campaigns online and download some
 }
 
 void shareCampaign(screen* myscreen)
 {
-    
+    // TODO: Send current campaign to the internets!
 }
 
 
@@ -259,13 +259,14 @@ public:
     SDL_Rect area;
     std::string label;
     bool remove_border;
+    bool draw_top_separator;
     int base_color;
     int high_color;
     int shadow_color;
     int text_color;
     bool centered;
     
-    SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border = false);
+    SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border = false, bool draw_top_separator = false);
     
     void draw(screen* myscreen, text* mytext);
     bool contains(int x, int y) const;
@@ -276,8 +277,8 @@ public:
 };
 
 
-SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border)
-    : label(label), remove_border(remove_border), centered(false)
+SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border, bool draw_top_separator)
+    : label(label), remove_border(remove_border), draw_top_separator(draw_top_separator), centered(false)
 {
     set_colors_normal();
     
@@ -290,6 +291,9 @@ SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int 
 void SimpleButton::draw(screen* myscreen, text* mytext)
 {
     myscreen->draw_button_colored(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, !remove_border, base_color, high_color, shadow_color);
+    if(remove_border && draw_top_separator)
+        myscreen->hor_line(area.x, area.y, area.w, shadow_color);
+    
     if(centered)
         mytext->write_xy(area.x + area.w/2 - 3*label.size(), area.y + area.h/2 - 2, label.c_str(), text_color, 1);
     else
@@ -670,6 +674,8 @@ public:
     
 	radar myradar;
 	
+	Uint16 menu_button_height;
+	
 	set<SimpleButton*> menu_buttons;
 	// The active menu buttons
 	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
@@ -717,8 +723,11 @@ public:
     void resmooth_terrain();
 };
 
+#define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
+
 LevelEditorData::LevelEditorData()
     : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
+    , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     , gridSnapButton("Snap", 0, 20, 27, 15)
     , terrainSmoothButton("Smooth", 0, 20, 39, 15)  // Same place as gridSnapButton
     , setNameButton("Set Name", 0, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
@@ -1708,6 +1717,7 @@ Sint32 level_editor()
 	set<SimpleButton*>& mode_buttons = data.mode_buttons;
 	set<SimpleButton*>& menu_buttons = data.menu_buttons;
 	list<pair<SimpleButton*, set<SimpleButton*> > >& current_menu = data.current_menu;
+	Uint16& menu_button_height = data.menu_button_height;
     
 	Sint32 i,j;
 	Sint32 windowx, windowy;
@@ -1772,61 +1782,61 @@ Sint32 level_editor()
 	using std::list;
 	
 	// File menu
-	SimpleButton fileButton("File", 0, 0, 30, 15);
-	SimpleButton fileCampaignButton("Campaign >", 0, fileButton.area.y + fileButton.area.h, 65, 15, true);
-	SimpleButton fileLevelButton("Level >", 0, fileCampaignButton.area.y + fileCampaignButton.area.h, 65, 15, true);
-	SimpleButton fileQuitButton("Exit", 0, fileLevelButton.area.y + fileLevelButton.area.h, 65, 15, true);
+	SimpleButton fileButton("File", 0, 0, 30, menu_button_height);
+	SimpleButton fileCampaignButton("Campaign >", 0, fileButton.area.y + fileButton.area.h, 65, menu_button_height, true);
+	SimpleButton fileLevelButton("Level >", 0, fileCampaignButton.area.y + fileCampaignButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileQuitButton("Exit", 0, fileLevelButton.area.y + fileLevelButton.area.h, 65, menu_button_height, true, true);
 	
 	// File > Campaign submenu
-	SimpleButton fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, 15, true);
-	SimpleButton fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h, 65, 15, true);
-	SimpleButton fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h, 65, 15, true);
-	SimpleButton fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, fileCampaignNewButton.area.y + fileCampaignNewButton.area.h, 65, 15, true);
-	SimpleButton fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, fileCampaignLoadButton.area.y + fileCampaignLoadButton.area.h, 65, 15, true);
-	SimpleButton fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, fileCampaignSaveButton.area.y + fileCampaignSaveButton.area.h, 65, 15, true);
+	SimpleButton fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, menu_button_height, true);
+	SimpleButton fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, fileCampaignNewButton.area.y + fileCampaignNewButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, fileCampaignLoadButton.area.y + fileCampaignLoadButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, fileCampaignSaveButton.area.y + fileCampaignSaveButton.area.h, 65, menu_button_height, true, true);
 	
 	// File > Level submenu
-	SimpleButton fileLevelNewButton("New", fileLevelButton.area.x + fileLevelButton.area.w, fileLevelButton.area.y, 65, 15, true);
-	SimpleButton fileLevelLoadButton("Load...", fileLevelNewButton.area.x, fileLevelNewButton.area.y + fileLevelNewButton.area.h, 65, 15, true);
-	SimpleButton fileLevelSaveButton("Save", fileLevelNewButton.area.x, fileLevelLoadButton.area.y + fileLevelLoadButton.area.h, 65, 15, true);
-	SimpleButton fileLevelSaveAsButton("Save As...", fileLevelNewButton.area.x, fileLevelSaveButton.area.y + fileLevelSaveButton.area.h, 65, 15, true);
+	SimpleButton fileLevelNewButton("New", fileLevelButton.area.x + fileLevelButton.area.w, fileLevelButton.area.y, 65, menu_button_height, true);
+	SimpleButton fileLevelLoadButton("Load...", fileLevelNewButton.area.x, fileLevelNewButton.area.y + fileLevelNewButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileLevelSaveButton("Save", fileLevelNewButton.area.x, fileLevelLoadButton.area.y + fileLevelLoadButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileLevelSaveAsButton("Save As...", fileLevelNewButton.area.x, fileLevelSaveButton.area.y + fileLevelSaveButton.area.h, 65, menu_button_height, true, true);
 	
 	// Campaign menu
-	SimpleButton campaignButton("Campaign", fileButton.area.x + fileButton.area.w, 0, 55, 15);
-	SimpleButton campaignInfoButton("Info...", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h, 59, 15, true);
-	SimpleButton campaignProfileButton("Profile >", campaignButton.area.x, campaignInfoButton.area.y + campaignInfoButton.area.h, 59, 15, true);
-	SimpleButton campaignDetailsButton("Details >", campaignButton.area.x, campaignProfileButton.area.y + campaignProfileButton.area.h, 59, 15, true);
-	SimpleButton campaignValidateButton("Validate", campaignButton.area.x, campaignDetailsButton.area.y + campaignDetailsButton.area.h, 59, 15, true);
+	SimpleButton campaignButton("Campaign", fileButton.area.x + fileButton.area.w, 0, 55, menu_button_height);
+	SimpleButton campaignInfoButton("Info...", campaignButton.area.x, campaignButton.area.y + campaignButton.area.h, 59, menu_button_height, true);
+	SimpleButton campaignProfileButton("Profile >", campaignButton.area.x, campaignInfoButton.area.y + campaignInfoButton.area.h, 59, menu_button_height, true, true);
+	SimpleButton campaignDetailsButton("Details >", campaignButton.area.x, campaignProfileButton.area.y + campaignProfileButton.area.h, 59, menu_button_height, true, true);
+	SimpleButton campaignValidateButton("Validate", campaignButton.area.x, campaignDetailsButton.area.y + campaignDetailsButton.area.h, 59, menu_button_height, true, true);
 	
 	// Campaign > Profile submenu
-	SimpleButton campaignProfileTitleButton("Title...", campaignProfileButton.area.x + campaignProfileButton.area.w, campaignProfileButton.area.y, 95, 15, true);
-	SimpleButton campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, campaignProfileTitleButton.area.y + campaignProfileTitleButton.area.h, 95, 15, true);
-	SimpleButton campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h, 95, 15, true);
-	SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h, 95, 15, true);
-	SimpleButton campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, campaignProfileAuthorsButton.area.y + campaignProfileAuthorsButton.area.h, 95, 15, true);
+	SimpleButton campaignProfileTitleButton("Title...", campaignProfileButton.area.x + campaignProfileButton.area.w, campaignProfileButton.area.y, 95, menu_button_height, true);
+	SimpleButton campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, campaignProfileTitleButton.area.y + campaignProfileTitleButton.area.h, 95, menu_button_height, true, true);
+	SimpleButton campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h, 95, menu_button_height, true, true);
+	SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h, 95, menu_button_height, true, true);
+	SimpleButton campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, campaignProfileAuthorsButton.area.y + campaignProfileAuthorsButton.area.h, 95, menu_button_height, true, true);
 	
 	// Campaign > Details submenu
-	SimpleButton campaignDetailsVersionButton("Version...", campaignDetailsButton.area.x + campaignDetailsButton.area.w, campaignDetailsButton.area.y, 113, 15, true);
-	SimpleButton campaignDetailsSuggestedPowerButton("Suggested power...", campaignDetailsVersionButton.area.x, campaignDetailsVersionButton.area.y + campaignDetailsVersionButton.area.h, 113, 15, true);
-	SimpleButton campaignDetailsFirstLevelButton("First level...", campaignDetailsVersionButton.area.x, campaignDetailsSuggestedPowerButton.area.y + campaignDetailsSuggestedPowerButton.area.h, 113, 15, true);
+	SimpleButton campaignDetailsVersionButton("Version...", campaignDetailsButton.area.x + campaignDetailsButton.area.w, campaignDetailsButton.area.y, 113, menu_button_height, true);
+	SimpleButton campaignDetailsSuggestedPowerButton("Suggested power...", campaignDetailsVersionButton.area.x, campaignDetailsVersionButton.area.y + campaignDetailsVersionButton.area.h, 113, menu_button_height, true, true);
+	SimpleButton campaignDetailsFirstLevelButton("First level...", campaignDetailsVersionButton.area.x, campaignDetailsSuggestedPowerButton.area.y + campaignDetailsSuggestedPowerButton.area.h, 113, menu_button_height, true, true);
 	
 	
 	// Level menu
-	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, 15);
-	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 110, 15, true);
-	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, 15, true);
-	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 110, 15, true);
-	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 110, 15, true);
-	SimpleButton levelResmoothButton("Resmooth terrain", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 110, 15, true);
-	SimpleButton levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, levelResmoothButton.area.y + levelResmoothButton.area.h, 110, 15, true);
-	SimpleButton levelDeleteObjectsButton("Clear all objects", levelButton.area.x, levelDeleteTerrainButton.area.y + levelDeleteTerrainButton.area.h, 110, 15, true);
+	SimpleButton levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, menu_button_height);
+	SimpleButton levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 110, menu_button_height, true);
+	SimpleButton levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, menu_button_height, true, true);
+	SimpleButton levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 110, menu_button_height, true, true);
+	SimpleButton levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 110, menu_button_height, true, true);
+	SimpleButton levelResmoothButton("Resmooth terrain", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 110, menu_button_height, true, true);
+	SimpleButton levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, levelResmoothButton.area.y + levelResmoothButton.area.h, 110, menu_button_height, true, true);
+	SimpleButton levelDeleteObjectsButton("Clear all objects", levelButton.area.x, levelDeleteTerrainButton.area.y + levelDeleteTerrainButton.area.h, 110, menu_button_height, true, true);
 	
 	
 	// Edit menu
-	SimpleButton modeButton("Edit (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, 15);
-	SimpleButton modeTerrainButton("Terrain Mode", modeButton.area.x, modeButton.area.y + modeButton.area.h, 75, 15, true);
-	SimpleButton modeObjectButton("Object Mode", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 75, 15, true);
-	SimpleButton modeSelectButton("Select Mode", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 75, 15, true);
+	SimpleButton modeButton("Edit (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, menu_button_height);
+	SimpleButton modeTerrainButton("Terrain Mode", modeButton.area.x, modeButton.area.y + modeButton.area.h, 75, menu_button_height, true);
+	SimpleButton modeObjectButton("Object Mode", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 75, menu_button_height, true, true);
+	SimpleButton modeSelectButton("Select Mode", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 75, menu_button_height, true, true);
 	
 	// Top menu
 	menu_buttons.insert(&fileButton);
