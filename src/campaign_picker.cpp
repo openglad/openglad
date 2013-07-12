@@ -33,16 +33,20 @@ int toInt(const std::string& s)
 }
 
 // Unmounts old campaign, mounts new one, and returns the current level (scenario) that the player is on
-int load_campaign(const std::string& old_campaign, const std::string& campaign, std::map<std::string, int>& current_levels)
+int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels)
 {
-    if(!unmount_campaign_package(old_campaign))
+    std::string old_campaign = get_mounted_campaign();
+    if(old_campaign != campaign)
     {
-        Log("Failed to unmount campaign %s, which caused loading %s to fail.\n", old_campaign.c_str(), campaign.c_str());
-        return -3;
+        if(!unmount_campaign_package(old_campaign))
+        {
+            Log("Failed to unmount campaign %s, which caused loading %s to fail.\n", old_campaign.c_str(), campaign.c_str());
+            return -3;
+        }
+        
+        if(!mount_campaign_package(campaign))
+            return -2;
     }
-    
-    if(!mount_campaign_package(campaign))
-        return -2;
     
     std::map<std::string, int>::const_iterator g = current_levels.find(campaign);
     if(g != current_levels.end())

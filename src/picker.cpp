@@ -3356,7 +3356,6 @@ Sint32 do_set_scen_level(Sint32 arg1)
    static text savetext(myscreen);
    Sint32 xloc, yloc, x2loc, y2loc;
    Sint32 templevel = myscreen->save_data.scen_num;
-   Sint32 temptime;
 
    xloc = 100;
    yloc = 170;
@@ -3370,25 +3369,19 @@ Sint32 do_set_scen_level(Sint32 arg1)
    // Have some feedback if the level changed
    if(templevel != myscreen->level_data.id)
    {
+       int old_id = myscreen->level_data.id;
        myscreen->level_data.id = templevel;
        if (templevel < 0 || !myscreen->level_data.load())
        {
-           myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-           savetext.write_xy(xloc+15, yloc+4, "INVALID LEVEL", DARK_BLUE, 1);
-           myscreen->buffer_to_screen(0, 0, 320, 200);
-           temptime = query_timer();
-           while(query_timer() < temptime + 100)
-               ;
-       }
-       else
-       {
-           myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-           savetext.write_xy(xloc+15, yloc+4, "LEVEL LOADED", DARK_BLUE, 1);
-           myscreen->buffer_to_screen(0, 0, 320, 200);
-           temptime = query_timer();
-           while(query_timer() < temptime + 100)
-               ;
-           myscreen->save_data.scen_num = templevel;
+            myscreen->clearscreen();
+            popup_dialog("Load Failed", "Invalid level file.");
+            
+           myscreen->level_data.id = old_id;
+           if(!myscreen->level_data.load())
+           {
+                myscreen->clearscreen();
+                popup_dialog("Big problem", "Also failed to reload current level...");
+           }
        }
    }
 

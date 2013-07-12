@@ -213,7 +213,6 @@ bool SaveData::load(const std::string& filename)
 	save_name = savedgame;
 
     // Read campaign ID
-    std::string old_campaign = current_campaign;
 	if (temp_version >= 8)
 	{
 		SDL_RWread(infile, temp_campaign, 1, 40);
@@ -395,7 +394,7 @@ bool SaveData::load(const std::string& filename)
     }
     
 	
-    int current_level = load_campaign(old_campaign, current_campaign, current_levels);
+    int current_level = load_campaign(current_campaign, current_levels);
     if(current_level >= 0)
     {
         if(scen_num != current_level)

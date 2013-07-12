@@ -174,6 +174,7 @@ class BrowserEntry
     BrowserEntry(screen* screenp, int index, int scen_num);
     ~BrowserEntry();
     
+    void updateIndex(int index);
     void draw(screen* screenp, text* loadtext);
 };
 
@@ -271,6 +272,15 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
 
 BrowserEntry::~BrowserEntry()
 {}
+
+void BrowserEntry::updateIndex(int index)
+{
+    int w = myradar.xview;
+    mapAreas.y = 5 + (53 + 12)*index;
+    
+    myradar.xloc = mapAreas.x + mapAreas.w/2 - w/2;
+    myradar.yloc = mapAreas.y + 10;
+}
 
 void BrowserEntry::draw(screen* screenp, text* loadtext)
 {
@@ -399,14 +409,17 @@ int pick_level(screen *screenp, int default_level)
 		    
                 current_level_index--;
                 
-                for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                // Delete the bottom one and shift the rest down
+                delete entries[NUM_BROWSE_RADARS-1];
+                for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
                 {
-                    if(i < level_list_length)
-                    {
-                        delete entries[i];
-                        entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                    }
+                    entries[i] = entries[i-1];
+                    if(entries[i] != NULL)
+                        entries[i]->updateIndex(i);
                 }
+                // Load the new top one
+                if(current_level_index < level_list_length)
+                    entries[0] = new BrowserEntry(screenp, 0, level_list[current_level_index]);
 		    }
             while (keystates[KEYSTATE_UP])
                 get_input_events(WAIT);
@@ -420,14 +433,17 @@ int pick_level(screen *screenp, int default_level)
 		    
                 current_level_index++;
                 
-                for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                // Delete the top one and shift the rest up
+                delete entries[0];
+                for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
                 {
-                    if(i < level_list_length)
-                    {
-                        delete entries[i];
-                        entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                    }
+                    entries[i] = entries[i+1];
+                    if(entries[i] != NULL)
+                        entries[i]->updateIndex(i);
                 }
+                // Load the new bottom one
+                if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
+                    entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(screenp, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
 		    }
             while (keystates[KEYSTATE_DOWN])
                 get_input_events(WAIT);
@@ -454,14 +470,17 @@ int pick_level(screen *screenp, int default_level)
                         selected_entry = -1;
                         current_level_index--;
                         
-                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                        // Delete the bottom one and shift the rest down
+                        delete entries[NUM_BROWSE_RADARS-1];
+                        for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
                         {
-                            if(i < level_list_length)
-                            {
-                                delete entries[i];
-                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                            }
+                            entries[i] = entries[i-1];
+                            if(entries[i] != NULL)
+                                entries[i]->updateIndex(i);
                         }
+                        // Load the new top one
+                        if(current_level_index < level_list_length)
+                            entries[0] = new BrowserEntry(screenp, 0, level_list[current_level_index]);
                     }
                }
             // Next
@@ -473,14 +492,17 @@ int pick_level(screen *screenp, int default_level)
                         selected_entry = -1;
                         current_level_index++;
                         
-                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                        // Delete the top one and shift the rest up
+                        delete entries[0];
+                        for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
                         {
-                            if(i < level_list_length)
-                            {
-                                delete entries[i];
-                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                            }
+                            entries[i] = entries[i+1];
+                            if(entries[i] != NULL)
+                                entries[i]->updateIndex(i);
                         }
+                        // Load the new bottom one
+                        if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
+                            entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(screenp, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
                     }
                }
             // Choose
