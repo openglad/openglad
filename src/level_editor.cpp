@@ -25,6 +25,8 @@
 #include "text.h"
 #include "stats.h"
 #include "level_data.h"
+#include "level_picker.h"
+#include "campaign_picker.h"
 
 /* Changelog
  * 	8/8/02: Zardus: added scrolling-by-minimap
@@ -2278,7 +2280,7 @@ Sint32 level_editor()
                                         {
                                             data.loadLevel(levels.front());
                                             // Update minimap
-                                            myradar.update(data.level);
+                                            myradar.start(data.level);
                                             timed_dialog("Campaign created.");
                                             campaignchanged = 0;
                                             levelchanged = 0;
@@ -2326,7 +2328,9 @@ Sint32 level_editor()
                             event = 1;
                         }
                         
-                        myradar.update(data.level);
+                        // TODO: Load starting level?  If we don't, then the user can transfer levels between campaigns here.
+                        
+                        myradar.start(data.level);
                     }
                 }
                 else if(activate_menu_choice(mx, my, data, fileCampaignSaveButton))
@@ -2377,7 +2381,7 @@ Sint32 level_editor()
                     // New level
                     data.level->clear();
                     data.level->create_new_grid();
-                    myradar.update(data.level);
+                    myradar.start(data.level);
                     levelchanged = 1;
                     event = 1;
                 }
@@ -2392,14 +2396,11 @@ Sint32 level_editor()
                     
                     if(!cancel)
                     {
-                        // TODO: Use level picker here
-                        char buf[20];
-                        snprintf(buf, 20, "%d", data.level->id);
-                        
-                        std::string level = buf;
-                        if(prompt_for_string(scentext, "Load Level (num)", level))
+                        // Browse for the level to load
+                        int id = pick_level(myscreen, data.level->id);
+                        if(id >= 0)
                         {
-                            if(data.loadLevel(atoi(level.c_str())))
+                            if(data.loadLevel(id))
                             {
                                 timed_dialog("Level loaded.");
                                 levelchanged = 0;
@@ -2411,7 +2412,7 @@ Sint32 level_editor()
                                 event = 1;
                             }
                             
-                            myradar.update(data.level);
+                            myradar.start(data.level);
                             event = 1;
                         }
                     }
@@ -2710,7 +2711,6 @@ Sint32 level_editor()
                                     
                                     // Reset the minimap
                                     myradar.start(data.level);
-                                    myradar.update(data.level);
                                     
                                     data.draw(myscreen);
                                     
