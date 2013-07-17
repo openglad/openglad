@@ -20,6 +20,6 @@
 
 #include "screen.h"
 
-int pick_level(screen *screenp, int default_level);
+int pick_level(screen *screenp, int default_level, bool enable_delete = false);
 
 #endif

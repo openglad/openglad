@@ -46,6 +46,7 @@ std::list<std::string> list_campaigns();
 std::list<int> list_levels();
 std::vector<int> list_levels_v();
 
+void delete_level(int id);
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);

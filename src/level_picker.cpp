@@ -37,6 +37,7 @@ using namespace std;
 extern Sint32 *mymouse;
 
 
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
 
 
@@ -331,7 +332,7 @@ void BrowserEntry::draw(screen* screenp, text* loadtext)
 #define NUM_BROWSE_RADARS 3
 
 // Load a scenario...
-int pick_level(screen *screenp, int default_level)
+int pick_level(screen *screenp, int default_level, bool enable_delete)
 {
     int result = default_level;
     
@@ -383,6 +384,7 @@ int pick_level(screen *screenp, int default_level)
     
     SDL_Rect choose = {Sint16(screenW - 50), Sint16(screenH - 30), 30, 10};
     SDL_Rect cancel = {Sint16(screenW - 100), Sint16(screenH - 30), 38, 10};
+    SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
     
     bool done = false;
 	while (!done)
@@ -523,6 +525,41 @@ int pick_level(screen *screenp, int default_level)
                    done = true;
                    break;
                }
+            // Delete
+			else if(selected_entry >= 0 && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
+               && delete_button.y <= my && my <= delete_button.y + delete_button.h)
+               {
+                   if(yes_or_no_prompt("Delete level", "Delete this level permanently?", false))
+                   {
+                       delete_level(level_list[current_level_index + selected_entry]);
+                       
+                       // Reload the picker
+                       level_list = list_levels_v();
+                        level_list_length = level_list.size();
+                        
+                        // Make sure our currently showing radars are not blank
+                        if(current_level_index + NUM_BROWSE_RADARS >= level_list_length)
+                        {
+                            if(level_list_length > NUM_BROWSE_RADARS)
+                                current_level_index = level_list_length-NUM_BROWSE_RADARS;
+                            else
+                                current_level_index = 0;
+                        }
+                        
+                        // Load the radars (minimaps)
+                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                        {
+                            delete entries[i];
+                            
+                            if(i < level_list_length)
+                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                            else
+                                entries[i] = NULL;
+                        }
+                        
+                        selected_entry = -1;
+                   }
+               }
 			else
 			{
                 selected_entry = -1;
@@ -567,6 +604,11 @@ int pick_level(screen *screenp, int default_level)
         }
         screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
+        if(selected_entry >= 0 && enable_delete)
+        {
+            screenp->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
+            loadtext->write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
+        }
         
         if(selected_entry != -1)
         {

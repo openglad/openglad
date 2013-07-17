@@ -273,6 +273,29 @@ std::vector<int> list_levels_v()
     return result;
 }
 
+// Delete this level from the mounted campaign
+void delete_level(int id)
+{
+    std::string campaign = get_mounted_campaign();
+    if(campaign.size() == 0)
+        return;
+    
+    cleanup_unpacked_campaign();
+    unpack_campaign(campaign);
+    char path[256];
+    // Delete data file
+    snprintf(path, 256, "%stemp/scen/scen%d.fss", get_user_path().c_str(), id);
+    remove(path);
+    // Delete terrain file
+    snprintf(path, 256, "%stemp/pix/scen%04d.pix", get_user_path().c_str(), id);
+    remove(path);
+    repack_campaign(campaign);
+    
+    // Remount for consistency in PhysFS
+    unmount_campaign_package(campaign);
+    mount_campaign_package(campaign);
+}
+
 
 std::list<std::string> explode(const std::string& str, char delimiter)
 {

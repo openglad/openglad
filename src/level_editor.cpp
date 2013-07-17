@@ -2429,7 +2429,7 @@ Sint32 level_editor()
                     if(!cancel)
                     {
                         // Browse for the level to load
-                        int id = pick_level(myscreen, data.level->id);
+                        int id = pick_level(myscreen, data.level->id, true);
                         // Don't bother loading the level if it is the same, unchanged level
                         if(id >= 0 && (levelchanged || id != data.level->id))
                         {
