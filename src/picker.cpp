@@ -3347,7 +3347,13 @@ int get_scen_num_from_filename(const char* name)
 
 Sint32 do_pick_campaign(Sint32 arg1)
 {
-   pick_campaign(myscreen, myscreen->save_data);
+   CampaignResult result = pick_campaign(myscreen, &myscreen->save_data);
+   if(result.id.size() > 0)
+   {
+        // Load new campaign
+        myscreen->save_data.current_campaign = result.id;
+        myscreen->save_data.scen_num = load_campaign(result.id, myscreen->save_data.current_levels, result.first_level);
+   }
    return REDRAW;
 }
 

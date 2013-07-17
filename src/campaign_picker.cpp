@@ -33,7 +33,7 @@ int toInt(const std::string& s)
 }
 
 // Unmounts old campaign, mounts new one, and returns the current level (scenario) that the player is on
-int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels)
+int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level)
 {
     std::string old_campaign = get_mounted_campaign();
     if(old_campaign != campaign)
@@ -52,7 +52,7 @@ int load_campaign(const std::string& campaign, std::map<std::string, int>& curre
     if(g != current_levels.end())
         return g->second;
     else
-        return 1;
+        return first_level;
 }
 
 class CampaignEntry
@@ -179,6 +179,7 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
 	y += h + 4;
 	
 	// Print suggested power
+	if(team_power >= 0)
     {
         char buf2[30];
         snprintf(buf, 30, "Your Power: %d", team_power);
@@ -192,10 +193,23 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
         loadtext->write_xy(x + w/2 - (len + len2)*3, y, buf, LIGHT_GREEN, 1);
         loadtext->write_xy(x + w/2 - (len + len2)*3 + len*6, y, buf2, (team_power >= suggested_power? LIGHT_GREEN : RED), 1);
     }
+    else
+    {
+        if(suggested_power > 0)
+            snprintf(buf, 30, ", Suggested Power: %d", suggested_power);
+        else
+            buf[0] = '\0';
+        
+        int len = strlen(buf);
+        loadtext->write_xy(x + w/2 - (len)*3, y, buf, LIGHT_GREEN, 1);
+    }
     y += 8;
     
     // Print completion progress
-    snprintf(buf, 30, "%d out of %d completed", num_levels_completed, num_levels);
+    if(num_levels_completed < 0)
+        snprintf(buf, 30, "%d level%s", num_levels, (num_levels > 1? "s" : ""));
+    else
+        snprintf(buf, 30, "%d out of %d completed", num_levels_completed, num_levels);
     loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
     y += 8;
     
@@ -243,11 +257,12 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
 
 
 
-void pick_campaign(screen* screenp, SaveData& save_data)
+CampaignResult pick_campaign(screen* screenp, SaveData* save_data)
 {
-    std::string old_campaign_id = save_data.current_campaign;
+    std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = NULL;
-
+    CampaignResult ret_value;
+    
     text* loadtext = new text(screenp);
     
     unmount_campaign_package(old_campaign_id);
@@ -259,18 +274,25 @@ void pick_campaign(screen* screenp, SaveData& save_data)
     std::list<std::string> campaign_ids = list_campaigns();
     for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
     {
-        entries.push_back(new CampaignEntry(screenp, *e, screenp->save_data.get_num_levels_completed(*e)));
+        int num_completed = -1;
+        if(save_data != NULL)
+            num_completed = save_data->get_num_levels_completed(*e);
+        entries.push_back(new CampaignEntry(screenp, *e, num_completed));
     }
     
     unsigned int current_campaign_index = 0;
 
     // Figure out how good the player's army is
-    int army_power = 0;
-    for(int i=0; i<MAX_TEAM_SIZE; i++)
+    int army_power = -1;
+    if(save_data != NULL)
     {
-        if (myscreen->save_data.team_list[i])
+        army_power = 0;
+        for(int i=0; i<MAX_TEAM_SIZE; i++)
         {
-            army_power += 3*myscreen->save_data.team_list[i]->level;
+            if (save_data->team_list[i])
+            {
+                army_power += 3*save_data->team_list[i]->level;
+            }
         }
     }
     
@@ -411,29 +433,15 @@ void pick_campaign(screen* screenp, SaveData& save_data)
 
     while (keystates[KEYSTATE_q])
         get_input_events(WAIT);
-
+    
+    // Restore old campaign
+    mount_campaign_package(old_campaign_id);
+    
     if(result != NULL)
     {
-        // Load new campaign
-        save_data.current_campaign = result->id;
-        mount_campaign_package(result->id);
-        if(old_campaign_id != result->id)
-        {
-            std::map<std::string, int>::const_iterator g = save_data.current_levels.find(result->id);
-            if(g != save_data.current_levels.end())
-            {
-                // Start where we left off
-                save_data.scen_num = g->second;
-            }
-            else
-            {
-                // Start from the beginning
-                save_data.scen_num = result->first_level;
-            }
-        }
+        ret_value.id = result->id;
+        ret_value.first_level = result->first_level;
     }
-    else  // Restore old campaign
-        mount_campaign_package(old_campaign_id);
     
     for(std::vector<CampaignEntry*>::iterator e = entries.begin(); e != entries.end(); e++)
     {
@@ -442,5 +450,6 @@ void pick_campaign(screen* screenp, SaveData& save_data)
     entries.clear();
 
     delete loadtext;
-
+    
+    return ret_value;
 }

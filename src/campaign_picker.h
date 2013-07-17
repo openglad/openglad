@@ -22,8 +22,18 @@
 #include <map>
 #include <string>
 
-void pick_campaign(screen* screenp, SaveData& save_data);
+struct CampaignResult
+{
+    std::string id;
+    int first_level;
+    
+    CampaignResult()
+        : first_level(1)
+    {}
+};
 
-int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels);
+CampaignResult pick_campaign(screen* screenp, SaveData* save_data);
+
+int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level = 1);
 
 #endif

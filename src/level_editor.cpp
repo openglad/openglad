@@ -2309,28 +2309,60 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, data, fileCampaignLoadButton))
                 {
-                    // TODO: Use campaign picker here
-                    std::string campaign = "com.example.new_campaign";
-                    if(prompt_for_string(scentext, "Load Campaign", campaign))
+                    // Pick a campaign, then load it and load the first level
+                    event = 1;
+                    bool cancel = false;
+                    if(campaignchanged)
                     {
-                        if(data.loadCampaign(campaign))
+                        cancel = !yes_or_no_prompt("Load Campaign", "Discard unsaved changes?", false);
+                    }
+                    
+                    if(!cancel)
+                    {
+                        CampaignResult result = pick_campaign(myscreen, NULL);
+                        if(result.id.size() > 0)
                         {
-                            unmount_campaign_package(get_mounted_campaign());
-                            mount_campaign_package(campaign);
+                            if(data.loadCampaign(result.id))
+                            {
+                                unmount_campaign_package(get_mounted_campaign());
+                                mount_campaign_package(result.id);
+                                campaignchanged = 0;
+                            }
+                            else
+                            {
+                                timed_dialog("Failed to load campaign.");
+                                cancel = true;
+                            }
                             
-                            timed_dialog("Campaign loaded.");
-                            campaignchanged = 0;
-                            event = 1;
+                            if(!cancel)
+                            {
+                                myscreen->clearscreen();
+                                // Prompt to load starting level.  If we don't, then the user can transfer levels between campaigns here.
+                                bool load_first_level = yes_or_no_prompt("Load Campaign", "Load first level?", false);
+                                if(load_first_level && levelchanged)
+                                {
+                                    load_first_level = yes_or_no_prompt("Load Level", "Discard unsaved changes?", false);
+                                }
+                                
+                                if(load_first_level)
+                                {
+                                    // Load first scenario
+                                    if(data.loadLevel(result.first_level))
+                                    {
+                                        // Update minimap
+                                        myradar.start(data.level);
+                                        timed_dialog("Campaign loaded.");
+                                        levelchanged = 0;
+                                    }
+                                    else
+                                    {
+                                        timed_dialog("Failed to load first level.");
+                                    }
+                                }
+                                else
+                                    timed_dialog("Campaign loaded.");
+                            }
                         }
-                        else
-                        {
-                            timed_dialog("Failed to load campaign.");
-                            event = 1;
-                        }
-                        
-                        // TODO: Load starting level?  If we don't, then the user can transfer levels between campaigns here.
-                        
-                        myradar.start(data.level);
                     }
                 }
                 else if(activate_menu_choice(mx, my, data, fileCampaignSaveButton))
