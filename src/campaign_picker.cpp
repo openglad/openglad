@@ -196,7 +196,7 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
     else
     {
         if(suggested_power > 0)
-            snprintf(buf, 30, ", Suggested Power: %d", suggested_power);
+            snprintf(buf, 30, "Suggested Power: %d", suggested_power);
         else
             buf[0] = '\0';
         
@@ -207,7 +207,7 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
     
     // Print completion progress
     if(num_levels_completed < 0)
-        snprintf(buf, 30, "%d level%s", num_levels, (num_levels > 1? "s" : ""));
+        snprintf(buf, 30, "%d level%s", num_levels, (num_levels == 1? "" : "s"));
     else
         snprintf(buf, 30, "%d out of %d completed", num_levels_completed, num_levels);
     loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
