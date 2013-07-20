@@ -27,6 +27,8 @@
 
 extern Sint32 *mymouse;
 
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+
 int toInt(const std::string& s)
 {
     return atoi(s.c_str());
@@ -257,7 +259,7 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
 
 
 
-CampaignResult pick_campaign(screen* screenp, SaveData* save_data)
+CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_delete)
 {
     std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = NULL;
@@ -311,6 +313,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data)
 
     SDL_Rect choose = {Sint16(screenW/2 + 20), Sint16(screenH - 15), 30, 10};
     SDL_Rect cancel = {Sint16(screenW/2 - 38 - 20), Sint16(screenH - 15), 38, 10};
+    SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
 
     bool done = false;
     while (!done)
@@ -397,6 +400,37 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data)
                 done = true;
                 break;
             }
+            // Delete
+			else if(enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
+               && delete_button.y <= my && my <= delete_button.y + delete_button.h)
+               {
+                   if(yes_or_no_prompt("Delete campaign", "Delete this campaign permanently?", false))
+                   {
+                       delete_campaign(entries[current_campaign_index]->id);
+                       
+                       restore_default_campaigns();
+                       remount_campaign_package();  // Just in case we deleted the current campaign
+                       
+                       // Reload the picker
+                       for(std::vector<CampaignEntry*>::iterator e = entries.begin(); e != entries.end(); e++)
+                       {
+                           delete *e;
+                       }
+                       entries.clear();
+                       
+                       campaign_ids = list_campaigns();
+                       
+                        for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
+                        {
+                            int num_completed = -1;
+                            if(save_data != NULL)
+                                num_completed = save_data->get_num_levels_completed(*e);
+                            entries.push_back(new CampaignEntry(screenp, *e, num_completed));
+                        }
+                        
+                        current_campaign_index = 0;
+                   }
+               }
         }
 
 
@@ -422,6 +456,11 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data)
         }
         screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
+        if(enable_delete)
+        {
+            screenp->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
+            loadtext->write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
+        }
         
         // Draw entry
         if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)

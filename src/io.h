@@ -42,11 +42,14 @@ std::list<std::string> explode(const std::string& str, char delimiter);
 std::string get_mounted_campaign();
 bool mount_campaign_package(const std::string& id);
 bool unmount_campaign_package(const std::string& id);
+bool remount_campaign_package();
 std::list<std::string> list_campaigns();
 std::list<int> list_levels();
 std::vector<int> list_levels_v();
 
+void restore_default_campaigns();
 void delete_level(int id);
+void delete_campaign(const std::string& id);
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);

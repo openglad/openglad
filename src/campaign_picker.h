@@ -32,7 +32,7 @@ struct CampaignResult
     {}
 };
 
-CampaignResult pick_campaign(screen* screenp, SaveData* save_data);
+CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_delete = false);
 
 int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level = 1);
 

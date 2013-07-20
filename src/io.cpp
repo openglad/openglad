@@ -199,6 +199,14 @@ bool unmount_campaign_package(const std::string& id)
     return true;
 }
 
+bool remount_campaign_package()
+{
+    std::string id = get_mounted_campaign();
+    if(!unmount_campaign_package(id))
+        return false;
+    return mount_campaign_package(id);
+}
+
 std::list<std::string> list_campaigns()
 {
     std::list<std::string> ls = list_files("campaigns/");
@@ -292,8 +300,14 @@ void delete_level(int id)
     repack_campaign(campaign);
     
     // Remount for consistency in PhysFS
-    unmount_campaign_package(campaign);
-    mount_campaign_package(campaign);
+    remount_campaign_package();
+}
+
+void delete_campaign(const std::string& id)
+{
+    char path[256];
+    snprintf(path, 256, "%scampaigns/%s.glad", get_user_path().c_str(), id.c_str());
+    remove(path);
 }
 
 
@@ -363,6 +377,12 @@ void create_dataopenglad()
     mkdir((user_path + "cfg/").c_str(), 0770);
 }
 
+void restore_default_campaigns()
+{
+    if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
+        copy_file("builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+}
+
 void io_init(int argc, char* argv[])
 {
     // Make sure our directory tree exists and is set up
@@ -377,9 +397,7 @@ void io_init(int argc, char* argv[])
         exit(1);
     }
     
-    
-    if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
-        copy_file("builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+    restore_default_campaigns();
     
     // NOTES!
     // PhysFS cannot grab files from the assets folder because they're actually inside the apk.

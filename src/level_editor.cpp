@@ -793,9 +793,11 @@ bool LevelEditorData::saveCampaignAs(const std::string& id)
     bool result = campaign->save();
     
     // Remount for consistency in PhysFS
-    std::string old_campaign = get_mounted_campaign();
-    unmount_campaign_package(old_campaign);
-    mount_campaign_package(old_campaign);
+    if(!remount_campaign_package())
+    {
+        Log("Failed to remount campaign after saving it.\n");
+        return false;
+    }
     
     return result;
 }
@@ -805,9 +807,11 @@ bool LevelEditorData::saveCampaign()
     bool result = campaign->save();
     
     // Remount for consistency in PhysFS
-    std::string old_campaign = get_mounted_campaign();
-    unmount_campaign_package(old_campaign);
-    mount_campaign_package(old_campaign);
+    if(!remount_campaign_package())
+    {
+        Log("Failed to remount campaign after saving it.\n");
+        return false;
+    }
     
     return result;
 }
@@ -828,8 +832,7 @@ bool LevelEditorData::saveLevelAs(int id)
     cleanup_unpacked_campaign();
     
     // Remount for consistency in PhysFS
-    unmount_campaign_package(old_campaign);
-    mount_campaign_package(old_campaign);
+    remount_campaign_package();
     
     return result;
 }
@@ -1238,8 +1241,7 @@ bool LevelEditorData::saveLevel()
     cleanup_unpacked_campaign();
     
     // Remount for consistency in PhysFS
-    unmount_campaign_package(old_campaign);
-    mount_campaign_package(old_campaign);
+    remount_campaign_package();
     
     return result;
 }
@@ -2319,7 +2321,7 @@ Sint32 level_editor()
                     
                     if(!cancel)
                     {
-                        CampaignResult result = pick_campaign(myscreen, NULL);
+                        CampaignResult result = pick_campaign(myscreen, NULL, true);
                         if(result.id.size() > 0)
                         {
                             if(data.loadCampaign(result.id))
