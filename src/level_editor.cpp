@@ -697,6 +697,7 @@ public:
 	SimpleButton deleteButton;
 	
 	SimpleButton panUpButton, panDownButton, panLeftButton, panRightButton;
+	SimpleButton panUpRightButton, panUpLeftButton, panDownRightButton, panDownLeftButton;
     
     
     LevelEditorData();
@@ -745,6 +746,10 @@ LevelEditorData::LevelEditorData()
     , panDownButton("D", 15, 200 - 15, 15, 15)
     , panLeftButton("L", 0, 200 - 30, 15, 15)
     , panRightButton("R", 30, 200 - 30, 15, 15)
+    , panUpRightButton("", 30, 200 - 45, 15, 15)
+    , panUpLeftButton("", 0, 200 - 45, 15, 15)
+    , panDownRightButton("", 30, 200 - 15, 15, 15)
+    , panDownLeftButton("", 0, 200 - 15, 15, 15)
 {
     gridSnapButton.set_colors_enabled();
     terrainSmoothButton.set_colors_enabled();
@@ -754,6 +759,10 @@ LevelEditorData::LevelEditorData()
     pan_buttons.insert(&panDownButton);
     pan_buttons.insert(&panLeftButton);
     pan_buttons.insert(&panRightButton);
+    pan_buttons.insert(&panUpRightButton);
+    pan_buttons.insert(&panUpLeftButton);
+    pan_buttons.insert(&panDownRightButton);
+    pan_buttons.insert(&panDownLeftButton);
     #endif
 }
 
@@ -865,11 +874,9 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
             return true;
     }
     
-    for(set<SimpleButton*>::const_iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
-    {
-        if((*e)->contains(mx, my))
-            return true;
-    }
+    // Count anything in the area of the pan buttons
+    if(pan_buttons.size() > 0 && Rect(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y).contains(mx, my))
+        return true;
     
     for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = current_menu.begin(); e != current_menu.end(); e++)
     {
@@ -1283,8 +1290,14 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     // Draw mode-specific buttons
     for(set<SimpleButton*>::iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
         (*e)->draw(myscreen, scentext);
-    for(set<SimpleButton*>::iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
-        (*e)->draw(myscreen, scentext);
+        
+    if(pan_buttons.size() > 0)
+    {
+        Rect r(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y);
+        myscreen->fastbox(r.x, r.y, r.w, r.h, 13);
+        for(set<SimpleButton*>::iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
+            (*e)->draw(myscreen, scentext);
+    }
     
     // Draw top menu
     for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
@@ -2850,17 +2863,49 @@ Sint32 level_editor()
                         event = 1;
                         data.level->add_draw_pos(0, -SCROLLSIZE);
                     }
-                    if(data.panDownButton.contains(mx, my) && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
+                    else if(data.panUpRightButton.contains(mx, my))
+                    {
+                        event = 1;
+                        if(data.level->topy >= 0)
+                            data.level->add_draw_pos(0, -SCROLLSIZE);
+                        if(data.level->topx <= (GRID_SIZE*data.level->grid.w)-18)
+                            data.level->add_draw_pos(SCROLLSIZE, 0);
+                    }
+                    else if(data.panUpLeftButton.contains(mx, my))
+                    {
+                        event = 1;
+                        if(data.level->topy >= 0)
+                            data.level->add_draw_pos(0, -SCROLLSIZE);
+                        if(data.level->topx >= 0)
+                            data.level->add_draw_pos(-SCROLLSIZE, 0);
+                    }
+                    else if(data.panDownButton.contains(mx, my) && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
                     {
                         event = 1;
                         data.level->add_draw_pos(0, SCROLLSIZE);
                     }
-                    if(data.panLeftButton.contains(mx, my) && data.level->topx >= 0) // scroll left
+                    else if(data.panDownRightButton.contains(mx, my))
+                    {
+                        event = 1;
+                        if(data.level->topy <= (GRID_SIZE*data.level->grid.h)-18)
+                            data.level->add_draw_pos(0, SCROLLSIZE);
+                        if(data.level->topx <= (GRID_SIZE*data.level->grid.w)-18)
+                            data.level->add_draw_pos(SCROLLSIZE, 0);
+                    }
+                    else if(data.panDownLeftButton.contains(mx, my))
+                    {
+                        event = 1;
+                        if(data.level->topy <= (GRID_SIZE*data.level->grid.h)-18)
+                            data.level->add_draw_pos(0, SCROLLSIZE);
+                        if(data.level->topx >= 0)
+                            data.level->add_draw_pos(-SCROLLSIZE, 0);
+                    }
+                    else if(data.panLeftButton.contains(mx, my) && data.level->topx >= 0) // scroll left
                     {
                         event = 1;
                         data.level->add_draw_pos(-SCROLLSIZE, 0);
                     }
-                    if(data.panRightButton.contains(mx, my) && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
+                    else if(data.panRightButton.contains(mx, my) && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
                     {
                         event = 1;
                         data.level->add_draw_pos(SCROLLSIZE, 0);
