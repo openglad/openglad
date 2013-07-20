@@ -422,6 +422,12 @@ button yes_or_no_buttons[] =
         { "NO", SDLK_2,  320-50-70, 130, 50, 20, YES_OR_NO, NO}
     };
 
+button no_or_yes_buttons[] =
+    {
+        { "NO", SDLK_1,  70, 130, 50, 20, YES_OR_NO, NO},
+        { "YES", SDLK_2,  320-50-70, 130, 50, 20, YES_OR_NO, YES}
+    };
+
 button popup_dialog_buttons[] =
     {
         { "OK", SDLK_1,  160 - 25, 130, 50, 20, YES_OR_NO, YES}
@@ -1828,6 +1834,64 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 	if (localbuttons)
 		delete (localbuttons);
 	localbuttons = buttonmenu_no_backdrop(yes_or_no_buttons, 2, 0);  // don't redraw!
+
+    int i;
+	for (i=0; i < 2; i++)
+	{
+		allbuttons[i]->vdisplay();
+	}
+
+    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
+
+	grab_mouse();
+    clear_keyboard();
+    
+    clear_key_press_event();
+	
+    int retvalue = 0;
+	while (retvalue == 0)
+	{
+		get_input_events(POLL);
+		
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        
+        if(query_key_press_event())
+        {
+            if(keystates[KEYSTATE_y])
+                retvalue = YES;
+            else if(keystates[KEYSTATE_n])
+                retvalue = NO;
+            else if(keystates[KEYSTATE_ESCAPE])
+                break;
+        }
+	}
+	
+	myscreen->clearfontbuffer();
+	
+    if(retvalue == YES)
+        return true;
+    if(retvalue == NO)
+        return false;
+	return default_value;
+}
+
+// TODO: Multi-line messages would be nice...
+bool no_or_yes_prompt(const char* title, const char* message, bool default_value)
+{
+	text gladtext(myscreen);
+	
+	int pix_per_char = 3;
+    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
+    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
+    //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
+    //myscreen->clearfontbuffer(leftside, 80, rightside, 40);
+    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
+    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+
+	if (localbuttons)
+		delete (localbuttons);
+	localbuttons = buttonmenu_no_backdrop(no_or_yes_buttons, 2, 0);  // don't redraw!
 
     int i;
 	for (i=0; i < 2; i++)

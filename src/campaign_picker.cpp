@@ -28,6 +28,7 @@
 extern Sint32 *mymouse;
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
 
 int toInt(const std::string& s)
 {
@@ -404,7 +405,8 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
 			else if(enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
                && delete_button.y <= my && my <= delete_button.y + delete_button.h)
                {
-                   if(yes_or_no_prompt("Delete campaign", "Delete this campaign permanently?", false))
+                   if(yes_or_no_prompt("Delete campaign", "Delete this campaign permanently?", false)
+                      && no_or_yes_prompt("Delete campaign", "Are you really sure?", false))
                    {
                        delete_campaign(entries[current_campaign_index]->id);
                        
