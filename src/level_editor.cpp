@@ -1806,7 +1806,8 @@ Sint32 level_editor()
 	// File > Campaign submenu
 	SimpleButton fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, menu_button_height, true);
 	SimpleButton fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h, 65, menu_button_height, true, true);
-	SimpleButton fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h, 65, menu_button_height, true, true);
+	//SimpleButton fileCampaignNewButton("New", fileCampaignImportButton.area.x, fileCampaignShareButton.area.y + fileCampaignShareButton.area.h, 65, menu_button_height, true, true);
+	SimpleButton fileCampaignNewButton("New", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, menu_button_height, true);
 	SimpleButton fileCampaignLoadButton("Load...", fileCampaignImportButton.area.x, fileCampaignNewButton.area.y + fileCampaignNewButton.area.h, 65, menu_button_height, true, true);
 	SimpleButton fileCampaignSaveButton("Save", fileCampaignImportButton.area.x, fileCampaignLoadButton.area.y + fileCampaignLoadButton.area.h, 65, menu_button_height, true, true);
 	SimpleButton fileCampaignSaveAsButton("Save As...", fileCampaignImportButton.area.x, fileCampaignSaveButton.area.y + fileCampaignSaveButton.area.h, 65, menu_button_height, true, true);
@@ -1828,7 +1829,8 @@ Sint32 level_editor()
 	SimpleButton campaignProfileTitleButton("Title...", campaignProfileButton.area.x + campaignProfileButton.area.w, campaignProfileButton.area.y, 95, menu_button_height, true);
 	SimpleButton campaignProfileDescriptionButton("Description...", campaignProfileTitleButton.area.x, campaignProfileTitleButton.area.y + campaignProfileTitleButton.area.h, 95, menu_button_height, true, true);
 	SimpleButton campaignProfileIconButton("Icon...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h, 95, menu_button_height, true, true);
-	SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h, 95, menu_button_height, true, true);
+	//SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileIconButton.area.y + campaignProfileIconButton.area.h, 95, menu_button_height, true, true);
+	SimpleButton campaignProfileAuthorsButton("Authors...", campaignProfileTitleButton.area.x, campaignProfileDescriptionButton.area.y + campaignProfileDescriptionButton.area.h, 95, menu_button_height, true, true);
 	SimpleButton campaignProfileContributorsButton("Contributors...", campaignProfileTitleButton.area.x, campaignProfileAuthorsButton.area.y + campaignProfileAuthorsButton.area.h, 95, menu_button_height, true, true);
 	
 	// Campaign > Details submenu
@@ -2185,8 +2187,8 @@ Sint32 level_editor()
                 else if(activate_sub_menu_button(mx, my, current_menu, fileCampaignButton))
                 {
                     set<SimpleButton*> s;
-                    s.insert(&fileCampaignImportButton);
-                    s.insert(&fileCampaignShareButton);
+                    //s.insert(&fileCampaignImportButton);
+                    //s.insert(&fileCampaignShareButton);
                     s.insert(&fileCampaignNewButton);
                     s.insert(&fileCampaignLoadButton);
                     s.insert(&fileCampaignSaveButton);
@@ -2546,7 +2548,7 @@ Sint32 level_editor()
                     set<SimpleButton*> s;
                     s.insert(&campaignProfileTitleButton);
                     s.insert(&campaignProfileDescriptionButton);
-                    s.insert(&campaignProfileIconButton);
+                    //s.insert(&campaignProfileIconButton);
                     s.insert(&campaignProfileAuthorsButton);
                     s.insert(&campaignProfileContributorsButton);
                     current_menu.push_back(std::make_pair(&campaignProfileButton, s));
