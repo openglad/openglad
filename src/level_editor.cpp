@@ -572,9 +572,10 @@ public:
     
     Sint32 terrain;
     bool use_smoothing;
+    bool picking;
     
     EditorTerrainBrush()
-        : terrain(PIX_GRASS1), use_smoothing(true)
+        : terrain(PIX_GRASS1), use_smoothing(true), picking(false)
     {}
 };
 
@@ -587,10 +588,29 @@ public:
     Sint32 family;
     char team;
     unsigned short level;
+    bool picking;
     
     EditorObjectBrush()
-        : snap_to_grid(true), order(ORDER_LIVING), family(0), team(1), level(1)
+        : snap_to_grid(true), order(ORDER_LIVING), family(0), team(1), level(1), picking(false)
     {}
+    
+    void set(walker* target)
+    {
+        if(target == NULL)
+        {
+            order = ORDER_LIVING;
+            family = 0;
+            team = 1;
+            level = 1;
+        }
+        else
+        {
+            order = target->query_order();
+            family = target->query_family();
+            team = target->team_num;
+            level = target->stats->level;
+        }
+    }
 };
 
 class SelectionInfo
@@ -685,6 +705,7 @@ public:
 	set<SimpleButton*> mode_buttons;
 	set<SimpleButton*> pan_buttons;
 	
+	SimpleButton pickerButton;
 	SimpleButton gridSnapButton;
 	SimpleButton terrainSmoothButton;
 	
@@ -724,6 +745,9 @@ public:
     
     void clear_terrain();
     void resmooth_terrain();
+    
+    
+    walker* get_object(int x, int y);
 };
 
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
@@ -731,8 +755,9 @@ public:
 LevelEditorData::LevelEditorData()
     : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
-    , gridSnapButton("Snap", 0, 20, 27, 15)
-    , terrainSmoothButton("Smooth", 0, 20, 39, 15)  // Same place as gridSnapButton
+    , pickerButton("Pick", 0, 20, 27, 15)
+    , gridSnapButton("Snap", pickerButton.area.x+pickerButton.area.w+2, 20, 27, 15)
+    , terrainSmoothButton("Smooth", pickerButton.area.x+pickerButton.area.w+2, 20, 39, 15)  // Same place as gridSnapButton
     , setNameButton("Set Name", 0, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
     , prevTeamButton("< Team", 0, setNameButton.area.y+setNameButton.area.h, 40, 15)
     , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
@@ -896,12 +921,22 @@ void LevelEditorData::reset_mode_buttons()
     switch(mode)
     {
         case TERRAIN:
+        mode_buttons.insert(&pickerButton);
         mode_buttons.insert(&terrainSmoothButton);
+        if(terrain_brush.picking)
+            pickerButton.set_colors_enabled();
+        else
+            pickerButton.set_colors_normal();
         break;
         case OBJECT:
+        mode_buttons.insert(&pickerButton);
         mode_buttons.insert(&gridSnapButton);
         mode_buttons.insert(&prevTeamButton);
         mode_buttons.insert(&nextTeamButton);
+        if(object_brush.picking)
+            pickerButton.set_colors_enabled();
+        else
+            pickerButton.set_colors_normal();
         break;
         case SELECT:
         mode_buttons.insert(&gridSnapButton);
@@ -926,7 +961,26 @@ void LevelEditorData::reset_mode_buttons()
 
 void LevelEditorData::activate_mode_button(SimpleButton* button)
 {
-    if(button == &gridSnapButton)
+    if(button == &pickerButton)
+    {
+        if(mode == TERRAIN)
+        {
+            terrain_brush.picking = !terrain_brush.picking;
+            if(terrain_brush.picking)
+                pickerButton.set_colors_enabled();
+            else
+                pickerButton.set_colors_normal();
+        }
+        else if(mode == OBJECT)
+        {
+            object_brush.picking = !object_brush.picking;
+            if(object_brush.picking)
+                pickerButton.set_colors_enabled();
+            else
+                pickerButton.set_colors_normal();
+        }
+    }
+    else if(button == &gridSnapButton)
     {
         object_brush.snap_to_grid = !object_brush.snap_to_grid;
         if(object_brush.snap_to_grid)
@@ -1673,6 +1727,20 @@ void LevelEditorData::resmooth_terrain()
     myradar.update(level);
 }
 
+
+    
+walker* LevelEditorData::get_object(int x, int y)
+{
+    walker* result = NULL;
+    walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+    newob->setxy(x, y);
+    if (some_hit(x, y, newob, level))
+    {
+        result = newob->collide_ob;
+    }
+    level->remove_ob(newob,0);
+    return result;
+}
 
 
 bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
@@ -3048,36 +3116,51 @@ Sint32 level_editor()
                         } // end of background grid window
                         else if(mx < 245-4 || my > L_D(7)-2)
                         {
-                            // Create new object here
-                            levelchanged = 1;
-                            newob = data.level->add_ob(object_brush.order, object_brush.family);
-                            newob->setxy(windowx, windowy);
-                            newob->team_num = object_brush.team;
-                            newob->stats->level = object_brush.level;
-                            newob->dead = 0; // just in case
-                            newob->collide_ob = 0;
-                            // Is there already something there?
-                            if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, data.level))
+                            if(!object_brush.picking)
                             {
-                                if (newob)
-                                {
-                                    data.level->remove_ob(newob,0);
-                                    newob = NULL;
-                                }
-                            }  // end of failure to put guy
-                            else if (!object_brush.snap_to_grid)
-                            {
-                                newob->draw(myscreen->viewob[0]);
-                                myscreen->buffer_to_screen(0, 0, 320, 200);
-                                start_time_s = query_timer();
-                                while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
-                                {
-                                    mymouse = query_mouse();
-                                }
+                                // Create new object here (apply brush)
                                 levelchanged = 1;
+                                newob = data.level->add_ob(object_brush.order, object_brush.family);
+                                newob->setxy(windowx, windowy);
+                                newob->team_num = object_brush.team;
+                                newob->stats->level = object_brush.level;
+                                newob->dead = 0; // just in case
+                                newob->collide_ob = 0;
+                                // Is there already something there?
+                                if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, data.level))
+                                {
+                                    if (newob)
+                                    {
+                                        data.level->remove_ob(newob,0);
+                                        newob = NULL;
+                                    }
+                                }  // end of failure to put guy
+                                else if(!object_brush.snap_to_grid)
+                                {
+                                    newob->draw(myscreen->viewob[0]);
+                                    myscreen->buffer_to_screen(0, 0, 320, 200);
+                                    start_time_s = query_timer();
+                                    while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
+                                    {
+                                        mymouse = query_mouse();
+                                    }
+                                    levelchanged = 1;
+                                }
                             }
-                            //       while (mymouse[MOUSE_LEFT])
-                            //         mymouse = query_mouse();
+                            else
+                            {
+                                // Set brush to the grid tile
+                                walker* w = data.get_object(windowx, windowy);
+                                if(w != NULL)
+                                {
+                                    object_brush.set(w);
+                                    object_brush.picking = false;
+                                    data.pickerButton.set_colors_normal();
+                                    
+                                    while(mymouse[MOUSE_LEFT])
+                                        get_input_events(WAIT);
+                                }
+                            }
                         }
                     }  // end of putting a guy
                     if (mode == TERRAIN)
@@ -3095,19 +3178,33 @@ Sint32 level_editor()
                         {
                             windowx /= GRID_SIZE;  // get the map position ..
                             windowy /= GRID_SIZE;
-                            // Set to our current selection
-                            data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
-                            levelchanged = 1;
-                            if (terrain_brush.use_smoothing) // smooth a few squares, if not control
-                            {
-                                for (i=windowx-1; i <= windowx+1; i++)
-                                    for (j=windowy-1; j <=windowy+1; j++)
-                                        if (i >= 0 && i < data.level->grid.w &&
-                                                j >= 0 && j < data.level->grid.h)
-                                            data.level->mysmoother.smooth(i, j);
-                            }
                             
-                            myradar.update(data.level);
+                            if(!terrain_brush.picking)
+                            {
+                                // Set to our current selection (apply brush)
+                                data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
+                                levelchanged = 1;
+                                if (terrain_brush.use_smoothing) // smooth a few squares, if not control
+                                {
+                                    for (i=windowx-1; i <= windowx+1; i++)
+                                        for (j=windowy-1; j <=windowy+1; j++)
+                                            if (i >= 0 && i < data.level->grid.w &&
+                                                    j >= 0 && j < data.level->grid.h)
+                                                data.level->mysmoother.smooth(i, j);
+                                }
+                                
+                                myradar.update(data.level);
+                            }
+                            else
+                            {
+                                // Set brush to the grid tile
+                                terrain_brush.terrain = data.level->grid.data[windowy*(data.level->grid.w)+windowx];
+                                terrain_brush.picking = false;
+                                data.pickerButton.set_colors_normal();
+                                
+                                while(mymouse[MOUSE_LEFT])
+                                    get_input_events(WAIT);
+                            }
                         }
                     }  // end of setting grid square
                 } // end of main window
