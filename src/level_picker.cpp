@@ -39,6 +39,7 @@ extern Sint32 *mymouse;
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
+bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
 
 
 void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, list<int>& exits)
@@ -385,6 +386,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     SDL_Rect choose = {Sint16(screenW - 50), Sint16(screenH - 30), 30, 10};
     SDL_Rect cancel = {Sint16(screenW - 100), Sint16(screenH - 30), 38, 10};
     SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
+    SDL_Rect id_button = {Sint16(delete_button.x - 52 - 10), 10, 52, 10};
     
     bool done = false;
 	while (!done)
@@ -560,6 +562,18 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                         selected_entry = -1;
                    }
                }
+            // Enter ID
+			else if(id_button.x <= mx && mx <= id_button.x + id_button.w
+               && id_button.y <= my && my <= id_button.y + id_button.h)
+               {
+                    std::string level;
+                    if(prompt_for_string(loadtext, "Enter Level ID (num)", level) && level.size() > 0)
+                    {
+                        result = atoi(level.c_str());
+                        done = true;
+                        break;
+                    }
+               }
 			else
 			{
                 selected_entry = -1;
@@ -609,6 +623,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             screenp->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
             loadtext->write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
         }
+        
+        screenp->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
+        loadtext->write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
         
         if(selected_entry != -1)
         {

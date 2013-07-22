@@ -30,6 +30,8 @@ extern Sint32 *mymouse;
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
 
+bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
+
 int toInt(const std::string& s)
 {
     return atoi(s.c_str());
@@ -315,6 +317,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
     SDL_Rect choose = {Sint16(screenW/2 + 20), Sint16(screenH - 15), 30, 10};
     SDL_Rect cancel = {Sint16(screenW/2 - 38 - 20), Sint16(screenH - 15), 38, 10};
     SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
+    SDL_Rect id_button = {Sint16(delete_button.x - 52 - 10), 10, 52, 10};
 
     bool done = false;
     while (!done)
@@ -433,6 +436,19 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
                         current_campaign_index = 0;
                    }
                }
+            // Enter ID
+			else if(id_button.x <= mx && mx <= id_button.x + id_button.w
+               && id_button.y <= my && my <= id_button.y + id_button.h)
+               {
+                    std::string campaign;
+                    if(prompt_for_string(loadtext, "Enter Campaign ID", campaign) && campaign.size() > 0)
+                    {
+                        result = NULL;
+                        ret_value.id = campaign;
+                        done = true;
+                        break;
+                    }
+               }
         }
 
 
@@ -463,6 +479,9 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
             screenp->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
             loadtext->write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
         }
+        
+        screenp->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
+        loadtext->write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
         
         // Draw entry
         if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)

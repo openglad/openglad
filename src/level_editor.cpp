@@ -798,8 +798,7 @@ bool LevelEditorData::reloadLevel()
 
 bool LevelEditorData::saveCampaignAs(const std::string& id)
 {
-    campaign->id = id;
-    bool result = campaign->save();
+    bool result = campaign->save_as(id);
     
     // Remount for consistency in PhysFS
     if(!remount_campaign_package())
@@ -2396,20 +2395,24 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, data, fileCampaignSaveAsButton))
                 {
-                    // TODO: Use campaign picker
-                    std::string campaign = data.campaign->id;
-                    if(prompt_for_string(scentext, "Save Campaign As", campaign))
+                    CampaignResult result = pick_campaign(myscreen, NULL, true);
+                    if(result.id.size() > 0)
                     {
-                        if(data.saveCampaignAs(campaign))
+                        std::list<std::string> campaigns = list_campaigns();
+                        if(list_find(campaigns.begin(), campaigns.end(), result.id) == campaigns.end()
+                            || yes_or_no_prompt("Overwrite", "Overwrite existing campaign?", false))
                         {
-                            timed_dialog("Campaign saved.");
-                            campaignchanged = 0;
-                            event = 1;
-                        }
-                        else
-                        {
-                            timed_dialog("Failed to save campaign.");
-                            event = 1;
+                            if(data.saveCampaignAs(result.id))
+                            {
+                                timed_dialog("Campaign saved.");
+                                campaignchanged = 0;
+                                event = 1;
+                            }
+                            else
+                            {
+                                timed_dialog("Failed to save campaign.");
+                                event = 1;
+                            }
                         }
                     }
                 }
@@ -2481,24 +2484,25 @@ Sint32 level_editor()
                 }
                 else if(activate_menu_choice(mx, my, data, fileLevelSaveAsButton))
                 {
-                    // TODO: It would be nice to use the level browser for this
+                    int id = pick_level(myscreen, data.level->id, true);
                     
-                    char buf[20];
-                    snprintf(buf, 20, "%d", data.level->id);
-                    
-                    std::string level = buf;
-                    if(prompt_for_string(scentext, "Save Level (num)", level))
+                    if(id >= 0 && id != data.level->id)
                     {
-                        if(data.saveLevelAs(atoi(level.c_str())))
+                        std::list<int> levels = list_levels();
+                        if(list_find(levels.begin(), levels.end(), id) == levels.end()
+                            || yes_or_no_prompt("Overwrite", "Overwrite existing level?", false))
                         {
-                            timed_dialog("Level saved.");
-                            event = 1;
-                            levelchanged = 0;
-                        }
-                        else
-                        {
-                            timed_dialog("Save failed.");
-                            event = 1;
+                            if(data.saveLevelAs(id))
+                            {
+                                timed_dialog("Level saved.");
+                                event = 1;
+                                levelchanged = 0;
+                            }
+                            else
+                            {
+                                timed_dialog("Save failed.");
+                                event = 1;
+                            }
                         }
                     }
                 }

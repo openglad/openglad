@@ -67,4 +67,13 @@ bool create_new_pix(const std::string& filename, int w, int h, unsigned char fil
 bool create_new_campaign_descriptor(const std::string& filename);
 bool create_new_scen_file(const std::string& scenfile, const std::string& gridname);
 
+// Some versions of GCC have broken template type deduction, so std::find doesn't work.
+template<typename iterT, typename T>
+iterT list_find(iterT begin, iterT end, const T& value)
+{
+    while(*begin != value && begin != end)
+        begin++;
+    return begin;
+}
+
 #endif
