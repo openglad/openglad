@@ -2078,6 +2078,11 @@ Sint32 level_editor()
 		}
 
 		short scroll_amount = get_and_reset_scroll_amount();
+		#if defined(USE_TOUCH_INPUT)
+		// Only scroll the tile selector when touching it
+		if(mymouse[MOUSE_LEFT] && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse[MOUSE_X], mymouse[MOUSE_Y]))
+        {
+		#endif
 		// Slide tile selector down ..
 		if (keystates[KEYSTATE_DOWN] || scroll_amount < 0)
 		{
@@ -2105,6 +2110,9 @@ Sint32 level_editor()
 			while (keystates[KEYSTATE_UP])
 				get_input_events(WAIT);
 		}
+		#if defined(USE_TOUCH_INPUT)
+        }
+		#endif
 
 		// Smooth current map, F5
 		if (keystates[KEYSTATE_F5])
