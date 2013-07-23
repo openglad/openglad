@@ -276,6 +276,7 @@ public:
     void set_colors_normal();
     void set_colors_enabled();
     void set_colors_disabled();
+    void set_colors_active();
 };
 
 
@@ -330,6 +331,14 @@ void SimpleButton::set_colors_disabled()
     base_color = 10;
     high_color = 12;
     shadow_color = 14;
+}
+
+void SimpleButton::set_colors_active()
+{
+    text_color = WHITE;
+    base_color = ORANGE_START;
+    high_color = ORANGE_START+3;
+    shadow_color = ORANGE_START+5;
 }
 
 
@@ -924,7 +933,7 @@ void LevelEditorData::reset_mode_buttons()
         mode_buttons.insert(&pickerButton);
         mode_buttons.insert(&terrainSmoothButton);
         if(terrain_brush.picking)
-            pickerButton.set_colors_enabled();
+            pickerButton.set_colors_active();
         else
             pickerButton.set_colors_normal();
         break;
@@ -934,7 +943,7 @@ void LevelEditorData::reset_mode_buttons()
         mode_buttons.insert(&prevTeamButton);
         mode_buttons.insert(&nextTeamButton);
         if(object_brush.picking)
-            pickerButton.set_colors_enabled();
+            pickerButton.set_colors_active();
         else
             pickerButton.set_colors_normal();
         break;
@@ -967,7 +976,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         {
             terrain_brush.picking = !terrain_brush.picking;
             if(terrain_brush.picking)
-                pickerButton.set_colors_enabled();
+                pickerButton.set_colors_active();
             else
                 pickerButton.set_colors_normal();
         }
@@ -975,7 +984,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         {
             object_brush.picking = !object_brush.picking;
             if(object_brush.picking)
-                pickerButton.set_colors_enabled();
+                pickerButton.set_colors_active();
             else
                 pickerButton.set_colors_normal();
         }
