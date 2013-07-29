@@ -266,6 +266,13 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
 void get_input_events(bool type);
 void handle_events(const SDL_Event& event);
 
+// Specific event handling
+void handle_window_event(const SDL_Event& event);
+void handle_key_event(const SDL_Event& event);
+void handle_text_event(const SDL_Event& event);
+void handle_mouse_event(const SDL_Event& event);
+void handle_joy_event(const SDL_Event& event);
+
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.
 int query_key();                                                            // return last keypress

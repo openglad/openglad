@@ -350,6 +350,13 @@ void handle_key_event(const SDL_Event& event)
     }
 }
 
+void handle_text_event(const SDL_Event& event)
+{
+    free(raw_text_input);
+    raw_text_input = strdup(event.text.text);
+    text_input_event = 1;
+}
+
 void handle_mouse_event(const SDL_Event& event)
 {
     switch(event.type)
@@ -639,9 +646,7 @@ void handle_events(const SDL_Event& event)
         handle_window_event(event);
     break;
     case SDL_TEXTINPUT:
-        free(raw_text_input);
-        raw_text_input = strdup(event.text.text);
-        text_input_event = 1;
+        handle_text_event(event);
         break;
     case SDL_MOUSEWHEEL:
         handle_mouse_event(event);

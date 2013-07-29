@@ -28,6 +28,8 @@
 #include "level_picker.h"
 #include "campaign_picker.h"
 
+void quit(Sint32 arg1);
+
 /* Changelog
  * 	8/8/02: Zardus: added scrolling-by-minimap
  * 		Zardus: added scrolling-by-keyboard
@@ -92,7 +94,7 @@ extern options * theprefs;
 extern Sint32 *mymouse;
 
 unsigned char scenpalette[768];
-Sint32 event = 1;  // need to redraw?
+Sint32 redraw = 1;  // need to redraw?
 Sint32 campaignchanged = 0;  // has campaign changed?
 Sint32 levelchanged = 0;  // has level changed?
 Sint32 cyclemode = 1;      // for color cycling
@@ -1854,7 +1856,7 @@ Sint32 level_editor()
         Log("Campaign has no valid levels!\n");
 
 	myscreen->clearfontbuffer();
-	event = 1;  // Redraw right away
+	redraw = 1;  // Redraw right away
 	
 	object_pane.clear();
 	for(int i = 0; i < NUM_FAMILIES; i++)
@@ -1958,6 +1960,7 @@ Sint32 level_editor()
 	// This is the main program loop
 	//
 	bool done = false;
+	SDL_Event event;
 	while(!done)
 	{
 		// Reset the timer count to zero ...
@@ -1968,9 +1971,62 @@ Sint32 level_editor()
 		    done = true;
 			break;
 		}
-
-		//buffers: get keys and stuff
-		get_input_events(POLL);
+		
+        while(SDL_PollEvent(&event))
+        {
+            switch (event.type)
+            {
+        #ifdef USE_SDL2
+            case SDL_WINDOWEVENT:   
+                handle_window_event(event);
+            break;
+            case SDL_TEXTINPUT:
+                handle_text_event(event);
+                break;
+            case SDL_MOUSEWHEEL:
+                handle_mouse_event(event);
+                break;
+            case SDL_FINGERMOTION:
+                handle_mouse_event(event);
+                break;
+            case SDL_FINGERUP:
+                handle_mouse_event(event);
+                break;
+            case SDL_FINGERDOWN:
+                handle_mouse_event(event);
+                break;
+        #endif
+            case SDL_KEYDOWN:
+                handle_key_event(event);
+                break;
+            case SDL_KEYUP:
+                handle_key_event(event);
+                break;
+            case SDL_MOUSEMOTION:
+                handle_mouse_event(event);
+                break;
+            case SDL_MOUSEBUTTONUP:
+                handle_mouse_event(event);
+                break;
+            case SDL_MOUSEBUTTONDOWN:
+                handle_mouse_event(event);
+                break;
+            case SDL_JOYAXISMOTION:
+                handle_joy_event(event);
+                break;
+            case SDL_JOYBUTTONDOWN:
+                handle_joy_event(event);
+                break;
+            case SDL_JOYBUTTONUP:
+                handle_joy_event(event);
+                break;
+            case SDL_QUIT:
+                quit(0);
+                break;
+            default:
+                break;
+            }
+        }
 
 		// Zardus: COMMENT: I went through and replaced dumbcounts with get_input_events.
         
@@ -1984,7 +2040,7 @@ Sint32 level_editor()
             }
             
             myscreen->clearfontbuffer();
-            event = 1;
+            redraw = 1;
             
             // Wait until release
             while (keystates[KEYSTATE_ESCAPE])
@@ -1995,42 +2051,42 @@ Sint32 level_editor()
 		if (keystates[KEYSTATE_0])
 		{
 			object_brush.team = 0;
-			event = 1;
+			redraw = 1;
 		}
 		if (keystates[KEYSTATE_1])
 		{
 			object_brush.team = 1;
-			event = 1;
+			redraw = 1;
 		}
 		if (keystates[KEYSTATE_2])
 		{
 			object_brush.team = 2;
-			event = 1;
+			redraw = 1;
 		}
 		if (keystates[KEYSTATE_3])
 		{
 			object_brush.team = 3;
-			event = 1;
+			redraw = 1;
 		}
 		if (keystates[KEYSTATE_4])
 		{
 			object_brush.team = 4;
-			event = 1;
+			redraw = 1;
 		}
 		if (keystates[KEYSTATE_5])
 		{
 			object_brush.team = 5;
-			event = 1;
+			redraw = 1;
 		}
 		if (keystates[KEYSTATE_6])
 		{
 			object_brush.team = 6;
-			event = 1;
+			redraw = 1;
 		}
 		if (keystates[KEYSTATE_7])
 		{
 			object_brush.team = 7;
-			event = 1;
+			redraw = 1;
 		}
 
 		// Toggle grid alignment
@@ -2039,7 +2095,7 @@ Sint32 level_editor()
 		    if(mode == OBJECT || mode == SELECT)
                 data.activate_mode_button(&data.gridSnapButton);
             
-			event = 1;
+			redraw = 1;
 			while (keystates[KEYSTATE_g])
 				get_input_events(WAIT);
 		}
@@ -2052,40 +2108,40 @@ Sint32 level_editor()
             {
                 if(data.saveLevel())
                 {
-                    event = 1;
+                    redraw = 1;
                     levelchanged = 0;
                     saved = true;
                 }
                 else
                 {
                     timed_dialog("Failed to save level.");
-                    event = 1;
+                    redraw = 1;
                 }
             }
             if(campaignchanged)
             {
                 if(data.saveCampaign())
                 {
-                    event = 1;
+                    redraw = 1;
                     campaignchanged = 0;
                     saved = true;
                 }
                 else
                 {
                     timed_dialog("Failed to save campaign.");
-                    event = 1;
+                    redraw = 1;
                 }
             }
             
             if(saved)
             {
                 timed_dialog("Saved.");
-                event = 1;
+                redraw = 1;
             }
             else if(!levelchanged && !campaignchanged)
             {
                 timed_dialog("No changes to save.");
-                event = 1;
+                redraw = 1;
             }
 		}  // end of saving routines
 
@@ -2097,7 +2153,7 @@ Sint32 level_editor()
                 object_brush.level++;
                 while (keystates[KEYSTATE_RIGHTBRACKET])
                     get_input_events(WAIT);
-                event = 1;
+                redraw = 1;
 		    }
 		}
 		if (keystates[KEYSTATE_LEFTBRACKET])
@@ -2107,7 +2163,7 @@ Sint32 level_editor()
                 object_brush.level--;
                 while (keystates[KEYSTATE_LEFTBRACKET])
                     get_input_events(WAIT);
-                event = 1;
+                redraw = 1;
 		    }
 		}
 
@@ -2135,7 +2191,7 @@ Sint32 level_editor()
             }
             data.reset_mode_buttons();
             
-			event = 1; // change score panel
+			redraw = 1; // change score panel
 			while (keystates[KEYSTATE_o])
 				get_input_events(WAIT);
 		}
@@ -2154,7 +2210,7 @@ Sint32 level_editor()
             }
             data.reset_mode_buttons();
             
-			event = 1; // change score panel
+			redraw = 1; // change score panel
 			while (keystates[KEYSTATE_t])
 				get_input_events(WAIT);
 		}
@@ -2172,7 +2228,7 @@ Sint32 level_editor()
 			if (rowsdown >= maxrows)
 				rowsdown -= maxrows;
             
-            event = 1;
+            redraw = 1;
             
 			while (keystates[KEYSTATE_DOWN])
 				get_input_events(WAIT);
@@ -2187,7 +2243,7 @@ Sint32 level_editor()
 			if (rowsdown <0 || rowsdown >= maxrows) // bad case
 				rowsdown = 0;
             
-            event = 1;
+            redraw = 1;
             
 			while (keystates[KEYSTATE_UP])
 				get_input_events(WAIT);
@@ -2202,7 +2258,7 @@ Sint32 level_editor()
 		    data.resmooth_terrain();
 			while (keystates[KEYSTATE_F5])
 				get_input_events(WAIT);
-			event = 1;
+			redraw = 1;
 			levelchanged = 1;
 		}
 
@@ -2223,31 +2279,31 @@ Sint32 level_editor()
 		if ((keystates[KEYSTATE_KP_8] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_w]) // || mymouse[MOUSE_Y]< 2)
 		        && data.level->topy >= 0) // top of the screen
         {
-            event = 1;
+            redraw = 1;
 			data.level->add_draw_pos(0, -SCROLLSIZE);
         }
 		if ((keystates[KEYSTATE_KP_2] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_s]) // || mymouse[MOUSE_Y]> 198)
 		        && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
         {
-            event = 1;
+            redraw = 1;
 			data.level->add_draw_pos(0, SCROLLSIZE);
         }
 		if ((keystates[KEYSTATE_KP_4] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_a]) // || mymouse[MOUSE_X]< 2)
 		        && data.level->topx >= 0) // scroll left
         {
-            event = 1;
+            redraw = 1;
 			data.level->add_draw_pos(-SCROLLSIZE, 0);
         }
 		if ((keystates[KEYSTATE_KP_6] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_d]) // || mymouse[MOUSE_X] > 318)
 		        && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
         {
-            event = 1;
+            redraw = 1;
 			data.level->add_draw_pos(SCROLLSIZE, 0);
         }
 
 		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
 		{
-			event = 1;
+			redraw = 1;
 			mx = mymouse[MOUSE_X];
 			my = mymouse[MOUSE_Y];
             
@@ -2304,13 +2360,13 @@ Sint32 level_editor()
                             if(data.saveLevel())
                             {
                                 timed_dialog("Level saved.");
-                                event = 1;
+                                redraw = 1;
                                 levelchanged = 0;
                             }
                             else
                             {
                                 timed_dialog("Save failed.");
-                                event = 1;
+                                redraw = 1;
                                 
                                 cancel = true;
                             }
@@ -2324,13 +2380,13 @@ Sint32 level_editor()
                             if(data.saveCampaign())
                             {
                                 timed_dialog("Campaign saved.");
-                                event = 1;
+                                redraw = 1;
                                 campaignchanged = 0;
                             }
                             else
                             {
                                 timed_dialog("Save failed.");
-                                event = 1;
+                                redraw = 1;
                                 
                                 cancel = true;
                             }
@@ -2392,19 +2448,19 @@ Sint32 level_editor()
                                         else
                                         {
                                             timed_dialog("Campaign has no scenarios!");
-                                            event = 1;
+                                            redraw = 1;
                                         }
                                     }
                                     else
                                     {
                                         timed_dialog("Failed to load new campaign.");
-                                        event = 1;
+                                        redraw = 1;
                                     }
                                 }
                                 else
                                 {
                                     timed_dialog("Failed to create new campaign.");
-                                    event = 1;
+                                    redraw = 1;
                                 }
                             }
                         }
@@ -2414,7 +2470,7 @@ Sint32 level_editor()
                 else if(activate_menu_choice(mx, my, data, fileCampaignLoadButton))
                 {
                     // Pick a campaign, then load it and load the first level
-                    event = 1;
+                    redraw = 1;
                     bool cancel = false;
                     if(campaignchanged)
                     {
@@ -2475,12 +2531,12 @@ Sint32 level_editor()
                     {
                         timed_dialog("Campaign saved.");
                         campaignchanged = 0;
-                        event = 1;
+                        redraw = 1;
                     }
                     else
                     {
                         timed_dialog("Failed to save campaign.");
-                        event = 1;
+                        redraw = 1;
                     }
                 }
                 else if(activate_menu_choice(mx, my, data, fileCampaignSaveAsButton))
@@ -2496,12 +2552,12 @@ Sint32 level_editor()
                             {
                                 timed_dialog("Campaign saved.");
                                 campaignchanged = 0;
-                                event = 1;
+                                redraw = 1;
                             }
                             else
                             {
                                 timed_dialog("Failed to save campaign.");
-                                event = 1;
+                                redraw = 1;
                             }
                         }
                     }
@@ -2523,7 +2579,7 @@ Sint32 level_editor()
                     data.level->create_new_grid();
                     myradar.start(data.level);
                     levelchanged = 1;
-                    event = 1;
+                    redraw = 1;
                 }
                 else if(activate_menu_choice(mx, my, data, fileLevelLoadButton))
                 {
@@ -2545,16 +2601,16 @@ Sint32 level_editor()
                             {
                                 timed_dialog("Level loaded.");
                                 levelchanged = 0;
-                                event = 1;
+                                redraw = 1;
                             }
                             else
                             {
                                 timed_dialog("Failed to load level.");
-                                event = 1;
+                                redraw = 1;
                             }
                             
                             myradar.start(data.level);
-                            event = 1;
+                            redraw = 1;
                         }
                     }
                 }
@@ -2563,13 +2619,13 @@ Sint32 level_editor()
                     if(data.saveLevel())
                     {
                         timed_dialog("Level saved.");
-                        event = 1;
+                        redraw = 1;
                         levelchanged = 0;
                     }
                     else
                     {
                         timed_dialog("Save failed.");
-                        event = 1;
+                        redraw = 1;
                     }
                 }
                 else if(activate_menu_choice(mx, my, data, fileLevelSaveAsButton))
@@ -2585,13 +2641,13 @@ Sint32 level_editor()
                             if(data.saveLevelAs(id))
                             {
                                 timed_dialog("Level saved.");
-                                event = 1;
+                                redraw = 1;
                                 levelchanged = 0;
                             }
                             else
                             {
                                 timed_dialog("Save failed.");
-                                event = 1;
+                                redraw = 1;
                             }
                         }
                     }
@@ -2650,7 +2706,7 @@ Sint32 level_editor()
                         data.campaign->description = desc;
                         campaignchanged = 1;
                     }
-                    event = 1;
+                    redraw = 1;
                 }
                 else if(activate_menu_choice(mx, my, data, campaignProfileIconButton))
                 {
@@ -2804,7 +2860,7 @@ Sint32 level_editor()
                         data.level->description = desc;
                         levelchanged = 1;
                     }
-                    event = 1;
+                    redraw = 1;
                 }
                 else if(activate_menu_choice(mx, my, data, levelMapSizeButton))
                 {
@@ -2863,33 +2919,33 @@ Sint32 level_editor()
                                     char buf[30];
                                     snprintf(buf, 30, "Resized map to %ux%u", data.level->grid.w, data.level->grid.h);
                                     timed_dialog(buf);
-                                    event = 1;
+                                    redraw = 1;
                                     levelchanged = 1;
                                 }
                                 else
                                 {
                                     timed_dialog("Resize canceled.");
-                                    event = 1;
+                                    redraw = 1;
                                 }
                             }
                         }
                         else
                         {
                             timed_dialog("Resize canceled.");
-                            event = 1;
+                            redraw = 1;
                         }
                     }
                     else
                     {
                         timed_dialog("Resize canceled.");
-                        event = 1;
+                        redraw = 1;
                     }
                 }
                 else if(activate_menu_choice(mx, my, data, levelResmoothButton))
                 {
                     data.resmooth_terrain();
                     levelchanged = 1;
-                    event = 1;
+                    redraw = 1;
                 }
                 else if(activate_menu_choice(mx, my, data, levelDeleteTerrainButton))
                 {
@@ -2899,7 +2955,7 @@ Sint32 level_editor()
                         myradar.update(data.level);
                         levelchanged = 1;
                     }
-                    event = 1;
+                    redraw = 1;
                 }
                 else if(activate_menu_choice(mx, my, data, levelDeleteObjectsButton))
                 {
@@ -2909,7 +2965,7 @@ Sint32 level_editor()
                         myradar.update(data.level);
                         levelchanged = 1;
                     }
-                    event = 1;
+                    redraw = 1;
                 }
                 // MODE
                 else if(activate_sub_menu_button(mx, my, current_menu, modeButton, true))
@@ -2946,7 +3002,7 @@ Sint32 level_editor()
                         if((*e)->contains(mx, my))
                         {
                             data.activate_mode_button(*e);
-                            event = 1;
+                            redraw = 1;
                             
                             // Wait for mouse button to be released
                             while(mymouse[MOUSE_LEFT])
@@ -2958,12 +3014,12 @@ Sint32 level_editor()
                     // Panning with mouse (touch)
                     if(data.panUpButton.contains(mx, my) && data.level->topy >= 0) // top of the screen
                     {
-                        event = 1;
+                        redraw = 1;
                         data.level->add_draw_pos(0, -SCROLLSIZE);
                     }
                     else if(data.panUpRightButton.contains(mx, my))
                     {
-                        event = 1;
+                        redraw = 1;
                         if(data.level->topy >= 0)
                             data.level->add_draw_pos(0, -SCROLLSIZE);
                         if(data.level->topx <= (GRID_SIZE*data.level->grid.w)-18)
@@ -2971,7 +3027,7 @@ Sint32 level_editor()
                     }
                     else if(data.panUpLeftButton.contains(mx, my))
                     {
-                        event = 1;
+                        redraw = 1;
                         if(data.level->topy >= 0)
                             data.level->add_draw_pos(0, -SCROLLSIZE);
                         if(data.level->topx >= 0)
@@ -2979,12 +3035,12 @@ Sint32 level_editor()
                     }
                     else if(data.panDownButton.contains(mx, my) && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
                     {
-                        event = 1;
+                        redraw = 1;
                         data.level->add_draw_pos(0, SCROLLSIZE);
                     }
                     else if(data.panDownRightButton.contains(mx, my))
                     {
-                        event = 1;
+                        redraw = 1;
                         if(data.level->topy <= (GRID_SIZE*data.level->grid.h)-18)
                             data.level->add_draw_pos(0, SCROLLSIZE);
                         if(data.level->topx <= (GRID_SIZE*data.level->grid.w)-18)
@@ -2992,7 +3048,7 @@ Sint32 level_editor()
                     }
                     else if(data.panDownLeftButton.contains(mx, my))
                     {
-                        event = 1;
+                        redraw = 1;
                         if(data.level->topy <= (GRID_SIZE*data.level->grid.h)-18)
                             data.level->add_draw_pos(0, SCROLLSIZE);
                         if(data.level->topx >= 0)
@@ -3000,12 +3056,12 @@ Sint32 level_editor()
                     }
                     else if(data.panLeftButton.contains(mx, my) && data.level->topx >= 0) // scroll left
                     {
-                        event = 1;
+                        redraw = 1;
                         data.level->add_draw_pos(-SCROLLSIZE, 0);
                     }
                     else if(data.panRightButton.contains(mx, my) && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
                     {
-                        event = 1;
+                        redraw = 1;
                         data.level->add_draw_pos(SCROLLSIZE, 0);
                     }
                         
@@ -3230,7 +3286,7 @@ Sint32 level_editor()
 
 		if (mymouse[MOUSE_RIGHT])      // cycle through things ...
 		{
-			event = 1;
+			redraw = 1;
 			if (mode == TERRAIN)
 			{
 				windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
@@ -3257,14 +3313,14 @@ Sint32 level_editor()
                 cycle_palette(scenpalette, WATER_START, WATER_END, 1);
                 cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
             }
-			event = 1;
+			redraw = 1;
 		}
 		
 		// Redraw screen
-		if (event)
+		if (redraw)
 		{
 			data.draw(myscreen);
-            event = 0;
+            redraw = 0;
 		}
         
         SDL_Delay(10);
@@ -3294,7 +3350,7 @@ void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y)
 {
 	myscreen->level_data.topx = x;
 	myscreen->level_data.topy = y;
-	event = 1;
+	redraw = 1;
 }
 
 
