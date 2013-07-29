@@ -264,7 +264,7 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
 
 //buffers: added prototype
 void get_input_events(bool type);
-void handle_events(SDL_Event *event);
+void handle_events(const SDL_Event& event);
 
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.

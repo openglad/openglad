@@ -1310,6 +1310,7 @@ short screen::endgame(short ending, short nextlevel)
 			mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 			buffer_to_screen(0, 0, 320, 200);
 			// Zardus: all things should listen to get_input_events() for now until further notice
+			clear_keyboard();
 			while (!query_input_continue())
 				get_input_events(WAIT);
 			end = 1;
@@ -1344,6 +1345,7 @@ short screen::endgame(short ending, short nextlevel)
 		mytext.write_y(100,temp, DARK_BLUE, 1);
 		mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
 		buffer_to_screen(0, 0, 320, 200);
+        clear_keyboard();
         while (!query_input_continue())
             get_input_events(WAIT);
 		end = 1;
@@ -1405,6 +1407,7 @@ short screen::endgame(short ending, short nextlevel)
 
 		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
 		// actions
+		clear_keyboard();
 		while (!query_input_continue())
 			get_input_events(WAIT); // pause
 

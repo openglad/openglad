@@ -1948,10 +1948,6 @@ Sint32 level_editor()
 	
 	data.reset_mode_buttons();
 	
-
-	//******************************
-	// Keyboard loop
-	//******************************
     
     float cycletimer = 0.0f;
 	grab_mouse();

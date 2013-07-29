@@ -201,7 +201,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
         SDL_Event event;
         while(SDL_PollEvent(&event))
         {
-            handle_events(&event);
+            handle_events(event);
             if(event.type == SDL_KEYDOWN)
             {
                 if(event.key.keysym.sym == SDLK_ESCAPE)

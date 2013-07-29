@@ -204,11 +204,11 @@ void get_input_events(bool type)
     
     if (type == POLL)
         while (SDL_PollEvent(&event))
-            handle_events(&event);
+            handle_events(event);
     if (type == WAIT)
     {
         SDL_WaitEvent(&event);
-        handle_events(&event);
+        handle_events(event);
     }
 }
 
@@ -281,60 +281,82 @@ void sendFakeKeyDownEvent(int keycode)
     SDL_PushEvent(&event);
 }
 
+void sendFakeKeyUpEvent(int keycode)
+{
+    SDL_Event event;
+    
+    event.type = SDL_KEYUP;
+    event.key.repeat = false;
+    event.key.keysym.sym = keycode;
+    event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
+    SDL_PushEvent(&event);
+}
+
 #endif
 
-void handle_events(SDL_Event *event)
+void handle_window_event(const SDL_Event& event)
 {
-    switch (event->type)
+    switch(event.window.event)
     {
-        // Key pressed or released:
+        case SDL_WINDOWEVENT_MINIMIZED:
+        // Save state here on Android
+        break;
+        case SDL_WINDOWEVENT_CLOSE:
+        // Save state here on Android
+        break;
+        case SDL_WINDOWEVENT_RESTORED:
+        // Restore state here on Android.
+        // Redraw the screen so it's not blank
+        myscreen->refresh();
+        break;
+    }
+}
+
+void handle_key_event(const SDL_Event& event)
+{
+    switch (event.type)
+    {
     case SDL_KEYDOWN:
         #ifdef USE_TOUCH_INPUT
         // Back button faking Escape key
-        if(event->key.keysym.scancode == SDL_SCANCODE_AC_BACK)
-            event->key.keysym.sym = SDLK_ESCAPE;
+        if(event.key.keysym.scancode == SDL_SCANCODE_AC_BACK)
+        {
+            sendFakeKeyDownEvent(SDLK_ESCAPE);
+            break;
+        }
         #endif
-        raw_key = event->key.keysym.sym;
+        raw_key = event.key.keysym.sym;
         if(raw_key == SDLK_ESCAPE)
             input_continue = true;
         key_press_event = 1;
-#ifndef USE_SDL2
+        #ifndef USE_SDL2
         free(raw_text_input);
         raw_text_input = (char*)malloc(sizeof(char)*2);
         raw_text_input[0] = convert_to_ascii(raw_key);
         raw_text_input[1] = '\0';
         text_input_event = 1;
-#endif
+        #endif
         break;
     case SDL_KEYUP:
+        #ifdef USE_TOUCH_INPUT
+        // Back button faking Escape key
+        if(event.key.keysym.scancode == SDL_SCANCODE_AC_BACK)
+        {
+            sendFakeKeyUpEvent(SDLK_ESCAPE);
+            break;
+        }
+        #endif
         break;
-#ifdef USE_SDL2
-    case SDL_WINDOWEVENT:
-    {
-        SDL_WindowEvent& window = event->window;
-        if(window.event == SDL_WINDOWEVENT_MINIMIZED)
-        {
-            // Save state here on Android
-        }
-        else if(window.event == SDL_WINDOWEVENT_CLOSE)
-        {
-            // Save state here on Android
-        }
-        else if(window.event == SDL_WINDOWEVENT_RESTORED)
-        {
-            // Restore state here on Android.
-            // Redraw the screen so it's not blank
-            myscreen->refresh();
-        }
     }
-    break;
-    case SDL_TEXTINPUT:
-        free(raw_text_input);
-        raw_text_input = strdup(event->text.text);
-        text_input_event = 1;
-        break;
+}
+
+void handle_mouse_event(const SDL_Event& event)
+{
+    switch(event.type)
+    {
+#ifdef USE_SDL2
     case SDL_MOUSEWHEEL:
-        scroll_amount = 5*event->wheel.y;
+        scroll_amount = 5*event.wheel.y;
         key_press_event = 1;
         break;
 #endif
@@ -345,35 +367,35 @@ void handle_events(SDL_Event *event)
         //Log("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
         //if (!(event.motion.x < 10 && mouse_state[MOUSE_X] * mult > 620)
         //	&& !(event.motion.y == 0 && mouse_state[MOUSE_Y] > 20))
-        mouse_state[MOUSE_X] = event->motion.x / mouse_scale_x;
+        mouse_state[MOUSE_X] = event.motion.x / mouse_scale_x;
         //if (!(event.motion.y < 10 && mouse_state[MOUSE_Y] * mult > 460))
-        mouse_state[MOUSE_Y] = event->motion.y / mouse_scale_y;
+        mouse_state[MOUSE_Y] = event.motion.y / mouse_scale_y;
         break;
     case SDL_MOUSEBUTTONUP:
-        if (event->button.button == SDL_BUTTON_LEFT)
+        if (event.button.button == SDL_BUTTON_LEFT)
             mouse_state[MOUSE_LEFT] = 0;
-        if (event->button.button == SDL_BUTTON_RIGHT)
+        if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state[MOUSE_RIGHT] = 0;
         //mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
         //Log ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
         //mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
         //Log ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
-        mouse_state[MOUSE_X] = event->button.x / mouse_scale_x;
-        mouse_state[MOUSE_Y] = event->button.y / mouse_scale_y;
+        mouse_state[MOUSE_X] = event.button.x / mouse_scale_x;
+        mouse_state[MOUSE_Y] = event.button.y / mouse_scale_y;
         break;
     case SDL_MOUSEBUTTONDOWN:
-        if (event->button.button == SDL_BUTTON_LEFT)
+        if (event.button.button == SDL_BUTTON_LEFT)
             mouse_state[MOUSE_LEFT] = 1;
-        else if (event->button.button == SDL_BUTTON_RIGHT)
+        else if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state[MOUSE_RIGHT] = 1;
         #ifndef USE_SDL2
-        else if (event->button.button == SDL_BUTTON_WHEELUP)
+        else if (event.button.button == SDL_BUTTON_WHEELUP)
             scroll_amount = 5;
-        else if (event->button.button == SDL_BUTTON_WHEELDOWN)
+        else if (event.button.button == SDL_BUTTON_WHEELDOWN)
             scroll_amount = -5;
         #endif
-        mouse_state[MOUSE_X] = event->button.x / mouse_scale_x;
-        mouse_state[MOUSE_Y] = event->button.y / mouse_scale_y;
+        mouse_state[MOUSE_X] = event.button.x / mouse_scale_x;
+        mouse_state[MOUSE_Y] = event.button.y / mouse_scale_y;
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -381,10 +403,10 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERMOTION;
-            e.tfinger.x = event->motion.x/(320*mouse_scale_x);
-            e.tfinger.y = event->motion.y/(200*mouse_scale_y);
-            e.tfinger.dx = event->motion.xrel/(320*mouse_scale_x);
-            e.tfinger.dy = event->motion.yrel/(200*mouse_scale_y);
+            e.tfinger.x = event.motion.x/(320*mouse_scale_x);
+            e.tfinger.y = event.motion.y/(200*mouse_scale_y);
+            e.tfinger.dx = event.motion.xrel/(320*mouse_scale_x);
+            e.tfinger.dy = event.motion.yrel/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -394,8 +416,8 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERUP;
-            e.tfinger.x = event->button.x/(320*mouse_scale_x);
-            e.tfinger.y = event->button.y/(200*mouse_scale_y);
+            e.tfinger.x = event.button.x/(320*mouse_scale_x);
+            e.tfinger.y = event.button.y/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -405,8 +427,8 @@ void handle_events(SDL_Event *event)
         {
             SDL_Event e;
             e.type = SDL_FINGERDOWN;
-            e.tfinger.x = event->button.x/(320*mouse_scale_x);
-            e.tfinger.y = event->button.y/(200*mouse_scale_y);
+            e.tfinger.x = event.button.x/(320*mouse_scale_x);
+            e.tfinger.y = event.button.y/(200*mouse_scale_y);
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -416,15 +438,15 @@ void handle_events(SDL_Event *event)
         // Mouse event
     case SDL_FINGERMOTION:
         {
-        int x = event->tfinger.x * 320;
-        int y = event->tfinger.y * 200;
+        int x = event.tfinger.x * 320;
+        int y = event.tfinger.y * 200;
         
         scroll_amount = y - mouse_state[MOUSE_Y];
         
         mouse_state[MOUSE_X] = x;
         mouse_state[MOUSE_Y] = y;
         
-        if(moving && event->tfinger.fingerId == movingTouch)
+        if(moving && event.tfinger.fingerId == movingTouch)
         {
             moving_touch_target_x = x;
             moving_touch_target_y = y;
@@ -465,8 +487,8 @@ void handle_events(SDL_Event *event)
         break;
     case SDL_FINGERUP:
         {
-            int x = event->tfinger.x * 320;
-            int y = event->tfinger.y * 200;
+            int x = event.tfinger.x * 320;
+            int y = event.tfinger.y * 200;
             if(tapping)
             {
                 tapping = false;
@@ -478,7 +500,7 @@ void handle_events(SDL_Event *event)
                 start_tap_y = y;
             }
             
-            if(moving && event->tfinger.fingerId == movingTouch)
+            if(moving && event.tfinger.fingerId == movingTouch)
             {
                 moving = false;
                 
@@ -491,7 +513,7 @@ void handle_events(SDL_Event *event)
                 touch_keystate[0][KEY_LEFT] = false;
                 touch_keystate[0][KEY_UP_LEFT] = false;
             }
-            if(firing && event->tfinger.fingerId == firingTouch)
+            if(firing && event.tfinger.fingerId == firingTouch)
             {
                 firing = false;
                 touch_keystate[0][KEY_FIRE] = false;
@@ -504,8 +526,8 @@ void handle_events(SDL_Event *event)
         {
             tapping = true;
             
-            int x = event->tfinger.x * 320;
-            int y = event->tfinger.y * 200;
+            int x = event.tfinger.x * 320;
+            int y = event.tfinger.y * 200;
             
             start_tap_x = x;
             start_tap_y = y;
@@ -517,7 +539,7 @@ void handle_events(SDL_Event *event)
                 firing = true;
                 sendFakeKeyDownEvent(player_keys[0][KEY_FIRE]);
                 touch_keystate[0][KEY_FIRE] = true;
-                firingTouch = event->tfinger.fingerId;
+                firingTouch = event.tfinger.fingerId;
             }
             else if(SPECIAL_BUTTON_X <= x && x <= SPECIAL_BUTTON_X + BUTTON_DIM
                 && SPECIAL_BUTTON_Y <= y && y <= SPECIAL_BUTTON_Y + BUTTON_DIM)
@@ -558,45 +580,105 @@ void handle_events(SDL_Event *event)
                 else if(moving_touch_y > 200 - (MOVE_AREA_DIM/2 + 1))
                     moving_touch_y = 200 - (MOVE_AREA_DIM/2 + 1);
                 moving = true;
-                movingTouch = event->tfinger.fingerId;
+                movingTouch = event.tfinger.fingerId;
             }
             
             
             key_press_event = 1;
             mouse_state[MOUSE_LEFT] = 1;
-            mouse_state[MOUSE_X] = event->tfinger.x * 320;
-            mouse_state[MOUSE_Y] = event->tfinger.y * 200;
+            mouse_state[MOUSE_X] = event.tfinger.x * 320;
+            mouse_state[MOUSE_Y] = event.tfinger.y * 200;
         }
         break;
 #endif
+    }
+}
+
+void handle_joy_event(const SDL_Event& event)
+{
+    switch(event.type)
+    {
     case SDL_JOYAXISMOTION:
-        if (event->jaxis.value > 8000)
+        if (event.jaxis.value > 8000)
         {
-            //key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 1;
-            //key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 0;
+            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 1;
+            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 0;
             key_press_event = 1;
-            //raw_key = joy_startval[event->jaxis.which] + event->jaxis.axis * 2;
+            //raw_key = joy_startval[event.jaxis.which] + event.jaxis.axis * 2;
         }
-        else if (event->jaxis.value < -8000)
+        else if (event.jaxis.value < -8000)
         {
-            //key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 0;
-            //key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 1;
+            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 0;
+            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 1;
             key_press_event = 1;
-            //raw_key = joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1;
+            //raw_key = joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1;
         }
         else
         {
-            //key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2] = 0;
-            //key_list[joy_startval[event->jaxis.which] + event->jaxis.axis * 2 + 1] = 0;
+            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2] = 0;
+            //key_list[joy_startval[event.jaxis.which] + event.jaxis.axis * 2 + 1] = 0;
         }
         break;
     case SDL_JOYBUTTONDOWN:
-        //key_list[joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button] = 1;
-        //raw_key = joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button;
+        //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 1;
+        //raw_key = joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button;
         key_press_event = 1;
         break;
     case SDL_JOYBUTTONUP:
-        //key_list[joy_startval[event->jbutton.which] + joy_numaxes[event->jbutton.which] * 2 + event->jbutton.button] = 0;
+        //key_list[joy_startval[event.jbutton.which] + joy_numaxes[event.jbutton.which] * 2 + event.jbutton.button] = 0;
+        break;
+    }
+}
+
+void handle_events(const SDL_Event& event)
+{
+    switch (event.type)
+    {
+#ifdef USE_SDL2
+    case SDL_WINDOWEVENT:   
+        handle_window_event(event);
+    break;
+    case SDL_TEXTINPUT:
+        free(raw_text_input);
+        raw_text_input = strdup(event.text.text);
+        text_input_event = 1;
+        break;
+    case SDL_MOUSEWHEEL:
+        handle_mouse_event(event);
+        break;
+    case SDL_FINGERMOTION:
+        handle_mouse_event(event);
+        break;
+    case SDL_FINGERUP:
+        handle_mouse_event(event);
+        break;
+    case SDL_FINGERDOWN:
+        handle_mouse_event(event);
+        break;
+#endif
+    case SDL_KEYDOWN:
+        handle_key_event(event);
+        break;
+    case SDL_KEYUP:
+        handle_key_event(event);
+        break;
+    case SDL_MOUSEMOTION:
+        handle_mouse_event(event);
+        break;
+    case SDL_MOUSEBUTTONUP:
+        handle_mouse_event(event);
+        break;
+    case SDL_MOUSEBUTTONDOWN:
+        handle_mouse_event(event);
+        break;
+    case SDL_JOYAXISMOTION:
+        handle_joy_event(event);
+        break;
+    case SDL_JOYBUTTONDOWN:
+        handle_joy_event(event);
+        break;
+    case SDL_JOYBUTTONUP:
+        handle_joy_event(event);
         break;
     case SDL_QUIT:
         quit(0);
