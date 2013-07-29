@@ -641,13 +641,14 @@ public:
     unsigned char order;
     unsigned char family;
     unsigned short level;
+    walker* target;
     
     
     SelectionInfo()
-        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1), target(NULL)
     {}
     SelectionInfo(walker* target)
-        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1), target(target)
     {
         set(target);
     }
@@ -679,6 +680,7 @@ public:
             order = target->query_order();
             family = target->query_family();
             level = target->stats->level;
+            this->target = target;
         }
     }
     
@@ -687,15 +689,7 @@ public:
         if(!valid)
             return NULL;
         
-        walker* result = NULL;
-        walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
-        newob->setxy(x, y);
-        if (some_hit(x, y, newob, level))
-        {
-            result = newob->collide_ob;
-        }
-        level->remove_ob(newob,0);
-        return result;
+        return target;
     }
 };
 
@@ -711,6 +705,7 @@ public:
     EditorTerrainBrush terrain_brush;
     EditorObjectBrush object_brush;
     std::vector<SelectionInfo> selection;
+    bool dragging;
     
 	radar myradar;
 	
@@ -791,6 +786,7 @@ public:
     void clear_terrain();
     void resmooth_terrain();
     void mouse_down(int mx, int my);
+    void mouse_motion(int mx, int my, int dx, int dy);
     void mouse_up(int mx, int my, int old_mx, int old_my, bool& done);
     void pick_by_mouse(int mx, int my);
     
@@ -803,7 +799,7 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
 
 LevelEditorData::LevelEditorData()
-    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), myradar(myscreen->viewob[0], myscreen, 0)
+    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", 0, 0, 30, menu_button_height)
@@ -1838,11 +1834,51 @@ int mouse_up_button = 0;
 
 void LevelEditorData::mouse_down(int mx, int my)
 {
-    
+    dragging = false;
+}
+
+// Deltas for motion
+int mouse_motion_x = 0;
+int mouse_motion_y = 0;
+
+extern float mouse_scale_x;
+extern float mouse_scale_y;
+
+void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
+{
+    if(mymouse[MOUSE_LEFT])
+    {
+        if(mode == SELECT)
+        {
+            // Drag the selected objects
+            if(selection.size() > 0)
+            {
+                dragging = true;
+                for(vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+                {
+                    walker* w = e->get_object(level);
+                    if(w != NULL)
+                    {
+                        w->setxy(w->xpos + dx, w->ypos + dy);
+                        
+                        // Update selection position
+                        e->x = w->xpos;
+                        e->y = w->ypos;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& done)
 {
+    if(dragging)
+    {
+        dragging = false;
+        return;
+    }
+    
     bool mouse_on_menu = mouse_on_menus(mx, my);
     bool old_mouse_on_menu = mouse_on_menus(old_mx, old_my);
     bool on_menu = mouse_on_menu && old_mouse_on_menu;
@@ -2641,8 +2677,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 selection.push_back(SelectionInfo(w));
                             }
                         }
-                        else
-                            selection.clear();
+                        else if(!(keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL]))
+                            selection.clear();  // Deselect if not trying to grab more
+                        
                         level->remove_ob(newob,0);
                         
                         reset_mode_buttons();
@@ -2852,6 +2889,8 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
         return SCROLL_EVENT;
     case SDL_FINGERMOTION:
         handle_mouse_event(event);
+        mouse_motion_x = event.tfinger.dx*(320);
+        mouse_motion_y = event.tfinger.dy*(200);
         return MOUSE_MOTION_EVENT;
     case SDL_FINGERUP:
         {
@@ -2878,6 +2917,8 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
         return HANDLED_EVENT;
     case SDL_MOUSEMOTION:
         handle_mouse_event(event);
+        mouse_motion_x = event.motion.xrel / mouse_scale_x;
+        mouse_motion_y = event.motion.yrel / mouse_scale_y;
         return MOUSE_MOTION_EVENT;
     case SDL_MOUSEBUTTONUP:
         {
@@ -3015,6 +3056,7 @@ Sint32 level_editor()
             switch(handle_basic_editor_event(event))
             {
             case MOUSE_MOTION_EVENT:
+                data.mouse_motion(mymouse[MOUSE_X], mymouse[MOUSE_Y], mouse_motion_x, mouse_motion_y);
                 break;
             case MOUSE_DOWN_EVENT:
                 if(mymouse[MOUSE_LEFT])
