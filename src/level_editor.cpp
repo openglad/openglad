@@ -1807,6 +1807,65 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 }
 
 
+enum EventTypeEnum {HANDLED_EVENT, TEXT_EVENT, SCROLL_EVENT, MOUSE_MOTION_EVENT, MOUSE_DOWN_EVENT, MOUSE_UP_EVENT, KEY_DOWN_EVENT};
+
+EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
+{
+    switch (event.type)
+    {
+#ifdef USE_SDL2
+    case SDL_WINDOWEVENT:   
+        handle_window_event(event);
+        return HANDLED_EVENT;
+    case SDL_TEXTINPUT:
+        handle_text_event(event);
+        return TEXT_EVENT;
+    case SDL_MOUSEWHEEL:
+        handle_mouse_event(event);
+        return SCROLL_EVENT;
+    case SDL_FINGERMOTION:
+        handle_mouse_event(event);
+        return MOUSE_MOTION_EVENT;
+    case SDL_FINGERUP:
+        handle_mouse_event(event);
+        return MOUSE_UP_EVENT;
+    case SDL_FINGERDOWN:
+        handle_mouse_event(event);
+        return MOUSE_DOWN_EVENT;
+#endif
+    case SDL_KEYDOWN:
+        handle_key_event(event);
+        return KEY_DOWN_EVENT;
+    case SDL_KEYUP:
+        handle_key_event(event);
+        return HANDLED_EVENT;
+    case SDL_MOUSEMOTION:
+        handle_mouse_event(event);
+        return MOUSE_MOTION_EVENT;
+    case SDL_MOUSEBUTTONUP:
+        handle_mouse_event(event);
+        return MOUSE_UP_EVENT;
+    case SDL_MOUSEBUTTONDOWN:
+        handle_mouse_event(event);
+        return MOUSE_DOWN_EVENT;
+    case SDL_JOYAXISMOTION:
+        handle_joy_event(event);
+        return HANDLED_EVENT;
+    case SDL_JOYBUTTONDOWN:
+        handle_joy_event(event);
+        return HANDLED_EVENT;
+    case SDL_JOYBUTTONUP:
+        handle_joy_event(event);
+        return HANDLED_EVENT;
+    case SDL_QUIT:
+        quit(0);
+        return HANDLED_EVENT;
+    default:
+        return HANDLED_EVENT;
+    }
+}
+
+
 
 Sint32 level_editor()
 {
@@ -1974,246 +2033,144 @@ Sint32 level_editor()
 		
         while(SDL_PollEvent(&event))
         {
-            switch (event.type)
+            switch(handle_basic_editor_event(event))
             {
-        #ifdef USE_SDL2
-            case SDL_WINDOWEVENT:   
-                handle_window_event(event);
-            break;
-            case SDL_TEXTINPUT:
-                handle_text_event(event);
+            case MOUSE_MOTION_EVENT:
                 break;
-            case SDL_MOUSEWHEEL:
-                handle_mouse_event(event);
+            case MOUSE_DOWN_EVENT:
                 break;
-            case SDL_FINGERMOTION:
-                handle_mouse_event(event);
+            case MOUSE_UP_EVENT:
                 break;
-            case SDL_FINGERUP:
-                handle_mouse_event(event);
-                break;
-            case SDL_FINGERDOWN:
-                handle_mouse_event(event);
-                break;
-        #endif
-            case SDL_KEYDOWN:
-                handle_key_event(event);
-                break;
-            case SDL_KEYUP:
-                handle_key_event(event);
-                break;
-            case SDL_MOUSEMOTION:
-                handle_mouse_event(event);
-                break;
-            case SDL_MOUSEBUTTONUP:
-                handle_mouse_event(event);
-                break;
-            case SDL_MOUSEBUTTONDOWN:
-                handle_mouse_event(event);
-                break;
-            case SDL_JOYAXISMOTION:
-                handle_joy_event(event);
-                break;
-            case SDL_JOYBUTTONDOWN:
-                handle_joy_event(event);
-                break;
-            case SDL_JOYBUTTONUP:
-                handle_joy_event(event);
-                break;
-            case SDL_QUIT:
-                quit(0);
+            case KEY_DOWN_EVENT:
+                redraw = 1;
+                if(event.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    if((!levelchanged && !campaignchanged)
+                        || yes_or_no_prompt("Exit", "Quit without saving?", false))
+                    {
+                        done = true;
+                        break;
+                    }
+                    
+                    myscreen->clearfontbuffer();
+                }
+                
+                // Change teams ..
+                else if(event.key.keysym.sym == SDLK_0)
+                    object_brush.team = 0;
+                else if(event.key.keysym.sym == SDLK_1)
+                    object_brush.team = 1;
+                else if(event.key.keysym.sym == SDLK_2)
+                    object_brush.team = 2;
+                else if(event.key.keysym.sym == SDLK_3)
+                    object_brush.team = 3;
+                else if(event.key.keysym.sym == SDLK_4)
+                    object_brush.team = 4;
+                else if(event.key.keysym.sym == SDLK_5)
+                    object_brush.team = 5;
+                else if(event.key.keysym.sym == SDLK_6)
+                    object_brush.team = 6;
+                else if(event.key.keysym.sym == SDLK_7)
+                    object_brush.team = 7;
+                // Toggle grid alignment
+                else if(event.key.keysym.sym == SDLK_g)
+                {
+                    if(mode == OBJECT || mode == SELECT)
+                        data.activate_mode_button(&data.gridSnapButton);
+                }
+                // Save scenario
+                else if(event.key.keysym.sym == SDLK_s && (event.key.keysym.mod & KMOD_CTRL))
+                {
+                    bool saved = false;
+                    if(levelchanged)
+                    {
+                        if(data.saveLevel())
+                        {
+                            levelchanged = 0;
+                            saved = true;
+                        }
+                        else
+                            timed_dialog("Failed to save level.");
+                    }
+                    if(campaignchanged)
+                    {
+                        if(data.saveCampaign())
+                        {
+                            campaignchanged = 0;
+                            saved = true;
+                        }
+                        else
+                            timed_dialog("Failed to save campaign.");
+                    }
+                    
+                    if(saved)
+                        timed_dialog("Saved.");
+                    else if(!levelchanged && !campaignchanged)
+                        timed_dialog("No changes to save.");
+                }  // end of saving routines
+
+                // Change level of current guy being placed ..
+                else if(event.key.keysym.sym == SDLK_RIGHTBRACKET)
+                {
+                    if(mode == OBJECT)
+                        object_brush.level++;
+                }
+                else if(event.key.keysym.sym == SDLK_LEFTBRACKET)
+                {
+                    if(mode == OBJECT && object_brush.level > 1)
+                        object_brush.level--;
+                }
+                else if(event.key.keysym.sym == SDLK_DELETE)
+                {
+                    if(mode == SELECT)
+                        data.activate_mode_button(&data.deleteButton);
+                }
+                else if(event.key.keysym.sym == SDLK_o)
+                {
+                    if(mode == OBJECT)
+                    {
+                        mode = SELECT;
+                        modeButton.label = "Edit (Select)";
+                    }
+                    else
+                    {
+                        mode = OBJECT;
+                        modeButton.label = "Edit (Objects)";
+                    }
+                    data.reset_mode_buttons();
+                }
+                else if(event.key.keysym.sym == SDLK_t)
+                {
+                    if(mode == TERRAIN)
+                    {
+                        mode = SELECT;
+                        modeButton.label = "Edit (Select)";
+                    }
+                    else
+                    {
+                        mode = TERRAIN;
+                        modeButton.label = "Edit (Terrain)";
+                    }
+                    data.reset_mode_buttons();
+                }
+                // Smooth current map, F5
+                else if(event.key.keysym.sym == SDLK_F5)
+                {
+                    data.resmooth_terrain();
+                    levelchanged = 1;
+                }
+                // Change to new palette ..
+                else if(event.key.keysym.sym == SDLK_F9)
+                {
+                    load_and_set_palette("our.pal", scenpalette);
+                }
                 break;
             default:
                 break;
             }
         }
 
-		// Zardus: COMMENT: I went through and replaced dumbcounts with get_input_events.
-        
-        if(query_key_press_event() && keystates[KEYSTATE_ESCAPE])
-        {
-            if((!levelchanged && !campaignchanged)
-                || yes_or_no_prompt("Exit", "Quit without saving?", false))
-            {
-                done = true;
-                break;
-            }
-            
-            myscreen->clearfontbuffer();
-            redraw = 1;
-            
-            // Wait until release
-            while (keystates[KEYSTATE_ESCAPE])
-                get_input_events(WAIT);
-        }
 
-		// Change teams ..
-		if (keystates[KEYSTATE_0])
-		{
-			object_brush.team = 0;
-			redraw = 1;
-		}
-		if (keystates[KEYSTATE_1])
-		{
-			object_brush.team = 1;
-			redraw = 1;
-		}
-		if (keystates[KEYSTATE_2])
-		{
-			object_brush.team = 2;
-			redraw = 1;
-		}
-		if (keystates[KEYSTATE_3])
-		{
-			object_brush.team = 3;
-			redraw = 1;
-		}
-		if (keystates[KEYSTATE_4])
-		{
-			object_brush.team = 4;
-			redraw = 1;
-		}
-		if (keystates[KEYSTATE_5])
-		{
-			object_brush.team = 5;
-			redraw = 1;
-		}
-		if (keystates[KEYSTATE_6])
-		{
-			object_brush.team = 6;
-			redraw = 1;
-		}
-		if (keystates[KEYSTATE_7])
-		{
-			object_brush.team = 7;
-			redraw = 1;
-		}
-
-		// Toggle grid alignment
-		if (keystates[KEYSTATE_g])
-		{
-		    if(mode == OBJECT || mode == SELECT)
-                data.activate_mode_button(&data.gridSnapButton);
-            
-			redraw = 1;
-			while (keystates[KEYSTATE_g])
-				get_input_events(WAIT);
-		}
-
-		// Save scenario
-		if(keystates[KEYSTATE_s] && (keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL]))
-		{
-		    bool saved = false;
-		    if(levelchanged)
-            {
-                if(data.saveLevel())
-                {
-                    redraw = 1;
-                    levelchanged = 0;
-                    saved = true;
-                }
-                else
-                {
-                    timed_dialog("Failed to save level.");
-                    redraw = 1;
-                }
-            }
-            if(campaignchanged)
-            {
-                if(data.saveCampaign())
-                {
-                    redraw = 1;
-                    campaignchanged = 0;
-                    saved = true;
-                }
-                else
-                {
-                    timed_dialog("Failed to save campaign.");
-                    redraw = 1;
-                }
-            }
-            
-            if(saved)
-            {
-                timed_dialog("Saved.");
-                redraw = 1;
-            }
-            else if(!levelchanged && !campaignchanged)
-            {
-                timed_dialog("No changes to save.");
-                redraw = 1;
-            }
-		}  // end of saving routines
-
-		// Change level of current guy being placed ..
-		if (keystates[KEYSTATE_RIGHTBRACKET])
-		{
-		    if(mode == OBJECT)
-		    {
-                object_brush.level++;
-                while (keystates[KEYSTATE_RIGHTBRACKET])
-                    get_input_events(WAIT);
-                redraw = 1;
-		    }
-		}
-		if (keystates[KEYSTATE_LEFTBRACKET])
-		{
-		    if(mode == OBJECT && object_brush.level > 1)
-		    {
-                object_brush.level--;
-                while (keystates[KEYSTATE_LEFTBRACKET])
-                    get_input_events(WAIT);
-                redraw = 1;
-		    }
-		}
-
-		if (keystates[KEYSTATE_DELETE])
-		{
-		    if(mode == SELECT)
-            {
-                data.activate_mode_button(&data.deleteButton);
-            }
-			while (keystates[KEYSTATE_DELETE])
-				get_input_events(WAIT);
-		}
-
-		if (keystates[KEYSTATE_o])
-		{
-		    if(mode == OBJECT)
-            {
-                mode = SELECT;
-                modeButton.label = "Edit (Select)";
-            }
-            else
-            {
-                mode = OBJECT;
-                modeButton.label = "Edit (Objects)";
-            }
-            data.reset_mode_buttons();
-            
-			redraw = 1; // change score panel
-			while (keystates[KEYSTATE_o])
-				get_input_events(WAIT);
-		}
-		
-		if (keystates[KEYSTATE_t])
-		{
-		    if(mode == TERRAIN)
-            {
-                mode = SELECT;
-                modeButton.label = "Edit (Select)";
-            }
-            else
-            {
-                mode = TERRAIN;
-                modeButton.label = "Edit (Terrain)";
-            }
-            data.reset_mode_buttons();
-            
-			redraw = 1; // change score panel
-			while (keystates[KEYSTATE_t])
-				get_input_events(WAIT);
-		}
 
 		short scroll_amount = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
@@ -2252,26 +2209,6 @@ Sint32 level_editor()
         }
 		#endif
 
-		// Smooth current map, F5
-		if (keystates[KEYSTATE_F5])
-		{
-		    data.resmooth_terrain();
-			while (keystates[KEYSTATE_F5])
-				get_input_events(WAIT);
-			redraw = 1;
-			levelchanged = 1;
-		}
-
-		// Change to new palette ..
-		if (keystates[KEYSTATE_F9])
-		{
-			load_and_set_palette("our.pal", scenpalette);
-			while (keystates[KEYSTATE_F9])
-				get_input_events(WAIT);
-		}
-
-		// Mouse stuff ..
-		mymouse = query_mouse();
 
 		// Scroll the screen (panning)
 		// Zardus: ADD: added scrolling by keyboard
@@ -2301,6 +2238,10 @@ Sint32 level_editor()
 			data.level->add_draw_pos(SCROLLSIZE, 0);
         }
 
+
+		// Mouse stuff ..
+		mymouse = query_mouse();
+		
 		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
 		{
 			redraw = 1;
