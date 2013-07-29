@@ -14,6 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
+#include "version.h"
 #include "graph.h"
 #include "button.h"
 #include "pal32.h"
@@ -529,6 +530,14 @@ void view_team(short left, short top, short right, short bottom)
 
 
 
+void draw_version_number()
+{
+	text mytext(myscreen);
+
+	myscreen->redrawme = 1;
+	mytext.write_xy(320 - strlen(OPENGLAD_VERSION_STRING)*6, 200 - 10, OPENGLAD_VERSION_STRING, (unsigned char) DARK_BLUE, 1);
+}
+
 Sint32 mainmenu(Sint32 arg1)
 {
 	vbutton *tempbuttons;
@@ -607,6 +616,8 @@ Sint32 mainmenu(Sint32 arg1)
 	main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
 	main_columns_pix->set_frame(1);
 	main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
+	
+	draw_version_number();
 	//myscreen->refresh();
 
 	clear_keyboard();
@@ -708,6 +719,8 @@ Sint32 mainmenu(Sint32 arg1)
 					allbuttons[4]->vdisplay();
 					allbuttons[5]->vdisplay();
 				}
+				
+                draw_version_number();
 
 				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
 				strcpy(allbuttons[6]->label, message);
@@ -804,6 +817,8 @@ Sint32 mainmenu(Sint32 arg1)
 					count++;
 				}
 				allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+				
+                draw_version_number();
 			} // end of "OK" buttons
 		}
 	}

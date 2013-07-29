@@ -88,7 +88,6 @@ int main(int argc, char *argv[])
 
 void glad_main(screen *myscreen, Sint32 playermode)
 {
-	char somemessage[80];
 	//  char soundpath[80];
 	//  short cyclemode = 1;            // color cycling on or off
 	short numviews;
@@ -151,14 +150,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	// This is the main program loop
 	//
 
-	//sprintf(somemessage, "SPEED SET TO %d", (20-myscreen->timer_wait)/2+1);
-    
-    #ifndef USE_TOUCH_INPUT
-	strcpy(somemessage, "OPENGLAD V.");
-	strcat(somemessage, OPENGLAD_VERSION_STRING);
-	myscreen->viewob[0]->set_display_text(somemessage, 100);
-	myscreen->viewob[0]->set_display_text("PRESS F1 FOR HELP", 100);
-	#endif
 
 	myscreen->redraw();
 	myscreen->refresh();
@@ -596,6 +587,7 @@ short new_score_panel(screen *myscreen, short do_it)
 	walker  *control;
 	short lm, tm; // left and top margins
 	short rm, bm; // right and bottom margins
+	(void)bm;
 	char draw_button;  // do we draw a button background?
 	char text_color;
 	static char namelist[NUM_FAMILIES][20] =
