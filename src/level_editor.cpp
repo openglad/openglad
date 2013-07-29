@@ -389,12 +389,19 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
             
             if (c == SDLK_RETURN)
             {
+                #ifdef USE_TOUCH_INPUT
+                // FIXME: SDL does not have keyboard customization, so we can't make newlines with RETURN.
+                // I need to either modify SDL or add click/touch text navigation.
+                done = true;
+                break;
+                #else
                 std::string rest_of_line = s->substr(cursor_pos);
                 s->erase(cursor_pos);
                 s++;
                 s = result.insert(s, rest_of_line);
                 current_line++;
                 cursor_pos = 0;
+                #endif
             }
             else if (c == SDLK_BACKSPACE)
             {
@@ -2818,6 +2825,10 @@ Sint32 level_editor()
                         int w = toInt(width);
                         int h;
                         
+                        #ifdef USE_TOUCH_INPUT
+                        // The soft keyboard on Android might take a little while to be ready again, so opening it right away doesn't always work.
+                        SDL_Delay(1000);
+                        #endif
                         if(prompt_for_string(scentext, "Map Height", height))
                         {
                             h = toInt(height);
