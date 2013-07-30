@@ -128,6 +128,38 @@ bool Rect::contains(int x, int y) const
     return (this->x <= x && x < int(this->x + w) && this->y <= y && y < int(this->y + h));
 }
 
+class Rectf
+{
+public:
+    
+    float x, y;
+    float w, h;
+    
+    Rectf();
+    Rectf(float x, float y, float w, float h);
+    
+    bool contains(float X, float Y) const;
+};
+
+Rectf::Rectf()
+    : x(0), y(0), w(0), h(0)
+{}
+
+Rectf::Rectf(float x, float y, float w, float h)
+    : x(x), y(y), w(w), h(h)
+{}
+
+bool Rectf::contains(float X, float Y) const
+{
+    if(w >= 0.0f && h >= 0.0f)
+        return (x <= X && x + w >= X && y <= Y && y + h >= Y);
+    if(w < 0.0f && h < 0.0f)
+        return (x + w <= X && x >= X && y + h <= Y && y >= Y);
+    if(w < 0.0f)
+        return (x + w <= X && x >= X && y <= Y && y + h >= Y);
+    return (x <= X && x + w >= X && y + h <= Y && y >= Y);
+}
+
 Sint32 backgrounds[] = {
                          PIX_GRASS1, PIX_GRASS2, PIX_GRASS_DARK_1, PIX_GRASS_DARK_2,
                          //PIX_GRASS_DARK_B1, PIX_GRASS_DARK_BR, PIX_GRASS_DARK_R1, PIX_GRASS_DARK_R2,
@@ -705,6 +737,8 @@ public:
     EditorTerrainBrush terrain_brush;
     EditorObjectBrush object_brush;
     std::vector<SelectionInfo> selection;
+    bool rect_selecting;
+    Rectf selection_rect;
     bool dragging;
     
 	radar myradar;
@@ -799,7 +833,7 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
 
 LevelEditorData::LevelEditorData()
-    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
+    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", 0, 0, 30, menu_button_height)
@@ -1412,7 +1446,26 @@ void LevelEditorData::draw(screen* myscreen)
 {
     myscreen->clearscreen();
     level->draw(myscreen);
+    
+    if(rect_selecting)
+    {
+        Rectf r(selection_rect.x - level->topx + myscreen->viewob[0]->xloc, selection_rect.y - level->topy + myscreen->viewob[0]->yloc, selection_rect.w, selection_rect.h);
+        if(r.w < 0.0f)
+        {
+            r.x += r.w;
+            r.w = -r.w;
+        }
+        if(r.h < 0.0f)
+        {
+            r.y += r.h;
+            r.h = -r.h;
+        }
+        myscreen->draw_box(r.x, r.y, r.x + r.w, r.y + r.h, ORANGE_START, 0, 1);
+        redraw = 1;
+    }
+    
     display_panel(myscreen);
+    
     myscreen->refresh();
 }
 
@@ -1434,7 +1487,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 int worldy = my + level->topy;
                 int screenx = worldx - level->topx;
                 int screeny = worldy - level->topy;
-                myscreen->draw_box(screenx, screeny, screenx + e->w, screeny + e->h, YELLOW, 0, 1);
+                myscreen->draw_box(screenx, screeny, screenx + e->w, screeny + e->h, dragging? ORANGE_START : YELLOW, 0, 1);
             }
         }
     }
@@ -1840,6 +1893,8 @@ void LevelEditorData::mouse_down(int mx, int my)
 // Deltas for motion
 int mouse_motion_x = 0;
 int mouse_motion_y = 0;
+int mouse_last_x = 0;
+int mouse_last_y = 0;
 
 extern float mouse_scale_x;
 extern float mouse_scale_y;
@@ -1848,11 +1903,32 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
 {
     if(mymouse[MOUSE_LEFT])
     {
-        if(mode == SELECT)
+        if(mode == SELECT && !mouse_on_menus(mouse_last_x, mouse_last_y))
         {
-            // Drag the selected objects
-            if(selection.size() > 0)
+            Sint32 worldx = mx + level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+            Sint32 worldy = my + level->topy - myscreen->viewob[0]->yloc; // - S_UP
+            
+            walker* under_cursor = NULL;
+            if(!dragging && !rect_selecting)
             {
+                // Did we start dragging a selected object?
+                under_cursor = get_object(worldx, worldy);
+                
+                walker* got_one = NULL;
+                for(vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+                {
+                    if(e->target == under_cursor)
+                    {
+                        got_one = under_cursor;
+                        break;
+                    }
+                }
+                under_cursor = got_one;
+            }
+            
+            if((dragging || under_cursor != NULL) && selection.size() > 0)
+            {
+                // Drag the selected objects
                 dragging = true;
                 for(vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
                 {
@@ -1867,9 +1943,81 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
                     }
                 }
             }
+            
+            if(!dragging)
+            {
+                // Select with a rectangle
+                float worldx = mx + level->topx - myscreen->viewob[0]->xloc;
+                float worldy = my + level->topy - myscreen->viewob[0]->yloc;
+                if(!rect_selecting)
+                {
+                    selection_rect.x = worldx;
+                    selection_rect.y = worldy;
+                    selection_rect.w = 1;
+                    selection_rect.h = 1;
+                    rect_selecting = true;
+                }
+                
+                selection_rect.w = worldx - selection_rect.x;
+                selection_rect.h = worldy - selection_rect.y;
+                
+            }
         }
     }
 }
+
+bool is_in_selection(walker* w, const vector<SelectionInfo>& selection)
+{
+    for(vector<SelectionInfo>::const_iterator e = selection.begin(); e != selection.end(); e++)
+    {
+        if(e->target == w)
+            return true;
+    }
+    return false;
+}
+
+// Make sure to use reset_mode_buttons() after this
+void add_contained_objects_to_selection(LevelData* level, const Rectf& area, vector<SelectionInfo>& selection)
+{
+	oblink* here;
+
+	here = level->oblist;
+	while(here)
+	{
+		if(here->ob && area.contains(here->ob->xpos, here->ob->ypos))
+		{
+		    if(!is_in_selection(here->ob, selection))
+                selection.push_back(SelectionInfo(here->ob));
+		}
+		
+		here = here->next;
+	}
+
+	here = level->fxlist;
+	while(here)
+	{
+		if(here->ob && area.contains(here->ob->xpos, here->ob->ypos))
+		{
+		    if(!is_in_selection(here->ob, selection))
+                selection.push_back(SelectionInfo(here->ob));
+		}
+		
+		here = here->next;
+	}
+
+	here = level->weaplist;
+	while(here)
+	{
+		if(here->ob && area.contains(here->ob->xpos, here->ob->ypos))
+		{
+		    if(!is_in_selection(here->ob, selection))
+                selection.push_back(SelectionInfo(here->ob));
+		}
+		
+		here = here->next;
+	}
+}
+
 
 void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& done)
 {
@@ -2585,19 +2733,23 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             
         }
     }
-    else if(off_menu)
+    else
     {
-        // Clicked and released off the menu
-        
+        // Either press or release was off of the menus
         // Close open menus
         if(current_menu.size() > 0)
         {
             myscreen->clearfontbuffer();  // Erase menu text that isn't there anymore
             current_menu.clear();
         }
+    }
+    
+    if(off_menu)
+    {
+        // Clicked and released off the menu
         
         // Zardus: ADD: can move map by clicking on minimap
-        if (mx > myscreen->viewob[0]->endx - myradar.xview - 4
+        if ((mode != SELECT || (!rect_selecting && !dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
                 && my > myscreen->viewob[0]->endy - myradar.yview - 4
                 && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
         {
@@ -2616,7 +2768,18 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if (mode == SELECT)
             {
                 walker* newob = NULL;
-                if (keystates[KEYSTATE_f]) // set facing of current object
+                
+                if(rect_selecting)
+                {
+                    rect_selecting = false;
+                    
+                    // Select guys in the rectangle
+                    if(!keystates[KEYSTATE_LCTRL] && !keystates[KEYSTATE_RCTRL])
+                        selection.clear();
+                    add_contained_objects_to_selection(level, selection_rect, selection);
+                    reset_mode_buttons();
+                }
+                else if (keystates[KEYSTATE_f]) // set facing of current object
                 {
                     newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
@@ -3027,8 +3190,8 @@ Sint32 level_editor()
 	
 	data.reset_mode_buttons();
 	
-    int mouse_last_x = mymouse[MOUSE_X];
-    int mouse_last_y = mymouse[MOUSE_Y];
+    mouse_last_x = mymouse[MOUSE_X];
+    mouse_last_y = mymouse[MOUSE_Y];
     
     float cycletimer = 0.0f;
 	grab_mouse();
@@ -3354,7 +3517,7 @@ Sint32 level_editor()
             else if(off_menu)
             {
                 // Zardus: ADD: can move map by clicking on minimap
-                if (mx > myscreen->viewob[0]->endx - myradar.xview - 4
+                if ((mode != SELECT || (!data.rect_selecting && !data.dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
                         && my > myscreen->viewob[0]->endy - myradar.yview - 4
                         && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
                 {
@@ -3422,8 +3585,8 @@ Sint32 level_editor()
 		// Redraw screen
 		if (redraw)
 		{
-			data.draw(myscreen);
             redraw = 0;
+			data.draw(myscreen);
 		}
         
         SDL_Delay(10);
