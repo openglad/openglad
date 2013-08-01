@@ -387,6 +387,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 		while (!query_key_press_event() && !query_text_input_event())
 			//dumbcount++;
 			get_input_events(WAIT);
+        
         if(query_key_press_event())
         {
             tempchar = query_key();
@@ -400,27 +401,46 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
                 string_done = 1;
                 return_null = true;
             }
-            else if (tempchar == SDLK_BACKSPACE && current_length > 0) {
-                editstring[current_length-1] = 0;
-                
-            }
-        }
-        
-        if(query_text_input_event())
-        {
-            temptext = query_text_input();
-            
-            if ( temptext != NULL &&
-                      (current_length + short(strlen(temptext)) < maxlength) )
+            else if (tempchar == SDLK_BACKSPACE && current_length > 0)
             {
                 if (!has_typed) // first char, so replace text
                 {
                     current_length = 0;
                     for (i=0; i < 100; i++)
                         editstring[i] = 0; // clear the string ...
-                    screenp->draw_box(x, y, x+maxlength*(sizex+1),
-                                      y+sizey+1, backcolor, 1, 1);
+                    screenp->draw_button(x, y, x+maxlength*(sizex+1),
+                                      y+sizey+1, 1);
                 }
+                else
+                    editstring[current_length-1] = 0;
+                
+                has_typed = 1;
+            }
+            // Other keys which will deselect the whole line
+            else if(tempchar == SDLK_LEFT || tempchar == SDLK_RIGHT || tempchar == SDLK_UP || tempchar == SDLK_DOWN || tempchar == SDLK_HOME || tempchar == SDLK_END)
+            {
+                has_typed = 1;
+            }
+            
+            current_length = (short) strlen(editstring);
+        }
+        
+        if(query_text_input_event())
+        {
+            temptext = query_text_input();
+            
+            if (!has_typed) // first char, so replace text
+            {
+                current_length = 0;
+                for (i=0; i < 100; i++)
+                    editstring[i] = 0; // clear the string ...
+                screenp->draw_button(x, y, x+maxlength*(sizex+1),
+                                  y+sizey+1, 1);
+            }
+            
+            if ( temptext != NULL &&
+                      (current_length + short(strlen(temptext)) < maxlength) )
+            {
                 
                 int len = strlen(temptext);
                 int i;
@@ -435,13 +455,20 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
                     }
                 }
             }
+            clear_text_input_event();
+            
+            has_typed = 1;
+            current_length = (short) strlen(editstring);
         }
-		
-        clear_text_input_event();
-		has_typed = 1;
-		current_length = (short) strlen(editstring);
+
 		screenp->draw_box(x, y, x+maxlength*(sizex+1), y+sizey+1, backcolor, 1, 1);
-		write_xy(x, y, editstring, forecolor, 1);
+        if(!has_typed && strlen(editstring) > 0)
+        {
+            screenp->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
+            write_xy(x, y, editstring, WHITE, 1);
+        }
+		else
+            write_xy(x, y, editstring, forecolor, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
 	}
 
@@ -511,6 +538,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 		while (!query_key_press_event() && !query_text_input_event())
 			//dumbcount++;
 			get_input_events(WAIT);
+        
         if(query_key_press_event())
         {
             tempchar = query_key();
@@ -524,18 +552,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
                 string_done = 1;
                 return_null = true;
             }
-            else if (tempchar == SDLK_BACKSPACE && current_length > 0) {
-                editstring[current_length-1] = 0;
-                
-            }
-        }
-        
-        if(query_text_input_event())
-        {
-            temptext = query_text_input();
-            
-            if ( temptext != NULL &&
-                      (current_length + short(strlen(temptext)) < maxlength) )
+            else if (tempchar == SDLK_BACKSPACE && current_length > 0)
             {
                 if (!has_typed) // first char, so replace text
                 {
@@ -545,6 +562,36 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
                     screenp->draw_button(x, y, x+maxlength*(sizex+1),
                                       y+sizey+1, 1);
                 }
+                else
+                    editstring[current_length-1] = 0;
+                
+                has_typed = 1;
+            }
+            // Other keys which will deselect the whole line
+            else if(tempchar == SDLK_LEFT || tempchar == SDLK_RIGHT || tempchar == SDLK_UP || tempchar == SDLK_DOWN || tempchar == SDLK_HOME || tempchar == SDLK_END)
+            {
+                has_typed = 1;
+            }
+            
+            current_length = (short) strlen(editstring);
+        }
+        
+        if(query_text_input_event())
+        {
+            temptext = query_text_input();
+            
+            if (!has_typed) // first char, so replace text
+            {
+                current_length = 0;
+                for (i=0; i < 100; i++)
+                    editstring[i] = 0; // clear the string ...
+                screenp->draw_button(x, y, x+maxlength*(sizex+1),
+                                  y+sizey+1, 1);
+            }
+            
+            if ( temptext != NULL &&
+                      (current_length + short(strlen(temptext)) < maxlength) )
+            {
                 
                 int len = strlen(temptext);
                 int i;
@@ -559,14 +606,21 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
                     }
                 }
             }
+            clear_text_input_event();
+            
+            has_typed = 1;
+            current_length = (short) strlen(editstring);
         }
 		
-        clear_text_input_event();
-		has_typed = 1;
-		current_length = (short) strlen(editstring);
 		screenp->draw_button(x, y, x+maxlength*(sizex+1), y+sizey+1, 1);
         write_xy(x, y - 10, message, DARK_GREEN, 1);
-		write_xy(x, y, editstring, forecolor, 1);
+        if(!has_typed && strlen(editstring) > 0)
+        {
+            screenp->draw_box(x, y, x+query_width(editstring), y+sizey-2, forecolor, 1, 1);
+            write_xy(x, y, editstring, WHITE, 1);
+        }
+		else
+            write_xy(x, y, editstring, forecolor, 1);
 		screenp->buffer_to_screen(0, 0, 320, 200);
 	}
 
