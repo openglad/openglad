@@ -44,7 +44,7 @@ radar::radar(viewscreen * myview, screen * myscreen, short whatnum)
 	viewscreenp = myview;
 	mynum = whatnum; //what number viewscreen we are, to get control's position
 	bmp = NULL;
-
+    force_lower_position = false;
 }
 
 void radar::start()
@@ -69,13 +69,23 @@ void radar::start(LevelData* data)
     
     if(viewscreenp)
     {
-        #ifndef USE_TOUCH_INPUT
+        #ifdef USE_TOUCH_INPUT
+        if(force_lower_position)
+        {
+            // At bottom
+            xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
+            yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+        }
+        else
+        {
+            // At top
+            xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
+            yloc = (short) (viewscreenp->yloc + 4);
+        }
+        #else
+        // At bottom
         xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
         yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
-        #else
-        // Put the minimap at the top
-        xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
-        yloc = (short) (viewscreenp->yloc + 4);
         #endif
     }
     if(bmp != NULL)

@@ -277,6 +277,7 @@ void sendFakeKeyDownEvent(int keycode)
     event.type = SDL_KEYDOWN;
     event.key.repeat = false;
     event.key.keysym.sym = keycode;
+    event.key.keysym.mod = 0;
     event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
     SDL_PushEvent(&event);
 }
@@ -288,6 +289,7 @@ void sendFakeKeyUpEvent(int keycode)
     event.type = SDL_KEYUP;
     event.key.repeat = false;
     event.key.keysym.sym = keycode;
+    event.key.keysym.mod = 0;
     event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
     SDL_PushEvent(&event);
 }

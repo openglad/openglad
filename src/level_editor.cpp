@@ -925,6 +925,8 @@ LevelEditorData::LevelEditorData()
     pan_buttons.insert(&panDownRightButton);
     pan_buttons.insert(&panDownLeftButton);
     #endif
+    
+    myradar.force_lower_position = true;
 }
 
 LevelEditorData::~LevelEditorData()

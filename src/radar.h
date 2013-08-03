@@ -45,6 +45,7 @@ class radar
 		screen * screenp;
 		viewscreen * viewscreenp;
 		unsigned char  *bmp,  *oldbmp;
+		bool force_lower_position;
 		short xview;
 		short yview;
 	protected:
