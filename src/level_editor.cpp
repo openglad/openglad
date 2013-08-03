@@ -157,6 +157,7 @@ bool Rectf::contains(float X, float Y) const
         return (x + w <= X && x >= X && y + h <= Y && y >= Y);
     if(w < 0.0f)
         return (x + w <= X && x >= X && y <= Y && y + h >= Y);
+    // else h < 0.0f
     return (x <= X && x + w >= X && y + h <= Y && y >= Y);
 }
 
@@ -1471,6 +1472,12 @@ void LevelEditorData::draw(screen* myscreen)
     myscreen->refresh();
 }
 
+#ifdef NO_BLOOD
+#define BLOOD_STRING "REMAINS"
+#else
+#define BLOOD_STRING "BLOOD"
+#endif
+
 Sint32 LevelEditorData::display_panel(screen* myscreen)
 {
     // Draw selection indicators
@@ -1529,14 +1536,14 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	Sint32 curline = 0;
 	Sint32 whichback;
 	static char treasures[20][NUM_FAMILIES] =
-	    { "BLOOD", "DRUMSTICK", "GOLD", "SILVER",
+	    { BLOOD_STRING, "DRUMSTICK", "GOLD", "SILVER",
 	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
 	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED", "CC",
 	    };
 	static char weapons[20][NUM_FAMILIES] =
 	    { "KNIFE", "ROCK", "ARROW", "FIREBALL",
 	      "TREE", "METEOR", "SPRINKLE", "BONE",
-	      "BLOOD", "BLOB", "FIRE ARROW", "LIGHTNING",
+	      BLOOD_STRING, "BLOB", "FIRE ARROW", "LIGHTNING",
 	      "GLOW", "WAVE 1", "WAVE 2", "WAVE 3",
 	      "PROTECTION", "HAMMER", "DOOR",
 	    };
@@ -1986,7 +1993,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, vec
 	here = level->oblist;
 	while(here)
 	{
-		if(here->ob && area.contains(here->ob->xpos, here->ob->ypos))
+		if(here->ob && area.contains(here->ob->xpos + here->ob->sizex/2, here->ob->ypos + here->ob->sizey/2))
 		{
 		    if(!is_in_selection(here->ob, selection))
                 selection.push_back(SelectionInfo(here->ob));
@@ -1998,7 +2005,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, vec
 	here = level->fxlist;
 	while(here)
 	{
-		if(here->ob && area.contains(here->ob->xpos, here->ob->ypos))
+		if(here->ob && area.contains(here->ob->xpos + here->ob->sizex/2, here->ob->ypos + here->ob->sizey/2))
 		{
 		    if(!is_in_selection(here->ob, selection))
                 selection.push_back(SelectionInfo(here->ob));
@@ -2010,7 +2017,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, vec
 	here = level->weaplist;
 	while(here)
 	{
-		if(here->ob && area.contains(here->ob->xpos, here->ob->ypos))
+		if(here->ob && area.contains(here->ob->xpos + here->ob->sizex/2, here->ob->ypos + here->ob->sizey/2))
 		{
 		    if(!is_in_selection(here->ob, selection))
                 selection.push_back(SelectionInfo(here->ob));
@@ -2771,7 +2778,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 walker* newob = NULL;
                 
-                if(rect_selecting)
+                if(rect_selecting && (fabs(selection_rect.w) > 15 || fabs(selection_rect.h > 15)))
                 {
                     rect_selecting = false;
                     
@@ -2810,6 +2817,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 }
                 else // select this object
                 {
+                    rect_selecting = false;
                     if(mx < 245-4 || my > L_D(7)-2)
                     {
                         newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
