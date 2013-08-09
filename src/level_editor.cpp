@@ -774,7 +774,13 @@ public:
 	SimpleButton campaignDetailsVersionButton, campaignDetailsSuggestedPowerButton, campaignDetailsFirstLevelButton;
 	
 	// Level menu
-	SimpleButton levelButton, levelInfoButton, levelTitleButton, levelDescriptionButton, levelMapSizeButton, levelParValueButton, levelResmoothButton, levelDeleteTerrainButton, levelDeleteObjectsButton;
+	SimpleButton levelButton, levelInfoButton, levelProfileButton, levelDetailsButton, levelResmoothButton, levelDeleteTerrainButton, levelDeleteObjectsButton;
+	
+	// Level > Profile submenu
+	SimpleButton levelProfileTitleButton, levelProfileDescriptionButton;
+	
+	// Level > Details submenu
+	SimpleButton levelDetailsMapSizeButton, levelDetailsParValueButton;
 	
 	// Edit menu
 	SimpleButton modeButton, modeTerrainButton, modeObjectButton, modeSelectButton;
@@ -874,13 +880,17 @@ LevelEditorData::LevelEditorData()
 	
 	, levelButton("Level", campaignButton.area.x + campaignButton.area.w, 0, 40, menu_button_height)
 	, levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 110, menu_button_height, true)
-	, levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, menu_button_height, true, true)
-	, levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 110, menu_button_height, true, true)
-	, levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 110, menu_button_height, true, true)
-	, levelParValueButton("Par value...", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 110, menu_button_height, true, true)
-	, levelResmoothButton("Resmooth terrain", levelButton.area.x, levelParValueButton.area.y + levelParValueButton.area.h, 110, menu_button_height, true, true)
+	, levelProfileButton("Profile >", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, menu_button_height, true, true)
+	, levelDetailsButton("Details >", levelButton.area.x, levelProfileButton.area.y + levelProfileButton.area.h, 110, menu_button_height, true, true)
+	, levelResmoothButton("Resmooth terrain", levelButton.area.x, levelDetailsButton.area.y + levelDetailsButton.area.h, 110, menu_button_height, true, true)
 	, levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, levelResmoothButton.area.y + levelResmoothButton.area.h, 110, menu_button_height, true, true)
 	, levelDeleteObjectsButton("Clear all objects", levelButton.area.x, levelDeleteTerrainButton.area.y + levelDeleteTerrainButton.area.h, 110, menu_button_height, true, true)
+	
+	, levelProfileTitleButton("Title...", levelProfileButton.area.x + levelProfileButton.area.w, levelProfileButton.area.y, 95, menu_button_height, true)
+	, levelProfileDescriptionButton("Description...", levelProfileTitleButton.area.x, levelProfileTitleButton.area.y + levelProfileTitleButton.area.h, 95, menu_button_height, true, true)
+	
+	, levelDetailsMapSizeButton("Map size...", levelDetailsButton.area.x + levelDetailsButton.area.w, levelDetailsButton.area.y, 95, menu_button_height, true)
+	, levelDetailsParValueButton("Par value...", levelDetailsMapSizeButton.area.x, levelDetailsMapSizeButton.area.y + levelDetailsMapSizeButton.area.h, 95, menu_button_height, true, true)
 	
 	, modeButton("Edit (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, menu_button_height)
 	, modeTerrainButton("Terrain Mode", modeButton.area.x, modeButton.area.y + modeButton.area.h, 75, menu_button_height, true)
@@ -1517,18 +1527,6 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             (*e)->draw(myscreen, scentext);
     }
     
-    // Draw top menu
-    for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
-        (*e)->draw(myscreen, scentext);
-    
-    // Draw submenus
-    for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
-    {
-        set<SimpleButton*>& s = e->second;
-        for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
-            (*f)->draw(myscreen, scentext);
-    }
-    
 	char message[50];
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
@@ -1869,6 +1867,19 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         level->remove_ob(newob,0);
     }
     
+    
+    
+    // Draw top menu
+    for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+        (*e)->draw(myscreen, scentext);
+    
+    // Draw submenus
+    for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
+    {
+        set<SimpleButton*>& s = e->second;
+        for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
+            (*f)->draw(myscreen, scentext);
+    }
     
     
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -2562,10 +2573,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             set<SimpleButton*> s;
             s.insert(&levelInfoButton);
-            s.insert(&levelTitleButton);
-            s.insert(&levelDescriptionButton);
-            s.insert(&levelMapSizeButton);
-            s.insert(&levelParValueButton);
+            s.insert(&levelProfileButton);
+            s.insert(&levelDetailsButton);
             s.insert(&levelResmoothButton);
             s.insert(&levelDeleteTerrainButton);
             s.insert(&levelDeleteObjectsButton);
@@ -2578,7 +2587,15 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                      (levelchanged? "(unsaved)" : ""), level->id, level->title.c_str(), level->grid.w, level->grid.h);
             popup_dialog("Level Info", buf);
         }
-        else if(activate_menu_choice(mx, my, *this, levelTitleButton))
+        // Profile >
+        else if(activate_sub_menu_button(mx, my, current_menu, levelProfileButton))
+        {
+            set<SimpleButton*> s;
+            s.insert(&levelProfileTitleButton);
+            s.insert(&levelProfileDescriptionButton);
+            current_menu.push_back(std::make_pair(&levelProfileButton, s));
+        }
+        else if(activate_menu_choice(mx, my, *this, levelProfileTitleButton))
         {
             std::string title = level->title;
             if(prompt_for_string(scentext, "Level Title", title))
@@ -2587,7 +2604,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 levelchanged = 1;
             }
         }
-        else if(activate_menu_choice(mx, my, *this, levelDescriptionButton))
+        else if(activate_menu_choice(mx, my, *this, levelProfileDescriptionButton))
         {
             std::list<std::string> desc = level->description;
             if(prompt_for_string_block(scentext, "Level Description", desc))
@@ -2597,7 +2614,15 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             }
             redraw = 1;
         }
-        else if(activate_menu_choice(mx, my, *this, levelMapSizeButton))
+        // Details >
+        else if(activate_sub_menu_button(mx, my, current_menu, levelDetailsButton))
+        {
+            set<SimpleButton*> s;
+            s.insert(&levelDetailsMapSizeButton);
+            s.insert(&levelDetailsParValueButton);
+            current_menu.push_back(std::make_pair(&levelDetailsButton, s));
+        }
+        else if(activate_menu_choice(mx, my, *this, levelDetailsMapSizeButton))
         {
             // Using two prompts sequentially
             
@@ -2676,7 +2701,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 redraw = 1;
             }
         }
-        else if(activate_menu_choice(mx, my, *this, levelParValueButton))
+        else if(activate_menu_choice(mx, my, *this, levelDetailsParValueButton))
         {
             char buf[20];
             snprintf(buf, 20, "%d", level->par_value);
