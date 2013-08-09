@@ -3481,8 +3481,8 @@ Sint32 level_editor()
 
 		short scroll_amount = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
-		// Only scroll the tile selector when touching it
-		if(mymouse[MOUSE_LEFT] && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse[MOUSE_X], mymouse[MOUSE_Y]))
+		// Only scroll the tile selector when touching it and you've already moved a bit
+		if(mymouse[MOUSE_LEFT] && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse[MOUSE_X], mymouse[MOUSE_Y]) && fabs(mouse_last_y - mymouse[MOUSE_Y]) > 4)
         {
 		#endif
 		// Slide tile selector down ..
