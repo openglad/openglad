@@ -82,9 +82,7 @@ char get_random_matching_tile(Sint32 whatback);
 class EditorTerrainBrush;
 class EditorObjectBrush;
 void info_box(walker  *target, screen * myscreen);
-void set_facing(walker *target, screen *myscreen);
 void set_name(walker  *target, screen * myscreen);
-void scenario_options(screen * myscreen);
 
 extern screen *myscreen;  // global for scen?
 
@@ -774,13 +772,16 @@ public:
 	SimpleButton campaignDetailsVersionButton, campaignDetailsSuggestedPowerButton, campaignDetailsFirstLevelButton;
 	
 	// Level menu
-	SimpleButton levelButton, levelInfoButton, levelProfileButton, levelDetailsButton, levelResmoothButton, levelDeleteTerrainButton, levelDeleteObjectsButton;
+	SimpleButton levelButton, levelInfoButton, levelProfileButton, levelDetailsButton, levelGoalsButton, levelResmoothButton, levelDeleteTerrainButton, levelDeleteObjectsButton;
 	
 	// Level > Profile submenu
 	SimpleButton levelProfileTitleButton, levelProfileDescriptionButton;
 	
 	// Level > Details submenu
 	SimpleButton levelDetailsMapSizeButton, levelDetailsParValueButton;
+	
+	// Level > Goals submenu
+	SimpleButton levelGoalsEnemiesButton, levelGoalsGeneratorsButton, levelGoalsNPCsButton;
 	
 	// Edit menu
 	SimpleButton modeButton, modeTerrainButton, modeObjectButton, modeSelectButton;
@@ -821,6 +822,7 @@ public:
     Sint32 display_panel(screen* myscreen);
     
     bool mouse_on_menus(int mx, int my);
+    void update_menu_buttons();
     void reset_mode_buttons();
     void activate_mode_button(SimpleButton* button);
     
@@ -882,7 +884,8 @@ LevelEditorData::LevelEditorData()
 	, levelInfoButton("Info...", levelButton.area.x, levelButton.area.y + levelButton.area.h, 110, menu_button_height, true)
 	, levelProfileButton("Profile >", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, menu_button_height, true, true)
 	, levelDetailsButton("Details >", levelButton.area.x, levelProfileButton.area.y + levelProfileButton.area.h, 110, menu_button_height, true, true)
-	, levelResmoothButton("Resmooth terrain", levelButton.area.x, levelDetailsButton.area.y + levelDetailsButton.area.h, 110, menu_button_height, true, true)
+	, levelGoalsButton("Goals >", levelButton.area.x, levelDetailsButton.area.y + levelDetailsButton.area.h, 110, menu_button_height, true, true)
+	, levelResmoothButton("Resmooth terrain", levelButton.area.x, levelGoalsButton.area.y + levelGoalsButton.area.h, 110, menu_button_height, true, true)
 	, levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, levelResmoothButton.area.y + levelResmoothButton.area.h, 110, menu_button_height, true, true)
 	, levelDeleteObjectsButton("Clear all objects", levelButton.area.x, levelDeleteTerrainButton.area.y + levelDeleteTerrainButton.area.h, 110, menu_button_height, true, true)
 	
@@ -891,6 +894,10 @@ LevelEditorData::LevelEditorData()
 	
 	, levelDetailsMapSizeButton("Map size...", levelDetailsButton.area.x + levelDetailsButton.area.w, levelDetailsButton.area.y, 95, menu_button_height, true)
 	, levelDetailsParValueButton("Par value...", levelDetailsMapSizeButton.area.x, levelDetailsMapSizeButton.area.y + levelDetailsMapSizeButton.area.h, 95, menu_button_height, true, true)
+	
+	, levelGoalsEnemiesButton("Defeat enemies: On", levelGoalsButton.area.x + levelGoalsButton.area.w, levelGoalsButton.area.y, 125, menu_button_height, true)
+	, levelGoalsGeneratorsButton("Beat generators: Off", levelGoalsEnemiesButton.area.x, levelGoalsEnemiesButton.area.y + levelGoalsEnemiesButton.area.h, 125, menu_button_height, true, true)
+	, levelGoalsNPCsButton("Protect NPCs: Off", levelGoalsEnemiesButton.area.x, levelGoalsGeneratorsButton.area.y + levelGoalsGeneratorsButton.area.h, 125, menu_button_height, true, true)
 	
 	, modeButton("Edit (Terrain)", levelButton.area.x + levelButton.area.w, 0, 90, menu_button_height)
 	, modeTerrainButton("Terrain Mode", modeButton.area.x, modeButton.area.y + modeButton.area.h, 75, menu_button_height, true)
@@ -962,12 +969,16 @@ bool LevelEditorData::reloadCampaign()
 bool LevelEditorData::loadLevel(int id)
 {
     level->id = id;
-    return level->load();
+    bool result = level->load();
+    update_menu_buttons();
+    return result;
 }
 
 bool LevelEditorData::reloadLevel()
 {
-    return level->load();
+    bool result = level->load();
+    update_menu_buttons();
+    return result;
 }
 
 
@@ -1063,6 +1074,18 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
     }
     
     return false;
+}
+
+void LevelEditorData::update_menu_buttons()
+{
+    levelGoalsEnemiesButton.label = "Defeat enemies: ";
+    levelGoalsEnemiesButton.label += (level->type & LevelData::TYPE_CAN_EXIT_WHENEVER? "Off" : "On");
+    
+    levelGoalsGeneratorsButton.label = "Beat generators: ";
+    levelGoalsGeneratorsButton.label += (level->type & LevelData::TYPE_MUST_DESTROY_GENERATORS? "On" : "Off");
+    
+    levelGoalsNPCsButton.label = "Protect NPCs: ";
+    levelGoalsNPCsButton.label += (level->type & LevelData::TYPE_MUST_PROTECT_NAMED_NPCS? "On" : "Off");
 }
 
 void LevelEditorData::reset_mode_buttons()
@@ -1366,6 +1389,21 @@ bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& b
     // Close menu
     myscreen->clearfontbuffer();
     data.current_menu.clear();
+    data.draw(myscreen);
+    return true;
+}
+
+bool activate_menu_toggle_choice(int mx, int my, LevelEditorData& data, SimpleButton& button, bool is_in_top_menu = false)
+{
+    // Make sure it is showing
+    if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(data.current_menu, &button)))
+        return false;
+    
+    while (mymouse[MOUSE_LEFT])
+        get_input_events(WAIT);
+    
+    // Close menu
+    myscreen->clearfontbuffer();
     data.draw(myscreen);
     return true;
 }
@@ -2575,6 +2613,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             s.insert(&levelInfoButton);
             s.insert(&levelProfileButton);
             s.insert(&levelDetailsButton);
+            s.insert(&levelGoalsButton);
             s.insert(&levelResmoothButton);
             s.insert(&levelDeleteTerrainButton);
             s.insert(&levelDeleteObjectsButton);
@@ -2700,6 +2739,30 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 timed_dialog("Resize canceled.");
                 redraw = 1;
             }
+        }
+        // Goals >
+        else if(activate_sub_menu_button(mx, my, current_menu, levelGoalsButton))
+        {
+            set<SimpleButton*> s;
+            s.insert(&levelGoalsEnemiesButton);
+            s.insert(&levelGoalsGeneratorsButton);
+            s.insert(&levelGoalsNPCsButton);
+            current_menu.push_back(std::make_pair(&levelGoalsButton, s));
+        }
+        else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsEnemiesButton))
+        {
+            level->type ^= LevelData::TYPE_CAN_EXIT_WHENEVER;
+            update_menu_buttons();
+        }
+        else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsGeneratorsButton))
+        {
+            level->type ^= LevelData::TYPE_MUST_DESTROY_GENERATORS;
+            update_menu_buttons();
+        }
+        else if(activate_menu_toggle_choice(mx, my, *this, levelGoalsNPCsButton))
+        {
+            level->type ^= LevelData::TYPE_MUST_PROTECT_NAMED_NPCS;
+            update_menu_buttons();
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsParValueButton))
         {
@@ -2830,17 +2893,6 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     add_contained_objects_to_selection(level, selection_rect, selection);
                     reset_mode_buttons();
                 }
-                else if (keystates[KEYSTATE_f]) // set facing of current object
-                {
-                    newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
-                    newob->setxy(windowx, windowy);
-                    if (some_hit(windowx, windowy, newob, level))
-                    {
-                        set_facing(newob->collide_ob,myscreen);
-                        levelchanged = 1;
-                    }
-                    level->remove_ob(newob,0);
-                }  // end of set facing
                 else if (keystates[KEYSTATE_r]) // (re)name the current object
                 {
                     newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
@@ -3921,94 +3973,3 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 }
 
 
-void scenario_options(screen *myscreen)
-{
-	static text opt_text(myscreen);
-	short lm, tm;
-	char message[80];
-
-	lm = 55;
-	tm = 45;
-
-#define OPT_LD(x) (short) (tm + (x*8) )
-while (!keystates[KEYSTATE_ESCAPE])
-        {
-
-
-	myscreen->draw_button(lm-5, tm-5, 260, 160, 2, 1);
-
-	opt_text.write_xy(lm, OPT_LD(0), "SCENARIO OPTIONS", DARK_BLUE, 1);
-
-	if (myscreen->level_data.type & SCEN_TYPE_CAN_EXIT)
-		opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : Yes", DARK_BLUE, 1);
-	else
-		opt_text.write_xy(lm, OPT_LD(2), "Can Always Exit (E)         : No ", DARK_BLUE, 1);
-
-	if (myscreen->level_data.type & SCEN_TYPE_GEN_EXIT)
-		opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): Yes", DARK_BLUE, 1);
-	else
-		opt_text.write_xy(lm, OPT_LD(3), " Kill Generators to Exit (G): No ", DARK_BLUE, 1);
-
-	if (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
-		opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : Yes", DARK_BLUE, 1);
-	else
-		opt_text.write_xy(lm, OPT_LD(4), " Must Save Named NPC's (N)  : No ", DARK_BLUE, 1);
-
-	sprintf(message, " Level Par Value (+,-)      : %d ", myscreen->level_data.par_value);
-	opt_text.write_xy(lm, OPT_LD(5), message, DARK_BLUE, 1);
-
-
-	myscreen->buffer_to_screen(0, 0, 320, 200);
-
-	get_input_events(WAIT);
-	if (keystates[KEYSTATE_e]) // toggle exit mode
-	{
-		if (myscreen->level_data.type & SCEN_TYPE_CAN_EXIT) // already set
-			myscreen->level_data.type -= SCEN_TYPE_CAN_EXIT;
-		else
-			myscreen->level_data.type += SCEN_TYPE_CAN_EXIT;
-	}
-	if (keystates[KEYSTATE_g]) // toggle exit mode -- generators
-	{
-		if (myscreen->level_data.type & SCEN_TYPE_GEN_EXIT) // already set
-			myscreen->level_data.type -= SCEN_TYPE_GEN_EXIT;
-		else
-			myscreen->level_data.type += SCEN_TYPE_GEN_EXIT;
-	}
-	if (keystates[KEYSTATE_n]) // toggle fail mode -- named guys
-	{
-		if (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL) // already set
-			myscreen->level_data.type -= SCEN_TYPE_SAVE_ALL;
-		else
-			myscreen->level_data.type += SCEN_TYPE_SAVE_ALL;
-	}
-	if (keystates[KEYSTATE_KP_MINUS]) // lower the par value
-	{
-		if (myscreen->level_data.par_value > 1)
-			myscreen->level_data.par_value--;
-	}
-	if (keystates[KEYSTATE_KP_PLUS]) // raise the par value
-	{
-		myscreen->level_data.par_value++;
-	}
-}
-
-while (keystates[KEYSTATE_ESCAPE])
-	get_input_events(WAIT); // wait for key release
-
-	myscreen->clearfontbuffer(lm-5, tm-5, 260-(lm-5), 160-(tm-5));
-}
-
-// Set an object's facing ..
-void set_facing(walker *target, screen *myscreen)
-{
-	if (target)
-		target = target;  // dummy code
-
-	myscreen->draw_dialog(100, 50, 220, 170, "Set Facing");
-	myscreen->buffer_to_screen(0, 0, 320, 200);
-
-	while (keystates[KEYSTATE_f])
-		get_input_events(WAIT);
-
-}
