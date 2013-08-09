@@ -774,7 +774,7 @@ public:
 	SimpleButton campaignDetailsVersionButton, campaignDetailsSuggestedPowerButton, campaignDetailsFirstLevelButton;
 	
 	// Level menu
-	SimpleButton levelButton, levelInfoButton, levelTitleButton, levelDescriptionButton, levelMapSizeButton, levelResmoothButton, levelDeleteTerrainButton, levelDeleteObjectsButton;
+	SimpleButton levelButton, levelInfoButton, levelTitleButton, levelDescriptionButton, levelMapSizeButton, levelParValueButton, levelResmoothButton, levelDeleteTerrainButton, levelDeleteObjectsButton;
 	
 	// Edit menu
 	SimpleButton modeButton, modeTerrainButton, modeObjectButton, modeSelectButton;
@@ -877,7 +877,8 @@ LevelEditorData::LevelEditorData()
 	, levelTitleButton("Title...", levelButton.area.x, levelInfoButton.area.y + levelInfoButton.area.h, 110, menu_button_height, true, true)
 	, levelDescriptionButton("Description...", levelButton.area.x, levelTitleButton.area.y + levelTitleButton.area.h, 110, menu_button_height, true, true)
 	, levelMapSizeButton("Map size...", levelButton.area.x, levelDescriptionButton.area.y + levelDescriptionButton.area.h, 110, menu_button_height, true, true)
-	, levelResmoothButton("Resmooth terrain", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 110, menu_button_height, true, true)
+	, levelParValueButton("Par value...", levelButton.area.x, levelMapSizeButton.area.y + levelMapSizeButton.area.h, 110, menu_button_height, true, true)
+	, levelResmoothButton("Resmooth terrain", levelButton.area.x, levelParValueButton.area.y + levelParValueButton.area.h, 110, menu_button_height, true, true)
 	, levelDeleteTerrainButton("Clear all terrain", levelButton.area.x, levelResmoothButton.area.y + levelResmoothButton.area.h, 110, menu_button_height, true, true)
 	, levelDeleteObjectsButton("Clear all objects", levelButton.area.x, levelDeleteTerrainButton.area.y + levelDeleteTerrainButton.area.h, 110, menu_button_height, true, true)
 	
@@ -2564,6 +2565,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             s.insert(&levelTitleButton);
             s.insert(&levelDescriptionButton);
             s.insert(&levelMapSizeButton);
+            s.insert(&levelParValueButton);
             s.insert(&levelResmoothButton);
             s.insert(&levelDeleteTerrainButton);
             s.insert(&levelDeleteObjectsButton);
@@ -2672,6 +2674,21 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 timed_dialog("Resize canceled.");
                 redraw = 1;
+            }
+        }
+        else if(activate_menu_choice(mx, my, *this, levelParValueButton))
+        {
+            char buf[20];
+            snprintf(buf, 20, "%d", level->par_value);
+            std::string par = buf;
+            if(prompt_for_string(scentext, "Par Value (num)", par))
+            {
+                int v = toInt(par);
+                if(v > 0)
+                {
+                    level->par_value = v;
+                    levelchanged = 1;
+                }
             }
         }
         else if(activate_menu_choice(mx, my, *this, levelResmoothButton))
