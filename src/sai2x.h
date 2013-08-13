@@ -29,6 +29,7 @@ class Screen
         #ifdef USE_SDL2
 		SDL_Window* window;
 		SDL_Renderer* renderer;
+		SDL_Texture* render_tex;
 		#endif
 		SDL_Surface		*tempo;			// used to render org_screen before
 										// update which is only a SDL_Update between

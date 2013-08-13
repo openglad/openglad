@@ -731,7 +731,8 @@ Screen::Screen( RenderEngine engine, int fullscreen)
     mouse_scale_y = float(h)/200;
     
     render = SDL_CreateRGBSurface(SDL_SWSURFACE, tx, ty, 32, 0, 0, 0, 0);
-    renderer = SDL_CreateRenderer(window, -1, 0);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
+	render_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, tx, ty);
     
     if(fullscreen)
     {
@@ -761,6 +762,10 @@ void Screen::Quit()
 	//buffers:	SDL_FreeSurface( tempo );
 	screen=NULL;
 	//buffers: tempo=NULL;
+	
+	#ifdef USE_SDL2
+	SDL_DestroyTexture(render_tex);
+	#endif
 }
 
 void Screen::SaveBMP( char *filename )
@@ -773,12 +778,13 @@ void Screen::Render(Sint16 x, Sint16 y, Uint16 w, Uint16 h)
 	#ifndef USE_SDL2
 	SDL_UpdateRect(render, x,y,w,h);
 	#else
-	SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, render);
+	
+	SDL_UpdateTexture(render_tex, NULL, render->pixels, render->pitch);
+	
 	SDL_Rect dest = {0, 0, 0, 0};
     SDL_GetWindowSize(window, &dest.w, &dest.h); // Fill up the whole window
     
-	SDL_RenderCopy(renderer, tex, NULL, &dest);
-	SDL_DestroyTexture(tex);
+	SDL_RenderCopy(renderer, render_tex, NULL, &dest);
 	SDL_RenderPresent(renderer);
 	#endif
 	
