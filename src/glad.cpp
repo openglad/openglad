@@ -26,6 +26,11 @@ screen * myscreen;
 #include "parser.h"
 #include <string>
 #include "util.h"
+
+#ifdef OUYA
+#include "OuyaController.h"
+#endif
+
 using namespace std;
 
 // Z's script: #include <process.h>
@@ -75,6 +80,10 @@ int main(int argc, char *argv[])
 	theprefs = new options;
 	myscreen = new screen(1);
 
+    #ifdef OUYA
+    OuyaControllerManager::init();
+    #endif
+    
 	//buffers: setting the seed
 	srand(time(NULL));
 

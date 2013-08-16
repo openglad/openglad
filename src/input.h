@@ -286,7 +286,11 @@ class screen;
 void draw_touch_controls(screen* vob);
 #define CONTINUE_ACTION_STRING "TAP"
 #else
+#ifdef OUYA
+#define CONTINUE_ACTION_STRING "PRESS 'O'"
+#else
 #define CONTINUE_ACTION_STRING "PRESS 'ESC'"
+#endif
 #endif
 
 bool query_key_event(int key, const SDL_Event& event);

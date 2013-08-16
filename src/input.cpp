@@ -31,6 +31,10 @@
 #define SDL_GetKeyboardState SDL_GetKeyState
 #endif
 
+#ifdef OUYA
+#include "OuyaController.h"
+#endif
+
 void quit(Sint32 arg1);
 
 int raw_key;
@@ -270,6 +274,8 @@ void draw_touch_controls(screen* vob)
         vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
 }
 
+#endif
+
 void sendFakeKeyDownEvent(int keycode)
 {
     SDL_Event event;
@@ -293,8 +299,6 @@ void sendFakeKeyUpEvent(int keycode)
     event.key.keysym.scancode = SDL_GetScancodeFromKey(keycode);
     SDL_PushEvent(&event);
 }
-
-#endif
 
 void handle_window_event(const SDL_Event& event)
 {
@@ -605,6 +609,7 @@ void handle_mouse_event(const SDL_Event& event)
 
 void handle_joy_event(const SDL_Event& event)
 {
+    Log("Joystick event!\n");
     switch(event.type)
     {
     case SDL_JOYAXISMOTION:
@@ -690,6 +695,14 @@ void handle_events(const SDL_Event& event)
     case SDL_QUIT:
         quit(0);
         break;
+    #ifdef OUYA
+    case SDL_USEREVENT:
+        if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT && OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_O)
+           input_continue = true;
+        if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT && OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_MENU)
+           sendFakeKeyDownEvent(SDLK_ESCAPE);
+        break;
+    #endif
     default:
         break;
     }
@@ -1135,8 +1148,81 @@ void resetJoystick(int player_num)
     player_joy[player_num] = JoyData(player_num);
 }
 
+#ifdef OUYA
+bool ouyaJoystickInDirection(int player, int key_enum)
+{
+    const OuyaController& c = OuyaControllerManager::getController(player);
+    switch(key_enum)
+    {
+    case KEY_UP:
+        return (c.getAxisValue(OuyaController::AXIS_LS_Y) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_X) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_X));
+    case KEY_UP_RIGHT:
+        return (c.getAxisValue(OuyaController::AXIS_LS_Y) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) > OuyaController::DEADZONE);
+    case KEY_RIGHT:
+        return (c.getAxisValue(OuyaController::AXIS_LS_X) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_Y) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_Y));
+    case KEY_DOWN_RIGHT:
+        return (c.getAxisValue(OuyaController::AXIS_LS_Y) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) > OuyaController::DEADZONE);
+    case KEY_DOWN:
+        return (c.getAxisValue(OuyaController::AXIS_LS_Y) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_X) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_X));
+    case KEY_DOWN_LEFT:
+        return (c.getAxisValue(OuyaController::AXIS_LS_Y) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) < -OuyaController::DEADZONE);
+    case KEY_LEFT:
+        return (c.getAxisValue(OuyaController::AXIS_LS_X) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_Y) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_Y));
+    case KEY_UP_LEFT:
+        return (c.getAxisValue(OuyaController::AXIS_LS_Y) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) < -OuyaController::DEADZONE);
+    }
+    return false;
+}
+#endif
+
 bool isPlayerHoldingKey(int player_index, int key_enum)
 {
+    #ifdef OUYA
+    const OuyaController& c = OuyaControllerManager::getController(player_index);
+    switch(key_enum)
+    {
+    case KEY_UP:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_UP) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT) || c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT)))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_UP_RIGHT:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_UP) && c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_RIGHT:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_UP) || c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN)))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_DOWN_RIGHT:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN) && c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_DOWN:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT) || c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT)))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_DOWN_LEFT:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN) && c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_LEFT:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_UP) || c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN)))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_UP_LEFT:
+        return (c.getButtonValue(OuyaController::BUTTON_DPAD_UP) && c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT))
+               || ouyaJoystickInDirection(player_index, key_enum);
+    case KEY_FIRE:
+        return c.getButtonValue(OuyaController::BUTTON_O);
+    case KEY_SPECIAL:
+        return c.getButtonValue(OuyaController::BUTTON_A);
+    case KEY_SWITCH:
+        return c.getButtonValue(OuyaController::BUTTON_L1);
+    case KEY_SPECIAL_SWITCH:
+        return c.getButtonValue(OuyaController::BUTTON_U);
+    case KEY_YELL:
+        return c.getButtonValue(OuyaController::BUTTON_Y);
+    case KEY_SHIFTER:
+        return c.getButtonValue(OuyaController::BUTTON_R1);
+    case KEY_PREFS:
+        return false;
+    case KEY_CHEAT:
+        return false;
+    }
+    #endif
     if(player_joy[player_index].hasButtonSet(key_enum))
     {
         return player_joy[player_index].getState(key_enum);
@@ -1157,6 +1243,57 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
 
 bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
 {
+    #ifdef OUYA
+    const OuyaController& c = OuyaControllerManager::getController(player_index);
+    if(event.type != SDL_USEREVENT)
+        return false;
+    if(event.user.code != player_index)
+        return false;
+    
+    if(event.user.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
+    {
+        OuyaController::ButtonEnum button = OuyaController::ButtonEnum(int(event.user.data1));
+        
+        switch(key_enum)
+        {
+        case KEY_UP:
+            return (button == OuyaController::BUTTON_DPAD_UP);
+        case KEY_RIGHT:
+            return (button == OuyaController::BUTTON_DPAD_RIGHT);
+        case KEY_DOWN:
+            return (button == OuyaController::BUTTON_DPAD_DOWN);
+        case KEY_LEFT:
+            return (button == OuyaController::BUTTON_DPAD_LEFT);
+        case KEY_FIRE:
+            return (button == OuyaController::BUTTON_O);
+        case KEY_SPECIAL:
+            return (button == OuyaController::BUTTON_A);
+        case KEY_SWITCH:
+            return (button == OuyaController::BUTTON_L1);
+        case KEY_SPECIAL_SWITCH:
+            return (button == OuyaController::BUTTON_U);
+        case KEY_YELL:
+            return (button == OuyaController::BUTTON_Y);
+        case KEY_SHIFTER:
+            return (button == OuyaController::BUTTON_R1);
+        default:
+            return false;
+        }
+    }
+    else if(event.user.type == OuyaControllerManager::AXIS_EVENT)
+    {
+        switch(key_enum)
+        {
+        case KEY_UP:
+        case KEY_RIGHT:
+        case KEY_DOWN:
+        case KEY_LEFT:
+            return ouyaJoystickInDirection(player_index, key_enum);
+        default:
+            return false;
+        }
+    }
+    #endif
     if(player_joy[player_index].hasButtonSet(key_enum))
     {
         // This key is on the joystick, so check it.
