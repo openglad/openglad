@@ -1113,6 +1113,7 @@ Sint32 create_view_menu(Sint32 arg1)
 
 		if (localbuttons && (retvalue == REDRAW))
 		{
+			myscreen->clearbuffer();
 			delete(localbuttons);
 			localbuttons = buttonmenu(viewteam, 2); // was 4
 			retvalue = 0;
@@ -1120,7 +1121,7 @@ Sint32 create_view_menu(Sint32 arg1)
 			release_mouse();
 			view_team(5,5,314, 160);
 			grab_mouse();
-
+			myscreen->swap();
 		}
 	}
 	myscreen->clearbuffer();
