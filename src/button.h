@@ -107,12 +107,6 @@ class vbutton
 #define MAX_BUTTONS 50  // max buttons per screen
 extern vbutton *allbuttons[MAX_BUTTONS];
 
-short has_mouse_focus(button thisbutton);
-Sint32 add_money(Sint32 howmuch);
-
-Sint32 ventermenu(vbutton *vbuttons);
-Sint32 vexitmenu(vbutton *vbuttons);
-
 vbutton * buttonmenu(button * buttons, Sint32 numbuttons);
 vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw);
 vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 redraw);

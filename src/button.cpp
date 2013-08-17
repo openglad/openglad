@@ -365,36 +365,6 @@ Sint32 vbutton::mouse_on()
 	}
 }
 
-Sint32 ventermenu(vbutton * vbuttons)
-{
-	vbutton * here; // = new vbutton();
-	if (vbuttons == NULL)
-		return 0; //if no buttons, exit
-	here = vbuttons;
-	while(here)
-	{
-		here->vdisplay();
-		here = here->next;
-	}
-	return 1;
-}
-
-Sint32 vexitmenu(vbutton * vbuttons)
-{
-	vbutton * here; // = new vbutton();
-	vbutton * nextb; // = new vbutton();
-	if (!vbuttons)
-		return 0;
-	here = vbuttons;
-	while(here)
-	{
-		nextb = here->next;
-		delete(here);
-		here = nextb;
-	}
-	return 1;
-}
-
 vbutton * buttonmenu(button * buttons, Sint32 numbuttons)
 {
 	//buffers: return buttonmenu(buttons, numbuttons, 1); // default is redraw screen
@@ -468,23 +438,6 @@ vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 red
 	//grab_mouse();
 	return allbuttons[0];
 
-}
-
-short has_mouse_focus(button thisbutton)
-{
-	Sint32 *thismouse;
-
-	thismouse = query_mouse();
-
-	// Check the x and y boundaries of current button to determine
-	// if it has the mouse focus
-	if ( (thisbutton.x <= thismouse[MOUSE_X]) &&
-	        (thismouse[MOUSE_X] <= (thisbutton.x + thisbutton.sizex) ) )
-		if ( (thisbutton.y <= thismouse[MOUSE_Y]) &&
-		        (thismouse[MOUSE_Y] <= (thisbutton.y + thisbutton.sizey) ) )
-			return 1;
-
-	return 0;
 }
 
 Sint32 yes_or_no(Sint32 arg)

@@ -2709,12 +2709,6 @@ Sint32 delete_all()
 	return counter;
 }
 
-Sint32 add_money(Sint32 howmuch)
-{
-	myscreen->save_data.m_totalcash[current_guy->teamnum] += (Sint32) howmuch;
-	return myscreen->save_data.m_totalcash[current_guy->teamnum];
-}
-
 Sint32 go_menu(Sint32 arg1)
 {
 	// Save the current team in memory to save0.gtl, and
