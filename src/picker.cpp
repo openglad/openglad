@@ -290,148 +290,148 @@ void picker_quit()
 
 button buttons1[] =
     {
-        { "", SDLK_b, 80, 50, 140, 20, BEGINMENU, -1 }, // BEGIN NEW GAME
-        { "CONTINUE GAME", SDLK_c, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 },
+        { "", KEYSTATE_b, 80, 50, 140, 20, BEGINMENU, -1 }, // BEGIN NEW GAME
+        { "CONTINUE GAME", KEYSTATE_c, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 },
 
-        { "4 PLAYER", SDLK_4, 152,125,68,20, SET_PLAYER_MODE, 4 },
-        { "3 PLAYER", SDLK_3, 80,125,68,20, SET_PLAYER_MODE,3 },
-        { "2 PLAYER", SDLK_2, 152,100,68,20, SET_PLAYER_MODE,2 },
-        { "1 PLAYER", SDLK_1, 80,100,68,20, SET_PLAYER_MODE,1 },
+        { "4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 },
+        { "3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 },
+        { "2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 },
+        { "1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 },
 
-        { "DIFFICULTY", SDLK_d, 80, 148, 140, 10, SET_DIFFICULTY, -1},
+        { "DIFFICULTY", KEYSTATE_d, 80, 148, 140, 10, SET_DIFFICULTY, -1},
 
-        { "PVP: Allied", SDLK_p, 80, 160, 68, 10, ALLIED_MODE, -1},
-        { "Level Edit", SDLK_l, 152, 160, 68, 10, DO_LEVEL_EDIT, -1},
+        { "PVP: Allied", KEYSTATE_p, 80, 160, 68, 10, ALLIED_MODE, -1},
+        { "Level Edit", KEYSTATE_l, 152, 160, 68, 10, DO_LEVEL_EDIT, -1},
 
-        { "QUIT", SDLK_ESCAPE, 80, 175, 140, 20, QUIT_MENU, -1 },
+        { "QUIT", KEYSTATE_ESCAPE, 80, 175, 140, 20, QUIT_MENU, -1 },
     };
 
 button bteam[] =
     {
-        { "VIEW TEAM", SDLK_v, 30, 70, 80, 15, CREATE_VIEW_MENU, -1},
-        { "TRAIN TEAM", SDLK_t, 120, 70, 80, 15, CREATE_EDIT_MENU, -1},
-        { "Hire Troops",  SDLK_h, 210, 70, 80, 15, CREATE_BUY_MENU, -1},
-        { "LOAD TEAM", SDLK_l, 30, 100, 80, 15, CREATE_LOAD_MENU, -1},
-        { "SAVE TEAM", SDLK_s, 120, 100, 80, 15, CREATE_SAVE_MENU, -1},
-        { "GO", SDLK_g,        210, 100, 80, 15, GO_MENU, -1},
+        { "VIEW TEAM", KEYSTATE_v, 30, 70, 80, 15, CREATE_VIEW_MENU, -1},
+        { "TRAIN TEAM", KEYSTATE_t, 120, 70, 80, 15, CREATE_EDIT_MENU, -1},
+        { "Hire Troops",  KEYSTATE_h, 210, 70, 80, 15, CREATE_BUY_MENU, -1},
+        { "LOAD TEAM", KEYSTATE_l, 30, 100, 80, 15, CREATE_LOAD_MENU, -1},
+        { "SAVE TEAM", KEYSTATE_s, 120, 100, 80, 15, CREATE_SAVE_MENU, -1},
+        { "GO", KEYSTATE_g,        210, 100, 80, 15, GO_MENU, -1},
 
-        { "QUIT", SDLK_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT},
-        { "SET LEVEL", SDLK_e, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT},
-        { "SET CAMPAIGN", SDLK_c, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT},
+        { "QUIT", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT},
+        { "SET LEVEL", KEYSTATE_e, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT},
+        { "SET CAMPAIGN", KEYSTATE_c, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT},
 
     };
 
 button viewteam[] =
     {
-        //  { "TRAIN", SDLK_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
-        //  { "HIRE",  SDLK_b, 190, 170, 60, 20, CREATE_BUY_MENU, -1},
-        { "GO", SDLK_g,        270, 170, 40, 20, GO_MENU, -1},
-        { "ESC", SDLK_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT},
+        //  { "TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
+        //  { "HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_BUY_MENU, -1},
+        { "GO", KEYSTATE_g,        270, 170, 40, 20, GO_MENU, -1},
+        { "ESC", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT},
 
     };
 
 button detailed[] =
     {
-        { "ESC", SDLK_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
+        { "ESC", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
     };
 
 button editteam[] =
     {
-        { "PREV", SDLK_p,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1},
-        { "NEXT", SDLK_n,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1},
-        { "", SDLK_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR},
-        { "", SDLK_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR},
-        { "", SDLK_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX},
-        { "", SDLK_d,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX},
-        { "", SDLK_c,  16, 100, 16, 10, DECREASE_STAT, BUT_CON},
-        { "", SDLK_c,  126,100, 16, 12, INCREASE_STAT, BUT_CON},
-        { "", SDLK_i,  16, 115, 16, 10, DECREASE_STAT, BUT_INT},
-        { "", SDLK_i,  126, 115, 16, 12, INCREASE_STAT, BUT_INT},
-        { "", SDLK_a,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR},
-        { "", SDLK_a,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR},
-        { "", SDLK_l,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL},
-        { "", SDLK_l,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL},
-        { "VIEW TEAM", SDLK_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1},
-        { "ACCEPT", SDLK_a,  80, 170, 80, 20, EDIT_GUY, -1},
-        { "RENAME", SDLK_r, 174,  8, 64, 22, NAME_GUY, 1},
-        { "DETAILS..", SDLK_d, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0},
-        { "Playing on Team X", SDLK_t, 174, 138, 133, 22, CHANGE_TEAM, 1},
-        { "ESC", SDLK_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
+        { "PREV", KEYSTATE_p,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1},
+        { "NEXT", KEYSTATE_n,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1},
+        { "", KEYSTATE_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR},
+        { "", KEYSTATE_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR},
+        { "", KEYSTATE_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX},
+        { "", KEYSTATE_d,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX},
+        { "", KEYSTATE_c,  16, 100, 16, 10, DECREASE_STAT, BUT_CON},
+        { "", KEYSTATE_c,  126,100, 16, 12, INCREASE_STAT, BUT_CON},
+        { "", KEYSTATE_i,  16, 115, 16, 10, DECREASE_STAT, BUT_INT},
+        { "", KEYSTATE_i,  126, 115, 16, 12, INCREASE_STAT, BUT_INT},
+        { "", KEYSTATE_a,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR},
+        { "", KEYSTATE_a,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR},
+        { "", KEYSTATE_l,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL},
+        { "", KEYSTATE_l,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL},
+        { "VIEW TEAM", KEYSTATE_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1},
+        { "ACCEPT", KEYSTATE_a,  80, 170, 80, 20, EDIT_GUY, -1},
+        { "RENAME", KEYSTATE_r, 174,  8, 64, 22, NAME_GUY, 1},
+        { "DETAILS..", KEYSTATE_d, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0},
+        { "Playing on Team X", KEYSTATE_t, 174, 138, 133, 22, CHANGE_TEAM, 1},
+        { "ESC", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
 
     };
 
 button buyteam[] =
     {
-        { "PREV", SDLK_p,  10, 40, 40, 20, CYCLE_GUY, -1},
-        { "NEXT", SDLK_n,  110, 40, 40, 20, CYCLE_GUY, 1},
-        { "", SDLK_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR},
-        { "", SDLK_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR},
-        { "", SDLK_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX},
-        { "", SDLK_d,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX},
-        { "", SDLK_c,  16, 100, 16, 10, DECREASE_STAT, BUT_CON},
-        { "", SDLK_c,  126,100, 16, 12, INCREASE_STAT, BUT_CON},
-        { "", SDLK_i,  16, 115, 16, 10, DECREASE_STAT, BUT_INT},
-        { "", SDLK_i,  126, 115, 16, 12, INCREASE_STAT, BUT_INT},
-        { "", SDLK_a,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR},
-        { "", SDLK_a,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR},
-        { "", SDLK_l,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL},
-        { "", SDLK_l,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL},
-        { "VIEW TEAM", SDLK_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1},
-        { "HIRE ME", SDLK_h,  80, 170, 80, 20, ADD_GUY, -1},
-        { "Select Team", SDLK_t, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1},
-        { "ESC", SDLK_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
+        { "PREV", KEYSTATE_p,  10, 40, 40, 20, CYCLE_GUY, -1},
+        { "NEXT", KEYSTATE_n,  110, 40, 40, 20, CYCLE_GUY, 1},
+        { "", KEYSTATE_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR},
+        { "", KEYSTATE_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR},
+        { "", KEYSTATE_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX},
+        { "", KEYSTATE_d,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX},
+        { "", KEYSTATE_c,  16, 100, 16, 10, DECREASE_STAT, BUT_CON},
+        { "", KEYSTATE_c,  126,100, 16, 12, INCREASE_STAT, BUT_CON},
+        { "", KEYSTATE_i,  16, 115, 16, 10, DECREASE_STAT, BUT_INT},
+        { "", KEYSTATE_i,  126, 115, 16, 12, INCREASE_STAT, BUT_INT},
+        { "", KEYSTATE_a,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR},
+        { "", KEYSTATE_a,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR},
+        { "", KEYSTATE_l,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL},
+        { "", KEYSTATE_l,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL},
+        { "VIEW TEAM", KEYSTATE_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1},
+        { "HIRE ME", KEYSTATE_h,  80, 170, 80, 20, ADD_GUY, -1},
+        { "Select Team", KEYSTATE_t, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1},
+        { "ESC", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT},
 
     };
 
 
 button saveteam[] =
     {
-        { "SLOT ONE", SDLK_1,  25, 25, 220, 10, DO_SAVE, 1},
-        { "SLOT TWO", SDLK_2,  25, 40, 220, 10, DO_SAVE, 2},
-        { "SLOT THREE", SDLK_3,25, 55, 220, 10, DO_SAVE, 3},
-        { "SLOT FOUR", SDLK_4, 25, 70, 220, 10, DO_SAVE, 4},
-        { "SLOT FIVE", SDLK_5, 25, 85, 220, 10, DO_SAVE, 5},
-        { "SLOT Six", SDLK_6, 25, 100, 220, 10, DO_SAVE,  6},
-        { "SLOT Seven", SDLK_7, 25, 115, 220, 10, DO_SAVE, 7},
-        { "SLOT Eight", SDLK_8, 25, 130, 220, 10, DO_SAVE, 8},
-        { "SLOT Nine", SDLK_9, 25, 145, 220, 10, DO_SAVE, 9},
-        { "SLOT Ten", SDLK_0, 25, 160, 220, 10, DO_SAVE, 10},
-        { "ESC", SDLK_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT},
+        { "SLOT ONE", KEYSTATE_1,  25, 25, 220, 10, DO_SAVE, 1},
+        { "SLOT TWO", KEYSTATE_2,  25, 40, 220, 10, DO_SAVE, 2},
+        { "SLOT THREE", KEYSTATE_3,25, 55, 220, 10, DO_SAVE, 3},
+        { "SLOT FOUR", KEYSTATE_4, 25, 70, 220, 10, DO_SAVE, 4},
+        { "SLOT FIVE", KEYSTATE_5, 25, 85, 220, 10, DO_SAVE, 5},
+        { "SLOT Six", KEYSTATE_6, 25, 100, 220, 10, DO_SAVE,  6},
+        { "SLOT Seven", KEYSTATE_7, 25, 115, 220, 10, DO_SAVE, 7},
+        { "SLOT Eight", KEYSTATE_8, 25, 130, 220, 10, DO_SAVE, 8},
+        { "SLOT Nine", KEYSTATE_9, 25, 145, 220, 10, DO_SAVE, 9},
+        { "SLOT Ten", KEYSTATE_0, 25, 160, 220, 10, DO_SAVE, 10},
+        { "ESC", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT},
 
     };
 
 button loadteam[] =
     {
-        { "SLOT ONE", SDLK_1,  25, 25, 220, 10, DO_LOAD, 1},
-        { "SLOT TWO", SDLK_2,  25, 40, 220, 10, DO_LOAD, 2},
-        { "SLOT THREE", SDLK_3,25, 55, 220, 10, DO_LOAD, 3},
-        { "SLOT FOUR", SDLK_4, 25, 70, 220, 10, DO_LOAD, 4},
-        { "SLOT FIVE", SDLK_5, 25, 85, 220, 10, DO_LOAD, 5},
-        { "SLOT Six", SDLK_6, 25, 100, 220, 10, DO_LOAD,  6},
-        { "SLOT Seven", SDLK_7, 25, 115, 220, 10, DO_LOAD, 7},
-        { "SLOT Eight", SDLK_8, 25, 130, 220, 10, DO_LOAD, 8},
-        { "SLOT Nine", SDLK_9, 25, 145, 220, 10, DO_LOAD, 9},
-        { "SLOT Ten", SDLK_0, 25, 160, 220, 10, DO_LOAD, 10},
-        { "ESC", SDLK_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT},
+        { "SLOT ONE", KEYSTATE_1,  25, 25, 220, 10, DO_LOAD, 1},
+        { "SLOT TWO", KEYSTATE_2,  25, 40, 220, 10, DO_LOAD, 2},
+        { "SLOT THREE", KEYSTATE_3,25, 55, 220, 10, DO_LOAD, 3},
+        { "SLOT FOUR", KEYSTATE_4, 25, 70, 220, 10, DO_LOAD, 4},
+        { "SLOT FIVE", KEYSTATE_5, 25, 85, 220, 10, DO_LOAD, 5},
+        { "SLOT Six", KEYSTATE_6, 25, 100, 220, 10, DO_LOAD,  6},
+        { "SLOT Seven", KEYSTATE_7, 25, 115, 220, 10, DO_LOAD, 7},
+        { "SLOT Eight", KEYSTATE_8, 25, 130, 220, 10, DO_LOAD, 8},
+        { "SLOT Nine", KEYSTATE_9, 25, 145, 220, 10, DO_LOAD, 9},
+        { "SLOT Ten", KEYSTATE_0, 25, 160, 220, 10, DO_LOAD, 10},
+        { "ESC", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT},
 
     };
 
 
 button yes_or_no_buttons[] =
     {
-        { "YES", SDLK_1,  70, 130, 50, 20, YES_OR_NO, YES},
-        { "NO", SDLK_2,  320-50-70, 130, 50, 20, YES_OR_NO, NO}
+        { "YES", KEYSTATE_1,  70, 130, 50, 20, YES_OR_NO, YES},
+        { "NO", KEYSTATE_2,  320-50-70, 130, 50, 20, YES_OR_NO, NO}
     };
 
 button no_or_yes_buttons[] =
     {
-        { "NO", SDLK_1,  70, 130, 50, 20, YES_OR_NO, NO},
-        { "YES", SDLK_2,  320-50-70, 130, 50, 20, YES_OR_NO, YES}
+        { "NO", KEYSTATE_1,  70, 130, 50, 20, YES_OR_NO, NO},
+        { "YES", KEYSTATE_2,  320-50-70, 130, 50, 20, YES_OR_NO, YES}
     };
 
 button popup_dialog_buttons[] =
     {
-        { "OK", SDLK_1,  160 - 25, 130, 50, 20, YES_OR_NO, YES}
+        { "OK", KEYSTATE_1,  160 - 25, 130, 50, 20, YES_OR_NO, YES}
     };
 
 Sint32 leftmouse()
@@ -886,9 +886,9 @@ Sint32 beginmenu(Sint32 arg1)
 
 button bload[] =
     {
-        { "START NEW TEAM", SDLK_s, 100, 70, 120, 15, NULLMENU, -1},
-        { "LOAD A TEAM", SDLK_l, 100, 100, 120, 15, NULLMENU, -1},
-        { "MAIN MENU", SDLK_ESCAPE, 100, 130, 120, 15, 0 , -1},
+        { "START NEW TEAM", KEYSTATE_s, 100, 70, 120, 15, NULLMENU, -1},
+        { "LOAD A TEAM", KEYSTATE_l, 100, 100, 120, 15, NULLMENU, -1},
+        { "MAIN MENU", KEYSTATE_ESCAPE, 100, 130, 120, 15, 0 , -1},
     };
 
 Sint32 loadmenu(Sint32 arg1)
@@ -920,25 +920,25 @@ Sint32 loadmenu(Sint32 arg1)
 
 button bnew[] =
     {
-        { "A", SDLK_a, 100, 70, 15, 15, NULLMENU, -1},
-        { "B", SDLK_b, 120, 70, 15, 15, NULLMENU, -1 },
-        { "C", SDLK_c, 140, 70, 15, 15, NULLMENU, -1 },
-        { "D", SDLK_d, 160, 70, 15, 15, NULLMENU, -1 },
-        { "E", SDLK_e, 180, 70, 15, 15, NULLMENU, -1 },
-        { "F", SDLK_f, 200, 70, 15, 15, NULLMENU, -1 },
-        { "G", SDLK_g, 100, 90, 15, 15, NULLMENU, -1},
-        { "H", SDLK_h, 120, 90, 15, 15, NULLMENU, -1 },
-        { "I", SDLK_i, 140, 90, 15, 15, NULLMENU, -1 },
-        { "J", SDLK_j, 160, 90, 15, 15, NULLMENU, -1 },
-        { "K", SDLK_k, 180, 90, 15, 15, NULLMENU, -1 },
-        { "L", SDLK_l, 200, 90, 15, 15, NULLMENU, -1 },
-        { "M", SDLK_m, 100, 110, 15, 15, NULLMENU, -1},
-        { "N", SDLK_n, 120, 110, 15, 15, NULLMENU, -1 },
-        { "O", SDLK_o, 140, 110, 15, 15, NULLMENU, -1 },
-        { "P", SDLK_p, 160, 110, 15, 15, NULLMENU, -1 },
-        { "Q", SDLK_q, 180, 110, 15, 15, NULLMENU, -1 },
-        { "R", SDLK_r, 200, 110, 15, 15, NULLMENU, -1 },
-        { "BACK", SDLK_ESCAPE, 100, 130, 115, 20, 0, -1 },
+        { "A", KEYSTATE_a, 100, 70, 15, 15, NULLMENU, -1},
+        { "B", KEYSTATE_b, 120, 70, 15, 15, NULLMENU, -1 },
+        { "C", KEYSTATE_c, 140, 70, 15, 15, NULLMENU, -1 },
+        { "D", KEYSTATE_d, 160, 70, 15, 15, NULLMENU, -1 },
+        { "E", KEYSTATE_e, 180, 70, 15, 15, NULLMENU, -1 },
+        { "F", KEYSTATE_f, 200, 70, 15, 15, NULLMENU, -1 },
+        { "G", KEYSTATE_g, 100, 90, 15, 15, NULLMENU, -1},
+        { "H", KEYSTATE_h, 120, 90, 15, 15, NULLMENU, -1 },
+        { "I", KEYSTATE_i, 140, 90, 15, 15, NULLMENU, -1 },
+        { "J", KEYSTATE_j, 160, 90, 15, 15, NULLMENU, -1 },
+        { "K", KEYSTATE_k, 180, 90, 15, 15, NULLMENU, -1 },
+        { "L", KEYSTATE_l, 200, 90, 15, 15, NULLMENU, -1 },
+        { "M", KEYSTATE_m, 100, 110, 15, 15, NULLMENU, -1},
+        { "N", KEYSTATE_n, 120, 110, 15, 15, NULLMENU, -1 },
+        { "O", KEYSTATE_o, 140, 110, 15, 15, NULLMENU, -1 },
+        { "P", KEYSTATE_p, 160, 110, 15, 15, NULLMENU, -1 },
+        { "Q", KEYSTATE_q, 180, 110, 15, 15, NULLMENU, -1 },
+        { "R", KEYSTATE_r, 200, 110, 15, 15, NULLMENU, -1 },
+        { "BACK", KEYSTATE_ESCAPE, 100, 130, 115, 20, 0, -1 },
     };
 
 Sint32 newmenu(Sint32 arg1)
@@ -969,7 +969,7 @@ Sint32 newmenu(Sint32 arg1)
 
 button bnull[] =
     {
-        { "BACK", SDLK_ESCAPE, 100, 80, 120, 30, 0, -1 },
+        { "BACK", KEYSTATE_ESCAPE, 100, 80, 120, 30, 0, -1 },
     };
 
 Sint32 nullmenu(Sint32 arg1)
