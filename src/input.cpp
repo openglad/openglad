@@ -695,15 +695,29 @@ void handle_events(const SDL_Event& event)
     case SDL_QUIT:
         quit(0);
         break;
-    #ifdef OUYA
-    case SDL_USEREVENT:
-        if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT && OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_O)
-           input_continue = true;
-        if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT && OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_MENU)
-           sendFakeKeyDownEvent(SDLK_ESCAPE);
-        break;
-    #endif
     default:
+    #ifdef OUYA
+        if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
+        {
+            if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_O)
+                input_continue = true;
+            else if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_DPAD_UP)
+                scroll_amount = 5;
+            else if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_DPAD_DOWN)
+                scroll_amount = -5;
+            else if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_MENU)
+                sendFakeKeyDownEvent(SDLK_ESCAPE);
+        }
+        else if(event.type == OuyaControllerManager::AXIS_EVENT)
+        {
+            const OuyaController& c = OuyaControllerManager::getController(event.user.code);
+            
+            // This should not be in an event or else it's jerky.
+            float v = c.getAxisValue(OuyaController::AXIS_LS_Y);
+            if(fabs(v) > OuyaController::DEADZONE)
+                scroll_amount = -5*v;
+        }
+    #endif
         break;
     }
 }

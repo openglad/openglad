@@ -160,6 +160,9 @@ bool OuyaController::isStickBeyondDeadzone(AxisEnum axis) const
     return false;
 }
 
+// Extra room for the cone to extend beyond 45 degree diagonals
+// e.g. the negative X cone points left and covers a little more than 90 degrees total.
+#define DIAG_OFFSET 11.25f  // 45/4
 
 bool OuyaController::isStickInNegativeCone(AxisEnum axis) const
 {
@@ -171,22 +174,22 @@ bool OuyaController::isStickInNegativeCone(AxisEnum axis) const
     case AXIS_LS_X:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
-            return dir < -112.5f || dir > 112.5f;
+            return dir < -135.0f + DIAG_OFFSET || dir > 135.0f - DIAG_OFFSET;
         }
     case AXIS_LS_Y:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
-            return -157.5f < dir && dir < -22.5f;
+            return -135.0f - DIAG_OFFSET < dir && dir < -45.0f + DIAG_OFFSET;
         }
     case AXIS_RS_X:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
-            return dir < -112.5f || dir > 112.5f;
+            return dir < -135.0f + DIAG_OFFSET || dir > 135.0f - DIAG_OFFSET;
         }
     case AXIS_RS_Y:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
-            return -157.5f < dir && dir < -22.5f;
+            return -135.0f - DIAG_OFFSET < dir && dir < -45.0f + DIAG_OFFSET;
         }
     case AXIS_L2:
     case AXIS_R2:
@@ -205,22 +208,22 @@ bool OuyaController::isStickInPositiveCone(AxisEnum axis) const
     case AXIS_LS_X:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
-            return -67.5f < dir && dir < 67.5f;
+            return -45.0f - DIAG_OFFSET < dir && dir < 45.0f + DIAG_OFFSET;
         }
     case AXIS_LS_Y:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
-            return 157.5f > dir && dir > 22.5f;
+            return 135.0f + DIAG_OFFSET > dir && dir > 45.0f - DIAG_OFFSET;
         }
     case AXIS_RS_X:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
-            return -67.5f < dir && dir < 67.5f;
+            return -45.0f - DIAG_OFFSET < dir && dir < 45.0f + DIAG_OFFSET;
         }
     case AXIS_RS_Y:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
-            return 157.5f > dir && dir > 22.5f;
+            return 135.0f + DIAG_OFFSET > dir && dir > 45.0f - DIAG_OFFSET;
         }
     case AXIS_L2:
     case AXIS_R2:
@@ -343,7 +346,7 @@ extern "C" void Java_com_dinomage_openglad_Openglad_OuyaControllerKeyDown(
                                     JNIEnv* env, jclass cls,
                                     jint player, jint keyCode)
 {
-    __android_log_print(ANDROID_LOG_VERBOSE, "OG", "nativeOnKeyDown(): player=%d, keyCode=%d", player, keyCode);
+    //__android_log_print(ANDROID_LOG_VERBOSE, "OG", "nativeOnKeyDown(): player=%d, keyCode=%d", player, keyCode);
     OuyaControllerManager::key_down(player, keyCode);
 }
 
