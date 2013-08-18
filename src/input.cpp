@@ -1135,6 +1135,7 @@ void disablePlayerJoystick(int player_num)
 
 void resetJoystick(int player_num)
 {
+    // FIXME: SDL2 supports hotplugging, so I don't need to restart the joystick subsystem
     // Reset joystick subsystem
     if(SDL_WasInit(SDL_INIT_JOYSTICK) & SDL_INIT_JOYSTICK)
         SDL_QuitSubSystem(SDL_INIT_JOYSTICK);

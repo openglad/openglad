@@ -11,7 +11,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * aSint32 with this program; if not, write to the Free Software
+ * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #ifndef __BUTTON_H
@@ -24,11 +24,8 @@
 #include "text.h"
 #include "screen.h"
 #include <math.h>
-//buffers: we are putting the int32 stuff into a new file (input.cpp/h)
-//#include "int32.h"
 #include "input.h"
 
-#define MEM_TIME (Sint32) 2000
 class vbutton;
 
 // Definition of a button
@@ -47,7 +44,6 @@ class vbutton;
 #define BUTTON_LEFT   (char) 14 //13
 #define BUTTON_RIGHT  (char) 12 //11
 
-//extern screen *myscreen;
 extern screen *myscreen;
 extern text *mytext;
 extern Sint32 *mymouse;
@@ -58,9 +54,8 @@ struct button
 	int hotkey;
 	Sint32 x, y;
 	Sint32 sizex, sizey;
-	//Sint32 (*fun)(Sint32 arg1);
-	Sint32 myfun;
-	Sint32 arg1;     // argurment to function fun
+	Sint32 myfun; // Callback ID
+	Sint32 arg1;  // argument to function fun
 };
 
 class vbutton
@@ -79,14 +74,14 @@ class vbutton
 		Sint32 leftclick(Sint32 whichone);
 		Sint32 rightclick(); //is called when the button is right clicked
 		Sint32 rightclick(Sint32 whichone);
-		Sint32 mouse_on(); //determins if mouse is on this button, returns 1 if true
+		Sint32 mouse_on(); //determines if mouse is on this button, returns 1 if true
 		void vdisplay();
 		void vdisplay(Sint32 status); // display depressed
 		Sint32 do_call(Sint32 whatfunc, Sint32 arg);
 		Sint32 do_call_right(Sint32 whatfunc, Sint32 arg);  // for right-button
 
-		Sint32 xloc; //the xposition in screen-coords
-		Sint32 yloc; //the yposition in screen-coords
+		Sint32 xloc; //the x position in screen-coords
+		Sint32 yloc; //the y position in screen-coords
 		char label[80]; //the label on the button
 		Sint32 width; // the buttons width in pixels
 		Sint32 height; // the buttons height in pixels
