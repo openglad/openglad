@@ -48,6 +48,36 @@ extern screen *myscreen;
 extern text *mytext;
 extern Sint32 *mymouse;
 
+// Holds array indices for navigating menu buttons
+class MenuNav
+{
+public:
+    // Array indices for the button to move to.
+    // -1 is invalid/unused direction
+    int up, down, left, right;
+    
+    static MenuNav Up(int up);
+    static MenuNav Down(int down);
+    static MenuNav Left(int left);
+    static MenuNav Right(int right);
+    static MenuNav UpDown(int up, int down);
+    static MenuNav UpLeft(int up, int left);
+    static MenuNav UpRight(int up, int right);
+    static MenuNav UpDownLeft(int up, int down, int left);
+    static MenuNav UpDownRight(int up, int down, int right);
+    static MenuNav UpLeftRight(int up, int left, int right);
+    static MenuNav DownLeft(int down, int left);
+    static MenuNav DownRight(int down, int right);
+    static MenuNav DownLeftRight(int down, int left, int right);
+    static MenuNav LeftRight(int left, int right);
+    static MenuNav UpDownLeftRight(int up, int down, int left, int right);
+    static MenuNav All(int up, int down, int left, int right);
+    static MenuNav None();
+private:
+    MenuNav();
+    MenuNav(int up, int down, int left, int right);
+};
+
 struct button
 {
 	char label[30];
@@ -56,6 +86,7 @@ struct button
 	Sint32 sizex, sizey;
 	Sint32 myfun; // Callback ID
 	Sint32 arg1;  // argument to function fun
+	MenuNav nav;
 };
 
 class vbutton
@@ -110,10 +141,7 @@ vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 red
 Sint32 score_panel(screen *myscreen);
 Sint32 mainmenu(Sint32 arg1);
 Sint32 beginmenu(Sint32 arg1);
-Sint32 loadmenu(Sint32 arg1);
-Sint32 newmenu(Sint32 arg1);
 void quit(Sint32 arg1);
-Sint32 nullmenu(Sint32 arg1);
 Sint32 load1(Sint32 arg1);  // Begin a preset scenario ..
 Sint32 load2(Sint32 arg1);
 Sint32 load3(Sint32 arg1);
