@@ -791,6 +791,7 @@ Sint32 mainmenu(Sint32 arg1)
         redraw_mainmenu();
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 	
 	return retvalue;
@@ -909,6 +910,7 @@ Sint32 create_team_menu(Sint32 arg1)
         draw_buttons(buttons, num_buttons);
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 
 	myscreen->clearfontbuffer();
@@ -951,6 +953,7 @@ Sint32 create_view_menu(Sint32 arg1)
         view_team(5,5,314, 160);
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 	myscreen->clearbuffer();
 
@@ -1617,6 +1620,7 @@ Sint32 create_load_menu(Sint32 arg1)
                            
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 	
 	return REDRAW;
@@ -1714,6 +1718,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
         
         draw_highlight_interior(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 	
 	myscreen->clearfontbuffer();
@@ -1781,6 +1786,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
         
         draw_highlight_interior(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 	
 	myscreen->clearfontbuffer();
@@ -1866,6 +1872,7 @@ void popup_dialog(const char* title, const char* message)
         
         draw_highlight_interior(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 	
 	myscreen->clearfontbuffer();
@@ -1937,6 +1944,7 @@ Sint32 create_save_menu(Sint32 arg1)
                            
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 
 	myscreen->clearfontbuffer();
