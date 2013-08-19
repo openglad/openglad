@@ -3023,7 +3023,9 @@ Sint32 create_detail_menu(guy *arg1)
    while ( !(retvalue & EXIT) )
    {
        show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
-
+    
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
        if (leftmouse())
        {
            detailmouse = query_mouse();
@@ -3060,6 +3062,10 @@ Sint32 create_detail_menu(guy *arg1)
 
            retvalue=localbuttons->leftclick();
        }
+       
+       draw_buttons(buttons, num_buttons);
+       draw_highlight_interior(buttons[highlighted_button]);
+       myscreen->buffer_to_screen(0, 0, 320, 200);
    }
    return REDRAW;  // back to edit menu
 }
