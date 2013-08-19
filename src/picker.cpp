@@ -541,10 +541,12 @@ void draw_version_number()
 }
 
 #ifdef USE_CONTROLLER_INPUT
-bool menu_nav_enabled = true;
+#define MENU_NAV_DEFAULT true
 #else
-bool menu_nav_enabled = false;
+#define MENU_NAV_DEFAULT false
 #endif
+bool menu_nav_enabled = MENU_NAV_DEFAULT;
+Uint32 menu_nav_enabled_time = 0;
 
 void draw_highlight_interior(const button& b)
 {
@@ -568,6 +570,7 @@ void draw_highlight(const button& b)
 
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
 {
+    bool pressed = false;
     if(isPlayerHoldingKey(0, KEY_UP))
     {
         retvalue = REDRAW;
@@ -577,8 +580,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
         if(next_button >= 0)
             highlighted_button = next_button;
         
-        menu_nav_enabled = true;
-        return true;
+        pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_DOWN))
     {
@@ -589,8 +591,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
         if(next_button >= 0)
             highlighted_button = next_button;
         
-        menu_nav_enabled = true;
-        return true;
+        pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_LEFT))
     {
@@ -601,8 +602,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
         if(next_button >= 0)
             highlighted_button = next_button;
         
-        menu_nav_enabled = true;
-        return true;
+        pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_RIGHT))
     {
@@ -613,8 +613,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
         if(next_button >= 0)
             highlighted_button = next_button;
         
-        menu_nav_enabled = true;
-        return true;
+        pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_FIRE))
     {
@@ -622,7 +621,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
             get_input_events(POLL);
         
         if(!menu_nav_enabled)
-            menu_nav_enabled = true;
+            pressed = true;
         else
         {
             myscreen->soundp->play_sound(SOUND_BOW);
@@ -632,11 +631,25 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
             {
                 retvalue = allbuttons[highlighted_button]->do_call(allbuttons[highlighted_button]->myfunc, allbuttons[highlighted_button]->arg);
             }
+            
+            pressed = true;
         }
-        return true;
     }
     
-    return false;
+    // Turn menu_nav on if something was pressed.
+    if(pressed)
+    {
+        menu_nav_enabled = true;
+        menu_nav_enabled_time = SDL_GetTicks();
+    }
+    // Turn it off if it's been a while since something was pressed.
+    else if(menu_nav_enabled)
+    {
+        if(SDL_GetTicks() - menu_nav_enabled_time > 5000)
+            menu_nav_enabled = MENU_NAV_DEFAULT;
+    }
+    
+    return pressed;
 }
 
 bool reset_buttons(vbutton* localbuttons, button* buttons, int num_buttons, Sint32& retvalue)
