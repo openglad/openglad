@@ -447,13 +447,7 @@ Sint32 vbutton::mouse_on()
     }
 }
 
-vbutton * buttonmenu(button * buttons, Sint32 numbuttons)
-{
-    //buffers: return buttonmenu(buttons, numbuttons, 1); // default is redraw screen
-    return buttonmenu(buttons,numbuttons,0);
-}
-
-vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw)
+vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 {
     Sint32 i;
 
@@ -463,63 +457,37 @@ vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw)
             delete allbuttons[i];
         allbuttons[i] = NULL;
     }
+    
+    for (i=0; i < numbuttons; i++)
+    {
+        allbuttons[i] = new vbutton(buttons[i].x,buttons[i].y,
+                                    buttons[i].sizex, buttons[i].sizey,
+                                    buttons[i].myfun, buttons[i].arg1,
+                                    buttons[i].label, buttons[i].hotkey);
+    }
 
+    return allbuttons[0];
+}
+
+void draw_backdrop()
+{
+    Sint32 i;
     for (i=0; i < 5; i++)
         if (backdrops[i])
             backdrops[i]->draw(myscreen->viewob[0]);
-
-    for (i=0; i < numbuttons; i++)
-    {
-        allbuttons[i] = new vbutton(buttons[i].x,buttons[i].y,
-                                    buttons[i].sizex, buttons[i].sizey,
-                                    buttons[i].myfun, buttons[i].arg1,
-                                    buttons[i].label, buttons[i].hotkey);
-        myscreen->draw_box(allbuttons[i]->xloc-1,
-                           allbuttons[i]->yloc-1,
-                           allbuttons[i]->xend,
-                           allbuttons[i]->yend, 0, 0, 1);
-    }
-
-    release_mouse();
-
-    //if (redraw)
-    //	myscreen->buffer_to_screen(0, 0, 320, 200);
-    grab_mouse();
-    return allbuttons[0];
-
 }
 
-vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 redraw)
+void draw_buttons(button * buttons, Sint32 numbuttons)
 {
     Sint32 i;
-
-    for (i=1; i < MAX_BUTTONS; i++) // skip # 0!
-    {
-        if (allbuttons[i])
-            delete allbuttons[i];
-        allbuttons[i] = NULL;
-    }
-
-
     for (i=0; i < numbuttons; i++)
     {
-        allbuttons[i] = new vbutton(buttons[i].x,buttons[i].y,
-                                    buttons[i].sizex, buttons[i].sizey,
-                                    buttons[i].myfun, buttons[i].arg1,
-                                    buttons[i].label, buttons[i].hotkey);
+        allbuttons[i]->vdisplay();
         myscreen->draw_box(allbuttons[i]->xloc-1,
                            allbuttons[i]->yloc-1,
                            allbuttons[i]->xend,
                            allbuttons[i]->yend, 0, 0, 1);
     }
-
-    //release_mouse();
-
-    //if (redraw)
-    //	myscreen->buffer_to_screen(0, 0, 320, 200);
-    //grab_mouse();
-    return allbuttons[0];
-
 }
 
 Sint32 yes_or_no(Sint32 arg)

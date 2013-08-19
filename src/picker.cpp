@@ -288,36 +288,38 @@ void picker_quit()
 #endif
 }
 
+// mainmenu
 button buttons1[] =
     {
-        { "", KEYSTATE_b, 80, 50, 140, 20, BEGINMENU, -1 , MenuNav::Down(1)}, // BEGIN NEW GAME
-        { "CONTINUE GAME", KEYSTATE_c, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 2)},
+        { "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, -1 , MenuNav::Down(1)}, // BEGIN NEW GAME
+        { "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5)},
 
         { "4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3)},
         { "3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 , MenuNav::UpDownRight(5, 6, 2)},
         { "2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 , MenuNav::UpDownLeft(1, 2, 5)},
         { "1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 , MenuNav::UpDownRight(1, 3, 4)},
 
-        { "DIFFICULTY", KEYSTATE_d, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7)},
+        { "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7)},
 
-        { "PVP: Allied", KEYSTATE_p, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)},
-        { "Level Edit", KEYSTATE_l, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)},
+        { "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)},
+        { "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)},
 
         { "QUIT", KEYSTATE_ESCAPE, 80, 175, 140, 20, QUIT_MENU, -1 , MenuNav::Up(7)},
     };
 
+// beginmenu (first menu of new game), create_team_menu
 button bteam[] =
     {
-        { "VIEW TEAM", KEYSTATE_v, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1)},
-        { "TRAIN TEAM", KEYSTATE_t, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)},
-        { "Hire Troops",  KEYSTATE_h, 210, 70, 80, 15, CREATE_BUY_MENU, -1, MenuNav::DownLeft(5, 1)},
-        { "LOAD TEAM", KEYSTATE_l, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)},
-        { "SAVE TEAM", KEYSTATE_s, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)},
-        { "GO", KEYSTATE_g,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4)},
+        { "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1)},
+        { "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)},
+        { "Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_BUY_MENU, -1, MenuNav::DownLeft(5, 1)},
+        { "LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)},
+        { "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)},
+        { "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4)},
 
-        { "QUIT", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT, MenuNav::UpRight(3, 7)},
-        { "SET LEVEL", KEYSTATE_e, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 8, 6)},
-        { "SET CAMPAIGN", KEYSTATE_c, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(7, 6)},
+        { "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT, MenuNav::UpRight(3, 7)},
+        { "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 8, 6)},
+        { "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(7, 6)},
 
     };
 
@@ -325,7 +327,7 @@ button viewteam[] =
     {
         //  { "TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
         //  { "HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_BUY_MENU, -1},
-        { "GO", KEYSTATE_g,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)},
+        { "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)},
         { "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT, MenuNav::Right(0)},
 
     };
@@ -337,48 +339,48 @@ button detailed[] =
 
 button editteam[] =
     {
-        { "PREV", KEYSTATE_p,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1, MenuNav::DownRight(1, 2)},
-        { "NEXT", KEYSTATE_n,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)},
-        { "", KEYSTATE_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)},
-        { "", KEYSTATE_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeft(1, 5, 2)},
-        { "", KEYSTATE_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)},
-        { "", KEYSTATE_d,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeft(3, 7, 4)},
-        { "", KEYSTATE_c,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)},
-        { "", KEYSTATE_c,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeft(5, 9, 6)},
-        { "", KEYSTATE_i,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)},
-        { "", KEYSTATE_i,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeft(7, 11, 8)},
-        { "", KEYSTATE_a,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)},
-        { "", KEYSTATE_a,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeft(9, 13, 10)},
-        { "", KEYSTATE_l,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 19, 13)},
-        { "", KEYSTATE_l,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 18)},
-        { "VIEW TEAM", KEYSTATE_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(18, 15)},
-        { "ACCEPT", KEYSTATE_a,  80, 170, 80, 20, EDIT_GUY, -1, MenuNav::UpLeftRight(13, 19, 14)},
-        { "RENAME", KEYSTATE_r, 174,  8, 64, 22, NAME_GUY, 1, MenuNav::DownLeftRight(18, 1, 17)},
-        { "DETAILS..", KEYSTATE_d, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0, MenuNav::DownLeft(18, 16)},
-        { "Playing on Team X", KEYSTATE_t, 174, 138, 133, 22, CHANGE_TEAM, 1, MenuNav::UpDownLeft(17, 14, 13)},
+        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1, MenuNav::DownRight(1, 2)},
+        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)},
+        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)},
+        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeft(1, 5, 2)},
+        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)},
+        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeft(3, 7, 4)},
+        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)},
+        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeft(5, 9, 6)},
+        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)},
+        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeft(7, 11, 8)},
+        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)},
+        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeft(9, 13, 10)},
+        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 19, 13)},
+        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 18)},
+        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(18, 15)},
+        { "ACCEPT", KEYSTATE_UNKNOWN,  80, 170, 80, 20, EDIT_GUY, -1, MenuNav::UpLeftRight(13, 19, 14)},
+        { "RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, NAME_GUY, 1, MenuNav::DownLeftRight(18, 1, 17)},
+        { "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0, MenuNav::DownLeft(18, 16)},
+        { "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, CHANGE_TEAM, 1, MenuNav::UpDownLeft(17, 14, 13)},
         { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15)},
 
     };
 
 button buyteam[] =
     {
-        { "PREV", KEYSTATE_p,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(1, 2)},
-        { "NEXT", KEYSTATE_n,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)},
-        { "", KEYSTATE_s,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)},
-        { "", KEYSTATE_s,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeftRight(1, 5, 2, 16)},
-        { "", KEYSTATE_d,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)},
-        { "", KEYSTATE_d,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeftRight(3, 7, 4, 16)},
-        { "", KEYSTATE_c,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)},
-        { "", KEYSTATE_c,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeftRight(5, 9, 6, 16)},
-        { "", KEYSTATE_i,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)},
-        { "", KEYSTATE_i,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeftRight(7, 11, 8, 16)},
-        { "", KEYSTATE_a,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)},
-        { "", KEYSTATE_a,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeftRight(9, 13, 10, 16)},
-        { "", KEYSTATE_l,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 17, 13)},
-        { "", KEYSTATE_l,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 16)},
-        { "VIEW TEAM", KEYSTATE_v,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(16, 15)},
-        { "HIRE ME", KEYSTATE_h,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(13, 17, 14)},
-        { "Select Team", KEYSTATE_t, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 14, 13)},
+        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(1, 2)},
+        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)},
+        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)},
+        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeftRight(1, 5, 2, 16)},
+        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)},
+        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeftRight(3, 7, 4, 16)},
+        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)},
+        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeftRight(5, 9, 6, 16)},
+        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)},
+        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeftRight(7, 11, 8, 16)},
+        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)},
+        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeftRight(9, 13, 10, 16)},
+        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 17, 13)},
+        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 16)},
+        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(16, 15)},
+        { "HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(13, 17, 14)},
+        { "Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 14, 13)},
         { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15)},
 
     };
@@ -386,32 +388,32 @@ button buyteam[] =
 
 button saveteam[] =
     {
-        { "SLOT ONE", KEYSTATE_1,  25, 25, 220, 10, DO_SAVE, 1, MenuNav::Down(1)},
-        { "SLOT TWO", KEYSTATE_2,  25, 40, 220, 10, DO_SAVE, 2, MenuNav::UpDown(0, 2)},
-        { "SLOT THREE", KEYSTATE_3,25, 55, 220, 10, DO_SAVE, 3, MenuNav::UpDown(1, 3)},
-        { "SLOT FOUR", KEYSTATE_4, 25, 70, 220, 10, DO_SAVE, 4, MenuNav::UpDown(2, 4)},
-        { "SLOT FIVE", KEYSTATE_5, 25, 85, 220, 10, DO_SAVE, 5, MenuNav::UpDown(3, 5)},
-        { "SLOT Six", KEYSTATE_6, 25, 100, 220, 10, DO_SAVE,  6, MenuNav::UpDown(4, 6)},
-        { "SLOT Seven", KEYSTATE_7, 25, 115, 220, 10, DO_SAVE, 7, MenuNav::UpDown(5, 7)},
-        { "SLOT Eight", KEYSTATE_8, 25, 130, 220, 10, DO_SAVE, 8, MenuNav::UpDown(6, 8)},
-        { "SLOT Nine", KEYSTATE_9, 25, 145, 220, 10, DO_SAVE, 9, MenuNav::UpDown(7, 9)},
-        { "SLOT Ten", KEYSTATE_0, 25, 160, 220, 10, DO_SAVE, 10, MenuNav::UpDown(8, 10)},
+        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_SAVE, 1, MenuNav::Down(1)},
+        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_SAVE, 2, MenuNav::UpDown(0, 2)},
+        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_SAVE, 3, MenuNav::UpDown(1, 3)},
+        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_SAVE, 4, MenuNav::UpDown(2, 4)},
+        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_SAVE, 5, MenuNav::UpDown(3, 5)},
+        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_SAVE,  6, MenuNav::UpDown(4, 6)},
+        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_SAVE, 7, MenuNav::UpDown(5, 7)},
+        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_SAVE, 8, MenuNav::UpDown(6, 8)},
+        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_SAVE, 9, MenuNav::UpDown(7, 9)},
+        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_SAVE, 10, MenuNav::UpDown(8, 10)},
         { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9)},
 
     };
 
 button loadteam[] =
     {
-        { "SLOT ONE", KEYSTATE_1,  25, 25, 220, 10, DO_LOAD, 1, MenuNav::Down(1)},
-        { "SLOT TWO", KEYSTATE_2,  25, 40, 220, 10, DO_LOAD, 2, MenuNav::UpDown(0, 2)},
-        { "SLOT THREE", KEYSTATE_3,25, 55, 220, 10, DO_LOAD, 3, MenuNav::UpDown(1, 3)},
-        { "SLOT FOUR", KEYSTATE_4, 25, 70, 220, 10, DO_LOAD, 4, MenuNav::UpDown(2, 4)},
-        { "SLOT FIVE", KEYSTATE_5, 25, 85, 220, 10, DO_LOAD, 5, MenuNav::UpDown(3, 5)},
-        { "SLOT Six", KEYSTATE_6, 25, 100, 220, 10, DO_LOAD,  6, MenuNav::UpDown(4, 6)},
-        { "SLOT Seven", KEYSTATE_7, 25, 115, 220, 10, DO_LOAD, 7, MenuNav::UpDown(5, 7)},
-        { "SLOT Eight", KEYSTATE_8, 25, 130, 220, 10, DO_LOAD, 8, MenuNav::UpDown(6, 8)},
-        { "SLOT Nine", KEYSTATE_9, 25, 145, 220, 10, DO_LOAD, 9, MenuNav::UpDown(7, 9)},
-        { "SLOT Ten", KEYSTATE_0, 25, 160, 220, 10, DO_LOAD, 10, MenuNav::UpDown(8, 10)},
+        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_LOAD, 1, MenuNav::Down(1)},
+        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_LOAD, 2, MenuNav::UpDown(0, 2)},
+        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_LOAD, 3, MenuNav::UpDown(1, 3)},
+        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_LOAD, 4, MenuNav::UpDown(2, 4)},
+        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_LOAD, 5, MenuNav::UpDown(3, 5)},
+        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_LOAD,  6, MenuNav::UpDown(4, 6)},
+        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_LOAD, 7, MenuNav::UpDown(5, 7)},
+        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_LOAD, 8, MenuNav::UpDown(6, 8)},
+        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_LOAD, 9, MenuNav::UpDown(7, 9)},
+        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_LOAD, 10, MenuNav::UpDown(8, 10)},
         { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9)},
 
     };
@@ -419,19 +421,19 @@ button loadteam[] =
 
 button yes_or_no_buttons[] =
     {
-        { "YES", KEYSTATE_1,  70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Right(1)},
-        { "NO", KEYSTATE_2,  320-50-70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Left(0)}
+        { "YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Right(1)},
+        { "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Left(0)}
     };
 
 button no_or_yes_buttons[] =
     {
-        { "NO", KEYSTATE_1,  70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Right(1)},
-        { "YES", KEYSTATE_2,  320-50-70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Left(0)}
+        { "NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Right(1)},
+        { "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Left(0)}
     };
 
 button popup_dialog_buttons[] =
     {
-        { "OK", KEYSTATE_1,  160 - 25, 130, 50, 20, YES_OR_NO, YES, MenuNav::None()}
+        { "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, YES_OR_NO, YES, MenuNav::None()}
     };
 
 Sint32 leftmouse()
@@ -538,302 +540,231 @@ void draw_version_number()
 	mytext.write_xy(320 - strlen(OPENGLAD_VERSION_STRING)*6, 200 - 10, OPENGLAD_VERSION_STRING, (unsigned char) DARK_BLUE, 1);
 }
 
+bool menu_nav_enabled = false;
+void draw_highlight(const button& b)
+{
+    if(!menu_nav_enabled)
+        return;
+    
+    float t = (1.0f + sinf(SDL_GetTicks()/300.0f))/2.0f;
+    float size = 3;
+    myscreen->draw_box(b.x - t*size, b.y - t*size, b.x + b.sizex + t*size, b.y + b.sizey + t*size, YELLOW, 0);
+}
+
+void handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
+{
+    if(isPlayerHoldingKey(0, KEY_UP))
+    {
+        retvalue = REDRAW;
+        while(isPlayerHoldingKey(0, KEY_UP))
+            get_input_events(POLL);
+        int next_button = buttons[highlighted_button].nav.up;
+        if(next_button >= 0)
+            highlighted_button = next_button;
+        
+        menu_nav_enabled = true;
+    }
+    if(isPlayerHoldingKey(0, KEY_DOWN))
+    {
+        retvalue = REDRAW;
+        while(isPlayerHoldingKey(0, KEY_DOWN))
+            get_input_events(POLL);
+        int next_button = buttons[highlighted_button].nav.down;
+        if(next_button >= 0)
+            highlighted_button = next_button;
+        
+        menu_nav_enabled = true;
+    }
+    if(isPlayerHoldingKey(0, KEY_LEFT))
+    {
+        retvalue = REDRAW;
+        while(isPlayerHoldingKey(0, KEY_LEFT))
+            get_input_events(POLL);
+        int next_button = buttons[highlighted_button].nav.left;
+        if(next_button >= 0)
+            highlighted_button = next_button;
+        
+        menu_nav_enabled = true;
+    }
+    if(isPlayerHoldingKey(0, KEY_RIGHT))
+    {
+        retvalue = REDRAW;
+        while(isPlayerHoldingKey(0, KEY_RIGHT))
+            get_input_events(POLL);
+        int next_button = buttons[highlighted_button].nav.right;
+        if(next_button >= 0)
+            highlighted_button = next_button;
+        
+        menu_nav_enabled = true;
+    }
+    if(isPlayerHoldingKey(0, KEY_FIRE))
+    {
+        while(isPlayerHoldingKey(0, KEY_FIRE))
+            get_input_events(POLL);
+        
+        if(!menu_nav_enabled)
+            menu_nav_enabled = true;
+        else
+        {
+            myscreen->soundp->play_sound(SOUND_BOW);
+            allbuttons[highlighted_button]->vdisplay(1);
+            allbuttons[highlighted_button]->vdisplay();
+            if(allbuttons[highlighted_button]->myfunc)
+            {
+                retvalue = allbuttons[highlighted_button]->do_call(allbuttons[highlighted_button]->myfunc, allbuttons[highlighted_button]->arg);
+            }
+        }
+    }
+}
+
+bool reset_buttons(vbutton* localbuttons, button* buttons, int num_buttons, Sint32& retvalue)
+{
+    if(localbuttons && (retvalue == OK || retvalue == REDRAW))
+    {
+        delete(localbuttons);
+        localbuttons = init_buttons(buttons, num_buttons);
+        
+        retvalue = 0;
+        return true;
+    }
+    return false;
+}
+
+void redraw_mainmenu()
+{
+    int count = 0;
+	char message[80];
+    
+    main_title_logo_pix->set_frame(0);
+    main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
+    main_title_logo_pix->set_frame(1);
+    main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
+    main_columns_pix->set_frame(0);
+    main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
+    main_columns_pix->set_frame(1);
+    main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
+    //main_columns_pix->next_frame();
+    
+    if (myscreen->save_data.numplayers==4)
+    {
+        allbuttons[2]->do_outline = 1;
+        allbuttons[3]->do_outline = 0;
+        allbuttons[4]->do_outline = 0;
+        allbuttons[5]->do_outline = 0;
+        allbuttons[2]->vdisplay();
+        allbuttons[3]->vdisplay();
+        allbuttons[4]->vdisplay();
+        allbuttons[5]->vdisplay();
+    }
+    else if (myscreen->save_data.numplayers==3)
+    {
+        allbuttons[2]->do_outline = 0;
+        allbuttons[3]->do_outline = 1;
+        allbuttons[4]->do_outline = 0;
+        allbuttons[5]->do_outline = 0;
+        allbuttons[2]->vdisplay();
+        allbuttons[3]->vdisplay();
+        allbuttons[4]->vdisplay();
+        allbuttons[5]->vdisplay();
+    }
+    else if (myscreen->save_data.numplayers==2)
+    {
+        allbuttons[2]->do_outline = 0;
+        allbuttons[3]->do_outline = 0;
+        allbuttons[4]->do_outline = 1;
+        allbuttons[5]->do_outline = 0;
+        allbuttons[2]->vdisplay();
+        allbuttons[3]->vdisplay();
+        allbuttons[4]->vdisplay();
+        allbuttons[5]->vdisplay();
+    }
+    else
+    {
+        allbuttons[2]->do_outline = 0;
+        allbuttons[3]->do_outline = 0;
+        allbuttons[4]->do_outline = 0;
+        allbuttons[5]->do_outline = 1;
+        allbuttons[2]->vdisplay();
+        allbuttons[3]->vdisplay();
+        allbuttons[4]->vdisplay();
+        allbuttons[5]->vdisplay();
+    }
+
+    sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
+    strcpy(allbuttons[6]->label, message);
+
+    // Show the allied mode
+    if (myscreen->save_data.allied_mode)
+        sprintf(message, "PVP: Ally");
+    else
+        sprintf(message, "PVP: Enemy");
+    strcpy(allbuttons[7]->label, message);
+
+    count = 0;
+    myscreen->clearfontbuffer();
+    while (allbuttons[count])
+    {
+        allbuttons[count]->vdisplay();
+        count++;
+    }
+    allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+    
+    draw_version_number();
+}
+
 Sint32 mainmenu(Sint32 arg1)
 {
-	vbutton *tempbuttons;
 	Sint32 retvalue=0;
-	Sint32 count;
-	char message[80];
 
-	if (arg1)
+	if(arg1)
 		arg1 = 1;
 
-	// Set screen to black, to non-display
-	//buffers: PORT:  for(i=0;i<256;i++)
-	//buffers: PORT: set_palette_reg((unsigned char)i, 0, 0, 0);
-	//buffers: PORT:  load_palette("our.pal", (char *)mypalette);
-
-	if (localbuttons != NULL)
+	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
 
-	localbuttons = buttonmenu_no_backdrop(buttons1, 10, 0);
-	myscreen->clearbuffer();
+	button* buttons = buttons1;
+	int num_buttons = 10;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-
-	tempbuttons = localbuttons;
-	count = 0;
-	if (myscreen->save_data.numplayers==4)
-	{
-		allbuttons[2]->do_outline = 1;
-		allbuttons[3]->do_outline = 0;
-		allbuttons[4]->do_outline = 0;
-		allbuttons[5]->do_outline = 0;
-	}
-	else if (myscreen->save_data.numplayers==3)
-	{
-		allbuttons[2]->do_outline = 0;
-		allbuttons[3]->do_outline = 1;
-		allbuttons[4]->do_outline = 0;
-		allbuttons[5]->do_outline = 0;
-	}
-	else if (myscreen->save_data.numplayers==2)
-	{
-		allbuttons[2]->do_outline = 0;
-		allbuttons[3]->do_outline = 0;
-		allbuttons[4]->do_outline = 1;
-		allbuttons[5]->do_outline = 0;
-	}
-	else
-	{
-		allbuttons[2]->do_outline = 0;
-		allbuttons[3]->do_outline = 0;
-		allbuttons[4]->do_outline = 0;
-		allbuttons[5]->do_outline = 1;
-	}
-	sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-	strcpy(allbuttons[6]->label, message);
-
-	// Show the allied mode
-	if (myscreen->save_data.allied_mode)
-		strcpy(allbuttons[7]->label, "PVP: Ally");
-	else
-		strcpy(allbuttons[7]->label, "PVP: Enemy");
-
-	while (allbuttons[count])
-	{
-		allbuttons[count]->vdisplay();
-		count++;
-	}
-
-	if (localbuttons == NULL)
-		return 1;
-
-	main_title_logo_pix->set_frame(0);
-	main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
-	main_title_logo_pix->set_frame(1);
-	main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
-	main_columns_pix->set_frame(0);
-	main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
-	main_columns_pix->set_frame(1);
-	main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
 	
-	draw_version_number();
-	//myscreen->refresh();
+	redraw_mainmenu();
 
 	clear_keyboard();
 	reset_timer();
 	while (query_timer() < 1);
-	// Zardus: PORT: fade from black
+	
 	myscreen->fadeblack(1);
 
 	grab_mouse();
 
-	while ( !(retvalue & EXIT) )
+	while(!(retvalue & EXIT))
 	{
-		myscreen->buffer_to_screen(0,0,320,200);
-		if (leftmouse())
-		{
-			//myscreen->soundp->play_sound(SOUND_BOW);
+	    // Input
+		if(leftmouse())
 			retvalue = localbuttons->leftclick();
-			if (localbuttons && (retvalue == REDRAW))
-			{
-				myscreen->clearbuffer();
-				delete(localbuttons);
-				localbuttons = buttonmenu_no_backdrop(buttons1, 10, 0);
-				
-				myscreen->clearfontbuffer();
-				
-				count = 0;
-				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-				strcpy(allbuttons[6]->label, message);
-
-				// Show the allied mode
-				if (myscreen->save_data.allied_mode)
-					strcpy(allbuttons[7]->label, "PVP: Ally");
-				else
-					strcpy(allbuttons[7]->label, "PVP: Enemy");
-
-				while (allbuttons[count])
-				{
-					allbuttons[count]->vdisplay();
-					count++;
-				}
-				allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-				retvalue = 0;
-				tempbuttons = localbuttons;
-				count = 0;
-
-				release_mouse();
-				main_title_logo_pix->set_frame(0);
-				main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
-				main_title_logo_pix->set_frame(1);
-				main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
-				main_columns_pix->set_frame(0);
-				main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
-				main_columns_pix->set_frame(1);
-				main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
-				//main_columns_pix->next_frame();
-
-
-				if (myscreen->save_data.numplayers==4)
-				{
-					allbuttons[2]->do_outline = 1;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (myscreen->save_data.numplayers==3)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 1;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (myscreen->save_data.numplayers==2)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 1;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 1;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				
-                draw_version_number();
-
-				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-				strcpy(allbuttons[6]->label, message);
-
-				// Show the allied mode
-				if (myscreen->save_data.allied_mode)
-					strcpy(allbuttons[7]->label, "PVP: Ally");
-				else
-					strcpy(allbuttons[7]->label, "PVP: Enemy");
-
-				//myscreen->refresh();
-				grab_mouse();
-
-			}
-			if (localbuttons && retvalue == OK)
-			{
-				delete(localbuttons);
-				localbuttons = buttonmenu_no_backdrop(buttons1, 10, 0);
-				
-				tempbuttons = localbuttons;
-				count = 0;
-				
-				main_title_logo_pix->set_frame(0);
-				main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
-				main_title_logo_pix->set_frame(1);
-				main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
-				main_columns_pix->set_frame(0);
-				main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
-				main_columns_pix->set_frame(1);
-				main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
-				//main_columns_pix->next_frame();
-				
-				if (myscreen->save_data.numplayers==4)
-				{
-					allbuttons[2]->do_outline = 1;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (myscreen->save_data.numplayers==3)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 1;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else if (myscreen->save_data.numplayers==2)
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 1;
-					allbuttons[5]->do_outline = 0;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-				else
-				{
-					allbuttons[2]->do_outline = 0;
-					allbuttons[3]->do_outline = 0;
-					allbuttons[4]->do_outline = 0;
-					allbuttons[5]->do_outline = 1;
-					allbuttons[2]->vdisplay();
-					allbuttons[3]->vdisplay();
-					allbuttons[4]->vdisplay();
-					allbuttons[5]->vdisplay();
-				}
-
-				sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-				strcpy(allbuttons[6]->label, message);
-
-				// Show the allied mode
-				if (myscreen->save_data.allied_mode)
-					sprintf(message, "PVP: Ally");
-				else
-					sprintf(message, "PVP: Enemy");
-				strcpy(allbuttons[7]->label, message);
-
-				tempbuttons = localbuttons;
-				count = 0;
-				myscreen->clearfontbuffer();
-				while (allbuttons[count])
-				{
-					allbuttons[count]->vdisplay();
-					count++;
-				}
-				allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-				
-                draw_version_number();
-			} // end of "OK" buttons
-		}
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        // Reset buttons
+        if(reset_buttons(localbuttons, buttons, num_buttons, retvalue))
+            allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+		
+		// Draw
+		myscreen->clearbuffer();
+        draw_buttons(buttons, num_buttons);
+        redraw_mainmenu();
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
-	delete tempbuttons;
+	
 	return retvalue;
 }
 
+// Reset game data and go to create_team_menu()
 Sint32 beginmenu(Sint32 arg1)
 {
-	Sint32 i,retvalue=0;
-
-	if (arg1)
-		arg1 = 1;
-	if (localbuttons != NULL)
-		delete localbuttons; //we'll make a new set
+	Sint32 i;
 
 	myscreen->clear();
 
@@ -848,14 +779,6 @@ Sint32 beginmenu(Sint32 arg1)
 	grab_mouse();
 	myscreen->clear();
 
-	localbuttons = buttonmenu(bteam, 9);
-
-	myscreen->swap();
-
-	if (localbuttons == NULL)
-		return 1;
-
-
     // Reset the save data so we have a fresh, new team
 	myscreen->save_data.reset();
 	current_guy = NULL;
@@ -864,24 +787,7 @@ Sint32 beginmenu(Sint32 arg1)
 	for (i=0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
-	while ( !(retvalue & EXIT) )
-	{
-		if (leftmouse())
-		{
-			retvalue=localbuttons->leftclick();
-		}
-
-		if (localbuttons && (retvalue == REDRAW))
-		{
-			myscreen->clearbuffer();
-			delete(localbuttons);
-			localbuttons = buttonmenu(bteam, 9);
-			myscreen->swap();
-			retvalue = 0;
-		}
-
-	}
-	return REDRAW;
+	return create_team_menu(arg1);
 }
 
 
@@ -941,35 +847,33 @@ Sint32 create_team_menu(Sint32 arg1)
 
 	myscreen->fadeblack(0);
 	myscreen->clearfontbuffer();
-
-	//  myscreen->clear();
-	localbuttons = buttonmenu(bteam,9);
+	
+	button* buttons = bteam;
+	int num_buttons = 9;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	draw_backdrop();
+	draw_buttons(buttons, num_buttons);
 	
 	myscreen->fadeblack(1);
-
-	myscreen->buffer_to_screen(0,0,320,200);
 	
-	
-
-	//myscreen->soundp->play_sound(SOUND_CHARGE);
 	while ( !(retvalue & EXIT) )
 	{
-		if (leftmouse())
-		{
-			//myscreen->soundp->play_sound(SOUND_BOW);
-			retvalue=localbuttons->leftclick();
-		}
-
-		if (localbuttons && (retvalue == REDRAW))
-		{
-			delete(localbuttons);
-			//      myscreen->clear();
-			myscreen->clearfontbuffer();
-			localbuttons = buttonmenu(bteam, 9);
-			myscreen->buffer_to_screen(0,0,320,200);
-			retvalue = 0;
-		}
-
+	    // Input
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+		myscreen->clearbuffer();
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 
 	myscreen->clearfontbuffer();
@@ -988,31 +892,30 @@ Sint32 create_view_menu(Sint32 arg1)
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu(viewteam, 2); // used to be 4
-
-	release_mouse();
-	view_team(5,5,314, 160);
-	myscreen->refresh();
-	grab_mouse();
+    
+	button* buttons = viewteam;
+	int num_buttons = 2;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & EXIT) )
 	{
-
-		if (leftmouse())
-			retvalue=localbuttons->leftclick();
-
-		if (localbuttons && (retvalue == REDRAW))
-		{
-			myscreen->clearbuffer();
-			delete(localbuttons);
-			localbuttons = buttonmenu(viewteam, 2); // was 4
-			retvalue = 0;
-
-			release_mouse();
-			view_team(5,5,314, 160);
-			grab_mouse();
-			myscreen->swap();
-		}
+	    // Input
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+		myscreen->clearbuffer();
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
+        view_team(5,5,314, 160);
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 	myscreen->clearbuffer();
 
@@ -1041,7 +944,14 @@ Sint32 create_buy_menu(Sint32 arg1)
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu(buyteam, 18);
+    
+	button* buttons = buyteam;
+	int num_buttons = 18;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	draw_backdrop();
+	draw_buttons(buttons, num_buttons);
+	
 	for (i=2; i < 14; i++)
 	{
 		if (!(i%2)) // 2, 4, ..., 12
@@ -1176,7 +1086,9 @@ Sint32 create_buy_menu(Sint32 arg1)
 				delete(localbuttons);
 				//myscreen->clear();
 				myscreen->clearfontbuffer();
-				localbuttons = buttonmenu(buyteam, 18);
+				localbuttons = init_buttons(buttons, num_buttons);
+                draw_backdrop();
+                draw_buttons(buttons, num_buttons);
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
@@ -1312,7 +1224,13 @@ Sint32 create_edit_menu(Sint32 arg1)
 
 	if (localbuttons)
 		delete localbuttons;
-	localbuttons = buttonmenu(editteam, 20, 0);  // don't refresh yet
+    
+	button* buttons = editteam;
+	int num_buttons = 20;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	draw_backdrop();
+	draw_buttons(buttons, num_buttons);
 	for (i=2; i < 14; i++)
 	{
 		if (!(i%2)) // 2, 4, ..., 12
@@ -1442,7 +1360,9 @@ Sint32 create_edit_menu(Sint32 arg1)
 				myscreen->clearfontbuffer();
 				
 				delete(localbuttons);
-				localbuttons = buttonmenu(editteam, 20, 0); // don't redraw yet
+				localbuttons = init_buttons(buttons, num_buttons);
+                draw_backdrop();
+                draw_buttons(buttons, num_buttons);
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
@@ -1607,81 +1527,61 @@ Sint32 create_load_menu(Sint32 arg1)
 
 	if (arg1)
 		arg1 = 1;
-	grab_mouse();
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu(loadteam, 11, 0);  // don't redraw!
-
-	myscreen->clearfontbuffer();	
-
-	myscreen->draw_button(15,  9, 255, 199, 1, 1);
-	myscreen->draw_text_bar(19, 13, 251, 21);
-	strcpy(message, "Gladiator: Load Game");
-	loadtext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
-
-	for (i=0; i < 10; i++)
-	{
-		sprintf(temp_filename, "save%d", i+1);
-		strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
-		myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-		allbuttons[i]->vdisplay();
-		myscreen->draw_box(allbuttons[i]->xloc-1,
-		                   allbuttons[i]->yloc-1,
-		                   allbuttons[i]->xend,
-		                   allbuttons[i]->yend, 0, 0, 1);
-	}
-	myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
-	allbuttons[10]->vdisplay();
-	myscreen->draw_box(allbuttons[10]->xloc-1,
-	                   allbuttons[10]->yloc-1,
-	                   allbuttons[10]->xend,
-	                   allbuttons[10]->yend, 0, 0, 1);
-
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+    
+	button* buttons = loadteam;
+	int num_buttons = 11;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & EXIT) )
 	{
-		if (leftmouse())
-		{
-			retvalue=localbuttons->leftclick();
+	    // Input
+		if(leftmouse())
+        {
+			retvalue = localbuttons->leftclick();
 			if(retvalue == REDRAW)
             {
                 return REDRAW;
             }
-		}
-
-		if (localbuttons && (retvalue == REDRAW))
-		{
-			delete(localbuttons);
-			//myscreen->clear();
-
-			myscreen->clearfontbuffer();
-			
-			localbuttons = buttonmenu(loadteam, 11);
-			myscreen->draw_button(15,  9, 255, 175, 1, 1);
-			myscreen->draw_text_bar(19, 13, 251, 21);
-			strcpy(message, "Gladiator: Load Game");
-			loadtext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
-			for (i=0; i < 10; i++)
-			{
-				sprintf(temp_filename, "save%d", i+1);
-				strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
-				myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-				allbuttons[i]->vdisplay();
-				myscreen->draw_box(allbuttons[i]->xloc-1,
-				                   allbuttons[i]->yloc-1,
-				                   allbuttons[i]->xend,
-				                   allbuttons[i]->yend, 0, 0, 1);
-			}
-			myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
-			allbuttons[10]->vdisplay();
-			myscreen->draw_box(allbuttons[10]->xloc-1,
-			                   allbuttons[10]->yloc-1,
-			                   allbuttons[10]->xend,
-			                   allbuttons[10]->yend, 0, 0, 1);
-			retvalue = 0;
-		}
+        }
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+		myscreen->clearbuffer();
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
+        
+        myscreen->draw_button(15,  9, 255, 199, 1, 1);
+        myscreen->draw_text_bar(19, 13, 251, 21);
+        strcpy(message, "Gladiator: Load Game");
+        loadtext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
+        for (i=0; i < 10; i++)
+        {
+            sprintf(temp_filename, "save%d", i+1);
+            strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
+            myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
+            allbuttons[i]->vdisplay();
+            myscreen->draw_box(allbuttons[i]->xloc-1,
+                               allbuttons[i]->yloc-1,
+                               allbuttons[i]->xend,
+                               allbuttons[i]->yend, 0, 0, 1);
+        }
+        myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
+        allbuttons[10]->vdisplay();
+        myscreen->draw_box(allbuttons[10]->xloc-1,
+                           allbuttons[10]->yloc-1,
+                           allbuttons[10]->xend,
+                           allbuttons[10]->yend, 0, 0, 1);
+                           
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 	
 	return REDRAW;
@@ -1739,7 +1639,12 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu_no_backdrop(yes_or_no_buttons, 2, 0);  // don't redraw!
+    
+	button* buttons = yes_or_no_buttons;
+	int num_buttons = 2;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	draw_buttons(buttons, num_buttons);
 
     int i;
 	for (i=0; i < 2; i++)
@@ -1797,7 +1702,12 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu_no_backdrop(no_or_yes_buttons, 2, 0);  // don't redraw!
+    
+	button* buttons = no_or_yes_buttons;
+	int num_buttons = 2;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	draw_buttons(buttons, num_buttons);
 
     int i;
 	for (i=0; i < 2; i++)
@@ -1875,7 +1785,12 @@ void popup_dialog(const char* title, const char* message)
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu_no_backdrop(popup_dialog_buttons, 1, 0);  // don't redraw!
+    
+	button* buttons = popup_dialog_buttons;
+	int num_buttons = 1;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	draw_buttons(buttons, num_buttons);
 
     allbuttons[0]->vdisplay();
 
@@ -1917,71 +1832,59 @@ Sint32 create_save_menu(Sint32 arg1)
 
 	if (localbuttons)
 		delete (localbuttons);
-	localbuttons = buttonmenu(saveteam, 11, 0);  // don't redraw screen yet
-
-	myscreen->clearfontbuffer();
-
-	myscreen->draw_button(15,  9, 255, 199, 1, 1);
-	myscreen->draw_text_bar(19, 13, 251, 21);
-	strcpy(message, "Gladiator: Save Game");
-	savetext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
-
-	for (i=0; i < 10; i++)
-	{
-		sprintf(temp_filename, "save%d", i+1);
-		strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
-		myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-		allbuttons[i]->vdisplay();
-		myscreen->draw_box(allbuttons[i]->xloc-1,
-		                   allbuttons[i]->yloc-1,
-		                   allbuttons[i]->xend,
-		                   allbuttons[i]->yend, 0, 0, 1);
-	}
-	myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
-	allbuttons[10]->vdisplay();
-	myscreen->draw_box(allbuttons[10]->xloc-1,
-	                   allbuttons[10]->yloc-1,
-	                   allbuttons[10]->xend,
-	                   allbuttons[10]->yend, 0, 0, 1);
-
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+    
+	button* buttons = saveteam;
+	int num_buttons = 11;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	
 
 	while ( !(retvalue & EXIT) )
 	{
-		if (leftmouse())
-		{
-			retvalue=localbuttons->leftclick();
+	    // Input
+		if(leftmouse())
+        {
+			retvalue = localbuttons->leftclick();
 			if(retvalue == REDRAW)
+            {
                 return REDRAW;
-		}
-
-		if (localbuttons && (retvalue == REDRAW))
-		{
-			delete(localbuttons);
-			localbuttons = buttonmenu(saveteam, 11);
-			myscreen->draw_button(15,  9, 255, 199, 1, 1);
-			myscreen->draw_text_bar(19, 13, 251, 21);
-			strcpy(message, "Gladiator: Save Game");
-			savetext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
-			for (i=0; i < 10; i++)
-			{
-				sprintf(temp_filename, "save%d", i+1);
-				strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
-				myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
-				allbuttons[i]->vdisplay();
-				myscreen->draw_box(allbuttons[i]->xloc-1,
-				                   allbuttons[i]->yloc-1,
-				                   allbuttons[i]->xend,
-				                   allbuttons[i]->yend, 0, 0, 1);
-			}
-			myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
-			allbuttons[10]->vdisplay();
-			myscreen->draw_box(allbuttons[10]->xloc-1,
-			                   allbuttons[10]->yloc-1,
-			                   allbuttons[10]->xend,
-			                   allbuttons[10]->yend, 0, 0, 1);
-			retvalue = 0;
-		}
+            }
+        }
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+		myscreen->clearbuffer();
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
+        
+        myscreen->draw_button(15,  9, 255, 199, 1, 1);
+        myscreen->draw_text_bar(19, 13, 251, 21);
+        strcpy(message, "Gladiator: Save Game");
+        savetext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
+        for (i=0; i < 10; i++)
+        {
+            sprintf(temp_filename, "save%d", i+1);
+            strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
+            myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
+            allbuttons[i]->vdisplay();
+            myscreen->draw_box(allbuttons[i]->xloc-1,
+                               allbuttons[i]->yloc-1,
+                               allbuttons[i]->xend,
+                               allbuttons[i]->yend, 0, 0, 1);
+        }
+        myscreen->draw_text_bar(23, allbuttons[10]->yloc-2, 66, allbuttons[10]->yend+1);
+        allbuttons[10]->vdisplay();
+        myscreen->draw_box(allbuttons[10]->xloc-1,
+                           allbuttons[10]->yloc-1,
+                           allbuttons[10]->xend,
+                           allbuttons[10]->yend, 0, 0, 1);
+                           
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 
 	myscreen->clearfontbuffer();
@@ -2840,7 +2743,13 @@ Sint32 create_detail_menu(guy *arg1)
 
    if (localbuttons)
        delete localbuttons;
-   localbuttons = buttonmenu(detailed, 1, 0);
+    
+	button* buttons = detailed;
+	int num_buttons = 1;
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+	draw_backdrop();
+	draw_buttons(buttons, num_buttons);
 
    if (arg1)
        thisguy = arg1;

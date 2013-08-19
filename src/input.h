@@ -37,6 +37,7 @@
 #ifdef USE_SDL2
     #define SDLKey SDL_Keycode
     
+    #define KEYSTATE_UNKNOWN SDL_SCANCODE_UNKNOWN
     #define KEYSTATE_a SDL_SCANCODE_A
     #define KEYSTATE_b SDL_SCANCODE_B
     #define KEYSTATE_c SDL_SCANCODE_C
@@ -110,6 +111,7 @@
     #define KEYSTATE_F9 SDL_SCANCODE_F9
     #define KEYSTATE_F10 SDL_SCANCODE_F10
 #else
+    #define KEYSTATE_UNKNOWN SDLK_UNKNOWN
     #define KEYSTATE_a SDLK_a
     #define KEYSTATE_b SDLK_b
     #define KEYSTATE_c SDLK_c

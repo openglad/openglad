@@ -133,9 +133,9 @@ class vbutton
 #define MAX_BUTTONS 50  // max buttons per screen
 extern vbutton *allbuttons[MAX_BUTTONS];
 
-vbutton * buttonmenu(button * buttons, Sint32 numbuttons);
-vbutton * buttonmenu(button * buttons, Sint32 numbuttons, Sint32 redraw);
-vbutton * buttonmenu_no_backdrop(button * buttons, Sint32 numbuttons, Sint32 redraw);
+vbutton * init_buttons(button * buttons, Sint32 numbuttons);
+void draw_backdrop();
+void draw_buttons(button * buttons, Sint32 numbuttons);
 
 // These are for picker ..
 Sint32 score_panel(screen *myscreen);
