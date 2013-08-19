@@ -573,7 +573,6 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     bool pressed = false;
     if(isPlayerHoldingKey(0, KEY_UP))
     {
-        retvalue = REDRAW;
         while(isPlayerHoldingKey(0, KEY_UP))
             get_input_events(POLL);
         int next_button = buttons[highlighted_button].nav.up;
@@ -584,7 +583,6 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     }
     if(isPlayerHoldingKey(0, KEY_DOWN))
     {
-        retvalue = REDRAW;
         while(isPlayerHoldingKey(0, KEY_DOWN))
             get_input_events(POLL);
         int next_button = buttons[highlighted_button].nav.down;
@@ -595,7 +593,6 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     }
     if(isPlayerHoldingKey(0, KEY_LEFT))
     {
-        retvalue = REDRAW;
         while(isPlayerHoldingKey(0, KEY_LEFT))
             get_input_events(POLL);
         int next_button = buttons[highlighted_button].nav.left;
@@ -606,7 +603,6 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     }
     if(isPlayerHoldingKey(0, KEY_RIGHT))
     {
-        retvalue = REDRAW;
         while(isPlayerHoldingKey(0, KEY_RIGHT))
             get_input_events(POLL);
         int next_button = buttons[highlighted_button].nav.right;
@@ -1161,8 +1157,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 	int num_buttons = 20;
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
-	draw_backdrop();
-	draw_buttons(buttons, num_buttons);
+	
 	for (i=2; i < 14; i++)
 	{
 		if (!(i%2)) // 2, 4, ..., 12
@@ -1175,90 +1170,6 @@ Sint32 create_edit_menu(Sint32 arg1)
 	cycle_team_guy(0);
 	here = myscreen->save_data.team_list[editguy];
 
-	linesdown = 0;
-	release_mouse();
-	myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
-	myscreen->draw_text_bar(36, 10, 124, 22);
-	mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
-	                 current_guy->name,(unsigned char) DARK_BLUE, 1);
-
-	myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
-	myscreen->draw_text_bar(42, 70, 116, 156);
-
-	sprintf(message, "  STR: %d", current_guy->strength);
-	mytext->write_xy(STAT_LEFT,DOWN(linesdown++),message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "  DEX: %d", current_guy->dexterity);
-	mytext->write_xy(STAT_LEFT,DOWN(linesdown++),message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "  CON: %d", current_guy->constitution);
-	mytext->write_xy(STAT_LEFT,DOWN(linesdown++),message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "  INT: %d", current_guy->intelligence);
-	mytext->write_xy(STAT_LEFT,DOWN(linesdown++),message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "ARMOR: %d", current_guy->armor);
-	mytext->write_xy(STAT_LEFT,DOWN(linesdown++),message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "LEVEL: %d", current_guy->level);
-	mytext->write_xy(STAT_LEFT,DOWN(linesdown++),message,(unsigned char) DARK_BLUE, 1);
-
-	myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
-	myscreen->draw_text_bar(178, 34, 302, 44); // title bar
-	strcpy(message, "GAME INFORMATION");
-	mytext->write_xy(240 - (strlen(message)*6/2), 37, message, (unsigned char) RED, 1);
-	myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
-	myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
-	myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
-	sprintf(message, "Total Kills: %d", current_guy->kills);
-	mytext->write_xy(180, 48, message, DARK_BLUE, 1);
-	if (current_guy->kills) // are we a veteran?
-	{
-		sprintf(message, "Avg. Victim: %.2lf ",
-		        (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
-		mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-		sprintf(message, " Exp / Kill: %u ",
-		        (current_guy->exp / current_guy->kills) );
-		mytext->write_xy(180, 62, message, DARK_BLUE, 1);
-	}
-	else
-	{
-		sprintf(message, "Avg. Victim: N/A ");
-		mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-		sprintf(message, " Exp / Kill: N/A ");
-		mytext->write_xy(180, 62, message, DARK_BLUE, 1);
-	}
-	if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
-	{
-		sprintf(message, " Damage/Hit: %.2lf ",
-		        (float) ( (float)current_guy->total_damage / (float)current_guy->total_hits) );
-		mytext->write_xy(180, 69, message, DARK_BLUE, 1);
-		sprintf(message, "   Accuracy: %d%% ",
-		        (current_guy->total_hits*100)/current_guy->total_shots);
-		mytext->write_xy(180, 76, message, DARK_BLUE, 1);
-	}
-	else // haven't ever hit anyone
-	{
-		sprintf(message, " Damage/Hit: N/A ");
-		mytext->write_xy(180, 69, message, DARK_BLUE, 1);
-		sprintf(message, "   Accuracy: N/A ");
-		mytext->write_xy(180, 76, message, DARK_BLUE, 1);
-	}
-	sprintf(message, " EXPERIENCE: %u", current_guy->exp);
-	mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
-	sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-	mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
-	current_cost = calculate_cost(here);
-	mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
-	sprintf(message, "      %u", current_cost );
-	if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
-		mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
-	else
-		mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
-	sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_guy->teamnum]);
-	mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
-
-	// Display our team setting ..
-	sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
-	strcpy(allbuttons[18]->label, message);
-	allbuttons[18]->vdisplay();
-
-	myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	grab_mouse();
 	
@@ -1266,35 +1177,23 @@ Sint32 create_edit_menu(Sint32 arg1)
 
 	while ( !(retvalue & EXIT) )
 	{
-		show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
+	    // Input
 		clickvalue = leftmouse();
-		if (clickvalue)
-		{
-			if (clickvalue == 1)
-				retvalue=localbuttons->leftclick();
-			else if (clickvalue == 2)
-				retvalue = localbuttons->rightclick();
-
-			if (here != ourteam[editguy])
-				here = ourteam[editguy];
-			current_cost = calculate_cost(here);
-		}
-
-		// Set to current guy ..
-		here = ourteam[editguy];
-
-		if (localbuttons && ( (retvalue == REDRAW)||(retvalue == OK) ) )
-		{
-			if (!current_guy)
-				cycle_team_guy(0);
-			if (retvalue == REDRAW)
-			{
-				myscreen->clearfontbuffer();
-				
+		if (clickvalue == 1)
+			retvalue = localbuttons->leftclick();
+		else if (clickvalue == 2)
+			retvalue = localbuttons->rightclick();
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        // Reset buttons
+        if(localbuttons && (retvalue == OK || retvalue == REDRAW))
+        {
+            if(retvalue == REDRAW)
+            {
 				delete(localbuttons);
 				localbuttons = init_buttons(buttons, num_buttons);
-                draw_backdrop();
-                draw_buttons(buttons, num_buttons);
+				
 				for (i=2; i < 14; i++)
 				{
 					if (!(i%2)) // 2, 4, ..., 12
@@ -1303,146 +1202,160 @@ Sint32 create_edit_menu(Sint32 arg1)
 						allbuttons[i]->set_graphic(FAMILY_PLUS);
 				}
 				cycle_team_guy(0);
-			}
-			linesdown = 0;
-			release_mouse();
+            }
 
-			myscreen->clearfontbuffer(34,8,126-34,24-8);
-			myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
-			myscreen->draw_text_bar(36, 10, 124, 22);
-			mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
-			                 current_guy->name,(unsigned char) DARK_BLUE, 1);
-			myscreen->clearfontbuffer(38,66,120-38,160-66);
-			myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
-			myscreen->draw_text_bar(42, 70, 116, 156);
+            retvalue = 0;
+        }
+		
+        if (!current_guy)
+            cycle_team_guy(0);
+        if (here != ourteam[editguy])
+            here = ourteam[editguy];
+        current_cost = calculate_cost(here);
+        
+		// Draw
+		myscreen->clearbuffer();
+		
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
+        
+		show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
+		
 
-			// Strength
-			sprintf(message, "%d", current_guy->strength);
-			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  STR:",
-			                 (unsigned char) STAT_COLOR, 1);
-			if (here->strength < current_guy->strength)
-				showcolor = STAT_CHANGED;
-			else
-				showcolor = STAT_COLOR;
-			mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        linesdown = 0;
 
-			// Dexterity
-			sprintf(message, "%d", current_guy->dexterity);
-			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  DEX:",
-			                 (unsigned char) STAT_COLOR, 1);
-			if (here->dexterity < current_guy->dexterity)
-				showcolor = STAT_CHANGED;
-			else
-				showcolor = STAT_COLOR;
-			mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        myscreen->clearfontbuffer(34,8,126-34,24-8);
+        myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
+        myscreen->draw_text_bar(36, 10, 124, 22);
+        mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
+                         current_guy->name,(unsigned char) DARK_BLUE, 1);
+        myscreen->clearfontbuffer(38,66,120-38,160-66);
+        myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
+        myscreen->draw_text_bar(42, 70, 116, 156);
 
-			// Constitution
-			sprintf(message, "%d", current_guy->constitution);
-			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  CON:",
-			                 (unsigned char) STAT_COLOR, 1);
-			if (here->constitution < current_guy->constitution)
-				showcolor = STAT_CHANGED;
-			else
-				showcolor = STAT_COLOR;
-			mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        // Strength
+        sprintf(message, "%d", current_guy->strength);
+        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  STR:",
+                         (unsigned char) STAT_COLOR, 1);
+        if (here->strength < current_guy->strength)
+            showcolor = STAT_CHANGED;
+        else
+            showcolor = STAT_COLOR;
+        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
 
-			// Intelligence
-			sprintf(message, "%d", current_guy->intelligence);
-			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  INT:",
-			                 (unsigned char) STAT_COLOR, 1);
-			if (here->intelligence < current_guy->intelligence)
-				showcolor = STAT_CHANGED;
-			else
-				showcolor = STAT_COLOR;
-			mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        // Dexterity
+        sprintf(message, "%d", current_guy->dexterity);
+        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  DEX:",
+                         (unsigned char) STAT_COLOR, 1);
+        if (here->dexterity < current_guy->dexterity)
+            showcolor = STAT_CHANGED;
+        else
+            showcolor = STAT_COLOR;
+        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
 
-			// Armor
-			sprintf(message, "%d", current_guy->armor);
-			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "ARMOR:",
-			                 (unsigned char) STAT_COLOR, 1);
-			if (here->armor < current_guy->armor)
-				showcolor = STAT_CHANGED;
-			else
-				showcolor = STAT_COLOR;
-			mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        // Constitution
+        sprintf(message, "%d", current_guy->constitution);
+        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  CON:",
+                         (unsigned char) STAT_COLOR, 1);
+        if (here->constitution < current_guy->constitution)
+            showcolor = STAT_CHANGED;
+        else
+            showcolor = STAT_COLOR;
+        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
 
-			// Level
-			sprintf(message, "%d", current_guy->level);
-			mytext->write_xy(STAT_LEFT, DOWN(linesdown), "LEVEL:",
-			                 (unsigned char) STAT_COLOR, 1);
-			if (here->level < current_guy->level)
-				showcolor = STAT_CHANGED;
-			else
-				showcolor = STAT_COLOR;
-			mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        // Intelligence
+        sprintf(message, "%d", current_guy->intelligence);
+        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  INT:",
+                         (unsigned char) STAT_COLOR, 1);
+        if (here->intelligence < current_guy->intelligence)
+            showcolor = STAT_CHANGED;
+        else
+            showcolor = STAT_COLOR;
+        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
 
-			myscreen->clearfontbuffer(174,32,306-174,(114+22)-32);	
-			myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
-			myscreen->draw_text_bar(178, 34, 302, 44); // title bar
-			strcpy(message, "GAME INFORMATION");
-			mytext->write_xy(240 - (strlen(message)*6/2), 37, message, (unsigned char) RED, 1);
-			myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
-			myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
-			myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
-			sprintf(message, "Total Kills: %d", current_guy->kills);
-			mytext->write_xy(180, 48, message, DARK_BLUE, 1);
-			if (current_guy->kills) // are we a veteran?
-			{
-				sprintf(message, "Avg. Victim: %.2lf ",
-				        (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
-				mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-				sprintf(message, " Exp / Kill: %u ",
-				        (current_guy->exp / current_guy->kills) );
-				mytext->write_xy(180, 62, message, DARK_BLUE, 1);
-			}
-			else
-			{
-				sprintf(message, "Avg. Victim: N/A ");
-				mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-				sprintf(message, " Exp / Kill: N/A ");
-				mytext->write_xy(180, 62, message, DARK_BLUE, 1);
-			}
-			if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
-			{
-				sprintf(message, " Damage/Hit: %.2lf ",
-				        (float) ( (float)current_guy->total_damage / (float)current_guy->total_hits) );
-				mytext->write_xy(180, 69, message, DARK_BLUE, 1);
-				sprintf(message, "   Accuracy: %d%% ",
-				        (current_guy->total_hits*100)/current_guy->total_shots);
-				mytext->write_xy(180, 76, message, DARK_BLUE, 1);
-			}
-			else // haven't ever hit anyone
-			{
-				sprintf(message, " Damage/Hit: N/A ");
-				mytext->write_xy(180, 69, message, DARK_BLUE, 1);
-				sprintf(message, "   Accuracy: N/A ");
-				mytext->write_xy(180, 76, message, DARK_BLUE, 1);
-			}
-			sprintf(message, " EXPERIENCE: %u", current_guy->exp);
-			mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
-			sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-			mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
-			current_cost = calculate_cost(here);
-			mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
-			sprintf(message, "      %u", current_cost );
-			if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
-				mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
-			else
-				mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
-			sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_guy->teamnum]);
-			mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
+        // Armor
+        sprintf(message, "%d", current_guy->armor);
+        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "ARMOR:",
+                         (unsigned char) STAT_COLOR, 1);
+        if (here->armor < current_guy->armor)
+            showcolor = STAT_CHANGED;
+        else
+            showcolor = STAT_COLOR;
+        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
 
-			// Display our team setting ..
-			myscreen->clearfontbuffer(174, 138, 133, 22); 
-			sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
-			strcpy(allbuttons[18]->label, message);
-			allbuttons[18]->vdisplay();
+        // Level
+        sprintf(message, "%d", current_guy->level);
+        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "LEVEL:",
+                         (unsigned char) STAT_COLOR, 1);
+        if (here->level < current_guy->level)
+            showcolor = STAT_CHANGED;
+        else
+            showcolor = STAT_COLOR;
+        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
 
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			grab_mouse();
-			retvalue = 0;
-		}
+        myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
+        myscreen->draw_text_bar(178, 34, 302, 44); // title bar
+        strcpy(message, "GAME INFORMATION");
+        mytext->write_xy(240 - (strlen(message)*6/2), 37, message, (unsigned char) RED, 1);
+        myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
+        myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
+        myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
+        sprintf(message, "Total Kills: %d", current_guy->kills);
+        mytext->write_xy(180, 48, message, DARK_BLUE, 1);
+        if (current_guy->kills) // are we a veteran?
+        {
+            sprintf(message, "Avg. Victim: %.2lf ",
+                    (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
+            mytext->write_xy(180, 55, message, DARK_BLUE, 1);
+            sprintf(message, " Exp / Kill: %u ",
+                    (current_guy->exp / current_guy->kills) );
+            mytext->write_xy(180, 62, message, DARK_BLUE, 1);
+        }
+        else
+        {
+            sprintf(message, "Avg. Victim: N/A ");
+            mytext->write_xy(180, 55, message, DARK_BLUE, 1);
+            sprintf(message, " Exp / Kill: N/A ");
+            mytext->write_xy(180, 62, message, DARK_BLUE, 1);
+        }
+        if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
+        {
+            sprintf(message, " Damage/Hit: %.2lf ",
+                    (float) ( (float)current_guy->total_damage / (float)current_guy->total_hits) );
+            mytext->write_xy(180, 69, message, DARK_BLUE, 1);
+            sprintf(message, "   Accuracy: %d%% ",
+                    (current_guy->total_hits*100)/current_guy->total_shots);
+            mytext->write_xy(180, 76, message, DARK_BLUE, 1);
+        }
+        else // haven't ever hit anyone
+        {
+            sprintf(message, " Damage/Hit: N/A ");
+            mytext->write_xy(180, 69, message, DARK_BLUE, 1);
+            sprintf(message, "   Accuracy: N/A ");
+            mytext->write_xy(180, 76, message, DARK_BLUE, 1);
+        }
+        sprintf(message, " EXPERIENCE: %u", current_guy->exp);
+        mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
+        sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
+        mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
+        current_cost = calculate_cost(here);
+        mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
+        sprintf(message, "      %u", current_cost );
+        if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
+            mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
+        else
+            mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
+        sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_guy->teamnum]);
+        mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
 
+        // Display our team setting ..
+        sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
+        strcpy(allbuttons[18]->label, message);
+        allbuttons[18]->vdisplay();
+
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
 	}
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
@@ -3266,7 +3179,7 @@ Sint32 change_teamnum(Sint32 arg)
    sprintf(message, "Playing on Team %d", current_team + 1);
 
    strcpy(allbuttons[18]->label, message);
-   allbuttons[18]->do_outline = 1;
+   //allbuttons[18]->do_outline = 1;
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
 
