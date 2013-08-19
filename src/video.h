@@ -28,6 +28,7 @@ class video
 		virtual ~video();
 		void clearscreen();
 		void clearbuffer();
+		void clearbuffer(int x, int y, int w, int h);
 		void clearfontbuffer();
 		void clearfontbuffer(int x, int y, int w, int h);
 	

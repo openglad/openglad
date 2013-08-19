@@ -160,6 +160,12 @@ void video::clearbuffer()
 	SDL_FillRect(fontbuffer,NULL,fontcolorkey);
 }
 
+void video::clearbuffer(int x, int y, int w, int h)
+{
+    SDL_Rect r = {x*mult, y*mult, w*mult, h*mult};
+	SDL_FillRect(screen, &r, SDL_MapRGB(screen->format,0,0,0));
+}
+
 void video::clearfontbuffer()
 {
 //	SDL_FillRect(fontbuffer,NULL,fontcolorkey);

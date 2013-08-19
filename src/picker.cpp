@@ -540,7 +540,22 @@ void draw_version_number()
 	mytext.write_xy(320 - strlen(OPENGLAD_VERSION_STRING)*6, 200 - 10, OPENGLAD_VERSION_STRING, (unsigned char) DARK_BLUE, 1);
 }
 
+#ifdef USE_CONTROLLER_INPUT
+bool menu_nav_enabled = true;
+#else
 bool menu_nav_enabled = false;
+#endif
+
+void draw_highlight_interior(const button& b)
+{
+    if(!menu_nav_enabled)
+        return;
+    
+    float t = (1.0f + sinf(SDL_GetTicks()/300.0f))/2.0f;
+    float size = 3;
+    myscreen->draw_box(b.x + t*size, b.y + t*size, b.x + b.sizex - t*size, b.y + b.sizey - t*size, YELLOW, 0);
+}
+
 void draw_highlight(const button& b)
 {
     if(!menu_nav_enabled)
@@ -551,7 +566,7 @@ void draw_highlight(const button& b)
     myscreen->draw_box(b.x - t*size, b.y - t*size, b.x + b.sizex + t*size, b.y + b.sizey + t*size, YELLOW, 0);
 }
 
-void handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
+bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
 {
     if(isPlayerHoldingKey(0, KEY_UP))
     {
@@ -563,6 +578,7 @@ void handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
             highlighted_button = next_button;
         
         menu_nav_enabled = true;
+        return true;
     }
     if(isPlayerHoldingKey(0, KEY_DOWN))
     {
@@ -574,6 +590,7 @@ void handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
             highlighted_button = next_button;
         
         menu_nav_enabled = true;
+        return true;
     }
     if(isPlayerHoldingKey(0, KEY_LEFT))
     {
@@ -585,6 +602,7 @@ void handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
             highlighted_button = next_button;
         
         menu_nav_enabled = true;
+        return true;
     }
     if(isPlayerHoldingKey(0, KEY_RIGHT))
     {
@@ -596,6 +614,7 @@ void handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
             highlighted_button = next_button;
         
         menu_nav_enabled = true;
+        return true;
     }
     if(isPlayerHoldingKey(0, KEY_FIRE))
     {
@@ -614,7 +633,10 @@ void handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
                 retvalue = allbuttons[highlighted_button]->do_call(allbuttons[highlighted_button]->myfunc, allbuttons[highlighted_button]->arg);
             }
         }
+        return true;
     }
+    
+    return false;
 }
 
 bool reset_buttons(vbutton* localbuttons, button* buttons, int num_buttons, Sint32& retvalue)
@@ -1629,13 +1651,10 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 {
 	text gladtext(myscreen);
 	
+	int dumbcount;
 	int pix_per_char = 3;
     int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
     int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
-    //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
-    //myscreen->clearfontbuffer(leftside, 80, rightside, 40);
-    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
-    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
 
 	if (localbuttons)
 		delete (localbuttons);
@@ -1644,15 +1663,6 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 	int num_buttons = 2;
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
-	draw_buttons(buttons, num_buttons);
-
-    int i;
-	for (i=0; i < 2; i++)
-	{
-		allbuttons[i]->vdisplay();
-	}
-
-    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
 
 	grab_mouse();
     clear_keyboard();
@@ -1663,10 +1673,8 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 	while (retvalue == 0)
 	{
 		get_input_events(POLL);
-		
-		if(leftmouse())
-			retvalue = localbuttons->leftclick();
         
+	    // Input
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_y])
@@ -1676,6 +1684,23 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
             else if(keystates[KEYSTATE_ESCAPE])
                 break;
         }
+        
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+        dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
+        gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+        draw_buttons(buttons, num_buttons);
+        
+        draw_highlight_interior(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 	
 	myscreen->clearfontbuffer();
@@ -1692,13 +1717,11 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 {
 	text gladtext(myscreen);
 	
+	int dumbcount;
 	int pix_per_char = 3;
     int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
     int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
-    //buffers: PORT: we will redo this: set_palette(myscreen->redpalette);
-    //myscreen->clearfontbuffer(leftside, 80, rightside, 40);
-    int dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
-    gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+    
 
 	if (localbuttons)
 		delete (localbuttons);
@@ -1707,15 +1730,6 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 	int num_buttons = 2;
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
-	draw_buttons(buttons, num_buttons);
-
-    int i;
-	for (i=0; i < 2; i++)
-	{
-		allbuttons[i]->vdisplay();
-	}
-
-    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
 
 	grab_mouse();
     clear_keyboard();
@@ -1726,10 +1740,8 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 	while (retvalue == 0)
 	{
 		get_input_events(POLL);
-		
-		if(leftmouse())
-			retvalue = localbuttons->leftclick();
         
+	    // Input
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_y])
@@ -1739,6 +1751,23 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
             else if(keystates[KEYSTATE_ESCAPE])
                 break;
         }
+        
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+        dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
+        gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+        draw_buttons(buttons, num_buttons);
+        
+        draw_highlight_interior(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 	
 	myscreen->clearfontbuffer();
@@ -1773,15 +1802,10 @@ void popup_dialog(const char* title, const char* message)
     int rightside = 160 + w/2 + 12;
     
     // Draw background
-    int dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+    int dumbcount;
     
     // Draw message
     int j = 0;
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
-    {
-        gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
-        j++;
-    }
 
 	if (localbuttons)
 		delete (localbuttons);
@@ -1790,11 +1814,6 @@ void popup_dialog(const char* title, const char* message)
 	int num_buttons = 1;
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
-	draw_buttons(buttons, num_buttons);
-
-    allbuttons[0]->vdisplay();
-
-    myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
 
 	grab_mouse();
     clear_keyboard();
@@ -1804,16 +1823,36 @@ void popup_dialog(const char* title, const char* message)
     int retvalue = 0;
 	while (retvalue == 0)
 	{
+	    // Input
 		get_input_events(POLL);
-		
-		if(leftmouse())
-			retvalue = localbuttons->leftclick();
-        
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_RETURN] || keystates[KEYSTATE_SPACE] || keystates[KEYSTATE_ESCAPE])
                 break;
         }
+        
+		if(leftmouse())
+			retvalue = localbuttons->leftclick();
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+		j = 0;
+        for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+        {
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+            j++;
+        }
+		
+        draw_buttons(buttons, num_buttons);
+        
+        draw_highlight_interior(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
 	}
 	
 	myscreen->clearfontbuffer();
