@@ -648,7 +648,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     return pressed;
 }
 
-bool reset_buttons(vbutton* localbuttons, button* buttons, int num_buttons, Sint32& retvalue)
+bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue)
 {
     if(localbuttons && (retvalue == OK || retvalue == REDRAW))
     {
