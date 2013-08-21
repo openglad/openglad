@@ -291,35 +291,35 @@ void picker_quit()
 // mainmenu
 button buttons1[] =
     {
-        { "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, -1 , MenuNav::Down(1)}, // BEGIN NEW GAME
-        { "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5)},
+        { "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, -1 , MenuNav::Down(1), false}, // BEGIN NEW GAME
+        { "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5), false},
 
-        { "4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3)},
-        { "3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 , MenuNav::UpDownRight(5, 6, 2)},
-        { "2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 , MenuNav::UpDownLeft(1, 2, 5)},
-        { "1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 , MenuNav::UpDownRight(1, 3, 4)},
+        { "4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3), false},
+        { "3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 , MenuNav::UpDownRight(5, 6, 2), false},
+        { "2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 , MenuNav::UpDownLeft(1, 2, 5), false},
+        { "1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 , MenuNav::UpDownRight(1, 3, 4), false},
 
-        { "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7)},
+        { "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7), false},
 
-        { "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)},
-        { "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)},
+        { "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8), false},
+        { "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7), false},
 
-        { "QUIT", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7)},
+        { "QUIT", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7), false},
     };
 
 // beginmenu (first menu of new game), create_team_menu
 button bteam[] =
     {
-        { "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1)},
-        { "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)},
-        { "Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_BUY_MENU, -1, MenuNav::DownLeft(5, 1)},
-        { "LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)},
-        { "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)},
-        { "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4)},
+        { "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1), false},
+        { "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2), false},
+        { "Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_BUY_MENU, -1, MenuNav::DownLeft(5, 1), false},
+        { "LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4), false},
+        { "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5), false},
+        { "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4), false},
 
-        { "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT, MenuNav::UpRight(3, 7)},
-        { "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 8, 6)},
-        { "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(7, 6)},
+        { "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT, MenuNav::UpRight(3, 7), false},
+        { "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 8, 6), false},
+        { "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(7, 6), false},
 
     };
 
@@ -327,113 +327,113 @@ button viewteam[] =
     {
         //  { "TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
         //  { "HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_BUY_MENU, -1},
-        { "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)},
-        { "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT, MenuNav::Right(0)},
+        { "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1), false},
+        { "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT, MenuNav::Right(0), false},
 
     };
 
 button detailed[] =
     {
-        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::None()},
+        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::None(), false},
     };
 
 button editteam[] =
     {
-        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1, MenuNav::DownRight(2, 1)},
-        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)},
-        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)},
-        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeft(1, 5, 2)},
-        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)},
-        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeft(3, 7, 4)},
-        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)},
-        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeft(5, 9, 6)},
-        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)},
-        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeft(7, 11, 8)},
-        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)},
-        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeft(9, 13, 10)},
-        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 19, 13)},
-        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 18)},
-        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(18, 15)},
-        { "ACCEPT", KEYSTATE_UNKNOWN,  80, 170, 80, 20, EDIT_GUY, -1, MenuNav::UpLeftRight(13, 19, 14)},
-        { "RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, NAME_GUY, 1, MenuNav::DownLeftRight(18, 1, 17)},
-        { "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0, MenuNav::DownLeft(18, 16)},
-        { "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, CHANGE_TEAM, 1, MenuNav::UpDownLeft(17, 14, 13)},
-        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15)},
+        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1, MenuNav::DownRight(2, 1), false},
+        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1, MenuNav::DownLeftRight(3, 0, 16), false},
+        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3), false},
+        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeft(1, 5, 2), false},
+        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5), false},
+        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeft(3, 7, 4), false},
+        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7), false},
+        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeft(5, 9, 6), false},
+        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9), false},
+        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeft(7, 11, 8), false},
+        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11), false},
+        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeft(9, 13, 10), false},
+        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 19, 13), false},
+        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 18), false},
+        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(18, 15), false},
+        { "ACCEPT", KEYSTATE_UNKNOWN,  80, 170, 80, 20, EDIT_GUY, -1, MenuNav::UpLeftRight(13, 19, 14), false},
+        { "RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, NAME_GUY, 1, MenuNav::DownLeftRight(18, 1, 17), false},
+        { "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0, MenuNav::DownLeft(18, 16), false},
+        { "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, CHANGE_TEAM, 1, MenuNav::UpDownLeft(17, 14, 13), false},
+        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15), false},
 
     };
 
 button buyteam[] =
     {
-        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(2, 1)},
-        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)},
-        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)},
-        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeftRight(1, 5, 2, 16)},
-        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)},
-        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeftRight(3, 7, 4, 16)},
-        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)},
-        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeftRight(5, 9, 6, 16)},
-        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)},
-        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeftRight(7, 11, 8, 16)},
-        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)},
-        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeftRight(9, 13, 10, 16)},
-        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 17, 13)},
-        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 16)},
-        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(16, 15)},
-        { "HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(13, 17, 14)},
-        { "Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 14, 13)},
-        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15)},
+        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(2, 1), false},
+        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 16), false},
+        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3), false},
+        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeftRight(1, 5, 2, 16), false},
+        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5), false},
+        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeftRight(3, 7, 4, 16), false},
+        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7), false},
+        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeftRight(5, 9, 6, 16), false},
+        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9), false},
+        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeftRight(7, 11, 8, 16), false},
+        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11), false},
+        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeftRight(9, 13, 10, 16), false},
+        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 17, 13), false},
+        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 16), false},
+        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(16, 15), false},
+        { "HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(13, 17, 14), false},
+        { "Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 14, 13), false},
+        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15), false},
 
     };
 
 
 button saveteam[] =
     {
-        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_SAVE, 1, MenuNav::Down(1)},
-        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_SAVE, 2, MenuNav::UpDown(0, 2)},
-        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_SAVE, 3, MenuNav::UpDown(1, 3)},
-        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_SAVE, 4, MenuNav::UpDown(2, 4)},
-        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_SAVE, 5, MenuNav::UpDown(3, 5)},
-        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_SAVE,  6, MenuNav::UpDown(4, 6)},
-        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_SAVE, 7, MenuNav::UpDown(5, 7)},
-        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_SAVE, 8, MenuNav::UpDown(6, 8)},
-        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_SAVE, 9, MenuNav::UpDown(7, 9)},
-        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_SAVE, 10, MenuNav::UpDown(8, 10)},
-        { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9)},
+        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_SAVE, 1, MenuNav::Down(1), false},
+        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_SAVE, 2, MenuNav::UpDown(0, 2), false},
+        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_SAVE, 3, MenuNav::UpDown(1, 3), false},
+        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_SAVE, 4, MenuNav::UpDown(2, 4), false},
+        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_SAVE, 5, MenuNav::UpDown(3, 5), false},
+        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_SAVE,  6, MenuNav::UpDown(4, 6), false},
+        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_SAVE, 7, MenuNav::UpDown(5, 7), false},
+        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_SAVE, 8, MenuNav::UpDown(6, 8), false},
+        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_SAVE, 9, MenuNav::UpDown(7, 9), false},
+        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_SAVE, 10, MenuNav::UpDown(8, 10), false},
+        { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9), false},
 
     };
 
 button loadteam[] =
     {
-        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_LOAD, 1, MenuNav::Down(1)},
-        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_LOAD, 2, MenuNav::UpDown(0, 2)},
-        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_LOAD, 3, MenuNav::UpDown(1, 3)},
-        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_LOAD, 4, MenuNav::UpDown(2, 4)},
-        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_LOAD, 5, MenuNav::UpDown(3, 5)},
-        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_LOAD,  6, MenuNav::UpDown(4, 6)},
-        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_LOAD, 7, MenuNav::UpDown(5, 7)},
-        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_LOAD, 8, MenuNav::UpDown(6, 8)},
-        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_LOAD, 9, MenuNav::UpDown(7, 9)},
-        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_LOAD, 10, MenuNav::UpDown(8, 10)},
-        { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9)},
+        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_LOAD, 1, MenuNav::Down(1), false},
+        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_LOAD, 2, MenuNav::UpDown(0, 2), false},
+        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_LOAD, 3, MenuNav::UpDown(1, 3), false},
+        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_LOAD, 4, MenuNav::UpDown(2, 4), false},
+        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_LOAD, 5, MenuNav::UpDown(3, 5), false},
+        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_LOAD,  6, MenuNav::UpDown(4, 6), false},
+        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_LOAD, 7, MenuNav::UpDown(5, 7), false},
+        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_LOAD, 8, MenuNav::UpDown(6, 8), false},
+        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_LOAD, 9, MenuNav::UpDown(7, 9), false},
+        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_LOAD, 10, MenuNav::UpDown(8, 10), false},
+        { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9), false},
 
     };
 
 
 button yes_or_no_buttons[] =
     {
-        { "YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Right(1)},
-        { "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Left(0)}
+        { "YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Right(1), false},
+        { "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Left(0), false}
     };
 
 button no_or_yes_buttons[] =
     {
-        { "NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Right(1)},
-        { "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Left(0)}
+        { "NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Right(1), false},
+        { "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Left(0), false}
     };
 
 button popup_dialog_buttons[] =
     {
-        { "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, YES_OR_NO, YES, MenuNav::None()}
+        { "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, YES_OR_NO, YES, MenuNav::None(), false}
     };
 
 Sint32 leftmouse()
@@ -573,16 +573,17 @@ void draw_highlight(const button& b)
     myscreen->draw_box(b.x - t*size, b.y - t*size, b.x + b.sizex + t*size, b.y + b.sizey + t*size, YELLOW, 0);
 }
 
-bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
+bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
+
+bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons)
 {
+    int next_button = -1;
     bool pressed = false;
     if(isPlayerHoldingKey(0, KEY_UP))
     {
         while(isPlayerHoldingKey(0, KEY_UP))
             get_input_events(POLL);
-        int next_button = buttons[highlighted_button].nav.up;
-        if(next_button >= 0)
-            highlighted_button = next_button;
+        next_button = buttons[highlighted_button].nav.up;
         
         pressed = true;
     }
@@ -590,9 +591,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     {
         while(isPlayerHoldingKey(0, KEY_DOWN))
             get_input_events(POLL);
-        int next_button = buttons[highlighted_button].nav.down;
-        if(next_button >= 0)
-            highlighted_button = next_button;
+        next_button = buttons[highlighted_button].nav.down;
         
         pressed = true;
     }
@@ -600,9 +599,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     {
         while(isPlayerHoldingKey(0, KEY_LEFT))
             get_input_events(POLL);
-        int next_button = buttons[highlighted_button].nav.left;
-        if(next_button >= 0)
-            highlighted_button = next_button;
+        next_button = buttons[highlighted_button].nav.left;
         
         pressed = true;
     }
@@ -610,9 +607,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
     {
         while(isPlayerHoldingKey(0, KEY_RIGHT))
             get_input_events(POLL);
-        int next_button = buttons[highlighted_button].nav.right;
-        if(next_button >= 0)
-            highlighted_button = next_button;
+        next_button = buttons[highlighted_button].nav.right;
         
         pressed = true;
     }
@@ -626,16 +621,24 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue)
         else
         {
             myscreen->soundp->play_sound(SOUND_BOW);
-            allbuttons[highlighted_button]->vdisplay(1);
-            allbuttons[highlighted_button]->vdisplay();
-            if(allbuttons[highlighted_button]->myfunc)
+            if(use_global_vbuttons)
             {
-                retvalue = allbuttons[highlighted_button]->do_call(allbuttons[highlighted_button]->myfunc, allbuttons[highlighted_button]->arg);
+                allbuttons[highlighted_button]->vdisplay(1);
+                allbuttons[highlighted_button]->vdisplay();
+                if(allbuttons[highlighted_button]->myfunc)
+                {
+                    retvalue = allbuttons[highlighted_button]->do_call(allbuttons[highlighted_button]->myfunc, allbuttons[highlighted_button]->arg);
+                }
             }
+            else
+                retvalue = OK;
             
             pressed = true;
         }
     }
+    
+    if(next_button >= 0 && !buttons[next_button].hidden)
+        highlighted_button = next_button;
     
     // Turn menu_nav on if something was pressed.
     if(pressed)

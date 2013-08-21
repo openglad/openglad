@@ -306,9 +306,11 @@ void handle_window_event(const SDL_Event& event)
     {
         case SDL_WINDOWEVENT_MINIMIZED:
         // Save state here on Android
+		myscreen->save_data.save("save0");
         break;
         case SDL_WINDOWEVENT_CLOSE:
         // Save state here on Android
+		myscreen->save_data.save("save0");
         break;
         case SDL_WINDOWEVENT_RESTORED:
         // Restore state here on Android.

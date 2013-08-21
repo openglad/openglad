@@ -87,6 +87,7 @@ struct button
 	Sint32 myfun; // Callback ID
 	Sint32 arg1;  // argument to function fun
 	MenuNav nav;
+	bool hidden;
 };
 
 class vbutton

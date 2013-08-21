@@ -22,6 +22,7 @@
 #include "stats.h"
 #include "text.h"
 #include "guy.h"
+#include "button.h"
 
 #include <list>
 #include <string>
@@ -32,6 +33,7 @@
 
 using namespace std;
 
+#define OK 4
 
 #define MAX_TEAM_SIZE 24 //max # of guys on a team
 extern Sint32 *mymouse;
@@ -40,6 +42,11 @@ extern Sint32 *mymouse;
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
 bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
+
+
+void draw_highlight_interior(const button& b);
+void draw_highlight(const button& b);
+bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
 
 
 void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, list<int>& exits)
@@ -388,6 +395,33 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
     SDL_Rect id_button = {Sint16(delete_button.x - 52 - 10), 10, 52, 10};
     
+    // Controller input
+    int retvalue = 0;
+	int highlighted_button = 0;
+	
+	int prev_index = 0;
+	int next_index = 1;
+	int choose_index = 2;
+	int cancel_index = 3;
+	int delete_index = 4;
+	int id_index = 5;
+	int entry1_index = 6;
+	int entry2_index = 7;
+	int entry3_index = 8;
+	
+	button buttons[] = {
+        { "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::DownLeftRight(next_index, entry1_index, id_index), false},
+        { "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav::UpLeftRight(prev_index, entry3_index, cancel_index), false},
+        { "OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav::UpLeft(id_index, cancel_index), true},
+        { "CANCEL", KEYSTATE_UNKNOWN, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpLeftRight(id_index, next_index, choose_index), false},
+        { "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav::DownLeft(choose_index, id_index), true},
+        { "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav::DownLeftRight(cancel_index, prev_index, delete_index), false},
+        { "1", KEYSTATE_UNKNOWN, 10, 15, 40, (53 - 12), 0, -1 , MenuNav::DownRight(entry2_index, prev_index), false},
+        { "2", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12), 40, (53 - 12), 0, -1 , MenuNav::UpDownRight(entry1_index, entry3_index, next_index), false},
+        { "3", KEYSTATE_UNKNOWN, 10, 15 + (53 + 12)*2, 40, (53 - 12), 0, -1 , MenuNav::UpRight(entry2_index, next_index), false},
+        
+	};
+    
     bool done = false;
 	while (!done)
 	{
@@ -400,16 +434,21 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		// Get keys and stuff
 		get_input_events(POLL);
 		
+        handle_menu_nav(buttons, highlighted_button, retvalue, false);
+		
 		// Quit if 'q' is pressed
 		if(keystates[KEYSTATE_q])
             done = true;
-            
+        
+        #ifndef USE_CONTROLLER_INPUT
 		if(keystates[KEYSTATE_UP])
 		{
 		    // Scroll up
 		    if(current_level_index > 0)
 		    {
                 selected_entry = -1;
+                if(highlighted_button == delete_index || highlighted_button == choose_index)
+                    highlighted_button = prev_index;
 		    
                 current_level_index--;
                 
@@ -434,6 +473,8 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
 		    {
                 selected_entry = -1;
+                if(highlighted_button == delete_index || highlighted_button == choose_index)
+                    highlighted_button = prev_index;
 		    
                 current_level_index++;
                 
@@ -452,152 +493,180 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             while (keystates[KEYSTATE_DOWN])
                 get_input_events(WAIT);
 		}
+		#endif
 		
 		// Mouse stuff ..
 		mymouse = query_mouse();
-		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
+        int mx = mymouse[MOUSE_X];
+        int my = mymouse[MOUSE_Y];
+        
+        bool do_click = mymouse[MOUSE_LEFT];
+		bool do_prev = (do_click && prev.x <= mx && mx <= prev.x + prev.w
+               && prev.y <= my && my <= prev.y + prev.h) || (retvalue == OK && highlighted_button == prev_index);
+        bool do_next = (do_click && next.x <= mx && mx <= next.x + next.w
+               && next.y <= my && my <= next.y + next.h) || (retvalue == OK && highlighted_button == next_index);
+        bool do_choose = selected_entry >= 0 && ((do_click && choose.x <= mx && mx <= choose.x + choose.w
+               && choose.y <= my && my <= choose.y + choose.h) || (retvalue == OK && highlighted_button == choose_index));
+        bool do_cancel = (do_click && cancel.x <= mx && mx <= cancel.x + cancel.w
+               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OK && highlighted_button == cancel_index);
+        bool do_delete = selected_entry >= 0 && ((do_click && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
+               && delete_button.y <= my && my <= delete_button.y + delete_button.h) || (retvalue == OK && highlighted_button == delete_index));
+        bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
+               && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OK && highlighted_button == id_index);
+        bool do_select = do_click || (retvalue == OK && (highlighted_button == entry1_index || highlighted_button == entry2_index || highlighted_button == entry3_index));
+        
+        
+		if (mymouse[MOUSE_LEFT])
 		{
 		    while(mymouse[MOUSE_LEFT])
                 get_input_events(WAIT);
-		    
-			int mx = mymouse[MOUSE_X];
-			int my = mymouse[MOUSE_Y];
-			
-		    
-            
-            // Prev
-            if(prev.x <= mx && mx <= prev.x + prev.w
-               && prev.y <= my && my <= prev.y + prev.h)
-               {
-                    if(current_level_index > 0)
+		}
+        
+        // Prev
+        if(do_prev)
+           {
+                if(current_level_index > 0)
+                {
+                    selected_entry = -1;
+                    if(highlighted_button == delete_index || highlighted_button == choose_index)
+                        highlighted_button = prev_index;
+                    current_level_index--;
+                    
+                    // Delete the bottom one and shift the rest down
+                    delete entries[NUM_BROWSE_RADARS-1];
+                    for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
                     {
-                        selected_entry = -1;
-                        current_level_index--;
-                        
-                        // Delete the bottom one and shift the rest down
-                        delete entries[NUM_BROWSE_RADARS-1];
-                        for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
-                        {
-                            entries[i] = entries[i-1];
-                            if(entries[i] != NULL)
-                                entries[i]->updateIndex(i);
-                        }
-                        // Load the new top one
-                        if(current_level_index < level_list_length)
-                            entries[0] = new BrowserEntry(screenp, 0, level_list[current_level_index]);
+                        entries[i] = entries[i-1];
+                        if(entries[i] != NULL)
+                            entries[i]->updateIndex(i);
                     }
-               }
-            // Next
-            else if(next.x <= mx && mx <= next.x + next.w
-               && next.y <= my && my <= next.y + next.h)
-               {
-                    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
+                    // Load the new top one
+                    if(current_level_index < level_list_length)
+                        entries[0] = new BrowserEntry(screenp, 0, level_list[current_level_index]);
+                }
+           }
+        // Next
+        else if(do_next)
+           {
+                if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
+                {
+                    selected_entry = -1;
+                    if(highlighted_button == delete_index || highlighted_button == choose_index)
+                        highlighted_button = prev_index;
+                    current_level_index++;
+                    
+                    // Delete the top one and shift the rest up
+                    delete entries[0];
+                    for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
                     {
-                        selected_entry = -1;
-                        current_level_index++;
-                        
-                        // Delete the top one and shift the rest up
-                        delete entries[0];
-                        for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
-                        {
-                            entries[i] = entries[i+1];
-                            if(entries[i] != NULL)
-                                entries[i]->updateIndex(i);
-                        }
-                        // Load the new bottom one
-                        if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
-                            entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(screenp, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
+                        entries[i] = entries[i+1];
+                        if(entries[i] != NULL)
+                            entries[i]->updateIndex(i);
                     }
-               }
-            // Choose
-			else if(choose.x <= mx && mx <= choose.x + choose.w
-               && choose.y <= my && my <= choose.y + choose.h)
+                    // Load the new bottom one
+                    if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
+                        entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(screenp, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
+                }
+           }
+        // Choose
+        else if(do_choose)
+           {
+               if(selected_entry != -1)
                {
-                   if(selected_entry != -1)
-                   {
-                       result = level_list[current_level_index + selected_entry];
-                       done = true;
-                       break;
-                   }
-               }
-            // Cancel
-			else if(cancel.x <= mx && mx <= cancel.x + cancel.w
-               && cancel.y <= my && my <= cancel.y + cancel.h)
-               {
+                   result = level_list[current_level_index + selected_entry];
                    done = true;
                    break;
                }
-            // Delete
-			else if(selected_entry >= 0 && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
-               && delete_button.y <= my && my <= delete_button.y + delete_button.h)
+           }
+        // Cancel
+        else if(do_cancel)
+           {
+               done = true;
+               break;
+           }
+        // Delete
+        else if(do_delete)
+           {
+               if(yes_or_no_prompt("Delete level", "Delete this level permanently?", false))
                {
-                   if(yes_or_no_prompt("Delete level", "Delete this level permanently?", false))
-                   {
-                       delete_level(level_list[current_level_index + selected_entry]);
-                       
-                       // Reload the picker
-                       level_list = list_levels_v();
-                        level_list_length = level_list.size();
-                        
-                        // Make sure our currently showing radars are not blank
-                        if(current_level_index + NUM_BROWSE_RADARS >= level_list_length)
-                        {
-                            if(level_list_length > NUM_BROWSE_RADARS)
-                                current_level_index = level_list_length-NUM_BROWSE_RADARS;
-                            else
-                                current_level_index = 0;
-                        }
-                        
-                        // Load the radars (minimaps)
-                        for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-                        {
-                            delete entries[i];
-                            
-                            if(i < level_list_length)
-                                entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
-                            else
-                                entries[i] = NULL;
-                        }
-                        
-                        selected_entry = -1;
-                   }
-               }
-            // Enter ID
-			else if(id_button.x <= mx && mx <= id_button.x + id_button.w
-               && id_button.y <= my && my <= id_button.y + id_button.h)
-               {
-                    std::string level;
-                    if(prompt_for_string(loadtext, "Enter Level ID (num)", level) && level.size() > 0)
+                   delete_level(level_list[current_level_index + selected_entry]);
+                   
+                   // Reload the picker
+                   level_list = list_levels_v();
+                    level_list_length = level_list.size();
+                    
+                    // Make sure our currently showing radars are not blank
+                    if(current_level_index + NUM_BROWSE_RADARS >= level_list_length)
                     {
-                        result = atoi(level.c_str());
-                        done = true;
-                        break;
+                        if(level_list_length > NUM_BROWSE_RADARS)
+                            current_level_index = level_list_length-NUM_BROWSE_RADARS;
+                        else
+                            current_level_index = 0;
                     }
+                    
+                    // Load the radars (minimaps)
+                    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+                    {
+                        delete entries[i];
+                        
+                        if(i < level_list_length)
+                            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                        else
+                            entries[i] = NULL;
+                    }
+                    
+                    selected_entry = -1;
+                    if(highlighted_button == delete_index || highlighted_button == choose_index)
+                        highlighted_button = prev_index;
                }
-			else
-			{
-                selected_entry = -1;
-                // Select
-                for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+           }
+        // Enter ID
+        else if(do_id)
+           {
+                std::string level;
+                if(prompt_for_string(loadtext, "Enter Level ID (num)", level) && level.size() > 0)
                 {
-                    if(i < level_list_length && entries[i] != NULL)
-                    {
-                        int x = entries[i]->myradar.xloc;
-                        int y = entries[i]->myradar.yloc;
-                        int w = entries[i]->myradar.xview;
-                        int h = entries[i]->myradar.yview;
-                        SDL_Rect b = {Sint16(x - 2), Sint16(y - 2), Uint16(w + 2), Uint16(h + 2)};
-                        if(b.x <= mx && mx <= b.x+b.w
-                           && b.y <= my && my <= b.y+b.h)
-                           {
-                               selected_entry = i;
-                               break;
-                           }
-                    }
+                    result = atoi(level.c_str());
+                    done = true;
+                    break;
                 }
-			}
-		}
+           }
+        else if(do_select)
+        {
+            selected_entry = -1;
+            if(highlighted_button == delete_index || highlighted_button == choose_index)
+                highlighted_button = prev_index;
+            // Select
+            for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+            {
+                if(i < level_list_length && entries[i] != NULL)
+                {
+                    int x = entries[i]->myradar.xloc;
+                    int y = entries[i]->myradar.yloc;
+                    int w = entries[i]->myradar.xview;
+                    int h = entries[i]->myradar.yview;
+                    SDL_Rect b = {Sint16(x - 2), Sint16(y - 2), Uint16(w + 2), Uint16(h + 2)};
+                    if((do_click && b.x <= mx && mx <= b.x+b.w
+                       && b.y <= my && my <= b.y+b.h) || (retvalue == OK && highlighted_button - entry1_index == i))
+                       {
+                           selected_entry = i;
+                           break;
+                       }
+                }
+            }
+        }
 		
+        retvalue = 0;
+		
+		if(selected_entry >= 0 && enable_delete)
+            buttons[delete_index].hidden = false;
+        else
+            buttons[delete_index].hidden = true;
+        
+		if(selected_entry >= 0)
+            buttons[choose_index].hidden = false;
+        else
+            buttons[choose_index].hidden = true;
         
         // Draw
         screenp->clearscreen();
@@ -658,6 +727,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         }
         
         
+        draw_highlight(buttons[highlighted_button]);
 		screenp->buffer_to_screen(0, 0, 320, 200);
 		SDL_Delay(10);
 	}
