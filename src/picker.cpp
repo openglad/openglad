@@ -334,7 +334,8 @@ button viewteam[] =
 
 button detailed[] =
     {
-        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::None(), false},
+        { "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(1, 1), false},
+        { "PROMOTE", KEYSTATE_UNKNOWN, 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav::DownLeft(0, 0), true},
     };
 
 button editteam[] =
@@ -2612,6 +2613,11 @@ Sint32 create_detail_menu(guy *arg1)
    Sint32 start_time = query_timer();
    Sint32 *detailmouse;
 
+   if (arg1)
+       thisguy = arg1;
+   else
+       thisguy = myscreen->save_data.team_list[editguy];
+
    release_mouse();
 
    myscreen->clearfontbuffer();
@@ -2620,16 +2626,14 @@ Sint32 create_detail_menu(guy *arg1)
        delete localbuttons;
     
 	button* buttons = detailed;
-	int num_buttons = 1;
+	int num_buttons = 2;
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
+	
+	buttons[1].hidden = !(thisguy->family == FAMILY_MAGE && thisguy->level >= 6) && !(thisguy->family == FAMILY_ORC && thisguy->level >= 5);
+    
 	draw_backdrop();
 	draw_buttons(buttons, num_buttons);
-
-   if (arg1)
-       thisguy = arg1;
-   else
-       thisguy = myscreen->save_data.team_list[editguy];
 
    myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
    myscreen->draw_text_bar(36, 10, 124, 22);
@@ -3032,44 +3036,49 @@ Sint32 create_detail_menu(guy *arg1)
    {
        show_guy(query_timer()-start_time, 1); // 1 means ourteam[editguy]
     
-        handle_menu_nav(buttons, highlighted_button, retvalue);
-        
-       if (leftmouse())
+       bool pressed = handle_menu_nav(buttons, highlighted_button, retvalue);
+       
+       bool do_click = false;
+       if(leftmouse())
        {
            detailmouse = query_mouse();
-           if (detailmouse[MOUSE_X] >= 160 &&
+           do_click = true;
+       }
+       
+       bool do_promote = !buttons[1].hidden && ((do_click && detailmouse[MOUSE_X] >= 160 &&
                    detailmouse[MOUSE_X] <= 315 &&
                    detailmouse[MOUSE_Y] >= 4   &&
-                   detailmouse[MOUSE_Y] <= 66)
+                   detailmouse[MOUSE_Y] <= 66) || (pressed && highlighted_button == 1));
+       if(do_promote)
+       {
+           if (thisguy->family == FAMILY_MAGE &&
+                   thisguy->level >= 6)
            {
-               if (thisguy->family == FAMILY_MAGE &&
-                       thisguy->level >= 6)
-               {
-                   // Become an archmage!
-                   thisguy->level = ( (thisguy->level-6) / 2) + 1;
-                   thisguy->exp = calculate_exp(thisguy->level);
-                   thisguy->family = FAMILY_ARCHMAGE;
-                   myscreen->soundp->play_sound(SOUND_EXPLODE);
-                   myscreen->soundp->play_sound(SOUND_EXPLODE);
-                   myscreen->soundp->play_sound(SOUND_EXPLODE);
-                   return REDRAW;
-               }  // end of mage->archmage
-               else if (thisguy->family == FAMILY_ORC &&
-                        thisguy->level >= 5)
-               {
-                   // Become an Orcish Captain!
-                   thisguy->exp = 0;
-                   thisguy->level = 1;
-                   thisguy->family = FAMILY_BIG_ORC; // fake for now
-                   myscreen->soundp->play_sound(SOUND_DIE1);
-                   myscreen->soundp->play_sound(SOUND_DIE2);
-                   myscreen->soundp->play_sound(SOUND_DIE1);
-                   return REDRAW;
-               } // end of orc->orc-captain
-           }
-
-           retvalue=localbuttons->leftclick();
+               // Become an archmage!
+               thisguy->level = ( (thisguy->level-6) / 2) + 1;
+               thisguy->exp = calculate_exp(thisguy->level);
+               thisguy->family = FAMILY_ARCHMAGE;
+               myscreen->soundp->play_sound(SOUND_EXPLODE);
+               myscreen->soundp->play_sound(SOUND_EXPLODE);
+               myscreen->soundp->play_sound(SOUND_EXPLODE);
+               return REDRAW;
+           }  // end of mage->archmage
+           else if (thisguy->family == FAMILY_ORC &&
+                    thisguy->level >= 5)
+           {
+               // Become an Orcish Captain!
+               thisguy->exp = 0;
+               thisguy->level = 1;
+               thisguy->family = FAMILY_BIG_ORC; // fake for now
+               myscreen->soundp->play_sound(SOUND_DIE1);
+               myscreen->soundp->play_sound(SOUND_DIE2);
+               myscreen->soundp->play_sound(SOUND_DIE1);
+               return REDRAW;
+           } // end of orc->orc-captain
        }
+        
+        if(do_click)
+            retvalue=localbuttons->leftclick();
        
        draw_buttons(buttons, num_buttons);
        draw_highlight_interior(buttons[highlighted_button]);
