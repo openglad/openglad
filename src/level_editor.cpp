@@ -841,14 +841,20 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 
 #define DEFAULT_EDITOR_MENU_BUTTON_HEIGHT 20
 
+#ifdef REDUCE_OVERSCAN
+#define OVERSCAN_PADDING 6
+#else
+#define OVERSCAN_PADDING 0
+#endif
+
 LevelEditorData::LevelEditorData()
     : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
-	, fileButton("File", 0, 0, 30, menu_button_height)
-	, fileCampaignButton("Campaign >", 0, fileButton.area.y + fileButton.area.h, 65, menu_button_height, true)
-	, fileLevelButton("Level >", 0, fileCampaignButton.area.y + fileCampaignButton.area.h, 65, menu_button_height, true, true)
-	, fileQuitButton("Exit", 0, fileLevelButton.area.y + fileLevelButton.area.h, 65, menu_button_height, true, true)
+	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
+	, fileCampaignButton("Campaign >", OVERSCAN_PADDING, fileButton.area.y + fileButton.area.h, 65, menu_button_height, true)
+	, fileLevelButton("Level >", OVERSCAN_PADDING, fileCampaignButton.area.y + fileCampaignButton.area.h, 65, menu_button_height, true, true)
+	, fileQuitButton("Exit", OVERSCAN_PADDING, fileLevelButton.area.y + fileLevelButton.area.h, 65, menu_button_height, true, true)
 	
 	, fileCampaignImportButton("Import...", fileCampaignButton.area.x + fileCampaignButton.area.w, fileCampaignButton.area.y, 65, menu_button_height, true)
 	, fileCampaignShareButton("Share...", fileCampaignImportButton.area.x, fileCampaignImportButton.area.y + fileCampaignImportButton.area.h, 65, menu_button_height, true, true)
@@ -895,7 +901,7 @@ LevelEditorData::LevelEditorData()
 	, levelDetailsMapSizeButton("Map size...", levelDetailsButton.area.x + levelDetailsButton.area.w, levelDetailsButton.area.y, 95, menu_button_height, true)
 	, levelDetailsParValueButton("Par value...", levelDetailsMapSizeButton.area.x, levelDetailsMapSizeButton.area.y + levelDetailsMapSizeButton.area.h, 95, menu_button_height, true, true)
 	
-	, levelGoalsEnemiesButton("Defeat enemies: On", levelGoalsButton.area.x + levelGoalsButton.area.w, levelGoalsButton.area.y, 125, menu_button_height, true)
+	, levelGoalsEnemiesButton("Defeat enemies: On", levelGoalsButton.area.x + levelGoalsButton.area.w - 2*OVERSCAN_PADDING, levelGoalsButton.area.y, 125, menu_button_height, true)
 	, levelGoalsGeneratorsButton("Beat generators: Off", levelGoalsEnemiesButton.area.x, levelGoalsEnemiesButton.area.y + levelGoalsEnemiesButton.area.h, 125, menu_button_height, true, true)
 	, levelGoalsNPCsButton("Protect NPCs: Off", levelGoalsEnemiesButton.area.x, levelGoalsGeneratorsButton.area.y + levelGoalsGeneratorsButton.area.h, 125, menu_button_height, true, true)
 	
@@ -904,26 +910,26 @@ LevelEditorData::LevelEditorData()
 	, modeObjectButton("Object Mode", modeButton.area.x, modeTerrainButton.area.y + modeTerrainButton.area.h, 75, menu_button_height, true, true)
 	, modeSelectButton("Select Mode", modeButton.area.x, modeObjectButton.area.y + modeObjectButton.area.h, 75, menu_button_height, true, true)
     
-    , pickerButton("Pick", 0, 20, 27, 15)
+    , pickerButton("Pick", OVERSCAN_PADDING, 20, 27, 15)
     , gridSnapButton("Snap", pickerButton.area.x+pickerButton.area.w+2, 20, 27, 15)
     , terrainSmoothButton("Smooth", pickerButton.area.x+pickerButton.area.w+2, 20, 39, 15)  // Same place as gridSnapButton
-    , setNameButton("Set Name", 0, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
-    , prevTeamButton("< Team", 0, setNameButton.area.y+setNameButton.area.h, 40, 15)
-    , nextTeamButton("Team >", prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
-    , prevLevelButton("< Lvl", 0, prevTeamButton.area.y+prevTeamButton.area.h, 40, 15)
-    , nextLevelButton("Lvl >", prevLevelButton.area.w, prevLevelButton.area.y, 40, 15)
-    , prevClassButton("< Class", 0, prevLevelButton.area.y+prevLevelButton.area.h, 48, 15)
-    , nextClassButton("Class >", prevClassButton.area.w, prevClassButton.area.y, 48, 15)
-    , facingButton("Facing >", 0, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
-    , deleteButton("Delete", 0, 10+facingButton.area.y+facingButton.area.h, 40, 15)
-    , panUpButton("U", 15, 200 - 45, 15, 15)
-    , panDownButton("D", 15, 200 - 15, 15, 15)
-    , panLeftButton("L", 0, 200 - 30, 15, 15)
-    , panRightButton("R", 30, 200 - 30, 15, 15)
-    , panUpRightButton("", 30, 200 - 45, 15, 15)
-    , panUpLeftButton("", 0, 200 - 45, 15, 15)
-    , panDownRightButton("", 30, 200 - 15, 15, 15)
-    , panDownLeftButton("", 0, 200 - 15, 15, 15)
+    , setNameButton("Set Name", OVERSCAN_PADDING, 10+gridSnapButton.area.y+gridSnapButton.area.h, 52, 15)
+    , prevTeamButton("< Team", OVERSCAN_PADDING, setNameButton.area.y+setNameButton.area.h, 40, 15)
+    , nextTeamButton("Team >", prevTeamButton.area.x + prevTeamButton.area.w, prevTeamButton.area.y, 40, 15)
+    , prevLevelButton("< Lvl", OVERSCAN_PADDING, prevTeamButton.area.y+prevTeamButton.area.h, 40, 15)
+    , nextLevelButton("Lvl >", prevLevelButton.area.x + prevLevelButton.area.w, prevLevelButton.area.y, 40, 15)
+    , prevClassButton("< Class", OVERSCAN_PADDING, prevLevelButton.area.y+prevLevelButton.area.h, 48, 15)
+    , nextClassButton("Class >", prevClassButton.area.x + prevClassButton.area.w, prevClassButton.area.y, 48, 15)
+    , facingButton("Facing >", OVERSCAN_PADDING, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
+    , deleteButton("Delete", OVERSCAN_PADDING, 10+facingButton.area.y+facingButton.area.h, 40, 15)
+    , panUpButton("U", OVERSCAN_PADDING + 15, 200 - 45, 15, 15)
+    , panDownButton("D", OVERSCAN_PADDING + 15, 200 - 15, 15, 15)
+    , panLeftButton("L", OVERSCAN_PADDING, 200 - 30, 15, 15)
+    , panRightButton("R", OVERSCAN_PADDING + 30, 200 - 30, 15, 15)
+    , panUpRightButton("", OVERSCAN_PADDING + 30, 200 - 45, 15, 15)
+    , panUpLeftButton("", OVERSCAN_PADDING, 200 - 45, 15, 15)
+    , panDownRightButton("", OVERSCAN_PADDING + 30, 200 - 15, 15, 15)
+    , panDownLeftButton("", OVERSCAN_PADDING, 200 - 15, 15, 15)
 {
 	// Top menu
 	menu_buttons.insert(&fileButton);
@@ -934,7 +940,7 @@ LevelEditorData::LevelEditorData()
     gridSnapButton.set_colors_enabled();
     terrainSmoothButton.set_colors_enabled();
     
-    #ifdef USE_TOUCH_INPUT
+    #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
     pan_buttons.insert(&panUpButton);
     pan_buttons.insert(&panDownButton);
     pan_buttons.insert(&panLeftButton);
@@ -2676,7 +2682,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 int w = toInt(width);
                 int h;
                 
-                #ifdef USE_TOUCH_INPUT
+                #ifdef ANDROID
                 // The soft keyboard on Android might take a little while to be ready again, so opening it right away doesn't always work.
                 SDL_Delay(1000);
                 #endif

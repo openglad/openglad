@@ -70,22 +70,37 @@ void radar::start(LevelData* data)
     if(viewscreenp)
     {
         #ifdef USE_TOUCH_INPUT
-        if(force_lower_position)
+        if(force_lower_position)  // used by level editor to place minimap
         {
             // At bottom
+            #ifdef REDUCE_OVERSCAN
+            xloc = (short) ( ((viewscreenp->endx - xview) - 8) );
+            yloc = (short) ( ((viewscreenp->endy - yview) - 8) );
+            #else
             xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
             yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+            #endif
         }
         else
         {
             // At top
+            #ifdef REDUCE_OVERSCAN
+            xloc = (short) ( ((viewscreenp->endx - xview) - 8) );
+            yloc = (short) (viewscreenp->yloc + 8);
+            #else
             xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
             yloc = (short) (viewscreenp->yloc + 4);
+            #endif
         }
         #else
-        // At bottom
-        xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
-        yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+            // At bottom
+            #ifdef REDUCE_OVERSCAN
+            xloc = (short) ( ((viewscreenp->endx - xview) - 8) );
+            yloc = (short) ( ((viewscreenp->endy - yview) - 8) );
+            #else
+            xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
+            yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+            #endif
         #endif
     }
     if(bmp != NULL)

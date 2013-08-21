@@ -578,6 +578,12 @@ void new_draw_value_bar(short left, short top,
 } // end of drawing routine ..
 
 
+#ifdef REDUCE_OVERSCAN
+#define OVERSCAN_PADDING 6
+#else
+#define OVERSCAN_PADDING 0
+#endif
+
 short new_score_panel(screen *myscreen, short do_it)
 {
 #define L_D(x) x*8
@@ -620,10 +626,10 @@ short new_score_panel(screen *myscreen, short do_it)
 	for (players = 0; players < myscreen->numviews; players++)
 	{
 		control = myscreen->viewob[players]->control;
-		lm = myscreen->viewob[players]->xloc;
-		tm = myscreen->viewob[players]->yloc;
-		rm = myscreen->viewob[players]->endx;
-		bm = myscreen->viewob[players]->endy;
+		lm = myscreen->viewob[players]->xloc + OVERSCAN_PADDING;
+		tm = myscreen->viewob[players]->yloc + OVERSCAN_PADDING;
+		rm = myscreen->viewob[players]->endx - OVERSCAN_PADDING;
+		bm = myscreen->viewob[players]->endy - OVERSCAN_PADDING;
 		if (control && !control->dead)
 		{
 			// Get the button-drawing info ..

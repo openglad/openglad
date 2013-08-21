@@ -304,7 +304,7 @@ button buttons1[] =
         { "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)},
         { "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)},
 
-        { "QUIT", KEYSTATE_ESCAPE, 80, 175, 140, 20, QUIT_MENU, -1 , MenuNav::Up(7)},
+        { "QUIT", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7)},
     };
 
 // beginmenu (first menu of new game), create_team_menu
@@ -537,7 +537,12 @@ void draw_version_number()
 	text mytext(myscreen);
 
 	myscreen->redrawme = 1;
-	mytext.write_xy(320 - strlen(OPENGLAD_VERSION_STRING)*6, 200 - 10, OPENGLAD_VERSION_STRING, (unsigned char) DARK_BLUE, 1);
+	int w = strlen(OPENGLAD_VERSION_STRING)*6;
+	int h = 8;
+	int x = 320 - w - 80;
+	int y = 200 - 12;
+	myscreen->fastbox(x, y, w, h, PURE_BLACK);
+	mytext.write_xy(x, y, OPENGLAD_VERSION_STRING, (unsigned char) DARK_BLUE, 1);
 }
 
 #ifdef USE_CONTROLLER_INPUT
