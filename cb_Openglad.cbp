@@ -587,6 +587,7 @@
 		<Unit filename="src/video.h" />
 		<Unit filename="src/view.cpp" />
 		<Unit filename="src/view.h" />
+		<Unit filename="src/view_sizes.h" />
 		<Unit filename="src/walker.cpp" />
 		<Unit filename="src/walker.h" />
 		<Unit filename="src/weap.cpp" />
