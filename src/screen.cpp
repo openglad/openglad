@@ -24,6 +24,16 @@
 			   scen/ in case lowercase check fails
 */
 
+
+//Screen window boundaries, two player
+#define T_LEFT_ONE 0
+#define T_UP_ONE 0
+#define T_LEFT_TWO 164
+#define T_UP_TWO 0
+#define T_WIDTH 156
+#define T_HEIGHT 200
+
+
 #include "graph.h"
 #include "smooth.h"
 #include "util.h"
@@ -303,29 +313,8 @@ void screen::ready_for_battle(short howmany)
 
 	// Clean stuff up
 	cleanup(howmany);
-
-	if (numviews == 1)
-	{
-		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
-	}
-	else if (numviews == 2)
-	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-	}
-	else if (numviews == 3)
-	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
-	}
-	else if (numviews == 4)
-	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
-		viewob[3] = new viewscreen( 112, 16, 100, 168, 3, this);
-	}
+    
+    initialize_views();
 
 	end = 0;
 

@@ -1034,8 +1034,11 @@ short walker::draw(viewscreen  *view_buf)
 	    outline = 0;
 	}
 	
-    if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
-        outline = OUTLINE_INVISIBLE;
+	if(view_buf->control != NULL)
+    {
+        if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+            outline = OUTLINE_INVISIBLE;
+    }
 
 	if (stats->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
 		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
@@ -1047,7 +1050,7 @@ short walker::draw(viewscreen  *view_buf)
 		                        0, //outline
 		                        SHIFT_RANDOM); //type of phantom
 
-	else if (invisibility_left)  //WE ARE INVISIBLE
+	else if (invisibility_left && view_buf->control != NULL)  //WE ARE INVISIBLE
 	{
 		if (this->team_num == view_buf->control->team_num)
 			screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,

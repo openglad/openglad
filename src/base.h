@@ -160,13 +160,6 @@ char* read_one_line(SDL_RWops *infile, short length);
 #define MAXOBS 150
 
 
-//Screen window boundaries, two player
-#define T_LEFT_ONE 0
-#define T_UP_ONE 0
-#define T_LEFT_TWO 164
-#define T_UP_TWO 0
-#define T_WIDTH 156
-#define T_HEIGHT 200
 
 // Act types
 #define ACT_RANDOM 0
