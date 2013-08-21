@@ -10,7 +10,7 @@
     #define USE_SDL2
 #endif
 
-extern SDL_Surface *screen;
+//extern SDL_Surface *screen;
 
 typedef enum 
 {
@@ -24,13 +24,13 @@ class Screen
 {
 	public:
 		SDL_Surface *screen;
-	private:
-		SDL_Surface		*render;		// the physical screen
         #ifdef USE_SDL2
 		SDL_Window* window;
 		SDL_Renderer* renderer;
 		SDL_Texture* render_tex;
 		#endif
+	private:
+		SDL_Surface		*render;		// the physical screen
 		SDL_Surface		*tempo;			// used to render org_screen before
 										// update which is only a SDL_Update between
 										// render and tempo

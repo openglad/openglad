@@ -27,6 +27,12 @@
 #include "level_data.h"
 #include "level_picker.h"
 #include "campaign_picker.h"
+#include "sai2x.h"
+
+#ifdef OUYA
+#include "OuyaController.h"
+#endif
+extern short scroll_amount;  // for scrolling up and down text popups
 
 void quit(Sint32 arg1);
 
@@ -922,14 +928,14 @@ LevelEditorData::LevelEditorData()
     , nextClassButton("Class >", prevClassButton.area.x + prevClassButton.area.w, prevClassButton.area.y, 48, 15)
     , facingButton("Facing >", OVERSCAN_PADDING, prevClassButton.area.y+prevClassButton.area.h, 52, 15)
     , deleteButton("Delete", OVERSCAN_PADDING, 10+facingButton.area.y+facingButton.area.h, 40, 15)
-    , panUpButton("U", OVERSCAN_PADDING + 15, 200 - 45, 15, 15)
-    , panDownButton("D", OVERSCAN_PADDING + 15, 200 - 15, 15, 15)
-    , panLeftButton("L", OVERSCAN_PADDING, 200 - 30, 15, 15)
-    , panRightButton("R", OVERSCAN_PADDING + 30, 200 - 30, 15, 15)
-    , panUpRightButton("", OVERSCAN_PADDING + 30, 200 - 45, 15, 15)
-    , panUpLeftButton("", OVERSCAN_PADDING, 200 - 45, 15, 15)
-    , panDownRightButton("", OVERSCAN_PADDING + 30, 200 - 15, 15, 15)
-    , panDownLeftButton("", OVERSCAN_PADDING, 200 - 15, 15, 15)
+    , panUpButton("U", OVERSCAN_PADDING + 18, 200 - 51, 15, 15)
+    , panDownButton("D", OVERSCAN_PADDING + 18, 200 - 21, 15, 15)
+    , panLeftButton("L", OVERSCAN_PADDING + 3, 200 - 36, 15, 15)
+    , panRightButton("R", OVERSCAN_PADDING + 33, 200 - 36, 15, 15)
+    , panUpRightButton("", OVERSCAN_PADDING + 33, 200 - 51, 15, 15)
+    , panUpLeftButton("", OVERSCAN_PADDING + 3, 200 - 51, 15, 15)
+    , panDownRightButton("", OVERSCAN_PADDING + 33, 200 - 21, 15, 15)
+    , panDownLeftButton("", OVERSCAN_PADDING + 3, 200 - 21, 15, 15)
 {
 	// Top menu
 	menu_buttons.insert(&fileButton);
@@ -1396,6 +1402,7 @@ bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& b
     myscreen->clearfontbuffer();
     data.current_menu.clear();
     data.draw(myscreen);
+    myscreen->refresh();
     return true;
 }
 
@@ -1411,6 +1418,7 @@ bool activate_menu_toggle_choice(int mx, int my, LevelEditorData& data, SimpleBu
     // Close menu
     myscreen->clearfontbuffer();
     data.draw(myscreen);
+    myscreen->refresh();
     return true;
 }
 
@@ -1524,7 +1532,6 @@ void LevelEditorData::draw(screen* myscreen)
     
     display_panel(myscreen);
     
-    myscreen->refresh();
 }
 
 #ifdef NO_BLOOD
@@ -2720,6 +2727,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             myradar.start(level);
                             
                             draw(myscreen);
+                            myscreen->refresh();
                             
                             char buf[30];
                             snprintf(buf, 30, "Resized map to %ux%u", level->grid.w, level->grid.h);
@@ -3231,6 +3239,10 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
 #define PAN_LIMIT_LEFT -60
 #define PAN_LIMIT_RIGHT (GRID_SIZE*data.level->grid.w - 320 + 80)
 
+bool pan_left = false;
+bool pan_right = false;
+bool pan_up = false;
+bool pan_down = false;
 
 Sint32 level_editor()
 {
@@ -3330,6 +3342,32 @@ Sint32 level_editor()
 		
         while(SDL_PollEvent(&event))
         {
+            #ifdef USE_CONTROLLER_INPUT
+            if(didPlayerPressKey(0, KEY_FIRE, event))
+            {
+                // Send fake mouse down event
+                SDL_Event event;
+                
+                event.type = SDL_MOUSEBUTTONDOWN;
+                event.button.button = SDL_BUTTON_LEFT;
+                event.button.x = mymouse[MOUSE_X]*mouse_scale_x;
+                event.button.y = mymouse[MOUSE_Y]*mouse_scale_y;
+                SDL_PushEvent(&event);
+                continue;
+            }
+            if(didPlayerReleaseKey(0, KEY_FIRE, event))
+            {
+                // Send fake mouse up event
+                SDL_Event event;
+                
+                event.type = SDL_MOUSEBUTTONUP;
+                event.button.button = SDL_BUTTON_LEFT;
+                event.button.x = mymouse[MOUSE_X]*mouse_scale_x;
+                event.button.y = mymouse[MOUSE_Y]*mouse_scale_y;
+                SDL_PushEvent(&event);
+                continue;
+            }
+            #endif
             switch(handle_basic_editor_event(event))
             {
             case MOUSE_MOTION_EVENT:
@@ -3487,7 +3525,82 @@ Sint32 level_editor()
             }
         }
 
-
+        #ifdef USE_CONTROLLER_INPUT
+        {
+            int dx = 0;
+            int dy = 0;
+            if(isPlayerHoldingKey(0, KEY_UP) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_UP_RIGHT))
+            {
+                dy = -5;
+            }
+            if(isPlayerHoldingKey(0, KEY_DOWN) || isPlayerHoldingKey(0, KEY_DOWN_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
+            {
+                dy = 5;
+            }
+            if(isPlayerHoldingKey(0, KEY_LEFT) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_LEFT))
+            {
+                dx = -5;
+            }
+            if(isPlayerHoldingKey(0, KEY_RIGHT) || isPlayerHoldingKey(0, KEY_UP_RIGHT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
+            {
+                dx = 5;
+            }
+            
+            if(mymouse[MOUSE_X] + dx < 0)
+                mymouse[MOUSE_X] = 0;
+            if(mymouse[MOUSE_X] + dx > 320)
+                mymouse[MOUSE_X] = 320;
+            if(mymouse[MOUSE_Y] + dy < 0)
+                mymouse[MOUSE_Y] = 0;
+            if(mymouse[MOUSE_Y] + dy > 200)
+                mymouse[MOUSE_Y] = 200;
+            
+            if(dx != 0 || dy != 0)
+            {
+                int x, y;
+                SDL_Event event;
+                
+                event.type = SDL_MOUSEMOTION;
+                event.motion.type = SDL_MOUSEMOTION;
+                event.motion.windowID = 0;
+                event.motion.which = 0;
+                event.motion.state = SDL_GetMouseState(&x, &y);
+                event.motion.xrel = dx*mouse_scale_x;
+                event.motion.yrel = dy*mouse_scale_y;
+                event.motion.x = mymouse[MOUSE_X]*mouse_scale_x + event.motion.xrel;
+                event.motion.y = mymouse[MOUSE_Y]*mouse_scale_y + event.motion.yrel;
+                SDL_PushEvent(&event);
+            }
+        }
+        
+        #ifdef OUYA
+            
+            const OuyaController& c = OuyaControllerManager::getController(event.user.code);
+            
+            float vx = c.getAxisValue(OuyaController::AXIS_RS_X);
+            float vy = c.getAxisValue(OuyaController::AXIS_RS_Y);
+            
+            // Scroll the tile selector when over it
+            if(Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse[MOUSE_X], mymouse[MOUSE_Y]))
+            {
+                if(fabs(vy) > OuyaController::DEADZONE)
+                    scroll_amount = -2*vy;
+                else
+                    scroll_amount = 0;
+            }
+            else
+            {
+                scroll_amount = 0;
+                
+                // Panning
+                pan_left = (vx < -OuyaController::DEADZONE);
+                pan_right = (vx > OuyaController::DEADZONE);
+                pan_up = (vy < -OuyaController::DEADZONE);
+                pan_down = (vy > OuyaController::DEADZONE);
+            }
+        #endif
+        
+        #endif
 
 		short scroll_amount = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
@@ -3528,28 +3641,28 @@ Sint32 level_editor()
 
 
 		// Scroll the screen (panning)
-		// Zardus: ADD: added scrolling by keyboard
-		// Zardus: PORT: disabled mouse scrolling
-		if ((keystates[KEYSTATE_KP_8] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_w]) // || mymouse[MOUSE_Y]< 2)
-		        && data.level->topy >= PAN_LIMIT_UP) // top of the screen
+		#ifndef OUYA
+		pan_left = (keystates[KEYSTATE_KP_4] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_a]);
+		pan_right = (keystates[KEYSTATE_KP_6] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_d]);
+		pan_up = (keystates[KEYSTATE_KP_8] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_w]);
+		pan_down = (keystates[KEYSTATE_KP_2] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_s]);
+		#endif
+		if (pan_up && data.level->topy >= PAN_LIMIT_UP) // top of the screen
         {
             redraw = 1;
 			data.level->add_draw_pos(0, -SCROLLSIZE);
         }
-		if ((keystates[KEYSTATE_KP_2] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_s]) // || mymouse[MOUSE_Y]> 198)
-		        && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
+		if (pan_down && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
         {
             redraw = 1;
 			data.level->add_draw_pos(0, SCROLLSIZE);
         }
-		if ((keystates[KEYSTATE_KP_4] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_a]) // || mymouse[MOUSE_X]< 2)
-		        && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
+		if (pan_left && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
         {
             redraw = 1;
 			data.level->add_draw_pos(-SCROLLSIZE, 0);
         }
-		if ((keystates[KEYSTATE_KP_6] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_d]) // || mymouse[MOUSE_X] > 318)
-		        && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
+		if (pan_right && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
         {
             redraw = 1;
 			data.level->add_draw_pos(SCROLLSIZE, 0);
@@ -3701,6 +3814,12 @@ Sint32 level_editor()
 		{
             redraw = 0;
 			data.draw(myscreen);
+			
+            #ifdef USE_CONTROLLER_INPUT
+            myscreen->fastbox(mymouse[MOUSE_X]-1, mymouse[MOUSE_Y]-1, 4, 4, PURE_WHITE);
+            myscreen->fastbox(mymouse[MOUSE_X], mymouse[MOUSE_Y], 2, 2, PURE_BLACK);
+            #endif
+            myscreen->refresh();
 		}
         
         SDL_Delay(10);

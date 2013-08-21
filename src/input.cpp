@@ -713,7 +713,7 @@ void handle_events(const SDL_Event& event)
             const OuyaController& c = OuyaControllerManager::getController(event.user.code);
             
             // This should not be in an event or else it's jerky.
-            float v = c.getAxisValue(OuyaController::AXIS_LS_Y);
+            float v = c.getAxisValue(OuyaController::AXIS_LS_Y) + c.getAxisValue(OuyaController::AXIS_RS_Y);
             if(fabs(v) > OuyaController::DEADZONE)
                 scroll_amount = -5*v;
         }
@@ -1118,6 +1118,50 @@ bool JoyData::getPress(int key_enum, const SDL_Event& event) const
     }
 }
 
+bool JoyData::getRelease(int key_enum, const SDL_Event& event) const
+{
+    if(index < 0)
+        return false;
+
+    switch(key_type[key_enum])
+    {
+    case BUTTON:
+        if(event.type == SDL_JOYBUTTONUP)
+        {
+            return (event.jbutton.which == index && event.jbutton.button == key_index[key_enum]);
+        }
+        return false;
+    case POS_AXIS:
+        if(event.type == SDL_JOYAXISMOTION)
+        {
+            return (event.jaxis.which == index && event.jaxis.axis == key_index[key_enum] && event.jaxis.value < JOY_DEAD_ZONE);
+        }
+        return false;
+    case NEG_AXIS:
+        if(event.type == SDL_JOYAXISMOTION)
+        {
+            return (event.jaxis.which == index && event.jaxis.axis == key_index[key_enum] && event.jaxis.value > -JOY_DEAD_ZONE);
+        }
+        return false;
+    case HAT_UP:
+        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_UP);
+    case HAT_RIGHT:
+        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_RIGHT);
+    case HAT_DOWN:
+        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_DOWN);
+    case HAT_LEFT:
+        return (event.jhat.which == index && event.jhat.hat == key_index[key_enum] && event.jhat.value & SDL_HAT_LEFT);
+
+        // Diagonals are ignored because they are combinations of the cardinals
+    case HAT_UP_RIGHT:
+    case HAT_DOWN_RIGHT:
+    case HAT_DOWN_LEFT:
+    case HAT_UP_LEFT:
+    default:
+        return false;
+    }
+}
+
 bool JoyData::hasButtonSet(int key_enum) const
 {
     return (index >= 0 && key_type[key_enum] != NONE);
@@ -1260,12 +1304,10 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
 {
     #ifdef OUYA
     const OuyaController& c = OuyaControllerManager::getController(player_index);
-    if(event.type != SDL_USEREVENT)
-        return false;
     if(event.user.code != player_index)
         return false;
     
-    if(event.user.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
+    if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
     {
         OuyaController::ButtonEnum button = OuyaController::ButtonEnum(int(event.user.data1));
         
@@ -1295,7 +1337,7 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
             return false;
         }
     }
-    else if(event.user.type == OuyaControllerManager::AXIS_EVENT)
+    else if(event.type == OuyaControllerManager::AXIS_EVENT)
     {
         switch(key_enum)
         {
@@ -1323,6 +1365,59 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
             if(event.key.repeat) // Repeats don't count!
                 return false;
             #endif
+            return (event.key.keysym.sym == player_keys[player_index][key_enum]);
+        }
+        return false;
+    }
+}
+
+bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event)
+{
+    #ifdef OUYA
+    const OuyaController& c = OuyaControllerManager::getController(player_index);
+    if(event.type != OuyaControllerManager::BUTTON_UP_EVENT)
+        return false;
+    if(event.user.code != player_index)
+        return false;
+    
+    OuyaController::ButtonEnum button = OuyaController::ButtonEnum(int(event.user.data1));
+    
+    switch(key_enum)
+    {
+    case KEY_UP:
+        return (button == OuyaController::BUTTON_DPAD_UP);
+    case KEY_RIGHT:
+        return (button == OuyaController::BUTTON_DPAD_RIGHT);
+    case KEY_DOWN:
+        return (button == OuyaController::BUTTON_DPAD_DOWN);
+    case KEY_LEFT:
+        return (button == OuyaController::BUTTON_DPAD_LEFT);
+    case KEY_FIRE:
+        return (button == OuyaController::BUTTON_O);
+    case KEY_SPECIAL:
+        return (button == OuyaController::BUTTON_A);
+    case KEY_SWITCH:
+        return (button == OuyaController::BUTTON_L1);
+    case KEY_SPECIAL_SWITCH:
+        return (button == OuyaController::BUTTON_U);
+    case KEY_YELL:
+        return (button == OuyaController::BUTTON_Y);
+    case KEY_SHIFTER:
+        return (button == OuyaController::BUTTON_R1);
+    default:
+        return false;
+    }
+    #endif
+    if(player_joy[player_index].hasButtonSet(key_enum))
+    {
+        // This key is on the joystick, so check it.
+        return player_joy[player_index].getRelease(key_enum, event);
+    }
+    else
+    {
+        // If the player is using KEYBOARD or doesn't have a joystick button set for this key, then check the keyboard.
+        if(event.type == SDL_KEYUP)
+        {
             return (event.key.keysym.sym == player_keys[player_index][key_enum]);
         }
         return false;

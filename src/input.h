@@ -254,6 +254,7 @@ class JoyData
     
     bool getState(int key_enum) const;
     bool getPress(int key_enum, const SDL_Event& event) const;
+    bool getRelease(int key_enum, const SDL_Event& event) const;
     bool hasButtonSet(int key_enum) const;
 };
 
@@ -263,6 +264,7 @@ void disablePlayerJoystick(int player_num);
 void resetJoystick(int player_num);
 bool isPlayerHoldingKey(int player_index, int key_enum);
 bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event);
+bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event);
 
 //buffers: added prototype
 void get_input_events(bool type);
@@ -274,6 +276,11 @@ void handle_key_event(const SDL_Event& event);
 void handle_text_event(const SDL_Event& event);
 void handle_mouse_event(const SDL_Event& event);
 void handle_joy_event(const SDL_Event& event);
+
+
+// Takes SDLK (SDL_Keycode) values
+void sendFakeKeyDownEvent(int keycode);
+void sendFakeKeyUpEvent(int keycode);
 
 void grab_keyboard();                                               // mask the keyboard short.
 void release_keyboard();                                    // restore normal short.
