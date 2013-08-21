@@ -707,6 +707,7 @@ void handle_events(const SDL_Event& event)
                 scroll_amount = -5;
             else if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_MENU)
                 sendFakeKeyDownEvent(SDLK_ESCAPE);
+            key_press_event = 1;
         }
         else if(event.type == OuyaControllerManager::AXIS_EVENT)
         {
