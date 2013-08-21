@@ -3220,6 +3220,10 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
     }
 }
 
+#define PAN_LIMIT_UP -60
+#define PAN_LIMIT_DOWN (GRID_SIZE*data.level->grid.h - 200 + 80)
+#define PAN_LIMIT_LEFT -60
+#define PAN_LIMIT_RIGHT (GRID_SIZE*data.level->grid.w - 320 + 80)
 
 
 Sint32 level_editor()
@@ -3521,25 +3525,25 @@ Sint32 level_editor()
 		// Zardus: ADD: added scrolling by keyboard
 		// Zardus: PORT: disabled mouse scrolling
 		if ((keystates[KEYSTATE_KP_8] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_w]) // || mymouse[MOUSE_Y]< 2)
-		        && data.level->topy >= 0) // top of the screen
+		        && data.level->topy >= PAN_LIMIT_UP) // top of the screen
         {
             redraw = 1;
 			data.level->add_draw_pos(0, -SCROLLSIZE);
         }
 		if ((keystates[KEYSTATE_KP_2] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_s]) // || mymouse[MOUSE_Y]> 198)
-		        && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
+		        && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
         {
             redraw = 1;
 			data.level->add_draw_pos(0, SCROLLSIZE);
         }
 		if ((keystates[KEYSTATE_KP_4] || keystates[KEYSTATE_KP_7] || keystates[KEYSTATE_KP_1] || keystates[KEYSTATE_a]) // || mymouse[MOUSE_X]< 2)
-		        && data.level->topx >= 0) // scroll left
+		        && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
         {
             redraw = 1;
 			data.level->add_draw_pos(-SCROLLSIZE, 0);
         }
 		if ((keystates[KEYSTATE_KP_6] || keystates[KEYSTATE_KP_3] || keystates[KEYSTATE_KP_9] || keystates[KEYSTATE_d]) // || mymouse[MOUSE_X] > 318)
-		        && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
+		        && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
         {
             redraw = 1;
 			data.level->add_draw_pos(SCROLLSIZE, 0);
@@ -3564,7 +3568,7 @@ Sint32 level_editor()
             if(on_menu)
             {
                 // Panning with mouse (touch)
-                if(data.panUpButton.contains(mx, my) && data.level->topy >= 0) // top of the screen
+                if(data.panUpButton.contains(mx, my) && data.level->topy >= PAN_LIMIT_UP) // top of the screen
                 {
                     redraw = 1;
                     data.level->add_draw_pos(0, -SCROLLSIZE);
@@ -3572,20 +3576,20 @@ Sint32 level_editor()
                 else if(data.panUpRightButton.contains(mx, my))
                 {
                     redraw = 1;
-                    if(data.level->topy >= 0)
+                    if(data.level->topy >= PAN_LIMIT_UP)
                         data.level->add_draw_pos(0, -SCROLLSIZE);
-                    if(data.level->topx <= (GRID_SIZE*data.level->grid.w)-18)
+                    if(data.level->topx <= PAN_LIMIT_RIGHT)
                         data.level->add_draw_pos(SCROLLSIZE, 0);
                 }
                 else if(data.panUpLeftButton.contains(mx, my))
                 {
                     redraw = 1;
-                    if(data.level->topy >= 0)
+                    if(data.level->topy >= PAN_LIMIT_UP)
                         data.level->add_draw_pos(0, -SCROLLSIZE);
-                    if(data.level->topx >= 0)
+                    if(data.level->topx >= PAN_LIMIT_LEFT)
                         data.level->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panDownButton.contains(mx, my) && data.level->topy <= (GRID_SIZE*data.level->grid.h)-18) // scroll down
+                else if(data.panDownButton.contains(mx, my) && data.level->topy <= PAN_LIMIT_DOWN) // scroll down
                 {
                     redraw = 1;
                     data.level->add_draw_pos(0, SCROLLSIZE);
@@ -3593,25 +3597,25 @@ Sint32 level_editor()
                 else if(data.panDownRightButton.contains(mx, my))
                 {
                     redraw = 1;
-                    if(data.level->topy <= (GRID_SIZE*data.level->grid.h)-18)
+                    if(data.level->topy <= PAN_LIMIT_DOWN)
                         data.level->add_draw_pos(0, SCROLLSIZE);
-                    if(data.level->topx <= (GRID_SIZE*data.level->grid.w)-18)
+                    if(data.level->topx <= PAN_LIMIT_RIGHT)
                         data.level->add_draw_pos(SCROLLSIZE, 0);
                 }
                 else if(data.panDownLeftButton.contains(mx, my))
                 {
                     redraw = 1;
-                    if(data.level->topy <= (GRID_SIZE*data.level->grid.h)-18)
+                    if(data.level->topy <= PAN_LIMIT_DOWN)
                         data.level->add_draw_pos(0, SCROLLSIZE);
-                    if(data.level->topx >= 0)
+                    if(data.level->topx >= PAN_LIMIT_LEFT)
                         data.level->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panLeftButton.contains(mx, my) && data.level->topx >= 0) // scroll left
+                else if(data.panLeftButton.contains(mx, my) && data.level->topx >= PAN_LIMIT_LEFT) // scroll left
                 {
                     redraw = 1;
                     data.level->add_draw_pos(-SCROLLSIZE, 0);
                 }
-                else if(data.panRightButton.contains(mx, my) && data.level->topx <= (GRID_SIZE*data.level->grid.w)-18) // scroll right
+                else if(data.panRightButton.contains(mx, my) && data.level->topx <= PAN_LIMIT_RIGHT) // scroll right
                 {
                     redraw = 1;
                     data.level->add_draw_pos(SCROLLSIZE, 0);
