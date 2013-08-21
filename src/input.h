@@ -331,6 +331,7 @@ void init_input();
 void grab_mouse();
 void release_mouse();
 Sint32 * query_mouse();
+Sint32 * query_mouse_no_poll();
 
 unsigned char convert_to_ascii(int scancode);
 

@@ -3670,7 +3670,7 @@ Sint32 level_editor()
 
 
 		// Mouse stuff ..
-		mymouse = query_mouse();
+		mymouse = query_mouse_no_poll();
 		
 		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
 		{

@@ -1487,6 +1487,11 @@ Sint32 * query_mouse()
     return mouse_state;
 }
 
+Sint32 * query_mouse_no_poll()
+{
+    return mouse_state;
+}
+
 
 // Convert from scancode to ascii, ie, SDLK_a to 'A'
 unsigned char convert_to_ascii(int scancode)
