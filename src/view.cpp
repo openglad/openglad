@@ -1258,7 +1258,7 @@ void viewscreen::resize(char whatmode)
 					break;
 				case PREF_VIEW_FULL:
 				default:
-					resize(0, 0, 320, 200);
+					resize(T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT);
 					break;
 			}
 			break;
@@ -1282,7 +1282,7 @@ void viewscreen::resize(char whatmode)
 							break;
 						case PREF_VIEW_FULL:
 						default:
-							resize(4, 0, 156, 200);
+							resize(T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT);
 							break;
 					}
 					break;
@@ -1303,7 +1303,7 @@ void viewscreen::resize(char whatmode)
 							break;
 						case PREF_VIEW_FULL:
 						default:
-							resize(164, 0, 156, 200);
+							resize(T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT);
 							break;
 					}
 					break;
@@ -1329,7 +1329,7 @@ void viewscreen::resize(char whatmode)
 							break;
 						case PREF_VIEW_FULL:
 						default:
-							resize(0, 0, 104, 200);
+							resize(T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT);
 							break;
 					}
 					break;
@@ -1350,7 +1350,7 @@ void viewscreen::resize(char whatmode)
 							break;
 						case PREF_VIEW_FULL:
 						default:
-							resize(216, 0, 104, 200);
+							resize(T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT);
 							break;
 					}
 					break;
@@ -1371,7 +1371,7 @@ void viewscreen::resize(char whatmode)
 							break;
 						case PREF_VIEW_FULL:
 						default:
-							resize(108, 0, 104, 200);
+							resize(T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT);
 							break;
 					}
 					break;
@@ -1382,17 +1382,17 @@ void viewscreen::resize(char whatmode)
 			switch (mynum)  // left or right view?
 			{
 				case 0:
-					resize(0, 0, 152, 96);
+                    resize(T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT);
 					break;
 				case 1:
-					resize(164, 0, 152, 96);
+                    resize(T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT);
 					break;
 				case 2:
-					resize(164, 104, 152, 96);
+                    resize(T_LEFT_THREE_FOUR, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT);
 					break;
 				case 3:
 				default:
-					resize(0, 104, 152, 96);
+                    resize(T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT);
 					break;
 			} // end of mynum switch
 			break;

@@ -25,7 +25,7 @@
 
 
 SaveData::SaveData()
-    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(0)
+    : current_campaign("org.openglad.gladiator"), scen_num(1), score(0), totalcash(0), totalscore(0), my_team(0), numplayers(1), allied_mode(1)
 {
     completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
     current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
@@ -78,8 +78,8 @@ void SaveData::reset()
 	
 	scen_num = 1;
 	my_team = 0;
-    numplayers = 1;
-	allied_mode = 0;
+    //numplayers = 1;
+	//allied_mode = 1;
 }
 
 bool SaveData::load(const std::string& filename)
@@ -105,7 +105,7 @@ bool SaveData::load(const std::string& filename)
 	char temp_order, temp_family;
 	short temp_str, temp_dex, temp_con;
 	short temp_short, temp_arm, temp_lev;
-	unsigned char numplayers;
+	unsigned char temp_numplayers;
 	Uint32 temp_exp;
 	short temp_kills;
 	Sint32 temp_level_kills;
@@ -258,7 +258,8 @@ bool SaveData::load(const std::string& filename)
 	SDL_RWread(infile, &listsize, 2, 1);
 
 	// Read (and ignore) the # of players
-	SDL_RWread(infile, &numplayers, 1, 1);
+	SDL_RWread(infile, &temp_numplayers, 1, 1);
+	numplayers = temp_numplayers;
 
 	// Read the reserved area, 31 bytes
 	SDL_RWread(infile, filler, 31, 1);

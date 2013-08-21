@@ -247,27 +247,28 @@ screen::~screen()
 
 void screen::initialize_views()
 {
+    // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
 	if (numviews == 1)
 	{
 		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
 	}
 	else if (numviews == 2)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0, this);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1, this);
 	}
 	else if (numviews == 3)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_WIDTH_THREE, T_HEIGHT_THREE, 2, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0, this);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1, this);
+		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2, this);
 	}
 	else if (numviews == 4)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_WIDTH_THREE, T_HEIGHT_THREE, 2, this);
-		viewob[3] = new viewscreen( T_LEFT_FOUR, T_UP_FOUR, T_WIDTH_FOUR, T_HEIGHT_FOUR, 3, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0, this);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1, this);
+		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2, this);
+		viewob[3] = new viewscreen( T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT, 3, this);
 	}
 	else
     {
