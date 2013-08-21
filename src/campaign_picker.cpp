@@ -22,6 +22,7 @@
 #include "text.h"
 #include "guy.h"
 #include "screen.h"
+#include "button.h"
 #include <vector>
 #include <string>
 
@@ -31,6 +32,11 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
 
 bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
+
+#define OG_OK 4
+void draw_highlight_interior(const button& b);
+void draw_highlight(const button& b);
+bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
 
 int toInt(const std::string& s)
 {
@@ -285,7 +291,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         entries.push_back(new CampaignEntry(screenp, *e, num_completed));
     }
     
-    unsigned int current_campaign_index = 0;
+    unsigned int current_campaign_index = 3;
 
     // Figure out how good the player's army is
     int army_power = -1;
@@ -318,6 +324,36 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
     SDL_Rect cancel = {Sint16(screenW/2 - 38 - 20), Sint16(screenH - 15), 38, 10};
     SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
     SDL_Rect id_button = {Sint16(delete_button.x - 52 - 10), 10, 52, 10};
+    
+    
+    // Controller input
+    int retvalue = 0;
+	int highlighted_button = 0;
+	
+	int prev_index = 0;
+	int next_index = 1;
+	int choose_index = 2;
+	int cancel_index = 3;
+	int delete_index = 4;
+	int id_index = 5;
+	
+	button buttons[] = {
+        { "PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::DownRight(cancel_index, next_index), false},
+        { "NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav::UpDownLeft(id_index, choose_index, prev_index), false},
+        { "OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav::UpLeft(next_index, cancel_index), false},
+        { "CANCEL", KEYSTATE_UNKNOWN, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpRight(prev_index, choose_index), false},
+        { "DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav::DownLeft(choose_index, id_index), false},
+        { "ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav::DownRight(next_index, delete_index), false},
+	};
+	
+	buttons[prev_index].hidden = (current_campaign_index == 0);
+	buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
+	buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL);
+	buttons[delete_index].hidden = !enable_delete;
+	
+	buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
+	buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
+	buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
 
     bool done = false;
     while (!done)
@@ -330,127 +366,138 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
 
         // Get keys and stuff
         get_input_events(POLL);
+		
+        handle_menu_nav(buttons, highlighted_button, retvalue, false);
 
         // Quit if 'q' is pressed
         if(keystates[KEYSTATE_q])
             done = true;
 
-        if(keystates[KEYSTATE_LEFT])
+        // Mouse stuff ..
+		mymouse = query_mouse();
+        int mx = mymouse[MOUSE_X];
+        int my = mymouse[MOUSE_Y];
+        
+        bool do_click = mymouse[MOUSE_LEFT];
+		bool do_prev = !buttons[prev_index].hidden && ((do_click && prev.x <= mx && mx <= prev.x + prev.w
+               && prev.y <= my && my <= prev.y + prev.h) || (retvalue == OG_OK && highlighted_button == prev_index));
+        bool do_next = !buttons[next_index].hidden && ((do_click && next.x <= mx && mx <= next.x + next.w
+               && next.y <= my && my <= next.y + next.h) || (retvalue == OG_OK && highlighted_button == next_index));
+        bool do_choose = !buttons[choose_index].hidden && ((do_click && choose.x <= mx && mx <= choose.x + choose.w
+               && choose.y <= my && my <= choose.y + choose.h) || (retvalue == OG_OK && highlighted_button == choose_index));
+        bool do_cancel = (do_click && cancel.x <= mx && mx <= cancel.x + cancel.w
+               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OG_OK && highlighted_button == cancel_index);
+        bool do_delete = !buttons[delete_index].hidden && ((do_click && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
+               && delete_button.y <= my && my <= delete_button.y + delete_button.h) || (retvalue == OG_OK && highlighted_button == delete_index));
+        bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
+               && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OG_OK && highlighted_button == id_index);
+        
+		if (mymouse[MOUSE_LEFT])
+		{
+		    while(mymouse[MOUSE_LEFT])
+                get_input_events(WAIT);
+		}
+
+        // Prev
+        if(do_prev)
         {
-            // Scroll up
             if(current_campaign_index > 0)
             {
                 current_campaign_index--;
             }
-            while (keystates[KEYSTATE_LEFT])
-                get_input_events(WAIT);
         }
-        if(keystates[KEYSTATE_RIGHT])
+        // Next
+        else if(do_next)
         {
-            // Scroll down
             if(current_campaign_index + 1 < entries.size())
             {
                 current_campaign_index++;
             }
-            while (keystates[KEYSTATE_RIGHT])
-                get_input_events(WAIT);
         }
-
-        // Mouse stuff ..
-        mymouse = query_mouse();
-        if (mymouse[MOUSE_LEFT])       // put or remove the current guy
+        // Choose
+        else if(do_choose)
         {
-            while(mymouse[MOUSE_LEFT])
-                get_input_events(WAIT);
-
-            int mx = mymouse[MOUSE_X];
-            int my = mymouse[MOUSE_Y];
-
-
-
-            // Prev
-            if(prev.x <= mx && mx <= prev.x + prev.w
-                    && prev.y <= my && my <= prev.y + prev.h)
+            if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
             {
-                if(current_campaign_index > 0)
-                {
-                    current_campaign_index--;
-                }
-            }
-            // Next
-            else if(next.x <= mx && mx <= next.x + next.w
-                    && next.y <= my && my <= next.y + next.h)
-            {
-                if(current_campaign_index + 1 < entries.size())
-                {
-                    current_campaign_index++;
-                }
-            }
-            // Choose
-            else if(choose.x <= mx && mx <= choose.x + choose.w
-                    && choose.y <= my && my <= choose.y + choose.h)
-            {
-                if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
-                {
-                    result = entries[current_campaign_index];
-                    done = true;
-                    break;
-                }
-            }
-            // Cancel
-            else if(cancel.x <= mx && mx <= cancel.x + cancel.w
-                    && cancel.y <= my && my <= cancel.y + cancel.h)
-            {
+                result = entries[current_campaign_index];
                 done = true;
                 break;
             }
-            // Delete
-			else if(enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
-               && delete_button.y <= my && my <= delete_button.y + delete_button.h)
-               {
-                   if(yes_or_no_prompt("Delete campaign", "Delete this campaign permanently?", false)
-                      && no_or_yes_prompt("Delete campaign", "Are you really sure?", false))
-                   {
-                       delete_campaign(entries[current_campaign_index]->id);
-                       
-                       restore_default_campaigns();
-                       remount_campaign_package();  // Just in case we deleted the current campaign
-                       
-                       // Reload the picker
-                       for(std::vector<CampaignEntry*>::iterator e = entries.begin(); e != entries.end(); e++)
-                       {
-                           delete *e;
-                       }
-                       entries.clear();
-                       
-                       campaign_ids = list_campaigns();
-                       
-                        for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
-                        {
-                            int num_completed = -1;
-                            if(save_data != NULL)
-                                num_completed = save_data->get_num_levels_completed(*e);
-                            entries.push_back(new CampaignEntry(screenp, *e, num_completed));
-                        }
-                        
-                        current_campaign_index = 0;
-                   }
-               }
-            // Enter ID
-			else if(id_button.x <= mx && mx <= id_button.x + id_button.w
-               && id_button.y <= my && my <= id_button.y + id_button.h)
-               {
-                    std::string campaign;
-                    if(prompt_for_string(loadtext, "Enter Campaign ID", campaign) && campaign.size() > 0)
-                    {
-                        result = NULL;
-                        ret_value.id = campaign;
-                        done = true;
-                        break;
-                    }
-               }
         }
+        // Cancel
+        else if(do_cancel)
+        {
+            done = true;
+            break;
+        }
+        // Delete
+        else if(do_delete)
+       {
+           if(yes_or_no_prompt("Delete campaign", "Delete this campaign permanently?", false)
+              && no_or_yes_prompt("Delete campaign", "Are you really sure?", false))
+           {
+               delete_campaign(entries[current_campaign_index]->id);
+               
+               restore_default_campaigns();
+               remount_campaign_package();  // Just in case we deleted the current campaign
+               
+               // Reload the picker
+               for(std::vector<CampaignEntry*>::iterator e = entries.begin(); e != entries.end(); e++)
+               {
+                   delete *e;
+               }
+               entries.clear();
+               
+               campaign_ids = list_campaigns();
+               
+                for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
+                {
+                    int num_completed = -1;
+                    if(save_data != NULL)
+                        num_completed = save_data->get_num_levels_completed(*e);
+                    entries.push_back(new CampaignEntry(screenp, *e, num_completed));
+                }
+                
+                current_campaign_index = 0;
+           }
+       }
+        // Enter ID
+        else if(do_id)
+       {
+            std::string campaign;
+            if(prompt_for_string(loadtext, "Enter Campaign ID", campaign) && campaign.size() > 0)
+            {
+                result = NULL;
+                ret_value.id = campaign;
+                done = true;
+                break;
+            }
+       }
+       
+        retvalue = 0;
 
+        // Update hidden buttons
+        if(do_prev || do_next || do_choose || do_cancel || do_delete || do_id)
+        {
+            buttons[prev_index].hidden = (current_campaign_index == 0);
+            buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
+            buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL);
+            buttons[delete_index].hidden = !enable_delete;
+            
+            buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
+            buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
+            buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
+            
+            if(buttons[highlighted_button].hidden)
+            {
+                if(highlighted_button == prev_index && !buttons[next_index].hidden)
+                    highlighted_button = next_index;
+                else if(highlighted_button == next_index && !buttons[prev_index].hidden)
+                    highlighted_button = prev_index;
+                else
+                    highlighted_button = cancel_index;
+            }
+        }
 
         // Draw
         screenp->clearscreen();
@@ -487,6 +534,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
             entries[current_campaign_index]->draw(screenp, area, loadtext, army_power);
 
+        draw_highlight(buttons[highlighted_button]);
         screenp->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
     }

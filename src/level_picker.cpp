@@ -33,7 +33,6 @@
 
 using namespace std;
 
-#define OK 4
 
 #define MAX_TEAM_SIZE 24 //max # of guys on a team
 extern Sint32 *mymouse;
@@ -44,6 +43,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
 
 
+#define OK 4
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
@@ -439,61 +439,6 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		// Quit if 'q' is pressed
 		if(keystates[KEYSTATE_q])
             done = true;
-        
-        #ifndef USE_CONTROLLER_INPUT
-		if(keystates[KEYSTATE_UP])
-		{
-		    // Scroll up
-		    if(current_level_index > 0)
-		    {
-                selected_entry = -1;
-                if(highlighted_button == delete_index || highlighted_button == choose_index)
-                    highlighted_button = prev_index;
-		    
-                current_level_index--;
-                
-                // Delete the bottom one and shift the rest down
-                delete entries[NUM_BROWSE_RADARS-1];
-                for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
-                {
-                    entries[i] = entries[i-1];
-                    if(entries[i] != NULL)
-                        entries[i]->updateIndex(i);
-                }
-                // Load the new top one
-                if(current_level_index < level_list_length)
-                    entries[0] = new BrowserEntry(screenp, 0, level_list[current_level_index]);
-		    }
-            while (keystates[KEYSTATE_UP])
-                get_input_events(WAIT);
-		}
-		if(keystates[KEYSTATE_DOWN])
-		{
-		    // Scroll down
-		    if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
-		    {
-                selected_entry = -1;
-                if(highlighted_button == delete_index || highlighted_button == choose_index)
-                    highlighted_button = prev_index;
-		    
-                current_level_index++;
-                
-                // Delete the top one and shift the rest up
-                delete entries[0];
-                for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
-                {
-                    entries[i] = entries[i+1];
-                    if(entries[i] != NULL)
-                        entries[i]->updateIndex(i);
-                }
-                // Load the new bottom one
-                if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
-                    entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(screenp, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
-		    }
-            while (keystates[KEYSTATE_DOWN])
-                get_input_events(WAIT);
-		}
-		#endif
 		
 		// Mouse stuff ..
 		mymouse = query_mouse();
@@ -658,6 +603,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		
         retvalue = 0;
 		
+		// Update hidden buttons
 		if(selected_entry >= 0 && enable_delete)
             buttons[delete_index].hidden = false;
         else
