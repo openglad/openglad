@@ -27,6 +27,7 @@
 #include "version.h"
 
 #include "util.h"
+#include "view_sizes.h"
 
 //these are for chad's team info page
 #define VIEW_TEAM_TOP    2
@@ -1222,7 +1223,6 @@ short viewscreen::draw_obs(LevelData* data)
 
 void viewscreen::resize(short x, short y, short length, short height)
 {
-
 	xloc = x;
 	yloc = y;
 
@@ -1266,28 +1266,7 @@ void viewscreen::resize(char whatmode)
 			switch (mynum)  // left or right view?
 			{
 				case 0:
-					switch (whatmode) // left or right view?
-					{
-						case PREF_VIEW_PANELS:
-							resize(164, 16, 152, 168); // room for score panel ..
-							break;
-						case PREF_VIEW_1:
-							resize(164, 32, 152, 136);
-							break;
-						case PREF_VIEW_2:
-							resize(164, 48, 152, 104);
-							break;
-						case PREF_VIEW_3:
-							resize(164, 64, 152, 72);
-							break;
-						case PREF_VIEW_FULL:
-						default:
-							resize(164, 0, 156, 200);
-							break;
-					}
-					break;
-				case 1:
-					switch (whatmode) // left or right view?
+					switch (whatmode)
 					{
 						case PREF_VIEW_PANELS:
 							resize(4, 16, 152, 168); // room for score panel ..
@@ -1307,34 +1286,34 @@ void viewscreen::resize(char whatmode)
 							break;
 					}
 					break;
+				case 1:
+					switch (whatmode)
+					{
+						case PREF_VIEW_PANELS:
+							resize(164, 16, 152, 168); // room for score panel ..
+							break;
+						case PREF_VIEW_1:
+							resize(164, 32, 152, 136);
+							break;
+						case PREF_VIEW_2:
+							resize(164, 48, 152, 104);
+							break;
+						case PREF_VIEW_3:
+							resize(164, 64, 152, 72);
+							break;
+						case PREF_VIEW_FULL:
+						default:
+							resize(164, 0, 156, 200);
+							break;
+					}
+					break;
 			} // end of mynum switch
 			break;
 		case 3: // 3-player mode
 			switch (mynum)  // left or right view?
 			{
 				case 0:
-					switch (whatmode) // left or right view?
-					{
-						case PREF_VIEW_PANELS:
-							resize(216, 16, 100, 168); // room for score panel ..
-							break;
-						case PREF_VIEW_1:
-							resize(216, 32, 100, 136);
-							break;
-						case PREF_VIEW_2:
-							resize(216, 48, 100, 104);
-							break;
-						case PREF_VIEW_3:
-							resize(216, 64, 100, 72);
-							break;
-						case PREF_VIEW_FULL:
-						default:
-							resize(216, 0, 104, 200);
-							break;
-					}
-					break;
-				case 1:
-					switch (whatmode) // left or right view?
+					switch (whatmode)
 					{
 						case PREF_VIEW_PANELS:
 							resize(4, 16, 100, 168); // room for score panel ..
@@ -1354,8 +1333,29 @@ void viewscreen::resize(char whatmode)
 							break;
 					}
 					break;
+				case 1:
+					switch (whatmode)
+					{
+						case PREF_VIEW_PANELS:
+							resize(216, 16, 100, 168); // room for score panel ..
+							break;
+						case PREF_VIEW_1:
+							resize(216, 32, 100, 136);
+							break;
+						case PREF_VIEW_2:
+							resize(216, 48, 100, 104);
+							break;
+						case PREF_VIEW_3:
+							resize(216, 64, 100, 72);
+							break;
+						case PREF_VIEW_FULL:
+						default:
+							resize(216, 0, 104, 200);
+							break;
+					}
+					break;
 				case 2:  // 3rd player
-					switch (whatmode) // left or right view?
+					switch (whatmode)
 					{
 						case PREF_VIEW_PANELS:
 							resize(112, 16, 100, 168); // room for score panel ..
@@ -1382,10 +1382,10 @@ void viewscreen::resize(char whatmode)
 			switch (mynum)  // left or right view?
 			{
 				case 0:
-					resize(164, 0, 152, 96);
+					resize(0, 0, 152, 96);
 					break;
 				case 1:
-					resize(0, 0, 152, 96);
+					resize(164, 0, 152, 96);
 					break;
 				case 2:
 					resize(164, 104, 152, 96);
