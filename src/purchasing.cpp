@@ -3,6 +3,9 @@
 #include "util.h"
 #include <jni.h>
 
+// Cache for ownership
+bool owns_full_game = false;
+
 static jclass mActivityClass;
 
 static jmethodID midBuyProduct;
@@ -94,33 +97,59 @@ std::vector<std::string> getAllProducts()
     return hack_string_array;
 }
 
-bool doesOwnProduct(const std::string& id)
+int doesOwnProduct(const std::string& id)
 {
     JNIEnv *mEnv = (JNIEnv*)SDL_AndroidGetJNIEnv();
     jstring jid = mEnv->NewStringUTF(id.c_str());
     
-    // 1: Yes, 0: No, -1: Wait...
+    // 1: Yes, 0: No, -1: Wait..., -2: Network error
     jint result = mEnv->CallStaticIntMethod(mActivityClass, midDoesOwnProduct, jid);
     
     // Wait?
-    while(result < 0)
+    while(result == -1)
     {
         SDL_Delay(1000);
         result = mEnv->CallStaticIntMethod(mActivityClass, midDoesOwnProduct, jid);
     }
     mEnv->DeleteLocalRef(jid);
-    return (result == 1);
+    return result;
 }
 
 bool doesOwnFullGame()
 {
-    // TODO: Cache purchase in a file that is updated when possible (once on program run, need to differentiate non-ownership and connection failure)
-    return doesOwnProduct(FULL_GAME_PRODUCT_ID);
+    // Check current cache
+    if(owns_full_game)
+        return true;
+    
+    // Check file cache (prone to piracy)
+    SDL_RWops* infile = open_read_file("cfg/purchase.dat");
+    if(infile != NULL)
+    {
+        SDL_RWclose(infile);
+        owns_full_game = true;
+        return true;
+    }
+    
+    // Update cache from network
+    int result = doesOwnProduct(FULL_GAME_PRODUCT_ID);
+    
+    if(result == 1)
+        owns_full_game = true;
+    else if(result == 0)
+        owns_full_game = false;
+    
+    if(owns_full_game)
+    {
+        SDL_RWops* outfile = open_write_file("cfg/purchase.dat");
+        SDL_RWwrite(outfile, "1", 1, 1);
+        SDL_RWclose(outfile);
+    }
+    return owns_full_game;
 }
 
 void test_purchasing()
 {
-    bool result = doesOwnProduct(FULL_GAME_PRODUCT_ID);
+    bool result = doesOwnFullGame();
     if(result)
         Log("Already own game.\n");
     else
@@ -128,7 +157,7 @@ void test_purchasing()
     
     buyProduct(FULL_GAME_PRODUCT_ID);
     
-    result = doesOwnProduct(FULL_GAME_PRODUCT_ID);
+    result = doesOwnFullGame();
     if(result)
         Log("Yep, bought game.\n");
     else
