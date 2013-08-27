@@ -2388,6 +2388,13 @@ Sint32 delete_all()
 
 Sint32 go_menu(Sint32 arg1)
 {
+#ifdef OUYA
+    if(myscreen->save_data.scen_num > 5 && !doesOwnFullGame()
+    {
+        if(yes_or_no_prompt("Buy Full Game?", "The demo doesn't include this level.  Want to go see the buying screen?", false))
+            showPurchasingSplash();
+    }
+#endif
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
 	static text gotext(myscreen);
@@ -3117,6 +3124,17 @@ int get_scen_num_from_filename(const char* name)
 
 Sint32 do_pick_campaign(Sint32 arg1)
 {
+#ifdef OUYA
+    if(!doesOwnFullGame())
+    {
+        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select campaigns.  Want to go see the buying screen?", false))
+            showPurchasingSplash();
+        
+        if(!doesOwnFullGame())
+            return REDRAW;
+    }
+#endif
+
    CampaignResult result = pick_campaign(myscreen, &myscreen->save_data);
    if(result.id.size() > 0)
    {
@@ -3129,6 +3147,17 @@ Sint32 do_pick_campaign(Sint32 arg1)
 
 Sint32 do_set_scen_level(Sint32 arg1)
 {
+#ifdef OUYA
+    if(!doesOwnFullGame())
+    {
+        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select levels.  Want to go see the buying screen?", false))
+            showPurchasingSplash();
+        
+        if(!doesOwnFullGame())
+            return REDRAW;
+    }
+#endif
+
    static text savetext(myscreen);
    Sint32 xloc, yloc, x2loc, y2loc;
    Sint32 templevel = myscreen->save_data.scen_num;
