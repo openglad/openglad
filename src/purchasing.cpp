@@ -70,8 +70,6 @@ ProductInfo getProductInfo(const std::string& id)
     JNIEnv *mEnv = (JNIEnv*)SDL_AndroidGetJNIEnv();
     
     jstring jid = mEnv->NewStringUTF(id.c_str());
-    mEnv->CallStaticVoidMethod(mActivityClass, midBuyProduct, jid);
-    mEnv->DeleteLocalRef(jid);
     
     jint price = mEnv->CallStaticIntMethod(mActivityClass, midGetProductPrice, jid);
     
@@ -84,6 +82,7 @@ ProductInfo getProductInfo(const std::string& id)
     result.name = name;
     
     mEnv->ReleaseStringUTFChars(name_obj, name);
+    mEnv->DeleteLocalRef(jid);
     
     return result;
 }
@@ -172,9 +171,19 @@ void test_purchasing()
     }
 }
 
+
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+
 bool showPurchasingSplash()
 {
     // TODO: Show the splash screen
+    Log("SPLASH\n");
+    ProductInfo p = getProductInfo(FULL_GAME_PRODUCT_ID);
+    
+    char buf[20];
+    snprintf(buf, 20, "Buy game for $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
+    if(yes_or_no_prompt("Buy game?", buf, false))
+        buyProduct(FULL_GAME_PRODUCT_ID);
     
     return doesOwnFullGame();
 }
