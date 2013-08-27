@@ -15,10 +15,11 @@ public:
 void buyProduct(const std::string& id);
 ProductInfo getProductInfo(const std::string& id);
 std::vector<std::string> getAllProducts();
-bool doesOwnProduct(const std::string& id);
+int doesOwnProduct(const std::string& id);
 
 void test_purchasing();
 
+bool doesOwnFullGame();
 bool showPurchasingSplash();
 
 #endif
