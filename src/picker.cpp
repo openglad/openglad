@@ -30,6 +30,11 @@
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
+#ifdef OUYA
+#include "purchasing.h"
+#endif
+
+
 #define DOWN(x) (72+x*15)
 #define VIEW_DOWN(x) (10+x*20)
 #define RAISE 1.85  // please also change in guy.cpp
