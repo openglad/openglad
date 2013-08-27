@@ -171,3 +171,10 @@ void test_purchasing()
         Log("%s (%s): %d cents\n", p.name.c_str(), p.id.c_str(), p.priceInCents);
     }
 }
+
+bool showPurchasingSplash()
+{
+    // TODO: Show the splash screen
+    
+    return doesOwnFullGame();
+}
