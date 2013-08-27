@@ -368,4 +368,3 @@ extern "C" void Java_com_dinomage_openglad_Openglad_OuyaControllerGenericMotionE
 
 #endif
 
-
