@@ -2389,7 +2389,7 @@ Sint32 delete_all()
 Sint32 go_menu(Sint32 arg1)
 {
 #ifdef OUYA
-    if(myscreen->save_data.scen_num > 5 && !doesOwnFullGame()
+    if(myscreen->save_data.scen_num > 5 && !doesOwnFullGame())
     {
         if(yes_or_no_prompt("Buy Full Game?", "The demo doesn't include this level.  Want to go see the buying screen?", false))
             showPurchasingSplash();

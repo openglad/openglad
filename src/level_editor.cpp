@@ -31,6 +31,7 @@
 
 #ifdef OUYA
 #include "OuyaController.h"
+#include "purchasing.h"
 #endif
 extern short scroll_amount;  // for scrolling up and down text popups
 
