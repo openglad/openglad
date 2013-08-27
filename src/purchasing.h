@@ -19,4 +19,6 @@ bool doesOwnProduct(const std::string& id);
 
 void test_purchasing();
 
+bool showPurchasingSplash();
+
 #endif
