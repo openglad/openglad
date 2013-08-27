@@ -993,6 +993,11 @@ bool LevelEditorData::reloadLevel()
 
 bool LevelEditorData::saveCampaignAs(const std::string& id)
 {
+#ifdef OUYA
+    if(!doesOwnFullGame() && !showPurchasingSplash())
+        return false;
+#endif
+
     bool result = campaign->save_as(id);
     
     // Remount for consistency in PhysFS
@@ -1007,6 +1012,11 @@ bool LevelEditorData::saveCampaignAs(const std::string& id)
 
 bool LevelEditorData::saveCampaign()
 {
+#ifdef OUYA
+    if(!doesOwnFullGame() && !showPurchasingSplash())
+        return false;
+#endif
+
     bool result = campaign->save();
     
     // Remount for consistency in PhysFS
@@ -1022,6 +1032,11 @@ bool LevelEditorData::saveCampaign()
 
 bool LevelEditorData::saveLevelAs(int id)
 {
+#ifdef OUYA
+    if(!doesOwnFullGame() && !showPurchasingSplash())
+        return false;
+#endif
+
     level->id = id;
     char buf[20];
     snprintf(buf, 20, "scen%d", id);
@@ -1483,6 +1498,11 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
 
 bool LevelEditorData::saveLevel()
 {
+#ifdef OUYA
+    if(!doesOwnFullGame() && !showPurchasingSplash())
+        return false;
+#endif
+
     char buf[20];
     snprintf(buf, 20, "scen%d", level->id);
     level->grid_file = buf;
@@ -2192,7 +2212,13 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Confirm if unsaved
             bool cancel = false;
-            if (levelchanged)
+            
+        #ifdef OUYA
+            if(!doesOwnFullGame() && !showPurchasingSplash())
+                cancel = true;
+        #endif
+            
+            if (!cancel && levelchanged)
             {
                 cancel = !yes_or_no_prompt("New Campaign", "Discard unsaved changes?", false);
             }
@@ -2363,13 +2389,12 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, fileLevelNewButton))
         {
-            // Confirm if unsaved
             bool cancel = false;
-            if (levelchanged)
-            {
-                cancel = !yes_or_no_prompt("Load Level", "Discard unsaved changes?", false);
-            }
-            
+        #ifdef OUYA
+            if(!doesOwnFullGame() && !showPurchasingSplash())
+                cancel = true;
+        #endif
+        
             if(!cancel)
             {
                 // New level
@@ -3261,6 +3286,14 @@ bool pan_down = false;
 
 Sint32 level_editor()
 {
+    #ifdef OUYA
+        if(!doesOwnFullGame())
+        {
+            if(yes_or_no_prompt("Buy Full Game?", "The demo level editor cannot save levels.  Want to go see the buying screen?", false))
+                showPurchasingSplash();
+        }
+    #endif
+    
     static LevelEditorData data;
     EditorTerrainBrush& terrain_brush = data.terrain_brush;
     EditorObjectBrush& object_brush = data.object_brush;
