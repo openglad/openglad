@@ -50,6 +50,7 @@ std::vector<int> list_levels_v();
 void restore_default_campaigns();
 void delete_level(int id);
 void delete_campaign(const std::string& id);
+void delete_user_file(const std::string& filename);
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);
