@@ -310,6 +310,13 @@ void delete_campaign(const std::string& id)
     remove(path);
 }
 
+void delete_user_file(const std::string& filename)
+{
+    char path[256];
+    snprintf(path, 256, "%s%s", get_user_path().c_str(), filename.c_str());
+    remove(path);
+}
+
 
 std::list<std::string> explode(const std::string& str, char delimiter)
 {

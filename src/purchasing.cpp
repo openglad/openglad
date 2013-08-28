@@ -120,29 +120,38 @@ bool doesOwnFullGame()
     if(owns_full_game)
         return true;
     
-    // Check file cache (prone to piracy)
-    SDL_RWops* infile = open_read_file("cfg/purchase.dat");
-    if(infile != NULL)
-    {
-        SDL_RWclose(infile);
-        owns_full_game = true;
-        return true;
-    }
-    
     // Update cache from network
     int result = doesOwnProduct(FULL_GAME_PRODUCT_ID);
     
     if(result == 1)
         owns_full_game = true;
-    else if(result == 0)
+    else
         owns_full_game = false;
     
+    // If network wasn't available, check file cache (prone to piracy)
+    if(result == -2)
+    {
+        SDL_RWops* infile = open_read_file("cfg/.purchase.dat");
+        if(infile != NULL)
+        {
+            SDL_RWclose(infile);
+            owns_full_game = true;
+            return true;
+        }
+    }
+    
+    // If we do own the game after all, make sure the file cache exists
     if(owns_full_game)
     {
-        SDL_RWops* outfile = open_write_file("cfg/purchase.dat");
+        SDL_RWops* outfile = open_write_file("cfg/.purchase.dat");
         SDL_RWwrite(outfile, "1", 1, 1);
         SDL_RWclose(outfile);
     }
+    else
+    {
+        delete_user_file("cfg/.purchase.dat");
+    }
+    
     return owns_full_game;
 }
 
@@ -172,18 +181,138 @@ void test_purchasing()
 }
 
 
+#include "sai2x.h"
+#include "button.h"
+
+#define OG_OK 4
+void draw_highlight_interior(const button& b);
+void draw_highlight(const button& b);
+bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
+
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+void popup_dialog(const char* title, const char* message);
+
+extern screen* myscreen;
+extern SDL_Surface *screen;
 
 bool showPurchasingSplash()
 {
-    // TODO: Show the splash screen
-    Log("SPLASH\n");
     ProductInfo p = getProductInfo(FULL_GAME_PRODUCT_ID);
+    if(p.priceInCents < 0)
+    {
+        popup_dialog("Error", "Network error...");
+        return false;
+    }
     
-    char buf[20];
-    snprintf(buf, 20, "Buy game for $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
-    if(yes_or_no_prompt("Buy game?", buf, false))
-        buyProduct(FULL_GAME_PRODUCT_ID);
+    SDL_RWops* rwops = open_read_file("pix/gladiator_demo_splash.bmp");
+    if(rwops == NULL)
+    {
+        char buf[20];
+        snprintf(buf, 20, "Buy game for $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
+        if(yes_or_no_prompt("Buy game?", buf, false))
+            buyProduct(FULL_GAME_PRODUCT_ID);
+        
+        return doesOwnFullGame();
+    }
+    
+    SDL_Surface* splash = SDL_LoadBMP_RW(rwops, 0);
+    SDL_RWclose(rwops);
+    
+    if(splash == NULL)
+    {
+        char buf[20];
+        snprintf(buf, 20, "Buy game for $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
+        if(yes_or_no_prompt("Buy game?", buf, false))
+            buyProduct(FULL_GAME_PRODUCT_ID);
+        
+        return doesOwnFullGame();
+    }
+    
+    text* loadtext = new text(myscreen);
+    
+    SDL_Rect no_button = {210, 170, 60, 10};
+    SDL_Rect yes_button = {160, 170, 40, 10};
+    
+    // Controller input
+    int retvalue = 0;
+	int highlighted_button = 0;
+	
+	int no_index = 0;
+	int yes_index = 1;
+	
+	button buttons[] = {
+        { "NO THANKS", KEYSTATE_UNKNOWN, no_button.x, no_button.y, no_button.w, no_button.h, 0, -1 , MenuNav::Left(yes_index), false},
+        { "YES!!", KEYSTATE_UNKNOWN, yes_button.x, yes_button.y, yes_button.w, yes_button.h, 0, -1 , MenuNav::Right(no_index), false}
+	};
+    
+    
+    bool done = false;
+    while (!done)
+    {
+        // Reset the timer count to zero ...
+        reset_timer();
+
+        if (myscreen->end)
+            break;
+
+        // Get keys and stuff
+        get_input_events(POLL);
+		
+        handle_menu_nav(buttons, highlighted_button, retvalue, false);
+
+        // Mouse stuff ..
+		mymouse = query_mouse();
+        int mx = mymouse[MOUSE_X];
+        int my = mymouse[MOUSE_Y];
+        
+        bool do_click = mymouse[MOUSE_LEFT];
+        bool do_yes = (do_click && yes_button.x <= mx && mx <= yes_button.x + yes_button.w
+               && yes_button.y <= my && my <= yes_button.y + yes_button.h) || (retvalue == OG_OK && highlighted_button == yes_index);
+        bool do_no = (do_click && no_button.x <= mx && mx <= no_button.x + no_button.w
+               && no_button.y <= my && my <= no_button.y + no_button.h) || (retvalue == OG_OK && highlighted_button == no_index);
+		if (mymouse[MOUSE_LEFT])
+		{
+		    while(mymouse[MOUSE_LEFT])
+                get_input_events(WAIT);
+		}
+
+        // Choose
+        if(do_yes)
+        {
+            buyProduct(FULL_GAME_PRODUCT_ID);
+            if(doesOwnFullGame())
+            {
+                done = true;
+                break;
+            }
+        }
+        // Cancel
+        else if(do_no)
+        {
+            done = true;
+            break;
+        }
+       
+        retvalue = 0;
+
+        // Draw
+        myscreen->clearscreen();
+        
+        SDL_BlitSurface(splash, NULL, screen, NULL);
+        
+        myscreen->draw_button(no_button.x, no_button.y, no_button.x + no_button.w, no_button.y + no_button.h, 1, 1);
+        loadtext->write_xy(no_button.x + 2, no_button.y + 2, "NO THANKS", DARK_BLUE, 1);
+        
+        myscreen->draw_button(yes_button.x, yes_button.y, yes_button.x + yes_button.w, yes_button.y + yes_button.h, 1, 1);
+        loadtext->write_xy(yes_button.x + 2, yes_button.y + 2, "YES!!", DARK_BLUE, 1);
+
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0, 0, 320, 200);
+        SDL_Delay(10);
+    }
+    
+    SDL_FreeSurface(splash);
+    delete loadtext;
     
     return doesOwnFullGame();
 }
