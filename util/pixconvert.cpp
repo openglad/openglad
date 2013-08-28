@@ -2,10 +2,15 @@
 // converts pixie files
 // based on pixedit by Zardus
 
-#include <stdio.h>
-#include <SDL.h>
-#include <SDL_image.h>
+#include <cstdio>
+#include "SDL.h"
+#include "SDL_image.h"
 #include "savepng.h"
+#include <vector>
+#include <list>
+#include <string>
+#include <algorithm>
+using namespace std;
 
 char ourcolors[] = {
                           0,0,0,8,8,8,16,16,16,24,24,24,32,32,32,40,40,40,48,48,48,56,56,56,1,
@@ -269,6 +274,13 @@ void convert_to_pix(const char* filename)
     
     FILE* outfile;
     outfile = fopen(outname, "wb");
+    
+    if(outfile == NULL)
+    {
+        fprintf(stderr, "Couldn't open \"%s\" for writing.\n", outname);
+        return;
+    }
+    
     fwrite(&numframes, 1, 1, outfile);
     fwrite(&x, 1, 1, outfile);
     fwrite(&y, 1, 1, outfile);
@@ -337,22 +349,22 @@ void convert_to_png(const char* filename)
 	free(data);
 }
 
-void concatenate_pix(int numFiles, char** files)
+void concatenate_pix(vector<string>& files)
 {
     unsigned char total_frames = 0;
     unsigned char numframes, width, height, w, h;
     unsigned char* data;
     
     char outname[200];
-    FILE* outfile;
+    FILE* outfile = NULL;
     
     char first = 1;
     
-    int i;
-    for(i = 0; i < numFiles; i++)
+    size_t i;
+    for(i = 0; i < files.size(); i++)
     {
-        char* filename = files[i];
-        data = load_pix_data(filename, &numframes, &w, &h);
+        const string& filename = files[i];
+        data = load_pix_data(filename.c_str(), &numframes, &w, &h);
         
         if(first)
         {
@@ -363,8 +375,13 @@ void concatenate_pix(int numFiles, char** files)
             height = h;
             
             // Open new file for writing
-            snprintf(outname, 200, "%s.pix", filename);
+            snprintf(outname, 200, "%s.pix", filename.c_str());
             outfile = fopen(outname, "wb");
+            if(outfile == NULL)
+            {
+                fprintf(stderr, "Failed to open \"%s\" for writing.\n", outname);
+                exit(2);
+            }
             
             fwrite(&total_frames, 1, 1, outfile);  // This will be rewritten later
             fwrite(&width, 1, 1, outfile);
@@ -375,7 +392,7 @@ void concatenate_pix(int numFiles, char** files)
             if(w != width || h != height)
             {
                 // Mismatched dims error
-                printf("File (%s) dimensions (%ux%u) do not match the output file (%ux%u).\n", filename, w, h, width, height);
+                printf("File (%s) dimensions (%ux%u) do not match the output file (%ux%u).\n", filename.c_str(), w, h, width, height);
                 fclose(outfile);
                 remove(outname);
                 exit(1);
@@ -388,6 +405,11 @@ void concatenate_pix(int numFiles, char** files)
         free(data);
     }
     
+    if(outfile == NULL)
+    {
+        fprintf(stderr, "No output file was opened!\n");
+    }
+    
     // Go back to the beginning to update the number of frames
     fseek(outfile, 0, SEEK_SET);
     fwrite(&total_frames, 1, 1, outfile);
@@ -396,7 +418,90 @@ void concatenate_pix(int numFiles, char** files)
     fclose(outfile);
 }
 
-void parse_args(int argc, char **argv, int* mode, int* numFiles, char** files)
+
+vector<string> explodev(const string& str, char delimiter)
+{
+    vector<string> result;
+
+    size_t oldPos = 0;
+    size_t pos = str.find_first_of(delimiter);
+    while(pos != string::npos)
+    {
+        result.push_back(str.substr(oldPos, pos - oldPos));
+        oldPos = pos+1;
+        pos = str.find_first_of(delimiter, oldPos);
+    }
+
+    result.push_back(str.substr(oldPos, string::npos));
+
+    // Test this:
+    /*unsigned int pos;
+    do
+    {
+        pos = str.find_first_of(delimiter, oldPos);
+        result.push_back(str.substr(oldPos, pos - oldPos));
+        oldPos = pos+1;
+    }
+    while(pos != string::npos);*/
+
+    return result;
+}
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
+
+bool isFile(const string& filename)
+{
+    struct stat status;
+    stat(filename.c_str(), &status);
+
+    return (status.st_mode & S_IFREG);
+}
+
+vector<string> list_files(const string& dirname)
+{
+    list<string> fileList;
+
+    DIR* dir = opendir(dirname.c_str());
+    dirent* entry;
+    
+    if(dir == NULL)
+        return vector<string>();
+    
+    while ((entry = readdir(dir)) != NULL)
+    {
+        #ifdef WIN32
+        if(isFile(dirname + "/" + entry->d_name))
+        #else
+        if(entry->d_type != DT_DIR)
+        #endif
+        {
+            fileList.push_back(entry->d_name);
+        }
+    }
+
+    closedir(dir);
+
+    fileList.sort();
+
+    vector<string> result;
+    result.assign(fileList.begin(), fileList.end());
+    return result;
+}
+
+string stripToDir(const string& filename)
+{
+    size_t lastSlash = filename.find_last_of("/\\");
+    if(lastSlash == string::npos)
+        return ".";
+    return filename.substr(0, lastSlash);
+}
+
+void parse_args(int argc, char **argv, int* mode, vector<string>& files)
 {
     int i = 1;
     if(argc < 2)
@@ -414,42 +519,71 @@ void parse_args(int argc, char **argv, int* mode, int* numFiles, char** files)
     int j = 0;
     while(i < argc)
     {
-        char* arg = argv[i];
-        int len = strlen(arg);
+        string arg = argv[i];
+        size_t len = arg.size();
         
         if(len > 1 && arg[0] == '-')
         {
             // It's a flag
-            if(arg[1] == 'c' || strcmp(arg, "--cat") == 0 || strcmp(arg, "--concat") == 0 || strcmp(arg, "--concatenate") == 0)
+            if(arg[1] == 'c' || arg == "--cat" || arg == "--concat" || arg == "--concatenate")
             {
                 // Concatenate files into one pix
+                fprintf(stderr, "Concatenating files...");
                 *mode = 2;
             }
-            else if(arg[1] == 'n' || strcmp(arg, "--no-cycle") == 0 || strcmp(arg, "--no-cycling") == 0)
+            else if(arg[1] == 'n' || arg == "--no-cycle" || arg == "--no-cycling")
             {
                 // Disable matching cycling colors in image -> pix conversions
+                fprintf(stderr, "Disabling cycling colors...");
                 no_cycling_colors = 1;
             }
         }
         else
         {
             // It's a file
-            files[j] = arg;
+            
+            // Does it have a sequence wildcard?
+            if(arg.find_first_of('#') != string::npos)
+            {
+                // Not terribly robust, sorry...
+                vector<string> parts = explodev(arg, '#');
+                
+                vector<string> file_list = list_files(stripToDir(arg));
+                
+                char buf[255];
+                
+                int i = 0;
+                int missed = 0;
+                while(i < 256)
+                {
+                    snprintf(buf, 255, "%s%d%s", parts[0].c_str(), i, parts[1].c_str());
+                    if(std::find(file_list.begin(), file_list.end(), buf) != file_list.end())
+                    {
+                        files.push_back(buf);
+                    }
+                    else
+                    {
+                        missed++;
+                        if(missed > 1)
+                            break;
+                    }
+                    i++;
+                }
+            }
+            else // normal file name
+                files.push_back(arg);
             j++;
         }
         
         i++;
     }
-    
-    *numFiles = j;
 }
 
 int main(int argc, char **argv)
 {
     int mode;
-    int numFiles;
-    char* files[argc];
-    parse_args(argc, argv, &mode, &numFiles, files);
+    vector<string> files;
+    parse_args(argc, argv, &mode, files);
     
 	switch(mode)
     {
@@ -461,26 +595,28 @@ int main(int argc, char **argv)
                     "\nOPTIONS\n"
                     " -c, --cat, --concat, --concatenate\n    Combines the listed files into one pix file as frames.  Every listed file must have the same width and height.\n\n"
                     " -n, --no-cycling\n    Disables matching cycling colors when converting an image file to pix.\n\n"
+                    " Use # (pound sign) as a wildcard for sequences.\n   It will look for a starting number of 0 or 1.\n"
+                    "   e.g. `pixconvert -c text#.png` will concatenate text0.png, text1.png, etc.\n\n"
                     );
             return 1;
         case 1:
             {
-                int i;
-                for(i = 0; i < numFiles; i++)
+                size_t i;
+                for(i = 0; i < files.size(); i++)
                 {
-                    char* filename = files[i];
-                    Uint8 usingPix = (strcmp(get_filename_ext(filename), "pix") == 0);
+                    const string& filename = files[i];
+                    Uint8 usingPix = (strcmp(get_filename_ext(filename.c_str()), "pix") == 0);
                     
                     if(usingPix)
-                        convert_to_png(filename);
+                        convert_to_png(filename.c_str());
                     else
-                        convert_to_pix(filename);
+                        convert_to_pix(filename.c_str());
                 }
             }
             break;
         case 2:
             {
-                concatenate_pix(numFiles, files);
+                concatenate_pix(files);
             }
             break;
 	}
