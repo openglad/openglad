@@ -3575,7 +3575,7 @@ Sint32 level_editor()
         
         #ifdef OUYA
             
-            const OuyaController& c = OuyaControllerManager::getController(event.user.code);
+            const OuyaController& c = OuyaControllerManager::getController(0);
             
             float vx = c.getAxisValue(OuyaController::AXIS_RS_X);
             float vy = c.getAxisValue(OuyaController::AXIS_RS_Y);
