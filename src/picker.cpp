@@ -2393,7 +2393,11 @@ Sint32 go_menu(Sint32 arg1)
     {
         if(yes_or_no_prompt("Buy Full Game?", "The demo doesn't include this level.  Want to go see the buying screen?", false))
             showPurchasingSplash();
+        
+        return CREATE_TEAM_MENU;
     }
+    if(myscreen->save_data.scen_num == 1)
+        showOuyaControls();
 #endif
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.

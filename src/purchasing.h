@@ -21,5 +21,6 @@ void test_purchasing();
 
 bool doesOwnFullGame();
 bool showPurchasingSplash();
+void showOuyaControls();
 
 #endif
