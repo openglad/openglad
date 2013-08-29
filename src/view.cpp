@@ -592,23 +592,6 @@ short viewscreen::input(const SDL_Event& event)
 		clear_keyboard();
 	}
 
-	// Help system
-	if (query_key_event(SDLK_F1, event) && !isPlayerHoldingKey(mynum, KEY_CHEAT) )
-	{
-		strcpy(somemessage,"OPENGLAD V.");
-		strcat(somemessage, OPENGLAD_VERSION_STRING); //append the version num
-		set_display_text(somemessage, STANDARD_TEXT_TIME);
-
-		while (keystates[KEYSTATE_F1])
-			get_input_events(WAIT);
-
-		//buffers: lets borrow the somemessage buffer for some work
-		strcpy(somemessage,"glad.hlp");
-		read_help(somemessage,screenp);
-		
-		screenp->redrawme = 1;
-	}
-
 	// Change our currently selected special
 	if (!didPlayerPressKey(mynum, KEY_SPECIAL_SWITCH, event))
 		changedspec[mynum] = 0;

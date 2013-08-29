@@ -199,9 +199,12 @@ short read_scenario(screen *myscreen)
 	return (short) numlines;
 }
 
-short read_help(const char *somefile,screen * myscreen)
+short read_campaign_intro(screen * myscreen)
 {
-	SDL_RWops *infile;
+    CampaignData data(myscreen->save_data.current_campaign);
+    if(!data.load())
+        return 1;
+    
 	Sint32 screenlines;
 	Sint32  numlines, j;
 	Sint32 linesdown;
@@ -214,30 +217,17 @@ short read_help(const char *somefile,screen * myscreen)
 	Sint32 start_time, now_time;
 	Sint32 bottomrow;
 
-	if ((infile = open_read_file(somefile)) == NULL)
-	{
-		Log( "Cannot open help file %s.\n", somefile);
-		//delete mytext;
-		return 1;
-	}
-
 	clear_keyboard();
 	end_of_file = 0;
 	linesdown = 0;
 	changed = 1;
 	start_time = query_timer();
 
-	/* seek to the beginning of the file */
-	SDL_RWseek(infile, 0, SEEK_SET);
-
 	// Fill the helptext array with data ..
-	numlines = (Sint32) (fill_help_array(helptext, infile));
+	numlines = data.description.size();
 	screenlines = numlines*8;
 	numlines = screenlines;
 	bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
-
-	// Close the help file
-    SDL_RWclose(infile);
 
 	// Do the loop until person hits escape
 	while (!query_input_continue())
@@ -315,9 +305,12 @@ short read_help(const char *somefile,screen * myscreen)
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                      HELPTEXT_LEFT+240, HELPTEXT_TOP+107, 3, 1);
 			for (j=0; j < DISPLAY_LINES; j++)
-				if (strlen(helptext[j+templines]))
-					mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
-					                 helptext[j+templines], (unsigned char) DARK_BLUE, 1 ); // to buffer!
+            {
+				if(data.getDescriptionLine(j+templines).size() == 0)
+                    continue;
+                
+                mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
+            }
 			myscreen->clearfontbuffer(HELPTEXT_LEFT,HELPTEXT_TOP-8,
 						240-4,7);
 
@@ -330,8 +323,8 @@ short read_help(const char *somefile,screen * myscreen)
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP-2);
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP+103);
-			mytext->write_xy(HELPTEXT_LEFT+90,
-			                 HELPTEXT_TOP-7, "GLADIATOR", (unsigned char) RED, 1);
+			mytext->write_xy(HELPTEXT_LEFT+240/2 - data.title.size()*3,
+			                 HELPTEXT_TOP-7, data.title.c_str(), (unsigned char) RED, 1);
 			mytext->write_xy(HELPTEXT_LEFT+52,
 			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", (unsigned char) RED, 1);
 			//myscreen->buffer_to_screen(0, 0, 320, 200);

@@ -60,6 +60,8 @@ public:
     bool load();
     bool save();
     bool save_as(const std::string& new_id);
+    
+    std::string getDescriptionLine(int i);
 };
 
 

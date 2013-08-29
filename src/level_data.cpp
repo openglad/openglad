@@ -268,6 +268,22 @@ bool CampaignData::save_as(const std::string& new_id)
     return result;
 }
 
+std::string CampaignData::getDescriptionLine(int i)
+{
+    if(i < 0 || i >= description.size())
+        return "";
+    
+    std::list<std::string>::iterator e = description.begin();
+    while(i > 0)
+    {
+        e++;
+        i--;
+    }
+    
+    return *e;
+}
+
+
 
 
 

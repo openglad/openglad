@@ -111,7 +111,7 @@ extern screen * myscreen; // global, availible to anyone
 #define MAX_LINES 100   // maximum number of lines in helpfile
 #define HELP_WIDTH 100   // maximum length of display line
 short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile);
-short   read_help(const char *somefile,screen *myscreen);
+short   read_campaign_intro(screen *myscreen);
 short   read_scenario(screen  *myscreen);
 char* read_one_line(SDL_RWops *infile, short length);
 

@@ -817,7 +817,7 @@ Sint32 beginmenu(Sint32 arg1)
 	//grab_keyboard();
 	myscreen->clearbuffer();
 	myscreen->swap();
-	read_help("start.tex", myscreen);
+	read_campaign_intro(myscreen);
 	//release_keyboard();
 	myscreen->refresh();
 	grab_mouse();
