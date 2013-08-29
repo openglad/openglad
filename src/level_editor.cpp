@@ -3316,6 +3316,11 @@ Sint32 level_editor()
 	
 	data.reset_mode_buttons();
 	
+    #ifdef USE_CONTROLLER_INPUT
+    mymouse[MOUSE_X] = 160;
+    mymouse[MOUSE_Y] = 100;
+    #endif
+	
     mouse_last_x = mymouse[MOUSE_X];
     mouse_last_y = mymouse[MOUSE_Y];
     

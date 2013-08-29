@@ -1479,22 +1479,38 @@ void timed_dialog(const char* message, float delay_seconds)
 	myscreen->clearfontbuffer();
 }
 
-// TODO: Multi-line messages would be nice...
+
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
 {
 	text gladtext(myscreen);
 	
+	int pix_per_char = 6;
+	
+	// Break message into lines
+    std::list<std::string> ls = explode(message, '\n');
+    
+    // Get the max dimensions needed to display it
+    int w = strlen(title)*9;
+    int h = 30 + 10*ls.size();
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        if(int(e->size()*pix_per_char) > w)
+            w = e->size()*pix_per_char;
+    }
+    
+    // Centered bounds
+    int leftside  = 160 - w/2 - 12;
+    int rightside = 160 + w/2 + 12;
+    int j = 0;
+	
 	int dumbcount;
-	int pix_per_char = 3;
-    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
-    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
 
 	if (localbuttons)
 		delete (localbuttons);
     
 	button* buttons = yes_or_no_buttons;
 	int num_buttons = 2;
-	int highlighted_button = 0;
+	int highlighted_button = (default_value? 0 : 1);
 	localbuttons = init_buttons(buttons, num_buttons);
 
 	grab_mouse();
@@ -1526,10 +1542,16 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
+        
 		// Draw
-        dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
-        gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+		j = 0;
+        for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+        {
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+            j++;
+        }
+        
         draw_buttons(buttons, num_buttons);
         
         draw_highlight_interior(buttons[highlighted_button]);
@@ -1546,23 +1568,38 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 	return default_value;
 }
 
-// TODO: Multi-line messages would be nice...
+
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value)
 {
 	text gladtext(myscreen);
 	
-	int dumbcount;
-	int pix_per_char = 3;
-    int leftside  = 160 - ( (strlen(message)) * pix_per_char) - 12;
-    int rightside = 160 + ( (strlen(message)) * pix_per_char) + 12;
+	int pix_per_char = 6;
+	
+	// Break message into lines
+    std::list<std::string> ls = explode(message, '\n');
     
+    // Get the max dimensions needed to display it
+    int w = strlen(title)*9;
+    int h = 30 + 10*ls.size();
+    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    {
+        if(int(e->size()*pix_per_char) > w)
+            w = e->size()*pix_per_char;
+    }
+    
+    // Centered bounds
+    int leftside  = 160 - w/2 - 12;
+    int rightside = 160 + w/2 + 12;
+    int j = 0;
+    
+	int dumbcount;
 
 	if (localbuttons)
 		delete (localbuttons);
     
 	button* buttons = no_or_yes_buttons;
 	int num_buttons = 2;
-	int highlighted_button = 0;
+	int highlighted_button = (default_value? 1 : 0);
 	localbuttons = init_buttons(buttons, num_buttons);
 
 	grab_mouse();
@@ -1596,8 +1633,14 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
 		
 		// Draw
-        dumbcount = myscreen->draw_dialog(leftside, 80, rightside, 120, title);
-        gladtext.write_xy(dumbcount + 3*pix_per_char, 104, message, (unsigned char) DARK_BLUE, 1);
+		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
+		j = 0;
+        for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+        {
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+            j++;
+        }
+        
         draw_buttons(buttons, num_buttons);
         
         draw_highlight_interior(buttons[highlighted_button]);
