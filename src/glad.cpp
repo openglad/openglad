@@ -630,7 +630,7 @@ short new_score_panel(screen *myscreen, short do_it)
 		tm = myscreen->viewob[players]->yloc + OVERSCAN_PADDING;
 		rm = myscreen->viewob[players]->endx - OVERSCAN_PADDING;
 		bm = myscreen->viewob[players]->endy - OVERSCAN_PADDING;
-		if (control && !control->dead)
+		if (control && !control->dead && control->user == players)
 		{
 			// Get the button-drawing info ..
 			draw_button = myscreen->viewob[players]->prefs[PREF_OVERLAY];

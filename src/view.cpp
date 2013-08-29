@@ -253,7 +253,7 @@ short viewscreen::redraw()
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
-	if (prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
 	return 1;
@@ -312,7 +312,7 @@ short viewscreen::redraw(LevelData* data, bool draw_radar)
 		}
 
 	draw_obs(data); //moved here to put the radar on top of obs
-	if (draw_radar && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (draw_radar && control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
 	return 1;
