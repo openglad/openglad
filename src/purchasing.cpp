@@ -316,3 +316,53 @@ bool showPurchasingSplash()
     
     return doesOwnFullGame();
 }
+
+
+void showOuyaControls()
+{
+    SDL_RWops* rwops = open_read_file("pix/gladiator_ouya_controls.bmp");
+    if(rwops == NULL)
+        return;
+    
+    SDL_Surface* splash = SDL_LoadBMP_RW(rwops, 0);
+    SDL_RWclose(rwops);
+    
+    if(splash == NULL)
+        return;
+    
+    Uint32 starttime = SDL_GetTicks();
+    bool waiting = true;
+    
+    clear_keyboard();
+    
+    bool done = false;
+    while (!done)
+    {
+        // Reset the timer count to zero ...
+        reset_timer();
+
+        if (myscreen->end)
+            break;
+
+        // Get keys and stuff
+        get_input_events(POLL);
+        
+        if(waiting && SDL_GetTicks() - starttime > 3000)
+        {
+            waiting = false;
+            clear_keyboard();
+        }
+        else if(!waiting && query_input_continue())
+            done = true;
+
+        // Draw
+        myscreen->clearscreen();
+        
+        SDL_BlitSurface(splash, NULL, screen, NULL);
+        
+        myscreen->buffer_to_screen(0, 0, 320, 200);
+        SDL_Delay(10);
+    }
+    
+    SDL_FreeSurface(splash);
+}
