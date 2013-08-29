@@ -336,11 +336,7 @@ short score_panel(screen *myscreen)
 
 short score_panel(screen *myscreen, short do_it)
 {
-	text *mytext = new text(myscreen, TEXT_1);
-
-	delete mytext;
 	return new_score_panel(myscreen, 1);
-
 }
 
 void draw_radar_gems(screen  *myscreen)
@@ -733,16 +729,26 @@ short new_score_panel(screen *myscreen, short do_it)
 					scorecountup[control->team_num] = myscore;
 				myscreen->save_data.m_score[control->team_num] = myscore;
 				//above should count up the score towards the current amount
-				sprintf(message, "SC: %u", scorecountup[control->team_num]);
-				mytext->write_xy(lm+2, bm-8, message, text_color, (short) 1);
+				
+				int special_y = bm + special_offset;
+				// Don't show score and XP (clutter) when in a small viewport
+				if(myscreen->numviews > 2 && !(myscreen->numviews == 3 && players == 0))
+                {
+                    special_y = bm - 8;
+                }
+                else
+                {
+                    sprintf(message, "SC: %u", scorecountup[control->team_num]);
+                    mytext->write_xy(lm+2, bm-8, message, text_color, (short) 1);
 
-				// Level or exp, 2nd bottom left
-				if (control->myguy)
-					sprintf(message, "XP: %u", control->myguy->exp);
-				else
-					sprintf(message, "LEVEL: %i", control->stats->level);
-				mytext->write_xy(lm+2, bm-16, message, text_color, (short) 1);
-
+                    // Level or exp, 2nd bottom left
+                    if (control->myguy)
+                        sprintf(message, "XP: %u", control->myguy->exp);
+                    else
+                        sprintf(message, "LEVEL: %i", control->stats->level);
+                    mytext->write_xy(lm+2, bm-16, message, text_color, (short) 1);
+                }
+                
 				// Currently-select special
 				if (control->shifter_down &&
 				        strcmp(myscreen->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE") )
@@ -752,9 +758,9 @@ short new_score_panel(screen *myscreen, short do_it)
 					
                 
 				if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
-					mytext->write_xy(lm+2, bm + special_offset, message, text_color, (short) 1);
+					mytext->write_xy(lm+2, special_y, message, text_color, (short) 1);
 				else
-					mytext->write_xy(lm+2, bm + special_offset, message, (unsigned char) RED, (short) 1);
+					mytext->write_xy(lm+2, special_y, message, (unsigned char) RED, (short) 1);
                 
                 #ifdef USE_TOUCH_INPUT
                 // Alternate special name (if not "NONE")
