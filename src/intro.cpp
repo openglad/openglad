@@ -101,7 +101,7 @@ void intro_main(Sint32 argc, char** argv)
 	gladdata = read_pixie_file("3mages2.pix");
 	gladiator = new pixie(gladdata, myscreen);
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
-	mytext->write_y(100,"GAME BY   ", 230, myscreen->viewob[0]);
+	mytext->write_y(105,"GAME BY   ", 230, myscreen->viewob[0]);
 	mytext->write_y(120,"FORGOTTEN SAGES   ", 230, myscreen->viewob[0]);
 	delete gladiator;
 	gladdata.free();
