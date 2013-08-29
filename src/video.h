@@ -63,6 +63,11 @@ class video
 		               Sint32 portstartx, Sint32 portstarty,
 		               Sint32 portendx, Sint32 portendy,
 		               unsigned char * sourceptr);
+		void putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
+		               Sint32 tilewidth, Sint32 tileheight,
+		               Sint32 portstartx, Sint32 portstarty,
+		               Sint32 portendx, Sint32 portendy,
+		               unsigned char * sourceptr, unsigned char alpha);
 		void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 		               Sint32 tilewidth, Sint32 tileheight,
 		               Sint32 portstartx, Sint32 portstarty,

@@ -166,11 +166,14 @@ short radar::draw(LevelData* data)
 		radarx = 0;
 	if (radary < 0)
 		radary = 0;
-	screenp->putbuffer(xloc, yloc,
+    
+    unsigned char alpha = 255;
+    if(myscreen->numviews > 2 && !(myscreen->numviews == 3 && mynum == 0))
+        alpha = 127;
+	screenp->putbuffer_alpha(xloc, yloc,
 	                   sizex,sizey,
 	                   xloc,yloc,xloc + xview,yloc + yview,
-	                   &bmp[radarx + (radary * sizex)]);
-
+	                   &bmp[radarx + (radary * sizex)], alpha);
 
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)
@@ -225,63 +228,43 @@ short radar::draw(LevelData* data)
 						tempcolor = (unsigned char) (random(256));
 						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
 						{
-							//buffers: PORT: screenp->videobuffer[tempz-1] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz+319] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz+320] = tempcolor;
-							screenp->pointb(tempx-1,tempy,tempcolor);
-							screenp->pointb(tempx,tempy,tempcolor);
-							screenp->pointb(tempx-1,tempy+1,tempcolor);
-							screenp->pointb(tempx,tempy+1,tempcolor);
+							screenp->pointb(tempx-1,tempy,tempcolor, alpha);
+							screenp->pointb(tempx,tempy,tempcolor, alpha);
+							screenp->pointb(tempx-1,tempy+1,tempcolor, alpha);
+							screenp->pointb(tempx,tempy+1,tempcolor, alpha);
 
 						}
 						else if (tempx >= (xloc + xview -1) )
 						{
-							//buffers: PORT: screenp->videobuffer[tempz] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz-1] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz-320] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz-321] = tempcolor;
-							screenp->pointb(tempx,tempy,tempcolor);
-							screenp->pointb(tempx-1,tempy,tempcolor);
-							screenp->pointb(tempx,tempy-1,tempcolor);
-							screenp->pointb(tempx-1,tempy-1,tempcolor);
+							screenp->pointb(tempx,tempy,tempcolor, alpha);
+							screenp->pointb(tempx-1,tempy,tempcolor, alpha);
+							screenp->pointb(tempx,tempy-1,tempcolor, alpha);
+							screenp->pointb(tempx-1,tempy-1,tempcolor, alpha);
 
 						}
 						else if (tempy >= (yloc + yview -1) && tempx < (xloc+xview) )
 						{
-							//buffers: PORT: screenp->videobuffer[tempz] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz+1] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz-320] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz-319] = tempcolor;
-							screenp->pointb(tempx,tempy,tempcolor);
-							screenp->pointb(tempx+1,tempy,tempcolor);
-							screenp->pointb(tempx,tempy-1,tempcolor);
-							screenp->pointb(tempx+1,tempy-1,tempcolor);
+							screenp->pointb(tempx,tempy,tempcolor, alpha);
+							screenp->pointb(tempx+1,tempy,tempcolor, alpha);
+							screenp->pointb(tempx,tempy-1,tempcolor, alpha);
+							screenp->pointb(tempx+1,tempy-1,tempcolor, alpha);
 						}
 						else
 						{
-							//buffers: PORT: screenp->videobuffer[tempz] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz+1] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz+320] = tempcolor;
-							//buffers: PORT: screenp->videobuffer[tempz+321] = tempcolor;
-							screenp->pointb(tempx,tempy,tempcolor);
-							screenp->pointb(tempx+1,tempy,tempcolor);
-							screenp->pointb(tempx,tempy+1,tempcolor);
-							screenp->pointb(tempx+1,tempy+1,tempcolor);
+							screenp->pointb(tempx,tempy,tempcolor, alpha);
+							screenp->pointb(tempx+1,tempy,tempcolor, alpha);
+							screenp->pointb(tempx,tempy+1,tempcolor, alpha);
+							screenp->pointb(tempx+1,tempy+1,tempcolor, alpha);
 						}
 					}
 					else if (oborder == ORDER_LIVING)
-						//buffers: PORT: screenp->videobuffer[tempz] = tempcolor;
-						screenp->pointb(tempx,tempy,tempcolor);
+						screenp->pointb(tempx,tempy,tempcolor, alpha);
 					else if (oborder == ORDER_GENERATOR)
-						//buffers: PORT: screenp->videobuffer[tempz] = (char) (tempcolor+1);
-						screenp->pointb(tempx,tempy,(char)(tempcolor+1));
+						screenp->pointb(tempx,tempy,(char)(tempcolor+1), alpha);
 					else if (oborder == ORDER_TREASURE) // currently life gems
-						//buffers: PORT: screenp->videobuffer[tempz] = COLOR_FIRE;
-						screenp->pointb(tempx,tempy,COLOR_FIRE);
+						screenp->pointb(tempx,tempy,COLOR_FIRE, alpha);
 					else
-						//buffers: PORT: screenp->videobuffer[tempz] = COLOR_WHITE;
-						screenp->pointb(tempx,tempy,COLOR_WHITE);
+						screenp->pointb(tempx,tempy,COLOR_WHITE, alpha);
 				}//draw the blob onto the radar
 			}
 			here = here->next;
@@ -346,8 +329,7 @@ short radar::draw(LevelData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					//buffers: PORT: screenp->videobuffer[tempz] = (char) do_show;
-					screenp->pointb(tempx,tempy,(char)do_show);
+					screenp->pointb(tempx,tempy,(char)do_show, alpha);
 				}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob

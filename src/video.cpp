@@ -423,6 +423,109 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color)
 	SDL_FillRect(screen,&rect,c);
 }
 
+void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
+{
+    Uint32 Rmask = surface->format->Rmask, Gmask = surface->format->Gmask, Bmask = surface->format->Bmask, Amask = surface->format->Amask;
+    Uint32 R,G,B,A=0;//SDL_ALPHA_OPAQUE;
+    Uint32* pixel;
+    switch (surface->format->BytesPerPixel)
+    {
+        case 1: { /* Assuming 8-bpp */
+            
+                Uint8 *pixel = (Uint8 *)surface->pixels + y*surface->pitch + x;
+                
+                Uint8 dR = surface->format->palette->colors[*pixel].r;
+                Uint8 dG = surface->format->palette->colors[*pixel].g;
+                Uint8 dB = surface->format->palette->colors[*pixel].b;
+                Uint8 sR = surface->format->palette->colors[color].r;
+                Uint8 sG = surface->format->palette->colors[color].g;
+                Uint8 sB = surface->format->palette->colors[color].b;
+                
+                dR = dR + ((sR-dR)*alpha >> 8);
+                dG = dG + ((sG-dG)*alpha >> 8);
+                dB = dB + ((sB-dB)*alpha >> 8);
+            
+                *pixel = SDL_MapRGB(surface->format, dR, dG, dB);
+                
+        }
+        break;
+
+        case 2: { /* Probably 15-bpp or 16-bpp */		
+            
+                Uint16 *pixel = (Uint16 *)surface->pixels + y*surface->pitch/2 + x;
+                Uint32 dc = *pixel;
+            
+                R = ((dc & Rmask) + (( (color & Rmask) - (dc & Rmask) ) * alpha >> 8)) & Rmask;
+                G = ((dc & Gmask) + (( (color & Gmask) - (dc & Gmask) ) * alpha >> 8)) & Gmask;
+                B = ((dc & Bmask) + (( (color & Bmask) - (dc & Bmask) ) * alpha >> 8)) & Bmask;
+                if( Amask )
+                    A = ((dc & Amask) + (( (color & Amask) - (dc & Amask) ) * alpha >> 8)) & Amask;
+
+                *pixel= R | G | B | A;
+                
+        }
+        break;
+
+        case 3: { /* Slow 24-bpp mode, usually not used */
+            Uint8 *pix = (Uint8 *)surface->pixels + y * surface->pitch + x*3;
+            Uint8 rshift8=surface->format->Rshift/8;
+            Uint8 gshift8=surface->format->Gshift/8;
+            Uint8 bshift8=surface->format->Bshift/8;
+            Uint8 ashift8=surface->format->Ashift/8;
+            
+            
+            
+                Uint8 dR, dG, dB, dA=0;
+                Uint8 sR, sG, sB, sA=0;
+                
+                pix = (Uint8 *)surface->pixels + y * surface->pitch + x*3;
+                
+                dR = *((pix)+rshift8); 
+                dG = *((pix)+gshift8);
+                dB = *((pix)+bshift8);
+                dA = *((pix)+ashift8);
+                
+                sR = (color>>surface->format->Rshift)&0xff;
+                sG = (color>>surface->format->Gshift)&0xff;
+                sB = (color>>surface->format->Bshift)&0xff;
+                sA = (color>>surface->format->Ashift)&0xff;
+                
+                dR = dR + ((sR-dR)*alpha >> 8);
+                dG = dG + ((sG-dG)*alpha >> 8);
+                dB = dB + ((sB-dB)*alpha >> 8);
+                dA = dA + ((sA-dA)*alpha >> 8);
+
+                *((pix)+rshift8) = dR; 
+                *((pix)+gshift8) = dG;
+                *((pix)+bshift8) = dB;
+                *((pix)+ashift8) = dA;
+                
+        }
+        break;
+
+        case 4: /* Probably 32-bpp */
+            pixel = (Uint32*)surface->pixels + y*surface->pitch/4 + x;
+            Uint32 dc = *pixel;
+            R = color & Rmask;
+            G = color & Gmask;
+            B = color & Bmask;
+            A = 0;  // keep this as 0 to avoid corruption of non-alpha surfaces
+            
+            // Blend and keep dest alpha
+            if( alpha != SDL_ALPHA_OPAQUE )
+            {
+                R = ((dc & Rmask) + (( R - (dc & Rmask) ) * alpha >> 8)) & Rmask;
+                G = ((dc & Gmask) + (( G - (dc & Gmask) ) * alpha >> 8)) & Gmask;
+                B = ((dc & Bmask) + (( B - (dc & Bmask) ) * alpha >> 8)) & Bmask;
+            }
+            if(Amask)
+                A = (dc & Amask);
+            
+            *pixel = R | G | B | A;
+        break;
+    }
+}
+
 void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 {
 	int r,g,b;
@@ -436,108 +539,17 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 
 	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
 	
-	// Embedded blend pixel function
+	SDL_Rect rect;
+	rect.x = x*mult;
+	rect.y = y*mult;
+	rect.w = mult;
+	rect.h = mult;
+	
+	for(int i = rect.x; i < rect.x + rect.w; i++)
     {
-        Uint32 color = c;
-        SDL_Surface* surface = screen;
-		Uint32 Rmask = surface->format->Rmask, Gmask = surface->format->Gmask, Bmask = surface->format->Bmask, Amask = surface->format->Amask;
-		Uint32 R,G,B,A=0;//SDL_ALPHA_OPAQUE;
-        Uint32* pixel;
-		switch (surface->format->BytesPerPixel)
-		{
-            case 1: { /* Assuming 8-bpp */
-                
-                    Uint8 *pixel = (Uint8 *)surface->pixels + y*surface->pitch + x;
-                    
-                    Uint8 dR = surface->format->palette->colors[*pixel].r;
-                    Uint8 dG = surface->format->palette->colors[*pixel].g;
-                    Uint8 dB = surface->format->palette->colors[*pixel].b;
-                    Uint8 sR = surface->format->palette->colors[color].r;
-                    Uint8 sG = surface->format->palette->colors[color].g;
-                    Uint8 sB = surface->format->palette->colors[color].b;
-                    
-                    dR = dR + ((sR-dR)*alpha >> 8);
-                    dG = dG + ((sG-dG)*alpha >> 8);
-                    dB = dB + ((sB-dB)*alpha >> 8);
-                
-                    *pixel = SDL_MapRGB(surface->format, dR, dG, dB);
-                    
-            }
-            break;
-
-            case 2: { /* Probably 15-bpp or 16-bpp */		
-                
-                    Uint16 *pixel = (Uint16 *)surface->pixels + y*surface->pitch/2 + x;
-                    Uint32 dc = *pixel;
-                
-                    R = ((dc & Rmask) + (( (color & Rmask) - (dc & Rmask) ) * alpha >> 8)) & Rmask;
-                    G = ((dc & Gmask) + (( (color & Gmask) - (dc & Gmask) ) * alpha >> 8)) & Gmask;
-                    B = ((dc & Bmask) + (( (color & Bmask) - (dc & Bmask) ) * alpha >> 8)) & Bmask;
-                    if( Amask )
-                        A = ((dc & Amask) + (( (color & Amask) - (dc & Amask) ) * alpha >> 8)) & Amask;
-
-                    *pixel= R | G | B | A;
-                    
-            }
-            break;
-
-            case 3: { /* Slow 24-bpp mode, usually not used */
-                Uint8 *pix = (Uint8 *)surface->pixels + y * surface->pitch + x*3;
-                Uint8 rshift8=surface->format->Rshift/8;
-                Uint8 gshift8=surface->format->Gshift/8;
-                Uint8 bshift8=surface->format->Bshift/8;
-                Uint8 ashift8=surface->format->Ashift/8;
-                
-                
-                
-                    Uint8 dR, dG, dB, dA=0;
-                    Uint8 sR, sG, sB, sA=0;
-                    
-                    pix = (Uint8 *)surface->pixels + y * surface->pitch + x*3;
-                    
-                    dR = *((pix)+rshift8); 
-                    dG = *((pix)+gshift8);
-                    dB = *((pix)+bshift8);
-                    dA = *((pix)+ashift8);
-                    
-                    sR = (color>>surface->format->Rshift)&0xff;
-                    sG = (color>>surface->format->Gshift)&0xff;
-                    sB = (color>>surface->format->Bshift)&0xff;
-                    sA = (color>>surface->format->Ashift)&0xff;
-                    
-                    dR = dR + ((sR-dR)*alpha >> 8);
-                    dG = dG + ((sG-dG)*alpha >> 8);
-                    dB = dB + ((sB-dB)*alpha >> 8);
-                    dA = dA + ((sA-dA)*alpha >> 8);
-
-                    *((pix)+rshift8) = dR; 
-                    *((pix)+gshift8) = dG;
-                    *((pix)+bshift8) = dB;
-                    *((pix)+ashift8) = dA;
-                    
-            }
-            break;
-
-            case 4: /* Probably 32-bpp */
-                pixel = (Uint32*)surface->pixels + y*surface->pitch/4 + x;
-                Uint32 dc = *pixel;
-                R = color & Rmask;
-                G = color & Gmask;
-                B = color & Bmask;
-                A = 0;  // keep this as 0 to avoid corruption of non-alpha surfaces
-                
-                // Blend and keep dest alpha
-                if( alpha != SDL_ALPHA_OPAQUE )
-                {
-                    R = ((dc & Rmask) + (( R - (dc & Rmask) ) * alpha >> 8)) & Rmask;
-                    G = ((dc & Gmask) + (( G - (dc & Gmask) ) * alpha >> 8)) & Gmask;
-                    B = ((dc & Bmask) + (( B - (dc & Bmask) ) * alpha >> 8)) & Bmask;
-                }
-                if(Amask)
-                    A = (dc & Amask);
-                
-                *pixel = R | G | B | A;
-            break;
+        for(int j = rect.y; j < rect.y + rect.h; j++)
+        {
+            blend_pixel(screen, i, j, c, alpha);
         }
     }
 }
@@ -840,6 +852,62 @@ void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 		{
 			num = i*tilewidth + j;
 			pointb(j+tilestartx-xmin,i+tilestarty-ymin,sourcebufptr[num]);
+		}
+	}
+}
+
+void video::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
+                      Sint32 tilewidth, Sint32 tileheight,
+                      Sint32 portstartx, Sint32 portstarty,
+                      Sint32 portendx, Sint32 portendy,
+                      unsigned char * sourceptr, unsigned char alpha)
+{
+	int i,j,num;
+	Sint32 xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
+	//Uint32 targetshifter,sourceshifter; //these let you wrap around in the arrays
+	Sint32 totrows,rowsize; //number of rows and width of each row in the source
+	//Uint32 offssource,offstarget; //offsets into each array, for clipping and wrap
+	unsigned char * sourcebufptr = &sourceptr[0];
+	if (tilestartx >= portendx || tilestarty >= portendy )
+		return; // abort, the tile is drawing outside the clipping region
+
+	if ((tilestartx + tilewidth) > portendx)   //this clips on the right edge
+		xmax = portendx - tilestartx; //stop drawing after xmax bytes
+
+	else if (tilestartx < portstartx) //this clips on the left edge
+	{
+		xmin = portstartx - tilestartx;
+		tilestartx = portstartx;
+	}
+
+	if ((tilestarty + tileheight) > portendy) //this clips on the bottom edge
+		ymax = portendy - tilestarty;
+
+	else if (tilestarty < portstarty) //this clips the top edge
+	{
+		ymin = portstarty - tilestarty;
+		tilestarty = portstarty;
+	}
+
+	totrows = (ymax-ymin); //how many rows to copy
+	rowsize = (xmax-xmin); //how many bytes to copy
+	if (totrows <= 0 || rowsize <= 0)
+		return; //this happens on bad args
+
+	//targetshifter = VIDEO_BUFFER_WIDTH - rowsize; //this will wrap the target around
+	//sourceshifter = tilewidth - rowsize;  //this will wrap the source around
+
+	//offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
+	//offssource = (ymin * tilewidth) + xmin; //start at u-l position
+
+	//buffers: draws graphic. actually uses the above bound checking now (7/18/02)
+	num=0;
+	for(i=ymin;i<ymax;i++)
+	{
+		for(j=xmin;j<xmax;j++)
+		{
+			num = i*tilewidth + j;
+			pointb(j+tilestartx-xmin,i+tilestarty-ymin,sourcebufptr[num], alpha);
 		}
 	}
 }
