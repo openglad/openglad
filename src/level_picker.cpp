@@ -397,7 +397,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     
     // Controller input
     int retvalue = 0;
-	int highlighted_button = 0;
+	int highlighted_button = 3;
 	
 	int prev_index = 0;
 	int next_index = 1;

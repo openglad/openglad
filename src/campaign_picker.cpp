@@ -328,7 +328,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
     
     // Controller input
     int retvalue = 0;
-	int highlighted_button = 0;
+	int highlighted_button = 3;
 	
 	int prev_index = 0;
 	int next_index = 1;

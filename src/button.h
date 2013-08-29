@@ -80,14 +80,22 @@ private:
 
 struct button
 {
-	char label[30];
+	std::string label;
 	int hotkey;
 	Sint32 x, y;
 	Sint32 sizex, sizey;
 	Sint32 myfun; // Callback ID
 	Sint32 arg1;  // argument to function fun
 	MenuNav nav;
-	bool hidden;
+	bool hidden;  // Does not draw or accept clicks
+	bool no_draw;  // Does not draw but still accepts clicks
+	
+	button(const std::string& label, int hotkey, Sint32 x, Sint32 y, Sint32 w, Sint32 h, Sint32 callback_ID, Sint32 callback_arg, const MenuNav& nav, bool hidden = false)
+        : label(label), hotkey(hotkey), x(x), y(y), sizex(w), sizey(h), myfun(callback_ID), arg1(callback_arg), nav(nav), hidden(hidden), no_draw(false)
+	{}
+	button(Sint32 x, Sint32 y, Sint32 w, Sint32 h, Sint32 callback_ID, Sint32 callback_arg, const MenuNav& nav, bool hidden = false, bool no_draw = false)
+        : hotkey(KEYSTATE_UNKNOWN), x(x), y(y), sizex(w), sizey(h), myfun(callback_ID), arg1(callback_arg), nav(nav), hidden(hidden), no_draw(no_draw)
+	{}
 };
 
 class vbutton
@@ -95,17 +103,17 @@ class vbutton
 	public:
 		vbutton();//this should only be used for pointers!!
 		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func(Sint32),
-		        Sint32 pass, char *msg, int hot );
+		        Sint32 pass, const std::string& msg, int hot );
 		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func_code,
-		        Sint32 pass, char *msg, int hot );
+		        Sint32 pass, const std::string& msg, int hot );
 		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func_code,
-		        Sint32 pass, char *msg, char family, int hot );
+		        Sint32 pass, const std::string& msg, char family, int hot );
 		~vbutton();
 		void set_graphic(char family);
-		Sint32 leftclick(); //is called when the button is left clicked
-		Sint32 leftclick(Sint32 whichone);
-		Sint32 rightclick(); //is called when the button is right clicked
-		Sint32 rightclick(Sint32 whichone);
+		Sint32 leftclick(button* buttons = NULL);  // Checks all buttons for the click
+		Sint32 leftclick(Sint32 whichone);  // Clicks this vbutton
+		Sint32 rightclick(button* buttons = NULL); //is called when the button is right clicked
+		Sint32 rightclick(Sint32 whichone);  // Clicks this vbutton
 		Sint32 mouse_on(); //determines if mouse is on this button, returns 1 if true
 		void vdisplay();
 		void vdisplay(Sint32 status); // display depressed
@@ -114,7 +122,7 @@ class vbutton
 
 		Sint32 xloc; //the x position in screen-coords
 		Sint32 yloc; //the y position in screen-coords
-		char label[80]; //the label on the button
+		std::string label; //the label on the button
 		Sint32 width; // the buttons width in pixels
 		Sint32 height; // the buttons height in pixels
 		Sint32 xend; //xloc+width

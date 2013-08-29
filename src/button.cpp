@@ -107,7 +107,7 @@ MenuNav::MenuNav(int up, int down, int left, int right)
 
 //vbutton functions, vbutton is a button class that will be self controlled
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
-                 Sint32 func(Sint32), Sint32 pass, char *msg, int hot )
+                 Sint32 func(Sint32), Sint32 pass, const std::string& msg, int hot )
 {
     arg = pass;
     fun = func;
@@ -118,7 +118,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     height = high;
     xend = xloc + width;
     yend = yloc + height;
-    strcpy(label,msg);
+    label = msg;
     next = NULL;
     //  prev = NULL;
     had_focus = 0;
@@ -129,11 +129,11 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 
     hotkey = hot;
 
-    vdisplay();
+    //vdisplay();
 }
 
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
-                 Sint32 func_code, Sint32 pass, char *msg, int hot )
+                 Sint32 func_code, Sint32 pass, const std::string& msg, int hot )
 {
     arg = pass;
     fun = NULL; // don't use this!
@@ -144,7 +144,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     height = high;
     xend = xloc + width;
     yend = yloc + height;
-    strcpy(label,msg);
+    label = msg;
     next = NULL;
     //  prev = NULL;
     had_focus = 0;
@@ -155,11 +155,11 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 
     hotkey = hot;
 
-    vdisplay();
+    //vdisplay();
 }
 
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
-                 Sint32 func_code, Sint32 pass, char *msg, char family,
+                 Sint32 func_code, Sint32 pass, const std::string& msg, char family,
                  int hot )
 {
     arg = pass;
@@ -171,7 +171,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     height = high;
     xend = xloc + width;
     yend = yloc + height;
-    strcpy(label,msg);
+    label = msg;
     next = NULL;
     //  prev = NULL;
     had_focus = 0;
@@ -186,7 +186,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     height = mypixie->sizey;
     xend = xloc + width;
     yend = yloc + height;
-    vdisplay();
+    //vdisplay();
 }
 
 vbutton::vbutton() //for pointers
@@ -224,7 +224,7 @@ void vbutton::set_graphic(char family)
     height= mypixie->sizey;
     xend = xloc + width;
     yend = yloc + height;
-    vdisplay();
+    //vdisplay();
 }
 
 void vbutton::vdisplay()
@@ -237,9 +237,9 @@ void vbutton::vdisplay()
     if (mypixie) // then use the graphic
     {
         mypixie->draw(xloc, yloc, myscreen->viewob[0]);
-        if (strlen(label))
-            mytext->write_xy( (short) ( ((xloc+xend)/2) - (((strlen(label)-1)* (mytext->letters.w+1) )/2)) ,
-                              (short) (yloc + (height-(mytext->letters.h))/2), label, (unsigned char) DARK_BLUE, 1);
+        if (label.size())
+            mytext->write_xy( (short) ( ((xloc+xend)/2) - (((label.size()-1)* (mytext->letters.w+1) )/2)) ,
+                              (short) (yloc + (height-(mytext->letters.h))/2), label.c_str(), (unsigned char) DARK_BLUE, 1);
     }
     else
     {
@@ -248,9 +248,9 @@ void vbutton::vdisplay()
         myscreen->draw_box(xloc,yloc+1,xloc,yend-2,BUTTON_LEFT,1,1); // left
         myscreen->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
         myscreen->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM,1,1); // bottom
-        if (strlen(label))
-            mytext->write_xy( (short) ( ((xloc+xend)/2) - (((strlen(label)-1)* (mytext->letters.w+1) )/2)) ,
-                              (short) (yloc + (height-(mytext->letters.h))/2), label, (unsigned char) DARK_BLUE, 1);
+        if (label.size())
+            mytext->write_xy( (short) ( ((xloc+xend)/2) - (((label.size()-1)* (mytext->letters.w+1) )/2)) ,
+                              (short) (yloc + (height-(mytext->letters.h))/2), label.c_str(), (unsigned char) DARK_BLUE, 1);
     }
     //release_mouse();
     //myscreen->buffer_to_screen(xloc-4,yloc-4,xend+4,yend+4);
@@ -267,9 +267,9 @@ void vbutton::vdisplay(Sint32 status)
     if (mypixie) // then use the graphic
     {
         mypixie->draw(xloc, yloc, myscreen->viewob[0]);
-        if (strlen(label))
-            mytext->write_xy( (short) ( ((xloc+xend)/2) - (((strlen(label)-1)* (mytext->letters.w+1) )/2)) ,
-                              (short) (yloc + (height-(mytext->letters.h))/2), label, (unsigned char) DARK_BLUE, 1);
+        if (label.size())
+            mytext->write_xy( (short) ( ((xloc+xend)/2) - (((label.size()-1)* (mytext->letters.w+1) )/2)) ,
+                              (short) (yloc + (height-(mytext->letters.h))/2), label.c_str(), (unsigned char) DARK_BLUE, 1);
     }
     else
     {
@@ -280,9 +280,9 @@ void vbutton::vdisplay(Sint32 status)
             myscreen->draw_box(xloc,yloc+1,xloc,yend-2,BUTTON_RIGHT,1,1); // left
             myscreen->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_LEFT,1,1); // right
             myscreen->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_TOP,1,1); // bottom
-            if (strlen(label))
-                mytext->write_xy( (short) ( ((xloc+xend)/2) - (((strlen(label)-1)* (mytext->letters.w+1) )/2)) ,
-                                  (short) (yloc + (height-(mytext->letters.h))/2), label, (unsigned char) DARK_BLUE, 1);
+            if (label.size())
+                mytext->write_xy( (short) ( ((xloc+xend)/2) - (((label.size()-1)* (mytext->letters.w+1) )/2)) ,
+                                  (short) (yloc + (height-(mytext->letters.h))/2), label.c_str(), (unsigned char) DARK_BLUE, 1);
             myscreen->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
         }
         else if (status == 2) // special (red) button..
@@ -292,9 +292,9 @@ void vbutton::vdisplay(Sint32 status)
             myscreen->draw_box(xloc,yloc+1,xloc,yend-2,BUTTON_LEFT+32,1,1); // left
             myscreen->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT+32,1,1); // right
             myscreen->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM+32,1,1); // bottom
-            if (strlen(label))
-                mytext->write_xy( (short) ( ((xloc+xend)/2) - (((strlen(label)-1)* (mytext->letters.w+1) )/2)) ,
-                                  (short) (yloc + (height-(mytext->letters.h))/2), label, (unsigned char) DARK_BLUE, 1);
+            if (label.size())
+                mytext->write_xy( (short) ( ((xloc+xend)/2) - (((label.size()-1)* (mytext->letters.w+1) )/2)) ,
+                                  (short) (yloc + (height-(mytext->letters.h))/2), label.c_str(), (unsigned char) DARK_BLUE, 1);
         }
     }
     release_mouse();
@@ -304,39 +304,48 @@ void vbutton::vdisplay(Sint32 status)
     grab_mouse();
 }
 
-Sint32 vbutton::leftclick()
+Sint32 vbutton::leftclick(button* buttons)
 {
     Sint32 whichone=0;
     Sint32 retvalue=0;
     // First check hotkeys ...
     while (allbuttons[whichone])
     {
-        retvalue = allbuttons[whichone]->leftclick(1);
-        if (retvalue != -1)
-            return retvalue;
+        if(buttons == NULL || !buttons[whichone].hidden)
+        {
+            retvalue = allbuttons[whichone]->leftclick(1);
+            if (retvalue != -1)
+                return retvalue;
+        }
         whichone++;
     }
     // Now normal click ..
     whichone = 0;
     while (allbuttons[whichone])
     {
-        retvalue = allbuttons[whichone]->leftclick(2);
-        if (retvalue != -1)
-            return retvalue;
+        if(buttons == NULL || !buttons[whichone].hidden)
+        {
+            retvalue = allbuttons[whichone]->leftclick(2);
+            if (retvalue != -1)
+                return retvalue;
+        }
         whichone++;
     }
     return 0; // none worked
 }
 
-Sint32 vbutton::rightclick()
+Sint32 vbutton::rightclick(button* buttons)
 {
     Sint32 whichone=0;
     Sint32 retvalue=0;
     while (allbuttons[whichone])
     {
-        retvalue = allbuttons[whichone]->rightclick(whichone);
-        if (retvalue != -1)
-            return retvalue;
+        if(buttons == NULL || !buttons[whichone].hidden)
+        {
+            retvalue = allbuttons[whichone]->rightclick(whichone);
+            if (retvalue != -1)
+                return retvalue;
+        }
         whichone++;
     }
     return 0; // none worked
@@ -362,7 +371,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
             return retvalue;
         }
     }
-    else
+    else if(whichbutton == 2) // Normal click
     {
         if (mouse_on())
         {
@@ -373,12 +382,7 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
             {
                 retvalue = do_call(myfunc, arg);
             }
-            //else
-            //  retvalue = fun(arg);
-            //while (mousekeys[hotkey])
-            //	(void)1;
             return retvalue;
-            //vdisplay();
         }
     }
     return -1; // wasn't focused on us
@@ -416,7 +420,7 @@ Sint32 vbutton::mouse_on()
     {
         if (!had_focus) // just gained focus
         {
-            vdisplay();
+            //vdisplay();
             // Zardus: FIX: comment release and grab mouse out cause there's no need for them here and they're causing choppyness on buttons
             // release_mouse();
             if (mypixie)
@@ -433,7 +437,7 @@ Sint32 vbutton::mouse_on()
     {
         if (had_focus)
         {
-            vdisplay();
+            //vdisplay();
             // release_mouse();
             if (mypixie)
                 myscreen->draw_box(xloc-1, yloc-1, xend, yend, 0, 0, 1);
@@ -482,6 +486,9 @@ void draw_buttons(button * buttons, Sint32 numbuttons)
     Sint32 i;
     for (i=0; i < numbuttons; i++)
     {
+        if(buttons[i].hidden || buttons[i].no_draw)
+            continue;
+        
         allbuttons[i]->vdisplay();
         myscreen->draw_box(allbuttons[i]->xloc-1,
                            allbuttons[i]->yloc-1,

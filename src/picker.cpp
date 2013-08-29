@@ -57,7 +57,7 @@ const char* get_saved_name(const char * filename);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 
-Sint32 leftmouse();
+Sint32 leftmouse(button* buttons = NULL);
 void family_name_copy(char *name, short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
@@ -291,153 +291,153 @@ void picker_quit()
 // mainmenu
 button buttons1[] =
     {
-        { "", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, -1 , MenuNav::Down(1), false}, // BEGIN NEW GAME
-        { "CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5), false},
+        button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, -1 , MenuNav::Down(1), false), // BEGIN NEW GAME
+        button("CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5)),
 
-        { "4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3), false},
-        { "3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 , MenuNav::UpDownRight(5, 6, 2), false},
-        { "2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 , MenuNav::UpDownLeft(1, 2, 5), false},
-        { "1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 , MenuNav::UpDownRight(1, 3, 4), false},
+        button("4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3)),
+        button("3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 , MenuNav::UpDownRight(5, 6, 2)),
+        button("2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 , MenuNav::UpDownLeft(1, 2, 5)),
+        button("1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 , MenuNav::UpDownRight(1, 3, 4)),
 
-        { "DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7), false},
+        button("DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7)),
 
-        { "PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8), false},
-        { "Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7), false},
+        button("PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)),
+        button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
 
-        { "QUIT", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7), false},
+        button("QUIT", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7))
     };
 
 // beginmenu (first menu of new game), create_team_menu
 button bteam[] =
     {
-        { "VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1), false},
-        { "TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2), false},
-        { "Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_BUY_MENU, -1, MenuNav::DownLeft(5, 1), false},
-        { "LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4), false},
-        { "SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5), false},
-        { "GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4), false},
+        button("VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1)),
+        button("TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)),
+        button("Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_BUY_MENU, -1, MenuNav::DownLeft(5, 1)),
+        button("LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)),
+        button("SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)),
+        button("GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4)),
 
-        { "BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT, MenuNav::UpRight(3, 7), false},
-        { "SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 8, 6), false},
-        { "SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(7, 6), false},
+        button("BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT, MenuNav::UpRight(3, 7)),
+        button("SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 8, 6)),
+        button("SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(7, 6)),
 
     };
 
 button viewteam[] =
     {
-        //  { "TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
-        //  { "HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_BUY_MENU, -1},
-        { "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1), false},
-        { "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT, MenuNav::Right(0), false},
+        //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
+        //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_BUY_MENU, -1},
+        button("GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)),
+        button("BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT, MenuNav::Right(0)),
 
     };
 
 button detailed[] =
     {
-        { "BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(1, 1), false},
-        { "PROMOTE", KEYSTATE_UNKNOWN, 160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav::DownLeft(0, 0), true},
+        button("BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(1, 1)),
+        button(160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav::DownLeft(0, 0), true, true) // PROMOTE
     };
 
 button editteam[] =
     {
-        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1, MenuNav::DownRight(2, 1), false},
-        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1, MenuNav::DownLeftRight(3, 0, 16), false},
-        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3), false},
-        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeft(1, 5, 2), false},
-        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5), false},
-        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeft(3, 7, 4), false},
-        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7), false},
-        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeft(5, 9, 6), false},
-        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9), false},
-        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeft(7, 11, 8), false},
-        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11), false},
-        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeft(9, 13, 10), false},
-        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 19, 13), false},
-        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 18), false},
-        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(18, 15), false},
-        { "ACCEPT", KEYSTATE_UNKNOWN,  80, 170, 80, 20, EDIT_GUY, -1, MenuNav::UpLeftRight(13, 19, 14), false},
-        { "RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, NAME_GUY, 1, MenuNav::DownLeftRight(18, 1, 17), false},
-        { "DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0, MenuNav::DownLeft(18, 16), false},
-        { "Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, CHANGE_TEAM, 1, MenuNav::UpDownLeft(17, 14, 13), false},
-        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15), false},
+        button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1, MenuNav::DownRight(2, 1)),
+        button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)),
+        button("", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)),
+        button("", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeft(1, 5, 2)),
+        button("", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)),
+        button("", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeft(3, 7, 4)),
+        button("", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)),
+        button("", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeft(5, 9, 6)),
+        button("", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)),
+        button("", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeft(7, 11, 8)),
+        button("", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)),
+        button("", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeft(9, 13, 10)),
+        button("", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 19, 13)),
+        button("", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 18)),
+        button("VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(18, 15)),
+        button("ACCEPT", KEYSTATE_UNKNOWN,  80, 170, 80, 20, EDIT_GUY, -1, MenuNav::UpLeftRight(13, 19, 14)),
+        button("RENAME", KEYSTATE_UNKNOWN, 174,  8, 64, 22, NAME_GUY, 1, MenuNav::DownLeftRight(18, 1, 17)),
+        button("DETAILS..", KEYSTATE_UNKNOWN, 240, 8, 64, 22, CREATE_DETAIL_MENU, 0, MenuNav::DownLeft(18, 16)),
+        button("Playing on Team X", KEYSTATE_UNKNOWN, 174, 138, 133, 22, CHANGE_TEAM, 1, MenuNav::UpDownLeft(17, 14, 13)),
+        button("BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15)),
 
     };
 
 button buyteam[] =
     {
-        { "PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(2, 1), false},
-        { "NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 16), false},
-        { "", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3), false},
-        { "", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeftRight(1, 5, 2, 16), false},
-        { "", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5), false},
-        { "", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeftRight(3, 7, 4, 16), false},
-        { "", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7), false},
-        { "", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeftRight(5, 9, 6, 16), false},
-        { "", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9), false},
-        { "", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeftRight(7, 11, 8, 16), false},
-        { "", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11), false},
-        { "", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeftRight(9, 13, 10, 16), false},
-        { "", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 17, 13), false},
-        { "", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 16), false},
-        { "VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(16, 15), false},
-        { "HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(13, 17, 14), false},
-        { "Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 14, 13), false},
-        { "BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15), false},
+        button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(2, 1)),
+        button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)),
+        button("", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)),
+        button("", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeftRight(1, 5, 2, 16)),
+        button("", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)),
+        button("", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeftRight(3, 7, 4, 16)),
+        button("", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)),
+        button("", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeftRight(5, 9, 6, 16)),
+        button("", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)),
+        button("", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeftRight(7, 11, 8, 16)),
+        button("", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)),
+        button("", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeftRight(9, 13, 10, 16)),
+        button("", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 17, 13)),
+        button("", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 16)),
+        button("VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(16, 15)),
+        button("HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(13, 17, 14)),
+        button("Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 14, 13)),
+        button("BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15)),
 
     };
 
 
 button saveteam[] =
     {
-        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_SAVE, 1, MenuNav::Down(1), false},
-        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_SAVE, 2, MenuNav::UpDown(0, 2), false},
-        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_SAVE, 3, MenuNav::UpDown(1, 3), false},
-        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_SAVE, 4, MenuNav::UpDown(2, 4), false},
-        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_SAVE, 5, MenuNav::UpDown(3, 5), false},
-        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_SAVE,  6, MenuNav::UpDown(4, 6), false},
-        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_SAVE, 7, MenuNav::UpDown(5, 7), false},
-        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_SAVE, 8, MenuNav::UpDown(6, 8), false},
-        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_SAVE, 9, MenuNav::UpDown(7, 9), false},
-        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_SAVE, 10, MenuNav::UpDown(8, 10), false},
-        { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9), false},
+        button("SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_SAVE, 1, MenuNav::UpDown(10, 1)),
+        button("SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_SAVE, 2, MenuNav::UpDown(0, 2)),
+        button("SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_SAVE, 3, MenuNav::UpDown(1, 3)),
+        button("SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_SAVE, 4, MenuNav::UpDown(2, 4)),
+        button("SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_SAVE, 5, MenuNav::UpDown(3, 5)),
+        button("SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_SAVE,  6, MenuNav::UpDown(4, 6)),
+        button("SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_SAVE, 7, MenuNav::UpDown(5, 7)),
+        button("SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_SAVE, 8, MenuNav::UpDown(6, 8)),
+        button("SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_SAVE, 9, MenuNav::UpDown(7, 9)),
+        button("SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_SAVE, 10, MenuNav::UpDown(8, 10)),
+        button("BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::UpDown(9, 0)),
 
     };
 
 button loadteam[] =
     {
-        { "SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_LOAD, 1, MenuNav::Down(1), false},
-        { "SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_LOAD, 2, MenuNav::UpDown(0, 2), false},
-        { "SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_LOAD, 3, MenuNav::UpDown(1, 3), false},
-        { "SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_LOAD, 4, MenuNav::UpDown(2, 4), false},
-        { "SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_LOAD, 5, MenuNav::UpDown(3, 5), false},
-        { "SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_LOAD,  6, MenuNav::UpDown(4, 6), false},
-        { "SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_LOAD, 7, MenuNav::UpDown(5, 7), false},
-        { "SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_LOAD, 8, MenuNav::UpDown(6, 8), false},
-        { "SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_LOAD, 9, MenuNav::UpDown(7, 9), false},
-        { "SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_LOAD, 10, MenuNav::UpDown(8, 10), false},
-        { "BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::Up(9), false},
+        button("SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_LOAD, 1, MenuNav::UpDown(10, 1)),
+        button("SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_LOAD, 2, MenuNav::UpDown(0, 2)),
+        button("SLOT THREE", KEYSTATE_UNKNOWN,25, 55, 220, 10, DO_LOAD, 3, MenuNav::UpDown(1, 3)),
+        button("SLOT FOUR", KEYSTATE_UNKNOWN, 25, 70, 220, 10, DO_LOAD, 4, MenuNav::UpDown(2, 4)),
+        button("SLOT FIVE", KEYSTATE_UNKNOWN, 25, 85, 220, 10, DO_LOAD, 5, MenuNav::UpDown(3, 5)),
+        button("SLOT Six", KEYSTATE_UNKNOWN, 25, 100, 220, 10, DO_LOAD,  6, MenuNav::UpDown(4, 6)),
+        button("SLOT Seven", KEYSTATE_UNKNOWN, 25, 115, 220, 10, DO_LOAD, 7, MenuNav::UpDown(5, 7)),
+        button("SLOT Eight", KEYSTATE_UNKNOWN, 25, 130, 220, 10, DO_LOAD, 8, MenuNav::UpDown(6, 8)),
+        button("SLOT Nine", KEYSTATE_UNKNOWN, 25, 145, 220, 10, DO_LOAD, 9, MenuNav::UpDown(7, 9)),
+        button("SLOT Ten", KEYSTATE_UNKNOWN, 25, 160, 220, 10, DO_LOAD, 10, MenuNav::UpDown(8, 10)),
+        button("BACK", KEYSTATE_ESCAPE,25, 175, 40, 20, RETURN_MENU , EXIT, MenuNav::UpDown(9, 0)),
 
     };
 
 
 button yes_or_no_buttons[] =
     {
-        { "YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Right(1), false},
-        { "NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Left(0), false}
+        button("YES", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Right(1)),
+        button("NO", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Left(0))
     };
 
 button no_or_yes_buttons[] =
     {
-        { "NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Right(1), false},
-        { "YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Left(0), false}
+        button("NO", KEYSTATE_UNKNOWN,  70, 130, 50, 20, YES_OR_NO, NO, MenuNav::Right(1)),
+        button("YES", KEYSTATE_UNKNOWN,  320-50-70, 130, 50, 20, YES_OR_NO, YES, MenuNav::Left(0))
     };
 
 button popup_dialog_buttons[] =
     {
-        { "OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, YES_OR_NO, YES, MenuNav::None(), false}
+        button("OK", KEYSTATE_ESCAPE,  160 - 25, 130, 50, 20, YES_OR_NO, YES, MenuNav::None())
     };
 
-Sint32 leftmouse()
+Sint32 leftmouse(button* buttons)
 {
 	Sint32 i = 0;
 	Sint32 somebutton = -1;
@@ -447,9 +447,12 @@ Sint32 leftmouse()
 
 	while (allbuttons[i])
 	{
-		allbuttons[i]->mouse_on();
-		if (keystates[allbuttons[i]->hotkey])
-			somebutton = i;
+	    if(buttons != NULL && !buttons[i].hidden)
+        {
+            allbuttons[i]->mouse_on();
+            if (keystates[allbuttons[i]->hotkey])
+                somebutton = i;
+        }
 		i++;
 	}
 
@@ -731,14 +734,14 @@ void redraw_mainmenu()
     }
 
     sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-    strcpy(allbuttons[6]->label, message);
+    allbuttons[6]->label = message;
 
     // Show the allied mode
     if (myscreen->save_data.allied_mode)
         sprintf(message, "PVP: Ally");
     else
         sprintf(message, "PVP: Enemy");
-    strcpy(allbuttons[7]->label, message);
+    allbuttons[7]->label = message;
 
     count = 0;
     myscreen->clearfontbuffer();
@@ -764,7 +767,7 @@ Sint32 mainmenu(Sint32 arg1)
 
 	button* buttons = buttons1;
 	int num_buttons = 10;
-	int highlighted_button = 0;
+	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
 	
@@ -891,7 +894,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	
 	button* buttons = bteam;
 	int num_buttons = 9;
-	int highlighted_button = 0;
+	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	draw_backdrop();
 	draw_buttons(buttons, num_buttons);
@@ -937,7 +940,7 @@ Sint32 create_view_menu(Sint32 arg1)
     
 	button* buttons = viewteam;
 	int num_buttons = 2;
-	int highlighted_button = 0;
+	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & EXIT) )
@@ -989,7 +992,7 @@ Sint32 create_buy_menu(Sint32 arg1)
     
 	button* buttons = buyteam;
 	int num_buttons = 18;
-	int highlighted_button = 0;
+	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	
     for (i=2; i < 14; i++)
@@ -1164,7 +1167,7 @@ Sint32 create_edit_menu(Sint32 arg1)
     
 	button* buttons = editteam;
 	int num_buttons = 20;
-	int highlighted_button = 0;
+	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	
 	for (i=2; i < 14; i++)
@@ -1359,7 +1362,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 
         // Display our team setting ..
         sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
-        strcpy(allbuttons[18]->label, message);
+        allbuttons[18]->label = message;
         allbuttons[18]->vdisplay();
 
         draw_highlight(buttons[highlighted_button]);
@@ -1387,7 +1390,7 @@ Sint32 create_load_menu(Sint32 arg1)
     
 	button* buttons = loadteam;
 	int num_buttons = 11;
-	int highlighted_button = 0;
+	int highlighted_button = 10;
 	localbuttons = init_buttons(buttons, num_buttons);
 
 	while ( !(retvalue & EXIT) )
@@ -1419,7 +1422,7 @@ Sint32 create_load_menu(Sint32 arg1)
         for (i=0; i < 10; i++)
         {
             sprintf(temp_filename, "save%d", i+1);
-            strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
+            allbuttons[i]->label = get_saved_name(temp_filename);
             myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
             allbuttons[i]->vdisplay();
             myscreen->draw_box(allbuttons[i]->xloc-1,
@@ -1753,7 +1756,7 @@ Sint32 create_save_menu(Sint32 arg1)
     
 	button* buttons = saveteam;
 	int num_buttons = 11;
-	int highlighted_button = 0;
+	int highlighted_button = 10;
 	localbuttons = init_buttons(buttons, num_buttons);
 	
 
@@ -1786,7 +1789,7 @@ Sint32 create_save_menu(Sint32 arg1)
         for (i=0; i < 10; i++)
         {
             sprintf(temp_filename, "save%d", i+1);
-            strcpy(allbuttons[i]->label, get_saved_name(temp_filename) );
+            allbuttons[i]->label = get_saved_name(temp_filename);
             myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
             allbuttons[i]->vdisplay();
             myscreen->draw_box(allbuttons[i]->xloc-1,
@@ -2321,9 +2324,9 @@ Sint32 do_save(Sint32 arg1)
 	myscreen->clearfontbuffer(xloc,yloc,x2loc-xloc,y2loc-yloc);
 	
 	savetext.write_xy(xloc+5, yloc+4, "NAME YOUR SAVED GAME:", DARK_BLUE, 1);
-	char* new_text = savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label);
+	const char* new_text = savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label.c_str());
 	if(new_text == NULL)
-        new_text = allbuttons[arg1-1]->label;
+        new_text = allbuttons[arg1-1]->label.c_str();
 	myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	
@@ -3072,8 +3075,8 @@ Sint32 create_detail_menu(guy *arg1)
    myscreen->buffer_to_screen(0, 0, 320, 200);
    grab_mouse();
 
-   leftmouse();
-   localbuttons->leftclick();
+   //leftmouse(buttons);
+   //localbuttons->leftclick(buttons);
 
    while ( !(retvalue & EXIT) )
    {
@@ -3082,7 +3085,7 @@ Sint32 create_detail_menu(guy *arg1)
        bool pressed = handle_menu_nav(buttons, highlighted_button, retvalue);
        
        bool do_click = false;
-       if(leftmouse())
+       if(leftmouse(buttons))
        {
            detailmouse = query_mouse();
            do_click = true;
@@ -3121,7 +3124,7 @@ Sint32 create_detail_menu(guy *arg1)
        }
         
         if(do_click)
-            retvalue=localbuttons->leftclick();
+            retvalue=localbuttons->leftclick(buttons);
        
        draw_buttons(buttons, num_buttons);
        draw_highlight_interior(buttons[highlighted_button]);
@@ -3214,7 +3217,7 @@ Sint32 set_difficulty()
 
    current_difficulty = (current_difficulty + 1) % DIFFICULTY_SETTINGS;
    sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
-   strcpy(allbuttons[6]->label, message);
+   allbuttons[6]->label = message;
 
    //allbuttons[6]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3244,7 +3247,7 @@ Sint32 change_teamnum(Sint32 arg)
    // Update our button display
    sprintf(message, "Playing on Team %d", current_team + 1);
 
-   strcpy(allbuttons[18]->label, message);
+   allbuttons[18]->label = message;
    //allbuttons[18]->do_outline = 1;
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3271,7 +3274,7 @@ Sint32 change_hire_teamnum(Sint32 arg)
 
 //myscreen->clearfontbuffer(170, 130, 133, 22);
 
-   strcpy(allbuttons[16]->label, message);
+   allbuttons[16]->label = message;
    //allbuttons[16]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
 
@@ -3292,7 +3295,7 @@ Sint32 change_allied()
        sprintf(message, "PVP: Enemy");
 
    // Update our button display
-   strcpy(allbuttons[7]->label, message);
+   allbuttons[7]->label = message;
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
