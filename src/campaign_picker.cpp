@@ -341,7 +341,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         button("PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::DownRight(cancel_index, next_index)),
         button("NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav::UpDownLeft(id_index, choose_index, prev_index)),
         button("OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav::UpLeft(next_index, cancel_index)),
-        button("CANCEL", KEYSTATE_UNKNOWN, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpRight(prev_index, choose_index)),
+        button("CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpRight(prev_index, choose_index)),
         button("DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav::DownLeft(choose_index, id_index)),
         button("ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav::DownRight(next_index, delete_index)),
 	};
@@ -386,7 +386,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         bool do_choose = !buttons[choose_index].hidden && ((do_click && choose.x <= mx && mx <= choose.x + choose.w
                && choose.y <= my && my <= choose.y + choose.h) || (retvalue == OG_OK && highlighted_button == choose_index));
         bool do_cancel = (do_click && cancel.x <= mx && mx <= cancel.x + cancel.w
-               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OG_OK && highlighted_button == cancel_index);
+               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OG_OK && highlighted_button == cancel_index) || keystates[buttons[cancel_index].hotkey];
         bool do_delete = !buttons[delete_index].hidden && ((do_click && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
                && delete_button.y <= my && my <= delete_button.y + delete_button.h) || (retvalue == OG_OK && highlighted_button == delete_index));
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
@@ -427,6 +427,8 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         // Cancel
         else if(do_cancel)
         {
+            while(keystates[buttons[cancel_index].hotkey])
+                get_input_events(WAIT);
             done = true;
             break;
         }

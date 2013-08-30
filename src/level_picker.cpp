@@ -413,7 +413,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         button("PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::DownLeftRight(next_index, entry1_index, id_index)),
         button("NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav::UpLeftRight(prev_index, entry3_index, cancel_index)),
         button("OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav::UpLeft(id_index, cancel_index), true),
-        button("CANCEL", KEYSTATE_UNKNOWN, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpLeftRight(id_index, next_index, choose_index)),
+        button("CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpLeftRight(id_index, next_index, choose_index)),
         button("DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav::DownLeft(choose_index, id_index), true),
         button("ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav::DownLeftRight(cancel_index, prev_index, delete_index)),
         button("1", KEYSTATE_UNKNOWN, 10, 15, 40, (53 - 12), 0, -1 , MenuNav::DownRight(entry2_index, prev_index)),
@@ -453,7 +453,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         bool do_choose = selected_entry >= 0 && ((do_click && choose.x <= mx && mx <= choose.x + choose.w
                && choose.y <= my && my <= choose.y + choose.h) || (retvalue == OK && highlighted_button == choose_index));
         bool do_cancel = (do_click && cancel.x <= mx && mx <= cancel.x + cancel.w
-               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OK && highlighted_button == cancel_index);
+               && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OK && highlighted_button == cancel_index) || keystates[buttons[cancel_index].hotkey];
         bool do_delete = selected_entry >= 0 && ((do_click && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
                && delete_button.y <= my && my <= delete_button.y + delete_button.h) || (retvalue == OK && highlighted_button == delete_index));
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
@@ -526,6 +526,8 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         // Cancel
         else if(do_cancel)
            {
+                while(keystates[buttons[cancel_index].hotkey])
+                    get_input_events(WAIT);
                done = true;
                break;
            }

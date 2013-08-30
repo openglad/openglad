@@ -57,7 +57,7 @@ const char* get_saved_name(const char * filename);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 
-Sint32 leftmouse(button* buttons = NULL);
+Sint32 leftmouse(button* buttons);
 void family_name_copy(char *name, short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
@@ -782,7 +782,7 @@ Sint32 mainmenu(Sint32 arg1)
 	while(!(retvalue & EXIT))
 	{
 	    // Input
-		if(leftmouse())
+		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -904,7 +904,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	while ( !(retvalue & EXIT) )
 	{
 	    // Input
-		if(leftmouse())
+		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -944,7 +944,7 @@ Sint32 create_view_menu(Sint32 arg1)
 	while ( !(retvalue & EXIT) )
 	{
 	    // Input
-		if(leftmouse())
+		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -1006,7 +1006,7 @@ Sint32 create_buy_menu(Sint32 arg1)
 	while ( !(retvalue & EXIT) )
 	{
 	    // Input
-		clickvalue = leftmouse();
+		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
 			retvalue = localbuttons->leftclick();
 		else if (clickvalue == 2)
@@ -1210,7 +1210,7 @@ Sint32 create_edit_menu(Sint32 arg1)
 	while ( !(retvalue & EXIT) )
 	{
 	    // Input
-		clickvalue = leftmouse();
+		clickvalue = leftmouse(buttons);
 		if (clickvalue == 1)
 			retvalue = localbuttons->leftclick();
 		else if (clickvalue == 2)
@@ -1414,7 +1414,7 @@ Sint32 create_load_menu(Sint32 arg1)
 	while ( !(retvalue & EXIT) )
 	{
 	    // Input
-		if(leftmouse())
+		if(leftmouse(buttons))
         {
 			retvalue = localbuttons->leftclick();
 			if(retvalue == REDRAW)
@@ -1553,7 +1553,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
                 break;
         }
         
-		if(leftmouse())
+		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -1640,7 +1640,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
                 break;
         }
         
-		if(leftmouse())
+		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -1727,7 +1727,7 @@ void popup_dialog(const char* title, const char* message, bool dim)
                 break;
         }
         
-		if(leftmouse())
+		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -1776,7 +1776,7 @@ Sint32 create_save_menu(Sint32 arg1)
 	while ( !(retvalue & EXIT) )
 	{
 	    // Input
-		if(leftmouse())
+		if(leftmouse(buttons))
         {
 			retvalue = localbuttons->leftclick();
 			if(retvalue == REDRAW)
