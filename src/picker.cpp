@@ -3198,6 +3198,11 @@ Sint32 do_set_scen_level(Sint32 arg1)
                 popup_dialog("Big problem", "Also failed to reload current level...");
            }
        }
+       else  // We're good
+       {
+           myscreen->save_data.scen_num = templevel;
+           Log("Set level to %d\n", templevel);
+       }
    }
 
    return REDRAW;
