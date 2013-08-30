@@ -1015,8 +1015,14 @@ Sint32 create_buy_menu(Sint32 arg1)
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         // Reset buttons
-        if(localbuttons && (retvalue == OK || retvalue == REDRAW))
+        if(retvalue == OK || retvalue == REDRAW)
         {
+            if (localbuttons)
+                delete (localbuttons);
+            
+            localbuttons = init_buttons(buttons, num_buttons);
+            
+            
             for (i=2; i < 14; i++)
             {
                 if (!(i%2)) // 2, 4, ..., 12
@@ -3165,13 +3171,7 @@ Sint32 do_pick_campaign(Sint32 arg1)
 Sint32 do_set_scen_level(Sint32 arg1)
 {
    static text savetext(myscreen);
-   Sint32 xloc, yloc, x2loc, y2loc;
    Sint32 templevel = myscreen->save_data.scen_num;
-
-   xloc = 100;
-   yloc = 170;
-   x2loc = 220;
-   y2loc = 190;
    
    templevel = pick_level(myscreen, myscreen->level_data.id);
    
