@@ -226,7 +226,6 @@ void picker_main(Sint32 argc, char  **argv)
 	mytext = new text(myscreen);
 
 	myscreen->clearbuffer();
-	myscreen->clearscreen();
 
 	//main_title_logo_data = read_pixie_file("glad.pix");
 	main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
@@ -744,7 +743,6 @@ void redraw_mainmenu()
     allbuttons[7]->label = message;
 
     count = 0;
-    myscreen->clearfontbuffer();
     while (allbuttons[count])
     {
         allbuttons[count]->vdisplay();
@@ -893,7 +891,6 @@ Sint32 create_team_menu(Sint32 arg1)
 		delete localbuttons;
 
 	myscreen->fadeblack(0);
-	myscreen->clearfontbuffer();
 	
 	button* buttons = bteam;
 	int num_buttons = 9;
@@ -923,8 +920,6 @@ Sint32 create_team_menu(Sint32 arg1)
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-
-	myscreen->clearfontbuffer();
 	
 	return REDRAW;
 }
@@ -1255,12 +1250,10 @@ Sint32 create_edit_menu(Sint32 arg1)
 
         linesdown = 0;
 
-        myscreen->clearfontbuffer(34,8,126-34,24-8);
         myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
         myscreen->draw_text_bar(36, 10, 124, 22);
         mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
                          current_guy->name,(unsigned char) DARK_BLUE, 1);
-        myscreen->clearfontbuffer(38,66,120-38,160-66);
         myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
         myscreen->draw_text_bar(42, 70, 116, 156);
 
@@ -1497,8 +1490,6 @@ void timed_dialog(const char* message, float delay_seconds)
         
         SDL_Delay(10);
 	}
-	
-	myscreen->clearfontbuffer();
 }
 
 
@@ -1580,8 +1571,6 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	
-	myscreen->clearfontbuffer();
 	
     if(retvalue == YES)
         return true;
@@ -1670,8 +1659,6 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
         SDL_Delay(10);
 	}
 	
-	myscreen->clearfontbuffer();
-	
     if(retvalue == YES)
         return true;
     if(retvalue == NO)
@@ -1758,8 +1745,6 @@ void popup_dialog(const char* title, const char* message, bool dim)
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	
-	myscreen->clearfontbuffer();
 }
 
 Sint32 create_save_menu(Sint32 arg1)
@@ -1830,8 +1815,6 @@ Sint32 create_save_menu(Sint32 arg1)
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-
-	myscreen->clearfontbuffer();
 	return REDRAW;
 
 }
@@ -2181,8 +2164,6 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 		return REDRAW;
 
 	release_mouse();
-
-	myscreen->clearfontbuffer(174,8,306,30);
 	
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
 	nametext.write_xy(176, 12, "NAME THIS CHARACTER:", DARK_BLUE, 1);
@@ -2343,8 +2324,6 @@ Sint32 do_save(Sint32 arg1)
 	y2loc = allbuttons[arg1-1]->height + yloc + 10;
 	myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
 	
-	myscreen->clearfontbuffer(xloc,yloc,x2loc-xloc,y2loc-yloc);
-	
 	savetext.write_xy(xloc+5, yloc+4, "NAME YOUR SAVED GAME:", DARK_BLUE, 1);
 	const char* new_text = savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label.c_str());
 	if(new_text == NULL)
@@ -2461,7 +2440,6 @@ Sint32 go_menu(Sint32 arg1)
 	if (myscreen->save_data.team_size < 1)
 	{
 		release_mouse();
-		myscreen->clearfontbuffer(100,65,220-100,125-65);
 		myscreen->draw_dialog(100, 65, 220, 125, "Need a team!");
 		gotext.write_y(89, "Please hire a", DARK_BLUE, 1);
 		gotext.write_y(97, "team before", DARK_BLUE, 1);
@@ -2471,7 +2449,6 @@ Sint32 go_menu(Sint32 arg1)
 		while(query_timer() < temptime + 150)
 			;
 		grab_mouse();
-		myscreen->clearfontbuffer(100,65,220-100,125-65);
 		
 		return REDRAW;
 	}
@@ -2502,7 +2479,6 @@ Sint32 go_menu(Sint32 arg1)
 
 	// Zardus: PORT: doesn't seem to be neccessary
 	myscreen->clearbuffer();
-	myscreen->clearscreen();
 
 	// Zardus: PORT: they had this in just so that the pallettes got reset to
 	// normal. It actually faded in a black screen, since fading in the menu
@@ -2687,8 +2663,6 @@ Sint32 create_detail_menu(guy *arg1)
        thisguy = myscreen->save_data.team_list[editguy];
 
    release_mouse();
-
-   myscreen->clearfontbuffer();
 
    if (localbuttons)
        delete localbuttons;
@@ -3198,8 +3172,6 @@ Sint32 do_set_scen_level(Sint32 arg1)
    yloc = 170;
    x2loc = 220;
    y2loc = 190;
-
-    myscreen->clearfontbuffer(xloc,yloc,x2loc,y2loc);
    
    templevel = pick_level(myscreen, myscreen->level_data.id);
    
@@ -3210,13 +3182,13 @@ Sint32 do_set_scen_level(Sint32 arg1)
        myscreen->level_data.id = templevel;
        if (templevel < 0 || !myscreen->level_data.load())
        {
-            myscreen->clearscreen();
+            myscreen->clearbuffer();
             popup_dialog("Load Failed", "Invalid level file.");
             
            myscreen->level_data.id = old_id;
            if(!myscreen->level_data.load())
            {
-                myscreen->clearscreen();
+                myscreen->clearbuffer();
                 popup_dialog("Big problem", "Also failed to reload current level...");
            }
        }

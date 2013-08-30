@@ -173,8 +173,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		// Reset the timer count to zero ...
 		reset_timer();
 
-		myscreen->clearfontbuffer();
-
 		if (myscreen->redrawme)
 		{
 			myscreen->draw_panels(myscreen->numviews);

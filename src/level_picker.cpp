@@ -615,7 +615,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             buttons[choose_index].hidden = true;
         
         // Draw
-        screenp->clearscreen();
+        screenp->clearbuffer();
         
         char buf[20];
         snprintf(buf, 20, "Army power: %d", army_power);

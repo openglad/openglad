@@ -578,8 +578,6 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
         }
         myscreen->ver_line(x + cursor_pos*6, y + current_line*10 - 2 - offset, 10, RED);
 		myscreen->buffer_to_screen(0, 0, 320, 200);
-		
-		myscreen->clearfontbuffer(x,y,w,h);
         
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event() && !query_text_input_event())
@@ -591,7 +589,6 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
     #endif
 	disable_keyrepeat();
 	clear_keyboard();
-    myscreen->clearfontbuffer();
     
     return !cancel;
 }
@@ -608,7 +605,6 @@ bool prompt_for_string(text* mytext, const std::string& message, std::string& re
     myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
     char* str = mytext->input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
-    myscreen->clearfontbuffer();
     
     if(str == NULL)
         return false;
@@ -1368,11 +1364,8 @@ bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*,
         if(current_menu.back().first == &button)
         {
             current_menu.pop_back();
-            myscreen->clearfontbuffer();
             return false;
         }
-        
-        myscreen->clearfontbuffer();
         
         // Remove all menus up to the parent
         while(current_menu.size() > 0)
@@ -1399,7 +1392,6 @@ bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& b
         get_input_events(WAIT);
     
     // Close menu
-    myscreen->clearfontbuffer();
     data.current_menu.clear();
     data.draw(myscreen);
     myscreen->refresh();
@@ -1416,7 +1408,6 @@ bool activate_menu_toggle_choice(int mx, int my, LevelEditorData& data, SimpleBu
         get_input_events(WAIT);
     
     // Close menu
-    myscreen->clearfontbuffer();
     data.draw(myscreen);
     myscreen->refresh();
     return true;
@@ -1510,7 +1501,7 @@ bool LevelEditorData::saveLevel()
 
 void LevelEditorData::draw(screen* myscreen)
 {
-    myscreen->clearscreen();
+    myscreen->clearbuffer();
     level->draw(myscreen);
     
     if(rect_selecting)
@@ -2293,7 +2284,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     
                     if(!cancel)
                     {
-                        myscreen->clearscreen();
+                        myscreen->clearbuffer();
                         // Prompt to load starting level.  If we don't, then the user can transfer levels between campaigns here.
                         bool load_first_level = yes_or_no_prompt("Load Campaign", "Load first level?", false);
                         if(load_first_level && levelchanged)
@@ -2867,7 +2858,6 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Close open menus
         if(current_menu.size() > 0)
         {
-            myscreen->clearfontbuffer();  // Erase menu text that isn't there anymore
             current_menu.clear();
         }
     }
@@ -3286,7 +3276,6 @@ Sint32 level_editor()
     else
         Log("Campaign has no valid levels!\n");
 
-	myscreen->clearfontbuffer();
 	redraw = 1;  // Redraw right away
 	
 	object_pane.clear();
@@ -3411,8 +3400,6 @@ Sint32 level_editor()
                         done = true;
                         break;
                     }
-                    
-                    myscreen->clearfontbuffer();
                 }
                 
                 // Change teams ..
@@ -3839,7 +3826,7 @@ Sint32 level_editor()
     // Update the screen's position
     data.level->draw(myscreen);
     // Clear the background
-    myscreen->clearscreen();
+    myscreen->clearbuffer();
     
     unmount_campaign_package(data.campaign->id);
     mount_campaign_package(old_campaign);

@@ -1406,7 +1406,6 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	Sint32 currentcycle = 0, cycletime = 30000;
 
 	screenp->redrawme = 1;
-	screenp->clearfontbuffer(left,top,right-left,bottom-top);
 	screenp->draw_button(left, top, right, bottom, 2);
 
 	strcpy(message, "  Name  ");
@@ -2123,7 +2122,6 @@ Sint32 viewscreen::set_key_prefs()
 	clear_keyboard();
 
 	// Draw the menu button
-	screenp->clearfontbuffer(40,40,240,120);
 	screenp->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
 	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);
@@ -2161,7 +2159,6 @@ Sint32 viewscreen::set_key_prefs()
 	assignKeyFromWaitEvent(mynum, KEY_UP_LEFT);
 
 	// Draw the menu button; back to the top for us!
-	screenp->clearfontbuffer(40,40,240,120);
 	screenp->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
 	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", (unsigned char) RED, 1);
 	screenp->buffer_to_screen(0, 0, 320, 200);

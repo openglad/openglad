@@ -377,8 +377,6 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
     
 	while ( !string_done )
 	{
-		
-		screenp->clearfontbuffer(x,y,maxlength*sizex,sizey);
 	
         tempchar = 0;
         temptext = NULL;
@@ -528,8 +526,6 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
     
 	while ( !string_done )
 	{
-		
-		screenp->clearfontbuffer(x,y,maxlength*sizex,sizey);
 	
         tempchar = 0;
         temptext = NULL;

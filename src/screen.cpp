@@ -618,7 +618,7 @@ void screen::clear()
 	//buffers: PORT:  {
 	//buffers: PORT:         videobuffer[i] = 0;
 	//buffers: PORT:  }
-	clearscreen();
+	clearbuffer();
 	//SDL_FillRect(screen,NULL,SDL_MapRGB(screen->format,0,0,0));
 
 	for (i=0; i < numviews; i ++)

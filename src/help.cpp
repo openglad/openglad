@@ -151,10 +151,6 @@ short read_scenario(screen *myscreen)
 
 		if (changed)  // did we scroll, etc.?
 		{
-			myscreen->clearfontbuffer(HELPTEXT_LEFT-4,
-				HELPTEXT_TOP-4-8, 200, 120);
-
-
 			templines = linesdown/8; // which TEXT line are we at?
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                      HELPTEXT_LEFT+200, HELPTEXT_TOP+107, 3, 1);
@@ -165,16 +161,6 @@ short read_scenario(screen *myscreen)
 					mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
 					                 s.c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
             }
-
-			myscreen->clearfontbuffer(HELPTEXT_LEFT, 
-						HELPTEXT_TOP-8,
-						HELPTEXT_LEFT+200-4-HELPTEXT_LEFT,
-						7);
-
-  			myscreen->clearfontbuffer(HELPTEXT_LEFT,
-                                                HELPTEXT_TOP+97,
-                                                HELPTEXT_LEFT+200-4-HELPTEXT_LEFT,
-                                                7);
 
 
 			// Draw a bounding box (top and bottom edges) ..
@@ -298,9 +284,6 @@ short read_campaign_intro(screen * myscreen)
 
 		if (changed)  // did we scroll, etc.?
 		{
-			//buffers: need this to make text display right
-			myscreen->clearfontbuffer(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,244,119);
-		
 			templines = linesdown/8; // which TEXT line are we at?
 			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
 			                      HELPTEXT_LEFT+240, HELPTEXT_TOP+107, 3, 1);
@@ -311,11 +294,6 @@ short read_campaign_intro(screen * myscreen)
                 
                 mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
             }
-			myscreen->clearfontbuffer(HELPTEXT_LEFT,HELPTEXT_TOP-8,
-						240-4,7);
-
-			myscreen->clearfontbuffer(HELPTEXT_LEFT,HELPTEXT_TOP+97,
-			                          240-4,7);
 
 			
 			// Draw a bounding box (top and bottom edges) ..

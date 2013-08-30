@@ -500,7 +500,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         }
 
         // Draw
-        screenp->clearscreen();
+        screenp->clearbuffer();
 
         if(current_campaign_index > 0)
         {
