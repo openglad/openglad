@@ -76,7 +76,7 @@ using namespace std;
 int toInt(const std::string& s);
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-void popup_dialog(const char* title, const char* message);
+void popup_dialog(const char* title, const char* message, bool dim = false);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
 enum ModeEnum {TERRAIN, OBJECT, SELECT};

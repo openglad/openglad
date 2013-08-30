@@ -42,7 +42,7 @@
 #define YES 5
 #define NO 6
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-
+void popup_dialog(const char* title, const char* message, bool dim = false);
 
 
 #define BUTTON_HEIGHT 15
@@ -291,7 +291,7 @@ void picker_quit()
 // mainmenu
 button buttons1[] =
     {
-        button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, -1 , MenuNav::Down(1), false), // BEGIN NEW GAME
+        button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
         button("CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5)),
 
         button("4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3)),
@@ -831,7 +831,7 @@ Sint32 beginmenu(Sint32 arg1)
 	for (i=0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
-	return create_team_menu(arg1);
+	return create_team_menu(1);
 }
 
 
@@ -883,8 +883,11 @@ Sint32 create_team_menu(Sint32 arg1)
 {
 	Sint32 retvalue=0;
 
-	if (arg1)
-		arg1 = 1;
+	if (arg1 == 1)
+    {
+        // Go straight to the hiring screen if we just started a new game.
+        retvalue = create_buy_menu(arg1);
+    }
 
 	if (localbuttons)
 		delete localbuttons;
@@ -981,9 +984,6 @@ Sint32 create_buy_menu(Sint32 arg1)
 #define STAT_NUM     86        // where '12' appears
 #define STAT_COLOR   DARK_BLUE // color for normal stat text
 #define STAT_CHANGED RED       // color for changed stat text
-
-	if (arg1)
-		arg1 = 1;
 
 	myscreen->clearbuffer();
 
@@ -1139,6 +1139,25 @@ Sint32 create_buy_menu(Sint32 arg1)
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
+        
+        if(arg1 == 1)
+        {
+            // Show popup on new game
+            arg1 = -1;
+            popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.", true);
+            
+            if(localbuttons)
+                delete (localbuttons);
+            localbuttons = init_buttons(buttons, num_buttons);
+	
+            for (i=2; i < 14; i++)
+            {
+                if (!(i%2)) // 2, 4, ..., 12
+                    allbuttons[i]->set_graphic(FAMILY_MINUS);
+                else
+                    allbuttons[i]->set_graphic(FAMILY_PLUS);
+            }
+        }
 	}
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
@@ -1660,8 +1679,11 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 	return default_value;
 }
 
-void popup_dialog(const char* title, const char* message)
+void popup_dialog(const char* title, const char* message, bool dim)
 {
+    if(dim)
+        myscreen->darken_screen();
+    
 	text gladtext(myscreen);
 	
 	int pix_per_char = 6;

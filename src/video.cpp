@@ -339,6 +339,18 @@ void video::draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2)
 
 }
 
+void video::darken_screen()
+{
+    for(int i = 0; i < 320; i++)
+    {
+        for(int j = 0; j < 200; j++)
+        {
+            pointb(i, j, PURE_BLACK, 100);
+        }
+    }
+}
+
+
 
 void video::putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize)
 {
