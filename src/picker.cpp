@@ -1996,7 +1996,7 @@ Uint32 calculate_cost(guy  *oldguy)
 
 	// Add on extra level cost ..
 	if (calculate_exp(ob->level) > oldguy->exp)
-		temp += (Sint32) ( ( (calculate_exp(ob->level) ) - oldguy->exp)*(ob->level-1) );
+		temp += (Sint32)(calculate_exp(ob->level) - oldguy->exp);
 
 	if (temp < 0)
 	{
