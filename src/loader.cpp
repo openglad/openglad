@@ -440,6 +440,7 @@ loader::loader()
 	stepsizes[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 8;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_TOWER1)] = 0;
 
+    // AI's understanding of how much range its ranged attack has so it will try to shoot.
 	lineofsight[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 7;
 	lineofsight[PIX(ORDER_LIVING, FAMILY_ELF)] = 8;
 	lineofsight[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 12;

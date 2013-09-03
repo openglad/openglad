@@ -1205,6 +1205,10 @@ Sint32 create_edit_menu(Sint32 arg1)
 
 	grab_mouse();
 	
+    clear_keyboard();
+    
+    clear_key_press_event();
+	
 	guy** ourteam = myscreen->save_data.team_list;
 
 	while ( !(retvalue & EXIT) )
