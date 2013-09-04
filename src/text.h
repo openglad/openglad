@@ -30,6 +30,7 @@ class text
 		short query_width(const char *string); // returns width, in pixels
 		short write_xy(short x, short y, const char  *string);
 		short write_xy(short x, short y, const char  *string, unsigned char color);
+		short write_xy(short x, short y, unsigned char color, const char* formatted_string, ...);
 		short write_xy(short x, short y, const char  *string, short to_buffer);
 		short write_xy(short x, short y, const char  *string, unsigned char color, short to_buffer);
 		short write_xy(short x, short y, const char  *string, viewscreen *whereto);
