@@ -702,7 +702,7 @@ short screen::act()
 				here->ob->in_act = 0;
 				if (here->ob && !here->ob->dead)
 				{
-					if (here->ob->team_num != save_data.my_team &&
+					if (!here->ob->is_friendly_to_team(save_data.my_team) &&
 					        here->ob->query_order() == ORDER_LIVING)
 						level_done = 0;
 					// Testing .. trying to FORCE foes :)
@@ -729,7 +729,7 @@ short screen::act()
 				here->ob->act();
 				if (here->ob && !here->ob->dead)
 				{
-					if (here->ob->team_num != save_data.my_team &&
+					if (!here->ob->is_friendly_to_team(save_data.my_team) &&
 					        here->ob->query_order() == ORDER_LIVING)
 						level_done = 0;
 				}
@@ -748,7 +748,7 @@ short screen::act()
 			here->ob->act();
 			if (here->ob && !here->ob->dead)
 			{
-				if (here->ob->team_num != save_data.my_team &&
+				if (!here->ob->is_friendly_to_team(save_data.my_team) &&
 				        here->ob->query_order() == ORDER_LIVING)
 					level_done = 0;
 			}

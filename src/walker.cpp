@@ -38,7 +38,7 @@ extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
 extern Sint32 current_difficulty;
 
 // from glad.cpp
-short remaining_foes(screen *myscreen, char myteam);
+short remaining_foes(screen *myscreen, walker* myguy);
 
 walker::walker(const PixieData& data, screen  *myscreen)
     : pixieN(data, myscreen)
@@ -1617,7 +1617,7 @@ short walker::attack(walker  *target)
 						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name);
 						screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 					}
-					if(remaining_foes(screenp, playerteam) == 1)  // This is the last foe
+					if(remaining_foes(screenp, this) == 1)  // This is the last foe
 					{
 						sprintf(message, "All foes defeated!");
 						screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
@@ -4296,8 +4296,10 @@ Sint32 walker::is_friendly(walker *target)
 	// Now, if we or the target don't contain a "myguy" pointer,
 	// then we don't care about allied_mode, and we'll
 	// treat our state as always in 'enemy' mode
-	if (headtarget->myguy == NULL || headus->myguy == NULL)
+	if (headtarget->myguy == NULL && headus->myguy == NULL)
 		has_myguy = 0;
+    else if(headtarget->myguy == NULL || headus->myguy == NULL)
+        has_myguy = 2;
 	else
 		has_myguy = 1;
 
@@ -4307,7 +4309,16 @@ Sint32 walker::is_friendly(walker *target)
 	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == headtarget->team_num);
-	} // end of allied_mode OFF
+	}
+	
+	// Allied
+	if(has_myguy == 2)
+    {
+        // One person is missing a myguy pointer.
+        // The one with a myguy pointer is owned by a player.
+        // If the other person belongs to team 0 (red), then they are friendly.
+        return (headtarget->myguy == NULL && headtarget->team_num == 0) || (headus->myguy == NULL && headus->team_num == 0);
+    }
 
 	// If we're in 'friendly' mode, then everyone with
 	// a "myguy" pointer (a real, saved character)
@@ -4315,4 +4326,47 @@ Sint32 walker::is_friendly(walker *target)
 	// By now we know that both us and the target have
 	// myguy's, so we're friendly
 	return 1;
+}
+
+Sint32 walker::is_friendly_to_team(unsigned char team)
+{
+	// is_friendly_to_team determines if _team_ is "friendly"
+	// towards this walker.
+	//short allied_mode;
+	short has_myguy;
+	walker *headguy;
+	walker *headus;
+	
+	// If dead, we're also unfriendly :)
+	if (dead)
+		return 0;
+
+	// who's the top on our chains (ie, weapon->summoned->mage)
+	// First us ..
+	headguy = this;
+	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
+		headguy = headguy->owner;
+	headus = headguy;
+	
+	// First, get our allied setting from screen ..
+	// 0 is "enemy," and non-zero is "friendly"
+	//allied_mode = myscreen->allied_mode;
+
+	// Now, if we or the target don't contain a "myguy" pointer,
+	// then we don't care about allied_mode, and we'll
+	// treat our state as always in 'enemy' mode
+	if (headus->myguy == NULL)
+		has_myguy = 0;
+	else
+		has_myguy = 1;
+
+	// Is allied mode set to zero (enemy) or were we not hired (!myguy)?
+	// If so, then our team number must match.
+	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
+	{
+		return (headus->team_num == team);
+	}
+	
+	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
+	return (has_myguy == 1 && team == 0);
 }

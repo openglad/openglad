@@ -41,7 +41,7 @@ void popup_dialog(const char* title, const char* message, bool dim = false);
 void picker_main(Sint32 argc, char **argv);
 void intro_main(Sint32 argc, char **argv);
 
-short remaining_foes(screen *myscreen, char myteam);
+short remaining_foes(screen *myscreen, walker* myguy);
 short remaining_team(screen *myscreen, char myteam);
 short score_panel(screen *myscreen);
 short score_panel(screen *myscreen, short do_it);
@@ -290,7 +290,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 }
 
 // remaining_foes returns # of livings left not on control's team
-short remaining_foes(screen *myscreen, char myteam)
+short remaining_foes(screen *myscreen, walker* myguy)
 {
 	oblink  *here;
 	short myfoes = 0;
@@ -300,7 +300,7 @@ short remaining_foes(screen *myscreen, char myteam)
 	{
 		if (here->ob && !here->ob->dead &&
 		        (here->ob->query_order() == ORDER_LIVING) &&
-		        (myteam != here->ob->team_num) )
+		        !myguy->is_friendly(here->ob) )
 			myfoes++;
 		here = here->next;
 	}
@@ -634,7 +634,7 @@ short new_score_panel(screen *myscreen, short do_it)
 				text_color = YELLOW;
 
 			// Get current number of foes
-			tempfoes = remaining_foes(myscreen, control->team_num);
+			tempfoes = remaining_foes(myscreen, control);
 			// Get current number of team-members
 			tempallies = remaining_team(myscreen, control->team_num);
 

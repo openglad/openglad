@@ -85,6 +85,7 @@ class walker : public pixieN
 		virtual short facing(short x, short y);
 		unsigned char query_team_color();
 		Sint32 is_friendly(walker *target);
+		Sint32 is_friendly_to_team(unsigned char team);
 		inline short query_type(char oval, char fval)
 		{
 			if (oval == order && fval == family)
