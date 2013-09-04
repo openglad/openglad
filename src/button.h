@@ -157,7 +157,7 @@ Sint32 load3(Sint32 arg1);
 Sint32 create_team_menu(Sint32 arg1); // Create / modify team members
 Sint32 create_detail_menu(guy *arg1); // detailed character information
 Sint32 create_view_menu(Sint32 arg1); // View team members
-Sint32 create_buy_menu(Sint32 arg1);  // Purchase new team members
+Sint32 create_hire_menu(Sint32 arg1);  // Purchase new team members
 Sint32 create_edit_menu(Sint32 arg1); // Edit or sell team members
 Sint32 create_load_menu(Sint32 arg1); // Load a team
 Sint32 create_save_menu(Sint32 arg1); // Save a team
@@ -196,7 +196,7 @@ Sint32 level_editor();
 #define QUIT_MENU               4
 #define CREATE_VIEW_MENU        5
 #define CREATE_EDIT_MENU        6
-#define CREATE_BUY_MENU         7
+#define CREATE_HIRE_MENU         7
 #define CREATE_LOAD_MENU        8
 #define CREATE_SAVE_MENU        9
 #define GO_MENU                 10

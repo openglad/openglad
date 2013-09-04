@@ -311,7 +311,7 @@ button bteam[] =
     {
         button("VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1)),
         button("TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)),
-        button("Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_BUY_MENU, -1, MenuNav::DownLeft(5, 1)),
+        button("Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_HIRE_MENU, -1, MenuNav::DownLeft(5, 1)),
         button("LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)),
         button("SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)),
         button("GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4)),
@@ -325,7 +325,7 @@ button bteam[] =
 button viewteam[] =
     {
         //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
-        //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_BUY_MENU, -1},
+        //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_HIRE_MENU, -1},
         button("GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)),
         button("BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT, MenuNav::Right(0)),
 
@@ -364,24 +364,12 @@ button editteam[] =
 
 button buyteam[] =
     {
-        button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(2, 1)),
-        button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)),
-        button("", KEYSTATE_UNKNOWN,  16, 70, 16, 10, DECREASE_STAT, BUT_STR, MenuNav::UpDownRight(0, 4, 3)),
-        button("", KEYSTATE_UNKNOWN,  126, 70, 16, 12, INCREASE_STAT, BUT_STR, MenuNav::UpDownLeftRight(1, 5, 2, 16)),
-        button("", KEYSTATE_UNKNOWN,  16, 85, 16, 10, DECREASE_STAT, BUT_DEX, MenuNav::UpDownRight(2, 6, 5)),
-        button("", KEYSTATE_UNKNOWN,  126, 85, 16, 12, INCREASE_STAT, BUT_DEX, MenuNav::UpDownLeftRight(3, 7, 4, 16)),
-        button("", KEYSTATE_UNKNOWN,  16, 100, 16, 10, DECREASE_STAT, BUT_CON, MenuNav::UpDownRight(4, 8, 7)),
-        button("", KEYSTATE_UNKNOWN,  126,100, 16, 12, INCREASE_STAT, BUT_CON, MenuNav::UpDownLeftRight(5, 9, 6, 16)),
-        button("", KEYSTATE_UNKNOWN,  16, 115, 16, 10, DECREASE_STAT, BUT_INT, MenuNav::UpDownRight(6, 10, 9)),
-        button("", KEYSTATE_UNKNOWN,  126, 115, 16, 12, INCREASE_STAT, BUT_INT, MenuNav::UpDownLeftRight(7, 11, 8, 16)),
-        button("", KEYSTATE_UNKNOWN,  16, 130, 16, 10, DECREASE_STAT, BUT_ARMOR, MenuNav::UpDownRight(8, 12, 11)),
-        button("", KEYSTATE_UNKNOWN,  126, 130, 16, 12, INCREASE_STAT, BUT_ARMOR, MenuNav::UpDownLeftRight(9, 13, 10, 16)),
-        button("", KEYSTATE_UNKNOWN,  16, 145, 16, 10, DECREASE_STAT, BUT_LEVEL, MenuNav::UpDownRight(10, 17, 13)),
-        button("", KEYSTATE_UNKNOWN,  126, 145, 16, 12, INCREASE_STAT, BUT_LEVEL, MenuNav::UpDownLeftRight(11, 15, 12, 16)),
-        button("VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(16, 15)),
-        button("HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(13, 17, 14)),
-        button("Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 14, 13)),
-        button("BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(12, 15)),
+        button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(5, 1)),
+        button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 4)),
+        button("VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(4, 3)),
+        button("HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(1, 5, 2)),
+        button("Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 2, 1)),
+        button("BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(0, 3)),
 
     };
 
@@ -884,7 +872,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	if (arg1 == 1)
     {
         // Go straight to the hiring screen if we just started a new game.
-        retvalue = create_buy_menu(arg1);
+        retvalue = create_hire_menu(arg1);
     }
 
 	if (localbuttons)
@@ -966,10 +954,9 @@ Sint32 create_view_menu(Sint32 arg1)
 	return REDRAW;
 }
 
-Sint32 create_buy_menu(Sint32 arg1)
+Sint32 create_hire_menu(Sint32 arg1)
 {
 	Sint32 linesdown, retvalue = 0;
-	Sint32 i;
 	Sint32 start_time = query_timer();
 	unsigned char showcolor; // normally STAT_COLOR or STAT_CHANGED
 	Uint32 current_cost;
@@ -986,17 +973,9 @@ Sint32 create_buy_menu(Sint32 arg1)
 		delete (localbuttons);
     
 	button* buttons = buyteam;
-	int num_buttons = 18;
+	int num_buttons = 6;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
-	
-    for (i=2; i < 14; i++)
-    {
-        if (!(i%2)) // 2, 4, ..., 12
-            allbuttons[i]->set_graphic(FAMILY_MINUS);
-        else
-            allbuttons[i]->set_graphic(FAMILY_PLUS);
-    }
     
     cycle_guy(0);
     change_hire_teamnum(0);
@@ -1021,15 +1000,6 @@ Sint32 create_buy_menu(Sint32 arg1)
                 delete (localbuttons);
             
             localbuttons = init_buttons(buttons, num_buttons);
-            
-            
-            for (i=2; i < 14; i++)
-            {
-                if (!(i%2)) // 2, 4, ..., 12
-                    allbuttons[i]->set_graphic(FAMILY_MINUS);
-                else
-                    allbuttons[i]->set_graphic(FAMILY_PLUS);
-            }
 
             // Update our team-number display ..
             change_hire_teamnum(0);
@@ -1150,16 +1120,9 @@ Sint32 create_buy_menu(Sint32 arg1)
             if(localbuttons)
                 delete (localbuttons);
             localbuttons = init_buttons(buttons, num_buttons);
-	
-            for (i=2; i < 14; i++)
-            {
-                if (!(i%2)) // 2, 4, ..., 12
-                    allbuttons[i]->set_graphic(FAMILY_MINUS);
-                else
-                    allbuttons[i]->set_graphic(FAMILY_PLUS);
-            }
         }
 	}
+	
 	myscreen->clearbuffer();
 	//myscreen->clearscreen();
 	return REDRAW;
@@ -3275,11 +3238,7 @@ Sint32 change_hire_teamnum(Sint32 arg)
    // Update our button display
    sprintf(message, "Hiring For Team %d", current_team_num + 1);
 
-//myscreen->clearfontbuffer(170, 130, 133, 22);
-
-   allbuttons[16]->label = message;
-   //allbuttons[16]->vdisplay();
-   //myscreen->buffer_to_screen(0, 0, 320, 200);
+   allbuttons[4]->label = message;
 
    return OK;
 }

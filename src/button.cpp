@@ -519,8 +519,8 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
         return create_view_menu(arg);
     case CREATE_EDIT_MENU:
         return create_edit_menu(arg);
-    case CREATE_BUY_MENU:
-        return create_buy_menu(arg);
+    case CREATE_HIRE_MENU:
+        return create_hire_menu(arg);
     case CREATE_LOAD_MENU:
         return create_load_menu(arg);
     case CREATE_SAVE_MENU:
