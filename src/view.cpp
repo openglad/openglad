@@ -385,7 +385,7 @@ short viewscreen::input(const SDL_Event& event)
 		control->user = (char) mynum;
 		control->stats->clear_command();
 	}
-
+    // TODO: Factor out this code, which is duplicated in continuous_input()
 	if (!control || control->dead)
 	{
 		// First look for a player character, not already controlled
@@ -433,7 +433,8 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (!here)
 		{
-			// Now try for ANYONE who's left alive ..
+			// Now try for ANYONE who's left alive...
+			// NOTE: You can end up as a bad guy here if you are using an allied team
 			here = screenp->level_data.oblist;
 			counter = 0;
 			while(counter < 2)
@@ -521,7 +522,7 @@ short viewscreen::input(const SDL_Event& event)
 		while(1)
 		{
 			if (here->ob->query_order() == ORDER_LIVING &&
-			        here->ob->team_num == my_team &&
+			        here->ob->is_friendly(control) && here->ob->team_num == my_team &&
 			        here->ob->real_team_num == 255 && here->ob->user == -1)
 				break;
 			here = here->next;
@@ -563,7 +564,7 @@ short viewscreen::input(const SDL_Event& event)
 		{
 			if (here->ob->query_order() == ORDER_LIVING &&
 			        //   here->ob->query_act_type() != ACT_CONTROL &&
-			        here->ob->team_num == my_team &&
+			        here->ob->is_friendly(control) && here->ob->team_num == my_team &&
 			        here->ob->query_family() == newfam && 
                     here->ob->user == -1)
 				break;

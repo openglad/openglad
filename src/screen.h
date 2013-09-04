@@ -67,7 +67,6 @@ class screen : public video
 		short endgame(short ending, short nextlevel); // what level next?
 		walker *find_near_foe(walker *ob);
 		walker *find_far_foe(walker *ob);
-		walker  *get_new_control();
 		void draw_panels(short howmany);
 		walker  * find_nearest_blood(walker  *who);
 		walker* find_nearest_player(walker *ob);

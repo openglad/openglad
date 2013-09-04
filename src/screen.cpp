@@ -1642,30 +1642,6 @@ walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,
 	return NULL;
 }
 
-walker  * screen::get_new_control()
-{
-	oblink  * here;
-
-	here = level_data.oblist;
-	while(here)
-	{
-		if (here->ob &&
-		        here->ob->query_order() == ORDER_LIVING &&
-		        here->ob->query_act_type() != ACT_CONTROL &&
-		        here->ob->team_num == save_data.my_team)
-			break;
-		here = here->next;
-	}
-
-	if (!here)
-	{
-		endgame(1);
-		return NULL;
-	}
-
-	return NULL;
-}
-
 void screen::draw_panels(short howmany)
 {
 	short i;
