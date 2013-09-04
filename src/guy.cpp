@@ -307,7 +307,7 @@ walker* guy::create_walker(screen* myscreen)
     temp_walker->stats->level = temp_guy->level;
 
     // Set hitpoints based on stats:
-    temp_walker->stats->max_hitpoints = (short)
+    temp_walker->stats->max_hitpoints += (short)
                                         (10 + (temp_guy->constitution*3 +
                                                ((temp_guy->strength)/2) + (short) (25*temp_guy->level))  );
     temp_walker->stats->hitpoints = temp_walker->stats->max_hitpoints;
@@ -404,7 +404,7 @@ walker* guy::create_and_add_walker(screen* myscreen)
     temp_walker->stats->level = temp_guy->level;
 
     // Set hitpoints based on stats:
-    temp_walker->stats->max_hitpoints = (short)
+    temp_walker->stats->max_hitpoints += (short)
                                         (10 + (temp_guy->constitution*3 +
                                                ((temp_guy->strength)/2) + (short) (25*temp_guy->level))  );
     temp_walker->stats->hitpoints = temp_walker->stats->max_hitpoints;
