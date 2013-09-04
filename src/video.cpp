@@ -187,6 +187,17 @@ void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char c
 }
 
 
+void video::draw_button(const SDL_Rect& rect, Sint32 border)
+{
+    draw_button(rect.x, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1, border);
+}
+
+void video::draw_button_inverted(const SDL_Rect& rect)
+{
+    draw_text_bar(rect.x, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1);
+}
+
+
 void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs

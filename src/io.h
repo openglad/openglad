@@ -37,7 +37,7 @@ SDL_RWops* open_write_file(const char* path, const char* file);
 
 std::list<std::string> list_files(const std::string& dirname);
 
-std::list<std::string> explode(const std::string& str, char delimiter);
+std::list<std::string> explode(const std::string& str, char delimiter = '\n');
 
 std::string get_mounted_campaign();
 bool mount_campaign_package(const std::string& id);

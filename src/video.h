@@ -94,6 +94,8 @@ class video
 
 		void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled);
 		void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled, Sint32 tobuffer);
+		void draw_button(const SDL_Rect& rect, Sint32 border);
+		void draw_button_inverted(const SDL_Rect& rect);
 		void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border);
 		void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border, Sint32 tobuffer);
         void draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool use_border, int base_color, int high_color, int shadow_color);

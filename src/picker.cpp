@@ -44,12 +44,13 @@
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 void popup_dialog(const char* title, const char* message, bool dim = false);
 
+bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
 
 #define BUTTON_HEIGHT 15
 
 //int matherr (struct exception *);
 
-void show_guy(Sint32 frames, Sint32 who); // shows the current guy ..
+void show_guy(Sint32 frames, Sint32 who, short centerx = 80, short centery = 45); // shows the current guy ..
 Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
 void glad_main(screen *myscreen, Sint32 playermode);
@@ -311,7 +312,7 @@ button bteam[] =
     {
         button("VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1)),
         button("TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)),
-        button("Hire Troops",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_HIRE_MENU, -1, MenuNav::DownLeft(5, 1)),
+        button("HIRE TROOPS",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_HIRE_MENU, -1, MenuNav::DownLeft(5, 1)),
         button("LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)),
         button("SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)),
         button("GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4)),
@@ -364,12 +365,11 @@ button editteam[] =
 
 button buyteam[] =
     {
-        button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(5, 1)),
-        button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 4)),
-        button("VIEW TEAM", KEYSTATE_UNKNOWN,  190, 170, 90, 20, CREATE_VIEW_MENU, -1, MenuNav::UpLeft(4, 3)),
-        button("HIRE ME", KEYSTATE_UNKNOWN,  80, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeftRight(1, 5, 2)),
-        button("Select Team", KEYSTATE_UNKNOWN, 170, 130, 130, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpDownLeft(1, 2, 1)),
-        button("BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(0, 3)),
+        button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(4, 1)),
+        button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 3)),
+        button("hiring team X", KEYSTATE_UNKNOWN, 75, 170, 94, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpLeftRight(1, 4, 3)),
+        button("HIRE ME", KEYSTATE_UNKNOWN,  210, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeft(1, 2)),
+        button("BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(0, 2)),
 
     };
 
@@ -821,6 +821,48 @@ Sint32 beginmenu(Sint32 arg1)
 }
 
 
+const char* get_family_string(short family)
+{
+	switch(family)
+	{
+		case FAMILY_ARCHER:
+			return "ARCHER";
+		case FAMILY_CLERIC:
+			return "CLERIC";
+		case FAMILY_DRUID:
+			return "DRUID";
+		case FAMILY_ELF:
+			return "ELF";
+		case FAMILY_MAGE:
+			return "MAGE";
+		case FAMILY_SOLDIER:
+			return "SOLDIER";
+		case FAMILY_THIEF:
+			return "THIEF";
+		case FAMILY_ARCHMAGE:
+			return "ARCHMAGE";
+		case FAMILY_ORC:
+			return "ORC";
+		case FAMILY_BIG_ORC:
+			return "ORC CAPTAIN";
+		case FAMILY_BARBARIAN:
+			return "BARBARIAN";
+		case FAMILY_FIREELEMENTAL:
+			return "ELEMENTAL";
+		case FAMILY_SKELETON:
+			return "SKELETON";
+		case FAMILY_SLIME:
+		case FAMILY_MEDIUM_SLIME:
+		case FAMILY_SMALL_SLIME:
+			return "SLIME";
+		case FAMILY_FAERIE:
+			return "FAERIE";
+		case FAMILY_GHOST:
+			return "GHOST";
+		default:
+			return "BEAST";
+	}
+}
 
 
 void family_name_copy(char *name, short family)
@@ -954,6 +996,126 @@ Sint32 create_view_menu(Sint32 arg1)
 	return REDRAW;
 }
 
+std::string get_class_description(unsigned char family)
+{
+    std::string result;
+    
+    switch(family)
+    {
+    case FAMILY_SOLDIER:
+        result = "A Soldier is a good all-  \n"
+                 "around fighter who throws \n"
+                 "a returning blade.        \n"
+                 "\n"
+                 "Special: Charge";
+        break;
+    case FAMILY_ELF:
+        result = "An Elf is small and weak, \n"
+                 "but can move through      \n"
+                 "forests and throw large   \n"
+                 "sprays of rocks.          \n"
+                 "\n"
+                 "Special: Rocks";
+        break;
+    case FAMILY_ARCHER:
+        result = "Archer                    \n"
+                 "\n"
+                 "Special: Fire Arrows";
+        break;
+    case FAMILY_MAGE:
+        result = "Mage                      \n"
+                 "\n"
+                 "Special: Teleport";
+        break;
+    case FAMILY_SKELETON:
+        result = "Skeleton                  \n"
+                 "\n"
+                 "Special: Tunnel";
+        break;
+    case FAMILY_CLERIC:
+        result = "Cleric                    \n"
+                 "\n"
+                 "Special: Heal";
+        break;
+    case FAMILY_FIREELEMENTAL:
+        result = "Fire elemental            \n"
+                 "\n"
+                 "Special: Starburst";
+        break;
+    case FAMILY_FAERIE:
+        result = "Faerie                    \n";
+        break;
+    case FAMILY_SLIME:
+    case FAMILY_SMALL_SLIME:
+    case FAMILY_MEDIUM_SLIME:
+        result = "Slime                     \n"
+                 "\n"
+                 "Special: Grow";
+        break;
+    case FAMILY_THIEF:
+        result = "Thief                     \n"
+                 "\n"
+                 "Special: Drop Bomb";
+        break;
+    case FAMILY_GHOST:
+        result = "Ghost                     \n"
+                 "\n"
+                 "Special: Scare";
+        break;
+    case FAMILY_DRUID:
+        result = "Druid                     \n"
+                 "\n"
+                 "Special: Plant Tree";
+        break;
+    case FAMILY_ORC:
+        result = "Orc                       \n"
+                 "\n"
+                 "Special: Howl";
+        break;
+    case FAMILY_BIG_ORC:
+        result = "Orc Captain               \n";
+        break;
+    case FAMILY_BARBARIAN:
+        result = "Barbarian                 \n"
+                 "\n"
+                 "Special: Hurl Boulder";
+        break;
+    case FAMILY_ARCHMAGE:
+        result = "Archmage                  \n"
+                 "\n"
+                 "Special: Teleport";
+        break;
+    default:
+        break;
+    }
+    
+    return result;
+}
+
+// stat: str 0, dex 1, con 2, int 3, armor 4
+const char* get_training_cost_rating(unsigned char family, int stat)
+{
+    int value = 55/(statcosts[family][stat]);
+    int rating = float(value)/11 * 5;
+    switch(rating)
+    {
+    case 0:
+        return "";
+    case 1:
+        return "*";
+    case 2:
+        return "**";
+    case 3:
+        return "***";
+    case 4:
+        return "****";
+    case 5:
+        return "*****";
+    default:
+        return "";
+    }
+}
+
 Sint32 create_hire_menu(Sint32 arg1)
 {
 	Sint32 linesdown, retvalue = 0;
@@ -962,23 +1124,49 @@ Sint32 create_hire_menu(Sint32 arg1)
 	Uint32 current_cost;
 	Sint32 clickvalue;
 
-#define STAT_LEFT    44        // where 'INT:' appears
-#define STAT_NUM     86        // where '12' appears
+#define STAT_NUM_OFFSET 42
 #define STAT_COLOR   DARK_BLUE // color for normal stat text
 #define STAT_CHANGED RED       // color for changed stat text
-
+    
+    SDL_Rect stat_box = {196, 50 - 6, 104, 82};
+    SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
+    SDL_Rect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
+    
+    SDL_Rect cost_box = {196, 130, 104, 30};
+    SDL_Rect cost_box_inner = {cost_box.x + 4, cost_box.y + 4, cost_box.w - 8, cost_box.h - 8};
+    SDL_Rect cost_box_content = {cost_box_inner.x + 4, cost_box_inner.y + 4, cost_box_inner.w - 8, cost_box_inner.h - 8};
+    
+    SDL_Rect description_box = {11, 71, 180, 90};
+    SDL_Rect description_box_inner = {description_box.x + 4, description_box.y + 4, description_box.w - 8, description_box.h - 8};
+    SDL_Rect description_box_content = {description_box_inner.x + 4, description_box_inner.y + 4, description_box_inner.w - 8, description_box_inner.h - 8};
+    
+    SDL_Rect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
+    SDL_Rect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
+    
+    buyteam[0].x = description_box.x + description_box.w/2 - buyteam[0].sizex - 4 - 30;
+    buyteam[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buyteam[0].sizey/2;
+    
+    buyteam[1].x = description_box.x + description_box.w/2 + 4 + 30;
+    buyteam[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buyteam[1].sizey/2;
+    
 	myscreen->clearbuffer();
 
 	if (localbuttons)
 		delete (localbuttons);
     
 	button* buttons = buyteam;
-	int num_buttons = 6;
+	int num_buttons = 5;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
     
     cycle_guy(0);
     change_hire_teamnum(0);
+    
+    
+    unsigned char last_family = current_guy->family;
+    std::string description = get_class_description(last_family);
+    std::list<std::string> desc = explode(description);
+    const char* family_name = get_family_string(last_family);
 	
 	grab_mouse();
 
@@ -1015,97 +1203,115 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         if (!current_guy)
             cycle_guy(0);
-		show_guy(query_timer()-start_time, 0); // 0 means current_guy
-        change_hire_teamnum(0);
-
-        myscreen->draw_button(174, 20, 306, 42, 1, 1); // text box
         
-        linesdown = 0;
-
-        myscreen->draw_button(174, 46, 306, 114, 1, 1); // info box
-        myscreen->draw_text_bar(178, 48, 302, 58); // title bar
-        strcpy(message, "GAME INFORMATION");
-        mytext->write_xy(240 - (strlen(message)*6/2), 51, message, (unsigned char) RED, 1);
-        myscreen->draw_text_bar(178, 60, 302, 110); // main text box
-        myscreen->draw_text_bar(188, 94, 292, 95); // dividing line
+        // Name box
+        myscreen->draw_button(name_box, 1);
+        myscreen->draw_button_inverted(name_box_inner);
+        
+        mytext->write_xy(name_box.x + name_box.w/2 - 3*strlen(family_name), name_box.y + 6, family_name, (unsigned char) DARK_BLUE, 1);
+        
+		show_guy(query_timer()-start_time, 0, description_box.x + description_box.w/2, name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2); // 0 means current_guy
+        change_hire_teamnum(0);
+        
+        
+        // Description box
+        myscreen->draw_button(description_box, 1);
+        myscreen->draw_button_inverted(description_box_inner);
+        
+        if(current_guy->family != last_family)
+        {
+            // Update description
+            last_family = current_guy->family;
+            description = get_class_description(last_family);
+            desc = explode(description);
+            
+            family_name = get_family_string(last_family);
+        }
+        
+        int i = 0;
+        for(std::list<std::string>::iterator e = desc.begin(); e != desc.end(); e++)
+        {
+            mytext->write_xy(description_box_content.x, description_box_content.y + i*10, DARK_BLUE, "%s", e->c_str());
+            i++;
+        }
+        
+        // Cost box
+        myscreen->draw_button(cost_box, 1);
+        myscreen->draw_button_inverted(cost_box_inner);
+        
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_team_num]);
-        mytext->write_xy(180, 62, message,(unsigned char) DARK_BLUE, 1);
+        mytext->write_xy(cost_box_content.x, cost_box_content.y, message,(unsigned char) DARK_BLUE, 1);
         current_cost = calculate_cost();
-        mytext->write_xy(180, 72, "COST: ", DARK_BLUE, 1);
+        mytext->write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         sprintf(message, "      %u", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
-            mytext->write_xy(180, 72, message, STAT_CHANGED, 1);
+            mytext->write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_CHANGED, 1);
         else
-            mytext->write_xy(180, 72, message, STAT_COLOR, 1);
+            mytext->write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_COLOR, 1);
 
-        sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_team_num]);
-        mytext->write_xy(180, 102, message,(unsigned char) DARK_BLUE, 1);
-        myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
-        myscreen->draw_text_bar(36, 10, 124, 22);
+        // Stat box
+        myscreen->draw_button(stat_box, 1);
+        mytext->write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
+        myscreen->draw_button_inverted(stat_box_inner);
 
-        myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
-        myscreen->draw_text_bar(42, 70, 116, 156);
-        mytext->write_xy(38, 14, current_guy->name, (unsigned char) DARK_BLUE, 1);
-
+        linesdown = 0;
         // Strength
         sprintf(message, "%d", current_guy->strength);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  STR:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "STR:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_STR] < current_guy->strength)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
-
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
+        
+        linesdown++;
         // Dexterity
         sprintf(message, "%d", current_guy->dexterity);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  DEX:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "DEX:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_DEX] < current_guy->dexterity)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
 
+        linesdown++;
         // Constitution
         sprintf(message, "%d", current_guy->constitution);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  CON:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "CON:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_CON] < current_guy->constitution)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
 
+        linesdown++;
         // Intelligence
         sprintf(message, "%d", current_guy->intelligence);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  INT:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "INT:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_INT] < current_guy->intelligence)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
 
+        linesdown++;
         // Armor
         sprintf(message, "%d", current_guy->armor);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "ARMOR:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "ARMOR:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_ARMOR] < current_guy->armor)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
-
-        // Level
-        sprintf(message, "%d", current_guy->level);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "LEVEL:",
-                         (unsigned char) STAT_COLOR, 1);
-        if (statlist[(int)current_guy->family][BUT_LEVEL] < current_guy->level)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
 		
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
@@ -1136,6 +1342,10 @@ Sint32 create_edit_menu(Sint32 arg1)
 	Sint32 start_time = query_timer();
 	Uint32 current_cost;
 	Sint32 clickvalue;
+	
+    SDL_Rect stat_box = {38, 66, 82, 94};
+    SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
+    SDL_Rect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
 
 	if (arg1)
 		arg1 = 1;
@@ -1232,63 +1442,63 @@ Sint32 create_edit_menu(Sint32 arg1)
 
         // Strength
         sprintf(message, "%d", current_guy->strength);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  STR:",
+        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
                          (unsigned char) STAT_COLOR, 1);
         if (here->strength < current_guy->strength)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Dexterity
         sprintf(message, "%d", current_guy->dexterity);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  DEX:",
+        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
                          (unsigned char) STAT_COLOR, 1);
         if (here->dexterity < current_guy->dexterity)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Constitution
         sprintf(message, "%d", current_guy->constitution);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  CON:",
+        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
                          (unsigned char) STAT_COLOR, 1);
         if (here->constitution < current_guy->constitution)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Intelligence
         sprintf(message, "%d", current_guy->intelligence);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "  INT:",
+        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
                          (unsigned char) STAT_COLOR, 1);
         if (here->intelligence < current_guy->intelligence)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Armor
         sprintf(message, "%d", current_guy->armor);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "ARMOR:",
+        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
                          (unsigned char) STAT_COLOR, 1);
         if (here->armor < current_guy->armor)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Level
         sprintf(message, "%d", current_guy->level);
-        mytext->write_xy(STAT_LEFT, DOWN(linesdown), "LEVEL:",
+        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
                          (unsigned char) STAT_COLOR, 1);
         if (here->level < current_guy->level)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(STAT_NUM, DOWN(linesdown++), message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
         myscreen->draw_text_bar(178, 34, 302, 44); // title bar
@@ -2017,13 +2227,11 @@ Sint32 cycle_guy(Sint32 whichway)
 	return OK;
 }
 
-void show_guy(Sint32 frames, Sint32 who) // shows the current guy ..
+void show_guy(Sint32 frames, Sint32 who, short centerx, short centery) // shows the current guy ..
 {
 	walker *mywalker;
-	short centerx = 80, centery = 45; // center for walker
 	Sint32 i;
 	Sint32 newfamily;
-
 
 	if (!current_guy)
 		return;
@@ -2048,15 +2256,10 @@ void show_guy(Sint32 frames, Sint32 who) // shows the current guy ..
 
 	mywalker->xpos = centerx - (mywalker->sizex/2);
 	mywalker->ypos = centery - (mywalker->sizey/2);
-	myscreen->draw_button(54, 26, 106, 64, 1, 1);
-	myscreen->draw_text_bar(56, 28, 104, 62);
+	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
+	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
 	mywalker->draw(myscreen->viewob[0]);
 	delete mywalker;
-	if (mymouse[MOUSE_X] >= 46 && mymouse[MOUSE_X] <= 104
-	        && mymouse[MOUSE_Y] >= 12 && mymouse[MOUSE_Y] <= 64)
-		release_mouse();
-	//myscreen->buffer_to_screen(56, 28, 48, 36);
-	grab_mouse();
 }
 // Sets current_guy to 'whichguy' in the teamlist, and
 // returns a COPY of him as the function result
@@ -2186,18 +2389,11 @@ Sint32 add_guy(Sint32 ignoreme)
 			myscreen->save_data.team_size++;
 			current_guy = NULL;
 			release_mouse();
-			myscreen->draw_button(174, 20, 306, 42, 1, 1); // text box
-			addtext.write_xy(176, 24, "NAME THIS CHARACTER:", DARK_BLUE, 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			clear_keyboard();
-			char* new_text = addtext.input_string(176, 32, 11, ourteam[i]->name);
-			if(new_text == NULL)
-                new_text = ourteam[i]->name;
-			strcpy(tempnum, new_text);
-			strcpy(ourteam[i]->name, tempnum);
-			myscreen->draw_button(174, 20, 306, 42, 1, 1); // text box
-
-			myscreen->buffer_to_screen(0, 0, 320, 200);
+			
+			std::string name = ourteam[i]->name;
+			if(prompt_for_string(&addtext, "NAME THIS CHARACTER", name))
+                strncpy(ourteam[i]->name, name.c_str(), 12);
+            
 			grab_mouse();
 
 			// Increment the next guy's number
@@ -2206,9 +2402,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			// Ensure we have the right exp for our level
 			ourteam[i]->exp = calculate_exp(ourteam[i]->level);
 
-			//buffers: changed typename to type_name in below code
-
-			// Grab a new, generic guy to be editted/bought
+			// Grab a new, generic guy to be edited/bought
 			current_guy = new guy(newfamily);
 			strcpy(type_name, current_guy->name);
 			statscopy(current_guy, ourteam[i]); // set to same stats as just bought
@@ -3236,9 +3430,9 @@ Sint32 change_hire_teamnum(Sint32 arg)
    }
 
    // Update our button display
-   sprintf(message, "Hiring For Team %d", current_team_num + 1);
+   sprintf(message, "Hiring Team %d", current_team_num + 1);
 
-   allbuttons[4]->label = message;
+   allbuttons[2]->label = message;
 
    return OK;
 }
