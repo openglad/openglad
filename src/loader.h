@@ -33,8 +33,7 @@ class loader
 		signed char  ***animations;
 		Sint32  *stepsizes;
 		Sint32  *lineofsight;
-	protected:
-		//         char  *hitpoints;
+		
 		short  hitpoints[200]; // hack for now
 		char  *act_types;
 		Sint32  *damage;

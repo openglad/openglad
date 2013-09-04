@@ -367,8 +367,8 @@ button buyteam[] =
     {
         button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(4, 1)),
         button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 3)),
-        button("hiring team X", KEYSTATE_UNKNOWN, 75, 170, 94, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpLeftRight(1, 4, 3)),
-        button("HIRE ME", KEYSTATE_UNKNOWN,  210, 170, 80, 20, ADD_GUY, -1, MenuNav::UpLeft(1, 2)),
+        button("hiring team X", KEYSTATE_UNKNOWN, 82, 170, 94, 20, CHANGE_HIRE_TEAM, 1, MenuNav::UpLeftRight(1, 4, 3)),
+        button("HIRE ME", KEYSTATE_UNKNOWN,  206, 166, 88, 28, ADD_GUY, -1, MenuNav::UpLeft(1, 2)),
         button("BACK", KEYSTATE_ESCAPE,10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(0, 2)),
 
     };
@@ -1127,8 +1127,9 @@ Sint32 create_hire_menu(Sint32 arg1)
 #define STAT_NUM_OFFSET 42
 #define STAT_COLOR   DARK_BLUE // color for normal stat text
 #define STAT_CHANGED RED       // color for changed stat text
+#define STAT_DERIVED DARK_BLUE + 3
     
-    SDL_Rect stat_box = {196, 50 - 6, 104, 82};
+    SDL_Rect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
     SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
     SDL_Rect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
     
@@ -1254,7 +1255,9 @@ Sint32 create_hire_menu(Sint32 arg1)
         mytext->write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
         myscreen->draw_button_inverted(stat_box_inner);
 
+        // Stat box content
         linesdown = 0;
+        
         // Strength
         sprintf(message, "%d", current_guy->strength);
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "STR:",
@@ -1264,7 +1267,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         else
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 0), showcolor, 1);
         
         linesdown++;
         // Dexterity
@@ -1276,7 +1279,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         else
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 1), showcolor, 1);
 
         linesdown++;
         // Constitution
@@ -1288,7 +1291,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         else
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 2), showcolor, 1);
 
         linesdown++;
         // Intelligence
@@ -1300,7 +1303,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         else
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, linesdown), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 3), showcolor, 1);
 
         linesdown++;
         // Armor
@@ -1312,6 +1315,23 @@ Sint32 create_hire_menu(Sint32 arg1)
         else
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
+		
+		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*12 - 3, stat_box_content.w - 20, 2};
+		myscreen->draw_button_inverted(r);
+		
+        linesdown++;
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "HP:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%d", myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)]);
+		
+		linesdown++;
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "MELEE:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%d", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)]);
+		
+		linesdown++;
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "SPEED:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%d", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)]);
+        
+        
 		
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
