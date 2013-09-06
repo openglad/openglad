@@ -198,8 +198,10 @@ short living::act()
 	   )
 	{
 		// charge us a point of magic ..
-		if (stats->magicpoints)
-			stats->magicpoints--;
+		if (stats->magicpoints && stats->current_magic_delay == 0)
+        {
+            stats->magicpoints--;
+        }
 
 
 		if (myguy)
