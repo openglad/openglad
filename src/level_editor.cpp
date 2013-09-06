@@ -3521,21 +3521,30 @@ Sint32 level_editor()
         {
             int dx = 0;
             int dy = 0;
-            if(isPlayerHoldingKey(0, KEY_UP) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_UP_RIGHT))
+            OuyaController& c = OuyaControllerManager::getController(0);
+            if(!c.isStickBeyondDeadzone(OuyaController::AXIS_LS_X))
             {
-                dy = -5;
+                if(isPlayerHoldingKey(0, KEY_UP) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_UP_RIGHT))
+                {
+                    dy = -5;
+                }
+                if(isPlayerHoldingKey(0, KEY_DOWN) || isPlayerHoldingKey(0, KEY_DOWN_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
+                {
+                    dy = 5;
+                }
+                if(isPlayerHoldingKey(0, KEY_LEFT) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_LEFT))
+                {
+                    dx = -5;
+                }
+                if(isPlayerHoldingKey(0, KEY_RIGHT) || isPlayerHoldingKey(0, KEY_UP_RIGHT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
+                {
+                    dx = 5;
+                }
             }
-            if(isPlayerHoldingKey(0, KEY_DOWN) || isPlayerHoldingKey(0, KEY_DOWN_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
+            else
             {
-                dy = 5;
-            }
-            if(isPlayerHoldingKey(0, KEY_LEFT) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_DOWN_LEFT))
-            {
-                dx = -5;
-            }
-            if(isPlayerHoldingKey(0, KEY_RIGHT) || isPlayerHoldingKey(0, KEY_UP_RIGHT) || isPlayerHoldingKey(0, KEY_DOWN_RIGHT))
-            {
-                dx = 5;
+                dx = 5*c.getAxisValue(OuyaController::AXIS_LS_X);
+                dy = 5*c.getAxisValue(OuyaController::AXIS_LS_Y);
             }
             
             if(mymouse[MOUSE_X] + dx < 0)

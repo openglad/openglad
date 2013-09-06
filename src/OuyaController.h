@@ -28,6 +28,7 @@ public:
     int getPlayerNum() const;
     bool getButtonValue(ButtonEnum button) const;
     float getAxisValue(AxisEnum axis) const;
+    float getNormalizedAxisValue(AxisEnum axis) const;
     bool& getButtonValue(ButtonEnum button);
     float& getAxisValue(AxisEnum axis);
     

@@ -135,6 +135,53 @@ float OuyaController::getAxisValue(AxisEnum axis) const
     return 0.0f;
 }
 
+float OuyaController::getNormalizedAxisValue(AxisEnum axis) const
+{
+    if(!isStickBeyondDeadzone(axis))
+        return 0.0f;
+    
+    float value = 0.0f;
+    float dir = 0.0f;
+    // A joystick deadzone is angled in the direction of the stick, so we need to calculate the amount of deadzone in that direction
+    float dzone = DEADZONE;
+    switch(axis)
+    {
+    case AXIS_LS_X:
+        value = axis_state[0];
+        dir = atan2(axis_state[1], axis_state[0]);
+        dzone = fabs(dzone*cos(dir));
+        break;
+    case AXIS_LS_Y:
+        value = axis_state[1];
+        dir = atan2(axis_state[1], axis_state[0]);
+        dzone = fabs(dzone*sin(dir));
+        break;
+    case AXIS_RS_X:
+        value = axis_state[2];
+        dir = atan2(axis_state[3], axis_state[2]);
+        dzone = fabs(dzone*cos(dir));
+        break;
+    case AXIS_RS_Y:
+        value = axis_state[3];
+        dir = atan2(axis_state[3], axis_state[2]);
+        dzone = fabs(dzone*sin(dir));
+        break;
+    case AXIS_L2:
+        value = axis_state[4];
+        break;
+    case AXIS_R2:
+        value = axis_state[5];
+        break;
+    default:
+        return 0.0f;
+    }
+    
+    SDL_Log("value: %.2f, dzone: %.2f, result: %.2f\n", value, dzone, (value - dzone)/(1.0f - dzone));
+    if(value > 0.0f)
+        return (value - dzone)/(1.0f - dzone);
+    return (value + dzone)/(1.0f - dzone);
+}
+
 inline float dist(float x, float y)
 {
     return sqrtf(x*x + y*y);

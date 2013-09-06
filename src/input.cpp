@@ -1214,6 +1214,9 @@ void resetJoystick(int player_num)
 bool ouyaJoystickInDirection(int player, int key_enum)
 {
     const OuyaController& c = OuyaControllerManager::getController(player);
+    if(!c.isStickBeyondDeadzone(OuyaController::AXIS_LS_X))
+        return false;
+    
     switch(key_enum)
     {
     case KEY_UP:
