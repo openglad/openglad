@@ -1772,6 +1772,7 @@ bool LevelData::save()
 		tempwidth = strlen(oneline);
 		SDL_RWwrite(outfile, &tempwidth, 1, 1);
 		SDL_RWwrite(outfile, oneline, tempwidth, 1);
+		e++;
 	}
 
 	SDL_RWclose(outfile);
