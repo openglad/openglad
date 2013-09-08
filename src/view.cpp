@@ -649,7 +649,7 @@ short viewscreen::input(const SDL_Event& event)
 				while (helpme)
 				{
 					if (helpme->ob &&
-					        (helpme->ob->team_num == control->team_num)
+					        (helpme->ob->team_num == control->team_num) && helpme->ob->is_friendly(control)
 					   )
 					{
 						// Remove any current foe ..

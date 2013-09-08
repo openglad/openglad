@@ -54,12 +54,12 @@ class statistics
 	public:
 		statistics(walker  *);
 		~statistics();
-		short  try_command(short, short, short, short);
-		short  try_command(short, short);
-		void set_command(short, short);
-		void set_command(short, short, short, short);
-		void add_command(short, short, short, short);
-		void force_command(short, short, short, short);
+		short  try_command(short whatcommand, short iterations, short info1, short info2);
+		short  try_command(short whatcommand, short iterations);
+		void set_command(short whatcommand, short iterations);
+		void set_command(short whatcommand, short iterations, short info1, short info2);
+		void add_command(short whatcommand, short iterations, short info1, short info2);
+		void force_command(short whatcommand, short iterations, short info1, short info2);
 		void clear_command();
 		short do_command();
 		void hit_response(walker * who);

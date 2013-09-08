@@ -235,20 +235,20 @@ void statistics::set_command(short whatcommand, short iterations,
 short statistics::do_command()
 {
 	command *here;
-	short commandtype, commandcount, com1, com2;
+	short commandtype, com1, com2;
 	short i;
-	//  short ret1, ret2, ret3; //old code
+	
 	walker * target;
 	short deltax, deltay;
 	Sint32 distance;
 
-	static short newx, newy;
+	short newx = 0;
+	short newy = 0;
 #ifdef PROFILING
 
 	profiler docommprofiler("stats::do_command");
 #endif
 
-	//if (!controller || controller->dead)
 	if (!controller) // allow dead controllers for now
 	{
 		Log("STATS:DO_COM: No controller!\n");
@@ -257,15 +257,14 @@ short statistics::do_command()
 	}
 
 	// Get next command;
-	if (commandlist)
-	{
-		commandtype = commandlist->commandtype;
-		commandcount = commandlist->commandcount--;
-		com1 = commandlist->com1;
-		com2 = commandlist->com2;
-	}
-	else
-		return 0;
+	if (!commandlist)
+        return 0;
+    
+    commandtype = commandlist->commandtype;
+    short& commandcount = commandlist->commandcount;
+    com1 = commandlist->com1;
+    com2 = commandlist->com2;
+    
 	if (commandcount < 2) // Last iteration!
 	{
 		here = commandlist;
@@ -279,10 +278,7 @@ short statistics::do_command()
 	switch (commandtype)
 	{
 		case COMMAND_WALK:
-			//if (controller->query_order() == ORDER_LIVING)
-			//{
 			controller->walkstep(com1, com2);
-			//}
 			break;
 		case COMMAND_FIRE:
 			if (!(controller->query_order() == ORDER_LIVING))
@@ -328,12 +324,15 @@ short statistics::do_command()
 					}
 				}
 			}
-			if (controller->leader)
+			
+			// Do we have a leader now?
+			if(controller->leader)
 			{
 				distance = controller->distance_to_ob(controller->leader);
 				if (distance < 60)
 				{
 					controller->leader = NULL;
+					commandcount--;
 					return 1;  // don't get too close
 				}
 				newx = (short) (controller->leader->xpos - controller->xpos); // total horizontal distance..
@@ -347,9 +346,12 @@ short statistics::do_command()
 				if (newy)
 					newy = (short) (newy / abs(newy));
 			}  // end of if we had a foe ..
+			
 			controller->walkstep(newx, newy);
 			if (commandcount < 2)
+            {
 				controller->leader = NULL;
+            }
 			break;
 		case COMMAND_QUICK_FIRE:
 			controller->walkstep(com1, com2);
@@ -387,7 +389,9 @@ short statistics::do_command()
 			if (controller->foe && !controller->foe->dead)
 				walk_to_foe();
 			else // stop trying to walk to this foe
+            {
 				commandcount = 0;
+            }
 			break;
 		case COMMAND_RIGHT_WALK: // right-hand-walk ONLY
 			if (controller->foe)
