@@ -43,6 +43,7 @@
 #define NO 6
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 void popup_dialog(const char* title, const char* message, bool dim = false);
+void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
 bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
 
@@ -289,7 +290,7 @@ void picker_quit()
 }
 
 // mainmenu
-button buttons1[] =
+button mainmenu_buttons[] =
     {
         button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
         button("CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5)),
@@ -308,10 +309,10 @@ button buttons1[] =
     };
 
 // beginmenu (first menu of new game), create_team_menu
-button bteam[] =
+button createmenu_buttons[] =
     {
         button("VIEW TEAM", KEYSTATE_UNKNOWN, 30, 70, 80, 15, CREATE_VIEW_MENU, -1, MenuNav::DownRight(3, 1)),
-        button("TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_EDIT_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)),
+        button("TRAIN TEAM", KEYSTATE_UNKNOWN, 120, 70, 80, 15, CREATE_TRAIN_MENU, -1, MenuNav::DownLeftRight(4, 0, 2)),
         button("HIRE TROOPS",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_HIRE_MENU, -1, MenuNav::DownLeft(5, 1)),
         button("LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)),
         button("SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)),
@@ -323,22 +324,22 @@ button bteam[] =
 
     };
 
-button viewteam[] =
+button viewteam_buttons[] =
     {
-        //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_EDIT_MENU, -1},
+        //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_TRAIN_MENU, -1},
         //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_HIRE_MENU, -1},
         button("GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)),
         button("BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , EXIT, MenuNav::Right(0)),
 
     };
 
-button detailed[] =
+button details_buttons[] =
     {
         button("BACK", KEYSTATE_ESCAPE, 10, 170, 40, 20, RETURN_MENU , EXIT, MenuNav::UpRight(1, 1)),
         button(160, 4, 315 - 160, 66 - 4, 0 , -1, MenuNav::DownLeft(0, 0), true, true) // PROMOTE
     };
 
-button editteam[] =
+button trainmenu_buttons[] =
     {
         button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_TEAM_GUY, -1, MenuNav::DownRight(2, 1)),
         button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_TEAM_GUY, 1, MenuNav::DownLeftRight(3, 0, 16)),
@@ -363,7 +364,7 @@ button editteam[] =
 
     };
 
-button buyteam[] =
+button hiremenu_buttons[] =
     {
         button("PREV", KEYSTATE_UNKNOWN,  10, 40, 40, 20, CYCLE_GUY, -1, MenuNav::DownRight(4, 1)),
         button("NEXT", KEYSTATE_UNKNOWN,  110, 40, 40, 20, CYCLE_GUY, 1, MenuNav::DownLeftRight(3, 0, 3)),
@@ -374,7 +375,7 @@ button buyteam[] =
     };
 
 
-button saveteam[] =
+button saveteam_buttons[] =
     {
         button("SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_SAVE, 1, MenuNav::UpDown(10, 1)),
         button("SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_SAVE, 2, MenuNav::UpDown(0, 2)),
@@ -390,7 +391,7 @@ button saveteam[] =
 
     };
 
-button loadteam[] =
+button loadteam_buttons[] =
     {
         button("SLOT ONE", KEYSTATE_UNKNOWN,  25, 25, 220, 10, DO_LOAD, 1, MenuNav::UpDown(10, 1)),
         button("SLOT TWO", KEYSTATE_UNKNOWN,  25, 40, 220, 10, DO_LOAD, 2, MenuNav::UpDown(0, 2)),
@@ -751,7 +752,7 @@ Sint32 mainmenu(Sint32 arg1)
 	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
 
-	button* buttons = buttons1;
+	button* buttons = mainmenu_buttons;
 	int num_buttons = 10;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -922,7 +923,7 @@ Sint32 create_team_menu(Sint32 arg1)
 
 	myscreen->fadeblack(0);
 	
-	button* buttons = bteam;
+	button* buttons = createmenu_buttons;
 	int num_buttons = 9;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -966,7 +967,7 @@ Sint32 create_view_menu(Sint32 arg1)
 	if (localbuttons)
 		delete (localbuttons);
     
-	button* buttons = viewteam;
+	button* buttons = viewteam_buttons;
 	int num_buttons = 2;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -1217,18 +1218,18 @@ Sint32 create_hire_menu(Sint32 arg1)
     SDL_Rect name_box = {description_box.x + description_box.w/2 - (126-34)/2, description_box.y - 71 + 8, 126 - 34, 24 - 8};
     SDL_Rect name_box_inner = {name_box.x + 2, name_box.y + 2, name_box.w - 4, name_box.h - 4};
     
-    buyteam[0].x = description_box.x + description_box.w/2 - buyteam[0].sizex - 4 - 30;
-    buyteam[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buyteam[0].sizey/2;
+    hiremenu_buttons[0].x = description_box.x + description_box.w/2 - hiremenu_buttons[0].sizex - 4 - 30;
+    hiremenu_buttons[0].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[0].sizey/2;
     
-    buyteam[1].x = description_box.x + description_box.w/2 + 4 + 30;
-    buyteam[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - buyteam[1].sizey/2;
+    hiremenu_buttons[1].x = description_box.x + description_box.w/2 + 4 + 30;
+    hiremenu_buttons[1].y = name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2 - hiremenu_buttons[1].sizey/2;
     
 	myscreen->clearbuffer();
 
 	if (localbuttons)
 		delete (localbuttons);
     
-	button* buttons = buyteam;
+	button* buttons = hiremenu_buttons;
 	int num_buttons = 5;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -1427,7 +1428,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 	return REDRAW;
 }
 
-Sint32 create_edit_menu(Sint32 arg1)
+Sint32 create_train_menu(Sint32 arg1)
 {
 	guy * here;
 	Sint32 linesdown, i, retvalue=0;
@@ -1443,15 +1444,20 @@ Sint32 create_edit_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
+	// Make sure we have a valid team
 	if (myscreen->save_data.team_size < 1)
+	{
+		popup_dialog("NEED A TEAM!", "You need to\nhire a team\nto train");
+		
 		return OK;
+	}
 
 	myscreen->clearbuffer();
 
 	if (localbuttons)
 		delete localbuttons;
     
-	button* buttons = editteam;
+	button* buttons = trainmenu_buttons;
 	int num_buttons = 20;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -1676,7 +1682,7 @@ Sint32 create_load_menu(Sint32 arg1)
 	if (localbuttons)
 		delete (localbuttons);
     
-	button* buttons = loadteam;
+	button* buttons = loadteam_buttons;
 	int num_buttons = 11;
 	int highlighted_button = 10;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -1737,6 +1743,8 @@ Sint32 create_load_menu(Sint32 arg1)
 void timed_dialog(const char* message, float delay_seconds)
 {
     Log("%s\n", message);
+    
+    myscreen->darken_screen();
     
 	text gladtext(myscreen);
 	
@@ -2011,7 +2019,7 @@ void popup_dialog(const char* title, const char* message, bool dim)
 		j = 0;
         for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - e->size()*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
             j++;
         }
 		
@@ -2037,7 +2045,7 @@ Sint32 create_save_menu(Sint32 arg1)
 	if (localbuttons)
 		delete (localbuttons);
     
-	button* buttons = saveteam;
+	button* buttons = saveteam_buttons;
 	int num_buttons = 11;
 	int highlighted_button = 10;
 	localbuttons = init_buttons(buttons, num_buttons);
@@ -2569,30 +2577,26 @@ Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 
 Sint32 do_save(Sint32 arg1)
 {
-	char newname[8];
-	
 	static text savetext(myscreen);
-	Sint32 xloc, yloc, x2loc, y2loc;
-
-	snprintf(newname, 8, "save%d",arg1);
 
 	release_mouse();
 	clear_keyboard();
-	xloc = allbuttons[arg1-1]->xloc;
-	yloc = allbuttons[arg1-1]->yloc;
-	x2loc = allbuttons[arg1-1]->width + xloc;
-	y2loc = allbuttons[arg1-1]->height + yloc + 10;
-	myscreen->draw_button(xloc, yloc, x2loc, y2loc, 2, 1);
 	
-	savetext.write_xy(xloc+5, yloc+4, "NAME YOUR SAVED GAME:", DARK_BLUE, 1);
-	const char* new_text = savetext.input_string(xloc+5, yloc+11, 35, allbuttons[arg1-1]->label.c_str());
-	if(new_text == NULL)
-        new_text = allbuttons[arg1-1]->label.c_str();
-	myscreen->draw_box(xloc, yloc, x2loc, y2loc, 0, 1, 1);
-	myscreen->buffer_to_screen(0, 0, 320, 200);
-	
-	myscreen->save_data.save_name = new_text;
-	myscreen->save_data.save(newname);
+	std::string name = allbuttons[arg1-1]->label;
+	if(prompt_for_string(&savetext, "NAME YOUR SAVED GAME", name))
+    {
+        myscreen->save_data.save_name = name;
+        
+        char newname[8];
+        snprintf(newname, 8, "save%d", arg1);
+        if(myscreen->save_data.save(newname))
+            timed_dialog("GAME SAVED");
+        else
+            timed_dialog("SAVE FAILED");
+    }
+    else
+        timed_dialog("SAVE CANCELED");
+    
 	grab_mouse();
 
 	return REDRAW;
@@ -2691,7 +2695,6 @@ Sint32 go_menu(Sint32 arg1)
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
 	static text gotext(myscreen);
-	Sint32 temptime;
 
 	if (arg1)
 		arg1 = 1;
@@ -2699,16 +2702,7 @@ Sint32 go_menu(Sint32 arg1)
 	// Make sure we have a valid team
 	if (myscreen->save_data.team_size < 1)
 	{
-		release_mouse();
-		myscreen->draw_dialog(100, 65, 220, 125, "Need a team!");
-		gotext.write_y(89, "Please hire a", DARK_BLUE, 1);
-		gotext.write_y(97, "team before", DARK_BLUE, 1);
-		gotext.write_y(105,"starting the level", DARK_BLUE, 1);
-		myscreen->buffer_to_screen(0, 0, 320, 200);
-		temptime = query_timer();
-		while(query_timer() < temptime + 150)
-			;
-		grab_mouse();
+		popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
 		
 		return REDRAW;
 	}
@@ -2927,7 +2921,7 @@ Sint32 create_detail_menu(guy *arg1)
    if (localbuttons)
        delete localbuttons;
     
-	button* buttons = detailed;
+	button* buttons = details_buttons;
 	int num_buttons = 2;
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
