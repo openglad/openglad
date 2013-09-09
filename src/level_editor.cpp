@@ -2362,12 +2362,22 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, fileLevelNewButton))
         {
-            // New level
-            level->clear();
-            level->create_new_grid();
-            myradar.start(level);
-            levelchanged = 1;
-            redraw = 1;
+            // Confirm if unsaved
+            bool cancel = false;
+            if (levelchanged)
+            {
+                cancel = !yes_or_no_prompt("Load Level", "Discard unsaved changes?", false);
+            }
+            
+            if(!cancel)
+            {
+                // New level
+                level->clear();
+                level->create_new_grid();
+                myradar.start(level);
+                levelchanged = 1;
+                redraw = 1;
+            }
         }
         else if(activate_menu_choice(mx, my, *this, fileLevelLoadButton))
         {
