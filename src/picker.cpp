@@ -923,12 +923,16 @@ Sint32 create_team_menu(Sint32 arg1)
 
 	myscreen->fadeblack(0);
 	
+	text mytext(myscreen);
+	
 	button* buttons = createmenu_buttons;
 	int num_buttons = 9;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	draw_backdrop();
 	draw_buttons(buttons, num_buttons);
+	
+	int last_level_id = -1;
 	
 	myscreen->fadeblack(1);
 	
@@ -947,6 +951,23 @@ Sint32 create_team_menu(Sint32 arg1)
 		myscreen->clearbuffer();
         draw_backdrop();
         draw_buttons(buttons, num_buttons);
+        
+        if(last_level_id != myscreen->save_data.scen_num)
+        {
+            last_level_id = myscreen->save_data.scen_num;
+            myscreen->level_data.id = last_level_id;
+            myscreen->level_data.load();
+        }
+        
+        // Level name
+        int len = strlen(myscreen->level_data.title.c_str());
+        myscreen->draw_rect_filled(buttons[7].x + buttons[7].sizex - 6*len - 2, buttons[7].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
+        mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", myscreen->level_data.title.c_str());
+        // Campaign name
+        len = strlen(myscreen->save_data.current_campaign.c_str());
+        myscreen->draw_rect_filled(buttons[8].x + buttons[8].sizex - 6*len - 2, buttons[8].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
+        mytext.write_xy(buttons[8].x + buttons[8].sizex - 6*strlen(myscreen->save_data.current_campaign.c_str()), buttons[8].y - 8, WHITE, "%s", myscreen->save_data.current_campaign.c_str());
+        
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);

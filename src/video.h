@@ -42,6 +42,7 @@ class video
 		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color);
 		void ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color);
 		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
+		void hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Uint8 alpha);
 		void ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
 		void do_cycle(Sint32 curmode, Sint32 maxmode);
 		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
@@ -94,6 +95,7 @@ class video
 
 		void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled);
 		void draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled, Sint32 tobuffer);
+		void draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h, unsigned char color, Uint8 alpha);
 		void draw_button(const SDL_Rect& rect, Sint32 border);
 		void draw_button_inverted(const SDL_Rect& rect);
 		void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border);

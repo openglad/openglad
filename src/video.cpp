@@ -186,6 +186,12 @@ void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char c
 	}
 }
 
+void video::draw_rect_filled(Sint32 x, Sint32 y, Uint32 w, Uint32 h, unsigned char color, Uint8 alpha)
+{
+    for (Uint32 i = 0; i < h; i++)
+        hor_line_alpha(x, y+i, w, color, alpha);
+}
+
 
 void video::draw_button(const SDL_Rect& rect, Sint32 border)
 {
@@ -577,6 +583,14 @@ void video::hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sin
 	
 	for (i = 0; i < length; i++)
 		pointb(x+i,y,color);
+}
+
+void video::hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Uint8 alpha)
+{
+	Sint32 i;
+
+	for (i = 0; i < length; i++)
+		pointb(x+i,y,color, alpha);
 }
 
 
