@@ -36,7 +36,7 @@ using namespace std;
 // Z's script: #include <process.h>
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-void popup_dialog(const char* title, const char* message, bool dim = false);
+void popup_dialog(const char* title, const char* message);
 
 void picker_main(Sint32 argc, char **argv);
 void intro_main(Sint32 argc, char **argv);

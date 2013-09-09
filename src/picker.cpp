@@ -42,7 +42,7 @@
 #define YES 5
 #define NO 6
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-void popup_dialog(const char* title, const char* message, bool dim = false);
+void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
 bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
@@ -944,20 +944,22 @@ Sint32 create_team_menu(Sint32 arg1)
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
-        // Reset buttons
-        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
-		// Draw
-		myscreen->clearbuffer();
-        draw_backdrop();
-        draw_buttons(buttons, num_buttons);
         
-        if(last_level_id != myscreen->save_data.scen_num)
+        // Reset buttons
+        bool buttons_were_reset = reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+        if(last_level_id != myscreen->save_data.scen_num || buttons_were_reset)
         {
+            retvalue = 0;
             last_level_id = myscreen->save_data.scen_num;
             myscreen->level_data.id = last_level_id;
             myscreen->level_data.load();
         }
+        
+		// Draw
+		myscreen->clearbuffer();
+        draw_backdrop();
+        draw_buttons(buttons, num_buttons);
         
         // Level name
         int len = strlen(myscreen->level_data.title.c_str());
@@ -1436,7 +1438,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         {
             // Show popup on new game
             arg1 = -1;
-            popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.", true);
+            popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
             
             if(localbuttons)
                 delete (localbuttons);
@@ -1800,6 +1802,10 @@ void timed_dialog(const char* message, float delay_seconds)
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
 {
+    Log("%s, %s: \n", title, message);
+    
+    myscreen->darken_screen();
+    
 	text gladtext(myscreen);
 	
 	int pix_per_char = 6;
@@ -1878,15 +1884,25 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 	}
 	
     if(retvalue == YES)
+    {
+        Log("YES\n");
         return true;
+    }
     if(retvalue == NO)
+    {
+        Log("NO\n");
         return false;
+    }
 	return default_value;
 }
 
 
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value)
 {
+    Log("%s, %s: \n", title, message);
+    
+    myscreen->darken_screen();
+    
 	text gladtext(myscreen);
 	
 	int pix_per_char = 6;
@@ -1965,16 +1981,23 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 	}
 	
     if(retvalue == YES)
+    {
+        Log("YES\n");
         return true;
+    }
     if(retvalue == NO)
+    {
+        Log("NO\n");
         return false;
+    }
 	return default_value;
 }
 
-void popup_dialog(const char* title, const char* message, bool dim)
+void popup_dialog(const char* title, const char* message)
 {
-    if(dim)
-        myscreen->darken_screen();
+    Log("%s, %s\n", title, message);
+    
+    myscreen->darken_screen();
     
 	text gladtext(myscreen);
 	
