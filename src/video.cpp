@@ -1427,37 +1427,15 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 void video::buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
                              Sint32 viewwidth, Sint32 viewheight)
 {
-	SDL_Surface *render;
-
-        //buffers: update the screen (swap some buffers :)
-	//      SDL_BlitSurface(screen,NULL,window,NULL);
-	//      SDL_UpdateRect(window,0,0,320,200);
-     
     SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
-	render = E_Screen->RenderAndReturn(viewstartx,viewstarty,viewwidth,viewheight);
+	E_Screen->RenderAndReturn(viewstartx,viewstarty,viewwidth,viewheight);
 	E_Screen->Swap(viewstartx,viewstarty,viewwidth,viewheight);
 }
 
 //buffers: like buffer_to_screen but automaticaly swaps the entire screen
 void video::swap(void)
 {
-	//SDL_UpdateRect(screen,0,0,screen_width,screen_height);
 	buffer_to_screen(0,0,320,200);
-}
-
-extern void do_clear_ints();
-extern void do_restore_ints();
-
-//buffers: PORT: #pragma aux do_clear_ints = "cli";
-// Zardus: PORT: #pragma aux do_restore_ints = "sti";
-
-void video::clear_ints()
-{
-	//buffers: PORT: won't link with this in: do_clear_ints();
-}
-void video::restore_ints()
-{
-	//buffers: PORT: won't link with this in: do_restore_ints();
 }
 
 //buffers: get pixel's RGB values if you have XY
