@@ -384,6 +384,8 @@ void SimpleButton::set_colors_active()
 
 bool prompt_for_string_block(text* mytext, const std::string& message, std::list<std::string>& result)
 {
+    myscreen->darken_screen();
+    
     int max_chars = 40;
     int max_lines = 8;
     
@@ -595,6 +597,8 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
 
 bool prompt_for_string(text* mytext, const std::string& message, std::string& result)
 {
+    myscreen->darken_screen();
+    
     int max_chars = 29;
     
     int x = 58;

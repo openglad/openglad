@@ -130,6 +130,9 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     hotkey = hot;
 
     //vdisplay();
+    color = BUTTON_FACING;
+    hidden = false;
+    no_draw = false;
 }
 
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
@@ -156,6 +159,9 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     hotkey = hot;
 
     //vdisplay();
+    color = BUTTON_FACING;
+    hidden = false;
+    no_draw = false;
 }
 
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
@@ -187,6 +193,9 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     xend = xloc + width;
     yend = yloc + height;
     //vdisplay();
+    color = BUTTON_FACING;
+    hidden = false;
+    no_draw = false;
 }
 
 vbutton::vbutton() //for pointers
@@ -229,6 +238,8 @@ void vbutton::set_graphic(char family)
 
 void vbutton::vdisplay()
 {
+    if(hidden || no_draw)
+        return;
     if (do_outline)
     {
         vdisplay(2);
@@ -243,7 +254,7 @@ void vbutton::vdisplay()
     }
     else
     {
-        myscreen->draw_box(xloc,yloc,xend-1,yend-1,BUTTON_FACING,1,1); // front
+        myscreen->draw_box(xloc,yloc,xend-1,yend-1,color,1,1); // front
         myscreen->draw_box(xloc,yloc,xend-2,yloc,BUTTON_TOP,1,1); // top edge
         myscreen->draw_box(xloc,yloc+1,xloc,yend-2,BUTTON_LEFT,1,1); // left
         myscreen->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
@@ -259,6 +270,8 @@ void vbutton::vdisplay()
 
 void vbutton::vdisplay(Sint32 status)
 {
+    if(hidden || no_draw)
+        return;
     if (!status) // do normal
     {
         vdisplay();
@@ -353,6 +366,8 @@ Sint32 vbutton::rightclick(button* buttons)
 
 Sint32 vbutton::leftclick(Sint32 whichbutton)
 {
+    if(hidden)
+        return -1;
     Sint32 retvalue=0;
 
     if (whichbutton == 1) // hotkeys
@@ -390,6 +405,8 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
 
 Sint32 vbutton::rightclick(Sint32 whichbutton)
 {
+    if(hidden)
+        return -1;
     Sint32 retvalue=0;
 
     if (whichbutton)
@@ -411,6 +428,8 @@ Sint32 vbutton::rightclick(Sint32 whichbutton)
 
 Sint32 vbutton::mouse_on()
 {
+    if(hidden)
+        return 0;
     Sint32 mousex,mousey;
     mymouse = query_mouse();
     mousex = mymouse[MOUSE_X];
@@ -468,6 +487,8 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
                                     buttons[i].sizex, buttons[i].sizey,
                                     buttons[i].myfun, buttons[i].arg1,
                                     buttons[i].label, buttons[i].hotkey);
+        allbuttons[i]->hidden = buttons[i].hidden;
+        allbuttons[i]->no_draw = buttons[i].no_draw;
     }
 
     return allbuttons[0];

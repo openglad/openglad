@@ -137,6 +137,9 @@ class vbutton
 		char depressed;
 		pixieN *mypixie;
 		int hotkey;
+		unsigned char color;
+		bool hidden;
+        bool no_draw;  // Does not draw but still accepts clicks
 };
 
 #define MAX_BUTTONS 50  // max buttons per screen
