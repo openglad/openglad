@@ -26,6 +26,7 @@ screen * myscreen;
 #include "parser.h"
 #include <string>
 #include "util.h"
+#include "results_screen.h"
 
 #ifdef OUYA
 #include "OuyaController.h"
@@ -134,11 +135,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 
 
 	// Load the default saved-game ..
-	load_saved_game("save0", myscreen); // over-rides current.fss ..
-
-	// Zardus: PORT: doesn't seem to be neccessary
-	// Prepare screen for fade in
-	//myscreen->draw_panels(myscreen->numviews);
+	load_saved_game("save0", myscreen);
 
     // This will update the 'control' so the screen centers on our guy
     myscreen->continuous_input();
@@ -207,7 +204,10 @@ void glad_main(screen *myscreen, Sint32 playermode)
                     bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
                     myscreen->redrawme = 1;
                     if (result) // player wants to quit
+                    {
                         done = true;
+                        results_screen(1, -1);
+                    }
                     else
                     {
                         set_palette(myscreen->ourpalette);  // restore normal palette
@@ -285,6 +285,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		delete before;
 		myscreen->level_data.fxlist = here;
 	}
+    
 	return; // return to picker
 	//  return 1;
 }

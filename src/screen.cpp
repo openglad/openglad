@@ -29,6 +29,7 @@
 #include "util.h"
 #include "input.h"
 #include "view_sizes.h"
+#include "results_screen.h"
 #include <string>
 
 using namespace std;
@@ -47,8 +48,6 @@ extern Sint32 calculate_level(Uint32 temp_exp);
 //#define BUF_SIZE (unsigned) ((S_DOWN-S_UP)*(S_RIGHT-S_LEFT))
 
 #define MAX_SPREAD 10 //this controls find_near_foe
-#define TIME_BONUS (Sint32) 5000
-#define LEVEL_BONUS (Sint32) 120
 //#define query_keyboard dumb
 //#define grab_keyboard yuck
 
@@ -679,7 +678,6 @@ short screen::continuous_input()
 short screen::act()
 {
 	oblink  *here,  *before;
-	here = level_data.oblist;
 	static char obmessage[80];
 	Sint32 printed_time = 0; // have we printed message yet?
 	//  static short debug = 0;
@@ -691,6 +689,7 @@ short screen::act()
 	if (enemy_freeze == 1)
 		set_palette(ourpalette);
 
+	here = level_data.oblist;
 	while(here)
 	{
 		if (!enemy_freeze) // normal functionality
@@ -1266,188 +1265,46 @@ short screen::endgame(short ending)
 
 short screen::endgame(short ending, short nextlevel)
 {
-	char temp[50];
-	text mytext(this, TEXT_1);
-	Uint32 bonuscash[4] = {0, 0, 0, 0};
-	oblink *checklist = level_data.oblist;
-	walker *target;
-	Sint32 test1;
-	int  i;
-	Uint32 allscore = 0, allbonuscash = 0;
-
-	for (i=0; i < 4; i++)
-		allscore += save_data.m_score[i];
-
+    if(end)
+        return 1;
+    
+    if (ending == 0) // we won
+	{
+        // Grab our team out of the level
+        save_data.update_guys(level_data.oblist);
+	}
+	
+    results_screen(ending, nextlevel);
+    
 	if (ending == 1)  // 1 = lose, for some reason
 	{
 		if (nextlevel == -1) // generic defeat
 		{
-			//buffers: we will port the red pal stuff later
-			//buffers: set_palette(redpalette);
-			draw_dialog(30, 70, 290, 134, "Defeat!");
-			mytext.write_y(92,"YOUR MEN ARE CRUSHED!", DARK_BLUE, 1);
-			sprintf(temp,"YOUR SCORE IS %u.\n", allscore);
-			mytext.write_y(100,temp, DARK_BLUE, 1);
-			mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
-			buffer_to_screen(0, 0, 320, 200);
-			// Zardus: all things should listen to get_input_events() for now until further notice
-			clear_keyboard();
-			while (!query_input_continue())
-				get_input_events(WAIT);
 			end = 1;
 		}
 		else // we're withdrawing to another level
 		{
-			//buffers: we will port the red pal stuff later
-			//buffers: set_palette(redpalette);
-			draw_dialog(30, 70, 290, 134, "Retreat!");
-			sprintf(temp, "Retreating to Level %d", nextlevel);
-			mytext.write_y(92,temp, DARK_BLUE, 1);
-			sprintf(temp,"(You may take this field later)");
-			mytext.write_y(100,temp, DARK_BLUE, 1);
-			mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
-			buffer_to_screen(0, 0, 320, 200);
-			clear_keyboard();
-			while (!query_input_continue())
-				get_input_events(WAIT);
-			//while (query_key() != SDLK_ESCAPE);
 			end = 1;
 		}
-
 	}
 	else if (ending == SCEN_TYPE_SAVE_ALL) // failed to save a guy
 	{
-		//buffers: we will port the red pal stuff later
-		//buffers: set_palette(redpalette);
-		//draw_button(30,82,290,122,4);
-		draw_dialog(30, 70, 290, 134, "Defeat!");
-		mytext.write_y(92,"YOU ARE DEFEATED", DARK_BLUE, 1);
-		sprintf(temp,"(YOU FAILED TO KEEP THE NPC'S ALIVE)" );
-		mytext.write_y(100,temp, DARK_BLUE, 1);
-		mytext.write_y(110,"**" CONTINUE_ACTION_STRING " TO RETURN TO THE MENUS.**", DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
-        clear_keyboard();
-        while (!query_input_continue())
-            get_input_events(WAIT);
 		end = 1;
 	}
 	else if (ending == 0) // we won
 	{
-		//buffers: we will port the red pal stuff later
-		//buffers: set_palette(redpalette);
-		if (save_data.is_level_completed(save_data.scen_num)) // this scenario is completed ..
-		{
-			draw_dialog(30, 70, 290, 134, "Traveling On..");
-			// Zardus: FIX: what the hell is this supposed to mean?
-			//      sprintf(temp,"(Field Already Won)", allscore);
-			sprintf(temp, "(Field Already Won)");
-			mytext.write_y(100,temp, DARK_BLUE, 1);
-		}
-		else
-		{
-			draw_dialog(30, 70, 290, 134, "Victory!");
-			mytext.write_y(92,"YOU WIN.", DARK_BLUE, 1);
-			sprintf(temp,"YOUR SCORE IS %u.\n", allscore);
-			mytext.write_y(100,temp, DARK_BLUE, 1);
-		}
-		mytext.write_y(120,"**" CONTINUE_ACTION_STRING " TO CONTINUE.**", DARK_BLUE, 1);
-		// Save the game status to a temp file (savetemp.gtl)
-		for (i=0; i < 4; i++)
-		{
-			save_data.m_totalscore[i] += save_data.m_score[i];
-			save_data.m_totalcash[i] += (save_data.m_score[i]*2);
-		}
-		for (i=0; i < 4; i++)
-		{
-			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)level_data.par_value * LEVEL_BONUS) - framecount))/(TIME_BONUS + ( ((Sint32)level_data.par_value * LEVEL_BONUS)/2));
-			if (bonuscash[i] < 0 || framecount > TIME_BONUS) // || framecount < 0)
-				bonuscash[i] = 0;
-			save_data.m_totalcash[i] += bonuscash[i];
-			allbonuscash += bonuscash[i];
-		}
-		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
-		{
-			for (i=0; i < 4; i++)
-				bonuscash[i] = 0;
-			allbonuscash = 0;
-		}
-		sprintf(temp,"YOUR TIME BONUS IS %u.\n",allbonuscash);
-		mytext.write_y(110,temp, DARK_BLUE, 1);
-		buffer_to_screen(0, 0, 320, 200);
-
-		// Save the level to disk ..
+		// Beat that level
 		save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
         
         // Autosave because we won
-        // Grab our team out of the level
-        save_data.update_guys(level_data.oblist);
-        // Save it
 		save_data.save("save0");
-
-		// Zardus: FIX: get_input_events should really be used instead of query_key while waiting for
-		// actions
-		clear_keyboard();
-		while (!query_input_continue())
-			get_input_events(WAIT); // pause
-
-		// Check for guys who have gone up levels
-        while (checklist)
-        {
-            if (checklist->ob)
-                target = checklist->ob;
-            else
-                target = NULL;
-            if (target && target->team_num==0
-                    && target->query_order()==ORDER_LIVING
-                    && !target->dead
-                    && target->myguy
-                    && target->myguy->level != calculate_level(target->myguy->exp)
-               ) // check for living guy on our team, with guy pointer
-            {
-                //draw_button(30,82,290,132,4);
-                if (target->myguy->level < calculate_level(target->myguy->exp))
-                {
-                    draw_dialog(30, 70, 290, 134, "Congratulations!");
-                    sprintf(temp, "%s reached level %d",
-                            target->myguy->name,
-                            calculate_level(target->myguy->exp) );
-                }
-                else // we lost levels :>
-                {
-                    draw_dialog(30, 70, 290, 134, "Alas!");
-                    sprintf(temp, "%s fell to level %d",
-                            target->myguy->name,
-                            calculate_level(target->myguy->exp) );
-                }
-                mytext.write_y(100,temp, DARK_BLUE, 1);
-                test1 = calculate_level(target->myguy->exp) - 1;
-                if ( !(test1%3) ) // we're on a special-gaining level
-                {
-                    test1 = (test1 / 3) + 1; // this is the special #
-                    if ( (test1 <= 4) // raise this when we have more than 4 specials
-                            && (strcmp(special_name[(int)target->query_family()][test1], "NONE") )
-                       )
-                    {
-                        sprintf(temp, "New Ability: %s!",
-                                special_name[(int)target->query_family()][test1]);
-                        mytext.write_y(110, temp, DARK_BLUE, 1);
-                    }
-                }
-                mytext.write_y(120, CONTINUE_ACTION_STRING " TO CONTINUE", DARK_BLUE, 1);
-                buffer_to_screen(0, 0, 320, 200);
-                clear_keyboard();
-                while (!query_input_continue())
-                    get_input_events(WAIT);
-            }
-            checklist = checklist->next;
-        } // end of while checklist
-        // end of full 'check for raised levels' routine
 
 		end = 1;
 	}
 
+    
 	return 1;
 }
 

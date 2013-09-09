@@ -347,14 +347,12 @@ bool SaveData::load(const std::string& filename)
     if(temp_version < 8)
     {
         char levelstatus[MAX_LEVELS];
+        memset(levelstatus, 0, 500);
         
         if (temp_version >= 5)
             SDL_RWread(infile, levelstatus, 500, 1);
         else
-        {
-            memset(levelstatus, 0, 500);
             SDL_RWread(infile, levelstatus, 200, 1);
-        }
         
         // Guaranteed to be the default campaign if version < 8
         for(int i = 0; i < 500; i++)

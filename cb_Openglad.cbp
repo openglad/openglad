@@ -563,6 +563,8 @@
 		<Unit filename="src/pixien.h" />
 		<Unit filename="src/radar.cpp" />
 		<Unit filename="src/radar.h" />
+		<Unit filename="src/results_screen.cpp" />
+		<Unit filename="src/results_screen.h" />
 		<Unit filename="src/sai2x.cpp" />
 		<Unit filename="src/sai2x.h" />
 		<Unit filename="src/save_data.cpp" />

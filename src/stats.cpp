@@ -61,8 +61,16 @@ statistics::statistics(walker  * someguy)
 	commandlist = NULL;
 	endlist = NULL;
 
-	old_order = controller->order;
-	old_family= controller->family;
+    if(controller != NULL)
+    {
+        old_order = controller->order;
+        old_family= controller->family;
+    }
+    else
+    {
+        old_order = ORDER_LIVING;
+        old_family = FAMILY_SOLDIER;
+    }
 
 	name[0] = 0; // set to null string
 }
