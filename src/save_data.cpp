@@ -709,3 +709,11 @@ void SaveData::add_level_completed(const std::string& campaign, int level_index)
     e->second.insert(level_index);
 }
 
+void SaveData::reset_campaign(const std::string& campaign)
+{
+    std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
+    
+    if(e != completed_levels.end())
+        e->second.clear();
+}
+

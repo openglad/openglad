@@ -281,17 +281,23 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
     // Here are the browser variables
     std::vector<CampaignEntry*> entries;
     
+    unsigned int current_campaign_index = 0;
+    
     // Load campaigns
     std::list<std::string> campaign_ids = list_campaigns();
+    int i = 0;
     for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
     {
         int num_completed = -1;
         if(save_data != NULL)
             num_completed = save_data->get_num_levels_completed(*e);
         entries.push_back(new CampaignEntry(screenp, *e, num_completed));
+        
+        if(*e == old_campaign_id)
+            current_campaign_index = i;
+        
+        i++;
     }
-    
-    unsigned int current_campaign_index = 3;
 
     // Figure out how good the player's army is
     int army_power = -1;
@@ -324,6 +330,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
     SDL_Rect cancel = {Sint16(screenW/2 - 38 - 20), Sint16(screenH - 15), 38, 10};
     SDL_Rect delete_button = {Sint16(screenW - 50), 10, 38, 10};
     SDL_Rect id_button = {Sint16(delete_button.x - 52 - 10), 10, 52, 10};
+    SDL_Rect reset_button = delete_button;
     
     
     // Controller input
@@ -336,6 +343,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
 	int cancel_index = 3;
 	int delete_index = 4;
 	int id_index = 5;
+	int reset_index = 6;
 	
 	button buttons[] = {
         button("PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::DownRight(cancel_index, next_index)),
@@ -344,16 +352,19 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         button("CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpRight(prev_index, choose_index)),
         button("DELETE", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav::DownLeft(choose_index, id_index)),
         button("ENTER ID", KEYSTATE_UNKNOWN, id_button.x, id_button.y, id_button.w, id_button.h, 0, -1 , MenuNav::DownRight(next_index, delete_index)),
+        button("RESET", KEYSTATE_UNKNOWN, delete_button.x, delete_button.y, delete_button.w, delete_button.h, 0, -1 , MenuNav::DownLeft(choose_index, id_index)),
 	};
 	
 	buttons[prev_index].hidden = (current_campaign_index == 0);
 	buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
 	buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL);
 	buttons[delete_index].hidden = !enable_delete;
+	buttons[reset_index].hidden = enable_delete;
 	
 	buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
 	buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
 	buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
+	buttons[id_index].nav.right = (buttons[delete_index].hidden? reset_index : delete_index);
 
     bool done = false;
     while (!done)
@@ -389,6 +400,8 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
                && cancel.y <= my && my <= cancel.y + cancel.h) || (retvalue == OG_OK && highlighted_button == cancel_index) || keystates[buttons[cancel_index].hotkey];
         bool do_delete = !buttons[delete_index].hidden && ((do_click && enable_delete && delete_button.x <= mx && mx <= delete_button.x + delete_button.w
                && delete_button.y <= my && my <= delete_button.y + delete_button.h) || (retvalue == OG_OK && highlighted_button == delete_index));
+        bool do_reset = !buttons[reset_index].hidden && ((do_click && reset_button.x <= mx && mx <= reset_button.x + reset_button.w
+               && reset_button.y <= my && my <= reset_button.y + reset_button.h) || (retvalue == OG_OK && highlighted_button == reset_index));
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
                && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OG_OK && highlighted_button == id_index);
         
@@ -475,6 +488,15 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
                 break;
             }
        }
+       // Reset progress
+       else if(do_reset)
+       {
+           if(yes_or_no_prompt("Reset campaign", "Reset your progress\nin this campaign?", false)
+              && no_or_yes_prompt("Reset campaign", "Are you really sure?", false))
+           {
+               myscreen->save_data.reset_campaign(entries[current_campaign_index]->id);
+           }
+       }
        
         retvalue = 0;
 
@@ -485,10 +507,12 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
             buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
             buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL);
             buttons[delete_index].hidden = !enable_delete;
-            
+            buttons[reset_index].hidden = enable_delete;
+
             buttons[next_index].nav.down = (buttons[choose_index].hidden? cancel_index : choose_index);
             buttons[cancel_index].nav.up = (buttons[prev_index].hidden? (buttons[next_index].hidden? id_index : next_index) : prev_index);
             buttons[id_index].nav.down = (buttons[next_index].hidden? (buttons[prev_index].hidden? cancel_index : prev_index) : next_index);
+            buttons[id_index].nav.right = (buttons[delete_index].hidden? reset_index : delete_index);
             
             if(buttons[highlighted_button].hidden)
             {
@@ -527,6 +551,11 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         {
             screenp->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
             loadtext->write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
+        }
+        else
+        {
+            screenp->draw_button(reset_button.x, reset_button.y, reset_button.x + reset_button.w, reset_button.y + reset_button.h, 1, 1);
+            loadtext->write_xy(reset_button.x + 2, reset_button.y + 2, "Reset", RED, 1);
         }
         
         screenp->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);

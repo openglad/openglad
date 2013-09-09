@@ -62,6 +62,7 @@ public:
     bool is_level_completed(int level_index) const;
     int get_num_levels_completed(const std::string& campaign) const;
     void add_level_completed(const std::string& campaign, int level_index);
+    void reset_campaign(const std::string& campaign);
 };
 
 #endif
