@@ -22,6 +22,8 @@ extern Sint32 costlist[NUM_FAMILIES];  // These come from picker.cpp
 extern Sint32 statcosts[NUM_FAMILIES][6];
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
+static int guy_id_counter = 0;
+
 int MAX(int a,int b)
 {
 	if (a < b)
@@ -45,6 +47,8 @@ guy::guy()
 	level_kills = 0;
 	total_damage = total_hits = total_shots = 0;
 	teamnum = 0;
+	
+	id = guy_id_counter++;
 }
 
 // Set defaults for various types
@@ -233,6 +237,8 @@ guy::guy(char whatfamily)
 			armor = 6;
 			break;
 	}
+	
+	id = guy_id_counter++;
 }
 
 
@@ -242,7 +248,7 @@ guy::guy(const guy& copy)
     , level(copy.level), armor(copy.armor)
     , exp(copy.exp), kills(copy.kills), level_kills(copy.level_kills)
     , total_damage(copy.total_damage), total_hits(copy.total_hits), total_shots(copy.total_shots)
-    , teamnum(copy.teamnum)
+    , teamnum(copy.teamnum), id(copy.id)
 {
     strcpy(name, copy.name);
 }
@@ -492,23 +498,4 @@ walker* guy::create_and_add_walker(screen* myscreen)
     
     return temp_walker;
 }
-
-// Zardus: PORT: still no exception struct
-//int matherr(struct exception *problem)
-//{
-//  char message[80];
-//  // If we're a "pow" function with a <0 domain,
-//  // just ignore it:
-//  if (!strcmp("pow", problem->name) && problem->arg1 < 0)
-//  {
-//    problem->type = 0;
-//    problem->retval = 0;
-//    return 0;
-//  }
-//  // Otherwise, do nothing, but print a message
-//  sprintf(message, "Error: %s (%d, %d)", problem->name,
-//    problem->arg1, problem->arg2);
-//  myscreen->do_notify(message, NULL);
-//  return 0;
-//}
 

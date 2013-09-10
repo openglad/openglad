@@ -1267,14 +1267,31 @@ short screen::endgame(short ending, short nextlevel)
 {
     if(end)
         return 1;
-    
-    if (ending == 0) // we won
+	
+	
+	std::map<int, guy*> before;
+	std::map<int, walker*> after;
+	
+	// Get guys from before battle
+	for(int i = 0; i < save_data.team_size; i++)
+    {
+        if(save_data.team_list[i] != NULL)
+            before.insert(make_pair(save_data.team_list[i]->id, save_data.team_list[i]));
+    }
+	
+    // Get guys from the battle
+    oblink* here = level_data.oblist;  // back to head of list
+	while (here)
 	{
-        // Grab our team out of the level
-        save_data.update_guys(level_data.oblist);
+		if (here->ob && !here->ob->dead && here->ob->myguy)
+        {
+			after.insert(make_pair(here->ob->myguy->id, here->ob));
+        }
+		here = here->next;
 	}
 	
-    results_screen(ending, nextlevel);
+	// Let's show the results!
+    results_screen(ending, nextlevel, before, after);
     
 	if (ending == 1)  // 1 = lose, for some reason
 	{
@@ -1293,10 +1310,40 @@ short screen::endgame(short ending, short nextlevel)
 	}
 	else if (ending == 0) // we won
 	{
+        Uint32 bonuscash[4] = {0, 0, 0, 0};
+        Uint32 allbonuscash = 0;
+        
+		// Update all the money!
+		for (int i=0; i < 4; i++)
+		{
+			save_data.m_totalscore[i] += save_data.m_score[i];
+			save_data.m_totalcash[i] += (save_data.m_score[i]*2);
+		}
+		for (int i=0; i < 4; i++)
+		{
+            #define TIME_BONUS (Sint32) 5000
+            #define LEVEL_BONUS (Sint32) 120
+
+			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)level_data.par_value * LEVEL_BONUS) - myscreen->framecount))/(TIME_BONUS + ( ((Sint32)level_data.par_value * LEVEL_BONUS)/2));
+			if (bonuscash[i] < 0 || myscreen->framecount > TIME_BONUS) // || framecount < 0)
+				bonuscash[i] = 0;
+			save_data.m_totalcash[i] += bonuscash[i];
+			allbonuscash += bonuscash[i];
+		}
+		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
+		{
+			for (int i=0; i < 4; i++)
+				bonuscash[i] = 0;
+			allbonuscash = 0;
+		}
+	    
 		// Beat that level
 		save_data.add_level_completed(save_data.current_campaign, save_data.scen_num); // this scenario is completed ..
 		if (nextlevel != -1)
 			save_data.scen_num = nextlevel;    // Fake jumping to next level ..
+        
+        // Grab our team out of the level
+        save_data.update_guys(level_data.oblist);
         
         // Autosave because we won
 		save_data.save("save0");

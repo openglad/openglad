@@ -48,7 +48,9 @@ class guy
 		Sint32 total_hits;   // version 4+
 		Sint32 total_shots;  // version 4+
 		short teamnum;     // version 5+
-
+        
+        // In ID for comparing old guys with their duplicated counterparts after battle
+        int id;
 };
 
 #endif

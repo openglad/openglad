@@ -196,23 +196,15 @@ short treasure::eat_me(walker  * eater)
 					{
 						if (here->ob && here->ob->query_order() == ORDER_LIVING)
 						{
-							//myscreen->remove_ob(here->ob);
 							here->ob->dead = 1;
 							myscreen->level_data.myobmap->remove(here->ob);
-							//myscreen->remove_obmap(here->ob);
 						}
 						here = here->next;
 					}
-					//here = myscreen->fxlist;
-					//while (here)
-					//{
-					//  if (here->ob)
-					//    myscreen->remove_fx_ob(here->ob);
-					//  here = here->next;
-					//}
 					
 					// Now reload the autosave to revert our changes during battle (don't use SaveData::update_guys())
                     myscreen->save_data.load("save0");
+                    
                     // Go to the exit's level
 					myscreen->save_data.scen_num = stats->level;
 					myscreen->end = 1;
@@ -238,7 +230,6 @@ short treasure::eat_me(walker  * eater)
 				if(result) // accepted level change
 				{
 					clear_keyboard();
-					//screenp->levelstatus[screenp->scen_num] = 1;
 					return screenp->endgame(0, stats->level);
 				}
 				clear_keyboard();
