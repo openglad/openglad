@@ -71,17 +71,20 @@ public:
     guy* before;
     walker* after;
     
+    std::string get_name();
+    std::string get_class_name();
     int get_level();
     bool gained_level();
     bool lost_level();
     
     // These are percentages of what you need for the next level.
     float get_XP_base();
-    float get_XP_gain();  // could be negative, in which case it is a percentage of the XP needed for the lost level
+    float get_XP_gain();  // could be negative, if a level is lost, it is a percentage of the XP needed for the lost level
     
     int get_tallies();
     float get_HP();  // percentage of total
     bool is_dead();
+    bool is_new();
     
     TroopResult(guy* before, walker* after);
 };
@@ -91,6 +94,26 @@ TroopResult::TroopResult(guy* before, walker* after)
 {
     if(after != NULL && after->myguy == NULL)
         after = NULL;
+}
+
+std::string TroopResult::get_name()
+{
+    if(before != NULL)
+        return before->name;
+    if(after != NULL)
+        return after->myguy->name;
+    return std::string();
+}
+
+const char* get_family_string(short family);
+
+std::string TroopResult::get_class_name()
+{
+    if(before != NULL)
+        return get_family_string(before->family);
+    if(after != NULL)
+        return get_family_string(after->myguy->family);
+    return std::string();
 }
 
 int TroopResult::get_level()
@@ -124,6 +147,9 @@ float TroopResult::get_XP_base()
     if(before == NULL)
         return 0.0f;
     
+    if(gained_level())
+        return 0.0f;
+    
     return (before->exp - calculate_exp(before->level))/float(calculate_exp(before->level + 1));
 }
 
@@ -131,6 +157,9 @@ float TroopResult::get_XP_gain()
 {
     if(after == NULL || before == NULL)
         return 0.0f;
+        
+    if(gained_level())
+        return (after->myguy->exp - calculate_exp(before->level + 1))/float(calculate_exp(before->level + 2));
     
     if(lost_level())
         return (after->myguy->exp - before->exp)/float(calculate_exp(before->level));
@@ -159,6 +188,11 @@ bool TroopResult::is_dead()
     return (get_HP() <= 0.0f);
 }
 
+bool TroopResult::is_new()
+{
+    return (before == NULL && after != NULL);
+}
+
 
 
 void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
@@ -169,22 +203,18 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     LevelData& level_data = myscreen->level_data;
     SaveData& save_data = myscreen->save_data;
     
-	char temp[50];
 	text mytext(myscreen, TEXT_1);
+	text bigtext(myscreen, TEXT_BIG);
 	Uint32 bonuscash[4] = {0, 0, 0, 0};
-	oblink *checklist = level_data.oblist;
-	walker *target;
-	Sint32 test1;
-	int  i;
 	Uint32 allscore = 0, allbonuscash = 0;
 
-	for (i=0; i < 4; i++)
+	for(int i = 0; i < 4; i++)
 		allscore += save_data.m_score[i];
 	
 	if(ending == 0)  // we won
 	{
 	    // Calculate bonuses
-		for (i=0; i < 4; i++)
+		for (int i = 0; i < 4; i++)
 		{
 			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)level_data.par_value * LEVEL_BONUS) - myscreen->framecount))/(TIME_BONUS + ( ((Sint32)level_data.par_value * LEVEL_BONUS)/2));
 			if (bonuscash[i] < 0 || myscreen->framecount > TIME_BONUS) // || framecount < 0)
@@ -193,74 +223,296 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 		}
 		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus
 		{
-			for (i=0; i < 4; i++)
+			for(int i = 0; i < 4; i++)
 				bonuscash[i] = 0;
 			allbonuscash = 0;
 		}
 	}
 	
-	
     // Now show the results
     
-    for(std::map<int, guy*>::const_iterator e = before.begin(); e != before.end(); e++)
+    std::set<int> used_troops;
+    std::vector<TroopResult> troops;
+    
+    // Get the guys from "before"
+    for(std::map<int, guy*>::iterator e = before.begin(); e != before.end(); e++)
     {
-        Log("Guy: %s (%d), HP: %.2f, XP: %.2f\n", e->second->name, e->second->id, TroopResult(e->second, after[e->first]).get_HP(), TroopResult(e->second, after[e->first]).get_XP_gain());
+        used_troops.insert(e->first);
+        troops.push_back(TroopResult(e->second, after[e->first]));
     }
     
-    
+    // Get the ones from "after" that weren't in "before"
+    for(std::map<int, walker*>::iterator e = after.begin(); e != after.end(); e++)
     {
-		// Check for guys who have gone up levels
-        while (checklist)
+        if(used_troops.insert(e->first).second)
+            troops.push_back(TroopResult(before[e->first], e->second));
+    }
+    
+    walker* mvp = NULL;
+    for(std::map<int, walker*>::iterator e = after.begin(); e != after.end(); e++)
+    {
+        // FIXME: Is total_damage persistent?  We only want damage for this level.
+        if(mvp == NULL || (e->second != NULL && mvp->myguy->total_damage < e->second->myguy->total_damage))
+            mvp = e->second;
+    }
+    
+    // Hold indices for troops
+    std::vector<int> recruits;
+    std::vector<int> losses;
+    int i = 0;
+    for(std::vector<TroopResult>::iterator e = troops.begin(); e != troops.end(); e++)
+    {
+        if(e->is_dead())
+            losses.push_back(i);
+        else if(e->is_new())
+            recruits.push_back(i);
+        i++;
+    }
+    
+    // TODO: Somehow show that a character has gained a special ability on level up
+    // Maybe clicking on a character will display more details
+    /*test1 = calculate_level(target->myguy->exp) - 1;
+    if ( !(test1%3) ) // we're on a special-gaining level
+    {
+        test1 = (test1 / 3) + 1; // this is the special #
+        if ( (test1 <= 4) // raise this when we have more than 4 specials
+                && (strcmp(myscreen->special_name[(int)target->query_family()][test1], "NONE") )
+           )
         {
-            if (checklist->ob)
-                target = checklist->ob;
-            else
-                target = NULL;
-            if (target && target->team_num==0
-                    && target->query_order()==ORDER_LIVING
-                    && !target->dead
-                    && target->myguy
-                    && target->myguy->level != calculate_level(target->myguy->exp)
-               ) // check for living guy on our team, with guy pointer
-            {
-                //draw_button(30,82,290,132,4);
-                if (target->myguy->level < calculate_level(target->myguy->exp))
-                {
-                    myscreen->draw_dialog(30, 70, 290, 134, "Congratulations!");
-                    sprintf(temp, "%s reached level %d",
-                            target->myguy->name,
-                            calculate_level(target->myguy->exp) );
-                }
-                else // we lost levels :>
-                {
-                    myscreen->draw_dialog(30, 70, 290, 134, "Alas!");
-                    sprintf(temp, "%s fell to level %d",
-                            target->myguy->name,
-                            calculate_level(target->myguy->exp) );
-                }
-                mytext.write_y(100,temp, DARK_BLUE, 1);
-                test1 = calculate_level(target->myguy->exp) - 1;
-                if ( !(test1%3) ) // we're on a special-gaining level
-                {
-                    test1 = (test1 / 3) + 1; // this is the special #
-                    if ( (test1 <= 4) // raise this when we have more than 4 specials
-                            && (strcmp(myscreen->special_name[(int)target->query_family()][test1], "NONE") )
-                       )
-                    {
-                        sprintf(temp, "New Ability: %s!",
-                                myscreen->special_name[(int)target->query_family()][test1]);
-                        mytext.write_y(110, temp, DARK_BLUE, 1);
-                    }
-                }
-                mytext.write_y(120, CONTINUE_ACTION_STRING " TO CONTINUE", DARK_BLUE, 1);
-                myscreen->buffer_to_screen(0, 0, 320, 200);
-                clear_keyboard();
-                while (!query_input_continue())
-                    get_input_events(WAIT);
-            }
-            checklist = checklist->next;
-        } // end of while checklist
-        // end of full 'check for raised levels' routine
-	}
+            sprintf(temp, "New Ability: %s!",
+                    myscreen->special_name[(int)target->query_family()][test1]);
+            mytext.write_y(110, temp, DARK_BLUE, 1);
+        }
+    }*/
+    
+    int mode = 0;
+    
+    Sint16 screenW = 320;
+    Sint16 screenH = 200;
+    
+    SDL_Rect area;
+    area.x = 50;
+    area.y = 20;
+    area.w = screenW - 2*area.x;
+    area.h = screenH - 2*area.y;
+    
+    SDL_Rect area_inner = {area.x + 3, area.y + 17, area.w - 6, area.h - 34};
 
+    // Buttons
+    SDL_Rect ok_rect = {Sint16(area.x + area.w/2 - 45), Sint16(area.y + area.h - 14), 35, 10};
+    SDL_Rect retry_rect = {Sint16(area.x + area.w/2 + 10), Sint16(area.y + area.h - 14), 35, 10};
+
+    SDL_Rect overview_rect = {Sint16(area.x + area.w/2 - 100), Sint16(area.y + 4), 50, 10};
+    SDL_Rect troops_rect = {Sint16(area.x + area.w/2 + 50), Sint16(area.y + 4), 50, 10};
+    
+    
+    // Controller input
+    int retvalue = 0;
+	int highlighted_button = 0;
+	
+	int ok_index = 0;
+	int retry_index = 1;
+	int overview_index = 2;
+	int troops_index = 3;
+	int num_buttons = 4;
+	
+	button buttons[] = {
+        button("OK", KEYSTATE_UNKNOWN, ok_rect.x, ok_rect.y, ok_rect.w, ok_rect.h, 0, -1 , MenuNav::UpRight(overview_index, retry_index)),
+        button("RETRY", KEYSTATE_UNKNOWN, retry_rect.x, retry_rect.y, retry_rect.w, retry_rect.h, 0, -1 , MenuNav::UpLeft(troops_index, ok_index)),
+        button("OVERVIEW", KEYSTATE_UNKNOWN, overview_rect.x, overview_rect.y, overview_rect.w, overview_rect.h, 0, -1 , MenuNav::DownRight(ok_index, troops_index)),
+        button("TROOPS", KEYSTATE_UNKNOWN, troops_rect.x, troops_rect.y, troops_rect.w, troops_rect.h, 0, -1 , MenuNav::DownLeft(retry_index, overview_index)),
+	};
+	
+	
+    bool done = false;
+    while (!done)
+    {
+        // Reset the timer count to zero ...
+        reset_timer();
+
+        if(myscreen->end)
+            break;
+
+        // Get keys and stuff
+        get_input_events(POLL);
+		
+        handle_menu_nav(buttons, highlighted_button, retvalue, false);
+
+        // Quit if 'q' is pressed
+        if(keystates[KEYSTATE_q])
+            done = true;
+
+        // Mouse stuff ..
+		mymouse = query_mouse();
+        int mx = mymouse[MOUSE_X];
+        int my = mymouse[MOUSE_Y];
+        
+        bool do_click = mymouse[MOUSE_LEFT];
+		bool do_ok = ((do_click && ok_rect.x <= mx && mx <= ok_rect.x + ok_rect.w
+               && ok_rect.y <= my && my <= ok_rect.y + ok_rect.h) || (retvalue == OG_OK && highlighted_button == ok_index));
+		bool do_retry = ((do_click && retry_rect.x <= mx && mx <= retry_rect.x + retry_rect.w
+               && retry_rect.y <= my && my <= retry_rect.y + retry_rect.h) || (retvalue == OG_OK && highlighted_button == retry_index));
+		bool do_overview = ((do_click && overview_rect.x <= mx && mx <= overview_rect.x + overview_rect.w
+               && overview_rect.y <= my && my <= overview_rect.y + overview_rect.h) || (retvalue == OG_OK && highlighted_button == overview_index));
+		bool do_troops = ((do_click && troops_rect.x <= mx && mx <= troops_rect.x + troops_rect.w
+               && troops_rect.y <= my && my <= troops_rect.y + troops_rect.h) || (retvalue == OG_OK && highlighted_button == troops_index));
+        
+		if (mymouse[MOUSE_LEFT])
+		{
+		    while(mymouse[MOUSE_LEFT])
+                get_input_events(WAIT);
+		}
+
+       // Ok
+       if(do_ok)
+       {
+           myscreen->soundp->play_sound(SOUND_BOW);
+           done = true;
+       }
+       // Retry
+       else if(do_retry)
+       {
+           myscreen->soundp->play_sound(SOUND_BOW);
+           const char* msg = (ending == 0? "Try this level again?\nYou will lose your progress\non this level." : "Try this level again?");
+           if(yes_or_no_prompt("Retry level", msg, false))
+           {
+               // FIXME: Try again
+           }
+       }
+       // Overview
+       else if(do_overview)
+       {
+           myscreen->soundp->play_sound(SOUND_BOW);
+           mode = 0;
+       }
+       // Troops
+       else if(do_troops)
+       {
+           myscreen->soundp->play_sound(SOUND_BOW);
+           mode = 1;
+       }
+       
+        retvalue = 0;
+
+        // Draw
+        myscreen->draw_button(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, 1, 1);
+        myscreen->draw_button_inverted(area_inner.x, area_inner.y, area_inner.w, area_inner.h);
+        bigtext.write_xy_center(area.x + area.w/2, area.y + 4, RED, "RESULTS");
+        
+        if(mode == 0)
+        {
+            // Overview
+            int x = area.x + 12;
+            int y = area.y + 30;
+            float i = 0.0f;
+            
+            if(ending == 0)
+            {
+                // TODO: Show total possible gold
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d Gold Gained", allscore*2);
+                if(allbonuscash > 0)
+                    mytext.write_xy_center(area.x + area.w/2, y + 9, DARK_BLUE, "+ %d Bonus Gold", allbonuscash);
+                i++;
+            }
+            
+            // FIXME: Put in right # foes
+            if(ending == 0)
+                mytext.write_xy_center(area.x + area.w/2, y + i*22, DARK_BLUE, "%d Foes Defeated", 0);
+            else
+                mytext.write_xy_center(area.x + area.w/2, y + i*22, DARK_BLUE, "%d of %d Foes Defeated", 0, 0);
+            i++;
+            
+            if(mvp != NULL)
+            {
+                mytext.write_xy_center(area.x + area.w/2, y + i*22, DARK_BLUE, "MVP: %s, %s LVL %d", mvp->myguy->name, get_family_string(mvp->myguy->family), calculate_level(mvp->myguy->exp));
+                i++;
+            }
+            
+            if(ending == 0 && recruits.size() > 0)
+            {
+                mytext.write_xy(x, y + i*22, DARK_BLUE, "Recruits:");
+                i++;
+                for(std::vector<int>::iterator e = recruits.begin(); e != recruits.end(); e++)
+                {
+                    mytext.write_xy(x, y + i*22, DARK_BLUE, " + %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    i += 0.5f;
+                }
+                i += 0.5f;
+            }
+            
+            if(ending != 1 && losses.size() > 0)  // won or lost due to NPC
+            {
+                mytext.write_xy(x, y + i*22, DARK_BLUE, "Losses:");
+                i++;
+                for(std::vector<int>::iterator e = losses.begin(); e != losses.end(); e++)
+                {
+                    mytext.write_xy(x, y + i*22, DARK_BLUE, " - %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    i += 0.5f;
+                }
+                i += 0.5f;
+            }
+        }
+        else if(mode == 1)
+        {
+            int barH = 5;
+            // Troops
+            for(size_t i = 0; i < troops.size(); i++)
+            {
+                int x = area.x + 12;
+                int y = area.y + 30 + 22*i;
+                
+                int tallies = troops[i].get_tallies();
+                
+                mytext.write_xy(x, y, DARK_BLUE, "%s, %s LVL %d", troops[i].get_name().c_str(), troops[i].get_class_name().c_str(), troops[i].get_level());
+                // HP
+                if(troops[i].is_dead())
+                {
+                    mytext.write_xy(x + 10, y + 10, RED, "LOST");
+                    if(tallies > 0)
+                        mytext.write_xy(x + 10 + 40, y + 10, DARK_BLUE, "%d Tallies", tallies);
+                }
+                else
+                {
+                    x += 10;
+                    mytext.write_xy(x, y + 10, RED, "HP");
+                    x += 14;
+                    myscreen->fastbox(x, y + 10, 60*troops[i].get_HP(), barH, RED);
+                    myscreen->fastbox_outline(x, y + 10, 60, barH, PURE_BLACK);
+                    
+                    // XP
+                    x += 70;
+                    mytext.write_xy(x, y + 10, DARK_GREEN, "EXP");
+                    x += 20;
+                    float base = 60*troops[i].get_XP_base();
+                    float gain = 60*troops[i].get_XP_gain();
+                    if(gain >= 0)
+                    {
+                        myscreen->fastbox(x, y + 10, base, barH, DARK_BLUE);
+                        myscreen->fastbox(x + base, y + 10, gain, barH, DARK_GREEN);
+                    }
+                    else
+                        myscreen->fastbox(x + 60 + gain, y + 10, -gain, barH, RED);
+                    myscreen->fastbox_outline(x, y + 10, 60, barH, PURE_BLACK);
+                    
+                    if(tallies > 0)
+                        mytext.write_xy(x + 60 + 10, y + 10, DARK_BLUE, "%d Tallies", tallies);
+                }
+                
+            }
+        }
+        
+        
+        for(int i = 0; i < num_buttons; i++)
+        {
+            if((mode == 0 && i == overview_index) || (mode == 1 && i == troops_index))
+                myscreen->draw_button_inverted(buttons[i].x, buttons[i].y, buttons[i].sizex, buttons[i].sizey);
+            else
+                myscreen->draw_button(buttons[i].x, buttons[i].y, buttons[i].x + buttons[i].sizex - 1, buttons[i].y + buttons[i].sizey - 1, 1, 1);
+            mytext.write_xy(buttons[i].x + buttons[i].sizex/2 - 3*buttons[i].label.size(), buttons[i].y + 2, buttons[i].label.c_str(), DARK_BLUE, 1);
+        }
+        
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0, 0, 320, 200);
+        SDL_Delay(10);
+    }
 }

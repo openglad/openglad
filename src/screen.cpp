@@ -1283,7 +1283,7 @@ short screen::endgame(short ending, short nextlevel)
     oblink* here = level_data.oblist;  // back to head of list
 	while (here)
 	{
-		if (here->ob && !here->ob->dead && here->ob->myguy)
+		if (here->ob && here->ob->myguy)
         {
 			after.insert(make_pair(here->ob->myguy->id, here->ob));
         }

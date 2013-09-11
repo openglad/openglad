@@ -117,6 +117,26 @@ short text::write_xy(short x, short y, unsigned char color, const char* formatte
 	return 1;
 }
 
+short text::write_xy_center(short x, short y, unsigned char color, const char* formatted_string, ...)
+{
+    if(formatted_string == NULL)
+        return 0;
+    
+    va_list lst;
+    va_start(lst, formatted_string);
+    vsnprintf(text_buffer, 255, formatted_string, lst);
+    va_end(lst);
+    
+	unsigned short i = 0;
+	size_t len = strlen(text_buffer);
+	while(text_buffer[i])
+	{
+		write_char_xy((short) (x+i*(sizex+1) - len*(sizex+1)/2), y, text_buffer[i], (unsigned char) color);
+		i++;
+	}
+	return 1;
+}
+
 short text::write_xy(short x, short y, const char *string)
 {
 	unsigned short i = 0;

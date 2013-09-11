@@ -203,6 +203,11 @@ void video::draw_button_inverted(const SDL_Rect& rect)
     draw_text_bar(rect.x, rect.y, rect.x + rect.w - 1, rect.y + rect.h - 1);
 }
 
+void video::draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h)
+{
+    draw_text_bar(x, y, x + w - 1, y + h - 1);
+}
+
 
 void video::draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border)
 {
@@ -375,6 +380,11 @@ void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, un
 
 	query_palette_reg(color,&r,&g,&b);
 	SDL_FillRect(screen,&rect,SDL_MapRGB(screen->format,r*4,g*4,b*4));
+}
+
+void video::fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color)
+{
+    draw_box(startx, starty, startx + xsize, starty + ysize, color, 0);
 }
 
 // Place a point on the screen
