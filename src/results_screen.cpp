@@ -195,6 +195,14 @@ bool TroopResult::is_new()
 
 
 
+
+#define BEGIN_IF_IN_SCROLL_AREA \
+if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h) {
+
+#define END_IF_IN_SCROLL_AREA \
+}
+
+
 void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
     // Popup the ending dialog
@@ -286,6 +294,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     }*/
     
     int mode = 0;
+    float scroll = 0.0f;
     
     Sint16 screenW = 320;
     Sint16 screenH = 200;
@@ -338,14 +347,14 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 		
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 
-        // Quit if 'q' is pressed
-        if(keystates[KEYSTATE_q])
-            done = true;
-
         // Mouse stuff ..
 		mymouse = query_mouse();
         int mx = mymouse[MOUSE_X];
         int my = mymouse[MOUSE_Y];
+        
+		scroll += get_and_reset_scroll_amount();
+		if(scroll < 0.0f)
+            scroll = 0.0f;
         
         bool do_click = mymouse[MOUSE_LEFT];
 		bool do_ok = ((do_click && ok_rect.x <= mx && mx <= ok_rect.x + ok_rect.w
@@ -403,102 +412,138 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         {
             // Overview
             int x = area.x + 12;
-            int y = area.y + 30;
-            float i = 0.0f;
+            int y = area.y + 30 - scroll;
             
             if(ending == 0)
             {
                 // TODO: Show total possible gold
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d Gold Gained", allscore*2);
-                if(allbonuscash > 0)
-                    mytext.write_xy_center(area.x + area.w/2, y + 9, DARK_BLUE, "+ %d Bonus Gold", allbonuscash);
-                i++;
+                if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h)
+                    mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d Gold Gained", allscore*2);
+                if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h)
+                {
+                    if(allbonuscash > 0)
+                        mytext.write_xy_center(area.x + area.w/2, y + 9, DARK_BLUE, "+ %d Bonus Gold", allbonuscash);
+                }
+                y += 22;
             }
             
+            BEGIN_IF_IN_SCROLL_AREA;
             // FIXME: Put in right # foes
             if(ending == 0)
-                mytext.write_xy_center(area.x + area.w/2, y + i*22, DARK_BLUE, "%d Foes Defeated", 0);
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d Foes Defeated", 0);
             else
-                mytext.write_xy_center(area.x + area.w/2, y + i*22, DARK_BLUE, "%d of %d Foes Defeated", 0, 0);
-            i++;
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d of %d Foes Defeated", 0, 0);
+            END_IF_IN_SCROLL_AREA;
+            y += 22;
             
             if(mvp != NULL)
             {
-                mytext.write_xy_center(area.x + area.w/2, y + i*22, DARK_BLUE, "MVP: %s, %s LVL %d", mvp->myguy->name, get_family_string(mvp->myguy->family), calculate_level(mvp->myguy->exp));
-                i++;
+                BEGIN_IF_IN_SCROLL_AREA;
+                
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s, %s LVL %d", mvp->myguy->name, get_family_string(mvp->myguy->family), calculate_level(mvp->myguy->exp));
+                y += 22;
+                
+                END_IF_IN_SCROLL_AREA;
             }
             
             if(ending == 0 && recruits.size() > 0)
             {
-                mytext.write_xy(x, y + i*22, DARK_BLUE, "Recruits:");
-                i++;
+                BEGIN_IF_IN_SCROLL_AREA;
+                mytext.write_xy(x, y, DARK_BLUE, "Recruits:");
+                END_IF_IN_SCROLL_AREA;
+                y += 22;
                 for(std::vector<int>::iterator e = recruits.begin(); e != recruits.end(); e++)
                 {
-                    mytext.write_xy(x, y + i*22, DARK_BLUE, " + %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
-                    i += 0.5f;
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    mytext.write_xy(x, y, DARK_BLUE, " + %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    END_IF_IN_SCROLL_AREA;
+                    
+                    y += 11;
                 }
-                i += 0.5f;
+                y += 11;
             }
             
             if(ending != 1 && losses.size() > 0)  // won or lost due to NPC
             {
-                mytext.write_xy(x, y + i*22, DARK_BLUE, "Losses:");
-                i++;
+                BEGIN_IF_IN_SCROLL_AREA;
+                mytext.write_xy(x, y, DARK_BLUE, "Losses:");
+                END_IF_IN_SCROLL_AREA;
+                
+                y += 22;
                 for(std::vector<int>::iterator e = losses.begin(); e != losses.end(); e++)
                 {
-                    mytext.write_xy(x, y + i*22, DARK_BLUE, " - %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
-                    i += 0.5f;
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    mytext.write_xy(x, y, DARK_BLUE, " - %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    END_IF_IN_SCROLL_AREA;
+                    
+                    y += 11;
                 }
-                i += 0.5f;
+                y += 11;
             }
+            
+            // Limit the scrolling depending on how long 'y' is.
+            if(y < area_inner.y + area_inner.h/2)
+                scroll = y + scroll - (area_inner.y + area_inner.h/2);
         }
         else if(mode == 1)
         {
             int barH = 5;
             // Troops
+            int y = area.y + 30 - scroll;
             for(size_t i = 0; i < troops.size(); i++)
             {
                 int x = area.x + 12;
-                int y = area.y + 30 + 22*i;
                 
                 int tallies = troops[i].get_tallies();
                 
+                BEGIN_IF_IN_SCROLL_AREA;
                 mytext.write_xy(x, y, DARK_BLUE, "%s, %s LVL %d", troops[i].get_name().c_str(), troops[i].get_class_name().c_str(), troops[i].get_level());
+                END_IF_IN_SCROLL_AREA;
+                
+                y += 10;
+                
+                BEGIN_IF_IN_SCROLL_AREA;
                 // HP
                 if(troops[i].is_dead())
                 {
-                    mytext.write_xy(x + 10, y + 10, RED, "LOST");
+                    mytext.write_xy(x + 10, y, RED, "LOST");
                     if(tallies > 0)
-                        mytext.write_xy(x + 10 + 40, y + 10, DARK_BLUE, "%d Tallies", tallies);
+                        mytext.write_xy(x + 10 + 40, y, DARK_BLUE, "%d Tallies", tallies);
                 }
                 else
                 {
                     x += 10;
-                    mytext.write_xy(x, y + 10, RED, "HP");
+                    mytext.write_xy(x, y, RED, "HP");
                     x += 14;
-                    myscreen->fastbox(x, y + 10, 60*troops[i].get_HP(), barH, RED);
-                    myscreen->fastbox_outline(x, y + 10, 60, barH, PURE_BLACK);
+                    myscreen->fastbox(x, y, 60*troops[i].get_HP(), barH, RED);
+                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
                     
                     // XP
                     x += 70;
-                    mytext.write_xy(x, y + 10, DARK_GREEN, "EXP");
+                    mytext.write_xy(x, y, DARK_GREEN, "EXP");
                     x += 20;
                     float base = 60*troops[i].get_XP_base();
                     float gain = 60*troops[i].get_XP_gain();
                     if(gain >= 0)
                     {
-                        myscreen->fastbox(x, y + 10, base, barH, DARK_BLUE);
-                        myscreen->fastbox(x + base, y + 10, gain, barH, DARK_GREEN);
+                        myscreen->fastbox(x, y, base, barH, DARK_BLUE);
+                        myscreen->fastbox(x + base, y, gain, barH, DARK_GREEN);
                     }
                     else
-                        myscreen->fastbox(x + 60 + gain, y + 10, -gain, barH, RED);
-                    myscreen->fastbox_outline(x, y + 10, 60, barH, PURE_BLACK);
+                        myscreen->fastbox(x + 60 + gain, y, -gain, barH, RED);
+                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
                     
                     if(tallies > 0)
-                        mytext.write_xy(x + 60 + 10, y + 10, DARK_BLUE, "%d Tallies", tallies);
+                        mytext.write_xy(x + 60 + 10, y, DARK_BLUE, "%d Tallies", tallies);
                 }
+                END_IF_IN_SCROLL_AREA;
                 
+                y += 12;
             }
+            
+            // Limit the scrolling depending on how long 'y' is.
+            if(y < area_inner.y + area_inner.h/2)
+                scroll = y + scroll - (area_inner.y + area_inner.h/2);
         }
         
         
