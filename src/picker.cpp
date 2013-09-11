@@ -2335,10 +2335,186 @@ Uint32 calculate_cost(guy  *oldguy)
 	return (Uint32)temp;
 }
 
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
+
+#define GET_RAND_ELEM(array) (array[rand()%ARRAY_SIZE(array)])
+
+const char* archer_names[] = {
+    "Robin", "Green Arrow", 
+    "Legolas", 
+    "Yeoman", "Strider", "Longshot", "Bowyer", "Hunter", "Archy"
+};
+
+const char* cleric_names[] = {
+    "Tuck", 
+    "Brother", "Pater", "Drake", "Friar", "Francis", "John Paul", "Medic"
+};
+
+const char* druid_names[] = {
+    "Roland", 
+    "Merlin", 
+    "Hippy", "Green Thumb", "Treefall", "Rain"
+};
+
+const char* elf_names[] = {
+    "Legolas", "Took", "Elrond", 
+    "Tanis", 
+    "Acorn", "Lightfoot", "Treewee"
+};
+
+const char* mage_names[] = {
+    "Gandalf", "Saruman", "Radagast", "Alatar", "Pallando", 
+    "Raistlin", "Fizban", "Mordenkainen", 
+    "Merlin", 
+    "Harry", 
+    "Manannan", "Mordack", 
+    "Jace"
+};
+
+const char* soldier_names[] = {
+    "Lothar", 
+    "Arthur", "Uther", 
+    "Achilles", "Lu Bu", "Wallace", "Leonidas", "Attila", "Alexander", "Ajax", "Nestor", "Priam", "Hector", 
+    "Tom", "Bigfoot"
+};
+
+const char* thief_names[] = {
+    "Shinobi", 
+    "Dismas", 
+    "Shadow", "Stabby", "Swiftstrike", "Scourge", "Rogue"
+};
+
+const char* orc_names[] = {
+    "Grom", 
+    "Thrull", 
+    "Vernix", "Lanugo", 
+    "Grok", "Horde", "Grog", "Krosh"
+};
+
+const char* barbarian_names[] = {
+    "Thor", 
+    "Conan", 
+    "Beowulf", "Cronus", "Pallas", "Atlas", "Prometheus", 
+    "Titan"
+};
+
+const char* elemental_names[] = {
+    "Furnace", "Molten", "Burns", "Fire Eli", "Fireball", "Sunny", "Lava", "Heatwave", "Torch", "Scorch"
+};
+
+const char* skeleton_names[] = {
+    "Drybones", 
+    "Blackbeard", 
+    "Boney", "Femur", "Patella", "Humerus", "Scapula"
+};
+
+const char* slime_names[] = {
+    "Grimer", 
+    "Goop", "Slurp", "Glopp", "Sludge", "Blob"
+};
+
+const char* faerie_names[] = {
+    "Tink", 
+    "Gem", "Glitter", "Jewel", "Blossom", "Ruby", "Muffin", "Flutter", "Sparkle", "Sprint", "Sprite", "Eve", "Twinkle", "Violet", "Daisy", "Lily"
+};
+
+const char* ghost_names[] = {
+    "Casper", 
+    "Slimer", 
+    "Reaper", "Ecto", "Pepper", "Boo", "Banshee", "Nyx"
+};
+
+const char* get_random_name(unsigned char family)
+{
+	switch(family)
+	{
+		case FAMILY_ARCHER:
+			return GET_RAND_ELEM(archer_names);
+		case FAMILY_CLERIC:
+			return GET_RAND_ELEM(cleric_names);
+		case FAMILY_DRUID:
+			return GET_RAND_ELEM(druid_names);
+		case FAMILY_ELF:
+			return GET_RAND_ELEM(elf_names);
+		case FAMILY_MAGE:
+			return GET_RAND_ELEM(mage_names);
+		case FAMILY_SOLDIER:
+			return GET_RAND_ELEM(soldier_names);
+		case FAMILY_THIEF:
+			return GET_RAND_ELEM(thief_names);
+		case FAMILY_ARCHMAGE:
+			return GET_RAND_ELEM(mage_names);
+		case FAMILY_ORC:
+			return GET_RAND_ELEM(orc_names);
+		case FAMILY_BIG_ORC:
+			return GET_RAND_ELEM(orc_names);
+		case FAMILY_BARBARIAN:
+			return GET_RAND_ELEM(barbarian_names);
+		case FAMILY_FIREELEMENTAL:
+			return GET_RAND_ELEM(elemental_names);
+		case FAMILY_SKELETON:
+			return GET_RAND_ELEM(skeleton_names);
+		case FAMILY_SLIME:
+		case FAMILY_MEDIUM_SLIME:
+		case FAMILY_SMALL_SLIME:
+			return GET_RAND_ELEM(slime_names);
+		case FAMILY_FAERIE:
+			return GET_RAND_ELEM(faerie_names);
+		case FAMILY_GHOST:
+			return GET_RAND_ELEM(ghost_names);
+		default:
+			return GET_RAND_ELEM(soldier_names);
+	}
+}
+
+bool has_name_in_team(const char* name)
+{
+    guy** ourteam = myscreen->save_data.team_list;
+    int team_size = myscreen->save_data.team_size;
+    
+    for(int i = 0; i < team_size; i++)
+    {
+        if(strcmp(ourteam[i]->name, name) == 0)
+            return true;
+    }
+    
+    return false;
+}
+
+const char* get_new_name(unsigned char family)
+{
+    static char new_name_buffer[50];
+    const char* result = get_random_name(family);
+    
+    // Try a few times to get a unique name
+    int i = 0;
+    while(has_name_in_team(result) && i < 10)
+    {
+        result = get_random_name(family);
+        i++;
+    }
+    
+    // A bare name is a duplicate?
+    if(has_name_in_team(result))
+    {
+        // Append a number
+        i = 2;
+        do
+        {
+            snprintf(new_name_buffer, 50, "%s%d", result, i);
+            i++;
+        }
+        while(has_name_in_team(new_name_buffer));
+        
+        result = new_name_buffer;
+    }
+    
+    return result;
+}
+
 Sint32 cycle_guy(Sint32 whichway)
 {
 	Sint32 newfamily;
-	char tempnum[5];
 
 	if (!current_guy)
 		newfamily = allowable_guys[0];
@@ -2364,8 +2540,8 @@ Sint32 cycle_guy(Sint32 whichway)
 	// Make the new guy
 	current_guy = new guy(newfamily);
 	current_guy->teamnum = current_team_num;
-	sprintf(tempnum, "%d", numbought[newfamily]+1);
-	strcat(current_guy->name, tempnum);
+	strncpy(current_guy->name, get_new_name(newfamily), 12);
+	current_guy->name[11] = '\0';
 
 	show_guy(0, 0);
 
@@ -2511,7 +2687,6 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 Sint32 add_guy(Sint32 ignoreme)
 {
 	Sint32 newfamily = current_guy->family;
-	char tempnum[12];
 	//buffers: changed typename to type_name due to some compile error
 	char type_name[30];
 	static text addtext(myscreen);
@@ -2556,8 +2731,8 @@ Sint32 add_guy(Sint32 ignoreme)
 			strcpy(type_name, current_guy->name);
 			statscopy(current_guy, ourteam[i]); // set to same stats as just bought
 			strcpy(current_guy->name, type_name);
-			sprintf(tempnum, "%d", numbought[newfamily]+1);
-			strcat(current_guy->name, tempnum);
+            strncpy(current_guy->name, get_new_name(newfamily), 12);
+            current_guy->name[11] = '\0';
 
 			// Return okay status
 			return OK;
