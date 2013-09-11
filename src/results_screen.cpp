@@ -408,11 +408,12 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         myscreen->draw_button_inverted(area_inner.x, area_inner.y, area_inner.w, area_inner.h);
         bigtext.write_xy_center(area.x + area.w/2, area.y + 4, RED, "RESULTS");
         
+        int y = 0;
         if(mode == 0)
         {
             // Overview
             int x = area.x + 12;
-            int y = area.y + 30 - scroll;
+            y = area.y + 30 - scroll;
             
             if(ending == 0)
             {
@@ -480,16 +481,12 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 }
                 y += 11;
             }
-            
-            // Limit the scrolling depending on how long 'y' is.
-            if(y < area_inner.y + area_inner.h/2)
-                scroll = y + scroll - (area_inner.y + area_inner.h/2);
         }
         else if(mode == 1)
         {
             int barH = 5;
             // Troops
-            int y = area.y + 30 - scroll;
+            y = area.y + 30 - scroll;
             for(size_t i = 0; i < troops.size(); i++)
             {
                 int x = area.x + 12;
@@ -507,8 +504,6 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 if(troops[i].is_dead())
                 {
                     mytext.write_xy(x + 10, y, RED, "LOST");
-                    if(tallies > 0)
-                        mytext.write_xy(x + 10 + 40, y, DARK_BLUE, "%d Tallies", tallies);
                 }
                 else
                 {
@@ -532,19 +527,35 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                     else
                         myscreen->fastbox(x + 60 + gain, y, -gain, barH, RED);
                     myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
-                    
-                    if(tallies > 0)
-                        mytext.write_xy(x + 60 + 10, y, DARK_BLUE, "%d Tallies", tallies);
                 }
                 END_IF_IN_SCROLL_AREA;
                 
-                y += 12;
+                
+                if(tallies > 0)
+                {
+                    y += 10;
+                    BEGIN_IF_IN_SCROLL_AREA;
+                    mytext.write_xy(area.x + 20, y, DARK_GREEN, "%d Tallies", tallies);
+                    END_IF_IN_SCROLL_AREA;
+                }
+                
+                y += 13;
+                
+                BEGIN_IF_IN_SCROLL_AREA;
+                myscreen->hor_line(area_inner.x + 6, y - 3, area_inner.w - 30, GREY - 4);
+                END_IF_IN_SCROLL_AREA;
             }
-            
-            // Limit the scrolling depending on how long 'y' is.
-            if(y < area_inner.y + area_inner.h/2)
-                scroll = y + scroll - (area_inner.y + area_inner.h/2);
         }
+        
+        // Draw scroll indicator
+        if(y + scroll > area_inner.y + area_inner.h - 30)
+        {
+            myscreen->ver_line(area_inner.x, area_inner.y + (area_inner.h) * scroll/(y + scroll - area.y), 6, PURE_BLACK);
+        }
+        
+        // Limit the scrolling depending on how long 'y' is.
+        if(y < area_inner.y + 30)
+            scroll = y + scroll - (area_inner.y + 30);
         
         
         for(int i = 0; i < num_buttons; i++)
