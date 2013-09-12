@@ -1452,13 +1452,24 @@ short exp_from_action(ExpActionEnum action, walker* w, walker* target, short val
 
 
 
+Sint32 get_base_damage(walker* w)
+{
+    return w->damage;
+}
+
+Sint32 get_damage_reduction(walker* w, Sint32 damage, walker* target)
+{
+    return random(target->stats->armor);
+}
+
+
 short walker::attack(walker  *target)
 {
 	walker  *blood; // temporary stain
 	walker *headguy; // guy at top of chain..
 	short playerteam = -1;
 	char message[80];
-	Sint32 tempdamage = damage;
+	Sint32 tempdamage = get_base_damage(this);
 	short getscore=0;
 	char targetorder = target->query_order();
 	char targetfamily= target->query_family();
@@ -1524,15 +1535,19 @@ short walker::attack(walker  *target)
 			break;
 	} // end of checking orders
 
-	tempdamage -= random(target->stats->armor);
+	tempdamage -= get_damage_reduction(attacker, tempdamage, target);
 	if (tempdamage < 0)
 		tempdamage = 0;
 	// Record damage done for records ..
 	if (attacker->myguy && targetorder==ORDER_LIVING)  // hit a living
 		attacker->myguy->total_damage += tempdamage;
+		
+    // Deal the damage
 	target->stats->hitpoints -= tempdamage;
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
+
+
 
     // Base exp from attack damage
 	short newexp = exp_from_action(EXP_ATTACK, this, target, tempdamage);

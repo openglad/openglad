@@ -3072,35 +3072,22 @@ Uint32 calculate_exp(Sint32 level)
 
 
 	/*
-	  if (level > 13)
-	    return (Sint32) (2*calculate_exp(level-1) );
-	  if (level == 13)
-	         return 44232000L;
-	  else if (level == 12)
-	         return 20963000L;
-	  else if (level == 11)
-	         return 9982000L;
-	  else if (level == 10)
-	         return 4776000L;
-	  else if (level == 9)
-	         return 2296000L;
-	  else if (level == 8)
-	         return 1109000L;
-	  else if (level == 7)
-	         return 538000L;
-	  else if (level == 6)
-	         return 262000L;
-	  else if (level == 5)
-	         return 128000L;
-	  else if (level == 4)
-	         return 63000L;
-	  else if (level == 3)
-	         return 31000L;
-	  else if (level == 2)
-	         return 11000L;
-	  else
-	         return 0;
-	 
+	
+	fn = ( (8000*(level+10)) / 10) + calculate_exp(level-1);
+	excel: =( (8000*(F4+10)) / 10) + G3
+    Level	XP
+    1	0
+    2	9600
+    3	20000
+    4	31200
+    5	43200
+    6	56000
+    7	69600
+    8	84000
+    9	99200
+    10	115200
+    This is practically linear, so each level costs about 10000 more than the previous.
+
 	*/
 
 	if (level > 2)
