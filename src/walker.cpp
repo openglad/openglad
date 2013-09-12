@@ -1401,6 +1401,57 @@ short walker::collide(walker  *ob)
 	return 1;
 }
 
+
+enum ExpActionEnum {EXP_ATTACK, EXP_KILL, EXP_HEAL, EXP_TURN_UNDEAD, EXP_RAISE_SKELETON, EXP_RAISE_GHOST, EXP_RESURRECT, EXP_RESURRECT_PENALTY, EXP_PROTECTION, EXP_EAT_CORPSE};
+
+short exp_from_action(ExpActionEnum action, walker* w, walker* target, short value)
+{
+    switch(action)
+    {
+    case EXP_ATTACK:
+        // value == damage done
+        {
+            short result = value * (target->stats->level + 2)/2;
+            if(w->query_order() == ORDER_WEAPON && w->owner)
+                result /= w->owner->stats->level;
+            else
+                result /= w->stats->level;
+            if(result < 1)
+                result = 1;
+            return result;
+        }
+    case EXP_KILL:
+        return (8 * target->stats->level);
+    case EXP_HEAL:
+        // value == number of hitpoints healed
+        return (random(20*value)/w->stats->level);
+    case EXP_TURN_UNDEAD:
+        // value == number of turned undead
+        return (value*3);
+    case EXP_RAISE_SKELETON:
+        // target == the new skeleton
+        return 45;
+    case EXP_RAISE_GHOST:
+        // target == the new ghost
+        return 60;
+    case EXP_RESURRECT:
+        // target == the revived guy or ghost (if it was an enemy)
+        return 90;
+    case EXP_RESURRECT_PENALTY:
+        // target == the revived friend
+        return ((target->stats->level)*(target->stats->level)*100);
+    case EXP_PROTECTION:
+        // target == the friend receiving the protection
+        return w->stats->level;
+    case EXP_EAT_CORPSE:
+        // target == the remains to be eaten
+        return target->stats->level*5;
+    }
+    return 0;
+}
+
+
+
 short walker::attack(walker  *target)
 {
 	walker  *blood; // temporary stain
@@ -1408,7 +1459,6 @@ short walker::attack(walker  *target)
 	short playerteam = -1;
 	char message[80];
 	Sint32 tempdamage = damage;
-	short newexp;
 	short getscore=0;
 	char targetorder = target->query_order();
 	char targetfamily= target->query_family();
@@ -1484,14 +1534,8 @@ short walker::attack(walker  *target)
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
 
-	newexp = tempdamage * (target->stats->level + 2)/2;
-	if (order == ORDER_WEAPON && owner)
-		newexp /= owner->stats->level;
-	else
-		newexp /= stats->level;
-	if (newexp < 1)
-		newexp = 1;
-
+    // Base exp from attack damage
+	short newexp = exp_from_action(EXP_ATTACK, this, target, tempdamage);
 
 	// Assign bonus for non-player-controlled characters
 	if (order == ORDER_WEAPON && owner) // we're a weapon
@@ -1596,7 +1640,7 @@ short walker::attack(walker  *target)
 				{
 					if (headguy->myguy)  // headguy can == this
 					{
-						headguy->myguy->exp += newexp + (8 * target->stats->level);
+						headguy->myguy->exp += newexp + exp_from_action(EXP_KILL, this, target, 0);
 						headguy->myguy->kills++;
 						headguy->myguy->level_kills += target->stats->level;
 					}
@@ -2105,7 +2149,7 @@ short walker::special()
 									generic = random(stats->level*5);
 									newob->stats->hitpoints += generic;
 									if (myguy)
-										myguy->exp += (random(20*generic)/stats->level);
+										myguy->exp += exp_from_action(EXP_HEAL, this, newob, generic);
 									didheal++;
 								}
 								here = here->next;
@@ -2195,7 +2239,7 @@ short walker::special()
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
-							myguy->exp += (generic*3); // (stats->level/2));
+							myguy->exp += exp_from_action(EXP_TURN_UNDEAD, this, NULL, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
 								strcpy(message, myguy->name);
@@ -2230,7 +2274,7 @@ short walker::special()
 								//screenp->remove_ob(newob, 0);
 								newob->dead = 1;
 								if (myguy)
-									myguy->exp += 45;
+									myguy->exp += exp_from_action(EXP_RAISE_SKELETON, this, alive, 0);
 							} // end passable check
 							else
 								return 0;
@@ -2255,7 +2299,7 @@ short walker::special()
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
-							myguy->exp += (generic*3); // (stats->level/2));
+							myguy->exp += exp_from_action(EXP_TURN_UNDEAD, this, NULL, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
 								strcpy(message, myguy->name);
@@ -2291,7 +2335,7 @@ short walker::special()
 								//screenp->remove_ob(newob, 0);
 								newob->dead = 1;
 								if (myguy)
-									myguy->exp += 60;
+									myguy->exp += exp_from_action(EXP_RAISE_GHOST, this, alive, 0);
 							} // end of passable check
 							else
 								return 0;
@@ -2313,15 +2357,17 @@ short walker::special()
 							if ( is_friendly(newob) ) // normal ressurection
 							{
 								alive = screenp->add_ob(ORDER_LIVING, newob->stats->old_family);
-								if (!alive)
+								if(!alive)
 									return 0; // failsafe
 								newob->transfer_stats(alive);  // restore our old values ..
 								alive->stats->hitpoints = (alive->stats->max_hitpoints)/2;
 								alive->team_num = newob->team_num;
-								if (myguy) // take some EXP away as penalty if we're a player
+								
+								if(myguy) // take some EXP away as penalty if we're a player
 								{
-									if (myguy->exp >= (((Uint32)newob->stats->level)*((Uint32)newob->stats->level)*100) )
-										myguy->exp -= (((Uint32)newob->stats->level)*((Uint32)newob->stats->level)*100);
+								    unsigned short exp_loss = exp_from_action(EXP_RESURRECT_PENALTY, this, newob, 0);
+									if(myguy->exp >= exp_loss)
+										myguy->exp -= exp_loss;
 									else
 										myguy->exp = 0;
 								}
@@ -2341,7 +2387,7 @@ short walker::special()
 							//screenp->remove_ob(newob, 0);
 							newob->dead = 1;
 							if (myguy)
-								myguy->exp += 90;
+								myguy->exp += exp_from_action(EXP_RESURRECT, this, alive, 0);
 						} // end of passable
 						else
 							return 0;
@@ -3298,8 +3344,6 @@ short walker::special()
 									alive->center_on(newob);
 									alive->team_num = newob->team_num;
 									alive->stats->level = newob->stats->level;
-									if (myguy)
-										myguy->exp += stats->level;
 									didheal++;
 								} // end of target wasn't protected
 								else
@@ -3312,10 +3356,13 @@ short walker::special()
 									}
 									tempwalk->stats->hitpoints += alive->stats->hitpoints;
 									alive->dead = 1;
-									if (myguy)
-										myguy->exp += stats->level;
 									didheal++;
 								} // end of target WAS protected
+								
+								// Get experience either way
+                                if (myguy)
+                                    myguy->exp += exp_from_action(EXP_PROTECTION, this, newob, 0);
+                                
 							}  // end of did one guy
 							here = here->next;
 						}  // end of cycling through guys
@@ -3396,7 +3443,7 @@ short walker::special()
 					// Print the eating notice
 					if (myguy)
 					{
-						myguy->exp += newob->stats->level*5;
+						myguy->exp += exp_from_action(EXP_EAT_CORPSE, this, newob, 0);
 						strcpy(message, myguy->name);
 					}
 					else if ( strlen(stats->name) )

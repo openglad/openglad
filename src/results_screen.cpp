@@ -237,7 +237,8 @@ void TroopResult::draw_guy(int cx, int cy, int frame)
     else
         return;
     
-    show_guy(frame, myguy, cx, cy);
+    if(!is_dead() && myguy != NULL)
+        show_guy(frame, myguy, cx, cy);
 }
 
 
@@ -542,8 +543,6 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 int tallies = troops[i].get_tallies();
                 
                 BEGIN_IF_IN_SCROLL_AREA;
-                troops[i].draw_guy(x + 5, y + 12, frame);
-                
                 int name_w = mytext.write_xy(x, y, PURE_BLACK, "%s", troops[i].get_name().c_str());
                 name_w += mytext.write_xy(x + name_w, y, PURE_BLACK + 2, " the %s", troops[i].get_class_name().c_str());
                 if(troops[i].gained_level())
@@ -557,6 +556,8 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 y += 10;
                 
                 BEGIN_IF_IN_SCROLL_AREA;
+                troops[i].draw_guy(x + 5, y + 2, frame*troops[i].get_HP());
+                
                 // HP
                 if(troops[i].is_dead())
                 {
