@@ -2303,8 +2303,6 @@ Uint32 calculate_cost(guy  *oldguy)
 	               * (Sint32)statcosts[myfamily][BUT_INT]);
 	temp += (Sint32)((pow( (Sint32)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
 	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
-	temp += (Sint32)((pow( (Sint32)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_LEVEL]);
 
 	// Now subtract what we've already paid for ..
 	temp -= (Sint32)((pow( (Sint32)(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
@@ -2317,12 +2315,11 @@ Uint32 calculate_cost(guy  *oldguy)
 	               * (Sint32)statcosts[myfamily][BUT_INT]);
 	temp -= (Sint32)((pow( (Sint32)(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
 	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
-	temp -= (Sint32)((pow( (Sint32)(oldguy->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_LEVEL]);
 
 	// Add on extra level cost ..
 	if (calculate_exp(ob->level) > oldguy->exp)
 		temp += (Sint32)(calculate_exp(ob->level) - oldguy->exp);
+    
 
 	if (temp < 0)
 	{
