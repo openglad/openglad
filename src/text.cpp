@@ -114,7 +114,7 @@ short text::write_xy(short x, short y, unsigned char color, const char* formatte
 		write_char_xy((short) (x+i*(sizex+1)), y, text_buffer[i], (unsigned char) color);
 		i++;
 	}
-	return 1;
+	return i*(sizex+1);
 }
 
 short text::write_xy_center(short x, short y, unsigned char color, const char* formatted_string, ...)

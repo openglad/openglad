@@ -5,6 +5,7 @@
 #include "walker.h"
 #include "guy.h"
 #include "stats.h"
+#include "view.h"
 
 extern Sint32 *mymouse;
 
@@ -85,6 +86,8 @@ public:
     float get_HP();  // percentage of total
     bool is_dead();
     bool is_new();
+    
+    void draw_guy(int cx, int cy, int frame);
     
     TroopResult(guy* before, walker* after);
 };
@@ -194,6 +197,50 @@ bool TroopResult::is_new()
 }
 
 
+void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows the current guy ..
+{
+	walker *mywalker;
+	Sint32 i;
+	Sint32 newfamily;
+
+	if (!myguy)
+		return;
+
+	frames = abs(frames);
+
+	newfamily = myguy->family;
+
+	mywalker = myscreen->level_data.myloader->create_walker(ORDER_LIVING,
+	           newfamily,myscreen);
+	mywalker->stats->bit_flags = 0;
+	mywalker->curdir = FACE_DOWN;
+	mywalker->ani_type = ANI_WALK;
+	for (i=0; i <= (frames/4)%4; i++)
+		mywalker->animate();
+    
+	mywalker->team_num = myguy->teamnum;
+    
+    viewscreen* view_buf = myscreen->viewob[0];
+	mywalker->xpos = centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc;
+	mywalker->ypos = centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc;
+	mywalker->draw(view_buf);
+	delete mywalker;
+}
+
+void TroopResult::draw_guy(int cx, int cy, int frame)
+{
+    guy* myguy = NULL;
+    if(after != NULL)
+        myguy = after->myguy;
+    else if(before != NULL)
+        myguy = before;
+    else
+        return;
+    
+    show_guy(frame, myguy, cx, cy);
+}
+
+
 
 
 #define BEGIN_IF_IN_SCROLL_AREA \
@@ -295,6 +342,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     
     int mode = 0;
     float scroll = 0.0f;
+    int frame = 0;
     
     Sint16 screenW = 320;
     Sint16 screenH = 200;
@@ -441,7 +489,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             {
                 BEGIN_IF_IN_SCROLL_AREA;
                 
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s, %s LVL %d", mvp->myguy->name, get_family_string(mvp->myguy->family), calculate_level(mvp->myguy->exp));
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy->name, get_family_string(mvp->myguy->family));
                 y += 22;
                 
                 END_IF_IN_SCROLL_AREA;
@@ -456,7 +504,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 for(std::vector<int>::iterator e = recruits.begin(); e != recruits.end(); e++)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(x, y, DARK_BLUE, " + %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    mytext.write_xy(x, y, DARK_BLUE, " + %s the %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
                     END_IF_IN_SCROLL_AREA;
                     
                     y += 11;
@@ -474,7 +522,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 for(std::vector<int>::iterator e = losses.begin(); e != losses.end(); e++)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(x, y, DARK_BLUE, " - %s, %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    mytext.write_xy(x, y, DARK_BLUE, " - %s the %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
                     END_IF_IN_SCROLL_AREA;
                     
                     y += 11;
@@ -494,7 +542,16 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 int tallies = troops[i].get_tallies();
                 
                 BEGIN_IF_IN_SCROLL_AREA;
-                mytext.write_xy(x, y, DARK_BLUE, "%s, %s LVL %d", troops[i].get_name().c_str(), troops[i].get_class_name().c_str(), troops[i].get_level());
+                troops[i].draw_guy(x + 5, y + 12, frame);
+                
+                int name_w = mytext.write_xy(x, y, PURE_BLACK, "%s", troops[i].get_name().c_str());
+                name_w += mytext.write_xy(x + name_w, y, PURE_BLACK + 2, " the %s", troops[i].get_class_name().c_str());
+                if(troops[i].gained_level())
+                    mytext.write_xy(x + name_w, y, YELLOW, " LVL UP %d", troops[i].get_level());
+                else if(troops[i].lost_level())
+                    mytext.write_xy(x + name_w, y, RED, " LVL DOWN %d", troops[i].get_level());
+                else
+                    mytext.write_xy(x + name_w, y, DARK_GREEN, " LVL %d", troops[i].get_level());
                 END_IF_IN_SCROLL_AREA;
                 
                 y += 10;
@@ -503,11 +560,11 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 // HP
                 if(troops[i].is_dead())
                 {
-                    mytext.write_xy(x + 10, y, RED, "LOST");
+                    mytext.write_xy(x + 15, y, RED, "LOST");
                 }
                 else
                 {
-                    x += 10;
+                    x += 15;
                     mytext.write_xy(x, y, RED, "HP");
                     x += 14;
                     myscreen->fastbox(x, y, 60*troops[i].get_HP(), barH, RED);
@@ -527,6 +584,11 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                     else
                         myscreen->fastbox(x + 60 + gain, y, -gain, barH, RED);
                     myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
+                    
+                    if(gain > 0.0f)
+                        mytext.write_xy(x + 63, y, DARK_GREEN, "+");
+                    else if(gain < 0.0f)
+                        mytext.write_xy(x + 63, y, RED, "-");
                 }
                 END_IF_IN_SCROLL_AREA;
                 
@@ -570,5 +632,9 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
+        
+        frame++;
+        if(frame > 1000000)
+            frame = 0;
     }
 }
