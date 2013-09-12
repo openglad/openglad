@@ -813,7 +813,7 @@ short screen::act()
 	here = level_data.oblist;
 	while (here)
 	{
-		if (here->ob && here->ob->dead)
+		if (here->ob && here->ob->dead && here->ob->myguy == NULL)
 		{
 		    // Delete the dead thing safely
 		    

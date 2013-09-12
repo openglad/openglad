@@ -535,7 +535,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 {
                     y += 10;
                     BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(area.x + 20, y, DARK_GREEN, "%d Tallies", tallies);
+                    mytext.write_xy(area.x + 20, y, DARK_GREEN, "%d Tall%s", tallies, (tallies == 1? "y" : "ies"));
                     END_IF_IN_SCROLL_AREA;
                 }
                 
