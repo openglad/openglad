@@ -237,17 +237,35 @@ void get_input_events(bool type)
 #include "stats.h"
 #include "walker.h"
 
+static bool loaded_touch_images = false;
+pixie* moving_base_pix = NULL;
+PixieData moving_base_pix_data;
+static const int touch_image_alpha = 50;
+
+void load_touch_images(screen* myscreen)
+{
+    loaded_touch_images = true;
+    
+    moving_base_pix_data = read_pixie_file("moving_base.pix");
+	moving_base_pix = new pixie(moving_base_pix_data, myscreen);
+    
+}
+
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
     if(control == NULL || control->dead)
         return;
     
+    if(!loaded_touch_images)
+        load_touch_images(vob);
+    
     if(moving)
     {
         // Touch movement feedback
         //line(moving_touch_x, moving_touch_y, mouse_state[MOUSE_X], mouse_state[MOUSE_Y]);
-        vob->fastbox(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, MOVE_AREA_DIM, MOVE_AREA_DIM, 17);
+        moving_base_pix->put_screen(moving_touch_x - MOVE_AREA_DIM/2, moving_touch_y - MOVE_AREA_DIM/2, touch_image_alpha);
+        
         vob->fastbox(moving_touch_x - 4, moving_touch_y - 4, 8, 8, 16);
         vob->fastbox(moving_touch_target_x - 2, moving_touch_target_y - 2, 4, 4, 15);
     }
