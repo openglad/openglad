@@ -122,6 +122,8 @@ screen::screen(short howmany)
 	enemy_freeze = 0;
 
 	level_done = 0;
+	
+	retry = false;
 
 	// Load map data from a pixie format
 	// FIXME: This was moved into level_data
@@ -308,6 +310,8 @@ void screen::ready_for_battle(short howmany)
     initialize_views();
 
 	end = 0;
+	
+	retry = false;
 
 	redrawme = 1;
 
@@ -318,8 +322,6 @@ void screen::ready_for_battle(short howmany)
 	control_hp = 0;
 
 	palmode = 0;
-
-	end = 0;
 
 	redrawme = 1;
 
@@ -1291,7 +1293,14 @@ short screen::endgame(short ending, short nextlevel)
 	}
 	
 	// Let's show the results!
-    results_screen(ending, nextlevel, before, after);
+    retry = results_screen(ending, nextlevel, before, after);
+    
+    if(retry)
+    {
+        // Retry without updating the roster and saving the game
+        end = 1;
+        return 1;
+    }
     
 	if (ending == 1)  // 1 = lose, for some reason
 	{

@@ -100,7 +100,7 @@ class screen : public video
 		signed char timer_wait;
 		short level_done; // set true when all our foes are dead
 		walker * weapfree; //free weapons for re-allocation
-		
+		bool retry;  // we should reset the level and go again
 		
 
 		char special_name[NUM_FAMILIES][NUM_SPECIALS][20];

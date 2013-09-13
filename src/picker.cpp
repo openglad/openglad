@@ -2918,63 +2918,67 @@ Sint32 go_menu(Sint32 arg1)
 
 	if (arg1)
 		arg1 = 1;
+    
+    do
+    {
+        // Make sure we have a valid team
+        if (myscreen->save_data.team_size < 1)
+        {
+            popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
+            
+            return REDRAW;
+        }
+        myscreen->save_data.save("save0");
+        release_mouse();
+        //grab_keyboard();
+        //*******************************
+        // Fade out from MENU loop
+        //*******************************
+        // Zardus: PORT: fade out from menu code now in glad.cpp
+        //clear_keyboard();
+        //myscreen->fadeblack(0);
 
-	// Make sure we have a valid team
-	if (myscreen->save_data.team_size < 1)
-	{
-		popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
-		
-		return REDRAW;
-	}
-	myscreen->save_data.save("save0");
-	release_mouse();
-	//grab_keyboard();
-	//*******************************
-	// Fade out from MENU loop
-	//*******************************
-	// Zardus: PORT: fade out from menu code now in glad.cpp
-	//clear_keyboard();
-	//myscreen->fadeblack(0);
+        if (current_guy)
+            delete current_guy;
+        current_guy = NULL;
 
-	if (current_guy)
-		delete current_guy;
-	current_guy = NULL;
+        // Reset viewscreen prefs
+        myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
-	// Reset viewscreen prefs
-	myscreen->ready_for_battle(myscreen->save_data.numplayers);
+        glad_main(myscreen, myscreen->save_data.numplayers);
+        //release_keyboard();
+        //*******************************
+        // Fade out from ACTION loop
+        //*******************************
+        // Zardus: PORT: new fade code
+        myscreen->fadeblack(0);
 
-	glad_main(myscreen, myscreen->save_data.numplayers);
-	//release_keyboard();
-	//*******************************
-	// Fade out from ACTION loop
-	//*******************************
-	// Zardus: PORT: new fade code
-	myscreen->fadeblack(0);
+        // Zardus: PORT: doesn't seem to be neccessary
+        myscreen->clearbuffer();
 
-	// Zardus: PORT: doesn't seem to be neccessary
-	myscreen->clearbuffer();
+        // Zardus: PORT: they had this in just so that the pallettes got reset to
+        // normal. It actually faded in a black screen, since fading in the menu
+        // would mean messing with a bunch of things. Maybe we'll do the fade in
+        // menu later, but for now we'll keep it like they had
+        //*******************************
+        // Fade in to MENU loop
+        //*******************************
+        // Zardus: PORT: new fade code
+        //myscreen->fadeblack(1);
 
-	// Zardus: PORT: they had this in just so that the pallettes got reset to
-	// normal. It actually faded in a black screen, since fading in the menu
-	// would mean messing with a bunch of things. Maybe we'll do the fade in
-	// menu later, but for now we'll keep it like they had
-	//*******************************
-	// Fade in to MENU loop
-	//*******************************
-	// Zardus: PORT: new fade code
-	//myscreen->fadeblack(1);
+        grab_mouse();
 
-	grab_mouse();
+        myscreen->reset(1);
+        myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 
-	myscreen->reset(1);
-	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
-
-	SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
-	if (loadgame)
-	{
-	    SDL_RWclose(loadgame);
-		myscreen->save_data.load("save0");
-	}
+        SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
+        if (loadgame)
+        {
+            SDL_RWclose(loadgame);
+            myscreen->save_data.load("save0");
+        }
+    }
+    while(myscreen->retry);
 
 	return CREATE_TEAM_MENU;
 }
