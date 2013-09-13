@@ -612,7 +612,11 @@ short viewscreen::input(const SDL_Event& event)
 	oblink  *helpme;
 
 	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay
+     #ifdef USE_TOUCH_INPUT
+	        && isPlayerHoldingKey(mynum, KEY_SHIFTER)  // inverted logic
+     #else
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
+     #endif
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
 		helpme = screenp->level_data.oblist;
@@ -637,7 +641,12 @@ short viewscreen::input(const SDL_Event& event)
 	} //end of yo for friends
 
 	//summon team defense
-	if (isPlayerHoldingKey(mynum, KEY_SHIFTER) && didPlayerPressKey(mynum, KEY_YELL, event)
+	if (didPlayerPressKey(mynum, KEY_YELL, event)
+     #ifdef USE_TOUCH_INPUT
+	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)  // inverted logic
+     #else
+	        && isPlayerHoldingKey(mynum, KEY_SHIFTER)
+     #endif
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // change guys' behavior
 	{
 		switch (control->action)
@@ -657,6 +666,10 @@ short viewscreen::input(const SDL_Event& event)
 					}
 					helpme = helpme->next;
 				}
+                    
+                #ifdef USE_TOUCH_INPUT
+                control->screenp->soundp->play_sound(SOUND_YO);
+                #endif
 				control->screenp->do_notify("SUMMONING DEFENSE!", control);
 				break;
 			case ACTION_FOLLOW:  // turn back to normal mode..
@@ -858,7 +871,10 @@ short viewscreen::input(const SDL_Event& event)
 			control->shifter_down = 0;
         }
 	    #else
-	    control->shifter_down = isPlayerHoldingKey(mynum, KEY_SHIFTER);
+		if (didPlayerPressKey(mynum, KEY_SHIFTER, event))
+			control->shifter_down = 1;
+		else
+			control->shifter_down = 0;
         #endif
 
 		if (didPlayerPressKey(mynum, KEY_SPECIAL, event))
