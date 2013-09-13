@@ -283,6 +283,23 @@ if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h) {
 #define END_IF_IN_SCROLL_AREA \
 }
 
+int get_num_foes(LevelData& level)
+{
+    int result = 0;
+    
+    oblink* here = level.oblist;
+	while (here)
+	{
+	    // Not dead, not hired, not on red team
+		if (here->ob && !here->ob->dead && here->ob->myguy == NULL && here->ob->team_num != 0)
+		{
+		    result++;
+		}
+		here = here->next;
+	}
+	
+	return result;
+}
 
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
@@ -291,6 +308,14 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     
     LevelData& level_data = myscreen->level_data;
     SaveData& save_data = myscreen->save_data;
+    
+    int num_foes_left = get_num_foes(level_data);
+    int num_foes_total = 0;
+    {
+        LevelData original_level(level_data.id);
+        original_level.load();
+        num_foes_total = get_num_foes(original_level);
+    }
     
 	text mytext(myscreen, TEXT_1);
 	text bigtext(myscreen, TEXT_BIG);
@@ -500,23 +525,45 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             
             if(ending == 0)
             {
-                // TODO: Show total possible gold
+                // TODO: Show total possible gold collected?  How is this factored into allscore?
                 if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h)
-                    mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d Gold Gained", allscore*2);
+                {
+                    char buf[50];
+                    snprintf(buf, 50, "%d", allscore*2);
+                    mytext.write_xy_center_shadow(area.x + area.w/2, y, YELLOW, "%s Gold       ", buf);
+                    memset(buf, ' ', strlen(buf));
+                    mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Gained", buf);
+                }
                 if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h)
                 {
                     if(allbonuscash > 0)
-                        mytext.write_xy_center(area.x + area.w/2, y + 9, DARK_BLUE, "+ %d Bonus Gold", allbonuscash);
+                    {
+                        mytext.write_xy_center_shadow(area.x + area.w/2, y + 9, YELLOW, "+ %d Bonus Gold", allbonuscash);
+                    }
                 }
                 y += 22;
             }
             
             BEGIN_IF_IN_SCROLL_AREA;
-            // FIXME: Put in right # foes
             if(ending == 0)
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d Foes Defeated", 0);
+            {
+                char buf[50];
+                snprintf(buf, 50, "%d", num_foes_total - num_foes_left);
+                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s Foes         ", buf);
+                memset(buf, ' ', strlen(buf));
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Defeated", buf);
+            }
             else
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%d of %d Foes Defeated", 0, 0);
+            {
+                char buf[50];
+                char buf2[50];
+                snprintf(buf, 50, "%d", num_foes_total - num_foes_left);
+                snprintf(buf2, 50, "%d", num_foes_total);
+                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s of %s Foes         ", buf, buf2);
+                memset(buf, ' ', strlen(buf));
+                memset(buf2, ' ', strlen(buf2));
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s    %s      Defeated", buf, buf2);
+            }
             END_IF_IN_SCROLL_AREA;
             y += 22;
             

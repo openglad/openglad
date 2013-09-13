@@ -117,6 +117,27 @@ short text::write_xy(short x, short y, unsigned char color, const char* formatte
 	return i*(sizex+1);
 }
 
+short text::write_xy_shadow(short x, short y, unsigned char color, const char* formatted_string, ...)
+{
+    if(formatted_string == NULL)
+        return 0;
+    
+    va_list lst;
+    va_start(lst, formatted_string);
+    vsnprintf(text_buffer, 255, formatted_string, lst);
+    va_end(lst);
+    
+	unsigned short i = 0;
+	while(text_buffer[i])
+	{
+	    short xx = (x+i*(sizex+1));
+		write_char_xy(xx - 1, y + 1, text_buffer[i], (unsigned char) (PURE_BLACK + 2));
+		write_char_xy(xx, y, text_buffer[i], (unsigned char) color);
+		i++;
+	}
+	return i*(sizex+1);
+}
+
 short text::write_xy_center(short x, short y, unsigned char color, const char* formatted_string, ...)
 {
     if(formatted_string == NULL)
@@ -132,6 +153,28 @@ short text::write_xy_center(short x, short y, unsigned char color, const char* f
 	while(text_buffer[i])
 	{
 		write_char_xy((short) (x+i*(sizex+1) - len*(sizex+1)/2), y, text_buffer[i], (unsigned char) color);
+		i++;
+	}
+	return 1;
+}
+
+short text::write_xy_center_shadow(short x, short y, unsigned char color, const char* formatted_string, ...)
+{
+    if(formatted_string == NULL)
+        return 0;
+    
+    va_list lst;
+    va_start(lst, formatted_string);
+    vsnprintf(text_buffer, 255, formatted_string, lst);
+    va_end(lst);
+    
+	unsigned short i = 0;
+	size_t len = strlen(text_buffer);
+	while(text_buffer[i])
+	{
+	    short xx = (x+i*(sizex+1) - len*(sizex+1)/2);
+		write_char_xy(xx - 1, y + 1, text_buffer[i], (unsigned char) (PURE_BLACK + 2));
+		write_char_xy(xx, y, text_buffer[i], (unsigned char) color);
 		i++;
 	}
 	return 1;

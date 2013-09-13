@@ -206,7 +206,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
                     if (result) // player wants to quit
                     {
                         done = true;
-                        results_screen(1, -1);
+                        results_screen(2, -1); // Should not show an extra popup
                     }
                     else
                     {
