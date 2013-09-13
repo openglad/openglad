@@ -42,9 +42,11 @@ class video
 		void pointb(Sint32 x, Sint32 y, int r, int g, int b);
 		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color);
 		void ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color);
+		void diag_line(Sint32 x, Sint32 y, Sint32 degrees, Sint32 length, unsigned char color);
 		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
 		void hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Uint8 alpha);
 		void ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
+		void diag_line(Sint32 x, Sint32 y, Sint32 degrees, Sint32 length, unsigned char color, Sint32 tobuffer);
 		void do_cycle(Sint32 curmode, Sint32 maxmode);
 		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		             unsigned char  *sourcedata);
