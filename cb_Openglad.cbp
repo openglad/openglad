@@ -136,8 +136,6 @@
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 			<Add option="-DPHYSFS_SUPPORTS_ZIP" />
-			<Add option="-DUSE_TOUCH_INPUT" />
-			<Add option="-DFAKE_TOUCH_EVENTS" />
 			<Add option="-DNO_BLOOD" />
 			<Add directory="src/external/libyaml/include" />
 			<Add directory="src/external/physfs" />
