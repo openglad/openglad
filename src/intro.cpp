@@ -247,7 +247,6 @@ void intro_main(Sint32 argc, char** argv)
 	cleanup();
 }
 
-
 int cleanup()
 {
 	Sint32 i;
