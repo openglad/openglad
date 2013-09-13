@@ -241,8 +241,8 @@ bool showPurchasingSplash()
 	int yes_index = 1;
 	
 	button buttons[] = {
-        { "NO THANKS", KEYSTATE_UNKNOWN, no_button.x, no_button.y, no_button.w, no_button.h, 0, -1 , MenuNav::Left(yes_index), false},
-        { "YES!!", KEYSTATE_UNKNOWN, yes_button.x, yes_button.y, yes_button.w, yes_button.h, 0, -1 , MenuNav::Right(no_index), false}
+        button("NO THANKS", KEYSTATE_UNKNOWN, no_button.x, no_button.y, no_button.w, no_button.h, 0, -1 , MenuNav::Left(yes_index)),
+        button("YES!!", KEYSTATE_UNKNOWN, yes_button.x, yes_button.y, yes_button.w, yes_button.h, 0, -1 , MenuNav::Right(no_index))
 	};
     
     
@@ -296,7 +296,7 @@ bool showPurchasingSplash()
         retvalue = 0;
 
         // Draw
-        myscreen->clearscreen();
+        myscreen->clearbuffer();
         
         SDL_BlitSurface(splash, NULL, screen, NULL);
         
@@ -356,7 +356,7 @@ void showOuyaControls()
             done = true;
 
         // Draw
-        myscreen->clearscreen();
+        myscreen->clearbuffer();
         
         SDL_BlitSurface(splash, NULL, screen, NULL);
         
