@@ -950,6 +950,7 @@ Sint32 create_view_menu(Sint32 arg1)
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 		myscreen->buffer_to_screen(0,0,320,200);
+		myscreen->buffer_to_screen(0,0,320,200);
 	}
 	myscreen->clearbuffer();
 
