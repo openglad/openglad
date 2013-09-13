@@ -56,10 +56,11 @@ void show_ending_popup(int ending, int nextlevel)
 	}
 }
 
-void results_screen(int ending, int nextlevel)
+bool results_screen(int ending, int nextlevel)
 {
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
+    return false;
 }
 
 
@@ -74,9 +75,11 @@ public:
     
     std::string get_name();
     std::string get_class_name();
+    char get_family();
     int get_level();
     bool gained_level();
     bool lost_level();
+    std::vector<std::string> get_gained_specials();
     
     // These are percentages of what you need for the next level.
     float get_XP_base();
@@ -106,6 +109,16 @@ std::string TroopResult::get_name()
     if(after != NULL)
         return after->myguy->name;
     return std::string();
+}
+
+char TroopResult::get_family()
+{
+    char family = FAMILY_SOLDIER;
+    if(before != NULL)
+        family = before->family;
+    if(after != NULL)
+        family = after->myguy->family;
+    return family;
 }
 
 const char* get_family_string(short family);
@@ -143,6 +156,26 @@ bool TroopResult::lost_level()
         return false;
     
     return calculate_level(after->myguy->exp) < before->level;
+}
+
+std::vector<std::string> TroopResult::get_gained_specials()
+{
+    std::vector<std::string> result;
+    
+    int family = get_family();
+    
+    Sint32 test1 = get_level() - 1;
+    if ( !(test1%3) ) // we're on a special-gaining level
+    {
+        test1 = (test1 / 3) + 1; // this is the special #
+        if ( (test1 <= 4) // raise this when we have more than 4 specials
+                && (strcmp(myscreen->special_name[family][test1], "NONE") ))
+        {
+            result.push_back(myscreen->special_name[family][test1]);
+        }
+    }
+    
+    return result;
 }
 
 float TroopResult::get_XP_base()
@@ -251,7 +284,7 @@ if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h) {
 }
 
 
-void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
+bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
@@ -305,11 +338,24 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     }
     
     walker* mvp = NULL;
-    for(std::map<int, walker*>::iterator e = after.begin(); e != after.end(); e++)
+    Sint32 mvp_damage = 0;
+    for(std::vector<TroopResult>::iterator e = troops.begin(); e != troops.end(); e++)
     {
-        // FIXME: Is total_damage persistent?  We only want damage for this level.
-        if(mvp == NULL || (e->second != NULL && mvp->myguy->total_damage < e->second->myguy->total_damage))
-            mvp = e->second;
+        Sint32 dmg = 0;
+        
+        if(e->after == NULL)
+            continue;
+            
+        if(e->before == NULL)
+            dmg = e->after->myguy->total_damage;
+        else
+            dmg = e->after->myguy->total_damage - e->before->total_damage;
+        
+        if(mvp_damage < dmg)
+        {
+            mvp = e->after;
+            mvp_damage = dmg;
+        }
     }
     
     // Hold indices for troops
@@ -325,22 +371,8 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         i++;
     }
     
-    // TODO: Somehow show that a character has gained a special ability on level up
-    // Maybe clicking on a character will display more details
-    /*test1 = calculate_level(target->myguy->exp) - 1;
-    if ( !(test1%3) ) // we're on a special-gaining level
-    {
-        test1 = (test1 / 3) + 1; // this is the special #
-        if ( (test1 <= 4) // raise this when we have more than 4 specials
-                && (strcmp(myscreen->special_name[(int)target->query_family()][test1], "NONE") )
-           )
-        {
-            sprintf(temp, "New Ability: %s!",
-                    myscreen->special_name[(int)target->query_family()][test1]);
-            mytext.write_y(110, temp, DARK_BLUE, 1);
-        }
-    }*/
     
+    bool retry = false;
     int mode = 0;
     float scroll = 0.0f;
     int frame = 0;
@@ -434,7 +466,9 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
            const char* msg = (ending == 0? "Try this level again?\nYou will lose your progress\non this level." : "Try this level again?");
            if(yes_or_no_prompt("Retry level", msg, false))
            {
-               // FIXME: Try again
+               // Try again
+               done = true;
+               retry = true;
            }
        }
        // Overview
@@ -499,7 +533,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             if(ending == 0 && recruits.size() > 0)
             {
                 BEGIN_IF_IN_SCROLL_AREA;
-                mytext.write_xy(x, y, DARK_BLUE, "Recruits:");
+                mytext.write_xy(x, y, DARK_BLUE, "%d Recruits:", recruits.size());
                 END_IF_IN_SCROLL_AREA;
                 y += 22;
                 for(std::vector<int>::iterator e = recruits.begin(); e != recruits.end(); e++)
@@ -516,7 +550,7 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             if(ending != 1 && losses.size() > 0)  // won or lost due to NPC
             {
                 BEGIN_IF_IN_SCROLL_AREA;
-                mytext.write_xy(x, y, DARK_BLUE, "Losses:");
+                mytext.write_xy(x, y, DARK_BLUE, "%d Losses:", losses.size());
                 END_IF_IN_SCROLL_AREA;
                 
                 y += 22;
@@ -579,8 +613,8 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                     float gain = 60*troops[i].get_XP_gain();
                     if(gain >= 0)
                     {
-                        myscreen->fastbox(x, y, base, barH, DARK_BLUE);
-                        myscreen->fastbox(x + base, y, gain, barH, DARK_GREEN);
+                        myscreen->fastbox(x, y, base, barH, DARK_GREEN);
+                        myscreen->fastbox(x + base, y, gain, barH, LIGHT_GREEN);
                     }
                     else
                         myscreen->fastbox(x + 60 + gain, y, -gain, barH, RED);
@@ -600,6 +634,26 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                     BEGIN_IF_IN_SCROLL_AREA;
                     mytext.write_xy(area.x + 20, y, DARK_GREEN, "%d Tall%s", tallies, (tallies == 1? "y" : "ies"));
                     END_IF_IN_SCROLL_AREA;
+                }
+                
+                if(troops[i].gained_level())
+                {
+                    std::vector<std::string> specials = troops[i].get_gained_specials();
+                    if(specials.size() > 0)
+                    {
+                        y += 10;
+                        BEGIN_IF_IN_SCROLL_AREA;
+                        mytext.write_xy(area.x + 20, y, DARK_BLUE, "Gained special%s:", (specials.size() == 1? "" : "s"));
+                        END_IF_IN_SCROLL_AREA;
+                        
+                        for(std::vector<std::string>::iterator e = specials.begin(); e != specials.end(); e++)
+                        {
+                            y += 10;
+                            BEGIN_IF_IN_SCROLL_AREA;
+                            mytext.write_xy(area.x + 30, y, DARK_BLUE, "%s", (*e).c_str());
+                            END_IF_IN_SCROLL_AREA;
+                        }
+                    }
                 }
                 
                 y += 13;
@@ -638,4 +692,6 @@ void results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         if(frame > 1000000)
             frame = 0;
     }
+    
+    return retry;
 }

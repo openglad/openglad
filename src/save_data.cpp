@@ -406,6 +406,7 @@ bool SaveData::load(const std::string& filename)
 	return 1;
 }
 
+Sint32 calculate_level(Uint32 temp_exp);
 
 void SaveData::update_guys(oblink* oblist)
 {
@@ -426,6 +427,8 @@ void SaveData::update_guys(oblink* oblist)
 		{
 		    // Take this one
 			team_list[team_size] = new guy(*here->ob->myguy);
+			// Update his level from the experience
+			team_list[team_size]->level = calculate_level(team_list[team_size]->exp);
 			team_size++;
 		}
 		here = here->next;
