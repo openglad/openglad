@@ -92,14 +92,12 @@ statistics::~statistics()
 
 void statistics::clear_command()
 {
-	command *here;
-	here = commandlist;
+	command* here = commandlist;
 	while(here)
 	{
-		commandlist = here;
+		command* temp = here;
 		here = here->next;
-		delete commandlist;
-		commandlist = NULL;
+		delete temp;
 	}
 	commandlist = NULL;
 	endlist = NULL;
@@ -269,19 +267,10 @@ short statistics::do_command()
         return 0;
     
     commandtype = commandlist->commandtype;
-    short& commandcount = commandlist->commandcount;
     com1 = commandlist->com1;
     com2 = commandlist->com2;
     
-	if (commandcount < 2) // Last iteration!
-	{
-		here = commandlist;
-		commandlist = commandlist->next;
-		if (endlist == here)
-			endlist = NULL;
-		delete here;
-		here = NULL;
-	}
+    short result = 1;
 
 	switch (commandtype)
 	{
@@ -296,23 +285,25 @@ short statistics::do_command()
 			}
 			if (!controller->fire_check(com1,com2))
 			{
-				commandcount = 0;
-				return 0;
+				commandlist->commandcount = 0;
+				result = 0;
+				break;
 			}
 			controller->init_fire(com1, com2);
 			break;
 		case COMMAND_DIE:  // debugging, not currently used
 			if (!controller->dead)
 				Log("Trying to make a living ob die!\n");
-			if (commandcount < 2)  // then delete us ..
+			if (commandlist->commandcount < 2)  // then delete us ..
 				delete_me = 1;
 			break;
 		case COMMAND_FOLLOW:   // follow the leader
 			if (controller->foe) // if we have foe, don't follow this round
 			{
-				commandcount = 0;
+				commandlist->commandcount = 0;
 				controller->leader = NULL;
-				return 0;
+				result = 0;
+				break;
 			}
 			if (!controller->leader)
 			{
@@ -326,9 +317,10 @@ short statistics::do_command()
 						controller->leader = controller->screenp->viewob[1]->control;
 					else
 					{
-						commandcount = 0;
+						commandlist->commandcount = 0;
 						controller->leader = NULL;
-						return 0;
+						result = 0;
+						break;
 					}
 				}
 			}
@@ -340,8 +332,8 @@ short statistics::do_command()
 				if (distance < 60)
 				{
 					controller->leader = NULL;
-					commandcount--;
-					return 1;  // don't get too close
+					result = 1;  // don't get too close
+					break;
 				}
 				newx = (short) (controller->leader->xpos - controller->xpos); // total horizontal distance..
 				newy = (short) (controller->leader->ypos - controller->ypos);
@@ -356,7 +348,7 @@ short statistics::do_command()
 			}  // end of if we had a foe ..
 			
 			controller->walkstep(newx, newy);
-			if (commandcount < 2)
+			if (commandlist->commandcount < 2)
             {
 				controller->leader = NULL;
             }
@@ -398,7 +390,7 @@ short statistics::do_command()
 				walk_to_foe();
 			else // stop trying to walk to this foe
             {
-				commandcount = 0;
+				commandlist->commandcount = 0;
             }
 			break;
 		case COMMAND_RIGHT_WALK: // right-hand-walk ONLY
@@ -415,8 +407,9 @@ short statistics::do_command()
 		case COMMAND_ATTACK: // attack a nearby, set foe
 			if (!controller->foe || controller->foe->dead)
 			{
-				commandcount = 0;
-				return 1;
+				commandlist->commandcount = 0;
+				result = 1;
+				break;
 			}
 			// Try to walk toward foe, and/or attack ..
 			deltax = (short) (controller->foe->xpos - controller->xpos);
@@ -454,8 +447,27 @@ short statistics::do_command()
 		default:
 			break;
 	}
-	commandcount--;       // reduce # of times left
-	return 1;
+	
+	// NOTE: The commandlist ptr might be pointing at a different command than it was before the switch statement.
+	// That would make this code decrement the wrong command.
+	if(commandlist != NULL)
+	{
+        commandlist->commandcount--;       // reduce # of times left
+        
+        if(commandlist->commandcount < 1) // Last iteration!
+        {
+            commandlist->commandcount = 0;
+            
+            here = commandlist;
+            commandlist = commandlist->next;
+            if (endlist == here)
+                endlist = NULL;
+            delete here;
+            here = NULL;
+        }
+	}
+	
+	return result;
 }
 
 // Determines what to do when we're hit by 'who'
