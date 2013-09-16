@@ -1402,6 +1402,23 @@ short walker::collide(walker  *ob)
 }
 
 
+short get_xp_from_attack(walker* w, walker* target, short damage)
+{
+    float x = (w->stats->level - target->stats->level);
+    // Whooo-ee!  An interpolated polynomial to fit {{0,30},{1,20},{2,15},{3,7.5},{5,0},{7,-50}} for 20 damage done.
+    // The factor was adjusted to make level ups happen at a good rate.
+    float result = 6.0f*damage*(-0.0997024f*pow(x,5)+1.47173f*pow(x,4)-7.5878f*pow(x,3)+16.4568f*pow(x,2)-20.2411f*x+30)/20.0f;
+    if(result <= 0)
+        return 0;
+    
+    return result;
+}
+
+short get_xp_from_kill(walker* w, walker* target)
+{
+    return get_xp_from_attack(w, target, 20);
+}
+
 enum ExpActionEnum {EXP_ATTACK, EXP_KILL, EXP_HEAL, EXP_TURN_UNDEAD, EXP_RAISE_SKELETON, EXP_RAISE_GHOST, EXP_RESURRECT, EXP_RESURRECT_PENALTY, EXP_PROTECTION, EXP_EAT_CORPSE};
 
 short exp_from_action(ExpActionEnum action, walker* w, walker* target, short value)
@@ -1411,17 +1428,12 @@ short exp_from_action(ExpActionEnum action, walker* w, walker* target, short val
     case EXP_ATTACK:
         // value == damage done
         {
-            short result = value * (target->stats->level + 2)/2;
-            if(w->query_order() == ORDER_WEAPON && w->owner)
-                result /= w->owner->stats->level;
-            else
-                result /= w->stats->level;
-            if(result < 1)
-                result = 1;
-            return result;
+            return get_xp_from_attack(w, target, value);
         }
     case EXP_KILL:
-        return (8 * target->stats->level);
+        {
+            return get_xp_from_kill(w, target);
+        }
     case EXP_HEAL:
         // value == number of hitpoints healed
         return (random(20*value)/w->stats->level);
@@ -1461,7 +1473,13 @@ Sint32 get_base_damage(walker* w)
 
 Sint32 get_damage_reduction(walker* w, Sint32 damage, walker* target)
 {
-    return target->stats->armor/2;
+    if(damage <= 0)
+        return 0;
+    
+    Sint32 result = target->stats->armor/2;
+    if(result >= damage)
+        return damage - 1;  // Always do at least 1 damage
+    return result;
 }
 
 
@@ -1554,17 +1572,6 @@ short walker::attack(walker  *target)
     // Base exp from attack damage
 	short newexp = exp_from_action(EXP_ATTACK, this, target, tempdamage);
 
-	// Assign bonus for non-player-controlled characters
-	if (order == ORDER_WEAPON && owner) // we're a weapon
-	{
-		if (owner->query_act_type() != ACT_CONTROL)
-			newexp *= 3;
-	}
-	else if (order == ORDER_LIVING) // we're a character
-		if (act_type != ACT_CONTROL)
-			newexp *= 3;
-
-
 	// Set our target to fighting our owner
 	//in the case of our weapon hit something
 	if (order != ORDER_LIVING && owner)
@@ -1573,10 +1580,7 @@ short walker::attack(walker  *target)
 		target->stats->hit_response(owner);
 		if (headguy->myguy)
 		{
-			if (targetorder != ORDER_LIVING)
-				headguy->myguy->exp += newexp/3;
-			else
-				headguy->myguy->exp += newexp;
+            headguy->myguy->exp += newexp;
 		}
 	}
 	else  //melee combat, set target to hit_response to us
@@ -1584,16 +1588,11 @@ short walker::attack(walker  *target)
 		target->stats->hit_response(this);
 		if (myguy)
 		{
-			if (targetorder != ORDER_LIVING)
-				myguy->exp += newexp/3;
-			else
-			{
-				myguy->exp += newexp;
-				if (getscore)
-				{
-					screenp->save_data.m_score[team_num] += tempdamage + target->stats->level;
-				}
-			}
+            myguy->exp += newexp;
+            if (getscore)
+            {
+                screenp->save_data.m_score[team_num] += tempdamage + target->stats->level;
+            }
 		}
 	}
 
