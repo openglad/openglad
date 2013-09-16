@@ -1454,12 +1454,14 @@ short exp_from_action(ExpActionEnum action, walker* w, walker* target, short val
 
 Sint32 get_base_damage(walker* w)
 {
-    return w->damage;
+    float d = w->damage;
+    float sqrtd = sqrtf(d);
+    return d - sqrtd/2.0f + random(floor(sqrtd));
 }
 
 Sint32 get_damage_reduction(walker* w, Sint32 damage, walker* target)
 {
-    return random(target->stats->armor);
+    return target->stats->armor/2;
 }
 
 
