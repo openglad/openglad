@@ -838,6 +838,15 @@ loader::~loader(void)
 	delete[] fire_frequency;
 }
 
+void loader::set_derived_stats(walker* w, char order, char family)
+{
+	w->stepsize = stepsizes[PIX(order, family)];
+	w->normal_stepsize = w->stepsize;
+	w->lineofsight = lineofsight[PIX(order, family)];
+	w->damage = damage[PIX(order, family)];
+	w->fire_frequency = fire_frequency[PIX(order, family)];
+}
+
 walker  *loader::create_walker(char order,
                                char family,
                                screen  *myscreen, bool cache_weapons)
@@ -901,11 +910,8 @@ walker  *loader::set_walker(walker *ob,
 	ob->set_order_family(order,family);
 	ob->set_act_type(act_types[PIX(order, family)]);
 	ob->ani = animations[PIX(order, family)];
-	ob->stepsize = stepsizes[PIX(order, family)];
-	ob->normal_stepsize = ob->stepsize;
-	ob->lineofsight = lineofsight[PIX(order, family)];
-	ob->damage = damage[PIX(order, family)];
-	ob->fire_frequency = fire_frequency[PIX(order, family)];
+	
+	set_derived_stats(ob, order, family);
 
 	for (i=0; i < NUM_SPECIALS; i++)
 		ob->stats->special_cost[i] = 5000;

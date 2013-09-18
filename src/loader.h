@@ -27,6 +27,7 @@ class loader
 		loader();
 		virtual ~loader(void);
 		walker  *create_walker(char order, char family, screen  *screenp, bool cache_weapons = true);
+		void set_derived_stats(walker* w, char order, char family);
 		pixieN *create_pixieN(char order, char family);
 		walker *set_walker(walker *ob, char order, char family);
 		PixieData* graphics;

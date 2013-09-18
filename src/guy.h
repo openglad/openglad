@@ -18,6 +18,7 @@
 #define __GUY_H
 
 #include "base.h"
+#include "stats.h"
 
 // Holds attributes for characters.
 // Used to store character data in SaveData's team_list.
@@ -32,6 +33,11 @@ class guy
 		Sint32 query_heart_value(); // how much are we worth?
 		walker* create_walker(screen* myscreen);
 		walker* create_and_add_walker(screen* myscreen);
+		void upgrade_to_level(short level);
+		void set_level_number(short level);
+		short get_level() const;
+		
+		void update_derived_stats(walker* w);
 
 		char name[12];
 		char family;  // our family
@@ -39,7 +45,6 @@ class guy
 		short dexterity;
 		short constitution;
 		short intelligence;
-		short level;
 		short armor;
 		Uint32 exp;
 		short kills;       // version 3+
@@ -51,6 +56,9 @@ class guy
         
         // In ID for comparing old guys with their duplicated counterparts after battle
         int id;
+        
+    protected:
+        short level;
 };
 
 #endif

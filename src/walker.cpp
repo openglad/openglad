@@ -1841,10 +1841,17 @@ short walker::animate()
 			}
 			else if (newob->myguy) // split our experience
 			{
-				myguy->exp /= 2;
-				newob->myguy->exp /= 2;
-				newob->myguy->level = calculate_level(newob->myguy->exp);
-				newob->stats->level = newob->myguy->level;
+				Uint32 exp = myguy->exp / 2;
+				
+				short newlevel = calculate_level(exp);
+				// Downgrade us and the copy
+				myguy->upgrade_to_level(newlevel);
+				myguy->update_derived_stats(this);
+				myguy->exp = exp;
+				
+				newob->myguy->upgrade_to_level(newlevel);
+				newob->myguy->update_derived_stats(newob);
+				newob->myguy->exp = exp;
 			}
 
 			newob->team_num = team_num;
@@ -3996,7 +4003,7 @@ void walker::transfer_stats(walker  *newob)
 		newguy->constitution = myguy->constitution;
 		newguy->dexterity = myguy->dexterity;
 		newguy->intelligence = myguy->intelligence;
-		newguy->level = myguy->level;
+		newguy->set_level_number(myguy->get_level());
 		newguy->armor = myguy->armor;
 		newguy->exp = myguy->exp;
 		// 'Kill-stats'

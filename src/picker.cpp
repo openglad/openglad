@@ -73,7 +73,8 @@ extern options *theprefs;
 text  *mytext;
 Sint32 *mymouse;     // hold mouse information
 //char main_dir[80];
-guy  *current_guy;// = new guy();
+guy  *current_guy = NULL;
+guy  *old_guy = NULL;
 
 char  message[80];
 Sint32 editguy = 0;        // Global for editing guys ..
@@ -504,7 +505,7 @@ void view_team(short left, short top, short right, short bottom)
 			         ourteam[i]->armor);
 			mytext.write_xy(left+70, text_down, message, (unsigned char) BLACK, 1);
 
-			sprintf (message, "%2d", ourteam[i]->level);
+			sprintf (message, "%2d", ourteam[i]->get_level());
 			mytext.write_xy(left+235, text_down, message, (unsigned char) BLACK, 1);
 
 			family_name_copy(message, ourteam[i]->family);
@@ -1226,6 +1227,8 @@ Sint32 create_hire_menu(Sint32 arg1)
 #define STAT_NUM_OFFSET 42
 #define STAT_COLOR   DARK_BLUE // color for normal stat text
 #define STAT_CHANGED RED       // color for changed stat text
+#define STAT_LEVELED LIGHT_BLUE   // color for leveled up stat text
+#define STAT_DISABLED BLACK   // color for disabled stat text
 #define STAT_DERIVED DARK_BLUE + 3
     
     SDL_Rect stat_box = {196, 50 - 6 - 32, 104, 82 + 32};
@@ -1343,7 +1346,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_team_num]);
         mytext->write_xy(cost_box_content.x, cost_box_content.y, message,(unsigned char) DARK_BLUE, 1);
-        current_cost = calculate_cost();
+        current_cost = calculate_hire_cost();
         mytext->write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         sprintf(message, "      %u", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
@@ -1457,7 +1460,6 @@ Sint32 create_hire_menu(Sint32 arg1)
 
 Sint32 create_train_menu(Sint32 arg1)
 {
-	guy * here;
 	Sint32 linesdown, i, retvalue=0;
 	unsigned char showcolor;
 	Sint32 start_time = query_timer();
@@ -1497,18 +1499,19 @@ Sint32 create_train_menu(Sint32 arg1)
 			allbuttons[i]->set_graphic(FAMILY_PLUS);
 	}
 
+	
+	guy** ourteam = myscreen->save_data.team_list;
+	
 	// Set to first guy on list using global variable ..
 	cycle_team_guy(0);
-	here = myscreen->save_data.team_list[editguy];
-
+    guy* here = ourteam[editguy];
+    current_cost = calculate_train_cost(here);
 
 	grab_mouse();
 	
     clear_keyboard();
     
     clear_key_press_event();
-	
-	guy** ourteam = myscreen->save_data.team_list;
 
 	while ( !(retvalue & EXIT) )
 	{
@@ -1538,15 +1541,16 @@ Sint32 create_train_menu(Sint32 arg1)
 				}
 				cycle_team_guy(0);
             }
-
+            
+            if (!current_guy)
+                cycle_team_guy(0);
+            if (here != ourteam[editguy])
+                here = ourteam[editguy];
+            current_cost = calculate_train_cost(here);
             retvalue = 0;
         }
 		
-        if (!current_guy)
-            cycle_team_guy(0);
-        if (here != ourteam[editguy])
-            here = ourteam[editguy];
-        current_cost = calculate_cost(here);
+        //current_cost = calculate_train_cost(here);
         
 		// Draw
 		myscreen->clearbuffer();
@@ -1566,11 +1570,25 @@ Sint32 create_train_menu(Sint32 arg1)
         myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
         myscreen->draw_text_bar(42, 70, 116, 156);
 
+        
+        bool level_increased = (old_guy->get_level() < current_guy->get_level());
+        bool stat_increased;
+        if(level_increased)
+            stat_increased = false;
+        else
+            stat_increased = (old_guy->strength < current_guy->strength
+                   || old_guy->dexterity < current_guy->dexterity
+                   || old_guy->constitution < current_guy->constitution
+                   || old_guy->intelligence < current_guy->intelligence
+                   || old_guy->armor < current_guy->armor);
+
         // Strength
         sprintf(message, "%d", current_guy->strength);
         mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
                          (unsigned char) STAT_COLOR, 1);
-        if (here->strength < current_guy->strength)
+        if (level_increased)
+            showcolor = STAT_LEVELED;
+        else if (here->strength < current_guy->strength)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
@@ -1580,7 +1598,9 @@ Sint32 create_train_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->dexterity);
         mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
                          (unsigned char) STAT_COLOR, 1);
-        if (here->dexterity < current_guy->dexterity)
+        if (level_increased)
+            showcolor = STAT_LEVELED;
+        else if (here->dexterity < current_guy->dexterity)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
@@ -1590,7 +1610,9 @@ Sint32 create_train_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->constitution);
         mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
                          (unsigned char) STAT_COLOR, 1);
-        if (here->constitution < current_guy->constitution)
+        if (level_increased)
+            showcolor = STAT_LEVELED;
+        else if (here->constitution < current_guy->constitution)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
@@ -1600,7 +1622,9 @@ Sint32 create_train_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->intelligence);
         mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
                          (unsigned char) STAT_COLOR, 1);
-        if (here->intelligence < current_guy->intelligence)
+        if (level_increased)
+            showcolor = STAT_LEVELED;
+        else if (here->intelligence < current_guy->intelligence)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
@@ -1610,18 +1634,22 @@ Sint32 create_train_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->armor);
         mytext->write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
                          (unsigned char) STAT_COLOR, 1);
-        if (here->armor < current_guy->armor)
+        if (level_increased)
+            showcolor = STAT_LEVELED;
+        else if (here->armor < current_guy->armor)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Level
-        sprintf(message, "%d", current_guy->level);
+        sprintf(message, "%d", current_guy->get_level());
         mytext->write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
                          (unsigned char) STAT_COLOR, 1);
-        if (here->level < current_guy->level)
+        if (level_increased)
             showcolor = STAT_CHANGED;
+        else if(stat_increased)
+            showcolor = STAT_DISABLED;
         else
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
@@ -1671,7 +1699,7 @@ Sint32 create_train_menu(Sint32 arg1)
         mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
         mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
-        current_cost = calculate_cost(here);
+        //current_cost = calculate_train_cost(here);
         mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
         sprintf(message, "      %u", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
@@ -2153,63 +2181,104 @@ Sint32 create_save_menu(Sint32 arg1)
 
 Sint32 increase_stat(Sint32 whatstat, Sint32 howmuch)
 {
+    bool level_increased = (old_guy->get_level() < current_guy->get_level());
+    bool stat_increased;
+    if(level_increased)
+        stat_increased = false;
+    else
+        stat_increased = (old_guy->strength < current_guy->strength
+               || old_guy->dexterity < current_guy->dexterity
+               || old_guy->constitution < current_guy->constitution
+               || old_guy->intelligence < current_guy->intelligence
+               || old_guy->armor < current_guy->armor);
+    
 	switch(whatstat)
 	{
 		case BUT_STR:
-			current_guy->strength+=howmuch;
+			if(!level_increased)
+                current_guy->strength+=howmuch;
 			break;
 		case BUT_DEX:
-			current_guy->dexterity+=howmuch;
+			if(!level_increased)
+                current_guy->dexterity+=howmuch;
 			break;
 		case BUT_CON:
-			current_guy->constitution+=howmuch;
+			if(!level_increased)
+                current_guy->constitution+=howmuch;
 			break;
 		case BUT_INT:
-			current_guy->intelligence+=howmuch;
+			if(!level_increased)
+                current_guy->intelligence+=howmuch;
 			break;
 		case BUT_ARMOR:
-			current_guy->armor+=howmuch;
+			if(!level_increased)
+                current_guy->armor+=howmuch;
 			break;
 		case BUT_LEVEL:
-			current_guy->level+=howmuch;
+		    if(!stat_increased)
+		    {
+                short newlevel = current_guy->get_level() + howmuch;
+                current_guy->upgrade_to_level(newlevel);
+		    }
 			break;
 		default:
 			break;
 	}
-	//calculate_cost();
+	
 	return OK;
 }
 
 Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 {
+    bool level_increased = (old_guy->get_level() < current_guy->get_level());
+    bool stat_increased;
+    if(level_increased)
+        stat_increased = false;
+    else
+        stat_increased = (old_guy->strength < current_guy->strength
+               || old_guy->dexterity < current_guy->dexterity
+               || old_guy->constitution < current_guy->constitution
+               || old_guy->intelligence < current_guy->intelligence
+               || old_guy->armor < current_guy->armor);
+    
 	switch(whatstat)
 	{
 		case BUT_STR:
-			current_guy->strength-=howmuch;
+		    if(!level_increased)
+                current_guy->strength-=howmuch;
 			break;
 		case BUT_DEX:
-			current_guy->dexterity-=howmuch;
+			if(!level_increased)
+                current_guy->dexterity-=howmuch;
 			break;
 		case BUT_CON:
-			current_guy->constitution-=howmuch;
+			if(!level_increased)
+                current_guy->constitution-=howmuch;
 			break;
 		case BUT_INT:
-			current_guy->intelligence-=howmuch;
+			if(!level_increased)
+                current_guy->intelligence-=howmuch;
 			break;
 		case BUT_ARMOR:
-			current_guy->armor-=howmuch;
+			if(!level_increased)
+                current_guy->armor-=howmuch;
 			break;
 		case BUT_LEVEL:
-			current_guy->level-=howmuch;
+			if(!stat_increased)\
+            {
+			    short newlevel = current_guy->get_level() - howmuch;
+			    if(newlevel > 0 && newlevel >= myscreen->save_data.team_list[editguy]->get_level())
+                    current_guy->upgrade_to_level(newlevel);
+			}
 			break;
 		default:
 			break;
 	}
-	//calculate_cost();
+	
 	return OK;
 }
 
-Uint32 calculate_cost()
+Uint32 calculate_hire_cost()
 {
 	guy  *ob = current_guy;
 	Sint32 temp;
@@ -2232,12 +2301,10 @@ Uint32 calculate_cost()
 		ob->intelligence = statlist[myfamily][BUT_INT];
 	if (ob->armor < statlist[myfamily][BUT_ARMOR])
 		ob->armor = statlist[myfamily][BUT_ARMOR];
-	if (ob->level < statlist[myfamily][BUT_LEVEL])
-		ob->level = statlist[myfamily][BUT_LEVEL];
 
 	// Now figure out costs ..
 	temp += (Sint32)((pow( (Sint32)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_STR]) ;
+	               * (Sint32)statcosts[myfamily][BUT_STR]);
 	temp += (Sint32)((pow( (Sint32)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
 	               * (Sint32)statcosts[myfamily][BUT_DEX]);
 	temp += (Sint32)((pow( (Sint32)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
@@ -2246,11 +2313,15 @@ Uint32 calculate_cost()
 	               * (Sint32)statcosts[myfamily][BUT_INT]);
 	temp += (Sint32)((pow( (Sint32)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
 	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
-	temp += (Sint32)((pow( (Sint32)(ob->level - statlist[myfamily][BUT_LEVEL]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_LEVEL]);
-	if ((Sint32) calculate_exp(ob->level) < 0) // overflow
-		ob->level = 1;
-	temp += (Sint32) (calculate_exp(ob->level));
+    
+	if (ob->get_level() < statlist[myfamily][BUT_LEVEL])
+		ob->upgrade_to_level(statlist[myfamily][BUT_LEVEL]);
+		
+	if ((Sint32) calculate_exp(ob->get_level()) < 0) // overflow
+		ob->upgrade_to_level(1);
+    
+	temp += (Sint32) (calculate_exp(ob->get_level()));
+	
 	if (temp < 0)
 	{
 		//guytemp = new guy(current_guy->family);
@@ -2264,7 +2335,7 @@ Uint32 calculate_cost()
 }
 
 // This version compares current_guy versus the old version ..
-Uint32 calculate_cost(guy  *oldguy)
+Uint32 calculate_train_cost(guy  *oldguy)
 {
 	guy  *ob = current_guy;
 	Sint32 temp;
@@ -2287,14 +2358,20 @@ Uint32 calculate_cost(guy  *oldguy)
 		ob->intelligence = oldguy->intelligence;
 	if (ob->armor < oldguy->armor)
 		ob->armor = oldguy->armor;
-	if (ob->level < oldguy->level)
-		ob->level = oldguy->level;
 
 	// Now figure out costs ..
+    
+	// Add on extra level cost ..
+	if (ob->get_level() < oldguy->get_level())
+		ob->upgrade_to_level(oldguy->get_level());
+	if (calculate_exp(ob->get_level()) > oldguy->exp)
+		temp += (Sint32)(calculate_exp(ob->get_level()) - oldguy->exp);
 
+	if (ob->get_level() <= old_guy->get_level()) // Only count these costs if the level is not being upgraded
+    {
 	// First we have our 'total increased value..'
 	temp += (Sint32)((pow( (Sint32)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_STR]) ;
+	               * (Sint32)statcosts[myfamily][BUT_STR]);
 	temp += (Sint32)((pow( (Sint32)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
 	               * (Sint32)statcosts[myfamily][BUT_DEX]);
 	temp += (Sint32)((pow( (Sint32)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
@@ -2315,10 +2392,7 @@ Uint32 calculate_cost(guy  *oldguy)
 	               * (Sint32)statcosts[myfamily][BUT_INT]);
 	temp -= (Sint32)((pow( (Sint32)(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
 	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
-
-	// Add on extra level cost ..
-	if (calculate_exp(ob->level) > oldguy->exp)
-		temp += (Sint32)(calculate_exp(ob->level) - oldguy->exp);
+    }
     
 
 	if (temp < 0)
@@ -2617,6 +2691,7 @@ Sint32 cycle_team_guy(Sint32 whichway)
 		delete current_guy;
 	current_guy = new guy(ourteam[editguy]->family);
 	statscopy(current_guy, ourteam[editguy]);
+	old_guy = ourteam[editguy];
 
 	show_guy(0, 0);
 
@@ -2695,10 +2770,11 @@ Sint32 add_guy(Sint32 ignoreme)
 	if (!current_guy) // we should be adding current_guy
 		return -1;
 
-	if (calculate_cost() > myscreen->save_data.m_totalcash[current_team_num] || calculate_cost() == 0)
+    Uint32 cost = calculate_hire_cost();
+	if (cost == 0 || cost > myscreen->save_data.m_totalcash[current_team_num])
 		return OK;
 
-	myscreen->save_data.m_totalcash[current_team_num] -= calculate_cost();
+	myscreen->save_data.m_totalcash[current_team_num] -= cost;
     
     guy** ourteam = myscreen->save_data.team_list;
 	for (i=0; i < MAX_TEAM_SIZE; i++)
@@ -2721,7 +2797,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			numbought[newfamily]++;
 
 			// Ensure we have the right exp for our level
-			ourteam[i]->exp = calculate_exp(ourteam[i]->level);
+			ourteam[i]->exp = calculate_exp(ourteam[i]->get_level());
 
 			// Grab a new, generic guy to be edited/bought
 			current_guy = new guy(newfamily);
@@ -2759,20 +2835,21 @@ Sint32 edit_guy(Sint32 arg1)
 	// When holding down the right mouse button, can always accept free changes
 	if (CHEAT_MODE && cheatmouse[MOUSE_RIGHT])
 	{
-		if (here->level != current_guy->level)
-			current_guy->exp = calculate_exp(current_guy->level);
+		if (here->get_level() != current_guy->get_level())
+			current_guy->upgrade_to_level(current_guy->get_level());
 		statscopy(here, current_guy);
 		return OK;
 	}
-
-	if ( (calculate_cost(here) > myscreen->save_data.m_totalcash[current_guy->teamnum]) ||  // compare cost of here to current_guy
-	        (calculate_cost(here) < 0) )
+    
+    Uint32 cost = calculate_train_cost(here);
+	if ( (cost > myscreen->save_data.m_totalcash[current_guy->teamnum]) ||  // compare cost of here to current_guy
+	        (cost < 0) )
 		return OK;
 
-	myscreen->save_data.m_totalcash[current_guy->teamnum] -= calculate_cost(here);  // cost of new - old (current_guy - here)
+	myscreen->save_data.m_totalcash[current_guy->teamnum] -= cost;  // cost of new - old (current_guy - here)
 
-	if (here->level != current_guy->level)
-		current_guy->exp = calculate_exp(current_guy->level);
+    if (here->get_level() != current_guy->get_level())
+        current_guy->upgrade_to_level(current_guy->get_level());
 	statscopy(here, current_guy);
 
 	// Color our team button normally
@@ -2990,7 +3067,7 @@ void statscopy(guy *dest, guy *source)
 	dest->dexterity = source->dexterity;
 	dest->constitution = source->constitution;
 	dest->intelligence = source->intelligence;
-	dest->level = source->level;
+	dest->set_level_number(source->get_level());
 	dest->armor = source->armor;
 	dest->exp = source->exp;
 	dest->kills = source->kills;
@@ -3136,7 +3213,7 @@ Sint32 create_detail_menu(guy *arg1)
 	int num_buttons = 2;
 	int highlighted_button = 0;
 	
-	buttons[1].hidden = !(thisguy->family == FAMILY_MAGE && thisguy->level >= 6) && !(thisguy->family == FAMILY_ORC && thisguy->level >= 5);
+	buttons[1].hidden = !(thisguy->family == FAMILY_MAGE && thisguy->get_level() >= 6) && !(thisguy->family == FAMILY_ORC && thisguy->get_level() >= 5);
 	localbuttons = init_buttons(buttons, num_buttons);
 
    //leftmouse(buttons);
@@ -3162,11 +3239,10 @@ Sint32 create_detail_menu(guy *arg1)
        if(do_promote)
        {
            if (thisguy->family == FAMILY_MAGE &&
-                   thisguy->level >= 6)
+                   thisguy->get_level() >= 6)
            {
                // Become an archmage!
-               thisguy->level = ( (thisguy->level-6) / 2) + 1;
-               thisguy->exp = calculate_exp(thisguy->level);
+               thisguy->upgrade_to_level(( (thisguy->get_level()-6) / 2) + 1);
                thisguy->family = FAMILY_ARCHMAGE;
                myscreen->soundp->play_sound(SOUND_EXPLODE);
                myscreen->soundp->play_sound(SOUND_EXPLODE);
@@ -3174,11 +3250,10 @@ Sint32 create_detail_menu(guy *arg1)
                return REDRAW;
            }  // end of mage->archmage
            else if (thisguy->family == FAMILY_ORC &&
-                    thisguy->level >= 5)
+                    thisguy->get_level() >= 5)
            {
                // Become an Orcish Captain!
-               thisguy->exp = 0;
-               thisguy->level = 1;
+               thisguy->upgrade_to_level(1);
                thisguy->family = FAMILY_BIG_ORC; // fake for now
                myscreen->soundp->play_sound(SOUND_DIE1);
                myscreen->soundp->play_sound(SOUND_DIE2);
@@ -3205,7 +3280,7 @@ Sint32 create_detail_menu(guy *arg1)
        switch (thisguy->family)
        {
            case FAMILY_SOLDIER:
-               sprintf(message, "Level %d soldier has:", thisguy->level);
+               sprintf(message, "Level %d soldier has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things (charge)
@@ -3214,7 +3289,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(4, "  run forward, damaging");
                WL(5, "  anything in your way.");
                // Level 4 things (boomerang)
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Boomerang");
                    WL(8, "  The boomerang flies  ");
@@ -3222,7 +3297,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(10,"  hurting nearby foes. ");
                }
                // Level 7 things (whirl)
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Whirl    ");
                    WR(1, "  The fighter whirls in");
@@ -3230,7 +3305,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(3 ,"  stunning melee foes. ");
                }
                // Level 10 things (disarm)
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, " Disarm   ");
                    WR(6, "  Cause a melee foe to ");
@@ -3239,7 +3314,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_BARBARIAN:
-               sprintf(message, "Level %d barbarian has:", thisguy->level);
+               sprintf(message, "Level %d barbarian has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things (hurl boulder)
@@ -3248,7 +3323,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(4, "  boulder at your      ");
                WL(5, "  enemies.             ");
                // Level 4 things (exploding boulder)
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Exploding Boulder");
                    WL(8, "  Hurl a boulder so hard ");
@@ -3257,7 +3332,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ELF:
-               sprintf(message, "Level %d elf has:", thisguy->level);
+               sprintf(message, "Level %d elf has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things (rocks)
@@ -3267,7 +3342,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  walk, dexterity-based, ");
                WL(6, "  lets you move in trees.");
                // Level 4 things (more rocks)
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " More Rocks");
                    WL(8, "  Like #1, but these    ");
@@ -3275,7 +3350,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(10,"  and other barricades. ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Lots of Rocks");
                    WR(1, "  Like #2, but more     ");
@@ -3283,7 +3358,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(3 ,"  thrown range.         ");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, " MegaRocks");
                    WR(6, "  This giant handful of ");
@@ -3292,7 +3367,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ARCHER:
-               sprintf(message, "Level %d archer has:", thisguy->level);
+               sprintf(message, "Level %d archer has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
@@ -3302,7 +3377,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  ring of flaming bolts. ");
                //WL(6, "  lets you move in trees.");
                // Level 4 things
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Barrage   ");
                    WL(8, "  Rather than a single  ");
@@ -3310,7 +3385,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(10,"  3 deadly bolts ahead. ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Exploding Bolt");
                    WR(1, "  This fatal bolt will  ");
@@ -3318,7 +3393,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(3 ,"  dealing death to all. ");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, "          ");
                    WR(6, "                        ");
@@ -3327,7 +3402,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_MAGE:
-               sprintf(message, "Level %d Mage has:", thisguy->level);
+               sprintf(message, "Level %d Mage has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
@@ -3337,7 +3412,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  Leaving a marker for   ");
                WL(6, "  anchor requires 75 int.");
                // Level 4 things
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Warp Space");
                    WL(8, "  Twist the fabric of   ");
@@ -3345,10 +3420,10 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(10,"  deal death to enemies.");
                }
                // Can we change to archmage?
-               if (thisguy->level >= 6)
+               if (thisguy->get_level() >= 6)
                {
                    sprintf(message,"Level %d Archmage. This",
-                           (thisguy->level-6)/2+1);
+                           (thisguy->get_level()-6)/2+1);
                    myscreen->draw_dialog(158, 4, 315, 66, "Become ArchMage");
                    WR(-10,"Your Mage is now of high");
                    WR( -9,"enough level to become a");
@@ -3358,7 +3433,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR( -6," Click here to change.  ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Freeze Time   ");
                    WR(1, "  Freeze time for all   ");
@@ -3366,7 +3441,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(3 ,"  enemies with ease.    ");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(4, " Energy Wave");
                    WR(5, "  Send a growing ripple ");
@@ -3374,7 +3449,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(7 ,"  walls and foes.       ");
                }
                // Level 13 things
-               if (thisguy->level >= 13)
+               if (thisguy->get_level() >= 13)
                {
                    WR(8, " HeartBurst  ");
                    WR(9, "  Burst your enemies    ");
@@ -3383,7 +3458,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ARCHMAGE:
-               sprintf(message, "Level %d ArchMage has:", thisguy->level);
+               sprintf(message, "Level %d ArchMage has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
@@ -3393,7 +3468,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  Leaving a marker for   ");
                WL(6, "  anchor requires 75 int.");
                // Level 4 things
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " HeartBurst/Lightning");
                    WL(8, "  Burst your enemies    ");
@@ -3402,7 +3477,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(11,"  bounces through foes. ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Summon Image/Sum. Elem.");
                    WR(1, "  Summon an illusionary ");
@@ -3411,7 +3486,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(4 ,"  who uses your stamina.");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, " Mind Control");
                    WR(6,"  Convert nearby foes to");
@@ -3420,7 +3495,7 @@ Sint32 create_detail_menu(guy *arg1)
                break;
 
            case FAMILY_CLERIC:
-               sprintf(message, "Level %d Cleric has:", thisguy->level);
+               sprintf(message, "Level %d Cleric has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
@@ -3430,7 +3505,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  as much as you have SP.");
                //WL(6, "  lets you move in trees.");
                // Level 4 things
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Raise/Turn Undead");
                    WL(8, "  Raise the gore of any ");
@@ -3439,7 +3514,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(11,"  requires 65 Int.      ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Raise/Turn Ghost");
                    WR(1, "  A more powerful raise,");
@@ -3447,7 +3522,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(3 ,"  to fly and wail.      ");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, " Resurrection");
                    WR(6, "  The ultimate Healing, ");
@@ -3459,7 +3534,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_DRUID:
-               sprintf(message, "Level %d Druid has:", thisguy->level);
+               sprintf(message, "Level %d Druid has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
@@ -3469,7 +3544,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  while allowing friends ");
                WL(6, "  to pass.               ");
                // Level 4 things
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Summon Faerie");
                    WL(8, "  This spell brings to  ");
@@ -3477,7 +3552,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(10,"  faerie to stun foes.  ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Circle of Protection");
                    WR(1, "  Calls the winds to aid");
@@ -3486,7 +3561,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR(4 ,"  shield of moving air. ");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, " Reveal   ");
                    WR(6, "  Gives you a magical   ");
@@ -3496,7 +3571,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_THIEF:
-               sprintf(message, "Level %d Thief has:", thisguy->level);
+               sprintf(message, "Level %d Thief has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
@@ -3506,7 +3581,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  unwary, friend or foe! ");
                //WL(6, "  to pass.               ");
                // Level 4 things
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Cloak of Darkness");
                    WL(8, "  Cloak yourself in the ");
@@ -3514,7 +3589,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(10,"  your enemies.         ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, " Taunt Enemies       ");
                    WR(1, "  Beckon your enemies   ");
@@ -3523,7 +3598,7 @@ Sint32 create_detail_menu(guy *arg1)
                    //WR(4 ,"  shield of moving air. ");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, " Poison Cloud");
                    WR(6, "  Release a cloud of    ");
@@ -3533,7 +3608,7 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ORC:
-               sprintf(message, "Level %d Orc has:", thisguy->level);
+               sprintf(message, "Level %d Orc has:", thisguy->get_level());
                mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
                mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
@@ -3543,7 +3618,7 @@ Sint32 create_detail_menu(guy *arg1)
                WL(5, "  tracks.                ");
                //WL(6, "  to pass.               ");
                // Level 4 things
-               if (thisguy->level >= 4)
+               if (thisguy->get_level() >= 4)
                {
                    WL(7, " Devour Corpse    ");
                    WL(8, "  Regain health by      ");
@@ -3551,7 +3626,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WL(10,"  of your foes.         ");
                }
                // Can we change to orc captain?
-               if (thisguy->level >= 6)
+               if (thisguy->get_level() >= 6)
                {
                    myscreen->draw_dialog(158, 4, 315, 66, "Become Orc Captain");
                    WR(-10,"Your Orc is now of high ");
@@ -3561,7 +3636,7 @@ Sint32 create_detail_menu(guy *arg1)
                    WR( -6," Click here to change.  ");
                }
                // Level 7 things
-               if (thisguy->level >= 7)
+               if (thisguy->get_level() >= 7)
                {
                    WR(0, "                     ");
                    //WR(1, "  Beckon your enemies   ");
@@ -3570,7 +3645,7 @@ Sint32 create_detail_menu(guy *arg1)
                    //WR(4 ,"  shield of moving air. ");
                }
                // Level 10 things
-               if (thisguy->level >= 10)
+               if (thisguy->get_level() >= 10)
                {
                    WR(5, "             ");
                    //WR(6, "  Release a cloud of    ");

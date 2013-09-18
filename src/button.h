@@ -167,8 +167,8 @@ Sint32 create_save_menu(Sint32 arg1); // Save a team
 Sint32 go_menu(Sint32 arg1); // run glad..
 Sint32 increase_stat(Sint32 arg1, Sint32 howmuch=1); // increase a guy's stats
 Sint32 decrease_stat(Sint32 arg1, Sint32 howmuch=1); // decrease a guy's stats
-Uint32 calculate_cost();
-Uint32 calculate_cost(guy * oldguy);
+Uint32 calculate_hire_cost();
+Uint32 calculate_train_cost(guy * oldguy);
 Sint32 cycle_guy(Sint32 whichway);
 Sint32 cycle_team_guy(Sint32 whichway);
 Sint32 add_guy(Sint32 ignoreme);

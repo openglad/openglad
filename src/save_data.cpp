@@ -93,7 +93,7 @@ bool SaveData::load(const std::string& filename)
 	char temp_campaign[41];
 	strcpy(temp_campaign, "org.openglad.gladiator");
 	temp_campaign[40] = '\0';
-	char temp_version = 8;
+	char temp_version = 9;
 	Uint32 newcash;
 	Uint32 newscore = 0;
 	//  short numguys;
@@ -142,7 +142,7 @@ bool SaveData::load(const std::string& filename)
 	// 2-bytes constitution
 	// 2-bytes intelligence
 	// 2-bytes armor
-	// 2-bytes level
+	// 2-bytes level  // Does not include upgraded stats in version 8 or lower
 	// 4-bytes unsigned experience
 	// 2-bytes # kills, v.3
 	// 4-bytes # total levels killed, v.3
@@ -306,7 +306,10 @@ bool SaveData::load(const std::string& filename)
 		temp_guy->constitution = temp_con;
 		temp_guy->intelligence = temp_short;
 		temp_guy->armor        = temp_arm;
-		temp_guy->level        = temp_lev;
+		if(temp_version >= 9)
+            temp_guy->set_level_number(temp_lev);
+        else
+            temp_guy->upgrade_to_level(temp_lev);
 		temp_guy->exp          = temp_exp;
 		if (temp_version >=3)
 		{
@@ -428,7 +431,9 @@ void SaveData::update_guys(oblink* oblist)
 		    // Take this one
 			team_list[team_size] = new guy(*here->ob->myguy);
 			// Update his level from the experience
-			team_list[team_size]->level = calculate_level(team_list[team_size]->exp);
+			Uint32 exp = team_list[team_size]->exp;
+			team_list[team_size]->upgrade_to_level(calculate_level(team_list[team_size]->exp));
+			team_list[team_size]->exp = exp;
 			team_size++;
 		}
 		here = here->next;
@@ -447,7 +452,7 @@ bool SaveData::save(const std::string& filename)
 	memset(temp_campaign, 0, 41);
 
 	char temptext[10] = "GTL";
-	char temp_version = 8;
+	char temp_version = 9;
 	
 	Uint32 newcash = totalcash;
 	Uint32 newscore = totalscore;
@@ -497,7 +502,7 @@ bool SaveData::save(const std::string& filename)
 	// 2-bytes constitution
 	// 2-bytes intelligence
 	// 2-bytes armor
-	// 2-bytes level
+	// 2-bytes level  // Does not include upgraded stats in versions 8 or lower
 	// 4-bytes Uint32 experience
 	// 2-bytes # kills, v.3+
 	// 4-bytes # total levels killed, v.3+
@@ -596,7 +601,7 @@ bool SaveData::save(const std::string& filename)
         temp_con = temp_guy->constitution;
         temp_short = temp_guy->intelligence;
         temp_arm = temp_guy->armor;
-        temp_lev = temp_guy->level;
+        temp_lev = temp_guy->get_level();
         temp_exp = temp_guy->exp;
         // Version 3+ below here
         temp_kills = temp_guy->kills;

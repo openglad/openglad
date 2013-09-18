@@ -379,7 +379,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	{
 		if (screenp->save_data.team_list[i])
 		{
-		    army_power += 3*screenp->save_data.team_list[i]->level;
+		    army_power += 3*screenp->save_data.team_list[i]->get_level();
 		}
 	}
     

@@ -147,7 +147,7 @@ bool TroopResult::gained_level()
     if(after == NULL || before == NULL)
         return false;
     
-    return calculate_level(after->myguy->exp) > before->level;
+    return calculate_level(after->myguy->exp) > before->get_level();
 }
 
 bool TroopResult::lost_level()
@@ -155,7 +155,7 @@ bool TroopResult::lost_level()
     if(after == NULL || before == NULL)
         return false;
     
-    return calculate_level(after->myguy->exp) < before->level;
+    return calculate_level(after->myguy->exp) < before->get_level();
 }
 
 std::vector<std::string> TroopResult::get_gained_specials()
@@ -186,7 +186,7 @@ float TroopResult::get_XP_base()
     if(gained_level())
         return 0.0f;
     
-    return (before->exp - calculate_exp(before->level))/float(calculate_exp(before->level + 1));
+    return (before->exp - calculate_exp(before->get_level()))/float(calculate_exp(before->get_level() + 1));
 }
 
 float TroopResult::get_XP_gain()
@@ -195,12 +195,12 @@ float TroopResult::get_XP_gain()
         return 0.0f;
         
     if(gained_level())
-        return (after->myguy->exp - calculate_exp(before->level + 1))/float(calculate_exp(before->level + 2));
+        return (after->myguy->exp - calculate_exp(before->get_level() + 1))/float(calculate_exp(before->get_level() + 2));
     
     if(lost_level())
-        return (after->myguy->exp - before->exp)/float(calculate_exp(before->level));
+        return (after->myguy->exp - before->exp)/float(calculate_exp(before->get_level()));
     
-    return (after->myguy->exp - before->exp)/float(calculate_exp(before->level + 1));
+    return (after->myguy->exp - before->exp)/float(calculate_exp(before->get_level() + 1));
 }
 
 int TroopResult::get_tallies()
