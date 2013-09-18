@@ -333,38 +333,38 @@ void guy::upgrade_to_level(short level)
 			a *= 1.0f;
 			break;
 		case FAMILY_ELF:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
+			s *= 0.75f;
+			d *= 1.5f;
+			c *= 0.75f;
 			i *= 1.0f;
 			a *= 1.0f;
 			break;
 		case FAMILY_ARCHER:
-			s *= 1.0f;
-			d *= 1.0f;
+			s *= 0.5f;
+			d *= 1.5f;
 			c *= 1.0f;
 			i *= 1.0f;
 			a *= 1.0f;
 			break;
 		case FAMILY_MAGE:
-			s *= 1.0f;
+			s *= 0.5f;
 			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
+			c *= 0.5f;
+			i *= 2.0f;
 			a *= 1.0f;
 			break;
 		case FAMILY_ARCHMAGE:
-			s *= 1.0f;
+			s *= 0.5f;
 			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
+			c *= 0.5f;
+			i *= 2.0f;
 			a *= 1.0f;
 			break;
 		case FAMILY_SKELETON:
 			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
+			d *= 2.0f;
+			c *= 0.5f;
+			i *= 0.5f;
 			a *= 1.0f;
 			break;
 		case FAMILY_CLERIC:
@@ -375,33 +375,21 @@ void guy::upgrade_to_level(short level)
 			a *= 1.0f;
 			break;
 		case FAMILY_FIREELEMENTAL:
-			s *= 1.0f;
+			s *= 1.5f;
 			d *= 1.0f;
-			c *= 1.0f;
+			c *= 0.5f;
 			i *= 1.0f;
 			a *= 1.0f;
 			break;
 		case FAMILY_FAERIE:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
+			s *= 0.5f;
+			d *= 2.0f;
+			c *= 0.5f;
 			i *= 1.0f;
 			a *= 1.0f;
 			break;
 		case FAMILY_SLIME:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
-			break;
 		case FAMILY_SMALL_SLIME:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
-			break;
 		case FAMILY_MEDIUM_SLIME:
 			s *= 1.0f;
 			d *= 1.0f;
@@ -410,9 +398,9 @@ void guy::upgrade_to_level(short level)
 			a *= 1.0f;
 			break;
 		case FAMILY_THIEF:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
+			s *= 0.5f;
+			d *= 2.0f;
+			c *= 0.5f;
 			i *= 1.0f;
 			a *= 1.0f;
 			break;
@@ -425,30 +413,24 @@ void guy::upgrade_to_level(short level)
 			break;
 		case FAMILY_DRUID:
 			s *= 1.0f;
-			d *= 1.0f;
+			d *= 0.5f;
 			c *= 1.0f;
-			i *= 1.0f;
+			i *= 1.5f;
 			a *= 1.0f;
 			break;
 		case FAMILY_ORC:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
-			break;
 		case FAMILY_BIG_ORC:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
+			s *= 1.5f;
+			d *= 0.5f;
+			c *= 1.5f;
+			i *= 0.5f;
 			a *= 1.0f;
 			break;
 		case FAMILY_BARBARIAN:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
+			s *= 1.5f;
+			d *= 0.5f;
+			c *= 1.5f;
+			i *= 0.5f;
 			a *= 1.0f;
 			break;
 		default:
