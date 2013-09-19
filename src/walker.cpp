@@ -2212,7 +2212,7 @@ short walker::special()
 						// First do legality checks:
 
 						// Can't do more than 1/5 rounds
-						if (busy)
+						if (busy > 0)
 							return 0;
 
 						// Do we have the int?
@@ -2249,7 +2249,7 @@ short walker::special()
 				case 2:  // raise skeletons
 					if (shifter_down) // turn undead, low level
 					{
-						if (busy)
+						if (busy > 0)
 							return 0;
 						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
@@ -2309,7 +2309,7 @@ short walker::special()
 				case 3: // Raise ghosts ..
 					if (shifter_down) // turn undead, high level
 					{
-						if (busy)
+						if (busy > 0)
 							return 0;
 						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
@@ -2428,7 +2428,7 @@ short walker::special()
 						return 0;
 					if (shifter_down) // leave/remove a marker
 					{
-						if (busy)
+						if (busy > 0)
 							return 0;
 						if (myguy && (myguy->intelligence < 75) )
 						{
@@ -2618,7 +2618,7 @@ short walker::special()
 						return 0;
 					if (shifter_down) // leave/remove a marker
 					{
-						if (busy)
+						if (busy > 0)
 							return 0;
 						if (myguy && (myguy->intelligence < 75) )
 						{
@@ -2680,7 +2680,7 @@ short walker::special()
 					}
 					break;  // end of ArchMage's teleport
 				case 2: // Burst enemies into flame, or chain lightning..
-					if (busy)
+					if (busy > 0)
 						return 0;
 					if (shifter_down)
 					{
@@ -2772,7 +2772,7 @@ short walker::special()
 					} // end of chain-lightning
 					break; // end of burst enemies, chain lightning
 				case 3: // Summoning .. real or illusion
-					if (busy)
+					if (busy > 0)
 						return 0;
 					if (shifter_down) // then we do true summoning ..
 					{
@@ -2975,7 +2975,7 @@ short walker::special()
 					}  // end of summon illusion
 					break;  // end of summoning/illusion cases
 				case 4: // Mind-control enemies
-					if (busy)
+					if (busy > 0)
 						return 0;
 					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                      80+4*stats->level, &howmany, this);
@@ -3129,7 +3129,7 @@ short walker::special()
 				case 3: // thief Taunt (draw enemies), Registered
 					if (!shifter_down) // normal taunt
 					{
-						if (busy)
+						if (busy > 0)
 							return 0;
 						newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 						                                      80+4*stats->level, &howmany, this);
@@ -3161,7 +3161,7 @@ short walker::special()
 					}
 					else // charm opponent
 					{
-						if (busy)
+						if (busy > 0)
 							return 0;
 						newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
 						                                      16+4*stats->level, &howmany, this);
@@ -3219,7 +3219,7 @@ short walker::special()
 					}
 				case 4: // throw poison cloud
 				default:
-					if (busy)
+					if (busy > 0)
 						return 0;
 					newob = screenp->add_ob(ORDER_FX, FAMILY_CLOUD);
 					if (!newob)
@@ -3287,7 +3287,7 @@ short walker::special()
 			switch (current_special)
 			{
 				case 1: // plant tree
-					if (busy)
+					if (busy > 0)
 						return 0;
 					stats->magicpoints += stats->weapon_cost;
 					newob = fire();
@@ -3302,7 +3302,7 @@ short walker::special()
 					newob->dead = 1;
 					break;
 				case 2:  // summon faerie
-					if (busy)
+					if (busy > 0)
 						return 0;
 					stats->magicpoints += stats->weapon_cost;
 					newob = fire();
@@ -3322,14 +3322,14 @@ short walker::special()
 					busy += (fire_frequency * 3);
 					break;
 				case 3: // reveal items
-					if (busy)
+					if (busy > 0)
 						return 0;
 					view_all += stats->level*10;
 					busy += (fire_frequency * 4);
 					break;
 				case 4:  // circle of protection
 				default:
-					if (busy)
+					if (busy > 0)
 						return 0;
 					newlist = screenp->find_friends_in_range(screenp->level_data.oblist,
 					          60, &howmany, this);
@@ -3425,7 +3425,7 @@ short walker::special()
 			switch (current_special)
 			{
 				case 1:  // yell and 'freeze' foes
-					if (busy)
+					if (busy > 0)
 						return 0;
 					busy += 2;
 					newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
@@ -3505,7 +3505,7 @@ short walker::special()
 				case 2: // Exploding Boulder
 				case 3:
 				case 4:
-					if (busy)
+					if (busy > 0)
 						return 0;
 					newob = fire();
 					if (!newob)

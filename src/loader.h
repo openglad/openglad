@@ -38,7 +38,7 @@ class loader
 		short  hitpoints[200]; // hack for now
 		char  *act_types;
 		Sint32  *damage;
-		signed char  *fire_frequency;
+		float  *fire_frequency;
 };
 
 #endif

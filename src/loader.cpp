@@ -325,7 +325,7 @@ loader::loader()
 	stepsizes = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
 	lineofsight = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
 	damage = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
-	fire_frequency = new signed char[SIZE_ORDERS*SIZE_FAMILIES];
+	fire_frequency = new float[SIZE_ORDERS*SIZE_FAMILIES];
 
 
 	// Livings

@@ -532,7 +532,7 @@ void guy::update_derived_stats(walker* w)
     w->normal_stepsize = w->stepsize;
 
     //fire_frequency makes us fire faster, min is 1
-    w->fire_frequency -= (temp_guy->dexterity / 47);
+    w->fire_frequency -= (temp_guy->dexterity / 47.0f);
     if (w->fire_frequency < 1)
         w->fire_frequency = 1;
 
