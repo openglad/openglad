@@ -95,7 +95,7 @@ class screen : public video
 		
 		
 		// Game state
-		short control_hp; // last turn's hitpoints
+		float control_hp; // last turn's hitpoints
 		char end;
 		signed char timer_wait;
 		short level_done; // set true when all our foes are dead

@@ -35,9 +35,9 @@ class loader
 		Sint32  *stepsizes;
 		Sint32  *lineofsight;
 		
-		short  hitpoints[200]; // hack for now
+		float  hitpoints[200]; // hack for now
 		char  *act_types;
-		Sint32  *damage;
+		float  *damage;
 		float  *fire_frequency;
 };
 

@@ -82,21 +82,24 @@ class statistics
 		Sint32 current_distance;  // Distances (to foe) are used for AI walking
 		Sint32 bit_flags;         // holds (currently) 32 bit flags
 		short delete_me;
-		Sint32 hitpoints;
-		Sint32 max_hitpoints;
+		
+		float hitpoints;
+		float max_hitpoints;
 		Sint32 magicpoints;
 		Sint32 max_magicpoints;
-		unsigned short level;
-		short frozen_delay;              // use for paralyzing..
-		unsigned short special_cost[NUM_SPECIALS];  // cost of our special ability
-		short weapon_cost;                          // cost of our weapon
 		Sint32 max_heal_delay;
+		
 		Sint32 current_heal_delay;
 		Sint32 max_magic_delay;
 		Sint32 current_magic_delay;
 		Sint32 magic_per_round; //magic we regain each round
 		Sint32 heal_per_round; //hp we regain each round
-		Sint32 armor; // reduces damage against us
+		float armor; // reduces damage against us
+		
+		unsigned short level;
+		short frozen_delay;              // use for paralyzing..
+		unsigned short special_cost[NUM_SPECIALS];  // cost of our special ability
+		short weapon_cost;                          // cost of our weapon
 		walker  * controller;
 		command *commandlist; // head of command list
 		command *endlist;     // end of command list

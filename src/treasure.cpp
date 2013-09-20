@@ -69,7 +69,7 @@ short treasure::eat_me(walker  * eater)
 				return 1;
 			else
 			{
-				eater->stats->hitpoints += (short) ((10*stats->level) + (short) random((short) 10*stats->level));
+				eater->stats->hitpoints += 10*stats->level + random(10*stats->level);
 				if (eater->stats->hitpoints > eater->stats->max_hitpoints)
 					eater->stats->hitpoints = eater->stats->max_hitpoints;
 				dead = 1;

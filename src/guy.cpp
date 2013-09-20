@@ -460,20 +460,17 @@ void guy::update_derived_stats(walker* w)
     
     
     // Set hitpoints based on stats:
-    w->stats->max_hitpoints += (short)
-                                        (10 + (temp_guy->constitution*3 +
-                                               ((temp_guy->strength)/2))  );
+    w->stats->max_hitpoints += 10 + temp_guy->constitution*3 + temp_guy->strength/2.0f;
     w->stats->hitpoints = w->stats->max_hitpoints;
 
     // Set damage based on strength and dex
-    w->damage += (temp_guy->strength/4) + (temp_guy->dexterity/11);
+    w->damage += temp_guy->strength/4.0f + temp_guy->dexterity/11.0f;
     // Set magicpoints based on stats:
-    w->stats->max_magicpoints = (short)
-                                          (10 + (temp_guy->intelligence*3) +(short) (temp_guy->dexterity) );
+    w->stats->max_magicpoints = (short)(10 + (temp_guy->intelligence*3) +(short) (temp_guy->dexterity) );
     w->stats->magicpoints = w->stats->max_magicpoints;
 
     // Set our armor level ..
-    w->stats->armor =(short)  ( temp_guy->armor + (temp_guy->dexterity / 14) );
+    w->stats->armor = temp_guy->armor + temp_guy->dexterity/14.0f;
 
     // Set the heal delay ..
 

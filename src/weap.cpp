@@ -270,7 +270,7 @@ short weap::animate()
 			}
 			break;
 		case FAMILY_CIRCLE_PROTECTION:
-			if (!owner || owner->dead || stats->hitpoints < 1)
+			if (!owner || owner->dead || stats->hitpoints <= 0)
 			{
 				dead = 1;
 				return death();

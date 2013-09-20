@@ -114,7 +114,7 @@ class walker : public pixieN
 		Sint32 stepsize;
 		Sint32 normal_stepsize; // used for elven forestwalk
 		Sint32 lineofsight;
-		Sint32 damage;
+		float damage;
 		float fire_frequency;
 		float busy;
 		statistics *stats;

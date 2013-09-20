@@ -794,7 +794,7 @@ short viewscreen::input(const SDL_Event& event)
 		if (query_key_event(SDLK_h, event)) // give controller lots of hitpoints
 		{
 			control->stats->hitpoints += 100;
-			screenp->control_hp += 100;
+			screenp->control_hp += 100;  // Why not just reset from the above for sanity's sake?
 		} //end hitpoints
 
 		if (query_key_event(SDLK_i, event))  // give invincibility
@@ -1075,6 +1075,7 @@ short viewscreen::continuous_input()
 		}
 	} // end of check for queued actions...
 
+    // Visual feedback when hit
 	// Were we hurt?
 	/*
 	  if (control && (screenp->control_hp > control->stats->hitpoints) ) // we were hurt
@@ -1398,7 +1399,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	oblink* dude = NULL;
 	oblink* list = NULL;
 	char message[30], hpcolor, mpcolor, namecolor, numguys = 0;
-	short hp, mp, maxhp, maxmp;
+	float hp, mp, maxhp, maxmp;
 	text mytext(screenp);
 	list = new oblink;  // Is this new oblink actually used?
 	list->ob = NULL;
@@ -1497,10 +1498,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 				strcpy(message, dude->ob->stats->name);
 			mytext.write_xy(left+5, text_down, message, (unsigned char) namecolor);
 
-			sprintf (message, "%4d/%d", hp, maxhp);
+			sprintf (message, "%4.0f/%.0f", ceilf(hp), maxhp);
 			mytext.write_xy(left+70, text_down, message, (unsigned char) hpcolor);
 
-			sprintf (message, "%4d/%d", mp, maxmp);
+			sprintf (message, "%4.0f/%.0f", ceilf(mp), maxmp);
 			mytext.write_xy(left+130, text_down, message, (unsigned char) mpcolor);
 
 			sprintf (message, "%2d", dude->ob->stats->level);

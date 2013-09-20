@@ -384,6 +384,8 @@ void draw_gem(short x, short y, short color, screen * myscreen)
 	myscreen->point(x, y+4, darkest);
 }
 
+bool float_eq(float a, float b);
+
 void draw_value_bar(short left, short top,
                     walker  * control, short mode, screen * myscreen)
 {
@@ -396,17 +398,17 @@ void draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = control->stats->hitpoints;
+		points = ceilf(control->stats->hitpoints);
 
-		if ( (points * 3) < control->stats->max_hitpoints)
+		if (float_eq(points, control->stats->max_hitpoints))
+			whatcolor = MAX_HP_COLOR;
+		else if ( (points * 3) < control->stats->max_hitpoints)
 			whatcolor = LOW_HP_COLOR;
 		else if ( (points * 3 / 2) < control->stats->max_hitpoints)
 			whatcolor = MID_HP_COLOR;
 		else if (points < control->stats->max_hitpoints)
 			whatcolor = HIGH_HP_COLOR;
-		else if (points == control->stats->max_hitpoints)
-			whatcolor = MAX_HP_COLOR;
-		else
+		else 
 			whatcolor = ORANGE_START;
 
 		if (points > control->stats->max_hitpoints)
@@ -522,17 +524,17 @@ void new_draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = control->stats->hitpoints;
+		points = ceil(control->stats->hitpoints);
 
-		if ( (points * 3) < control->stats->max_hitpoints)
+		if (float_eq(points, control->stats->max_hitpoints))
+			whatcolor = MAX_HP_COLOR;
+		else if ( (points * 3) < control->stats->max_hitpoints)
 			whatcolor = LOW_HP_COLOR;
 		else if ( (points * 3 / 2) < control->stats->max_hitpoints)
 			whatcolor = MID_HP_COLOR;
 		else if (points < control->stats->max_hitpoints)
 			whatcolor = HIGH_HP_COLOR;
-		else if (points == control->stats->max_hitpoints)
-			whatcolor = MAX_HP_COLOR;
-		else
+		else 
 			whatcolor = ORANGE_START;
 
 		if (points > control->stats->max_hitpoints)
@@ -667,7 +669,7 @@ short new_score_panel(screen *myscreen, short do_it)
 				case PREF_LIFE_TEXT: // display numeric values only
 					if (draw_button)
 						myscreen->draw_button(lm+1, tm+10, lm+63, tm+26, 1, 1);
-					sprintf(message, "HP: %d", (unsigned ) control->stats->hitpoints);
+					sprintf(message, "HP: %.0f", ceilf(control->stats->hitpoints));
 					mytext->write_xy(lm+5, tm+12, message, text_color, (short) 1); // to buffer
 					sprintf(message, "MP: %d", (unsigned) control->stats->magicpoints);
 					mytext->write_xy(lm+5, tm+20, message, text_color, (short) 1);
@@ -687,7 +689,7 @@ short new_score_panel(screen *myscreen, short do_it)
 					//if (draw_button)
 					//  myscreen->draw_button(lm+1, tm+9, lm+63, tm+25, 1, 1);
 					new_draw_value_bar(lm+2, tm+10, control, 0, myscreen);
-					sprintf(message, "HP: %d", (unsigned ) control->stats->hitpoints);
+					sprintf(message, "HP: %.0f", ceilf(control->stats->hitpoints));
 					mytext->write_xy(lm+5, tm+11, message, (unsigned char) BLACK, (short) 1); // to buffer
 
 					//SP BAR

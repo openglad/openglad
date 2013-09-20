@@ -168,7 +168,7 @@ short living::act()
 	{
 		flight_left++;
 		stats->hitpoints--;
-		if (stats->hitpoints < 1)
+		if (stats->hitpoints <= 0)
 		{
 			dead = 1;
 			death();
@@ -715,14 +715,14 @@ void living::set_difficulty(Uint32 whatlevel)
 			stats->max_hitpoints   += 7*levmult;
 			stats->max_magicpoints += 14*levmult;
 			damage += 3*whatlevel;
-			stats->armor += levmult/2;
+			stats->armor += levmult/2.0f;
 			break;
 		case FAMILY_CLERIC:
 		case FAMILY_DRUID:
 			stats->max_hitpoints   += 9*levmult;
 			stats->max_magicpoints += 12*levmult;
 			damage += 4*whatlevel;
-			stats->armor += levmult/2;
+			stats->armor += levmult/2.0f;
 			break;
 		case FAMILY_SOLDIER:  // default as soldier
 			stats->max_hitpoints   += 13*levmult;
@@ -754,9 +754,9 @@ void living::set_difficulty(Uint32 whatlevel)
 	// Adjust for difficulty settings now...
 	if (team_num != 0)  // do all EXCEPT player characters
 	{
-		stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100;
-		stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100;
-		damage = (damage * dif1) / 100;
+		stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
+		stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
+		damage = (damage * dif1) / 100.0f;
 	}
 
 	stats->hitpoints = stats->max_hitpoints;

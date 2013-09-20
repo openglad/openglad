@@ -479,7 +479,7 @@ void statistics::hit_response(walker  *who)
 	Sint32 deltax, deltay;
 	walker *foe; // who is attacking us?
 	Sint32 possible_specials[NUM_SPECIALS];
-	Sint32 threshold; // for hitpoint 'running away'
+	float threshold; // for hitpoint 'running away'
 	oblink *newlist; // for calling for help
 	short howmany;
 

@@ -49,7 +49,7 @@ class guy
 		Uint32 exp;
 		short kills;       // version 3+
 		Sint32 level_kills;  // version 3+
-		Sint32 total_damage; // version 4+
+		Sint32 total_damage; // version 4+  // This will not be exact after changing damage to floating point, but binary serialization of floats is messy.
 		Sint32 total_hits;   // version 4+
 		Sint32 total_shots;  // version 4+
 		short teamnum;     // version 5+

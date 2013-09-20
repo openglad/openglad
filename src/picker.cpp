@@ -1425,11 +1425,11 @@ Sint32 create_hire_menu(Sint32 arg1)
 		
         linesdown++;
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "HP:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%d", myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)]);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)]));
 		
 		linesdown++;
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "MELEE:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%d", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)]);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)]);
 		
 		linesdown++;
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "SPEED:", STAT_DERIVED, 1);
@@ -1681,8 +1681,7 @@ Sint32 create_train_menu(Sint32 arg1)
         }
         if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
         {
-            sprintf(message, " Damage/Hit: %.2lf ",
-                    (float) ( (float)current_guy->total_damage / (float)current_guy->total_hits) );
+            sprintf(message, " Damage/Hit: %.2f ", float(current_guy->total_damage) / current_guy->total_hits );
             mytext->write_xy(180, 69, message, DARK_BLUE, 1);
             sprintf(message, "   Accuracy: %d%% ",
                     (current_guy->total_hits*100)/current_guy->total_shots);

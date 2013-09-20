@@ -334,7 +334,7 @@ short effect::act()
 				if (!screenp->query_object_passable((short) (xpos+xd), (short) (ypos+yd), newob))
 				{
 					newob->attack(newob->collide_ob);
-					damage /= 4;
+					damage /= 4.0f;
 					//setxy(xpos-(2*xd)+random(xd), ypos-(2*yd)+random(yd));
 				}
 				newob->dead = 1;
@@ -705,15 +705,15 @@ short effect::death()
 					// Damage (attack) the object
 					if (here->ob == owner) // do less damage
 					{
-						damage /= 4;
+						damage /= 4.0f;
 						attack(here->ob);
-						damage *= 4;
+						damage *= 4.0f;
 					}
 					else if (!owner->dead && owner->is_friendly(here->ob))
 					{
-						damage /= 2;
+						damage /= 2.0f;
 						attack(here->ob);
-						damage *= 2;
+						damage *= 2.0f;
 					}
 					else
 						attack(here->ob);

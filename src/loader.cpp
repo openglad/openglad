@@ -313,7 +313,7 @@ PixieData data_copy(const PixieData& d)
 loader::loader()
     : graphics(NULL), animations(NULL), stepsizes(NULL), lineofsight(NULL), act_types(NULL), damage(NULL), fire_frequency(NULL)
 {
-	memset(hitpoints, 0, 200*sizeof(short));
+	memset(hitpoints, 0, 200*sizeof(float));
     
 	graphics = new PixieData[SIZE_ORDERS*SIZE_FAMILIES];
         
@@ -324,7 +324,7 @@ loader::loader()
 	memset(animations, 0, SIZE_ORDERS*SIZE_FAMILIES);
 	stepsizes = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
 	lineofsight = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
-	damage = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
+	damage = new float[SIZE_ORDERS*SIZE_FAMILIES];
 	fire_frequency = new float[SIZE_ORDERS*SIZE_FAMILIES];
 
 

@@ -897,23 +897,29 @@ void walker::set_weapon_heading(walker *weapon)
 
 }
 
+// To avoid problems with limited precision
+bool float_eq(float a, float b)
+{
+    return (a == b || (a - 0.000001f < b && a + 0.000001f > b));
+}
+
 void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 {
     if(w->query_order() != ORDER_LIVING && w->query_order() != ORDER_GENERATOR)
         return;
     
-    short points = w->stats->hitpoints;
+    float points = w->stats->hitpoints;
     char whatcolor;
     
-    if ( (points * 3) < w->stats->max_hitpoints)
+    if (float_eq(points, w->stats->max_hitpoints))
+        whatcolor = MAX_HP_COLOR;
+    else if ( (points * 3) < w->stats->max_hitpoints)
         whatcolor = LOW_HP_COLOR;
     else if ( (points * 3 / 2) < w->stats->max_hitpoints)
         whatcolor = MID_HP_COLOR;
     else if (points < w->stats->max_hitpoints)
         whatcolor = LIGHT_GREEN;//HIGH_HP_COLOR;
-    else if (points == w->stats->max_hitpoints)
-        whatcolor = MAX_HP_COLOR;
-    else
+    else 
         whatcolor = ORANGE_START;
     
     
@@ -1402,7 +1408,7 @@ short walker::collide(walker  *ob)
 }
 
 
-short get_xp_from_attack(walker* w, walker* target, short damage)
+short get_xp_from_attack(walker* w, walker* target, float damage)
 {
     float x = (w->stats->level - target->stats->level);
     // Whooo-ee!  An interpolated polynomial to fit {{0,30},{1,20},{2,15},{3,7.5},{5,0},{7,-50}} for 20 damage done.
@@ -1464,20 +1470,20 @@ short exp_from_action(ExpActionEnum action, walker* w, walker* target, short val
 
 
 
-Sint32 get_base_damage(walker* w)
+float get_base_damage(walker* w)
 {
     float d = w->damage;
     float sqrtd = sqrtf(d);
     return d - sqrtd/2.0f + random(floor(sqrtd));
 }
 
-Sint32 get_damage_reduction(walker* w, Sint32 damage, walker* target)
+float get_damage_reduction(walker* w, float damage, walker* target)
 {
     if(damage <= 0)
         return 0;
     
-    Sint32 result = target->stats->armor/2;
-    if(result >= damage)
+    float result = target->stats->armor/2.0f;
+    if(result > damage - 1)
         return damage - 1;  // Always do at least 1 damage
     return result;
 }
@@ -1489,7 +1495,7 @@ short walker::attack(walker  *target)
 	walker *headguy; // guy at top of chain..
 	short playerteam = -1;
 	char message[80];
-	Sint32 tempdamage = get_base_damage(this);
+	float tempdamage = get_base_damage(this);
 	short getscore=0;
 	char targetorder = target->query_order();
 	char targetfamily= target->query_family();
@@ -1895,11 +1901,11 @@ walker  *walker::create_weapon()
 	weapon->team_num = team_num;
 	weapon->owner = this;
 	weapon->set_difficulty(stats->level);
-	weapon->damage =  ( (weapon->damage * (stats->level+3))/4 );
+	weapon->damage = (weapon->damage * (stats->level+3))/4;
 	if (myguy)
 	{
 		weapon->lineofsight += (myguy->strength / 23) + (myguy->dexterity / 31);
-		weapon->damage += (myguy->strength / 7);
+		weapon->damage += (myguy->strength / 7.0f);
 	}
 	else
 	{
@@ -2238,7 +2244,7 @@ short walker::special()
 
 						newob->lifetime = 100 + generic;
 						newob->stats->hitpoints += generic / 2;
-						newob->damage += generic / 4;
+						newob->damage += generic / 4.0f;
 
 						// Remove those excess magic points :>
 						stats->magicpoints -= generic;
@@ -3520,7 +3526,7 @@ short walker::special()
 					if (myguy)
 					{
 						alive->stepsize = myguy->strength / 7;
-						alive->damage += myguy->strength / 5;
+						alive->damage += myguy->strength / 5.0f;
 					}
 					else
 					{
@@ -4095,11 +4101,8 @@ short walker::death()
 	{
 		newob = screenp->add_ob(ORDER_TREASURE, FAMILY_LIFE_GEM, 1);
 		newob->stats->hitpoints = myguy->query_heart_value();
-		newob->stats->hitpoints *= 3;
-		newob->stats->hitpoints /= 8;
+		newob->stats->hitpoints *= 0.75 / 2;  // 75%, divided by 2, since score is doubled at end of level
 		newob->team_num = team_num;
-		// note: this is 75%, divided by 2, since score is doubled
-		//       at end of level
 		newob->center_on(this);
 	}
 
@@ -4287,9 +4290,9 @@ void walker::set_difficulty(Uint32 whatlevel)
 		default:  // adjust standard settings for the rest ..
 			if (team_num != 0)  // do all EXCEPT player characters
 			{
-				stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100;
-				stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100;
-				damage = (damage * dif1) / 100;
+				stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
+				stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
+				damage = (damage * dif1) / 100.0f;
 			}
 			break;
 	}

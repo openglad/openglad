@@ -146,7 +146,7 @@ bool SaveData::load(const std::string& filename)
 	// 4-bytes unsigned experience
 	// 2-bytes # kills, v.3
 	// 4-bytes # total levels killed, v.3
-	// 4-bytes total damage delt, v.4+
+	// 4-bytes total damage dealt, v.4+
 	// 4-bytes total hits inflicted, v.4+
 	// 4-bytes total shots made, v.4+
 	// 2-bytes team number
