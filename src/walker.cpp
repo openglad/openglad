@@ -683,7 +683,6 @@ walker  * walker::fire()
 	walker  *weapon = NULL;
 	signed char waver;
 	//short xp, yp;
-	Sint32 extra;
 
 	// Do we have enough spellpoints for our weapon
 	if (stats->magicpoints < stats->weapon_cost)
@@ -828,11 +827,14 @@ walker  * walker::fire()
 		{
 			switch (family)
 			{
-				case FAMILY_ARCHMAGE:  // ArchMage gets 1/20th of 'extra'
-					// magic for more damage ...
-					extra = stats->magicpoints / 20;
-					stats->magicpoints -= extra;
-					weapon->damage += extra; // get this in damage
+				case FAMILY_ARCHMAGE:
+				    {
+				        // ArchMage gets 1/20th of 'extra'
+                        // magic for more damage ...
+                        float extra = stats->magicpoints / 20;
+                        stats->magicpoints -= extra;
+                        weapon->damage += extra; // get this in damage
+				    }
 					break;
 				default: // do nothing
 					break;

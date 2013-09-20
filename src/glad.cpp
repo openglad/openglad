@@ -389,7 +389,7 @@ bool float_eq(float a, float b);
 void draw_value_bar(short left, short top,
                     walker  * control, short mode, screen * myscreen)
 {
-	short points;
+	float points;
 	short totallength = 60;
 	short bar_length=0;
 	short bar_remainder = totallength - bar_length;
@@ -398,7 +398,7 @@ void draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = ceilf(control->stats->hitpoints);
+		points = control->stats->hitpoints;
 
 		if (float_eq(points, control->stats->max_hitpoints))
 			whatcolor = MAX_HP_COLOR;
@@ -414,7 +414,7 @@ void draw_value_bar(short left, short top,
 		if (points > control->stats->max_hitpoints)
 			bar_length = 60;
 		else
-			bar_length =(short) points * 60 / control->stats->max_hitpoints;
+			bar_length = ceilf(points * 60 / control->stats->max_hitpoints);
 		bar_remainder = 60 - bar_length;
 
 		myscreen->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
@@ -458,21 +458,21 @@ void draw_value_bar(short left, short top,
 	{
 		points = control->stats->magicpoints;
 
-		if ( (points * 3) < control->stats->max_magicpoints)
+		if (float_eq(points, control->stats->max_magicpoints))
+			whatcolor = MAX_MP_COLOR;
+		else if ( (points * 3) < control->stats->max_magicpoints)
 			whatcolor = LOW_MP_COLOR;
 		else if ( (points * 3 / 2) < control->stats->max_magicpoints)
 			whatcolor = MID_MP_COLOR;
 		else if (points < control->stats->max_magicpoints)
 			whatcolor = HIGH_MP_COLOR;
-		else if (points == control->stats->max_magicpoints)
-			whatcolor = MAX_MP_COLOR;
-		else
+		else 
 			whatcolor = WATER_START;
 
 		if (points > control->stats->max_magicpoints)
 			bar_length = 60;
 		else
-			bar_length =(short) points * 60 / control->stats->max_magicpoints;
+			bar_length = ceilf(points * 60 / control->stats->max_magicpoints);
 		bar_remainder = 60 - bar_length;
 
 		myscreen->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
@@ -516,7 +516,7 @@ void draw_value_bar(short left, short top,
 void new_draw_value_bar(short left, short top,
                         walker  * control, short mode, screen * myscreen)
 {
-	short points;
+	float points;
 	//short totallength = 60;
 	short bar_length=0;
 	//short bar_remainder = totallength - bar_length;
@@ -524,7 +524,7 @@ void new_draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = ceil(control->stats->hitpoints);
+		points = control->stats->hitpoints;
 
 		if (float_eq(points, control->stats->max_hitpoints))
 			whatcolor = MAX_HP_COLOR;
@@ -540,7 +540,7 @@ void new_draw_value_bar(short left, short top,
 		if (points > control->stats->max_hitpoints)
 			bar_length = 60;
 		else
-			bar_length =(short) points * 60 / control->stats->max_hitpoints;
+			bar_length = ceilf(points * 60 / control->stats->max_hitpoints);
 		//bar_remainder = 60 - bar_length;
 
 		draw_percentage_bar(left, top, BAR_BACK_COLOR, 60, myscreen);
@@ -551,21 +551,21 @@ void new_draw_value_bar(short left, short top,
 	{
 		points = control->stats->magicpoints;
 
-		if ( (points * 3) < control->stats->max_magicpoints)
+		if (float_eq(points, control->stats->max_magicpoints))
+			whatcolor = MAX_MP_COLOR;
+		else if ( (points * 3) < control->stats->max_magicpoints)
 			whatcolor = LOW_MP_COLOR;
 		else if ( (points * 3 / 2) < control->stats->max_magicpoints)
 			whatcolor = MID_MP_COLOR;
 		else if (points < control->stats->max_magicpoints)
 			whatcolor = HIGH_MP_COLOR;
-		else if (points == control->stats->max_magicpoints)
-			whatcolor = MAX_MP_COLOR;
-		else
+		else 
 			whatcolor = WATER_START;
 
 		if (points > control->stats->max_magicpoints)
 			bar_length = 60;
 		else
-			bar_length =(short) points * 60 / control->stats->max_magicpoints;
+			bar_length = ceilf(points * 60 / control->stats->max_magicpoints);
 		//bar_remainder = 60 - bar_length;
 
 		draw_percentage_bar(left, top, BAR_BACK_COLOR, 60, myscreen);
@@ -671,7 +671,7 @@ short new_score_panel(screen *myscreen, short do_it)
 						myscreen->draw_button(lm+1, tm+10, lm+63, tm+26, 1, 1);
 					sprintf(message, "HP: %.0f", ceilf(control->stats->hitpoints));
 					mytext->write_xy(lm+5, tm+12, message, text_color, (short) 1); // to buffer
-					sprintf(message, "MP: %d", (unsigned) control->stats->magicpoints);
+					sprintf(message, "MP: %.0f", ceilf(control->stats->magicpoints));
 					mytext->write_xy(lm+5, tm+20, message, text_color, (short) 1);
 					break; // end of 'text' case
 				case PREF_LIFE_BARS: // display graphical bars only
@@ -695,7 +695,7 @@ short new_score_panel(screen *myscreen, short do_it)
 					//SP BAR
 					//COLORS DEFINED IN GRAPH.H
 					new_draw_value_bar(lm+2, tm+18, control, 1, myscreen);
-					sprintf(message, "MP: %d", (unsigned) control->stats->magicpoints);
+					sprintf(message, "MP: %.0f", ceilf(control->stats->magicpoints));
 					mytext->write_xy(lm+5, tm+19, message, (unsigned char) BLACK, (short) 1);
 					break; // end of 'both' case
 			} // end of HP/MP display case

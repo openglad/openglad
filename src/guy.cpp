@@ -466,7 +466,7 @@ void guy::update_derived_stats(walker* w)
     // Set damage based on strength and dex
     w->damage += temp_guy->strength/4.0f + temp_guy->dexterity/11.0f;
     // Set magicpoints based on stats:
-    w->stats->max_magicpoints = (short)(10 + (temp_guy->intelligence*3) +(short) (temp_guy->dexterity) );
+    w->stats->max_magicpoints = 10 + temp_guy->intelligence*3 + temp_guy->dexterity;
     w->stats->magicpoints = w->stats->max_magicpoints;
 
     // Set our armor level ..
@@ -475,8 +475,7 @@ void guy::update_derived_stats(walker* w)
     // Set the heal delay ..
 
     w->stats->max_heal_delay = REGEN;
-    w->stats->current_heal_delay =
-        (temp_guy->constitution) + (temp_guy->strength/6) + 20; //for purposes of calculation only
+    w->stats->current_heal_delay = temp_guy->constitution + temp_guy->strength/6.0f + 20; //for purposes of calculation only
 
     while (w->stats->current_heal_delay > REGEN)
     {
@@ -499,9 +498,7 @@ void guy::update_derived_stats(walker* w)
 
     // Set the magic delay ..
     w->stats->max_magic_delay = REGEN;
-    w->stats->current_magic_delay = (Sint32)
-            (temp_guy->intelligence * 45) +
-            (temp_guy->dexterity * 15) + 200;
+    w->stats->current_magic_delay = temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200;
 
     while (w->stats->current_magic_delay > REGEN)
     {
@@ -523,13 +520,13 @@ void guy::update_derived_stats(walker* w)
         w->stats->max_magic_delay = 2;
 
     //stepsize makes us run faster, max for a non-weapon is 12
-    w->stepsize += (temp_guy->dexterity/54);
+    w->stepsize += temp_guy->dexterity/54.0f;
     if (w->stepsize > 12)
         w->stepsize = 12;
     w->normal_stepsize = w->stepsize;
 
     //fire_frequency makes us fire faster, min is 1
-    w->fire_frequency -= (temp_guy->dexterity / 47.0f);
+    w->fire_frequency -= temp_guy->dexterity / 47.0f;
     if (w->fire_frequency < 1)
         w->fire_frequency = 1;
 

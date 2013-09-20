@@ -85,10 +85,10 @@ class statistics
 		
 		float hitpoints;
 		float max_hitpoints;
-		Sint32 magicpoints;
-		Sint32 max_magicpoints;
-		Sint32 max_heal_delay;
+		float magicpoints;
+		float max_magicpoints;
 		
+		Sint32 max_heal_delay;
 		Sint32 current_heal_delay;
 		Sint32 max_magic_delay;
 		Sint32 current_magic_delay;
