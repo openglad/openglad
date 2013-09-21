@@ -93,6 +93,7 @@ walker::walker(const PixieData& data, screen  *myscreen)
 
 	skip_exit = 0;
 	xpos = ypos = -1; //this to correct a problem with these not being alloced?
+	worldx = worldy = -1;
 
 	weapons_left = 1; // default, used for fighters
 
@@ -196,14 +197,35 @@ short walker::move(short x, short y)
 	return setxy((short) (xpos+x), (short) (ypos+y));
 }
 
+void walker::worldmove(float x, float y)
+{
+	return setworldxy(worldx+x, worldy+y);
+}
+
 short walker::setxy(short x, short y)
 {
+    worldx = x;
+    worldy = y;
+    
 	if (!ignore)
 		myobmap->move(this, x, y);
 	else // just remove us, in case :)
 		myobmap->remove(this);
 
 	return pixie::setxy(x, y);
+}
+
+void walker::setworldxy(float x, float y)
+{
+    worldx = x;
+    worldy = y;
+    
+	if (!ignore)
+		myobmap->move(this, x, y);
+	else // just remove us, in case :)
+		myobmap->remove(this);
+
+	pixie::setxy(x, y);
 }
 
 // WALK -- This function allows us to change facing when we walk.
@@ -368,12 +390,12 @@ bool walker::walkstep(float x, float y)
 						{
 							if (screenp->query_passable(xpos, ypos-1, this))
 							{
-								move(0, -1);  // walk without turning ..
+								worldmove(0, -1);  // walk without turning ..
 								gotup = 1;
 							}
 							if (screenp->query_passable(xpos+1, ypos, this))
 							{
-								move(1, 0);
+								worldmove(1, 0);
 								gotover = 1;
 							}
 							if (!gotup && gotover)  // moved right
@@ -397,12 +419,12 @@ bool walker::walkstep(float x, float y)
 						{
 							if (screenp->query_passable(xpos, ypos+1, this))
 							{
-								move(0, 1);  // walk without turning ..
+								worldmove(0, 1);  // walk without turning ..
 								gotup = 1;
 							}
 							if (screenp->query_passable(xpos+1, ypos, this))
 							{
-								move(1, 0);
+								worldmove(1, 0);
 								gotover = 1;
 							}
 							if (!gotup && gotover)  // moved right
@@ -426,12 +448,12 @@ bool walker::walkstep(float x, float y)
 						{
 							if (screenp->query_passable(xpos, ypos+1, this))
 							{
-								move(0, 1);  // walk without turning ..
+								worldmove(0, 1);  // walk without turning ..
 								gotup = 1;
 							}
 							if (screenp->query_passable(xpos-1, ypos, this))
 							{
-								move(-1, 0);
+								worldmove(-1, 0);
 								gotover = 1;
 							}
 							if (!gotup && gotover)  // moved right
@@ -455,12 +477,12 @@ bool walker::walkstep(float x, float y)
 						{
 							if (screenp->query_passable(xpos, ypos-1, this))
 							{
-								move(0, -1);  // walk without turning ..
+								worldmove(0, -1);  // walk without turning ..
 								gotup = 1;
 							}
 							if (screenp->query_passable(xpos-1, ypos, this))
 							{
-								move(-1, 0);
+								worldmove(-1, 0);
 								gotover = 1;
 							}
 							if (!gotup && gotover)  // moved left
@@ -526,7 +548,7 @@ bool walker::walk(float x, float y)
 		if (screenp->query_passable(xpos+x, ypos+y, this))
 		{
 			// Control object does complete redraw anyway
-			move(x,y);
+			worldmove(x,y);
 			cycle++;
 			//if (!ani || (curdir*cycle > sizeof(ani)) )
 			//  Log("WALKER::WALK: Bad ani!\n");
@@ -554,7 +576,7 @@ bool walker::walk(float x, float y)
 		curdir = (char) dir;
 		cycle = 0;
 		set_frame(ani[curdir][cycle]);
-		move(0,0);
+		worldmove(0,0);
 	}
 	return 1;
 }
@@ -621,7 +643,7 @@ bool walker::turn(short targetdir)
 	}
 	cycle = 0;
 	set_frame(ani[curdir][cycle]);
-	move(0,0);
+	worldmove(0,0);
 	return true;
 }
 
@@ -957,6 +979,10 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 
 short walker::draw(viewscreen  *view_buf)
 {
+    // Update the drawing coords from the real position
+    xpos = worldx;
+    ypos = worldy;
+    
 	Sint32 xscreen, yscreen;
 
 	//no need for on screen check, it will be checked at the draw level

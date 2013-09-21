@@ -423,7 +423,7 @@ bool living::walk(float x, float y)
 		if (screenp->query_passable(xpos+x, ypos+y,this))
 		{
 			// Control object does complete redraw anyway
-			move(x,y);
+			worldmove(x,y);
 			cycle++;
 			//if (!ani || (curdir*cycle > sizeof(ani)) )
 			//  Log("WALKER::WALK: Bad ani!\n");

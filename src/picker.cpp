@@ -2649,8 +2649,7 @@ void show_guy(Sint32 frames, Sint32 who, short centerx, short centery) // shows 
 	//mywalker->team_num = ourteam[editguy]->teamnum;
 	mywalker->team_num = current_guy->teamnum;
 
-	mywalker->xpos = centerx - (mywalker->sizex/2);
-	mywalker->ypos = centery - (mywalker->sizey/2);
+	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
 	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
 	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
 	mywalker->draw(myscreen->viewob[0]);

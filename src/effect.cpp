@@ -42,7 +42,8 @@ effect::~effect()
 short effect::act()
 {
 	short temp;
-	Sint32 xd, yd, distance, generic;
+	float xd, yd;
+	Sint32 distance, generic;
 	oblink *foelist, *here;
 	walker *newob;
 	short numfoes;
@@ -142,7 +143,7 @@ short effect::act()
 					break;
 			}
 			center_on(owner);
-			setxy( (short)( xpos+xd ), (short) (ypos+yd) );
+			setworldxy(worldx+xd, worldy+yd);
 			foelist = screenp->find_foe_weapons_in_range(
 			              screenp->level_data.oblist, sizex, &temp, this);
 			here = foelist;
@@ -257,7 +258,7 @@ short effect::act()
 			yd *= (drawcycle+4);
 			yd /= 48;
 			center_on(owner);
-			setxy((short) (xpos+xd), (short) (ypos+yd) );
+			setworldxy(worldx+xd, worldy+yd);
 			foelist = screenp->find_foe_weapons_in_range(
 			              screenp->level_data.oblist, sizex*2, &temp, this);
 			here = foelist;
@@ -324,14 +325,14 @@ short effect::act()
 					else
 						yd = owner->ypos - ypos;
 				}
-				setxy((short) (xpos+xd), (short) (ypos+yd) );
+				setworldxy(worldx+xd, worldy+yd);
 				newob = screenp->add_ob(ORDER_WEAPON, FAMILY_KNIFE);
 				newob->damage = damage;
 				newob->owner = owner;
 				newob->team_num = team_num;
 				newob->death_called = 1; // to ensure no spawning of more ..
-				newob->setxy(xpos, ypos);
-				if (!screenp->query_object_passable((short) (xpos+xd), (short) (ypos+yd), newob))
+				newob->setworldxy(worldx, worldy);
+				if (!screenp->query_object_passable(xpos+xd, ypos+yd, newob))
 				{
 					newob->attack(newob->collide_ob);
 					damage /= 4.0f;
@@ -516,7 +517,7 @@ short effect::act()
 				center_on(leader);
 				return 1;
 			}
-			setxy((short) (xpos+xd), (short) (ypos+yd) );
+			setworldxy(worldx+xd, worldy+yd);
 			return 1;  // so as not to animate, etc.
 			//break; // end of FAMILY_CHAIN
 
@@ -537,7 +538,7 @@ short effect::act()
 			if (!newob)
 				break;
 			newob->ani_type = ANI_WALK;
-			newob->setxy(xpos, ypos);
+			newob->setworldxy(worldx, worldy);
 			newob->stats->level = stats->level;
 			newob->team_num = team_num;
 			newob->ignore = 1;

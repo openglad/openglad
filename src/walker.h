@@ -32,7 +32,9 @@ class walker : public pixieN
 		virtual ~walker();
 		short reset(void);
 		short move(short x, short y);
+		void worldmove(float x, float y);
 		virtual short setxy(short x, short y);
+		void setworldxy(float x, float y);
 		bool walk();
 		bool walkstep(float x, float y);
 		virtual bool walk(float x, float y);
@@ -111,6 +113,7 @@ class walker : public pixieN
 		unsigned char team_num;
 		unsigned char real_team_num; // for 'Charm', etc.
 		char ani_type;
+		float worldx, worldy;  // Floating point buffer for movement
 		float stepsize;
 		float normal_stepsize; // used for elven forestwalk
 		Sint32 lineofsight;

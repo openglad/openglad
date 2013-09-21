@@ -254,8 +254,7 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 	mywalker->team_num = myguy->teamnum;
     
     viewscreen* view_buf = myscreen->viewob[0];
-	mywalker->xpos = centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc;
-	mywalker->ypos = centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc;
+	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
 	mywalker->draw(view_buf);
 	delete mywalker;
 }
