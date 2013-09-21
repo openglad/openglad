@@ -44,9 +44,9 @@ class screen : public video
 		void cleanup(short);
 		void clear();
 		video * get_video_ob();
-		short query_passable(short x,short y,walker  *ob);
-		short query_object_passable(short x, short y, walker  *ob);
-		short query_grid_passable(short x, short y, walker  *ob);
+		bool query_passable(float x, float y, walker  *ob);
+		bool query_object_passable(float x, float y, walker  *ob);
+		bool query_grid_passable(float x, float y, walker  *ob);
 		short redraw();
 		void refresh();
 		walker  * first_of(unsigned char whatorder, unsigned char whatfamily,

@@ -1433,7 +1433,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 		
 		linesdown++;
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "SPEED:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%d", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)]);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)]);
         
         
 		

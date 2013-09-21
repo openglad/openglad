@@ -39,7 +39,7 @@ class living : public walker
 		{
 			return ORDER_LIVING;
 		}
-		short          walk(short x, short y);
+		virtual bool walk(float x, float y);
 	protected:
 		short act_random();
 };

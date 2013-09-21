@@ -38,7 +38,7 @@ class pixie
 		void set_accel(int a);
 		void set_data(const PixieData& data);
 		short sizex, sizey;
-		short xpos,ypos;
+		short xpos, ypos;
 		//buffers: is SDL_Surface acceleration on/off, 1/0
 		int accel;
 		short on_screen();                                                                // on ANY viewscreen?

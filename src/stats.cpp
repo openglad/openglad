@@ -733,12 +733,12 @@ void statistics::set_bit_flags(Sint32 someflag, short newvalue)
 }
 
 // Returns whether our right is blocked
-short statistics::right_blocked()
+bool statistics::right_blocked()
 {
 	screen  *screenp = controller->screenp;
-	short xdelta, ydelta;
-	short controlx = controller->xpos, controly = controller->ypos;
-	short mystep = (short) controller->stepsize;
+	float xdelta, ydelta;
+	float controlx = controller->xpos, controly = controller->ypos;
+	float mystep = controller->stepsize;
 
 	mystep = CHECK_STEP_SIZE;
 	switch (controller->curdir)
@@ -756,24 +756,24 @@ short statistics::right_blocked()
 			ydelta = mystep;
 			break;
 		case FACE_DOWN_RIGHT:
-			xdelta = (short)(-mystep);
+			xdelta = -mystep;
 			ydelta = mystep;
 			break;
 		case FACE_DOWN:
-			xdelta = (short)(-mystep);
+			xdelta = -mystep;
 			ydelta = 0;
 			break;
 		case FACE_DOWN_LEFT:
-			xdelta = (short)(-mystep);
-			ydelta = (short)(-mystep);
+			xdelta = -mystep;
+			ydelta = -mystep;
 			break;
 		case FACE_LEFT:
 			xdelta = 0;
-			ydelta = (short)(-mystep);
+			ydelta = -mystep;
 			break;
 		case FACE_UP_LEFT:
 			xdelta = mystep;
-			ydelta = (short)(-mystep);
+			ydelta = -mystep;
 			break;
 		default:
 			xdelta = 0;
@@ -781,113 +781,95 @@ short statistics::right_blocked()
 			break;
 	}
 
-	return !screenp->query_passable((short) (controlx + xdelta),
-	                                (short) (controly + ydelta),
-	                                controller);
+	return !screenp->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
 // Returns whether our right-forward is blocked
-short statistics::right_forward_blocked()
+bool statistics::right_forward_blocked()
 {
 	screen  *screenp = controller->screenp;
-	short controlx = controller->xpos, controly = controller->ypos;
-	short mystep = (short) controller->stepsize;
+	float controlx = controller->xpos, controly = controller->ypos;
+	float mystep = controller->stepsize;
 
 	mystep = CHECK_STEP_SIZE;
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !screenp->query_passable((short) (controlx+mystep),
-			                                (short) (controly-mystep), controller);
+			return !screenp->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_RIGHT:
-			return !screenp->query_passable(controlx+mystep,
-			                                (short) controly, controller);
+			return !screenp->query_passable(controlx+mystep, controly, controller);
 
 		case FACE_RIGHT:
-			return !screenp->query_passable((short) (controlx+mystep),
-			                                (short) (controly+mystep), controller);
+			return !screenp->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !screenp->query_passable((short) controlx,
-			                                controly+mystep, controller);
+			return !screenp->query_passable(controlx, controly+mystep, controller);
 		case FACE_DOWN:
-			return !screenp->query_passable((short) (controlx-mystep),
-			                                (short) (controly+mystep), controller);
+			return !screenp->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !screenp->query_passable((short) (controlx-mystep),
-			                                (short) (controly), controller);
+			return !screenp->query_passable(controlx-mystep, controly, controller);
 		case FACE_LEFT:
-			return !screenp->query_passable((short) (controlx-mystep),
-			                                (short) (controly-mystep), controller);
+			return !screenp->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !screenp->query_passable((short) (controlx),
-			                                (short) (controly-mystep), controller);
+			return !screenp->query_passable(controlx, controly-mystep, controller);
 		default:
 			break;
 
 	}
-	return 0;
+	return false;
 }
 
 // Returns whether our right-back is blocked
-short statistics::right_back_blocked()
+bool statistics::right_back_blocked()
 {
 	screen  *screenp = controller->screenp;
-	short controlx = controller->xpos, controly = controller->ypos;
-	short mystep = (short) controller->stepsize;
+	float controlx = controller->xpos, controly = controller->ypos;
+	float mystep = controller->stepsize;
 
 	mystep = CHECK_STEP_SIZE;
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !screenp->query_passable((short) (controlx+mystep),
-			                                (short) (controly+mystep), controller);
+			return !screenp->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_UP_RIGHT:
-			return !screenp->query_passable(controlx,
-			                                (short) (controly+mystep),
-			                                controller);
+			return !screenp->query_passable(controlx, controly+mystep, controller);
 
 		case FACE_RIGHT:
-			return !screenp->query_passable((short) (controlx-mystep),
-			                                (short) (controly+mystep), controller);
+			return !screenp->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !screenp->query_passable((short) (controlx-mystep), controly,
-			                                controller);
+			return !screenp->query_passable(controlx-mystep, controly, controller);
 		case FACE_DOWN:
-			return !screenp->query_passable((short) (controlx-mystep), (short) (controly-mystep),
-			                                controller);
+			return !screenp->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !screenp->query_passable(controlx, (short) (controly-mystep),
+			return !screenp->query_passable(controlx, controly-mystep,
 			                                controller);
 		case FACE_LEFT:
-			return !screenp->query_passable((short) (controlx+mystep),
-			                                (short) (controly-mystep), controller);
+			return !screenp->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !screenp->query_passable((short) (controlx+mystep),
-			                                controly, controller);
+			return !screenp->query_passable(controlx+mystep, controly, controller);
 		default:
 			break;
 	}
 
-	return 0;
+	return false;
 }
 
 // Returns whether our front is blocked
-short statistics::forward_blocked()
+bool statistics::forward_blocked()
 {
 	screen  *screenp = controller->screenp;
-	short xdelta, ydelta;
-	short controlx = controller->xpos, controly = controller->ypos;
-	short mystep = CHECK_STEP_SIZE;
+	float xdelta, ydelta;
+	float controlx = controller->xpos, controly = controller->ypos;
+	float mystep = CHECK_STEP_SIZE;
 
 	switch (controller->curdir)
 	{
 		case FACE_UP:
 			xdelta = 0;
-			ydelta = (short) (-mystep);
+			ydelta = -mystep;
 			break;
 		case FACE_UP_RIGHT:
 			xdelta = mystep;
-			ydelta = (short) (-mystep);
+			ydelta = -mystep;
 			break;
 		case FACE_RIGHT:
 			xdelta = mystep;
@@ -902,16 +884,16 @@ short statistics::forward_blocked()
 			ydelta = mystep;
 			break;
 		case FACE_DOWN_LEFT:
-			xdelta = (short) (-mystep);
+			xdelta = -mystep;
 			ydelta = mystep;
 			break;
 		case FACE_LEFT:
-			xdelta = (short) (-mystep);
+			xdelta = -mystep;
 			ydelta = 0;
 			break;
 		case FACE_UP_LEFT:
-			xdelta = (short) (-mystep);
-			ydelta = (short) (-mystep);
+			xdelta = -mystep;
+			ydelta = -mystep;
 			break;
 		default:
 			xdelta = 0;
@@ -919,13 +901,12 @@ short statistics::forward_blocked()
 			break;
 	}
 
-	return !screenp->query_passable((short) (controlx + xdelta), (short) (controly + ydelta),
-	                                controller);
+	return !screenp->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
-short statistics::right_walk()
+bool statistics::right_walk()
 {
-	short xdelta, ydelta;
+	float xdelta, ydelta;
 
 	//  if (walkrounds > 60)
 	//    if (direct_walk()) return -1;
@@ -1050,16 +1031,16 @@ short statistics::right_walk()
 			return controller->walkstep(xdelta, ydelta);
 		}
 	}
-	return 1;
+	return true;
 }
 
-short statistics::direct_walk()
+bool statistics::direct_walk()
 {
 	walker * foe = controller->foe;
-	short xdest, ydest;
-	short xdelta, ydelta;
-	short xdeltastep, ydeltastep;
-	short controlx = controller->xpos, controly = controller->ypos;
+	float xdest, ydest;
+	float xdelta, ydelta;
+	float xdeltastep, ydeltastep;
+	float controlx = controller->xpos, controly = controller->ypos;
 	//  short xdistance, ydistance;
 	//  Uint32 tempdistance;
 	//  char olddir = controller->curdir;
@@ -1073,8 +1054,8 @@ short statistics::direct_walk()
 	xdest = foe->xpos;
 	ydest = foe->ypos;
 
-	xdelta = (short) (xdest - controller->xpos);
-	ydelta = (short) (ydest - controller->ypos);
+	xdelta = xdest - controller->xpos;
+	ydelta = ydest - controller->ypos;
 	if (abs(xdelta) > abs(3*ydelta))
 		ydelta = 0;
 	if (abs(ydelta) > abs(3*xdelta))
@@ -1089,12 +1070,12 @@ short statistics::direct_walk()
 	}
 
 	if (xdelta)
-		xdelta = (short) (xdelta / abs(xdelta));
+		xdelta = xdelta / fabs(xdelta);
 	if (ydelta)
-		ydelta = (short) (ydelta / abs(ydelta));
+		ydelta = ydelta / fabs(ydelta);
 
-	xdeltastep = (short) (xdelta*controller->stepsize);
-	ydeltastep = (short) (ydelta*controller->stepsize);
+	xdeltastep = xdelta*controller->stepsize;
+	ydeltastep = ydelta*controller->stepsize;
 
 	// Tom's note on 8/3/97: I think these would work better if
 	// replaced by some sort of single "if forward_blocked()"
@@ -1150,11 +1131,11 @@ short statistics::direct_walk()
 
 }
 
-short statistics::walk_to_foe()
+bool statistics::walk_to_foe()
 {
 	walker * foe = controller->foe;
-	short xdest, ydest;
-	short xdelta,ydelta;
+	float xdest, ydest;
+	float xdelta, ydelta;
 	Uint32 tempdistance = 9999999L;
 	static unsigned short do_check;
 	short howmany;
@@ -1174,8 +1155,8 @@ short statistics::walk_to_foe()
 		xdest = foe->xpos;
 		ydest = foe->ypos;
 
-		xdelta = (short) (xdest - controller->xpos);
-		ydelta = (short) (ydest - controller->ypos);
+		xdelta = xdest - controller->xpos;
+		ydelta = ydest - controller->ypos;
 
 		tempdistance = (Uint32) controller->distance_to_ob(foe);
 		if (tempdistance < 200 || (tempdistance < last_distance) )

@@ -33,9 +33,9 @@ class walker : public pixieN
 		short reset(void);
 		short move(short x, short y);
 		virtual short setxy(short x, short y);
-		short walk();
-		short walkstep(short x, short y);
-		virtual short walk(short x, short y);
+		bool walk();
+		bool walkstep(float x, float y);
+		virtual bool walk(float x, float y);
 		short draw(viewscreen  *view_buf);
 		short draw_tile(viewscreen  *view_buf);
 		short init_fire();
@@ -70,7 +70,7 @@ class walker : public pixieN
 		virtual short shove(walker  *target, short x, short y);
 		virtual short eat_me(walker  *eater);
 		virtual void set_direct_frame(short whichframe);
-		short turn(short targetdir);
+		bool turn(short targetdir);
 		short spaces_clear(); // how many (of 8) spaces around us are clear
 		void transfer_stats(walker  *newob); // transfer values to new walker
 		void transform_to(char whatorder, char whatfamily); // change picture, etc.
@@ -102,7 +102,7 @@ class walker : public pixieN
 		short death_called; // if death has already been called
 		short weapons_left;   // for fighter's blades
 		short yo_delay;
-		short lastx, lasty;
+		float lastx, lasty;
 		signed char curdir;  // Current direction facing
 		signed char cycle;
 		signed char  **ani;
@@ -111,8 +111,8 @@ class walker : public pixieN
 		unsigned char team_num;
 		unsigned char real_team_num; // for 'Charm', etc.
 		char ani_type;
-		Sint32 stepsize;
-		Sint32 normal_stepsize; // used for elven forestwalk
+		float stepsize;
+		float normal_stepsize; // used for elven forestwalk
 		Sint32 lineofsight;
 		float damage;
 		float fire_frequency;

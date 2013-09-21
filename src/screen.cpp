@@ -379,7 +379,7 @@ void screen::reset(short howmany)
 
 }
 
-short screen::query_grid_passable(short x, short y, walker  *ob)
+bool screen::query_grid_passable(float x, float y, walker  *ob)
 {
 	Sint32 i,j;
 	//  short xsize=ob->sizex, ysize=ob->sizey;
@@ -390,7 +390,7 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 	Sint32 dist;
 	// NOTE: we're going to shrink dimensions by one in each..
 	//Sint32 xover = (Sint32) (x+ob->sizex-1), yover = (Sint32) (y+ob->sizey-1);
-	Sint32 xover = (Sint32) (x+ob->sizex), yover = (Sint32) (y+ob->sizey);
+	Sint32 xover = x+ob->sizex, yover = y+ob->sizey;
 
 	// Again, this is for shrinking ...
 	//x+=1;
@@ -596,19 +596,16 @@ short screen::query_grid_passable(short x, short y, walker  *ob)
 	return 1;
 }
 
-short screen::query_object_passable(short x, short y, walker  *ob)
+bool screen::query_object_passable(float x, float y, walker  *ob)
 {
 	if (ob->dead)
 		return 1;
 	return level_data.myobmap->query_list(ob, x, y);
 }
 
-short screen::query_passable(short x,short y,walker  *ob)
+bool screen::query_passable(float x, float y, walker  *ob)
 {
-	if (query_grid_passable(x, y, ob) &&
-	        query_object_passable(x, y, ob) )
-		return 1;
-	return 0;
+	return query_grid_passable(x, y, ob) && query_object_passable(x, y, ob);
 }
 
 void screen::clear()

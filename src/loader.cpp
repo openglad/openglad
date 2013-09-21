@@ -322,7 +322,7 @@ loader::loader()
 	memset(act_types, ACT_RANDOM, SIZE_ORDERS*SIZE_FAMILIES);
 	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
 	memset(animations, 0, SIZE_ORDERS*SIZE_FAMILIES);
-	stepsizes = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
+	stepsizes = new float[SIZE_ORDERS*SIZE_FAMILIES];
 	lineofsight = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
 	damage = new float[SIZE_ORDERS*SIZE_FAMILIES];
 	fire_frequency = new float[SIZE_ORDERS*SIZE_FAMILIES];

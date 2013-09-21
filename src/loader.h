@@ -32,7 +32,7 @@ class loader
 		walker *set_walker(walker *ob, char order, char family);
 		PixieData* graphics;
 		signed char  ***animations;
-		Sint32  *stepsizes;
+		float  *stepsizes;
 		Sint32  *lineofsight;
 		
 		float  hitpoints[200]; // hack for now

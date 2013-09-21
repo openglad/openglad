@@ -37,8 +37,6 @@ living::~living()
 
 short living::act()
 {
-	Sint32 temp;
-
 	if (bonus_rounds>0 && !dead)  // we get extra rounds to act this cycle
 	{
 		bonus_rounds--;
@@ -83,7 +81,7 @@ short living::act()
 				if (stats->hitpoints < stats->max_hitpoints) // we're hurt
 				{
 					// Take a 'toll' of one health and 3 mp of mage, if there
-					temp = 0;
+					Sint32 temp = 0;
 					if (owner->stats->hitpoints >= (owner->stats->max_hitpoints/3) )
 					{
 						temp = 1;
@@ -203,20 +201,16 @@ short living::act()
             stats->magicpoints--;
         }
 
-
+        float temp;
 		if (myguy)
-			temp = (4 - myguy->dexterity/10);
+			temp = (4 - myguy->dexterity/10.0f);
 		else
-			temp = (4 - stats->level/2);
+			temp = (4 - stats->level/2.0f);
 		if (temp < 0)
 			temp = 0;
 		stepsize -= temp;
 		if (stepsize < 1)
-		{
-			// stepsize = random(9-temp);
-			// if (stepsize)
 			stepsize = 1;
-		}
 	}  // end of forestwalk check
 	else
 		stepsize = normal_stepsize;
@@ -232,12 +226,15 @@ short living::act()
 	switch (family)
 	{
 		case FAMILY_ARCHMAGE:  // gets bonus viewing, at times
-			if (stats->level >= 40)
-				temp = 1;
-			else
-				temp = 40 - stats->level;
-			if (!(drawcycle%temp)) // then we get to see..
-				view_all += 1;
+		    {
+		        Sint32 temp;
+                if (stats->level >= 40)
+                    temp = 1;
+                else
+                    temp = 40 - stats->level;
+                if (!(drawcycle%temp)) // then we get to see..
+                    view_all += 1;
+		    }
 			break;
 		default:
 			break;
@@ -266,7 +263,7 @@ short living::act()
 	// Are we performing some action?
 	if (stats->commandlist)
 	{
-		temp = stats->do_command();
+		Sint32 temp = stats->do_command();
 		if (temp)
 			return 1;
 	}
@@ -277,7 +274,7 @@ short living::act()
 	// Do we have a generic action-type set?
 	if (action  && (user == -1) )
 	{
-		temp = do_action();
+		Sint32 temp = do_action();
 		if (temp)
 			return temp;
 	}
@@ -397,7 +394,7 @@ short living::shove(walker  *target, short x, short y)
 	return 0;
 }
 
-short living::walk(short x, short y)
+bool living::walk(float x, float y)
 {
 	short dir;
 	//  short newdir, newcurdir;
@@ -423,7 +420,7 @@ short living::walk(short x, short y)
 		// Here we check if the move is valid
 		// Normally we would check if the object at this grid point
 		//    is passable (I cheated for now)
-		if (screenp->query_passable((short) (xpos+x),(short) (ypos+y),this))
+		if (screenp->query_passable(xpos+x, ypos+y,this))
 		{
 			// Control object does complete redraw anyway
 			move(x,y);

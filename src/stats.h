@@ -67,14 +67,14 @@ class statistics
 		short query_bit_flags(Sint32 myvalue);
         void clear_bit_flags();
 		void set_bit_flags(Sint32 someflag, short newvalue); // sets a single flag
-		short right_blocked(); // is our right blocked?
-		short right_forward_blocked();
-		short right_back_blocked();
-		short forward_blocked(); // are we blocked in front?
+		bool right_blocked(); // is our right blocked?
+		bool right_forward_blocked();
+		bool right_back_blocked();
+		bool forward_blocked(); // are we blocked in front?
 		//short distance_to_foe(); //not in use???????
-		short right_walk();      // walk using right-hand rule
-		short direct_walk(); // walk in a line toward foe ..
-		short walk_to_foe(); // try to walk intelligently towards foe
+		bool right_walk();      // walk using right-hand rule
+		bool direct_walk(); // walk in a line toward foe ..
+		bool walk_to_foe(); // try to walk intelligently towards foe
 
 		char name[12]; // for NPC's, normally ..
 		char old_order, old_family;

@@ -210,7 +210,7 @@ short walker::setxy(short x, short y)
 // This includes an automatic frame change. It also redraws the background
 // at the coords it used to occupy.
 // It calls the lower level function MOVE.
-short walker::walk()
+bool walker::walk()
 {
 	return walker::walk(lastx, lasty);
 }
@@ -267,13 +267,13 @@ short walker::shove(walker  *target, short x, short y)
 
 }
 
-short walker::walkstep(short x, short y)
+bool walker::walkstep(float x, float y)
 {
 	short returnvalue;
 	short ret1 = 0, ret2 = 0;
 	short oldcurdir = curdir;
-	short step = (short) stepsize;
-	short halfstep;
+	float step = stepsize;
+	float halfstep;
 	Sint32 i;
 	Sint32 gotup = 0, gotover = 0;
 	//walker *control1 = screenp->viewob[0]->control;
@@ -281,8 +281,8 @@ short walker::walkstep(short x, short y)
 	short mycycle;
 
 	// Repeat last walk.
-	lastx = (short) (x*stepsize);
-	lasty = (short) (y*stepsize);
+	lastx = x*stepsize;
+	lasty = y*stepsize;
 
 	if (order==ORDER_LIVING && family==FAMILY_TOWER1)
 	{
@@ -292,12 +292,12 @@ short walker::walkstep(short x, short y)
 		lasty = y;
 		return 1;
 	}
-	returnvalue = walk((short) (x*stepsize), (short) (y*stepsize));
+	returnvalue = walk(x*stepsize, y*stepsize);
 	halfstep = 1;
 
 	if (!returnvalue) // couldn't walk this direction ..
 	{
-		returnvalue = walk((short) (x*halfstep), (short) (y*halfstep)); // Now try a baby step
+		returnvalue = walk(x*halfstep, y*halfstep); // Now try a baby step
 		if (!returnvalue) // if we still fail
 		{
 			if (user == -1) // means we are an npc
@@ -310,7 +310,7 @@ short walker::walkstep(short x, short y)
 						break;
 					case FACE_RIGHT: // we can't walk this direction
 						curdir = FACE_UP;
-						ret1 = walk(0, (short) (-step));
+						ret1 = walk(0, -step);
 						break;
 					case FACE_DOWN:
 						curdir = FACE_RIGHT;
@@ -323,27 +323,27 @@ short walker::walkstep(short x, short y)
 						//return returnvalue;
 					case FACE_UP_RIGHT:
 						curdir = FACE_UP;
-						ret1 = walk(0, (short) (y*step));
+						ret1 = walk(0, y*step);
 						curdir = FACE_RIGHT;
-						ret2 = walk((short) (x*step), 0);
+						ret2 = walk(x*step, 0);
 						break;
 					case FACE_DOWN_RIGHT:
 						curdir = FACE_DOWN;
-						ret1 = walk(0, (short) (y*step));
+						ret1 = walk(0, y*step);
 						curdir = FACE_RIGHT;
-						ret2 = walk((short) (x*step), 0);
+						ret2 = walk(x*step, 0);
 						break;
 					case FACE_DOWN_LEFT:
 						curdir = FACE_DOWN;
-						ret1 = walk(0, (short) (y*step));
+						ret1 = walk(0, y*step);
 						curdir = FACE_LEFT;
-						ret2 = walk((short) (x*step), 0);
+						ret2 = walk(x*step, 0);
 						break;
 					case FACE_UP_LEFT:
 						curdir = FACE_UP;
-						ret1 = walk(0, (short) (y*step));
+						ret1 = walk(0, y*step);
 						curdir = FACE_LEFT;
-						ret2 = walk((short) (x*step), 0);
+						ret2 = walk(x*step, 0);
 						break;
 					default:
 						ret1 = 0;
@@ -493,7 +493,7 @@ short walker::walkstep(short x, short y)
 	return returnvalue;
 }
 
-short walker::walk(short x, short y)
+bool walker::walk(float x, float y)
 {
 	short dir;
 
@@ -523,7 +523,7 @@ short walker::walk(short x, short y)
 		}
 
 		// Here we check if the move is valid
-		if (screenp->query_passable((short) (xpos+x),(short) (ypos+y),this))
+		if (screenp->query_passable(xpos+x, ypos+y, this))
 		{
 			// Control object does complete redraw anyway
 			move(x,y);
@@ -559,7 +559,7 @@ short walker::walk(short x, short y)
 	return 1;
 }
 
-short walker::turn(short targetdir)
+bool walker::turn(short targetdir)
 {
 	short distance;
 
@@ -622,7 +622,7 @@ short walker::turn(short targetdir)
 	cycle = 0;
 	set_frame(ani[curdir][cycle]);
 	move(0,0);
-	return 1;
+	return true;
 }
 
 // This is the function you actually call when you want something
@@ -2527,10 +2527,10 @@ short walker::special()
 								{
 									newob->damage += generic; // bonus for extra mp
 									newob->lineofsight += (generic/3);
-									if (newob->lastx)
-										newob->lastx /= abs(newob->lastx);
-									if (newob->lasty)
-										newob->lasty /= abs(newob->lasty);
+									if (newob->lastx != 0.0f)
+										newob->lastx /= fabs(newob->lastx);
+									if (newob->lasty != 0.0f)
+										newob->lasty /= fabs(newob->lasty);
 								}  // end got a valid weapon
 							}  // end checked for not center
 						} // end did all 8 directions

@@ -467,7 +467,7 @@ short viewscreen::input(const SDL_Event& event)
 	{
 		control->bonus_rounds--;
 		
-		if (control->lastx || control->lasty)
+		if (control->lastx != 0.0f || control->lasty != 0.0f)
 			control->walk();
 	}
 
