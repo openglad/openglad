@@ -37,6 +37,13 @@ class guy
 		void set_level_number(short level);
 		short get_level() const;
 		
+        float get_hp_bonus() const;
+        float get_mp_bonus() const;
+        float get_damage_bonus() const;
+        float get_armor_bonus() const;
+        float get_speed_bonus() const;
+        float get_fire_frequency_bonus() const;
+        
 		void update_derived_stats(walker* w);
 
 		char name[12];

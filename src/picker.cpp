@@ -1235,7 +1235,7 @@ Sint32 create_hire_menu(Sint32 arg1)
     SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4 + 6, stat_box.w - 8, stat_box.h - 8 - 6};
     SDL_Rect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
     
-    SDL_Rect cost_box = {196, 130, 104, 30};
+    SDL_Rect cost_box = {196, 130, 104, 31};
     SDL_Rect cost_box_inner = {cost_box.x + 4, cost_box.y + 4, cost_box.w - 8, cost_box.h - 8};
     SDL_Rect cost_box_content = {cost_box_inner.x + 4, cost_box_inner.y + 4, cost_box_inner.w - 8, cost_box_inner.h - 8};
     
@@ -1361,79 +1361,93 @@ Sint32 create_hire_menu(Sint32 arg1)
 
         // Stat box content
         linesdown = 0;
+        int line_height = 10;
         
         // Strength
         sprintf(message, "%d", current_guy->strength);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "STR:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_STR] < current_guy->strength)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 0), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
         
         linesdown++;
         // Dexterity
         sprintf(message, "%d", current_guy->dexterity);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "DEX:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_DEX] < current_guy->dexterity)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 1), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
 
         linesdown++;
         // Constitution
         sprintf(message, "%d", current_guy->constitution);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "CON:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_CON] < current_guy->constitution)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 2), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
 
         linesdown++;
         // Intelligence
         sprintf(message, "%d", current_guy->intelligence);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "INT:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_INT] < current_guy->intelligence)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*12, get_training_cost_rating(last_family, 3), showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
 
         linesdown++;
         // Armor
         sprintf(message, "%d", current_guy->armor);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12, "ARMOR:",
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
                          (unsigned char) STAT_COLOR, 1);
         if (statlist[(int)current_guy->family][BUT_ARMOR] < current_guy->armor)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12, message, showcolor, 1);
+        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
 		
-		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*12 - 3, stat_box_content.w - 20, 2};
+		// Separator bar
+		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
 		myscreen->draw_button_inverted(r);
 		
+		int derived_offset = 3*STAT_NUM_OFFSET/4;
         linesdown++;
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "HP:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)]));
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "HP:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + derived_offset - 9, stat_box_content.y + linesdown*line_height + 4, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)] + current_guy->get_hp_bonus()));
+        
+        mytext->write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "MP:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + 2*derived_offset + 18 - 9, stat_box_content.y + linesdown*line_height + 4, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
 		
 		linesdown++;
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "MELEE:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)]);
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + derived_offset - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)] + current_guy->get_damage_bonus());
+        
+        mytext->write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "DEF:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + 2*derived_offset + 18 - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", current_guy->get_armor_bonus());
 		
 		linesdown++;
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*12 + 4, "SPEED:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*12 + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)]);
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "SPD:", STAT_DERIVED, 1);
+        mytext->write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)]);
+        
+		linesdown++;
+        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
+        // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
+        mytext->write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", 10.0f/(myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, last_family)] + current_guy->get_fire_frequency_bonus()));
         
         
 		

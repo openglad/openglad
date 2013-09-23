@@ -452,6 +452,39 @@ void guy::upgrade_to_level(short level)
     exp = calculate_exp(level);
 }
 
+// Derived stat calculations
+float guy::get_hp_bonus() const
+{
+    return 10 + constitution*3 + strength/2.0f;
+}
+
+float guy::get_mp_bonus() const
+{
+    return 10 + intelligence*3 + dexterity;
+}
+
+float guy::get_damage_bonus() const
+{
+    return strength/4.0f + dexterity/11.0f;
+}
+
+float guy::get_armor_bonus() const
+{
+    return armor + dexterity/14.0f;
+}
+
+float guy::get_speed_bonus() const
+{
+    return dexterity/54.0f;
+}
+
+float guy::get_fire_frequency_bonus() const
+{
+    return dexterity/47.0f;
+}
+
+
+
 
 void guy::update_derived_stats(walker* w)
 {
@@ -459,21 +492,35 @@ void guy::update_derived_stats(walker* w)
     myscreen->level_data.myloader->set_derived_stats(w, ORDER_LIVING, temp_guy->family);
     
     
-    // Set hitpoints based on stats:
-    w->stats->max_hitpoints += 10 + temp_guy->constitution*3 + temp_guy->strength/2.0f;
+    w->stats->max_hitpoints += temp_guy->get_hp_bonus();
     w->stats->hitpoints = w->stats->max_hitpoints;
-
-    // Set damage based on strength and dex
-    w->damage += temp_guy->strength/4.0f + temp_guy->dexterity/11.0f;
-    // Set magicpoints based on stats:
-    w->stats->max_magicpoints = 10 + temp_guy->intelligence*3 + temp_guy->dexterity;
+    
+    // No class base value for MP...
+    w->stats->max_magicpoints = temp_guy->get_mp_bonus();
     w->stats->magicpoints = w->stats->max_magicpoints;
 
-    // Set our armor level ..
-    w->stats->armor = temp_guy->armor + temp_guy->dexterity/14.0f;
+    w->damage += temp_guy->get_damage_bonus();
+
+    // No class base value for armor...
+    w->stats->armor = temp_guy->get_armor_bonus();
+    
+    //stepsize makes us run faster, max for a non-weapon is 12
+    w->stepsize += temp_guy->get_speed_bonus();
+    if (w->stepsize > 12)
+        w->stepsize = 12;
+    w->normal_stepsize = w->stepsize;
+
+    //fire_frequency makes us fire faster, min is 1
+    w->fire_frequency -= temp_guy->get_fire_frequency_bonus();
+    if (w->fire_frequency < 1)
+        w->fire_frequency = 1;
+
+    // Fighters: limited weapons
+    if (w->query_family() == FAMILY_SOLDIER)
+        w->weapons_left = (short) ((w->stats->level+1) / 2);
+        
 
     // Set the heal delay ..
-
     w->stats->max_heal_delay = REGEN;
     w->stats->current_heal_delay = temp_guy->constitution + temp_guy->strength/6.0f + 20; //for purposes of calculation only
 
@@ -518,21 +565,6 @@ void guy::update_derived_stats(walker* w)
     //have been screwed up some how
     if (w->stats->max_magic_delay < 2)
         w->stats->max_magic_delay = 2;
-
-    //stepsize makes us run faster, max for a non-weapon is 12
-    w->stepsize += temp_guy->dexterity/54.0f;
-    if (w->stepsize > 12)
-        w->stepsize = 12;
-    w->normal_stepsize = w->stepsize;
-
-    //fire_frequency makes us fire faster, min is 1
-    w->fire_frequency -= temp_guy->dexterity / 47.0f;
-    if (w->fire_frequency < 1)
-        w->fire_frequency = 1;
-
-    // Fighters: limited weapons
-    if (w->query_family() == FAMILY_SOLDIER)
-        w->weapons_left = (short) ((w->stats->level+1) / 2);
 }
 
 walker* guy::create_walker(screen* myscreen)
