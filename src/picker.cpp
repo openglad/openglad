@@ -1111,11 +1111,11 @@ std::string get_class_description(unsigned char family)
     case FAMILY_SMALL_SLIME:
     case FAMILY_MEDIUM_SLIME:
         result = "Slimes are patches of ooze\n"
-                 "which grow until they     \n"
-                 "split into two small      \n"
-                 "slimes, thus increasing   \n"
-                 "the population and over-  \n"
-                 "whelming the enemy.       \n"
+                 "which grow and split into \n"
+                 "two smaller slimes, over- \n"
+                 "whelming the enemy. Their \n"
+                 "nebulous nature makes them\n"
+                 "more susceptible to magic.\n"
                  "\n"
                  "Special: Grow";
         break;
@@ -1166,13 +1166,13 @@ std::string get_class_description(unsigned char family)
                  "deal damage from afar.";
         break;
     case FAMILY_BARBARIAN:
-        result = "Barbarians are powerful,  \n"
-                 "but possess more will than\n"
-                 "skill. They are tough and \n"
-                 "strong, tending to bash   \n"
-                 "their way through trouble \n"
-                 "with heavy iron hammers.  \n"
-                 "\n"
+        result = "Barbarians are powerful   \n"
+                 "and resist some magic     \n"
+                 "damage, but have more will\n"
+                 "than skill. They are tough,\n"
+                 "tending to bash their way \n"
+                 "through trouble with heavy\n"
+                 "iron hammers.             \n"
                  "Special: Hurl Boulder";
         break;
     case FAMILY_ARCHMAGE:
