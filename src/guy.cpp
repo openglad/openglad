@@ -318,7 +318,7 @@ short guy::get_level() const
 
 Uint32 calculate_exp(Sint32 level);
 
-void guy::upgrade_to_level(short level)
+void guy::upgrade_to_level(short level, bool set_xp)
 {
     short level_diff = level - this->level;
     
@@ -449,7 +449,8 @@ void guy::upgrade_to_level(short level)
     armor += a;
     
     this->level = level;
-    exp = calculate_exp(level);
+    if(set_xp)
+        exp = calculate_exp(level);
 }
 
 // Derived stat calculations

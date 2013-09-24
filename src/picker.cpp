@@ -2306,11 +2306,15 @@ Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
                 current_guy->armor-=howmuch;
 			break;
 		case BUT_LEVEL:
-			if(!stat_increased)\
+			if(!stat_increased)
             {
 			    short newlevel = current_guy->get_level() - howmuch;
 			    if(newlevel > 0 && newlevel >= myscreen->save_data.team_list[editguy]->get_level())
+                {
                     current_guy->upgrade_to_level(newlevel);
+                    if(current_guy->get_level() == myscreen->save_data.team_list[editguy]->get_level())
+                        current_guy->exp = myscreen->save_data.team_list[editguy]->exp;
+                }
 			}
 			break;
 		default:
