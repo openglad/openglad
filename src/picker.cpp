@@ -1442,7 +1442,7 @@ Sint32 create_hire_menu(Sint32 arg1)
 		
 		linesdown++;
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "SPD:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)]);
+        mytext->write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)] + current_guy->get_speed_bonus());
         
 		linesdown++;
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
@@ -1474,7 +1474,8 @@ Sint32 create_hire_menu(Sint32 arg1)
 
 Sint32 create_train_menu(Sint32 arg1)
 {
-	Sint32 linesdown, i, retvalue=0;
+	float linesdown = 0.0f;
+	Sint32 i, retvalue=0;
 	unsigned char showcolor;
 	Sint32 start_time = query_timer();
 	Uint32 current_cost;
@@ -1483,7 +1484,10 @@ Sint32 create_train_menu(Sint32 arg1)
     SDL_Rect stat_box = {38, 66, 82, 94};
     SDL_Rect stat_box_inner = {stat_box.x + 4, stat_box.y + 4, stat_box.w - 8, stat_box.h - 8};
     SDL_Rect stat_box_content = {stat_box_inner.x + 4, stat_box_inner.y + 4, stat_box_inner.w - 8, stat_box_inner.h - 8};
-
+    
+    SDL_Rect info_box_inner = {176, 34, 304-176, 112+22-34};
+    SDL_Rect info_box_content = {info_box_inner.x + 4, info_box_inner.y + 4, info_box_inner.w - 8, info_box_inner.h - 8};
+    
 	if (arg1)
 		arg1 = 1;
 
@@ -1668,59 +1672,84 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_COLOR;
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
+
+        // Info box
         myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
-        myscreen->draw_text_bar(178, 34, 302, 44); // title bar
-        strcpy(message, "GAME INFORMATION");
-        mytext->write_xy(240 - (strlen(message)*6/2), 37, message, (unsigned char) RED, 1);
-        myscreen->draw_text_bar(178, 46, 302, 110+22); // main text box
-        myscreen->draw_text_bar(188, 70+22, 292, 71+22); // dividing line #1
-        myscreen->draw_text_bar(188, 94+22, 292, 95+22); // dividing line #2
+        myscreen->draw_text_bar(176, 34, 304, 112+22); // main text box
+        
+        showcolor = DARK_BLUE;
+        linesdown = 0;
+        int line_height = 10;
+		
+		int derived_offset = 3*STAT_NUM_OFFSET/4;
+		
         sprintf(message, "Total Kills: %d", current_guy->kills);
-        mytext->write_xy(180, 48, message, DARK_BLUE, 1);
-        if (current_guy->kills) // are we a veteran?
-        {
-            sprintf(message, "Avg. Victim: %.2lf ",
-                    (float) ((float)current_guy->level_kills / (float)current_guy->kills) );
-            mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-            sprintf(message, " Exp / Kill: %u ",
-                    (current_guy->exp / current_guy->kills) );
-            mytext->write_xy(180, 62, message, DARK_BLUE, 1);
-        }
-        else
-        {
-            sprintf(message, "Avg. Victim: N/A ");
-            mytext->write_xy(180, 55, message, DARK_BLUE, 1);
-            sprintf(message, " Exp / Kill: N/A ");
-            mytext->write_xy(180, 62, message, DARK_BLUE, 1);
-        }
+        mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
+        
+        linesdown++;
         if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
         {
-            sprintf(message, " Damage/Hit: %.2f ", float(current_guy->total_damage) / current_guy->total_hits );
-            mytext->write_xy(180, 69, message, DARK_BLUE, 1);
             sprintf(message, "   Accuracy: %d%% ",
                     (current_guy->total_hits*100)/current_guy->total_shots);
-            mytext->write_xy(180, 76, message, DARK_BLUE, 1);
+            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
         }
         else // haven't ever hit anyone
         {
-            sprintf(message, " Damage/Hit: N/A ");
-            mytext->write_xy(180, 69, message, DARK_BLUE, 1);
             sprintf(message, "   Accuracy: N/A ");
-            mytext->write_xy(180, 76, message, DARK_BLUE, 1);
+            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
         }
+        
+        linesdown++;
         sprintf(message, " EXPERIENCE: %u", current_guy->exp);
-        mytext->write_xy(180, 62+22, message,(unsigned char) DARK_BLUE, 1);
+        mytext->write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
+        
+        
+        linesdown++;
+		// Separator bar
+		SDL_Rect r = {info_box_content.x + 10, info_box_content.y + Sint32(linesdown*line_height) - 2, info_box_content.w - 20, 2};
+		myscreen->draw_button_inverted(r);
+        
+        linesdown += 0.4f;
+        
+        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "HP:", STAT_DERIVED, 1);
+        mytext->write_xy(info_box_content.x + derived_offset - 9, info_box_content.y + linesdown*line_height, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_hp_bonus()));
+        
+        mytext->write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "MP:", STAT_DERIVED, 1);
+        mytext->write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_box_content.y + linesdown*line_height, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
+		
+		linesdown++;
+        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK:", STAT_DERIVED, 1);
+        mytext->write_xy(info_box_content.x + derived_offset - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_damage_bonus());
+        
+        mytext->write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "DEF:", STAT_DERIVED, 1);
+        mytext->write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", current_guy->get_armor_bonus());
+		
+		linesdown++;
+        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "SPD:", STAT_DERIVED, 1);
+        mytext->write_xy(info_box_content.x + derived_offset, info_box_content.y + linesdown*line_height, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_speed_bonus());
+        
+		linesdown++;
+        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK SPD:", STAT_DERIVED, 1);
+        // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
+        mytext->write_xy(info_box_content.x + derived_offset + 21, info_box_content.y + linesdown*line_height, showcolor, "%.1f", 10.0f/(myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_fire_frequency_bonus()));
+        
+        
+        linesdown++;
+		// Separator bar
+		SDL_Rect r2 = {info_box_content.x + 10, info_box_content.y + Sint32(linesdown*line_height) - 2, info_box_content.w - 20, 2};
+		myscreen->draw_button_inverted(r2);
+        
+        linesdown += 0.4f;
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-        mytext->write_xy(180, 76+22, message,(unsigned char) DARK_BLUE, 1);
-        //current_cost = calculate_train_cost(here);
-        mytext->write_xy(180, 86+22, "COST: ", DARK_BLUE, 1);
+        mytext->write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
+        
+        linesdown++;
+        mytext->write_xy(180, info_box_content.y + linesdown*line_height, "COST: ", DARK_BLUE, 1);
         sprintf(message, "      %u", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
-            mytext->write_xy(180, 86+22, message, STAT_CHANGED, 1);
+            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_CHANGED, 1);
         else
-            mytext->write_xy(180, 86+22, message, STAT_COLOR, 1);
-        sprintf(message, "TOTAL SCORE: %u", myscreen->save_data.m_totalscore[current_guy->teamnum]);
-        mytext->write_xy(180, 102+22, message,(unsigned char) DARK_BLUE, 1);
+            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_COLOR, 1);
 
         // Display our team setting ..
         sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
