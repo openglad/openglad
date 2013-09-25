@@ -194,28 +194,51 @@ Sint32 costlist[NUM_FAMILIES] =
 
 Sint32 statlist[NUM_FAMILIES][6] =
     {
-        // STR, DEX, CON, INT, ARMOR, LEVEL
-        {12, 6, 12,  8, 9,  1},  // soldier
-        {5,  14,  5,  12, 8,  1},  // elf
-        {6, 12,  6,  10, 5,  1},  // archer
-        {4,  6,  4, 16, 5,  1},  // mage
-        {9,  6,  9,  6, 9,  1},  // skeleton
-        {6,  7,  6, 14, 7,  1},  // cleric
-        {14, 5, 30,  6, 16, 1},  // fire elem
-        {3,  8,  3,  8, 4,  1},  // faerie
-        //  {30, 2, 30,  4, 20, 1},  // slime
-        {18, 2, 18,  4, 8, 1},  // slime (big)
-        {18, 2, 18,  4, 8, 1},  // small slime
-        {18, 2, 18,  4, 8, 1},  // slime (medium)
-        //  {24, 2, 24,  4, 14, 1},  // medium slime
-        {9, 12, 12,  10,  5, 1},  // thief
-        {6, 12, 18,  10, 15, 1},  // ghost
-        {7,  8,  14,  12,  7, 1},  // druid
-        {16, 4, 14,   2, 11, 1},  // orc
-        {16, 4, 14,   2, 11, 1},  // 'big' orc
-        {14, 5, 14,   8, 8, 1},  // barbarian
-        {4,  6,  4, 16, 5,  1},  // archmage
-        //  {8, 12,  8, 32,10,  1},  // archmage
+      // STR, DEX, CON, INT, ARMOR, LEVEL
+        {12,  6,   12,  8,   9,     1},  // soldier
+        {5,   14,  5,   12,  8,     1},  // elf
+        {6,   12,  6,   10,  5,     1},  // archer
+        {4,   6,   4,   16,  5,     1},  // mage
+        {9,   6,   9,   6,   9,     1},  // skeleton
+        {6,   7,   6,   14,  7,     1},  // cleric
+        {14,  5,   30,  6,   16,    1},  // fire elem
+        {3,   8,   3,   8,   4,     1},  // faerie
+        {18,  2,   18,  4,   8,     1},  // slime (big)
+        {18,  2,   18,  4,   8,     1},  // small slime
+        {18,  2,   18,  4,   8,     1},  // slime (medium)
+        {9,   12,  12,  10,  5,     1},  // thief
+        {6,   12,  18,  10,  15,    1},  // ghost
+        {7,   8,   14,  12,  7,     1},  // druid
+        {16,  4,   14,  2,   11,    1},  // orc
+        {16,  4,   14,  2,   11,    1},  // 'big' orc
+        {14,  5,   14,  8,   8,     1},  // barbarian
+        {4,   6,   4,   16,  5,     1},  // archmage
+    };
+
+float derived_bonuses[NUM_FAMILIES][8] =
+    {
+      // HP,  MP,  ATK,  RANGED ATK, RANGE, DEF, SPD,   ATK SPD (delay)
+        {90,  0,   20,   0,          0,     0,   4,     6},  // soldier
+        {45,  0,   12,   0,          0,     0,   4,     5},  // elf
+        {60,  0,   8,    0,          0,     0,   4,     5},  // archer
+        {60,  0,   4,    0,          0,     0,   2,     4},  // mage
+        {30,  0,   4,    0,          0,     0,   6,     6},  // skeleton
+        {90,  0,   12,   0,          0,     0,   2,     7.5f},  // cleric
+        {150, 0,   12,   0,          0,     0,   4,     5},  // fire elem
+        {45,  0,   3,    0,          0,     0,   4,     9},  // faerie
+        {120, 0,   28,   0,          0,     0,   3,     11},  // slime (big)
+        {30,  0,   12,   0,          0,     0,   2,     12},  // small slime
+        {30,  0,   20,   0,          0,     0,   2,     10},  // slime (medium)
+        {45,  0,   12,   0,          0,     0,   5,     5},  // thief
+        {40,  0,   6,    0,          0,     0,   4,     5},  // ghost
+        {80,  0,   10,   0,          0,     0,   3,     9},  // druid
+        {110, 0,   25,   0,          0,     0,   3,     7},  // orc
+        {150, 0,   30,   0,          0,     0,   3,     6},  // 'big' orc
+        {120, 0,   25,   0,          0,     0,   3,     5.5f},  // barbarian
+        {120, 0,   8,    0,          0,     0,   3,     1},  // archmage
+        {270, 0,   60,   0,          0,     0,   8,     9},  // golem
+        {270, 0,   60,   0,          0,     0,   8,     7},  // giant skeleton
+        {100, 0,   0,    0,          0,     0,   0,     5},  // tower
     };
 
 Sint32 statcosts[NUM_FAMILIES][6] =

@@ -30,6 +30,8 @@
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in graph.h
 //#define PIX(a,b) (SIZE_FAMILIES*a+b)  //moved to graph.h
 
+extern float derived_bonuses[NUM_FAMILIES][8];
+
 // These are for monsters and us
 signed char bit1[] = {(char) 1,(char) 5,(char) 1,(char) 9,(signed char) -1};     // up
 signed char bit2[] = {(char) 13,(char) 17,(char) 13,(char) 21,(signed char) -1}; // up-right
@@ -351,27 +353,13 @@ loader::loader()
 	graphics[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = read_pixie_file("gs1.pix");
 	graphics[PIX(ORDER_LIVING, FAMILY_TOWER1)] = read_pixie_file("towersm1.pix");
 
-	hitpoints[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 90;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_ELF)] = 45;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 60;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_THIEF)] = 45;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_MAGE)] = 60;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_SKELETON)] = 30;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_CLERIC)] = 90;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_FIREELEMENTAL)] = 150;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_FAERIE)] = 45;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_SLIME)] = 120;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_SMALL_SLIME)] = 30;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_MEDIUM_SLIME)] = 30;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_GHOST)] = 40;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_DRUID)] = 80;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_ORC)] = 110;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_BIG_ORC)] = 150;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 120;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_ARCHMAGE)] = 120;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_GOLEM)] = 270;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 270;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_TOWER1)] = 100;
+    for(int i = 0; i < NUM_FAMILIES; i++)
+    {
+        hitpoints[PIX(ORDER_LIVING, i)] = derived_bonuses[i][0];
+        damage[PIX(ORDER_LIVING, i)] = derived_bonuses[i][2];
+        stepsizes[PIX(ORDER_LIVING, i)] = derived_bonuses[i][6];
+        fire_frequency[PIX(ORDER_LIVING, i)] = derived_bonuses[i][7];
+    }
 
 
 	act_types[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = ACT_RANDOM;
@@ -418,28 +406,6 @@ loader::loader()
 	animations[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = anigs;
 	animations[PIX(ORDER_LIVING, FAMILY_TOWER1)] = anifood;
 
-	stepsizes[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 4;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_ELF)] = 4;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 4;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_THIEF)] = 5;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_MAGE)] = 2;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_SKELETON)] = 6;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_CLERIC)] = 2;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_FIREELEMENTAL)] = 4;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_FAERIE)] = 4;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_SLIME)] = 3;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_SMALL_SLIME)] = 2;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_MEDIUM_SLIME)] = 2;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_GHOST)] = 4;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_DRUID)] = 3;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_ORC)] = 3;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_BIG_ORC)] = 3;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 3;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_ARCHMAGE)] = 3;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_GOLEM)] = 8;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 8;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_TOWER1)] = 0;
-
     // AI's understanding of how much range its ranged attack has so it will try to shoot.
 	lineofsight[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 7;
 	lineofsight[PIX(ORDER_LIVING, FAMILY_ELF)] = 8;
@@ -462,52 +428,6 @@ loader::loader()
 	lineofsight[PIX(ORDER_LIVING, FAMILY_GOLEM)] = 20;
 	lineofsight[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 20;
 	lineofsight[PIX(ORDER_LIVING, FAMILY_TOWER1)] = 10;
-
-	// Strength of melee attack
-	damage[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 20;
-	damage[PIX(ORDER_LIVING, FAMILY_ELF)] = 12;
-	damage[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 8;
-	damage[PIX(ORDER_LIVING, FAMILY_THIEF)] = 12;
-	damage[PIX(ORDER_LIVING, FAMILY_MAGE)] = 4;
-	damage[PIX(ORDER_LIVING, FAMILY_SKELETON)] = 4;
-	damage[PIX(ORDER_LIVING, FAMILY_CLERIC)] = 12;
-	damage[PIX(ORDER_LIVING, FAMILY_FIREELEMENTAL)] = 12;
-	damage[PIX(ORDER_LIVING, FAMILY_FAERIE)] = 3;
-	damage[PIX(ORDER_LIVING, FAMILY_SLIME)] = 28;
-	damage[PIX(ORDER_LIVING, FAMILY_SMALL_SLIME)] = 12;
-	damage[PIX(ORDER_LIVING, FAMILY_MEDIUM_SLIME)] = 20;
-	damage[PIX(ORDER_LIVING, FAMILY_GHOST)] = 6;
-	damage[PIX(ORDER_LIVING, FAMILY_DRUID)] = 10;
-	damage[PIX(ORDER_LIVING, FAMILY_ORC)] = 25;
-	damage[PIX(ORDER_LIVING, FAMILY_BIG_ORC)] = 30;
-	damage[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 25;
-	damage[PIX(ORDER_LIVING, FAMILY_ARCHMAGE)] = 8;
-	damage[PIX(ORDER_LIVING, FAMILY_GOLEM)] = 60;
-	damage[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 60;
-	damage[PIX(ORDER_LIVING, FAMILY_TOWER1)] = 0;
-
-    // Lower is faster
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 6;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_ELF)] = 5;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 5;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_THIEF)] = 5;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_MAGE)] = 4;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_SKELETON)] = 6;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_CLERIC)] = 7.5f;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_FIREELEMENTAL)] = 5;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_FAERIE)] = 9;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_SLIME)] = 11;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_SMALL_SLIME)] = 12;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_MEDIUM_SLIME)] = 10;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_GHOST)] = 5;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_DRUID)] = 9;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_ORC)] = 7;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_BIG_ORC)] = 6;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 5.5f;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_ARCHMAGE)] = 1;  // REALLY FAST
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_GOLEM)] = 9;  // REALLY SLOW
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 7;  // SLOW
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_TOWER1)] = 5;  // Fast
 
 	// Weapons
 	graphics[PIX(ORDER_WEAPON, FAMILY_KNIFE)] = read_pixie_file("knife.pix");
