@@ -106,78 +106,10 @@ Sint32 current_type = 0; // guy type we're looking at
 // Used to label new hires, like "SOLDIER5"
 Sint32 numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-Sint32 costlist[NUM_FAMILIES] =
-    {
-        250,  // soldier
-        150,  // elf
-        350,  // archer
-        450,  // mage
-        300,  // skeleton
-        400,  // cleric
-        1500, // fire elem
-        350,  // faerie
-        1500, // slime          // can't buy
-        1500, // small slime
-        1500, // medium slime   // can't buy
-        400,  // thief
-        1000, // ghost
-        350,  // druid
-        700,  // orc
-        1500, // 'big' orc
-        350,  // barbarian
-        450,  // archmage, not used
-    };
-
-// Also change guy::guy
-Sint32 statlist[NUM_FAMILIES][6] =
-    {
-        // STR, DEX, CON, INT, ARMOR, LEVEL
-        {12, 6, 12,  8, 9,  1},  // soldier
-        {5,  9,  5,  12, 8,  1},  // elf
-        {6, 12,  6,  10, 5,  1},  // archer
-        {4,  6,  4, 16, 5,  1},  // mage
-        {9,  6,  9,  6, 9,  1},  // skeleton
-        {6,  7,  6, 14, 7,  1},  // cleric
-        {14, 5, 30,  6, 16, 1},  // fire elem
-        {3,  8,  3,  8, 4,  1},  // faerie
-        //  {30, 2, 30,  4, 20, 1},  // slime
-        {18, 2, 18,  4, 8, 1},  // slime (big)
-        {18, 2, 18,  4, 8, 1},  // small slime
-        {18, 2, 18,  4, 8, 1},  // slime (medium)
-        //  {24, 2, 24,  4, 14, 1},  // medium slime
-        {9, 12, 12,  10,  5, 1},  // thief
-        {6, 12, 18,  10, 15, 1},  // ghost
-        {7,  8,  6,  12,  7, 1},  // druid
-        {16, 4, 14,   2, 11, 1},  // orc
-        {16, 4, 14,   2, 11, 1},  // 'big' orc
-        {14, 5, 14,   8, 8, 1},  // barbarian
-        {4,  6,  4, 16, 5,  1},  // archmage
-        //  {8, 12,  8, 32,10,  1},  // archmage
-    };
-
-Sint32 statcosts[NUM_FAMILIES][6] =
-    {
-        // STR, DEX, CON, INT, ARMOR, LEVEL
-        { 6,10, 6,25,50, 200},  // soldier
-        {25, 6,12,8,50, 200},  // elf
-        {15, 6, 9,10,50, 200},  // archer
-        {20,15,16, 6,50, 200},  // mage
-        { 6, 6,16,25,50, 200},  // skeleton
-        {15,15, 9, 6,50, 200},  // cleric
-        {15,15,12,15,50, 200},  // fire elem
-        {25, 6,12,15,50, 200},  // faerie
-        {20,20,16,20,50, 200},  // slime
-        {20,20,16,20,50, 200},  // small slime
-        {20,20,16,20,50, 200},  // medium slime
-        {15, 6, 9,10,50, 200},  // thief
-        {20,20,16,20,45, 200},  // ghost
-        {15,15, 9, 6,50, 200},  // druid
-        { 8,15, 9,40,50, 200},  // orc
-        { 8,15, 9,40,50, 200},  // 'big' orc
-        { 5,35, 5,35,50, 200},  // barbarian
-        //  {25,15,20, 5,50, 200},  // archmage
-        {30,20,25, 7,55, 200},  // archmage
-    };
+// See guy.cpp
+extern Sint32 costlist[NUM_FAMILIES];
+extern Sint32 statlist[NUM_FAMILIES][6];
+extern Sint32 statcosts[NUM_FAMILIES][6];
 
 // Difficulty settings .. in percent, so 100 == normal
 Sint32 current_difficulty = 1; // setting 'normal'

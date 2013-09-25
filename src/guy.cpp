@@ -18,9 +18,13 @@
 #include <math.h>
 #define RAISE 1.85  // please also change in picker.cpp
 
-extern Sint32 costlist[NUM_FAMILIES];  // These come from picker.cpp
+extern Sint32 costlist[NUM_FAMILIES];
+extern Sint32 statlist[NUM_FAMILIES][6];
 extern Sint32 statcosts[NUM_FAMILIES][6];
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
+
+
+const char* get_family_string(short family);
 
 static int guy_id_counter = 0;
 
@@ -52,7 +56,7 @@ guy::guy()
 }
 
 // Set defaults for various types
-guy::guy(char whatfamily)
+guy::guy(int whatfamily)
 {
 
 	family = whatfamily;
@@ -61,182 +65,30 @@ guy::guy(char whatfamily)
 	total_damage = total_hits = total_shots = 0;
 	exp = 0;
 	teamnum = 0;
-
-	switch (whatfamily)
+	
+	// Set stats
+	if(whatfamily <= FAMILY_ARCHMAGE)
 	{
-		case FAMILY_SOLDIER:
-			strcpy(name, "SOLDIER");
-			strength = 12;
-			dexterity = 6;
-			constitution = 12;
-			intelligence = 8;
-			level = 1;
-			armor = 9;
-			break;
-		case FAMILY_ELF:
-			strcpy(name, "ELF");
-			strength = 5;
-			dexterity = 14;
-			constitution = 5;
-			intelligence = 12;
-			level = 1;
-			armor = 8;
-			break;
-		case FAMILY_ARCHER:
-			strcpy(name, "ARCHER");
-			strength = 6;
-			dexterity = 12;
-			constitution = 6;
-			intelligence = 10;
-			level = 1;
-			armor = 5;
-			break;
-		case FAMILY_MAGE:
-			strcpy(name, "MAGE");
-			strength = 4;
-			dexterity = 6;
-			constitution = 4;
-			intelligence = 16;
-			level = 1;
-			armor = 5;
-			break;
-		case FAMILY_ARCHMAGE:
-			strcpy(name, "ARCHMAGE");
-			strength = 8;
-			dexterity = 12;
-			constitution = 8;
-			intelligence = 32;
-			level = 1;
-			armor = 10;
-			break;
-		case FAMILY_SKELETON:
-			strcpy(name, "SKELETON");
-			strength = 9;
-			dexterity = 6;
-			constitution = 9;
-			intelligence = 6;
-			level = 1;
-			armor = 9;
-			break;
-		case FAMILY_CLERIC:
-			strcpy(name, "CLERIC");
-			strength = 6;
-			dexterity = 7;
-			constitution = 6;
-			intelligence = 14;
-			level = 1;
-			armor = 7;
-			break;
-		case FAMILY_FIREELEMENTAL:
-			strcpy(name, "ELEMENTAL");
-			strength = 14;
-			dexterity = 5;
-			constitution = 30;
-			intelligence = 6;
-			level = 1;
-			armor = 16;
-			break;
-		case FAMILY_FAERIE:
-			strcpy(name, "FAERIE");
-			strength = 3;
-			dexterity = 8;
-			constitution = 3;
-			intelligence = 8;
-			level = 1;
-			armor = 4;
-			break;
-		case FAMILY_SLIME:
-			strcpy(name, "SLIME");
-			strength = 30;
-			dexterity = 2;
-			constitution = 30;
-			intelligence = 4;
-			level = 1;
-			armor = 20;
-			break;
-		case FAMILY_SMALL_SLIME:
-			strcpy(name, "SLIME");
-			strength = 18;
-			dexterity = 2;
-			constitution = 18;
-			intelligence = 4;
-			level = 1;
-			armor = 8;
-			break;
-		case FAMILY_MEDIUM_SLIME:
-			strcpy(name, "SLIME");
-			strength = 24;
-			dexterity = 2;
-			constitution = 24;
-			intelligence = 4;
-			level = 1;
-			armor = 14;
-			break;
-		case FAMILY_THIEF:
-			strcpy(name, "THIEF");
-			strength = 9;
-			dexterity = 12;
-			constitution = 12;
-			intelligence = 10;
-			level = 1;
-			armor = 5;
-			break;
-		case FAMILY_GHOST:
-			strcpy(name, "GHOST");
-			strength = 6;
-			dexterity = 12;
-			constitution = 18;
-			intelligence = 10;
-			level = 1;
-			armor = 15;
-			break;
-		case FAMILY_DRUID:
-			strcpy(name, "DRUID");
-			strength = 7;
-			dexterity = 8;
-			constitution = 6;
-			intelligence = 12;
-			level = 1;
-			armor = 7;
-			break;
-		case FAMILY_ORC:
-			strcpy(name, "ORC");
-			strength = 16;
-			dexterity = 4;
-			constitution = 14;
-			intelligence = 2;
-			level = 1;
-			armor = 11;
-			break;
-		case FAMILY_BIG_ORC:
-			strcpy(name, "ORCER");
-			strength = 16;
-			dexterity = 4;
-			constitution = 14;
-			intelligence = 2;
-			level = 1;
-			armor = 11;
-			break;
-		case FAMILY_BARBARIAN:
-			strcpy(name, "BARBARIAN");
-			strength = 14;
-			dexterity = 5;
-			constitution = 14;
-			intelligence = 8;
-			level = 1;
-			armor = 8;
-			break;
-		default :
-			strcpy(name, "UNKNOWN");
-			family = FAMILY_SOLDIER;
-			strength = 12;
-			dexterity = 6;
-			constitution = 12;
-			intelligence = 8;
-			level = 1;
-			armor = 6;
-			break;
+        strength = statlist[whatfamily][0];
+        dexterity = statlist[whatfamily][1];
+        constitution = statlist[whatfamily][2];
+        intelligence = statlist[whatfamily][3];
+        armor = statlist[whatfamily][4];
+        level = statlist[whatfamily][5];  // should always be 1...
 	}
+	else
+    {
+        strength = 12;
+        dexterity = 6;
+        constitution = 12;
+        intelligence = 8;
+        armor = 6;
+        level = 1;
+    }
+    
+    // Set name
+    strncpy(name, get_family_string(whatfamily), 12);
+    name[11] = '\0';
 	
 	id = guy_id_counter++;
 }
@@ -317,6 +169,78 @@ short guy::get_level() const
 }
 
 Uint32 calculate_exp(Sint32 level);
+
+Sint32 costlist[NUM_FAMILIES] =
+    {
+        250,  // soldier
+        150,  // elf
+        350,  // archer
+        450,  // mage
+        300,  // skeleton
+        400,  // cleric
+        1500, // fire elem
+        350,  // faerie
+        1500, // slime          // can't buy
+        1500, // small slime
+        1500, // medium slime   // can't buy
+        400,  // thief
+        1000, // ghost
+        350,  // druid
+        700,  // orc
+        1500, // 'big' orc
+        350,  // barbarian
+        450,  // archmage, not used
+    };
+
+Sint32 statlist[NUM_FAMILIES][6] =
+    {
+        // STR, DEX, CON, INT, ARMOR, LEVEL
+        {12, 6, 12,  8, 9,  1},  // soldier
+        {5,  14,  5,  12, 8,  1},  // elf
+        {6, 12,  6,  10, 5,  1},  // archer
+        {4,  6,  4, 16, 5,  1},  // mage
+        {9,  6,  9,  6, 9,  1},  // skeleton
+        {6,  7,  6, 14, 7,  1},  // cleric
+        {14, 5, 30,  6, 16, 1},  // fire elem
+        {3,  8,  3,  8, 4,  1},  // faerie
+        //  {30, 2, 30,  4, 20, 1},  // slime
+        {18, 2, 18,  4, 8, 1},  // slime (big)
+        {18, 2, 18,  4, 8, 1},  // small slime
+        {18, 2, 18,  4, 8, 1},  // slime (medium)
+        //  {24, 2, 24,  4, 14, 1},  // medium slime
+        {9, 12, 12,  10,  5, 1},  // thief
+        {6, 12, 18,  10, 15, 1},  // ghost
+        {7,  8,  6,  12,  7, 1},  // druid
+        {16, 4, 14,   2, 11, 1},  // orc
+        {16, 4, 14,   2, 11, 1},  // 'big' orc
+        {14, 5, 14,   8, 8, 1},  // barbarian
+        {4,  6,  4, 16, 5,  1},  // archmage
+        //  {8, 12,  8, 32,10,  1},  // archmage
+    };
+
+Sint32 statcosts[NUM_FAMILIES][6] =
+    {
+        // STR, DEX, CON, INT, ARMOR, LEVEL
+        { 6,10, 6,25,50, 200},  // soldier
+        {25, 6,12,8,50, 200},  // elf
+        {15, 6, 9,10,50, 200},  // archer
+        {20,15,16, 6,50, 200},  // mage
+        { 6, 6,16,25,50, 200},  // skeleton
+        {15,15, 9, 6,50, 200},  // cleric
+        {15,15,12,15,50, 200},  // fire elem
+        {25, 6,12,15,50, 200},  // faerie
+        {20,20,16,20,50, 200},  // slime
+        {20,20,16,20,50, 200},  // small slime
+        {20,20,16,20,50, 200},  // medium slime
+        {15, 6, 9,10,50, 200},  // thief
+        {20,20,16,20,45, 200},  // ghost
+        {15,15, 9, 6,50, 200},  // druid
+        { 8,15, 9,40,50, 200},  // orc
+        { 8,15, 9,40,50, 200},  // 'big' orc
+        { 5,35, 5,35,50, 200},  // barbarian
+        //  {25,15,20, 5,50, 200},  // archmage
+        {30,20,25, 7,55, 200},  // archmage
+    };
 
 void guy::upgrade_to_level(short level, bool set_xp)
 {
