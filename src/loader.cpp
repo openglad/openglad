@@ -493,7 +493,7 @@ loader::loader()
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_THIEF)] = 5;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_MAGE)] = 4;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_SKELETON)] = 6;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_CLERIC)] = 9;
+	fire_frequency[PIX(ORDER_LIVING, FAMILY_CLERIC)] = 7.5f;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_FIREELEMENTAL)] = 5;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_FAERIE)] = 9;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_SLIME)] = 11;

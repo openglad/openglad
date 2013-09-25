@@ -2203,8 +2203,22 @@ short walker::special()
 								if (newob->stats->hitpoints < newob->stats->max_hitpoints &&
 								        newob != this )
 								{
-									generic = random(stats->level*5);
+								    // Get the cost first
+									generic = stats->magicpoints/4 + random(stats->magicpoints/4);
+									int cost = generic/2;
+									// Add bonus healing
+									generic += stats->level*5;
+									if(stats->magicpoints < cost)
+                                    {
+                                        generic -= stats->magicpoints;
+                                        cost -= stats->magicpoints;
+                                    }
+                                    if(generic <= 0 || cost <= 0)  // Didn't heal any for this guy
+                                        break;
+                                    
+                                    // Do the heal
 									newob->stats->hitpoints += generic;
+									stats->magicpoints -= cost;
 									if (myguy)
 										myguy->exp += exp_from_action(EXP_HEAL, this, newob, generic);
 									didheal++;
