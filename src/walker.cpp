@@ -3553,7 +3553,7 @@ short walker::special()
 					// Set our boulder's speed and extra damage ..
 					if (myguy)
 					{
-						alive->stepsize = myguy->strength / 7;
+						alive->stepsize = 1.0f + myguy->strength / 7;
 						alive->damage += myguy->strength / 5.0f;
 					}
 					else

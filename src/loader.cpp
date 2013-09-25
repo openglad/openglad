@@ -434,7 +434,7 @@ loader::loader()
 	stepsizes[PIX(ORDER_LIVING, FAMILY_DRUID)] = 3;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_ORC)] = 3;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_BIG_ORC)] = 3;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 4;
+	stepsizes[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 3;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_ARCHMAGE)] = 3;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_GOLEM)] = 8;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 8;
@@ -486,6 +486,7 @@ loader::loader()
 	damage[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 60;
 	damage[PIX(ORDER_LIVING, FAMILY_TOWER1)] = 0;
 
+    // Lower is faster
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 6;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_ELF)] = 7;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 5;
@@ -502,7 +503,7 @@ loader::loader()
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_DRUID)] = 9;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_ORC)] = 7;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_BIG_ORC)] = 6;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 5;
+	fire_frequency[PIX(ORDER_LIVING, FAMILY_BARBARIAN)] = 5.5f;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_ARCHMAGE)] = 1;  // REALLY FAST
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_GOLEM)] = 9;  // REALLY SLOW
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_GIANT_SKELETON)] = 7;  // SLOW
@@ -644,9 +645,9 @@ loader::loader()
 	lineofsight[PIX(ORDER_WEAPON, FAMILY_WAVE2)] = 4;
 	lineofsight[PIX(ORDER_WEAPON, FAMILY_WAVE3)] = 6;
 	lineofsight[PIX(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION)] = 110;
-	lineofsight[PIX(ORDER_WEAPON, FAMILY_HAMMER)] = 5;
+	lineofsight[PIX(ORDER_WEAPON, FAMILY_HAMMER)] = 4;
 	lineofsight[PIX(ORDER_WEAPON, FAMILY_DOOR)] = 1;
-	lineofsight[PIX(ORDER_WEAPON, FAMILY_BOULDER)] = 5;
+	lineofsight[PIX(ORDER_WEAPON, FAMILY_BOULDER)] = 9;
 
 	// Strength of weapon
 	damage[PIX(ORDER_WEAPON, FAMILY_KNIFE)] = 6;
