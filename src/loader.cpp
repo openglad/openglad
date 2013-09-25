@@ -972,7 +972,7 @@ walker  *loader::set_walker(walker *ob,
 					break;
 				case FAMILY_TOWER1: // not *really* a living ...
 					ob->stats->weapon_cost = 2;
-					ob->default_weapon = FAMILY_FIREBALL;
+					ob->default_weapon = FAMILY_ARROW;
 					//ob->stepsize = 0;
 					//ob->normal_stepsize = 0;
 					break;
