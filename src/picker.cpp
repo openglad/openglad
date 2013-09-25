@@ -159,7 +159,7 @@ Sint32 statcosts[NUM_FAMILIES][6] =
     {
         // STR, DEX, CON, INT, ARMOR, LEVEL
         { 6,10, 6,25,50, 200},  // soldier
-        {25, 6,12,10,50, 200},  // elf
+        {25, 6,12,8,50, 200},  // elf
         {15, 6, 9,10,50, 200},  // archer
         {20,15,16, 6,50, 200},  // mage
         { 6, 6,16,25,50, 200},  // skeleton
@@ -1043,7 +1043,7 @@ std::string get_class_description(unsigned char family)
         result = "Elves are small and weak, \n"
                  "but are harder to hit than\n"
                  "most classes. Alone of all\n"
-                 "the classes, elves posses \n"
+                 "the classes, elves possess\n"
                  "the 'ForestWalk' ability. \n"
                  "\n"
                  "Special: Rocks";
@@ -1363,14 +1363,13 @@ Sint32 create_hire_menu(Sint32 arg1)
         linesdown = 0;
         int line_height = 10;
         
+        showcolor = STAT_COLOR;
+        
         // Strength
         sprintf(message, "%d", current_guy->strength);
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
                          (unsigned char) STAT_COLOR, 1);
-        if (statlist[(int)current_guy->family][BUT_STR] < current_guy->strength)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
+        
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
         
@@ -1379,10 +1378,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->dexterity);
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
                          (unsigned char) STAT_COLOR, 1);
-        if (statlist[(int)current_guy->family][BUT_DEX] < current_guy->dexterity)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
+        
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
 
@@ -1391,10 +1387,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->constitution);
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
                          (unsigned char) STAT_COLOR, 1);
-        if (statlist[(int)current_guy->family][BUT_CON] < current_guy->constitution)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
+        
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
 
@@ -1403,10 +1396,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->intelligence);
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
                          (unsigned char) STAT_COLOR, 1);
-        if (statlist[(int)current_guy->family][BUT_INT] < current_guy->intelligence)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
+        
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
 
@@ -1415,10 +1405,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         sprintf(message, "%d", current_guy->armor);
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
                          (unsigned char) STAT_COLOR, 1);
-        if (statlist[(int)current_guy->family][BUT_ARMOR] < current_guy->armor)
-            showcolor = STAT_CHANGED;
-        else
-            showcolor = STAT_COLOR;
+        
         mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
 		
 		// Separator bar

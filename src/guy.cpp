@@ -76,7 +76,7 @@ guy::guy(char whatfamily)
 		case FAMILY_ELF:
 			strcpy(name, "ELF");
 			strength = 5;
-			dexterity = 9;
+			dexterity = 14;
 			constitution = 5;
 			intelligence = 12;
 			level = 1;

@@ -352,7 +352,7 @@ loader::loader()
 	graphics[PIX(ORDER_LIVING, FAMILY_TOWER1)] = read_pixie_file("towersm1.pix");
 
 	hitpoints[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 90;
-	hitpoints[PIX(ORDER_LIVING, FAMILY_ELF)] = 30;
+	hitpoints[PIX(ORDER_LIVING, FAMILY_ELF)] = 45;
 	hitpoints[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 60;
 	hitpoints[PIX(ORDER_LIVING, FAMILY_THIEF)] = 45;
 	hitpoints[PIX(ORDER_LIVING, FAMILY_MAGE)] = 60;
@@ -419,7 +419,7 @@ loader::loader()
 	animations[PIX(ORDER_LIVING, FAMILY_TOWER1)] = anifood;
 
 	stepsizes[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 4;
-	stepsizes[PIX(ORDER_LIVING, FAMILY_ELF)] = 2;
+	stepsizes[PIX(ORDER_LIVING, FAMILY_ELF)] = 4;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 4;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_THIEF)] = 5;
 	stepsizes[PIX(ORDER_LIVING, FAMILY_MAGE)] = 2;
@@ -488,7 +488,7 @@ loader::loader()
 
     // Lower is faster
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_SOLDIER)] = 6;
-	fire_frequency[PIX(ORDER_LIVING, FAMILY_ELF)] = 7;
+	fire_frequency[PIX(ORDER_LIVING, FAMILY_ELF)] = 5;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_ARCHER)] = 5;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_THIEF)] = 5;
 	fire_frequency[PIX(ORDER_LIVING, FAMILY_MAGE)] = 4;
