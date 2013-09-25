@@ -202,7 +202,7 @@ Sint32 statlist[NUM_FAMILIES][6] =
         {9,   14,  9,   6,   6,     1},  // skeleton
         {6,   7,   6,   14,  7,     1},  // cleric
         {14,  10,  14,  13,  9,     1},  // fire elem
-        {3,   8,   3,   8,   4,     1},  // faerie
+        {3,   8,   3,   14,  2,     1},  // faerie
         {18,  2,   18,  6,   6,     1},  // slime (big)
         {18,  2,   18,  6,   6,     1},  // small slime
         {18,  2,   18,  6,   6,     1},  // slime (medium)
@@ -225,7 +225,7 @@ float derived_bonuses[NUM_FAMILIES][8] =
         {30,  0,   4,    0,          0,     0,   6,     4.5f},  // skeleton
         {90,  0,   12,   0,          0,     0,   2,     7.5f},  // cleric
         {70,  0,   28,   0,          0,     0,   4,     5},  // fire elem
-        {45,  0,   3,    0,          0,     0,   4,     9},  // faerie
+        {45,  0,   5,    0,          0,     0,   4,     9},  // faerie
         {120, 0,   28,   0,          0,     0,   3,     11},  // slime (big)
         {50,  0,   12,   0,          0,     0,   2,     12},  // small slime
         {80,  0,   20,   0,          0,     0,   2,     10},  // slime (medium)
@@ -251,7 +251,7 @@ Sint32 statcosts[NUM_FAMILIES][6] =
         {15, 6,16,25,50, 200},  // skeleton
         {15,15, 9, 6,50, 200},  // cleric
         {7, 10,14,12,50, 200},  // fire elem
-        {25, 6,12,15,50, 200},  // faerie
+        {25, 6,12,8,50, 200},  // faerie
         {20,20,8,14,50, 200},  // slime
         {20,20,8,14,50, 200},  // small slime
         {20,20,8,14,50, 200},  // medium slime
