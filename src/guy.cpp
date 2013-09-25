@@ -178,16 +178,16 @@ Sint32 costlist[NUM_FAMILIES] =
         450,  // mage
         300,  // skeleton
         400,  // cleric
-        1500, // fire elem
-        350,  // faerie
-        1500, // slime          // can't buy
-        1500, // small slime
-        1500, // medium slime   // can't buy
+        600, // fire elem
+        450,  // faerie
+        700, // slime          // can't buy
+        700, // small slime
+        700, // medium slime   // can't buy
         400,  // thief
-        1000, // ghost
+        600, // ghost
         350,  // druid
-        700,  // orc
-        1500, // 'big' orc
+        300,  // orc
+        1000, // 'big' orc
         350,  // barbarian
         450,  // archmage, not used
     };
