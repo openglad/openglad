@@ -300,18 +300,6 @@ int get_num_foes(LevelData& level)
 	return result;
 }
 
-Uint32 get_level_bonus(int playernum)
-{
-    return 0;
-    
-    short par_value = myscreen->level_data.par_value;
-    Log("par_value: %d\n", par_value);
-    if(par_value <= 0)
-        return 0;
-    Log("Level bonus: %d\n", par_value * LEVEL_BONUS);
-    return par_value * LEVEL_BONUS;
-}
-
 Uint32 get_time_bonus(int playernum)
 {
     if(playernum > 0)
@@ -321,8 +309,9 @@ Uint32 get_time_bonus(int playernum)
     if(frames >= TIME_BONUS)
         return 0;
     
+    short par_value = myscreen->level_data.par_value;
     Uint32 score = myscreen->save_data.m_score[playernum];
-    float multiplier = float(TIME_BONUS - frames)/TIME_BONUS;
+    float multiplier = (1 + par_value/10.0f) * float(TIME_BONUS - frames)/TIME_BONUS;
     Log("Time bonus: %.0f\n", score * multiplier);
     return score * multiplier;
 }
@@ -356,8 +345,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	    // Calculate bonuses
 		for (int i = 0; i < 4; i++)
 		{
-			bonuscash[i] = get_level_bonus(i);
-			bonuscash[i] += get_time_bonus(i);
+			bonuscash[i] = get_time_bonus(i);
 			
 			allbonuscash += bonuscash[i];
 		}
@@ -564,7 +552,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 {
                     if(allbonuscash > 0)
                     {
-                        mytext.write_xy_center_shadow(area.x + area.w/2, y + 9, YELLOW, "+ %d Bonus Gold", allbonuscash);
+                        mytext.write_xy_center_shadow(area.x + area.w/2, y + 9, YELLOW, "+ %d Time Bonus", allbonuscash);
                     }
                 }
                 y += 22;
