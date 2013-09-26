@@ -29,7 +29,7 @@
 
 int toInt(const std::string& s);
 
-#define VERSION_NUM (char) 8 // save scenario type info
+#define VERSION_NUM (char) 9 // save scenario type info
 
 
 
@@ -288,7 +288,7 @@ std::string CampaignData::getDescriptionLine(int i)
 
 
 LevelData::LevelData(int id)
-    : id(id), title("New Level"), type(0), par_value(1), pixmaxx(0), pixmaxy(0)
+    : id(id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
     , myloader(NULL), numobs(0), oblist(NULL), fxlist(NULL), weaplist(NULL), topx(0), topy(0)
 {
     for (int i = 0; i < PIX_MAX; i++)
@@ -358,6 +358,7 @@ void LevelData::clear()
     title = "New Level";
     type = 0;
     par_value = 1;
+    time_bonus_limit = 4000;
     
     topx = 0;
     topy = 0;
@@ -1242,7 +1243,8 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     oblink *here;
     char scentitle[30];
     memset(scentitle, 0, 30);
-    short temp_par;
+    short temp_par = 1;
+    short temp_time_limit = 4000;
 
     // Format of a scenario object list file version 6/7 is:
     // 3-byte header: 'FSS'
@@ -1252,6 +1254,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     // 30-byte scenario title (ver 6+)
     // 1-byte char = scenario type, default is 0
     // 2-bytes par-value, v.8+
+	// 2-bytes time limit for bonus points, v9+
     // 2-bytes (short) = total objects to follow
     // List of n objects, each of 7-bytes of form:
     // 1-byte ORDER
@@ -1288,6 +1291,11 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         READ_OR_RETURN(infile, &temp_par, 2, 1);
     }
     // else we're using the value of the level ..
+    
+    if (version >= 9)
+    {
+        READ_OR_RETURN(infile, &temp_time_limit, 2, 1);
+    }
 
     // Determine number of objects to load ...
     READ_OR_RETURN(infile, &listsize, 2, 1);
@@ -1359,6 +1367,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     data->title = scentitle;
     data->type = new_scen_type;
     data->par_value = temp_par;
+    data->time_bonus_limit = temp_time_limit;
     data->description = desc_lines;
     data->mysmoother.set_target(data->grid);
 
@@ -1563,6 +1572,7 @@ bool LevelData::save()
 	char scentitle[30];
     memset(scentitle, 0, 30);
 	short temp_par;
+	short temp_time_limit;
 
 	// Format of a scenario object list file is: (ver. 8)
 	// 3-byte header: 'FSS'
@@ -1571,6 +1581,7 @@ bool LevelData::save()
 	// 30-byte scenario title
 	// 1-byte scenario_type
 	// 2-bytes par-value for level
+	// 2-bytes time limit for bonus points, v9+
 	// 2-bytes (Sint32) = total objects to follow
 	// List of n objects, each of 20-bytes of form:
 	// 1-byte ORDER
@@ -1620,6 +1631,10 @@ bool LevelData::save()
 	// Write our par value (version 8+)
 	temp_par = this->par_value;
 	SDL_RWwrite(outfile, &temp_par, 2, 1);
+
+	// Write the time limit (version 9+)
+	temp_time_limit = this->time_bonus_limit;
+	SDL_RWwrite(outfile, &temp_time_limit, 2, 1);
 
 	// Determine size of object list ...
 	listsize = 0;

@@ -79,6 +79,7 @@ public:
     
     std::string grid_file;
     short par_value;
+    short time_bonus_limit;  // frames until you get no time bonus
     PixieData grid;
     Sint32 pixmaxx, pixmaxy;
     

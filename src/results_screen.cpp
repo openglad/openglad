@@ -64,8 +64,6 @@ bool results_screen(int ending, int nextlevel)
 }
 
 
-#define TIME_BONUS (Sint32) 5000
-#define LEVEL_BONUS (Sint32) 120
 
 class TroopResult
 {
@@ -305,13 +303,14 @@ Uint32 get_time_bonus(int playernum)
     if(playernum > 0)
         return 0;
     Uint32 frames = myscreen->framecount;
+    Uint32 time_limit = (myscreen->level_data.time_bonus_limit > 0? myscreen->level_data.time_bonus_limit : 0);
     Log("Frames used: %d\n", frames);
-    if(frames >= TIME_BONUS)
+    if(frames >= time_limit)
         return 0;
     
     short par_value = myscreen->level_data.par_value;
     Uint32 score = myscreen->save_data.m_score[playernum];
-    float multiplier = (1 + par_value/10.0f) * float(TIME_BONUS - frames)/TIME_BONUS;
+    float multiplier = (1 + par_value/10.0f) * float(time_limit - frames)/time_limit;
     Log("Time bonus: %.0f\n", score * multiplier);
     return score * multiplier;
 }

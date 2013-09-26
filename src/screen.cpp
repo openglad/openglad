@@ -1256,6 +1256,7 @@ short screen::remove_ob(walker  *ob, short no_delete)
 //}
 //remove_fx_ob functionality has been moved to remove_ob
 
+Uint32 get_time_bonus(int playernum);
 
 short screen::endgame(short ending)
 {
@@ -1327,12 +1328,7 @@ short screen::endgame(short ending, short nextlevel)
 		}
 		for (int i=0; i < 4; i++)
 		{
-            #define TIME_BONUS (Sint32) 5000
-            #define LEVEL_BONUS (Sint32) 120
-
-			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)level_data.par_value * LEVEL_BONUS) - myscreen->framecount))/(TIME_BONUS + ( ((Sint32)level_data.par_value * LEVEL_BONUS)/2));
-			if (bonuscash[i] < 0 || myscreen->framecount > TIME_BONUS) // || framecount < 0)
-				bonuscash[i] = 0;
+            bonuscash[i] = get_time_bonus(i);
 			save_data.m_totalcash[i] += bonuscash[i];
 			allbonuscash += bonuscash[i];
 		}
