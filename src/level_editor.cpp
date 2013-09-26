@@ -784,7 +784,7 @@ public:
 	SimpleButton levelProfileTitleButton, levelProfileDescriptionButton;
 	
 	// Level > Details submenu
-	SimpleButton levelDetailsMapSizeButton, levelDetailsParValueButton;
+	SimpleButton levelDetailsMapSizeButton, levelDetailsParValueButton, levelDetailsTimeLimitButton;
 	
 	// Level > Goals submenu
 	SimpleButton levelGoalsEnemiesButton, levelGoalsGeneratorsButton, levelGoalsNPCsButton;
@@ -906,6 +906,7 @@ LevelEditorData::LevelEditorData()
 	
 	, levelDetailsMapSizeButton("Map size...", levelDetailsButton.area.x + levelDetailsButton.area.w, levelDetailsButton.area.y, 95, menu_button_height, true)
 	, levelDetailsParValueButton("Par value...", levelDetailsMapSizeButton.area.x, levelDetailsMapSizeButton.area.y + levelDetailsMapSizeButton.area.h, 95, menu_button_height, true, true)
+	, levelDetailsTimeLimitButton("Time limit...", levelDetailsParValueButton.area.x, levelDetailsParValueButton.area.y + levelDetailsParValueButton.area.h, 95, menu_button_height, true, true)
 	
 	, levelGoalsEnemiesButton("Defeat enemies: On", levelGoalsButton.area.x + levelGoalsButton.area.w - 2*OVERSCAN_PADDING, levelGoalsButton.area.y, 125, menu_button_height, true)
 	, levelGoalsGeneratorsButton("Beat generators: Off", levelGoalsEnemiesButton.area.x, levelGoalsEnemiesButton.area.y + levelGoalsEnemiesButton.area.h, 125, menu_button_height, true, true)
@@ -2677,6 +2678,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             set<SimpleButton*> s;
             s.insert(&levelDetailsMapSizeButton);
             s.insert(&levelDetailsParValueButton);
+            s.insert(&levelDetailsTimeLimitButton);
             current_menu.push_back(std::make_pair(&levelDetailsButton, s));
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsMapSizeButton))
@@ -2794,6 +2796,21 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 if(v > 0)
                 {
                     level->par_value = v;
+                    levelchanged = 1;
+                }
+            }
+        }
+        else if(activate_menu_choice(mx, my, *this, levelDetailsTimeLimitButton))
+        {
+            char buf[20];
+            snprintf(buf, 20, "%d", level->time_bonus_limit);
+            std::string par = buf;
+            if(prompt_for_string(scentext, "Time Bonus Limit (num)", par))
+            {
+                int v = toInt(par);
+                if(v > 0)
+                {
+                    level->time_bonus_limit = v;
                     levelchanged = 1;
                 }
             }

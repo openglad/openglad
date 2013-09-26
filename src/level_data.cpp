@@ -1412,6 +1412,7 @@ short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 		case 6:
 		case 7:
 		case 8:
+		case 9:
 			result = load_version_6(infile, data, version);
 			break;
 		default:
