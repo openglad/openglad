@@ -87,6 +87,7 @@ walker::walker(const PixieData& data, screen  *myscreen)
 	invisibility_left = 0;
 	speed_bonus = 0;
 	speed_bonus_left = 0;
+	regen_delay = 0;
 	charm_left = 0;
 	outline = 0;
 	drawcycle = 0;
@@ -160,7 +161,9 @@ walker::reset(void)
 	//  xpos = ypos = -1; //this to correct a problem with these not being alloced?
 
 	//  weapons_left = 1; // default, used for fighters
-
+	
+    regen_delay = 0;
+    
 	if (stats)
 		stats->bit_flags = 0;
 
@@ -1602,7 +1605,8 @@ short walker::attack(walker  *target)
 	target->stats->hitpoints -= tempdamage;
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
-
+    if(tempdamage > 0)
+        target->regen_delay = 50;
 
 
     // Base exp from attack damage

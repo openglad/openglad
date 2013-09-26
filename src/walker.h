@@ -144,6 +144,7 @@ class walker : public pixieN
 		walker * cachenext;
 		short speed_bonus;             // These two are used for
 		short speed_bonus_left;        // speed potions, etc.
+		short regen_delay;  // Delay after being hit
 		// Zardus: ADD: in_act should be set while in an action
 		bool in_act;
 		obmap* myobmap;

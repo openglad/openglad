@@ -130,20 +130,24 @@ short living::act()
 	} // end magic increment section
 
 	//Regenerate hitpoints
-	if (stats->hitpoints < stats->max_hitpoints &&
-	        !(screenp->enemy_freeze || bonus_rounds) )
-	{
-		stats->hitpoints += stats->heal_per_round;
-		stats->current_heal_delay++;
-		if (stats->current_heal_delay >= stats->max_heal_delay)
-		{
-			stats->hitpoints++;
-			stats->current_heal_delay = 0;
-		}
-		if (stats->hitpoints > stats->max_hitpoints)
-			stats->hitpoints = stats->max_hitpoints;
-	} // end hitpoint increment section
-
+	if(regen_delay > 0)  // Delay after being hit
+        regen_delay--;
+    else
+    {
+        if (stats->hitpoints < stats->max_hitpoints &&
+                !(screenp->enemy_freeze || bonus_rounds))
+        {
+            stats->hitpoints += stats->heal_per_round;
+            stats->current_heal_delay++;
+            if (stats->current_heal_delay >= stats->max_heal_delay)
+            {
+                stats->hitpoints++;
+                stats->current_heal_delay = 0;
+            }
+            if (stats->hitpoints > stats->max_hitpoints)
+                stats->hitpoints = stats->max_hitpoints;
+        } // end hitpoint increment section
+    }
 
 	// Special-viewing
 	if (view_all > 0)

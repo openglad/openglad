@@ -515,7 +515,7 @@ void guy::update_derived_stats(walker* w)
 
     // Set the heal delay ..
     w->stats->max_heal_delay = REGEN;
-    w->stats->current_heal_delay = temp_guy->constitution + temp_guy->strength/6.0f + 20; //for purposes of calculation only
+    w->stats->current_heal_delay = temp_guy->constitution + temp_guy->strength/6.0f + 20 + 1000; //for purposes of calculation only
 
     while (w->stats->current_heal_delay > REGEN)
     {
