@@ -447,22 +447,22 @@ void guy::upgrade_to_level(short level, bool set_xp)
 // Derived stat calculations
 float guy::get_hp_bonus() const
 {
-    return 10 + constitution*3 + strength/2.0f;
+    return 10 + constitution*3;
 }
 
 float guy::get_mp_bonus() const
 {
-    return 10 + intelligence*3 + dexterity;
+    return 10 + intelligence*3;
 }
 
 float guy::get_damage_bonus() const
 {
-    return strength/4.0f + dexterity/11.0f;
+    return strength/4.0f;
 }
 
 float guy::get_armor_bonus() const
 {
-    return armor + dexterity/14.0f;
+    return armor;
 }
 
 float guy::get_speed_bonus() const
