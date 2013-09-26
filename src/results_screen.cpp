@@ -300,6 +300,33 @@ int get_num_foes(LevelData& level)
 	return result;
 }
 
+Uint32 get_level_bonus(int playernum)
+{
+    return 0;
+    
+    short par_value = myscreen->level_data.par_value;
+    Log("par_value: %d\n", par_value);
+    if(par_value <= 0)
+        return 0;
+    Log("Level bonus: %d\n", par_value * LEVEL_BONUS);
+    return par_value * LEVEL_BONUS;
+}
+
+Uint32 get_time_bonus(int playernum)
+{
+    if(playernum > 0)
+        return 0;
+    Uint32 frames = myscreen->framecount;
+    Log("Frames used: %d\n", frames);
+    if(frames >= TIME_BONUS)
+        return 0;
+    
+    Uint32 score = myscreen->save_data.m_score[playernum];
+    float multiplier = float(TIME_BONUS - frames)/TIME_BONUS;
+    Log("Time bonus: %.0f\n", score * multiplier);
+    return score * multiplier;
+}
+
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
     // Popup the ending dialog
@@ -329,9 +356,9 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	    // Calculate bonuses
 		for (int i = 0; i < 4; i++)
 		{
-			bonuscash[i] = (save_data.m_score[i] * (TIME_BONUS + ((Sint32)level_data.par_value * LEVEL_BONUS) - myscreen->framecount))/(TIME_BONUS + ( ((Sint32)level_data.par_value * LEVEL_BONUS)/2));
-			if (bonuscash[i] < 0 || myscreen->framecount > TIME_BONUS) // || framecount < 0)
-				bonuscash[i] = 0;
+			bonuscash[i] = get_level_bonus(i);
+			bonuscash[i] += get_time_bonus(i);
+			
 			allbonuscash += bonuscash[i];
 		}
 		if (save_data.is_level_completed(save_data.scen_num)) // already won, no bonus

@@ -265,6 +265,50 @@ Sint32 statcosts[NUM_FAMILIES][6] =
         {30,20,25, 7,55, 200},  // archmage
     };
 
+
+
+
+Sint32 calculate_level(Uint32 experience)
+{
+	Sint32 result=1;
+
+	while (calculate_exp(result) <= experience)
+		result++;
+	return (result-1);
+}
+
+Uint32 calculate_exp(Sint32 level)
+{
+
+
+	/*
+	
+	fn = ( (8000*(level+10)) / 10) + calculate_exp(level-1);
+	excel: =( (8000*(F4+10)) / 10) + G3
+    Level	XP
+    1	0
+    2	9600
+    3	20000
+    4	31200
+    5	43200
+    6	56000
+    7	69600
+    8	84000
+    9	99200
+    10	115200
+    This is practically linear, so each level costs about 10000 more than the previous.
+
+	*/
+	if(level <= 1)
+        return 0;
+    
+    int level_1 = level - 1;
+    int level_2 = level - 2;
+    if(level_2 < 0)
+        level_2 = 0;
+    return 8000 + 2000*level_1 + 4000*level_2 + calculate_exp(level-1);
+}
+
 void guy::upgrade_to_level(short level, bool set_xp)
 {
     short level_diff = level - this->level;

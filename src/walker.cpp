@@ -1439,9 +1439,11 @@ short walker::collide(walker  *ob)
 short get_xp_from_attack(walker* w, walker* target, float damage)
 {
     float x = (w->stats->level - target->stats->level);
-    // Whooo-ee!  An interpolated polynomial to fit {{0,30},{1,20},{2,15},{3,7.5},{5,0},{7,-50}} for 20 damage done.
+    // Whooo-ee!  An interpolated (quintic) polynomial to fit {{0,30},{1,15},{2,5},{3,1.5},{4,0.5},{5,0},{7,-50}} for 20 damage done.
+    // Being an odd order polynomial is important so it can rise to infinity leftward and fall to neg infinity rightward.
     // The factor was adjusted to make level ups happen at a good rate.
-    float result = 6.0f*damage*(-0.0997024f*pow(x,5)+1.47173f*pow(x,4)-7.5878f*pow(x,3)+16.4568f*pow(x,2)-20.2411f*x+30)/20.0f;
+    float poly = -0.017881*pow(x,5)+0.137265*pow(x,4)-0.434659*pow(x,3)+3.42733*pow(x,2)-18.274*x+30.0237;
+    float result = 6.0f*damage*poly/20.0f;
     if(result <= 0)
         return 0;
     
