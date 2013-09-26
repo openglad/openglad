@@ -3745,11 +3745,6 @@ short walker::fire_check(short xdelta, short ydelta)
 	if (order == ORDER_GENERATOR)
 		return 1;
 
-	// Make sure we can fire
-	if ( (order==ORDER_LIVING) && (family==FAMILY_SOLDIER) )
-		if (weapons_left < 1)
-			return 0;
-
 	weapon = create_weapon();
 	if (!weapon)
 		return 0;
