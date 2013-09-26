@@ -215,30 +215,31 @@ Sint32 statlist[NUM_FAMILIES][6] =
         {4,   6,   4,   16,  5,     1},  // archmage
     };
 
+#define BASE_GUY_HP 30
 float derived_bonuses[NUM_FAMILIES][8] =
     {
       // HP,  MP,  ATK,  RANGED ATK, RANGE, DEF, SPD,   ATK SPD (delay)
-        {90,  0,   20,   0,          0,     0,   4,     6},  // soldier
-        {45,  0,   12,   0,          0,     0,   4,     5},  // elf
-        {60,  0,   8,    0,          0,     0,   4,     5},  // archer
-        {60,  0,   4,    0,          0,     0,   2,     4},  // mage
-        {30,  0,   4,    0,          0,     0,   6,     4.5f},  // skeleton
-        {90,  0,   12,   0,          0,     0,   2,     7.5f},  // cleric
-        {70,  0,   28,   0,          0,     0,   4,     5},  // fire elem
-        {45,  0,   5,    0,          0,     0,   4,     9},  // faerie
-        {120, 0,   28,   0,          0,     0,   3,     11},  // slime (big)
-        {50,  0,   12,   0,          0,     0,   2,     12},  // small slime
-        {80,  0,   20,   0,          0,     0,   2,     10},  // slime (medium)
-        {45,  0,   12,   0,          0,     0,   5,     5},  // thief
-        {20,  0,   12,   0,          0,     0,   4,     7},  // ghost
-        {80,  0,   10,   0,          0,     0,   3,     9},  // druid
-        {110, 0,   23,   0,          0,     0,   3,     7},  // orc
-        {150, 0,   28,   0,          0,     0,   3,     6},  // 'big' orc
-        {120, 0,   25,   0,          0,     0,   3,     5.5f},  // barbarian
-        {120, 0,   8,    0,          0,     0,   3,     1},  // archmage
-        {270, 0,   60,   0,          0,     0,   8,     9},  // golem
-        {270, 0,   60,   0,          0,     0,   8,     7},  // giant skeleton
-        {100, 0,   0,    0,          0,     0,   0,     5},  // tower
+        {BASE_GUY_HP+90,  0,   20,   0,          0,     0,   4,     6},  // soldier
+        {BASE_GUY_HP+45,  0,   12,   0,          0,     0,   4,     5},  // elf
+        {BASE_GUY_HP+60,  0,   8,    0,          0,     0,   4,     5},  // archer
+        {BASE_GUY_HP+60,  0,   4,    0,          0,     0,   2,     4},  // mage
+        {BASE_GUY_HP+30,  0,   4,    0,          0,     0,   6,     4.5f},  // skeleton
+        {BASE_GUY_HP+90,  0,   12,   0,          0,     0,   2,     7.5f},  // cleric
+        {BASE_GUY_HP+70,  0,   28,   0,          0,     0,   4,     5},  // fire elem
+        {BASE_GUY_HP+45,  0,   5,    0,          0,     0,   4,     9},  // faerie
+        {BASE_GUY_HP+120, 0,   28,   0,          0,     0,   3,     11},  // slime (big)
+        {BASE_GUY_HP+50,  0,   12,   0,          0,     0,   2,     12},  // small slime
+        {BASE_GUY_HP+80,  0,   20,   0,          0,     0,   2,     10},  // slime (medium)
+        {BASE_GUY_HP+45,  0,   12,   0,          0,     0,   5,     5},  // thief
+        {BASE_GUY_HP+20,  0,   12,   0,          0,     0,   4,     7},  // ghost
+        {BASE_GUY_HP+80,  0,   10,   0,          0,     0,   3,     9},  // druid
+        {BASE_GUY_HP+110, 0,   23,   0,          0,     0,   3,     7},  // orc
+        {BASE_GUY_HP+150, 0,   28,   0,          0,     0,   3,     6},  // 'big' orc
+        {BASE_GUY_HP+120, 0,   25,   0,          0,     0,   3,     5.5f},  // barbarian
+        {BASE_GUY_HP+120, 0,   8,    0,          0,     0,   3,     1},  // archmage
+        {BASE_GUY_HP+270, 0,   60,   0,          0,     0,   8,     9},  // golem
+        {BASE_GUY_HP+270, 0,   60,   0,          0,     0,   8,     7},  // giant skeleton
+        {BASE_GUY_HP+100, 0,   0,    0,          0,     0,   0,     5},  // tower
     };
 
 Sint32 statcosts[NUM_FAMILIES][6] =
