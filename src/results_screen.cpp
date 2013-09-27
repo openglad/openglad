@@ -471,7 +471,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         int mx = mymouse[MOUSE_X];
         int my = mymouse[MOUSE_Y];
         
-		scroll += get_and_reset_scroll_amount();
+		scroll -= get_and_reset_scroll_amount();
 		if(scroll < 0.0f)
             scroll = 0.0f;
         
