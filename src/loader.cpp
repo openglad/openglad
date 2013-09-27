@@ -852,10 +852,10 @@ walker  *loader::set_walker(walker *ob,
 					ob->default_weapon = FAMILY_KNIFE;
 					break;
 				case FAMILY_ELF:
-					ob->stats->special_cost[1] = 20;
-					ob->stats->special_cost[2] = 28;
-					ob->stats->special_cost[3] = 36;
-					ob->stats->special_cost[4] = 42;
+					ob->stats->special_cost[1] = 10;
+					ob->stats->special_cost[2] = 20;
+					ob->stats->special_cost[3] = 30;
+					ob->stats->special_cost[4] = 40;
 					ob->stats->set_bit_flags(BIT_FORESTWALK, 1);
 					ob->default_weapon = FAMILY_ROCK;
 					break;

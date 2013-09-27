@@ -3296,8 +3296,16 @@ short walker::special()
 			{
 				case 1:  // some rocks (normal)
 					stats->magicpoints += (2*stats->weapon_cost);
-					fire();
-					fire();
+					fireob = (weap*) fire();
+                    if (!fireob) // failsafe
+                        return 0;
+					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob = (weap*) fire();
+                    if (!fireob) // failsafe
+                        return 0;
+					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					break;
 				case 2:  // more rocks, and bouncing
 					stats->magicpoints += (3*stats->weapon_cost);
@@ -3309,6 +3317,8 @@ short walker::special()
 						fireob->lineofsight *= 3;  // we get 50% longer, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
+                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					}
 					break;
 				case 3:
@@ -3320,6 +3330,8 @@ short walker::special()
 							return 0;
 						fireob->lineofsight *= 2;  // get double distance
 						fireob->do_bounce = 1;
+                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					}
 					break;
 				case 4:
@@ -3333,6 +3345,8 @@ short walker::special()
 						fireob->lineofsight *= 5;  // we get 150% longer, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
+                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					}
 					break;
 			}
