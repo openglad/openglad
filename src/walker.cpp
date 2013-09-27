@@ -680,9 +680,6 @@ short walker::init_fire(short xdir, short ydir)
 
 	if (busy > 0)
 		return 0;  // Too busy
-	if ( (order==ORDER_LIVING) && (family==FAMILY_SOLDIER) )
-		if (weapons_left < 1)
-			return 0;
 
 	busy += fire_frequency; // This pauses a few rounds
 
@@ -711,9 +708,6 @@ walker  * walker::fire()
 
 	// Do we have enough spellpoints for our weapon
 	if (stats->magicpoints < stats->weapon_cost)
-		return NULL;
-	if ( (order==ORDER_LIVING) && (family==FAMILY_SOLDIER) &&
-	        (weapons_left < 1) )
 		return NULL;
 
 	weapon = create_weapon();
@@ -801,12 +795,22 @@ walker  * walker::fire()
 	}
 	else
 	{
+		if (order==ORDER_LIVING && family==FAMILY_SOLDIER)
+        {
+            if(weapons_left <= 0)
+            {
+                // Give back the magic it cost, since we didn't throw it
+                stats->magicpoints += stats->weapon_cost;
+                weapon->dead = 1;
+                return NULL;
+            }
+            else
+                weapons_left--;
+        }
+        
 		// Record our shot ..
 		if (myguy)
 			myguy->total_shots += 1;
-
-		if (order==ORDER_LIVING && family==FAMILY_SOLDIER)
-			weapons_left--;
 
 		// *** Ranged combat ***
 		if (on_screen())
