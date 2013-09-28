@@ -133,6 +133,7 @@
 			</Target>
 		</Build>
 		<Compiler>
+			<Add option="-std=c++0x" />
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
 			<Add option="-DPHYSFS_SUPPORTS_ZIP" />
