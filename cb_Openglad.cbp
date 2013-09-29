@@ -65,9 +65,9 @@
 			</Target>
 		</Build>
 		<Compiler>
-			<Add option="-std=c++0x" />
 			<Add option="-Wall" />
 			<Add option="-fexceptions" />
+			<Add option="-std=gnu++0x" />
 			<Add option="-DPHYSFS_SUPPORTS_ZIP" />
 			<Add directory="src/external/libyaml/include" />
 			<Add directory="src/external/physfs" />
