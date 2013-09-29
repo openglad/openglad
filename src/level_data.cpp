@@ -296,7 +296,7 @@ LevelData::LevelData(int id)
         back[i] = NULL;
     }
     
-	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
+	myobmap = new obmap;
 	
     myloader = new loader;
 	
@@ -353,7 +353,7 @@ void LevelData::clear()
     delete_grid();
     
     delete myobmap;
-	myobmap = new obmap(200*GRID_SIZE, 200*GRID_SIZE);
+	myobmap = new obmap();
     
     title = "New Level";
     type = 0;

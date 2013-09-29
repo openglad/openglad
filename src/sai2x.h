@@ -3,15 +3,6 @@
 
 #include "SDL.h"
 
-//#include "global.h"
-
-// SDL 2 compat
-#if SDL_VERSION_ATLEAST(2,0,0)
-    #define USE_SDL2
-#endif
-
-//extern SDL_Surface *screen;
-
 typedef enum 
 {
 	NoZoom = 0x01,
@@ -23,50 +14,33 @@ typedef enum
 class Screen
 {
 	public:
-		SDL_Surface *screen;
-        #ifdef USE_SDL2
+		RenderEngine Engine;  // how to render the physical screen
+		
 		SDL_Window* window;
 		SDL_Renderer* renderer;
+		
+		// The target for all rendering
+		SDL_Surface* render;
+		
+		// A texture updated by 'render' for normal rendering
 		SDL_Texture* render_tex;
-		#endif
-	private:
-		SDL_Surface		*render;		// the physical screen
-		SDL_Surface		*tempo;			// used to render org_screen before
-										// update which is only a SDL_Update between
-										// render and tempo
-		RenderEngine	Engine;			// how to render the physical screen
-
-	protected:
-	public:
-		Screen( RenderEngine engine, int fullscreen );
+		
+		// A buffer for doubling filters (i.e. Sai or Eagle)
+        SDL_Surface* render2;
+        // A larger texture for the doubled result
+        SDL_Texture* render2_tex;
+        
+		Screen( RenderEngine engine, int width, int height, int fullscreen );
 
 		void Quit();
 
 		~Screen();
 
-		void SaveBMP( char *filename );
+		void SaveBMP(SDL_Surface* screen, char* filename);
 
-		/*void Blit( SDL_Surface *src, int src_x, int src_y, int src_w, int src_h, int dst_x, int dst_y );
-	
-		void Blit( SDL_Surface *src, int dst_x, int dst_y);*/
-
-        void Render(Sint16 x, Sint16 y, Uint16 w, Uint16 h);
-
-		SDL_Surface *RenderAndReturn( int x, int y, int w, int h );
-
-		void Swap(int x, int y, int w, int h);
-
-		SDL_PixelFormat* GetPixelFormat()
-		{	return tempo->format;	}
-
-		SDL_Surface * GetOrgScreen()
-		{	return screen;			}
-
-		inline short GetZoom()
-		{	return (Engine==NoZoom?1:2); }
-
-/*		operator SDL_Surface*()
-		{	return screen;	}*/
+        void clear();
+        void clear(int x, int y, int w, int h);
+		void swap(int x, int y, int w, int h);
 
 };
 

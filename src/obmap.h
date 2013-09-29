@@ -20,11 +20,13 @@
 // Definition of OBMAP class
 
 #include "base.h"
+#include <map>
+#include <list>
 
 class obmap
 {
 	public:
-		obmap(short maxx, short maxy);
+		obmap();
 		~obmap();
 		short query_list(walker  *ob, short x, short y);
 		short remove
@@ -32,12 +34,15 @@ class obmap
 		short add
 			(walker  *ob, short x, short y);  // This goes in walker's constructor
 		short move(walker  *ob, short x, short y);  // This goes in walker's setxy
-		oblink * obmap_get_list(short x, short y); //Returns the list at x,y for fnf
-		short totalobs;
+		std::list<walker*>& obmap_get_list(short x, short y); //Returns the list at x,y for fnf
 		short obmapres;
+		size_t size() const;
+		void draw();
 	private:
 		short hash(short y);
-		oblink  *list[200][200];
+		short unhash(short y);
+		std::map<std::pair<short, short>, std::list<walker*> > pos_to_walker;
+		std::map<walker*, std::list<std::pair<short, short> > > walker_to_pos;
 };
 
 // Zardus: ADD: and a little util for oblink chains

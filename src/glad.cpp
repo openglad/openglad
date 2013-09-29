@@ -69,10 +69,6 @@ extern options *theprefs;
 
 int main(int argc, char *argv[])
 {
-    #ifndef USE_SDL2
-        SDL_putenv(const_cast<char*>("SDL_VIDEO_CENTERED=center"));
-    #endif
-    
 	io_init(argc, argv);
 	
 	cfg.parse("cfg/openglad.yaml");
@@ -185,8 +181,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		if (myscreen->end)
 			break;
 		myscreen->redraw();
-		//         myscreen->buffer_to_screen(0, 0, 320, 200);
-		// this was for debugging illegal draws to bad areas.
+		//myscreen->level_data.myobmap->draw();  // debug drawing for object collision map
         #ifdef USE_TOUCH_INPUT
         draw_touch_controls(myscreen);
         #endif

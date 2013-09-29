@@ -453,10 +453,8 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 	clear_keyboard();
 	clear_key_press_event();
 	clear_text_input_event();
-	enable_keyrepeat();
-    #ifdef USE_SDL2
+	
     SDL_StartTextInput();
-    #endif
     
 	while ( !string_done )
 	{
@@ -553,10 +551,8 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 		screenp->buffer_to_screen(0, 0, 320, 200);
 	}
 
-    #ifdef USE_SDL2
     SDL_StopTextInput();
-    #endif
-	disable_keyrepeat();
+    
 	clear_keyboard();
 	if(return_null)
         return NULL;
@@ -602,10 +598,8 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	clear_keyboard();
 	clear_key_press_event();
 	clear_text_input_event();
-	enable_keyrepeat();
-    #ifdef USE_SDL2
+	
     SDL_StartTextInput();
-    #endif
     
 	while ( !string_done )
 	{
@@ -703,10 +697,8 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 		screenp->buffer_to_screen(0, 0, 320, 200);
 	}
 
-    #ifdef USE_SDL2
     SDL_StopTextInput();
-    #endif
-	disable_keyrepeat();
+    
 	clear_keyboard();
 	if(return_null)
         return NULL;

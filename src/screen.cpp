@@ -772,7 +772,10 @@ short screen::act()
 
 	if (level_done == 2)
 		return endgame(0, level_data.id + 1);  // No exits and no enemies: Go to next sequential level.
-
+    
+    if(end)
+        return 1;
+    
 	// Make sure we're all pointing to legal targets
 	here = level_data.oblist;
 	while (here)
@@ -1360,7 +1363,6 @@ short screen::endgame(short ending, short nextlevel)
 walker *screen::find_near_foe(walker  *ob)
 {
 	short targx, targy;
-	oblink  *here;
 	short spread=1,xchange=0;
 	short loop=0;
 	short resolution = level_data.myobmap->obmapres;
@@ -1395,19 +1397,19 @@ walker *screen::find_near_foe(walker  *ob)
 					return find_far_foe(ob); //bottom of screen
 			}
 
-			here = level_data.myobmap->obmap_get_list(targx,targy);
-			while(here) //go through the list we received
+			std::list<walker*>& ls = level_data.myobmap->obmap_get_list(targx,targy);
+			for(auto e = ls.begin(); e != ls.end(); e++) //go through the list we received
 			{
-				if (here->ob && !(here->ob->dead) && (ob->is_friendly(here->ob)==0)  &&
-				        (random(here->ob->invisibility_left/20)==0)
+			    walker* w = *e;
+				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
+				        (random(w->invisibility_left/20)==0)
 				   )
 				{
-					if (here->ob->query_order() == ORDER_LIVING ||
-					        here->ob->query_order() == ORDER_GENERATOR)
+					if (w->query_order() == ORDER_LIVING ||
+					        w->query_order() == ORDER_GENERATOR)
 						//done separately since they are logically more significant
-						return here->ob; // this should be a valid foe
+						return w; // this should be a valid foe
 				}
-				here=here->next;
 			}//end inner while
 
 		}//end for

@@ -35,7 +35,6 @@
 #define VIEW_TEAM_BOTTOM 198
 #define VIEW_TEAM_RIGHT  280
 
-#ifdef USE_SDL2
 #define SDLK_KP0 SDLK_KP_0
 #define SDLK_KP1 SDLK_KP_1
 #define SDLK_KP2 SDLK_KP_2
@@ -46,7 +45,6 @@
 #define SDLK_KP7 SDLK_KP_7
 #define SDLK_KP8 SDLK_KP_8
 #define SDLK_KP9 SDLK_KP_9
-#endif
 
 
 // Zardus: these were originally static chars but are now ints

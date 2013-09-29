@@ -28,11 +28,6 @@
 
 #include "io.h"
 
-// SDL 2 compat
-#if SDL_VERSION_ATLEAST(2,0,0)
-    #define USE_SDL2
-#endif
-
 void Log(const char* format, ...);
 
 void change_time(Uint32 new_count);
