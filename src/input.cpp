@@ -27,10 +27,6 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 
-#ifndef USE_SDL2
-#define SDL_GetKeyboardState SDL_GetKeyState
-#endif
-
 #ifdef OUYA
 #include "OuyaController.h"
 #endif
@@ -337,13 +333,6 @@ void handle_key_event(const SDL_Event& event)
         if(raw_key == SDLK_ESCAPE)
             input_continue = true;
         key_press_event = 1;
-        #ifndef USE_SDL2
-        free(raw_text_input);
-        raw_text_input = (char*)malloc(sizeof(char)*2);
-        raw_text_input[0] = convert_to_ascii(raw_key);
-        raw_text_input[1] = '\0';
-        text_input_event = 1;
-        #endif
         break;
     case SDL_KEYUP:
         #ifdef USE_TOUCH_INPUT
@@ -369,12 +358,10 @@ void handle_mouse_event(const SDL_Event& event)
 {
     switch(event.type)
     {
-#ifdef USE_SDL2
     case SDL_MOUSEWHEEL:
         scroll_amount = 5*event.wheel.y;
         key_press_event = 1;
         break;
-#endif
 
 #ifndef USE_TOUCH_INPUT
         // Mouse event
@@ -403,12 +390,6 @@ void handle_mouse_event(const SDL_Event& event)
             mouse_state[MOUSE_LEFT] = 1;
         else if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state[MOUSE_RIGHT] = 1;
-        #ifndef USE_SDL2
-        else if (event.button.button == SDL_BUTTON_WHEELUP)
-            scroll_amount = 5;
-        else if (event.button.button == SDL_BUTTON_WHEELDOWN)
-            scroll_amount = -5;
-        #endif
         mouse_state[MOUSE_X] = event.button.x / mouse_scale_x;
         mouse_state[MOUSE_Y] = event.button.y / mouse_scale_y;
         break;
@@ -650,7 +631,6 @@ void handle_events(const SDL_Event& event)
 {
     switch (event.type)
     {
-#ifdef USE_SDL2
     case SDL_WINDOWEVENT:   
         handle_window_event(event);
     break;
@@ -669,7 +649,6 @@ void handle_events(const SDL_Event& event)
     case SDL_FINGERDOWN:
         handle_mouse_event(event);
         break;
-#endif
     case SDL_KEYDOWN:
         handle_key_event(event);
         break;
@@ -875,19 +854,11 @@ short get_and_reset_scroll_amount()
 void wait_for_key(int somekey)
 {
     // First wait for key press ..
-#ifndef USE_SDL2
-    while (!keystates[somekey])
-#else
     while (!keystates[SDL_GetScancodeFromKey(somekey)])
-#endif
         get_input_events(WAIT);
 
     // And now for the key to be released ..
-#ifndef USE_SDL2
-    while (!keystates[somekey])
-#else
     while (!keystates[SDL_GetScancodeFromKey(somekey)])
-#endif
         get_input_events(WAIT);
 }
 
@@ -1294,15 +1265,11 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     }
     else
     {
-#ifndef USE_SDL2
-        return keystates[player_keys[player_index][key_enum]];
-#else
     #ifndef USE_TOUCH_INPUT
         return keystates[SDL_GetScancodeFromKey(player_keys[player_index][key_enum])];
     #else
         return touch_keystate[player_index][key_enum];
     #endif
-#endif
     }
 }
 
@@ -1367,10 +1334,8 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
         // If the player is using KEYBOARD or doesn't have a joystick button set for this key, then check the keyboard.
         if(event.type == SDL_KEYDOWN)
         {
-            #ifdef USE_SDL2
             if(event.key.repeat) // Repeats don't count!
                 return false;
-            #endif
             return (event.key.keysym.sym == player_keys[player_index][key_enum]);
         }
         return false;
@@ -1451,21 +1416,6 @@ void clear_text_input_event()
     free(raw_text_input);
     raw_text_input = NULL;
 }
-
-void enable_keyrepeat()
-{
-#ifndef USE_SDL2
-    SDL_EnableKeyRepeat(SDL_DEFAULT_REPEAT_DELAY,SDL_DEFAULT_REPEAT_INTERVAL);
-#endif
-}
-
-void disable_keyrepeat()
-{
-#ifndef USE_SDL2
-    SDL_EnableKeyRepeat(0,0);
-#endif
-}
-
 
 
 //

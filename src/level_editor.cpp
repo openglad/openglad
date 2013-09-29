@@ -404,10 +404,8 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
 	clear_keyboard();
 	clear_key_press_event();
 	clear_text_input_event();
-	enable_keyrepeat();
-    #ifdef USE_SDL2
+	
     SDL_StartTextInput();
-    #endif
     
     if(result.size() == 0)
         result.push_back("");
@@ -586,10 +584,8 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
 			get_input_events(WAIT);
 	}
 
-    #ifdef USE_SDL2
     SDL_StopTextInput();
-    #endif
-	disable_keyrepeat();
+    
 	clear_keyboard();
     
     return !cancel;
@@ -3179,7 +3175,6 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
 {
     switch (event.type)
     {
-#ifdef USE_SDL2
     case SDL_WINDOWEVENT:   
         handle_window_event(event);
         return HANDLED_EVENT;
@@ -3210,7 +3205,6 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
     case SDL_FINGERDOWN:
         handle_mouse_event(event);
         return MOUSE_DOWN_EVENT;
-#endif
     case SDL_KEYDOWN:
         handle_key_event(event);
         return KEY_DOWN_EVENT;

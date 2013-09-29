@@ -678,36 +678,18 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 //
 Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 {
-	int tx,ty;
 	Engine=engine;
 	switch(Engine)
 	{
 	case SAI:
 		Init_2xSaI();
-		tx=640;
-		ty=400;
 		break;
 	case EAGLE:
 		Init_2xSaI();
-		tx=640;
-		ty=400;
 		break;
-	case DOUBLE:
-		tx=640;
-		ty=400;
-		break;
-	case NoZoom:
 	default:
-		tx=320;
-		ty=200;
 		break;
 	}
-	#ifndef USE_SDL2
-	if(!fullscreen)
-		render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF);
-	else
-		render=SDL_SetVideoMode(tx, ty, 32, SDL_SWSURFACE|SDL_DOUBLEBUF|SDL_FULLSCREEN);
-    #else
     
     int w, h;
     #ifdef ANDROID
@@ -741,7 +723,6 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     {
         SDL_SetWindowFullscreen(window, 1);
     }
-    #endif
 }
 
 Screen::~Screen()
@@ -752,9 +733,10 @@ Screen::~Screen()
 
 void Screen::Quit()
 {
-	#ifdef USE_SDL2
 	SDL_DestroyTexture(render_tex);
-	#endif
+	SDL_DestroyTexture(render2_tex);
+	SDL_FreeSurface(render);
+	SDL_FreeSurface(render2);
 }
 
 void Screen::SaveBMP(SDL_Surface* screen, char* filename)

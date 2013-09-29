@@ -80,12 +80,6 @@ video::video()
 	//	bluepalette[i*3+0] /= 2;
 	//	bluepalette[i*3+1] /= 2;
 	//}
-
-	//buffers: screen init
-	// For some reason, the SDL Android port is not happy with initializing here
-	#ifndef USE_SDL2
-	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
-	#endif
 	
 	E_Screen = new Screen(render, 640, 400, fullscreen);
 }
@@ -400,7 +394,6 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color)
 {
 	int r,g,b;
 	int c;
-	SDL_Rect rect;
 
 	//buffers: this does bound checking (just to be safe)
 	if(x<0 || x>319 || y<0 || y>199)
@@ -1533,11 +1526,8 @@ void video::FadeBetween24(
 		pw++; pFrom++; pTo++;
 	}
     
-    #ifndef USE_SDL2
-	SDL_UpdateRect (pSurface, 0, 0, 0, 0);
-	#else
 	// FIXME!  Need to pass in the Screen structure.
-	#endif
+	//SDL_UpdateRect (pSurface, 0, 0, 0, 0);
 }
 
 //*****************************************************************************
@@ -1632,11 +1622,7 @@ int video::FadeBetween(
 
 	//Show new screen entirely.
 	SDL_BlitSurface(pNewSurface, NULL, pOldSurface, NULL);
-    #ifndef USE_SDL2
-	SDL_UpdateRect(pOldSurface,0,0,CX_SCREEN, CY_SCREEN);
-	#else
 	// Screen::Swap() does the work
-	#endif
 	E_Screen->swap(0,0,320,200);
 	
 	//Clean up.

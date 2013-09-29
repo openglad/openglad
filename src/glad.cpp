@@ -69,10 +69,6 @@ extern options *theprefs;
 
 int main(int argc, char *argv[])
 {
-    #ifndef USE_SDL2
-        SDL_putenv(const_cast<char*>("SDL_VIDEO_CENTERED=center"));
-    #endif
-    
 	io_init(argc, argv);
 	
 	cfg.parse("cfg/openglad.yaml");
