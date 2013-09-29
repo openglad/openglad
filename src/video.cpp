@@ -29,7 +29,6 @@
 
 unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
 
-SDL_Surface *screen; //buffers: this is what we draw in
 Screen *E_Screen;
 
 extern float mouse_scale_x;
@@ -41,9 +40,6 @@ video::video()
 	const char *qresult;
 	RenderEngine render;
 	fullscreen = 0;
-    mouse_mult = 1;
-    mult = 1;
-    font_mult = 1;
     render = NoZoom;
 
 	qresult = cfg.query("graphics","fullscreen");
@@ -54,29 +50,14 @@ video::video()
 
 	qresult = cfg.query("graphics", "render");
 	if(qresult && strcmp(qresult, "normal")==0) {
-		mouse_mult = 1;
-		mult = 1;
-		font_mult = 1;
 		render = NoZoom;
 	} else if(qresult && strcmp(qresult,"sai")==0) {
-		mouse_mult = 2;
-		mult = 1;
-		font_mult = 2;
 		render = SAI;
 	} else if(qresult && strcmp(qresult,"eagle")==0) {
-		mouse_mult = 2;
-		mult = 1;
-		font_mult = 2;
 		render = EAGLE;
 	} else if(qresult && strcmp(qresult,"double")==0) {
-		mouse_mult = 2;
-		mult = 2;
-		font_mult = 2;
 		render = DOUBLE;
 	}
-
-	mouse_scale_x = mouse_mult;
-	mouse_scale_y = mouse_mult;
 
 	fadeDuration = 500;
 
@@ -105,28 +86,14 @@ video::video()
 	#ifndef USE_SDL2
 	SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_JOYSTICK);
 	#endif
-
-	screen = SDL_CreateRGBSurface(SDL_SWSURFACE,320*mult,200*mult,32,0,0,0,0);
 	
-	E_Screen = new Screen(render,fullscreen);
-
-/*
-#ifndef OPENSCEN
-	qresult = cfg.query("graphics","fullscreen");
-	if(strcmp(qresult,"on")==0)
-		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_FULLSCREEN);
-	else
-#endif
-		screen = SDL_SetVideoMode (screen_width, screen_height, 24, SDL_HWSURFACE | SDL_DOUBLEBUF);
-*/
-
+	E_Screen = new Screen(render, 640, 400, fullscreen);
 }
 
 video::~video()
 {
 	E_Screen->Quit();
 	delete E_Screen;
-	SDL_FreeSurface(screen);
 	SDL_Quit();
 }
 
@@ -137,13 +104,12 @@ unsigned char * video::getbuffer()
 
 void video::clearbuffer()
 {
-	SDL_FillRect(screen, NULL, SDL_MapRGB(screen->format,0,0,0));
+    E_Screen->clear();
 }
 
 void video::clearbuffer(int x, int y, int w, int h)
 {
-    SDL_Rect r = {x*mult, y*mult, w*mult, h*mult};
-	SDL_FillRect(screen, &r, SDL_MapRGB(screen->format,0,0,0));
+    E_Screen->clear(x, y, w, h);
 }
 
 void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled)
@@ -373,13 +339,13 @@ void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, un
 	}
 
 	//buffers: create the rect to fill with SDL_FillRect
-	rect.x = startx*mult;
-	rect.y = starty*mult;
-	rect.w = xsize*mult;
-	rect.h = ysize*mult;
+	rect.x = startx;
+	rect.y = starty;
+	rect.w = xsize;
+	rect.h = ysize;
 
 	query_palette_reg(color,&r,&g,&b);
-	SDL_FillRect(screen,&rect,SDL_MapRGB(screen->format,r*4,g*4,b*4));
+	SDL_FillRect(E_Screen->render, &rect, SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4));
 }
 
 void video::fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color)
@@ -393,6 +359,39 @@ void video::point(Sint32 x, Sint32 y, unsigned char color)
 {
 	pointb(x,y,color);
 	//buffers: PORT: SDL_UpdateRect(screen,x,y,1,1);
+}
+
+void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
+{
+    int bpp = surface->format->BytesPerPixel;
+    /* Here p is the address to the pixel we want to set */
+    Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+
+    switch(bpp) {
+    case 1:
+        *p = pixel;
+        break;
+
+    case 2:
+        *(Uint16 *)p = pixel;
+        break;
+
+    case 3:
+        if(SDL_BYTEORDER == SDL_BIG_ENDIAN) {
+            p[0] = (pixel >> 16) & 0xff;
+            p[1] = (pixel >> 8) & 0xff;
+            p[2] = pixel & 0xff;
+        } else {
+            p[0] = pixel & 0xff;
+            p[1] = (pixel >> 8) & 0xff;
+            p[2] = (pixel >> 16) & 0xff;
+        }
+        break;
+
+    case 4:
+        *(Uint32 *)p = pixel;
+        break;
+    }
 }
 
 //buffers: PORT: this draws a point in the offscreen buffer
@@ -409,13 +408,9 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
+	c = SDL_MapRGB(E_Screen->render->format, r*4, g*4, b*4);
 
-	rect.x = x*mult;
-	rect.y = y*mult;
-	rect.w = mult;
-	rect.h = mult;
-	SDL_FillRect(screen,&rect,c);
+    putpixel(E_Screen->render, x, y, c);
 }
 
 void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
@@ -532,21 +527,9 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapRGB(screen->format, r*4, g*4, b*4);
+	c = SDL_MapRGB(E_Screen->render->format, r*4, g*4, b*4);
 	
-	SDL_Rect rect;
-	rect.x = x*mult;
-	rect.y = y*mult;
-	rect.w = mult;
-	rect.h = mult;
-	
-	for(int i = rect.x; i < rect.x + rect.w; i++)
-    {
-        for(int j = rect.y; j < rect.y + rect.h; j++)
-        {
-            blend_pixel(screen, i, j, c, alpha);
-        }
-    }
+    blend_pixel(E_Screen->render, x, y, c, alpha);
 }
 
 //buffers: this sets the color using raw RGB values. no *4...
@@ -554,13 +537,13 @@ void video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 {
 	SDL_Rect  rect;
 	int c;
-	c = SDL_MapRGB(screen->format,r,g,b);
+	c = SDL_MapRGB(E_Screen->render->format,r,g,b);
 
-	rect.x = x*mult;
-	rect.y = y*mult;
-	rect.w = mult;
-	rect.h = mult;
-	SDL_FillRect(screen,&rect,c);
+	rect.x = x;
+	rect.y = y;
+	rect.w = 1;
+	rect.h = 1;
+	SDL_FillRect(E_Screen->render,&rect,c);
 }
 
 //buffers: draw color using an offset
@@ -725,14 +708,14 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 		        	continue;
 	        	//point(curx,cury,curcolor);//buffers: PORT: draw the poin
 			query_palette_reg(curcolor,&r,&g,&b);
-			color = SDL_MapRGB(screen->format,r*4,g*4,b*4);
+			color = SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4);
 
-			rect.x = curx*font_mult;
-			rect.y = cury*font_mult;
-			rect.w = font_mult;
-			rect.h = font_mult;
+			rect.x = curx;
+			rect.y = cury;
+			rect.w = 1;
+			rect.h = 1;
 			Log("test\n");
-			SDL_FillRect(screen,&rect,color);
+			SDL_FillRect(E_Screen->render,&rect,color);
 		}
     	}
 }
@@ -780,13 +763,13 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 			if (curcolor>247)
 			        curcolor = color;
 			query_palette_reg(curcolor,&r,&g,&b);
-			scolor = SDL_MapRGB(screen->format,r*4,g*4,b*4);
+			scolor = SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4);
 
-                   	rect.x = curx*font_mult;
-	             	rect.y = cury*font_mult;
-			rect.w = font_mult;	
-			rect.h = font_mult;
-			SDL_FillRect(screen,&rect,scolor);
+            rect.x = curx;
+            rect.y = cury;
+			rect.w = 1;	
+			rect.h = 1;
+			SDL_FillRect(E_Screen->render,&rect,scolor);
 		}
 }
 
@@ -954,13 +937,13 @@ void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 	//offstarget = (tilestarty*VIDEO_BUFFER_WIDTH) + tilestartx; //start at u-l position
 	//offssource = (ymin * tilewidth) + xmin; //start at u-l position
 
-	rect.x = (tilestartx)*mult;
-	rect.y = (tilestarty)*mult;
-	temp.x = xmin*mult;
-	temp.y = ymin*mult;
-	temp.w = (xmax-xmin)*mult;
-	temp.h = (ymax-ymin)*mult;
-	SDL_BlitSurface(sourceptr,&temp,screen,&rect);
+	rect.x = (tilestartx);
+	rect.y = (tilestarty);
+	temp.x = xmin;
+	temp.y = ymin;
+	temp.w = (xmax-xmin);
+	temp.h = (ymax-ymin);
+	SDL_BlitSurface(sourceptr,&temp,E_Screen->render,&rect);
 }
 
 
@@ -1100,13 +1083,13 @@ void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                         if (curcolor > (unsigned char) 247)
                                 curcolor = (unsigned char) (teamcolor+(255-curcolor));
 			query_palette_reg(curcolor,&r,&g,&b);
-                        color = SDL_MapRGB(screen->format,r*4,g*4,b*4);
+                        color = SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4);
 
-                        rect.x = (curx + walkerstartx)*font_mult;
-                        rect.y = (cury + walkerstarty)*font_mult;
-                        rect.w = font_mult;
-                        rect.h = font_mult;
-                        SDL_FillRect(screen,&rect,color);
+                        rect.x = (curx + walkerstartx);
+                        rect.y = (cury + walkerstarty);
+                        rect.w = 1;
+                        rect.h = 1;
+                        SDL_FillRect(E_Screen->render,&rect,color);
                 }
                 walkoff += walkshift;
                 buffoff += buffshift;
@@ -1451,9 +1434,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 void video::buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,
                              Sint32 viewwidth, Sint32 viewheight)
 {
-    SDL_BlitSurface(screen,NULL,E_Screen->screen,NULL);
-	E_Screen->RenderAndReturn(viewstartx,viewstarty,viewwidth,viewheight);
-	E_Screen->Swap(viewstartx,viewstarty,viewwidth,viewheight);
+	E_Screen->swap(viewstartx,viewstarty,viewwidth,viewheight);
 }
 
 //buffers: like buffer_to_screen but automaticaly swaps the entire screen
@@ -1468,16 +1449,13 @@ void video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 	Uint32 col = 0;
 	Uint8 q=0,w=0,e=0;
 
-	x*=mult;
-	y*=mult;
+	char *p = (char *)E_Screen->render->pixels;
+	p += E_Screen->render->pitch*y;
+	p += E_Screen->render->format->BytesPerPixel*x;
 
-	char *p = (char *)screen->pixels;
-	p += screen->pitch*y;
-	p += screen->format->BytesPerPixel*x;
+	memcpy(&col,p,E_Screen->render->format->BytesPerPixel);
 
-	memcpy(&col,p,screen->format->BytesPerPixel);
-
-	SDL_GetRGB(col,screen->format,&q,&w,&e);
+	SDL_GetRGB(col,E_Screen->render->format,&q,&w,&e);
 	*r=q;
 	*g=w;
 	*b=e;
@@ -1637,7 +1615,7 @@ int video::FadeBetween(
 	do {
 		FadeBetween24(DestSurface,colorsf,colorst,
 				dwNow - dwFirstPaint + 50);	//allow first frame to show some change
-		E_Screen->Swap(0,0,320,200);
+		E_Screen->swap(0,0,320,200);
 		dwNow = SDL_GetTicks();
 
 		get_input_events(POLL);
@@ -1659,7 +1637,7 @@ int video::FadeBetween(
 	#else
 	// Screen::Swap() does the work
 	#endif
-	E_Screen->Swap(0,0,320,200);
+	E_Screen->swap(0,0,320,200);
 	
 	//Clean up.
 	delete [] colorsf;
@@ -1675,17 +1653,13 @@ int video::FadeBetween(
 
 int video::fadeblack(bool fade_in)
 {
-
-	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320 * font_mult, 200 * font_mult, 32, 0, 0, 0, 0);
+	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
 	int i;
 
-	SDL_BlitSurface(screen, NULL, E_Screen->screen, NULL);
-	SDL_Surface* render = E_Screen->RenderAndReturn(0, 0, 320, 200);
-
 	if(fade_in)
-        i = FadeBetween(black, render, render); // fade from black
+        i = FadeBetween(black, E_Screen->render, E_Screen->render); // fade from black
 	else
-        i = FadeBetween(render, black, render); // fade to black
+        i = FadeBetween(E_Screen->render, black, E_Screen->render); // fade to black
 
 	SDL_FreeSurface(black);
 	return i;

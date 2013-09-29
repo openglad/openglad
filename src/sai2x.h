@@ -23,50 +23,30 @@ typedef enum
 class Screen
 {
 	public:
-		SDL_Surface *screen;
         #ifdef USE_SDL2
 		SDL_Window* window;
 		SDL_Renderer* renderer;
-		SDL_Texture* render_tex;
 		#endif
-	private:
-		SDL_Surface		*render;		// the physical screen
-		SDL_Surface		*tempo;			// used to render org_screen before
-										// update which is only a SDL_Update between
-										// render and tempo
+		
 		RenderEngine	Engine;			// how to render the physical screen
-
-	protected:
-	public:
-		Screen( RenderEngine engine, int fullscreen );
+		
+		SDL_Surface* render;
+		SDL_Texture* render_tex;
+		
+        SDL_Surface* render2;
+        SDL_Texture* render2_tex;
+        
+		Screen( RenderEngine engine, int width, int height, int fullscreen );
 
 		void Quit();
 
 		~Screen();
 
-		void SaveBMP( char *filename );
+		void SaveBMP(SDL_Surface* screen, char* filename);
 
-		/*void Blit( SDL_Surface *src, int src_x, int src_y, int src_w, int src_h, int dst_x, int dst_y );
-	
-		void Blit( SDL_Surface *src, int dst_x, int dst_y);*/
-
-        void Render(Sint16 x, Sint16 y, Uint16 w, Uint16 h);
-
-		SDL_Surface *RenderAndReturn( int x, int y, int w, int h );
-
-		void Swap(int x, int y, int w, int h);
-
-		SDL_PixelFormat* GetPixelFormat()
-		{	return tempo->format;	}
-
-		SDL_Surface * GetOrgScreen()
-		{	return screen;			}
-
-		inline short GetZoom()
-		{	return (Engine==NoZoom?1:2); }
-
-/*		operator SDL_Surface*()
-		{	return screen;	}*/
+        void clear();
+        void clear(int x, int y, int w, int h);
+		void swap(int x, int y, int w, int h);
 
 };
 

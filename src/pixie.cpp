@@ -203,7 +203,7 @@ void pixie::init_sdl_surface(void)
 	int r,g,b,c,i,j,num;
 	SDL_Rect rect;
 
-	bmp_surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex*screenp->mult,sizey*screenp->mult,32,
+	bmp_surface = SDL_CreateRGBSurface(SDL_SWSURFACE,sizex,sizey,32,
 	                                   0,0,0,0);
 	if(!bmp_surface)
 	{
@@ -216,9 +216,9 @@ void pixie::init_sdl_surface(void)
 		{
 			query_palette_reg(bmp[num],&r,&g,&b);
 			c = SDL_MapRGB(bmp_surface->format,r*4,g*4,b*4);
-			rect.x = j*screenp->mult;
-			rect.y = i*screenp->mult;
-			rect.w = rect.h = screenp->mult;
+			rect.x = j;
+			rect.y = i;
+			rect.w = rect.h = 1;
 			SDL_FillRect(bmp_surface,&rect,c);
 			num++;
 		}

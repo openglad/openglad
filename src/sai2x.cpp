@@ -676,7 +676,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 
 /////////////////////////////////
 //
-Screen::Screen( RenderEngine engine, int fullscreen)
+Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 {
 	int tx,ty;
 	Engine=engine;
@@ -715,8 +715,8 @@ Screen::Screen( RenderEngine engine, int fullscreen)
     h = 0;
     fullscreen = true;
     #else
-    w = tx;
-    h = ty;
+    w = width;
+    h = height;
     #endif
     
     window = SDL_CreateWindow("Gladiator",
@@ -730,110 +730,95 @@ Screen::Screen( RenderEngine engine, int fullscreen)
     mouse_scale_x = float(w)/320;
     mouse_scale_y = float(h)/200;
     
-    render = SDL_CreateRGBSurface(SDL_SWSURFACE, tx, ty, 32, 0, 0, 0, 0);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
-	render_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, tx, ty);
+    
+    render = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+	render_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 200);
+    render2 = NULL;  // To be initialized when we actually need it
+    render2_tex = NULL;
     
     if(fullscreen)
     {
         SDL_SetWindowFullscreen(window, 1);
     }
     #endif
-	if(Engine != DOUBLE)
-		screen=SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
-	else
-		screen=SDL_CreateRGBSurface(SDL_SWSURFACE,640,400,32,0,0,0,0);
-	SDL_FillRect( screen, 0, SDL_MapRGB(screen->format, 0x00, 0x00, 0x00) );
 }
 
 Screen::~Screen()
 {
-	if (screen)
-		Log("Error while trying to destroy Screen, Quit wasn't called!\n");
+    
 }
 
 
 void Screen::Quit()
 {
-	if(screen)
-		SDL_FreeSurface( screen );
-	
-	//buffers:if(tempo)
-	//buffers:	SDL_FreeSurface( tempo );
-	screen=NULL;
-	//buffers: tempo=NULL;
-	
 	#ifdef USE_SDL2
 	SDL_DestroyTexture(render_tex);
 	#endif
 }
 
-void Screen::SaveBMP( char *filename )
+void Screen::SaveBMP(SDL_Surface* screen, char* filename)
 {
-	SDL_SaveBMP( render, filename );
+	SDL_SaveBMP(screen, filename);
 }
 
-void Screen::Render(Sint16 x, Sint16 y, Uint16 w, Uint16 h)
+void Screen::clear()
 {
-	#ifndef USE_SDL2
-	SDL_UpdateRect(render, x,y,w,h);
-	#else
+	SDL_FillRect(render, NULL, 0x000000);
+}
+
+void Screen::clear(int x, int y, int w, int h)
+{
+    SDL_Rect r = {x, y, w, h};
+	SDL_FillRect(render, &r, 0x000000);
+}
+
+void Screen::swap(int x, int y, int w, int h)
+{
+    SDL_Surface* source_surface = render;
+    SDL_Texture* dest_texture = render_tex;
+    
+	switch(Engine) {
+		case SAI:
+                if(render2 == NULL)
+                {
+                    render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
+                    render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
+                }
+                SDL_LockSurface( render2 );
+                Super2xSaI_ex2(
+                        (unsigned char*) render->pixels, x, y, w, h, render->pitch, render->h,
+                        (unsigned char*) render2->pixels, 2*x, 2*y, render2->pitch);
+                SDL_UnlockSurface( render2 );
+                
+                source_surface = render2;
+                dest_texture = render2_tex;
+            break;
+		case EAGLE:
+                if(render2 == NULL)
+                {
+                    render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
+                    render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
+                }
+                SDL_LockSurface( render2 );
+                Scale_SuperEagle((unsigned char*) render->pixels, x, y, w, h, render->pitch, render->h,
+                                 (unsigned char*) render2->pixels, 2*x, 2*y, render2->pitch);
+                SDL_UnlockSurface( render2 );
+                
+                source_surface = render2;
+                dest_texture = render2_tex;
+			break;
+        default:
+            break;
+	}
 	
-	SDL_UpdateTexture(render_tex, NULL, render->pixels, render->pitch);
-	
-	SDL_Rect dest = {0, 0, 0, 0};
+    SDL_UpdateTexture(dest_texture, NULL, source_surface->pixels, source_surface->pitch);
+    
+    SDL_Rect dest = {0, 0, 0, 0};
     SDL_GetWindowSize(window, &dest.w, &dest.h); // Fill up the whole window
     
-	SDL_RenderCopy(renderer, render_tex, NULL, &dest);
-	SDL_RenderPresent(renderer);
-	#endif
-	
-}
-
-SDL_Surface *Screen::RenderAndReturn( int x, int y, int w, int h )
-{
-        switch( Engine )
-        {
-        case DOUBLE:
-        case NoZoom:
-                SDL_BlitSurface(screen,NULL,render,NULL);
-                break;
-        case SAI:
-                SDL_LockSurface( render );
-                Super2xSaI_ex2(
-                        (unsigned char*) screen->pixels, x, y, w, h, screen->pitch, screen->h,
-                        (unsigned char*) render->pixels, 2*x, 2*y, render->pitch);
-                SDL_UnlockSurface( render );
-                break;
-        case EAGLE:
-                SDL_LockSurface( render );
-                Scale_SuperEagle((unsigned char*) screen->pixels, x, y, w, h, screen->pitch, screen->h,(unsigned char*) render->pixels, 2*x, 2*y, render->pitch);
-                SDL_UnlockSurface( render );
-                break;
-        default:
-                Log("error, default reached\n");
-                //SDL_BlitSurface(screen,NULL,render,NULL);
-        }
-
-	return render;
-}
-
-void Screen::Swap(int x, int y, int w, int h)
-{
-	switch(Engine) {
-		case DOUBLE:
-			Render(x*2,y*2,w*2,h*2);
-			break;
-		case NoZoom:
-			Render(x,y,w,h);
-			break;
-		case SAI:
-		case EAGLE:
-			Render(x*2,y*2,w*2,h*2);
-			break;
-        //default:
-			//Render(x,y,w,h);
-	}
+    SDL_RenderCopy(renderer, dest_texture, NULL, &dest);
+    SDL_RenderPresent(renderer);
 }
 
 #undef GET_RESULT
