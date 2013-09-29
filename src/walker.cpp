@@ -300,7 +300,6 @@ bool walker::walkstep(float x, float y)
 	float step = stepsize;
 	float halfstep;
 	Sint32 i;
-	Sint32 gotup = 0, gotover = 0;
 	//walker *control1 = screenp->viewob[0]->control;
 	//walker *control2;
 	short mycycle;
@@ -378,137 +377,81 @@ bool walker::walkstep(float x, float y)
 			} // end of npc switch
 			else // we're a user
 			{
+			    // We can't move where we want to.  Can we slide against the wall?
+			    
 				// Store our cycle
 				mycycle = cycle;
-				switch (facing(x, y))
+				short myfacing = facing(x, y);
+                bool gotup = false, gotover = false;
+                short dx = 0, dy = 0;
+                
+				switch (myfacing)
 				{
 					case FACE_UP:    // For cardinal directions, fail if
 					case FACE_RIGHT: // we can't walk this direction
 					case FACE_DOWN:
 					case FACE_LEFT:
-						//return returnvalue;
 						break;
 					case FACE_UP_RIGHT:
-						for (i=0; i < step; i++)
-						{
-							if (screenp->query_passable(xpos, ypos-1, this))
-							{
-								worldmove(0, -1);  // walk without turning ..
-								gotup = 1;
-							}
-							if (screenp->query_passable(xpos+1, ypos, this))
-							{
-								worldmove(1, 0);
-								gotover = 1;
-							}
-							if (!gotup && gotover)  // moved right
-								curdir = FACE_RIGHT;
-							else if (gotup && !gotover) // moved up
-								curdir = FACE_UP;
-							if (gotup || gotover) // we moved somewhere?
-							{
-								cycle = mycycle;
-								cycle++;
-								if (ani[curdir][cycle] == -1)
-									cycle = 0;
-								set_frame(ani[curdir][cycle]);
-							}  // end of cycled us a frame
-						}
-						//curdir = FACE_UP; ret1 = walk(0, (short) (y*step));
-						//curdir = FACE_RIGHT; ret2 = walk((short) (x*step), 0);
+					    dx = 1;
+					    dy = -1;
 						break;
 					case FACE_DOWN_RIGHT:
-						for (i=0; i < step; i++)
-						{
-							if (screenp->query_passable(xpos, ypos+1, this))
-							{
-								worldmove(0, 1);  // walk without turning ..
-								gotup = 1;
-							}
-							if (screenp->query_passable(xpos+1, ypos, this))
-							{
-								worldmove(1, 0);
-								gotover = 1;
-							}
-							if (!gotup && gotover)  // moved right
-								curdir = FACE_RIGHT;
-							else if (gotup && !gotover) // moved up
-								curdir = FACE_DOWN;
-							if (gotup || gotover) // we moved somewhere?
-							{
-								cycle = mycycle;
-								cycle++;
-								if (ani[curdir][cycle] == -1)
-									cycle = 0;
-								set_frame(ani[curdir][cycle]);
-							}  // end of cycled us a frame
-						}
-						//curdir = FACE_DOWN; ret1 = walk(0, (short) (y*step));
-						//curdir = FACE_RIGHT; ret2 = walk((short) (x*step), 0);
+					    dx = 1;
+					    dy = 1;
 						break;
 					case FACE_DOWN_LEFT:
-						for (i=0; i < step; i++)
-						{
-							if (screenp->query_passable(xpos, ypos+1, this))
-							{
-								worldmove(0, 1);  // walk without turning ..
-								gotup = 1;
-							}
-							if (screenp->query_passable(xpos-1, ypos, this))
-							{
-								worldmove(-1, 0);
-								gotover = 1;
-							}
-							if (!gotup && gotover)  // moved right
-								curdir = FACE_LEFT;
-							else if (gotup && !gotover) // moved up
-								curdir = FACE_DOWN;
-							if (gotup || gotover) // we moved somewhere?
-							{
-								cycle = mycycle;
-								cycle++;
-								if (ani[curdir][cycle] == -1)
-									cycle = 0;
-								set_frame(ani[curdir][cycle]);
-							}  // end of cycled us a frame
-						}
-						//curdir = FACE_DOWN; ret1 = walk(0, (short) (y*step));
-						//curdir = FACE_LEFT; ret2 = walk((short) (x*step), 0);
+					    dx = -1;
+					    dy = 1;
 						break;
 					case FACE_UP_LEFT:
-						for (i=0; i < step; i++)
-						{
-							if (screenp->query_passable(xpos, ypos-1, this))
-							{
-								worldmove(0, -1);  // walk without turning ..
-								gotup = 1;
-							}
-							if (screenp->query_passable(xpos-1, ypos, this))
-							{
-								worldmove(-1, 0);
-								gotover = 1;
-							}
-							if (!gotup && gotover)  // moved left
-								curdir = FACE_LEFT;
-							else if (gotup && !gotover) // moved up
-								curdir = FACE_UP;
-							if (gotup || gotover) // we moved somewhere?
-							{
-								cycle = mycycle;
-								cycle++;
-								if (ani[curdir][cycle] == -1)
-									cycle = 0;
-								set_frame(ani[curdir][cycle]);
-							}  // end of cycled us a frame
-						}
-						//curdir = FACE_UP; ret1 = walk(0, (short) (y*step));
-						//curdir = FACE_LEFT; ret2 = walk((short) (x*step), 0);
+					    dx = -1;
+					    dy = -1;
 						break;
 					default:
 						ret1 = 0;
 						ret2 = 0;
 						break;
 				}
+				
+				if(dx != 0 || dy != 0)
+                {
+                    for (i = 0; i < step; i++)
+                    {
+                        if (screenp->query_passable(xpos, ypos + dy, this))
+                        {
+                            worldmove(0, dy);  // walk without turning ..
+                            gotup = true;
+                        }
+                        if (screenp->query_passable(xpos + dx, ypos, this))
+                        {
+                            worldmove(dx, 0);
+                            gotover = true;
+                        }
+                        if (!gotup && gotover)  // moved horizontally
+                        {
+                            if(dx > 0)
+                                curdir = FACE_RIGHT;
+                            else
+                                curdir = FACE_LEFT;
+                        }
+                        else if (gotup && !gotover) // moved vertically
+                        {
+                            if(dy < 0)
+                                curdir = FACE_UP;
+                            else
+                                curdir = FACE_DOWN;
+                        }
+                        if (gotup || gotover) // we moved somewhere?
+                        {
+                            cycle = mycycle;
+                            cycle++;
+                            if (ani[curdir][cycle] == -1)
+                                cycle = 0;
+                            set_frame(ani[curdir][cycle]);
+                        }  // end of cycled us a frame
+                    }
+                }
 			}
 
 			curdir = (char) oldcurdir;

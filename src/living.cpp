@@ -424,7 +424,8 @@ bool living::walk(float x, float y)
 		// Here we check if the move is valid
 		// Normally we would check if the object at this grid point
 		//    is passable (I cheated for now)
-		if (screenp->query_passable(xpos+x, ypos+y,this))
+		// FIXME: These additional checks are a hack for the corner clipping bug (you could get into trees, etc.)
+		if (screenp->query_passable(xpos+x, ypos+y,this) && screenp->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && screenp->query_passable(xpos+floorf(x), ypos+floorf(y),this))
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
