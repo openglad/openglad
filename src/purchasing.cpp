@@ -193,7 +193,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message);
 
 extern screen* myscreen;
-extern SDL_Surface *screen;
+extern Screen* E_Screen;
 
 bool showPurchasingSplash()
 {
@@ -298,7 +298,7 @@ bool showPurchasingSplash()
         // Draw
         myscreen->clearbuffer();
         
-        SDL_BlitSurface(splash, NULL, screen, NULL);
+        SDL_BlitSurface(splash, NULL, E_Screen->render, NULL);
         
         myscreen->draw_button(no_button.x, no_button.y, no_button.x + no_button.w, no_button.y + no_button.h, 1, 1);
         loadtext->write_xy(no_button.x + 2, no_button.y + 2, "NO THANKS", DARK_BLUE, 1);
@@ -358,7 +358,7 @@ void showOuyaControls()
         // Draw
         myscreen->clearbuffer();
         
-        SDL_BlitSurface(splash, NULL, screen, NULL);
+        SDL_BlitSurface(splash, NULL, E_Screen->render, NULL);
         
         myscreen->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
