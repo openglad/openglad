@@ -14,6 +14,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
+					<Add option="-D_DEBUG" />
 					<Add directory="../../bdcode/externals/SDL2/include/SDL2" />
 					<Add directory="../../bdcode/externals/SDL_mixer/include" />
 				</Compiler>
@@ -49,6 +50,7 @@
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
+					<Add option="-D_DEBUG" />
 					<Add option="-DUSE_TOUCH_INPUT" />
 					<Add option="-DFAKE_TOUCH_EVENTS" />
 					<Add directory="../../bdcode/externals/SDL2/include/SDL2" />
