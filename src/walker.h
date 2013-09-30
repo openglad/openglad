@@ -148,6 +148,8 @@ class walker : public pixieN
 		// Zardus: ADD: in_act should be set while in an action
 		bool in_act;
 		obmap* myobmap;
+		int path_check_counter;
+		std::vector<void*> path_to_foe;  // Result from pathfinding
 
 	protected:
 		short act_generate();

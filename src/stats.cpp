@@ -679,6 +679,8 @@ void statistics::yell_for_help(walker *foe)
 	char message[80];
 
 	controller->yo_delay += 80;
+	
+	// Get AI-controlled allies to target my foe
 	helplist = controller->screenp->find_friends_in_range(
 	               controller->screenp->level_data.oblist, 160, &howmany, controller);
 	here = helplist;
@@ -693,10 +695,12 @@ void statistics::yell_for_help(walker *foe)
 		here= here->next;
 	}
 	delete_list(helplist);
-	deltax = (controller->xpos - foe->xpos);
+	
+	// Force run in the opposite direction
+	deltax = -(foe->xpos - controller->xpos);
 	if (deltax)
 		deltax = (deltax / abs(deltax));
-	deltay =  (controller->ypos - foe->ypos);
+	deltay =  -(foe->ypos - controller->ypos);
 	if (deltay)
 		deltay =  (deltay / abs(deltay));
 	// Run away
@@ -1131,13 +1135,144 @@ bool statistics::direct_walk()
 
 }
 
+#include "micropather.h"
+using namespace micropather;
+
+#define MAP_WIDTH 400
+#define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
+
+#define MAKE_STATE(x, y) (void*)int(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE))
+#define GET_STATE_X(state) (int(state)%MAP_WIDTH * GRID_SIZE)
+#define GET_STATE_Y(state) (int(state)/MAP_WIDTH * GRID_SIZE)
+#define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
+
+walker* path_walker = NULL;
+
+class Map : public Graph
+{
+public:
+    virtual float LeastCostEstimate( void* stateStart, void* stateEnd );
+    virtual void AdjacentCost( void* state, std::vector< StateCost > *adjacent );
+    virtual void  PrintStateInfo( void* state );
+};
+
+float Map::LeastCostEstimate( void* stateStart, void* stateEnd )
+{
+    int x1 = GET_STATE_X(stateStart);
+    int y1 = GET_STATE_Y(stateStart);
+    int x2 = GET_STATE_X(stateEnd);
+    int y2 = GET_STATE_Y(stateEnd);
+    
+    return sqrtf((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
+}
+
+void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
+{
+    int x1 = GET_STATE_X(state);
+    int y1 = GET_STATE_Y(state);
+    
+    for(int i = -1; i <= 1; i++)
+    {
+        for(int j = -1; j <= 1; j++)
+        {
+            if(i == 0 && j == 0)
+                continue;
+            
+            int adj_x = x1+i*GRID_SIZE;
+            int adj_y = y1+j*GRID_SIZE;
+            
+            StateCost cost;
+            cost.state = MAKE_STATE(adj_x, adj_y);
+            cost.cost = 0;
+            
+            // TODO: Make doors impassable without a key.
+            // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
+            
+            // Any terrain in the way?  This checks boundaries too.
+            if(!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
+                continue;
+            // Any moving objects in the way?
+            else if(myscreen->level_data.myobmap->obmap_get_list(adj_x,adj_y).size() > 0)
+                cost.cost = 10;
+            else
+                // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
+                cost.cost = sqrtf(i*i + j*j);
+            
+            // Smoothing heuristic using cross-product.  This penalizes going away from a straight line to the goal.
+            int dx1 = adj_x - ALIGN_TO_GRID(path_walker->foe->xpos);
+            int dy1 = adj_y - ALIGN_TO_GRID(path_walker->foe->ypos);
+            int dx2 = path_walker->xpos - ALIGN_TO_GRID(path_walker->foe->xpos);
+            int dy2 = path_walker->ypos - ALIGN_TO_GRID(path_walker->foe->ypos);
+            float cross = dx1*dy2 - dx2*dy1;
+            cost.cost += fabs(cross)*0.01f;
+            
+            adjacent->push_back(cost);
+        }
+    }
+}
+
+void Map::PrintStateInfo( void* state )
+{
+    int x1 = GET_STATE_X(state);
+    int y1 = GET_STATE_Y(state);
+    
+    Log("(%d,%d)", x1, y1);
+}
+
+
+
+Map path_map;
+MicroPather pather(&path_map);
+
+void find_path_to_foe(walker* controller)
+{
+    float totalCost = 0.0f;
+    walker* foe = controller->foe;
+
+    void* startState = MAKE_STATE(controller->xpos, controller->ypos);
+    void* endState = MAKE_STATE(foe->xpos, foe->ypos);
+    
+    controller->path_to_foe.clear();
+    pather.Reset();  // Assume that the old paths are invalid
+    path_walker = controller;  // Set the walker that the path is being generated for
+    pather.Solve( startState, endState, &controller->path_to_foe, &totalCost );  // There's a result returned from this, but we don't need it.
+}
+
+void follow_path_to_foe(walker* controller)
+{
+    while(controller->path_to_foe.size() > 0)
+    {
+        std::vector<void*>::iterator node = controller->path_to_foe.begin();
+        void* state = *node;
+        int dx = GET_STATE_X(state) - ALIGN_TO_GRID(controller->xpos);
+        int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(controller->ypos);
+        
+        if(dx != 0 || dy != 0)
+        {
+            // Normalize the deltas so walkstep can use them as stepsize factors.
+            if(dx != 0)
+                dx /= abs(dx);
+            if(dy != 0)
+                dy /= abs(dy);
+            
+            // Move toward there and we're done.
+            controller->walkstep(dx, dy);
+            break;
+        }
+        
+        // We already made it to this node, so remove it
+        controller->path_to_foe.erase(node);
+    }
+}
+
+#define PATHING_MIN_DISTANCE 100
+
 bool statistics::walk_to_foe()
 {
-	walker * foe = controller->foe;
+    walker* foe = controller->foe;
 	float xdest, ydest;
 	float xdelta, ydelta;
 	Uint32 tempdistance = 9999999L;
-	static unsigned short do_check;
 	short howmany;
 	oblink  * foelist;
 
@@ -1147,11 +1282,14 @@ bool statistics::walk_to_foe()
 		return 0;
 	}
 
-	do_check++;
+	controller->path_check_counter--;
 	// This makes us only check every few rounds, to save
 	// processing time
-	if (!(do_check % 3))
+	if(controller->path_check_counter <= 0)
 	{
+	    controller->path_check_counter = 5 + rand()%10;
+	    controller->path_to_foe.clear();
+	    
 		xdest = foe->xpos;
 		ydest = foe->ypos;
 
@@ -1159,10 +1297,10 @@ bool statistics::walk_to_foe()
 		ydelta = ydest - controller->ypos;
 
 		tempdistance = (Uint32) controller->distance_to_ob(foe);
-		if (tempdistance < 200 || (tempdistance < last_distance) )
+		if (tempdistance < PATHING_MIN_DISTANCE)// || (tempdistance < last_distance) )
 		{
 			foelist = controller->screenp->find_foes_in_range(controller->screenp->level_data.oblist,
-			          200, &howmany, controller);
+			          PATHING_MIN_DISTANCE, &howmany, controller);
 			if (howmany > 0)
 			{
 				clear_command();
@@ -1180,25 +1318,22 @@ bool statistics::walk_to_foe()
 			}
 			else // our foe has moved; we need a new one
 			{
-				// Zardus: PORT: needs to check for commandlist
 				if (commandlist)
 					commandlist->commandcount = 0;
-				//clear_command();
 			}
 		}
+		else
+        {
+            find_path_to_foe(controller);
+        }
 	} //end if do_check
 
-	/*
-	  if (tempdistance <= last_distance)// are we closer than we've ever been?
-	    last_distance = tempdistance;   // then set our checking distance ..
-	 
-	  if (!direct_walk())               // Can we walk in a direct line to foe?
-	  {
-	    right_walk();                   //   If not, use right-hand walking
-	  }
-	*/
-
-	if (tempdistance < last_distance)// are we closer than we've ever been?
+    if(controller->path_to_foe.size() > 0)
+    {
+        follow_path_to_foe(controller);
+        last_distance = (Uint32) controller->distance_to_ob(foe);
+    }
+    else if(tempdistance < last_distance)// are we closer than we've ever been?
 	{
 		last_distance = tempdistance;   // then set our checking distance ..
 
@@ -1211,11 +1346,9 @@ bool statistics::walk_to_foe()
 		right_walk();
 
 	// Are we really really close? Stop searching, then :)
-	// Zardus: lets check if commandlist exists, too
 	if (tempdistance < 30 && commandlist)
 	{
 		commandlist->commandcount = 0;
-		//clear_command();
 	}
 
 	return 1;

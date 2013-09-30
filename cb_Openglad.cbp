@@ -75,6 +75,7 @@
 			<Add directory="src/external/physfs/extras" />
 			<Add directory="src/external/yam" />
 			<Add directory="src/external/libzip" />
+			<Add directory="src/external/micropather" />
 		</Compiler>
 		<Unit filename="src/base.h" />
 		<Unit filename="src/button.cpp" />
@@ -367,6 +368,8 @@
 		</Unit>
 		<Unit filename="src/external/libzip/zipconf.h" />
 		<Unit filename="src/external/libzip/zipint.h" />
+		<Unit filename="src/external/micropather/micropather.cpp" />
+		<Unit filename="src/external/micropather/micropather.h" />
 		<Unit filename="src/external/physfs/archivers/dir.c">
 			<Option compilerVar="CC" />
 		</Unit>

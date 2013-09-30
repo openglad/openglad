@@ -102,6 +102,8 @@ walker::walker(const PixieData& data, screen  *myscreen)
 	myobmap = NULL;
 	if(myscreen != NULL)
         myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
+    
+	path_check_counter = 5 + rand()%10;
 }
 
 short
@@ -161,7 +163,7 @@ walker::reset(void)
 	//  xpos = ypos = -1; //this to correct a problem with these not being alloced?
 
 	//  weapons_left = 1; // default, used for fighters
-	
+	path_check_counter = 5 + rand()%10;
     regen_delay = 0;
     
 	if (stats)
