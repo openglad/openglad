@@ -995,7 +995,7 @@ std::string get_class_description(unsigned char family)
                  "stand much damage, and are\n"
                  "horrible at hand-to-hand  \n"
                  "combat, but their magical \n"
-                 "energy balls pack a big   \n"
+                 "fireballs pack a big      \n"
                  "punch.                    \n"
                  "\n"
                  "Special: Teleport";
@@ -1014,7 +1014,7 @@ std::string get_class_description(unsigned char family)
         result = "Clerics, like mages, are  \n"
                  "slow, but have a stronger \n"
                  "hand-to-hand attack.      \n"
-                 "Clerics posses abilities  \n"
+                 "Clerics possess abilities \n"
                  "related to healing and    \n"
                  "interaction with the dead.\n"
                  "\n"
