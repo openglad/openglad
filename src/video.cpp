@@ -365,6 +365,9 @@ void video::point(Sint32 x, Sint32 y, unsigned char color)
 
 void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
 {
+    if(x < 0 || y < 0 || x >= surface->w || y >= surface->h)
+        return;
+    
     int bpp = surface->format->BytesPerPixel;
     /* Here p is the address to the pixel we want to set */
     Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
@@ -617,10 +620,10 @@ void video::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char 
     if(Surface == NULL)
         return;
     
-    // Simple, greedy clipping
-    if(x1 < 0 || x2 < 0 || y1 < 0 || y2 < 0)
+    // Did the line miss the screen completely?
+    if((x1 < 0 && x2 < 0) || (y1 < 0 && y2 < 0))
         return;
-    if(x1 >= Surface->w || x2 >= Surface->w || y1 >= Surface->h || y2 >= Surface->h)
+    if((x1 >= Surface->w && x2 >= Surface->w) || (y1 >= Surface->h && y2 >= Surface->h))
         return;
     
     Uint32 Color = get_Uint32_color(color);
