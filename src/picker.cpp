@@ -1366,7 +1366,10 @@ Sint32 create_hire_menu(Sint32 arg1)
 		linesdown++;
         mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
         // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
-        mytext->write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", 10.0f/(myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, last_family)] + current_guy->get_fire_frequency_bonus()));
+        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, last_family)] - current_guy->get_fire_frequency_bonus();
+        if(fire_freq < 1)
+            fire_freq = 1;
+        mytext->write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", 10.0f/fire_freq);
         
         
 		
@@ -1649,8 +1652,11 @@ Sint32 create_train_menu(Sint32 arg1)
         
 		linesdown++;
         mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK SPD:", STAT_DERIVED, 1);
+        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, current_guy->family)] - current_guy->get_fire_frequency_bonus();
+        if(fire_freq < 1)
+            fire_freq = 1;
         // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
-        mytext->write_xy(info_box_content.x + derived_offset + 21, info_box_content.y + linesdown*line_height, showcolor, "%.1f", 10.0f/(myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_fire_frequency_bonus()));
+        mytext->write_xy(info_box_content.x + derived_offset + 21, info_box_content.y + linesdown*line_height, showcolor, "%.1f", 10.0f/fire_freq);
         
         
         linesdown++;
