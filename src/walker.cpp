@@ -1250,9 +1250,9 @@ using namespace micropather;
 #define MAP_WIDTH 400
 #define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
 
-#define MAKE_STATE(x, y) (void*)int(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE))
-#define GET_STATE_X(state) (int(state)%MAP_WIDTH * GRID_SIZE)
-#define GET_STATE_Y(state) (int(state)/MAP_WIDTH * GRID_SIZE)
+#define MAKE_STATE(x, y) (void*)intptr_t(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE))
+#define GET_STATE_X(state) (intptr_t(state)%MAP_WIDTH * GRID_SIZE)
+#define GET_STATE_Y(state) (intptr_t(state)/MAP_WIDTH * GRID_SIZE)
 #define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
 
 walker* path_walker = NULL;
@@ -1378,7 +1378,7 @@ void walker::draw_path(viewscreen* view_buf)
     if(path_to_foe.size() == 0)
         return;
     
-    unsigned char mycolor = query_team_color() + int(this)%5;  // Our pointer is a unique integer... but probably aligned to 4 bytes.
+    unsigned char mycolor = query_team_color() + intptr_t(this)%5;  // Our pointer is a unique integer... but probably aligned to 4 bytes.
     
     short offsetx = view_buf->topx - view_buf->xloc - 8;
     short offsety = view_buf->topy - view_buf->yloc - 8;
