@@ -59,13 +59,7 @@ obmap::obmap()
 }
 
 obmap::~obmap()
-{
-    // Delete the walkers we're holding
-    for(auto e = walker_to_pos.begin(); e != walker_to_pos.end(); e++)
-    {
-        delete e->first;
-    }
-}
+{}
 
 void obmap::draw()
 {

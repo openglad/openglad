@@ -784,6 +784,30 @@ void LevelData::delete_objects()
     weaplist = NULL;
 
 	numobs = 0;
+	
+    // Clear the obmap references
+    // Since the walker destructor removes itself from the obmap, this should be empty already.
+    if(myobmap->walker_to_pos.size() > 0)
+    {
+        Log("obmap::walker_to_pos has %d elements left.\n", myobmap->walker_to_pos.size());
+        
+        // FIXME: Freeing them here does naughty things!
+        /*
+        std::vector<walker*> walkers;
+        for(auto e = myobmap->walker_to_pos.begin(); e != myobmap->walker_to_pos.end(); e++)
+        {
+            Log("Order: %d, Family: %d\n", e->first->query_order(), e->first->query_family());
+            walkers.push_back(e->first);
+        }
+        
+        for(auto e = walkers.begin(); e != walkers.end(); e++)
+        {
+            delete *e;
+        }*/
+    }
+    // pos_to_walker will have a bunch of 0-size lists in it
+	myobmap->pos_to_walker.clear();
+	myobmap->walker_to_pos.clear();
 }
 
 short load_version_2(SDL_RWops  *infile, LevelData* data)

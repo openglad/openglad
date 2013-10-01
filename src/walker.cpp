@@ -185,9 +185,10 @@ walker::~walker()
 	owner = NULL;
 	collide_ob = NULL;
 	dead = 1;
+	
 	if(myobmap != NULL)
         myobmap->remove(this); // remove ourselves from obmap lists
-	//myobmap->remove_all(this); // remove ALL cases, anywhere
+    
 	delete stats;
 	stats = NULL;
 	bmp = NULL;
