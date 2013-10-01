@@ -1135,136 +1135,6 @@ bool statistics::direct_walk()
 
 }
 
-#include "micropather.h"
-using namespace micropather;
-
-#define MAP_WIDTH 400
-#define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
-
-#define MAKE_STATE(x, y) (void*)int(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE))
-#define GET_STATE_X(state) (int(state)%MAP_WIDTH * GRID_SIZE)
-#define GET_STATE_Y(state) (int(state)/MAP_WIDTH * GRID_SIZE)
-#define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
-
-walker* path_walker = NULL;
-
-class Map : public Graph
-{
-public:
-    virtual float LeastCostEstimate( void* stateStart, void* stateEnd );
-    virtual void AdjacentCost( void* state, std::vector< StateCost > *adjacent );
-    virtual void  PrintStateInfo( void* state );
-};
-
-float Map::LeastCostEstimate( void* stateStart, void* stateEnd )
-{
-    int x1 = GET_STATE_X(stateStart);
-    int y1 = GET_STATE_Y(stateStart);
-    int x2 = GET_STATE_X(stateEnd);
-    int y2 = GET_STATE_Y(stateEnd);
-    
-    return sqrtf((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
-}
-
-void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
-{
-    int x1 = GET_STATE_X(state);
-    int y1 = GET_STATE_Y(state);
-    
-    for(int i = -1; i <= 1; i++)
-    {
-        for(int j = -1; j <= 1; j++)
-        {
-            if(i == 0 && j == 0)
-                continue;
-            
-            int adj_x = x1+i*GRID_SIZE;
-            int adj_y = y1+j*GRID_SIZE;
-            
-            StateCost cost;
-            cost.state = MAKE_STATE(adj_x, adj_y);
-            cost.cost = 0;
-            
-            // TODO: Make doors impassable without a key.
-            // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
-            
-            // Any terrain in the way?  This checks boundaries too.
-            if(!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
-                continue;
-            // Any moving objects in the way?
-            else if(myscreen->level_data.myobmap->obmap_get_list(adj_x,adj_y).size() > 0)
-                cost.cost = 10;
-            else
-                // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
-                cost.cost = sqrtf(i*i + j*j);
-            
-            // Smoothing heuristic using cross-product.  This penalizes going away from a straight line to the goal.
-            int dx1 = adj_x - ALIGN_TO_GRID(path_walker->foe->xpos);
-            int dy1 = adj_y - ALIGN_TO_GRID(path_walker->foe->ypos);
-            int dx2 = path_walker->xpos - ALIGN_TO_GRID(path_walker->foe->xpos);
-            int dy2 = path_walker->ypos - ALIGN_TO_GRID(path_walker->foe->ypos);
-            float cross = dx1*dy2 - dx2*dy1;
-            cost.cost += fabs(cross)*0.01f;
-            
-            adjacent->push_back(cost);
-        }
-    }
-}
-
-void Map::PrintStateInfo( void* state )
-{
-    int x1 = GET_STATE_X(state);
-    int y1 = GET_STATE_Y(state);
-    
-    Log("(%d,%d)", x1, y1);
-}
-
-
-
-Map path_map;
-MicroPather pather(&path_map);
-
-void find_path_to_foe(walker* controller)
-{
-    float totalCost = 0.0f;
-    walker* foe = controller->foe;
-
-    void* startState = MAKE_STATE(controller->xpos, controller->ypos);
-    void* endState = MAKE_STATE(foe->xpos, foe->ypos);
-    
-    controller->path_to_foe.clear();
-    pather.Reset();  // Assume that the old paths are invalid
-    path_walker = controller;  // Set the walker that the path is being generated for
-    pather.Solve( startState, endState, &controller->path_to_foe, &totalCost );  // There's a result returned from this, but we don't need it.
-}
-
-void follow_path_to_foe(walker* controller)
-{
-    while(controller->path_to_foe.size() > 0)
-    {
-        std::vector<void*>::iterator node = controller->path_to_foe.begin();
-        void* state = *node;
-        int dx = GET_STATE_X(state) - ALIGN_TO_GRID(controller->xpos);
-        int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(controller->ypos);
-        
-        if(dx != 0 || dy != 0)
-        {
-            // Normalize the deltas so walkstep can use them as stepsize factors.
-            if(dx != 0)
-                dx /= abs(dx);
-            if(dy != 0)
-                dy /= abs(dy);
-            
-            // Move toward there and we're done.
-            controller->walkstep(dx, dy);
-            break;
-        }
-        
-        // We already made it to this node, so remove it
-        controller->path_to_foe.erase(node);
-    }
-}
-
 #define PATHING_MIN_DISTANCE 100
 
 bool statistics::walk_to_foe()
@@ -1324,13 +1194,13 @@ bool statistics::walk_to_foe()
 		}
 		else
         {
-            find_path_to_foe(controller);
+            controller->find_path_to_foe();
         }
 	} //end if do_check
 
     if(controller->path_to_foe.size() > 0)
     {
-        follow_path_to_foe(controller);
+        controller->follow_path_to_foe();
         last_distance = (Uint32) controller->distance_to_ob(foe);
     }
     else if(tempdistance < last_distance)// are we closer than we've ever been?

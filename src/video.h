@@ -45,6 +45,7 @@ class video
 		void hor_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
 		void hor_line_alpha(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Uint8 alpha);
 		void ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sint32 tobuffer);
+		void draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color);
 		void do_cycle(Sint32 curmode, Sint32 maxmode);
 		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
 		             unsigned char  *sourcedata);
