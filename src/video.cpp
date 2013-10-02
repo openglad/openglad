@@ -31,9 +31,6 @@ unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
 
 Screen *E_Screen;
 
-extern float mouse_scale_x;
-extern float mouse_scale_y;
-
 video::video()
 {
 	Sint32 i;

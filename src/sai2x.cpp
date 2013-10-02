@@ -1,10 +1,8 @@
 #include "SDL.h"
 #include "sai2x.h"
 #include "util.h"
+#include "input.h"
 //#include "os_depend.h"
-
-extern float mouse_scale_x;
-extern float mouse_scale_y;
 
 // Private var for SAI2x
 static Uint32 colorMask = 0xF7DEF7DE;
@@ -709,8 +707,17 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
         exit(1);
     
     SDL_GetWindowSize(window, &w, &h);
-    mouse_scale_x = float(w)/320;
-    mouse_scale_y = float(h)/200;
+    window_w = w;
+    window_h = h;
+    #ifdef OUYA
+    viewport_offset_x = window_w * 0.05f;
+    viewport_offset_y = window_h * 0.05f;
+    viewport_w = window_w * 0.90f;
+    viewport_h = window_h * 0.90f;
+    #else
+    viewport_w = window_w;
+    viewport_h = window_h;
+    #endif
     
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
     
@@ -796,9 +803,8 @@ void Screen::swap(int x, int y, int w, int h)
 	
     SDL_UpdateTexture(dest_texture, NULL, source_surface->pixels, source_surface->pitch);
     
-    SDL_Rect dest = {0, 0, 0, 0};
-    SDL_GetWindowSize(window, &dest.w, &dest.h); // Fill up the whole window
-    
+    SDL_Rect dest = {int(viewport_offset_x), int(viewport_offset_y), int(viewport_w), int(viewport_h)};
+
     SDL_RenderCopy(renderer, dest_texture, NULL, &dest);
     SDL_RenderPresent(renderer);
 }

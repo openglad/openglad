@@ -1960,9 +1960,6 @@ int mouse_motion_y = 0;
 int mouse_last_x = 0;
 int mouse_last_y = 0;
 
-extern float mouse_scale_x;
-extern float mouse_scale_y;
-
 void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
 {
     if(mymouse[MOUSE_LEFT])
@@ -3186,8 +3183,8 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
         return SCROLL_EVENT;
     case SDL_FINGERMOTION:
         handle_mouse_event(event);
-        mouse_motion_x = event.tfinger.dx*(320);
-        mouse_motion_y = event.tfinger.dy*(200);
+        mouse_motion_x = event.tfinger.dx*320;
+        mouse_motion_y = event.tfinger.dy*200;
         return MOUSE_MOTION_EVENT;
     case SDL_FINGERUP:
         {
@@ -3213,8 +3210,8 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
         return HANDLED_EVENT;
     case SDL_MOUSEMOTION:
         handle_mouse_event(event);
-        mouse_motion_x = event.motion.xrel / mouse_scale_x;
-        mouse_motion_y = event.motion.yrel / mouse_scale_y;
+        mouse_motion_x = event.motion.xrel * (320 / viewport_w);
+        mouse_motion_y = event.motion.yrel * (200 / viewport_h);
         return MOUSE_MOTION_EVENT;
     case SDL_MOUSEBUTTONUP:
         {

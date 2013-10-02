@@ -61,8 +61,12 @@ const Uint8* keystates = NULL;
 Sint32 mouse_state[MSTATE];
 Sint32 mouse_buttons;
 
-float mouse_scale_x = 1;
-float mouse_scale_y = 1;
+float viewport_offset_x = 0;  // In window coords
+float viewport_offset_y = 0;
+float window_w = 320;
+float window_h = 200;
+float viewport_w = 320;
+float viewport_h = 200;
 
 JoyData player_joy[4];
 
@@ -366,43 +370,38 @@ void handle_mouse_event(const SDL_Event& event)
 #ifndef USE_TOUCH_INPUT
         // Mouse event
     case SDL_MOUSEMOTION:
-        //Log("%i %i  -  %i %i\n", event.motion.x, event.motion.y, event.motion.xrel, event.motion.yrel);
-        //if (!(event.motion.x < 10 && mouse_state[MOUSE_X] * mult > 620)
-        //	&& !(event.motion.y == 0 && mouse_state[MOUSE_Y] > 20))
-        mouse_state[MOUSE_X] = event.motion.x / mouse_scale_x;
-        //if (!(event.motion.y < 10 && mouse_state[MOUSE_Y] * mult > 460))
-        mouse_state[MOUSE_Y] = event.motion.y / mouse_scale_y;
+        mouse_state[MOUSE_X] = (event.motion.x - viewport_offset_x) * (320 / viewport_w);
+        mouse_state[MOUSE_Y] = (event.motion.y - viewport_offset_y) * (200 / viewport_h);
         break;
     case SDL_MOUSEBUTTONUP:
         if (event.button.button == SDL_BUTTON_LEFT)
             mouse_state[MOUSE_LEFT] = 0;
         if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state[MOUSE_RIGHT] = 0;
-        //mouse_state[MOUSE_LEFT] = SDL_BUTTON(SDL_BUTTON_LEFT);
-        //Log ("LMB: %d",  SDL_BUTTON(SDL_BUTTON_LEFT));
-        //mouse_state[MOUSE_RIGHT] = SDL_BUTTON(SDL_BUTTON_RIGHT);
-        //Log ("RMB: %d",  SDL_BUTTON(SDL_BUTTON_RIGHT));
-        mouse_state[MOUSE_X] = event.button.x / mouse_scale_x;
-        mouse_state[MOUSE_Y] = event.button.y / mouse_scale_y;
+        
+        mouse_state[MOUSE_X] = (event.button.x - viewport_offset_x) * (320 / viewport_w);
+        mouse_state[MOUSE_Y] = (event.button.y - viewport_offset_y) * (200 / viewport_h);
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event.button.button == SDL_BUTTON_LEFT)
             mouse_state[MOUSE_LEFT] = 1;
         else if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state[MOUSE_RIGHT] = 1;
-        mouse_state[MOUSE_X] = event.button.x / mouse_scale_x;
-        mouse_state[MOUSE_Y] = event.button.y / mouse_scale_y;
+        
+        mouse_state[MOUSE_X] = (event.button.x - viewport_offset_x) * (320 / viewport_w);
+        mouse_state[MOUSE_Y] = (event.button.y - viewport_offset_y) * (200 / viewport_h);
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
+    // Convert SDL mouse events to fake SDL touch events
     case SDL_MOUSEMOTION:
         {
             SDL_Event e;
             e.type = SDL_FINGERMOTION;
-            e.tfinger.x = event.motion.x/(320*mouse_scale_x);
-            e.tfinger.y = event.motion.y/(200*mouse_scale_y);
-            e.tfinger.dx = event.motion.xrel/(320*mouse_scale_x);
-            e.tfinger.dy = event.motion.yrel/(200*mouse_scale_y);
+            e.tfinger.x = event.motion.x/window_w;
+            e.tfinger.y = event.motion.y/window_h;
+            e.tfinger.dx = event.motion.xrel/window_w;
+            e.tfinger.dy = event.motion.yrel/window_h;
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -412,8 +411,8 @@ void handle_mouse_event(const SDL_Event& event)
         {
             SDL_Event e;
             e.type = SDL_FINGERUP;
-            e.tfinger.x = event.button.x/(320*mouse_scale_x);
-            e.tfinger.y = event.button.y/(200*mouse_scale_y);
+            e.tfinger.x = event.button.x/window_w;
+            e.tfinger.y = event.button.y/window_h;
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -423,8 +422,8 @@ void handle_mouse_event(const SDL_Event& event)
         {
             SDL_Event e;
             e.type = SDL_FINGERDOWN;
-            e.tfinger.x = event.button.x/(320*mouse_scale_x);
-            e.tfinger.y = event.button.y/(200*mouse_scale_y);
+            e.tfinger.x = event.button.x/window_w;
+            e.tfinger.y = event.button.y/window_h;
             e.tfinger.touchId = 1;
             e.tfinger.fingerId = 1;
             SDL_PushEvent(&e);
@@ -434,8 +433,8 @@ void handle_mouse_event(const SDL_Event& event)
         // Mouse event
     case SDL_FINGERMOTION:
         {
-        int x = event.tfinger.x * 320;
-        int y = event.tfinger.y * 200;
+        int x = (event.tfinger.x * window_w - viewport_offset_x) * (320 / viewport_w);
+        int y = (event.tfinger.y * window_h - viewport_offset_y) * (200 / viewport_h);
         
         scroll_amount = y - mouse_state[MOUSE_Y];
         
@@ -483,8 +482,8 @@ void handle_mouse_event(const SDL_Event& event)
         break;
     case SDL_FINGERUP:
         {
-            int x = event.tfinger.x * 320;
-            int y = event.tfinger.y * 200;
+            int x = (event.tfinger.x * window_w - viewport_offset_x) * (320 / viewport_w);
+            int y = (event.tfinger.y * window_h - viewport_offset_y) * (200 / viewport_h);
             if(tapping)
             {
                 tapping = false;
@@ -522,8 +521,8 @@ void handle_mouse_event(const SDL_Event& event)
         {
             tapping = true;
             
-            int x = event.tfinger.x * 320;
-            int y = event.tfinger.y * 200;
+            int x = (event.tfinger.x * window_w - viewport_offset_x) * (320 / viewport_w);
+            int y = (event.tfinger.y * window_h - viewport_offset_y) * (200 / viewport_h);
             
             start_tap_x = x;
             start_tap_y = y;
