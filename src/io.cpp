@@ -379,7 +379,9 @@ void create_dataopenglad()
 
 void restore_default_campaigns()
 {
+    #ifndef FORCE_RESTORE_DEFAULT_CAMPAIGNS
     if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
+    #endif
         copy_file("builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
 }
 
