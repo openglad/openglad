@@ -265,18 +265,18 @@ bool showPurchasingSplash()
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 
         // Mouse stuff ..
-		mymouse = query_mouse();
-        int mx = mymouse[MOUSE_X];
-        int my = mymouse[MOUSE_Y];
+		MouseState& mymouse = query_mouse();
+        int mx = mymouse.x;
+        int my = mymouse.y;
         
-        bool do_click = mymouse[MOUSE_LEFT];
+        bool do_click = mymouse.left;
         bool do_yes = (do_click && yes_button.x <= mx && mx <= yes_button.x + yes_button.w
                && yes_button.y <= my && my <= yes_button.y + yes_button.h) || (retvalue == OG_OK && highlighted_button == yes_index);
         bool do_no = (do_click && no_button.x <= mx && mx <= no_button.x + no_button.w
                && no_button.y <= my && my <= no_button.y + no_button.h) || (retvalue == OG_OK && highlighted_button == no_index);
-		if (mymouse[MOUSE_LEFT])
+		if (mymouse.left)
 		{
-		    while(mymouse[MOUSE_LEFT])
+		    while(mymouse.left)
                 get_input_events(WAIT);
 		}
 

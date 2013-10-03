@@ -26,7 +26,6 @@
 #include <vector>
 #include <string>
 
-extern Sint32 *mymouse;
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
@@ -385,11 +384,11 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
             done = true;
 
         // Mouse stuff ..
-		mymouse = query_mouse();
-        int mx = mymouse[MOUSE_X];
-        int my = mymouse[MOUSE_Y];
+		MouseState& mymouse = query_mouse();
+        int mx = mymouse.x;
+        int my = mymouse.y;
         
-        bool do_click = mymouse[MOUSE_LEFT];
+        bool do_click = mymouse.left;
 		bool do_prev = !buttons[prev_index].hidden && ((do_click && prev.x <= mx && mx <= prev.x + prev.w
                && prev.y <= my && my <= prev.y + prev.h) || (retvalue == OG_OK && highlighted_button == prev_index));
         bool do_next = !buttons[next_index].hidden && ((do_click && next.x <= mx && mx <= next.x + next.w
@@ -405,9 +404,9 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
                && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OG_OK && highlighted_button == id_index);
         
-		if (mymouse[MOUSE_LEFT])
+		if (mymouse.left)
 		{
-		    while(mymouse[MOUSE_LEFT])
+		    while(mymouse.left)
                 get_input_events(WAIT);
 		}
 

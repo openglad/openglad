@@ -250,8 +250,16 @@ void init_input();
 
 void grab_mouse();
 void release_mouse();
-Sint32 * query_mouse();
-Sint32 * query_mouse_no_poll();
+
+struct MouseState
+{
+    float x, y;
+    bool left;
+    bool right;
+};
+
+MouseState& query_mouse();
+MouseState& query_mouse_no_poll();
 
 unsigned char convert_to_ascii(int scancode);
 

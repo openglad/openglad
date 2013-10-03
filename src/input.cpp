@@ -58,7 +58,8 @@ SDL_FingerID firingTouch = 0;
 
 const Uint8* keystates = NULL;
 
-Sint32 mouse_state[MSTATE];
+MouseState mouse_state;
+
 Sint32 mouse_buttons;
 
 float viewport_offset_x = 0;  // In window coords
@@ -466,26 +467,26 @@ void handle_mouse_event(const SDL_Event& event)
 #ifndef USE_TOUCH_INPUT
         // Mouse event
     case SDL_MOUSEMOTION:
-        mouse_state[MOUSE_X] = (event.motion.x - viewport_offset_x) * (320 / viewport_w);
-        mouse_state[MOUSE_Y] = (event.motion.y - viewport_offset_y) * (200 / viewport_h);
+        mouse_state.x = (event.motion.x - viewport_offset_x) * (320 / viewport_w);
+        mouse_state.y = (event.motion.y - viewport_offset_y) * (200 / viewport_h);
         break;
     case SDL_MOUSEBUTTONUP:
         if (event.button.button == SDL_BUTTON_LEFT)
-            mouse_state[MOUSE_LEFT] = 0;
+            mouse_state.left = 0;
         if (event.button.button == SDL_BUTTON_RIGHT)
-            mouse_state[MOUSE_RIGHT] = 0;
+            mouse_state.right = 0;
         
-        mouse_state[MOUSE_X] = (event.button.x - viewport_offset_x) * (320 / viewport_w);
-        mouse_state[MOUSE_Y] = (event.button.y - viewport_offset_y) * (200 / viewport_h);
+        mouse_state.x = (event.button.x - viewport_offset_x) * (320 / viewport_w);
+        mouse_state.y = (event.button.y - viewport_offset_y) * (200 / viewport_h);
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event.button.button == SDL_BUTTON_LEFT)
-            mouse_state[MOUSE_LEFT] = 1;
+            mouse_state.left = 1;
         else if (event.button.button == SDL_BUTTON_RIGHT)
-            mouse_state[MOUSE_RIGHT] = 1;
+            mouse_state.right = 1;
         
-        mouse_state[MOUSE_X] = (event.button.x - viewport_offset_x) * (320 / viewport_w);
-        mouse_state[MOUSE_Y] = (event.button.y - viewport_offset_y) * (200 / viewport_h);
+        mouse_state.x = (event.button.x - viewport_offset_x) * (320 / viewport_w);
+        mouse_state.y = (event.button.y - viewport_offset_y) * (200 / viewport_h);
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -532,10 +533,10 @@ void handle_mouse_event(const SDL_Event& event)
         int x = (event.tfinger.x * window_w - viewport_offset_x) * (320 / viewport_w);
         int y = (event.tfinger.y * window_h - viewport_offset_y) * (200 / viewport_h);
         
-        scroll_amount = y - mouse_state[MOUSE_Y];
+        scroll_amount = y - mouse_state.y;
         
-        mouse_state[MOUSE_X] = x;
-        mouse_state[MOUSE_Y] = y;
+        mouse_state.x = x;
+        mouse_state.y = y;
         
         if(moving && event.tfinger.fingerId == movingTouch)
         {
@@ -610,7 +611,7 @@ void handle_mouse_event(const SDL_Event& event)
                 touch_keystate[0][KEY_FIRE] = false;
             }
             
-            mouse_state[MOUSE_LEFT] = 0;
+            mouse_state.left = 0;
         }
         break;
     case SDL_FINGERDOWN:
@@ -676,9 +677,9 @@ void handle_mouse_event(const SDL_Event& event)
             
             
             key_press_event = 1;
-            mouse_state[MOUSE_LEFT] = 1;
-            mouse_state[MOUSE_X] = event.tfinger.x * 320;
-            mouse_state[MOUSE_Y] = event.tfinger.y * 200;
+            mouse_state.left = 1;
+            mouse_state.x = event.tfinger.x * 320;
+            mouse_state.y = event.tfinger.y * 200;
         }
         break;
 #endif
@@ -1529,7 +1530,7 @@ void release_mouse()
     #endif
 }
 
-Sint32 * query_mouse()
+MouseState& query_mouse()
 {
     // The mouse_state thing is set using get_input_events, though
     // it should probably get its own function
@@ -1537,7 +1538,7 @@ Sint32 * query_mouse()
     return mouse_state;
 }
 
-Sint32 * query_mouse_no_poll()
+MouseState& query_mouse_no_poll()
 {
     return mouse_state;
 }

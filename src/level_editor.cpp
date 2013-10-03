@@ -96,8 +96,6 @@ extern screen *myscreen;  // global for scen?
 // Zardus: our prefs object from view.cpp
 extern options * theprefs;
 
-extern Sint32 *mymouse;
-
 unsigned char scenpalette[768];
 Sint32 redraw = 1;  // need to redraw?
 Sint32 campaignchanged = 0;  // has campaign changed?
@@ -1372,7 +1370,8 @@ bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*,
     if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(current_menu, &button)))
         return false;
     
-    while (mymouse[MOUSE_LEFT])
+    MouseState& mymouse = query_mouse_no_poll();
+    while (mymouse.left)
         get_input_events(WAIT);
     
     if(current_menu.size() > 0)
@@ -1405,7 +1404,8 @@ bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& b
     if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(data.current_menu, &button)))
         return false;
     
-    while (mymouse[MOUSE_LEFT])
+    MouseState& mymouse = query_mouse_no_poll();
+    while (mymouse.left)
         get_input_events(WAIT);
     
     // Close menu
@@ -1421,7 +1421,8 @@ bool activate_menu_toggle_choice(int mx, int my, LevelEditorData& data, SimpleBu
     if(!button.contains(mx, my) || (!is_in_top_menu && !button_showing(data.current_menu, &button)))
         return false;
     
-    while (mymouse[MOUSE_LEFT])
+    MouseState& mymouse = query_mouse_no_poll();
+    while (mymouse.left)
         get_input_events(WAIT);
     
     // Close menu
@@ -1833,8 +1834,9 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         
         // Draw cursor
         int mx, my;
-        mx = mymouse[MOUSE_X];
-        my = mymouse[MOUSE_Y];
+        MouseState& mymouse = query_mouse_no_poll();
+        mx = mymouse.x;
+        my = mymouse.y;
         bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
                         && my > myscreen->viewob[0]->endy - myradar.yview - 4
                         && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
@@ -1891,8 +1893,9 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         
         // Draw cursor
         int mx, my;
-        mx = mymouse[MOUSE_X];
-        my = mymouse[MOUSE_Y];
+        MouseState& mymouse = query_mouse_no_poll();
+        mx = mymouse.x;
+        my = mymouse.y;
         bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
                         && my > myscreen->viewob[0]->endy - myradar.yview - 4
                         && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
@@ -1983,7 +1986,8 @@ int mouse_last_y = 0;
 
 void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
 {
-    if(mymouse[MOUSE_LEFT])
+    MouseState& mymouse = query_mouse_no_poll();
+    if(mymouse.left)
     {
         if(mode == SELECT && !mouse_on_menus(mouse_last_x, mouse_last_y))
         {
@@ -3048,7 +3052,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             newob->draw(myscreen->viewob[0]);
                             myscreen->buffer_to_screen(0, 0, 320, 200);
                             start_time_s = query_timer();
-                            while ( mymouse[MOUSE_LEFT] && (query_timer()-start_time_s) < 36 )
+                            MouseState& mymouse = query_mouse_no_poll();
+                            while ( mymouse.left && (query_timer()-start_time_s) < 36 )
                             {
                                 mymouse = query_mouse();
                             }
@@ -3214,12 +3219,13 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
         return MOUSE_MOTION_EVENT;
     case SDL_FINGERUP:
         {
-            int left_state = mymouse[MOUSE_LEFT];
-            int right_state = mymouse[MOUSE_RIGHT];
+            MouseState& mymouse = query_mouse_no_poll();
+            int left_state = mymouse.left;
+            int right_state = mymouse.right;
             handle_mouse_event(event);
-            if(left_state != mymouse[MOUSE_LEFT])
+            if(left_state != mymouse.left)
                 mouse_up_button = MOUSE_LEFT;
-            else if(right_state != mymouse[MOUSE_RIGHT])
+            else if(right_state != mymouse.right)
                 mouse_up_button = MOUSE_RIGHT;
             else
                 mouse_up_button = 0;
@@ -3241,12 +3247,13 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
         return MOUSE_MOTION_EVENT;
     case SDL_MOUSEBUTTONUP:
         {
-            int left_state = mymouse[MOUSE_LEFT];
-            int right_state = mymouse[MOUSE_RIGHT];
+            MouseState& mymouse = query_mouse_no_poll();
+            int left_state = mymouse.left;
+            int right_state = mymouse.right;
             handle_mouse_event(event);
-            if(left_state != mymouse[MOUSE_LEFT])
+            if(left_state != mymouse.left)
                 mouse_up_button = MOUSE_LEFT;
-            else if(right_state != mymouse[MOUSE_RIGHT])
+            else if(right_state != mymouse.right)
                 mouse_up_button = MOUSE_RIGHT;
             else
                 mouse_up_button = 0;
@@ -3361,13 +3368,15 @@ Sint32 level_editor()
 	
 	data.reset_mode_buttons();
 	
+    MouseState& mymouse = query_mouse_no_poll();
+    
     #ifdef USE_CONTROLLER_INPUT
-    mymouse[MOUSE_X] = 160;
-    mymouse[MOUSE_Y] = 100;
+    mymouse.x = 160;
+    mymouse.y = 100;
     #endif
-	
-    mouse_last_x = mymouse[MOUSE_X];
-    mouse_last_y = mymouse[MOUSE_Y];
+    
+    mouse_last_x = mymouse.x;
+    mouse_last_y = mymouse.y;
     
     float cycletimer = 0.0f;
 	grab_mouse();
@@ -3400,8 +3409,8 @@ Sint32 level_editor()
                 
                 event.type = SDL_MOUSEBUTTONDOWN;
                 event.button.button = SDL_BUTTON_LEFT;
-                event.button.x = mymouse[MOUSE_X]*mouse_scale_x;
-                event.button.y = mymouse[MOUSE_Y]*mouse_scale_y;
+                event.button.x = mymouse.x * (viewport_w / 320) + viewport_offset_x;
+                event.button.y = mymouse.y * (viewport_h / 200) + viewport_offset_y;
                 SDL_PushEvent(&event);
                 continue;
             }
@@ -3412,8 +3421,8 @@ Sint32 level_editor()
                 
                 event.type = SDL_MOUSEBUTTONUP;
                 event.button.button = SDL_BUTTON_LEFT;
-                event.button.x = mymouse[MOUSE_X]*mouse_scale_x;
-                event.button.y = mymouse[MOUSE_Y]*mouse_scale_y;
+                event.button.x = mymouse.x * (viewport_w / 320) + viewport_offset_x;
+                event.button.y = mymouse.y * (viewport_h / 200) + viewport_offset_y;
                 SDL_PushEvent(&event);
                 continue;
             }
@@ -3421,28 +3430,28 @@ Sint32 level_editor()
             switch(handle_basic_editor_event(event))
             {
             case MOUSE_MOTION_EVENT:
-                data.mouse_motion(mymouse[MOUSE_X], mymouse[MOUSE_Y], mouse_motion_x, mouse_motion_y);
+                data.mouse_motion(mymouse.x, mymouse.y, mouse_motion_x, mouse_motion_y);
                 break;
             case MOUSE_DOWN_EVENT:
-                if(mymouse[MOUSE_LEFT])
+                if(mymouse.left)
                 {
-                    mouse_last_x = mymouse[MOUSE_X];
-                    mouse_last_y = mymouse[MOUSE_Y];
+                    mouse_last_x = mymouse.x;
+                    mouse_last_y = mymouse.y;
                     
-                    data.mouse_down(mymouse[MOUSE_X], mymouse[MOUSE_Y]);
+                    data.mouse_down(mymouse.x, mymouse.y);
                 }
                 break;
             case MOUSE_UP_EVENT:
                 
                 if(mouse_up_button == MOUSE_LEFT)
                 {
-                    data.mouse_up(mymouse[MOUSE_X], mymouse[MOUSE_Y], mouse_last_x, mouse_last_y, done);
+                    data.mouse_up(mymouse.x, mymouse.y, mouse_last_x, mouse_last_y, done);
                     redraw = 1;
                 }
                 else if(mouse_up_button == MOUSE_RIGHT)
                 {
                     // Picking with right mouse button
-                    data.pick_by_mouse(mymouse[MOUSE_X], mymouse[MOUSE_Y]);
+                    data.pick_by_mouse(mymouse.x, mymouse.y);
                     redraw = 1;
                 }
                 break;
@@ -3603,14 +3612,14 @@ Sint32 level_editor()
                 dy = 5*c.getAxisValue(OuyaController::AXIS_LS_Y);
             }
             
-            if(mymouse[MOUSE_X] + dx < 0)
-                mymouse[MOUSE_X] = 0;
-            if(mymouse[MOUSE_X] + dx > 320)
-                mymouse[MOUSE_X] = 320;
-            if(mymouse[MOUSE_Y] + dy < 0)
-                mymouse[MOUSE_Y] = 0;
-            if(mymouse[MOUSE_Y] + dy > 200)
-                mymouse[MOUSE_Y] = 200;
+            if(mymouse.x + dx < 0)
+                mymouse.x = 0;
+            if(mymouse.x + dx > 320)
+                mymouse.x = 320;
+            if(mymouse.y + dy < 0)
+                mymouse.y = 0;
+            if(mymouse.y + dy > 200)
+                mymouse.y = 200;
             
             if(dx != 0 || dy != 0)
             {
@@ -3622,10 +3631,10 @@ Sint32 level_editor()
                 event.motion.windowID = 0;
                 event.motion.which = 0;
                 event.motion.state = SDL_GetMouseState(&x, &y);
-                event.motion.xrel = dx*mouse_scale_x;
-                event.motion.yrel = dy*mouse_scale_y;
-                event.motion.x = mymouse[MOUSE_X]*mouse_scale_x + event.motion.xrel;
-                event.motion.y = mymouse[MOUSE_Y]*mouse_scale_y + event.motion.yrel;
+                event.motion.xrel = dx * (viewport_w / 320);
+                event.motion.yrel = dy * (viewport_h / 200);
+                event.motion.x = mymouse.x * (viewport_w / 320) + viewport_offset_x + event.motion.xrel;
+                event.motion.y = mymouse.y * (viewport_h / 200) + viewport_offset_y + event.motion.yrel;
                 SDL_PushEvent(&event);
             }
         }
@@ -3638,7 +3647,7 @@ Sint32 level_editor()
             float vy = c.getAxisValue(OuyaController::AXIS_RS_Y);
             
             // Scroll the tile selector when over it
-            if(Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse[MOUSE_X], mymouse[MOUSE_Y]))
+            if(Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y))
             {
                 if(fabs(vy) > OuyaController::DEADZONE)
                     scroll_amount = -2*vy;
@@ -3662,7 +3671,7 @@ Sint32 level_editor()
 		short scroll_amount = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
 		// Only scroll the tile selector when touching it and you've already moved a bit
-		if(mymouse[MOUSE_LEFT] && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse[MOUSE_X], mymouse[MOUSE_Y]) && fabs(mouse_last_y - mymouse[MOUSE_Y]) > 4)
+		if(mymouse.left && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y) && fabs(mouse_last_y - mymouse.y) > 4)
         {
 		#endif
 		// Slide tile selector down ..
@@ -3729,11 +3738,11 @@ Sint32 level_editor()
 		// Mouse stuff ..
 		mymouse = query_mouse_no_poll();
 		
-		if (mymouse[MOUSE_LEFT])       // put or remove the current guy
+		if (mymouse.left)       // put or remove the current guy
 		{
 			redraw = 1;
-			mx = mymouse[MOUSE_X];
-			my = mymouse[MOUSE_Y];
+			mx = mymouse.x;
+			my = mymouse.y;
             
             // Holding on menu items
             bool mouse_on_menu = data.mouse_on_menus(mx, my);
@@ -3814,9 +3823,9 @@ Sint32 level_editor()
                 }
                 else  // in the main window
                 {
-                    windowx = mymouse[MOUSE_X] + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+                    windowx = mymouse.x + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
                     windowx -= (windowx%GRID_SIZE);
-                    windowy = mymouse[MOUSE_Y] + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
+                    windowy = mymouse.y + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
                     windowy -= (windowy%GRID_SIZE);
 
                     if (mode == TERRAIN)
@@ -3873,8 +3882,8 @@ Sint32 level_editor()
 			data.draw(myscreen);
 			
             #ifdef USE_CONTROLLER_INPUT
-            myscreen->fastbox(mymouse[MOUSE_X]-1, mymouse[MOUSE_Y]-1, 4, 4, PURE_WHITE);
-            myscreen->fastbox(mymouse[MOUSE_X], mymouse[MOUSE_Y], 2, 2, PURE_BLACK);
+            myscreen->fastbox(mymouse.x-1, mymouse.y-1, 4, 4, PURE_WHITE);
+            myscreen->fastbox(mymouse.x, mymouse.y, 2, 2, PURE_BLACK);
             #endif
             myscreen->refresh();
 		}
