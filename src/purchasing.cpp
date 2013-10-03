@@ -229,6 +229,7 @@ bool showPurchasingSplash()
     }
     
     text* loadtext = new text(myscreen);
+    text* bigtext = new text(myscreen, TEXT_BIG);
     
     SDL_Rect no_button = {210, 170, 60, 10};
     SDL_Rect yes_button = {160, 170, 40, 10};
@@ -244,6 +245,9 @@ bool showPurchasingSplash()
         button("NO THANKS", KEYSTATE_UNKNOWN, no_button.x, no_button.y, no_button.w, no_button.h, 0, -1 , MenuNav::Left(yes_index)),
         button("YES!!", KEYSTATE_UNKNOWN, yes_button.x, yes_button.y, yes_button.w, yes_button.h, 0, -1 , MenuNav::Right(no_index))
 	};
+	
+    char price_string[20];
+    snprintf(price_string, 20, "$%d.%02d", p.priceInCents/100, p.priceInCents%100);
     
     
     bool done = false;
@@ -300,6 +304,8 @@ bool showPurchasingSplash()
         
         SDL_BlitSurface(splash, NULL, E_Screen->render, NULL);
         
+        bigtext->write_xy_center(217, 79, RED, "%s", price_string);
+        
         myscreen->draw_button(no_button.x, no_button.y, no_button.x + no_button.w, no_button.y + no_button.h, 1, 1);
         loadtext->write_xy(no_button.x + 2, no_button.y + 2, "NO THANKS", DARK_BLUE, 1);
         
@@ -313,6 +319,7 @@ bool showPurchasingSplash()
     
     SDL_FreeSurface(splash);
     delete loadtext;
+    delete bigtext;
     
     return doesOwnFullGame();
 }
