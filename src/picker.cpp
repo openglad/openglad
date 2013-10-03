@@ -2969,7 +2969,7 @@ Sint32 go_menu(Sint32 arg1)
 #ifdef OUYA
     if(myscreen->save_data.scen_num > 5 && !doesOwnFullGame())
     {
-        if(yes_or_no_prompt("Buy Full Game?", "The demo doesn't include this level.  Want to go see the buying screen?", false))
+        if(yes_or_no_prompt("Buy Full Game?", "The demo doesn't include this level.\nWant to go see the buying screen?", false))
             showPurchasingSplash();
         
         return CREATE_TEAM_MENU;
@@ -3612,7 +3612,7 @@ Sint32 do_pick_campaign(Sint32 arg1)
 #ifdef OUYA
     if(!doesOwnFullGame())
     {
-        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select campaigns.  Want to go see the buying screen?", false))
+        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select campaigns.\nWant to go see the buying screen?", false))
             showPurchasingSplash();
         
         if(!doesOwnFullGame())
@@ -3635,7 +3635,7 @@ Sint32 do_set_scen_level(Sint32 arg1)
 #ifdef OUYA
     if(!doesOwnFullGame())
     {
-        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select levels.  Want to go see the buying screen?", false))
+        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select levels.\nWant to go see the buying screen?", false))
             showPurchasingSplash();
         
         if(!doesOwnFullGame())

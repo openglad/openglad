@@ -3287,7 +3287,7 @@ Sint32 level_editor()
     #ifdef OUYA
         if(!doesOwnFullGame())
         {
-            if(yes_or_no_prompt("Buy Full Game?", "The demo level editor cannot save levels.  Want to go see the buying screen?", false))
+            if(yes_or_no_prompt("Buy Full Game?", "The demo level editor cannot save levels.\nWant to go see the buying screen?", false))
                 showPurchasingSplash();
         }
     #endif
