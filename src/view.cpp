@@ -631,7 +631,7 @@ short viewscreen::input(const SDL_Event& event)
 			}
 			helpme = helpme->next;
 		}
-		control->yo_delay = 50;
+		control->yo_delay = 30;
 		control->screenp->soundp->play_sound(SOUND_YO);
 		control->screenp->do_notify("Yo!", control);
 	} //end of yo for friends
