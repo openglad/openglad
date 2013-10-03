@@ -46,7 +46,6 @@ class vbutton;
 
 extern screen *myscreen;
 extern text *mytext;
-extern Sint32 *mymouse;
 
 // Holds array indices for navigating menu buttons
 class MenuNav

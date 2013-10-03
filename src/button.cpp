@@ -431,9 +431,9 @@ Sint32 vbutton::mouse_on()
     if(hidden)
         return 0;
     Sint32 mousex,mousey;
-    mymouse = query_mouse();
-    mousex = mymouse[MOUSE_X];
-    mousey = mymouse[MOUSE_Y];
+    MouseState& mymouse = query_mouse();
+    mousex = mymouse.x;
+    mousey = mymouse.y;
 
     if (mousex > xloc && mousex < xend && mousey > yloc && mousey < yend)
     {

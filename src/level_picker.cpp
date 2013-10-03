@@ -35,7 +35,6 @@ using namespace std;
 
 
 #define MAX_TEAM_SIZE 24 //max # of guys on a team
-extern Sint32 *mymouse;
 
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -441,11 +440,11 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             done = true;
 		
 		// Mouse stuff ..
-		mymouse = query_mouse();
-        int mx = mymouse[MOUSE_X];
-        int my = mymouse[MOUSE_Y];
+		MouseState& mymouse = query_mouse();
+        int mx = mymouse.x;
+        int my = mymouse.y;
         
-        bool do_click = mymouse[MOUSE_LEFT];
+        bool do_click = mymouse.left;
 		bool do_prev = (do_click && prev.x <= mx && mx <= prev.x + prev.w
                && prev.y <= my && my <= prev.y + prev.h) || (retvalue == OK && highlighted_button == prev_index);
         bool do_next = (do_click && next.x <= mx && mx <= next.x + next.w
@@ -461,9 +460,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         bool do_select = do_click || (retvalue == OK && (highlighted_button == entry1_index || highlighted_button == entry2_index || highlighted_button == entry3_index));
         
         
-		if (mymouse[MOUSE_LEFT])
+		if (mymouse.left)
 		{
-		    while(mymouse[MOUSE_LEFT])
+		    while(mymouse.left)
                 get_input_events(WAIT);
 		}
         

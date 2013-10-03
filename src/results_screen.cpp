@@ -7,8 +7,6 @@
 #include "stats.h"
 #include "view.h"
 
-extern Sint32 *mymouse;
-
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
 
@@ -467,15 +465,15 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 
         // Mouse stuff ..
-		mymouse = query_mouse();
-        int mx = mymouse[MOUSE_X];
-        int my = mymouse[MOUSE_Y];
+		MouseState& mymouse = query_mouse();
+        int mx = mymouse.x;
+        int my = mymouse.y;
         
 		scroll -= get_and_reset_scroll_amount();
 		if(scroll < 0.0f)
             scroll = 0.0f;
         
-        bool do_click = mymouse[MOUSE_LEFT];
+        bool do_click = mymouse.left;
 		bool do_ok = ((do_click && ok_rect.x <= mx && mx <= ok_rect.x + ok_rect.w
                && ok_rect.y <= my && my <= ok_rect.y + ok_rect.h) || (retvalue == OG_OK && highlighted_button == ok_index));
 		bool do_retry = ((do_click && retry_rect.x <= mx && mx <= retry_rect.x + retry_rect.w
@@ -485,9 +483,9 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 		bool do_troops = ((do_click && troops_rect.x <= mx && mx <= troops_rect.x + troops_rect.w
                && troops_rect.y <= my && my <= troops_rect.y + troops_rect.h) || (retvalue == OG_OK && highlighted_button == troops_index));
         
-		if (mymouse[MOUSE_LEFT])
+		if (mymouse.left)
 		{
-		    while(mymouse[MOUSE_LEFT])
+		    while(mymouse.left)
                 get_input_events(WAIT);
 		}
 

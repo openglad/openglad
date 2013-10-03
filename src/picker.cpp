@@ -71,7 +71,6 @@ extern options *theprefs;
 
 //screen  *myscreen;
 text  *mytext;
-Sint32 *mymouse;     // hold mouse information
 //char main_dir[80];
 guy  *current_guy = NULL;
 guy  *old_guy = NULL;
@@ -364,7 +363,7 @@ Sint32 leftmouse(button* buttons)
 	Sint32 somebutton = -1;
 
 	grab_mouse();
-	mymouse = query_mouse();
+	MouseState& mymouse = query_mouse();
 
 	while (allbuttons[i])
 	{
@@ -382,15 +381,15 @@ Sint32 leftmouse(button* buttons)
 		return 1;  // simulate left-click
 	}
 
-	if (mymouse[MOUSE_LEFT])
+	if (mymouse.left)
 	{
-		while (mymouse[MOUSE_LEFT]) // wait for release
+		while (mymouse.left) // wait for release
 			mymouse = query_mouse();
 		return 1;
 	}
-	else if (mymouse[MOUSE_RIGHT])
+	else if (mymouse.right)
 	{
-		while (mymouse[MOUSE_RIGHT]) // wait for release
+		while (mymouse.right) // wait for release
 			mymouse = query_mouse();
 		return 2; // for right-mouse
 	}
@@ -1791,7 +1790,7 @@ void timed_dialog(const char* message, float delay_seconds)
 	{
 		get_input_events(POLL);
         
-        if(query_mouse()[MOUSE_LEFT] || query_key_press_event())
+        if(query_mouse().left || query_key_press_event())
             break;
         
         SDL_Delay(10);
@@ -2789,7 +2788,7 @@ Sint32 add_guy(Sint32 ignoreme)
 Sint32 edit_guy(Sint32 arg1)
 {
 	guy *here;
-	Sint32 *cheatmouse = query_mouse();
+	MouseState& cheatmouse = query_mouse();
 
 	if (arg1)
 		arg1 = 1;
@@ -2803,7 +2802,7 @@ Sint32 edit_guy(Sint32 arg1)
 
 	// This is for cheating! Only CHEAT :)
 	// When holding down the right mouse button, can always accept free changes
-	if (CHEAT_MODE && cheatmouse[MOUSE_RIGHT])
+	if (CHEAT_MODE && cheatmouse.right)
 	{
 		if (here->get_level() != current_guy->get_level())
 			current_guy->upgrade_to_level(current_guy->get_level());
@@ -3125,17 +3124,17 @@ Sint32 create_detail_menu(guy *arg1)
     
        bool pressed = handle_menu_nav(buttons, highlighted_button, retvalue);
        
+       MouseState& detailmouse = query_mouse();
        bool do_click = false;
        if(leftmouse(buttons))
        {
-           detailmouse = query_mouse();
            do_click = true;
        }
        
-       bool do_promote = !buttons[1].hidden && ((do_click && detailmouse[MOUSE_X] >= 160 &&
-                   detailmouse[MOUSE_X] <= 315 &&
-                   detailmouse[MOUSE_Y] >= 4   &&
-                   detailmouse[MOUSE_Y] <= 66) || (pressed && highlighted_button == 1));
+       bool do_promote = !buttons[1].hidden && ((do_click && detailmouse.x >= 160 &&
+                   detailmouse.x <= 315 &&
+                   detailmouse.y >= 4   &&
+                   detailmouse.y <= 66) || (pressed && highlighted_button == 1));
        if(do_promote)
        {
            if (thisguy->family == FAMILY_MAGE &&
