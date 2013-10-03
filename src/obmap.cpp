@@ -19,6 +19,8 @@
 #include <cmath>
 #include <algorithm>
 
+bool debug_draw_obmap = false;
+
 short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile);
 short collide(short x,  short y,  short xsize,  short ysize,
               short x2, short y2, short xsize2, short ysize2);
@@ -57,13 +59,7 @@ obmap::obmap()
 }
 
 obmap::~obmap()
-{
-    // Delete the walkers we're holding
-    for(auto e = walker_to_pos.begin(); e != walker_to_pos.end(); e++)
-    {
-        delete e->first;
-    }
-}
+{}
 
 void obmap::draw()
 {

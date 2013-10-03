@@ -257,4 +257,11 @@ unsigned char convert_to_ascii(int scancode);
 
 extern const Uint8* keystates;
 
+extern float viewport_offset_x;  // In window coords
+extern float viewport_offset_y;
+extern float window_w;
+extern float window_h;
+extern float viewport_w;
+extern float viewport_h;
+
 #endif

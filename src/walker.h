@@ -40,6 +40,9 @@ class walker : public pixieN
 		virtual bool walk(float x, float y);
 		short draw(viewscreen  *view_buf);
 		short draw_tile(viewscreen  *view_buf);
+		void draw_path(viewscreen* view_buf);
+		void find_path_to_foe();
+		void follow_path_to_foe();
 		short init_fire();
 		short init_fire(short xdir, short ydir);
 		void set_weapon_heading(walker *weapon);

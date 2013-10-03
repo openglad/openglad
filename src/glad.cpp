@@ -34,6 +34,9 @@ screen * myscreen;
 
 using namespace std;
 
+extern bool debug_draw_paths;
+extern bool debug_draw_obmap;
+
 // Z's script: #include <process.h>
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -181,7 +184,10 @@ void glad_main(screen *myscreen, Sint32 playermode)
 		if (myscreen->end)
 			break;
 		myscreen->redraw();
-		//myscreen->level_data.myobmap->draw();  // debug drawing for object collision map
+		
+		if(debug_draw_obmap)
+            myscreen->level_data.myobmap->draw();  // debug drawing for object collision map
+        
         #ifdef USE_TOUCH_INPUT
         draw_touch_controls(myscreen);
         #endif
@@ -194,6 +200,10 @@ void glad_main(screen *myscreen, Sint32 playermode)
             handle_events(event);
             if(event.type == SDL_KEYDOWN)
             {
+                if(event.key.keysym.sym == SDLK_F11)
+                    debug_draw_paths = !debug_draw_paths;
+                if(event.key.keysym.sym == SDLK_F12)
+                    debug_draw_obmap = !debug_draw_obmap;
                 if(event.key.keysym.sym == SDLK_ESCAPE)
                 {
                     bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);

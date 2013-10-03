@@ -31,9 +31,6 @@ unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
 
 Screen *E_Screen;
 
-extern float mouse_scale_x;
-extern float mouse_scale_y;
-
 video::video()
 {
 	Sint32 i;
@@ -316,6 +313,14 @@ void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, un
 	fastbox(startx,starty,xsize,ysize,color,1);
 }
 
+Uint32 get_Uint32_color(unsigned char color)
+{
+    int r,g,b;
+	query_palette_reg(color,&r,&g,&b);
+	
+	return SDL_MapRGB(E_Screen->render->format, r*4, g*4, b*4);
+}
+
 // This is the version which writes to the buffer..
 void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag)
 {
@@ -357,6 +362,9 @@ void video::point(Sint32 x, Sint32 y, unsigned char color)
 
 void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
 {
+    if(x < 0 || y < 0 || x >= surface->w || y >= surface->h)
+        return;
+    
     int bpp = surface->format->BytesPerPixel;
     /* Here p is the address to the pixel we want to set */
     Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
@@ -602,6 +610,67 @@ void video::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sin
 		pointb(x,y+i,color);
 }
 
+// From SPriG
+void video::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color)
+{
+    SDL_Surface* Surface = E_Screen->render;
+    if(Surface == NULL)
+        return;
+    
+    // Did the line miss the screen completely?
+    if((x1 < 0 && x2 < 0) || (y1 < 0 && y2 < 0))
+        return;
+    if((x1 >= Surface->w && x2 >= Surface->w) || (y1 >= Surface->h && y2 >= Surface->h))
+        return;
+    
+    Uint32 Color = get_Uint32_color(color);
+    Sint16 dx, dy, sdx, sdy, x, y, px, py;
+
+    dx = x2 - x1;
+    dy = y2 - y1;
+
+    sdx = (dx < 0) ? -1 : 1;
+    sdy = (dy < 0) ? -1 : 1;
+
+    dx = sdx * dx + 1;
+    dy = sdy * dy + 1;
+
+    x = y = 0;
+
+    px = x1;
+    py = y1;
+
+    if (dx >= dy)
+    {
+        for (x = 0; x < dx; x++)
+        {
+            putpixel(Surface, px, py, Color);
+
+            y += dy;
+            if (y >= dx)
+            {
+                y -= dx;
+                py += sdy;
+            }
+            px += sdx;
+        }
+    }
+    else
+    {
+        for (y = 0; y < dy; y++)
+        {
+            putpixel(Surface, px, py, Color);
+
+            x += dx;
+            if (x >= dy)
+            {
+                x -= dy;
+                px += sdx;
+            }
+            py += sdy;
+        }
+    }
+}
 
 // Place a diagonal line on the screen.
 // degrees must be 45, 135, 225, 315
