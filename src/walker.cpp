@@ -1721,7 +1721,7 @@ short walker::attack(walker  *target)
 
 
     // Base exp from attack damage
-	short newexp = exp_from_action(EXP_ATTACK, this, target, tempdamage);
+	short newexp = exp_from_action(EXP_ATTACK, attacker, target, tempdamage);
 
 	// Set our target to fighting our owner
 	//in the case of our weapon hit something
@@ -1807,7 +1807,7 @@ short walker::attack(walker  *target)
 				{
 					if (headguy->myguy)  // headguy can == this
 					{
-						headguy->myguy->exp += newexp + exp_from_action(EXP_KILL, this, target, 0);
+						headguy->myguy->exp += newexp + exp_from_action(EXP_KILL, attacker, target, 0);
 						headguy->myguy->kills++;
 						headguy->myguy->level_kills += target->stats->level;
 					}
