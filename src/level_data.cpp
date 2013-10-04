@@ -471,7 +471,7 @@ walker* LevelData::add_weap_ob(char order, char family)
 	return here->ob;
 }
 
-short LevelData::remove_ob(walker  *ob, short no_delete)
+short LevelData::remove_ob(walker  *ob)
 {
 	oblink  *here, *prev;
 
@@ -479,28 +479,16 @@ short LevelData::remove_ob(walker  *ob, short no_delete)
 		numobs--;
 
 	here = weaplist; //most common case
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			weaplist = weaplist->next;
-			delete here;
-			return 1;
-		}
-
 	prev = here;
 	while (here)
 	{
-		if (here->ob && here->ob == ob) //this is the ob we want
+		if(here->ob && here->ob == ob) //this is the ob we want
 		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
+		    // First item on list?
+		    if(here == weaplist)
+                weaplist = weaplist->next;
+            else
+                prev->next = here->next; // remove this link
 			delete here;
 			return 1; //we found it, at least
 		}
@@ -510,28 +498,15 @@ short LevelData::remove_ob(walker  *ob, short no_delete)
 
 
 	here = fxlist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			fxlist = fxlist->next;
-			delete here;
-			return 1;
-		}
-
 	prev = here;
 	while (here)
 	{
 		if (here->ob && here->ob == ob) //this is the ob we want
 		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
+		    if(here == fxlist)
+                fxlist = fxlist->next;
+			else
+                prev->next = here->next; // remove this link
 			delete here;
 			return 1; //we found it, at least
 		}
@@ -541,28 +516,15 @@ short LevelData::remove_ob(walker  *ob, short no_delete)
 
 
 	here = oblist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			oblist = oblist->next;
-			delete here;
-			return 1;
-		}
-
 	prev = here;
 	while (here)
 	{
 		if (here->ob && here->ob == ob) //this is the ob we want
 		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
+		    if(here == oblist)
+                oblist = oblist->next;
+            else
+                prev->next = here->next; // remove this link
 			delete here;
 			return 1; //we found it, at least
 		}
@@ -782,6 +744,12 @@ void LevelData::delete_objects()
     oblist = NULL;
     fxlist = NULL;
     weaplist = NULL;
+    
+    for(std::list<walker*>::iterator e = dead_list.begin(); e != dead_list.end(); e++)
+    {
+        delete *e;
+    }
+    dead_list.clear();
 
 	numobs = 0;
 	

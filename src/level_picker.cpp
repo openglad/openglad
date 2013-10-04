@@ -186,54 +186,6 @@ class BrowserEntry
     void draw(screen* screenp, text* loadtext);
 };
 
-void remove_all_objects(screen *master)
-{
-	oblink *fx = master->level_data.fxlist;
-
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
-	}
-	if (fx && fx->ob)
-		delete fx->ob;
-
-	fx = master->level_data.oblist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
-	}
-	if (fx && fx->ob)
-		delete fx->ob;
-
-	fx = master->level_data.weaplist;
-	while (fx)
-	{
-		if (fx->ob)
-		{
-			delete fx->ob;
-			fx->ob = NULL;
-		}
-		else
-			fx = fx->next;
-	}
-	if (fx && fx->ob)
-		delete fx->ob;
-
-	master->level_data.numobs = 0;
-} // end remove_all_objects
-
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
     : level_data(scen_num), myradar(NULL, screenp, 0)
 {

@@ -61,7 +61,6 @@ class screen : public video
 		walker  *add_fx_ob(walker  *newob); // add an existing walker
 		walker  *add_weap_ob(char order, char family);
 		walker  *add_weap_ob(walker  *newob); // add an existing weapon
-		short remove_ob(walker  *ob, short no_delete); // don't delete us?
 
 		short endgame(short ending);
 		short endgame(short ending, short nextlevel); // what level next?

@@ -100,7 +100,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	//  char soundpath[80];
 	//  short cyclemode = 1;            // color cycling on or off
 	short numviews;
-	oblink *here, *before;
 
 	//Sint32 longtemp;
 	//char message[50];
@@ -256,40 +255,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 
 	clear_keyboard();
 
-	// Delete all of our current information and abort ..
-	here = myscreen->level_data.oblist;
-	while (here)
-	{
-		if (here->ob)
-			//myscreen->remove_ob(here->ob);
-			delete here->ob;
-		before = here;
-		here = here->next;
-		delete before;
-		myscreen->level_data.oblist = here;
-	}
-	here = myscreen->level_data.weaplist; // do the weapons
-	while (here)
-	{
-		if (here->ob)
-			//myscreen->remove_ob(here->ob);
-			delete here->ob;
-		before = here;
-		here = here->next;
-		delete before;
-		myscreen->level_data.weaplist = here;
-	}
-	here = myscreen->level_data.fxlist; // do the fx's
-	while (here)
-	{
-		if (here->ob)
-			//myscreen->remove_fx_ob(here->ob);
-			delete here->ob;
-		before = here;
-		here = here->next;
-		delete before;
-		myscreen->level_data.fxlist = here;
-	}
+    myscreen->level_data.delete_objects();
     
 	return; // return to picker
 	//  return 1;

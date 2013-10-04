@@ -830,8 +830,14 @@ short screen::act()
 			    }
 			}
 			
-			// Delete it
-			delete here->ob;
+			// Save dead guys to be deleted later.  Delete everything else right now.  This is so the "owner" of weapons remains valid.
+			if(here->ob->query_order() == ORDER_LIVING)
+			{
+                level_data.dead_list.push_back(here->ob);
+		        level_data.remove_ob(here->ob);
+			}
+            else
+                delete here->ob;
 			here->ob = NULL;
 		}
 		here = here->next;
@@ -1124,140 +1130,6 @@ walker  *screen::add_weap_ob(char order, char family)
 
 	return here->ob;
 }
-
-//short screen::remove_ob(walker  *ob)
-//{
-//  return remove_ob(ob, 0); // call with delete allowed
-//}
-//removed, to force calling with correct parameters
-
-// Delay removal of linked list until end of act
-//   so as to prevent linked list problems
-short screen::remove_ob(walker  *ob, short no_delete)
-{
-	oblink  *here, *prev;
-
-	if (ob && ob->query_order() == ORDER_LIVING)
-		level_data.numobs--;
-
-	here = level_data.weaplist; //most common case
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			level_data.weaplist = level_data.weaplist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-
-	here = level_data.fxlist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			level_data.fxlist = level_data.fxlist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-
-	here = level_data.oblist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			level_data.oblist = level_data.oblist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-	return 0;
-}
-
-//short screen::remove_fx_ob(walker  *ob)
-//{
-//  return remove_fx_ob(ob, 0);
-//}
-
-//short screen::remove_fx_ob(walker  *ob, short no_delete)
-//{
-//  oblink  *here;
-//  here = fxlist;
-//  while (here)
-//  {
-//    if (here->ob && here->ob == ob)
-//    {
-//      if (!no_delete)
-//        delete here->ob;
-//      here->ob = NULL;
-//      return 1;
-//    }
-//    here = here->next;
-//  }
-//  return 0;  // means we failed
-//}
-//remove_fx_ob functionality has been moved to remove_ob
 
 Uint32 get_time_bonus(int playernum);
 

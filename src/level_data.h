@@ -89,6 +89,9 @@ public:
     oblink* oblist;
     oblink* fxlist;  // fx--explosions, etc.
     oblink* weaplist;  // weapons
+    // Keep a list of dead guys so weapons can still have valid owners
+    std::list<walker*> dead_list;
+    
     obmap* myobmap;
     std::list<std::string> description;
     
@@ -106,7 +109,7 @@ public:
     walker* add_ob(char order, char family, bool atstart = false);
     walker* add_fx_ob(char order, char family);
     walker* add_weap_ob(char order, char family);
-    short remove_ob(walker  *ob, short no_delete = 0);
+    short remove_ob(walker  *ob);
     
     void create_new_grid();
     void resize_grid(int width, int height);

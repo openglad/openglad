@@ -1341,6 +1341,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             if(obj != NULL)
             {
                 level->remove_ob(obj);
+                delete obj;
                 levelchanged = 1;
             }
         }
@@ -1910,7 +1911,8 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         }
         #endif
         
-        level->remove_ob(newob,0);
+        level->remove_ob(newob);
+        delete newob;
     }
     
     
@@ -2939,7 +2941,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             levelchanged = 1;
                         }
                     }
-                    level->remove_ob(newob,0);
+                    level->remove_ob(newob);
+                    delete newob;
                 }
                 else // select this object
                 {
@@ -2979,7 +2982,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         else if(!(keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL]))
                             selection.clear();  // Deselect if not trying to grab more
                         
-                        level->remove_ob(newob,0);
+                        level->remove_ob(newob);
+                        delete newob;
                         
                         reset_mode_buttons();
                     }
@@ -3017,7 +3021,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         {
                             if (newob)
                             {
-                                level->remove_ob(newob,0);
+                                level->remove_ob(newob);
+                                delete newob;
                                 newob = NULL;
                             }
                         }  // end of failure to put guy
@@ -3121,7 +3126,8 @@ walker* LevelEditorData::get_object(int x, int y)
     {
         result = newob->collide_ob;
     }
-    level->remove_ob(newob,0);
+    level->remove_ob(newob);
+    delete newob;
     return result;
 }
 
