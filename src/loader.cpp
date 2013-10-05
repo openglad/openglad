@@ -786,21 +786,7 @@ walker  *loader::create_walker(char order,
 	if (order == ORDER_LIVING)
 		ob = new living(graphics[PIX(order, family)], myscreen);
 	else if (order == ORDER_WEAPON)
-	{
-		if (cache_weapons && myscreen != NULL && myscreen->weapfree) //there is one available
-		{
-			ob = myscreen->weapfree; //get the ob
-			myscreen->weapfree = myscreen->weapfree->cachenext; //move up weapfree
-			ob->reset();
-			//      ob->death_called = 0;
-			//      ob->cachenext = NULL;
-			ob->transform_to(order,family);
-			//      ob->dead = 0; //make it not dead anymore
-			//      ob->stats->bit_flags = 0;
-		}
-		else
-			ob = new weap(graphics[PIX(order, family)], myscreen);
-	}
+	    ob = new weap(graphics[PIX(order, family)], myscreen);
 	else if (order == ORDER_TREASURE)
 		ob = new treasure(graphics[PIX(order, family)], myscreen);
 	else if (order == ORDER_FX)

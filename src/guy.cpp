@@ -579,7 +579,7 @@ walker* guy::create_walker(screen* myscreen)
 walker* guy::create_and_add_walker(screen* myscreen)
 {
     guy* temp_guy = new guy(*this);
-    walker* temp_walker = myscreen->add_ob(ORDER_LIVING, temp_guy->family);
+    walker* temp_walker = myscreen->level_data.add_ob(ORDER_LIVING, temp_guy->family);
     temp_walker->myguy = temp_guy;
     temp_walker->stats->level = temp_guy->level;
     

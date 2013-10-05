@@ -1357,6 +1357,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             if(obj != NULL)
             {
                 level->remove_ob(obj);
+                delete obj;
                 levelchanged = 1;
             }
         }
@@ -1452,16 +1453,11 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     
     // Get the exits
     std::set<int> exits;
-    oblink* fx = d.fxlist;
-    while(fx != NULL)
+    for(auto e = d.fxlist.begin(); e != d.fxlist.end(); e++)
     {
-        if(fx->ob != NULL)
-        {
-            if(fx->ob->query_order() == ORDER_TREASURE && fx->ob->query_family() == FAMILY_EXIT && fx->ob->stats != NULL)
-                exits.insert(fx->ob->stats->level);
-        }
-        
-        fx = fx->next;
+        walker* w = *e;
+        if(w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT && w->stats != NULL)
+            exits.insert(w->stats->level);
     }
     
     // With no exits, we'll progress directly to the next sequential level
@@ -1638,7 +1634,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             if(i+1 == 6 && selection.size() > 6)
             {
                 char buf[20];
-                snprintf(buf, 20, "+%d more", selection.size() - 5);
+                snprintf(buf, 20, "+%d more", int(selection.size()) - 5);
                 scentext->write_xy(lm, L_D(curline++), buf, DARK_BLUE, 1);
                 break;  // No more
             }
@@ -1931,7 +1927,8 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         }
         #endif
         
-        level->remove_ob(newob,0);
+        level->remove_ob(newob);
+        delete newob;
     }
     
     
@@ -2065,42 +2062,34 @@ bool is_in_selection(walker* w, const vector<SelectionInfo>& selection)
 // Make sure to use reset_mode_buttons() after this
 void add_contained_objects_to_selection(LevelData* level, const Rectf& area, vector<SelectionInfo>& selection)
 {
-	oblink* here;
-
-	here = level->oblist;
-	while(here)
+    for(auto e = level->oblist.begin(); e != level->oblist.end(); e++)
 	{
-		if(here->ob && area.contains(here->ob->xpos + here->ob->sizex/2, here->ob->ypos + here->ob->sizey/2))
+	    walker* w = *e;
+		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
 		{
-		    if(!is_in_selection(here->ob, selection))
-                selection.push_back(SelectionInfo(here->ob));
+		    if(!is_in_selection(w, selection))
+                selection.push_back(SelectionInfo(w));
 		}
-		
-		here = here->next;
 	}
 
-	here = level->fxlist;
-	while(here)
+    for(auto e = level->fxlist.begin(); e != level->fxlist.end(); e++)
 	{
-		if(here->ob && area.contains(here->ob->xpos + here->ob->sizex/2, here->ob->ypos + here->ob->sizey/2))
+	    walker* w = *e;
+		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
 		{
-		    if(!is_in_selection(here->ob, selection))
-                selection.push_back(SelectionInfo(here->ob));
+		    if(!is_in_selection(w, selection))
+                selection.push_back(SelectionInfo(w));
 		}
-		
-		here = here->next;
 	}
 
-	here = level->weaplist;
-	while(here)
+    for(auto e = level->weaplist.begin(); e != level->weaplist.end(); e++)
 	{
-		if(here->ob && area.contains(here->ob->xpos + here->ob->sizex/2, here->ob->ypos + here->ob->sizey/2))
+	    walker* w = *e;
+		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
 		{
-		    if(!is_in_selection(here->ob, selection))
-                selection.push_back(SelectionInfo(here->ob));
+		    if(!is_in_selection(w, selection))
+                selection.push_back(SelectionInfo(w));
 		}
-		
-		here = here->next;
 	}
 }
 
@@ -2965,7 +2954,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             levelchanged = 1;
                         }
                     }
-                    level->remove_ob(newob,0);
+                    level->remove_ob(newob);
+                    delete newob;
                 }
                 else // select this object
                 {
@@ -3005,7 +2995,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         else if(!(keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL]))
                             selection.clear();  // Deselect if not trying to grab more
                         
-                        level->remove_ob(newob,0);
+                        level->remove_ob(newob);
+                        delete newob;
                         
                         reset_mode_buttons();
                     }
@@ -3043,7 +3034,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         {
                             if (newob)
                             {
-                                level->remove_ob(newob,0);
+                                level->remove_ob(newob);
+                                delete newob;
                                 newob = NULL;
                             }
                         }  // end of failure to put guy
@@ -3147,7 +3139,8 @@ walker* LevelEditorData::get_object(int x, int y)
     {
         result = newob->collide_ob;
     }
-    level->remove_ob(newob,0);
+    level->remove_ob(newob);
+    delete newob;
     return result;
 }
 
@@ -3158,40 +3151,26 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
     y *= GRID_SIZE;
     w *= GRID_SIZE;
     h *= GRID_SIZE;
-    
-	oblink* here;
 
-	here = level->oblist;
-	while(here)
+    for(auto e = level->oblist.begin(); e != level->oblist.end(); e++)
 	{
-		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
-		{
+	    walker* ob = *e;
+		if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		    return true;
-		}
-		
-		here = here->next;
 	}
 
-	here = level->fxlist;
-	while(here)
+    for(auto e = level->fxlist.begin(); e != level->fxlist.end(); e++)
 	{
-		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
-		{
+	    walker* ob = *e;
+		if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		    return true;
-		}
-		
-		here = here->next;
 	}
 
-	here = level->weaplist;
-	while(here)
+    for(auto e = level->weaplist.begin(); e != level->weaplist.end(); e++)
 	{
-		if(here->ob && (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
-		{
+	    walker* ob = *e;
+		if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		    return true;
-		}
-		
-		here = here->next;
 	}
 	
 	return false;
@@ -3918,25 +3897,6 @@ void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y)
 	redraw = 1;
 }
 
-
-void remove_first_ob(screen *master)
-{
-	oblink  *here;
-
-	here = master->level_data.oblist;
-
-	while (here)
-	{
-		if (here->ob)
-		{
-			delete here->ob;
-			return;
-		}
-		else
-			here = here->next;
-	}
-}
-
 char get_random_matching_tile(Sint32 whatback)
 {
 	Sint32 i;
@@ -4116,51 +4076,43 @@ Sint32 check_collide(Sint32 x,  Sint32 y,  Sint32 xsize,  Sint32 ysize,
 // The old-fashioned hit check ..
 walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 {
-	oblink  *here;
-
-	here = data->oblist;
-
-	while (here)
+    for(auto e = data->oblist.begin(); e != data->oblist.end(); e++)
 	{
-		if (here->ob && here->ob != ob)
-			if (check_collide(x, y, ob->sizex, ob->sizey,
-			                  here->ob->xpos, here->ob->ypos,
-			                  here->ob->sizex, here->ob->sizey) )
-			{
-				ob->collide_ob = here->ob;
-				return here->ob;
-			}
-		here = here->next;
+	    walker* w = *e;
+		if (w && w != ob
+            && check_collide(x, y, ob->sizex, ob->sizey,
+			                  w->xpos, w->ypos,
+			                  w->sizex, w->sizey) )
+        {
+            ob->collide_ob = w;
+            return w;
+        }
 	}
-
-	// Also check the fx list ..
-	here = data->fxlist;
-	while (here)
+	
+    for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
 	{
-		if (here->ob && here->ob != ob)
-			if (check_collide(x, y, ob->sizex, ob->sizey,
-			                  here->ob->xpos, here->ob->ypos,
-			                  here->ob->sizex, here->ob->sizey) )
-			{
-				ob->collide_ob = here->ob;
-				return here->ob;
-			}
-		here = here->next;
+	    walker* w = *e;
+		if (w && w != ob
+            && check_collide(x, y, ob->sizex, ob->sizey,
+			                  w->xpos, w->ypos,
+			                  w->sizex, w->sizey) )
+        {
+            ob->collide_ob = w;
+            return w;
+        }
 	}
-
-	// Also check the weapons list ..
-	here = data->weaplist;
-	while (here)
+	
+    for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead && here->ob != ob)
-			if (check_collide(x, y, ob->sizex, ob->sizey,
-			                  here->ob->xpos, here->ob->ypos,
-			                  here->ob->sizex, here->ob->sizey) )
-			{
-				ob->collide_ob = here->ob;
-				return here->ob;
-			}
-		here = here->next;
+	    walker* w = *e;
+		if (w && w != ob
+            && check_collide(x, y, ob->sizex, ob->sizey,
+			                  w->xpos, w->ypos,
+			                  w->sizex, w->sizey) )
+        {
+            ob->collide_ob = w;
+            return w;
+        }
 	}
 
 	ob->collide_ob = NULL;

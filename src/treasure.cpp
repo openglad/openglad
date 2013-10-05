@@ -27,6 +27,7 @@
 #include "text.h"
 #include "stats.h"
 #include "guy.h"
+#include <algorithm>
 
 // Zardus: this is the func to get events
 void get_input_events(bool);
@@ -54,7 +55,6 @@ short treasure::act()
 short treasure::eat_me(walker  * eater)
 {
 	short guys_here;
-	oblink *here;
 	static text eattext(screenp);
 	char message[80];
 	Sint32 distance;
@@ -191,15 +191,14 @@ short treasure::eat_me(walker  * eater)
 				{
 					clear_keyboard();
 					// Delete all of our current information and abort ..
-					here = myscreen->level_data.oblist;
-					while (here)
+					for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 					{
-						if (here->ob && here->ob->query_order() == ORDER_LIVING)
+					    walker* w = *e;
+						if (w && w->query_order() == ORDER_LIVING)
 						{
-							here->ob->dead = 1;
-							myscreen->level_data.myobmap->remove(here->ob);
+							w->dead = 1;
+							myscreen->level_data.myobmap->remove(w);
 						}
-						here = here->next;
 					}
 					
 					// Now reload the autosave to revert our changes during battle (don't use SaveData::update_guys())
@@ -264,7 +263,7 @@ short treasure::eat_me(walker  * eater)
 				return 1;
 			}
 			// Now do special effects
-			flash = screenp->add_ob(ORDER_FX, FAMILY_FLASH);
+			flash = screenp->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			return 1;
@@ -272,7 +271,7 @@ short treasure::eat_me(walker  * eater)
 			if (eater->team_num != team_num) // only our team can get these
 				return 1;
 			myscreen->save_data.m_score[eater->team_num] += stats->hitpoints;
-			flash = screenp->add_ob(ORDER_FX, FAMILY_FLASH);
+			flash = screenp->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			dead = 1;
@@ -310,72 +309,51 @@ void treasure::set_direct_frame(short whatframe)
 
 }
 
+// Finds the next connected teleporter in the fxlist for you to warp to.
 walker  * treasure::find_teleport_target()
 {
-	walker  *target = NULL;
-	oblink  *here = screenp->level_data.fxlist;
-	short keep_looking = 1;
-	short number = 0;
-
-	// First find where we are in the list ...
-	while (here && keep_looking)
-	{
-		if (here->ob && here->ob == this) // found us
-			keep_looking = 0;
-		else
-		{
-			here = here->next;
-			number++;
-		}
-	}
-
-	if (keep_looking) // didn't find us?
-		return NULL;
-
+	auto& ls = screenp->level_data.fxlist;
 	//Log("Teleporting from #%d ..", number);
 
-	// Now search the rest of the loop ..
-	keep_looking = 1;
-	here = here->next;
-	number++;
-	while (here && keep_looking)
+	// First find where we are in the list ...
+    auto mine = std::find(ls.begin(), ls.end(), this);
+    if(mine == ls.end())
+        return NULL;
+    
+	// Now search the rest of the list ..
+	auto e = mine;
+	e++;
+	for(; e != ls.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
+	    walker* w = *e;
+		if (w && !w->dead)
 		{
-			if (here->ob->query_order() == ORDER_TREASURE &&
-			        here->ob->query_family() == FAMILY_TELEPORTER &&
-			        here->ob->stats->level == stats->level)
+			if (w->query_order() == ORDER_TREASURE &&
+			        w->query_family() == FAMILY_TELEPORTER &&
+			        w->stats->level == stats->level)
 			{
-				target = here->ob;
-				keep_looking = 0;
 				//Log(" to target %d\n", number);
-				return target;
+				return w;
 			}
 		}
-		here = here->next;
-		number++;
 	}
 
 	// Hit the end of the list, look from top down now ..
-	here = screenp->level_data.fxlist;
-	number = 0;
-	while (here)
+	for(e = ls.begin(); e != mine; e++)
 	{
-		if (here->ob && !here->ob->dead)
+	    walker* w = *e;
+		if (w && !w->dead)
 		{
-			if (here->ob->query_order() == ORDER_TREASURE &&
-			        here->ob->query_family() == FAMILY_TELEPORTER &&
-			        here->ob->stats->level == stats->level)
+			if (w->query_order() == ORDER_TREASURE &&
+			        w->query_family() == FAMILY_TELEPORTER &&
+			        w->stats->level == stats->level)
 			{
-				target = here->ob;
 				//Log(" to looped target %d\n", number);
-				return target;
+				return w;
 			}
 		}
-		here = here->next;
-		number++;
 	}
 
-	return target;
+	return NULL;
 }
 

@@ -3114,7 +3114,6 @@ Sint32 create_detail_menu(guy *arg1)
    Sint32 retvalue = 0;
    guy *thisguy;
    Sint32 start_time = query_timer();
-   Sint32 *detailmouse;
 
    if (arg1)
        thisguy = arg1;

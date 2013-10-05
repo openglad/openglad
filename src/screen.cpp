@@ -87,8 +87,6 @@ screen::screen(short howmany)
 
 	timerstart = query_timer_control();
 	framecount = 0;
-	
-	weapfree = NULL;
 
 	//  control = NULL;
 	//myradar[0] = myradar[1] = NULL; // very important! :)
@@ -280,23 +278,13 @@ void screen::initialize_views()
 void screen::cleanup(short howmany)
 {
 	Sint32 i;
-	walker *who;
 
     numviews = howmany; // # of viewscreens
     for (i=0; i < MAX_VIEWS; i++)
     {
-            delete (viewob[i]);
-            viewob[i] = NULL;
+        delete (viewob[i]);
+        viewob[i] = NULL;
     }
-
-    while (weapfree)
-    {
-            who = weapfree;
-            weapfree = weapfree->cachenext; //cachenext points to next ob
-            delete who;
-            who = NULL;
-    }
-    weapfree = NULL;
 }
 
 void screen::ready_for_battle(short howmany)
@@ -676,7 +664,6 @@ short screen::continuous_input()
 
 short screen::act()
 {
-	oblink  *here,  *before;
 	static char obmessage[80];
 	Sint32 printed_time = 0; // have we printed message yet?
 	//  static short debug = 0;
@@ -688,27 +675,26 @@ short screen::act()
 	if (enemy_freeze == 1)
 		set_palette(ourpalette);
 
-	here = level_data.oblist;
-	while(here)
-	{
+    for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+    {
+        walker* ob = *e;
 		if (!enemy_freeze) // normal functionality
 		{
-			if (here->ob && !here->ob->dead)
+			if (ob && !ob->dead)
 			{
-				here->ob->in_act = 1; // Zardus: while acting, in_act is set
-				here->ob->act();
-				here->ob->in_act = 0;
-				if (here->ob && !here->ob->dead)
+				ob->in_act = 1; // Zardus: while acting, in_act is set
+				ob->act();
+				ob->in_act = 0;
+				if (ob && !ob->dead)
 				{
-					if (!here->ob->is_friendly_to_team(save_data.my_team) &&
-					        here->ob->query_order() == ORDER_LIVING)
+					if (!ob->is_friendly_to_team(save_data.my_team) &&
+					        ob->query_order() == ORDER_LIVING)
 						level_done = 0;
 					// Testing .. trying to FORCE foes :)
-					if (here->ob->foe == NULL && here->ob->leader == NULL)
-						here->ob->foe = myscreen->find_far_foe(here->ob);
+					if (ob->foe == NULL && ob->leader == NULL)
+						ob->foe = myscreen->find_far_foe(ob);
 				}
 			}
-			here = here->next;
 		}
 		else // enemy livings are frozen
 		{
@@ -718,56 +704,53 @@ short screen::act()
 				viewob[0]->set_display_text(obmessage, 10);
 				printed_time = 1;
 			}
-			if (here->ob && !here->ob->dead &&
-			        ( (    (here->ob->query_order() != ORDER_LIVING)
-			               && (here->ob->query_order() != ORDER_GENERATOR)
-			          ) || (here->ob->team_num == 0) )
+			if (ob && !ob->dead &&
+			        ( (    (ob->query_order() != ORDER_LIVING)
+			               && (ob->query_order() != ORDER_GENERATOR)
+			          ) || (ob->team_num == 0) )
 			   )
 			{
-				here->ob->act();
-				if (here->ob && !here->ob->dead)
+				ob->act();
+				if (ob && !ob->dead)
 				{
-					if (!here->ob->is_friendly_to_team(save_data.my_team) &&
-					        here->ob->query_order() == ORDER_LIVING)
+					if (!ob->is_friendly_to_team(save_data.my_team) &&
+					        ob->query_order() == ORDER_LIVING)
 						level_done = 0;
 				}
 			}
-			here = here->next;
 		}
 
 	}
 
 	// Let the weapons act ...
-	here = level_data.weaplist;
-	while(here)
+	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
+	    walker* ob = *e;
+		if (ob && !ob->dead)
 		{
-			here->ob->act();
-			if (here->ob && !here->ob->dead)
+			ob->act();
+			if (ob && !ob->dead)
 			{
-				if (!here->ob->is_friendly_to_team(save_data.my_team) &&
-				        here->ob->query_order() == ORDER_LIVING)
+				if (!ob->is_friendly_to_team(save_data.my_team) &&
+				        ob->query_order() == ORDER_LIVING)
 					level_done = 0;
 			}
 		}
-		here = here->next;
 	}  // end of weapons acting
 
 	// Quickly check the background for exits, etc.
-	here = level_data.fxlist;
-	while (here)
+	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
+	    walker* ob = *e;
+		if (ob && !ob->dead)
 		{
-			if (here->ob->query_order() == ORDER_TREASURE &&
-			        here->ob->query_family() == FAMILY_EXIT &&
+			if (ob->query_order() == ORDER_TREASURE &&
+			        ob->query_family() == FAMILY_EXIT &&
 			        level_done != 0)
 			{
 				level_done = 1; // 0 => foes, 1 => no foes but exit, 2 => no foes or exit
 			}
 		}
-		here = here->next;
 	}
 
 	if (level_done == 2)
@@ -777,487 +760,95 @@ short screen::act()
         return 1;
     
 	// Make sure we're all pointing to legal targets
-	here = level_data.oblist;
-	while (here)
+	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-		if (here->ob)
-		{
-			if (here->ob->foe && here->ob->foe->dead)
-				here->ob->foe = NULL;
-			if (here->ob->leader && here->ob->leader->dead)
-				here->ob->leader = NULL;
-			if (here->ob->owner && here->ob->owner->dead)
-				here->ob->owner = NULL;
-			if (here->ob->collide_ob && here->ob->collide_ob->dead)
-				here->ob->collide_ob = NULL;
-		}
-		here = here->next;
+	    walker* ob = *e;
+        if (ob->foe && ob->foe->dead)
+            ob->foe = NULL;
+        if (ob->leader && ob->leader->dead)
+            ob->leader = NULL;
+        if (ob->owner && ob->owner->dead)
+            ob->owner = NULL;
+        if (ob->collide_ob && ob->collide_ob->dead)
+            ob->collide_ob = NULL;
 	}
-	here = level_data.weaplist;
-	while (here)
+	
+	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end(); e++)
 	{
-		if (here->ob)
-		{
-			if (here->ob->foe && here->ob->foe->dead)
-				here->ob->foe = NULL;
-			if (here->ob->leader && here->ob->leader->dead)
-				here->ob->leader = NULL;
-			if (here->ob->owner && here->ob->owner->dead)
-				here->ob->owner = NULL;
-			if (here->ob->collide_ob && here->ob->collide_ob->dead)
-				here->ob->collide_ob = NULL;
-		}
-		here = here->next;
+	    walker* ob = *e;
+        if (ob->foe && ob->foe->dead)
+            ob->foe = NULL;
+        if (ob->leader && ob->leader->dead)
+            ob->leader = NULL;
+        if (ob->owner && ob->owner->dead)
+            ob->owner = NULL;
+        if (ob->collide_ob && ob->collide_ob->dead)
+            ob->collide_ob = NULL;
 	}
 
 
 	// Remove dead objects
-	here = level_data.oblist;
-	while (here)
+	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end();)
 	{
-		if (here->ob && here->ob->dead && here->ob->myguy == NULL)
+	    walker* ob = *e;
+		if (ob && ob->dead && ob->myguy == NULL)
 		{
 		    // Delete the dead thing safely
 		    
 			// Is it a player?
-			if(here->ob->user != -1)
+			if(ob->user != -1)
 			{
 			    // Remove it from its viewscreen
 			    for(int i = 0; i < numviews; i++)
 			    {
-			        if(here->ob == viewob[i]->control)
+			        if(ob == viewob[i]->control)
                         viewob[i]->control = NULL;
 			    }
 			}
 			
-			// Delete it
-			delete here->ob;
-			here->ob = NULL;
+			// Save dead guys to be deleted later.  Delete everything else right now.  This is so the "owner" of weapons remains valid.
+            level_data.dead_list.push_back(ob);
+            
+            //level_data.remove_ob(ob);
+            // Remove from the list directly here so we can preserve our iterator
+			if(ob->query_order() == ORDER_LIVING)
+                level_data.numobs--;
+            
+            e = level_data.oblist.erase(e);
+            continue;
 		}
-		here = here->next;
+		
+		e++;
 	}
-	here = level_data.fxlist;
-	while (here)
+	
+	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end();)
 	{
-		if (here->ob && here->ob->dead)
+	    walker* ob = *e;
+		if(ob && ob->dead)
 		{
-			//remove_fx_ob(here->ob);
-			delete here->ob;
-			here->ob = NULL;
+			delete ob;
+			e = level_data.fxlist.erase(e);
+			continue;
 		}
-		here = here->next;
+		
+		e++;
 	}
-	here = level_data.weaplist;
-	while (here)
+	
+	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end();)
 	{
-		if (here->ob && here->ob->dead)
+	    walker* ob = *e;
+		if (ob && ob->dead)
 		{
-			if (!(here->ob->query_order() == ORDER_WEAPON))
-			{
-				delete here->ob;
-				here->ob = NULL;
-			}
-			else //push the weapon onto the cache list
-			{
-				here->ob->cachenext = weapfree;
-				weapfree = here->ob;
-				here->ob = NULL;
-			}
+            delete ob;
+            e = level_data.weaplist.erase(e);
+            continue;
 		}
-		here = here->next;
-	}
-
-	// ** Remove empty objects **
-	// ** First the normal list **
-	here = level_data.oblist;
-	// Make first element clean
-	while (!here->ob)
-	{
-		level_data.oblist = level_data.oblist->next;
-		delete here;
-		here = level_data.oblist;
-	}
-	// Fix rest of elements
-	before = level_data.oblist;
-	here = before->next;
-	while (here)
-	{
-		if (!here->ob)  //clean element here
-		{
-			before->next = here->next;
-			delete here;
-			here = before->next;
-		}
-		else  // else advance
-		{
-			before = here;
-			here = before->next;
-		}
-	}
-	// ** Now the weapons list **
-	here = level_data.weaplist;
-	// Make first element clean
-	while (here && !here->ob)
-	{
-		level_data.weaplist = level_data.weaplist->next;
-		delete here;
-		here = level_data.weaplist;
-	}
-	// Fix rest of weapon elements
-	before = level_data.weaplist;
-	if (before)
-		here = before->next;
-	else
-		here = NULL;
-	while (here)
-	{
-		if (!here->ob)  //clean element here
-		{
-			before->next = here->next;
-			delete here;
-			here = before->next;
-		}
-		else  // else advance
-		{
-			before = here;
-			here = before->next;
-		}
+		
+		e++;
 	}
 
 	return 1;
 }
-
-walker  *screen::add_ob(char order, char family) // atstart == 0
-{
-	return add_ob(order, family, 0);
-}
-
-walker  *screen::add_ob(char order, char family, short atstart)
-{
-	oblink  *here = NULL;
-
-	/*         ------      ------
-	          | ob  |     | ob  |
-	oblist -> |-----      |-----
-	          |   ------->|  --------> Null
-	          ------      ------
-	*/
-	// Point to end of oblink chain
-
-	if (order == ORDER_WEAPON)
-		return add_weap_ob(order, family);
-
-	// Going to force at head of list for now, for speed, if it works
-	//if (atstart) // add to the end of the list instead of the end ..
-	if (level_data.oblist)
-	{
-		here = new oblink;
-		here->ob = level_data.myloader->create_walker(order, family, this);
-		if (!here->ob)
-			return NULL;
-		here->next = level_data.oblist;
-		level_data.oblist = here;
-		if (order == ORDER_LIVING)
-			level_data.numobs++;
-		return here->ob;
-	}
-	else // we're the first and only ..
-	{
-		here = new oblink;
-		here->ob = level_data.myloader->create_walker(order, family, this);
-		if (!here->ob)
-			return NULL;
-		here->next = NULL;
-		level_data.oblist = here;
-		if (order == ORDER_LIVING)
-			level_data.numobs++;
-		return here->ob;
-	}
-
-	here = level_data.oblist;
-
-	if (level_data.oblist)
-	{
-		while(here->next)
-			here = here->next;
-		here->next = new oblink;
-		here = here->next;
-	}
-	else  // oblink is null
-	{
-		here = new oblink;
-		level_data.oblist = here;
-	}
-
-	here->next = NULL;
-	here->ob = level_data.myloader->create_walker(order, family, this);
-
-	if (order == ORDER_LIVING)
-		level_data.numobs++;
-	return here->ob;
-}
-
-walker  *screen::add_ob(walker  *newob)
-{
-	oblink  *here = NULL;
-
-	/*         ------      ------
-	          | ob  |     | ob  |
-	oblist -> |-----      |-----
-	          |   ------->|  --------> Null
-	          ------      ------
-	*/
-	// Point to end of oblink chain
-
-	if (newob->query_order() == ORDER_WEAPON)
-		return add_weap_ob(newob);
-
-	/*
-	  here = oblist;
-	  if (oblist)
-	  {
-	         while(here->next)
-	                here = here->next;
-	         here->next = new oblink;
-	         here = here->next;
-	  }
-	  else  // oblink is null
-	  {
-	         here = new oblink;
-	         oblist = here;
-	  }
-	*/
-	if (level_data.oblist)
-	{
-		here = new oblink;
-		here->ob = newob;
-		here->next = level_data.oblist;
-		level_data.oblist = here;
-	}
-	else // first element on list
-	{
-		here = new oblink;
-		here->ob = newob;
-		here->next = NULL;
-		level_data.oblist = here;
-	}
-
-	//here->next = NULL;
-	//here->ob = newob;
-
-	if (newob->query_order() == ORDER_LIVING)
-		level_data.numobs++;
-	return here->ob;
-}
-
-walker  *screen::add_fx_ob(walker  *newob)
-{
-	oblink  *here = NULL;
-
-	here = level_data.fxlist;
-	if (level_data.fxlist)
-	{
-		while(here->next)
-			here = here->next;
-		here->next = new oblink;
-		here = here->next;
-	}
-	else  // oblink is null
-	{
-		here = new oblink;
-		level_data.fxlist = here;
-	}
-
-	here->next = NULL;
-	here->ob = newob;
-
-	//numobs++;
-	return here->ob;
-}
-
-walker  *screen::add_fx_ob(char order, char family)
-{
-	oblink  *here = NULL;
-
-	here = level_data.fxlist;
-	if (level_data.fxlist)
-	{
-		while(here->next)
-			here = here->next;
-		here->next = new oblink;
-		here = here->next;
-	}
-	else  // oblink is null
-	{
-		here = new oblink;
-		level_data.fxlist = here;
-	}
-
-	here->next = NULL;
-	here->ob = level_data.myloader->create_walker(order, family, this);
-
-	//numobs++;
-	//here->ob->ignore = 1;
-	return here->ob;
-}
-//add an existing weapon to the weapon list
-walker  *screen::add_weap_ob(walker  *newob)
-{
-	oblink *here;
-
-	// We can add to the front, making things faster ..
-	here = new oblink;
-	here->ob = newob;
-	here->next = level_data.weaplist;
-	level_data.weaplist = here; // set weaplist to top of list again
-
-	return here->ob;
-}
-
-walker  *screen::add_weap_ob(char order, char family)
-{
-	oblink *here = new oblink;
-
-	here->ob = level_data.myloader->create_walker(order, family, this);
-	here->next = level_data.weaplist;
-	level_data.weaplist = here;
-
-	return here->ob;
-}
-
-//short screen::remove_ob(walker  *ob)
-//{
-//  return remove_ob(ob, 0); // call with delete allowed
-//}
-//removed, to force calling with correct parameters
-
-// Delay removal of linked list until end of act
-//   so as to prevent linked list problems
-short screen::remove_ob(walker  *ob, short no_delete)
-{
-	oblink  *here, *prev;
-
-	if (ob && ob->query_order() == ORDER_LIVING)
-		level_data.numobs--;
-
-	here = level_data.weaplist; //most common case
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			level_data.weaplist = level_data.weaplist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-
-	here = level_data.fxlist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			level_data.fxlist = level_data.fxlist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-
-	here = level_data.oblist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			level_data.oblist = level_data.oblist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-	return 0;
-}
-
-//short screen::remove_fx_ob(walker  *ob)
-//{
-//  return remove_fx_ob(ob, 0);
-//}
-
-//short screen::remove_fx_ob(walker  *ob, short no_delete)
-//{
-//  oblink  *here;
-//  here = fxlist;
-//  while (here)
-//  {
-//    if (here->ob && here->ob == ob)
-//    {
-//      if (!no_delete)
-//        delete here->ob;
-//      here->ob = NULL;
-//      return 1;
-//    }
-//    here = here->next;
-//  }
-//  return 0;  // means we failed
-//}
-//remove_fx_ob functionality has been moved to remove_ob
 
 Uint32 get_time_bonus(int playernum);
 
@@ -1283,14 +874,11 @@ short screen::endgame(short ending, short nextlevel)
     }
 	
     // Get guys from the battle
-    oblink* here = level_data.oblist;  // back to head of list
-	while (here)
+    for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-		if (here->ob && here->ob->myguy)
-        {
-			after.insert(make_pair(here->ob->myguy->id, here->ob));
-        }
-		here = here->next;
+	    walker* ob = *e;
+		if (ob && ob->myguy)
+			after.insert(make_pair(ob->myguy->id, ob));
 	}
 	
 	// Let's show the results!
@@ -1429,15 +1017,13 @@ walker  *screen::find_far_foe(walker  *ob)
 {
 	//short targx, targy;
 	Sint32 distance, tempdistance;
-	oblink  *here;
-	walker  *foe,  *endfoe;
+	walker  *endfoe;
 
 	if (!ob)
 	{
 		Log("no ob in find far foe.\n");
 		return NULL;
 	}
-	here = level_data.oblist;  // Get list of all screen objects
 
 	// Get our current coordinates
 	//targx = ob->xpos;
@@ -1448,19 +1034,19 @@ walker  *screen::find_far_foe(walker  *ob)
 	distance = 10000;
 	ob->stats->last_distance = 10000;
 
-	while (here)
+    for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
-			foe = here->ob; // For easier referencing
-		else
-			foe = NULL;
+	    walker* foe = *e;
+		if (foe == NULL || foe->dead)
+			continue;
+        
 		// Check for valid objects ..
-		if (foe && (ob->is_friendly(foe)==0) )
+		if (ob->is_friendly(foe) == 0)
 		{
 			if (
 			    (foe->query_order() == ORDER_LIVING ||
 			     foe->query_order() == ORDER_GENERATOR)  &&
-			    (!(random(here->ob->invisibility_left/20)))
+			    (!(random(foe->invisibility_left/20)))
 			)
 			{
 				tempdistance = ob->distance_to_ob(foe);
@@ -1471,7 +1057,6 @@ walker  *screen::find_far_foe(walker  *ob)
 				}
 			}
 		}
-		here = here->next;
 	}
 	return endfoe;
 }
@@ -1529,23 +1114,18 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,
                            int team_num)
 {
-	oblink  * here = level_data.oblist;
-
-	if (!here)
-		return NULL;
-
-	while (here)
+	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
+	    walker* ob = *e;
+		if (ob && !ob->dead)
 		{
-			if (here->ob->query_order() == whatorder &&
-			        here->ob->query_family()== whatfamily)
+			if (ob->query_order() == whatorder &&
+			        ob->query_family()== whatfamily)
 			{
-				if (team_num == -1 || team_num == here->ob->team_num)
-					return here->ob;
+				if (team_num == -1 || team_num == ob->team_num)
+					return ob;
 			}
 		}
-		here = here->next;
 	}
 	return NULL;
 }
@@ -1579,90 +1159,63 @@ void screen::draw_panels(short howmany)
 // This can be slow, so don't call it much
 walker  * screen::find_nearest_blood(walker  *who)
 {
-	oblink  *here;
 	Sint32 distance, newdistance;
 	walker  *returnob = NULL;
-
-	here = level_data.fxlist;
 
 	if (!who)
 		return NULL;
 
 	distance = 800;
 
-	while (here)
+	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
 	{
-		if (here->ob && here->ob->query_order() == ORDER_TREASURE &&
-		        here->ob->query_family() == FAMILY_STAIN && !here->ob->dead)
+	    walker* w = *e;
+		if (w && w->query_order() == ORDER_TREASURE &&
+		        w->query_family() == FAMILY_STAIN && !w->dead)
 		{
-			newdistance = (Uint32) who->distance_to_ob_center(here->ob);
+			newdistance = (Uint32) who->distance_to_ob_center(w);
 			if (newdistance < distance)
 			{
 				distance = newdistance;
-				returnob = here->ob;
+				returnob = w;
 			}
 		}
-		here = here->next;
 	}
 	return returnob;
 
 }
 
-oblink* screen::find_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
 {
-	oblink *here;
-	oblink *newlist, *newhere;
 	//short obx, oby;
-	Uint32 distance;
-
-	if (!somelist || !ob)
-	{
-		*howmany = 0;
-		return NULL;
-	}
+    std::list<walker*> result;
+    
+	*howmany = 0;
+	
+	if(!ob)
+		return result;
 
 	//obx = (short) (ob->xpos + (ob->sizex/2) );  // center of object
 	//oby = (short) (ob->ypos + (ob->sizey/2) );
 
-	here = somelist;
-
-	newlist = NULL;
-	*howmany = 0;
-
-	while (here)
+	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
+	    walker* w = *e;
+		if (w && !w->dead)
 		{
-			distance = (Uint32) ob->distance_to_ob(here->ob);
-			if (distance <= (Uint32) range)
+			if (ob->distance_to_ob(w) <= range)
 			{
-				if (newlist) // existing list ..
-				{
-					newhere = newlist;
-					while(newhere->next)
-						newhere = newhere->next;
-					newhere->next = new oblink;
-					newhere = newhere->next;
-				}
-				else // new list is null, first on the list
-				{
-					newhere = new oblink;
-					newlist = newhere;
-				}
-				newhere->next = NULL;
-				newhere->ob = here->ob;
-				*howmany = (short) (*howmany + 1);
-			} // end of valid distance check
-		} // end of valid here->ob check
-		here = here->next;
-	}  // end of while loop
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
 
-	return newlist;
+	return result;
 }
 
 walker* screen::find_nearest_player(walker *ob)
 {
-	oblink *here;
 	walker *returnob = NULL;
 	Uint32 distance = 32000;
 	Uint32 tempdistance;
@@ -1670,180 +1223,103 @@ walker* screen::find_nearest_player(walker *ob)
 	if (!ob)
 		return NULL;
 
-	here = level_data.oblist;
-	while (here)
+	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-		if (here->ob && (here->ob->user != -1) )
+	    walker* w = *e;
+		if (w && (w->user != -1) )
 		{
-			tempdistance = ob->distance_to_ob(here->ob);
+			tempdistance = ob->distance_to_ob(w);
 			if (tempdistance < distance)
 			{
 				distance = tempdistance;
-				returnob = here->ob;
+				returnob = w;
 			}
 		}
-		here = here->next;
 	}
 
 	return returnob;
 }
 
-oblink* screen::find_foes_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_foes_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
 {
-	oblink *here;
-	oblink *newlist, *newhere;
-	Uint32 distance;
+    std::list<walker*> result;
+    *howmany = 0;
+    
+	if(!ob)
+		return result;
 
-	if (!somelist || !ob)
+	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-		*howmany = 0;
-		return NULL;
-	}
-
-	here = somelist;
-
-	newlist = NULL;
-	*howmany = 0;
-
-	while (here)
-	{
-		if (here->ob && !here->ob->dead &&
-		        (here->ob->query_order() == ORDER_LIVING ||
-		         here->ob->query_order() == ORDER_GENERATOR)
-		        && (ob->is_friendly(here->ob) == 0)
+	    walker* w = *e;
+		if (w && !w->dead &&
+		        (w->query_order() == ORDER_LIVING ||
+		         w->query_order() == ORDER_GENERATOR)
+		        && (ob->is_friendly(w) == 0)
 		   )
 		{
-			distance = (Uint32) ob->distance_to_ob(here->ob);
-			if (distance <= (Uint32) range)
+			if (ob->distance_to_ob(w) <= range)
 			{
-				if (newlist) // existing list ..
-				{
-					newhere = newlist;
-					while(newhere->next)
-						newhere = newhere->next;
-					newhere->next = new oblink;
-					newhere = newhere->next;
-				}
-				else // new list is null, first on the list
-				{
-					newhere = new oblink;
-					newlist = newhere;
-				}
-				newhere->next = NULL;
-				newhere->ob = here->ob;
-				*howmany = (short) (*howmany + 1);
-			} // end of valid distance check
-		} // end of valid here->ob check
-		here = here->next;
-	}  // end of while loop
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
 
-	return newlist;
+	return result;
 }
 
-oblink* screen::find_friends_in_range(oblink *somelist, Sint32 range,
+std::list<walker*> screen::find_friends_in_range(std::list<walker*>& somelist, Sint32 range,
                                       short *howmany, walker  *ob)
 {
-	oblink *here;
-	oblink *newlist, *newhere;
-	//short obx, oby;
-	Uint32 distance;
+    std::list<walker*> result;
+    *howmany = 0;
+    
+	if(!ob)
+		return result;
 
-	if (!somelist || !ob)
+	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-		*howmany = 0;
-		return NULL;
-	}
-
-	//obx = (short) (ob->xpos + (ob->sizex/2) );  // center of object
-	//oby = (short) (ob->ypos + (ob->sizey/2) );
-
-	here = somelist;
-
-	newlist = NULL;
-	*howmany = 0;
-
-	while (here)
-	{
-		if (here->ob && !here->ob->dead && here->ob->query_order() == ORDER_LIVING
-		        && ( ob->is_friendly(here->ob) )
+	    walker* w = *e;
+		if (w && !w->dead && w->query_order() == ORDER_LIVING
+		        && ( ob->is_friendly(w) )
 		   )
 		{
-			distance = (Uint32) ob->distance_to_ob(here->ob);
-			if (distance <= (Uint32) range)
+			if (ob->distance_to_ob(w) <= range)
 			{
-				if (newlist) // existing list ..
-				{
-					newhere = newlist;
-					while(newhere->next)
-						newhere = newhere->next;
-					newhere->next = new oblink;
-					newhere = newhere->next;
-				}
-				else // new list is null, first on the list
-				{
-					newhere = new oblink;
-					newlist = newhere;
-				}
-				newhere->next = NULL;
-				newhere->ob = here->ob;
-				*howmany = (short) (*howmany + 1);
-			} // end of valid distance check
-		} // end of valid here->ob check
-		here = here->next;
-	}  // end of while loop
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
 
-	return newlist;
+	return result;
 }
 
-oblink* screen::find_foe_weapons_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_foe_weapons_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
 {
-	oblink *here;
-	oblink *newlist, *newhere;
-	Uint32 distance;
+    std::list<walker*> result;
+    *howmany = 0;
+    
+	if(!ob)
+		return result;
 
-	if (!somelist || !ob)
+	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-		*howmany = 0;
-		return NULL;
-	}
-
-	here = somelist;
-
-	newlist = NULL;
-	*howmany = 0;
-
-	while (here)
-	{
-		if (here->ob && !here->ob->dead &&
-		        (here->ob->query_order() == ORDER_WEAPON)
-		        && ( ob->is_friendly(here->ob) )
+	    walker* w = *e;
+		if (w && !w->dead &&
+		        (w->query_order() == ORDER_WEAPON)
+		        && ( ob->is_friendly(w) )
 		   )
 		{
-			distance = (Uint32) ob->distance_to_ob(here->ob);
-			if (distance <= (Uint32) range)
+			if (ob->distance_to_ob(w) <= range)
 			{
-				if (newlist) // existing list ..
-				{
-					newhere = newlist;
-					while(newhere->next)
-						newhere = newhere->next;
-					newhere->next = new oblink;
-					newhere = newhere->next;
-				}
-				else // new list is null, first on the list
-				{
-					newhere = new oblink;
-					newlist = newhere;
-				}
-				newhere->next = NULL;
-				newhere->ob = here->ob;
-				*howmany = (short) (*howmany + 1);
-			} // end of valid distance check
-		} // end of valid here->ob check
-		here = here->next;
-	}  // end of while loop
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
 
-	return newlist;
+	return result;
 }
 
 

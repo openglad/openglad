@@ -480,7 +480,6 @@ void statistics::hit_response(walker  *who)
 	walker *foe; // who is attacking us?
 	Sint32 possible_specials[NUM_SPECIALS];
 	float threshold; // for hitpoint 'running away'
-	oblink *newlist; // for calling for help
 	short howmany;
 
 	if (!who || !controller)
@@ -558,29 +557,9 @@ void statistics::hit_response(walker  *who)
 					foe->foe = controller;
 					last_distance = current_distance = 15000;
 				}
-				newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+				myscreen->find_foes_in_range(myscreen->level_data.oblist,
 				                                       200, &howmany, controller);
-				// Delete the list to save memory, not needed now
-				/* This clean-up code is broken .. why? <- Zardus says "Because you're trying to delete
-											an object that's in use! DUH!"
-									   Zardus then adds "sorry about that. fixing 200000
-									   		     of these leaks in walker.cpp
-											     makes one a bit cranky. here,
-											     you can use my delete_list
-											     function."
-				if (howmany && newlist)
-				{
-				  here = newlist->next;
-				  while (here)
-				  {
-				    delete newlist;
-				    newlist = here;
-				    here = here->next;
-				  }
-				  delete newlist;
-				}
-				*/
-				delete_list(newlist);
+                
 				if (howmany) // foes within range?
 				{
 					if (possible_specials[3]) // can we summon illusion?
@@ -673,7 +652,6 @@ void statistics::hit_response(walker  *who)
 
 void statistics::yell_for_help(walker *foe)
 {
-	oblink *helplist, *here;
 	short howmany;
 	Sint32 deltax, deltay;
 	char message[80];
@@ -681,20 +659,18 @@ void statistics::yell_for_help(walker *foe)
 	controller->yo_delay += 80;
 	
 	// Get AI-controlled allies to target my foe
-	helplist = controller->screenp->find_friends_in_range(
+	std::list<walker*> helplist = controller->screenp->find_friends_in_range(
 	               controller->screenp->level_data.oblist, 160, &howmany, controller);
-	here = helplist;
-	while (here)
+	for(auto e = helplist.begin(); e != helplist.end(); e++)
 	{
-		here->ob->leader = controller;
-		if (foe != here->ob->foe)
-			here->ob->stats->last_distance = here->ob->stats->current_distance = 32000;
-		here->ob->foe = foe;
-		//if (here->ob->query_act_type() != ACT_CONTROL)
-		//  here->ob->stats->force_command(COMMAND_FOLLOW, 80, 0, 0);
-		here= here->next;
+	    walker* w = *e;
+		w->leader = controller;
+		if (foe != w->foe)
+			w->stats->last_distance = w->stats->current_distance = 32000;
+		w->foe = foe;
+		//if (w->query_act_type() != ACT_CONTROL)
+		//  w->stats->force_command(COMMAND_FOLLOW, 80, 0, 0);
 	}
-	delete_list(helplist);
 	
 	// Force run in the opposite direction
 	deltax = -(foe->xpos - controller->xpos);
@@ -1144,7 +1120,6 @@ bool statistics::walk_to_foe()
 	float xdelta, ydelta;
 	Uint32 tempdistance = 9999999L;
 	short howmany;
-	oblink  * foelist;
 
 	if (!foe || !random(300) ) //random just to be sure this gets reset sometime
 	{
@@ -1169,21 +1144,21 @@ bool statistics::walk_to_foe()
 		tempdistance = (Uint32) controller->distance_to_ob(foe);
 		if (tempdistance < PATHING_MIN_DISTANCE)// || (tempdistance < last_distance) )
 		{
-			foelist = controller->screenp->find_foes_in_range(controller->screenp->level_data.oblist,
+			std::list<walker*> foelist = controller->screenp->find_foes_in_range(controller->screenp->level_data.oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
 			if (howmany > 0)
 			{
+			    walker* firstfoe = foelist.front();
 				clear_command();
 				controller->turn(controller->facing(xdelta, ydelta));
 				controller->stats->try_command(COMMAND_ATTACK,(short) (30+ random(25)), 1, 1);
 				controller->screenp->find_near_foe(controller);
-				if (!controller->foe && foelist->ob)
+				if (!controller->foe && firstfoe)
 				{
-					controller->foe = foelist->ob;
+					controller->foe = firstfoe;
 					last_distance = controller->distance_to_ob(foe);
 				}
 				controller->init_fire();
-				delete_list(foelist);
 				return 1;
 			}
 			else // our foe has moved; we need a new one

@@ -25,6 +25,7 @@
 #include "smooth.h"
 #include "screen.h"
 #include "view.h"
+#include <algorithm>
 
 
 int toInt(const std::string& s);
@@ -289,7 +290,7 @@ std::string CampaignData::getDescriptionLine(int i)
 
 LevelData::LevelData(int id)
     : id(id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
-    , myloader(NULL), numobs(0), oblist(NULL), fxlist(NULL), weaplist(NULL), topx(0), topy(0)
+    , myloader(NULL), numobs(0), topx(0), topy(0)
 {
     for (int i = 0; i < PIX_MAX; i++)
     {
@@ -366,209 +367,68 @@ void LevelData::clear()
 
 walker* LevelData::add_ob(char order, char family, bool atstart)
 {
-	oblink  *here = NULL;
-
-	/*         ------      ------
-	          | ob  |     | ob  |
-	oblist -> |-----      |-----
-	          |   ------->|  --------> Null
-	          ------      ------
-	*/
-	// Point to end of oblink chain
-
 	if (order == ORDER_WEAPON)
 		return add_weap_ob(order, family);
 
-	// Going to force at head of list for now, for speed, if it works
-	//if (atstart) // add to the end of the list instead of the end ..
-	if (oblist)
-	{
-		here = new oblink;
-		here->ob = myloader->create_walker(order, family, myscreen);
-		if (!here->ob)
-			return NULL;
-        here->ob->myobmap = this->myobmap;
-		here->next = oblist;
-		oblist = here;
-		if (order == ORDER_LIVING)
-			numobs++;
-		return here->ob;
-	}
-	else // we're the first and only ..
-	{
-		here = new oblink;
-		here->ob = myloader->create_walker(order, family, myscreen);
-		if (!here->ob)
-			return NULL;
-        here->ob->myobmap = this->myobmap;
-		here->next = NULL;
-		oblist = here;
-		if (order == ORDER_LIVING)
-			numobs++;
-		return here->ob;
-	}
-
-	here = oblist;
-
-	if (oblist)
-	{
-		while(here->next)
-			here = here->next;
-		here->next = new oblink;
-		here = here->next;
-	}
-	else  // oblink is null
-	{
-		here = new oblink;
-		oblist = here;
-	}
-
-	here->next = NULL;
-	here->ob = myloader->create_walker(order, family, myscreen);
-    here->ob->myobmap = this->myobmap;
-
-	if (order == ORDER_LIVING)
-		numobs++;
-	return here->ob;
+    // Create the walker
+    walker* w = myloader->create_walker(order, family, myscreen);
+    if(w == NULL)
+        return NULL;
+    
+    w->myobmap = this->myobmap;
+    if (order == ORDER_LIVING)
+        numobs++;
+    
+    oblist.push_back(w);
+    return w;
 }
 
 walker* LevelData::add_fx_ob(char order, char family)
 {
-	oblink  *here = NULL;
-
-	here = fxlist;
-	if (fxlist)
-	{
-		while(here->next)
-			here = here->next;
-		here->next = new oblink;
-		here = here->next;
-	}
-	else  // oblink is null
-	{
-		here = new oblink;
-		fxlist = here;
-	}
-
-	here->next = NULL;
-	here->ob = myloader->create_walker(order, family, myscreen, false);
-    here->ob->myobmap = this->myobmap;
+	walker* w = myloader->create_walker(order, family, myscreen, false);
+    w->myobmap = this->myobmap;
 
 	//numobs++;
-	//here->ob->ignore = 1;
-	return here->ob;
+	//w->ignore = 1;
+	
+	fxlist.push_back(w);
+	return w;
 }
 
 walker* LevelData::add_weap_ob(char order, char family)
 {
-	oblink *here = new oblink;
-
-	here->ob = myloader->create_walker(order, family, myscreen);
-    here->ob->myobmap = this->myobmap;
-	here->next = weaplist;
-	weaplist = here;
-
-	return here->ob;
+	walker* w = myloader->create_walker(order, family, myscreen);
+    w->myobmap = this->myobmap;
+    
+    weaplist.push_back(w);
+	return w;
 }
 
-short LevelData::remove_ob(walker  *ob, short no_delete)
+short LevelData::remove_ob(walker  *ob)
 {
-	oblink  *here, *prev;
-
 	if (ob && ob->query_order() == ORDER_LIVING)
 		numobs--;
-
-	here = weaplist; //most common case
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			weaplist = weaplist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-
-	here = fxlist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			fxlist = fxlist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
-
-
-	here = oblist; //less common
-	if (here)
-		if (here->ob && here->ob == ob) // this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			oblist = oblist->next;
-			delete here;
-			return 1;
-		}
-
-	prev = here;
-	while (here)
-	{
-		if (here->ob && here->ob == ob) //this is the ob we want
-		{
-			if (!no_delete)
-			{
-				delete here->ob;
-			}
-			prev->next = here->next; // remove this link
-			delete here;
-			return 1; //we found it, at least
-		}
-		prev = here;
-		here = here->next;
-	}
+    
+    std::list<walker*>::iterator e = std::find(weaplist.begin(), weaplist.end(), ob);
+    if(e != weaplist.end())
+    {
+        weaplist.erase(e);
+        return 1;
+    }
+    
+    e = std::find(fxlist.begin(), fxlist.end(), ob);
+    if(e != fxlist.end())
+    {
+        fxlist.erase(e);
+        return 1;
+    }
+    
+    e = std::find(oblist.begin(), oblist.end(), ob);
+    if(e != oblist.end())
+    {
+        oblist.erase(e);
+        return 1;
+    }
 
 	return 0;
 }
@@ -667,121 +527,73 @@ void LevelData::resize_grid(int width, int height)
     
     
     // Delete objects that fell off the map
-	oblink* here;
-	oblink* next;
-	oblink* prev = NULL;
-    
     int x = 0;
     int y = 0;
     int w = grid.w * GRID_SIZE;
     int h = grid.h * GRID_SIZE;
-	here = oblist;
-	while (here)
+    
+    for(auto e = oblist.begin(); e != oblist.end();)
 	{
-        next = here->next;
-		if(here->ob == NULL || (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+	    walker* ob = *e;
+		if(ob == NULL || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
-		    // Delete the object and the node.  Prev doesn't change
-			delete here->ob;
-			here->ob = NULL;
-			if(prev == NULL)
-                oblist = next;
-            else
-                prev->next = next;
-			delete here;
+			delete ob;
+			e = oblist.erase(e);
 		}
 		else
-            prev = here;
-		
-		here = next;
+            e++;
 	}
-	
-	here = fxlist;
-	while (here)
+    
+    for(auto e = fxlist.begin(); e != fxlist.end();)
 	{
-        next = here->next;
-		if(here->ob == NULL || (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+	    walker* ob = *e;
+		if(ob == NULL || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
-		    // Delete the object and the node.  Prev doesn't change
-			delete here->ob;
-			here->ob = NULL;
-			if(prev == NULL)
-                fxlist = next;
-            else
-                prev->next = next;
-			delete here;
+			delete ob;
+			e = fxlist.erase(e);
 		}
 		else
-            prev = here;
-		
-		here = next;
+            e++;
 	}
-	
-	here = weaplist;
-	while (here)
+    
+    for(auto e = weaplist.begin(); e != weaplist.end();)
 	{
-        next = here->next;
-		if(here->ob == NULL || (x > here->ob->xpos || here->ob->xpos >= x + w || y > here->ob->ypos || here->ob->ypos >= y + h))
+	    walker* ob = *e;
+		if(ob == NULL || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
-		    // Delete the object and the node.  Prev doesn't change
-			delete here->ob;
-			here->ob = NULL;
-			if(prev == NULL)
-                weaplist = next;
-            else
-                prev->next = next;
-			delete here;
+			delete ob;
+			e = weaplist.erase(e);
 		}
 		else
-            prev = here;
-		
-		here = next;
+            e++;
 	}
 }
 
 void LevelData::delete_objects()
 {
-    oblink* next;
-	oblink *fx = fxlist;
-
-	while (fx)
+    for(auto e = oblist.begin(); e != oblist.end(); e++)
 	{
-	    next = fx->next;
-	    
-        delete fx->ob;
-        fx->ob = NULL;
-        delete fx;
-		
-		fx = next;
+	    delete *e;
 	}
-
-	fx = oblist;
-	while (fx)
+	oblist.clear();
+	
+    for(auto e = fxlist.begin(); e != fxlist.end(); e++)
 	{
-	    next = fx->next;
-	    
-        delete fx->ob;
-        fx->ob = NULL;
-        delete fx;
-		
-		fx = next;
+	    delete *e;
 	}
-
-	fx = weaplist;
-	while (fx)
+	fxlist.clear();
+	
+    for(auto e = weaplist.begin(); e != weaplist.end(); e++)
 	{
-	    next = fx->next;
-	    
-        delete fx->ob;
-        fx->ob = NULL;
-        delete fx;
-		
-		fx = next;
+	    delete *e;
 	}
+	weaplist.clear();
     
-    oblist = NULL;
-    fxlist = NULL;
-    weaplist = NULL;
+    for(std::list<walker*>::iterator e = dead_list.begin(); e != dead_list.end(); e++)
+    {
+        delete *e;
+    }
+    dead_list.clear();
 
 	numobs = 0;
 	
@@ -1120,7 +932,6 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	char oneline[80];
 	char numlines, tempwidth;
 	char tempname[12];
-	oblink *here;
 
 	// Format of a scenario object list file version 5 is:
 	// 3-byte header: 'FSS'
@@ -1216,18 +1027,17 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	data->mysmoother.set_target(data->grid);
 
 	// Fix up doors, etc.
-	here = data->weaplist;
-	while (here)
+	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
 	{
-		if (here->ob && here->ob->query_family()==FAMILY_DOOR)
+	    walker* w = *e;
+		if (w && w->query_family()==FAMILY_DOOR)
 		{
-			if (data->mysmoother.query_genre_x_y(here->ob->xpos/GRID_SIZE,
-			        (here->ob->ypos/GRID_SIZE)-1)==TYPE_WALL)
+			if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
+			        (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
 			{
-				here->ob->set_frame(1);  // turn sideways ..
+				w->set_frame(1);  // turn sideways ..
 			}
 		}
-		here = here->next;
 	}
 
 	return 1;
@@ -1264,7 +1074,6 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     char numlines = 0, tempwidth;
     char tempname[12];
     memset(tempname, 0, 12);
-    oblink *here;
     char scentitle[30];
     memset(scentitle, 0, 30);
     short temp_par = 1;
@@ -1396,18 +1205,17 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     data->mysmoother.set_target(data->grid);
 
     // Fix up doors, etc.
-    here = data->weaplist;
-    while (here)
-    {
-        if (here->ob && here->ob->query_family()==FAMILY_DOOR)
+	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
+	{
+	    walker* w = *e;
+        if (w && w->query_family()==FAMILY_DOOR)
         {
-            if (data->mysmoother.query_genre_x_y(here->ob->xpos/GRID_SIZE,
-                    (here->ob->ypos/GRID_SIZE)-1)==TYPE_WALL)
+            if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
+                    (w->ypos/GRID_SIZE)-1)==TYPE_WALL)
             {
-                here->ob->set_frame(1);  // turn sideways ..
+                w->set_frame(1);  // turn sideways ..
             }
         }
-        here = here->next;
     }
     
     return 1;
@@ -1585,7 +1393,6 @@ bool LevelData::save()
 	char temp_grid[20];
     memset(temp_grid, 0, 20);
 	char temp_scen_type = 0;
-	oblink* head = NULL;
 	Sint32 listsize;
 	Sint32 i;
 	char temp_version = VERSION_NUM;
@@ -1662,143 +1469,109 @@ bool LevelData::save()
 	SDL_RWwrite(outfile, &temp_time_limit, 2, 1);
 
 	// Determine size of object list ...
-	listsize = 0;
-	head = this->oblist;
-	while (head)
-	{
-		if (head->ob)
-			listsize++;
-		head = head->next;
-	} // end of oblist-size check
+	listsize = oblist.size();
 
 	// Also check the fx list ..
-	head = this->fxlist;
-	while (head)
-	{
-		if (head->ob)
-			listsize++;
-		head = head->next;
-	} // end of fxlist-size check
+	listsize += fxlist.size();
 
 	// And the weapon list ..
-	head = this->weaplist;
-	while (head)
-	{
-		if (head->ob)
-			listsize++;
-		head = head->next;
-	} // end of weaplist-size check
+	listsize += weaplist.size();
 
 	SDL_RWwrite(outfile, &listsize, 2, 1);
 
 	// Okay, we've written header .. now dump the data ..
-	head = this->oblist;  // back to head of list
-	while (head)
+	for(auto e = oblist.begin(); e != oblist.end(); e++)
 	{
-		if (head->ob)
-		{
-			if (!head)
-            {
-                Log("Unexpected NULL object.\n");
-                SDL_RWclose(outfile);
-				return false;  // Something wrong! Too few objects..
-            }
-			temporder = head->ob->query_order();
-			tempfacing= head->ob->curdir;
-			tempfamily= head->ob->query_family();
-			tempteam  = head->ob->team_num;
-			tempcommand=head->ob->query_act_type();
-			currentx  = head->ob->xpos;
-			currenty  = head->ob->ypos;
-			//templevel = head->ob->stats->level;
-			shortlevel = head->ob->stats->level;
-			strcpy(tempname, head->ob->stats->name);
-			SDL_RWwrite(outfile, &temporder, 1, 1);
-			SDL_RWwrite(outfile, &tempfamily, 1, 1);
-			SDL_RWwrite(outfile, &currentx, 2, 1);
-			SDL_RWwrite(outfile, &currenty, 2, 1);
-			SDL_RWwrite(outfile, &tempteam, 1, 1);
-			SDL_RWwrite(outfile, &tempfacing, 1, 1);
-			SDL_RWwrite(outfile, &tempcommand, 1, 1);
-			SDL_RWwrite(outfile, &shortlevel, 2, 1);
-			SDL_RWwrite(outfile, tempname, 12, 1);
-			SDL_RWwrite(outfile, filler, 10, 1);
-		}
-		// Advance to next object ..
-		head = head->next;
+	    walker* w = *e;
+        if (w == NULL)
+        {
+            Log("Unexpected NULL object.\n");
+            SDL_RWclose(outfile);
+            return false;  // Something wrong! Too few objects..
+        }
+        temporder = w->query_order();
+        tempfacing= w->curdir;
+        tempfamily= w->query_family();
+        tempteam  = w->team_num;
+        tempcommand=w->query_act_type();
+        currentx  = w->xpos;
+        currenty  = w->ypos;
+        //templevel = w->stats->level;
+        shortlevel = w->stats->level;
+        strcpy(tempname, w->stats->name);
+        SDL_RWwrite(outfile, &temporder, 1, 1);
+        SDL_RWwrite(outfile, &tempfamily, 1, 1);
+        SDL_RWwrite(outfile, &currentx, 2, 1);
+        SDL_RWwrite(outfile, &currenty, 2, 1);
+        SDL_RWwrite(outfile, &tempteam, 1, 1);
+        SDL_RWwrite(outfile, &tempfacing, 1, 1);
+        SDL_RWwrite(outfile, &tempcommand, 1, 1);
+        SDL_RWwrite(outfile, &shortlevel, 2, 1);
+        SDL_RWwrite(outfile, tempname, 12, 1);
+        SDL_RWwrite(outfile, filler, 10, 1);
 	}
 
 	// Now dump the fxlist data ..
-	head = this->fxlist;  // back to head of list
-	while (head)
+	for(auto e = fxlist.begin(); e != fxlist.end(); e++)
 	{
-		if (head->ob)
-		{
-			if (!head)
-            {
-                Log("Unexpected NULL fx object.\n");
-                SDL_RWclose(outfile);
-				return false;  // Something wrong! Too few objects..
-            }
-			temporder = head->ob->query_order();
-			tempfacing= head->ob->curdir;
-			tempfamily= head->ob->query_family();
-			tempteam  = head->ob->team_num;
-			tempcommand=head->ob->query_act_type();
-			currentx  = head->ob->xpos;
-			currenty  = head->ob->ypos;
-			//templevel = head->ob->stats->level;
-			shortlevel = head->ob->stats->level;
-			strcpy(tempname, head->ob->stats->name);
-			SDL_RWwrite(outfile, &temporder, 1, 1);
-			SDL_RWwrite(outfile, &tempfamily, 1, 1);
-			SDL_RWwrite(outfile, &currentx, 2, 1);
-			SDL_RWwrite(outfile, &currenty, 2, 1);
-			SDL_RWwrite(outfile, &tempteam, 1, 1);
-			SDL_RWwrite(outfile, &tempfacing, 1, 1);
-			SDL_RWwrite(outfile, &tempcommand, 1, 1);
-			SDL_RWwrite(outfile, &shortlevel, 2, 1);
-			SDL_RWwrite(outfile, tempname, 12, 1);
-			SDL_RWwrite(outfile, filler, 10, 1);
-		}
-		// Advance to next object ..
-		head = head->next;
+	    walker* ob = *e;
+        if (ob == NULL)
+        {
+            Log("Unexpected NULL fx object.\n");
+            SDL_RWclose(outfile);
+            return false;  // Something wrong! Too few objects..
+        }
+        temporder = ob->query_order();
+        tempfacing= ob->curdir;
+        tempfamily= ob->query_family();
+        tempteam  = ob->team_num;
+        tempcommand=ob->query_act_type();
+        currentx  = ob->xpos;
+        currenty  = ob->ypos;
+        //templevel = ob->stats->level;
+        shortlevel = ob->stats->level;
+        strcpy(tempname, ob->stats->name);
+        SDL_RWwrite(outfile, &temporder, 1, 1);
+        SDL_RWwrite(outfile, &tempfamily, 1, 1);
+        SDL_RWwrite(outfile, &currentx, 2, 1);
+        SDL_RWwrite(outfile, &currenty, 2, 1);
+        SDL_RWwrite(outfile, &tempteam, 1, 1);
+        SDL_RWwrite(outfile, &tempfacing, 1, 1);
+        SDL_RWwrite(outfile, &tempcommand, 1, 1);
+        SDL_RWwrite(outfile, &shortlevel, 2, 1);
+        SDL_RWwrite(outfile, tempname, 12, 1);
+        SDL_RWwrite(outfile, filler, 10, 1);
 	}
 
 	// Now dump the weaplist data ..
-	head = this->weaplist;  // back to head of list
-	while (head)
+	for(auto e = weaplist.begin(); e != weaplist.end(); e++)
 	{
-		if (head->ob)
-		{
-			if (!head)
-            {
-                Log("Unexpected NULL weap object.\n");
-                SDL_RWclose(outfile);
-				return false;  // Something wrong! Too few objects..
-            }
-			temporder = head->ob->query_order();
-			tempfacing= head->ob->curdir;
-			tempfamily= head->ob->query_family();
-			tempteam  = head->ob->team_num;
-			tempcommand=head->ob->query_act_type();
-			currentx  = head->ob->xpos;
-			currenty  = head->ob->ypos;
-			shortlevel = head->ob->stats->level;
-			strcpy(tempname, head->ob->stats->name);
-			SDL_RWwrite(outfile, &temporder, 1, 1);
-			SDL_RWwrite(outfile, &tempfamily, 1, 1);
-			SDL_RWwrite(outfile, &currentx, 2, 1);
-			SDL_RWwrite(outfile, &currenty, 2, 1);
-			SDL_RWwrite(outfile, &tempteam, 1, 1);
-			SDL_RWwrite(outfile, &tempfacing, 1, 1);
-			SDL_RWwrite(outfile, &tempcommand, 1, 1);
-			SDL_RWwrite(outfile, &shortlevel, 2, 1);
-			SDL_RWwrite(outfile, tempname, 12, 1);
-			SDL_RWwrite(outfile, filler, 10, 1);
-		}
-		// Advance to next object ..
-		head = head->next;
+	    walker* ob = *e;
+        if (ob == NULL)
+        {
+            Log("Unexpected NULL weap object.\n");
+            SDL_RWclose(outfile);
+            return false;  // Something wrong! Too few objects..
+        }
+        temporder = ob->query_order();
+        tempfacing= ob->curdir;
+        tempfamily= ob->query_family();
+        tempteam  = ob->team_num;
+        tempcommand=ob->query_act_type();
+        currentx  = ob->xpos;
+        currenty  = ob->ypos;
+        shortlevel = ob->stats->level;
+        strcpy(tempname, ob->stats->name);
+        SDL_RWwrite(outfile, &temporder, 1, 1);
+        SDL_RWwrite(outfile, &tempfamily, 1, 1);
+        SDL_RWwrite(outfile, &currentx, 2, 1);
+        SDL_RWwrite(outfile, &currenty, 2, 1);
+        SDL_RWwrite(outfile, &tempteam, 1, 1);
+        SDL_RWwrite(outfile, &tempfacing, 1, 1);
+        SDL_RWwrite(outfile, &tempcommand, 1, 1);
+        SDL_RWwrite(outfile, &shortlevel, 2, 1);
+        SDL_RWwrite(outfile, tempname, 12, 1);
+        SDL_RWwrite(outfile, filler, 10, 1);
 	}
 
 	numlines = this->description.size();

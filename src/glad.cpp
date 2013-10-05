@@ -100,7 +100,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	//  char soundpath[80];
 	//  short cyclemode = 1;            // color cycling on or off
 	short numviews;
-	oblink *here, *before;
 
 	//Sint32 longtemp;
 	//char message[50];
@@ -256,40 +255,7 @@ void glad_main(screen *myscreen, Sint32 playermode)
 
 	clear_keyboard();
 
-	// Delete all of our current information and abort ..
-	here = myscreen->level_data.oblist;
-	while (here)
-	{
-		if (here->ob)
-			//myscreen->remove_ob(here->ob);
-			delete here->ob;
-		before = here;
-		here = here->next;
-		delete before;
-		myscreen->level_data.oblist = here;
-	}
-	here = myscreen->level_data.weaplist; // do the weapons
-	while (here)
-	{
-		if (here->ob)
-			//myscreen->remove_ob(here->ob);
-			delete here->ob;
-		before = here;
-		here = here->next;
-		delete before;
-		myscreen->level_data.weaplist = here;
-	}
-	here = myscreen->level_data.fxlist; // do the fx's
-	while (here)
-	{
-		if (here->ob)
-			//myscreen->remove_fx_ob(here->ob);
-			delete here->ob;
-		before = here;
-		here = here->next;
-		delete before;
-		myscreen->level_data.fxlist = here;
-	}
+    myscreen->level_data.delete_objects();
     
 	return; // return to picker
 	//  return 1;
@@ -298,17 +264,16 @@ void glad_main(screen *myscreen, Sint32 playermode)
 // remaining_foes returns # of livings left not on control's team
 short remaining_foes(screen *myscreen, walker* myguy)
 {
-	oblink  *here;
 	short myfoes = 0;
 
-	here = myscreen->level_data.oblist;
-	while (here)
+	const std::list<walker*>& foelist = myscreen->level_data.oblist;
+	for(auto e = foelist.begin(); e != foelist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead &&
-		        (here->ob->query_order() == ORDER_LIVING) &&
-		        !myguy->is_friendly(here->ob) )
+	    walker* w = *e;
+		if (w && !w->dead &&
+		        (w->query_order() == ORDER_LIVING) &&
+		        !myguy->is_friendly(w) )
 			myfoes++;
-		here = here->next;
 	}
 
 	return myfoes;
@@ -317,17 +282,16 @@ short remaining_foes(screen *myscreen, walker* myguy)
 // remaining_team returns # of livings left on team myteam
 short remaining_team(screen *myscreen, char myteam)
 {
-	oblink  *here;
 	short myfoes = 0;
 
-	here = myscreen->level_data.oblist;
-	while (here)
+	const std::list<walker*>& foelist = myscreen->level_data.oblist;
+	for(auto e = foelist.begin(); e != foelist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead &&
-		        (here->ob->query_order() == ORDER_LIVING) &&
-		        (myteam == here->ob->team_num) )
+	    walker* w = *e;
+		if (w && !w->dead &&
+		        (w->query_order() == ORDER_LIVING) &&
+		        (myteam == w->team_num) )
 			myfoes++;
-		here = here->next;
 	}
 
 	return myfoes;

@@ -24,7 +24,6 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	char          scenfile[20];
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
-	oblink        * here;
 	short         myord, myfam;
 	int           multi_team = 0;
 	int           i;
@@ -60,12 +59,12 @@ short load_saved_game(const char *filename, screen  *myscreen)
         }
 	}
 
-	here = myscreen->level_data.oblist;
-	while (here)
+	std::list<walker*> foelist = myscreen->level_data.oblist;
+	for(auto e = foelist.begin(); e != foelist.end(); e++)
 	{
-		if (here->ob)
-			here->ob->set_difficulty((Uint32)here->ob->stats->level);
-		here = here->next;
+	    walker* w = *e;
+		if (w)
+			w->set_difficulty((Uint32)w->stats->level);
 	}
 
 	// Cycle through the team list ..
@@ -111,15 +110,16 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	if (myscreen->save_data.is_level_completed(myscreen->save_data.scen_num))
 	{
 		//                Log("already done level\n");
-		here = myscreen->level_data.oblist;
-		while (here)
+		foelist = myscreen->level_data.oblist;
+		for(auto e = foelist.begin(); e != foelist.end(); e++)
 		{
-			if (here->ob)
+		    walker* w = *e;
+			if (w)
 			{
 			    // Kill everything except for our team, exits, and teleporters
-				myfam = here->ob->query_family();
-				myord = here->ob->query_order();
-				if ( ( (here->ob->team_num==0 || here->ob->myguy) && myord==ORDER_LIVING) || //living team member
+				myfam = w->query_family();
+				myord = w->query_order();
+				if ( ( (w->team_num==0 || w->myguy) && myord==ORDER_LIVING) || //living team member
 				        (myord==ORDER_TREASURE && myfam==FAMILY_EXIT) || // exit
 				        (myord==ORDER_TREASURE && myfam==FAMILY_TELEPORTER)  // teleporters
 				   )
@@ -127,18 +127,19 @@ short load_saved_game(const char *filename, screen  *myscreen)
 					// do nothing; legal guy
 				}
 				else
-					here->ob->dead = 1;
+					w->dead = 1;
 			}
-			here = here->next;
 		}
-		here = myscreen->level_data.weaplist;
-		while (here)
+		
+		foelist = myscreen->level_data.weaplist;
+		for(auto e = foelist.begin(); e != foelist.end(); e++)
 		{
-			if (here->ob)
+		    walker* w = *e;
+			if (w)
 			{
-				myfam = here->ob->query_family();
-				myord = here->ob->query_order();
-				if ( (here->ob->team_num==0 && myord==ORDER_LIVING) || //living team member
+				myfam = w->query_family();
+				myord = w->query_order();
+				if ( (w->team_num==0 && myord==ORDER_LIVING) || //living team member
 				        (myord==ORDER_TREASURE && myfam==FAMILY_EXIT) || // exit
 				        (myord==ORDER_TREASURE && myfam==FAMILY_TELEPORTER)  // teleporters
 
@@ -147,19 +148,19 @@ short load_saved_game(const char *filename, screen  *myscreen)
 					// do nothing; legal guy
 				}
 				else
-					here->ob->dead = 1;
+					w->dead = 1;
 			}
-			here = here->next;
 		}
 
-		here = myscreen->level_data.fxlist;
-		while (here)
+		foelist = myscreen->level_data.fxlist;
+		for(auto e = foelist.begin(); e != foelist.end(); e++)
 		{
-			if (here->ob)
+		    walker* w = *e;
+			if (w)
 			{
-				myfam = here->ob->query_family();
-				myord = here->ob->query_order();
-				if ( (here->ob->team_num==0 && myord==ORDER_LIVING) || //living team member
+				myfam = w->query_family();
+				myord = w->query_order();
+				if ( (w->team_num==0 && myord==ORDER_LIVING) || //living team member
 				        (myord==ORDER_TREASURE && myfam==FAMILY_EXIT) || // exit
 				        (myord==ORDER_TREASURE && myfam==FAMILY_TELEPORTER)  // teleporters
 
@@ -168,9 +169,8 @@ short load_saved_game(const char *filename, screen  *myscreen)
 					// do nothing; legal guy
 				}
 				else
-					here->ob->dead = 1;
+					w->dead = 1;
 			}
-			here = here->next;
 		}
 	}
 

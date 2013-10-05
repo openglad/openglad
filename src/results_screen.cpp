@@ -282,15 +282,14 @@ int get_num_foes(LevelData& level)
 {
     int result = 0;
     
-    oblink* here = level.oblist;
-	while (here)
+	for(auto e = level.oblist.begin(); e != level.oblist.end(); e++)
 	{
+	    walker* ob = *e;
 	    // Not dead, not hired, not on red team
-		if (here->ob && !here->ob->dead && here->ob->myguy == NULL && here->ob->team_num != 0)
+		if (ob && !ob->dead && ob->myguy == NULL && ob->team_num != 0)
 		{
 		    result++;
 		}
-		here = here->next;
 	}
 	
 	return result;

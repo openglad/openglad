@@ -411,7 +411,7 @@ bool SaveData::load(const std::string& filename)
 
 Sint32 calculate_level(Uint32 temp_exp);
 
-void SaveData::update_guys(oblink* oblist)
+void SaveData::update_guys(std::list<walker*>& oblist)
 {
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)
@@ -423,20 +423,19 @@ void SaveData::update_guys(oblink* oblist)
     
     
     // Remove new (or existing) "guys" from the list and store them in this SaveData to be saved and trained.
-    oblink* here = oblist;  // back to head of list
-	while (here)
+    for(auto e = oblist.begin(); e != oblist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead && here->ob->myguy)
+	    walker* ob = *e;
+		if (ob && !ob->dead && ob->myguy)
 		{
 		    // Take this one
-			team_list[team_size] = new guy(*here->ob->myguy);
+			team_list[team_size] = new guy(*ob->myguy);
 			// Update his level from the experience
 			Uint32 exp = team_list[team_size]->exp;
 			team_list[team_size]->upgrade_to_level(calculate_level(team_list[team_size]->exp));
 			team_list[team_size]->exp = exp;
 			team_size++;
 		}
-		here = here->next;
 	}
 }
 

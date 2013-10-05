@@ -22,9 +22,10 @@
 #include <string>
 #include <map>
 #include <set>
+#include <list>
 
-class oblink;
 class guy;
+class walker;
 
 #define MAX_TEAM_SIZE 24 //max # of guys on a team
 
@@ -55,7 +56,7 @@ public:
     
     void reset();
     
-    void update_guys(oblink* oblist);  // Copy team from the guys in an oblist
+    void update_guys(std::list<walker*>& oblist);  // Copy team from the guys in an oblist
     bool load(const std::string& filename);
     bool save(const std::string& filename);
     
@@ -64,5 +65,7 @@ public:
     void add_level_completed(const std::string& campaign, int level_index);
     void reset_campaign(const std::string& campaign);
 };
+
+#include "walker.h"
 
 #endif
