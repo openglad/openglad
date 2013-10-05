@@ -45,7 +45,4 @@ class obmap
 		short unhash(short y);
 };
 
-// Zardus: ADD: and a little util for oblink chains
-void delete_list(oblink *);
-
 #endif

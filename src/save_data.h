@@ -24,7 +24,6 @@
 #include <set>
 #include <list>
 
-class oblink;
 class guy;
 class walker;
 

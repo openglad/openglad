@@ -1393,7 +1393,6 @@ bool LevelData::save()
 	char temp_grid[20];
     memset(temp_grid, 0, 20);
 	char temp_scen_type = 0;
-	oblink* head = NULL;
 	Sint32 listsize;
 	Sint32 i;
 	char temp_version = VERSION_NUM;
@@ -1515,23 +1514,23 @@ bool LevelData::save()
 	// Now dump the fxlist data ..
 	for(auto e = fxlist.begin(); e != fxlist.end(); e++)
 	{
-	    walker* w = *e;
-        if (w == NULL)
+	    walker* ob = *e;
+        if (ob == NULL)
         {
             Log("Unexpected NULL fx object.\n");
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }
-        temporder = head->ob->query_order();
-        tempfacing= head->ob->curdir;
-        tempfamily= head->ob->query_family();
-        tempteam  = head->ob->team_num;
-        tempcommand=head->ob->query_act_type();
-        currentx  = head->ob->xpos;
-        currenty  = head->ob->ypos;
-        //templevel = head->ob->stats->level;
-        shortlevel = head->ob->stats->level;
-        strcpy(tempname, head->ob->stats->name);
+        temporder = ob->query_order();
+        tempfacing= ob->curdir;
+        tempfamily= ob->query_family();
+        tempteam  = ob->team_num;
+        tempcommand=ob->query_act_type();
+        currentx  = ob->xpos;
+        currenty  = ob->ypos;
+        //templevel = ob->stats->level;
+        shortlevel = ob->stats->level;
+        strcpy(tempname, ob->stats->name);
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1547,22 +1546,22 @@ bool LevelData::save()
 	// Now dump the weaplist data ..
 	for(auto e = weaplist.begin(); e != weaplist.end(); e++)
 	{
-	    walker* w = *e;
-        if (w == NULL)
+	    walker* ob = *e;
+        if (ob == NULL)
         {
             Log("Unexpected NULL weap object.\n");
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }
-        temporder = head->ob->query_order();
-        tempfacing= head->ob->curdir;
-        tempfamily= head->ob->query_family();
-        tempteam  = head->ob->team_num;
-        tempcommand=head->ob->query_act_type();
-        currentx  = head->ob->xpos;
-        currenty  = head->ob->ypos;
-        shortlevel = head->ob->stats->level;
-        strcpy(tempname, head->ob->stats->name);
+        temporder = ob->query_order();
+        tempfacing= ob->curdir;
+        tempfamily= ob->query_family();
+        tempteam  = ob->team_num;
+        tempcommand=ob->query_act_type();
+        currentx  = ob->xpos;
+        currenty  = ob->ypos;
+        shortlevel = ob->stats->level;
+        strcpy(tempname, ob->stats->name);
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);

@@ -52,7 +52,6 @@ class weap;
 class treasure;
 class effect;
 
-class oblink;
 class text;
 class loader;
 class statistics;
@@ -62,16 +61,6 @@ class radar;
 
 class soundob;
 class smoother;
-
-class oblink
-{
-	public:
-		oblink() : ob(NULL), next(NULL) {}
-		walker  *ob;
-		oblink  *next;
-};
-
-#define GLAD_VER "3.8K"
 
 #define DIFFICULTY_SETTINGS 3
 

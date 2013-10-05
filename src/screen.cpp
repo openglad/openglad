@@ -278,13 +278,12 @@ void screen::initialize_views()
 void screen::cleanup(short howmany)
 {
 	Sint32 i;
-	walker *who;
 
     numviews = howmany; // # of viewscreens
     for (i=0; i < MAX_VIEWS; i++)
     {
-            delete (viewob[i]);
-            viewob[i] = NULL;
+        delete (viewob[i]);
+        viewob[i] = NULL;
     }
 }
 

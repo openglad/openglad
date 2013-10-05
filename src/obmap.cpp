@@ -29,26 +29,6 @@ short collide(short x,  short y,  short xsize,  short ysize,
 //#define YRES GRID_SIZE
 #define OBRES 32 //GRID_SIZE
 
-// Zardus: ADD: real quick, lets put in a function for deleting oblists
-void delete_list(oblink *list)
-{
-	oblink *here;
-	oblink *prev;
-
-	if (!list) return;
-
-	here = list;
-	while (here->next)
-	{
-		prev = here;
-		here = here->next;
-		prev->ob = NULL;
-		prev->next = NULL;
-		delete prev;
-	}
-	delete here;
-}
-
 // These are passed in as PIXEL coordinates now...
 obmap::obmap()
 {
@@ -229,7 +209,6 @@ short obmap::move(walker* ob, short x, short y)  // This goes in walker's setxy
 }
 
 
-//       oblink  *list[OB_MAP_SIZE];
 short obmap::hash(short y)
 {
 	//  For now, this assumes no one is smaller than size 8

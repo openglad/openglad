@@ -28,7 +28,6 @@ class pixieN;
 class loader;
 class walker;
 class statistics;
-class oblink;
 class obmap;
 
 #include "smooth.h"
