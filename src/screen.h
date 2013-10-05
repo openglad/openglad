@@ -54,25 +54,18 @@ class screen : public video
 		short input(const SDL_Event& event);
 		short continuous_input();
 		short act();
-		walker  *add_ob(char order, char family);
-		walker  *add_ob(char order, char family, short atstart); // to insert
-		walker  *add_ob(walker  *newob); // add an existing walker
-		walker  *add_fx_ob(char order, char family);
-		walker  *add_fx_ob(walker  *newob); // add an existing walker
-		walker  *add_weap_ob(char order, char family);
-		walker  *add_weap_ob(walker  *newob); // add an existing weapon
 
 		short endgame(short ending);
 		short endgame(short ending, short nextlevel); // what level next?
 		walker *find_near_foe(walker *ob);
 		walker *find_far_foe(walker *ob);
 		void draw_panels(short howmany);
-		walker  * find_nearest_blood(walker  *who);
+		walker* find_nearest_blood(walker *who);
 		walker* find_nearest_player(walker *ob);
-		oblink* find_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
-		oblink* find_foes_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
-		oblink* find_friends_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
-		oblink* find_foe_weapons_in_range(oblink *somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_foes_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_friends_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_foe_weapons_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
 		char damage_tile(short xloc, short yloc); // damage the specified tile
 		void do_notify(const char *message, walker  *who);  // printing text
 		void report_mem();
@@ -98,7 +91,6 @@ class screen : public video
 		char end;
 		signed char timer_wait;
 		short level_done; // set true when all our foes are dead
-		walker * weapfree; //free weapons for re-allocation
 		bool retry;  // we should reset the level and go again
 		
 

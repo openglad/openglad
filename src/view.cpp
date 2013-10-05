@@ -28,6 +28,7 @@
 
 #include "util.h"
 #include "view_sizes.h"
+#include <algorithm>
 
 //these are for chad's team info page
 #define VIEW_TEAM_TOP    2
@@ -361,18 +362,13 @@ short viewscreen::input(const SDL_Event& event)
 {
 	static text mytext(screenp);
 	static char somemessage[80];
-	oblink *templink;
-	int  counter;
 
 	//short i;
-	oblink  *here, *tempobj;
 	//short step;
 	static short changedchar[6] = {0, 0, 0, 0, 0, 0};   // for switching guys
-	static short changedchar2[6]= {0, 0, 0, 0, 0, 0};  // for switching TYPE of guy
 	static short changedspec[6]= {0, 0, 0, 0, 0, 0};  // for switching special
 	static short changedteam[6] = {0, 0, 0, 0, 0, 0};  // for switching team
 	//buffers: PORT: this doesn't compile: union REGS inregs,outregs;
-	short newfam; //oldfam?
 	Uint32 totaltime, totalframes, framespersec;
 	walker *newob; // for general-purpose use
 	walker  * oldcontrol = control; // So we know if we changed guys
@@ -386,75 +382,63 @@ short viewscreen::input(const SDL_Event& event)
     // TODO: Factor out this code, which is duplicated in continuous_input()
 	if (!control || control->dead)
 	{
+	    control = NULL;
+	    
 		// First look for a player character, not already controlled
-		here = screenp->level_data.oblist;
-		counter = 0;
-		while(counter < 2)
+		for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
 		{
-			if (here->ob &&
-			        !here->ob->dead &&
-			        here->ob->query_order() == ORDER_LIVING &&
-			        here->ob->user == -1 && // mean's we're not player-controlled
-			        here->ob->myguy &&
-			        here->ob->team_num == my_team) // makes a difference for PvP
+		    walker* w = *e;
+			if (w &&
+			        !w->dead &&
+			        w->query_order() == ORDER_LIVING &&
+			        w->user == -1 && // mean's we're not player-controlled
+			        w->myguy &&
+			        w->team_num == my_team) // makes a difference for PvP
+            {
+                control = w;
 				break;
-			here = here->next;
-			if (!here)
-			{
-				counter++;
-				if (counter < 2)
-					here = screenp->level_data.oblist;
-			}
+            }
 		}
-		if (!here)
+		
+		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
-			here = screenp->level_data.oblist;
-			counter = 0;
-			while(counter < 2)
-			{
-				if (here->ob &&
-				        !here->ob->dead &&
-				        here->ob->query_order() == ORDER_LIVING &&
-				        here->ob->user == -1 && // mean's we're not player-controlled
-				        here->ob->team_num == my_team) // makes a difference for PvP
-					break;
-				here = here->next;
-				if (!here)
-				{
-					counter++;
-					if (counter < 2)
-						here = screenp->level_data.oblist;
-				}
-			}
+            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            {
+                walker* w = *e;
+                if (w &&
+                        !w->dead &&
+                        w->query_order() == ORDER_LIVING &&
+                        w->user == -1 && // mean's we're not player-controlled
+                        w->team_num == my_team) // makes a difference for PvP
+                {
+                    control = w;
+                    break;
+                }
+            }
 		}  // done with second search
 
-		if (!here)
+		if (!control)
 		{
 			// Now try for ANYONE who's left alive...
 			// NOTE: You can end up as a bad guy here if you are using an allied team
-			here = screenp->level_data.oblist;
-			counter = 0;
-			while(counter < 2)
-			{
-				if (here->ob &&
-				        !here->ob->dead &&
-				        here->ob->query_order() == ORDER_LIVING &&
-				        here->ob->myguy != NULL)
-					break;
-				here = here->next;
-				if (!here)
-				{
-					counter++;
-					if (counter < 2)
-						here = screenp->level_data.oblist;
-				}
-			}
+            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            {
+                walker* w = *e;
+                if (w &&
+                        !w->dead &&
+                        w->query_order() == ORDER_LIVING &&
+                        w->myguy)
+                {
+                    control = w;
+                    break;
+                }
+            }
 		}  // done with all searches
 
-		if (!here)  // then there's nobody left!
+		if (!control)  // then there's nobody left!
 			return screenp->endgame(1);
-		control = here->ob;
+        
 		if (control->user == -1)
 			control->user = mynum; // show that we're controlled now
 		control->set_act_type(ACT_CONTROL);
@@ -494,93 +478,111 @@ short viewscreen::input(const SDL_Event& event)
 	// TAB (ALONE) WILL SWITCH CONTROL TO THE NEXT GUY ON MY TEAM
 	if(!didPlayerPressKey(mynum, KEY_SWITCH, event))
 		changedchar[mynum] = 0;
-    else if(!isPlayerHoldingKey(mynum, KEY_SHIFTER)
-	        && !changedchar[mynum] && !isPlayerHoldingKey(mynum, KEY_CHEAT))
+    else if(!changedchar[mynum] && !isPlayerHoldingKey(mynum, KEY_CHEAT))
 	{
+	    // KEY_SHIFTER will go backward
+		bool reverse = isPlayerHoldingKey(mynum, KEY_SHIFTER);
+		
+        // Unset our control
 		changedchar[mynum] = 1;
 		if (control->user == mynum)
 		{
 			control->restore_act_type();
 			control->user = -1;
 		}
-		here = screenp->level_data.oblist;
-		while(here)
+		control = NULL;
+		
+		auto& oblist = screenp->level_data.oblist;
+		
+		if(!reverse)
 		{
-			if (here->ob == control)
-				break;
-			if (here->ob && here->ob->user == mynum)
-				here->ob->user = -1;
-			here = here->next;
+            // Get where we are in the list
+            auto mine = std::find(oblist.begin(), oblist.end(), oldcontrol);
+            if(mine == oblist.end())
+            {
+                Log("Failed to find self in oblist!\n");
+                return 1;
+            }
+            
+            // Look past our current spot
+            auto e = mine;
+            e++;
+            for(; e != oblist.end(); e++)
+            {
+                walker* w = *e;
+                if (w->query_order() == ORDER_LIVING &&
+                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                        w->real_team_num == 255 && w->user == -1)
+                {
+                    control = w;
+                    break;
+                }
+            }
+            
+            if(!control)
+            {
+                // Look before our current spot
+                for(e = oblist.begin(); e != mine; e++)
+                {
+                    walker* w = *e;
+                    if (w->query_order() == ORDER_LIVING &&
+                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                            w->real_team_num == 255 && w->user == -1)
+                    {
+                        control = w;
+                        break;
+                    }
+                }
+            }
 		}
-		if (!here->next)
-			here = screenp->level_data.oblist;
 		else
-			here = here->next;
-		counter = 0;
-		while(1)
 		{
-			if (here->ob->query_order() == ORDER_LIVING &&
-			        here->ob->is_friendly(control) && here->ob->team_num == my_team &&
-			        here->ob->real_team_num == 255 && here->ob->user == -1)
-				break;
-			here = here->next;
-			if (!here)
-			{
-				here = screenp->level_data.oblist;
-				counter++;
-			}
-			if (counter >= 3)
-			{
-				return 0;
-			}
+            // Get where we are in the list
+            auto mine = std::find(oblist.rbegin(), oblist.rend(), oldcontrol);
+            if(mine == oblist.rend())
+            {
+                Log("Failed to find self in oblist!\n");
+                return 1;
+            }
+            
+            // Look past our current spot
+            auto e = mine;
+            e++;
+            for(; e != oblist.rend(); e++)
+            {
+                walker* w = *e;
+                if (w->query_order() == ORDER_LIVING &&
+                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                        w->real_team_num == 255 && w->user == -1)
+                {
+                    control = w;
+                    break;
+                }
+            }
+            
+            if(!control)
+            {
+                // Look before our current spot
+                for(e = oblist.rbegin(); e != mine; e++)
+                {
+                    walker* w = *e;
+                    if (w->query_order() == ORDER_LIVING &&
+                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                            w->real_team_num == 255 && w->user == -1)
+                    {
+                        control = w;
+                        break;
+                    }
+                }
+            }
 		}
-		control = here->ob;
+		
+		if(!control)
+            control = oldcontrol;
+        
 		screenp->control_hp = control->stats->hitpoints;
 		//control->set_act_type(ACT_CONTROL);
 	}  // end of switch guys
-
-	// LSHIFT-TAB WILL SWITCH TO NEXT FAMILY GROUP ON MY TEAM
-	if (!(didPlayerPressKey(mynum, KEY_SWITCH, event) && isPlayerHoldingKey(mynum, KEY_SHIFTER)))
-		changedchar2[mynum] = 0;
-
-	if (didPlayerPressKey(mynum, KEY_SWITCH, event) && isPlayerHoldingKey(mynum, KEY_SHIFTER)
-	        && !changedchar2[mynum] && !isPlayerHoldingKey(mynum, KEY_CHEAT))
-	{
-		changedchar2[mynum] = 1;
-		newfam = control->query_family();
-		newfam++;
-		newfam %= NUM_FAMILIES;
-
-		if (control->user == mynum)
-		{
-			control->restore_act_type();
-			control->user = -1;
-		}
-		here = screenp->level_data.oblist;
-		counter = 0;
-		while(1)
-		{
-			if (here->ob->query_order() == ORDER_LIVING &&
-			        //   here->ob->query_act_type() != ACT_CONTROL &&
-			        here->ob->is_friendly(control) && here->ob->team_num == my_team &&
-			        here->ob->query_family() == newfam && 
-                    here->ob->user == -1)
-				break;
-			here = here->next;
-			if (!here)
-			{
-				here = screenp->level_data.oblist;
-				newfam++;
-				newfam %= NUM_FAMILIES;
-				counter++;
-			}
-			if (counter >= NUM_FAMILIES)
-				return 0;
-		}
-		control = here->ob;
-		screenp->control_hp = control->stats->hitpoints;
-		//  control->set_act_type(ACT_CONTROL);
-	} // end of switch type of guy
 
 
 	// Redisplay the scenario text ..
@@ -607,30 +609,27 @@ short viewscreen::input(const SDL_Event& event)
 	} //end of switch our special
 
 
-    
-    
-	oblink  *helpme;
 
 	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
-		helpme = screenp->level_data.oblist;
-		while (helpme)
+		for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
 		{
-			if (helpme->ob && (helpme->ob->query_order() == ORDER_LIVING) &&
-			        (helpme->ob->query_act_type() != ACT_CONTROL) &&
-			        (helpme->ob->team_num == control->team_num) &&
-			        (!helpme->ob->leader) )
+		    walker* w = *e;
+			if (w && (w->query_order() == ORDER_LIVING) &&
+			        (w->query_act_type() != ACT_CONTROL) &&
+			        (w->team_num == control->team_num) &&
+			        (!w->leader) )
 			{
 				// Remove any current foe ..
-				helpme->ob->leader = control;
-				helpme->ob->foe = NULL;
-				helpme->ob->stats->force_command(COMMAND_FOLLOW, 100, 0, 0);
-				//helpme->ob->action = ACTION_FOLLOW;
+				w->leader = control;
+				w->foe = NULL;
+				w->stats->force_command(COMMAND_FOLLOW, 100, 0, 0);
+				//w->action = ACTION_FOLLOW;
 			}
-			helpme = helpme->next;
 		}
+		
 		control->yo_delay = 30;
 		control->screenp->soundp->play_sound(SOUND_YO);
 		control->screenp->do_notify("Yo!", control);
@@ -643,35 +642,33 @@ short viewscreen::input(const SDL_Event& event)
 		switch (control->action)
 		{
 			case 0:   // not set ..
-				helpme = screenp->level_data.oblist;
-				while (helpme)
+				for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
 				{
-					if (helpme->ob &&
-					        (helpme->ob->team_num == control->team_num) && helpme->ob->is_friendly(control)
+				    walker* w = *e;
+					if (w &&
+					        (w->team_num == control->team_num) && w->is_friendly(control)
 					   )
 					{
 						// Remove any current foe ..
-						helpme->ob->leader = control;
-						helpme->ob->foe = NULL;
-						helpme->ob->action = ACTION_FOLLOW;
+						w->leader = control;
+						w->foe = NULL;
+						w->action = ACTION_FOLLOW;
 					}
-					helpme = helpme->next;
 				}
 				control->screenp->do_notify("SUMMONING DEFENSE!", control);
 				break;
 			case ACTION_FOLLOW:  // turn back to normal mode..
-				helpme = screenp->level_data.oblist;
-				while (helpme)
+				for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
 				{
-					if (helpme->ob && (helpme->ob->query_order() == ORDER_LIVING) &&
-					        (helpme->ob->query_act_type() != ACT_CONTROL) &&
-					        (helpme->ob->team_num == control->team_num)
+				    walker* w = *e;
+					if (w && (w->query_order() == ORDER_LIVING) &&
+					        (w->query_act_type() != ACT_CONTROL) &&
+					        (w->team_num == control->team_num)
 					   )
 					{
 						// Set to normal operation
-						helpme->ob->action = 0;
+						w->action = 0;
 					}
-					helpme = helpme->next;
 				}
 				control->action = 0; // for our reference
 				control->screenp->do_notify("RELEASING MEN!", control);
@@ -697,57 +694,56 @@ short viewscreen::input(const SDL_Event& event)
 		if (didPlayerPressKey(mynum, KEY_SWITCH, event) && !changedteam[mynum] )
 		{
 			changedteam[mynum] = 1;  // to debounce keys
-			screenp->save_data.my_team++;
-			screenp->save_data.my_team %= MAX_TEAM;
-			tempobj = screenp->level_data.oblist;
+			
+			walker* result = NULL;
 			//              control = NULL;
 			control->user = -1;
 			control->set_act_type(ACT_RANDOM); // hope this works
-
-			while(1)
-			{
-				if ( (tempobj->ob->team_num == screenp->save_data.my_team) &&
-				        (tempobj->ob->query_order() == ORDER_LIVING)
-				   )
-					break;  // out of while(1) loop; we found someone
-				tempobj = tempobj->next;
-				if (!tempobj)
-				{
-					tempobj = screenp->level_data.oblist;
-					screenp->save_data.my_team++;
-					screenp->save_data.my_team %= MAX_TEAM;
-				}
-			}
-			// By here we know that tempobj->ob is valid
-			control = tempobj->ob;
+            
+            short oldteam = screenp->save_data.my_team;
+            
+            do
+            {
+                screenp->save_data.my_team++;
+                screenp->save_data.my_team %= MAX_TEAM;
+                
+                for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+                {
+                    walker* w = *e;
+                    if ( (w->team_num == screenp->save_data.my_team) &&
+                            (w->query_order() == ORDER_LIVING)
+                       )
+                    {
+                        result = w;
+                        break;  // out of loop; we found someone
+                    }
+                }
+            }
+            while(result == NULL && screenp->save_data.my_team != oldteam);
+            
+            if(result != NULL)
+                control = result;
+            
 			control->user = mynum;
 			control->set_act_type(ACT_CONTROL);
 		} // end of change team
 
-
-		// Testing bonus rounds .. take this out, please
-		if (query_key_event(SDLK_F11, event)) // give bonus rounds ..
-			control->bonus_rounds = 5;
-
-		// Testing effect object ..
 		if (query_key_event(SDLK_F12, event)) // kill living bad guys
 		{
-			templink = screenp->level_data.oblist;
-			while (templink)
+			for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
 			{
-				if (templink->ob)
-					if (templink->ob->query_order() == ORDER_LIVING &&
-					        !control->is_friendly(templink->ob) )
-						//templink->ob->team_num != control->team_num)
-					{
-						templink->ob->stats->hitpoints = -1;
-						control->attack(templink->ob);
-						templink->ob->death();
-						//templink->ob->dead = 1;
-					}
-				templink = templink->next;
+			    walker* w = *e;
+				if (w && w->query_order() == ORDER_LIVING &&
+					        !control->is_friendly(w) )
+						//w->team_num != control->team_num)
+                {
+                    w->stats->hitpoints = -1;
+                    control->attack(w);
+                    w->death();
+                    //w->dead = 1;
+                }
 			}
-		} //end of testing effect object
+		}
 
 
 		if (query_key_event(SDLK_RIGHTBRACKET, event)) // up level
@@ -772,7 +768,7 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_F2, event)) // generate magic shield
 		{
-			newob = screenp->add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
+			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
 			newob->owner = control;
 			newob->team_num = control->team_num;
 			newob->ani_type = 1; // dummy, non-zero value
@@ -879,10 +875,8 @@ short viewscreen::input(const SDL_Event& event)
 short viewscreen::continuous_input()
 {
 	static text mytext(screenp);
-	int  counter;
 
 	//short i;
-	oblink  *here;
 	//short step;
 	walker  * oldcontrol = control; // So we know if we changed guys
 
@@ -895,81 +889,63 @@ short viewscreen::continuous_input()
 
 	if (!control || control->dead)
 	{
+	    control = NULL;
+	    
 		// First look for a player character, not already controlled
-		here = screenp->level_data.oblist;
-		if(here == NULL)
-        {
-            Log("Error: Level object list is empty!\n");
-            return screenp->endgame(1);  // lose
-        }
-        
-        counter = 0;
-        while(counter < 2)
-        {
-            if (here->ob &&
-                    !here->ob->dead &&
-                    here->ob->query_order() == ORDER_LIVING &&
-                    here->ob->user == -1 && // mean's we're not player-controlled
-                    here->ob->myguy &&
-                    here->ob->team_num == my_team) // makes a difference for PvP
-                break;
-            here = here->next;
-            if (!here)
+		for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+		{
+		    walker* w = *e;
+			if (w &&
+			        !w->dead &&
+			        w->query_order() == ORDER_LIVING &&
+			        w->user == -1 && // mean's we're not player-controlled
+			        w->myguy &&
+			        w->team_num == my_team) // makes a difference for PvP
             {
-                counter++;
-                if (counter < 2)
-                    here = screenp->level_data.oblist;
+                control = w;
+				break;
             }
-        }
-        
-		if (!here)
+		}
+		
+		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
-			here = screenp->level_data.oblist;
-			counter = 0;
-			while(counter < 2)
-			{
-				if (here->ob &&
-				        !here->ob->dead &&
-				        here->ob->query_order() == ORDER_LIVING &&
-				        here->ob->user == -1 && // mean's we're not player-controlled
-				        here->ob->team_num == my_team) // makes a difference for PvP
-					break;
-				here = here->next;
-				if (!here)
-				{
-					counter++;
-					if (counter < 2)
-						here = screenp->level_data.oblist;
-				}
-			}
+            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            {
+                walker* w = *e;
+                if (w &&
+                        !w->dead &&
+                        w->query_order() == ORDER_LIVING &&
+                        w->user == -1 && // mean's we're not player-controlled
+                        w->team_num == my_team) // makes a difference for PvP
+                {
+                    control = w;
+                    break;
+                }
+            }
 		}  // done with second search
 
-		if (!here)
+		if (!control)
 		{
-			// Now try for ANYONE who's left alive ..
-			here = screenp->level_data.oblist;
-			counter = 0;
-			while(counter < 2)
-			{
-				if (here->ob &&
-				        !here->ob->dead &&
-				        here->ob->query_order() == ORDER_LIVING &&
-				        here->ob->myguy != NULL)
-					break;
-				here = here->next;
-				if (!here)
-				{
-					counter++;
-					if (counter < 2)
-						here = screenp->level_data.oblist;
-				}
-			}
+			// Now try for ANYONE who's left alive...
+			// NOTE: You can end up as a bad guy here if you are using an allied team
+            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            {
+                walker* w = *e;
+                if (w &&
+                        !w->dead &&
+                        w->query_order() == ORDER_LIVING &&
+                        w->myguy)
+                {
+                    control = w;
+                    break;
+                }
+            }
 		}  // done with all searches
 
-		if (!here)  // then there's nobody left!
+		if (!control)  // then there's nobody left!
 			return screenp->endgame(1);
-		control = here->ob;
+
 		if (control->user == -1)
 			control->user = mynum; // show that we're controlled now
 		control->set_act_type(ACT_CONTROL);
@@ -1081,7 +1057,7 @@ short viewscreen::continuous_input()
 	         screenp->control_hp = control->stats->hitpoints;
 	//       draw_box(S_LEFT, S_UP, S_RIGHT-1, S_DOWN-1, 44, 1);  // red flash
 	         // Make temporary stain:
-	         blood = screenp->add_ob(ORDER_WEAPON, FAMILY_BLOOD);
+	         blood = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_BLOOD);
 	         blood->team_num = control->team_num;
 	         blood->ani_type = ANI_GROW;
 	         blood->setxy(control->xpos,control->ypos);
@@ -1130,75 +1106,33 @@ void viewscreen::clear_text()
 
 short viewscreen::draw_obs()
 {
-	oblink  *here;
-
-	// First draw the special effects
-	here = screenp->level_data.fxlist;
-	while(here)
-	{
-		if (here->ob && !here->ob->dead)
-		{
-			here->ob->draw(this);
-		}
-		here = here->next;
-	}
-
-	// Now do real objects
-	here = screenp->level_data.oblist;
-	while(here)
-	{
-		if (here->ob && !here->ob->dead)
-		{
-			here->ob->draw(this);
-		}
-		here = here->next;
-	}
-
-	// Finally draw the weapons
-	here = screenp->level_data.weaplist;
-	while(here)
-	{
-		if (here->ob && !here->ob->dead)
-			here->ob->draw(this);
-		here = here->next;
-	}
-
-	return 1;
+    return draw_obs(&screenp->level_data);
 }
 
 short viewscreen::draw_obs(LevelData* data)
 {
-	oblink  *here;
-
 	// First draw the special effects
-	here = data->fxlist;
-	while(here)
+	for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
-		{
-			here->ob->draw(this);
-		}
-		here = here->next;
+	    walker* w = *e;
+		if(w && !w->dead)
+			w->draw(this);
 	}
 
 	// Now do real objects
-	here = data->oblist;
-	while(here)
+	for(auto e = data->oblist.begin(); e != data->oblist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
-		{
-			here->ob->draw(this);
-		}
-		here = here->next;
+	    walker* w = *e;
+		if(w && !w->dead)
+			w->draw(this);
 	}
 
 	// Finally draw the weapons
-	here = data->weaplist;
-	while(here)
+	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
-			here->ob->draw(this);
-		here = here->next;
+	    walker* w = *e;
+		if(w && !w->dead)
+			w->draw(this);
 	}
 
 	return 1;
@@ -1393,15 +1327,9 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 {
 	char teamnum = my_team;
 	char text_down = top+3;
-	oblink *here = screenp->level_data.oblist;
-	oblink* dude = NULL;
-	oblink* list = NULL;
 	char message[30], hpcolor, mpcolor, namecolor, numguys = 0;
 	float hp, mp, maxhp, maxmp;
 	text mytext(screenp);
-	list = new oblink;  // Is this new oblink actually used?
-	list->ob = NULL;
-	list->next = NULL;
 	
 	Sint32 currentcycle = 0, cycletime = 30000;
 
@@ -1422,46 +1350,34 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 
 	text_down+=6;
     
-    // Build the list of characters backward
-	while(here)
+    // Build the list of characters
+    std::list<walker*> ls;
+	for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead
-		        && here->ob->query_order() == ORDER_LIVING
-		        && here->ob->team_num == teamnum
-		        && (here->ob->stats->name || here->ob->myguy)) //&& here->ob->owner == NULL)
+	    walker* w = *e;
+		if (w && !w->dead
+		        && w->query_order() == ORDER_LIVING
+		        && w->team_num == teamnum
+		        && (w->stats->name || w->myguy)) //&& w->owner == NULL)
 		{
-			dude = new oblink;
-			dude->ob = here->ob;
-			dude->next = list;
-			list = dude;
-
-			while (dude->next && dude->next->ob &&
-			        dude->ob->stats->hitpoints <= dude->next->ob->stats->hitpoints)
-
-				//(dude->ob->stats->hitpoints*10)/dude->ob->stats->max_hitpoints <=
-				//(dude->next->ob->stats->hitpoints*10)/dude->next->ob->stats->max_hitpoints)
-			{
-				walker* temp_ob = dude->ob;
-				dude->ob = dude->next->ob;
-				dude->next->ob = temp_ob;
-				dude = dude->next;
-			}
+		    ls.push_back(w);
 		}
-		here = here->next;
 	}
+	
+	// NOTE: The old code sorted the list by hitpoints.  I would do that again, but I'll probably just be removing this function anyway.
     
     // Go through the list and draw the entries
-	dude = list;
-	while (dude)
+    for(auto e = ls.begin(); e != ls.end(); e++)
 	{
-		if (dude->ob)
+	    walker* w = *e;
+		if (w)
 		{
 			if (numguys++ > 30)
 				break;
-			hp = dude->ob->stats->hitpoints;
-			mp = dude->ob->stats->magicpoints;
-			maxhp = dude->ob->stats->max_hitpoints;
-			maxmp = dude->ob->stats->max_magicpoints;
+			hp = w->stats->hitpoints;
+			mp = w->stats->magicpoints;
+			maxhp = w->stats->max_hitpoints;
+			maxmp = w->stats->max_magicpoints;
 
 			if ( (hp * 3) < maxhp)
 				hpcolor = LOW_HP_COLOR;
@@ -1485,15 +1401,15 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 			else
 				mpcolor = WATER_START;
 
-			if (dude->ob == control)
+			if (w == control)
 				namecolor = RED;
 			else
 				namecolor = BLACK;
 
-			if (dude->ob->myguy)
-				strcpy (message, dude->ob->myguy->name);
+			if (w->myguy)
+				strcpy (message, w->myguy->name);
 			else
-				strcpy(message, dude->ob->stats->name);
+				strcpy(message, w->stats->name);
 			mytext.write_xy(left+5, text_down, message, (unsigned char) namecolor);
 
 			sprintf (message, "%4.0f/%.0f", ceilf(hp), maxhp);
@@ -1502,25 +1418,13 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 			sprintf (message, "%4.0f/%.0f", ceilf(mp), maxmp);
 			mytext.write_xy(left+130, text_down, message, (unsigned char) mpcolor);
 
-			sprintf (message, "%2d", dude->ob->stats->level);
+			sprintf (message, "%2d", w->stats->level);
 			mytext.write_xy(left+195, text_down, message, (unsigned char) BLACK);
 
 			text_down+=6;
 		}
-		if (!dude->next)
-			break;
-		dude = dude->next;
 	}
 
-	while (list)
-	{
-        oblink* temp = list;
-		list = list->next;
-		delete temp;
-	}
-
-	//buffers: since we pretty much always draw to the back buffer,
-	//buffers: we need to swap the buffers to see the changes
 	screenp->swap();
 
 	while (!keystates[KEYSTATE_ESCAPE])

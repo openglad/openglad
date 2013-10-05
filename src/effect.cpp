@@ -44,9 +44,9 @@ short effect::act()
 	short temp;
 	float xd, yd;
 	Sint32 distance, generic;
-	oblink *foelist, *here;
 	walker *newob;
 	short numfoes;
+	std::list<walker*> foelist;
 
 	// Make sure everyone we're poshorting to is valid
 	if (foe && foe->dead)
@@ -146,26 +146,26 @@ short effect::act()
 			setworldxy(worldx+xd, worldy+yd);
 			foelist = screenp->find_foe_weapons_in_range(
 			              screenp->level_data.oblist, sizex, &temp, this);
-			here = foelist;
-			while (foelist)  // first weapons
+            
+			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
 			{
-				stats->hitpoints -= foelist->ob->damage;
-				foelist->ob->dead = 1;
-				foelist->ob->death();
-				foelist = foelist->next;
+			    walker* w = *e;
+				stats->hitpoints -= w->damage;
+				w->dead = 1;
+				w->death();
 			}
-			delete_list(here);
+			
 			foelist = screenp->find_foes_in_range(
 			              screenp->level_data.oblist, sizex, &temp, this);
-			here = foelist;
-			while (foelist) // second enemies
+            
+			for(auto e = foelist.begin(); e != foelist.end(); e++)  // second enemies
 			{
-				stats->hitpoints -= foelist->ob->damage;
-				attack(foelist->ob);
+			    walker* w = *e;
+				stats->hitpoints -= w->damage;
+				attack(w);
 				dead = 0;
-				foelist = foelist->next;
 			}
-			delete_list(here);
+			
 			if ( (stats->hitpoints <= 0) || (lifetime-- < 0) )
 			{
 				dead = 1;
@@ -261,26 +261,26 @@ short effect::act()
 			setworldxy(worldx+xd, worldy+yd);
 			foelist = screenp->find_foe_weapons_in_range(
 			              screenp->level_data.oblist, sizex*2, &temp, this);
-			here = foelist;
-			while (foelist)  // first weapons
+			              
+			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
 			{
-				stats->hitpoints -= foelist->ob->damage;
-				foelist->ob->dead = 1;
-				foelist->ob->death();
-				foelist = foelist->next;
+			    walker* w = *e;
+				stats->hitpoints -= w->damage;
+				w->dead = 1;
+				w->death();
 			}
-			delete_list(here);
+			
 			foelist = screenp->find_foes_in_range(
 			              screenp->level_data.oblist, sizex, &temp, this);
-			here = foelist;
-			while (foelist) // second enemies
+            
+			for(auto e = foelist.begin(); e != foelist.end(); e++) // second enemies
 			{
-				stats->hitpoints -= foelist->ob->damage;
-				attack(foelist->ob);
+			    walker* w = *e;
+				stats->hitpoints -= w->damage;
+				attack(w);
 				dead = 0;
-				foelist = foelist->next;
 			}
-			delete_list(here);
+			
 			if ( (stats->hitpoints <= 0) || (lifetime-- < 0) )
 			{
 				dead = 1;
@@ -326,7 +326,7 @@ short effect::act()
 						yd = owner->ypos - ypos;
 				}
 				setworldxy(worldx+xd, worldy+yd);
-				newob = screenp->add_ob(ORDER_WEAPON, FAMILY_KNIFE);
+				newob = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_KNIFE);
 				newob->damage = damage;
 				newob->owner = owner;
 				newob->team_num = team_num;
@@ -367,19 +367,19 @@ short effect::act()
 			// Hit any nearby foes (not friends, for now)
 			foelist = screenp->find_foes_in_range(
 			              screenp->level_data.oblist, sizex, &temp, this);
-			here = foelist;
-			while (foelist) //
+            
+			for(auto e = foelist.begin(); e != foelist.end(); e++) //
 			{
+			    walker* w = *e;
 				if (hits(xpos, ypos, sizex, sizey, // this is the cloud
-				         foelist->ob->xpos, foelist->ob->ypos,
-				         foelist->ob->sizex, foelist->ob->sizey)
+				         w->xpos, w->ypos,
+				         w->sizex, w->sizey)
 				   )
 				{
-					attack(foelist->ob);
+					attack(w);
 				} // end of actual hit
-				foelist = foelist->next;
 			}
-			delete_list(here);
+			
 			// Are we performing some action?
 			if (stats->commandlist)
 				temp = stats->do_command();
@@ -406,7 +406,7 @@ short effect::act()
 			         leader->xpos, leader->ypos, leader->sizex, leader->sizey))
 			{
 				// Do things ..
-				newob = screenp->add_ob(ORDER_FX, FAMILY_EXPLOSION);
+				newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
 				if (!newob)
 				{
 					dead = 1;
@@ -433,41 +433,27 @@ short effect::act()
 					                                      240+stats->level*5, &temp, this);
 				if (temp && generic>20) // more foes to find ..
 				{
-					here = foelist;
 					numfoes = random(owner->stats->level)+1;
-					while (here && numfoes--)
+					for(auto e = foelist.begin(); e != foelist.end() && numfoes > 0; e++, numfoes--)
 					{
-						if (here->ob != leader && here->ob->skip_exit<1) // don't hit current guy, etc.
+					    walker* w = *e;
+						if (w != leader && w->skip_exit<1) // don't hit current guy, etc.
 						{
-							newob = screenp->add_ob(ORDER_FX, FAMILY_CHAIN);
+							newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_CHAIN);
 							if (!newob)
-							{
-								delete_list(foelist);
 								return 0; // failsafe
-							}
+                            
 							newob->owner = owner;  // our caster
-							newob->leader = here->ob; // guy to attack
+							newob->leader = w; // guy to attack
 							newob->stats->level = stats->level;
 							newob->stats->set_bit_flags(BIT_MAGICAL, 1);
 							newob->damage = generic;
 							newob->team_num = team_num;
 							newob->center_on(this);
 						} // end of wasn't current guy case
-						here = here->next;
 					} // end of loop for nearby foes we found
 				} // end of check for nearby foes
-
-				// Clean up our list .. ?
-				// Zardus: TAG: nah, lets use delete_list
-				/*here = foelist->next;
-				while (here)
-				{
-					delete foelist;
-					foelist = here;
-					here = here->next;
-				}
-				delete foelist;*/
-				delete_list(foelist);
+                
 				dead = 1;
 				death();
 				return 1;
@@ -534,7 +520,7 @@ short effect::act()
 
 			if (ani_type != ANI_WALK)
 				return animate();
-			newob = screenp->add_fx_ob(ORDER_FX, FAMILY_DOOR_OPEN);
+			newob = screenp->level_data.add_fx_ob(ORDER_FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
 			newob->ani_type = ANI_WALK;
@@ -601,8 +587,7 @@ short effect::death()
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)
-	oblink *scarelist, *here;
-	oblink *frylist; // for the thief's bombs :)
+	std::list<walker*> foelist;
 	short howmany = 0;
 	walker  *newob;
 	Sint32 xdelta,ydelta;
@@ -617,39 +602,38 @@ short effect::death()
 		case FAMILY_GHOST_SCARE: // the ghost's scare
 			if (!owner || owner->dead)
 				return 0;
-			scarelist = screenp->find_foes_in_range(screenp->level_data.oblist, 50+(10*owner->stats->level),
+			foelist = screenp->find_foes_in_range(screenp->level_data.oblist, 50+(10*owner->stats->level),
 			                                        &howmany, owner);
 			if (howmany < 1)
 				return 0;
-
-			here = scarelist;
-			while (here)
+            
+            for(auto e = foelist.begin(); e != foelist.end(); e++)
 			{
-				if (here->ob && here->ob->query_order() == ORDER_LIVING)
+			    walker* w = *e;
+				if (w && w->query_order() == ORDER_LIVING)
 				{
-					tempx = here->ob->xpos - xpos;
+					tempx = w->xpos - xpos;
 					if (tempx)
 						tempx = tempx / (abs(tempx));
-					tempy = here->ob->ypos - ypos;
+					tempy = w->ypos - ypos;
 					if (tempy)
 						tempy = tempy / (abs(tempy));
 					generic = (owner->stats->level*25);
-					if (here->ob->myguy)
-						generic -= random(here->ob->myguy->constitution);
+					if (w->myguy)
+						generic -= random(w->myguy->constitution);
 					if (generic > 0)
-						here->ob->stats->force_command(COMMAND_WALK,
+						w->stats->force_command(COMMAND_WALK,
 						                               (short) generic, (short) tempx, (short) tempy);
 				} // end of valid target
-				here = here->next;
 			} // end of cycle through scare list
-			delete_list(scarelist);
+			
 			break;  // end of ghost scare
 		case FAMILY_BOMB: // Burning bomb
 			if (!owner || owner->dead)
 				owner = this;
 			if (on_screen())
 				screenp->soundp->play_sound(SOUND_EXPLODE);
-			newob = screenp->add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
+			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
 			newob->owner = owner;
 			newob->stats->hitpoints = 0;
 			newob->stats->level = owner->stats->level;
@@ -670,56 +654,55 @@ short effect::death()
 			{
 				generic = 16;
 			}
-			frylist = screenp->find_in_range(screenp->level_data.oblist, 15+generic,
+			foelist = screenp->find_in_range(screenp->level_data.oblist, 15+generic,
 			                                 &howmany, this);
-			//Log("got in range, %d\n", howmany);
+            
 			// Damage our tile location ..
 			screenp->damage_tile( (short) (xpos+(sizex/2)), (short) (ypos+(sizey/2)) );
 			if (howmany < 1)
 				return 0;
 			// Set our team number to garbage so we can hurt everyone
 			//team_num = 50;
-			here = frylist;
-			while (here)
+			for(auto e = foelist.begin(); e != foelist.end(); e++)
 			{
-				if (here->ob && !here->ob->dead &&
-				        (here->ob->query_order() != ORDER_TREASURE) &&
-				        (here->ob->query_order() != ORDER_FX) &&
-				        (!skip_exit || here->ob != owner)
+			    walker* w = *e;
+				if (w && !w->dead &&
+				        (w->query_order() != ORDER_TREASURE) &&
+				        (w->query_order() != ORDER_FX) &&
+				        (!skip_exit || w != owner)
 				   ) //&&
-					//       here->ob->query_order() == ORDER_LIVING
-					//     && here->ob->team_num != owner->team_num
+					//       w->query_order() == ORDER_LIVING
+					//     && w->team_num != owner->team_num
 					//      )
 				{
 					//shove the target
-					xdelta = here->ob->xpos - xpos;
+					xdelta = w->xpos - xpos;
 					if (xdelta)
 						xdelta = xdelta/abs(xdelta);
-					ydelta = here->ob->ypos - ypos;
+					ydelta = w->ypos - ypos;
 					if (ydelta)
 						ydelta = ydelta/abs(ydelta);
 					// Set the distance to 'shove' by explosion
 					generic = 2+owner->stats->level/15;
 					if (generic > 8) // max of about 8 steps
 						generic = 8;
-					here->ob->stats->force_command(COMMAND_WALK,generic,(short)xdelta,(short)ydelta);
+					w->stats->force_command(COMMAND_WALK,generic,(short)xdelta,(short)ydelta);
 					// Damage (attack) the object
-					if (here->ob == owner) // do less damage
+					if (w == owner) // do less damage
 					{
 						damage /= 4.0f;
-						attack(here->ob);
+						attack(w);
 						damage *= 4.0f;
 					}
-					else if (!owner->dead && owner->is_friendly(here->ob))
+					else if (!owner->dead && owner->is_friendly(w))
 					{
 						damage /= 2.0f;
-						attack(here->ob);
+						attack(w);
 						damage *= 2.0f;
 					}
 					else
-						attack(here->ob);
+						attack(w);
 				}
-				here = here->next;
 			}
 			break;  // end explosion case
 		default:

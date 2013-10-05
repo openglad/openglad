@@ -499,7 +499,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 {
 	walker  *newob;
 
-	newob = screenp->add_ob(ORDER_LIVING, whatfamily);
+	newob = screenp->level_data.add_ob(ORDER_LIVING, whatfamily);
 	newob->owner = this;
 	newob->lifetime = lifetime;
 	newob->transform_to(ORDER_LIVING, whatfamily);
@@ -513,13 +513,8 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 short living::check_special()
 {
 	Uint32 distance, myrange;
-
-	oblink *enemylist;
-	//oblink *templink;
 	short howmany;
 
-	enemylist = NULL;
-	//templink = NULL;
 	shifter_down = random(2); // on or off, randomly ..
 
 	// Make sure we have enough ..
@@ -580,17 +575,8 @@ short living::check_special()
 				}
 				else // get a new foe ..
 				{
-					enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
+					screenp->find_foes_in_range(screenp->level_data.oblist,
 					                                        110, &howmany, this);
-					// Zardus: TAG: this seems to just delete the list. lets use delete_list
-					/*while(enemylist)
-					{
-						templink=enemylist;
-						enemylist = enemylist->next;
-						delete templink;
-						templink = NULL;
-					}*/
-					delete_list(enemylist);
 
 					if (howmany < 3)
 						return 0;
@@ -605,9 +591,8 @@ short living::check_special()
 				else               // charm
 					myrange = 16 + 4*stats->level;
 
-				enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
+				screenp->find_foes_in_range(screenp->level_data.oblist,
 				                                        myrange, &howmany, this);
-				delete_list(enemylist);
 				if (howmany < 1)
 					return 0;
 				else
@@ -617,18 +602,8 @@ short living::check_special()
 				return 1;  // default is go for it
 		case FAMILY_MAGE:  // TP if  away from guys ..
 			howmany = 0;
-			enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
+			screenp->find_foes_in_range(screenp->level_data.oblist,
 			                                        110, &howmany, this);
-
-			// Zardus: TAG: lets use delete_list here too
-			/*while(enemylist)
-			{
-				templink=enemylist;
-				enemylist = enemylist->next;
-				delete templink;
-				templink = NULL;
-			}*/
-			delete_list(enemylist);
 
 			if (howmany < 1) //  away from anybody ..
 				return 1;
@@ -644,19 +619,9 @@ short living::check_special()
 		case FAMILY_CLERIC: // any friends?
 			if (current_special == 1) // healing
 			{
-				enemylist = screenp->find_friends_in_range(screenp->level_data.oblist,
+				screenp->find_friends_in_range(screenp->level_data.oblist,
 				            60, &howmany, this);
 
-				// Zardus: TAG: lets use delete_list here as well
-				/*while(enemylist)
-				{
-					templink=enemylist;
-					enemylist = enemylist->next;
-					delete templink;
-					templink = NULL;
-				}*/
-
-				delete_list(enemylist);
 				if (howmany > 1) // other than ourselves?
 				{
 					shifter_down = 0; // we're HEALING
@@ -676,17 +641,8 @@ short living::check_special()
 			//break;
 		case FAMILY_SKELETON:  // Tunnel if no foes near ..
 			howmany = 0;
-			enemylist = screenp->find_foes_in_range(screenp->level_data.oblist,
+			screenp->find_foes_in_range(screenp->level_data.oblist,
 			                                        5*GRID_SIZE, &howmany, this);
-			// Zardus: TAG: delete_list strikes again!
-			/*while(enemylist)
-			{
-				templink=enemylist;
-				enemylist = enemylist->next;
-				delete templink;
-				templink = NULL;
-			}*/
-			delete_list(enemylist);
 
 			if (howmany < 1) //  away from anybody ..
 				return 1;      //  so tunnel

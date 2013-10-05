@@ -128,7 +128,6 @@ short radar::draw()
 
 short radar::draw(LevelData* data)
 {
-	oblink  * here;
 	Sint32 tempx, tempy, tempz;
 	unsigned char tempcolor;
 	short oborder, obfamily, obteam;
@@ -178,38 +177,39 @@ short radar::draw(LevelData* data)
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)
 	{
+	    std::list<walker*>* ls;
 		if (listtype == 0) // do oblist, standard
 		{
-			here = data->oblist;
+			ls = &data->oblist;
 			listtype++;
 		}
 		else if (listtype == 1) // do weapons
 		{
-			here = data->weaplist;
+			ls = &data->weaplist;
 			listtype++;
 		}
 		else
 			continue;
 
-		while (here)
+        for(auto e = ls->begin(); e != ls->end(); e++)
 		{
-			if (here->ob)
-				oborder = here->ob->query_order();
+		    walker* ob = *e;
+		    
+            oborder = ob->query_order();
 			do_show = 0; // don't show, by default
-			if (here->ob
-			        && (oborder == ORDER_LIVING || oborder == ORDER_WEAPON
-			            || (oborder == ORDER_TREASURE && (here->ob->query_family() == FAMILY_LIFE_GEM))
-			            || (oborder == ORDER_TREASURE && (here->ob->query_family() == FAMILY_EXIT))
+			if ((oborder == ORDER_LIVING || oborder == ORDER_WEAPON
+			            || (oborder == ORDER_TREASURE && (ob->query_family() == FAMILY_LIFE_GEM))
+			            || (oborder == ORDER_TREASURE && (ob->query_family() == FAMILY_EXIT))
 			            || (oborder == ORDER_GENERATOR && can_see)
 			           )
-			        && (obteam==here->ob->team_num || here->ob->invisibility_left < 1 || can_see)
-			        && on_screen( (short) ((here->ob->xpos+1)/GRID_SIZE), (short) ((here->ob->ypos+1)/GRID_SIZE), radarx, radary)
+			        && (obteam==ob->team_num || ob->invisibility_left < 1 || can_see)
+			        && on_screen( (short) ((ob->xpos+1)/GRID_SIZE), (short) ((ob->ypos+1)/GRID_SIZE), radarx, radary)
 			   )
 				do_show = 1;
 			if (do_show)
 			{
-				tempx = xloc + ((here->ob->xpos+1)/GRID_SIZE - radarx);
-				tempy = yloc + ((here->ob->ypos+1)/GRID_SIZE - radary);
+				tempx = xloc + ((ob->xpos+1)/GRID_SIZE - radarx);
+				tempy = yloc + ((ob->ypos+1)/GRID_SIZE - radary);
 				if ( (tempx < xloc) || (tempx > (xloc + xview)) )
 				{} //do nothing
 				else if ( (tempy < yloc) || (tempy > (yloc + yview)) )
@@ -222,8 +222,8 @@ short radar::draw(LevelData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					tempcolor = (here->ob->query_team_color());
-					if (viewscreenp && viewscreenp->control == here->ob)
+					tempcolor = (ob->query_team_color());
+					if (viewscreenp && viewscreenp->control == ob)
 					{
 						tempcolor = (unsigned char) (random(256));
 						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
@@ -267,17 +267,16 @@ short radar::draw(LevelData* data)
 						screenp->pointb(tempx,tempy,COLOR_WHITE, alpha);
 				}//draw the blob onto the radar
 			}
-			here = here->next;
 		}
 	} // go back to new screen lists (weapons, etc.)
 
-	here = data->fxlist;
-	while (here)
+    for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead)
+	    walker* ob = *e;
+		if (ob && !ob->dead)
 		{
-			oborder  = here->ob->query_order();
-			obfamily = here->ob->query_family();
+			oborder  = ob->query_order();
+			obfamily = ob->query_family();
 
 			do_show = 0; // don't show, by default
 			if (oborder == ORDER_TREASURE)
@@ -309,14 +308,14 @@ short radar::draw(LevelData* data)
 				if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
 					do_show = (short) LIGHT_BLUE + random(7);
 			}
-			if (!on_screen( (short) ((here->ob->xpos+1)/GRID_SIZE),
-			                (short) ((here->ob->ypos+1)/GRID_SIZE),
+			if (!on_screen( (short) ((ob->xpos+1)/GRID_SIZE),
+			                (short) ((ob->ypos+1)/GRID_SIZE),
 			                radarx, radary) )
 				do_show = 0;
 			if (do_show)
 			{
-				tempx = xloc + ((here->ob->xpos+1)/GRID_SIZE - radarx);
-				tempy = yloc + ((here->ob->ypos+1)/GRID_SIZE - radary);
+				tempx = xloc + ((ob->xpos+1)/GRID_SIZE - radarx);
+				tempy = yloc + ((ob->ypos+1)/GRID_SIZE - radary);
 				if ( (tempx < xloc) || (tempx > (xloc + xview)) )
 				{} //do nothing
 				else if ( (tempy < yloc) || (tempy > (yloc + yview)) )
@@ -333,7 +332,6 @@ short radar::draw(LevelData* data)
 				}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob
-		here = here->next;
 	} // end of while (here)
 
 	return 1;

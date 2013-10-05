@@ -264,17 +264,16 @@ void glad_main(screen *myscreen, Sint32 playermode)
 // remaining_foes returns # of livings left not on control's team
 short remaining_foes(screen *myscreen, walker* myguy)
 {
-	oblink  *here;
 	short myfoes = 0;
 
-	here = myscreen->level_data.oblist;
-	while (here)
+	const std::list<walker*>& foelist = myscreen->level_data.oblist;
+	for(auto e = foelist.begin(); e != foelist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead &&
-		        (here->ob->query_order() == ORDER_LIVING) &&
-		        !myguy->is_friendly(here->ob) )
+	    walker* w = *e;
+		if (w && !w->dead &&
+		        (w->query_order() == ORDER_LIVING) &&
+		        !myguy->is_friendly(w) )
 			myfoes++;
-		here = here->next;
 	}
 
 	return myfoes;
@@ -283,17 +282,16 @@ short remaining_foes(screen *myscreen, walker* myguy)
 // remaining_team returns # of livings left on team myteam
 short remaining_team(screen *myscreen, char myteam)
 {
-	oblink  *here;
 	short myfoes = 0;
 
-	here = myscreen->level_data.oblist;
-	while (here)
+	const std::list<walker*>& foelist = myscreen->level_data.oblist;
+	for(auto e = foelist.begin(); e != foelist.end(); e++)
 	{
-		if (here->ob && !here->ob->dead &&
-		        (here->ob->query_order() == ORDER_LIVING) &&
-		        (myteam == here->ob->team_num) )
+	    walker* w = *e;
+		if (w && !w->dead &&
+		        (w->query_order() == ORDER_LIVING) &&
+		        (myteam == w->team_num) )
 			myfoes++;
-		here = here->next;
 	}
 
 	return myfoes;

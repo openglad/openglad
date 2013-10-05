@@ -144,7 +144,6 @@ class walker : public pixieN
 		Sint32 lifetime; // how much life summoned guys have ..
 		short skip_exit; // cycles after failed exit choice
 		unsigned char outline;
-		walker * cachenext;
 		short speed_bonus;             // These two are used for
 		short speed_bonus_left;        // speed potions, etc.
 		short regen_delay;  // Delay after being hit

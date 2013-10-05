@@ -143,7 +143,7 @@ short weap::death()
 		case FAMILY_KNIFE: // for returning knife
 			if (owner && owner->query_family() != FAMILY_SOLDIER)
 				break;  // only soldiers get returning knives
-			newob = screenp->add_ob(ORDER_FX, FAMILY_KNIFE_BACK);
+			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_KNIFE_BACK);
 			newob->owner = owner;
 			newob->center_on(this);
 			newob->lastx = lastx;
@@ -193,7 +193,7 @@ short weap::death()
 				break;  // skip_exit means we're supposed to explode :)
 			if (!owner || owner->dead)
 				owner = this;
-			newob = screenp->add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
+			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
 			if (!newob)
 				break; // failsafe
 			if (on_screen())
@@ -216,7 +216,7 @@ short weap::death()
 			stats->hitpoints = stats->max_hitpoints;
 			break;  // end wave2 -> wave3
 		case FAMILY_DOOR: // display open picture
-			newob = screenp->add_weap_ob(ORDER_FX, FAMILY_DOOR_OPEN);
+			newob = screenp->level_data.add_weap_ob(ORDER_FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
 			newob->ani_type = ANI_DOOR_OPEN;

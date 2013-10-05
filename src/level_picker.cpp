@@ -60,53 +60,41 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
     exits.clear();
     
     // Go through objects
-    oblink* fx = level_data.oblist;
-	while(fx)
+	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-		if(fx->ob)
-		{
-		    walker* ob = fx->ob;
-		    switch(ob->query_order())
-		    {
-		        case ORDER_LIVING:
-                    if(ob->team_num != 0)
-                    {
-                        num++;
-                        level_sum += ob->stats->level;
-                        difficulty_sum += diff_per_level*ob->stats->level;
-                        if(ob->stats->level > max_level)
-                            max_level = ob->stats->level;
-                    }
-                    else
-                    {
-                        difficulty_sum_friends += diff_per_level*ob->stats->level;
-                    }
-                break;
-		    }
-		}
-		
-		fx = fx->next;
+	    walker* ob = *e;
+        switch(ob->query_order())
+        {
+            case ORDER_LIVING:
+                if(ob->team_num != 0)
+                {
+                    num++;
+                    level_sum += ob->stats->level;
+                    difficulty_sum += diff_per_level*ob->stats->level;
+                    if(ob->stats->level > max_level)
+                        max_level = ob->stats->level;
+                }
+                else
+                {
+                    difficulty_sum_friends += diff_per_level*ob->stats->level;
+                }
+            break;
+        }
 	}
 	
 	// Go through effects
-	fx = level_data.fxlist;
-	while(fx)
+	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
 	{
-		if(fx->ob)
-		{
-		    walker* ob = fx->ob;
-		    switch(ob->query_order())
-		    {
-                case ORDER_TREASURE:
-                    if(ob->query_family() == FAMILY_EXIT)
-                    {
-                        exits.push_back(ob->stats->level);
-                    }
-                break;
-		    }
-		}
-		
-		fx = fx->next;
+	    walker* ob = *e;
+        switch(ob->query_order())
+        {
+            case ORDER_TREASURE:
+                if(ob->query_family() == FAMILY_EXIT)
+                {
+                    exits.push_back(ob->stats->level);
+                }
+            break;
+        }
 	}
 	
 	*num_enemies = num;

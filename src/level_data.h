@@ -86,9 +86,9 @@ public:
     smoother mysmoother;
     loader* myloader;
     int numobs;
-    oblink* oblist;
-    oblink* fxlist;  // fx--explosions, etc.
-    oblink* weaplist;  // weapons
+    std::list<walker*> oblist;
+    std::list<walker*> fxlist;  // fx--explosions, etc.
+    std::list<walker*> weaplist;  // weapons
     // Keep a list of dead guys so weapons can still have valid owners
     std::list<walker*> dead_list;
     
