@@ -586,6 +586,12 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
         return level_editor();
     case YES_OR_NO:
         return yes_or_no(arg);
+    case OVERSCAN_ADJUST:
+        return overscan_adjust();
+    case OVERSCAN_DECREASE:
+        return overscan_decrease();
+    case OVERSCAN_INCREASE:
+        return overscan_increase();
     default:
         return 4;
     }

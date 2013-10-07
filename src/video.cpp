@@ -103,6 +103,11 @@ void video::clearbuffer(int x, int y, int w, int h)
     E_Screen->clear(x, y, w, h);
 }
 
+void video::clear_window()
+{
+    E_Screen->clear_window();
+}
+
 void video::draw_box(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color, Sint32 filled)
 {
 	Sint32 xlength = x2 - x1 + 1;    // Assume topleft-bottomright specs

@@ -41,6 +41,8 @@ class Screen
         void clear();
         void clear(int x, int y, int w, int h);
 		void swap(int x, int y, int w, int h);
+		
+		void clear_window();
 
 };
 

@@ -28,6 +28,8 @@ class video
 		virtual ~video();
 		void clearbuffer();
 		void clearbuffer(int x, int y, int w, int h);
+		
+		void clear_window();
 	
 		unsigned char * getbuffer();
 		void putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize);

@@ -807,6 +807,20 @@ void Screen::swap(int x, int y, int w, int h)
     SDL_RenderPresent(renderer);
 }
 
+void Screen::clear_window()
+{
+    SDL_Surface* source_surface = render;
+    SDL_Texture* dest_texture = render_tex;
+    
+    SDL_FillRect(source_surface, NULL, 0x000000);
+    
+    SDL_UpdateTexture(dest_texture, NULL, source_surface->pixels, source_surface->pitch);
+    
+    SDL_Rect dest = {0, 0, int(window_w), int(window_h)};
+
+    SDL_RenderCopy(renderer, dest_texture, NULL, &dest);
+}
+
 #undef GET_RESULT
 #undef INTERPOLATE
 #undef Q_INTERPOLATE
