@@ -710,14 +710,12 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     window_w = w;
     window_h = h;
     #ifdef OUYA
-    viewport_offset_x = window_w * 0.05f;
-    viewport_offset_y = window_h * 0.05f;
-    viewport_w = window_w * 0.90f;
-    viewport_h = window_h * 0.90f;
+    overscan_percentage = 0.10f;
     #else
-    viewport_w = window_w;
-    viewport_h = window_h;
+    overscan_percentage = 0.00f;
     #endif
+    
+    update_overscan_setting();
     
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
     
