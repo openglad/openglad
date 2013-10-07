@@ -51,6 +51,12 @@ guy::guy()
 	level_kills = 0;
 	total_damage = total_hits = total_shots = 0;
 	teamnum = 0;
+	scen_damage = 0;
+    scen_kills = 0;
+    scen_damage_taken = 0;
+    scen_min_hp = 5000000;
+    scen_shots = 0;
+    scen_hits = 0;
 	
 	id = guy_id_counter++;
 }
@@ -65,6 +71,13 @@ guy::guy(int whatfamily)
 	total_damage = total_hits = total_shots = 0;
 	exp = 0;
 	teamnum = 0;
+	
+	scen_damage = 0;
+    scen_kills = 0;
+    scen_damage_taken = 0;
+    scen_min_hp = 5000000;
+    scen_shots = 0;
+    scen_hits = 0;
 	
 	// Set stats
 	if(whatfamily <= FAMILY_ARCHMAGE)
@@ -100,7 +113,14 @@ guy::guy(const guy& copy)
     , armor(copy.armor)
     , exp(copy.exp), kills(copy.kills), level_kills(copy.level_kills)
     , total_damage(copy.total_damage), total_hits(copy.total_hits), total_shots(copy.total_shots)
-    , teamnum(copy.teamnum), id(copy.id)
+    , teamnum(copy.teamnum)
+    , scen_damage(copy.scen_damage)
+    , scen_kills(copy.scen_kills)
+    , scen_damage_taken(copy.scen_damage_taken)
+    , scen_min_hp(copy.scen_min_hp)
+    , scen_shots(copy.scen_shots)
+    , scen_hits(copy.scen_hits)
+    , id(copy.id)
     , level(copy.level)
 {
     strcpy(name, copy.name);

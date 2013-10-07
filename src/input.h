@@ -272,4 +272,8 @@ extern float window_h;
 extern float viewport_w;
 extern float viewport_h;
 
+extern float overscan_percentage;
+
+void update_overscan_setting();
+
 #endif

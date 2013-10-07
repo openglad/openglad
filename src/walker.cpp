@@ -729,7 +729,10 @@ walker  * walker::fire()
 				screenp->soundp->play_sound(SOUND_CLANG);
 			}
 			if (myguy)
-				myguy->total_shots +=1; // record that we fired/attacked
+            {
+				myguy->total_shots++; // record that we fired/attacked
+				myguy->scen_shots++;
+            }
 		}
 		weapon->dead = 1;
 		return NULL;
@@ -756,7 +759,10 @@ walker  * walker::fire()
         
 		// Record our shot ..
 		if (myguy)
-			myguy->total_shots += 1;
+        {
+			myguy->total_shots++;
+			myguy->scen_shots++;
+        }
 
 		// *** Ranged combat ***
 		if (on_screen())
@@ -1551,10 +1557,10 @@ short walker::collide(walker  *ob)
 short get_xp_from_attack(walker* w, walker* target, float damage)
 {
     float x = (w->stats->level - target->stats->level);
-    // Whooo-ee!  An interpolated (quintic) polynomial to fit {{0,30},{1,15},{2,5},{3,1.5},{4,0.5},{5,0},{7,-50}} for 20 damage done.
+    // Whooo-ee!  An interpolated (quintic) polynomial to fit {{0,30},{1,25},{2,15},{3,10},{4,5},{5,2.5},{6,1.25},{7,0.5},{8,0.25},{9,-10}} for 20 damage done.
     // Being an odd order polynomial is important so it can rise to infinity leftward and fall to neg infinity rightward.
     // The factor was adjusted to make level ups happen at a good rate.
-    float poly = -0.017881*pow(x,5)+0.137265*pow(x,4)-0.434659*pow(x,3)+3.42733*pow(x,2)-18.274*x+30.0237;
+    float poly = -0.00246795*pow(x,5)+0.013243*pow(x,4)+0.223208*pow(x,3)-1.16091*pow(x,2)-5.54277*x+30.2923;
     float result = 6.0f*damage*poly/20.0f;
     if(result <= 0)
         return 0;
@@ -1677,7 +1683,10 @@ short walker::attack(walker  *target)
 		case ORDER_LIVING:
 			// Hit a living target, so we get credit for a hit
 			if (attacker->myguy)
-				attacker->myguy->total_hits +=1;
+            {
+				attacker->myguy->total_hits++;
+				attacker->myguy->scen_hits++;
+            }
 
 			switch (targetfamily)
 			{
@@ -1699,7 +1708,10 @@ short walker::attack(walker  *target)
 			// We hit something, but it wasn't living, so don't count
 			// as a shot, OR as a hit ..
 			if (attacker->myguy)
-				attacker->myguy->total_shots -= 1; // since we already counted it
+            {
+				attacker->myguy->total_shots--; // since we already counted it
+				attacker->myguy->scen_shots--;
+            }
 			break;
 	} // end of checking orders
 
@@ -1708,14 +1720,26 @@ short walker::attack(walker  *target)
 		tempdamage = 0;
 	// Record damage done for records ..
 	if (attacker->myguy && targetorder==ORDER_LIVING)  // hit a living
+    {
 		attacker->myguy->total_damage += tempdamage;
+		attacker->myguy->scen_damage += tempdamage;
+    }
 		
     // Deal the damage
 	target->stats->hitpoints -= tempdamage;
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
+    
+    // Delay HP regeneration
     if(tempdamage > 0)
         target->regen_delay = 50;
+    
+    if(target->myguy != NULL)
+    {
+        target->myguy->scen_damage_taken += tempdamage;
+        if(target->myguy->scen_min_hp > target->stats->hitpoints)
+            target->myguy->scen_min_hp = target->stats->hitpoints;
+    }
 
 
     // Base exp from attack damage
@@ -1807,6 +1831,7 @@ short walker::attack(walker  *target)
 					{
 						headguy->myguy->exp += newexp + exp_from_action(EXP_KILL, attacker, target, 0);
 						headguy->myguy->kills++;
+						headguy->myguy->scen_kills++;
 						headguy->myguy->level_kills += target->stats->level;
 					}
 					//else if (myguy)
@@ -2376,7 +2401,10 @@ short walker::special()
 							return 0;
 						}
 						if (myguy)
-							myguy->total_shots +=1; // record that we fired/attacked
+                        {
+							myguy->total_shots++; // record that we fired/attacked
+							myguy->scen_shots++;
+                        }
 
 						// All okay, let's summon!
 						newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
@@ -2732,7 +2760,10 @@ short walker::special()
 					generic /= 2;
 					generic /= howmany; // so do half magic, div enemies
 					if (myguy)
+                    {
 						myguy->total_shots += howmany;
+						myguy->scen_shots += howmany;
+                    }
 					busy += 5;
 					
 					// Create explosions on top of the target objects
@@ -2852,7 +2883,10 @@ short walker::special()
                             generic /= 2;
                             generic /= howmany; // so do half magic, div enemies
                             if (myguy)
+                            {
                                 myguy->total_shots += howmany;
+                                myguy->scen_shots += howmany;
+                            }
                             busy += 5;
                             
                             // Create explosions on the target objects
@@ -2881,7 +2915,10 @@ short walker::special()
                         {
                             busy += 5;
                             if (myguy)
-                                myguy->total_shots += 1; // so can get > 100% :)
+                            {
+                                myguy->total_shots++; // so can get > 100% :)
+                                myguy->scen_shots++;
+                            }
                             newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_CHAIN);
                             newob->center_on(this);
                             newob->owner = this;
@@ -3245,7 +3282,10 @@ short walker::special()
 					newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_BOMB, 1); // 1 == underneath
 					newob->ani_type = ANI_BOMB;
 					if (myguy)
-						myguy->total_shots += 1;
+                    {
+						myguy->total_shots++;
+						myguy->scen_shots++;
+                    }
 					newob->damage = (stats->level+1)*15;
 					newob->setxy(xpos+sizex/2 - newob->sizex/2,
 					             ypos+sizey/2 - newob->sizey/2);
@@ -4153,6 +4193,13 @@ void walker::transfer_stats(walker  *newob)
 		newguy->total_damage = myguy->total_damage;
 		newguy->total_hits = myguy->total_hits;
 		newguy->total_shots = myguy->total_shots;
+		
+		newguy->scen_damage = myguy->scen_damage;
+		newguy->scen_kills = myguy->scen_kills;
+		newguy->scen_damage_taken = myguy->scen_damage_taken;
+		newguy->scen_min_hp = myguy->scen_min_hp;
+		newguy->scen_shots = myguy->scen_shots;
+		newguy->scen_hits = myguy->scen_hits;
 		
 		newob->myguy = newguy;
 	}

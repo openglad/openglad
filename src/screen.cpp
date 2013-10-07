@@ -109,6 +109,10 @@ screen::screen(short howmany)
 	first_text.write_xy(left, 70, "Loading Graphics...Done", DARK_BLUE, 1);
 	first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
+	
+	// Load configuration settings here
+	load_settings();
+	
 	palmode = 0;
 
 	end = 0;

@@ -48,6 +48,10 @@ std::list<int> list_levels();
 std::vector<int> list_levels_v();
 
 void restore_default_campaigns();
+
+bool save_settings();
+bool load_settings();
+
 void delete_level(int id);
 void delete_campaign(const std::string& id);
 void delete_user_file(const std::string& filename);

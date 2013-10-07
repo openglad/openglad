@@ -242,8 +242,20 @@ button mainmenu_buttons[] =
         button("PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)),
         button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
 
-        button("QUIT", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7))
+        #ifdef ENABLE_OVERSCAN_ADJUST
+        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::UpLeft(7, 10)),
+        button("<-> ", KEYSTATE_UNKNOWN, 80, 180, 30, 10, OVERSCAN_ADJUST, -1, MenuNav::UpRight(7, 9))
+        #else
+        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7))
+        #endif
     };
+
+button overscanadjust_buttons[] =
+{
+    button("BACK", KEYSTATE_UNKNOWN, 135, 120, 50, 15, RETURN_MENU, EXIT, MenuNav::UpLeftRight(1, 1, 2)),
+    button("- ", KEYSTATE_UNKNOWN, 80, 90, 30, 15, OVERSCAN_DECREASE, -1, MenuNav::DownRight(0, 2)),
+    button("+ ", KEYSTATE_UNKNOWN, 210, 90, 30, 15, OVERSCAN_INCREASE, -1, MenuNav::DownLeft(0, 1))
+};
 
 // beginmenu (first menu of new game), create_team_menu
 button createmenu_buttons[] =
@@ -681,6 +693,8 @@ void redraw_mainmenu()
     draw_version_number();
 }
 
+#define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
+
 Sint32 mainmenu(Sint32 arg1)
 {
 	Sint32 retvalue=0;
@@ -692,7 +706,7 @@ Sint32 mainmenu(Sint32 arg1)
 		delete localbuttons; //we'll make a new set
 
 	button* buttons = mainmenu_buttons;
-	int num_buttons = 10;
+	int num_buttons = ARRAY_SIZE(mainmenu_buttons);
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
@@ -734,8 +748,13 @@ Sint32 mainmenu(Sint32 arg1)
 // Reset game data and go to create_team_menu()
 Sint32 beginmenu(Sint32 arg1)
 {
-	Sint32 i;
-
+    // Do we have a team already?  Then prompt to reset.
+    if(myscreen->save_data.team_size > 0)
+    {
+        if(!yes_or_no_prompt("NEW GAME", "There is already a game loaded.\nDo you want to restart?", false))
+            return REDRAW;
+    }
+    
 	myscreen->clear();
 
 	// Starting new game ..
@@ -754,7 +773,7 @@ Sint32 beginmenu(Sint32 arg1)
 	current_guy = NULL;
 	
 	// Clear the labeling counter
-	for (i=0; i < NUM_FAMILIES; i++)
+	for (int i = 0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
 	return create_team_menu(1);
@@ -1728,6 +1747,10 @@ Sint32 create_load_menu(Sint32 arg1)
         }
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == REDRAW)
+        {
+            return REDRAW;
+        }
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
@@ -2113,6 +2136,10 @@ Sint32 create_save_menu(Sint32 arg1)
         }
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == REDRAW)
+        {
+            return REDRAW;
+        }
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
@@ -2383,7 +2410,6 @@ Uint32 calculate_train_cost(guy  *oldguy)
 	return (Uint32)temp;
 }
 
-#define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
 
 #define GET_RAND_ELEM(array) (array[rand()%ARRAY_SIZE(array)])
 
@@ -2881,7 +2907,11 @@ Sint32 do_load(Sint32 arg1)
 
 	snprintf(newname, 8, "save%d", arg1);
 
-	myscreen->save_data.load(newname);
+	if(myscreen->save_data.load(newname))
+        timed_dialog("GAME LOADED");
+    else
+        timed_dialog("LOAD FAILED");
+    
 	return REDRAW;
 }
 
@@ -3063,6 +3093,13 @@ void statscopy(guy *dest, guy *source)
 	dest->total_hits   = source->total_hits;
 	dest->total_shots  = source->total_shots;
 	dest->teamnum = source->teamnum;
+	
+	dest->scen_damage = source->scen_damage;
+	dest->scen_kills = source->scen_kills;
+	dest->scen_damage_taken = source->scen_damage_taken;
+	dest->scen_min_hp = source->scen_min_hp;
+	dest->scen_shots = source->scen_shots;
+	dest->scen_hits = source->scen_hits;
 
 	strcpy(dest->name, source->name);
 }
@@ -3079,6 +3116,75 @@ void quit(Sint32 arg1)
 	picker_quit();
 	release_keyboard();
 	exit(0);
+}
+
+Sint32 overscan_adjust()
+{
+    text mytext(myscreen);
+    
+	if(localbuttons != NULL)
+		delete localbuttons; //we'll make a new set
+
+	button* buttons = overscanadjust_buttons;
+	int num_buttons = ARRAY_SIZE(overscanadjust_buttons);
+	int highlighted_button = 0;
+	localbuttons = init_buttons(buttons, num_buttons);
+
+	clear_keyboard();
+    
+    Sint32 retvalue = 0;
+	while(!(retvalue & EXIT))
+	{
+	    // Input
+		if(leftmouse(buttons))
+        {
+			if(localbuttons->leftclick() == EXIT)
+                break;
+        }
+        
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == EXIT)
+            break;
+        
+        // Reset buttons
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+		
+		// Draw
+		myscreen->clear_window();
+		
+		myscreen->draw_button(0, 0, 320, 200, 0);
+		myscreen->draw_button_inverted(4, 4, 312, 192);
+		
+        draw_buttons(buttons, num_buttons);
+        
+        mytext.write_xy_center(160, 50, DARK_BLUE, "Adjust Screen Overscan");
+        
+        mytext.write_xy_center(160, 95, DARK_BLUE, "%.0f percent", 100*overscan_percentage);
+        
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0,0,320,200);
+        SDL_Delay(10);
+	}
+	
+	save_settings();
+    
+    return REDRAW;
+}
+
+Sint32 overscan_decrease()
+{
+    overscan_percentage += 0.01f;
+    update_overscan_setting();
+    
+    return REDRAW;
+}
+
+Sint32 overscan_increase()
+{
+    overscan_percentage -= 0.01f;
+    update_overscan_setting();
+    
+    return REDRAW;
 }
 
 Sint32 set_player_mode(Sint32 howmany)

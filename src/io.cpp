@@ -16,6 +16,7 @@
  */
 
 #include "io.h"
+#include "input.h"
 #include "util.h"
 #include "pixdefs.h"
 
@@ -390,6 +391,72 @@ void restore_default_campaigns()
     if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
     #endif
         copy_file("builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+}
+
+
+bool save_settings()
+{
+    SDL_RWops* outfile = open_write_file("cfg/settings.yaml");
+    if(outfile != NULL)
+    {
+        char buf[40];
+        
+        Yam yam;
+        yam.set_output(rwops_write_handler, outfile);
+        
+        yam.emit_pair("version", "1");
+        
+        snprintf(buf, 40, "%.0f", 100*overscan_percentage);
+        yam.emit_pair("overscan_percentage", buf);
+        
+        yam.close_output();
+        SDL_RWclose(outfile);
+        
+        return true;
+    }
+    else
+    {
+        Log("Couldn't open cfg/settings.yaml for writing.\n");
+        return false;
+    }
+}
+
+int toInt(const std::string& s);
+
+bool load_settings()
+{
+    
+    SDL_RWops* rwops = open_read_file("cfg/settings.yaml");
+    
+    if(rwops == NULL)
+    {
+        Log("No settings file found.\n");
+        return false;
+    }
+    
+    Yam yam;
+    yam.set_input(rwops_read_handler, rwops);
+    
+    while(yam.parse_next() == Yam::OK)
+    {
+        switch(yam.event.type)
+        {
+            case Yam::PAIR:
+                if(strcmp(yam.event.scalar, "overscan_percentage") == 0)
+                {
+                    overscan_percentage = toInt(yam.event.value)/100.0f;
+                    update_overscan_setting();
+                }
+            break;
+            default:
+                break;
+        }
+    }
+    
+    yam.close_input();
+    SDL_RWclose(rwops);
+    
+    return true;
 }
 
 void io_init(int argc, char* argv[])

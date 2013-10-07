@@ -710,14 +710,12 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     window_w = w;
     window_h = h;
     #ifdef OUYA
-    viewport_offset_x = window_w * 0.05f;
-    viewport_offset_y = window_h * 0.05f;
-    viewport_w = window_w * 0.90f;
-    viewport_h = window_h * 0.90f;
+    overscan_percentage = 0.10f;
     #else
-    viewport_w = window_w;
-    viewport_h = window_h;
+    overscan_percentage = 0.00f;
     #endif
+    
+    update_overscan_setting();
     
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
     
@@ -807,6 +805,20 @@ void Screen::swap(int x, int y, int w, int h)
 
     SDL_RenderCopy(renderer, dest_texture, NULL, &dest);
     SDL_RenderPresent(renderer);
+}
+
+void Screen::clear_window()
+{
+    SDL_Surface* source_surface = render;
+    SDL_Texture* dest_texture = render_tex;
+    
+    SDL_FillRect(source_surface, NULL, 0x000000);
+    
+    SDL_UpdateTexture(dest_texture, NULL, source_surface->pixels, source_surface->pitch);
+    
+    SDL_Rect dest = {0, 0, int(window_w), int(window_h)};
+
+    SDL_RenderCopy(renderer, dest_texture, NULL, &dest);
 }
 
 #undef GET_RESULT

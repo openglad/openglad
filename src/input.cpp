@@ -69,6 +69,21 @@ float window_h = 200;
 float viewport_w = 320;
 float viewport_h = 200;
 
+float overscan_percentage = 0.0f;  // Out of 1.0f, percent of total screen dimension that is cut off.  10% (0.10f) is recommended on OUYA.
+
+void update_overscan_setting()
+{
+    if(overscan_percentage < 0.0f)
+        overscan_percentage = 0.0f;
+    else if(overscan_percentage > 0.25f)
+        overscan_percentage = 0.25f;
+    
+    viewport_offset_x = window_w * overscan_percentage/2;
+    viewport_offset_y = window_h * overscan_percentage/2;
+    viewport_w = window_w * (1.0f - overscan_percentage);
+    viewport_h = window_h * (1.0f - overscan_percentage);
+}
+
 JoyData player_joy[4];
 
 #define JOY_DEAD_ZONE 8000

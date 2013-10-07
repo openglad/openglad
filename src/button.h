@@ -190,6 +190,9 @@ Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 Sint32 level_editor();
+Sint32 overscan_adjust();
+Sint32 overscan_decrease();
+Sint32 overscan_increase();
 
 // Function definitions ..
 #define BEGINMENU               1
@@ -222,4 +225,7 @@ Sint32 level_editor();
 #define YES_OR_NO               28
 #define DO_PICK_CAMPAIGN        29
 #define DO_LEVEL_EDIT           30
+#define OVERSCAN_ADJUST         31
+#define OVERSCAN_DECREASE       32
+#define OVERSCAN_INCREASE       33
 #endif
