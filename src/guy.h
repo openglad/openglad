@@ -60,6 +60,14 @@ class guy
 		Sint32 total_hits;   // version 4+
 		Sint32 total_shots;  // version 4+
 		short teamnum;     // version 5+
+		
+		// Stats for the last battle
+		float scen_damage;
+		short scen_kills;
+		float scen_damage_taken;
+		float scen_min_hp;
+		short scen_shots;
+		short scen_hits;
         
         // In ID for comparing old guys with their duplicated counterparts after battle
         int id;

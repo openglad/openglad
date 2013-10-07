@@ -3045,6 +3045,13 @@ void statscopy(guy *dest, guy *source)
 	dest->total_hits   = source->total_hits;
 	dest->total_shots  = source->total_shots;
 	dest->teamnum = source->teamnum;
+	
+	dest->scen_damage = source->scen_damage;
+	dest->scen_kills = source->scen_kills;
+	dest->scen_damage_taken = source->scen_damage_taken;
+	dest->scen_min_hp = source->scen_min_hp;
+	dest->scen_shots = source->scen_shots;
+	dest->scen_hits = source->scen_hits;
 
 	strcpy(dest->name, source->name);
 }

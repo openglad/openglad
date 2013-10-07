@@ -204,7 +204,7 @@ int TroopResult::get_tallies()
     if(after == NULL)
         return 0;
     
-    return after->myguy->level_kills;
+    return after->myguy->scen_kills;
 }
 
 float TroopResult::get_HP()
@@ -212,7 +212,10 @@ float TroopResult::get_HP()
     if(after == NULL)
         return 0.0f;
     
-    return after->stats->hitpoints/float(after->stats->max_hitpoints);
+    if(after->myguy->scen_min_hp > after->stats->hitpoints)
+        return 1.0f;
+    
+    return after->myguy->scen_min_hp/after->stats->max_hitpoints;
 }
 
 bool TroopResult::is_dead()
@@ -373,23 +376,20 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     }
     
     walker* mvp = NULL;
-    Sint32 mvp_damage = 0;
+    float mvp_points = 0;
     for(std::vector<TroopResult>::iterator e = troops.begin(); e != troops.end(); e++)
     {
-        Sint32 dmg = 0;
+        float points = 0;
         
         if(e->after == NULL)
             continue;
             
-        if(e->before == NULL)
-            dmg = e->after->myguy->total_damage;
-        else
-            dmg = e->after->myguy->total_damage - e->before->total_damage;
+        points = e->after->myguy->scen_damage + 3*e->after->myguy->scen_damage_taken;
         
-        if(mvp_damage < dmg)
+        if(mvp_points < points)
         {
             mvp = e->after;
-            mvp_damage = dmg;
+            mvp_points = points;
         }
     }
     
@@ -582,6 +582,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 BEGIN_IF_IN_SCROLL_AREA;
                 
                 mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy->name, get_family_string(mvp->myguy->family));
+                mytext.write_xy_center(area.x + area.w/2, y + 8, DARK_BLUE, "(%.0f pts)", mvp_points);
                 y += 22;
                 
                 END_IF_IN_SCROLL_AREA;

@@ -72,6 +72,13 @@ short load_saved_game(const char *filename, screen  *myscreen)
     {
 	    temp_guy = myscreen->save_data.team_list[i];
 	    temp_walker = temp_guy->create_and_add_walker(myscreen);
+	    // Clear the new guy's battle data
+	    temp_walker->myguy->scen_damage = 0;
+	    temp_walker->myguy->scen_kills = 0;
+	    temp_walker->myguy->scen_damage_taken = 0;
+	    temp_walker->myguy->scen_min_hp = 5000000;
+	    temp_walker->myguy->scen_shots = 0;
+	    temp_walker->myguy->scen_hits = 0;
 
 		// Do we have guys on multiple teams? If so, we need
 		// to record it so that we can set the controls of
