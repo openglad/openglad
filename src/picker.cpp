@@ -729,8 +729,13 @@ Sint32 mainmenu(Sint32 arg1)
 // Reset game data and go to create_team_menu()
 Sint32 beginmenu(Sint32 arg1)
 {
-	Sint32 i;
-
+    // Do we have a team already?  Then prompt to reset.
+    if(myscreen->save_data.team_size > 0)
+    {
+        if(!yes_or_no_prompt("NEW GAME", "There is already a game loaded.\nDo you want to restart?", false))
+            return REDRAW;
+    }
+    
 	myscreen->clear();
 
 	// Starting new game ..
@@ -749,7 +754,7 @@ Sint32 beginmenu(Sint32 arg1)
 	current_guy = NULL;
 	
 	// Clear the labeling counter
-	for (i=0; i < NUM_FAMILIES; i++)
+	for (int i = 0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
 	return create_team_menu(1);
