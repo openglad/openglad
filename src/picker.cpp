@@ -3147,6 +3147,8 @@ Sint32 overscan_adjust()
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
+	
+	save_settings();
     
     return REDRAW;
 }
