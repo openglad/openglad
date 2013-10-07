@@ -6,6 +6,7 @@
 #include "guy.h"
 #include "stats.h"
 #include "view.h"
+#include "OuyaController.h"
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
@@ -468,7 +469,17 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         int mx = mymouse.x;
         int my = mymouse.y;
         
+        #ifdef USE_CONTROLLER_INPUT
+        {
+            const OuyaController& c = OuyaControllerManager::getController(0);
+            
+            float v = c.getAxisValue(OuyaController::AXIS_LS_Y) + c.getAxisValue(OuyaController::AXIS_RS_Y);
+            if(fabs(v) > OuyaController::DEADZONE)
+                scroll -= -5*v;
+        }
+        #else
 		scroll -= get_and_reset_scroll_amount();
+		#endif
 		if(scroll < 0.0f)
             scroll = 0.0f;
         

@@ -19,7 +19,7 @@ public:
     
     static const int NUM_BUTTONS = 13;
     static const int NUM_AXES = 6;
-    static const float DEADZONE = 0.25f;
+    static constexpr float DEADZONE = 0.25f;
     
     bool button_state[NUM_BUTTONS];
     float axis_state[NUM_AXES];
