@@ -1721,6 +1721,10 @@ Sint32 create_load_menu(Sint32 arg1)
         }
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == REDRAW)
+        {
+            return REDRAW;
+        }
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
@@ -2106,6 +2110,10 @@ Sint32 create_save_menu(Sint32 arg1)
         }
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == REDRAW)
+        {
+            return REDRAW;
+        }
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
@@ -2874,7 +2882,11 @@ Sint32 do_load(Sint32 arg1)
 
 	snprintf(newname, 8, "save%d", arg1);
 
-	myscreen->save_data.load(newname);
+	if(myscreen->save_data.load(newname))
+        timed_dialog("GAME LOADED");
+    else
+        timed_dialog("LOAD FAILED");
+    
 	return REDRAW;
 }
 
