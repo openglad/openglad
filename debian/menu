@@ -1,0 +1,2 @@
+?package(openglad):needs="X11" section="Applications/Games"\
+  title="Openglad" command="/usr/games/openglad"

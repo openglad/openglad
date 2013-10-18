@@ -1,0 +1,13 @@
+Source: openglad
+Section: games
+Priority: extra
+Maintainer: Yan Shoshitaishvili <yans@openglad.org>
+Build-Depends: debhelper (>= 7), codeblocks, libsdl2-mixer-dev, libsdl2-image-dev, libsdl2-ttf-dev, libsdl2-dev
+Standards-Version: 3.8.0
+Homepage: http://openglad.org
+
+Package: openglad
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Openglad
+ Openglad is a 4-player, split-screen, hack-and-slash game!

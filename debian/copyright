@@ -1,0 +1,16 @@
+This package was debianized by Yan Shoshitaishvili <yans@openglad.org> on
+Thu, 17 Oct 2013 00:43:17 +0100.
+
+Copyright:
+
+    <Copyright (C) The Openglad Project>
+
+License:
+
+    GPL v3
+
+The Debian packaging is copyright 2013, Yan Shoshitaishvili <yans@openglad.org> and
+is licensed under the GPL, see `/usr/share/common-licenses/GPL'.
+
+# Please also look if there are files or directories which have a
+# different copyright/license attached and list them here.
