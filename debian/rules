@@ -28,7 +28,7 @@ build-stamp: configure-stamp
 
 	# Add here commands to compile the package.
 	# $(MAKE)
-	codeblocks --build $(CURDIR)/cb_Openglad.cbp
+	xvfb-run codeblocks --build $(CURDIR)/cb_Openglad.cbp
 	echo "DONE BUILDING OPENGLAD"
 	#docbook-to-man debian/testapp.sgml > testapp.1
 
@@ -41,7 +41,7 @@ clean:
 
 	# Add here commands to clean up after the build process.
 	# $(MAKE) clean
-	codeblocks --clean $(CURDIR)/cb_Openglad.cbp
+	xvfb-run codeblocks --clean $(CURDIR)/cb_Openglad.cbp
 	echo "DONE CLEANING OPENGLAD"
 
 	dh_clean 
