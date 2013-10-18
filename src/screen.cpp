@@ -48,8 +48,6 @@ extern Sint32 calculate_level(Uint32 temp_exp);
 //#define BUF_SIZE (unsigned) ((S_DOWN-S_UP)*(S_RIGHT-S_LEFT))
 
 #define MAX_SPREAD 10 //this controls find_near_foe
-//#define query_keyboard dumb
-//#define grab_keyboard yuck
 
 short load_version_2(SDL_RWops  *infile, screen * master);
 short load_version_3(SDL_RWops  *infile, screen * master); // v.3 scen

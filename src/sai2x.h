@@ -30,10 +30,7 @@ class Screen
         // A larger texture for the doubled result
         SDL_Texture* render2_tex;
         
-		Screen( RenderEngine engine, int width, int height, int fullscreen );
-
-		void Quit();
-
+		Screen(RenderEngine engine, int width, int height, int fullscreen);
 		~Screen();
 
 		void SaveBMP(SDL_Surface* screen, char* filename);

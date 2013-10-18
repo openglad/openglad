@@ -83,7 +83,6 @@ video::video()
 
 video::~video()
 {
-	E_Screen->Quit();
 	delete E_Screen;
 	SDL_Quit();
 }

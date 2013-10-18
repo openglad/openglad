@@ -32,8 +32,8 @@ SaveData::SaveData()
     
 	for(int i = 0; i < 4; i++)
 	{
-		m_score[i] = 0;             // For Player-v-Player
-		m_totalcash[i] = 0;
+		m_score[i] = 0;
+		m_totalcash[i] = 5000;
 		m_totalscore[i] = 0;
 	}
 	

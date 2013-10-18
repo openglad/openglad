@@ -429,7 +429,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 	short current_length, i;
 	short string_done = 0;
 	static char editstring[100], firststring[100];
-	//char *somekeyboard = grab_keyboard();
+	
 	int tempchar;
 	char* temptext;
 	short has_typed = 0; // hasn't typed yet
@@ -573,7 +573,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	short current_length, i;
 	short string_done = 0;
 	static char editstring[100], firststring[100];
-	//char *somekeyboard = grab_keyboard();
+	
 	int tempchar;
 	char* temptext;
 	short has_typed = 0; // hasn't typed yet

@@ -730,18 +730,15 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 
 Screen::~Screen()
 {
-    
-}
-
-
-void Screen::Quit()
-{
-	Log("Screen::Quit() called.");
 	SDL_DestroyTexture(render_tex);
 	SDL_DestroyTexture(render2_tex);
 	SDL_FreeSurface(render);
 	SDL_FreeSurface(render2);
+	
+	SDL_DestroyRenderer(renderer);
+	//SDL_DestroyWindow(window);
 }
+
 
 void Screen::SaveBMP(SDL_Surface* screen, char* filename)
 {
