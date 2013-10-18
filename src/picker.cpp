@@ -221,7 +221,13 @@ void picker_quit()
 #endif
 }
 
+#ifdef USE_TOUCH_INPUT
+#define DISABLE_MULTIPLAYER
+#endif
+
 // mainmenu
+
+#ifndef DISABLE_MULTIPLAYER
 button mainmenu_buttons[] =
     {
         button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
@@ -244,6 +250,19 @@ button mainmenu_buttons[] =
         button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7))
         #endif
     };
+#else // DISABLE_MULTIPLAYER
+
+// Modified main screen with no multiplayer
+button mainmenu_buttons[] =
+    {
+        button("", KEYSTATE_UNKNOWN, 80, 70, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
+        button("CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 2)),
+
+        button("DIFFICULTY", KEYSTATE_UNKNOWN, 80, 120, 140, 15, SET_DIFFICULTY, -1, MenuNav::UpDown(1, 3)),
+        button("Level Edit", KEYSTATE_UNKNOWN, 80, 137, 140, 15, DO_LEVEL_EDIT, -1, MenuNav::UpDown(2, 4)),
+        button("QUIT ", KEYSTATE_ESCAPE, 80, 154, 140, 20, QUIT_MENU, 0, MenuNav::Up(3))
+    };
+#endif
 
 button overscanadjust_buttons[] =
 {
@@ -622,6 +641,7 @@ void redraw_mainmenu()
     main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
     //main_columns_pix->next_frame();
     
+    #ifndef DISABLE_MULTIPLAYER
     if (myscreen->save_data.numplayers==4)
     {
         allbuttons[2]->do_outline = 1;
@@ -676,6 +696,12 @@ void redraw_mainmenu()
     else
         sprintf(message, "PVP: Enemy");
     allbuttons[7]->label = message;
+    #else
+
+    sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
+    allbuttons[2]->label = message;
+    
+    #endif
 
     count = 0;
     while (allbuttons[count])
@@ -1209,11 +1235,15 @@ Sint32 create_hire_menu(Sint32 arg1)
 	if (localbuttons)
 		delete (localbuttons);
     
+	#ifdef DISABLE_MULTIPLAYER
+	hiremenu_buttons[2].hidden = true;
+	#endif
+    
 	button* buttons = hiremenu_buttons;
 	int num_buttons = 5;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
-    
+	
     cycle_guy(0);
     change_hire_teamnum(0);
     
@@ -1443,6 +1473,10 @@ Sint32 create_train_menu(Sint32 arg1)
 
 	if (localbuttons)
 		delete localbuttons;
+	
+	#ifdef DISABLE_MULTIPLAYER
+	trainmenu_buttons[18].hidden = true;
+	#endif
     
 	button* buttons = trainmenu_buttons;
 	int num_buttons = 20;
@@ -3753,7 +3787,11 @@ Sint32 set_difficulty()
 
    current_difficulty = (current_difficulty + 1) % DIFFICULTY_SETTINGS;
    sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
+   #ifndef DISABLE_MULTIPLAYER
    allbuttons[6]->label = message;
+   #else
+   allbuttons[2]->label = message;
+   #endif
 
    //allbuttons[6]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3828,6 +3866,7 @@ Sint32 change_allied()
 
    // Update our button display
    allbuttons[7]->label = message;
+   
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
