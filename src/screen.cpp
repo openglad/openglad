@@ -95,8 +95,7 @@ screen::screen(short howmany)
 	// Load the palette ..
 	load_and_set_palette("our.pal", newpalette);
 
-	// load the pixie graphics data shorto memory
-	// shorto memory, you know the !tallo kind
+	// load the pixie graphics data into memory
 
 	draw_button(60, 50, 260, 110, 2, 1);
 	draw_text_bar(64, 54, 256, 62); // header field
@@ -399,7 +398,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 	if (!level_data.grid.valid())
 		return 0;
 
-	// Check if our butt hangs over shorto next grid square
+	// Check if our butt hangs over into next grid square
 	if (!((xover)%GRID_SIZE))
 		xtrax = 0; //this should be the rare case
 	if (!((yover)%GRID_SIZE))

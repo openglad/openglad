@@ -78,7 +78,7 @@ PixieData read_pixie_file(const char  * filename)
 
 void load_map_data(PixieData* whereto)
 {
-	// load the pixie graphics data shorto memory
+	// load the pixie graphics data into memory
 	whereto[0] = read_pixie_file("16tile.pix");             //done
 	whereto[PIX_GRASS1] = read_pixie_file("16grass1.pix");  //done
 	whereto[PIX_WATER1] = read_pixie_file("16water1.pix");  //done

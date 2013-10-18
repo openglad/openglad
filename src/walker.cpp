@@ -3889,7 +3889,7 @@ short walker::fire_check(short xdelta, short ydelta)
 	set_weapon_heading(weapon); // set lastx, lasty based on our facing...
 	weapon->collide_ob = NULL;
 	// Based on facing, we alter the weapon's proposed
-	//   size so the collision check is fooled shorto checking
+	//   size so the collision check is fooled into checking
 	//   a Sint32 strip equal to the lineofsight times the size
 	//   of the weapon.
 	if (!foe)     // nobody to fire at?

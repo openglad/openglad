@@ -290,7 +290,7 @@ int get_num_foes(LevelData& level)
 	{
 	    walker* ob = *e;
 	    // Not dead, not hired, not on red team
-		if (ob && !ob->dead && ob->myguy == NULL && ob->team_num != 0)
+		if (ob && !ob->dead && ob->query_order() == ORDER_LIVING && ob->myguy == NULL && ob->team_num != 0)
 		{
 		    result++;
 		}

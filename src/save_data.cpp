@@ -160,7 +160,7 @@ bool SaveData::load(const std::string& filename)
 	//   List of n level indices
 	//     2-bytes Level index
     
-    
+    Log("Loading save: %s\n", filename.c_str());
 	strcpy(temp_filename, filename.c_str());
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
@@ -395,7 +395,7 @@ bool SaveData::load(const std::string& filename)
         }
     }
     
-	
+	Log("Loading campaign: %s\n", current_campaign.c_str());
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level >= 0)
     {
@@ -520,6 +520,7 @@ bool SaveData::save(const std::string& filename)
 	//     2-bytes Level index
 
 	//strcpy(temp_filename, scen_directory);
+	Log("Saving save: %s\n", filename.c_str());
 	strcpy(temp_filename, filename.c_str());
 	strcat(temp_filename, ".gtl"); // gladiator team list
 	
@@ -545,6 +546,7 @@ bool SaveData::save(const std::string& filename)
 	SDL_RWwrite(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
+	Log("Saving campaign status: %s\n", current_campaign.c_str());
 	strncpy(temp_campaign, current_campaign.c_str(), 40);
 	SDL_RWwrite(outfile, temp_campaign, 40, 1);
 
