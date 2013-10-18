@@ -280,13 +280,13 @@ void draw_touch_controls(screen* vob)
         vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
     
     //if(has_multiple_specials)
-    if(control->current_special != 1 && !((control->current_special > (NUM_SPECIALS-1)
-		        || !(strcmp(vob->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
-		        || (((control->current_special-1)*3+1) > control->stats->level) )))
+    if(control->current_special != 1
+                || (control->current_special + 1 <= NUM_SPECIALS && control->current_special*3+1 <= control->stats->level
+                     && strcmp(vob->special_name[(int)control->query_family()][(int)control->current_special + 1],"NONE") != 0))
         vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
     
     //if(has_alternate)
-    if(strcmp(vob->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE"))
+    if(strcmp(vob->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE") != 0)
         vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
 }
 
@@ -576,7 +576,9 @@ void handle_mouse_event(const SDL_Event& event)
                 && ALTERNATE_SPECIAL_BUTTON_Y <= y && y <= ALTERNATE_SPECIAL_BUTTON_Y + BUTTON_DIM)
             {
                 // Treat KEY_SHIFTER as an action instead of a modifier
-                sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
+                //if(has_alternate)
+                if(strcmp(myscreen->alternate_name[(int)myscreen->viewob[0]->control->query_family()][(int)myscreen->viewob[0]->control->current_special], "NONE") != 0)
+                    sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
             }
             else if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
             {
