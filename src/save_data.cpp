@@ -22,6 +22,9 @@
 #include "campaign_picker.h"
 
 
+#ifdef USE_TOUCH_INPUT
+#define DISABLE_MULTIPLAYER
+#endif
 
 
 SaveData::SaveData()
@@ -257,8 +260,11 @@ bool SaveData::load(const std::string& filename)
 	// Get # of guys to read
 	SDL_RWread(infile, &listsize, 2, 1);
 
-	// Read (and ignore) the # of players
+	// Read the # of players
 	SDL_RWread(infile, &temp_numplayers, 1, 1);
+	#ifdef DISABLE_MULTIPLAYER
+	temp_numplayers = 1;
+	#endif
 	numplayers = temp_numplayers;
 
 	// Read the reserved area, 31 bytes
