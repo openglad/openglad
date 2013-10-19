@@ -256,6 +256,11 @@ struct MouseState
     float x, y;
     bool left;
     bool right;
+    
+    bool in(const SDL_Rect& r) const
+    {
+        return (r.x <= x && x < r.x + r.w && r.y <= y && y < r.y + r.h);
+    }
 };
 
 MouseState& query_mouse();

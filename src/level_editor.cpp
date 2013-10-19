@@ -396,12 +396,22 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
     myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
     unsigned char forecolor = DARK_BLUE;
-    //unsigned char backcolor = 13;
     
+    SDL_Rect newline_button = {320 - 75, 16, 50, 14};
+    SDL_Rect done_button = {320 - 52, 0, 50, 14};
+    SDL_Rect cancel_button = {320 - 104, 0, 50, 14};
+    
+    SDL_Rect up_button = {14, 0, 14, 14};
+    SDL_Rect down_button = {14, 14, 14, 14};
+    SDL_Rect left_button = {0, 14, 14, 14};
+    SDL_Rect right_button = {28, 14, 14, 14};
+    
+    std::list<std::string> original_text = result;
 
 	clear_keyboard();
 	clear_key_press_event();
 	clear_text_input_event();
+	MouseState& mymouse = query_mouse_no_poll();
 	
     SDL_StartTextInput();
     
@@ -416,9 +426,8 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
     bool done = false;
 	while (!done)
 	{
+        get_input_events(POLL);
         
-        // TODO: Need swipe controls for touch input
-        // TODO: Needs a button for done
         if(query_key_press_event())
         {
             char c = query_key();
@@ -427,9 +436,7 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
             if (c == SDLK_RETURN)
             {
                 #ifdef USE_TOUCH_INPUT
-                // FIXME: SDL does not have keyboard customization, so we can't make newlines with RETURN.
-                // I need to either modify SDL or add click/touch text navigation.
-                done = true;
+                done = true;  // Some soft keyboards might disappear anyhow if you press return...
                 break;
                 #else
                 std::string rest_of_line = s->substr(cursor_pos);
@@ -466,6 +473,81 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
                     s->erase(cursor_pos, 1);
                 }
             }
+        }
+        else if(mymouse.left)
+        {
+            mymouse.left = false;
+            
+            if(mymouse.in(done_button))
+            {
+                done = true;
+            }
+            else if(mymouse.in(cancel_button))
+            {
+                result = original_text;
+                done = true;
+            }
+            #ifdef USE_TOUCH_INPUT
+            else if(mymouse.in(newline_button))
+            {
+                std::string rest_of_line = s->substr(cursor_pos);
+                s->erase(cursor_pos);
+                s++;
+                s = result.insert(s, rest_of_line);
+                current_line++;
+                cursor_pos = 0;
+            }
+            else if(mymouse.in(up_button))
+            {
+                if(current_line > 0)
+                {
+                    current_line--;
+                    s--;
+                    if(s->size() < cursor_pos)
+                        cursor_pos = s->size();
+                }
+            }
+            else if(mymouse.in(down_button))
+            {
+                if(current_line+1 < result.size())
+                {
+                    current_line++;
+                    s++;
+                }
+                else  // At the bottom already
+                    cursor_pos = s->size();
+                
+                if(s->size() < cursor_pos)
+                    cursor_pos = s->size();
+            }
+            else if(mymouse.in(left_button))
+            {
+                if(cursor_pos > 0)
+                    cursor_pos--;
+                else if(current_line > 0)
+                {
+                    current_line--;
+                    s--;
+                    cursor_pos = s->size();
+                }
+            }
+            else if(mymouse.in(right_button))
+            {
+                cursor_pos++;
+                if(cursor_pos > s->size())
+                {
+                    if(current_line+1 < result.size())
+                    {
+                        // Go to next line
+                        current_line++;
+                        s++;
+                        cursor_pos = 0;
+                    }
+                    else  // No next line
+                        cursor_pos = s->size();
+                }
+            }
+            #endif
         }
         
         if(keystates[KEYSTATE_ESCAPE])
@@ -563,6 +645,24 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
         mytext->write_xy(x, y - 13, message.c_str(), BLACK, 1);
         myscreen->hor_line(x, y - 5, w, BLACK);
         
+        myscreen->draw_button(done_button.x, done_button.y, done_button.x + done_button.w, done_button.y + done_button.h, 1);
+        mytext->write_xy(done_button.x + done_button.w/2 - 12, done_button.y + done_button.h/2 - 3, "DONE", DARK_BLUE, 1);
+        myscreen->draw_button(cancel_button.x, cancel_button.y, cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
+        mytext->write_xy(cancel_button.x + cancel_button.w/2 - 18, cancel_button.y + cancel_button.h/2 - 3, "CANCEL", DARK_BLUE, 1);
+        
+        #ifdef USE_TOUCH_INPUT
+        myscreen->draw_button(newline_button.x, newline_button.y, newline_button.x + newline_button.w, newline_button.y + newline_button.h, 1);
+        mytext->write_xy(newline_button.x + newline_button.w/2 - 18, newline_button.y + newline_button.h/2 - 3, "NEWLINE", DARK_BLUE, 1);
+        myscreen->draw_button(up_button.x, up_button.y, up_button.x + up_button.w, up_button.y + up_button.h, 1);
+        mytext->write_xy(up_button.x + up_button.w/2 - 6, up_button.y + up_button.h/2 - 3, "UP", DARK_BLUE, 1);
+        myscreen->draw_button(left_button.x, left_button.y, left_button.x + left_button.w, left_button.y + left_button.h, 1);
+        mytext->write_xy(left_button.x + left_button.w/2 - 6, left_button.y + left_button.h/2 - 3, "LT", DARK_BLUE, 1);
+        myscreen->draw_button(down_button.x, down_button.y, down_button.x + down_button.w, down_button.y + down_button.h, 1);
+        mytext->write_xy(down_button.x + down_button.w/2 - 6, down_button.y + down_button.h/2 - 3, "DN", DARK_BLUE, 1);
+        myscreen->draw_button(right_button.x, right_button.y, right_button.x + right_button.w, right_button.y + right_button.h, 1);
+        mytext->write_xy(right_button.x + right_button.w/2 - 6, right_button.y + right_button.h/2 - 3, "RT", DARK_BLUE, 1);
+        #endif
+        
         int offset = 0;
         if(current_line > 3)
             offset = (current_line - 3)*10;
@@ -577,9 +677,7 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
         myscreen->ver_line(x + cursor_pos*6, y + current_line*10 - 2 - offset, 10, RED);
 		myscreen->buffer_to_screen(0, 0, 320, 200);
         
-		// Wait for a key to be pressed ..
-		while (!query_key_press_event() && !query_text_input_event())
-			get_input_events(WAIT);
+        SDL_Delay(10);
 	}
 
     SDL_StopTextInput();
