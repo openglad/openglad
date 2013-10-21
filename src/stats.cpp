@@ -1113,6 +1113,9 @@ bool statistics::direct_walk()
 
 #define PATHING_MIN_DISTANCE 100
 
+// Note that obmap::size() counts dead things too, which don't do pathfinding
+#define PATHING_SHORT_CIRCUIT_OBJECT_LIMIT 200
+
 bool statistics::walk_to_foe()
 {
     walker* foe = controller->foe;
@@ -1140,9 +1143,10 @@ bool statistics::walk_to_foe()
 
 		xdelta = xdest - controller->xpos;
 		ydelta = ydest - controller->ypos;
-
+        
 		tempdistance = (Uint32) controller->distance_to_ob(foe);
-		if (tempdistance < PATHING_MIN_DISTANCE)// || (tempdistance < last_distance) )
+		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
+		if (tempdistance < PATHING_MIN_DISTANCE || myscreen->level_data.myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
 		{
 			std::list<walker*> foelist = controller->screenp->find_foes_in_range(controller->screenp->level_data.oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
