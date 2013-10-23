@@ -397,14 +397,16 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
     
     unsigned char forecolor = DARK_BLUE;
     
-    SDL_Rect newline_button = {320 - 75, 16, 50, 14};
     SDL_Rect done_button = {320 - 52, 0, 50, 14};
     SDL_Rect cancel_button = {320 - 104, 0, 50, 14};
     
+    #ifdef USE_TOUCH_INPUT
+    SDL_Rect newline_button = {320 - 75, 16, 50, 14};
     SDL_Rect up_button = {14, 0, 14, 14};
     SDL_Rect down_button = {14, 14, 14, 14};
     SDL_Rect left_button = {0, 14, 14, 14};
     SDL_Rect right_button = {28, 14, 14, 14};
+    #endif
     
     std::list<std::string> original_text = result;
 
