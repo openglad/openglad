@@ -1089,6 +1089,98 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	}
 }
 
+void video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
+                          Sint32 walkerwidth, Sint32 walkerheight,
+                          Sint32 portstartx, Sint32 portstarty,
+                          Sint32 portendx, Sint32 portendy,
+                          unsigned char  *sourceptr, unsigned char teamcolor)
+{
+	Sint32 curx, cury;
+	unsigned char curcolor;
+	Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+	Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+	Sint32 totrows,rowsize;
+
+	if (walkerstartx >= portendx || walkerstarty >= portendy)
+		return; //walker is below or to the right of the viewport
+
+	if (walkerstartx < portstartx) //clip the left edge of the view
+	{
+		xmin = portstartx-walkerstartx;  //start drawing walker at xmin
+		walkerstartx = portstartx;
+	}
+
+	else if (walkerstartx + walkerwidth > portendx) //clip the right edge
+		xmax = portendx - walkerstartx; //stop drawing walker at xmax
+
+	if (walkerstarty < portstarty) // clip the top edge
+	{
+		ymin = portstarty-walkerstarty; //start drawing walker at ymin
+		walkerstarty = portstarty;
+	}
+
+	else if (walkerstarty + walkerheight > portendy) //clip the bottom edge
+		ymax = portendy - walkerstarty; //stop drawing walker at ymax
+
+	totrows = (ymax-ymin); //how many rows to copy
+	rowsize = (xmax-xmin); //how many bytes to copy
+	if (totrows <= 0 || rowsize <= 0)
+		return; //this happens on bad args
+
+	//note!! the clipper makes the assumption that no object is larger than
+	// the view it will be clipped to in either dimension!!!
+
+	walkshift = walkerwidth - rowsize;
+	buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+
+	walkoff   = (ymin * walkerwidth) + xmin;
+	buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+
+
+	for(cury = 0; cury < totrows;cury++)
+	{
+		for(curx=0;curx<rowsize;curx++)
+		{
+			curcolor = sourceptr[walkoff++];
+			if (!curcolor)
+			{
+				buffoff++;
+				continue;
+			}
+			
+			if (curcolor > (unsigned char) 247)
+				curcolor = (unsigned char) (teamcolor+(255-curcolor));
+			
+			int r,g,b;
+            query_palette_reg(curcolor,&r,&g,&b);
+            r *= 4;
+            g *= 4;
+            b *= 4;
+            
+            if(r > 155)
+                r = 255;
+            else
+                r += 100;
+            
+            if(g > 155)
+                g = 255;
+            else
+                g += 100;
+            
+            if(b > 155)
+                b = 255;
+            else
+                b += 100;
+            
+            
+			//buffers: PORT: videobuffer[buffoff++] = curcolor;
+			pointb(walkerstartx+curx,walkerstarty+cury,r, g, b);
+		}
+		walkoff += walkshift;
+		buffoff += buffshift;
+	}
+}
+
 void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
@@ -1174,7 +1266,6 @@ void video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
         Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
         Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
         Sint32 totrows,rowsize;
-	int r,g,b,color;
 
         if (walkerstartx >= portendx || walkerstarty >= portendy)
                 return; //walker is below or to the right of the viewport

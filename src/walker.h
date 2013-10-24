@@ -167,6 +167,8 @@ class walker : public pixieN
             void draw(viewscreen* view_buf);
 		};
 		std::list<DamageNumber> damage_numbers;
+		
+		bool hurt_flash;
 
 	protected:
 		short act_generate();

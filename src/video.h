@@ -81,6 +81,11 @@ class video
 		                   Sint32 portstartx, Sint32 portstarty,
 		                   Sint32 portendx, Sint32 portendy,
 		                   unsigned char  *sourceptr, unsigned char teamcolor);
+		void walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
+		                   Sint32 walkerwidth, Sint32 walkerheight,
+		                   Sint32 portstartx, Sint32 portstarty,
+		                   Sint32 portendx, Sint32 portendy,
+		                   unsigned char  *sourceptr, unsigned char teamcolor);
 		void walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                                    Sint32 walkerwidth, Sint32 walkerheight,
                                    Sint32 portstartx, Sint32 portstarty,

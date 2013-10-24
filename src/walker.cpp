@@ -105,6 +105,7 @@ walker::walker(const PixieData& data)
         myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
     
 	path_check_counter = 5 + rand()%10;
+	hurt_flash = false;
 }
 
 short
@@ -170,8 +171,9 @@ walker::reset(void)
 	if (stats)
 		stats->bit_flags = 0;
     
+	hurt_flash = false;
+	
 	return 1;
-
 }
 
 walker::~walker()
@@ -1050,64 +1052,79 @@ short walker::draw(viewscreen  *view_buf)
         if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
             outline = OUTLINE_INVISIBLE;
     }
-
+    
+    bool should_draw_hp = true;
+    int fill_mode = 0;
+    int outline_style = 0;
+    int invisibility_amount = 0;
+    int phantom_mode = 0;
+    
 	if (stats->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-		                        view_buf->xloc, view_buf->yloc,
-		                        view_buf->endx, view_buf->endy,
-		                        bmp, query_team_color(),
-		                        PHANTOM_MODE, //mode
-		                        0, //invisibility
-		                        0, //outline
-		                        SHIFT_RANDOM); //type of phantom
-
+    {
+        fill_mode = PHANTOM_MODE;
+        phantom_mode = SHIFT_RANDOM;
+        should_draw_hp = false;
+    }
 	else if (invisibility_left && view_buf->control != NULL)  //WE ARE INVISIBLE
 	{
 		if (this->team_num == view_buf->control->team_num)
-			myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-			                        view_buf->xloc, view_buf->yloc,
-			                        view_buf->endx, view_buf->endy,
-			                        bmp, query_team_color(),
-			                        INVISIBLE_MODE,  //mode
-			                        ( invisibility_left + 10 ), //invisibility
-			                        outline,  //outline
-			                        0 ); //type of phantom
+        {
+            fill_mode = INVISIBLE_MODE;
+            invisibility_amount = ( invisibility_left + 10 );
+            outline_style = outline;
+            should_draw_hp = false;
+        }
 	}
 	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
 	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats->query_bit_flags(BIT_FLYING)
 	         && (flight_left < 1) )
-		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-		                        view_buf->xloc, view_buf->yloc,
-		                        view_buf->endx, view_buf->endy,
-		                        bmp, query_team_color(),
-		                        INVISIBLE_MODE,  //mode
-		                        1000, //invisibility
-		                        1,  //outline
-		                        0 ); //type of phantom
-
+    {
+        fill_mode = INVISIBLE_MODE;
+        invisibility_amount = 1000;
+        outline_style = 1;
+        should_draw_hp = false;
+    }
 	else if (outline)    // WE HAVE SOME OUTLINE
 	{
-		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-		                        view_buf->xloc, view_buf->yloc,
-		                        view_buf->endx, view_buf->endy,
-		                        bmp, query_team_color(),
-		                        OUTLINE_MODE, //mode
-		                        0, //invisibility
-		                        outline, //outline
-		                        0 ); //type of phantom
-		                        
-        draw_smallHealthBar(this, view_buf);
+	    fill_mode = OUTLINE_MODE;
+	    outline_style = outline;
 	}
-	else
-	{
-		myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
-		                       view_buf->xloc, view_buf->yloc,
-		                       view_buf->endx, view_buf->endy,
-		                       bmp, query_team_color());
+	
+	// Draw me
+	if(hurt_flash)
+    {
+        hurt_flash = false;
         
+        myscreen->walkputbuffer_flash(xscreen, yscreen, sizex, sizey,
+                                   view_buf->xloc, view_buf->yloc,
+                                   view_buf->endx, view_buf->endy,
+                                   bmp, query_team_color());
+    }
+    else
+    {
+        if(fill_mode == 0 && outline_style == 0)
+        {
+            myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
+                                   view_buf->xloc, view_buf->yloc,
+                                   view_buf->endx, view_buf->endy,
+                                   bmp, query_team_color());
+        }
+        else
+        {
+            myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
+                                    view_buf->xloc, view_buf->yloc,
+                                    view_buf->endx, view_buf->endy,
+                                    bmp, query_team_color(),
+                                    fill_mode, //mode
+                                    invisibility_amount, //invisibility
+                                    outline_style, //outline
+                                    phantom_mode); //type of phantom
+        }
+    }
+	
+	if(should_draw_hp)
         draw_smallHealthBar(this, view_buf);
-	}
 	
 	for(auto e = damage_numbers.begin(); e != damage_numbers.end();)
     {
@@ -1766,6 +1783,9 @@ short walker::attack(walker  *target)
 	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
+    
+    if(tempdamage > 0)
+        target->hurt_flash = true;
     
     // Delay HP regeneration
     if(tempdamage > 0)
