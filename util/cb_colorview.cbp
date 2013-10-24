@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="colorview" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Linux Debug">
+				<Option platforms="Unix;Mac;" />
+				<Option output="colorview" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="`sdl-config --cflags`" />
+				</Compiler>
+				<Linker>
+					<Add option="`sdl-config --libs`" />
+				</Linker>
+			</Target>
+			<Target title="Linux Release">
+				<Option platforms="Unix;Mac;" />
+				<Option output="colorview" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option use_console_runner="0" />
+				<Compiler>
+					<Add option="-O2" />
+					<Add option="`sdl-config --cflags`" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add option="`sdl-config --libs`" />
+				</Linker>
+			</Target>
+			<Target title="Windows Debug">
+				<Option platforms="Windows;" />
+				<Option output="colorview" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Debug/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="-c text.pix#.png" />
+				<Compiler>
+					<Add option="-g" />
+					<Add directory="../../../bdcode/externals/SDL2/include/SDL2" />
+					<Add directory="../../../bdcode/externals/SDL_image/include" />
+					<Add directory="../../../bdcode/externals/png/include" />
+					<Add directory="../../../bdcode/externals/png/include/windows" />
+				</Compiler>
+				<Linker>
+					<Add library="mingw32" />
+					<Add library="SDL2main" />
+					<Add library="SDL2_image" />
+					<Add library="SDL2" />
+					<Add library="png" />
+					<Add directory="../../../bdcode/externals/SDL2/lib_windows" />
+					<Add directory="../../../bdcode/externals/SDL_image/lib_windows" />
+					<Add directory="../../../bdcode/externals/png/lib_windows" />
+				</Linker>
+			</Target>
+			<Target title="Windows Release">
+				<Option platforms="Windows;" />
+				<Option output="colorview" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option use_console_runner="0" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+					<Add option="-mwindows" />
+					<Add library="mingw32" />
+					<Add library="SDLmain" />
+					<Add library="SDL_image" />
+					<Add library="SDL" />
+					<Add library="png" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-fexceptions" />
+		</Compiler>
+		<Unit filename="colorview.cpp" />
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<lib_finder disable_auto="1" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>
