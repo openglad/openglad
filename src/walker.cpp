@@ -1119,7 +1119,8 @@ short walker::draw(viewscreen  *view_buf)
         }
         
         e->y -= 1.5f;
-        e->draw(view_buf);
+        if(view_buf->control == this)
+            e->draw(view_buf);
         e++;
     }
 	
@@ -1756,10 +1757,13 @@ short walker::attack(walker  *target)
 		attacker->myguy->total_damage += tempdamage;
 		attacker->myguy->scen_damage += tempdamage;
     }
-		
+    
     // Deal the damage
 	target->stats->hitpoints -= tempdamage;
-	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, target->query_team_color()));
+    // Orange numbers for the attacker to see
+    attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
+    // RED numbers for the target to see
+	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
     
@@ -2396,6 +2400,9 @@ short walker::special()
 									if (myguy)
 										myguy->exp += exp_from_action(EXP_HEAL, this, newob, generic);
 									didheal++;
+									// Show the numbers
+                                    this->damage_numbers.push_back(DamageNumber(newob->xpos + newob->sizex/2, newob->ypos, generic, 56));
+                                    newob->damage_numbers.push_back(DamageNumber(newob->xpos + newob->sizex/2, newob->ypos, generic, 56));
 								}
 							}
 							if (!didheal)
