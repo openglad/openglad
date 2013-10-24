@@ -30,6 +30,7 @@
 #include "level_data.h"
 #include "save_data.h"
 
+#include "text.h"
 
 class screen : public video
 {
@@ -104,6 +105,7 @@ class screen : public video
 		Uint32 timerstart;
 		Uint32 framecount;
 };
+
 
 #endif
 

@@ -30,7 +30,7 @@
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
 
-bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
+bool prompt_for_string(const std::string& message, std::string& result);
 
 #define OG_OK 4
 void draw_highlight_interior(const button& b);
@@ -87,13 +87,13 @@ public:
     // Player-specific
     int num_levels_completed;
 
-    CampaignEntry(screen* screenp, const std::string& id, int num_levels_completed);
+    CampaignEntry(const std::string& id, int num_levels_completed);
     ~CampaignEntry();
     
-    void draw(screen* screenp, const SDL_Rect& area, text* loadtext, int team_power);
+    void draw(const SDL_Rect& area, int team_power);
 };
 
-CampaignEntry::CampaignEntry(screen* screenp, const std::string& id, int num_levels_completed)
+CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
     : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icon(NULL), num_levels_completed(num_levels_completed)
 {
     // Load the campaign data from <user_data>/scen/<id>.glad
@@ -138,7 +138,7 @@ CampaignEntry::CampaignEntry(screen* screenp, const std::string& id, int num_lev
         std::string icon_file = "icon.pix";
         icondata = read_pixie_file(icon_file.c_str());
         if(icondata.valid())
-            icon = new pixie(icondata, screenp);
+            icon = new pixie(icondata);
         
         // Count the number of levels
         std::list<int> levels = list_levels();
@@ -154,17 +154,19 @@ CampaignEntry::~CampaignEntry()
 	icondata.free();
 }
 
-void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, int team_power)
+void CampaignEntry::draw(const SDL_Rect& area, int team_power)
 {
     int x = area.x;
     int y = area.y;
     int w = area.w;
     int h = area.h;
+    
+    text& loadtext = myscreen->text_normal;
 
     // Print title
     char buf[60];
     snprintf(buf, 30, "%s", title.c_str());
-    loadtext->write_xy(x + w/2 - title.size()*3, y - 22, buf, WHITE, 1);
+    loadtext.write_xy(x + w/2 - title.size()*3, y - 22, buf, WHITE, 1);
     
     // Rating stars
     std::string rating_text = "";
@@ -173,19 +175,19 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
         rating_text += '*';
     }
     snprintf(buf, 30, "%s", rating_text.c_str());
-    loadtext->write_xy(x + w/2 - rating_text.size()*3, y - 14, buf, WHITE, 1);
+    loadtext.write_xy(x + w/2 - rating_text.size()*3, y - 14, buf, WHITE, 1);
     
     // Print version
     snprintf(buf, 30, "v%s", version.c_str());
     if(rating_text.size() > 0)
-        loadtext->write_xy(x + w/2 + rating_text.size()*3 + 6, y - 14, buf, WHITE, 1);
+        loadtext.write_xy(x + w/2 + rating_text.size()*3 + 6, y - 14, buf, WHITE, 1);
     else
-        loadtext->write_xy(x + w/2 - strlen(buf)*3, y - 14, buf, WHITE, 1);
+        loadtext.write_xy(x + w/2 - strlen(buf)*3, y - 14, buf, WHITE, 1);
     
     // Draw icon button
-    screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
+    myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw icon
-	icon->drawMix(x, y, screenp->viewob[0]);
+	icon->drawMix(x, y, myscreen->viewob[0]);
 	y += h + 4;
 	
 	// Print suggested power
@@ -200,8 +202,8 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
         
         int len = strlen(buf);
         int len2 = strlen(buf2);
-        loadtext->write_xy(x + w/2 - (len + len2)*3, y, buf, LIGHT_GREEN, 1);
-        loadtext->write_xy(x + w/2 - (len + len2)*3 + len*6, y, buf2, (team_power >= suggested_power? LIGHT_GREEN : RED), 1);
+        loadtext.write_xy(x + w/2 - (len + len2)*3, y, buf, LIGHT_GREEN, 1);
+        loadtext.write_xy(x + w/2 - (len + len2)*3 + len*6, y, buf2, (team_power >= suggested_power? LIGHT_GREEN : RED), 1);
     }
     else
     {
@@ -211,7 +213,7 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
             buf[0] = '\0';
         
         int len = strlen(buf);
-        loadtext->write_xy(x + w/2 - (len)*3, y, buf, LIGHT_GREEN, 1);
+        loadtext.write_xy(x + w/2 - (len)*3, y, buf, LIGHT_GREEN, 1);
     }
     y += 8;
     
@@ -220,19 +222,19 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
         snprintf(buf, 30, "%d level%s", num_levels, (num_levels == 1? "" : "s"));
     else
         snprintf(buf, 30, "%d out of %d completed", num_levels_completed, num_levels);
-    loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+    loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
     y += 8;
     
     // Print authors
     if(authors.size() > 0)
     {
         snprintf(buf, 30, "By %s", authors.c_str());
-        loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+        loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
     }
     
     // Draw description box
     SDL_Rect descbox = {160 - 225/2, Sint16(area.y + area.h + 35), 225, 60};
-    screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+    myscreen->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
     
     // Print description
     std::string desc = description;
@@ -243,7 +245,7 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
             break;
         size_t pos = desc.find_first_of('\n');
         std::string line = desc.substr(0, pos);
-        loadtext->write_xy(descbox.x + 5, descbox.y + j, line.c_str(), BLACK, 1);
+        loadtext.write_xy(descbox.x + 5, descbox.y + j, line.c_str(), BLACK, 1);
         if(pos == std::string::npos)
             break;
         desc = desc.substr(pos+1, std::string::npos);
@@ -255,25 +257,25 @@ void CampaignEntry::draw(screen* screenp, const SDL_Rect& area, text* loadtext, 
     if(contributors.size() > 0)
     {
         snprintf(buf, 60, "Thanks to %s", contributors.c_str());
-        loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+        loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
         y += 10;
     }
     
     snprintf(buf, 60, "%s", id.c_str());
-    loadtext->write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+    loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
     
 }
 
 
 
 
-CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_delete)
+CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 {
     std::string old_campaign_id = get_mounted_campaign();
     CampaignEntry* result = NULL;
     CampaignResult ret_value;
     
-    text* loadtext = new text(screenp);
+    text& loadtext = myscreen->text_normal;
     
     unmount_campaign_package(old_campaign_id);
 
@@ -290,7 +292,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         int num_completed = -1;
         if(save_data != NULL)
             num_completed = save_data->get_num_levels_completed(*e);
-        entries.push_back(new CampaignEntry(screenp, *e, num_completed));
+        entries.push_back(new CampaignEntry(*e, num_completed));
         
         if(*e == old_campaign_id)
             current_campaign_index = i;
@@ -371,7 +373,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         // Reset the timer count to zero ...
         reset_timer();
 
-        if (screenp->end)
+        if (myscreen->end)
             break;
 
         // Get keys and stuff
@@ -469,7 +471,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
                     int num_completed = -1;
                     if(save_data != NULL)
                         num_completed = save_data->get_num_levels_completed(*e);
-                    entries.push_back(new CampaignEntry(screenp, *e, num_completed));
+                    entries.push_back(new CampaignEntry(*e, num_completed));
                 }
                 
                 current_campaign_index = 0;
@@ -479,7 +481,7 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         else if(do_id)
        {
             std::string campaign;
-            if(prompt_for_string(loadtext, "Enter Campaign ID", campaign) && campaign.size() > 0)
+            if(prompt_for_string("Enter Campaign ID", campaign) && campaign.size() > 0)
             {
                 result = NULL;
                 ret_value.id = campaign;
@@ -525,47 +527,47 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         }
 
         // Draw
-        screenp->clearbuffer();
+        myscreen->clearbuffer();
 
         if(current_campaign_index > 0)
         {
-            screenp->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
-            loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
+            myscreen->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
+            loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
         }
         
         if(current_campaign_index + 1 < entries.size())
         {
-            screenp->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
-            loadtext->write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
+            myscreen->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
+            loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
         }
         
         if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
         {
-            screenp->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
-            loadtext->write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
+            myscreen->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
+            loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
         }
-        screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
-        loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
+        myscreen->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
+        loadtext.write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
         if(enable_delete)
         {
-            screenp->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
-            loadtext->write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
+            myscreen->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
+            loadtext.write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
         }
         else
         {
-            screenp->draw_button(reset_button.x, reset_button.y, reset_button.x + reset_button.w, reset_button.y + reset_button.h, 1, 1);
-            loadtext->write_xy(reset_button.x + 2, reset_button.y + 2, "Reset", RED, 1);
+            myscreen->draw_button(reset_button.x, reset_button.y, reset_button.x + reset_button.w, reset_button.y + reset_button.h, 1, 1);
+            loadtext.write_xy(reset_button.x + 2, reset_button.y + 2, "Reset", RED, 1);
         }
         
-        screenp->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
-        loadtext->write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
+        myscreen->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
+        loadtext.write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
         
         // Draw entry
         if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
-            entries[current_campaign_index]->draw(screenp, area, loadtext, army_power);
+            entries[current_campaign_index]->draw(area, army_power);
 
         draw_highlight(buttons[highlighted_button]);
-        screenp->buffer_to_screen(0, 0, 320, 200);
+        myscreen->buffer_to_screen(0, 0, 320, 200);
         SDL_Delay(10);
     }
 
@@ -586,8 +588,6 @@ CampaignResult pick_campaign(screen* screenp, SaveData* save_data, bool enable_d
         delete *e;
     }
     entries.clear();
-
-    delete loadtext;
     
     return ret_value;
 }

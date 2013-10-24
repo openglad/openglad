@@ -20,13 +20,16 @@
 // Definition of TEXT class
 
 #include "base.h"
+#include "pixie_data.h"
+
+class screen;
+class viewscreen;
 
 class text
 {
 	public:
 		friend class vbutton;
-		text(screen * myscreen);
-		text(screen * myscreen, const char * filename);
+		text(const char * filename);
 		short query_width(const char *string); // returns width, in pixels
 		short write_xy(short x, short y, const char  *string);
 		short write_xy(short x, short y, const char  *string, unsigned char color);
@@ -57,7 +60,6 @@ class text
         char* input_string_ex(short x, short y, short maxlength, const char* message, const char *begin,
                           unsigned char forecolor, unsigned char backcolor);
 		~text();
-		screen * screenp;
 
 	    PixieData letters;
 	    short sizex, sizey;

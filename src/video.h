@@ -20,6 +20,7 @@
 // The definition of the VIDEO class
 
 #include "base.h"
+#include "text.h"
 
 class video
 {
@@ -137,6 +138,9 @@ class video
 		SDL_Surface *window;
 		int screen_width,screen_height,fullscreen;
 		int pdouble;
+		
+		text text_normal;
+		text text_big;
 };
 
 #endif

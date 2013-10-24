@@ -45,7 +45,6 @@ class vbutton;
 #define BUTTON_RIGHT  (char) 12 //11
 
 extern screen *myscreen;
-extern text *mytext;
 
 // Holds array indices for navigating menu buttons
 class MenuNav

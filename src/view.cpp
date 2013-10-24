@@ -131,11 +131,10 @@ options *theprefs;
 // as well as its graphics x and y size.  In addition, it informs
 // the viewscreen of the screen object it is linked to.
 viewscreen::viewscreen(short x, short y, short width,
-                       short height, short whatnum, screen  *myscreen)
+                       short height, short whatnum)
 {
 	Sint32 i;
 
-	screenp = myscreen;
 	xview = width;
 	yview = height;
 	topx = topy = 0;
@@ -165,10 +164,9 @@ viewscreen::viewscreen(short x, short y, short width,
 	//load_key_prefs(); // load key prefs, if present
 	prefsob->load(this);
 
-	myradar = new radar(this, screenp, mynum);
+	myradar = new radar(this, myscreen, mynum);
 	radarstart = 0; //the radar has not yet been started
 
-	screentext = new text(myscreen);
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
 		textcycles[i] = 0;
@@ -184,10 +182,6 @@ viewscreen::~viewscreen()
 	if (myradar)
 		delete myradar;
 	myradar = NULL;
-	if (screentext)
-		delete screentext;
-	screentext = NULL;
-	//delete buffer;
 }
 
 void viewscreen::clear()
@@ -196,7 +190,7 @@ void viewscreen::clear()
 
 	for (i=0;i<64000;i++)
 	{
-		screenp->videobuffer[i] = 0;
+		myscreen->videobuffer[i] = 0;
 	}
 }
 
@@ -206,8 +200,8 @@ short viewscreen::redraw()
 	short xneg = 0;
 	short yneg = 0;
 	walker  *controlob = control;
-	pixieN  **backp = screenp->level_data.back;
-	PixieData& gridp = screenp->level_data.grid;
+	pixieN  **backp = myscreen->level_data.back;
+	PixieData& gridp = myscreen->level_data.grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
 
@@ -220,8 +214,8 @@ short viewscreen::redraw()
 	}
 	else // no control object now ..
 	{
-		topx = screenp->level_data.topx;
-		topy = screenp->level_data.topy;
+		topx = myscreen->level_data.topx;
+		topy = myscreen->level_data.topy;
 	}
 
 
@@ -327,7 +321,7 @@ void viewscreen::display_text()
 		if (textcycles[i] > 0)  // Display text if there's any there ..
 		{
 			textcycles[i]--;
-			screentext->write_xy( (xview-strlen(textlist[i])*6)/2,
+			myscreen->text_normal.write_xy( (xview-strlen(textlist[i])*6)/2,
 			                      30+i*6, textlist[i], YELLOW, this );
 		}
 	}
@@ -354,13 +348,12 @@ void viewscreen::shift_text(Sint32 row)
 short viewscreen::refresh()
 {
 	// The first two values are screwy... I don't know why
-	screenp->buffer_to_screen(xloc, yloc, xview, yview);
+	myscreen->buffer_to_screen(xloc, yloc, xview, yview);
 	return 1;
 }
 
 short viewscreen::input(const SDL_Event& event)
 {
-	static text mytext(screenp);
 	static char somemessage[80];
 
 	//short i;
@@ -385,7 +378,7 @@ short viewscreen::input(const SDL_Event& event)
 	    control = NULL;
 	    
 		// First look for a player character, not already controlled
-		for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 		{
 		    walker* w = *e;
 			if (w &&
@@ -403,7 +396,7 @@ short viewscreen::input(const SDL_Event& event)
 		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
-            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
                 walker* w = *e;
                 if (w &&
@@ -422,7 +415,7 @@ short viewscreen::input(const SDL_Event& event)
 		{
 			// Now try for ANYONE who's left alive...
 			// NOTE: You can end up as a bad guy here if you are using an allied team
-            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
                 walker* w = *e;
                 if (w &&
@@ -437,12 +430,12 @@ short viewscreen::input(const SDL_Event& event)
 		}  // done with all searches
 
 		if (!control)  // then there's nobody left!
-			return screenp->endgame(1);
+			return myscreen->endgame(1);
         
 		if (control->user == -1)
 			control->user = mynum; // show that we're controlled now
 		control->set_act_type(ACT_CONTROL);
-		screenp->control_hp = control->stats->hitpoints;
+		myscreen->control_hp = control->stats->hitpoints;
 	}
 
 	if (control && control->bonus_rounds) // do we have extra rounds?
@@ -457,15 +450,15 @@ short viewscreen::input(const SDL_Event& event)
     {
         if (query_key_event(SDLK_F3, event))
         {
-            totaltime = (query_timer_control() - screenp->timerstart)/72;
-            totalframes = (screenp->framecount);
+            totaltime = (query_timer_control() - myscreen->timerstart)/72;
+            totalframes = (myscreen->framecount);
             framespersec = totalframes / totaltime;
             sprintf(somemessage, "%u FRAMES PER SEC", framespersec);
-            screenp->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
+            myscreen->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
         }
 
         if (query_key_event(SDLK_F4, event)) // Memory report
-            screenp->report_mem();
+            myscreen->report_mem();
 
         if (didPlayerPressKey(mynum, KEY_PREFS, event))
         {
@@ -492,7 +485,7 @@ short viewscreen::input(const SDL_Event& event)
 		}
 		control = NULL;
 		
-		auto& oblist = screenp->level_data.oblist;
+		auto& oblist = myscreen->level_data.oblist;
 		
 		if(!reverse)
 		{
@@ -580,7 +573,7 @@ short viewscreen::input(const SDL_Event& event)
 		if(!control)
             control = oldcontrol;
         
-		screenp->control_hp = control->stats->hitpoints;
+		myscreen->control_hp = control->stats->hitpoints;
 		//control->set_act_type(ACT_CONTROL);
 	}  // end of switch guys
 
@@ -588,8 +581,8 @@ short viewscreen::input(const SDL_Event& event)
 	// Redisplay the scenario text ..
 	if (query_key_event(SDLK_SLASH, event) && !isAnyPlayerKey(SDLK_SLASH) && !isPlayerHoldingKey(mynum, KEY_CHEAT)) // actually "?"
 	{
-		read_scenario(screenp);
-		screenp->redrawme = 1;
+		read_scenario(myscreen);
+		myscreen->redrawme = 1;
 		clear_keyboard();
 	}
 
@@ -603,7 +596,7 @@ short viewscreen::input(const SDL_Event& event)
 		
 		control->current_special++;
 		if (control->current_special > (NUM_SPECIALS-1)
-		        || !(strcmp(screenp->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
+		        || !(strcmp(myscreen->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
 		        || (((control->current_special-1)*3+1) > control->stats->level) )
 			control->current_special = 1;
 	} //end of switch our special
@@ -614,7 +607,7 @@ short viewscreen::input(const SDL_Event& event)
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
-		for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 		{
 		    walker* w = *e;
 			if (w && (w->query_order() == ORDER_LIVING) &&
@@ -631,8 +624,8 @@ short viewscreen::input(const SDL_Event& event)
 		}
 		
 		control->yo_delay = 30;
-		control->screenp->soundp->play_sound(SOUND_YO);
-		control->screenp->do_notify("Yo!", control);
+		myscreen->soundp->play_sound(SOUND_YO);
+		myscreen->do_notify("Yo!", control);
 	} //end of yo for friends
 
 	//summon team defense
@@ -642,7 +635,7 @@ short viewscreen::input(const SDL_Event& event)
 		switch (control->action)
 		{
 			case 0:   // not set ..
-				for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+				for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 				{
 				    walker* w = *e;
 					if (w &&
@@ -655,10 +648,10 @@ short viewscreen::input(const SDL_Event& event)
 						w->action = ACTION_FOLLOW;
 					}
 				}
-				control->screenp->do_notify("SUMMONING DEFENSE!", control);
+				myscreen->do_notify("SUMMONING DEFENSE!", control);
 				break;
 			case ACTION_FOLLOW:  // turn back to normal mode..
-				for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+				for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 				{
 				    walker* w = *e;
 					if (w && (w->query_order() == ORDER_LIVING) &&
@@ -671,7 +664,7 @@ short viewscreen::input(const SDL_Event& event)
 					}
 				}
 				control->action = 0; // for our reference
-				control->screenp->do_notify("RELEASING MEN!", control);
+				myscreen->do_notify("RELEASING MEN!", control);
 				break;
 			default:
 				control->action = 0;
@@ -700,17 +693,17 @@ short viewscreen::input(const SDL_Event& event)
 			control->user = -1;
 			control->set_act_type(ACT_RANDOM); // hope this works
             
-            short oldteam = screenp->save_data.my_team;
+            short oldteam = myscreen->save_data.my_team;
             
             do
             {
-                screenp->save_data.my_team++;
-                screenp->save_data.my_team %= MAX_TEAM;
+                myscreen->save_data.my_team++;
+                myscreen->save_data.my_team %= MAX_TEAM;
                 
-                for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+                for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
                 {
                     walker* w = *e;
-                    if ( (w->team_num == screenp->save_data.my_team) &&
+                    if ( (w->team_num == myscreen->save_data.my_team) &&
                             (w->query_order() == ORDER_LIVING)
                        )
                     {
@@ -719,7 +712,7 @@ short viewscreen::input(const SDL_Event& event)
                     }
                 }
             }
-            while(result == NULL && screenp->save_data.my_team != oldteam);
+            while(result == NULL && myscreen->save_data.my_team != oldteam);
             
             if(result != NULL)
                 control = result;
@@ -730,7 +723,7 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_F12, event)) // kill living bad guys
 		{
-			for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+			for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 			{
 			    walker* w = *e;
 				if (w && w->query_order() == ORDER_LIVING &&
@@ -761,14 +754,14 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_F1, event)) // freeze time
 		{
-			screenp->enemy_freeze += 50;
-			set_palette(screenp->bluepalette);
+			myscreen->enemy_freeze += 50;
+			set_palette(myscreen->bluepalette);
 			//clear_key_code(SDLK_F1);
 		}//end freeze time
 
 		if (query_key_event(SDLK_F2, event)) // generate magic shield
 		{
-			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
+			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
 			newob->owner = control;
 			newob->team_num = control->team_num;
 			newob->ani_type = 1; // dummy, non-zero value
@@ -788,7 +781,7 @@ short viewscreen::input(const SDL_Event& event)
 		if (query_key_event(SDLK_h, event)) // give controller lots of hitpoints
 		{
 			control->stats->hitpoints += 100;
-			screenp->control_hp += 100;  // Why not just reset from the above for sanity's sake?
+			myscreen->control_hp += 100;  // Why not just reset from the above for sanity's sake?
 		} //end hitpoints
 
 		if (query_key_event(SDLK_i, event))  // give invincibility
@@ -874,8 +867,6 @@ short viewscreen::input(const SDL_Event& event)
 
 short viewscreen::continuous_input()
 {
-	static text mytext(screenp);
-
 	//short i;
 	//short step;
 	walker  * oldcontrol = control; // So we know if we changed guys
@@ -892,7 +883,7 @@ short viewscreen::continuous_input()
 	    control = NULL;
 	    
 		// First look for a player character, not already controlled
-		for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 		{
 		    walker* w = *e;
 			if (w &&
@@ -910,7 +901,7 @@ short viewscreen::continuous_input()
 		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
-            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
                 walker* w = *e;
                 if (w &&
@@ -929,7 +920,7 @@ short viewscreen::continuous_input()
 		{
 			// Now try for ANYONE who's left alive...
 			// NOTE: You can end up as a bad guy here if you are using an allied team
-            for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
                 walker* w = *e;
                 if (w &&
@@ -944,12 +935,12 @@ short viewscreen::continuous_input()
 		}  // done with all searches
 
 		if (!control)  // then there's nobody left!
-			return screenp->endgame(1);
+			return myscreen->endgame(1);
 
 		if (control->user == -1)
 			control->user = mynum; // show that we're controlled now
 		control->set_act_type(ACT_CONTROL);
-		screenp->control_hp = control->stats->hitpoints;
+		myscreen->control_hp = control->stats->hitpoints;
 	}
 
 	if (control && control->bonus_rounds) // do we have extra rounds?
@@ -1052,12 +1043,12 @@ short viewscreen::continuous_input()
     // Visual feedback when hit
 	// Were we hurt?
 	/*
-	  if (control && (screenp->control_hp > control->stats->hitpoints) ) // we were hurt
+	  if (control && (myscreen->control_hp > control->stats->hitpoints) ) // we were hurt
 	  {
-	         screenp->control_hp = control->stats->hitpoints;
+	         myscreen->control_hp = control->stats->hitpoints;
 	//       draw_box(S_LEFT, S_UP, S_RIGHT-1, S_DOWN-1, 44, 1);  // red flash
 	         // Make temporary stain:
-	         blood = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_BLOOD);
+	         blood = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_BLOOD);
 	         blood->team_num = control->team_num;
 	         blood->ani_type = ANI_GROW;
 	         blood->setxy(control->xpos,control->ypos);
@@ -1065,7 +1056,7 @@ short viewscreen::continuous_input()
 	         //blood->draw(this);
 	//       redraw();
 	         //refresh();
-	         //screenp->remove_ob(blood);
+	         //myscreen->remove_ob(blood);
 	 
 	  }
 	*/
@@ -1106,7 +1097,7 @@ void viewscreen::clear_text()
 
 short viewscreen::draw_obs()
 {
-    return draw_obs(&screenp->level_data);
+    return draw_obs(&myscreen->level_data);
 }
 
 short viewscreen::draw_obs(LevelData* data)
@@ -1151,12 +1142,12 @@ void viewscreen::resize(short x, short y, short length, short height)
 
 	if (myradar->bmp)
 		myradar->start();
-	screenp->redrawme = 1;
+	myscreen->redrawme = 1;
 }
 
 void viewscreen::resize(char whatmode)
 {
-	switch (screenp->numviews)
+	switch (myscreen->numviews)
 	{
 		case 1: //  one-player mode
 			switch (whatmode)
@@ -1329,12 +1320,12 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	char text_down = top+3;
 	char message[30], hpcolor, mpcolor, namecolor, numguys = 0;
 	float hp, mp, maxhp, maxmp;
-	text mytext(screenp);
+	text& mytext = myscreen->text_normal;
 	
 	Sint32 currentcycle = 0, cycletime = 30000;
 
-	screenp->redrawme = 1;
-	screenp->draw_button(left, top, right, bottom, 2);
+	myscreen->redrawme = 1;
+	myscreen->draw_button(left, top, right, bottom, 2);
 
 	strcpy(message, "  Name  ");
 	mytext.write_xy(left+5, text_down, message, (unsigned char) BLACK);
@@ -1352,7 +1343,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
     
     // Build the list of characters
     std::list<walker*> ls;
-	for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+	for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 	{
 	    walker* w = *e;
 		if (w && !w->dead
@@ -1425,11 +1416,11 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		}
 	}
 
-	screenp->swap();
+	myscreen->swap();
 
 	while (!keystates[KEYSTATE_ESCAPE])
 	{
-		screenp->do_cycle(currentcycle++, cycletime);
+		myscreen->do_cycle(currentcycle++, cycletime);
 		get_input_events(POLL);
 	}
 	while (keystates[KEYSTATE_ESCAPE])
@@ -1440,7 +1431,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 
 void viewscreen::options_menu()
 {
-	static text optiontext(screenp);
+	text& optiontext = myscreen->text_normal;
 	Sint32 gamespeed;
 	static char message[80], tempstr[80];
 	signed char gamma = prefs[PREF_GAMMA];
@@ -1460,8 +1451,8 @@ void viewscreen::options_menu()
 	clear_keyboard();
 
 	// Draw the menu button
-	screenp->draw_button(40, 40, 280, 160, 2, 1);
-	screenp->draw_text_bar(40+4, 40+4, 280-4, 40+12);
+	myscreen->draw_button(40, 40, 280, 160, 2, 1);
+	myscreen->draw_text_bar(40+4, 40+4, 280-4, 40+12);
 	char title[50];
 	snprintf(title, 50, "Options Menu (%d)", mynum+1);
 	optiontext.write_xy(160-6*6, OPLINES(0)+2, title, (unsigned char) RED, 1);
@@ -1492,19 +1483,19 @@ void viewscreen::options_menu()
 			break;
 	}
 	sprintf(message, "Change View Size ([,]) : %s ", tempstr);
-	screenp->draw_box(LEFT_OPS, OPLINES(3), LEFT_OPS+strlen(message)*6, OPLINES(3)+6, PANEL_COLOR, 1, 1);
+	myscreen->draw_box(LEFT_OPS, OPLINES(3), LEFT_OPS+strlen(message)*6, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
 
 	gamma = change_gamma(0);
 	sprintf(message, "Change Brightness (<,>): %d ", gamma);
-	screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
+	myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 
 	if (prefs[PREF_RADAR])
 		sprintf(message, "Radar Display (R)      : ON ");
 	else
 		sprintf(message, "Radar Display (R)      : OFF ");
-	screenp->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
+	myscreen->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
 
 	switch (prefs[PREF_LIFE])
@@ -1527,30 +1518,30 @@ void viewscreen::options_menu()
 			break;
 	}
 	sprintf(message, "Hitpoint Display (H)   : %s", tempstr);
-	screenp->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
+	myscreen->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
 
 	if (prefs[PREF_FOES])
 		sprintf(message, "Foes Display (F)       : ON ");
 	else
 		sprintf(message, "Foes Display (F)       : OFF ");
-	screenp->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
+	myscreen->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
 
 	if (prefs[PREF_SCORE])
 		sprintf(message, "Score Display (S)      : ON ");
 	else
 		sprintf(message, "Score Display (S)      : OFF ");
-	screenp->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
+	myscreen->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
 
 	optiontext.write_xy(LEFT_OPS, OPLINES(9), "VIEW TEAM INFO (T)", (unsigned char) BLACK, 1);
 
-	if (screenp->cyclemode)
+	if (myscreen->cyclemode)
 		sprintf(message,"Color Cycling (C)      : ON ");
 	else
 		sprintf(message,"Color Cycling (C)      : OFF ");
-	screenp->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
+	myscreen->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
 	optiontext.write_xy(LEFT_OPS,OPLINES(10),message,(unsigned char) BLACK,1);
 
 	//if (prefs[PREF_JOY] == PREF_NO_JOY)
@@ -1558,7 +1549,7 @@ void viewscreen::options_menu()
 		sprintf(message, "Joystick Mode (J)      : OFF ");
 	else
 		sprintf(message, "Joystick Mode (J)      : ON ");
-	screenp->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
+	myscreen->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
 	optiontext.write_xy(LEFT_OPS,OPLINES(11),message,(unsigned char) BLACK,1);
 
 	optiontext.write_xy(LEFT_OPS, OPLINES(12), "EDIT KEY PREFS (K)", (unsigned char) BLACK, 1);
@@ -1570,7 +1561,7 @@ void viewscreen::options_menu()
 	optiontext.write_xy(LEFT_OPS, OPLINES(13), message, BLACK, 1);
 
 	// Draw the current screen
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	// Wait for esc for now
 	while (!keystates[KEYSTATE_ESCAPE])
@@ -1580,9 +1571,9 @@ void viewscreen::options_menu()
 		{
 			gamespeed = change_speed(1);
 			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
-			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_PLUS])
 				get_input_events(WAIT);
 		}
@@ -1590,9 +1581,9 @@ void viewscreen::options_menu()
 		{
 			gamespeed = change_speed(-1);
 			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
-			screenp->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_MINUS])
 				get_input_events(WAIT);
 		}
@@ -1625,9 +1616,9 @@ void viewscreen::options_menu()
 					break;
 			}
 			sprintf(message, "Change View Size ([,]) : %s       ", tempstr);
-			screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_LEFTBRACKET])
 				get_input_events(WAIT);
 		}
@@ -1660,9 +1651,9 @@ void viewscreen::options_menu()
 					break;
 			}
 			sprintf(message, "Change View Size ([,]) : %s  ", tempstr);
-			screenp->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_RIGHTBRACKET])
 				get_input_events(WAIT);
 		}
@@ -1670,9 +1661,9 @@ void viewscreen::options_menu()
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(-2);
 			sprintf(message, "Change Brightness (<,>): %d ", gamma);
-			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_COMMA])
 				get_input_events(WAIT);
 		}
@@ -1680,9 +1671,9 @@ void viewscreen::options_menu()
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(+2);
 			sprintf(message, "Change Brightness (<,>): %d ", gamma);
-			screenp->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_PERIOD])
 				get_input_events(WAIT);
 		}
@@ -1693,9 +1684,9 @@ void viewscreen::options_menu()
 				sprintf(message, "Radar Display (R)      : ON ");
 			else
 				sprintf(message, "Radar Display (R)      : OFF ");
-			screenp->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_r])
 				get_input_events(WAIT);
 		}
@@ -1722,9 +1713,9 @@ void viewscreen::options_menu()
 					break;
 			}
 			sprintf(message, "Hitpoint Display (H)   : %s", tempstr);
-			screenp->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_h])
 				get_input_events(WAIT);
 		}
@@ -1735,9 +1726,9 @@ void viewscreen::options_menu()
 				sprintf(message, "Foes Display (F)       : ON ");
 			else
 				sprintf(message, "Foes Display (F)       : OFF ");
-			screenp->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_f])
 				get_input_events(WAIT);
 		}
@@ -1748,9 +1739,9 @@ void viewscreen::options_menu()
 				sprintf(message, "Score Display (S)      : ON ");
 			else
 				sprintf(message, "Score Display (S)      : OFF ");
-			screenp->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_s])
 				get_input_events(WAIT);
 		}
@@ -1758,23 +1749,23 @@ void viewscreen::options_menu()
 		if (keystates[KEYSTATE_t])      // View the teamlist
 		{
 			view_team();
-			screenp->redraw();
+			myscreen->redraw();
 			options_menu();
 			return;
 		}
 
 		if (keystates[KEYSTATE_c])
 		{
-			screenp->cyclemode= (short) ((screenp->cyclemode+1) %2);
+			myscreen->cyclemode= (short) ((myscreen->cyclemode+1) %2);
 			while (keystates[KEYSTATE_c])
 				get_input_events(WAIT);
-			if (screenp->cyclemode)
+			if (myscreen->cyclemode)
 				sprintf(message,"Color Cycling (C)      : ON ");
 			else
 				sprintf(message,"Color Cycling (C)      : OFF ");
-			screenp->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
+			myscreen->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
 			optiontext.write_xy(LEFT_OPS,OPLINES(10),message,(unsigned char) BLACK,1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 
 		}
 
@@ -1790,9 +1781,9 @@ void viewscreen::options_menu()
                 sprintf(message, "Joystick Mode (J)      : OFF ");
             else
                 sprintf(message, "Joystick Mode (J)      : ON ");
-            screenp->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
+            myscreen->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
             optiontext.write_xy(LEFT_OPS,OPLINES(11),message,(unsigned char) BLACK,1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
             
             SDL_Delay(500);
             clear_events();
@@ -1805,7 +1796,7 @@ void viewscreen::options_menu()
 				set_display_text("NEW KEYBOARD STATE SAVED", 30);
 				set_display_text("DELETE KEYPREFS.DAT FOR DEFAULTS", 30);
 			}
-			screenp->redraw();
+			myscreen->redraw();
 			options_menu();
 			return;
 		}
@@ -1816,9 +1807,9 @@ void viewscreen::options_menu()
 				sprintf(message, "Text-button Display (B): ON ");
 			else
 				sprintf(message, "Text-button Display (B): OFF ");
-			screenp->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
+			myscreen->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
-			screenp->buffer_to_screen(0, 0, 320, 200);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_b])
 				get_input_events(WAIT);
 		}
@@ -1827,7 +1818,7 @@ void viewscreen::options_menu()
 
 	while (keystates[KEYSTATE_ESCAPE])
 		get_input_events(WAIT);
-	screenp->redrawme = 1;
+	myscreen->redrawme = 1;
 	prefsob->save(this);
 }
 
@@ -1836,35 +1827,35 @@ Sint32 viewscreen::change_speed(Sint32 whichway)
 {
 	if (whichway > 0)
 	{
-		screenp->timer_wait -= 2;
-		if (screenp->timer_wait < 0)
-			screenp->timer_wait = 0;
+		myscreen->timer_wait -= 2;
+		if (myscreen->timer_wait < 0)
+			myscreen->timer_wait = 0;
 	}
 	else if (whichway < 0)
 	{
-		screenp->timer_wait += 2;
-		if (screenp->timer_wait > 20)
-			screenp->timer_wait = 20;
+		myscreen->timer_wait += 2;
+		if (myscreen->timer_wait > 20)
+			myscreen->timer_wait = 20;
 	}
-	return (Sint32) ((20-screenp->timer_wait)/2+1);
+	return (Sint32) ((20-myscreen->timer_wait)/2+1);
 }
 
 Sint32 viewscreen::change_gamma(Sint32 whichway)
 {
 	if (whichway > 1)  // lighter
 	{
-		load_palette("our.pal", screenp->newpalette);
-		adjust_palette(screenp->newpalette, ++gamma);
+		load_palette("our.pal", myscreen->newpalette);
+		adjust_palette(myscreen->newpalette, ++gamma);
 	}
 	if (whichway < -1)  // darker
 	{
-		load_palette("our.pal", screenp->newpalette);
-		adjust_palette(screenp->newpalette, --gamma);
+		load_palette("our.pal", myscreen->newpalette);
+		adjust_palette(myscreen->newpalette, --gamma);
 	}
 	if (whichway == -1) // set to default
 	{
 		gamma = 0;
-		load_palette("our.pal", screenp->newpalette);
+		load_palette("our.pal", myscreen->newpalette);
 	}
 	// So 0 just means report
 	return (Sint32) gamma;
@@ -2021,74 +2012,74 @@ Sint32 load_key_prefs()
 // It returns success or failure.
 Sint32 viewscreen::set_key_prefs()
 {
-	static text keytext(screenp);
+	text& keytext = myscreen->text_normal;
 
 	clear_keyboard();
 
 	// Draw the menu button
-	screenp->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
+	myscreen->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
 	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press a key for 'UP':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_UP);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press a key for 'UP-RIGHT':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_UP_RIGHT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press a key for 'RIGHT':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_RIGHT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press a key for 'DOWN-RIGHT':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_DOWN_RIGHT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press a key for 'DOWN':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_DOWN);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press a key for 'DOWN-LEFT':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_DOWN_LEFT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(8), "Press a key for 'LEFT':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_LEFT);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(9), "Press a key for 'UP-LEFT':", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_UP_LEFT);
 
 	// Draw the menu button; back to the top for us!
-	screenp->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
+	myscreen->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
 	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press your 'FIRE' key:", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_FIRE);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press your 'SPECIAL' key:", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SPECIAL);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SPECIAL SWITCH' key:", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SPECIAL_SWITCH);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'YELL' key:", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_YELL);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'SWITCHING' key:", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SWITCH);
 
 	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", (unsigned char) RED, 1);
-	screenp->buffer_to_screen(0, 0, 320, 200);
+	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SHIFTER);
 
 	//  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", (unsigned char) RED, 1);
@@ -2097,11 +2088,11 @@ Sint32 viewscreen::set_key_prefs()
 	if (CHEAT_MODE) // are cheats enabled?
 	{
 		keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", (unsigned char) RED, 1);
-		screenp->buffer_to_screen(0, 0, 320, 200);
+		myscreen->buffer_to_screen(0, 0, 320, 200);
         assignKeyFromWaitEvent(mynum, KEY_CHEAT);
 	}
 
-	screenp->redrawme = 1;
+	myscreen->redrawme = 1;
 
 	//  return save_key_prefs();
 	return 1;

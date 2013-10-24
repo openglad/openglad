@@ -784,15 +784,15 @@ walker  *loader::create_walker(char order,
 	}
 
 	if (order == ORDER_LIVING)
-		ob = new living(graphics[PIX(order, family)], myscreen);
+		ob = new living(graphics[PIX(order, family)]);
 	else if (order == ORDER_WEAPON)
-	    ob = new weap(graphics[PIX(order, family)], myscreen);
+	    ob = new weap(graphics[PIX(order, family)]);
 	else if (order == ORDER_TREASURE)
-		ob = new treasure(graphics[PIX(order, family)], myscreen);
+		ob = new treasure(graphics[PIX(order, family)]);
 	else if (order == ORDER_FX)
-		ob = new effect(graphics[PIX(order, family)], myscreen);
+		ob = new effect(graphics[PIX(order, family)]);
 	else
-		ob = new walker(graphics[PIX(order, family)], myscreen);
+		ob = new walker(graphics[PIX(order, family)]);
 	if (!ob)
 		return NULL;
 
@@ -1102,7 +1102,7 @@ pixieN *loader::create_pixieN(char order, char family)
 		return NULL;
 	}
 
-	newpixie = new pixieN(graphics[PIX(order, family)], myscreen);
+	newpixie = new pixieN(graphics[PIX(order, family)]);
 
 	return newpixie;
 }

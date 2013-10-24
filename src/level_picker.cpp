@@ -39,7 +39,7 @@ using namespace std;
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
-bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
+bool prompt_for_string(const std::string& message, std::string& result);
 
 
 #define OK 4
@@ -171,11 +171,11 @@ class BrowserEntry
     ~BrowserEntry();
     
     void updateIndex(int index);
-    void draw(screen* screenp, text* loadtext);
+    void draw(screen* screenp);
 };
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
-    : level_data(scen_num), myradar(NULL, screenp, 0)
+    : level_data(scen_num), myradar(NULL, myscreen, 0)
 {
     level_data.load();
     
@@ -230,28 +230,30 @@ void BrowserEntry::updateIndex(int index)
     myradar.yloc = mapAreas.y + 10;
 }
 
-void BrowserEntry::draw(screen* screenp, text* loadtext)
+void BrowserEntry::draw(screen* screenp)
 {
     int x = myradar.xloc;
     int y = myradar.yloc;
     int w = myradar.xview;
     int h = myradar.yview;
-    screenp->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
+    myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw radar
     myradar.draw(&level_data);
-    loadtext->write_xy(mapAreas.x, mapAreas.y, level_name, DARK_BLUE, 1);
+    
+    text& loadtext = myscreen->text_normal;
+    loadtext.write_xy(mapAreas.x, mapAreas.y, level_name, DARK_BLUE, 1);
     
     char buf[30];
     snprintf(buf, 30, "ID: %d", level_data.id);
-    loadtext->write_xy(x + w + 5, y, buf, WHITE, 1);
+    loadtext.write_xy(x + w + 5, y, buf, WHITE, 1);
     snprintf(buf, 30, "Enemies: %d", num_enemies);
-    loadtext->write_xy(x + w + 5, y + 8, buf, WHITE, 1);
+    loadtext.write_xy(x + w + 5, y + 8, buf, WHITE, 1);
     snprintf(buf, 30, "Max level: %d", max_enemy_level);
-    loadtext->write_xy(x + w + 5, y + 16, buf, WHITE, 1);
+    loadtext.write_xy(x + w + 5, y + 16, buf, WHITE, 1);
     snprintf(buf, 30, "Avg level: %.1f", average_enemy_level);
-    loadtext->write_xy(x + w + 5, y + 24, buf, WHITE, 1);
+    loadtext.write_xy(x + w + 5, y + 24, buf, WHITE, 1);
     snprintf(buf, 30, "Difficulty: %.0f", difficulty);
-    loadtext->write_xy(x + w + 5, y + 32, buf, RED, 1);
+    loadtext.write_xy(x + w + 5, y + 32, buf, RED, 1);
     
     if(exits.size() > 0)
     {
@@ -271,7 +273,7 @@ void BrowserEntry::draw(screen* screenp, text* loadtext)
             buf[19] = '.';
             buf[20] = '\0';
         }
-        loadtext->write_xy(x + w + 5, y + 40, buf, WHITE, 1);
+        loadtext.write_xy(x + w + 5, y + 40, buf, WHITE, 1);
     }
 }
 
@@ -283,7 +285,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 {
     int result = default_level;
     
-	text* loadtext = new text(screenp);
+	text& loadtext = myscreen->text_normal;
     
     // Here are the browser variables
     BrowserEntry* entries[NUM_BROWSE_RADARS];
@@ -305,7 +307,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
         if(i < level_list_length)
-            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+            entries[i] = new BrowserEntry(myscreen, i, level_list[current_level_index + i]);
         else
             entries[i] = NULL;
     }
@@ -316,9 +318,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     int army_power = 0;
 	for(int i=0; i<MAX_TEAM_SIZE; i++)
 	{
-		if (screenp->save_data.team_list[i])
+		if (myscreen->save_data.team_list[i])
 		{
-		    army_power += 3*screenp->save_data.team_list[i]->get_level();
+		    army_power += 3*myscreen->save_data.team_list[i]->get_level();
 		}
 	}
     
@@ -367,7 +369,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 		// Reset the timer count to zero ...
 		reset_timer();
 
-		if (screenp->end)
+		if (myscreen->end)
 			break;
 
 		// Get keys and stuff
@@ -426,7 +428,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                     }
                     // Load the new top one
                     if(current_level_index < level_list_length)
-                        entries[0] = new BrowserEntry(screenp, 0, level_list[current_level_index]);
+                        entries[0] = new BrowserEntry(myscreen, 0, level_list[current_level_index]);
                 }
            }
         // Next
@@ -449,7 +451,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                     }
                     // Load the new bottom one
                     if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
-                        entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(screenp, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
+                        entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(myscreen, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
                 }
            }
         // Choose
@@ -496,7 +498,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                         delete entries[i];
                         
                         if(i < level_list_length)
-                            entries[i] = new BrowserEntry(screenp, i, level_list[current_level_index + i]);
+                            entries[i] = new BrowserEntry(myscreen, i, level_list[current_level_index + i]);
                         else
                             entries[i] = NULL;
                     }
@@ -510,7 +512,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         else if(do_id)
            {
                 std::string level;
-                if(prompt_for_string(loadtext, "Enter Level ID (num)", level) && level.size() > 0)
+                if(prompt_for_string("Enter Level ID (num)", level) && level.size() > 0)
                 {
                     result = atoi(level.c_str());
                     done = true;
@@ -556,32 +558,32 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             buttons[choose_index].hidden = true;
         
         // Draw
-        screenp->clearbuffer();
+        myscreen->clearbuffer();
         
         char buf[20];
         snprintf(buf, 20, "Army power: %d", army_power);
-        loadtext->write_xy(prev.x + 50, prev.y + 2, buf, RED, 1);
+        loadtext.write_xy(prev.x + 50, prev.y + 2, buf, RED, 1);
         
-        screenp->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
-        loadtext->write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
-        screenp->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
-        loadtext->write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
+        myscreen->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
+        loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
+        myscreen->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
+        loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
         if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
         {
-            screenp->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
-            loadtext->write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
-            loadtext->write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name, DARK_GREEN, 1);
+            myscreen->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
+            loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
+            loadtext.write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name, DARK_GREEN, 1);
         }
-        screenp->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
-        loadtext->write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
+        myscreen->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
+        loadtext.write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
         if(selected_entry >= 0 && enable_delete)
         {
-            screenp->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
-            loadtext->write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
+            myscreen->draw_button(delete_button.x, delete_button.y, delete_button.x + delete_button.w, delete_button.y + delete_button.h, 1, 1);
+            loadtext.write_xy(delete_button.x + 2, delete_button.y + 2, "Delete", RED, 1);
         }
         
-        screenp->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
-        loadtext->write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
+        myscreen->draw_button(id_button.x, id_button.y, id_button.x + id_button.w, id_button.y + id_button.h, 1, 1);
+        loadtext.write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
         
         if(selected_entry != -1)
         {
@@ -592,30 +594,30 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                 int y = entries[i]->myradar.yloc - 4;
                 int w = entries[i]->myradar.xview + 8;
                 int h = entries[i]->myradar.yview + 8;
-                screenp->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
+                myscreen->draw_box(x, y, x + w, y + h, DARK_BLUE, 1, 1);
             }
         }
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
             if(i < level_list_length && entries[i] != NULL)
-                entries[i]->draw(screenp, loadtext);
+                entries[i]->draw(myscreen);
         }
         
         // Description
         if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
         {
-            screenp->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
+            myscreen->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
             for(int i = 0; i < entries[selected_entry]->scentextlines; i++)
             {
                 if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
                     break;
-                loadtext->write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i], BLACK, 1);
+                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i], BLACK, 1);
             }
         }
         
         
         draw_highlight(buttons[highlighted_button]);
-		screenp->buffer_to_screen(0, 0, 320, 200);
+		myscreen->buffer_to_screen(0, 0, 320, 200);
 		SDL_Delay(10);
 	}
 	
@@ -626,8 +628,6 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     {
         delete entries[i];
     }
-    
-    delete loadtext;
     
 	return result;
 }

@@ -42,8 +42,8 @@ extern Sint32 current_difficulty;
 // from glad.cpp
 short remaining_foes(screen *myscreen, walker* myguy);
 
-walker::walker(const PixieData& data, screen  *myscreen)
-    : pixieN(data, myscreen)
+walker::walker(const PixieData& data)
+    : pixieN(data)
 {
 	// Set our stats ..
 	stats = new statistics(this);
@@ -303,7 +303,7 @@ bool walker::walkstep(float x, float y)
 	float step = stepsize;
 	float halfstep;
 	Sint32 i;
-	//walker *control1 = screenp->viewob[0]->control;
+	//walker *control1 = myscreen->viewob[0]->control;
 	//walker *control2;
 	short mycycle;
 
@@ -421,12 +421,12 @@ bool walker::walkstep(float x, float y)
                 {
                     for (i = 0; i < step; i++)
                     {
-                        if (screenp->query_passable(xpos, ypos + dy, this))
+                        if (myscreen->query_passable(xpos, ypos + dy, this))
                         {
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
                         }
-                        if (screenp->query_passable(xpos + dx, ypos, this))
+                        if (myscreen->query_passable(xpos + dx, ypos, this))
                         {
                             worldmove(dx, 0);
                             gotover = true;
@@ -486,15 +486,15 @@ bool walker::walk(float x, float y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= screenp->level_data.grid.w*GRID_SIZE ||
+		        x+xpos >= myscreen->level_data.grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= screenp->level_data.grid.h*GRID_SIZE)
+		        y+ypos >= myscreen->level_data.grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
 
 		// Here we check if the move is valid
-		if (screenp->query_passable(xpos+x, ypos+y, this))
+		if (myscreen->query_passable(xpos+x, ypos+y, this))
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
@@ -719,14 +719,14 @@ walker  * walker::fire()
 	//yp = weapon->ypos;
 
 	// Actual combat
-	if (!screenp->query_passable(weapon->xpos, weapon->ypos, weapon))
+	if (!myscreen->query_passable(weapon->xpos, weapon->ypos, weapon))
 	{
 		// *** Melee combat ***
 		if (weapon->collide_ob && !weapon->collide_ob->dead)
 		{
 			if (attack(weapon->collide_ob) && on_screen() )
 			{
-				screenp->soundp->play_sound(SOUND_CLANG);
+				myscreen->soundp->play_sound(SOUND_CLANG);
 			}
 			if (myguy)
             {
@@ -768,23 +768,23 @@ walker  * walker::fire()
 		if (on_screen())
 		{
 			if (weapon->query_family() == FAMILY_FIREBALL)
-				screenp->soundp->play_sound(SOUND_BLAST);
+				myscreen->soundp->play_sound(SOUND_BLAST);
 			else if (weapon->query_family() == FAMILY_METEOR)
 				//play_sound(SOUND_FIREBALL);
-				screenp->soundp->play_sound(SOUND_BLAST);
+				myscreen->soundp->play_sound(SOUND_BLAST);
 			else if (weapon->query_family() == FAMILY_SPRINKLE)
 				//play_sound(SOUND_SPARKLE);
-				screenp->soundp->play_sound(SOUND_SPARKLE);
+				myscreen->soundp->play_sound(SOUND_SPARKLE);
 			else if (weapon->query_family() == FAMILY_ARROW)
 				//play_sound(SOUND_FIRE);
-				screenp->soundp->play_sound(SOUND_BOW);
+				myscreen->soundp->play_sound(SOUND_BOW);
 			else if (weapon->query_family() == FAMILY_FIRE_ARROW)
 				//play_sound(SOUND_FIRE);
-				screenp->soundp->play_sound(SOUND_BOW);
+				myscreen->soundp->play_sound(SOUND_BOW);
 			else if (weapon->query_family() == FAMILY_LIGHTNING)
-				screenp->soundp->play_sound(SOUND_BOLT);
+				myscreen->soundp->play_sound(SOUND_BOLT);
 			else //play_sound(SOUND_FWIP);
-				screenp->soundp->play_sound(SOUND_FWIP);
+				myscreen->soundp->play_sound(SOUND_FWIP);
 		}
 		if (order == ORDER_GENERATOR)
 		{
@@ -930,8 +930,8 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
         {
             Uint16 max_w = r.w;
             r.w *= ratio;
-            w->screenp->draw_box(r.x, r.y, r.x + r.w, r.y + r.h, whatcolor, 1);
-            w->screenp->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
+            myscreen->draw_box(r.x, r.y, r.x + r.w, r.y + r.h, whatcolor, 1);
+            myscreen->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
         }
     }
 }
@@ -1034,7 +1034,7 @@ short walker::draw(viewscreen  *view_buf)
     }
 
 	if (stats->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                        view_buf->endx, view_buf->endy,
 		                        bmp, query_team_color(),
@@ -1046,7 +1046,7 @@ short walker::draw(viewscreen  *view_buf)
 	else if (invisibility_left && view_buf->control != NULL)  //WE ARE INVISIBLE
 	{
 		if (this->team_num == view_buf->control->team_num)
-			screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+			myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 			                        view_buf->xloc, view_buf->yloc,
 			                        view_buf->endx, view_buf->endy,
 			                        bmp, query_team_color(),
@@ -1056,10 +1056,10 @@ short walker::draw(viewscreen  *view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
-	         screenp->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats->query_bit_flags(BIT_FLYING)
 	         && (flight_left < 1) )
-		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                        view_buf->endx, view_buf->endy,
 		                        bmp, query_team_color(),
@@ -1070,7 +1070,7 @@ short walker::draw(viewscreen  *view_buf)
 
 	else if (outline)    // WE HAVE SOME OUTLINE
 	{
-		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                        view_buf->endx, view_buf->endy,
 		                        bmp, query_team_color(),
@@ -1083,7 +1083,7 @@ short walker::draw(viewscreen  *view_buf)
 	}
 	else
 	{
-		screenp->walkputbuffer(xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
 		                       view_buf->xloc, view_buf->yloc,
 		                       view_buf->endx, view_buf->endy,
 		                       bmp, query_team_color());
@@ -1187,7 +1187,7 @@ short walker::draw_tile(viewscreen  *view_buf)
         outline = OUTLINE_INVISIBLE;
 
 	if (stats->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
-		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp, query_team_color(),
@@ -1199,7 +1199,7 @@ short walker::draw_tile(viewscreen  *view_buf)
 	else if (invisibility_left)  //WE ARE INVISIBLE
 	{
 		if (this->team_num == view_buf->control->team_num)
-			screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+			myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 			                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 			                        bmp, query_team_color(),
@@ -1209,10 +1209,10 @@ short walker::draw_tile(viewscreen  *view_buf)
 			                        0 ); //type of phantom
 	}
 	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
-	         screenp->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats->query_bit_flags(BIT_FLYING)
 	         && (flight_left < 1) )
-		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp, query_team_color(),
@@ -1223,7 +1223,7 @@ short walker::draw_tile(viewscreen  *view_buf)
 
 	else if (outline)    // WE HAVE SOME OUTLINE
 	{
-		screenp->walkputbuffer( xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                        bmp, query_team_color(),
@@ -1236,7 +1236,7 @@ short walker::draw_tile(viewscreen  *view_buf)
 	}
 	else
 	{
-		screenp->walkputbuffer(xscreen, yscreen, sizex, sizey,
+		myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
 		                       view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 		                       bmp, query_team_color());
@@ -1500,7 +1500,7 @@ short walker::act()
 				{
 					if (!foe)
 					{
-						foe = screenp->find_far_foe(this);
+						foe = myscreen->find_far_foe(this);
 					}
 					if (foe)
 						//stats->try_command(COMMAND_SEARCH, 60, 0, 0);
@@ -1764,7 +1764,7 @@ short walker::attack(walker  *target)
             myguy->exp += newexp;
             if (getscore)
             {
-                screenp->save_data.m_score[team_num] += tempdamage + target->stats->level;
+                myscreen->save_data.m_score[team_num] += tempdamage + target->stats->level;
             }
 		}
 	}
@@ -1812,7 +1812,7 @@ short walker::attack(walker  *target)
 		{
 			if (getscore)
 			{
-				screenp->save_data.m_score[team_num] += tempdamage + target->stats->level; // / 2;
+				myscreen->save_data.m_score[team_num] += tempdamage + target->stats->level; // / 2;
 			}
 			if (headguy->myguy)
 				headguy->myguy->exp += newexp;
@@ -1842,19 +1842,19 @@ short walker::attack(walker  *target)
 					//}
 					if (getscore)
 					{
-						screenp->save_data.m_score[team_num] += tempdamage + (10 * target->stats->level);
+						myscreen->save_data.m_score[team_num] += tempdamage + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
 					if (strlen(target->stats->name) && !(target->lifetime)
 					        && (!target->owner) ) // do we have an NPC name?
 					{
 						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name);
-						screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
+						myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 					}
-					if(remaining_foes(screenp, this) == 1)  // This is the last foe
+					if(remaining_foes(myscreen, this) == 1)  // This is the last foe
 					{
 						sprintf(message, "All foes defeated!");
-						screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
+						myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 					}
 				}
 				else
@@ -1915,13 +1915,13 @@ short walker::attack(walker  *target)
 								strcpy(message, "SOMEONE DIED");
 								break;
 						}
-					screenp->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
+					myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 				}
 			}
 
 			/* Blood splats at death */
 			// Make temporary stain:
-			blood = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_BLOOD);
+			blood = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_BLOOD);
 			blood->team_num = target->team_num;
 			blood->ani_type = ANI_GROW;
 			blood->ignore = 1; // so that we can be walked over .. ?
@@ -1930,9 +1930,9 @@ short walker::attack(walker  *target)
 		if (on_screen() && targetorder == ORDER_LIVING)
 		{
 			if (random(2))
-				screenp->soundp->play_sound(SOUND_DIE1);
+				myscreen->soundp->play_sound(SOUND_DIE1);
 			else
-				screenp->soundp->play_sound(SOUND_DIE2);
+				myscreen->soundp->play_sound(SOUND_DIE2);
 		}
 
 		target->dead = 1;
@@ -2001,7 +2001,7 @@ short walker::animate()
 			setxy(xpos-10, ypos+10); // diagonal 'down left' of normal
 
 			// Create a new small slime ..
-			newob = screenp->level_data.add_ob(ORDER_LIVING, FAMILY_SMALL_SLIME);
+			newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_SMALL_SLIME);
 			newob->setxy(xpos+12, ypos-12);
 			// Transfer stats/etc. across to new guy ..
 			//stats->magicpoints -= stats->special_cost[0];
@@ -2056,7 +2056,7 @@ walker  *walker::create_weapon()
 	// Special case for generators
 	if (query_order() == ORDER_GENERATOR)
 	{
-		weapon = screenp->level_data.add_ob(ORDER_LIVING, (char) default_weapon);
+		weapon = myscreen->level_data.add_ob(ORDER_LIVING, (char) default_weapon);
 		weapon->team_num = team_num;
 		weapon->owner = this;
 		weapon->set_difficulty(stats->level);
@@ -2065,7 +2065,7 @@ walker  *walker::create_weapon()
 	// Normally, only livings fire
 	weapon_type = current_weapon;
 
-	weapon = screenp->level_data.add_ob(ORDER_WEAPON, (char) weapon_type);
+	weapon = myscreen->level_data.add_ob(ORDER_WEAPON, (char) weapon_type);
 	weapon->team_num = team_num;
 	weapon->owner = this;
 	weapon->set_difficulty(stats->level);
@@ -2124,7 +2124,7 @@ short walker::query_next_to()
 	else //if (lasty < 0)
 		newy += -sizey;
 
-	if (!screenp->query_object_passable(newx, newy, this))
+	if (!myscreen->query_object_passable(newx, newy, this))
 	{
 		return 1;
 	}
@@ -2230,13 +2230,13 @@ short walker::special()
 					{
 						stats->add_command(COMMAND_RUSH, 3, lastx/stepsize, lasty/stepsize);
 						if (on_screen())
-							screenp->soundp->play_sound(SOUND_CHARGE);
+							myscreen->soundp->play_sound(SOUND_CHARGE);
 					}
 					else
 						return 0;
 					break;
 				case 2: // boomerang
-					newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_BOOMERANG);
+					newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_BOOMERANG);
 					newob->owner = this;
 					newob->team_num = team_num;
 					newob->ani_type = 1; // dummy, non-zero value
@@ -2265,7 +2265,7 @@ short walker::special()
 					stats->add_command(COMMAND_WALK, 1, -1, -1);
 					
 					{
-                        std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+                        std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
                                                               32+stats->level*2, &howmany, this);
                         
                         for(auto e = newlist.begin(); e != newlist.end(); e++)
@@ -2293,7 +2293,7 @@ short walker::special()
 						return 0; // can't do this if no frontal enemy
                     
                     {
-                        std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+                        std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      28, &howmany, this);
                     
                         generic = 0;
@@ -2313,9 +2313,9 @@ short walker::special()
                         if (generic)
                         {
                             if (on_screen())
-                                screenp->soundp->play_sound(SOUND_CHARGE);
+                                myscreen->soundp->play_sound(SOUND_CHARGE);
                             if (team_num == 0 || myguy) // player's team
-                                screenp->do_notify("Fighter Disarmed Enemy!", this);
+                                myscreen->do_notify("Fighter Disarmed Enemy!", this);
                             busy += 5;
                         }
                         else
@@ -2332,7 +2332,7 @@ short walker::special()
 				case 1:  // heal / mystic mace
 					if (!shifter_down) // then do normal heal
 					{
-						std::list<walker*> newlist = screenp->find_friends_in_range(screenp->level_data.oblist,
+						std::list<walker*> newlist = myscreen->find_friends_in_range(myscreen->level_data.oblist,
 						          60, &howmany, this);
                         
 						didheal = 0;
@@ -2375,10 +2375,10 @@ short walker::special()
 								else
 									sprintf(message, "Cleric healed %d men!", didheal);
 								if (team_num == 0 || myguy) // home team
-									screenp->do_notify(message, this);
+									myscreen->do_notify(message, this);
 								// Play sound ...
 								if (on_screen())
-									screenp->soundp->play_sound(SOUND_HEAL);
+									myscreen->soundp->play_sound(SOUND_HEAL);
 							}  // end of did heal guys case
 						}
 						else // no friends, so don't charge us
@@ -2407,7 +2407,7 @@ short walker::special()
                         }
 
 						// All okay, let's summon!
-						newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
+						newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
 						if (!newob) // safety check
 							return 0;
 						newob->owner = this;
@@ -2435,7 +2435,7 @@ short walker::special()
 						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
 							if ( (team_num == 0 || myguy) && on_screen() )
-								screenp->do_notify("You need 60 Int to Turn Undead", this);
+								myscreen->do_notify("You need 60 Int to Turn Undead", this);
 							busy +=5;
 							return 0;
 						}
@@ -2449,22 +2449,22 @@ short walker::special()
 								strcpy(message, myguy->name);
 								sprintf(message, "%s turned %d undead.",
 								        myguy->name, generic);
-								screenp->do_notify(message, this);
+								myscreen->do_notify(message, this);
 							} // end of notify visually
 						}
 						// Play sound ...
 						if (on_screen())
-							screenp->soundp->play_sound(SOUND_HEAL);
+							myscreen->soundp->play_sound(SOUND_HEAL);
 					} // end of turn undead, low level
 					else
 					{
-						newob = screenp->find_nearest_blood(this);
+						newob = myscreen->find_nearest_blood(this);
 						if (newob)
 						{
 							targetx = newob->xpos;
 							targety = newob->ypos;
 							distance = (Uint32) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
-							if (screenp->query_passable(targetx, targety, newob) && distance < 60)
+							if (myscreen->query_passable(targetx, targety, newob) && distance < 60)
 							{
 								alive = do_summon(FAMILY_SKELETON, 125 + (stats->level*40) );
 								if (!alive)
@@ -2474,8 +2474,8 @@ short walker::special()
 								alive->set_difficulty((Uint32) alive->stats->level);
 								alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
-								//screenp->remove_fx_ob(newob);
-								//screenp->remove_ob(newob, 0);
+								//myscreen->remove_fx_ob(newob);
+								//myscreen->remove_ob(newob, 0);
 								newob->dead = 1;
 								if (myguy)
 									myguy->exp += exp_from_action(EXP_RAISE_SKELETON, this, alive, 0);
@@ -2495,7 +2495,7 @@ short walker::special()
 						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
 							if ((team_num == 0 || myguy) && on_screen() )
-								screenp->do_notify("You need 60 Int to Turn Undead", this);
+								myscreen->do_notify("You need 60 Int to Turn Undead", this);
 							busy +=5;
 							return 0;
 						}
@@ -2509,24 +2509,24 @@ short walker::special()
 								strcpy(message, myguy->name);
 								sprintf(message, "%s turned %d undead.",
 								        myguy->name, generic);
-								screenp->do_notify(message, this);
+								myscreen->do_notify(message, this);
 							} // end of notify visually
 						}
 						// Play sound ...
 						if (on_screen())
-							screenp->soundp->play_sound(SOUND_HEAL);
+							myscreen->soundp->play_sound(SOUND_HEAL);
 					} // end of turn undead, high level
 					else
 					{
-						newob = screenp->find_nearest_blood(this);
+						newob = myscreen->find_nearest_blood(this);
 						if (newob)
 						{
 							targetx = newob->xpos;
 							targety = newob->ypos;
 							distance = (Uint32) distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
-							if (screenp->query_passable(targetx, targety, newob) && distance < 30)
+							if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
 							{
-								//alive = screenp->level_data.add_ob(ORDER_LIVING, FAMILY_SKELETON);
+								//alive = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_SKELETON);
 								alive = do_summon(FAMILY_GHOST, 150 + (stats->level*40) );
 								if (!alive)
 									return 0;
@@ -2535,8 +2535,8 @@ short walker::special()
 								alive->team_num = team_num;
 								alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
-								//screenp->remove_fx_ob(newob);
-								//screenp->remove_ob(newob, 0);
+								//myscreen->remove_fx_ob(newob);
+								//myscreen->remove_ob(newob, 0);
 								newob->dead = 1;
 								if (myguy)
 									myguy->exp += exp_from_action(EXP_RAISE_GHOST, this, alive, 0);
@@ -2550,17 +2550,17 @@ short walker::special()
 					break;
 				case 4:  // Resurrect our guys ..
 				default:
-					newob = screenp->find_nearest_blood(this);
+					newob = myscreen->find_nearest_blood(this);
 					if (newob)
 					{
 						targetx = newob->xpos;
 						targety = newob->ypos;
 						distance = distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
-						if (screenp->query_passable(targetx, targety, newob) && distance < 30)
+						if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
 						{
 							if ( is_friendly(newob) ) // normal ressurection
 							{
-								alive = screenp->level_data.add_ob(ORDER_LIVING, newob->stats->old_family);
+								alive = myscreen->level_data.add_ob(ORDER_LIVING, newob->stats->old_family);
 								if(!alive)
 									return 0; // failsafe
 								newob->transfer_stats(alive);  // restore our old values ..
@@ -2587,8 +2587,8 @@ short walker::special()
 								alive->owner = this;
 							}
 							alive->setxy(newob->xpos, newob->ypos);
-							//screenp->remove_fx_ob(newob);
-							//screenp->remove_ob(newob, 0);
+							//myscreen->remove_fx_ob(newob);
+							//myscreen->remove_ob(newob, 0);
 							newob->dead = 1;
 							if (myguy)
 								myguy->exp += exp_from_action(EXP_RESURRECT, this, alive, 0);
@@ -2614,12 +2614,12 @@ short walker::special()
 						if (myguy && (myguy->intelligence < 75) )
 						{
 							if (user != -1) // we're a real player ..
-								screenp->do_notify("Need 75 Int for Marker!", this);
+								myscreen->do_notify("Need 75 Int for Marker!", this);
 							return 0; // so as not to charge player
 						}
 						// Remove a marker, if present
 						generic = 0; // used to check progress
-						for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+						for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 						{
 						    walker* ob = *e;
 							if (ob &&
@@ -2632,7 +2632,7 @@ short walker::special()
 								ob->dead = 1;
 								ob->death();
 								if ((team_num == 0 || myguy) && user!=-1)
-									screenp->do_notify("(Old Marker Removed)", this);
+									myscreen->do_notify("(Old Marker Removed)", this);
 								busy += 8;
 								break;
 							}
@@ -2640,7 +2640,7 @@ short walker::special()
 						generic = 0; // force new placement, for now
 						if (!generic) // didn't remove a marker, so place one
 						{
-							newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_MARKER);
+							newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MARKER);
 							if (!newob)
 								return 0; // failsafe
 							newob->owner = this;
@@ -2652,9 +2652,9 @@ short walker::special()
 							newob->ani_type = ANI_SPIN; // non-walking
 							if ((team_num == 0 || myguy) && user != -1)
 							{
-								screenp->do_notify("Teleport Marker Placed", this);
+								myscreen->do_notify("Teleport Marker Placed", this);
 								sprintf(message, "(%d Uses)", newob->lifetime);
-								screenp->do_notify(message, this);
+								myscreen->do_notify(message, this);
 							}
 							busy +=8;
 							// Take an extra cost for placing a marker
@@ -2666,7 +2666,7 @@ short walker::special()
 					else
 					{
 						if (on_screen())
-							screenp->soundp->play_sound(SOUND_TELEPORT);
+							myscreen->soundp->play_sound(SOUND_TELEPORT);
 						ani_type = ANI_TELE_OUT;
 						cycle = 0;
 					}
@@ -2712,8 +2712,8 @@ short walker::special()
 				case 3:  // Freeze time
 					if (team_num == 0 || myguy) // the player's team
 					{
-						screenp->enemy_freeze += 20 + 11*stats->level;
-						set_palette(screenp->bluepalette);
+						myscreen->enemy_freeze += 20 + 11*stats->level;
+						set_palette(myscreen->bluepalette);
 					}
 					else
 					{
@@ -2721,12 +2721,12 @@ short walker::special()
 						if (generic > 50)
 							generic = 50;
 						sprintf(message, "TIME IS FROZEN! (%d rounds)", generic);
-						screenp->viewob[0]->set_display_text(message, 2);
-						screenp->viewob[0]->redraw();
-						screenp->viewob[0]->refresh();
-						//screenp->buffer_to_screen(0, 0, 320, 200);
-						std::list<walker*> newlist = screenp->find_friends_in_range(
-						              screenp->level_data.oblist, 30000, &howmany, this);
+						myscreen->viewob[0]->set_display_text(message, 2);
+						myscreen->viewob[0]->redraw();
+						myscreen->viewob[0]->refresh();
+						//myscreen->buffer_to_screen(0, 0, 320, 200);
+						std::list<walker*> newlist = myscreen->find_friends_in_range(
+						              myscreen->level_data.oblist, 30000, &howmany, this);
 						
 						for(auto e = newlist.begin(); e != newlist.end(); e++)
 						{
@@ -2740,7 +2740,7 @@ short walker::special()
 					newob = fire();
 					if (!newob)
 						return 0; // failed somehow? !?!
-					alive = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_WAVE);
+					alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_WAVE);
 					alive->center_on(newob);
 					alive->owner = this;
 					alive->stats->level = stats->level;
@@ -2751,7 +2751,7 @@ short walker::special()
 				case 5:
 				default: // Burst enemies into flame ..
 				{
-					std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+					std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      80+2*stats->level, &howmany, this);
 					if (!howmany)
 						return 0; // didn't find any enemies..
@@ -2771,7 +2771,7 @@ short walker::special()
 					{
 					    walker* ob = *e;
 					    
-						newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
+						newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
 						if (!newob)
 							return 0; // failsafe
                         
@@ -2781,7 +2781,7 @@ short walker::special()
 						newob->damage = generic;
 						newob->center_on(ob);
 						if (on_screen())
-							screenp->soundp->play_sound(SOUND_EXPLODE);
+							myscreen->soundp->play_sound(SOUND_EXPLODE);
 						newob->ani_type = ANI_EXPLODE;
 						newob->stats->set_bit_flags(BIT_MAGICAL, 1);
 						newob->skip_exit = 100; // don't hurt caster
@@ -2803,12 +2803,12 @@ short walker::special()
 							return 0;
 						if (myguy && (myguy->intelligence < 75) )
 						{
-							screenp->do_notify("Need 75 Int for Marker!", this);
+							myscreen->do_notify("Need 75 Int for Marker!", this);
 							return 0; // so as not to charge player
 						}
 						// Remove a marker, if present
 						generic = 0; // used to check progress
-						for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+						for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 						{
 						    walker* ob = *e;
 							if (ob &&
@@ -2821,14 +2821,14 @@ short walker::special()
 								ob->dead = 1;
 								ob->death();
 								if (team_num == 0 || myguy)
-									screenp->do_notify("(Old Marker Removed)", this);
+									myscreen->do_notify("(Old Marker Removed)", this);
 								busy += 8;
 								generic = 1;
 								break;
 							}
 						}  // end of cycle through object list
 						// Now place a marker ..
-						newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_MARKER);
+						newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MARKER);
 						if (!newob)
 							return 0; // failsafe
 						newob->owner = this;
@@ -2840,9 +2840,9 @@ short walker::special()
 						newob->ani_type = 2; // non-walking
 						if (team_num == 0 || myguy)
 						{
-							screenp->do_notify("Teleport Marker Placed", this);
+							myscreen->do_notify("Teleport Marker Placed", this);
 							sprintf(message, "(%d Uses)", newob->lifetime);
-							screenp->do_notify(message, this);
+							myscreen->do_notify(message, this);
 						}
 						busy +=8;
 						// Take an extra cost for placing a marker
@@ -2853,7 +2853,7 @@ short walker::special()
 					else
 					{
 						if (on_screen())
-							screenp->soundp->play_sound(SOUND_TELEPORT);
+							myscreen->soundp->play_sound(SOUND_TELEPORT);
 						ani_type = ANI_TELE_OUT;
 						cycle = 0;
 					}
@@ -2872,7 +2872,7 @@ short walker::special()
 						generic = 80;
                     
                     {
-                        std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+                        std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      generic+2*stats->level, &howmany, this);
                         if (!howmany)
                             return 0; // didn't find any enemies..
@@ -2893,7 +2893,7 @@ short walker::special()
                             for(auto e = newlist.begin(); e != newlist.end(); e++)
                             {
                                 walker* ob = *e;
-                                newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
+                                newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
                                 if (!newob)
                                     return 0; // failsafe
                                 
@@ -2904,7 +2904,7 @@ short walker::special()
                                 newob->damage = generic;
                                 newob->center_on(ob);
                                 if (on_screen())
-                                    screenp->soundp->play_sound(SOUND_EXPLODE);
+                                    myscreen->soundp->play_sound(SOUND_EXPLODE);
                                 newob->ani_type = ANI_EXPLODE;
                                 newob->stats->set_bit_flags(BIT_MAGICAL, 1);
                                 newob->skip_exit = 100; // don't hurt caster
@@ -2919,7 +2919,7 @@ short walker::special()
                                 myguy->total_shots++; // so can get > 100% :)
                                 myguy->scen_shots++;
                             }
-                            newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_CHAIN);
+                            newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_CHAIN);
                             newob->center_on(this);
                             newob->owner = this;
                             newob->stats->level = stats->level;
@@ -2963,7 +2963,7 @@ short walker::special()
 						generic /= 2;
 						stats->magicpoints -= generic;
 						// First make the guy we'd summon, at least physically
-						newob = screenp->level_data.add_ob(ORDER_LIVING, FAMILY_FIREELEMENTAL);
+						newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_FIREELEMENTAL);
 						if (!newob)
 							return 0; // failsafe
 						// We need to check for a space around the archmage...
@@ -2973,7 +2973,7 @@ short walker::special()
 							{
 								if ( (i==0 && j==0) || (generic) )
 									continue;
-								if (screenp->query_passable(xpos+((newob->sizex+1)*i),
+								if (myscreen->query_passable(xpos+((newob->sizex+1)*i),
 								                            ypos+((newob->sizey+1)*j), newob))
 								{
 									// We've found a legal spot ..
@@ -3110,7 +3110,7 @@ short walker::special()
 						}
 
 						// Now make the guy we'd summon, at least physically
-						newob = screenp->level_data.add_ob(ORDER_LIVING, person);
+						newob = myscreen->level_data.add_ob(ORDER_LIVING, person);
 						if (!newob)
 							return 0; // failsafe
 						// We need to check for a space around the archmage...
@@ -3120,7 +3120,7 @@ short walker::special()
 							{
 								if ( (i==0 && j==0) || (generic) )
 									continue;
-								if (screenp->query_passable(xpos+((newob->sizex+1)*i),
+								if (myscreen->query_passable(xpos+((newob->sizex+1)*i),
 								                            ypos+((newob->sizey+1)*j), newob))
 								{
 									// We've found a legal spot ..
@@ -3154,7 +3154,7 @@ short walker::special()
 						return 0;
 						
                     {
-                        std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+                        std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
                                                               80+4*stats->level, &howmany, this);
                         if (howmany < 1)
                             return 0; // noone to influence
@@ -3199,7 +3199,7 @@ short walker::special()
 					else
 						strcpy(message, "ArchMage");
 					sprintf(tempstr, "%s has controlled %d men", message, didheal);
-					screenp->do_notify(tempstr, this);
+					myscreen->do_notify(tempstr, this);
 
 					generic2 = stats->magicpoints - stats->special_cost[(int)current_special];
 					if (generic2 > 0) // sap our extra based on how many guys
@@ -3266,7 +3266,7 @@ short walker::special()
 			cycle = 0;
 			break;
 		case FAMILY_GHOST: // do nifty scare thing
-			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_GHOST_SCARE); //,1 == underneath
+			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_GHOST_SCARE); //,1 == underneath
 			newob->ani_type = ANI_SCARE;
 			newob->setxy(xpos+sizex/2 - newob->sizex/2,
 			             ypos+sizey/2 - newob->sizey/2);
@@ -3279,7 +3279,7 @@ short walker::special()
 			switch (current_special)
 			{
 				case 1:  // drop a bomb, unregistered
-					newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_BOMB, 1); // 1 == underneath
+					newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_BOMB, 1); // 1 == underneath
 					newob->ani_type = ANI_BOMB;
 					if (myguy)
                     {
@@ -3292,8 +3292,8 @@ short walker::special()
 					newob->owner = this;
 					// Run away if we're AI
 					person = 0;
-					for (i=0; i < screenp->numviews; i++)
-						if (screenp->viewob[i]->control == this)
+					for (i=0; i < myscreen->numviews; i++)
+						if (myscreen->viewob[i]->control == this)
 							person = 1;
 					if (!person)
 					{
@@ -3314,7 +3314,7 @@ short walker::special()
 							return 0;
 							
                         {
-                            std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+                            std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
                                                                   80+4*stats->level, &howmany, this);
                             
                             for(auto e = newlist.begin(); e != newlist.end(); e++)
@@ -3338,7 +3338,7 @@ short walker::special()
 						else
 							strcpy(message, "THIEF");
 						strcat(message, ": 'Nyah Nyah!'");
-						screenp->do_notify(message, this);
+						myscreen->do_notify(message, this);
 						busy += 2;
 						break; // end of taunt
 					}
@@ -3348,7 +3348,7 @@ short walker::special()
 							return 0;
                         
                         {
-                            std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+                            std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
                                                                   16+4*stats->level, &howmany, this);
                             
                             if (howmany < 1)
@@ -3399,7 +3399,7 @@ short walker::special()
 							sprintf(tempstr, "%s failed to charm!", message);
 						else
 							sprintf(tempstr, "%s charmed an opponent!", message);
-						screenp->do_notify(tempstr, this);
+						myscreen->do_notify(tempstr, this);
 						busy += 10; // takes a while
 						break; // end of Charm Opponent
 					}
@@ -3407,7 +3407,7 @@ short walker::special()
 				default:
 					if (busy > 0)
 						return 0;
-					newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_CLOUD);
+					newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_CLOUD);
 					if (!newob)
 						return 0; // failsafe
 					busy += 5;
@@ -3494,7 +3494,7 @@ short walker::special()
 					if (!newob)
 						return 0;
 					busy += (fire_frequency * 2);
-					alive = screenp->level_data.add_ob(ORDER_WEAPON,FAMILY_TREE);
+					alive = myscreen->level_data.add_ob(ORDER_WEAPON,FAMILY_TREE);
 					alive->setxy(newob->xpos,newob->ypos);
 					alive->team_num = team_num;
 					alive->ani_type = ANI_GROW;
@@ -3508,13 +3508,13 @@ short walker::special()
 					newob = fire();
 					if (!newob)
 						return 0;
-					alive = screenp->level_data.add_ob(ORDER_LIVING, FAMILY_FAERIE);
+					alive = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_FAERIE);
 					alive->setxy(newob->xpos, newob->ypos);
 					alive->team_num = team_num;
 					alive->owner = this;
 					alive->lifetime = 50 + stats->level*(40);
 					newob->dead = 1;
-					if (!screenp->query_passable(alive->xpos, alive->ypos, alive))
+					if (!myscreen->query_passable(alive->xpos, alive->ypos, alive))
 					{
 						alive->dead = 1;
 						return 0;
@@ -3533,7 +3533,7 @@ short walker::special()
 						return 0;
                     
                     {
-                        std::list<walker*> newlist = screenp->find_friends_in_range(screenp->level_data.oblist,
+                        std::list<walker*> newlist = myscreen->find_friends_in_range(myscreen->level_data.oblist,
                                   60, &howmany, this);
                         didheal = 0;
                         if (howmany > 1) // some friends here ..
@@ -3546,7 +3546,7 @@ short walker::special()
                                 {
                                     // First see if this person already has protection (slow)
                                     tempwalk = NULL;
-                                    for(auto f = screenp->level_data.oblist.begin(); f != screenp->level_data.oblist.end(); f++)
+                                    for(auto f = myscreen->level_data.oblist.begin(); f != myscreen->level_data.oblist.end(); f++)
                                     {
                                         walker* ob = *f;
                                         if (ob && ob->owner == newob
@@ -3560,7 +3560,7 @@ short walker::special()
                                     }
                                     if (!tempwalk) // target wasn't protected yet
                                     {
-                                        alive = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
+                                        alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
                                         if (!alive) // failed somehow
                                             return 0;
                                         
@@ -3572,7 +3572,7 @@ short walker::special()
                                     } // end of target wasn't protected
                                     else
                                     {
-                                        alive = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
+                                        alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
                                         if (!alive) // failed somehow
                                             return 0;
                                         
@@ -3597,10 +3597,10 @@ short walker::special()
                                 else
                                     sprintf(message, "Druid protected %d men!", didheal);
                                 if (team_num == 0 || myguy) // home team
-                                    screenp->do_notify(message, this);
+                                    myscreen->do_notify(message, this);
                                 // Play sound ...
                                 if (on_screen())
-                                    screenp->soundp->play_sound(SOUND_HEAL);
+                                    myscreen->soundp->play_sound(SOUND_HEAL);
                             }  // end of did protect guys case
                         } // end of checking for friends
                         else // no friends, so don't charge us
@@ -3619,7 +3619,7 @@ short walker::special()
 					busy += 2;
 					
 					{
-                        std::list<walker*> newlist = screenp->find_foes_in_range(screenp->level_data.oblist,
+                        std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      160+(20*stats->level), &howmany, this);
                         
                         for(auto e = newlist.begin(); e != newlist.end(); e++)
@@ -3639,7 +3639,7 @@ short walker::special()
                         }
                         
                         if (on_screen())
-                            screenp->soundp->play_sound(SOUND_ROAR);
+                            myscreen->soundp->play_sound(SOUND_ROAR);
 					}
 					break;
 				case 2: // eat corpse for health
@@ -3648,7 +3648,7 @@ short walker::special()
 				default:
 					if (stats->hitpoints >= stats->max_hitpoints)
 						return 0; // can't eat if we're 'full'
-					newob = screenp->find_nearest_blood(this);
+					newob = myscreen->find_nearest_blood(this);
 					if (!newob) // no blood, so do nothing
 						return 0;
 					distance = (Uint32) distance_to_ob_center(newob);
@@ -3666,7 +3666,7 @@ short walker::special()
 					else
 						strcpy(message, "Orc");
 					strcat(message, " ate a corpse.");
-					screenp->do_notify(message, this);
+					myscreen->do_notify(message, this);
 					if (stats->hitpoints > stats->max_hitpoints)
 						stats->hitpoints = stats->max_hitpoints;
 					newob->dead = 1;
@@ -3702,7 +3702,7 @@ short walker::special()
 					newob = fire();
 					if (!newob)
 						return 0; // failed somehow? !?!
-					alive = screenp->level_data.add_ob(ORDER_WEAPON, FAMILY_BOULDER);
+					alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_BOULDER);
 					alive->center_on(newob);
 					alive->owner = this;
 					alive->stats->level = stats->level;
@@ -3759,7 +3759,7 @@ short walker::teleport()
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
-	for(auto e = screenp->level_data.oblist.begin(); e != screenp->level_data.oblist.end(); e++)
+	for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 	{
 	    walker* ob = *e;
 		if (ob &&
@@ -3770,7 +3770,7 @@ short walker::teleport()
 		   )
 		{
 			// Found our marker!
-			if (screenp->query_passable(ob->xpos, ob->ypos, this)
+			if (myscreen->query_passable(ob->xpos, ob->ypos, this)
 			        && (distance = distance_to_ob(ob) > 64) )
 			{
 				center_on(ob);
@@ -3785,18 +3785,18 @@ short walker::teleport()
 			else  // blocked somehow?
 			{
 				if (user != -1 && (distance > 64) ) // only tell players
-					screenp->do_notify("Marker is Blocked!", this);
+					myscreen->do_notify("Marker is Blocked!", this);
 			}
 		}
 	} // end of checking for marker (we failed)
 
-	newx = random(screenp->level_data.grid.w)*GRID_SIZE;
-	newy = random(screenp->level_data.grid.h)*GRID_SIZE;
+	newx = random(myscreen->level_data.grid.w)*GRID_SIZE;
+	newy = random(myscreen->level_data.grid.h)*GRID_SIZE;
 
-	while(!screenp->query_passable(newx, newy, this))
+	while(!myscreen->query_passable(newx, newy, this))
 	{
-		newx = random(screenp->level_data.grid.w)*GRID_SIZE;
-		newy = random(screenp->level_data.grid.h)*GRID_SIZE;
+		newx = random(myscreen->level_data.grid.w)*GRID_SIZE;
+		newy = random(myscreen->level_data.grid.h)*GRID_SIZE;
 	}
 	setxy(newx,newy);
 	return 1;
@@ -3810,7 +3810,7 @@ short walker::teleport_ranged(Sint32 range)
 	newx = random(2*range) - range + xpos;
 	newy = random(2*range) - range + ypos;
 
-	while(!screenp->query_passable(newx, newy, this) && keep_going)
+	while(!myscreen->query_passable(newx, newy, this) && keep_going)
 	{
 		newx = random(2*range) - range + xpos;
 		newy = random(2*range) - range + ypos;
@@ -3831,7 +3831,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 	Sint32 killed = 0;
 	short targets;
 
-	std::list<walker*> deadlist = screenp->find_foes_in_range(screenp->level_data.oblist, range,
+	std::list<walker*> deadlist = myscreen->find_foes_in_range(myscreen->level_data.oblist, range,
 	                                       &targets, this);
 	if (!targets)
 		return -1;
@@ -3956,13 +3956,13 @@ short walker::fire_check(short xdelta, short ydelta)
 	{
 		weapon->setxy(weapon->xpos + i*weapon->lastx,
 		              weapon->ypos + i*weapon->lasty);
-		if ( !screenp->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit a wall, so fail
 			weapon->dead = 1;
 			return 0;
 		}
-		if ( !screenp->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit an enemy, so good!
 			weapon->dead = 1;
@@ -3982,7 +3982,7 @@ short walker::fire_check(short xdelta, short ydelta)
 
 	// * 16 is to match with grid coords
 	for (i=0; i <= loops; i+=8)  // half a grid square
-		if ( !screenp->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
+		if ( !myscreen->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
 		{
 			weapon->dead = 1;
 			//foe = NULL;  // can't hit this guy
@@ -4005,8 +4005,8 @@ short walker::fire_check(short xdelta, short ydelta)
 short
 walker::act_generate()
 {
-	if ( screenp->level_data.numobs < MAXOBS &&
-	        (random(stats->level*3) > (random(300+(screenp->level_data.numobs*8)) ) )
+	if ( myscreen->level_data.numobs < MAXOBS &&
+	        (random(stats->level*3) > (random(300+(myscreen->level_data.numobs*8)) ) )
 	   )
 	{
 		lastx = 1-random(3);
@@ -4057,7 +4057,7 @@ walker::act_guard()
 	//                       fire_check(lasty, lastx) ||
 	//                       fire_check(-lasty, -lastx) ||
 	//                       fire_check(-lastx, -lasty))
-	foe = screenp->find_near_foe(this);
+	foe = myscreen->find_near_foe(this);
 	if (foe)
 	{
 		curdir = (char) facing(foe->xpos - xpos, foe->ypos-ypos);
@@ -4079,7 +4079,7 @@ walker::act_random()
 
 	// Find our foe
 	if (!random(70) || (!foe))
-		foe = screenp->find_far_foe(this);
+		foe = myscreen->find_far_foe(this);
 	if (!foe)
 		return stats->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -4144,7 +4144,7 @@ short walker::spaces_clear()
 	for (i=-1; i < 2; i++)
 		for (j=-1; j < 2; j++)
 			if (i || j) // don't check our own location
-				if (screenp->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
+				if (myscreen->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
 					count++;
 
 	return count;
@@ -4230,10 +4230,10 @@ void walker::transform_to(char whatorder, char whatfamily)
 	// Do this before resetting graphic so illegal
 	//  family values don't try to set graphics.
 	//  order and family are only set if legal
-	screenp->set_walker(this, whatorder, whatfamily);
+	myscreen->set_walker(this, whatorder, whatfamily);
 
 	// Reset the graphics
-	data = screenp->level_data.myloader->graphics[PIX(order, family)];
+	data = myscreen->level_data.myloader->graphics[PIX(order, family)];
 	facings = data.data;
 	bmp = data.data;
 	frames = data.frames;
@@ -4281,7 +4281,7 @@ short walker::death()
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
-		newob = screenp->level_data.add_ob(ORDER_TREASURE, FAMILY_LIFE_GEM, 1);
+		newob = myscreen->level_data.add_ob(ORDER_TREASURE, FAMILY_LIFE_GEM, 1);
 		newob->stats->hitpoints = myguy->query_heart_value();
 		newob->stats->hitpoints *= 0.75 / 2;  // 75%, divided by 2, since score is doubled at end of level
 		newob->team_num = team_num;
@@ -4292,10 +4292,10 @@ short walker::death()
 	{
 		case ORDER_LIVING:
 			if (   (team_num == 0 || myguy) // our team
-			        && (screenp->level_data.type & SCEN_TYPE_SAVE_ALL)
+			        && (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
 			        && (strlen(stats->name)) // we were named
 			   )
-				return screenp->endgame(SCEN_TYPE_SAVE_ALL); // failed
+				return myscreen->endgame(SCEN_TYPE_SAVE_ALL); // failed
 			switch (family)
 			{
 				case FAMILY_FIREELEMENTAL:  // make us explode
@@ -4307,7 +4307,7 @@ short walker::death()
 				case FAMILY_SLIME: // shrink to medium ..
 					dead = 1;
 					//transform_to(ORDER_LIVING, FAMILY_MEDIUM_SLIME);
-					newob = screenp->level_data.add_ob(ORDER_LIVING, FAMILY_MEDIUM_SLIME);
+					newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_MEDIUM_SLIME);
 					newob->team_num = team_num;
 					newob->stats->level = stats->level;
 					newob->set_difficulty(stats->level);
@@ -4326,7 +4326,7 @@ short walker::death()
 				case FAMILY_MEDIUM_SLIME: // shrink to small ..
 					dead = 1;
 					//transform_to(ORDER_LIVING, FAMILY_SMALL_SLIME);
-					newob = screenp->level_data.add_ob(ORDER_LIVING, FAMILY_SMALL_SLIME);
+					newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_SMALL_SLIME);
 					newob->team_num = team_num;
 					newob->stats->level = stats->level;
 					newob->set_difficulty(stats->level);
@@ -4354,7 +4354,7 @@ short walker::death()
 		case ORDER_GENERATOR:  // go up in flames :>
 			for (i=0; i < 4; i++)
 			{
-				newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
+				newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
 				newob->team_num = team_num;
@@ -4364,7 +4364,7 @@ short walker::death()
 				newob->damage = stats->level*2;
 				newob->set_frame(random(3));
 				if (on_screen())
-					screenp->soundp->play_sound(SOUND_EXPLODE);
+					myscreen->soundp->play_sound(SOUND_EXPLODE);
 			}
 			break;
 		case ORDER_FX:
@@ -4387,7 +4387,7 @@ void walker::generate_bloodspot()
 
 	dead = 1; // just in case ..
 
-	bloodstain = screenp->level_data.add_fx_ob(ORDER_TREASURE, FAMILY_STAIN);
+	bloodstain = myscreen->level_data.add_fx_ob(ORDER_TREASURE, FAMILY_STAIN);
 	bloodstain->ignore = 1;
 	transfer_stats(bloodstain);
 
@@ -4399,7 +4399,7 @@ void walker::generate_bloodspot()
 	bloodstain->team_num = team_num;
 	bloodstain->dead = 0;
 	bloodstain->setxy(xpos, ypos);
-	//data = screenp->myloader->graphics[PIX(ORDER_TREASURE, FAMILY_STAIN)];
+	//data = myscreen->myloader->graphics[PIX(ORDER_TREASURE, FAMILY_STAIN)];
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
@@ -4421,7 +4421,7 @@ void walker::set_direct_frame(short whichframe)
 	PixieData data;
 	frame = whichframe;
 
-	data = screenp->level_data.myloader->graphics[PIX(order, family)];
+	data = myscreen->level_data.myloader->graphics[PIX(order, family)];
 	bmp = data.data + frame*size;
 
 }

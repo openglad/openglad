@@ -79,7 +79,7 @@ class viewscreen
 		friend class pixieN;
 		friend class pixie;
 		friend class text;
-		viewscreen(short x, short y, short length, short height, short whatnum, screen  *myscreen);
+		viewscreen(short x, short y, short length, short height, short whatnum);
 		~viewscreen();
 		void clear();
 		short draw ();
@@ -108,7 +108,7 @@ class viewscreen
 
 		char textlist[MAX_MESSAGES][80]; // max of 80-wide
 		short textcycles[MAX_MESSAGES];  // cycles to display screen-text
-		text *screentext;       // display screen text;
+		
 		char infotext[80]; // text to display
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
 		short my_team;         // used for Player-v-Player mode
@@ -124,8 +124,7 @@ class viewscreen
 
 	protected:
 		options *prefsob;
-		//char  *buffer;
-		screen  *screenp;
+		
 		short size;
 		short xview;
 		short yview;

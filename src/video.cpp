@@ -32,6 +32,7 @@ unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
 Screen *E_Screen;
 
 video::video()
+    : text_normal(TEXT_1), text_big(TEXT_BIG)
 {
 	Sint32 i;
 	const char *qresult;
@@ -244,7 +245,7 @@ void video::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool
 Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
                         const char *header)
 {
-	static text dialogtext(myscreen, TEXT_BIG); // large text
+	text& dialogtext = text_big; // large text
 	Sint32 centerx = x1 + ( (x2-x1) /2 ), left;
 	short textwidth;
 

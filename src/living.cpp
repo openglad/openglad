@@ -25,8 +25,8 @@
 extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
 extern Sint32 current_difficulty;
 
-living::living(const PixieData& data, screen  *myscreen)
-    : walker(data, myscreen)
+living::living(const PixieData& data)
+    : walker(data)
 {
 	current_special = 1;
 	lifetime = 0;
@@ -116,7 +116,7 @@ short living::act()
 
 	// Regenerate magic
 	if (stats->magicpoints < stats->max_magicpoints &&
-	        !(screenp->enemy_freeze || bonus_rounds) )
+	        !(myscreen->enemy_freeze || bonus_rounds) )
 	{
 		stats->magicpoints += stats->magic_per_round;
 		stats->current_magic_delay++;
@@ -135,7 +135,7 @@ short living::act()
     else
     {
         if (stats->hitpoints < stats->max_hitpoints &&
-                !(screenp->enemy_freeze || bonus_rounds))
+                !(myscreen->enemy_freeze || bonus_rounds))
         {
             stats->hitpoints += stats->heal_per_round;
             stats->current_heal_delay++;
@@ -166,7 +166,7 @@ short living::act()
 	// Flight
 	if (flight_left > 0)
 		flight_left--;
-	if (!screenp->query_grid_passable(xpos, ypos, this) && !flight_left)
+	if (!myscreen->query_grid_passable(xpos, ypos, this) && !flight_left)
 	{
 		flight_left++;
 		stats->hitpoints--;
@@ -327,7 +327,7 @@ short living::act()
 					{
 						current_special = (char) (random((stats->level+2)/3) + 1);
 						if ( (current_special > 4) ||
-						        (!strcmp(screenp->special_name[(int)family][(int)current_special], "NONE"))
+						        (!strcmp(myscreen->special_name[(int)family][(int)current_special], "NONE"))
 						   )
 							current_special = 1;
 						if (check_special() )
@@ -345,7 +345,7 @@ short living::act()
 				{
 					if (!foe)
 					{
-						foe = screenp->find_near_foe(this);
+						foe = myscreen->find_near_foe(this);
 					}
 					if (foe) // && random(2) )
 					{
@@ -356,7 +356,7 @@ short living::act()
 					//else if (foe)
 					//  stats->try_command(COMMAND_RIGHT_WALK,40,0,0);
 					else if (!random(2))
-						foe = screenp->find_far_foe(this);
+						foe = myscreen->find_far_foe(this);
 					else
 						stats->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -414,9 +414,9 @@ bool living::walk(float x, float y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= screenp->level_data.grid.w*GRID_SIZE ||
+		        x+xpos >= myscreen->level_data.grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= screenp->level_data.grid.h*GRID_SIZE)
+		        y+ypos >= myscreen->level_data.grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
@@ -425,7 +425,7 @@ bool living::walk(float x, float y)
 		// Normally we would check if the object at this grid point
 		//    is passable (I cheated for now)
 		// FIXME: These additional checks are a hack for the corner clipping bug (you could get into trees, etc.)
-		if (screenp->query_passable(xpos+x, ypos+y,this) && screenp->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && screenp->query_passable(xpos+floorf(x), ypos+floorf(y),this))
+		if (myscreen->query_passable(xpos+x, ypos+y,this) && myscreen->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && myscreen->query_passable(xpos+floorf(x), ypos+floorf(y),this))
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
@@ -499,7 +499,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 {
 	walker  *newob;
 
-	newob = screenp->level_data.add_ob(ORDER_LIVING, whatfamily);
+	newob = myscreen->level_data.add_ob(ORDER_LIVING, whatfamily);
 	newob->owner = this;
 	newob->lifetime = lifetime;
 	newob->transform_to(ORDER_LIVING, whatfamily);
@@ -533,7 +533,7 @@ short living::check_special()
 			}
 			else // get a new foe ..
 			{
-				foe = screenp->find_near_foe(this);
+				foe = myscreen->find_near_foe(this);
 				if (!foe)
 					return 0;
 				distance = (Uint32) distance_to_ob(foe); // (deltax*deltax) + Sint32 (deltay*deltay);
@@ -555,7 +555,7 @@ short living::check_special()
 			}
 			else // get a new foe ..
 			{
-				foe = screenp->find_near_foe(this);
+				foe = myscreen->find_near_foe(this);
 				if (!foe)
 					return 0;
 				distance = (Uint32) distance_to_ob(foe); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
@@ -575,7 +575,7 @@ short living::check_special()
 				}
 				else // get a new foe ..
 				{
-					screenp->find_foes_in_range(screenp->level_data.oblist,
+					myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                        110, &howmany, this);
 
 					if (howmany < 3)
@@ -591,7 +591,7 @@ short living::check_special()
 				else               // charm
 					myrange = 16 + 4*stats->level;
 
-				screenp->find_foes_in_range(screenp->level_data.oblist,
+				myscreen->find_foes_in_range(myscreen->level_data.oblist,
 				                                        myrange, &howmany, this);
 				if (howmany < 1)
 					return 0;
@@ -602,7 +602,7 @@ short living::check_special()
 				return 1;  // default is go for it
 		case FAMILY_MAGE:  // TP if  away from guys ..
 			howmany = 0;
-			screenp->find_foes_in_range(screenp->level_data.oblist,
+			myscreen->find_foes_in_range(myscreen->level_data.oblist,
 			                                        110, &howmany, this);
 
 			if (howmany < 1) //  away from anybody ..
@@ -612,14 +612,14 @@ short living::check_special()
 			return 0;
 			//break; // end of fighter case
 		case FAMILY_SLIME:
-			if (screenp->level_data.numobs < MAXOBS)
+			if (myscreen->level_data.numobs < MAXOBS)
 				return 1;
 			else
 				return 0;
 		case FAMILY_CLERIC: // any friends?
 			if (current_special == 1) // healing
 			{
-				screenp->find_friends_in_range(screenp->level_data.oblist,
+				myscreen->find_friends_in_range(myscreen->level_data.oblist,
 				            60, &howmany, this);
 
 				if (howmany > 1) // other than ourselves?
@@ -641,7 +641,7 @@ short living::check_special()
 			//break;
 		case FAMILY_SKELETON:  // Tunnel if no foes near ..
 			howmany = 0;
-			screenp->find_foes_in_range(screenp->level_data.oblist,
+			myscreen->find_foes_in_range(myscreen->level_data.oblist,
 			                                        5*GRID_SIZE, &howmany, this);
 
 			if (howmany < 1) //  away from anybody ..
@@ -818,7 +818,7 @@ short living::act_random()
 
 	// Find our foe
 	if (!random(80) || (!foe))
-		foe = screenp->find_near_foe(this);
+		foe = myscreen->find_near_foe(this);
 	if (!foe)
 		return stats->try_command(COMMAND_RANDOM_WALK,40);
 
@@ -857,7 +857,7 @@ short living::do_action()
 		case ACTION_FOLLOW: // follow our leader, attack his targets ..
 			if (foe)
 				return 0;       // continue as normal
-			leader = screenp->find_nearest_player(this);
+			leader = myscreen->find_nearest_player(this);
 			if (!leader)
 				return 0;       // continue as normal ... shouldn't happen
 			if (leader->foe)

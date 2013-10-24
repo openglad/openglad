@@ -98,7 +98,7 @@ bool CampaignData::load()
         std::string icon_file = "icon.pix";
         icondata = read_pixie_file(icon_file.c_str());
         if(icondata.valid())
-            icon = new pixie(icondata, myscreen);
+            icon = new pixie(icondata);
         
         // Count the number of levels
         std::list<int> levels = list_levels();
@@ -306,7 +306,7 @@ LevelData::LevelData(int id)
 
     // Initialize a pixie for each background piece
     for(int i = 0; i < PIX_MAX; i++)
-        back[i] = new pixieN(pixdata[i], myscreen, 0);
+        back[i] = new pixieN(pixdata[i], 0);
 
     //buffers: after we set all the tiles to use acceleration, we go
     //through the tiles that have pal cycling to turn of the accel.
@@ -1321,7 +1321,7 @@ bool LevelData::load()
 
         // Initialize a pixie for each background piece
         for(int i = 0; i < PIX_MAX; i++)
-            back[i] = new pixieN(pixdata[i], myscreen, 0);
+            back[i] = new pixieN(pixdata[i], 0);
 
         //buffers: after we set all the tiles to use acceleration, we go
         //through the tiles that have pal cycling to turn of the accel.
