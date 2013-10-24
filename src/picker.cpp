@@ -173,7 +173,6 @@ void picker_main(Sint32 argc, char  **argv)
 	// Get the mouse, timer, & keyboard ..
 	grab_mouse();
 	grab_timer();
-	grab_keyboard();
 	clear_keyboard();
 
 	// Load the current saved game, if it exists .. (save0.gtl)
@@ -244,10 +243,10 @@ button mainmenu_buttons[] =
         button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
 
         #ifdef ENABLE_OVERSCAN_ADJUST
-        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::UpLeft(7, 10)),
+        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeft(7, 10)),
         button("<-> ", KEYSTATE_UNKNOWN, 80, 180, 30, 10, OVERSCAN_ADJUST, -1, MenuNav::UpRight(7, 9))
         #else
-        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, -1 , MenuNav::Up(7))
+        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0, MenuNav::Up(7))
         #endif
     };
 #else // DISABLE_MULTIPLAYER
@@ -780,11 +779,9 @@ Sint32 beginmenu(Sint32 arg1)
 
 	// Starting new game ..
 	release_mouse();
-	//grab_keyboard();
 	myscreen->clearbuffer();
 	myscreen->swap();
 	read_campaign_intro(myscreen);
-	//release_keyboard();
 	myscreen->refresh();
 	grab_mouse();
 	myscreen->clear();
@@ -2770,13 +2767,12 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
 	nametext.write_xy(176, 12, "NAME THIS CHARACTER:", DARK_BLUE, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
-	//grab_keyboard();
+	
 	clear_keyboard();
 	char* new_text = nametext.input_string(176, 20, 11, someguy->name);
 	if(new_text == NULL)
         new_text = someguy->name;
 	memmove(someguy->name, new_text, strlen(new_text)+1);  // Could be overlapping strings
-	//release_keyboard();
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
 
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3040,7 +3036,7 @@ Sint32 go_menu(Sint32 arg1)
         }
         myscreen->save_data.save("save0");
         release_mouse();
-        //grab_keyboard();
+        
         //*******************************
         // Fade out from MENU loop
         //*******************************
@@ -3056,7 +3052,7 @@ Sint32 go_menu(Sint32 arg1)
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
         glad_main(myscreen, myscreen->save_data.numplayers);
-        //release_keyboard();
+        
         //*******************************
         // Fade out from ACTION loop
         //*******************************
@@ -3122,15 +3118,11 @@ void statscopy(guy *dest, guy *source)
 
 void quit(Sint32 arg1)
 {
-	if (arg1)
-		arg1 = 1;
-	release_mouse();
-
 	myscreen->refresh();
 
 	delete theprefs;
-	picker_quit();
-	release_keyboard();
+	picker_quit();  // deletes the screen objects
+	Log("quit(%d)\n", arg1);
 	exit(0);
 }
 

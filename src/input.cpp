@@ -726,12 +726,6 @@ void handle_events(const SDL_Event& event)
 //Keyboard routines
 //
 
-void grab_keyboard()
-{}
-
-void release_keyboard()
-{}
-
 int query_key()
 {
     return raw_key;

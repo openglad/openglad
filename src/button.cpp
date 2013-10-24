@@ -263,9 +263,6 @@ void vbutton::vdisplay()
             mytext->write_xy( (short) ( ((xloc+xend)/2) - (((label.size()-1)* (mytext->letters.w+1) )/2)) ,
                               (short) (yloc + (height-(mytext->letters.h))/2), label.c_str(), (unsigned char) DARK_BLUE, 1);
     }
-    //release_mouse();
-    //myscreen->buffer_to_screen(xloc-4,yloc-4,xend+4,yend+4);
-    //grab_mouse();
 }
 
 void vbutton::vdisplay(Sint32 status)
@@ -440,14 +437,12 @@ Sint32 vbutton::mouse_on()
         if (!had_focus) // just gained focus
         {
             //vdisplay();
-            // Zardus: FIX: comment release and grab mouse out cause there's no need for them here and they're causing choppyness on buttons
-            // release_mouse();
             if (mypixie)
                 myscreen->draw_box(xloc-1, yloc-1, xend, yend, 27, 0, 1);
             else
                 myscreen->draw_box(xloc-1, yloc-1, xend, yend, 27, 0, 1);
             myscreen->buffer_to_screen(0, 0, 320, 200);
-            // grab_mouse();
+            
             had_focus = 1;
         }
         return 1;
@@ -457,13 +452,11 @@ Sint32 vbutton::mouse_on()
         if (had_focus)
         {
             //vdisplay();
-            // release_mouse();
             if (mypixie)
                 myscreen->draw_box(xloc-1, yloc-1, xend, yend, 0, 0, 1);
             else
                 myscreen->draw_box(xloc-1, yloc-1, xend, yend, 0, 0, 1);
             myscreen->buffer_to_screen(0, 0, 320, 200);
-            // grab_mouse();
             had_focus = 0;
         }
         return 0;

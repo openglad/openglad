@@ -933,7 +933,9 @@ public:
     void mouse_up(int mx, int my, int old_mx, int old_my, bool& done);
     void pick_by_mouse(int mx, int my);
     
-    
+    bool is_in_grid(int x, int y);
+    unsigned char get_terrain(int x, int y);
+    void set_terrain(int x, int y, unsigned char terrain);
     walker* get_object(int x, int y);
 };
 
@@ -3182,7 +3184,8 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
         windowy /= GRID_SIZE;
         
         // Get tile from grid array
-        terrain_brush.terrain = level->grid.data[windowy*(level->grid.w)+windowx];
+        if(is_in_grid(windowx, windowy))
+            terrain_brush.terrain = get_terrain(windowx, windowy);
     }
     else if(mode == OBJECT)
     {
@@ -3203,7 +3206,27 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
 }
 
 
+bool LevelEditorData::is_in_grid(int x, int y)
+{
+    return (x >= 0 && y >= 0 && x < level->grid.w && y < level->grid.h);
+}
+
+unsigned char LevelEditorData::get_terrain(int x, int y)
+{
+    if(!is_in_grid(x, y))
+        return 0;
     
+    return level->grid.data[y*level->grid.w + x];
+}
+
+void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
+{
+    if(!is_in_grid(x, y))
+        return;
+    
+    level->grid.data[y*level->grid.w + x] = terrain;
+}
+
 walker* LevelEditorData::get_object(int x, int y)
 {
     walker* result = NULL;
@@ -3887,7 +3910,7 @@ Sint32 level_editor()
                             if(!terrain_brush.picking)
                             {
                                 // Set to our current selection (apply brush)
-                                data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
+                                data.set_terrain(windowx, windowy, get_random_matching_tile(terrain_brush.terrain));
                                 levelchanged = 1;
                                 if (terrain_brush.use_smoothing) // smooth a few squares, if not control
                                 {
