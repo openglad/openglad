@@ -50,9 +50,6 @@ void intro_main(Sint32 argc, char** argv)
 
 	ul = ur = ll = lr = NULL;
 
-	if (!myscreen)
-		myscreen = new screen(1);
-
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 	grab_timer();
 	

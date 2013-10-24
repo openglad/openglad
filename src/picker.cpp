@@ -54,7 +54,7 @@ bool prompt_for_string(const std::string& message, std::string& result);
 void show_guy(Sint32 frames, Sint32 who, short centerx = 80, short centery = 45); // shows the current guy ..
 Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
-void glad_main(screen *myscreen, Sint32 playermode);
+void glad_main(Sint32 playermode);
 const char* get_saved_name(const char * filename);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
@@ -150,9 +150,6 @@ void picker_main(Sint32 argc, char  **argv)
 	backdrops[3] = new pixieN(backpics[3]);
 	backdrops[3]->setxy(160, 100);
 
-
-	if (!myscreen)
-		myscreen = new screen(1);
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 
 	myscreen->clearbuffer();
@@ -3045,7 +3042,7 @@ Sint32 go_menu(Sint32 arg1)
         // Reset viewscreen prefs
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
-        glad_main(myscreen, myscreen->save_data.numplayers);
+        glad_main(myscreen->save_data.numplayers);
         
         //*******************************
         // Fade out from ACTION loop

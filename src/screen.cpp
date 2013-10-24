@@ -76,6 +76,9 @@ Uint32 random(Uint32 x)
 screen::screen(short howmany)
     : video(), level_data(1)
 {
+    // Set the global here so objects we construct here can use it
+    myscreen = this;
+    
 	Sint32 i, j;
 	const char *qresult;
 	text& first_text = text_normal;

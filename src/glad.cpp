@@ -95,17 +95,14 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-void glad_main(screen *myscreen, Sint32 playermode)
+void glad_main(Sint32 playermode)
 {
 	//  char soundpath[80];
 	//  short cyclemode = 1;            // color cycling on or off
-	short numviews;
 
 	//Sint32 longtemp;
 	//char message[50];
 	short currentcycle = 0, cycletime = 3;
-
-	numviews = (short) playermode;
 
 	//screen  *myscreen;
 
@@ -118,12 +115,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	clear_keyboard();
 	myscreen->fadeblack(0);
 
-	if (myscreen)
-	{
-		//myscreen->reset(numviews);
-	}
-	else
-		myscreen = new screen(numviews);
 	myscreen->clearbuffer();
 
 	// Draw rainbow background
