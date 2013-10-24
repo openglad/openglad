@@ -2,7 +2,7 @@ Source: openglad
 Section: games
 Priority: extra
 Maintainer: Yan Shoshitaishvili <yans@openglad.org>
-Build-Depends: debhelper (>= 7), codeblocks, libsdl2-mixer-dev, libsdl2-image-dev, libsdl2-ttf-dev, libsdl2-dev, xvfb
+Build-Depends: debhelper (>= 7), coreutils, codeblocks, libsdl2-mixer-dev, libsdl2-image-dev, libsdl2-ttf-dev, libsdl2-dev, xvfb
 Standards-Version: 3.8.0
 Homepage: http://openglad.org
 
