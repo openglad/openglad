@@ -152,6 +152,21 @@ class walker : public pixieN
 		obmap* myobmap;
 		int path_check_counter;
 		std::vector<void*> path_to_foe;  // Result from pathfinding
+		
+		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
+		class DamageNumber
+		{
+        public:
+            float x, y;
+            float t;
+            float value;
+            
+            unsigned char color;
+            
+            DamageNumber(float x, float y, float value, unsigned char color);
+            void draw(viewscreen* view_buf);
+		};
+		std::list<DamageNumber> damage_numbers;
 
 	protected:
 		short act_generate();

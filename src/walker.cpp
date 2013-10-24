@@ -936,6 +936,24 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
     }
 }
 
+
+walker::DamageNumber::DamageNumber(float x, float y, float value, unsigned char color)
+    : x(x), y(y), t(1.0f), value(value), color(color)
+{}
+
+void walker::DamageNumber::draw(viewscreen* view_buf)
+{
+	Sint32 xscreen = (Sint32) (x - view_buf->topx + view_buf->xloc);
+	Sint32 yscreen = (Sint32) (y - view_buf->topy + view_buf->yloc);
+	
+	Uint8 alpha = 0;
+	if(t >= 255)
+        alpha = 255;
+    else if(t >= 0)
+        alpha = t*255;
+    myscreen->text_normal.write_xy_center_alpha(xscreen, yscreen, color, alpha, "%.0f", value);
+}
+
 short walker::draw(viewscreen  *view_buf)
 {
     // Update the drawing coords from the real position
@@ -1090,6 +1108,20 @@ short walker::draw(viewscreen  *view_buf)
         
         draw_smallHealthBar(this, view_buf);
 	}
+	
+	for(auto e = damage_numbers.begin(); e != damage_numbers.end();)
+    {
+        e->t -= 0.05f;
+        if(e->t < 0)
+        {
+            e = damage_numbers.erase(e);
+            continue;
+        }
+        
+        e->y -= 1.5f;
+        e->draw(view_buf);
+        e++;
+    }
 	
 	if(debug_draw_paths)
         draw_path(view_buf);
@@ -1727,6 +1759,7 @@ short walker::attack(walker  *target)
 		
     // Deal the damage
 	target->stats->hitpoints -= tempdamage;
+	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, target->query_team_color()));
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
     

@@ -36,6 +36,7 @@ class text
 		short write_xy(short x, short y, unsigned char color, const char* formatted_string, ...);
 		short write_xy_shadow(short x, short y, unsigned char color, const char* formatted_string, ...);
 		short write_xy_center(short x, short y, unsigned char color, const char* formatted_string, ...);
+		short write_xy_center_alpha(short x, short y, unsigned char color, Uint8 alpha, const char* formatted_string, ...);
 		short write_xy_center_shadow(short x, short y, unsigned char color, const char* formatted_string, ...);
 		short write_xy(short x, short y, const char  *string, short to_buffer);
 		short write_xy(short x, short y, const char  *string, unsigned char color, short to_buffer);
@@ -49,6 +50,7 @@ class text
 		short write_y(short y, const char  *string, unsigned char color, viewscreen *whereto);
 		short write_char_xy(short x, short y, char letter);
 		short write_char_xy(short x, short y, char letter, unsigned char color);
+		short write_char_xy_alpha(short x, short y, char letter, unsigned char color, Uint8 alpha);
 		short write_char_xy(short x, short y, char letter, short to_buffer);
 		short write_char_xy(short x, short y, char letter, unsigned char color, short to_buffer);
 		short write_char_xy(short x, short y, char letter, viewscreen *whereto);

@@ -140,6 +140,26 @@ short text::write_xy_center(short x, short y, unsigned char color, const char* f
 	return 1;
 }
 
+short text::write_xy_center_alpha(short x, short y, unsigned char color, Uint8 alpha, const char* formatted_string, ...)
+{
+    if(formatted_string == NULL)
+        return 0;
+    
+    va_list lst;
+    va_start(lst, formatted_string);
+    vsnprintf(text_buffer, 255, formatted_string, lst);
+    va_end(lst);
+    
+	unsigned short i = 0;
+	size_t len = strlen(text_buffer);
+	while(text_buffer[i])
+	{
+		write_char_xy_alpha((short) (x+i*(sizex+1) - len*(sizex+1)/2), y, text_buffer[i], (unsigned char) color, alpha);
+		i++;
+	}
+	return 1;
+}
+
 short text::write_xy_center_shadow(short x, short y, unsigned char color, const char* formatted_string, ...)
 {
     if(formatted_string == NULL)
@@ -358,6 +378,12 @@ short text::write_char_xy(short x, short y, char letter, short to_buffer)
 short text::write_char_xy(short x, short y, char letter, unsigned char color)
 {
 	myscreen->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey], (unsigned char) color);
+	return 1;
+}
+
+short text::write_char_xy_alpha(short x, short y, char letter, unsigned char color, Uint8 alpha)
+{
+	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, &letters.data[letter * sizex * sizey], (unsigned char) color, alpha);
 	return 1;
 }
 
