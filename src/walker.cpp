@@ -106,6 +106,7 @@ walker::walker(const PixieData& data)
     
 	path_check_counter = 5 + rand()%10;
 	hurt_flash = false;
+	attack_lunge = 0.0f;
 }
 
 short
@@ -172,6 +173,7 @@ walker::reset(void)
 		stats->bit_flags = 0;
     
 	hurt_flash = false;
+	attack_lunge = 0.0f;
 	
 	return 1;
 }
@@ -532,6 +534,31 @@ bool walker::walk(float x, float y)
 	return 1;
 }
 
+float walker::get_current_angle()
+{
+    switch (curdir)
+    {
+        case FACE_UP:
+            return -M_PI_2;
+        case FACE_UP_RIGHT:
+            return -M_PI_4;
+        case FACE_RIGHT:
+            return 0.0f;
+        case FACE_DOWN_RIGHT:
+            return M_PI_4;
+        case FACE_DOWN:
+            return M_PI_2;
+        case FACE_DOWN_LEFT:
+            return 3*M_PI_4;
+        case FACE_LEFT:
+            return M_PI;
+        case FACE_UP_LEFT:
+            return 5*M_PI_4;
+        default:
+            return 0.0f;
+    }
+}
+
 bool walker::turn(short targetdir)
 {
 	short distance;
@@ -729,6 +756,8 @@ walker  * walker::fire()
 			if (attack(weapon->collide_ob) && on_screen() )
 			{
 				myscreen->soundp->play_sound(SOUND_CLANG);
+				attack_lunge = 1.0f;
+				attack_lunge_angle = get_current_angle();
 			}
 			if (myguy)
             {
@@ -956,6 +985,8 @@ void walker::DamageNumber::draw(viewscreen* view_buf)
     myscreen->text_normal.write_xy_center_alpha(xscreen, yscreen, color, alpha, "%.0f", value);
 }
 
+#define ATTACK_LUNGE_SIZE 10
+
 short walker::draw(viewscreen  *view_buf)
 {
     // Update the drawing coords from the real position
@@ -977,6 +1008,12 @@ short walker::draw(viewscreen  *view_buf)
 
 	xscreen = (Sint32) (xpos - view_buf->topx + view_buf->xloc);
 	yscreen = (Sint32) (ypos - view_buf->topy + view_buf->yloc);
+	
+	if(attack_lunge > 0.0f)
+    {
+        xscreen += attack_lunge*ATTACK_LUNGE_SIZE*cos(attack_lunge_angle);
+        yscreen += attack_lunge*ATTACK_LUNGE_SIZE*sin(attack_lunge_angle);
+    }
 
 	if (stats->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
 	{
@@ -1500,6 +1537,14 @@ short walker::act()
 		if (temp)
 			return 1;
 	}
+	
+	if(attack_lunge > 0.0f)
+    {
+        attack_lunge -= 0.4f;
+        if(attack_lunge < 0.0f)
+            attack_lunge = 0.0f;
+    }
+	
 	switch (act_type)
 	{
 			// We are the control character

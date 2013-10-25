@@ -225,6 +225,14 @@ short living::act()
 		speed_bonus_left--;
 		stepsize += speed_bonus;
 	}
+	
+	
+	if(attack_lunge > 0.0f)
+    {
+        attack_lunge -= 0.4f;
+        if(attack_lunge < 0.0f)
+            attack_lunge = 0.0f;
+    }
 
 	// Special things for various different living types
 	switch (family)

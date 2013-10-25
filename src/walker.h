@@ -169,6 +169,10 @@ class walker : public pixieN
 		std::list<DamageNumber> damage_numbers;
 		
 		bool hurt_flash;
+		float attack_lunge;
+		float attack_lunge_angle;
+		
+		float get_current_angle();
 
 	protected:
 		short act_generate();
