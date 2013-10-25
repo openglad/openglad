@@ -107,6 +107,8 @@ walker::walker(const PixieData& data)
 	path_check_counter = 5 + rand()%10;
 	hurt_flash = false;
 	attack_lunge = 0.0f;
+	
+	last_hitpoints = 0.0f;
 }
 
 short
@@ -174,6 +176,8 @@ walker::reset(void)
     
 	hurt_flash = false;
 	attack_lunge = 0.0f;
+	
+	last_hitpoints = 0.0f;
 	
 	return 1;
 }
@@ -922,21 +926,6 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
     if(w->query_order() != ORDER_LIVING && w->query_order() != ORDER_GENERATOR)
         return;
     
-    float points = w->stats->hitpoints;
-    char whatcolor;
-    
-    if (float_eq(points, w->stats->max_hitpoints))
-        whatcolor = MAX_HP_COLOR;
-    else if ( (points * 3) < w->stats->max_hitpoints)
-        whatcolor = LOW_HP_COLOR;
-    else if ( (points * 3 / 2) < w->stats->max_hitpoints)
-        whatcolor = MID_HP_COLOR;
-    else if (points < w->stats->max_hitpoints)
-        whatcolor = LIGHT_GREEN;//HIGH_HP_COLOR;
-    else 
-        whatcolor = ORANGE_START;
-    
-    
 	Sint32 xscreen = (Sint32) (w->xpos - view_buf->topx + view_buf->xloc);
 	Sint32 yscreen = (Sint32) (w->ypos - view_buf->topy + view_buf->yloc);
     
@@ -953,15 +942,38 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
     if(r.x < portstartx || r.x > portendx
        || r.y < portstarty || r.y > portendy)
        return;
-           
+    
+    // Last hit's effect
+    float last_points = w->last_hitpoints;
+    float last_ratio = float(last_points)/w->stats->max_hitpoints;
+    
+    // Current HP
+    float points = w->stats->hitpoints;
     float ratio = float(points)/w->stats->max_hitpoints;
+    
+    char whatcolor;
+    
+    if (float_eq(points, w->stats->max_hitpoints))
+        whatcolor = MAX_HP_COLOR;
+    else if ( (points * 3) < w->stats->max_hitpoints)
+        whatcolor = LOW_HP_COLOR;
+    else if ( (points * 3 / 2) < w->stats->max_hitpoints)
+        whatcolor = MID_HP_COLOR;
+    else if (points < w->stats->max_hitpoints)
+        whatcolor = LIGHT_GREEN;//HIGH_HP_COLOR;
+    else 
+        whatcolor = ORANGE_START;
+    
     if(ratio >= 0.0f)
     {
         if(ratio < 0.95f)
         {
             Uint16 max_w = r.w;
-            r.w *= ratio;
-            myscreen->draw_box(r.x, r.y, r.x + r.w, r.y + r.h, whatcolor, 1);
+            
+            if(w->last_hitpoints > w->stats->hitpoints && last_ratio <= 1.0f)
+                myscreen->draw_box(r.x, r.y, r.x + r.w*last_ratio, r.y + r.h, 53, 1);
+                
+            myscreen->draw_box(r.x, r.y, r.x + r.w*ratio, r.y + r.h, whatcolor, 1);
             myscreen->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
         }
     }
@@ -985,7 +997,7 @@ void walker::DamageNumber::draw(viewscreen* view_buf)
     myscreen->text_normal.write_xy_center_alpha(xscreen, yscreen, color, alpha, "%.0f", value);
 }
 
-#define ATTACK_LUNGE_SIZE 10
+#define ATTACK_LUNGE_SIZE 5
 
 short walker::draw(viewscreen  *view_buf)
 {
@@ -1821,6 +1833,7 @@ short walker::attack(walker  *target)
     }
     
     // Deal the damage
+    target->last_hitpoints = target->stats->hitpoints;
 	target->stats->hitpoints -= tempdamage;
     // Orange numbers for the attacker to see
     attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));

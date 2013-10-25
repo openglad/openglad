@@ -172,6 +172,8 @@ class walker : public pixieN
 		float attack_lunge;
 		float attack_lunge_angle;
 		
+		float last_hitpoints;
+		
 		float get_current_angle();
 
 	protected:
