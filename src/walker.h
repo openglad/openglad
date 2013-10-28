@@ -171,6 +171,8 @@ class walker : public pixieN
 		bool hurt_flash;
 		float attack_lunge;
 		float attack_lunge_angle;
+		float hit_recoil;
+		float hit_recoil_angle;
 		
 		float last_hitpoints;
 		

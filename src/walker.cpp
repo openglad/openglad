@@ -107,6 +107,7 @@ walker::walker(const PixieData& data)
 	path_check_counter = 5 + rand()%10;
 	hurt_flash = false;
 	attack_lunge = 0.0f;
+	hit_recoil = 0.0f;
 	
 	last_hitpoints = 0.0f;
 }
@@ -176,6 +177,7 @@ walker::reset(void)
     
 	hurt_flash = false;
 	attack_lunge = 0.0f;
+	hit_recoil = 0.0f;
 	
 	last_hitpoints = 0.0f;
 	
@@ -998,6 +1000,7 @@ void walker::DamageNumber::draw(viewscreen* view_buf)
 }
 
 #define ATTACK_LUNGE_SIZE 5
+#define HIT_RECOIL_SIZE 3
 
 short walker::draw(viewscreen  *view_buf)
 {
@@ -1025,6 +1028,12 @@ short walker::draw(viewscreen  *view_buf)
     {
         xscreen += attack_lunge*ATTACK_LUNGE_SIZE*cos(attack_lunge_angle);
         yscreen += attack_lunge*ATTACK_LUNGE_SIZE*sin(attack_lunge_angle);
+    }
+    
+	if(hit_recoil > 0.0f)
+    {
+        xscreen += hit_recoil*HIT_RECOIL_SIZE*cos(hit_recoil_angle);
+        yscreen += hit_recoil*HIT_RECOIL_SIZE*sin(hit_recoil_angle);
     }
 
 	if (stats->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
@@ -1557,6 +1566,13 @@ short walker::act()
             attack_lunge = 0.0f;
     }
 	
+	if(hit_recoil > 0.0f)
+    {
+        hit_recoil -= 0.6f;
+        if(hit_recoil < 0.0f)
+            hit_recoil = 0.0f;
+    }
+	
 	switch (act_type)
 	{
 			// We are the control character
@@ -1843,7 +1859,12 @@ short walker::attack(walker  *target)
 		tempdamage += target->stats->hitpoints;
     
     if(tempdamage > 0)
+    {
         target->hurt_flash = true;
+        
+        target->hit_recoil = 1.0f;
+        target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
+    }
     
     // Delay HP regeneration
     if(tempdamage > 0)

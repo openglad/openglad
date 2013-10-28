@@ -233,6 +233,13 @@ short living::act()
         if(attack_lunge < 0.0f)
             attack_lunge = 0.0f;
     }
+	
+	if(hit_recoil > 0.0f)
+    {
+        hit_recoil -= 0.6f;
+        if(hit_recoil < 0.0f)
+            hit_recoil = 0.0f;
+    }
 
 	// Special things for various different living types
 	switch (family)
