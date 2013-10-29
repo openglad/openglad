@@ -287,6 +287,7 @@ char* read_one_line(SDL_RWops *infile, short length);
 #define FAMILY_MARKER 9         // Marker for Mages Teleport
 #define FAMILY_CHAIN 10         // 'Chain lightning' effect
 #define FAMILY_DOOR_OPEN 11     // The open door
+#define FAMILY_HIT 12           // Show when hit
 
 // Special families
 #define FAMILY_RESERVED_TEAM 0

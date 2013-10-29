@@ -48,7 +48,7 @@ short effect::act()
 	short numfoes;
 	std::list<walker*> foelist;
 
-	// Make sure everyone we're poshorting to is valid
+	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
 		foe = NULL;
 	if (leader && leader->dead)
@@ -56,7 +56,7 @@ short effect::act()
 	if (owner && owner->dead)
 		owner = NULL;
 
-	collide_ob = NULL; // always start with no collison..
+	collide_ob = NULL; // always start with no collision..
 
 	// Any special actions ..
 	switch (family) // determine what to do..

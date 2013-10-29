@@ -120,6 +120,27 @@ signed char  *aniexplosion1[] = {explosion1, explosion1, explosion1, explosion1,
                                  explosion1, explosion1, explosion1, explosion1,
                                  explosion1, explosion1, explosion1, explosion1 };
 
+/*
+How do animations work?
+animate() sets the walker graphic to: ani[curdir+ani_type*NUM_FACINGS][cycle]
+ani_type of 0 causes an effect object to last only one frame.
+So any lasting animation usually has ani_type of 1, which means 'ani' needs to store at least 16 elements (NUM_FACINGS == 8).
+The animation can be directional due to the use of curdir.
+The signed char[] are the actual frame indices for the animation.  -1 means to end the animation.
+*/
+
+signed char hit1[] = {0, 1, -1};
+signed char hit2[] = {0, 2, -1};
+signed char hit3[] = {0, 3, -1};
+signed char  *anihit[] = {hit1, hit1, hit1, hit1,
+                                 hit1, hit1, hit1, hit1,
+                                 hit1, hit1, hit1, hit1,
+                                 hit1, hit1, hit1, hit1,
+                                 hit2, hit2, hit2, hit2,
+                                 hit2, hit2, hit2, hit2,
+                                 hit3, hit3, hit3, hit3,
+                                 hit3, hit3, hit3, hit3 };
+
 signed char cloud_cycle[] = {0, 1, 2, 3, 2, 1, -1};
 signed char *anicloud[] = {cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
                            cloud_cycle, cloud_cycle, cloud_cycle, cloud_cycle,
@@ -709,6 +730,7 @@ loader::loader()
 	graphics[PIX(ORDER_FX, FAMILY_BOOMERANG)] = read_pixie_file("boomer.pix");
 	graphics[PIX(ORDER_FX, FAMILY_CHAIN)] = read_pixie_file("lightnin.pix");
 	graphics[PIX(ORDER_FX, FAMILY_DOOR_OPEN)] = read_pixie_file("door.pix");
+	graphics[PIX(ORDER_FX, FAMILY_HIT)] = read_pixie_file("hit.pix");
 
 	animations[PIX(ORDER_FX, FAMILY_EXPAND)] = aniexpand8;
 	animations[PIX(ORDER_FX, FAMILY_GHOST_SCARE)] = aniexpand8;
@@ -722,6 +744,7 @@ loader::loader()
 	animations[PIX(ORDER_FX, FAMILY_MARKER)] = animarker;
 	animations[PIX(ORDER_FX, FAMILY_CHAIN)] = aniarrow;
 	animations[PIX(ORDER_FX, FAMILY_DOOR_OPEN)] = anidooropen;
+	animations[PIX(ORDER_FX, FAMILY_HIT)] = anihit;
 
 	stepsizes[PIX(ORDER_FX, FAMILY_CLOUD)] = 4;
 	stepsizes[PIX(ORDER_FX, FAMILY_CHAIN)] = 12;  // REALLY fast!

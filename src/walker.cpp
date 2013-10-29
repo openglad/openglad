@@ -1858,6 +1858,22 @@ short walker::attack(walker  *target)
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
     
+    // Create hit effect
+    {
+       walker* newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_HIT);
+        if (newob)
+        {
+            newob->owner = target;
+            newob->team_num = team_num;
+            newob->stats->level = 1;
+            newob->damage = 0;
+            newob->ani_type = 1 + rand()%3;
+            newob->center_on(this);  // Make the hit effect start at the projectile position
+            // Then move it a little closer to its target (average)
+            newob->setworldxy((target->worldx + newob->worldx)/2, (target->worldy + newob->worldy)/2);
+        }
+    }
+    
     if(tempdamage > 0)
     {
         target->hurt_flash = true;

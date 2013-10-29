@@ -36,7 +36,7 @@ short weap::act()
 {
 	static char message[80];
 
-	// Make sure everyone we're poshorting to is valid
+	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
 		foe = NULL;
 	if (leader && leader->dead)
@@ -47,7 +47,7 @@ short weap::act()
 	if (!owner)
 		owner = this; //to fix cases where our parent died!
 
-	collide_ob = NULL; // always start with no collison..
+	collide_ob = NULL; // always start with no collision..
 
 	// Complete previous animations (like firing)
 	if (ani_type != ANI_WALK)
