@@ -177,6 +177,9 @@ class walker : public pixieN
 		float last_hitpoints;
 		
 		float get_current_angle();
+        void do_heal_effects(walker* healer, walker* target, short amount);
+        void do_hit_effects(walker* attacker, walker* target, short tempdamage);
+        void do_combat_damage(walker* attacker, walker* target, short tempdamage);
 
 	protected:
 		short act_generate();

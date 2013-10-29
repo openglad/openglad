@@ -1760,6 +1760,87 @@ float get_damage_reduction(walker* w, float damage, walker* target)
 }
 
 
+void walker::do_heal_effects(walker* healer, walker* target, short amount)
+{
+    if(healer)
+        healer->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
+	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
+}
+
+void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
+{
+    // Orange numbers for the attacker to see
+    if(attacker)
+        attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
+    // RED numbers for the target to see
+	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
+	if (target->stats->hitpoints < 0)
+		tempdamage += target->stats->hitpoints;
+    
+    // Create hit effect
+    if(query_order() != ORDER_FX || query_family() == FAMILY_KNIFE_BACK)
+    {
+       walker* newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_HIT);
+        if (newob)
+        {
+            newob->owner = target;
+            newob->team_num = team_num;
+            newob->stats->level = 1;
+            newob->damage = 0;
+            newob->ani_type = 1 + rand()%3;
+            if(attacker == this)
+            {
+                newob->center_on(target);
+            }
+            else
+            {
+                // A projectile
+                newob->center_on(this);  // Make the hit effect start at the projectile position
+                // Then move it a little closer to its target (average)
+                newob->setworldxy((target->worldx + target->sizex/2 + newob->worldx)/2, (target->worldy + target->sizey/2 + newob->worldy)/2);
+            }
+        }
+    }
+    
+    if(tempdamage > 0)
+    {
+        target->hurt_flash = true;
+        
+        target->hit_recoil = 1.0f;
+        target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
+    }
+}
+
+void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage)
+{
+	// Record damage done for records ..
+	if (attacker && attacker->myguy && target->query_order() == ORDER_LIVING)  // hit a living
+    {
+		attacker->myguy->total_damage += tempdamage;
+		attacker->myguy->scen_damage += tempdamage;
+    }
+    
+    // Deal the damage
+    target->last_hitpoints = target->stats->hitpoints;
+	target->stats->hitpoints -= tempdamage;
+	
+	do_hit_effects(attacker, target, tempdamage);
+	
+	if (target->stats->hitpoints < 0)
+		tempdamage += target->stats->hitpoints;
+    
+    // Delay HP regeneration
+    if(tempdamage > 0)
+        target->regen_delay = 50;
+    
+    if(target->myguy != NULL)
+    {
+        target->myguy->scen_damage_taken += tempdamage;
+        if(target->myguy->scen_min_hp > target->stats->hitpoints)
+            target->myguy->scen_min_hp = target->stats->hitpoints;
+    }
+}
+
 short walker::attack(walker  *target)
 {
 	walker  *blood; // temporary stain
@@ -1841,57 +1922,8 @@ short walker::attack(walker  *target)
 	tempdamage -= get_damage_reduction(attacker, tempdamage, target);
 	if (tempdamage < 0)
 		tempdamage = 0;
-	// Record damage done for records ..
-	if (attacker->myguy && targetorder==ORDER_LIVING)  // hit a living
-    {
-		attacker->myguy->total_damage += tempdamage;
-		attacker->myguy->scen_damage += tempdamage;
-    }
     
-    // Deal the damage
-    target->last_hitpoints = target->stats->hitpoints;
-	target->stats->hitpoints -= tempdamage;
-    // Orange numbers for the attacker to see
-    attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
-    // RED numbers for the target to see
-	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
-	if (target->stats->hitpoints < 0)
-		tempdamage += target->stats->hitpoints;
-    
-    // Create hit effect
-    {
-       walker* newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_HIT);
-        if (newob)
-        {
-            newob->owner = target;
-            newob->team_num = team_num;
-            newob->stats->level = 1;
-            newob->damage = 0;
-            newob->ani_type = 1 + rand()%3;
-            newob->center_on(this);  // Make the hit effect start at the projectile position
-            // Then move it a little closer to its target (average)
-            newob->setworldxy((target->worldx + newob->worldx)/2, (target->worldy + newob->worldy)/2);
-        }
-    }
-    
-    if(tempdamage > 0)
-    {
-        target->hurt_flash = true;
-        
-        target->hit_recoil = 1.0f;
-        target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
-    }
-    
-    // Delay HP regeneration
-    if(tempdamage > 0)
-        target->regen_delay = 50;
-    
-    if(target->myguy != NULL)
-    {
-        target->myguy->scen_damage_taken += tempdamage;
-        if(target->myguy->scen_min_hp > target->stats->hitpoints)
-            target->myguy->scen_min_hp = target->stats->hitpoints;
-    }
+    do_combat_damage(attacker, target, damage);
 
 
     // Base exp from attack damage
@@ -2515,9 +2547,8 @@ short walker::special()
 									if (myguy)
 										myguy->exp += exp_from_action(EXP_HEAL, this, newob, generic);
 									didheal++;
-									// Show the numbers
-                                    this->damage_numbers.push_back(DamageNumber(newob->xpos + newob->sizex/2, newob->ypos, generic, 56));
-                                    newob->damage_numbers.push_back(DamageNumber(newob->xpos + newob->sizex/2, newob->ypos, generic, 56));
+									
+                                    do_heal_effects(this, newob, generic);
 								}
 							}
 							if (!didheal)
@@ -2713,13 +2744,14 @@ short walker::special()
 						distance = distance_to_ob(newob); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
 						if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
 						{
-							if ( is_friendly(newob) ) // normal ressurection
+							if ( is_friendly(newob) ) // normal resurrection
 							{
 								alive = myscreen->level_data.add_ob(ORDER_LIVING, newob->stats->old_family);
 								if(!alive)
 									return 0; // failsafe
 								newob->transfer_stats(alive);  // restore our old values ..
 								alive->stats->hitpoints = (alive->stats->max_hitpoints)/2;
+								do_heal_effects(this, alive, (alive->stats->max_hitpoints)/2);
 								alive->team_num = newob->team_num;
 								
 								if(myguy) // take some EXP away as penalty if we're a player
@@ -3734,6 +3766,7 @@ short walker::special()
                                         tempwalk->stats->hitpoints += alive->stats->hitpoints;
                                         alive->dead = 1;
                                         didheal++;
+                                        // TODO: Should we show healing numbers here?
                                     } // end of target WAS protected
                                     
                                     // Get experience either way
@@ -3810,6 +3843,7 @@ short walker::special()
 					if (distance > 24) // must be close enough
 						return 0;
 					stats->hitpoints += newob->stats->level*5;
+					do_heal_effects(NULL, this, newob->stats->level*5);
 					// Print the eating notice
 					if (myguy)
 					{

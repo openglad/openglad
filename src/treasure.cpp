@@ -69,9 +69,13 @@ short treasure::eat_me(walker  * eater)
 				return 1;
 			else
 			{
-				eater->stats->hitpoints += 10*stats->level + random(10*stats->level);
+			    short amount = 10*stats->level + random(10*stats->level);
+				eater->stats->hitpoints += amount;
 				if (eater->stats->hitpoints > eater->stats->max_hitpoints)
 					eater->stats->hitpoints = eater->stats->max_hitpoints;
+                
+                do_heal_effects(NULL, eater, amount);
+                
 				dead = 1;
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_EAT);
