@@ -763,10 +763,13 @@ walker  * walker::fire()
 			{
 				myscreen->soundp->play_sound(SOUND_CLANG);
 				
-                if(query_order() == ORDER_LIVING)
+                if(cfg.is_on("effects", "attack_lunge"))
                 {
-                    attack_lunge = 1.0f;
-                    attack_lunge_angle = get_current_angle();
+                    if(query_order() == ORDER_LIVING)
+                    {
+                        attack_lunge = 1.0f;
+                        attack_lunge_angle = get_current_angle();
+                    }
                 }
 			}
 			if (myguy)
@@ -929,6 +932,9 @@ bool float_eq(float a, float b)
 
 void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 {
+    if(!cfg.is_on("effects", "mini_hp_bar"))
+        return;
+    
     if(w->query_order() != ORDER_LIVING && w->query_order() != ORDER_GENERATOR)
         return;
     
@@ -1766,6 +1772,9 @@ float get_damage_reduction(walker* w, float damage, walker* target)
 
 void walker::do_heal_effects(walker* healer, walker* target, short amount)
 {
+    if(!cfg.is_on("effects", "heal_numbers"))
+        return;
+    
     if(healer)
         healer->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
 	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
@@ -1773,47 +1782,57 @@ void walker::do_heal_effects(walker* healer, walker* target, short amount)
 
 void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 {
-    // Orange numbers for the attacker to see
-    if(attacker)
-        attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
-    // RED numbers for the target to see
-	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
+    if(cfg.is_on("effects", "damage_numbers"))
+    {
+        // Orange numbers for the attacker to see
+        if(attacker)
+            attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
+        // RED numbers for the target to see
+        target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
+    }
 	if (target->stats->hitpoints < 0)
 		tempdamage += target->stats->hitpoints;
     
-    // Create hit effect
-    if(query_order() != ORDER_FX || query_family() == FAMILY_KNIFE_BACK)
+    if(cfg.is_on("effects", "hit_anim"))
     {
-       walker* newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_HIT);
-        if (newob)
+        // Create hit effect
+        if(query_order() != ORDER_FX || query_family() == FAMILY_KNIFE_BACK)
         {
-            newob->owner = target;
-            newob->team_num = team_num;
-            newob->stats->level = 1;
-            newob->damage = 0;
-            newob->ani_type = 1 + rand()%3;
-            if(attacker == this)
+           walker* newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_HIT);
+            if (newob)
             {
-                newob->center_on(target);
-            }
-            else
-            {
-                // A projectile
-                newob->center_on(this);  // Make the hit effect start at the projectile position
-                // Then move it a little closer to its target (average)
-                newob->setworldxy((target->worldx + target->sizex/2 + newob->worldx)/2, (target->worldy + target->sizey/2 + newob->worldy)/2);
+                newob->owner = target;
+                newob->team_num = team_num;
+                newob->stats->level = 1;
+                newob->damage = 0;
+                newob->ani_type = 1 + rand()%3;
+                if(attacker == this)
+                {
+                    newob->center_on(target);
+                }
+                else
+                {
+                    // A projectile
+                    newob->center_on(this);  // Make the hit effect start at the projectile position
+                    // Then move it a little closer to its target (average)
+                    newob->setworldxy((target->worldx + target->sizex/2 + newob->worldx)/2, (target->worldy + target->sizey/2 + newob->worldy)/2);
+                }
             }
         }
     }
     
     if(tempdamage > 0)
     {
-        target->hurt_flash = true;
+        if(cfg.is_on("effects", "hit_flash"))
+            target->hurt_flash = true;
         
-        if(target->query_order() == ORDER_LIVING)
+        if(cfg.is_on("effects", "hit_recoil"))
         {
-            target->hit_recoil = 1.0f;
-            target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
+            if(target->query_order() == ORDER_LIVING)
+            {
+                target->hit_recoil = 1.0f;
+                target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
+            }
         }
     }
 }
@@ -2562,13 +2581,17 @@ short walker::special()
 								return 0; // everyone was healthy; don't charge us
 							else
 							{
-								// Inform screen/view to print a message ..
-								if (didheal == 1)
-									sprintf(message, "Cleric healed 1 man!");
-								else
-									sprintf(message, "Cleric healed %d men!", didheal);
-								if (team_num == 0 || myguy) // home team
-									myscreen->do_notify(message, this);
+                                if(!cfg.is_on("effects", "heal_numbers"))
+                                {
+                                    // Inform screen/view to print a message ..
+                                    if (didheal == 1)
+                                        sprintf(message, "Cleric healed 1 man!");
+                                    else
+                                        sprintf(message, "Cleric healed %d men!", didheal);
+                                    if (team_num == 0 || myguy) // home team
+                                        myscreen->do_notify(message, this);
+                                }
+                                
 								// Play sound ...
 								if (on_screen())
 									myscreen->soundp->play_sound(SOUND_HEAL);
@@ -3862,7 +3885,9 @@ short walker::special()
 					else
 						strcpy(message, "Orc");
 					strcat(message, " ate a corpse.");
-					myscreen->do_notify(message, this);
+					
+                    if(!cfg.is_on("effects", "heal_numbers"))
+                        myscreen->do_notify(message, this);
 					if (stats->hitpoints > stats->max_hitpoints)
 						stats->hitpoints = stats->max_hitpoints;
 					newob->dead = 1;

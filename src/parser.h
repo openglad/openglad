@@ -20,13 +20,17 @@
 #include <string>
 #include <map>
 
-class cfg_store {
+class cfg_store
+{
 public:
-	// Commit data.  Later changes replace older, if clashes.
-	bool parse(const char *);
+    
+	bool load_settings();
 	void commandline(int &argc, char **&argv);
+    bool save_settings();
 
-	const char *query(const char*, const char *);
+    void apply_setting(const std::string& category, const std::string& setting, const std::string& value);
+    std::string get_setting(const std::string& category, const std::string& setting);
+	bool is_on(const std::string& category, const std::string& setting);
 
 	std::map<std::string, std::map<std::string, std::string> > data;
 };

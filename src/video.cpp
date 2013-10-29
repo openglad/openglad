@@ -35,28 +35,25 @@ video::video()
     : text_normal(TEXT_1), text_big(TEXT_BIG)
 {
 	Sint32 i;
-	const char *qresult;
 	RenderEngine render;
 	fullscreen = 0;
     render = NoZoom;
 
-	qresult = cfg.query("graphics","fullscreen");
-	if(qresult && strcmp(qresult,"on")==0)
+	if(cfg.is_on("graphics","fullscreen"))
 		fullscreen = 1;
 	else
 		fullscreen = 0;
 
-	qresult = cfg.query("graphics", "render");
-	if(qresult && strcmp(qresult, "normal")==0) {
+	std::string qresult = cfg.get_setting("graphics", "render");
+	if(qresult == "normal")
 		render = NoZoom;
-	} else if(qresult && strcmp(qresult,"sai")==0) {
+	else if(qresult == "sai")
 		render = SAI;
-	} else if(qresult && strcmp(qresult,"eagle")==0) {
+	else if(qresult == "eagle")
 		render = EAGLE;
-	} else if(qresult && strcmp(qresult,"double")==0) {
+	else if(qresult == "double")
 		render = DOUBLE;
-	}
-
+	
 	fadeDuration = 500;
 
 	// Load our palettes ..

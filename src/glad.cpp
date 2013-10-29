@@ -74,7 +74,8 @@ int main(int argc, char *argv[])
 {
 	io_init(argc, argv);
 	
-	cfg.parse("cfg/openglad.yaml");
+	cfg.load_settings();
+	cfg.save_settings();
 	cfg.commandline(argc, argv);
 
 	theprefs = new options;

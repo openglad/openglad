@@ -3165,7 +3165,7 @@ Sint32 overscan_adjust()
         SDL_Delay(10);
 	}
 	
-	save_settings();
+	cfg.save_settings();
     
     return REDRAW;
 }

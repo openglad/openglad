@@ -170,7 +170,8 @@ short living::act()
 	{
 		flight_left++;
 		stats->hitpoints--;
-        damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
+		if(cfg.is_on("effects", "damage_numbers"))
+            damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
 		
 		if (stats->hitpoints <= 0)
 		{

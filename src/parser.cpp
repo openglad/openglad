@@ -30,62 +30,164 @@
 #include "util.h"
 #include "yam.h"
 
+// TODO: Move overscan setting and toInt() to this file.
+#include "input.h"
+int toInt(const std::string& s);
+
 using namespace std;
 
 cfg_store cfg;
 
-bool cfg_store::parse(const char *filename)
+void cfg_store::apply_setting(const std::string& category, const std::string& setting, const std::string& value)
 {
-    SDL_RWops* rwops = open_read_file(filename);
+    data[category][setting] = value;
+}
+
+std::string cfg_store::get_setting(const std::string& category, const std::string& setting)
+{
+	map<string, map<string, string> >::iterator a1 = data.find(category);
+	if(a1 != data.end())
+	{
+		map<string, string>::iterator a2 = a1->second.find(setting);
+		if(a2 != a1->second.end())
+			return a2->second;
+	}
+	
+	return "";
+}
+
+bool cfg_store::load_settings()
+{
+    // Load defaults
+    apply_setting("", "version", "1");
+    apply_setting("sound", "sound", "on");
+    
+    apply_setting("graphics", "render", "normal");
+    apply_setting("graphics", "fullscreen", "off");
+    apply_setting("graphics", "overscan_percentage", "0");
+    
+    apply_setting("effects", "mini_hp_bar", "on");
+    apply_setting("effects", "hit_flash", "on");
+    apply_setting("effects", "hit_recoil", "on");
+    apply_setting("effects", "attack_lunge", "on");
+    apply_setting("effects", "hit_anim", "on");
+    apply_setting("effects", "damage_numbers", "on");
+    apply_setting("effects", "heal_numbers", "on");
+    
+    Log("Loading settings\n");
+    SDL_RWops* rwops = open_read_file("cfg/openglad.yaml");
     if(rwops == NULL)
 	{
 		Log("Could not open config file. Using defaults.");
-		data["sound"]["sound"] = "on";
-		data["graphics"]["render"] = "normal";
 		return false;
 	}
     
     Yam yam;
     yam.set_input(rwops_read_handler, rwops);
     
+    std::string last_scalar;
+    std::string current_category;
     
-    while(yam.parse_next() == Yam::OK)
+    Yam::ParseResultEnum parse_result;
+    while((parse_result = yam.parse_next()) == Yam::OK)
     {
         switch(yam.event.type)
         {
+            case Yam::BEGIN_SEQUENCE:
+                break;
+            case Yam::END_SEQUENCE:
+                break;
+            case Yam::BEGIN_MAPPING:
+                current_category = last_scalar;
+                break;
+            case Yam::END_MAPPING:
+                break;
+            case Yam::ALIAS:
+                break;
             case Yam::PAIR:
-                if(strcmp(yam.event.scalar, "sound") == 0)
-                    data["sound"]["sound"] = strdup(yam.event.value);
-                else if(strcmp(yam.event.scalar, "render") == 0)
-                    data["graphics"]["render"] = strdup(yam.event.value);
-                else if(strcmp(yam.event.scalar, "fullscreen") == 0)
-                    data["graphics"]["fullscreen"] = strdup(yam.event.value);
-            break;
+                apply_setting(current_category, yam.event.scalar, yam.event.value);
+                break;
+            case Yam::SCALAR:
+                last_scalar = yam.event.scalar;
+                break;
             default:
                 break;
         }
     }
     
+    if(parse_result == Yam::ERROR)
+        Log("Parsing error.\n");
+    
     yam.close_input();
     SDL_RWclose(rwops);
+    
+    // Update game stuff from these settings
+    overscan_percentage = toInt(get_setting("graphics", "overscan_percentage"))/100.0f;
+    update_overscan_setting();
     
 	return true;
 }
 
+
+bool cfg_store::save_settings()
+{
+    char buf[40];
+    snprintf(buf, 40, "%.0f", 100*overscan_percentage);
+    apply_setting("graphics", "overscan_percentage", buf);
+    
+    SDL_RWops* outfile = open_write_file("cfg/openglad.yaml");
+    if(outfile != NULL)
+    {
+        Log("Saving settings\n");
+        
+        Yam yam;
+        yam.set_output(rwops_write_handler, outfile);
+        
+        // Each category is a mapping that holds setting/value pairs
+        for(auto e = data.begin(); e != data.end(); e++)
+        {
+            if(e->first.size() > 0)
+            {
+                yam.emit_scalar(e->first.c_str());
+                yam.emit_begin_mapping();
+            }
+            
+            for(auto f = e->second.begin(); f != e->second.end(); f++)
+            {
+                yam.emit_pair(f->first.c_str(), f->second.c_str());
+            }
+            
+            if(e->first.size() > 0)
+            {
+                yam.emit_end_mapping();
+            }
+        }
+        
+        yam.close_output();
+        SDL_RWclose(outfile);
+        
+        return true;
+    }
+    else
+    {
+        Log("Couldn't open cfg/openglad.yaml for writing.\n");
+        return false;
+    }
+}
+
 void cfg_store::commandline(int &argc, char **&argv)
 {
-	const char helpmsg[] = "\
-Usage: open(glad|scen) [-d -f ...]\n\
-  -s		Turn sound on\n\
-  -S		Turn sound off\n\
-  -n		Run at 320x200 resolution\n\
-  -d		Double pixel size\n\
-  -e		Use eagle engine for pixel doubling\n\
-  -i		Use sai2x engine for pixel doubling\n\
-  -f		Use full screen\n\
-  -h		Print a summary of the options\n\
-  -v		Print the version number\n\
-";
+	const char helpmsg[] = 
+"Usage: openglad [-d -f ...]\n"
+"  -s		Turn sound on\n"
+"  -S		Turn sound off\n"
+"  -n		Run at 320x200 resolution\n"
+"  -d		Double pixel size\n"
+"  -e		Use eagle engine for pixel doubling\n"
+"  -i		Use sai2x engine for pixel doubling\n"
+"  -f		Use full screen\n"
+"  -h		Print a summary of the options\n"
+"  -v		Print the version number\n";
 
 	const char versmsg[] = "openglad version " OPENGLAD_VERSION_STRING "\n";
 
@@ -145,43 +247,11 @@ Usage: open(glad|scen) [-d -f ...]\n\
 	}
 
 	// End Changes
-
-/* Old version:
- * Ran the same switch as above but with the getopt_int result
-	
-	const struct option intopts[] = {
-		{"help", 0, 0, 'h'},
-		{"version", 0, 0, 'v'},
-		{"sound", 0, 0, 's'},
-		{"nosound", 0, 0, 'S'},
-		{"nostretch", 0, 0, 'n'},
-		{"double", 0, 0, 'd'},
-		{"eagle", 0, 0, 'e'},
-		{"sai", 0, 0, 'i'},
-		{"fullscreen", 0, 0, 'f'},
-		{0, 0, 0, 0}
-	};
-	while(1)
-	{
-		int c;
-		c = getopt_int (argc, argv, "dniefhsSv", intopts, NULL);
-		switch(c)
-*/
-
 }
 
-const char *cfg_store::query(const char *section, const char *entry)
+
+bool cfg_store::is_on(const std::string& category, const std::string& setting)
 {
-	//return data[section][entry].c_str();  // may make null entries
-	map<string, map<string, string> >::iterator a1 = data.find(section);
-	if(a1 != data.end())
-	{
-		map<string, string>::iterator a2 = a1->second.find(entry);
-		if(a2 != a1->second.end())
-			return a2->second.c_str();
-	}
-#if 0	// desired behavior now.  null replies mean use the default.
-	Log("config variable not found: section: %s entry: %s", section, entry);
-#endif
-	return NULL;
+    return get_setting(category, setting) == "on";
 }
+

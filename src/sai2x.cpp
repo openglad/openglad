@@ -712,11 +712,6 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     SDL_GetWindowSize(window, &w, &h);
     window_w = w;
     window_h = h;
-    #ifdef OUYA
-    overscan_percentage = 0.10f;
-    #else
-    overscan_percentage = 0.00f;
-    #endif
     
     update_overscan_setting();
     

@@ -80,7 +80,6 @@ screen::screen(short howmany)
     myscreen = this;
     
 	Sint32 i, j;
-	const char *qresult;
 	text& first_text = text_normal;
 	Sint32 left = 66;
 
@@ -110,8 +109,7 @@ screen::screen(short howmany)
 	first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
 	
-	// Load configuration settings here
-	load_settings();
+	update_overscan_setting();
 	
 	palmode = 0;
 
@@ -148,8 +146,7 @@ screen::screen(short howmany)
 	
 
 	// Init the sound data
-	qresult = cfg.query("sound", "sound");
-	if (!qresult || (qresult && !strcmp(qresult, "on"))) // sound is on
+	if (cfg.is_on("sound", "sound")) // sound is on
 	{
 		soundp = new soundob();
 		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
