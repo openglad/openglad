@@ -762,8 +762,12 @@ walker  * walker::fire()
 			if (attack(weapon->collide_ob) && on_screen() )
 			{
 				myscreen->soundp->play_sound(SOUND_CLANG);
-				attack_lunge = 1.0f;
-				attack_lunge_angle = get_current_angle();
+				
+                if(query_order() == ORDER_LIVING)
+                {
+                    attack_lunge = 1.0f;
+                    attack_lunge_angle = get_current_angle();
+                }
 			}
 			if (myguy)
             {
@@ -1806,8 +1810,11 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     {
         target->hurt_flash = true;
         
-        target->hit_recoil = 1.0f;
-        target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
+        if(target->query_order() == ORDER_LIVING)
+        {
+            target->hit_recoil = 1.0f;
+            target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
+        }
     }
 }
 
