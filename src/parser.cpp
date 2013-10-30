@@ -66,6 +66,7 @@ bool cfg_store::load_settings()
     apply_setting("graphics", "fullscreen", "off");
     apply_setting("graphics", "overscan_percentage", "0");
     
+    apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");
     apply_setting("effects", "hit_flash", "on");
     apply_setting("effects", "hit_recoil", "on");

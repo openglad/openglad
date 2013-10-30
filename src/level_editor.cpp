@@ -1628,12 +1628,6 @@ void LevelEditorData::draw(screen* myscreen)
     
 }
 
-#ifdef NO_BLOOD
-#define BLOOD_STRING "REMAINS"
-#else
-#define BLOOD_STRING "BLOOD"
-#endif
-
 Sint32 LevelEditorData::display_panel(screen* myscreen)
 {
     text& scentext = myscreen->text_normal;
@@ -1680,15 +1674,22 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
-	static char treasures[20][NUM_FAMILIES] =
-	    { BLOOD_STRING, "DRUMSTICK", "GOLD", "SILVER",
+	
+	const char* blood_string;
+	if(cfg.is_on("effects", "gore"))
+        blood_string = "BLOOD";
+    else
+        blood_string = "REMAINS";
+    
+	const char* treasures[NUM_FAMILIES] =
+	    { blood_string, "DRUMSTICK", "GOLD", "SILVER",
 	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
 	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED", "CC",
 	    };
-	static char weapons[20][NUM_FAMILIES] =
+	const char* weapons[NUM_FAMILIES] =
 	    { "KNIFE", "ROCK", "ARROW", "FIREBALL",
 	      "TREE", "METEOR", "SPRINKLE", "BONE",
-	      BLOOD_STRING, "BLOB", "FIRE ARROW", "LIGHTNING",
+	      blood_string, "BLOB", "FIRE ARROW", "LIGHTNING",
 	      "GLOW", "WAVE 1", "WAVE 2", "WAVE 3",
 	      "PROTECTION", "HAMMER", "DOOR",
 	    };
