@@ -193,9 +193,9 @@ void glad_main(Sint32 playermode)
             {
                 if(event.key.keysym.sym == SDLK_F11)
                     debug_draw_paths = !debug_draw_paths;
-                if(event.key.keysym.sym == SDLK_F12)
+                else if(event.key.keysym.sym == SDLK_F12)
                     debug_draw_obmap = !debug_draw_obmap;
-                if(event.key.keysym.sym == SDLK_ESCAPE)
+                else if(event.key.keysym.sym == SDLK_ESCAPE)
                 {
                     bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
                     myscreen->redrawme = 1;

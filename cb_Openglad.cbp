@@ -17,14 +17,18 @@
 					<Add option="-D_DEBUG" />
 					<Add directory="../../bdcode/externals/SDL2/include/SDL2" />
 					<Add directory="../../bdcode/externals/SDL_mixer/include" />
+					<Add directory="../../bdcode/externals/png/include" />
+					<Add directory="../../bdcode/externals/png/include/windows" />
 				</Compiler>
 				<Linker>
 					<Add library="mingw32" />
 					<Add library="SDL2main" />
 					<Add library="SDL2" />
 					<Add library="SDL2_mixer" />
+					<Add library="png" />
 					<Add directory="../../bdcode/externals/SDL2/lib_windows" />
 					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
+					<Add directory="../../bdcode/externals/png/lib_windows" />
 				</Linker>
 			</Target>
 			<Target title="Linux Debug SDL2">
@@ -55,14 +59,18 @@
 					<Add option="-DFAKE_TOUCH_EVENTS" />
 					<Add directory="../../bdcode/externals/SDL2/include/SDL2" />
 					<Add directory="../../bdcode/externals/SDL_mixer/include" />
+					<Add directory="../../bdcode/externals/png/include" />
+					<Add directory="../../bdcode/externals/png/include/windows" />
 				</Compiler>
 				<Linker>
 					<Add library="mingw32" />
 					<Add library="SDL2main" />
 					<Add library="SDL2" />
 					<Add library="SDL2_mixer" />
+					<Add library="png" />
 					<Add directory="../../bdcode/externals/SDL2/lib_windows" />
 					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
+					<Add directory="../../bdcode/externals/png/lib_windows" />
 				</Linker>
 			</Target>
 		</Build>
@@ -532,6 +540,10 @@
 		<Unit filename="src/walker.h" />
 		<Unit filename="src/weap.cpp" />
 		<Unit filename="src/weap.h" />
+		<Unit filename="util/savepng.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="util/savepng.h" />
 		<Extensions>
 			<envvars />
 			<code_completion />

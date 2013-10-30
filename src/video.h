@@ -127,6 +127,8 @@ class video
 		void get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b);
 		int get_pixel(int x, int y, int *index);
 		int get_pixel(int offset);
+		
+		bool save_screenshot();
 
 		// Fading code: (thanks Erik!)
 		void FadeBetween24(SDL_Surface *, const Uint8 *, const Uint8 *, const int);

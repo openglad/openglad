@@ -1720,6 +1720,46 @@ int video::get_pixel(int offset)
 	return get_pixel(x,y,&t);
 }
 
+#include "../util/savepng.h"
+bool video::save_screenshot()
+{
+    SDL_Surface* surf;
+    
+	switch(E_Screen->Engine)
+	{
+		case SAI:
+		case EAGLE:
+            surf = E_Screen->render2;
+		    break;
+        default:
+            surf = E_Screen->render;
+            break;
+	}
+	
+	static int i = 1;
+	char buf[200];
+	snprintf(buf, 200, "screenshot%d.png", i);
+	i++;
+	
+	SDL_RWops* rwops = open_write_file(buf);
+	if(rwops == NULL)
+    {
+        Log("Failed to open file for screenshot.\n");
+        return false;
+    }
+    
+    Log("Saving screenshot: %s\n", buf);
+    
+    // Make it safe to save (convert alpha channel)
+    surf = SDL_PNGFormatAlpha(surf);
+    
+    // Save it
+    bool result = (SDL_SavePNG_RW(surf, rwops, 1) >= 0);
+    SDL_FreeSurface(surf);
+    
+    return result;
+}
+
 
 // ***************************************************************************
 // Fading routines! Thanks, Erik!

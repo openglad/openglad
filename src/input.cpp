@@ -353,6 +353,9 @@ void handle_key_event(const SDL_Event& event)
         if(raw_key == SDLK_ESCAPE)
             input_continue = true;
         key_press_event = 1;
+        
+        if(event.key.keysym.sym == SDLK_F10)
+            myscreen->save_screenshot();
         break;
     case SDL_KEYUP:
         #ifdef USE_TOUCH_INPUT
