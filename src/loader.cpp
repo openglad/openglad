@@ -761,6 +761,7 @@ loader::loader()
 	graphics[PIX(ORDER_BUTTON1, FAMILY_NORMAL1)] = read_pixie_file("normal1.pix");
 	graphics[PIX(ORDER_BUTTON1, FAMILY_PLUS)] = read_pixie_file("butplus.pix");
 	graphics[PIX(ORDER_BUTTON1, FAMILY_MINUS)] = read_pixie_file("butminus.pix");
+	graphics[PIX(ORDER_BUTTON1, FAMILY_WRENCH)] = read_pixie_file("wrench.pix");
 
 }
 

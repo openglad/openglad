@@ -296,6 +296,7 @@ char* read_one_line(SDL_RWops *infile, short length);
 #define FAMILY_NORMAL1 0
 #define FAMILY_PLUS 1
 #define FAMILY_MINUS 2
+#define FAMILY_WRENCH 3
 
 // Facings
 #define FACE_UP 0

@@ -235,7 +235,7 @@ button mainmenu_buttons[] =
         button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
 
         button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeft(7, 10)),
-        button("OPT ", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
+        button("", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
     };
 #else // DISABLE_MULTIPLAYER
 
@@ -712,6 +712,7 @@ void redraw_mainmenu()
         count++;
     }
     allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+    allbuttons[10]->set_graphic(FAMILY_WRENCH);
     
     draw_version_number();
 }
@@ -733,6 +734,7 @@ Sint32 mainmenu(Sint32 arg1)
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+    allbuttons[10]->set_graphic(FAMILY_WRENCH);
 	
 	redraw_mainmenu();
 
@@ -754,7 +756,10 @@ Sint32 mainmenu(Sint32 arg1)
         
         // Reset buttons
         if(reset_buttons(localbuttons, buttons, num_buttons, retvalue))
+        {
             allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+            allbuttons[10]->set_graphic(FAMILY_WRENCH);
+        }
 		
 		// Draw
 		myscreen->clearbuffer();
