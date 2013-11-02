@@ -85,6 +85,26 @@ video::~video()
 	SDL_Quit();
 }
 
+void video::set_fullscreen(bool fullscreen)
+{
+    // FIXME: A bug in my copy of SDL is making FULLSCREEN -> WINDOWED -> FULLSCREEN take up a partial portion of the screen and ruin the game.
+    /*if(fullscreen)
+    {
+        SDL_SetWindowFullscreen(E_Screen->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
+    else
+    {
+        SDL_SetWindowFullscreen(E_Screen->window, 0);
+        SDL_SetWindowSize(E_Screen->window, 640, 400);
+    }
+    
+    int w, h;
+    SDL_GetWindowSize(E_Screen->window, &w, &h);
+    window_w = w;
+    window_h = h;
+    update_overscan_setting();*/
+}
+
 unsigned char * video::getbuffer()
 {
 	return &videobuffer[0];

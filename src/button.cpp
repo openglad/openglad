@@ -520,6 +520,30 @@ Sint32 yes_or_no(Sint32 arg)
     return arg;
 }
 
+void toggle_effect(const std::string& category, const std::string& setting)
+{
+    if(cfg.is_on(category, setting))
+        cfg.apply_setting(category, setting, "off");
+    else
+        cfg.apply_setting(category, setting, "on");
+}
+
+void toggle_rendering_engine()
+{
+    std::string engine = cfg.get_setting("graphics", "render");
+    if(engine == "sai")
+        engine = "eagle";
+    else if(engine == "eagle")
+        engine = "normal";
+    else
+        engine = "sai";
+    
+    cfg.apply_setting("graphics", "render", engine);
+}
+
+#define REDRAW 2 //we just exited a menu, so redraw your buttons
+#define OK 4 //this function was successful, continue normal operation
+
 Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 {
     switch (whatfunc)
@@ -583,14 +607,46 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
         return level_editor();
     case YES_OR_NO:
         return yes_or_no(arg);
+    case MAIN_OPTIONS:
+        return main_options();
+    case TOGGLE_SOUND:
+        toggle_effect("sound", "sound");
+        return REDRAW;
+    case TOGGLE_RENDERING_ENGINE:
+        toggle_rendering_engine();
+        return REDRAW;
+    case TOGGLE_FULLSCREEN:
+        toggle_effect("graphics", "fullscreen");
+        myscreen->set_fullscreen(cfg.is_on("graphics", "fullscreen"));
+        return REDRAW;
     case OVERSCAN_ADJUST:
-        return overscan_adjust();
-    case OVERSCAN_DECREASE:
-        return overscan_decrease();
-    case OVERSCAN_INCREASE:
-        return overscan_increase();
+        return overscan_adjust(arg);
+    case TOGGLE_MINI_HP_BAR:
+        toggle_effect("effects", "mini_hp_bar");
+        return REDRAW;
+    case TOGGLE_HIT_FLASH:
+        toggle_effect("effects", "hit_flash");
+        return REDRAW;
+    case TOGGLE_HIT_RECOIL:
+        toggle_effect("effects", "hit_recoil");
+        return REDRAW;
+    case TOGGLE_ATTACK_LUNGE:
+        toggle_effect("effects", "attack_lunge");
+        return REDRAW;
+    case TOGGLE_HIT_ANIM:
+        toggle_effect("effects", "hit_anim");
+        return REDRAW;
+    case TOGGLE_DAMAGE_NUMBERS:
+        toggle_effect("effects", "damage_numbers");
+        return REDRAW;
+    case TOGGLE_HEAL_NUMBERS:
+        toggle_effect("effects", "heal_numbers");
+        return REDRAW;
+    case TOGGLE_GORE:
+        toggle_effect("effects", "gore");
+        return REDRAW;
     default:
-        return 4;
+        return OK;
     }
 }
 

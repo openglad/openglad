@@ -46,7 +46,7 @@ class soundob
 {
 	public:
 		soundob();
-		soundob(unsigned char toggle);
+		soundob(bool silent);
 		~soundob();
 		int init();
 		void shutdown();
@@ -56,7 +56,7 @@ class soundob
 		void free_sound(Mix_Chunk **sound);
 
 		unsigned char query_volume();
-		unsigned char set_sound(unsigned char toggle);      // Toggle sound on/off
+		unsigned char set_sound(bool silent);      // Toggle sound on/off
 		void load_sound(SDL_AudioSpec, char *);
 		unsigned char set_volume(unsigned char volumelevel);
 		char soundlist[NUMSOUNDS][40];              // Our list of sounds

@@ -189,9 +189,8 @@ Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 Sint32 level_editor();
-Sint32 overscan_adjust();
-Sint32 overscan_decrease();
-Sint32 overscan_increase();
+Sint32 main_options();
+Sint32 overscan_adjust(Sint32 arg);
 
 // Function definitions ..
 #define BEGINMENU               1
@@ -224,7 +223,17 @@ Sint32 overscan_increase();
 #define YES_OR_NO               28
 #define DO_PICK_CAMPAIGN        29
 #define DO_LEVEL_EDIT           30
-#define OVERSCAN_ADJUST         31
-#define OVERSCAN_DECREASE       32
-#define OVERSCAN_INCREASE       33
+#define MAIN_OPTIONS            31
+#define TOGGLE_SOUND            32
+#define TOGGLE_RENDERING_ENGINE 33
+#define TOGGLE_FULLSCREEN       34
+#define OVERSCAN_ADJUST         35
+#define TOGGLE_MINI_HP_BAR      36
+#define TOGGLE_HIT_FLASH        37
+#define TOGGLE_HIT_RECOIL       38
+#define TOGGLE_ATTACK_LUNGE     39
+#define TOGGLE_HIT_ANIM         40
+#define TOGGLE_DAMAGE_NUMBERS   41
+#define TOGGLE_HEAL_NUMBERS     42
+#define TOGGLE_GORE             43
 #endif

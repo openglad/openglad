@@ -676,7 +676,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 //
 Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 {
-	Engine=engine;
+	Engine = engine;
 	switch(Engine)
 	{
 	case SAI:
@@ -700,7 +700,8 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     #endif
 
     Uint32 window_flags = SDL_WINDOW_SHOWN;
-    if (fullscreen) window_flags = window_flags | SDL_WINDOW_FULLSCREEN_DESKTOP;
+    if(fullscreen)
+        window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
     
     window = SDL_CreateWindow("Gladiator",
                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,

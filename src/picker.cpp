@@ -234,12 +234,8 @@ button mainmenu_buttons[] =
         button("PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)),
         button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
 
-        #ifdef ENABLE_OVERSCAN_ADJUST
         button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeft(7, 10)),
-        button("<-> ", KEYSTATE_UNKNOWN, 80, 180, 30, 10, OVERSCAN_ADJUST, -1, MenuNav::UpRight(7, 9))
-        #else
-        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0, MenuNav::Up(7))
-        #endif
+        button("OPT ", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
     };
 #else // DISABLE_MULTIPLAYER
 
@@ -255,11 +251,26 @@ button mainmenu_buttons[] =
     };
 #endif
 
-button overscanadjust_buttons[] =
+#define BUTTON_HEIGHT 15
+#define BUTTON_PADDING 8
+#define BUTTON_PITCH (BUTTON_HEIGHT + BUTTON_PADDING)
+
+button main_options_buttons[] =
 {
-    button("BACK", KEYSTATE_UNKNOWN, 135, 120, 50, 15, RETURN_MENU, EXIT, MenuNav::UpLeftRight(1, 1, 2)),
-    button("- ", KEYSTATE_UNKNOWN, 80, 90, 30, 15, OVERSCAN_DECREASE, -1, MenuNav::DownRight(0, 2)),
-    button("+ ", KEYSTATE_UNKNOWN, 210, 90, 30, 15, OVERSCAN_INCREASE, -1, MenuNav::DownLeft(0, 1))
+    button("BACK", KEYSTATE_UNKNOWN, 40, 10, 50, 15, RETURN_MENU, EXIT, MenuNav::UpDown(12, 1)),
+    button("Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, TOGGLE_SOUND, -1, MenuNav::UpDown(0, 2)),
+    button("NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, TOGGLE_RENDERING_ENGINE, -1, MenuNav::UpDownRight(1, 4, 3)),
+    button("Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, TOGGLE_FULLSCREEN, -1, MenuNav::UpDownLeft(1, 5, 2)),
+    button("- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, OVERSCAN_ADJUST, -1, MenuNav::UpDownRight(2, 6, 5)),
+    button("+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, OVERSCAN_ADJUST, 1, MenuNav::UpDownLeft(3, 7, 4)),
+    button("Mini HP bar", KEYSTATE_UNKNOWN, 80, 10 + 4*BUTTON_PITCH, 90, 15, TOGGLE_MINI_HP_BAR, -1, MenuNav::UpDownRight(4, 8, 7)),
+    button("Hit flash", KEYSTATE_UNKNOWN, 210, 10 + 4*BUTTON_PITCH, 90, 15, TOGGLE_HIT_FLASH, -1, MenuNav::UpDownLeft(5, 9, 6)),
+    button("Hit recoil", KEYSTATE_UNKNOWN, 80, 10 + 5*BUTTON_PITCH, 90, 15, TOGGLE_HIT_RECOIL, -1, MenuNav::UpDownRight(6, 10, 9)),
+    button("Attack lunge", KEYSTATE_UNKNOWN, 210, 10 + 5*BUTTON_PITCH, 90, 15, TOGGLE_ATTACK_LUNGE, -1, MenuNav::UpDownLeft(7, 11, 8)),
+    button("Hit location", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_HIT_ANIM, -1, MenuNav::UpDownRight(8, 12, 11)),
+    button("Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_DAMAGE_NUMBERS, -1, MenuNav::UpDownLeft(9, 13, 10)),
+    button("Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_HEAL_NUMBERS, -1, MenuNav::UpDownRight(10, 0, 13)),
+    button("Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 0, 12)),
 };
 
 // beginmenu (first menu of new game), create_team_menu
@@ -3117,15 +3128,26 @@ void quit(Sint32 arg1)
 	exit(0);
 }
 
-Sint32 overscan_adjust()
+void draw_toggle_effect_button(button& b, const std::string& category, const std::string& setting)
+{
+    if(cfg.is_on(category, setting))
+        myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
+    else
+        myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, RED);
+    
+    text& mytext = myscreen->text_normal;
+    mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
+}
+
+Sint32 main_options()
 {
     text& mytext = myscreen->text_normal;
     
 	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
 
-	button* buttons = overscanadjust_buttons;
-	int num_buttons = ARRAY_SIZE(overscanadjust_buttons);
+	button* buttons = main_options_buttons;
+	int num_buttons = ARRAY_SIZE(main_options_buttons);
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
 
@@ -3147,40 +3169,51 @@ Sint32 overscan_adjust()
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+        buttons[2].label = cfg.get_setting("graphics", "render");
+        allbuttons[2]->label = buttons[2].label;
 		
 		// Draw
-		myscreen->clear_window();
+		myscreen->clear_window();  // Clearing entire window because the overscan may have been adjusted.
 		
 		myscreen->draw_button(0, 0, 320, 200, 0);
 		myscreen->draw_button_inverted(4, 4, 312, 192);
 		
+        
         draw_buttons(buttons, num_buttons);
         
-        mytext.write_xy_center(160, 50, DARK_BLUE, "Adjust Screen Overscan");
-        
-        mytext.write_xy_center(160, 95, DARK_BLUE, "%.0f percent", 100*overscan_percentage);
+		draw_toggle_effect_button(buttons[1], "sound", "sound");
+		myscreen->hor_line(60, buttons[2].y - BUTTON_PADDING/2, 200, PURE_WHITE);
+		
+		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Rendering engine:");
+		mytext.write_xy(20, buttons[2].y + 3 + 10, DARK_BLUE, " (needs restart)");
+		draw_toggle_effect_button(buttons[3], "graphics", "fullscreen");
+		mytext.write_xy(20, buttons[4].y + 3, DARK_BLUE, "Overscan adjust:");
+		myscreen->hor_line(60, buttons[6].y - BUTTON_PADDING/2, 200, PURE_WHITE);
+		
+		mytext.write_xy(20, buttons[6].y + 3, DARK_BLUE, "Effects:");
+		draw_toggle_effect_button(buttons[6], "effects", "mini_hp_bar");
+		draw_toggle_effect_button(buttons[7], "effects", "hit_flash");
+		draw_toggle_effect_button(buttons[8], "effects", "hit_recoil");
+		draw_toggle_effect_button(buttons[9], "effects", "attack_lunge");
+		draw_toggle_effect_button(buttons[10], "effects", "hit_anim");
+		draw_toggle_effect_button(buttons[11], "effects", "damage_numbers");
+		draw_toggle_effect_button(buttons[12], "effects", "heal_numbers");
+		draw_toggle_effect_button(buttons[13], "effects", "gore");
         
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
 	
+	myscreen->soundp->set_sound(!cfg.is_on("sound", "sound"));
 	cfg.save_settings();
     
     return REDRAW;
 }
 
-Sint32 overscan_decrease()
+Sint32 overscan_adjust(Sint32 arg)
 {
-    overscan_percentage += 0.01f;
-    update_overscan_setting();
-    
-    return REDRAW;
-}
-
-Sint32 overscan_increase()
-{
-    overscan_percentage -= 0.01f;
+    overscan_percentage -= arg/100.0f;
     update_overscan_setting();
     
     return REDRAW;

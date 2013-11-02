@@ -146,16 +146,11 @@ screen::screen(short howmany)
 	
 
 	// Init the sound data
-	if (cfg.is_on("sound", "sound")) // sound is on
-	{
-		soundp = new soundob();
-		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
-	}
-	else
-	{
-		soundp = new soundob(1); // turn sound off
-		first_text.write_xy(left, 94, "Initializing Sound...Skipped", DARK_BLUE, 1);
-	}
+    soundp = new soundob();
+    if(!cfg.is_on("sound", "sound"))
+        soundp->set_sound(1);
+    first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
+    
 	buffer_to_screen(0, 0, 320, 200);
 
 	// Let's set the special names for all walkers ..
