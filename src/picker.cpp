@@ -273,7 +273,7 @@ button main_options_buttons[] =
     button("Hit flash", KEYSTATE_UNKNOWN, 210, 10 + 4*BUTTON_PITCH, 90, 15, TOGGLE_HIT_FLASH, -1, MenuNav::UpDownLeft(5, 9, 6)),
     button("Hit recoil", KEYSTATE_UNKNOWN, 80, 10 + 5*BUTTON_PITCH, 90, 15, TOGGLE_HIT_RECOIL, -1, MenuNav::UpDownRight(6, 10, 9)),
     button("Attack lunge", KEYSTATE_UNKNOWN, 210, 10 + 5*BUTTON_PITCH, 90, 15, TOGGLE_ATTACK_LUNGE, -1, MenuNav::UpDownLeft(7, 11, 8)),
-    button("Hit location", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_HIT_ANIM, -1, MenuNav::UpDownRight(8, 12, 11)),
+    button("Hit sparks", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_HIT_ANIM, -1, MenuNav::UpDownRight(8, 12, 11)),
     button("Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_DAMAGE_NUMBERS, -1, MenuNav::UpDownLeft(9, 13, 10)),
     button("Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_HEAL_NUMBERS, -1, MenuNav::UpDownRight(10, 0, 13)),
     button("Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 0, 12)),
