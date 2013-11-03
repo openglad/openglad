@@ -237,6 +237,9 @@ button mainmenu_buttons[] =
         button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeft(7, 10)),
         button("", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
     };
+    
+#define OPTIONS_BUTTON_INDEX 10
+
 #else // DISABLE_MULTIPLAYER
 
 // Modified main screen with no multiplayer
@@ -247,8 +250,11 @@ button mainmenu_buttons[] =
 
         button("DIFFICULTY", KEYSTATE_UNKNOWN, 80, 120, 140, 15, SET_DIFFICULTY, -1, MenuNav::UpDown(1, 3)),
         button("Level Edit", KEYSTATE_UNKNOWN, 80, 137, 140, 15, DO_LEVEL_EDIT, -1, MenuNav::UpDown(2, 4)),
-        button("QUIT ", KEYSTATE_ESCAPE, 80, 154, 140, 20, QUIT_MENU, 0, MenuNav::Up(3))
+        button("QUIT ", KEYSTATE_ESCAPE, 120, 154, 60, 20, QUIT_MENU, 0, MenuNav::UpLeft(3, 5)),
+        button("", KEYSTATE_UNKNOWN, 90, 154, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(3, 4))
     };
+    
+#define OPTIONS_BUTTON_INDEX 5
 #endif
 
 #define BUTTON_HEIGHT 15
@@ -712,7 +718,7 @@ void redraw_mainmenu()
         count++;
     }
     allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-    allbuttons[10]->set_graphic(FAMILY_WRENCH);
+    allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
     
     draw_version_number();
 }
@@ -728,13 +734,14 @@ Sint32 mainmenu(Sint32 arg1)
 
 	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
-
+    
 	button* buttons = mainmenu_buttons;
 	int num_buttons = ARRAY_SIZE(mainmenu_buttons);
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
+	
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-    allbuttons[10]->set_graphic(FAMILY_WRENCH);
+    allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
 	
 	redraw_mainmenu();
 
@@ -758,7 +765,7 @@ Sint32 mainmenu(Sint32 arg1)
         if(reset_buttons(localbuttons, buttons, num_buttons, retvalue))
         {
             allbuttons[0]->set_graphic(FAMILY_NORMAL1);
-            allbuttons[10]->set_graphic(FAMILY_WRENCH);
+            allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
         }
 		
 		// Draw

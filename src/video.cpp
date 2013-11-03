@@ -1740,7 +1740,10 @@ int video::get_pixel(int offset)
 	return get_pixel(x,y,&t);
 }
 
+#ifndef USE_BMP_SCREENSHOT
 #include "../util/savepng.h"
+#endif
+
 bool video::save_screenshot()
 {
     SDL_Surface* surf;
@@ -1758,7 +1761,11 @@ bool video::save_screenshot()
 	
 	static int i = 1;
 	char buf[200];
+    #ifndef USE_BMP_SCREENSHOT
 	snprintf(buf, 200, "screenshot%d.png", i);
+	#else
+	snprintf(buf, 200, "screenshot%d.bmp", i);
+	#endif
 	i++;
 	
 	SDL_RWops* rwops = open_write_file(buf);
@@ -1770,12 +1777,17 @@ bool video::save_screenshot()
     
     Log("Saving screenshot: %s\n", buf);
     
+    #ifndef USE_BMP_SCREENSHOT
     // Make it safe to save (convert alpha channel)
     surf = SDL_PNGFormatAlpha(surf);
     
     // Save it
     bool result = (SDL_SavePNG_RW(surf, rwops, 1) >= 0);
     SDL_FreeSurface(surf);
+    #else
+    bool result = (SDL_SaveBMP_RW(surf, rwops, 1) >= 0);
+    
+    #endif
     
     return result;
 }
