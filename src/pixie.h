@@ -24,8 +24,8 @@
 class pixie
 {
 	public:
-		pixie(const PixieData& data, screen* myscreen);
-		pixie(const PixieData& data, screen* myscreen, int doaccel);
+		pixie(const PixieData& data);
+		pixie(const PixieData& data, int doaccel);
 		virtual ~pixie();
 		short setxy(short x, short y);
 		virtual short move (short x, short y);
@@ -44,7 +44,7 @@ class pixie
 		int accel;
 		short on_screen();                                                                // on ANY viewscreen?
 		short on_screen(viewscreen  *viewp);  // on a specific viewscreen?
-		screen  *screenp;
+		
 	protected:
 		unsigned short size;
 		unsigned char  *bmp,  *oldbmp;

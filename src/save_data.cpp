@@ -22,6 +22,9 @@
 #include "campaign_picker.h"
 
 
+#ifdef USE_TOUCH_INPUT
+#define DISABLE_MULTIPLAYER
+#endif
 
 
 SaveData::SaveData()
@@ -32,8 +35,8 @@ SaveData::SaveData()
     
 	for(int i = 0; i < 4; i++)
 	{
-		m_score[i] = 0;             // For Player-v-Player
-		m_totalcash[i] = 0;
+		m_score[i] = 0;
+		m_totalcash[i] = 5000;
 		m_totalscore[i] = 0;
 	}
 	
@@ -160,7 +163,7 @@ bool SaveData::load(const std::string& filename)
 	//   List of n level indices
 	//     2-bytes Level index
     
-    
+    Log("Loading save: %s\n", filename.c_str());
 	strcpy(temp_filename, filename.c_str());
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
@@ -257,8 +260,11 @@ bool SaveData::load(const std::string& filename)
 	// Get # of guys to read
 	SDL_RWread(infile, &listsize, 2, 1);
 
-	// Read (and ignore) the # of players
+	// Read the # of players
 	SDL_RWread(infile, &temp_numplayers, 1, 1);
+	#ifdef DISABLE_MULTIPLAYER
+	temp_numplayers = 1;
+	#endif
 	numplayers = temp_numplayers;
 
 	// Read the reserved area, 31 bytes
@@ -395,7 +401,7 @@ bool SaveData::load(const std::string& filename)
         }
     }
     
-	
+	Log("Loading campaign: %s\n", current_campaign.c_str());
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level >= 0)
     {
@@ -520,6 +526,7 @@ bool SaveData::save(const std::string& filename)
 	//     2-bytes Level index
 
 	//strcpy(temp_filename, scen_directory);
+	Log("Saving save: %s\n", filename.c_str());
 	strcpy(temp_filename, filename.c_str());
 	strcat(temp_filename, ".gtl"); // gladiator team list
 	
@@ -545,6 +552,7 @@ bool SaveData::save(const std::string& filename)
 	SDL_RWwrite(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
+	Log("Saving campaign status: %s\n", current_campaign.c_str());
 	strncpy(temp_campaign, current_campaign.c_str(), 40);
 	SDL_RWwrite(outfile, temp_campaign, 40, 1);
 

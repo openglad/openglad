@@ -49,7 +49,7 @@ radar::radar(viewscreen * myview, screen * myscreen, short whatnum)
 
 void radar::start()
 {
-    start(&screenp->level_data);
+    start(&myscreen->level_data);
 }
 
 void radar::start(LevelData* data)
@@ -123,7 +123,7 @@ radar::~radar()
 
 short radar::draw()
 {
-    return draw(&screenp->level_data);
+    return draw(&myscreen->level_data);
 }
 
 short radar::draw(LevelData* data)
@@ -169,7 +169,7 @@ short radar::draw(LevelData* data)
     unsigned char alpha = 255;
     if(myscreen->numviews > 2 && !(myscreen->numviews == 3 && mynum == 0))
         alpha = 127;
-	screenp->putbuffer_alpha(xloc, yloc,
+	myscreen->putbuffer_alpha(xloc, yloc,
 	                   sizex,sizey,
 	                   xloc,yloc,xloc + xview,yloc + yview,
 	                   &bmp[radarx + (radary * sizex)], alpha);
@@ -228,43 +228,43 @@ short radar::draw(LevelData* data)
 						tempcolor = (unsigned char) (random(256));
 						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
 						{
-							screenp->pointb(tempx-1,tempy,tempcolor, alpha);
-							screenp->pointb(tempx,tempy,tempcolor, alpha);
-							screenp->pointb(tempx-1,tempy+1,tempcolor, alpha);
-							screenp->pointb(tempx,tempy+1,tempcolor, alpha);
+							myscreen->pointb(tempx-1,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx-1,tempy+1,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy+1,tempcolor, alpha);
 
 						}
 						else if (tempx >= (xloc + xview -1) )
 						{
-							screenp->pointb(tempx,tempy,tempcolor, alpha);
-							screenp->pointb(tempx-1,tempy,tempcolor, alpha);
-							screenp->pointb(tempx,tempy-1,tempcolor, alpha);
-							screenp->pointb(tempx-1,tempy-1,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx-1,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy-1,tempcolor, alpha);
+							myscreen->pointb(tempx-1,tempy-1,tempcolor, alpha);
 
 						}
 						else if (tempy >= (yloc + yview -1) && tempx < (xloc+xview) )
 						{
-							screenp->pointb(tempx,tempy,tempcolor, alpha);
-							screenp->pointb(tempx+1,tempy,tempcolor, alpha);
-							screenp->pointb(tempx,tempy-1,tempcolor, alpha);
-							screenp->pointb(tempx+1,tempy-1,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx+1,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy-1,tempcolor, alpha);
+							myscreen->pointb(tempx+1,tempy-1,tempcolor, alpha);
 						}
 						else
 						{
-							screenp->pointb(tempx,tempy,tempcolor, alpha);
-							screenp->pointb(tempx+1,tempy,tempcolor, alpha);
-							screenp->pointb(tempx,tempy+1,tempcolor, alpha);
-							screenp->pointb(tempx+1,tempy+1,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx+1,tempy,tempcolor, alpha);
+							myscreen->pointb(tempx,tempy+1,tempcolor, alpha);
+							myscreen->pointb(tempx+1,tempy+1,tempcolor, alpha);
 						}
 					}
 					else if (oborder == ORDER_LIVING)
-						screenp->pointb(tempx,tempy,tempcolor, alpha);
+						myscreen->pointb(tempx,tempy,tempcolor, alpha);
 					else if (oborder == ORDER_GENERATOR)
-						screenp->pointb(tempx,tempy,(char)(tempcolor+1), alpha);
+						myscreen->pointb(tempx,tempy,(char)(tempcolor+1), alpha);
 					else if (oborder == ORDER_TREASURE) // currently life gems
-						screenp->pointb(tempx,tempy,COLOR_FIRE, alpha);
+						myscreen->pointb(tempx,tempy,COLOR_FIRE, alpha);
 					else
-						screenp->pointb(tempx,tempy,COLOR_WHITE, alpha);
+						myscreen->pointb(tempx,tempy,COLOR_WHITE, alpha);
 				}//draw the blob onto the radar
 			}
 		}
@@ -328,7 +328,7 @@ short radar::draw(LevelData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					screenp->pointb(tempx,tempy,(char)do_show, alpha);
+					myscreen->pointb(tempx,tempy,(char)do_show, alpha);
 				}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob
@@ -340,7 +340,7 @@ short radar::draw(LevelData* data)
 //short radar::refresh()
 //{
 // The first two values are screwy... I don't know why
-// screenp->buffer_to_screen(xloc, yloc, xview, yview);
+// myscreen->buffer_to_screen(xloc, yloc, xview, yview);
 // return 1;
 //}
 // In theory the above function will NOT be required
@@ -365,7 +365,7 @@ short radar::on_screen(short whatx, short whaty,
 // call it often, as it is very slow ..
 void radar::update()
 {
-    update(&screenp->level_data);
+    update(&myscreen->level_data);
 }
 
 // This function re-initializes the radar map data.  Do not

@@ -308,7 +308,7 @@ public:
     
     SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border = false, bool draw_top_separator = false);
     
-    void draw(screen* myscreen, text* mytext);
+    void draw(screen* myscreen);
     bool contains(int x, int y) const;
     
     void set_colors_normal();
@@ -329,16 +329,18 @@ SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int 
     area.h = h;
 }
 
-void SimpleButton::draw(screen* myscreen, text* mytext)
+void SimpleButton::draw(screen* myscreen)
 {
     myscreen->draw_button_colored(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, !remove_border, base_color, high_color, shadow_color);
     if(remove_border && draw_top_separator)
         myscreen->hor_line(area.x, area.y, area.w, shadow_color);
     
+    text& mytext = myscreen->text_normal;
+    
     if(centered)
-        mytext->write_xy(area.x + area.w/2 - 3*label.size(), area.y + area.h/2 - 2, label.c_str(), text_color, 1);
+        mytext.write_xy(area.x + area.w/2 - 3*label.size(), area.y + area.h/2 - 2, label.c_str(), text_color, 1);
     else
-        mytext->write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), text_color, 1);
+        mytext.write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), text_color, 1);
 }
 
 bool SimpleButton::contains(int x, int y) const
@@ -381,7 +383,7 @@ void SimpleButton::set_colors_active()
 
 
 
-bool prompt_for_string_block(text* mytext, const std::string& message, std::list<std::string>& result)
+bool prompt_for_string_block(const std::string& message, std::list<std::string>& result)
 {
     myscreen->darken_screen();
     
@@ -393,16 +395,30 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
     int x = 160 - w/2;
     int y = 100 - h/2;
     
+    text& mytext = myscreen->text_normal;
+    
     // Background
     myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
     unsigned char forecolor = DARK_BLUE;
-    //unsigned char backcolor = 13;
     
+    SDL_Rect done_button = {320 - 52, 0, 50, 14};
+    SDL_Rect cancel_button = {320 - 104, 0, 50, 14};
+    
+    #ifdef USE_TOUCH_INPUT
+    SDL_Rect newline_button = {320 - 75, 16, 50, 14};
+    SDL_Rect up_button = {14, 0, 14, 14};
+    SDL_Rect down_button = {14, 14, 14, 14};
+    SDL_Rect left_button = {0, 14, 14, 14};
+    SDL_Rect right_button = {28, 14, 14, 14};
+    #endif
+    
+    std::list<std::string> original_text = result;
 
 	clear_keyboard();
 	clear_key_press_event();
 	clear_text_input_event();
+	MouseState& mymouse = query_mouse_no_poll();
 	
     SDL_StartTextInput();
     
@@ -417,9 +433,8 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
     bool done = false;
 	while (!done)
 	{
+        get_input_events(POLL);
         
-        // TODO: Need swipe controls for touch input
-        // TODO: Needs a button for done
         if(query_key_press_event())
         {
             char c = query_key();
@@ -428,9 +443,7 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
             if (c == SDLK_RETURN)
             {
                 #ifdef USE_TOUCH_INPUT
-                // FIXME: SDL does not have keyboard customization, so we can't make newlines with RETURN.
-                // I need to either modify SDL or add click/touch text navigation.
-                done = true;
+                done = true;  // Some soft keyboards might disappear anyhow if you press return...
                 break;
                 #else
                 std::string rest_of_line = s->substr(cursor_pos);
@@ -467,6 +480,81 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
                     s->erase(cursor_pos, 1);
                 }
             }
+        }
+        else if(mymouse.left)
+        {
+            mymouse.left = false;
+            
+            if(mymouse.in(done_button))
+            {
+                done = true;
+            }
+            else if(mymouse.in(cancel_button))
+            {
+                result = original_text;
+                done = true;
+            }
+            #ifdef USE_TOUCH_INPUT
+            else if(mymouse.in(newline_button))
+            {
+                std::string rest_of_line = s->substr(cursor_pos);
+                s->erase(cursor_pos);
+                s++;
+                s = result.insert(s, rest_of_line);
+                current_line++;
+                cursor_pos = 0;
+            }
+            else if(mymouse.in(up_button))
+            {
+                if(current_line > 0)
+                {
+                    current_line--;
+                    s--;
+                    if(s->size() < cursor_pos)
+                        cursor_pos = s->size();
+                }
+            }
+            else if(mymouse.in(down_button))
+            {
+                if(current_line+1 < result.size())
+                {
+                    current_line++;
+                    s++;
+                }
+                else  // At the bottom already
+                    cursor_pos = s->size();
+                
+                if(s->size() < cursor_pos)
+                    cursor_pos = s->size();
+            }
+            else if(mymouse.in(left_button))
+            {
+                if(cursor_pos > 0)
+                    cursor_pos--;
+                else if(current_line > 0)
+                {
+                    current_line--;
+                    s--;
+                    cursor_pos = s->size();
+                }
+            }
+            else if(mymouse.in(right_button))
+            {
+                cursor_pos++;
+                if(cursor_pos > s->size())
+                {
+                    if(current_line+1 < result.size())
+                    {
+                        // Go to next line
+                        current_line++;
+                        s++;
+                        cursor_pos = 0;
+                    }
+                    else  // No next line
+                        cursor_pos = s->size();
+                }
+            }
+            #endif
         }
         
         if(keystates[KEYSTATE_ESCAPE])
@@ -561,8 +649,26 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
 		
         clear_text_input_event();
         myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
-        mytext->write_xy(x, y - 13, message.c_str(), BLACK, 1);
+        mytext.write_xy(x, y - 13, message.c_str(), BLACK, 1);
         myscreen->hor_line(x, y - 5, w, BLACK);
+        
+        myscreen->draw_button(done_button.x, done_button.y, done_button.x + done_button.w, done_button.y + done_button.h, 1);
+        mytext.write_xy(done_button.x + done_button.w/2 - 12, done_button.y + done_button.h/2 - 3, "DONE", DARK_BLUE, 1);
+        myscreen->draw_button(cancel_button.x, cancel_button.y, cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
+        mytext.write_xy(cancel_button.x + cancel_button.w/2 - 18, cancel_button.y + cancel_button.h/2 - 3, "CANCEL", DARK_BLUE, 1);
+        
+        #ifdef USE_TOUCH_INPUT
+        myscreen->draw_button(newline_button.x, newline_button.y, newline_button.x + newline_button.w, newline_button.y + newline_button.h, 1);
+        mytext.write_xy(newline_button.x + newline_button.w/2 - 18, newline_button.y + newline_button.h/2 - 3, "NEWLINE", DARK_BLUE, 1);
+        myscreen->draw_button(up_button.x, up_button.y, up_button.x + up_button.w, up_button.y + up_button.h, 1);
+        mytext.write_xy(up_button.x + up_button.w/2 - 6, up_button.y + up_button.h/2 - 3, "UP", DARK_BLUE, 1);
+        myscreen->draw_button(left_button.x, left_button.y, left_button.x + left_button.w, left_button.y + left_button.h, 1);
+        mytext.write_xy(left_button.x + left_button.w/2 - 6, left_button.y + left_button.h/2 - 3, "LT", DARK_BLUE, 1);
+        myscreen->draw_button(down_button.x, down_button.y, down_button.x + down_button.w, down_button.y + down_button.h, 1);
+        mytext.write_xy(down_button.x + down_button.w/2 - 6, down_button.y + down_button.h/2 - 3, "DN", DARK_BLUE, 1);
+        myscreen->draw_button(right_button.x, right_button.y, right_button.x + right_button.w, right_button.y + right_button.h, 1);
+        mytext.write_xy(right_button.x + right_button.w/2 - 6, right_button.y + right_button.h/2 - 3, "RT", DARK_BLUE, 1);
+        #endif
         
         int offset = 0;
         if(current_line > 3)
@@ -572,15 +678,13 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
         {
             int ypos = y + j*10 - offset;
             if(y <= ypos && ypos <= y + h)
-                mytext->write_xy(x, ypos, e->c_str(), forecolor, 1);
+                mytext.write_xy(x, ypos, e->c_str(), forecolor, 1);
             j++;
         }
         myscreen->ver_line(x + cursor_pos*6, y + current_line*10 - 2 - offset, 10, RED);
 		myscreen->buffer_to_screen(0, 0, 320, 200);
         
-		// Wait for a key to be pressed ..
-		while (!query_key_press_event() && !query_text_input_event())
-			get_input_events(WAIT);
+        SDL_Delay(10);
 	}
 
     SDL_StopTextInput();
@@ -590,7 +694,7 @@ bool prompt_for_string_block(text* mytext, const std::string& message, std::list
     return !cancel;
 }
 
-bool prompt_for_string(text* mytext, const std::string& message, std::string& result)
+bool prompt_for_string(const std::string& message, std::string& result)
 {
     myscreen->darken_screen();
     
@@ -603,7 +707,7 @@ bool prompt_for_string(text* mytext, const std::string& message, std::string& re
     
     myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
-    char* str = mytext->input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
+    char* str = myscreen->text_normal.input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
     
     if(str == NULL)
         return false;
@@ -732,7 +836,6 @@ public:
     CampaignData* campaign;
     LevelData* level;
     
-    text* scentext;
 	ModeEnum mode;
     EditorTerrainBrush terrain_brush;
     EditorObjectBrush object_brush;
@@ -834,7 +937,9 @@ public:
     void mouse_up(int mx, int my, int old_mx, int old_my, bool& done);
     void pick_by_mouse(int mx, int my);
     
-    
+    bool is_in_grid(int x, int y);
+    unsigned char get_terrain(int x, int y);
+    void set_terrain(int x, int y, unsigned char terrain);
     walker* get_object(int x, int y);
 };
 
@@ -849,7 +954,7 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), scentext(NULL), mode(TERRAIN), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
+    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), mode(TERRAIN), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -1200,7 +1305,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             if(obj != NULL)
             {
                 std::string name = obj->stats->name;
-                if(prompt_for_string(scentext, "Rename", name))
+                if(prompt_for_string("Rename", name))
                 {
                     strncpy(obj->stats->name, name.c_str(), 11);
                     obj->stats->name[11] = '\0';
@@ -1544,14 +1649,9 @@ void LevelEditorData::draw(screen* myscreen)
     
 }
 
-#ifdef NO_BLOOD
-#define BLOOD_STRING "REMAINS"
-#else
-#define BLOOD_STRING "BLOOD"
-#endif
-
 Sint32 LevelEditorData::display_panel(screen* myscreen)
 {
+    text& scentext = myscreen->text_normal;
     // Draw selection indicators
     if(mode == SELECT && selection.size() > 0)
     {
@@ -1578,14 +1678,14 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     // Draw mode-specific buttons
     for(set<SimpleButton*>::iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
-        (*e)->draw(myscreen, scentext);
+        (*e)->draw(myscreen);
         
     if(pan_buttons.size() > 0)
     {
         Rect r(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y);
         myscreen->fastbox(r.x, r.y, r.w, r.h, 13);
         for(set<SimpleButton*>::iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
-            (*e)->draw(myscreen, scentext);
+            (*e)->draw(myscreen);
     }
     
 	char message[50];
@@ -1595,15 +1695,22 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
-	static char treasures[20][NUM_FAMILIES] =
-	    { BLOOD_STRING, "DRUMSTICK", "GOLD", "SILVER",
+	
+	const char* blood_string;
+	if(cfg.is_on("effects", "gore"))
+        blood_string = "BLOOD";
+    else
+        blood_string = "REMAINS";
+    
+	const char* treasures[NUM_FAMILIES] =
+	    { blood_string, "DRUMSTICK", "GOLD", "SILVER",
 	      "MAGIC", "INVIS", "INVULN", "FLIGHT",
 	      "EXIT", "TELEPORTER", "LIFE GEM", "KEY", "SPEED", "CC",
 	    };
-	static char weapons[20][NUM_FAMILIES] =
+	const char* weapons[NUM_FAMILIES] =
 	    { "KNIFE", "ROCK", "ARROW", "FIREBALL",
 	      "TREE", "METEOR", "SPRINKLE", "BONE",
-	      BLOOD_STRING, "BLOB", "FIRE ARROW", "LIGHTNING",
+	      blood_string, "BLOB", "FIRE ARROW", "LIGHTNING",
 	      "GLOW", "WAVE 1", "WAVE 2", "WAVE 3",
 	      "PROTECTION", "HAMMER", "DOOR",
 	    };
@@ -1624,7 +1731,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
         if(selection.size() > 1)
-            scentext->write_xy(lm, L_D(curline++), "Selected:", RED, 1);
+            scentext.write_xy(lm, L_D(curline++), "Selected:", RED, 1);
         int i = 0;
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
@@ -1635,13 +1742,13 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             {
                 char buf[20];
                 snprintf(buf, 20, "+%d more", int(selection.size()) - 5);
-                scentext->write_xy(lm, L_D(curline++), buf, DARK_BLUE, 1);
+                scentext.write_xy(lm, L_D(curline++), buf, DARK_BLUE, 1);
                 break;  // No more
             }
             // Show name
             else if(e->name.size() > 0 && e->order == ORDER_LIVING)
             {
-                scentext->write_xy(lm, L_D(curline++), ("\"" + e->name + "\"").c_str(), DARK_BLUE, 1);
+                scentext.write_xy(lm, L_D(curline++), ("\"" + e->name + "\"").c_str(), DARK_BLUE, 1);
                 showing_name = true;
             }
             else if(selection.size() == 0)
@@ -1680,7 +1787,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     strcat(message, weapons[e->family]);
                 else
                     strcat(message, "UNKNOWN");
-                scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+                scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
             }
             
             i++;
@@ -1721,7 +1828,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             }
             
             if(strlen(message) > 0)
-                scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+                scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
         }
         
     }
@@ -1762,7 +1869,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             strcat(message, weapons[object_brush.family]);
         else
             strcat(message, "UNKNOWN");
-        scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+        scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
 
         // Level display
         message[0] = '\0';
@@ -1795,12 +1902,12 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         }
         
         if(strlen(message) > 0)
-            scentext->write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+            scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
         
         numobs = myscreen->level_data.numobs;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         sprintf(message, "OB: %d", numobs);
-        scentext->write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
+        scentext.write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
     }
     
     if(mode == TERRAIN)
@@ -1935,14 +2042,14 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     // Draw top menu
     for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
-        (*e)->draw(myscreen, scentext);
+        (*e)->draw(myscreen);
     
     // Draw submenus
     for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
     {
         set<SimpleButton*>& s = e->second;
         for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
-            (*f)->draw(myscreen, scentext);
+            (*f)->draw(myscreen);
     }
     
     
@@ -2219,7 +2326,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 // Ask for campaign ID
                 std::string campaign = "com.example.new_campaign";
-                if(prompt_for_string(scentext, "New Campaign", campaign))
+                if(prompt_for_string("New Campaign", campaign))
                 {
                     // TODO: Check if campaign already exists and prompt the user to overwrite
                     if(does_campaign_exist(campaign) && !yes_or_no_prompt("Overwrite?", "Overwrite existing campaign with that ID?", false))
@@ -2285,7 +2392,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             
             if(!cancel)
             {
-                CampaignResult result = pick_campaign(myscreen, NULL, true);
+                CampaignResult result = pick_campaign(NULL, true);
                 if(result.id.size() > 0)
                 {
                     if(loadCampaign(result.id))
@@ -2347,7 +2454,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, fileCampaignSaveAsButton))
         {
-            CampaignResult result = pick_campaign(myscreen, NULL, true);
+            CampaignResult result = pick_campaign(NULL, true);
             if(result.id.size() > 0)
             {
                 std::list<std::string> campaigns = list_campaigns();
@@ -2506,7 +2613,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, campaignProfileTitleButton))
         {
             std::string title = campaign->title;
-            if(prompt_for_string(scentext, "Campaign Title", title))
+            if(prompt_for_string("Campaign Title", title))
             {
                 campaign->title = title;
                 campaignchanged = 1;
@@ -2515,7 +2622,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, campaignProfileDescriptionButton))
         {
             std::list<std::string> desc = campaign->description;
-            if(prompt_for_string_block(scentext, "Campaign Description", desc))
+            if(prompt_for_string_block("Campaign Description", desc))
             {
                 campaign->description = desc;
                 campaignchanged = 1;
@@ -2529,7 +2636,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, campaignProfileAuthorsButton))
         {
             std::string authors = campaign->authors;
-            if(prompt_for_string(scentext, "Campaign Authors", authors))
+            if(prompt_for_string("Campaign Authors", authors))
             {
                 campaign->authors = authors;
                 campaignchanged = 1;
@@ -2538,7 +2645,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, campaignProfileContributorsButton))
         {
             std::string contributors = campaign->contributors;
-            if(prompt_for_string(scentext, "Campaign Contributors", contributors))
+            if(prompt_for_string("Campaign Contributors", contributors))
             {
                 campaign->contributors = contributors;
                 campaignchanged = 1;
@@ -2556,7 +2663,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, campaignDetailsVersionButton))
         {
             std::string version = campaign->version;
-            if(prompt_for_string(scentext, "Campaign Version", version))
+            if(prompt_for_string("Campaign Version", version))
             {
                 campaign->version = version;
                 campaignchanged = 1;
@@ -2567,7 +2674,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             char buf[20];
             snprintf(buf, 20, "%d", campaign->suggested_power);
             std::string power = buf;
-            if(prompt_for_string(scentext, "Suggested Power", power))
+            if(prompt_for_string("Suggested Power", power))
             {
                 campaign->suggested_power = toInt(power);
                 campaignchanged = 1;
@@ -2578,7 +2685,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             char buf[20];
             snprintf(buf, 20, "%d", campaign->first_level);
             std::string level = buf;
-            if(prompt_for_string(scentext, "First Level", level))
+            if(prompt_for_string("First Level", level))
             {
                 campaign->first_level = toInt(level);
                 campaignchanged = 1;
@@ -2668,7 +2775,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, levelProfileTitleButton))
         {
             std::string title = level->title;
-            if(prompt_for_string(scentext, "Level Title", title))
+            if(prompt_for_string("Level Title", title))
             {
                 level->title = title;
                 levelchanged = 1;
@@ -2677,7 +2784,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         else if(activate_menu_choice(mx, my, *this, levelProfileDescriptionButton))
         {
             std::list<std::string> desc = level->description;
-            if(prompt_for_string_block(scentext, "Level Description", desc))
+            if(prompt_for_string_block("Level Description", desc))
             {
                 level->description = desc;
                 levelchanged = 1;
@@ -2703,7 +2810,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             snprintf(buf, 20, "%u", level->grid.h);
             std::string height = buf;
             
-            if(prompt_for_string(scentext, "Map Width", width))
+            if(prompt_for_string("Map Width", width))
             {
                 int w = toInt(width);
                 int h;
@@ -2712,7 +2819,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 // The soft keyboard on Android might take a little while to be ready again, so opening it right away doesn't always work.
                 SDL_Delay(1000);
                 #endif
-                if(prompt_for_string(scentext, "Map Height", height))
+                if(prompt_for_string( "Map Height", height))
                 {
                     h = toInt(height);
                     
@@ -2802,7 +2909,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             char buf[20];
             snprintf(buf, 20, "%d", level->par_value);
             std::string par = buf;
-            if(prompt_for_string(scentext, "Par Value (num)", par))
+            if(prompt_for_string("Par Value (num)", par))
             {
                 int v = toInt(par);
                 if(v > 0)
@@ -2817,7 +2924,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             char buf[20];
             snprintf(buf, 20, "%d", level->time_bonus_limit);
             std::string par = buf;
-            if(prompt_for_string(scentext, "Time Bonus Limit (num)", par))
+            if(prompt_for_string("Time Bonus Limit (num)", par))
             {
                 int v = toInt(par);
                 if(v > 0)
@@ -2947,7 +3054,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     if (some_hit(windowx, windowy, newob, level))
                     {
                         std::string name = newob->collide_ob->stats->name;
-                        if(prompt_for_string(scentext, "Rename", name))
+                        if(prompt_for_string("Rename", name))
                         {
                             strncpy(newob->collide_ob->stats->name, name.c_str(), 11);
                             newob->collide_ob->stats->name[11] = '\0';
@@ -3108,7 +3215,8 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
         windowy /= GRID_SIZE;
         
         // Get tile from grid array
-        terrain_brush.terrain = level->grid.data[windowy*(level->grid.w)+windowx];
+        if(is_in_grid(windowx, windowy))
+            terrain_brush.terrain = get_terrain(windowx, windowy);
     }
     else if(mode == OBJECT)
     {
@@ -3129,7 +3237,27 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
 }
 
 
+bool LevelEditorData::is_in_grid(int x, int y)
+{
+    return (x >= 0 && y >= 0 && x < level->grid.w && y < level->grid.h);
+}
+
+unsigned char LevelEditorData::get_terrain(int x, int y)
+{
+    if(!is_in_grid(x, y))
+        return 0;
     
+    return level->grid.data[y*level->grid.w + x];
+}
+
+void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
+{
+    if(!is_in_grid(x, y))
+        return;
+    
+    level->grid.data[y*level->grid.w + x] = terrain;
+}
+
 walker* LevelEditorData::get_object(int x, int y)
 {
     walker* result = NULL;
@@ -3281,7 +3409,7 @@ Sint32 level_editor()
     static LevelEditorData data;
     EditorTerrainBrush& terrain_brush = data.terrain_brush;
     EditorObjectBrush& object_brush = data.object_brush;
-    text*& scentext = data.scentext;
+    
     ModeEnum& mode = data.mode;
     radar& myradar = data.myradar;
     
@@ -3291,8 +3419,6 @@ Sint32 level_editor()
     
     // Initialize palette for cycling
     load_and_set_palette("our.pal", scenpalette);
-	
-	scentext = new text(myscreen);
     
     if(data.reloadCampaign())
         Log("Loaded campaign data successfully.\n");
@@ -3821,7 +3947,7 @@ Sint32 level_editor()
                             if(!terrain_brush.picking)
                             {
                                 // Set to our current selection (apply brush)
-                                data.level->grid.data[windowy*(data.level->grid.w)+windowx] = get_random_matching_tile(terrain_brush.terrain);
+                                data.set_terrain(windowx, windowy, get_random_matching_tile(terrain_brush.terrain));
                                 levelchanged = 1;
                                 if (terrain_brush.use_smoothing) // smooth a few squares, if not control
                                 {
@@ -3883,8 +4009,6 @@ Sint32 level_editor()
     
     unmount_campaign_package(data.campaign->id);
     mount_campaign_package(old_campaign);
-    
-    delete scentext;
     
 	return OK;
 }

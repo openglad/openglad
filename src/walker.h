@@ -28,7 +28,7 @@ class walker : public pixieN
 	public:
 		friend class statistics;
 		friend class command;
-		walker(const PixieData& data, screen  *myscreen);
+		walker(const PixieData& data);
 		virtual ~walker();
 		short reset(void);
 		short move(short x, short y);
@@ -152,6 +152,34 @@ class walker : public pixieN
 		obmap* myobmap;
 		int path_check_counter;
 		std::vector<void*> path_to_foe;  // Result from pathfinding
+		
+		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
+		class DamageNumber
+		{
+        public:
+            float x, y;
+            float t;
+            float value;
+            
+            unsigned char color;
+            
+            DamageNumber(float x, float y, float value, unsigned char color);
+            void draw(viewscreen* view_buf);
+		};
+		std::list<DamageNumber> damage_numbers;
+		
+		bool hurt_flash;
+		float attack_lunge;
+		float attack_lunge_angle;
+		float hit_recoil;
+		float hit_recoil_angle;
+		
+		float last_hitpoints;
+		
+		float get_current_angle();
+        void do_heal_effects(walker* healer, walker* target, short amount);
+        void do_hit_effects(walker* attacker, walker* target, short tempdamage);
+        void do_combat_damage(walker* attacker, walker* target, short tempdamage);
 
 	protected:
 		short act_generate();

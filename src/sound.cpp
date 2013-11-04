@@ -40,16 +40,20 @@ soundob::soundob()
 {
 	// Do stuff
 	silence = 0;        // default is sound ON
+	for (int i=0; i < NUMSOUNDS; i++)
+		sound[i] = NULL;
 	init();
 }
 
 // This version of the constructor will set "silence" to
 // the value of toggle before init-ing, so that if we
 // don't want sound, we won't load them into memory.
-soundob::soundob(unsigned char toggle)
+soundob::soundob(bool silent)
 {
-	silence = toggle;
-	init();             // init will do nothing if toggle (silence) is set
+	silence = silent;
+	for (int i=0; i < NUMSOUNDS; i++)
+		sound[i] = NULL;
+	init();             // init will do nothing if silent is set
 }
 
 soundob::~soundob()
@@ -61,9 +65,12 @@ int soundob::init()
 {
 	int i;
 
-	// Guarantee null pointers, regardless of sound status
+    // Free any existing sounds
 	for (i=0; i < NUMSOUNDS; i++)
+    {
+		Mix_FreeChunk(sound[i]);
 		sound[i] = NULL;
+    }
 
 	// Do we have sounds on?
 	if (silence)
@@ -175,12 +182,12 @@ unsigned char soundob::set_volume(unsigned char volumelevel)
 }
 
 // Used to turn sound on or off
-unsigned char soundob::set_sound(unsigned char toggle)
+unsigned char soundob::set_sound(bool silent)
 {
-	if (silence == toggle)      // Are we already set this way?
+	if (silence == silent)      // Are we already set this way?
 		return silence;
 
-	silence = toggle;
+	silence = silent;
 	init();
 
 	return silence;

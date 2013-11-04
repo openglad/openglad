@@ -307,14 +307,14 @@ short statistics::do_command()
 			}
 			if (!controller->leader)
 			{
-				if (controller->screenp->numviews == 1)
-					controller->leader = controller->screenp->viewob[0]->control;
+				if (myscreen->numviews == 1)
+					controller->leader = myscreen->viewob[0]->control;
 				else
 				{
-					if (controller->screenp->viewob[0]->control->yo_delay)
-						controller->leader = controller->screenp->viewob[0]->control;
-					else if (controller->screenp->viewob[1]->control->yo_delay)
-						controller->leader = controller->screenp->viewob[1]->control;
+					if (myscreen->viewob[0]->control->yo_delay)
+						controller->leader = myscreen->viewob[0]->control;
+					else if (myscreen->viewob[1]->control->yo_delay)
+						controller->leader = myscreen->viewob[1]->control;
 					else
 					{
 						commandlist->commandcount = 0;
@@ -659,8 +659,8 @@ void statistics::yell_for_help(walker *foe)
 	controller->yo_delay += 80;
 	
 	// Get AI-controlled allies to target my foe
-	std::list<walker*> helplist = controller->screenp->find_friends_in_range(
-	               controller->screenp->level_data.oblist, 160, &howmany, controller);
+	std::list<walker*> helplist = myscreen->find_friends_in_range(
+	               myscreen->level_data.oblist, 160, &howmany, controller);
 	for(auto e = helplist.begin(); e != helplist.end(); e++)
 	{
 	    walker* w = *e;
@@ -685,7 +685,7 @@ void statistics::yell_for_help(walker *foe)
 	if (controller->myguy && (controller->team_num == 0) )
 	{
 		sprintf(message, "%s yells for help!", controller->myguy->name);
-		controller->screenp->do_notify(message, controller);
+		myscreen->do_notify(message, controller);
 	}
 
 }
@@ -715,7 +715,6 @@ void statistics::set_bit_flags(Sint32 someflag, short newvalue)
 // Returns whether our right is blocked
 bool statistics::right_blocked()
 {
-	screen  *screenp = controller->screenp;
 	float xdelta, ydelta;
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = controller->stepsize;
@@ -761,13 +760,12 @@ bool statistics::right_blocked()
 			break;
 	}
 
-	return !screenp->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
 // Returns whether our right-forward is blocked
 bool statistics::right_forward_blocked()
 {
-	screen  *screenp = controller->screenp;
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = controller->stepsize;
 
@@ -775,22 +773,22 @@ bool statistics::right_forward_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !screenp->query_passable(controlx+mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_RIGHT:
-			return !screenp->query_passable(controlx+mystep, controly, controller);
+			return !myscreen->query_passable(controlx+mystep, controly, controller);
 
 		case FACE_RIGHT:
-			return !screenp->query_passable(controlx+mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !screenp->query_passable(controlx, controly+mystep, controller);
+			return !myscreen->query_passable(controlx, controly+mystep, controller);
 		case FACE_DOWN:
-			return !screenp->query_passable(controlx-mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !screenp->query_passable(controlx-mystep, controly, controller);
+			return !myscreen->query_passable(controlx-mystep, controly, controller);
 		case FACE_LEFT:
-			return !screenp->query_passable(controlx-mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !screenp->query_passable(controlx, controly-mystep, controller);
+			return !myscreen->query_passable(controlx, controly-mystep, controller);
 		default:
 			break;
 
@@ -801,7 +799,6 @@ bool statistics::right_forward_blocked()
 // Returns whether our right-back is blocked
 bool statistics::right_back_blocked()
 {
-	screen  *screenp = controller->screenp;
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = controller->stepsize;
 
@@ -809,23 +806,23 @@ bool statistics::right_back_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !screenp->query_passable(controlx+mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_UP_RIGHT:
-			return !screenp->query_passable(controlx, controly+mystep, controller);
+			return !myscreen->query_passable(controlx, controly+mystep, controller);
 
 		case FACE_RIGHT:
-			return !screenp->query_passable(controlx-mystep, controly+mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !screenp->query_passable(controlx-mystep, controly, controller);
+			return !myscreen->query_passable(controlx-mystep, controly, controller);
 		case FACE_DOWN:
-			return !screenp->query_passable(controlx-mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !screenp->query_passable(controlx, controly-mystep,
+			return !myscreen->query_passable(controlx, controly-mystep,
 			                                controller);
 		case FACE_LEFT:
-			return !screenp->query_passable(controlx+mystep, controly-mystep, controller);
+			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !screenp->query_passable(controlx+mystep, controly, controller);
+			return !myscreen->query_passable(controlx+mystep, controly, controller);
 		default:
 			break;
 	}
@@ -836,7 +833,6 @@ bool statistics::right_back_blocked()
 // Returns whether our front is blocked
 bool statistics::forward_blocked()
 {
-	screen  *screenp = controller->screenp;
 	float xdelta, ydelta;
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = CHECK_STEP_SIZE;
@@ -881,7 +877,7 @@ bool statistics::forward_blocked()
 			break;
 	}
 
-	return !screenp->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
 bool statistics::right_walk()
@@ -1061,11 +1057,11 @@ bool statistics::direct_walk()
 	// replaced by some sort of single "if forward_blocked()"
 	// check, otherwise I'm not sure if this works regardless of
 	// current facing ...
-	if (!controller->screenp->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller) )
+	if (!myscreen->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller) )
 	{
-		if (!controller->screenp->query_grid_passable(controlx+xdeltastep,controly+0,controller) )
+		if (!myscreen->query_grid_passable(controlx+xdeltastep,controly+0,controller) )
 		{
-			if (!controller->screenp->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
+			if (!myscreen->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
 			{
 				walkrounds = 0;
 				return 0;
@@ -1113,6 +1109,9 @@ bool statistics::direct_walk()
 
 #define PATHING_MIN_DISTANCE 100
 
+// Note that obmap::size() counts dead things too, which don't do pathfinding
+#define PATHING_SHORT_CIRCUIT_OBJECT_LIMIT 200
+
 bool statistics::walk_to_foe()
 {
     walker* foe = controller->foe;
@@ -1140,11 +1139,12 @@ bool statistics::walk_to_foe()
 
 		xdelta = xdest - controller->xpos;
 		ydelta = ydest - controller->ypos;
-
+        
 		tempdistance = (Uint32) controller->distance_to_ob(foe);
-		if (tempdistance < PATHING_MIN_DISTANCE)// || (tempdistance < last_distance) )
+		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
+		if (tempdistance < PATHING_MIN_DISTANCE || myscreen->level_data.myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
 		{
-			std::list<walker*> foelist = controller->screenp->find_foes_in_range(controller->screenp->level_data.oblist,
+			std::list<walker*> foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
 			if (howmany > 0)
 			{
@@ -1152,7 +1152,7 @@ bool statistics::walk_to_foe()
 				clear_command();
 				controller->turn(controller->facing(xdelta, ydelta));
 				controller->stats->try_command(COMMAND_ATTACK,(short) (30+ random(25)), 1, 1);
-				controller->screenp->find_near_foe(controller);
+				myscreen->find_near_foe(controller);
 				if (!controller->foe && firstfoe)
 				{
 					controller->foe = firstfoe;

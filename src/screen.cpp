@@ -48,8 +48,6 @@ extern Sint32 calculate_level(Uint32 temp_exp);
 //#define BUF_SIZE (unsigned) ((S_DOWN-S_UP)*(S_RIGHT-S_LEFT))
 
 #define MAX_SPREAD 10 //this controls find_near_foe
-//#define query_keyboard dumb
-//#define grab_keyboard yuck
 
 short load_version_2(SDL_RWops  *infile, screen * master);
 short load_version_3(SDL_RWops  *infile, screen * master); // v.3 scen
@@ -78,9 +76,11 @@ Uint32 random(Uint32 x)
 screen::screen(short howmany)
     : video(), level_data(1)
 {
+    // Set the global here so objects we construct here can use it
+    myscreen = this;
+    
 	Sint32 i, j;
-	const char *qresult;
-	text first_text(this);
+	text& first_text = text_normal;
 	Sint32 left = 66;
 
 	grab_timer();
@@ -95,8 +95,7 @@ screen::screen(short howmany)
 	// Load the palette ..
 	load_and_set_palette("our.pal", newpalette);
 
-	// load the pixie graphics data shorto memory
-	// shorto memory, you know the !tallo kind
+	// load the pixie graphics data into memory
 
 	draw_button(60, 50, 260, 110, 2, 1);
 	draw_text_bar(64, 54, 256, 62); // header field
@@ -110,8 +109,7 @@ screen::screen(short howmany)
 	first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
 	
-	// Load configuration settings here
-	load_settings();
+	update_overscan_setting();
 	
 	palmode = 0;
 
@@ -148,17 +146,11 @@ screen::screen(short howmany)
 	
 
 	// Init the sound data
-	qresult = cfg.query("sound", "sound");
-	if (!qresult || (qresult && !strcmp(qresult, "on"))) // sound is on
-	{
-		soundp = new soundob();
-		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
-	}
-	else
-	{
-		soundp = new soundob(1); // turn sound off
-		first_text.write_xy(left, 94, "Initializing Sound...Skipped", DARK_BLUE, 1);
-	}
+    soundp = new soundob();
+    if(!cfg.is_on("sound", "sound"))
+        soundp->set_sound(1);
+    first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
+    
 	buffer_to_screen(0, 0, 320, 200);
 
 	// Let's set the special names for all walkers ..
@@ -253,25 +245,25 @@ void screen::initialize_views()
     // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
 	if (numviews == 1)
 	{
-		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
+		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
 	}
 	else if (numviews == 2)
 	{
-		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0, this);
-		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1);
 	}
 	else if (numviews == 3)
 	{
-		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0, this);
-		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1, this);
-		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
+		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
 	}
 	else if (numviews == 4)
 	{
-		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0, this);
-		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1, this);
-		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2, this);
-		viewob[3] = new viewscreen( T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT, 3, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
+		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
+		viewob[3] = new viewscreen( T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT, 3);
 	}
 	else
     {
@@ -329,25 +321,25 @@ void screen::reset(short howmany)
 
 	if (numviews == 1)
 	{
-		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
+		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
 	}
 	else if (numviews == 2)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
 	}
 	else if (numviews == 3)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2);
 	}
 	else if (numviews == 4)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
-		viewob[3] = new viewscreen( 112, 16, 100, 168, 3, this);
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2);
+		viewob[3] = new viewscreen( 112, 16, 100, 168, 3);
 	}
 
 	end = 0;
@@ -399,7 +391,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 	if (!level_data.grid.valid())
 		return 0;
 
-	// Check if our butt hangs over shorto next grid square
+	// Check if our butt hangs over into next grid square
 	if (!((xover)%GRID_SIZE))
 		xtrax = 0; //this should be the rare case
 	if (!((yover)%GRID_SIZE))

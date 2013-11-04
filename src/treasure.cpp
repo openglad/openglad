@@ -34,8 +34,8 @@ void get_input_events(bool);
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
-treasure::treasure(const PixieData& data, screen  *myscreen)
-    : walker(data, myscreen)
+treasure::treasure(const PixieData& data)
+    : walker(data)
 {
 	ignore =(char) 0;
 	dead =  (char) 0;
@@ -55,7 +55,7 @@ short treasure::act()
 short treasure::eat_me(walker  * eater)
 {
 	short guys_here;
-	static text eattext(screenp);
+	
 	char message[80];
 	Sint32 distance;
 	walker  *target, *flash;
@@ -69,12 +69,16 @@ short treasure::eat_me(walker  * eater)
 				return 1;
 			else
 			{
-				eater->stats->hitpoints += 10*stats->level + random(10*stats->level);
+			    short amount = 10*stats->level + random(10*stats->level);
+				eater->stats->hitpoints += amount;
 				if (eater->stats->hitpoints > eater->stats->max_hitpoints)
 					eater->stats->hitpoints = eater->stats->max_hitpoints;
+                
+                do_heal_effects(NULL, eater, amount);
+                
 				dead = 1;
 				if (on_screen())
-					screenp->soundp->play_sound(SOUND_EAT);
+					myscreen->soundp->play_sound(SOUND_EAT);
 				return 1;
 			}
 		case FAMILY_GOLD_BAR:
@@ -83,7 +87,7 @@ short treasure::eat_me(walker  * eater)
 				myscreen->save_data.m_score[eater->team_num] += (200*stats->level);
 				dead = 1;
 				if (on_screen())
-					screenp->soundp->play_sound(SOUND_MONEY);
+					myscreen->soundp->play_sound(SOUND_MONEY);
 			}
 			return 1;
 		case FAMILY_SILVER_BAR:
@@ -92,7 +96,7 @@ short treasure::eat_me(walker  * eater)
 				myscreen->save_data.m_score[eater->team_num] += (50*stats->level);
 				dead = 1;
 				if (on_screen())
-					screenp->soundp->play_sound(SOUND_MONEY);
+					myscreen->soundp->play_sound(SOUND_MONEY);
 			}
 			return 1;
 		case FAMILY_FLIGHT_POTION:
@@ -102,7 +106,7 @@ short treasure::eat_me(walker  * eater)
 				if (eater->user != -1)
 				{
 					sprintf(message, "Potion of Flight(%d)!", stats->level);
-					screenp->do_notify(message, eater);
+					myscreen->do_notify(message, eater);
 				}
 				dead = 1;
 			}
@@ -115,7 +119,7 @@ short treasure::eat_me(walker  * eater)
 			if (eater->user != -1)
 			{
 				sprintf(message, "Potion of Mana(%d)!", stats->level);
-				screenp->do_notify(message, eater);
+				myscreen->do_notify(message, eater);
 			}
 			return 1;
 		case FAMILY_INVULNERABLE_POTION:
@@ -126,7 +130,7 @@ short treasure::eat_me(walker  * eater)
 				if (eater->user != -1)
 				{
 					sprintf(message, "Potion of Invulnerability(%d)!", stats->level);
-					screenp->do_notify(message, eater);
+					myscreen->do_notify(message, eater);
 				}
 			}
 			return 1;
@@ -135,7 +139,7 @@ short treasure::eat_me(walker  * eater)
 			if (eater->user != -1)
 			{
 				sprintf(message, "Potion of Invisibility(%d)!", stats->level);
-				screenp->do_notify(message, eater);
+				myscreen->do_notify(message, eater);
 			}
 			dead = 1;
 			return 1;
@@ -145,7 +149,7 @@ short treasure::eat_me(walker  * eater)
 			if (eater->user != -1)
 			{
 				sprintf(message, "Potion of Speed(%d)!", stats->level);
-				screenp->do_notify(message, eater);
+				myscreen->do_notify(message, eater);
 			}
 			dead = 1;
 			return 1;
@@ -155,7 +159,7 @@ short treasure::eat_me(walker  * eater)
 				return 1;
 			eater->skip_exit = 10;
 			// See if there are any enemies left ...
-			if (screenp->level_done == 0)
+			if (myscreen->level_done == 0)
 				guys_here = 1;
 			else
 				guys_here = 0;
@@ -173,8 +177,8 @@ short treasure::eat_me(walker  * eater)
 			//    somewhere we've been, in which case we abort
 			//    this level, and set our current level to
 			//    that pointed to by the exit ...
-			if ( screenp->save_data.is_level_completed(stats->level)
-			        && !screenp->save_data.is_level_completed(screenp->save_data.scen_num)
+			if ( myscreen->save_data.is_level_completed(stats->level)
+			        && !myscreen->save_data.is_level_completed(myscreen->save_data.scen_num)
 			        && (guys_here != 0)
 			   ) // okay to leave
 			{
@@ -185,7 +189,7 @@ short treasure::eat_me(walker  * eater)
                 snprintf(buf, 40, "Withdraw to %s?", exitname);
                 bool result = yes_or_no_prompt("Exit Field", buf, false);
 				// Redraw screen ..
-				screenp->redrawme = 1;
+				myscreen->redrawme = 1;
 
 				if (result) // accepted level change
 				{
@@ -212,24 +216,24 @@ short treasure::eat_me(walker  * eater)
 					// Save with the new current level
                     myscreen->save_data.save("save0");
 
-					return screenp->endgame(1, stats->level); // retreat
+					return myscreen->endgame(1, stats->level); // retreat
 				}  // end of accepted withdraw to new level ..
 				clear_keyboard();
 			} // end of checking for withdrawal to completed level
 
 			//buffers: also, allow exit if scenario_type == can exit
-			if (!guys_here || (screenp->level_data.type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
+			if (!guys_here || (myscreen->level_data.type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
 			{
                 char buf[40];
                 snprintf(buf, 40, "Exit to %s?", exitname);
                 bool result = yes_or_no_prompt("Exit Field", buf, false);
 				// Redraw screen ..
-				screenp->redrawme = 1;
+				myscreen->redrawme = 1;
 
 				if(result) // accepted level change
 				{
 					clear_keyboard();
-					return screenp->endgame(0, stats->level);
+					return myscreen->endgame(0, stats->level);
 				}
 				clear_keyboard();
 				return 1;
@@ -257,13 +261,13 @@ short treasure::eat_me(walker  * eater)
 				return 1;
 			leader = target;
 			eater->center_on(target);
-			if (!screenp->query_passable(eater->xpos, eater->ypos, eater))
+			if (!myscreen->query_passable(eater->xpos, eater->ypos, eater))
 			{
 				eater->center_on(this);
 				return 1;
 			}
 			// Now do special effects
-			flash = screenp->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
+			flash = myscreen->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			return 1;
@@ -271,7 +275,7 @@ short treasure::eat_me(walker  * eater)
 			if (eater->team_num != team_num) // only our team can get these
 				return 1;
 			myscreen->save_data.m_score[eater->team_num] += stats->hitpoints;
-			flash = screenp->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
+			flash = myscreen->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			dead = 1;
@@ -304,7 +308,7 @@ void treasure::set_direct_frame(short whatframe)
 	PixieData data;
 	frame = whatframe;
 
-	data = screenp->level_data.myloader->graphics[PIX(order, family)];
+	data = myscreen->level_data.myloader->graphics[PIX(order, family)];
 	bmp = data.data + frame*size;
 
 }
@@ -312,7 +316,7 @@ void treasure::set_direct_frame(short whatframe)
 // Finds the next connected teleporter in the fxlist for you to warp to.
 walker  * treasure::find_teleport_target()
 {
-	auto& ls = screenp->level_data.fxlist;
+	auto& ls = myscreen->level_data.fxlist;
 	//Log("Teleporting from #%d ..", number);
 
 	// First find where we are in the list ...

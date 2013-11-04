@@ -202,8 +202,6 @@ void handle_joy_event(const SDL_Event& event);
 void sendFakeKeyDownEvent(int keycode);
 void sendFakeKeyUpEvent(int keycode);
 
-void grab_keyboard();                                               // mask the keyboard short.
-void release_keyboard();                                    // restore normal short.
 int query_key();                                                            // return last keypress
 char* query_text_input();                                                            // return last text input
 
@@ -256,6 +254,11 @@ struct MouseState
     float x, y;
     bool left;
     bool right;
+    
+    bool in(const SDL_Rect& r) const
+    {
+        return (r.x <= x && x < r.x + r.w && r.y <= y && y < r.y + r.h);
+    }
 };
 
 MouseState& query_mouse();

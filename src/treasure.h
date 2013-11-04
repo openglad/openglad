@@ -25,7 +25,7 @@
 class treasure : public walker
 {
 	public:
-		treasure(const PixieData& data, screen  *myscreen);
+		treasure(const PixieData& data);
 		virtual ~treasure();
 		short          act();
 		//short                    death(); // called upon destruction

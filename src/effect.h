@@ -29,7 +29,7 @@
 class effect : public walker
 {
 	public:
-		effect(const PixieData& data, screen* myscreen);
+		effect(const PixieData& data);
 		virtual ~effect();
 		short act();
 		short animate();

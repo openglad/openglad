@@ -1,4 +1,16 @@
 ---
-sound: on
-render: double
-fullscreen: off
+version: 1
+effects:
+  attack_lunge: on
+  damage_numbers: on
+  heal_numbers: on
+  hit_anim: on
+  hit_flash: on
+  hit_recoil: on
+  mini_hp_bar: on
+graphics:
+  fullscreen: off
+  overscan_percentage: 0
+  render: double
+sound:
+  sound: on

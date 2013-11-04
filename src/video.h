@@ -20,12 +20,16 @@
 // The definition of the VIDEO class
 
 #include "base.h"
+#include "text.h"
 
 class video
 {
 	public:
 		video();
 		virtual ~video();
+		
+        void set_fullscreen(bool fullscreen);
+        
 		void clearbuffer();
 		void clearbuffer(int x, int y, int w, int h);
 		
@@ -82,11 +86,21 @@ class video
 		                   Sint32 portstartx, Sint32 portstarty,
 		                   Sint32 portendx, Sint32 portendy,
 		                   unsigned char  *sourceptr, unsigned char teamcolor);
+		void walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
+		                   Sint32 walkerwidth, Sint32 walkerheight,
+		                   Sint32 portstartx, Sint32 portstarty,
+		                   Sint32 portendx, Sint32 portendy,
+		                   unsigned char  *sourceptr, unsigned char teamcolor);
 		void walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                                    Sint32 walkerwidth, Sint32 walkerheight,
                                    Sint32 portstartx, Sint32 portstarty,
                                    Sint32 portendx, Sint32 portendy,
                                    unsigned char  *sourceptr, unsigned char teamcolor);
+		void walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                                   Sint32 walkerwidth, Sint32 walkerheight,
+                                   Sint32 portstartx, Sint32 portstarty,
+                                   Sint32 portendx, Sint32 portendy,
+                                   unsigned char  *sourceptr, unsigned char teamcolor, Uint8 alpha);
 
 
 		void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
@@ -107,7 +121,7 @@ class video
 		void draw_button_inverted(Sint32 x, Sint32 y, Uint32 w, Uint32 h);
 		void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border);
 		void draw_button(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, Sint32 border, Sint32 tobuffer);
-        void draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool use_border, int base_color, int high_color, int shadow_color);
+        void draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool use_border, int base_color, int high_color = 15, int shadow_color = 11);
 		Sint32 draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, const char *header);
 		void draw_text_bar(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2);
 		
@@ -118,6 +132,8 @@ class video
 		void get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b);
 		int get_pixel(int x, int y, int *index);
 		int get_pixel(int offset);
+		
+		bool save_screenshot();
 
 		// Fading code: (thanks Erik!)
 		void FadeBetween24(SDL_Surface *, const Uint8 *, const Uint8 *, const int);
@@ -139,6 +155,9 @@ class video
 		SDL_Surface *window;
 		int screen_width,screen_height,fullscreen;
 		int pdouble;
+		
+		text text_normal;
+		text text_big;
 };
 
 #endif

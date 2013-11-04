@@ -85,7 +85,7 @@ short save_palette(unsigned char * whatpalette)
 
 //
 // load_palette
-// Loads palette from file FILENAME shorto NEWPALETTE
+// Loads palette from file FILENAME into NEWPALETTE
 //
 short load_palette(const char *filename, unsigned char *newpalette)
 {

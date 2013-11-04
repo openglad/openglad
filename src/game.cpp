@@ -27,14 +27,6 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	short         myord, myfam;
 	int           multi_team = 0;
 	int           i;
-
-	// First load the team list ..
-	/*if (!myscreen->save_data.load(filename))
-	{
-		Log("Error loading saved game %s.\n", filename);
-		release_keyboard();
-		exit(1);
-	}*/
 	
 	myscreen->numviews = myscreen->save_data.numplayers;
 	

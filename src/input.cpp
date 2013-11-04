@@ -285,25 +285,25 @@ void load_touch_images(screen* myscreen)
     loaded_touch_images = true;
     
     moving_base_pix_data = read_pixie_file("moving_base.pix");
-	moving_base_pix = new pixie(moving_base_pix_data, myscreen);
+	moving_base_pix = new pixie(moving_base_pix_data);
     
     moving_target_pix_data = read_pixie_file("moving_target.pix");
-	moving_target_pix = new pixie(moving_target_pix_data, myscreen);
+	moving_target_pix = new pixie(moving_target_pix_data);
     
     fire_button_pix_data = read_pixie_file("fire_button.pix");
-	fire_button_pix = new pixie(fire_button_pix_data, myscreen);
+	fire_button_pix = new pixie(fire_button_pix_data);
     
     special_button_pix_data = read_pixie_file("special_button.pix");
-	special_button_pix = new pixie(special_button_pix_data, myscreen);
+	special_button_pix = new pixie(special_button_pix_data);
     
     next_special_button_pix_data = read_pixie_file("next_special_button.pix");
-	next_special_button_pix = new pixie(next_special_button_pix_data, myscreen);
+	next_special_button_pix = new pixie(next_special_button_pix_data);
     
     alternate_special_button_pix_data = read_pixie_file("alternate_button.pix");
-	alternate_special_button_pix = new pixie(alternate_special_button_pix_data, myscreen);
+	alternate_special_button_pix = new pixie(alternate_special_button_pix_data);
 	
 	switch_char_button_pix_data = read_pixie_file("switch_char_button.pix");
-	switch_char_button_pix = new pixie(switch_char_button_pix_data, myscreen);
+	switch_char_button_pix = new pixie(switch_char_button_pix_data);
     
 }
 
@@ -377,7 +377,7 @@ void draw_touch_controls(screen* vob)
         next_special_button_pix->put_screen(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, touch_button_alpha);
     
     //if(has_alternate)
-    if(strcmp(vob->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE"))
+    if(strcmp(vob->alternate_name[(int)control->query_family()][(int)control->current_special], "NONE") != 0)
     {
         int alpha = touch_button_alpha;
         if (control->stats->magicpoints < control->stats->special_cost[(int)control->current_special])
@@ -417,17 +417,23 @@ void handle_window_event(const SDL_Event& event)
     switch(event.window.event)
     {
         case SDL_WINDOWEVENT_MINIMIZED:
-        // Save state here on Android
-		myscreen->save_data.save("save0");
-        break;
+            // Save state here on Android
+            myscreen->save_data.save("save0");
+            break;
         case SDL_WINDOWEVENT_CLOSE:
-        // Save state here on Android
-		myscreen->save_data.save("save0");
-        break;
+            // Save state here on Android
+            myscreen->save_data.save("save0");
+            break;
         case SDL_WINDOWEVENT_RESTORED:
-        // Restore state here on Android.
-        // Redraw the screen so it's not blank
-        myscreen->refresh();
+            // Restore state here on Android.
+            // Redraw the screen so it's not blank
+            myscreen->refresh();
+            break;
+        case SDL_WINDOWEVENT_RESIZED:
+            window_w = event.window.data1;
+            window_h = event.window.data2;
+            update_overscan_setting();
+            break;
         break;
     }
 }
@@ -449,6 +455,9 @@ void handle_key_event(const SDL_Event& event)
         if(raw_key == SDLK_ESCAPE)
             input_continue = true;
         key_press_event = 1;
+        
+        if(event.key.keysym.sym == SDLK_F10)
+            myscreen->save_screenshot();
         break;
     case SDL_KEYUP:
         #ifdef USE_TOUCH_INPUT
@@ -672,7 +681,9 @@ void handle_mouse_event(const SDL_Event& event)
                 && ALTERNATE_SPECIAL_BUTTON_Y <= y && y <= ALTERNATE_SPECIAL_BUTTON_Y + BUTTON_DIM)
             {
                 // Treat KEY_SHIFTER as an action instead of a modifier
-                sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
+                //if(has_alternate)
+                if(strcmp(myscreen->alternate_name[(int)myscreen->viewob[0]->control->query_family()][(int)myscreen->viewob[0]->control->current_special], "NONE") != 0)
+                    sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
             }
             else if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
             {
@@ -819,12 +830,6 @@ void handle_events(const SDL_Event& event)
 //
 //Keyboard routines
 //
-
-void grab_keyboard()
-{}
-
-void release_keyboard()
-{}
 
 int query_key()
 {

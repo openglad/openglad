@@ -40,7 +40,7 @@ void intro_main(Sint32 argc, char** argv)
 {
 	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
 	//char **args = (char **)new int;
-	text *mytext;
+	text& mytext = myscreen->text_normal;
 	pixie *gladiator;
 	pixie *bigfoot;
 	pixie *ul, *ur, *ll, *lr; // for full-screen displays
@@ -50,37 +50,32 @@ void intro_main(Sint32 argc, char** argv)
 
 	ul = ur = ll = lr = NULL;
 
-	if (!myscreen)
-		myscreen = new screen(1);
-
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 	grab_timer();
-	grab_keyboard();
-	mytext = new text(myscreen);
+	
 	load_and_set_palette("our.pal", mypalette);
 	//  load_scenario("current", myscreen);
 	//buffers: PORT:  for (i=0;i<256;i++)
 	//buffers: PORT:         set_palette_reg(i,0,0,0);
 	myscreen->clear();
 	gladdata = read_pixie_file("dinomage.pix");
-	gladiator = new pixie(gladdata, myscreen);
+	gladiator = new pixie(gladdata);
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
-	mytext->write_y(120,"DinoMage Games presents", 230, myscreen->viewob[0]);
+	mytext.write_y(120,"DinoMage Games presents", 230, myscreen->viewob[0]);
 	delete gladiator;
 	gladdata.free();
 
 	if (show() < 0)
 	{
-		delete mytext;
 		cleanup();
 		return;
 	}
 
 	myscreen->clear();
 	gladdata = read_pixie_file("glad2.pix");
-	gladiator = new pixie(gladdata, myscreen);
+	gladiator = new pixie(gladdata);
 	bigdata = read_pixie_file("bigfoot.pix");
-	bigfoot = new pixie(bigdata, myscreen);
+	bigfoot = new pixie(bigdata);
 	                    
 	bigfoot->drawMix(120,50,myscreen->viewob[0]);
 	gladiator->drawMix(100, 110, myscreen->viewob[0]);
@@ -92,38 +87,35 @@ void intro_main(Sint32 argc, char** argv)
 
 	if (show() < 0)
 	{
-		delete mytext;
 		cleanup();
 		return;
 	}
 	
 	myscreen->clear();
 	gladdata = read_pixie_file("3mages2.pix");
-	gladiator = new pixie(gladdata, myscreen);
+	gladiator = new pixie(gladdata);
 	gladiator->drawMix(120,55,myscreen->viewob[0]);
-	mytext->write_y(105,"GAME BY   ", 230, myscreen->viewob[0]);
-	mytext->write_y(120,"FORGOTTEN SAGES   ", 230, myscreen->viewob[0]);
+	mytext.write_y(105,"GAME BY   ", 230, myscreen->viewob[0]);
+	mytext.write_y(120,"FORGOTTEN SAGES   ", 230, myscreen->viewob[0]);
 	delete gladiator;
 	gladdata.free();
 
 	if (show() < 0)
 	{
-		delete mytext;
 		cleanup();
 		return;
 	}
 
 	// Programming Credits, Page 1
 	myscreen->clear();
-	mytext->write_y(80,"Programming By:", 230, myscreen->viewob[0]);
-	mytext->write_y(100,"Chad Lawrence  Doug McCreary", 230, myscreen->viewob[0]);
-	mytext->write_y(110,"Tom Ricket  Michael Scandizzo", 230, myscreen->viewob[0]);
+	mytext.write_y(80,"Programming By:", 230, myscreen->viewob[0]);
+	mytext.write_y(100,"Chad Lawrence  Doug McCreary", 230, myscreen->viewob[0]);
+	mytext.write_y(110,"Tom Ricket  Michael Scandizzo", 230, myscreen->viewob[0]);
 
 	//myscreen->refresh();
 
 	if (show() < 0)
 	{
-		delete mytext;
 		cleanup();
 		return;
 	}
@@ -131,7 +123,7 @@ void intro_main(Sint32 argc, char** argv)
 	// First 'interlude' snapshot
 	myscreen->clear();
 	uldata = read_pixie_file("game2ul.pix");
-	ul = new pixie(uldata, myscreen);
+	ul = new pixie(uldata);
 	ul->setxy(41, 12);
 	ul->draw(myscreen->viewob[0]);
 	delete ul;
@@ -139,7 +131,7 @@ void intro_main(Sint32 argc, char** argv)
 	ul = NULL;
 
 	urdata = read_pixie_file("game2ur.pix");
-	ur = new pixie(urdata, myscreen);
+	ur = new pixie(urdata);
 	ur->setxy(160, 12);
 	ur->draw(myscreen->viewob[0]);
 	delete ur;
@@ -147,7 +139,7 @@ void intro_main(Sint32 argc, char** argv)
 	ur = NULL;
 
 	lldata = read_pixie_file("game2ll.pix");
-	ll = new pixie(lldata, myscreen);
+	ll = new pixie(lldata);
 	ll->setxy(41, 103);
 	ll->draw(myscreen->viewob[0]);
 	delete ll;
@@ -155,7 +147,7 @@ void intro_main(Sint32 argc, char** argv)
 	ll = NULL;
 
 	lrdata = read_pixie_file("game2lr.pix");
-	lr = new pixie(lrdata, myscreen);
+	lr = new pixie(lrdata);
 	lr->setxy(160, 103);
 	lr->draw(myscreen->viewob[0]);
 	delete lr;
@@ -166,22 +158,20 @@ void intro_main(Sint32 argc, char** argv)
 
 	if (show(SHOW_TIME+30) < 0)
 	{
-		delete mytext;
 		cleanup();
 		return;
 	}
 
 	// Programming Credits, Page 2
 	myscreen->clear();
-	mytext->write_y(70,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
+	mytext.write_y(70,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
 	//buffers: PORT: w00t w00t
-	mytext->write_y(90,"SDL port by Odo and Zardus",230,myscreen->viewob[0]);
-	mytext->write_y(110,"Android port by Jonathan Dearborn",230,myscreen->viewob[0]);
+	mytext.write_y(90,"SDL port by Odo and Zardus",230,myscreen->viewob[0]);
+	mytext.write_y(110,"Android port by Jonathan Dearborn",230,myscreen->viewob[0]);
 	//myscreen->refresh();
 
 	if (show() < 0)
 	{
-		delete mytext;
 		cleanup();
 		return;
 	}
@@ -189,7 +179,7 @@ void intro_main(Sint32 argc, char** argv)
 	// Second 'interlude' & extra credits
 	myscreen->clear();
 	uldata = read_pixie_file("game4.pix");
-	ul = new pixie(uldata, myscreen);
+	ul = new pixie(uldata);
 	ul->setxy(0, 0);
 	ul->draw(myscreen->viewob[0]);
 	delete ul;
@@ -197,7 +187,7 @@ void intro_main(Sint32 argc, char** argv)
 	ul = NULL;
 
 	lldata = read_pixie_file("game5.pix");
-	ll = new pixie(lldata, myscreen);
+	ll = new pixie(lldata);
 	ll->setxy(160, 78);
 	ll->draw(myscreen->viewob[0]);
 	delete ll;
@@ -205,30 +195,29 @@ void intro_main(Sint32 argc, char** argv)
 	ll = NULL;
 
 	strcpy(message, "Additional Artwork By:");
-	mytext->write_xy(310-mytext->query_width(message),
+	mytext.write_xy(310-mytext.query_width(message),
 	                 30, message, 230, myscreen->viewob[0]);
 	strcpy(message, "Doug Ricket");
-	mytext->write_xy(310-mytext->query_width(message),
+	mytext.write_xy(310-mytext.query_width(message),
 	                 50, message, 230, myscreen->viewob[0]);
 	strcpy(message, "Stefan Scandizzo");
-	mytext->write_xy(310-mytext->query_width(message),
+	mytext.write_xy(310-mytext.query_width(message),
 	                 60, message, 230, myscreen->viewob[0]);
 
 	strcpy(message, "Special Thanks To:");
-	mytext->write_xy(2, 130, message, 230, myscreen->viewob[0]);
+	mytext.write_xy(2, 130, message, 230, myscreen->viewob[0]);
 	strcpy(message, "Kim Kelly  Lara Kirkendall");
-	mytext->write_xy(2, 150, message, 230, myscreen->viewob[0]);
+	mytext.write_xy(2, 150, message, 230, myscreen->viewob[0]);
 	strcpy(message, "Lee Martin  Karyn McCreary");
-	mytext->write_xy(2, 160, message, 230, myscreen->viewob[0]);
+	mytext.write_xy(2, 160, message, 230, myscreen->viewob[0]);
 	strcpy(message, "Loki, Ishara, & Mootz");
-	mytext->write_xy(2, 170, message, 230, myscreen->viewob[0]);
+	mytext.write_xy(2, 170, message, 230, myscreen->viewob[0]);
 	strcpy(message, "And many others!");
-	mytext->write_xy(2, 180, message, 230, myscreen->viewob[0]);
+	mytext.write_xy(2, 180, message, 230, myscreen->viewob[0]);
 
 
 	if (show(SHOW_TIME*4) < 0)
 	{
-		delete mytext;
 		cleanup();
 		return;
 	}
@@ -244,7 +233,6 @@ void intro_main(Sint32 argc, char** argv)
 	  }
 	*/
 
-	delete mytext;
 	cleanup();
 }
 
@@ -254,7 +242,6 @@ int cleanup()
 	int red,green,blue; //buffers: PORT: changed to ints
 	query_palette_reg((unsigned char)0, &red, &green, &blue); // Resets palette to read mode
 	release_timer();
-	release_keyboard();
 	myscreen->clear();
 	myscreen->refresh();
 

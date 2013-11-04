@@ -113,16 +113,36 @@ std::string get_asset_path()
     return "";
 #else
     // FIXME: This won't typically work for *nix
-    return "";
+    return "/usr/share/openglad/";
 #endif
 }
 
 SDL_RWops* open_read_file(const char* file)
 {
-    SDL_RWops* rwops = PHYSFSRWOPS_openRead(file);
-    if(rwops != NULL)
-        return rwops;
-    return SDL_RWFromFile(file, "rb");
+    SDL_RWops* rwops = NULL;
+    
+    //Log((std::string("Trying via PHYSFS: ") + file).c_str());
+    rwops = PHYSFSRWOPS_openRead(file);
+    if(rwops != NULL) return rwops;
+
+    // now try opening in the current directory
+    //Log((std::string("Trying to open: ") + file).c_str());
+    rwops = SDL_RWFromFile(file, "rb");
+    if(rwops != NULL) return rwops;
+
+    // now try opening in the user directory
+    //Log((std::string("Trying to open: ") + get_user_path() + file).c_str());
+    rwops = SDL_RWFromFile((get_user_path() + std::string("/") + file).c_str(), "rb");
+    if(rwops != NULL) return rwops;
+
+    // now try opening in the asset directory
+    //Log((std::string("Trying to open: ") + get_asset_path() + file).c_str());
+    rwops = SDL_RWFromFile((get_asset_path() + std::string("/") + file).c_str(), "rb");
+    if(rwops != NULL) return rwops;
+
+    // give up
+    Log((std::string("Failed to find: ") + file).c_str());
+    return NULL;
 }
 
 SDL_RWops* open_read_file(const char* path, const char* file)
@@ -173,6 +193,8 @@ bool mount_campaign_package(const std::string& id)
 {
     if(id.size() == 0)
         return false;
+
+    Log(std::string("Mounting campaign package: " + id).c_str());
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_mount(filename.c_str(), NULL, 0))
@@ -390,73 +412,7 @@ void restore_default_campaigns()
     #ifndef FORCE_RESTORE_DEFAULT_CAMPAIGNS
     if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
     #endif
-        copy_file("builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
-}
-
-
-bool save_settings()
-{
-    SDL_RWops* outfile = open_write_file("cfg/settings.yaml");
-    if(outfile != NULL)
-    {
-        char buf[40];
-        
-        Yam yam;
-        yam.set_output(rwops_write_handler, outfile);
-        
-        yam.emit_pair("version", "1");
-        
-        snprintf(buf, 40, "%.0f", 100*overscan_percentage);
-        yam.emit_pair("overscan_percentage", buf);
-        
-        yam.close_output();
-        SDL_RWclose(outfile);
-        
-        return true;
-    }
-    else
-    {
-        Log("Couldn't open cfg/settings.yaml for writing.\n");
-        return false;
-    }
-}
-
-int toInt(const std::string& s);
-
-bool load_settings()
-{
-    
-    SDL_RWops* rwops = open_read_file("cfg/settings.yaml");
-    
-    if(rwops == NULL)
-    {
-        Log("No settings file found.\n");
-        return false;
-    }
-    
-    Yam yam;
-    yam.set_input(rwops_read_handler, rwops);
-    
-    while(yam.parse_next() == Yam::OK)
-    {
-        switch(yam.event.type)
-        {
-            case Yam::PAIR:
-                if(strcmp(yam.event.scalar, "overscan_percentage") == 0)
-                {
-                    overscan_percentage = toInt(yam.event.value)/100.0f;
-                    update_overscan_setting();
-                }
-            break;
-            default:
-                break;
-        }
-    }
-    
-    yam.close_input();
-    SDL_RWclose(rwops);
-    
-    return true;
+        copy_file(get_asset_path() + "builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
 }
 
 void io_init(int argc, char* argv[])
@@ -484,11 +440,13 @@ void io_init(int argc, char* argv[])
     // SDL_RWops size checking on Android doesn't seem to work!
     
     // Open up the default campaign
-    if(!PHYSFS_mount((get_user_path() + "campaigns/org.openglad.gladiator.glad").c_str(), NULL, 1))
+    Log("Mounting default campaign...");
+    if (!mount_campaign_package("org.openglad.gladiator"))
     {
-        Log("Failed to mount default campaign path: %s\n", PHYSFS_getLastError());
+        Log("Failed to mount default campaign: %s\n", PHYSFS_getLastError());
         exit(1);
     }
+    Log("Mounted default campaign...");
     
     // Set up paths for default assets
     if(!PHYSFS_mount((get_asset_path() + "pix/").c_str(), "pix/", 1))
@@ -503,8 +461,6 @@ void io_init(int argc, char* argv[])
     {
         Log("Failed to mount default cfg path.\n");
     }
-    
-    
 }
 
 void io_exit()
