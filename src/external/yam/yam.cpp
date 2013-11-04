@@ -185,8 +185,11 @@ Yam::ParseResultEnum Yam::parse_next()
     {
         yaml_event_delete(&_event);
         
-        if(!yaml_parser_parse(&_parser, &_event))
+        if(yaml_parser_parse(&_parser, &_event) < 0)
+        {
+            printf("YAML error: %s %s\n", _parser.context, _parser.problem);
             return ERROR;
+        }
     }
     
     if(_event.type == YAML_STREAM_END_EVENT)
@@ -234,8 +237,11 @@ Yam::ParseResultEnum Yam::parse_next()
                     // Now let's peek at the next event to see if it is a simple pair
                     yaml_event_delete(&_event);
                     
-                    if(!yaml_parser_parse(&_parser, &_event))
+                    if(yaml_parser_parse(&_parser, &_event) < 0)
+                    {
+                        printf("YAML error: %s %s\n", _parser.context, _parser.problem);
                         return ERROR;
+                    }
                     
                     if(_event.type == YAML_SCALAR_EVENT)
                     {

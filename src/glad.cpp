@@ -74,7 +74,8 @@ int main(int argc, char *argv[])
 {
 	io_init(argc, argv);
 	
-	cfg.parse("cfg/openglad.yaml");
+	cfg.load_settings();
+	cfg.save_settings();
 	cfg.commandline(argc, argv);
 
 	theprefs = new options;
@@ -95,17 +96,14 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-void glad_main(screen *myscreen, Sint32 playermode)
+void glad_main(Sint32 playermode)
 {
 	//  char soundpath[80];
 	//  short cyclemode = 1;            // color cycling on or off
-	short numviews;
 
 	//Sint32 longtemp;
 	//char message[50];
 	short currentcycle = 0, cycletime = 3;
-
-	numviews = (short) playermode;
 
 	//screen  *myscreen;
 
@@ -118,12 +116,6 @@ void glad_main(screen *myscreen, Sint32 playermode)
 	clear_keyboard();
 	myscreen->fadeblack(0);
 
-	if (myscreen)
-	{
-		//myscreen->reset(numviews);
-	}
-	else
-		myscreen = new screen(numviews);
 	myscreen->clearbuffer();
 
 	// Draw rainbow background
@@ -201,9 +193,9 @@ void glad_main(screen *myscreen, Sint32 playermode)
             {
                 if(event.key.keysym.sym == SDLK_F11)
                     debug_draw_paths = !debug_draw_paths;
-                if(event.key.keysym.sym == SDLK_F12)
+                else if(event.key.keysym.sym == SDLK_F12)
                     debug_draw_obmap = !debug_draw_obmap;
-                if(event.key.keysym.sym == SDLK_ESCAPE)
+                else if(event.key.keysym.sym == SDLK_ESCAPE)
                 {
                     bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
                     myscreen->redrawme = 1;
@@ -559,7 +551,7 @@ short new_score_panel(screen *myscreen, short do_it)
 	short tempfoes = 0;
 	short players;
 	short tempallies = 0;
-	text *mytext = new text(myscreen, TEXT_1);
+	text& mytext = myscreen->text_normal;
 #if 0
 	static Uint32 family[5]={-1,-1,-1,-1,-1},
 	                               act[5]={-1, -1,-1,-1,-1};
@@ -630,7 +622,7 @@ short new_score_panel(screen *myscreen, short do_it)
 			if (draw_button)
 				myscreen->draw_button(lm+1, tm+2, lm+63, tm+9, 1, 1);
 
-			mytext->write_xy(lm+3, tm+4, message, text_color, 1);
+			mytext.write_xy(lm+3, tm+4, message, text_color, 1);
 
 			// HP/MP bars; dependent on user settings
 			switch (myscreen->viewob[players]->prefs[PREF_LIFE])
@@ -639,9 +631,9 @@ short new_score_panel(screen *myscreen, short do_it)
 					if (draw_button)
 						myscreen->draw_button(lm+1, tm+10, lm+63, tm+26, 1, 1);
 					sprintf(message, "HP: %.0f", ceilf(control->stats->hitpoints));
-					mytext->write_xy(lm+5, tm+12, message, text_color, (short) 1); // to buffer
+					mytext.write_xy(lm+5, tm+12, message, text_color, (short) 1); // to buffer
 					sprintf(message, "MP: %.0f", ceilf(control->stats->magicpoints));
-					mytext->write_xy(lm+5, tm+20, message, text_color, (short) 1);
+					mytext.write_xy(lm+5, tm+20, message, text_color, (short) 1);
 					break; // end of 'text' case
 				case PREF_LIFE_BARS: // display graphical bars only
 					//if (draw_button)
@@ -659,13 +651,13 @@ short new_score_panel(screen *myscreen, short do_it)
 					//  myscreen->draw_button(lm+1, tm+9, lm+63, tm+25, 1, 1);
 					new_draw_value_bar(lm+2, tm+10, control, 0, myscreen);
 					sprintf(message, "HP: %.0f", ceilf(control->stats->hitpoints));
-					mytext->write_xy(lm+5, tm+11, message, (unsigned char) BLACK, (short) 1); // to buffer
+					mytext.write_xy(lm+5, tm+11, message, (unsigned char) BLACK, (short) 1); // to buffer
 
 					//SP BAR
 					//COLORS DEFINED IN GRAPH.H
 					new_draw_value_bar(lm+2, tm+18, control, 1, myscreen);
 					sprintf(message, "MP: %.0f", ceilf(control->stats->magicpoints));
-					mytext->write_xy(lm+5, tm+19, message, (unsigned char) BLACK, (short) 1);
+					mytext.write_xy(lm+5, tm+19, message, (unsigned char) BLACK, (short) 1);
 					break; // end of 'both' case
 			} // end of HP/MP display case
 
@@ -709,14 +701,14 @@ short new_score_panel(screen *myscreen, short do_it)
                 else
                 {
                     sprintf(message, "SC: %u", scorecountup[control->team_num]);
-                    mytext->write_xy(lm+2, bm-8, message, text_color, (short) 1);
+                    mytext.write_xy(lm+2, bm-8, message, text_color, (short) 1);
 
                     // Level or exp, 2nd bottom left
                     if (control->myguy)
                         sprintf(message, "XP: %u", control->myguy->exp);
                     else
                         sprintf(message, "LEVEL: %i", control->stats->level);
-                    mytext->write_xy(lm+2, bm-16, message, text_color, (short) 1);
+                    mytext.write_xy(lm+2, bm-16, message, text_color, (short) 1);
                 }
                 
 				// Currently-select special
@@ -728,9 +720,9 @@ short new_score_panel(screen *myscreen, short do_it)
 					
                 
 				if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
-					mytext->write_xy(lm+2, special_y, message, text_color, (short) 1);
+					mytext.write_xy(lm+2, special_y, message, text_color, (short) 1);
 				else
-					mytext->write_xy(lm+2, special_y, message, (unsigned char) RED, (short) 1);
+					mytext.write_xy(lm+2, special_y, message, (unsigned char) RED, (short) 1);
                 
                 #ifdef USE_TOUCH_INPUT
                 // Alternate special name (if not "NONE")
@@ -738,9 +730,9 @@ short new_score_panel(screen *myscreen, short do_it)
                 {
 					sprintf(message, "ALT: %s", myscreen->alternate_name[(int)control->query_family()][(int)control->current_special]);
                     if (control->stats->magicpoints >= control->stats->special_cost[(int)control->current_special])
-                        mytext->write_xy(lm+2, bm + special_offset + 8, message, text_color, (short) 1);
+                        mytext.write_xy(lm+2, bm + special_offset + 8, message, text_color, (short) 1);
                     else
-                        mytext->write_xy(lm+2, bm + special_offset + 8, message, (unsigned char) RED, (short) 1);
+                        mytext.write_xy(lm+2, bm + special_offset + 8, message, (unsigned char) RED, (short) 1);
                 }
                 #endif
 
@@ -758,7 +750,7 @@ short new_score_panel(screen *myscreen, short do_it)
 			           case ACT_GUARD: strcpy(message, "GUARD"); break;
 			           default: break;
 			    }
-			    mytext->write_xy(S_RIGHT+18,S_UP+65,message, text_color, 1);
+			    mytext.write_xy(S_RIGHT+18,S_UP+65,message, text_color, 1);
 			  }
 			*/
 
@@ -770,17 +762,17 @@ short new_score_panel(screen *myscreen, short do_it)
 
 				sprintf(message, "TEAM: %d", tempallies);
 				#ifndef USE_TOUCH_INPUT
-				mytext->write_xy(rm - 55, tm+2, message, text_color, (short) 1);
+				mytext.write_xy(rm - 55, tm+2, message, text_color, (short) 1);
 				#else
-				mytext->write_xy(rm - 55, tm+2 + 44 + 8, message, text_color, (short) 1);
+				mytext.write_xy(rm - 55, tm+2 + 44 + 8, message, text_color, (short) 1);
 				#endif
 
 				// Number of foes, 2nd upper right
 				sprintf(message, "FOES: %d", tempfoes);
 				#ifndef USE_TOUCH_INPUT
-				mytext->write_xy(rm-55, tm+10, message, text_color, (short) 1);
+				mytext.write_xy(rm-55, tm+10, message, text_color, (short) 1);
 				#else
-				mytext->write_xy(rm-55, tm+10 + 44 + 8, message, text_color, (short) 1);
+				mytext.write_xy(rm-55, tm+10 + 44 + 8, message, text_color, (short) 1);
 				#endif
 			}
 
@@ -788,7 +780,7 @@ short new_score_panel(screen *myscreen, short do_it)
 			//    myscreen->putdata(244, 140, radarpic[1], radarpic[2], &(radarpic[3]) );
 		}
 	} // end of one-player mode
-	delete mytext;
+	
 	return 1;
 
 }

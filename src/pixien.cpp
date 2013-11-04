@@ -27,16 +27,16 @@
 //  multiple frames and switch frames before a put.
 // ************************************************************
 
-pixieN::pixieN(const PixieData& data, screen  *myscreen):
-		pixie(data, myscreen)
+pixieN::pixieN(const PixieData& data):
+		pixie(data)
 {
 	facings = data.data;
 	frames = data.frames;
 	frame = 0;
 }
 
-pixieN::pixieN(const PixieData& data, screen  *myscreen, int doaccel):
-		pixie(data, myscreen)
+pixieN::pixieN(const PixieData& data, int doaccel):
+		pixie(data)
 {
 	facings = data.data;
 	frames = data.frames;

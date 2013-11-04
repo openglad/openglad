@@ -32,30 +32,28 @@ unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
 Screen *E_Screen;
 
 video::video()
+    : text_normal(TEXT_1), text_big(TEXT_BIG)
 {
 	Sint32 i;
-	const char *qresult;
 	RenderEngine render;
 	fullscreen = 0;
     render = NoZoom;
 
-	qresult = cfg.query("graphics","fullscreen");
-	if(qresult && strcmp(qresult,"on")==0)
+	if(cfg.is_on("graphics","fullscreen"))
 		fullscreen = 1;
 	else
 		fullscreen = 0;
 
-	qresult = cfg.query("graphics", "render");
-	if(qresult && strcmp(qresult, "normal")==0) {
+	std::string qresult = cfg.get_setting("graphics", "render");
+	if(qresult == "normal")
 		render = NoZoom;
-	} else if(qresult && strcmp(qresult,"sai")==0) {
+	else if(qresult == "sai")
 		render = SAI;
-	} else if(qresult && strcmp(qresult,"eagle")==0) {
+	else if(qresult == "eagle")
 		render = EAGLE;
-	} else if(qresult && strcmp(qresult,"double")==0) {
+	else if(qresult == "double")
 		render = DOUBLE;
-	}
-
+	
 	fadeDuration = 500;
 
 	// Load our palettes ..
@@ -85,6 +83,26 @@ video::~video()
 {
 	delete E_Screen;
 	SDL_Quit();
+}
+
+void video::set_fullscreen(bool fullscreen)
+{
+    // FIXME: A bug in my copy of SDL is making FULLSCREEN -> WINDOWED -> FULLSCREEN take up a partial portion of the screen and ruin the game.
+    /*if(fullscreen)
+    {
+        SDL_SetWindowFullscreen(E_Screen->window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    }
+    else
+    {
+        SDL_SetWindowFullscreen(E_Screen->window, 0);
+        SDL_SetWindowSize(E_Screen->window, 640, 400);
+    }
+    
+    int w, h;
+    SDL_GetWindowSize(E_Screen->window, &w, &h);
+    window_w = w;
+    window_h = h;
+    update_overscan_setting();*/
 }
 
 unsigned char * video::getbuffer()
@@ -244,7 +262,7 @@ void video::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool
 Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
                         const char *header)
 {
-	static text dialogtext(myscreen, TEXT_BIG); // large text
+	text& dialogtext = text_big; // large text
 	Sint32 centerx = x1 + ( (x2-x1) /2 ), left;
 	short textwidth;
 
@@ -1088,6 +1106,98 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 	}
 }
 
+void video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
+                          Sint32 walkerwidth, Sint32 walkerheight,
+                          Sint32 portstartx, Sint32 portstarty,
+                          Sint32 portendx, Sint32 portendy,
+                          unsigned char  *sourceptr, unsigned char teamcolor)
+{
+	Sint32 curx, cury;
+	unsigned char curcolor;
+	Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+	Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+	Sint32 totrows,rowsize;
+
+	if (walkerstartx >= portendx || walkerstarty >= portendy)
+		return; //walker is below or to the right of the viewport
+
+	if (walkerstartx < portstartx) //clip the left edge of the view
+	{
+		xmin = portstartx-walkerstartx;  //start drawing walker at xmin
+		walkerstartx = portstartx;
+	}
+
+	else if (walkerstartx + walkerwidth > portendx) //clip the right edge
+		xmax = portendx - walkerstartx; //stop drawing walker at xmax
+
+	if (walkerstarty < portstarty) // clip the top edge
+	{
+		ymin = portstarty-walkerstarty; //start drawing walker at ymin
+		walkerstarty = portstarty;
+	}
+
+	else if (walkerstarty + walkerheight > portendy) //clip the bottom edge
+		ymax = portendy - walkerstarty; //stop drawing walker at ymax
+
+	totrows = (ymax-ymin); //how many rows to copy
+	rowsize = (xmax-xmin); //how many bytes to copy
+	if (totrows <= 0 || rowsize <= 0)
+		return; //this happens on bad args
+
+	//note!! the clipper makes the assumption that no object is larger than
+	// the view it will be clipped to in either dimension!!!
+
+	walkshift = walkerwidth - rowsize;
+	buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+
+	walkoff   = (ymin * walkerwidth) + xmin;
+	buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+
+
+	for(cury = 0; cury < totrows;cury++)
+	{
+		for(curx=0;curx<rowsize;curx++)
+		{
+			curcolor = sourceptr[walkoff++];
+			if (!curcolor)
+			{
+				buffoff++;
+				continue;
+			}
+			
+			if (curcolor > (unsigned char) 247)
+				curcolor = (unsigned char) (teamcolor+(255-curcolor));
+			
+			int r,g,b;
+            query_palette_reg(curcolor,&r,&g,&b);
+            r *= 4;
+            g *= 4;
+            b *= 4;
+            
+            if(r > 155)
+                r = 255;
+            else
+                r += 100;
+            
+            if(g > 155)
+                g = 255;
+            else
+                g += 100;
+            
+            if(b > 155)
+                b = 255;
+            else
+                b += 100;
+            
+            
+			//buffers: PORT: videobuffer[buffoff++] = curcolor;
+			pointb(walkerstartx+curx,walkerstarty+cury,r, g, b);
+		}
+		walkoff += walkshift;
+		buffoff += buffshift;
+	}
+}
+
 void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
@@ -1156,6 +1266,72 @@ void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                         rect.w = 1;
                         rect.h = 1;
                         SDL_FillRect(E_Screen->render,&rect,color);
+                }
+                walkoff += walkshift;
+                buffoff += buffshift;
+        }
+}
+
+void video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
+                          Sint32 walkerwidth, Sint32 walkerheight,
+                          Sint32 portstartx, Sint32 portstarty,
+                          Sint32 portendx, Sint32 portendy,
+                          unsigned char  *sourceptr, unsigned char teamcolor, Uint8 alpha)
+{
+        Sint32 curx, cury;
+        unsigned char curcolor;
+        Sint32 xmin = 0, xmax= walkerwidth , ymin= 0 , ymax= walkerheight;
+        Sint32 walkoff=0,buffoff=0,walkshift=0,buffshift=0;
+        Sint32 totrows,rowsize;
+
+        if (walkerstartx >= portendx || walkerstarty >= portendy)
+                return; //walker is below or to the right of the viewport
+
+        if (walkerstartx < portstartx) //clip the left edge of the view
+        {
+                xmin = portstartx-walkerstartx;  //start drawing walker at xmin
+                walkerstartx = portstartx;
+        }
+	else if (walkerstartx + walkerwidth > portendx) //clip the right edge
+                xmax = portendx - walkerstartx; //stop drawing walker at xmax
+
+        if (walkerstarty < portstarty) // clip the top edge
+        {
+                ymin = portstarty-walkerstarty; //start drawing walker at ymin
+                walkerstarty = portstarty;
+        }
+
+        else if (walkerstarty + walkerheight > portendy) //clip the bottom edge
+                ymax = portendy - walkerstarty; //stop drawing walker at ymax
+
+        totrows = (ymax-ymin); //how many rows to copy
+        rowsize = (xmax-xmin); //how many bytes to copy
+        if (totrows <= 0 || rowsize <= 0)
+                return; //this happens on bad args
+
+        //note!! the clipper makes the assumption that no object is larger than
+        // the view it will be clipped to in either dimension!!!
+
+        walkshift = walkerwidth - rowsize;
+        buffshift = VIDEO_BUFFER_WIDTH - rowsize;
+
+        walkoff   = (ymin * walkerwidth) + xmin;
+        buffoff   = (walkerstarty*VIDEO_BUFFER_WIDTH) + walkerstartx;
+
+        for(cury = 0; cury < totrows;cury++)
+        {
+                for(curx=0;curx<rowsize;curx++)
+                {
+                        curcolor = sourceptr[walkoff++];
+                        if (!curcolor)
+                        {
+                                buffoff++;
+                                continue;
+                        }
+                        if (curcolor > (unsigned char) 247)
+                                curcolor = (unsigned char) (teamcolor+(255-curcolor));
+                        
+                        pointb(curx + walkerstartx, cury + walkerstarty, teamcolor, alpha);
                 }
                 walkoff += walkshift;
                 buffoff += buffshift;
@@ -1562,6 +1738,58 @@ int video::get_pixel(int offset)
 	x = offset-y*320;
 
 	return get_pixel(x,y,&t);
+}
+
+#ifndef USE_BMP_SCREENSHOT
+#include "../util/savepng.h"
+#endif
+
+bool video::save_screenshot()
+{
+    SDL_Surface* surf;
+    
+	switch(E_Screen->Engine)
+	{
+		case SAI:
+		case EAGLE:
+            surf = E_Screen->render2;
+		    break;
+        default:
+            surf = E_Screen->render;
+            break;
+	}
+	
+	static int i = 1;
+	char buf[200];
+    #ifndef USE_BMP_SCREENSHOT
+	snprintf(buf, 200, "screenshot%d.png", i);
+	#else
+	snprintf(buf, 200, "screenshot%d.bmp", i);
+	#endif
+	i++;
+	
+	SDL_RWops* rwops = open_write_file(buf);
+	if(rwops == NULL)
+    {
+        Log("Failed to open file for screenshot.\n");
+        return false;
+    }
+    
+    Log("Saving screenshot: %s\n", buf);
+    
+    #ifndef USE_BMP_SCREENSHOT
+    // Make it safe to save (convert alpha channel)
+    surf = SDL_PNGFormatAlpha(surf);
+    
+    // Save it
+    bool result = (SDL_SavePNG_RW(surf, rwops, 1) >= 0);
+    SDL_FreeSurface(surf);
+    #else
+    bool result = (SDL_SaveBMP_RW(surf, rwops, 1) >= 0);
+    
+    #endif
+    
+    return result;
 }
 
 

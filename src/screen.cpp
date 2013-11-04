@@ -76,9 +76,11 @@ Uint32 random(Uint32 x)
 screen::screen(short howmany)
     : video(), level_data(1)
 {
+    // Set the global here so objects we construct here can use it
+    myscreen = this;
+    
 	Sint32 i, j;
-	const char *qresult;
-	text first_text(this);
+	text& first_text = text_normal;
 	Sint32 left = 66;
 
 	grab_timer();
@@ -107,8 +109,7 @@ screen::screen(short howmany)
 	first_text.write_xy(left, 78, "Loading Gameplay Info...", DARK_BLUE, 1);
 	buffer_to_screen(0, 0, 320, 200);
 	
-	// Load configuration settings here
-	load_settings();
+	update_overscan_setting();
 	
 	palmode = 0;
 
@@ -145,17 +146,11 @@ screen::screen(short howmany)
 	
 
 	// Init the sound data
-	qresult = cfg.query("sound", "sound");
-	if (!qresult || (qresult && !strcmp(qresult, "on"))) // sound is on
-	{
-		soundp = new soundob();
-		first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
-	}
-	else
-	{
-		soundp = new soundob(1); // turn sound off
-		first_text.write_xy(left, 94, "Initializing Sound...Skipped", DARK_BLUE, 1);
-	}
+    soundp = new soundob();
+    if(!cfg.is_on("sound", "sound"))
+        soundp->set_sound(1);
+    first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
+    
 	buffer_to_screen(0, 0, 320, 200);
 
 	// Let's set the special names for all walkers ..
@@ -250,25 +245,25 @@ void screen::initialize_views()
     // Even though it looks okay here, these positions and sizes are overridden by viewscreen::resize() later.
 	if (numviews == 1)
 	{
-		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
+		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
 	}
 	else if (numviews == 2)
 	{
-		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0, this);
-		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HEIGHT, 0);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HEIGHT, 1);
 	}
 	else if (numviews == 3)
 	{
-		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0, this);
-		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1, this);
-		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
+		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
 	}
 	else if (numviews == 4)
 	{
-		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0, this);
-		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1, this);
-		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2, this);
-		viewob[3] = new viewscreen( T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT, 3, this);
+		viewob[0] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_HALF_WIDTH, T_HALF_HEIGHT, 0);
+		viewob[1] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_HALF_WIDTH, T_HALF_HEIGHT, 1);
+		viewob[2] = new viewscreen( T_LEFT_THREE, T_UP_THREE, T_HALF_WIDTH, T_HALF_HEIGHT, 2);
+		viewob[3] = new viewscreen( T_LEFT_FOUR, T_UP_FOUR, T_HALF_WIDTH, T_HALF_HEIGHT, 3);
 	}
 	else
     {
@@ -326,25 +321,25 @@ void screen::reset(short howmany)
 
 	if (numviews == 1)
 	{
-		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0, this);
+		viewob[0] = new viewscreen( S_LEFT, S_UP, S_WIDTH, S_HEIGHT, 0);
 	}
 	else if (numviews == 2)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
 	}
 	else if (numviews == 3)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2);
 	}
 	else if (numviews == 4)
 	{
-		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1, this);
-		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0, this);
-		viewob[2] = new viewscreen( 112, 16, 100, 168, 2, this);
-		viewob[3] = new viewscreen( 112, 16, 100, 168, 3, this);
+		viewob[1] = new viewscreen( T_LEFT_ONE, T_UP_ONE, T_WIDTH, T_HEIGHT, 1);
+		viewob[0] = new viewscreen( T_LEFT_TWO, T_UP_TWO, T_WIDTH, T_HEIGHT, 0);
+		viewob[2] = new viewscreen( 112, 16, 100, 168, 2);
+		viewob[3] = new viewscreen( 112, 16, 100, 168, 3);
 	}
 
 	end = 0;

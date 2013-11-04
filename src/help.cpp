@@ -72,7 +72,7 @@ short read_scenario(screen *myscreen)
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
 	
-	text *mytext = new text(myscreen, TEXT_1);
+	text& mytext = myscreen->text_normal;
 	Sint32 start_time, now_time;
 	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
 
@@ -158,7 +158,7 @@ short read_scenario(screen *myscreen)
             {
                 std::string s = myscreen->level_data.get_description_line(j+templines);
 				if(s.size() > 0)
-					mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
+					mytext.write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
 					                 s.c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
             }
 
@@ -168,9 +168,9 @@ short read_scenario(screen *myscreen)
 			                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP-2);
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
 			                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP+103);
-			mytext->write_xy(HELPTEXT_LEFT+40,
+			mytext.write_xy(HELPTEXT_LEFT+40,
 			                 HELPTEXT_TOP-7, "SCENARIO INFORMATION", (unsigned char) RED, 1);
-			mytext->write_xy(HELPTEXT_LEFT+30,
+			mytext.write_xy(HELPTEXT_LEFT+30,
 			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", (unsigned char) RED, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			changed = 0;
@@ -180,8 +180,7 @@ short read_scenario(screen *myscreen)
 
 	while (keystates[KEYSTATE_ESCAPE])  // wait for key release
 		get_input_events(WAIT);
-	delete mytext;
-	mytext = NULL;
+    
 	return (short) numlines;
 }
 
@@ -199,7 +198,7 @@ short read_campaign_intro(screen * myscreen)
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
 	
-	static text *mytext = new text(myscreen, TEXT_1);
+	text& mytext = myscreen->text_normal;
 	Sint32 start_time, now_time;
 	Sint32 bottomrow;
 
@@ -292,7 +291,7 @@ short read_campaign_intro(screen * myscreen)
 				if(data.getDescriptionLine(j+templines).size() == 0)
                     continue;
                 
-                mytext->write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
+                mytext.write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
             }
 
 			
@@ -301,9 +300,9 @@ short read_campaign_intro(screen * myscreen)
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP-2);
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP+103);
-			mytext->write_xy(HELPTEXT_LEFT+240/2 - data.title.size()*3,
+			mytext.write_xy(HELPTEXT_LEFT+240/2 - data.title.size()*3,
 			                 HELPTEXT_TOP-7, data.title.c_str(), (unsigned char) RED, 1);
-			mytext->write_xy(HELPTEXT_LEFT+52,
+			mytext.write_xy(HELPTEXT_LEFT+52,
 			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", (unsigned char) RED, 1);
 			//myscreen->buffer_to_screen(0, 0, 320, 200);
 			myscreen->buffer_to_screen(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,244,119);

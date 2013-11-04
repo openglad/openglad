@@ -21,8 +21,8 @@
 #include "graph.h"
 #include "smooth.h"
 
-weap::weap(const PixieData& data, screen  *myscreen)
-    : walker(data, myscreen)
+weap::weap(const PixieData& data)
+    : walker(data)
 {
 	do_bounce = 0; // don't normally bounce :)
 }
@@ -36,7 +36,7 @@ short weap::act()
 {
 	static char message[80];
 
-	// Make sure everyone we're poshorting to is valid
+	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
 		foe = NULL;
 	if (leader && leader->dead)
@@ -47,7 +47,7 @@ short weap::act()
 	if (!owner)
 		owner = this; //to fix cases where our parent died!
 
-	collide_ob = NULL; // always start with no collison..
+	collide_ob = NULL; // always start with no collision..
 
 	// Complete previous animations (like firing)
 	if (ani_type != ANI_WALK)
@@ -143,7 +143,7 @@ short weap::death()
 		case FAMILY_KNIFE: // for returning knife
 			if (owner && owner->query_family() != FAMILY_SOLDIER)
 				break;  // only soldiers get returning knives
-			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_KNIFE_BACK);
+			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_KNIFE_BACK);
 			newob->owner = owner;
 			newob->center_on(this);
 			newob->lastx = lastx;
@@ -157,26 +157,26 @@ short weap::death()
 				break;
 			dead = 0; // first, un-dead us so we can collide ..
 			// Did we hit a barrier?
-			if (screenp->query_grid_passable(xpos+lastx, ypos+lasty, this))
+			if (myscreen->query_grid_passable(xpos+lastx, ypos+lasty, this))
 			{
 				dead = 1;
 				break; // if not, die like normal
 			}
-			if (screenp->query_grid_passable(xpos-lastx, ypos+lasty, this))
+			if (myscreen->query_grid_passable(xpos-lastx, ypos+lasty, this))
 			{
 				setxy(xpos-lastx, ypos+lasty);  // bounce 'down-left'
 				lastx = -lastx;
 				death_called = 0;
 				break;
 			}
-			if (screenp->query_grid_passable(xpos+lastx, ypos-lasty, this))
+			if (myscreen->query_grid_passable(xpos+lastx, ypos-lasty, this))
 			{
 				setxy(xpos+lastx, ypos-lasty); // bounce 'up-right'
 				lasty = -lasty;
 				death_called = 0;
 				break;
 			}
-			if (screenp->query_grid_passable(xpos-lastx, ypos-lasty, this))
+			if (myscreen->query_grid_passable(xpos-lastx, ypos-lasty, this))
 			{
 				setxy(xpos-lastx, ypos-lasty);
 				lastx = -lastx;
@@ -193,11 +193,11 @@ short weap::death()
 				break;  // skip_exit means we're supposed to explode :)
 			if (!owner || owner->dead)
 				owner = this;
-			newob = screenp->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
+			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
 			if (!newob)
 				break; // failsafe
 			if (on_screen())
-				screenp->soundp->play_sound(SOUND_EXPLODE);
+				myscreen->soundp->play_sound(SOUND_EXPLODE);
 			newob->owner = owner;
 			newob->stats->hitpoints = 0;
 			newob->stats->level = owner->stats->level;
@@ -216,7 +216,7 @@ short weap::death()
 			stats->hitpoints = stats->max_hitpoints;
 			break;  // end wave2 -> wave3
 		case FAMILY_DOOR: // display open picture
-			newob = screenp->level_data.add_weap_ob(ORDER_FX, FAMILY_DOOR_OPEN);
+			newob = myscreen->level_data.add_weap_ob(ORDER_FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
 			newob->ani_type = ANI_DOOR_OPEN;
@@ -225,7 +225,7 @@ short weap::death()
 			newob->team_num = team_num;
 			//      newob->ignore = 1;
 			// What way are we 'facing'?
-			if (screenp->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
+			if (myscreen->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
 			        == TYPE_WALL) // a wall above us?
 			{
 				newob->curdir = FACE_RIGHT;

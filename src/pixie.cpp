@@ -44,18 +44,16 @@
 // Pixie -- this initializes the graphics data for the pixie,
 // as well as its graphics x and y size.  In addition, it informs
 // the pixie of the screen object it is linked to.
-pixie::pixie(const PixieData& data, screen* myscreen)
+pixie::pixie(const PixieData& data)
 {
-	screenp = myscreen;
 	set_data(data);
 	
 	accel = 0;
 }
 
 //buffers: new constructor that automatically calls init_sdl_surface
-pixie::pixie(const PixieData& data, screen *myscreen, int doaccel)
+pixie::pixie(const PixieData& data, int doaccel)
 {
-	screenp = myscreen;
 	set_data(data);
 	
 	accel = 0;
@@ -115,14 +113,14 @@ short pixie::draw(viewscreen * view_buf)
 
 	if(accel)
 	{
-		view_buf->screenp->putbuffer(xscreen, yscreen, sizex, sizey,
+		myscreen->putbuffer(xscreen, yscreen, sizex, sizey,
 		                             view_buf->xloc, view_buf->yloc,
 		                             view_buf->endx, view_buf->endy,
 		                             bmp_surface);
 	}
 	else
 	{
-		view_buf->screenp->putbuffer(xscreen, yscreen, sizex, sizey,
+		myscreen->putbuffer(xscreen, yscreen, sizex, sizey,
 		                             view_buf->xloc, view_buf->yloc,
 		                             view_buf->endx, view_buf->endy,
 		                             bmp);
@@ -150,7 +148,7 @@ short pixie::drawMix(viewscreen * view_buf)
 	xscreen = (Sint32) (xpos - view_buf->topx + view_buf->xloc);
 	yscreen = (Sint32) (ypos - view_buf->topy + view_buf->yloc);
 
-	view_buf->screenp->walkputbuffer(xscreen, yscreen, sizex, sizey,
+	myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
 	                                 view_buf->xloc, view_buf->yloc,
 	                                 view_buf->endx, view_buf->endy,
 	                                 bmp, RED);
@@ -161,16 +159,16 @@ short pixie::drawMix(viewscreen * view_buf)
 
 short pixie::put_screen(short x, short y)
 {
-	screenp->putdata(x, y, sizex, sizey, bmp);
+	myscreen->putdata(x, y, sizex, sizey, bmp);
 	return 1;
 }
 
 short pixie::on_screen()
 {
 	short i;
-	for (i=0; i < screenp->numviews; i++)
+	for (i=0; i < myscreen->numviews; i++)
 	{
-		if (on_screen(screenp->viewob[i]))
+		if (on_screen(myscreen->viewob[i]))
 			return 1;
 	}
 	return 0;

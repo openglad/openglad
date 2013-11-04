@@ -11,7 +11,7 @@
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);
 
-bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
+bool prompt_for_string(const std::string& message, std::string& result);
 void popup_dialog(const char* title, const char* message);
 
 #define OG_OK 4
@@ -332,8 +332,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         num_foes_total = get_num_foes(original_level);
     }
     
-	text mytext(myscreen, TEXT_1);
-	text bigtext(myscreen, TEXT_BIG);
+	text& mytext = myscreen->text_normal;
+	text& bigtext = myscreen->text_big;
 	Uint32 bonuscash[4] = {0, 0, 0, 0};
 	Uint32 allscore = 0, allbonuscash = 0;
 

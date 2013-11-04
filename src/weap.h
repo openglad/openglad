@@ -25,7 +25,7 @@
 class weap : public walker
 {
 	public:
-		weap(const PixieData& data, screen  *myscreen);
+		weap(const PixieData& data);
 		virtual ~weap();
 
 		short act();

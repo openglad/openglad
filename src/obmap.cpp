@@ -43,7 +43,7 @@ obmap::~obmap()
 
 void obmap::draw()
 {
-    text t(myscreen);
+    text& t = myscreen->text_normal;
     short offsetx = myscreen->viewob[0]->topx;
     short offsety = myscreen->viewob[0]->topy;
     // Draw the number of obs in each pile

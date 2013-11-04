@@ -321,17 +321,23 @@ void handle_window_event(const SDL_Event& event)
     switch(event.window.event)
     {
         case SDL_WINDOWEVENT_MINIMIZED:
-        // Save state here on Android
-		myscreen->save_data.save("save0");
-        break;
+            // Save state here on Android
+            myscreen->save_data.save("save0");
+            break;
         case SDL_WINDOWEVENT_CLOSE:
-        // Save state here on Android
-		myscreen->save_data.save("save0");
-        break;
+            // Save state here on Android
+            myscreen->save_data.save("save0");
+            break;
         case SDL_WINDOWEVENT_RESTORED:
-        // Restore state here on Android.
-        // Redraw the screen so it's not blank
-        myscreen->refresh();
+            // Restore state here on Android.
+            // Redraw the screen so it's not blank
+            myscreen->refresh();
+            break;
+        case SDL_WINDOWEVENT_RESIZED:
+            window_w = event.window.data1;
+            window_h = event.window.data2;
+            update_overscan_setting();
+            break;
         break;
     }
 }
@@ -353,6 +359,9 @@ void handle_key_event(const SDL_Event& event)
         if(raw_key == SDLK_ESCAPE)
             input_continue = true;
         key_press_event = 1;
+        
+        if(event.key.keysym.sym == SDLK_F10)
+            myscreen->save_screenshot();
         break;
     case SDL_KEYUP:
         #ifdef USE_TOUCH_INPUT

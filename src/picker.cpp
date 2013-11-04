@@ -45,7 +45,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
-bool prompt_for_string(text* mytext, const std::string& message, std::string& result);
+bool prompt_for_string(const std::string& message, std::string& result);
 
 #define BUTTON_HEIGHT 15
 
@@ -54,7 +54,7 @@ bool prompt_for_string(text* mytext, const std::string& message, std::string& re
 void show_guy(Sint32 frames, Sint32 who, short centerx = 80, short centery = 45); // shows the current guy ..
 Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
-void glad_main(screen *myscreen, Sint32 playermode);
+void glad_main(Sint32 playermode);
 const char* get_saved_name(const char * filename);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
@@ -69,9 +69,6 @@ pixieN *backdrops[5];
 // Zardus: FIX: this is from view.cpp, so that we can delete it here
 extern options *theprefs;
 
-//screen  *myscreen;
-text  *mytext;
-//char main_dir[80];
 guy  *current_guy = NULL;
 guy  *old_guy = NULL;
 
@@ -144,31 +141,27 @@ void picker_main(Sint32 argc, char  **argv)
 	backpics[2] = read_pixie_file("mainll.pix");
 	backpics[3] = read_pixie_file("mainlr.pix");
 
-	backdrops[0] = new pixieN(backpics[0], myscreen);
+	backdrops[0] = new pixieN(backpics[0]);
 	backdrops[0]->setxy(0, 0);
-	backdrops[1] = new pixieN(backpics[1], myscreen);
+	backdrops[1] = new pixieN(backpics[1]);
 	backdrops[1]->setxy(160, 0);
-	backdrops[2] = new pixieN(backpics[2], myscreen);
+	backdrops[2] = new pixieN(backpics[2]);
 	backdrops[2]->setxy(0, 100);
-	backdrops[3] = new pixieN(backpics[3], myscreen);
+	backdrops[3] = new pixieN(backpics[3]);
 	backdrops[3]->setxy(160, 100);
 
-
-	if (!myscreen)
-		myscreen = new screen(1);
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
-	mytext = new text(myscreen);
 
 	myscreen->clearbuffer();
 
 	//main_title_logo_data = read_pixie_file("glad.pix");
 	main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
-	main_title_logo_pix = new pixieN(main_title_logo_data, myscreen);
+	main_title_logo_pix = new pixieN(main_title_logo_data);
 
 
 	//main_columns_data = read_pixie_file("mage.pix");
 	main_columns_data = read_pixie_file("columns.pix");
-	main_columns_pix = new pixieN(main_columns_data, myscreen);
+	main_columns_pix = new pixieN(main_columns_data);
 
 	// Get the mouse, timer, & keyboard ..
 	grab_mouse();
@@ -207,7 +200,6 @@ void picker_quit()
 			delete allbuttons[i];
 	}
 
-	delete mytext;
 	delete myscreen;
 	delete main_columns_pix;
 	main_columns_data.free();
@@ -242,13 +234,12 @@ button mainmenu_buttons[] =
         button("PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)),
         button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
 
-        #ifdef ENABLE_OVERSCAN_ADJUST
         button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeft(7, 10)),
-        button("<-> ", KEYSTATE_UNKNOWN, 80, 180, 30, 10, OVERSCAN_ADJUST, -1, MenuNav::UpRight(7, 9))
-        #else
-        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0, MenuNav::Up(7))
-        #endif
+        button("", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
     };
+    
+#define OPTIONS_BUTTON_INDEX 10
+
 #else // DISABLE_MULTIPLAYER
 
 // Modified main screen with no multiplayer
@@ -259,15 +250,33 @@ button mainmenu_buttons[] =
 
         button("DIFFICULTY", KEYSTATE_UNKNOWN, 80, 120, 140, 15, SET_DIFFICULTY, -1, MenuNav::UpDown(1, 3)),
         button("Level Edit", KEYSTATE_UNKNOWN, 80, 137, 140, 15, DO_LEVEL_EDIT, -1, MenuNav::UpDown(2, 4)),
-        button("QUIT ", KEYSTATE_ESCAPE, 80, 154, 140, 20, QUIT_MENU, 0, MenuNav::Up(3))
+        button("QUIT ", KEYSTATE_ESCAPE, 120, 154, 60, 20, QUIT_MENU, 0, MenuNav::UpLeft(3, 5)),
+        button("", KEYSTATE_UNKNOWN, 90, 154, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(3, 4))
     };
+    
+#define OPTIONS_BUTTON_INDEX 5
 #endif
 
-button overscanadjust_buttons[] =
+#define BUTTON_HEIGHT 15
+#define BUTTON_PADDING 8
+#define BUTTON_PITCH (BUTTON_HEIGHT + BUTTON_PADDING)
+
+button main_options_buttons[] =
 {
-    button("BACK", KEYSTATE_UNKNOWN, 135, 120, 50, 15, RETURN_MENU, EXIT, MenuNav::UpLeftRight(1, 1, 2)),
-    button("- ", KEYSTATE_UNKNOWN, 80, 90, 30, 15, OVERSCAN_DECREASE, -1, MenuNav::DownRight(0, 2)),
-    button("+ ", KEYSTATE_UNKNOWN, 210, 90, 30, 15, OVERSCAN_INCREASE, -1, MenuNav::DownLeft(0, 1))
+    button("BACK", KEYSTATE_UNKNOWN, 40, 10, 50, 15, RETURN_MENU, EXIT, MenuNav::UpDown(12, 1)),
+    button("Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, TOGGLE_SOUND, -1, MenuNav::UpDown(0, 2)),
+    button("NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, TOGGLE_RENDERING_ENGINE, -1, MenuNav::UpDownRight(1, 4, 3)),
+    button("Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, TOGGLE_FULLSCREEN, -1, MenuNav::UpDownLeft(1, 5, 2)),
+    button("- ", KEYSTATE_UNKNOWN, 130, 10 + 3*BUTTON_PITCH, 30, 15, OVERSCAN_ADJUST, -1, MenuNav::UpDownRight(2, 6, 5)),
+    button("+ ", KEYSTATE_UNKNOWN, 170, 10 + 3*BUTTON_PITCH, 30, 15, OVERSCAN_ADJUST, 1, MenuNav::UpDownLeft(3, 7, 4)),
+    button("Mini HP bar", KEYSTATE_UNKNOWN, 80, 10 + 4*BUTTON_PITCH, 90, 15, TOGGLE_MINI_HP_BAR, -1, MenuNav::UpDownRight(4, 8, 7)),
+    button("Hit flash", KEYSTATE_UNKNOWN, 210, 10 + 4*BUTTON_PITCH, 90, 15, TOGGLE_HIT_FLASH, -1, MenuNav::UpDownLeft(5, 9, 6)),
+    button("Hit recoil", KEYSTATE_UNKNOWN, 80, 10 + 5*BUTTON_PITCH, 90, 15, TOGGLE_HIT_RECOIL, -1, MenuNav::UpDownRight(6, 10, 9)),
+    button("Attack lunge", KEYSTATE_UNKNOWN, 210, 10 + 5*BUTTON_PITCH, 90, 15, TOGGLE_ATTACK_LUNGE, -1, MenuNav::UpDownLeft(7, 11, 8)),
+    button("Hit sparks", KEYSTATE_UNKNOWN, 80, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_HIT_ANIM, -1, MenuNav::UpDownRight(8, 12, 11)),
+    button("Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_DAMAGE_NUMBERS, -1, MenuNav::UpDownLeft(9, 13, 10)),
+    button("Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_HEAL_NUMBERS, -1, MenuNav::UpDownRight(10, 0, 13)),
+    button("Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 0, 12)),
 };
 
 // beginmenu (first menu of new game), create_team_menu
@@ -432,7 +441,7 @@ void view_team(short left, short top, short right, short bottom)
 	char text_down = top+3;
 	int i;
 	char message[30], namecolor, numguys = 0;
-	text mytext(myscreen);
+	text& mytext = myscreen->text_normal;
 
 	myscreen->redrawme = 1;
 	myscreen->draw_button(left, top, right, bottom, 2, 1);
@@ -488,7 +497,7 @@ void view_team(short left, short top, short right, short bottom)
 
 void draw_version_number()
 {
-	text mytext(myscreen);
+	text& mytext = myscreen->text_normal;
 
 	myscreen->redrawme = 1;
 	int w = strlen(OPENGLAD_VERSION_STRING)*6;
@@ -709,6 +718,7 @@ void redraw_mainmenu()
         count++;
     }
     allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+    allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
     
     draw_version_number();
 }
@@ -724,12 +734,14 @@ Sint32 mainmenu(Sint32 arg1)
 
 	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
-
+    
 	button* buttons = mainmenu_buttons;
 	int num_buttons = ARRAY_SIZE(mainmenu_buttons);
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
+	
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+    allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
 	
 	redraw_mainmenu();
 
@@ -751,7 +763,10 @@ Sint32 mainmenu(Sint32 arg1)
         
         // Reset buttons
         if(reset_buttons(localbuttons, buttons, num_buttons, retvalue))
+        {
             allbuttons[0]->set_graphic(FAMILY_NORMAL1);
+            allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
+        }
 		
 		// Draw
 		myscreen->clearbuffer();
@@ -899,7 +914,7 @@ Sint32 create_team_menu(Sint32 arg1)
 
 	myscreen->fadeblack(0);
 	
-	text mytext(myscreen);
+	text& mytext = myscreen->text_normal;
 	
 	button* buttons = createmenu_buttons;
 	int num_buttons = 9;
@@ -1290,7 +1305,8 @@ Sint32 create_hire_menu(Sint32 arg1)
         myscreen->draw_button(name_box, 1);
         myscreen->draw_button_inverted(name_box_inner);
         
-        mytext->write_xy(name_box.x + name_box.w/2 - 3*strlen(family_name), name_box.y + 6, family_name, (unsigned char) DARK_BLUE, 1);
+        text& mytext = myscreen->text_normal;
+        mytext.write_xy(name_box.x + name_box.w/2 - 3*strlen(family_name), name_box.y + 6, family_name, (unsigned char) DARK_BLUE, 1);
         
 		show_guy(query_timer()-start_time, 0, description_box.x + description_box.w/2, name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2); // 0 means current_guy
         change_hire_teamnum(0);
@@ -1313,7 +1329,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         int i = 0;
         for(std::list<std::string>::iterator e = desc.begin(); e != desc.end(); e++)
         {
-            mytext->write_xy(description_box_content.x, description_box_content.y + i*10, DARK_BLUE, "%s", e->c_str());
+            mytext.write_xy(description_box_content.x, description_box_content.y + i*10, DARK_BLUE, "%s", e->c_str());
             i++;
         }
         
@@ -1322,18 +1338,18 @@ Sint32 create_hire_menu(Sint32 arg1)
         myscreen->draw_button_inverted(cost_box_inner);
         
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_team_num]);
-        mytext->write_xy(cost_box_content.x, cost_box_content.y, message,(unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(cost_box_content.x, cost_box_content.y, message,(unsigned char) DARK_BLUE, 1);
         current_cost = calculate_hire_cost();
-        mytext->write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
+        mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         sprintf(message, "      %u", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
-            mytext->write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_CHANGED, 1);
+            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_CHANGED, 1);
         else
-            mytext->write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_COLOR, 1);
+            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_COLOR, 1);
 
         // Stat box
         myscreen->draw_button(stat_box, 1);
-        mytext->write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
+        mytext.write_xy(stat_box.x + 65, stat_box.y + 2, DARK_BLUE, "Train");
         myscreen->draw_button_inverted(stat_box_inner);
 
         // Stat box content
@@ -1344,46 +1360,46 @@ Sint32 create_hire_menu(Sint32 arg1)
         
         // Strength
         sprintf(message, "%d", current_guy->strength);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
                          (unsigned char) STAT_COLOR, 1);
         
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
         
         linesdown++;
         // Dexterity
         sprintf(message, "%d", current_guy->dexterity);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
                          (unsigned char) STAT_COLOR, 1);
         
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
 
         linesdown++;
         // Constitution
         sprintf(message, "%d", current_guy->constitution);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
                          (unsigned char) STAT_COLOR, 1);
         
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
 
         linesdown++;
         // Intelligence
         sprintf(message, "%d", current_guy->intelligence);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
                          (unsigned char) STAT_COLOR, 1);
         
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
 
         linesdown++;
         // Armor
         sprintf(message, "%d", current_guy->armor);
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
                          (unsigned char) STAT_COLOR, 1);
         
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
 		
 		// Separator bar
 		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
@@ -1391,30 +1407,30 @@ Sint32 create_hire_menu(Sint32 arg1)
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
         linesdown++;
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "HP:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + derived_offset - 9, stat_box_content.y + linesdown*line_height + 4, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)] + current_guy->get_hp_bonus()));
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "HP:", STAT_DERIVED, 1);
+        mytext.write_xy(stat_box_content.x + derived_offset - 9, stat_box_content.y + linesdown*line_height + 4, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)] + current_guy->get_hp_bonus()));
         
-        mytext->write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "MP:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + 2*derived_offset + 18 - 9, stat_box_content.y + linesdown*line_height + 4, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
+        mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "MP:", STAT_DERIVED, 1);
+        mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 9, stat_box_content.y + linesdown*line_height + 4, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
 		
 		linesdown++;
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + derived_offset - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)] + current_guy->get_damage_bonus());
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK:", STAT_DERIVED, 1);
+        mytext.write_xy(stat_box_content.x + derived_offset - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)] + current_guy->get_damage_bonus());
         
-        mytext->write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "DEF:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + 2*derived_offset + 18 - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", current_guy->get_armor_bonus());
+        mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "DEF:", STAT_DERIVED, 1);
+        mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", current_guy->get_armor_bonus());
 		
 		linesdown++;
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "SPD:", STAT_DERIVED, 1);
-        mytext->write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)] + current_guy->get_speed_bonus());
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "SPD:", STAT_DERIVED, 1);
+        mytext.write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)] + current_guy->get_speed_bonus());
         
 		linesdown++;
-        mytext->write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
+        mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
         // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
         float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, last_family)] - current_guy->get_fire_frequency_bonus();
         if(fire_freq < 1)
             fire_freq = 1;
-        mytext->write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", 10.0f/fire_freq);
+        mytext.write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", 10.0f/fire_freq);
         
         
 		
@@ -1554,7 +1570,9 @@ Sint32 create_train_menu(Sint32 arg1)
 
         myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
         myscreen->draw_text_bar(36, 10, 124, 22);
-        mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
+        
+        text& mytext = myscreen->text_normal;
+        mytext.write_xy(80 - mytext.query_width(current_guy->name)/2, 14,
                          current_guy->name,(unsigned char) DARK_BLUE, 1);
         myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
         myscreen->draw_text_bar(42, 70, 116, 156);
@@ -1573,7 +1591,7 @@ Sint32 create_train_menu(Sint32 arg1)
 
         // Strength
         sprintf(message, "%d", current_guy->strength);
-        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
+        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
                          (unsigned char) STAT_COLOR, 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
@@ -1581,11 +1599,11 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Dexterity
         sprintf(message, "%d", current_guy->dexterity);
-        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
+        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
                          (unsigned char) STAT_COLOR, 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
@@ -1593,11 +1611,11 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Constitution
         sprintf(message, "%d", current_guy->constitution);
-        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
+        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
                          (unsigned char) STAT_COLOR, 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
@@ -1605,11 +1623,11 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Intelligence
         sprintf(message, "%d", current_guy->intelligence);
-        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
+        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
                          (unsigned char) STAT_COLOR, 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
@@ -1617,11 +1635,11 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Armor
         sprintf(message, "%d", current_guy->armor);
-        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
+        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
                          (unsigned char) STAT_COLOR, 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
@@ -1629,11 +1647,11 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
         // Level
         sprintf(message, "%d", current_guy->get_level());
-        mytext->write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
+        mytext.write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
                          (unsigned char) STAT_COLOR, 1);
         if (level_increased)
             showcolor = STAT_CHANGED;
@@ -1641,7 +1659,7 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_DISABLED;
         else
             showcolor = STAT_COLOR;
-        mytext->write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
 
 
         // Info box
@@ -1655,24 +1673,24 @@ Sint32 create_train_menu(Sint32 arg1)
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
 		
         sprintf(message, "Total Kills: %d", current_guy->kills);
-        mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
         
         linesdown++;
         if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
         {
             sprintf(message, "   Accuracy: %d%% ",
                     (current_guy->total_hits*100)/current_guy->total_shots);
-            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
         }
         else // haven't ever hit anyone
         {
             sprintf(message, "   Accuracy: N/A ");
-            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
         }
         
         linesdown++;
         sprintf(message, " EXPERIENCE: %u", current_guy->exp);
-        mytext->write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
         
         
         linesdown++;
@@ -1682,30 +1700,30 @@ Sint32 create_train_menu(Sint32 arg1)
         
         linesdown += 0.4f;
         
-        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "HP:", STAT_DERIVED, 1);
-        mytext->write_xy(info_box_content.x + derived_offset - 9, info_box_content.y + linesdown*line_height, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_hp_bonus()));
+        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "HP:", STAT_DERIVED, 1);
+        mytext.write_xy(info_box_content.x + derived_offset - 9, info_box_content.y + linesdown*line_height, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_hp_bonus()));
         
-        mytext->write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "MP:", STAT_DERIVED, 1);
-        mytext->write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_box_content.y + linesdown*line_height, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
+        mytext.write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "MP:", STAT_DERIVED, 1);
+        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_box_content.y + linesdown*line_height, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
 		
 		linesdown++;
-        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK:", STAT_DERIVED, 1);
-        mytext->write_xy(info_box_content.x + derived_offset - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_damage_bonus());
+        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK:", STAT_DERIVED, 1);
+        mytext.write_xy(info_box_content.x + derived_offset - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_damage_bonus());
         
-        mytext->write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "DEF:", STAT_DERIVED, 1);
-        mytext->write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", current_guy->get_armor_bonus());
+        mytext.write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "DEF:", STAT_DERIVED, 1);
+        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", current_guy->get_armor_bonus());
 		
 		linesdown++;
-        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "SPD:", STAT_DERIVED, 1);
-        mytext->write_xy(info_box_content.x + derived_offset, info_box_content.y + linesdown*line_height, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_speed_bonus());
+        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "SPD:", STAT_DERIVED, 1);
+        mytext.write_xy(info_box_content.x + derived_offset, info_box_content.y + linesdown*line_height, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_speed_bonus());
         
 		linesdown++;
-        mytext->write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK SPD:", STAT_DERIVED, 1);
+        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK SPD:", STAT_DERIVED, 1);
         float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, current_guy->family)] - current_guy->get_fire_frequency_bonus();
         if(fire_freq < 1)
             fire_freq = 1;
         // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
-        mytext->write_xy(info_box_content.x + derived_offset + 21, info_box_content.y + linesdown*line_height, showcolor, "%.1f", 10.0f/fire_freq);
+        mytext.write_xy(info_box_content.x + derived_offset + 21, info_box_content.y + linesdown*line_height, showcolor, "%.1f", 10.0f/fire_freq);
         
         
         linesdown++;
@@ -1715,15 +1733,15 @@ Sint32 create_train_menu(Sint32 arg1)
         
         linesdown += 0.4f;
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-        mytext->write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
         
         linesdown++;
-        mytext->write_xy(180, info_box_content.y + linesdown*line_height, "COST: ", DARK_BLUE, 1);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, "COST: ", DARK_BLUE, 1);
         sprintf(message, "      %u", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
-            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_CHANGED, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_CHANGED, 1);
         else
-            mytext->write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_COLOR, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_COLOR, 1);
 
         // Display our team setting ..
         sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
@@ -1744,7 +1762,7 @@ Sint32 create_load_menu(Sint32 arg1)
 	Sint32 retvalue=0;
 	Sint32 i;
 	char temp_filename[20];
-	text loadtext(myscreen);
+	text& loadtext = myscreen->text_normal;
 	char message[80];
 
 	if (arg1)
@@ -1821,7 +1839,7 @@ void timed_dialog(const char* message, float delay_seconds)
     
     myscreen->darken_screen();
     
-	text gladtext(myscreen);
+	text& gladtext = myscreen->text_normal;
 	
 	int pix_per_char = 6;
 	int len = strlen(message);
@@ -1858,7 +1876,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
     
     myscreen->darken_screen();
     
-	text gladtext(myscreen);
+	text& gladtext = myscreen->text_normal;
 	
 	int pix_per_char = 6;
 	
@@ -1955,7 +1973,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
     
     myscreen->darken_screen();
     
-	text gladtext(myscreen);
+	text& gladtext = myscreen->text_normal;
 	
 	int pix_per_char = 6;
 	
@@ -2051,7 +2069,7 @@ void popup_dialog(const char* title, const char* message)
     
     myscreen->darken_screen();
     
-	text gladtext(myscreen);
+	text& gladtext = myscreen->text_normal;
 	
 	int pix_per_char = 6;
 	
@@ -2132,7 +2150,7 @@ Sint32 create_save_menu(Sint32 arg1)
 	Sint32 retvalue=0;
 	Sint32 i;
 	char temp_filename[20];
-	text savetext(myscreen);
+	text& savetext = myscreen->text_normal;
 	char message[80];
 
 	if (arg1)
@@ -2751,7 +2769,7 @@ Sint32 add_guy(guy *newguy)
 
 Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 {
-	text nametext(myscreen);
+	text& nametext = myscreen->text_normal;
 	guy *someguy;
 
 	if (arg)
@@ -2786,7 +2804,6 @@ Sint32 add_guy(Sint32 ignoreme)
 	Sint32 newfamily = current_guy->family;
 	//buffers: changed typename to type_name due to some compile error
 	char type_name[30];
-	static text addtext(myscreen);
 	Sint32 i;
 
 	if (myscreen->save_data.team_size >= MAX_TEAM_SIZE) // abort abort!
@@ -2813,7 +2830,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			release_mouse();
 			
 			std::string name = ourteam[i]->name;
-			if(prompt_for_string(&addtext, "NAME THIS CHARACTER", name))
+			if(prompt_for_string("NAME THIS CHARACTER", name))
                 strncpy(ourteam[i]->name, name.c_str(), 12);
             
 			grab_mouse();
@@ -2899,13 +2916,11 @@ Sint32 how_many(Sint32 whatfamily)    // how many guys of family X on the team?
 
 Sint32 do_save(Sint32 arg1)
 {
-	static text savetext(myscreen);
-
 	release_mouse();
 	clear_keyboard();
 	
 	std::string name = allbuttons[arg1-1]->label;
-	if(prompt_for_string(&savetext, "NAME YOUR SAVED GAME", name))
+	if(prompt_for_string("NAME YOUR SAVED GAME", name))
     {
         myscreen->save_data.save_name = name;
         
@@ -3020,7 +3035,6 @@ Sint32 go_menu(Sint32 arg1)
 {
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
-	static text gotext(myscreen);
 
 	if (arg1)
 		arg1 = 1;
@@ -3051,7 +3065,7 @@ Sint32 go_menu(Sint32 arg1)
         // Reset viewscreen prefs
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
-        glad_main(myscreen, myscreen->save_data.numplayers);
+        glad_main(myscreen->save_data.numplayers);
         
         //*******************************
         // Fade out from ACTION loop
@@ -3126,15 +3140,26 @@ void quit(Sint32 arg1)
 	exit(0);
 }
 
-Sint32 overscan_adjust()
+void draw_toggle_effect_button(button& b, const std::string& category, const std::string& setting)
 {
-    text mytext(myscreen);
+    if(cfg.is_on(category, setting))
+        myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
+    else
+        myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, RED);
+    
+    text& mytext = myscreen->text_normal;
+    mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
+}
+
+Sint32 main_options()
+{
+    text& mytext = myscreen->text_normal;
     
 	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
 
-	button* buttons = overscanadjust_buttons;
-	int num_buttons = ARRAY_SIZE(overscanadjust_buttons);
+	button* buttons = main_options_buttons;
+	int num_buttons = ARRAY_SIZE(main_options_buttons);
 	int highlighted_button = 0;
 	localbuttons = init_buttons(buttons, num_buttons);
 
@@ -3156,40 +3181,51 @@ Sint32 overscan_adjust()
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+        buttons[2].label = cfg.get_setting("graphics", "render");
+        allbuttons[2]->label = buttons[2].label;
 		
 		// Draw
-		myscreen->clear_window();
+		myscreen->clear_window();  // Clearing entire window because the overscan may have been adjusted.
 		
 		myscreen->draw_button(0, 0, 320, 200, 0);
 		myscreen->draw_button_inverted(4, 4, 312, 192);
 		
+        
         draw_buttons(buttons, num_buttons);
         
-        mytext.write_xy_center(160, 50, DARK_BLUE, "Adjust Screen Overscan");
-        
-        mytext.write_xy_center(160, 95, DARK_BLUE, "%.0f percent", 100*overscan_percentage);
+		draw_toggle_effect_button(buttons[1], "sound", "sound");
+		myscreen->hor_line(60, buttons[2].y - BUTTON_PADDING/2, 200, PURE_WHITE);
+		
+		mytext.write_xy(20, buttons[2].y + 3, DARK_BLUE, "Rendering engine:");
+		mytext.write_xy(20, buttons[2].y + 3 + 10, DARK_BLUE, " (needs restart)");
+		draw_toggle_effect_button(buttons[3], "graphics", "fullscreen");
+		mytext.write_xy(20, buttons[4].y + 3, DARK_BLUE, "Overscan adjust:");
+		myscreen->hor_line(60, buttons[6].y - BUTTON_PADDING/2, 200, PURE_WHITE);
+		
+		mytext.write_xy(20, buttons[6].y + 3, DARK_BLUE, "Effects:");
+		draw_toggle_effect_button(buttons[6], "effects", "mini_hp_bar");
+		draw_toggle_effect_button(buttons[7], "effects", "hit_flash");
+		draw_toggle_effect_button(buttons[8], "effects", "hit_recoil");
+		draw_toggle_effect_button(buttons[9], "effects", "attack_lunge");
+		draw_toggle_effect_button(buttons[10], "effects", "hit_anim");
+		draw_toggle_effect_button(buttons[11], "effects", "damage_numbers");
+		draw_toggle_effect_button(buttons[12], "effects", "heal_numbers");
+		draw_toggle_effect_button(buttons[13], "effects", "gore");
         
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
 	
-	save_settings();
+	myscreen->soundp->set_sound(!cfg.is_on("sound", "sound"));
+	cfg.save_settings();
     
     return REDRAW;
 }
 
-Sint32 overscan_decrease()
+Sint32 overscan_adjust(Sint32 arg)
 {
-    overscan_percentage += 0.01f;
-    update_overscan_setting();
-    
-    return REDRAW;
-}
-
-Sint32 overscan_increase()
-{
-    overscan_percentage -= 0.01f;
+    overscan_percentage -= arg/100.0f;
     update_overscan_setting();
     
     return REDRAW;
@@ -3222,8 +3258,8 @@ Sint32 create_detail_menu(guy *arg1)
 #define DETAIL_LM 11             // left edge margin ..
 #define DETAIL_MM 164            // center margin
 #define DETAIL_LD(x) (90+(x*6))  // vertical line for text
-#define WL(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_LM, DETAIL_LD(p), m, DARK_BLUE, 1)
-#define WR(p,m) if (m[1] != ' ') mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, RED, 1); else mytext->write_xy(DETAIL_MM, DETAIL_LD(p), m, DARK_BLUE, 1)
+#define WL(p,m) if (m[1] != ' ') mytext.write_xy(DETAIL_LM, DETAIL_LD(p), m, RED, 1); else mytext.write_xy(DETAIL_LM, DETAIL_LD(p), m, DARK_BLUE, 1)
+#define WR(p,m) if (m[1] != ' ') mytext.write_xy(DETAIL_MM, DETAIL_LD(p), m, RED, 1); else mytext.write_xy(DETAIL_MM, DETAIL_LD(p), m, DARK_BLUE, 1)
 
    Sint32 retvalue = 0;
    guy *thisguy;
@@ -3301,7 +3337,9 @@ Sint32 create_detail_menu(guy *arg1)
 
        myscreen->draw_button(34,  8, 126, 24, 1, 1);  // name box
        myscreen->draw_text_bar(36, 10, 124, 22);
-       mytext->write_xy(80 - mytext->query_width(current_guy->name)/2, 14,
+       
+       text& mytext = myscreen->text_normal;
+       mytext.write_xy(80 - mytext.query_width(current_guy->name)/2, 14,
                         current_guy->name,(unsigned char) DARK_BLUE, 1);
        myscreen->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        myscreen->draw_text_bar(160, 90, 162, 160);
@@ -3311,8 +3349,8 @@ Sint32 create_detail_menu(guy *arg1)
        {
            case FAMILY_SOLDIER:
                sprintf(message, "Level %d soldier has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things (charge)
                WL(2, " Charge");
                WL(3, "  Charge causes you to ");
@@ -3345,8 +3383,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_BARBARIAN:
                sprintf(message, "Level %d barbarian has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things (hurl boulder)
                WL(2, " Hurl Boulder");
                WL(3, "  Throw a massive stone");
@@ -3363,8 +3401,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_ELF:
                sprintf(message, "Level %d elf has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things (rocks)
                WL(2, " Rocks/Forestwalk");
                WL(3, "  Rocks hurls a few rocks");
@@ -3398,8 +3436,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_ARCHER:
                sprintf(message, "Level %d archer has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Fire Arrows     ");
                WL(3, "  An archer can spin in a");
@@ -3433,8 +3471,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_MAGE:
                sprintf(message, "Level %d Mage has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Teleport/Marker ");
                WL(3, "  Any mage can teleport  ");
@@ -3489,8 +3527,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_ARCHMAGE:
                sprintf(message, "Level %d ArchMage has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Teleport/Marker ");
                WL(3, "  Any mage can teleport  ");
@@ -3526,8 +3564,8 @@ Sint32 create_detail_menu(guy *arg1)
 
            case FAMILY_CLERIC:
                sprintf(message, "Level %d Cleric has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Heal            ");
                WL(3, "  Heal all teammates who ");
@@ -3565,8 +3603,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_DRUID:
                sprintf(message, "Level %d Druid has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Plant Tree      ");
                WL(3, "  These magical trees    ");
@@ -3602,8 +3640,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_THIEF:
                sprintf(message, "Level %d Thief has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Drop Bomb       ");
                WL(3, "  Leave a burning bomb to");
@@ -3639,8 +3677,8 @@ Sint32 create_detail_menu(guy *arg1)
                break;
            case FAMILY_ORC:
                sprintf(message, "Level %d Orc has:", thisguy->get_level());
-               mytext->write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext->write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Howl            ");
                WL(3, "  Howl in rage, stunning ");
@@ -3721,7 +3759,7 @@ int get_scen_num_from_filename(const char* name)
 
 Sint32 do_pick_campaign(Sint32 arg1)
 {
-   CampaignResult result = pick_campaign(myscreen, &myscreen->save_data);
+   CampaignResult result = pick_campaign(&myscreen->save_data);
    if(result.id.size() > 0)
    {
         // Load new campaign
@@ -3733,7 +3771,6 @@ Sint32 do_pick_campaign(Sint32 arg1)
 
 Sint32 do_set_scen_level(Sint32 arg1)
 {
-   static text savetext(myscreen);
    Sint32 templevel = myscreen->save_data.scen_num;
    
    templevel = pick_level(myscreen, myscreen->level_data.id);
