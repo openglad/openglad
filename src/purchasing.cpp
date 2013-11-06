@@ -228,8 +228,8 @@ bool showPurchasingSplash()
         return doesOwnFullGame();
     }
     
-    text* loadtext = new text(myscreen);
-    text* bigtext = new text(myscreen, TEXT_BIG);
+    text& loadtext = myscreen->text_normal;
+    text& bigtext = myscreen->text_big;
     
     SDL_Rect no_button = {210, 170, 60, 10};
     SDL_Rect yes_button = {160, 170, 40, 10};
@@ -304,13 +304,13 @@ bool showPurchasingSplash()
         
         SDL_BlitSurface(splash, NULL, E_Screen->render, NULL);
         
-        bigtext->write_xy_center(217, 79, RED, "%s", price_string);
+        bigtext.write_xy_center(217, 79, RED, "%s", price_string);
         
         myscreen->draw_button(no_button.x, no_button.y, no_button.x + no_button.w, no_button.y + no_button.h, 1, 1);
-        loadtext->write_xy(no_button.x + 2, no_button.y + 2, "NO THANKS", DARK_BLUE, 1);
+        loadtext.write_xy(no_button.x + 2, no_button.y + 2, "NO THANKS", DARK_BLUE, 1);
         
         myscreen->draw_button(yes_button.x, yes_button.y, yes_button.x + yes_button.w, yes_button.y + yes_button.h, 1, 1);
-        loadtext->write_xy(yes_button.x + 2, yes_button.y + 2, "YES!!", DARK_BLUE, 1);
+        loadtext.write_xy(yes_button.x + 2, yes_button.y + 2, "YES!!", DARK_BLUE, 1);
 
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -318,8 +318,6 @@ bool showPurchasingSplash()
     }
     
     SDL_FreeSurface(splash);
-    delete loadtext;
-    delete bigtext;
     
     return doesOwnFullGame();
 }
