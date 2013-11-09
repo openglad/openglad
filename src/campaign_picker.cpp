@@ -347,7 +347,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	int reset_index = 6;
 	
 	button buttons[] = {
-        button("PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::DownRight(cancel_index, next_index)),
+        button("PREV", KEYSTATE_UNKNOWN, prev.x, prev.y, prev.w, prev.h, 0, -1 , MenuNav::UpDownRight(id_index, cancel_index, next_index)),
         button("NEXT", KEYSTATE_UNKNOWN, next.x, next.y, next.w, next.h, 0, -1 , MenuNav::UpDownLeft(id_index, choose_index, prev_index)),
         button("OK", KEYSTATE_UNKNOWN, choose.x, choose.y, choose.w, choose.h, 0, -1 , MenuNav::UpLeft(next_index, cancel_index)),
         button("CANCEL", KEYSTATE_ESCAPE, cancel.x, cancel.y, cancel.w, cancel.h, 0, -1 , MenuNav::UpRight(prev_index, choose_index)),

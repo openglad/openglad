@@ -23,6 +23,8 @@
 #include "weap.h"
 #include "effect.h"
 
+void popup_dialog(const char* title, const char* message);
+
 #define SIZE_ORDERS 7 // see graph.h
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in graph.h
 //#define PIX(a,b) (SIZE_FAMILIES*a+b)  //moved to graph.h
@@ -797,12 +799,14 @@ walker  *loader::create_walker(char order,
 {
 	walker  *ob;
 
-	//i = PIX(order, family);
-	//Log("PIX(order, family) = %d\n", i);
+    if(order == ORDER_LIVING && family >= NUM_FAMILIES)
+        family = FAMILY_SOLDIER;
 
 	if (!graphics[PIX(order, family)].valid())
 	{
-		Log("Alert! No valid graphics for walker\n");
+	    char buf[200];
+	    snprintf(buf, 200, "No valid graphics for walker!\nOrder: %d, Family %d\nPlease report this to the developer!", order, family);
+		popup_dialog("ERROR", buf);
 		return NULL;
 	}
 
