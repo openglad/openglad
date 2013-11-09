@@ -19,6 +19,8 @@
 #include "util.h"
 #include "campaign_picker.h"
 
+void popup_dialog(const char* title, const char* message);
+
 short load_saved_game(const char *filename, screen  *myscreen)
 {
 	char          scenfile[20];
@@ -40,13 +42,16 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	myscreen->level_data.id = myscreen->save_data.scen_num;
 	if(!myscreen->level_data.load())
 	{
+	    short old_scen = myscreen->save_data.scen_num;
 	    Log("Failed to load \"%s\".  Falling back to loading scenario 1.\n", scenfile);
 	    // Failed?  Try level 1.
 		myscreen->save_data.scen_num = 1;
         myscreen->level_data.id = 1;
         if(!myscreen->level_data.load())
         {
-            Log("Fallback loading failed to load scenario 1.\n");
+            char buf[200];
+            snprintf(buf, 200, "Fallback loading failed (%d).\nCould not load \"%s\"\nPlease report this problem to the developer!\n", old_scen, scenfile);
+            popup_dialog("ERROR", buf);
             exit(2);
         }
 	}
