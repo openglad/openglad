@@ -268,7 +268,7 @@ button mainmenu_buttons[] =
 
 button main_options_buttons[] =
 {
-    button("BACK", KEYSTATE_UNKNOWN, 40, 10, 50, 15, RETURN_MENU, EXIT, MenuNav::UpDown(12, 1)),
+    button("BACK", KEYSTATE_ESCAPE, 40, 10, 50, 15, RETURN_MENU, EXIT, MenuNav::UpDownRight(12, 1, 14)),
     button("Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, TOGGLE_SOUND, -1, MenuNav::UpDown(0, 2)),
     button("NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, TOGGLE_RENDERING_ENGINE, -1, MenuNav::UpDownRight(1, 4, 3)),
     button("Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, TOGGLE_FULLSCREEN, -1, MenuNav::UpDownLeft(1, 5, 2)),
@@ -282,6 +282,7 @@ button main_options_buttons[] =
     button("Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_DAMAGE_NUMBERS, -1, MenuNav::UpDownLeft(9, 13, 10)),
     button("Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_HEAL_NUMBERS, -1, MenuNav::UpDownRight(10, 0, 13)),
     button("Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 0, 12)),
+    button("RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 170, 10, 120, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::UpDownLeft(12, 1, 0)),
 };
 
 // beginmenu (first menu of new game), create_team_menu
@@ -3160,6 +3161,9 @@ void quit(Sint32 arg1)
 
 void draw_toggle_effect_button(button& b, const std::string& category, const std::string& setting)
 {
+    if(b.hidden || b.no_draw)
+        return;
+    
     if(cfg.is_on(category, setting))
         myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
     else
@@ -3175,7 +3179,13 @@ Sint32 main_options()
     
 	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
-
+    
+    #if defined(OUYA) || defined(ANDROID)
+    main_options_buttons[3].hidden = main_options_buttons[3].no_draw = true;
+    main_options_buttons[2].nav.right = -1;
+    main_options_buttons[5].nav.up = 2;
+    #endif
+    
 	button* buttons = main_options_buttons;
 	int num_buttons = ARRAY_SIZE(main_options_buttons);
 	int highlighted_button = 0;

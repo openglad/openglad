@@ -405,7 +405,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     SDL_Rect done_button = {320 - 52, 0, 50, 14};
     SDL_Rect cancel_button = {320 - 104, 0, 50, 14};
     
-    #ifdef USE_TOUCH_INPUT
+    #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
     SDL_Rect newline_button = {320 - 75, 16, 50, 14};
     SDL_Rect up_button = {14, 0, 14, 14};
     SDL_Rect down_button = {14, 14, 14, 14};
@@ -442,7 +442,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             
             if (c == SDLK_RETURN)
             {
-                #ifdef USE_TOUCH_INPUT
+                #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
                 done = true;  // Some soft keyboards might disappear anyhow if you press return...
                 break;
                 #else
@@ -494,7 +494,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 result = original_text;
                 done = true;
             }
-            #ifdef USE_TOUCH_INPUT
+            #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
             else if(mymouse.in(newline_button))
             {
                 std::string rest_of_line = s->substr(cursor_pos);
@@ -657,7 +657,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
         myscreen->draw_button(cancel_button.x, cancel_button.y, cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
         mytext.write_xy(cancel_button.x + cancel_button.w/2 - 18, cancel_button.y + cancel_button.h/2 - 3, "CANCEL", DARK_BLUE, 1);
         
-        #ifdef USE_TOUCH_INPUT
+        #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
         myscreen->draw_button(newline_button.x, newline_button.y, newline_button.x + newline_button.w, newline_button.y + newline_button.h, 1);
         mytext.write_xy(newline_button.x + newline_button.w/2 - 18, newline_button.y + newline_button.h/2 - 3, "NEWLINE", DARK_BLUE, 1);
         myscreen->draw_button(up_button.x, up_button.y, up_button.x + up_button.w, up_button.y + up_button.h, 1);

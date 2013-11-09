@@ -69,10 +69,10 @@ bool cfg_store::load_settings()
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");
     apply_setting("effects", "hit_flash", "on");
-    apply_setting("effects", "hit_recoil", "on");
+    apply_setting("effects", "hit_recoil", "off");
     apply_setting("effects", "attack_lunge", "on");
     apply_setting("effects", "hit_anim", "on");
-    apply_setting("effects", "damage_numbers", "on");
+    apply_setting("effects", "damage_numbers", "off");
     apply_setting("effects", "heal_numbers", "on");
     
     Log("Loading settings\n");

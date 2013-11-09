@@ -236,4 +236,5 @@ Sint32 overscan_adjust(Sint32 arg);
 #define TOGGLE_DAMAGE_NUMBERS   41
 #define TOGGLE_HEAL_NUMBERS     42
 #define TOGGLE_GORE             43
+#define RESTORE_DEFAULT_SETTINGS 44
 #endif
