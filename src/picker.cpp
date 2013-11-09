@@ -3049,24 +3049,29 @@ Sint32 go_menu(Sint32 arg1)
         
         return CREATE_TEAM_MENU;
     }
+#endif
+
+    // Make sure we have a valid team
+    if (myscreen->save_data.team_size < 1)
+    {
+        popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
+        
+        return REDRAW;
+    }
+
+#ifdef OUYA
     if(myscreen->save_data.scen_num == 1)
         showOuyaControls();
 #endif
+    
 	// Save the current team in memory to save0.gtl, and
 	// run gladiator.
-
+    
 	if (arg1)
 		arg1 = 1;
     
     do
     {
-        // Make sure we have a valid team
-        if (myscreen->save_data.team_size < 1)
-        {
-            popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
-            
-            return REDRAW;
-        }
         myscreen->save_data.save("save0");
         release_mouse();
         

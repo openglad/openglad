@@ -64,9 +64,13 @@ bool cfg_store::load_settings()
     
     apply_setting("graphics", "render", "normal");
     apply_setting("graphics", "fullscreen", "off");
+    #ifdef OUYA
+    apply_setting("graphics", "overscan_percentage", "10");
+    #else
     apply_setting("graphics", "overscan_percentage", "0");
+    #endif
     
-    apply_setting("effects", "gore", "on");
+    apply_setting("effects", "gore", "off");
     apply_setting("effects", "mini_hp_bar", "on");
     apply_setting("effects", "hit_flash", "on");
     apply_setting("effects", "hit_recoil", "off");

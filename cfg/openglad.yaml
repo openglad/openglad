@@ -8,7 +8,7 @@ effects:
   hit_flash: on
   hit_recoil: off
   mini_hp_bar: on
-  gore: on
+  gore: off
 graphics:
   fullscreen: off
   overscan_percentage: 0
