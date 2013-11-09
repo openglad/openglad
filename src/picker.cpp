@@ -3143,6 +3143,9 @@ void quit(Sint32 arg1)
 
 void draw_toggle_effect_button(button& b, const std::string& category, const std::string& setting)
 {
+    if(b.hidden || b.no_draw)
+        return;
+    
     if(cfg.is_on(category, setting))
         myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
     else
@@ -3158,7 +3161,13 @@ Sint32 main_options()
     
 	if(localbuttons != NULL)
 		delete localbuttons; //we'll make a new set
-
+    
+    #if defined(OUYA) || defined(ANDROID)
+    main_options_buttons[3].hidden = main_options_buttons[3].no_draw = true;
+    main_options_buttons[2].nav.right = -1;
+    main_options_buttons[5].nav.up = 2;
+    #endif
+    
 	button* buttons = main_options_buttons;
 	int num_buttons = ARRAY_SIZE(main_options_buttons);
 	int highlighted_button = 0;
