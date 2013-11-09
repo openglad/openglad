@@ -645,6 +645,10 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
     case TOGGLE_GORE:
         toggle_effect("effects", "gore");
         return REDRAW;
+    case RESTORE_DEFAULT_SETTINGS:
+        restore_default_settings();
+        cfg.load_settings();
+        return REDRAW;
     default:
         return OK;
     }

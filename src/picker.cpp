@@ -263,7 +263,7 @@ button mainmenu_buttons[] =
 
 button main_options_buttons[] =
 {
-    button("BACK", KEYSTATE_UNKNOWN, 40, 10, 50, 15, RETURN_MENU, EXIT, MenuNav::UpDown(12, 1)),
+    button("BACK", KEYSTATE_ESCAPE, 40, 10, 50, 15, RETURN_MENU, EXIT, MenuNav::UpDownRight(12, 1, 14)),
     button("Sound", KEYSTATE_UNKNOWN, 135, 10 + BUTTON_PITCH, 50, 15, TOGGLE_SOUND, -1, MenuNav::UpDown(0, 2)),
     button("NORMAL", KEYSTATE_UNKNOWN, 130, 10 + 2*BUTTON_PITCH, 60, 15, TOGGLE_RENDERING_ENGINE, -1, MenuNav::UpDownRight(1, 4, 3)),
     button("Fullscreen", KEYSTATE_UNKNOWN, 210, 10 + 2*BUTTON_PITCH, 90, 15, TOGGLE_FULLSCREEN, -1, MenuNav::UpDownLeft(1, 5, 2)),
@@ -277,6 +277,7 @@ button main_options_buttons[] =
     button("Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_DAMAGE_NUMBERS, -1, MenuNav::UpDownLeft(9, 13, 10)),
     button("Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_HEAL_NUMBERS, -1, MenuNav::UpDownRight(10, 0, 13)),
     button("Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 0, 12)),
+    button("RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 170, 10, 120, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::UpDownLeft(12, 1, 0)),
 };
 
 // beginmenu (first menu of new game), create_team_menu

@@ -108,7 +108,7 @@ std::string get_asset_path()
 #ifdef ANDROID
     // RWops will look in the app's assets directory for this path
     return "";
-#elif defined(WINDOWS)
+#elif defined(WIN32)
     // Assuming the cwd is set to the program's installation directory
     return "";
 #else
@@ -406,6 +406,11 @@ void restore_default_campaigns()
     if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
     #endif
         copy_file(get_asset_path() + "builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+}
+
+void restore_default_settings()
+{
+    copy_file(get_asset_path() + "cfg/openglad.yaml", get_user_path() + "cfg/openglad.yaml");
 }
 
 void io_init(int argc, char* argv[])

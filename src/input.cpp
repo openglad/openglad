@@ -362,6 +362,11 @@ void handle_key_event(const SDL_Event& event)
         
         if(event.key.keysym.sym == SDLK_F10)
             myscreen->save_screenshot();
+        else if(event.key.keysym.sym == SDLK_F12 && event.key.keysym.mod & KMOD_CTRL)
+        {
+            restore_default_settings();
+            cfg.load_settings();
+        }
         break;
     case SDL_KEYUP:
         #ifdef USE_TOUCH_INPUT
