@@ -3,9 +3,6 @@
 #include "util.h"
 #include <jni.h>
 
-// Cache for ownership
-bool owns_full_game = false;
-
 static jclass mActivityClass;
 
 static jmethodID midBuyProduct;
@@ -55,6 +52,7 @@ extern "C" void initMethods(JNIEnv* mEnv)
 }
 
 #define FULL_GAME_PRODUCT_ID "gladiator_full_game"
+#define TIP_PRODUCT_ID "gladiator_tip"
 
 void buyProduct(const std::string& id)
 {
@@ -114,71 +112,6 @@ int doesOwnProduct(const std::string& id)
     return result;
 }
 
-bool doesOwnFullGame()
-{
-    // Check current cache
-    if(owns_full_game)
-        return true;
-    
-    // Update cache from network
-    int result = doesOwnProduct(FULL_GAME_PRODUCT_ID);
-    
-    if(result == 1)
-        owns_full_game = true;
-    else
-        owns_full_game = false;
-    
-    // If network wasn't available, check file cache (prone to piracy)
-    if(result == -2)
-    {
-        SDL_RWops* infile = open_read_file("cfg/.purchase.dat");
-        if(infile != NULL)
-        {
-            SDL_RWclose(infile);
-            owns_full_game = true;
-            return true;
-        }
-    }
-    
-    // If we do own the game after all, make sure the file cache exists
-    if(owns_full_game)
-    {
-        SDL_RWops* outfile = open_write_file("cfg/.purchase.dat");
-        SDL_RWwrite(outfile, "1", 1, 1);
-        SDL_RWclose(outfile);
-    }
-    else
-    {
-        delete_user_file("cfg/.purchase.dat");
-    }
-    
-    return owns_full_game;
-}
-
-void test_purchasing()
-{
-    bool result = doesOwnFullGame();
-    if(result)
-        Log("Already own game.\n");
-    else
-        Log("Does not own game.\n");
-    
-    buyProduct(FULL_GAME_PRODUCT_ID);
-    
-    result = doesOwnFullGame();
-    if(result)
-        Log("Yep, bought game.\n");
-    else
-        Log("Nope, didn't buy game.\n");
-        
-    Log("all_products:\n");
-    std::vector<std::string> all_products = getAllProducts();
-    for(std::vector<std::string>::iterator e = all_products.begin(); e != all_products.end(); e++)
-    {
-        ProductInfo p = getProductInfo(e->c_str());
-        Log("%s (%s): %d cents\n", p.name.c_str(), p.id.c_str(), p.priceInCents);
-    }
-}
 
 
 #include "sai2x.h"
@@ -197,7 +130,7 @@ extern Screen* E_Screen;
 
 bool showPurchasingSplash()
 {
-    ProductInfo p = getProductInfo(FULL_GAME_PRODUCT_ID);
+    ProductInfo p = getProductInfo(TIP_PRODUCT_ID);
     if(p.priceInCents < 0)
     {
         popup_dialog("Error", "Network error...");
@@ -208,11 +141,11 @@ bool showPurchasingSplash()
     if(rwops == NULL)
     {
         char buf[20];
-        snprintf(buf, 20, "Buy game for $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
-        if(yes_or_no_prompt("Buy game?", buf, false))
-            buyProduct(FULL_GAME_PRODUCT_ID);
+        snprintf(buf, 20, "Tip $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
+        if(yes_or_no_prompt("Donate a tip?", buf, false))
+            buyProduct(TIP_PRODUCT_ID);
         
-        return doesOwnFullGame();
+        return true;
     }
     
     SDL_Surface* splash = SDL_LoadBMP_RW(rwops, 0);
@@ -221,18 +154,18 @@ bool showPurchasingSplash()
     if(splash == NULL)
     {
         char buf[20];
-        snprintf(buf, 20, "Buy game for $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
-        if(yes_or_no_prompt("Buy game?", buf, false))
-            buyProduct(FULL_GAME_PRODUCT_ID);
+        snprintf(buf, 20, "Tip $%d.%02d?", p.priceInCents/100, p.priceInCents%100);
+        if(yes_or_no_prompt("Donate a tip?", buf, false))
+            buyProduct(TIP_PRODUCT_ID);
         
-        return doesOwnFullGame();
+        return true;
     }
     
     text& loadtext = myscreen->text_normal;
     text& bigtext = myscreen->text_big;
     
     SDL_Rect no_button = {210, 170, 60, 10};
-    SDL_Rect yes_button = {160, 170, 40, 10};
+    SDL_Rect yes_button = {160, 170, 40, 20};
     
     // Controller input
     int retvalue = 0;
@@ -242,8 +175,8 @@ bool showPurchasingSplash()
 	int yes_index = 1;
 	
 	button buttons[] = {
-        button("NO THANKS", KEYSTATE_UNKNOWN, no_button.x, no_button.y, no_button.w, no_button.h, 0, -1 , MenuNav::Left(yes_index)),
-        button("YES!!", KEYSTATE_UNKNOWN, yes_button.x, yes_button.y, yes_button.w, yes_button.h, 0, -1 , MenuNav::Right(no_index))
+        button("THANKS!!", KEYSTATE_UNKNOWN, no_button.x, no_button.y, no_button.w, no_button.h, 0, -1 , MenuNav::Left(yes_index)),
+        button("TIP", KEYSTATE_UNKNOWN, yes_button.x, yes_button.y, yes_button.w, yes_button.h, 0, -1 , MenuNav::Right(no_index))
 	};
 	
     char price_string[20];
@@ -283,12 +216,9 @@ bool showPurchasingSplash()
         // Choose
         if(do_yes)
         {
-            buyProduct(FULL_GAME_PRODUCT_ID);
-            if(doesOwnFullGame())
-            {
-                done = true;
-                break;
-            }
+            buyProduct(TIP_PRODUCT_ID);
+            done = true;
+            break;
         }
         // Cancel
         else if(do_no)
@@ -304,13 +234,12 @@ bool showPurchasingSplash()
         
         SDL_BlitSurface(splash, NULL, E_Screen->render, NULL);
         
-        bigtext.write_xy_center(217, 79, RED, "%s", price_string);
-        
         myscreen->draw_button(no_button.x, no_button.y, no_button.x + no_button.w, no_button.y + no_button.h, 1, 1);
-        loadtext.write_xy(no_button.x + 2, no_button.y + 2, "NO THANKS", DARK_BLUE, 1);
+        loadtext.write_xy(no_button.x + 2, no_button.y + 2, "THANKS!!", DARK_BLUE, 1);
         
         myscreen->draw_button(yes_button.x, yes_button.y, yes_button.x + yes_button.w, yes_button.y + yes_button.h, 1, 1);
-        loadtext.write_xy(yes_button.x + 2, yes_button.y + 2, "YES!!", DARK_BLUE, 1);
+        loadtext.write_xy(yes_button.x + 8, yes_button.y + 3, "TIP", DARK_BLUE, 1);
+        loadtext.write_xy(yes_button.x + 2, yes_button.y + 2 + 10, price_string, DARK_BLUE, 1);
 
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -319,7 +248,10 @@ bool showPurchasingSplash()
     
     SDL_FreeSurface(splash);
     
-    return doesOwnFullGame();
+    
+    popup_dialog("You're Welcome!", "Enjoy Gladiator!");
+    
+    return true;
 }
 
 

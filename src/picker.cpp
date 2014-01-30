@@ -224,6 +224,7 @@ void picker_quit()
 // mainmenu
 
 #ifndef DISABLE_MULTIPLAYER
+#ifndef OUYA
 button mainmenu_buttons[] =
     {
         button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
@@ -242,6 +243,28 @@ button mainmenu_buttons[] =
         button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeft(7, 10)),
         button("", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
     };
+#else
+button mainmenu_buttons[] =
+    {
+        button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
+        button("CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5)),
+
+        button("4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3)),
+        button("3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 , MenuNav::UpDownRight(5, 6, 2)),
+        button("2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 , MenuNav::UpDownLeft(1, 2, 5)),
+        button("1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 , MenuNav::UpDownRight(1, 3, 4)),
+
+        button("DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7)),
+
+        button("PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)),
+        button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
+
+        button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeftRight(7, 10, 11)),
+        button("", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9)),
+
+        button("FREE?", KEYSTATE_UNKNOWN, 184, 175, 36, 10, SHOW_PURCHASING, 0 , MenuNav::UpLeft(8, 9))
+    };
+#endif
     
 #define OPTIONS_BUTTON_INDEX 10
 
@@ -3041,16 +3064,6 @@ Sint32 delete_all()
 
 Sint32 go_menu(Sint32 arg1)
 {
-#ifdef OUYA
-    if(myscreen->save_data.scen_num > 5 && !doesOwnFullGame())
-    {
-        if(yes_or_no_prompt("Buy Full Game?", "The demo doesn't include this level.\nWant to go see the buying screen?", false))
-            showPurchasingSplash();
-        
-        return CREATE_TEAM_MENU;
-    }
-#endif
-
     // Make sure we have a valid team
     if (myscreen->save_data.team_size < 1)
     {
@@ -3792,17 +3805,6 @@ int get_scen_num_from_filename(const char* name)
 
 Sint32 do_pick_campaign(Sint32 arg1)
 {
-#ifdef OUYA
-    if(!doesOwnFullGame())
-    {
-        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select campaigns.\nWant to go see the buying screen?", false))
-            showPurchasingSplash();
-        
-        if(!doesOwnFullGame())
-            return REDRAW;
-    }
-#endif
-
    CampaignResult result = pick_campaign(&myscreen->save_data);
    if(result.id.size() > 0)
    {
@@ -3815,17 +3817,6 @@ Sint32 do_pick_campaign(Sint32 arg1)
 
 Sint32 do_set_scen_level(Sint32 arg1)
 {
-#ifdef OUYA
-    if(!doesOwnFullGame())
-    {
-        if(yes_or_no_prompt("Buy Full Game?", "The demo cannot select levels.\nWant to go see the buying screen?", false))
-            showPurchasingSplash();
-        
-        if(!doesOwnFullGame())
-            return REDRAW;
-    }
-#endif
-
    Sint32 templevel = myscreen->save_data.scen_num;
    
    templevel = pick_level(myscreen, myscreen->level_data.id);

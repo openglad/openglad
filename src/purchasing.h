@@ -17,9 +17,6 @@ ProductInfo getProductInfo(const std::string& id);
 std::vector<std::string> getAllProducts();
 int doesOwnProduct(const std::string& id);
 
-void test_purchasing();
-
-bool doesOwnFullGame();
 bool showPurchasingSplash();
 void showOuyaControls();
 
