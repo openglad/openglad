@@ -170,7 +170,7 @@ void intro_main(Sint32 argc, char** argv)
 	mytext.write_y(70,"Additional Coding by Doug Ricket", 230, myscreen->viewob[0]);
 	//buffers: PORT: w00t w00t
 	mytext.write_y(90,"SDL port by Odo and Zardus",230,myscreen->viewob[0]);
-	mytext.write_y(110,"Android port by Jonathan Dearborn",230,myscreen->viewob[0]);
+	mytext.write_y(110,"Android and iOS ports by Jonathan Dearborn",230,myscreen->viewob[0]);
 	//myscreen->refresh();
 
 	if (show() < 0)
