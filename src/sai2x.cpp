@@ -703,6 +703,10 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     if(fullscreen)
         window_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
     
+    #ifdef __IPHONEOS__
+    window_flags |= SDL_WINDOW_BORDERLESS;
+    #endif
+    
     window = SDL_CreateWindow("Gladiator",
                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                         w, h,

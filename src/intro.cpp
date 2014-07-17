@@ -57,6 +57,9 @@ void intro_main(Sint32 argc, char** argv)
 	//  load_scenario("current", myscreen);
 	//buffers: PORT:  for (i=0;i<256;i++)
 	//buffers: PORT:         set_palette_reg(i,0,0,0);
+    
+    myscreen->fadeblack(TO);
+    
 	myscreen->clear();
 
 	gladdata = read_pixie_file("3mages2.pix");

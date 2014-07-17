@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #ifdef WIN32
 #include "windows.h"
@@ -73,6 +74,8 @@ std::string get_user_path()
 #ifdef ANDROID
     std::string path = SDL_AndroidGetInternalStoragePath();
     return path + "/";
+#elif defined(__IPHONEOS__)
+    return "../";
 #elif defined(WIN32)
     char path[MAX_PATH];
     HRESULT hr = SHGetFolderPath(
@@ -107,6 +110,9 @@ std::string get_asset_path()
 {
 #ifdef ANDROID
     // RWops will look in the app's assets directory for this path
+    return "";
+#elif defined(__IPHONEOS__)
+    // Assuming the cwd is set to the program's installation directory
     return "";
 #elif defined(WIN32)
     // Assuming the cwd is set to the program's installation directory

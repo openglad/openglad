@@ -6,7 +6,10 @@
 #include "guy.h"
 #include "stats.h"
 #include "view.h"
-#include "OuyaController.h"
+
+#ifdef OUYA
+    #include "OuyaController.h"
+#endif
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value);

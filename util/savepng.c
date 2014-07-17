@@ -4,8 +4,21 @@
  * This code is free software, available under zlib/libpng license.
  * http://www.libpng.org/pub/png/src/libpng-LICENSE.txt
  */
-#include <SDL.h>
-#include <png.h>
+#include "SDL.h"
+
+#ifdef DISABLE_SAVEPNG
+SDL_Surface *SDL_PNGFormatAlpha(SDL_Surface *src)
+{
+    return NULL;
+}
+
+int SDL_SavePNG_RW(SDL_Surface *surface, SDL_RWops *dst, int freedst)
+{
+    return -1;
+}
+#else
+
+#include "png.h"
 
 #define SUCCESS 0
 #define ERROR -1
@@ -131,3 +144,6 @@ int SDL_SavePNG_RW(SDL_Surface *surface, SDL_RWops *dst, int freedst)
 	if (freedst) SDL_FreeRW(dst);
 	return (SUCCESS);
 }
+
+#endif
+

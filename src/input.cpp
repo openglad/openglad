@@ -1284,18 +1284,16 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
         return false;
     }
     #endif
-    if(player_joy[player_index].hasButtonSet(key_enum))
-    {
-        return player_joy[player_index].getState(key_enum);
-    }
-    else
-    {
-    #ifndef USE_TOUCH_INPUT
-        return keystates[SDL_GetScancodeFromKey(player_keys[player_index][key_enum])];
-    #else
+    
+    // FIXME: Enable gamepads for Android/iOS, but be careful not to use accelerometer...
+    #ifdef USE_TOUCH_INPUT
         return touch_keystate[player_index][key_enum];
+    #else
+    if(player_joy[player_index].hasButtonSet(key_enum))
+        return player_joy[player_index].getState(key_enum);
+    else
+        return keystates[SDL_GetScancodeFromKey(player_keys[player_index][key_enum])];
     #endif
-    }
 }
 
 bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
