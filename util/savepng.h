@@ -4,7 +4,7 @@
  * This code is free software, available under zlib/libpng license.
  * http://www.libpng.org/pub/png/src/libpng-LICENSE.txt
  */
-#include <SDL_video.h>
+#include "SDL_video.h"
 
 #ifdef __cplusplus
 extern "C"
