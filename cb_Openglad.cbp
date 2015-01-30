@@ -25,7 +25,7 @@
 					<Add library="SDL2main" />
 					<Add library="SDL2" />
 					<Add library="SDL2_mixer" />
-					<Add library="png" />
+					<Add library="libpng16" />
 					<Add directory="../../bdcode/externals/SDL2/lib_windows" />
 					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
 					<Add directory="../../bdcode/externals/png/lib_windows" />
@@ -68,7 +68,7 @@
 					<Add library="SDL2main" />
 					<Add library="SDL2" />
 					<Add library="SDL2_mixer" />
-					<Add library="png" />
+					<Add library="libpng16" />
 					<Add directory="../../bdcode/externals/SDL2/lib_windows" />
 					<Add directory="../../bdcode/externals/SDL_mixer/lib_windows" />
 					<Add directory="../../bdcode/externals/png/lib_windows" />
