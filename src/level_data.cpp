@@ -19,7 +19,7 @@
 #include "yam.h"
 
 #include "pixie.h"
-#include "loader.h"
+#include "gloader.h"
 #include "walker.h"
 #include "stats.h"
 #include "smooth.h"

@@ -19,7 +19,7 @@
 
 #include "base.h"
 #include "obmap.h"
-#include "loader.h"
+#include "gloader.h"
 #include "pixien.h"
 #include "text.h"
 #include "screen.h"

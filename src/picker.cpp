@@ -24,7 +24,7 @@
 #include "util.h"
 
 #include "SDL.h"
-#include "parser.h"
+#include "gparser.h"
 #include "campaign_picker.h"
 #include "level_picker.h"
 // Z's script: #include <process.h>
