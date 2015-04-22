@@ -57,10 +57,6 @@ statistics::statistics(walker  * someguy)
 	// AI finding routine values ..
 	last_distance = current_distance = 15000;
 
-	// set head and end to null
-	commandlist = NULL;
-	endlist = NULL;
-
     if(controller != NULL)
     {
         old_order = controller->order;
@@ -77,30 +73,13 @@ statistics::statistics(walker  * someguy)
 
 statistics::~statistics()
 {
-	command *here;
-	here = commandlist;
-	while(here)
-	{
-		commandlist = here;
-		here = here->next;
-		delete commandlist;
-		commandlist = NULL;
-	}
 	controller = NULL;
 	delete_me = 1;
 }
 
 void statistics::clear_command()
 {
-	command* here = commandlist;
-	while(here)
-	{
-		command* temp = here;
-		here = here->next;
-		delete temp;
-	}
-	commandlist = NULL;
-	endlist = NULL;
+	commands.clear();
 	// Make sure our weapon type is restored to normal ..
 	controller->current_weapon = controller->default_weapon;
 	// Make sure we're back to our real team
@@ -128,20 +107,7 @@ void statistics::add_command(short whatcommand, short iterations,
 	}
 
 	// Add command to end of list
-	if (endlist)
-	{
-		endlist->next = new command;
-		endlist = endlist->next;
-	}
-	else
-	{
-		endlist = new command;
-	}
-
-
-	// Connect to beginning of list if list was empty
-	if (!commandlist)
-		commandlist = endlist;
+	commands.emplace_back();
 
 	if (whatcommand == COMMAND_WALK)
 	{
@@ -156,29 +122,16 @@ void statistics::add_command(short whatcommand, short iterations,
 		if (!info1 && !info2)
 			info1 = info2 = 1;
 	}
-	endlist->com1 = info1;
-	endlist->com2 = info2;
-	endlist->commandtype = whatcommand;
-	endlist->commandcount = iterations;
-	//  endlist->next = NULL;
+	commands.back().com1 = info1;
+	commands.back().com2 = info2;
+	commands.back().commandtype = whatcommand;
+	commands.back().commandcount = iterations;
 }
 
 void statistics::force_command(short whatcommand, short iterations,
                                short info1, short info2)
 {
-	command *here;
-
-	// Add command to start of list
-	if (commandlist)
-	{
-		here = new command;
-		here->next = commandlist;
-		commandlist = here;
-	}
-	else
-	{
-		commandlist = new command;
-	}
+	commands.emplace_front();
 
 	if (whatcommand == COMMAND_WALK)
 	{
@@ -193,11 +146,15 @@ void statistics::force_command(short whatcommand, short iterations,
 		if (!info1 && !info2)
 			info1 = info2 = 1;
 	}
-	commandlist->com1 = info1;
-	commandlist->com2 = info2;
-	commandlist->commandtype = whatcommand;
-	commandlist->commandcount = iterations;
-	//  commandlist->next = NULL;
+	commands.front().com1 = info1;
+	commands.front().com2 = info2;
+	commands.front().commandtype = whatcommand;
+	commands.front().commandcount = iterations;
+}
+
+bool statistics::has_commands()
+{
+	return !commands.empty();
 }
 
 
@@ -263,12 +220,12 @@ short statistics::do_command()
 	}
 
 	// Get next command;
-	if (!commandlist)
+	if (commands.empty())
         return 0;
     
-    commandtype = commandlist->commandtype;
-    com1 = commandlist->com1;
-    com2 = commandlist->com2;
+    commandtype = commands.front().commandtype;
+    com1 = commands.front().com1;
+    com2 = commands.front().com2;
     
     short result = 1;
 
@@ -285,7 +242,7 @@ short statistics::do_command()
 			}
 			if (!controller->fire_check(com1,com2))
 			{
-				commandlist->commandcount = 0;
+				commands.front().commandcount = 0;
 				result = 0;
 				break;
 			}
@@ -294,13 +251,13 @@ short statistics::do_command()
 		case COMMAND_DIE:  // debugging, not currently used
 			if (!controller->dead)
 				Log("Trying to make a living ob die!\n");
-			if (commandlist->commandcount < 2)  // then delete us ..
+			if (commands.front().commandcount < 2)  // then delete us ..
 				delete_me = 1;
 			break;
 		case COMMAND_FOLLOW:   // follow the leader
 			if (controller->foe) // if we have foe, don't follow this round
 			{
-				commandlist->commandcount = 0;
+				commands.front().commandcount = 0;
 				controller->leader = NULL;
 				result = 0;
 				break;
@@ -317,7 +274,7 @@ short statistics::do_command()
 						controller->leader = myscreen->viewob[1]->control;
 					else
 					{
-						commandlist->commandcount = 0;
+						commands.front().commandcount = 0;
 						controller->leader = NULL;
 						result = 0;
 						break;
@@ -348,7 +305,7 @@ short statistics::do_command()
 			}  // end of if we had a foe ..
 			
 			controller->walkstep(newx, newy);
-			if (commandlist->commandcount < 2)
+			if (commands.front().commandcount < 2)
             {
 				controller->leader = NULL;
             }
@@ -390,7 +347,7 @@ short statistics::do_command()
 				walk_to_foe();
 			else // stop trying to walk to this foe
             {
-				commandlist->commandcount = 0;
+				commands.front().commandcount = 0;
             }
 			break;
 		case COMMAND_RIGHT_WALK: // right-hand-walk ONLY
@@ -407,7 +364,7 @@ short statistics::do_command()
 		case COMMAND_ATTACK: // attack a nearby, set foe
 			if (!controller->foe || controller->foe->dead)
 			{
-				commandlist->commandcount = 0;
+				commands.front().commandcount = 0;
 				result = 1;
 				break;
 			}
@@ -448,22 +405,17 @@ short statistics::do_command()
 			break;
 	}
 	
-	// NOTE: The commandlist ptr might be pointing at a different command than it was before the switch statement.
+	// NOTE: The first command might be a different command than it was before the switch statement.
 	// That would make this code decrement the wrong command.
-	if(commandlist != NULL)
+	if(!commands.empty())
 	{
-        commandlist->commandcount--;       // reduce # of times left
+        commands.front().commandcount--;       // reduce # of times left
         
-        if(commandlist->commandcount < 1) // Last iteration!
+        if(commands.front().commandcount < 1) // Last iteration!
         {
-            commandlist->commandcount = 0;
+            commands.front().commandcount = 0;
             
-            here = commandlist;
-            commandlist = commandlist->next;
-            if (endlist == here)
-                endlist = NULL;
-            delete here;
-            here = NULL;
+			commands.pop_front();
         }
 	}
 	
@@ -1163,8 +1115,8 @@ bool statistics::walk_to_foe()
 			}
 			else // our foe has moved; we need a new one
 			{
-				if (commandlist)
-					commandlist->commandcount = 0;
+				if (!commands.empty())
+					commands.front().commandcount = 0;
 			}
 		}
 		else
@@ -1191,9 +1143,9 @@ bool statistics::walk_to_foe()
 		right_walk();
 
 	// Are we really really close? Stop searching, then :)
-	if (tempdistance < 30 && commandlist)
+	if (tempdistance < 30 && !commands.empty())
 	{
-		commandlist->commandcount = 0;
+		commands.front().commandcount = 0;
 	}
 
 	return 1;
@@ -1205,5 +1157,4 @@ command::command()
 	commandtype = 0;
 	commandcount = 0;
 	com1 = com2 = 0;
-	next = NULL;
 }
