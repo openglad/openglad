@@ -836,7 +836,7 @@ short viewscreen::input(const SDL_Event& event)
 
 	// Movement, etc.
 	// Make sure we're not performing some queued action ..
-	if (!control->stats->commandlist)
+	if (control->stats->commands.empty())
 	{
 	    #ifdef USE_TOUCH_INPUT
 	    // Treat this as an action, not a modifier
@@ -984,7 +984,7 @@ short viewscreen::continuous_input()
 
 	// Movement, etc.
 	// Make sure we're not performing some queued action ..
-	if (!control->stats->commandlist)
+	if (control->stats->commands.empty())
 	{
         #ifndef USE_TOUCH_INPUT
         // We will handle this as an action in input() instead.

@@ -283,7 +283,7 @@ short living::act()
 
 
 	// Are we performing some action?
-	if (stats->commandlist)
+	if (stats->has_commands())
 	{
 		Sint32 temp = stats->do_command();
 		if (temp)
@@ -484,7 +484,7 @@ bool living::walk(float x, float y)
 		//   other walkers call ACT.  This would cause control
 		//   to turn TWICE on the first call to walk, which is bad.
 		//   So we stop that behavior here.
-		if (this->query_act_type() != ACT_CONTROL || stats->commandlist)
+		if (this->query_act_type() != ACT_CONTROL || stats->has_commands())
 			turn(enddir);
 	}
 	return 1;
