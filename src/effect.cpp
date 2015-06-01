@@ -381,7 +381,7 @@ short effect::act()
 			}
 			
 			// Are we performing some action?
-			if (stats->commandlist)
+			if (stats->has_commands())
 				temp = stats->do_command();
 			else
 			{

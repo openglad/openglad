@@ -20,6 +20,7 @@
 // Definition of STATS class
 
 #include "base.h"
+#include <list>
 
 //
 // Include file for the stats object
@@ -60,6 +61,7 @@ class statistics
 		void set_command(short whatcommand, short iterations, short info1, short info2);
 		void add_command(short whatcommand, short iterations, short info1, short info2);
 		void force_command(short whatcommand, short iterations, short info1, short info2);
+		bool has_commands();
 		void clear_command();
 		short do_command();
 		void hit_response(walker * who);
@@ -101,8 +103,7 @@ class statistics
 		unsigned short special_cost[NUM_SPECIALS];  // cost of our special ability
 		short weapon_cost;                          // cost of our weapon
 		walker  * controller;
-		command *commandlist; // head of command list
-		command *endlist;     // end of command list
+		std::list<command> commands;
 	private:
 		//       short com1, com2;        // parameters to command
 		Sint32 walkrounds; //number of rounds we've spent rightwalking
@@ -117,7 +118,6 @@ class command
 		short commandcount;
 		short com1;
 		short com2;
-		command *next;
 };
 
 #endif
