@@ -21,7 +21,7 @@
 //#include "graph.h"
 #include <math.h>
 #include "obmap.h"
-#include "loader.h"
+#include "gloader.h"
 #include "screen.h"
 #include "treasure.h"
 #include "text.h"

@@ -20,7 +20,7 @@
 #include "base.h"
 
 #include "video.h"
-#include "loader.h"
+#include "gloader.h"
 #include "obmap.h"
 #include "screen.h"
 #include "view.h"

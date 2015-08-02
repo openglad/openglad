@@ -26,7 +26,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
-#include "parser.h"
+#include "gparser.h"
 #include "util.h"
 #include "yam.h"
 

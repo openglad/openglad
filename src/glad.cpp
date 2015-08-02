@@ -23,7 +23,7 @@ screen * myscreen;
 
 #include "colors.h"
 #include <time.h>
-#include "parser.h"
+#include "gparser.h"
 #include <string>
 #include "util.h"
 #include "results_screen.h"
