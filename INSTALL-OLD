@@ -1,0 +1,46 @@
+These are the installation instructions for Openglad.
+
+INSTALL
+=======
+
+1. Unpack the tarball into some directory.
+
+==================================
+Linux/FreeBSD/OpenBSD/Other Unixes
+==================================
+1. In the openglad dir, run "./configure"
+2. Run "make"
+3. Run "make install"
+
+Note: if you are installing without use of autoconf,
+you will need to create a config.h file with proper
+defines (such as OG_DATADIR), then install Openglad into
+OG_DATADIR.
+
+=======
+Windows
+=======
+A Visual C++ Makefile can be found in src/. You might need to
+edit the paths to the SDL lib/includes. To from the command line, execute
+vcvars32.bat (should be in VC98/) and then execute nmake /f Makefile.vc 
+(or nmake /f Makefile.vc openscen) in the openglad src/ dir. (Thanks Murlock)
+
+Note: a config.h-win is provided that you'll have to rename into config.h.
+
+For the install, there are several ways to have Openglad installed:
+
+1. Have the openglad.cfg file be in C:\Games\Openglad and have the "data" option in it pointing to where you have the rest of Openglad installed.
+2. Have the whole thing in C:\Games\Openglad
+3. Have it anywhere but always switch to the install directory before launching it.
+
+Note: be sure to have the save/ scen/ and pix/ directories, or saving the game and/or level editing won't work.
+
+===========
+===========
+
+openglad is the game binary, openscen is the editor.
+
+
+If you get Openglad to work on any other operating systems,
+please tell us how you did. You can contact one of the
+Snowstorm Entertainment guys or post on the forums.

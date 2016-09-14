@@ -1,46 +1,37 @@
-These are the installation instructions for Openglad.
+These are the build/installation instructions for Openglad.
 
-INSTALL
-=======
-
-1. Unpack the tarball into some directory.
-
-==================================
-Linux/FreeBSD/OpenBSD/Other Unixes
-==================================
-1. In the openglad dir, run "./configure"
-2. Run "make"
-3. Run "make install"
-
-Note: if you are installing without use of autoconf,
-you will need to create a config.h file with proper
-defines (such as OG_DATADIR), then install Openglad into
-OG_DATADIR.
+Openglad provides two methods for building from source.  The primary way is via premake (https://premake.github.io/).  The secondary way is with the Code::Blocks project file (.cbp).
 
 =======
-Windows
+PREMAKE
 =======
-A Visual C++ Makefile can be found in src/. You might need to
-edit the paths to the SDL lib/includes. To from the command line, execute
-vcvars32.bat (should be in VC98/) and then execute nmake /f Makefile.vc 
-(or nmake /f Makefile.vc openscen) in the openglad src/ dir. (Thanks Murlock)
 
-Note: a config.h-win is provided that you'll have to rename into config.h.
+premake4.lua is the build script to use with premake.  After installing premake, open a command-line terminal and navigate to the openglad diretory.
 
-For the install, there are several ways to have Openglad installed:
-
-1. Have the openglad.cfg file be in C:\Games\Openglad and have the "data" option in it pointing to where you have the rest of Openglad installed.
-2. Have the whole thing in C:\Games\Openglad
-3. Have it anywhere but always switch to the install directory before launching it.
-
-Note: be sure to have the save/ scen/ and pix/ directories, or saving the game and/or level editing won't work.
-
-===========
-===========
-
-openglad is the game binary, openscen is the editor.
+Entering this command in the terminal will generate GNU Makefiles that can be run with the usual `make` to perform the actual build:
+premake4 gmake
 
 
-If you get Openglad to work on any other operating systems,
-please tell us how you did. You can contact one of the
-Snowstorm Entertainment guys or post on the forums.
+And this command will generate project files for Visual Studio 2010.
+premake4 vs2010
+
+
+Openglad uses SDL2.  You must download the development files (e.g. from http://libsdl.org/download-2.0.php).  Premake needs to know where these are, so the premake script had the following options:
+cflags
+ldflags
+includedirs
+libdirs
+
+To specify the path for SDL2, one might call premake like so when using a 64-bit compiler:
+premake4 vs2010 includedirs="../SDL2-2.0.4/include" libdirs="../SDL2-2.0.4/lib/x64"
+
+If you installed sdl2 and sdl2-config packages on Linux (like from apt or yum), then you can use:
+premake4 gmake cflags="`sdl2-config --cflags`" ldflags="`sdl2-config --libs`"
+
+
+============
+CODE::BLOCKS
+============
+
+cb_Openglad.cbp is a Code::Blocks (http://www.codeblocks.org/) project file with build configurations for Windows (mingw32) and Linux.  The compiler (include) and linker "Search directories" are hardcoded to relative paths ("../externals/..."), so those need to be changed in the project's Build options so that they point to the appropriate locations for SDL2, SDL2_mixer, and libpng on your system.
+
