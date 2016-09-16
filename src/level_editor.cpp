@@ -28,6 +28,7 @@
 #include "level_picker.h"
 #include "campaign_picker.h"
 #include "sai2x.h"
+#include <cstring>
 
 #ifdef OUYA
 #include "OuyaController.h"

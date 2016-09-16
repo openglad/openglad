@@ -31,6 +31,7 @@
 #include "view_sizes.h"
 #include "results_screen.h"
 #include <string>
+#include <cstring>
 
 using namespace std;
 

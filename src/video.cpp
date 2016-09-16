@@ -18,6 +18,7 @@
 
 #include "graph.h"
 #include "sai2x.h"
+#include <cstring>
 
 #define VIDEO_BUFFER_WIDTH 320
 #define VIDEO_WIDTH 320

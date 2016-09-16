@@ -6,6 +6,7 @@
 #include "guy.h"
 #include "stats.h"
 #include "view.h"
+#include <cstring>
 
 #ifdef OUYA
     #include "OuyaController.h"

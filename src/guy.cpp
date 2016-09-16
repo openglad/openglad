@@ -16,6 +16,7 @@
  */
 #include "graph.h"
 #include <math.h>
+#include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
 
 extern Sint32 costlist[NUM_FAMILIES];

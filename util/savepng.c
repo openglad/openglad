@@ -19,6 +19,7 @@ int SDL_SavePNG_RW(SDL_Surface *surface, SDL_RWops *dst, int freedst)
 #else
 
 #include "png.h"
+#include <stdlib.h>
 
 #define SUCCESS 0
 #define ERROR -1

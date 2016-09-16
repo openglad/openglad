@@ -25,6 +25,7 @@ screen * myscreen;
 #include <time.h>
 #include "gparser.h"
 #include <string>
+#include <cstring>
 #include "util.h"
 #include "results_screen.h"
 

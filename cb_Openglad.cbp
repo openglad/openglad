@@ -473,6 +473,10 @@
 		<Unit filename="src/external/yam/yam.h" />
 		<Unit filename="src/game.cpp" />
 		<Unit filename="src/glad.cpp" />
+		<Unit filename="src/gloader.cpp" />
+		<Unit filename="src/gloader.h" />
+		<Unit filename="src/gparser.cpp" />
+		<Unit filename="src/gparser.h" />
 		<Unit filename="src/graph.h" />
 		<Unit filename="src/graphlib.cpp" />
 		<Unit filename="src/guy.cpp" />
@@ -490,15 +494,11 @@
 		<Unit filename="src/level_picker.h" />
 		<Unit filename="src/living.cpp" />
 		<Unit filename="src/living.h" />
-		<Unit filename="src/loader.cpp" />
-		<Unit filename="src/loader.h" />
 		<Unit filename="src/obmap.cpp" />
 		<Unit filename="src/obmap.h" />
 		<Unit filename="src/pal32.cpp" />
 		<Unit filename="src/pal32.h" />
 		<Unit filename="src/palettes.h" />
-		<Unit filename="src/parser.cpp" />
-		<Unit filename="src/parser.h" />
 		<Unit filename="src/picker.cpp" />
 		<Unit filename="src/picker.h" />
 		<Unit filename="src/pixdefs.h" />

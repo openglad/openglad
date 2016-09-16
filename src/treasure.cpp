@@ -28,6 +28,7 @@
 #include "stats.h"
 #include "guy.h"
 #include <algorithm>
+#include <cstring>
 
 // Zardus: this is the func to get events
 void get_input_events(bool);

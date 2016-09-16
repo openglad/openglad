@@ -27,6 +27,7 @@
 #include "gparser.h"
 #include "campaign_picker.h"
 #include "level_picker.h"
+#include <cstring>
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 

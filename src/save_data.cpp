@@ -20,6 +20,7 @@
 #include "walker.h"
 #include "guy.h"
 #include "campaign_picker.h"
+#include <cstring>
 
 
 #ifdef USE_TOUCH_INPUT

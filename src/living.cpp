@@ -20,6 +20,7 @@
 
 #include "graph.h"
 #include "smooth.h"
+#include <cstring>
 
 // From picker
 extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];

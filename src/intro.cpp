@@ -22,6 +22,7 @@
 #include "graph.h"
 //#include "pixie.h"
 // Z's script: #include <process.h>
+#include <cstring>
 
 #define SHOW_TIME 130
 #define FROM 1

@@ -29,6 +29,7 @@
 #include "util.h"
 #include "view_sizes.h"
 #include <algorithm>
+#include <cstring>
 
 //these are for chad's team info page
 #define VIEW_TEAM_TOP    2

@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <cstring>
 
 using namespace std;
 

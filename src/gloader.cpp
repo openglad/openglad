@@ -22,6 +22,7 @@
 #include "treasure.h"
 #include "weap.h"
 #include "effect.h"
+#include <cstring>
 
 void popup_dialog(const char* title, const char* message);
 
