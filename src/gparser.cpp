@@ -53,6 +53,7 @@ std::string cfg_store::get_setting(const std::string& category, const std::strin
 			return a2->second;
 	}
 	
+	Log("cfg setting not found: %s/%s\n", category.c_str(), setting.c_str());
 	return "";
 }
 
@@ -76,7 +77,7 @@ bool cfg_store::load_settings()
     apply_setting("effects", "heal_numbers", "on");
     
     Log("Loading settings\n");
-    SDL_RWops* rwops = open_read_file("cfg/openglad.yaml");
+    SDL_RWops* rwops = open_read_file("cfg/openglad.yaml", true);
     if(rwops == NULL)
 	{
 		Log("Could not open config file. Using defaults.");
@@ -106,6 +107,7 @@ bool cfg_store::load_settings()
             case Yam::ALIAS:
                 break;
             case Yam::PAIR:
+		printf("applying setting: %s/%s:%s\n", current_category.c_str(), yam.event.scalar, yam.event.value);
                 apply_setting(current_category, yam.event.scalar, yam.event.value);
                 break;
             case Yam::SCALAR:

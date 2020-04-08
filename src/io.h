@@ -30,7 +30,7 @@ void io_exit();
 std::string get_user_path();
 bool create_dir(const std::string& dirname);
 
-SDL_RWops* open_read_file(const char* file);
+SDL_RWops* open_read_file(const char* file, bool debug = false);
 SDL_RWops* open_read_file(const char* path, const char* file);
 SDL_RWops* open_write_file(const char* file);
 SDL_RWops* open_write_file(const char* path, const char* file);

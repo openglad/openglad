@@ -45,6 +45,7 @@ video::video()
 	else
 		fullscreen = 0;
 
+	
 	std::string qresult = cfg.get_setting("graphics", "render");
 	if(qresult == "normal")
 		render = NoZoom;
@@ -76,8 +77,19 @@ video::video()
 	//	bluepalette[i*3+0] /= 2;
 	//	bluepalette[i*3+1] /= 2;
 	//}
+
+	int w = 640;
+	int h = 400; 
 	
-	E_Screen = new Screen(render, 640, 400, fullscreen);
+	qresult = cfg.get_setting("graphics", "width");
+	if(qresult.size() > 0)
+	    w = stoi(qresult);
+	
+	qresult = cfg.get_setting("graphics", "height");
+	if(qresult.size() > 0)
+	    h = stoi(qresult);
+        Log("Creating screen %dx%d\n", w, h);
+	E_Screen = new Screen(render, w, h, fullscreen);
 }
 
 video::~video()

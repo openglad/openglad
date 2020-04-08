@@ -118,31 +118,49 @@ std::string get_asset_path()
     // Assuming the cwd is set to the program's installation directory
     return "";
 #else
-    // FIXME: This won't typically work for *nix
-    return "/usr/share/openglad/";
+    // Assumes UNIX with /proc
+    char path[512];
+    int maxPathSize = 512;
+    memset(path, 0, maxPathSize);
+    readlink("/proc/self/exe", path, maxPathSize);
+    path[maxPathSize-1] = '\0';
+    std::string s = path;
+    size_t slash = s.find_last_of('/');
+    if(slash != std::string::npos)
+    {
+        s = s.substr(0, slash);
+    }
+    s += '/';
+
+    printf("get_asset_path: %s\n", s.c_str());
+    return s;
 #endif
 }
 
-SDL_RWops* open_read_file(const char* file)
+SDL_RWops* open_read_file(const char* file, bool debug)
 {
     SDL_RWops* rwops = NULL;
     
-    //Log((std::string("Trying via PHYSFS: ") + file).c_str());
+    if(debug)
+	    Log((std::string("Trying via PHYSFS: ") + file).c_str());
     rwops = PHYSFSRWOPS_openRead(file);
     if(rwops != NULL) return rwops;
 
     // now try opening in the current directory
-    //Log((std::string("Trying to open: ") + file).c_str());
+    if(debug)
+	    Log((std::string("Trying to open: ") + file).c_str());
     rwops = SDL_RWFromFile(file, "rb");
     if(rwops != NULL) return rwops;
 
     // now try opening in the user directory
-    //Log((std::string("Trying to open: ") + get_user_path() + file).c_str());
+    if(debug)
+	    Log((std::string("Trying to open: ") + get_user_path() + file).c_str());
     rwops = SDL_RWFromFile((get_user_path() + std::string("/") + file).c_str(), "rb");
     if(rwops != NULL) return rwops;
 
     // now try opening in the asset directory
-    //Log((std::string("Trying to open: ") + get_asset_path() + file).c_str());
+    if(debug)
+	    Log((std::string("Trying to open: ") + get_asset_path() + file).c_str());
     rwops = SDL_RWFromFile((get_asset_path() + std::string("/") + file).c_str(), "rb");
     if(rwops != NULL) return rwops;
 
