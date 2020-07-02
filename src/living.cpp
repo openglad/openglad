@@ -70,7 +70,7 @@ short living::act()
 			death();
 			return 0;
 		}
-		if (lifetime-- < 1)
+		if (--lifetime < 1)
 		{
 			dead = 1;
 			return death();
