@@ -1949,7 +1949,7 @@ short walker::attack(walker  *target)
 	if (tempdamage < 0)
 		tempdamage = 0;
     
-    do_combat_damage(attacker, target, damage);
+    do_combat_damage(attacker, target, tempdamage);
 
 
     // Base exp from attack damage
