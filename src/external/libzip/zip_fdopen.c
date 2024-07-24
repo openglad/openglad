@@ -31,11 +31,11 @@
   IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
-
 #include "zipint.h"
 
-
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 
 ZIP_EXTERN struct zip *
 zip_fdopen(int fd_orig, int _flags, int *zep)
