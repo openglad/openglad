@@ -383,7 +383,10 @@ Sint32 vbutton::leftclick(Sint32 whichbutton)
                 retvalue = do_call(myfunc, arg);
             }
             while (keystates[hotkey])
-                get_input_events(WAIT);
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
             return retvalue;
         }
     }

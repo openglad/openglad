@@ -1,7 +1,30 @@
+# Build output
+*.o
+*.exe
+obj/
+
+# Emscripten build
+/build-web/
+/dist/
+
+# Autotools generated files
+/configure
+/configure~
+/aclocal.m4
+/autom4te.cache/
+/Makefile
+/config.status
+/config.log
+/src/Makefile
 /src/config.h
+/util/Makefile
+/sound/Makefile
+.deps/
+
+# IDE files
 /cb_Openglad.depend
 /cb_Openglad.layout
-obj
-*.exe
+
+# Runtime output
 stdout.txt
 stderr.txt

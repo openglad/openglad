@@ -19,6 +19,10 @@
 
 #include "graph.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 screen * myscreen;
 
 #include "colors.h"
@@ -71,6 +75,59 @@ void glad_main(screen *myscreen, Sint32 playermode);
 // try to create it before main and go nuts trying to load it
 extern options *theprefs;
 
+// Frame state for main game loop (used by Emscripten and native builds)
+struct FrameState {
+	bool done;
+	bool initialized;
+	short currentcycle;
+	short cycletime;
+#ifdef __EMSCRIPTEN__
+	Uint32 last_frame_time;
+	Uint32 accumulated_time;
+#endif
+};
+static FrameState g_frame_state = {false, false, 0, 3};
+
+// Forward declaration
+static void game_frame();
+
+#ifdef __EMSCRIPTEN__
+// Emscripten frame wrapper with timing control
+// The browser calls this at ~60 FPS via requestAnimationFrame
+// We accumulate time and only run game logic at the intended frame rate
+static void emscripten_frame_wrapper() {
+	// Calculate time since last call
+	Uint32 current_time = SDL_GetTicks();
+	Uint32 delta = current_time - g_frame_state.last_frame_time;
+	g_frame_state.last_frame_time = current_time;
+	g_frame_state.accumulated_time += delta;
+
+	// Calculate target frame time based on timer_wait (in ticks, 1 tick = 13.6ms)
+	// timer_wait defaults to 6, giving ~82ms per frame (~12 FPS)
+	Uint32 target_frame_time = (Uint32)(myscreen->timer_wait * 13.6f);
+	if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
+
+	// Only run game logic if enough time has accumulated
+	if (g_frame_state.accumulated_time >= target_frame_time) {
+		game_frame();
+		// Subtract one frame's worth of time (don't reset to 0 to handle remainder)
+		g_frame_state.accumulated_time -= target_frame_time;
+		// Clamp to prevent spiral of death if frames take too long
+		if (g_frame_state.accumulated_time > target_frame_time * 2) {
+			g_frame_state.accumulated_time = 0;
+		}
+	}
+
+	if (g_frame_state.done) {
+		Log("Game done, canceling main loop\n");
+		emscripten_cancel_main_loop();
+		clear_keyboard();
+		myscreen->level_data.delete_objects();
+		Log("Main loop canceled, returning to caller\n");
+	}
+}
+#endif
+
 int main(int argc, char *argv[])
 {
 	io_init(argc, argv);
@@ -97,56 +154,119 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
+// One frame of the main game loop - called by emscripten_set_main_loop or native while loop
+static void game_frame()
+{
+	// Reset the timer count to zero ...
+	reset_timer();
+
+	if (myscreen->redrawme)
+	{
+		myscreen->draw_panels(myscreen->numviews);
+		score_panel(myscreen, 1);
+		myscreen->refresh();
+		myscreen->redrawme = 0;
+	}
+	if (myscreen->end)
+	{
+		g_frame_state.done = true;
+		return;
+	}
+	myscreen->act();
+	myscreen->framecount++;
+	if (myscreen->end)
+	{
+		g_frame_state.done = true;
+		return;
+	}
+	myscreen->redraw();
+
+	if(debug_draw_obmap)
+		myscreen->level_data.myobmap->draw();  // debug drawing for object collision map
+
+	#ifdef USE_TOUCH_INPUT
+	draw_touch_controls(myscreen);
+	#endif
+	score_panel(myscreen);
+	myscreen->refresh();
+
+	SDL_Event event;
+	while(SDL_PollEvent(&event))
+	{
+		handle_events(event);
+		if(event.type == SDL_KEYDOWN)
+		{
+			if(event.key.keysym.sym == SDLK_F11)
+				debug_draw_paths = !debug_draw_paths;
+			else if(event.key.keysym.sym == SDLK_F12)
+				debug_draw_obmap = !debug_draw_obmap;
+			else if(event.key.keysym.sym == SDLK_ESCAPE)
+			{
+				bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
+				myscreen->redrawme = 1;
+				if (result) // player wants to quit
+				{
+					g_frame_state.done = true;
+					results_screen(2, -1); // Should not show an extra popup
+				}
+				else
+				{
+					set_palette(myscreen->ourpalette);  // restore normal palette
+					adjust_palette(myscreen->ourpalette, myscreen->viewob[0]->gamma);
+				}
+				break;
+			}
+		}
+
+		myscreen->input(event);
+	}
+	if (myscreen->end || g_frame_state.done)
+	{
+		g_frame_state.done = true;
+		return;
+	}
+
+	myscreen->continuous_input();
+
+	if (myscreen->end)
+	{
+		g_frame_state.done = true;
+		return;
+	}
+
+	// Now cycle palette ..
+	if (myscreen->cyclemode)
+		myscreen->do_cycle(g_frame_state.currentcycle++, g_frame_state.cycletime);
+
+#ifndef __EMSCRIPTEN__
+	// Zardus: PORT: this is the new FPS cap (not needed for Emscripten - browser handles timing)
+	time_delay(myscreen->timer_wait - query_timer());
+#endif
+}
+
 void glad_main(Sint32 playermode)
 {
-	//  char soundpath[80];
-	//  short cyclemode = 1;            // color cycling on or off
-
-	//Sint32 longtemp;
-	//char message[50];
-	short currentcycle = 0, cycletime = 3;
-
-	//screen  *myscreen;
-
-	// Get sound path ..
-	//if (!get_cfg_item("directories", "sound") )
-	//     exit(1);
-	//strcpy(soundpath, get_cfg_item("directories", "sound") );
-
 	// Zardus: PORT: fade out
 	clear_keyboard();
 	myscreen->fadeblack(0);
 
 	myscreen->clearbuffer();
 
-	// Draw rainbow background
-	//for (i = 0; i<320; i++)
-	//  for (j = 0; j < 200; j++)
-	//    myscreen->point(i,j,(unsigned char) (i-j)); //not sure if this is ok
-
-
 	// Load the default saved-game ..
 	load_saved_game("save0", myscreen);
 
-    // This will update the 'control' so the screen centers on our guy
-    myscreen->continuous_input();
-    
+	// This will update the 'control' so the screen centers on our guy
+	myscreen->continuous_input();
+
 	//*******************************
 	// Fade in
 	//*******************************
 	myscreen->redraw();
 	myscreen->fadeblack(1);
 
-
-	//******************************
-	// Keyboard loop
-	//******************************
-
-
 	//
 	// This is the main program loop
 	//
-
 
 	myscreen->redraw();
 	myscreen->refresh();
@@ -155,103 +275,32 @@ void glad_main(Sint32 playermode)
 	myscreen->framecount = 0;
 	myscreen->timerstart = query_timer_control();
 
-    bool done = false;
-	while(!done)
+	// Initialize frame state
+	g_frame_state.done = false;
+	g_frame_state.currentcycle = 0;
+	g_frame_state.cycletime = 3;
+
+#ifdef __EMSCRIPTEN__
+	// Initialize timing for frame rate control
+	g_frame_state.last_frame_time = SDL_GetTicks();
+	g_frame_state.accumulated_time = 0;
+	// For Emscripten, use the browser's requestAnimationFrame via emscripten_set_main_loop
+	// 0 = use requestAnimationFrame (browser calls us at ~60 FPS)
+	// 1 = simulate infinite loop (required for proper behavior)
+	// Our wrapper handles timing to match the game's intended frame rate
+	emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);
+#else
+	// Native desktop build: use traditional while loop
+	while(!g_frame_state.done)
 	{
-		// Reset the timer count to zero ...
-		reset_timer();
-
-		if (myscreen->redrawme)
-		{
-			myscreen->draw_panels(myscreen->numviews);
-			score_panel(myscreen, 1);
-			myscreen->refresh();
-			//score_panel(myscreen, 1);
-			myscreen->redrawme = 0;
-		}
-		if (myscreen->end)
-			break;
-		myscreen->act();
-		myscreen->framecount++;
-		if (myscreen->end)
-			break;
-		myscreen->redraw();
-		
-		if(debug_draw_obmap)
-            myscreen->level_data.myobmap->draw();  // debug drawing for object collision map
-        
-        #ifdef USE_TOUCH_INPUT
-        draw_touch_controls(myscreen);
-        #endif
-		score_panel(myscreen);
-		myscreen->refresh();
-        
-        SDL_Event event;
-        while(SDL_PollEvent(&event))
-        {
-            handle_events(event);
-            if(event.type == SDL_KEYDOWN)
-            {
-                if(event.key.keysym.sym == SDLK_F11)
-                    debug_draw_paths = !debug_draw_paths;
-                else if(event.key.keysym.sym == SDLK_F12)
-                    debug_draw_obmap = !debug_draw_obmap;
-                else if(event.key.keysym.sym == SDLK_ESCAPE)
-                {
-                    bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
-                    myscreen->redrawme = 1;
-                    if (result) // player wants to quit
-                    {
-                        done = true;
-                        results_screen(2, -1); // Should not show an extra popup
-                    }
-                    else
-                    {
-                        set_palette(myscreen->ourpalette);  // restore normal palette
-                        adjust_palette(myscreen->ourpalette, myscreen->viewob[0]->gamma);
-                    }
-                    break;
-                }
-            }
-            
-            myscreen->input(event);
-        }
-		if (myscreen->end || done)
-			break;
-        
-        myscreen->continuous_input();
-        
-		if (myscreen->end)
-			break;
-
-		//score_panel(myscreen);
-
-		//if (input == SDLK_ESCAPE) break;
-		
-
-		// Now cycle palette ..
-		if (myscreen->cyclemode)
-			myscreen->do_cycle(currentcycle++, cycletime);
-
-		// Zardus: PORT: this is the new FPS cap
-		time_delay(myscreen->timer_wait - query_timer());
-
-		// Zardus: PORT: this is the old FPS cap
-		// Now check to see if we're slow enough
-		//if (query_timer() < myscreen->timer_wait)
-		//{
-		//	while(query_timer() < myscreen->timer_wait)
-		//	{} //do nothing until we are ready to go to next frame
-		//}
-
+		game_frame();
 	}
 
 	clear_keyboard();
+	myscreen->level_data.delete_objects();
+#endif
 
-    myscreen->level_data.delete_objects();
-    
 	return; // return to picker
-	//  return 1;
 }
 
 // remaining_foes returns # of livings left not on control's team

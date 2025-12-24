@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenGlad</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #game-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            background-color: #000;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+        }
+
+        #loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top-color: #fff;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #loading-text {
+            font-size: 16px;
+        }
+
+        #loading-progress {
+            width: 200px;
+            height: 4px;
+            background: #333;
+            margin-top: 10px;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        #loading-bar {
+            width: 0%;
+            height: 100%;
+            background: #fff;
+            transition: width 0.2s;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="canvas" width="320" height="200" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+    </div>
+
+    <div id="loading">
+        <div id="loading-spinner"></div>
+        <div id="loading-text">Loading...</div>
+        <div id="loading-progress">
+            <div id="loading-bar"></div>
+        </div>
+    </div>
+
+    <script>
+        var canvas = document.getElementById('canvas');
+        var loadingElement = document.getElementById('loading');
+        var loadingText = document.getElementById('loading-text');
+        var loadingBar = document.getElementById('loading-bar');
+
+        // Handle WebGL context loss
+        canvas.addEventListener('webglcontextlost', function(e) {
+            alert('WebGL context lost. Please reload the page.');
+            e.preventDefault();
+        }, false);
+
+        // Ensure canvas gets focus on click (important for keyboard input)
+        canvas.addEventListener('click', function() {
+            canvas.focus();
+        });
+
+        // Scale canvas to fit window while maintaining aspect ratio
+        function resizeCanvas() {
+            var gameWidth = 320;
+            var gameHeight = 200;
+            var windowWidth = window.innerWidth;
+            var windowHeight = window.innerHeight;
+
+            // Calculate scale to fit window
+            var scaleX = windowWidth / gameWidth;
+            var scaleY = windowHeight / gameHeight;
+            var scale = Math.min(scaleX, scaleY);
+
+            // Use integer scaling for crisp pixels
+            scale = Math.floor(scale);
+            if (scale < 1) scale = 1;
+
+            canvas.style.width = (gameWidth * scale) + 'px';
+            canvas.style.height = (gameHeight * scale) + 'px';
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+
+        var Module = {
+            canvas: canvas,
+
+            setStatus: function(text) {
+                if (!text) {
+                    // Loading complete
+                    loadingElement.classList.add('hidden');
+                    canvas.focus();
+                    return;
+                }
+
+                // Parse progress if available
+                var match = text.match(/([^(]+)\((\d+(\.\d+)?)\/(\d+)\)/);
+                if (match) {
+                    var progress = (parseInt(match[2]) / parseInt(match[4])) * 100;
+                    loadingBar.style.width = progress + '%';
+                    loadingText.textContent = match[1].trim() || 'Loading...';
+                } else {
+                    loadingText.textContent = text;
+                }
+            },
+
+            totalDependencies: 0,
+
+            monitorRunDependencies: function(remaining) {
+                this.totalDependencies = Math.max(this.totalDependencies, remaining);
+                if (remaining) {
+                    Module.setStatus('Loading... (' + (this.totalDependencies - remaining) + '/' + this.totalDependencies + ')');
+                } else {
+                    Module.setStatus('');
+                }
+            },
+
+            onRuntimeInitialized: function() {
+                resizeCanvas();
+            }
+        };
+
+        Module.setStatus('Loading...');
+
+        window.onerror = function(message) {
+            loadingText.textContent = 'Error: ' + message;
+            loadingBar.style.background = '#f44';
+            console.error(message);
+        };
+    </script>
+    {{{ SCRIPT }}}
+</body>
+</html>

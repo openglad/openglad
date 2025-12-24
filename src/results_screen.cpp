@@ -324,7 +324,12 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 {
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
-    
+
+    // Clear any stale input events after popup closes
+    // This helps prevent ASYNCIFY state issues in Emscripten
+    SDL_Delay(50);  // Small delay to let browser events settle
+    get_input_events(POLL);  // Drain event queue
+
     LevelData& level_data = myscreen->level_data;
     SaveData& save_data = myscreen->save_data;
     
@@ -455,6 +460,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	
 	
     bool done = false;
+    bool was_mouse_down = false;  // Track previous mouse state for edge detection
     while (!done)
     {
         // Reset the timer count to zero ...
@@ -465,18 +471,25 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 
         // Get keys and stuff
         get_input_events(POLL);
-		
+
         handle_menu_nav(buttons, highlighted_button, retvalue, false);
 
         // Mouse stuff ..
-		MouseState& mymouse = query_mouse();
+        // Use no_poll version since we already called get_input_events above
+		MouseState& mymouse = query_mouse_no_poll();
         int mx = mymouse.x;
         int my = mymouse.y;
-        
+
+        // Detect mouse click (transition from not pressed to pressed)
+        // This avoids blocking while loops that cause issues with Emscripten/ASYNCIFY
+        bool mouse_down = mymouse.left;
+        bool do_click = mouse_down && !was_mouse_down;
+        was_mouse_down = mouse_down;
+
         #ifdef USE_CONTROLLER_INPUT
         {
             const OuyaController& c = OuyaControllerManager::getController(0);
-            
+
             float v = c.getAxisValue(OuyaController::AXIS_LS_Y) + c.getAxisValue(OuyaController::AXIS_RS_Y);
             if(fabs(v) > OuyaController::DEADZONE)
                 scroll -= -5*v;
@@ -486,8 +499,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 		#endif
 		if(scroll < 0.0f)
             scroll = 0.0f;
-        
-        bool do_click = mymouse.left;
+
 		bool do_ok = ((do_click && ok_rect.x <= mx && mx <= ok_rect.x + ok_rect.w
                && ok_rect.y <= my && my <= ok_rect.y + ok_rect.h) || (retvalue == OG_OK && highlighted_button == ok_index));
 		bool do_retry = ((do_click && retry_rect.x <= mx && mx <= retry_rect.x + retry_rect.w
@@ -496,12 +508,6 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                && overview_rect.y <= my && my <= overview_rect.y + overview_rect.h) || (retvalue == OG_OK && highlighted_button == overview_index));
 		bool do_troops = ((do_click && troops_rect.x <= mx && mx <= troops_rect.x + troops_rect.w
                && troops_rect.y <= my && my <= troops_rect.y + troops_rect.h) || (retvalue == OG_OK && highlighted_button == troops_index));
-        
-		if (mymouse.left)
-		{
-		    while(mymouse.left)
-                get_input_events(WAIT);
-		}
 
        // Ok
        if(do_ok)

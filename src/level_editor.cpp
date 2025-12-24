@@ -560,8 +560,11 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
         if(keystates[KEYSTATE_ESCAPE])
         {
             while(keystates[KEYSTATE_ESCAPE])
-                get_input_events(WAIT);
-            
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
+
             done = true;
             break;
         }
@@ -571,7 +574,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 s->erase(cursor_pos, 1);
             
             while(keystates[KEYSTATE_DELETE])
-                get_input_events(WAIT);
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
         }
         if(keystates[KEYSTATE_UP])
         {
@@ -584,7 +590,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             }
             
             while(keystates[KEYSTATE_UP])
-                get_input_events(WAIT);
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
         }
         if(keystates[KEYSTATE_DOWN])
         {
@@ -600,7 +609,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 cursor_pos = s->size();
             
             while(keystates[KEYSTATE_DOWN])
-                get_input_events(WAIT);
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
         }
         if(keystates[KEYSTATE_LEFT])
         {
@@ -614,7 +626,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             }
             
             while(keystates[KEYSTATE_LEFT])
-                get_input_events(WAIT);
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
         }
         if(keystates[KEYSTATE_RIGHT])
         {
@@ -633,9 +648,12 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             }
             
             while(keystates[KEYSTATE_RIGHT])
-                get_input_events(WAIT);
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
         }
-        
+
         if(query_text_input_event())
         {
             char* temptext = query_text_input();
@@ -1463,8 +1481,11 @@ bool activate_sub_menu_button(int mx, int my, std::list<std::pair<SimpleButton*,
     
     MouseState& mymouse = query_mouse_no_poll();
     while (mymouse.left)
-        get_input_events(WAIT);
-    
+    {
+        SDL_Delay(1);
+        get_input_events(POLL);
+    }
+
     if(current_menu.size() > 0)
     {
         // Close menu if already open
@@ -1497,8 +1518,11 @@ bool activate_menu_choice(int mx, int my, LevelEditorData& data, SimpleButton& b
     
     MouseState& mymouse = query_mouse_no_poll();
     while (mymouse.left)
-        get_input_events(WAIT);
-    
+    {
+        SDL_Delay(1);
+        get_input_events(POLL);
+    }
+
     // Close menu
     data.current_menu.clear();
     data.draw(myscreen);
@@ -1514,8 +1538,11 @@ bool activate_menu_toggle_choice(int mx, int my, LevelEditorData& data, SimpleBu
     
     MouseState& mymouse = query_mouse_no_poll();
     while (mymouse.left)
-        get_input_events(WAIT);
-    
+    {
+        SDL_Delay(1);
+        get_input_events(POLL);
+    }
+
     // Close menu
     data.draw(myscreen);
     myscreen->refresh();
@@ -3129,6 +3156,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             MouseState& mymouse = query_mouse_no_poll();
                             while ( mymouse.left && (query_timer()-start_time_s) < 36 )
                             {
+                                SDL_Delay(1);
                                 mymouse = query_mouse();
                             }
                             levelchanged = 1;
@@ -3756,7 +3784,10 @@ Sint32 level_editor()
             redraw = 1;
             
 			while (keystates[KEYSTATE_DOWN])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 
 		// Slide tile selector up ..
@@ -3771,7 +3802,10 @@ Sint32 level_editor()
             redraw = 1;
             
 			while (keystates[KEYSTATE_UP])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		#if defined(USE_TOUCH_INPUT)
         }

@@ -400,6 +400,11 @@ button popup_dialog_buttons[] =
 
 Sint32 leftmouse(button* buttons)
 {
+	// Use static variables for edge detection instead of blocking while loops
+	// This prevents ASYNCIFY state corruption in Emscripten
+	static bool was_left_down = false;
+	static bool was_right_down = false;
+
 	Sint32 i = 0;
 	Sint32 somebutton = -1;
 
@@ -422,18 +427,18 @@ Sint32 leftmouse(button* buttons)
 		return 1;  // simulate left-click
 	}
 
-	if (mymouse.left)
-	{
-		while (mymouse.left) // wait for release
-			mymouse = query_mouse();
+	// Detect click transitions (button went from up to down)
+	bool left_clicked = mymouse.left && !was_left_down;
+	bool right_clicked = mymouse.right && !was_right_down;
+
+	// Update state for next frame
+	was_left_down = mymouse.left;
+	was_right_down = mymouse.right;
+
+	if (left_clicked)
 		return 1;
-	}
-	else if (mymouse.right)
-	{
-		while (mymouse.right) // wait for release
-			mymouse = query_mouse();
+	else if (right_clicked)
 		return 2; // for right-mouse
-	}
 	else
 		return 0;
 }
@@ -548,39 +553,54 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
     if(isPlayerHoldingKey(0, KEY_UP))
     {
         while(isPlayerHoldingKey(0, KEY_UP))
+        {
+            SDL_Delay(1);
             get_input_events(POLL);
+        }
         next_button = buttons[highlighted_button].nav.up;
-        
+
         pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_DOWN))
     {
         while(isPlayerHoldingKey(0, KEY_DOWN))
+        {
+            SDL_Delay(1);
             get_input_events(POLL);
+        }
         next_button = buttons[highlighted_button].nav.down;
-        
+
         pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_LEFT))
     {
         while(isPlayerHoldingKey(0, KEY_LEFT))
+        {
+            SDL_Delay(1);
             get_input_events(POLL);
+        }
         next_button = buttons[highlighted_button].nav.left;
-        
+
         pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_RIGHT))
     {
         while(isPlayerHoldingKey(0, KEY_RIGHT))
+        {
+            SDL_Delay(1);
             get_input_events(POLL);
+        }
         next_button = buttons[highlighted_button].nav.right;
-        
+
         pressed = true;
     }
     if(isPlayerHoldingKey(0, KEY_FIRE))
     {
         while(isPlayerHoldingKey(0, KEY_FIRE))
+        {
+            SDL_Delay(1);
             get_input_events(POLL);
+        }
         
         if(!menu_nav_enabled)
             pressed = true;
@@ -1911,15 +1931,17 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
 	grab_mouse();
     clear_keyboard();
-    
+
     clear_key_press_event();
-	
+
     int retvalue = 0;
 	while (retvalue == 0)
 	{
-		get_input_events(POLL);
-        
-	    // Input
+	    // Input - leftmouse will poll events via query_mouse()
+		if(leftmouse(buttons))
+			retvalue = localbuttons->leftclick();
+
+        // Check keyboard after leftmouse has polled events
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_y])
@@ -1929,16 +1951,13 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
             else if(keystates[KEYSTATE_ESCAPE])
                 break;
         }
-        
-		if(leftmouse(buttons))
-			retvalue = localbuttons->leftclick();
-        
+
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        
-        
+
+
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-        
+
 		// Draw
 		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
 		j = 0;
@@ -2008,15 +2027,17 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 
 	grab_mouse();
     clear_keyboard();
-    
+
     clear_key_press_event();
-	
+
     int retvalue = 0;
 	while (retvalue == 0)
 	{
-		get_input_events(POLL);
-        
-	    // Input
+	    // Input - leftmouse will poll events via query_mouse()
+		if(leftmouse(buttons))
+			retvalue = localbuttons->leftclick();
+
+        // Check keyboard after leftmouse has polled events
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_y])
@@ -2026,16 +2047,13 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
             else if(keystates[KEYSTATE_ESCAPE])
                 break;
         }
-        
-		if(leftmouse(buttons))
-			retvalue = localbuttons->leftclick();
-        
+
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        
-        
+
+
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
+
 		// Draw
 		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
 		j = 0;
@@ -2113,17 +2131,17 @@ void popup_dialog(const char* title, const char* message)
     int retvalue = 0;
 	while (retvalue == 0)
 	{
-	    // Input
-		get_input_events(POLL);
+	    // Input - leftmouse will poll events via query_mouse()
+		if(leftmouse(buttons))
+			retvalue = localbuttons->leftclick();
+
+        // Check keyboard after leftmouse has polled events
         if(query_key_press_event())
         {
             if(keystates[KEYSTATE_RETURN] || keystates[KEYSTATE_SPACE] || keystates[KEYSTATE_ESCAPE])
                 break;
         }
-        
-		if(leftmouse(buttons))
-			retvalue = localbuttons->leftclick();
-        
+
         handle_menu_nav(buttons, highlighted_button, retvalue);
         
         
@@ -3068,7 +3086,9 @@ Sint32 go_menu(Sint32 arg1)
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
         glad_main(myscreen->save_data.numplayers);
-        
+
+        Log("Returned from glad_main, retry=%d\n", myscreen->retry);
+
         //*******************************
         // Fade out from ACTION loop
         //*******************************

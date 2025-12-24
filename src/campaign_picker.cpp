@@ -409,7 +409,10 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 		if (mymouse.left)
 		{
 		    while(mymouse.left)
-                get_input_events(WAIT);
+		    {
+		        SDL_Delay(1);
+                get_input_events(POLL);
+            }
 		}
 
         // Prev
@@ -442,7 +445,10 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         else if(do_cancel)
         {
             while(keystates[buttons[cancel_index].hotkey])
-                get_input_events(WAIT);
+            {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
             done = true;
             break;
         }
@@ -572,7 +578,10 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     }
 
     while (keystates[KEYSTATE_q])
-        get_input_events(WAIT);
+    {
+        SDL_Delay(1);
+        get_input_events(POLL);
+    }
     
     // Restore old campaign
     mount_campaign_package(old_campaign_id);

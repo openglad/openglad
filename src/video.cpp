@@ -79,15 +79,22 @@ video::video()
 	//}
 
 	int w = 640;
-	int h = 400; 
-	
+	int h = 400;
+
+#ifdef __EMSCRIPTEN__
+	// For web builds, use the native game resolution to match the canvas
+	// CSS scaling handles display size
+	w = 320;
+	h = 200;
+#else
 	qresult = cfg.get_setting("graphics", "width");
 	if(qresult.size() > 0)
 	    w = stoi(qresult);
-	
+
 	qresult = cfg.get_setting("graphics", "height");
 	if(qresult.size() > 0)
 	    h = stoi(qresult);
+#endif
         Log("Creating screen %dx%d\n", w, h);
 	E_Screen = new Screen(render, w, h, fullscreen);
 }

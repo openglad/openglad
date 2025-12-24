@@ -1425,7 +1425,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		get_input_events(POLL);
 	}
 	while (keystates[KEYSTATE_ESCAPE])
-		get_input_events(WAIT);
+	{
+		SDL_Delay(1);
+		get_input_events(POLL);
+	}
 
 	return;
 }
@@ -1576,7 +1579,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_PLUS])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_KP_MINUS]) // slower game speed
 		{
@@ -1586,7 +1592,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_MINUS])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_LEFTBRACKET]) // smaller view size
 		{
@@ -1621,7 +1630,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_LEFTBRACKET])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_RIGHTBRACKET]) // larger view size
 		{
@@ -1656,7 +1668,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_RIGHTBRACKET])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_COMMA]) // darken screen
 		{
@@ -1666,7 +1681,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_COMMA])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_PERIOD]) // lighten screen
 		{
@@ -1676,7 +1694,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_PERIOD])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_r]) // toggle radar display
 		{
@@ -1689,7 +1710,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_r])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_h]) // toggle HP display
 		{
@@ -1718,7 +1742,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_h])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_f]) // toggle foes display
 		{
@@ -1731,7 +1758,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_f])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 		if (keystates[KEYSTATE_s]) // toggle score display
 		{
@@ -1744,7 +1774,10 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_s])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 
 		if (keystates[KEYSTATE_t])      // View the teamlist
@@ -1759,7 +1792,10 @@ void viewscreen::options_menu()
 		{
 			myscreen->cyclemode= (short) ((myscreen->cyclemode+1) %2);
 			while (keystates[KEYSTATE_c])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 			if (myscreen->cyclemode)
 				sprintf(message,"Color Cycling (C)      : ON ");
 			else
@@ -1812,13 +1848,19 @@ void viewscreen::options_menu()
 			optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_b])
-				get_input_events(WAIT);
+			{
+				SDL_Delay(1);
+				get_input_events(POLL);
+			}
 		}
 
 	}  // end of wait for ESC press
 
 	while (keystates[KEYSTATE_ESCAPE])
-		get_input_events(WAIT);
+	{
+		SDL_Delay(1);
+		get_input_events(POLL);
+	}
 	myscreen->redrawme = 1;
 	prefsob->save(this);
 }

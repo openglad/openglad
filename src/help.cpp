@@ -85,8 +85,9 @@ short read_scenario(screen *myscreen)
 	// Do the loop until person hits escape
 	while (!query_input_continue())
 	{
+		SDL_Delay(10);
 		get_input_events(POLL);
-		
+
 		short scroll_amount = get_and_reset_scroll_amount();
 		if (scroll_amount < 0)    // scrolling down
 		{
@@ -179,8 +180,11 @@ short read_scenario(screen *myscreen)
 	}  // loop until ESC is pressed
 
 	while (keystates[KEYSTATE_ESCAPE])  // wait for key release
-		get_input_events(WAIT);
-    
+	{
+		SDL_Delay(1);
+		get_input_events(POLL);
+	}
+
 	return (short) numlines;
 }
 
@@ -217,8 +221,9 @@ short read_campaign_intro(screen * myscreen)
 	// Do the loop until person hits escape
 	while (!query_input_continue())
 	{
+		SDL_Delay(10);
 		get_input_events(POLL);
-		
+
 		short scroll_amount = get_and_reset_scroll_amount();
 		if (scroll_amount < 0)    // scrolling down
 		{
@@ -316,7 +321,10 @@ short read_campaign_intro(screen * myscreen)
 
 
 	while (keystates[KEYSTATE_ESCAPE])  // wait for key release
-		get_input_events(WAIT);
+	{
+		SDL_Delay(1);
+		get_input_events(POLL);
+	}
 	//delete mytext;
 	return (short) (numlines);
 }
