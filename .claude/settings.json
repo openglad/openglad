@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./scripts/build_web.sh)",
+      "Bash(make:*)",
+      "Bash(python3 -m http.server:*)",
+      "Bash(emcc:*)",
+      "Bash(em++:*)",
+      "Bash(premake4:*)"
+    ]
+  }
+}

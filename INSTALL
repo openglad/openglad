@@ -35,3 +35,38 @@ CODE::BLOCKS
 
 cb_Openglad.cbp is a Code::Blocks (http://www.codeblocks.org/) project file with build configurations for Windows (mingw32) and Linux.  The compiler (include) and linker "Search directories" are hardcoded to relative paths ("../externals/..."), so those need to be changed in the project's Build options so that they point to the appropriate locations for SDL2, SDL2_mixer, and libpng on your system.
 
+
+=========
+WEB BUILD
+=========
+
+The web build uses Emscripten to compile to WebAssembly, allowing the game to run in a browser.
+
+1. Install Emscripten SDK (https://emscripten.org/docs/getting_started/downloads.html):
+
+   git clone https://github.com/emscripten-core/emsdk.git
+   cd emsdk
+   ./emsdk install latest
+   ./emsdk activate latest
+   source ./emsdk_env.sh
+
+   Note: You'll need to run `source ./emsdk_env.sh` in each new terminal session,
+   or add it to your shell profile.
+
+2. Build:
+
+   ./scripts/build_web.sh
+
+   This compiles all source files, bundles game assets, and outputs to dist/:
+   - openglad.html  (HTML shell with canvas)
+   - openglad.js    (JavaScript runtime)
+   - openglad.wasm  (WebAssembly binary)
+   - openglad.data  (packaged game assets)
+
+3. Test locally:
+
+   cd dist
+   python3 -m http.server 8080
+
+   Then open http://localhost:8080/openglad.html in your browser.
+

@@ -10,6 +10,16 @@ OpenGlad is a cross-platform C++ port of the DOS game "Gladiator" - a top-down g
 
 ### Web Build (Primary)
 
+**Prerequisite: Install Emscripten SDK**
+```bash
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install latest
+./emsdk activate latest
+source ./emsdk_env.sh  # Run in each new terminal, or add to shell profile
+```
+
+**Build:**
 ```bash
 ./scripts/build_web.sh
 ```
