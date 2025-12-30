@@ -235,6 +235,30 @@ void picker_quit()
 // mainmenu
 
 #ifndef DISABLE_MULTIPLAYER
+
+#ifdef __EMSCRIPTEN__
+// Web build: Replace QUIT with HELP (QUIT doesn't make sense in browser)
+button mainmenu_buttons[] =
+    {
+        button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
+        button("CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 75, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 5)),
+
+        button("4 PLAYER", KEYSTATE_4, 152,125,68,20, SET_PLAYER_MODE, 4 , MenuNav::UpDownLeft(4, 6, 3)),
+        button("3 PLAYER", KEYSTATE_3, 80,125,68,20, SET_PLAYER_MODE,3 , MenuNav::UpDownRight(5, 6, 2)),
+        button("2 PLAYER", KEYSTATE_2, 152,100,68,20, SET_PLAYER_MODE,2 , MenuNav::UpDownLeft(1, 2, 5)),
+        button("1 PLAYER", KEYSTATE_1, 80,100,68,20, SET_PLAYER_MODE,1 , MenuNav::UpDownRight(1, 3, 4)),
+
+        button("DIFFICULTY", KEYSTATE_UNKNOWN, 80, 148, 140, 10, SET_DIFFICULTY, -1, MenuNav::UpDown(3, 7)),
+
+        button("PVP: Allied", KEYSTATE_UNKNOWN, 80, 160, 68, 10, ALLIED_MODE, -1, MenuNav::UpDownRight(6, 9, 8)),
+        button("Level Edit", KEYSTATE_UNKNOWN, 152, 160, 68, 10, DO_LEVEL_EDIT, -1, MenuNav::UpDownLeft(6, 9, 7)),
+
+        button("HELP", KEYSTATE_UNKNOWN, 120, 175, 60, 20, SHOW_HELP, -1, MenuNav::UpLeft(7, 10)),
+        button("", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
+    };
+#define OPTIONS_BUTTON_INDEX 10
+
+#else // Native build
 button mainmenu_buttons[] =
     {
         button("", KEYSTATE_UNKNOWN, 80, 50, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
@@ -253,12 +277,26 @@ button mainmenu_buttons[] =
         button("QUIT ", KEYSTATE_ESCAPE, 120, 175, 60, 20, QUIT_MENU, 0 , MenuNav::UpLeft(7, 10)),
         button("", KEYSTATE_UNKNOWN, 90, 175, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(7, 9))
     };
-    
 #define OPTIONS_BUTTON_INDEX 10
+#endif // __EMSCRIPTEN__
 
 #else // DISABLE_MULTIPLAYER
 
-// Modified main screen with no multiplayer
+#ifdef __EMSCRIPTEN__
+// Web build without multiplayer: Replace QUIT with HELP
+button mainmenu_buttons[] =
+    {
+        button("", KEYSTATE_UNKNOWN, 80, 70, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
+        button("CONTINUE GAME", KEYSTATE_UNKNOWN, 80, 95, 140, 20, CREATE_TEAM_MENU, -1 , MenuNav::UpDown(0, 2)),
+
+        button("DIFFICULTY", KEYSTATE_UNKNOWN, 80, 120, 140, 15, SET_DIFFICULTY, -1, MenuNav::UpDown(1, 3)),
+        button("Level Edit", KEYSTATE_UNKNOWN, 80, 137, 140, 15, DO_LEVEL_EDIT, -1, MenuNav::UpDown(2, 4)),
+        button("HELP", KEYSTATE_UNKNOWN, 120, 154, 60, 20, SHOW_HELP, -1, MenuNav::UpLeft(3, 5)),
+        button("", KEYSTATE_UNKNOWN, 90, 154, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(3, 4))
+    };
+#define OPTIONS_BUTTON_INDEX 5
+
+#else // Native build without multiplayer
 button mainmenu_buttons[] =
     {
         button("", KEYSTATE_UNKNOWN, 80, 70, 140, 20, BEGINMENU, 1 , MenuNav::Down(1), false), // BEGIN NEW GAME
@@ -269,9 +307,10 @@ button mainmenu_buttons[] =
         button("QUIT ", KEYSTATE_ESCAPE, 120, 154, 60, 20, QUIT_MENU, 0, MenuNav::UpLeft(3, 5)),
         button("", KEYSTATE_UNKNOWN, 90, 154, 20, 20, MAIN_OPTIONS, -1, MenuNav::UpRight(3, 4))
     };
-    
 #define OPTIONS_BUTTON_INDEX 5
-#endif
+#endif // __EMSCRIPTEN__
+
+#endif // DISABLE_MULTIPLAYER
 
 #define BUTTON_HEIGHT 15
 #define BUTTON_PADDING 8
@@ -756,8 +795,10 @@ void redraw_mainmenu()
     }
     allbuttons[0]->set_graphic(FAMILY_NORMAL1);
     allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
-    
+
+#ifndef __EMSCRIPTEN__
     draw_version_number();
+#endif
 }
 
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))

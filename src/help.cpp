@@ -18,6 +18,14 @@
 #include <stdio.h>
 #include "graph.h"
 #include "util.h"
+#include "version.h"
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#define YIELD_SLEEP(ms) emscripten_sleep(ms)
+#else
+#define YIELD_SLEEP(ms) SDL_Delay(ms)
+#endif
 
 #define HELPTEXT_LEFT 40
 #define HELPTEXT_TOP  40
@@ -356,4 +364,183 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 }
 
 
+// General help text lines
+static const char* general_help_lines[] = {
+	"*** GLADIATOR HELP ***",
+	"",
+	"MOVEMENT KEYS (Default)",
+	"========================",
+	"Player 1:  Q W E  |  Player 2: Arrows",
+	"           A   D  |",
+	"           Z X C  |",
+	"",
+	"Player 3:  U I O  |  Player 4: R T Y",
+	"           J   L  |           F   H",
+	"           M , .  |           V B N",
+	"",
+	"ACTION KEYS",
+	"========================",
+	"         P1      P2      P3      P4",
+	"Fire:    LCtrl   .       Space   5",
+	"Special: LAlt    /       ;       6",
+	"Switch:  ~/`     Enter   -       =",
+	"Shifter: LShift  RShift  0       8",
+	"Yell:    S       \\       K       G",
+	"Options: 1       2       3       4",
+	"",
+	"SPECIAL COMBOS",
+	"========================",
+	"Shifter + Yell: Summon NPCs to",
+	"  come fight with or protect you",
+	"",
+	"Shifter + Switch: Switch to next",
+	"  TYPE of team member (e.g. archer)",
+	"",
+	"OPTIONS MENU (In-Game)",
+	"========================",
+	"+/-: Game speed (slower/faster)",
+	"[/]: Viewscreen size (bigger/smaller)",
+	"</> : Screen brightness",
+	"C: Toggle color cycling",
+	"F: Toggle foes/allies display",
+	"H: Cycle HP/SP display modes",
+	"R: Toggle radar display",
+	"S: Toggle score/exp display",
+	"T: Show team status overview",
+	"V: View key bindings",
+	"",
+	"GENERAL CONTROLS",
+	"========================",
+	"ESC: Quit / Back",
+	"Shift+/: Show scenario help",
+	"",
+	"Press ESC to return to menu",
+};
+
+static const int NUM_HELP_LINES = sizeof(general_help_lines) / sizeof(general_help_lines[0]);
+
+Sint32 show_general_help()
+{
+	Sint32 screenlines = NUM_HELP_LINES * 8;
+	Sint32 j;
+	Sint32 linesdown;
+	Sint32 changed;
+	Sint32 templines;
+	Sint32 text_delay = 1;
+	Sint32 key_presses = 0;
+
+	text& mytext = myscreen->text_normal;
+	Sint32 start_time, now_time;
+	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
+	if (bottomrow < 0) bottomrow = 0;
+
+	clear_keyboard();
+	linesdown = 0;
+	changed = 1;
+	start_time = query_timer();
+
+	while (!keystates[KEYSTATE_ESCAPE])
+	{
+		YIELD_SLEEP(10);
+		get_input_events(POLL);
+
+		short scroll_amount = get_and_reset_scroll_amount();
+		if (scroll_amount < 0)
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % text_delay;
+			if (!key_presses && (linesdown < bottomrow))
+			{
+				while(linesdown < bottomrow && scroll_amount != 0)
+				{
+					linesdown++;
+					scroll_amount++;
+				}
+				changed = 1;
+			}
+		}
+
+		if (keystates[KEYSTATE_PAGEDOWN])
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % (10*text_delay);
+			if (!key_presses && (linesdown < bottomrow))
+			{
+				templines = linesdown + (DISPLAY_LINES * 7);
+				if (templines > bottomrow)
+					templines = bottomrow;
+				if (linesdown != templines)
+				{
+					linesdown = templines;
+					changed = 1;
+				}
+			}
+		}
+
+		if (scroll_amount > 0)
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % text_delay;
+			if (!key_presses && linesdown)
+			{
+				while(linesdown && scroll_amount != 0)
+				{
+					linesdown--;
+					scroll_amount--;
+				}
+				changed = 1;
+			}
+		}
+
+		if (keystates[KEYSTATE_PAGEUP])
+		{
+			now_time = query_timer();
+			key_presses = (now_time - start_time) % (10*text_delay);
+			if (!key_presses && linesdown)
+			{
+				linesdown -= (DISPLAY_LINES * 7);
+				if (linesdown < 0)
+					linesdown = 0;
+				changed = 1;
+			}
+		}
+
+		if (changed)
+		{
+			templines = linesdown/8;
+			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
+			                      HELPTEXT_LEFT+240, HELPTEXT_TOP+107, 3, 1);
+			for (j=0; j < DISPLAY_LINES; j++)
+			{
+				int line_idx = j + templines;
+				if (line_idx >= 0 && line_idx < NUM_HELP_LINES)
+				{
+					mytext.write_xy(HELPTEXT_LEFT+2, (short)(TEXT_DOWN(j)-linesdown%8),
+					                general_help_lines[line_idx], (unsigned char)DARK_BLUE, 1);
+				}
+			}
+
+			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
+			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP-2);
+			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
+			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP+103);
+			char title[40];
+			snprintf(title, sizeof(title), "GLADIATOR v%s", OPENGLAD_VERSION_STRING);
+			mytext.write_xy(HELPTEXT_LEFT+60,
+			                HELPTEXT_TOP-7, title, (unsigned char)RED, 1);
+			mytext.write_xy(HELPTEXT_LEFT+52,
+			                HELPTEXT_TOP+98, "ESC TO RETURN", (unsigned char)RED, 1);
+			myscreen->buffer_to_screen(0, 0, 320, 200);
+			changed = 0;
+		}
+	}
+
+	while (keystates[KEYSTATE_ESCAPE])
+	{
+		YIELD_SLEEP(1);
+		get_input_events(POLL);
+	}
+
+	return 1;
+}
 

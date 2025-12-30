@@ -27,6 +27,13 @@
 #include <string.h> //buffers: for strlen
 #include <string>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#define YIELD_SLEEP(ms) emscripten_sleep(ms)
+#else
+#define YIELD_SLEEP(ms) SDL_Delay(ms)
+#endif
+
 #ifdef OUYA
 #include "OuyaController.h"
 #endif
@@ -796,7 +803,7 @@ SDL_Event wait_for_key_event()
               )
                 return event;
         }
-        SDL_Delay(10);
+        YIELD_SLEEP(10);
     }
     return event;
 }
@@ -839,7 +846,7 @@ void assignKeyFromWaitEvent(int player_num, int key_enum)
     else if(isJoystickEvent(event))
         player_joy[player_num].setKeyFromEvent(key_enum, event);
 
-    SDL_Delay(400);
+    YIELD_SLEEP(400);
     clear_events();
 }
 

@@ -100,6 +100,7 @@ class viewscreen
 		void view_team(short left, short top, short right, short bottom);
 		void options_menu();   // display the options menu
 		Sint32 set_key_prefs(); // get player keyboard info
+		void view_key_bindings(); // display current key bindings
 		Sint32 change_speed(Sint32 whichway);
 		Sint32 change_gamma(Sint32 whichway);
 

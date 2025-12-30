@@ -612,6 +612,9 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
         return yes_or_no(arg);
     case MAIN_OPTIONS:
         return main_options();
+    case SHOW_HELP:
+        show_general_help();
+        return REDRAW;
     case TOGGLE_SOUND:
         toggle_effect("sound", "sound");
         return REDRAW;

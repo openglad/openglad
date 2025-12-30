@@ -31,6 +31,13 @@
 #include <algorithm>
 #include <cstring>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#define YIELD_SLEEP(ms) emscripten_sleep(ms)
+#else
+#define YIELD_SLEEP(ms) YIELD_SLEEP(ms)
+#endif
+
 //these are for chad's team info page
 #define VIEW_TEAM_TOP    2
 #define VIEW_TEAM_LEFT   20
@@ -579,8 +586,8 @@ short viewscreen::input(const SDL_Event& event)
 	}  // end of switch guys
 
 
-	// Redisplay the scenario text ..
-	if (query_key_event(SDLK_SLASH, event) && !isAnyPlayerKey(SDLK_SLASH) && !isPlayerHoldingKey(mynum, KEY_CHEAT)) // actually "?"
+	// Redisplay the scenario text (Shift+/ = "?")
+	if (query_key_event(SDLK_SLASH, event) && isPlayerHoldingKey(mynum, KEY_SHIFTER) && !isPlayerHoldingKey(mynum, KEY_CHEAT))
 	{
 		read_scenario(myscreen);
 		myscreen->redrawme = 1;
@@ -1421,12 +1428,13 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 
 	while (!keystates[KEYSTATE_ESCAPE])
 	{
+		YIELD_SLEEP(10);  // Yield to browser event loop
 		myscreen->do_cycle(currentcycle++, cycletime);
 		get_input_events(POLL);
 	}
 	while (keystates[KEYSTATE_ESCAPE])
 	{
-		SDL_Delay(1);
+		YIELD_SLEEP(1);
 		get_input_events(POLL);
 	}
 
@@ -1557,12 +1565,7 @@ void viewscreen::options_menu()
 	optiontext.write_xy(LEFT_OPS,OPLINES(11),message,(unsigned char) BLACK,1);
 
 	optiontext.write_xy(LEFT_OPS, OPLINES(12), "EDIT KEY PREFS (K)", (unsigned char) BLACK, 1);
-
-	if (prefs[PREF_OVERLAY])
-		sprintf(message, "Text-button Display (B): ON ");
-	else
-		sprintf(message, "Text-button Display (B): OFF");
-	optiontext.write_xy(LEFT_OPS, OPLINES(13), message, BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(13), "VIEW KEY BINDINGS (V)", (unsigned char) BLACK, 1);
 
 	// Draw the current screen
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -1570,6 +1573,7 @@ void viewscreen::options_menu()
 	// Wait for esc for now
 	while (!keystates[KEYSTATE_ESCAPE])
 	{
+		YIELD_SLEEP(10);  // Yield to browser event loop
 		get_input_events(POLL);
 		if (keystates[KEYSTATE_KP_PLUS]) // faster game speed
 		{
@@ -1580,7 +1584,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_PLUS])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1593,7 +1597,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_MINUS])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1631,7 +1635,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_LEFTBRACKET])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1669,7 +1673,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_RIGHTBRACKET])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1682,7 +1686,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_COMMA])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1695,7 +1699,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_PERIOD])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1711,7 +1715,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_r])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1743,7 +1747,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_h])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1759,7 +1763,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_f])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1775,7 +1779,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_s])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1793,7 +1797,7 @@ void viewscreen::options_menu()
 			myscreen->cyclemode= (short) ((myscreen->cyclemode+1) %2);
 			while (keystates[KEYSTATE_c])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 			if (myscreen->cyclemode)
@@ -1822,7 +1826,7 @@ void viewscreen::options_menu()
             optiontext.write_xy(LEFT_OPS,OPLINES(11),message,(unsigned char) BLACK,1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
             
-            SDL_Delay(500);
+            YIELD_SLEEP(500);
             clear_events();
 		}
 
@@ -1833,6 +1837,13 @@ void viewscreen::options_menu()
 				set_display_text("NEW KEYBOARD STATE SAVED", 30);
 				set_display_text("DELETE KEYPREFS.DAT FOR DEFAULTS", 30);
 			}
+			myscreen->redraw();
+			options_menu();
+			return;
+		}
+		if (keystates[KEYSTATE_v])      // View current key bindings
+		{
+			view_key_bindings();
 			myscreen->redraw();
 			options_menu();
 			return;
@@ -1849,7 +1860,7 @@ void viewscreen::options_menu()
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_b])
 			{
-				SDL_Delay(1);
+				YIELD_SLEEP(1);
 				get_input_events(POLL);
 			}
 		}
@@ -1858,7 +1869,7 @@ void viewscreen::options_menu()
 
 	while (keystates[KEYSTATE_ESCAPE])
 	{
-		SDL_Delay(1);
+		YIELD_SLEEP(1);
 		get_input_events(POLL);
 	}
 	myscreen->redrawme = 1;
@@ -2139,6 +2150,116 @@ Sint32 viewscreen::set_key_prefs()
 
 	//  return save_key_prefs();
 	return 1;
+}
+
+// Helper function to convert SDL key names to displayable text
+// Only shortens long modifier names to fit in the display
+static const char* get_key_display_name(int keycode)
+{
+	static char buffer[20];
+	const char* name = SDL_GetKeyName(keycode);
+
+	// Substitute characters not in the bitmap font
+	if (strcmp(name, "`") == 0) return "~/`";  // Backtick not in font
+
+	// Shorten long modifier key names to fit
+	if (strcmp(name, "Left Ctrl") == 0) return "LCtrl";
+	if (strcmp(name, "Right Ctrl") == 0) return "RCtrl";
+	if (strcmp(name, "Left Shift") == 0) return "LShift";
+	if (strcmp(name, "Right Shift") == 0) return "RShift";
+	if (strcmp(name, "Left Alt") == 0) return "LAlt";
+	if (strcmp(name, "Right Alt") == 0) return "RAlt";
+	if (strcmp(name, "Backspace") == 0) return "BkSpc";
+	if (strcmp(name, "CapsLock") == 0) return "Caps";
+
+	// Truncate if too long for display
+	if (strlen(name) > 10) {
+		strncpy(buffer, name, 9);
+		buffer[9] = '\0';
+		return buffer;
+	}
+
+	return name;
+}
+
+// view_key_bindings displays the current key bindings for this player
+void viewscreen::view_key_bindings()
+{
+	text& keytext = myscreen->text_normal;
+	extern int player_keys[4][NUM_KEYS];
+
+	clear_keyboard();
+
+	// Draw the menu box
+	myscreen->draw_button(20, 20, 300, 180, 2, 1);
+	keytext.write_xy(95, 28, "Current Key Bindings", (unsigned char) RED, 1);
+
+	// Movement keys label
+	keytext.write_xy(55, 42, "-- Movement --", (unsigned char) COLOR_BLUE, 1);
+
+	// Visual 3x3 grid for directional keys
+	// Row 1: UP-LEFT, UP, UP-RIGHT
+	keytext.write_xy(40, 54, get_key_display_name(player_keys[mynum][KEY_UP_LEFT]), (unsigned char) BLACK, 1);
+	keytext.write_xy(75, 54, get_key_display_name(player_keys[mynum][KEY_UP]), (unsigned char) BLACK, 1);
+	keytext.write_xy(100, 54, get_key_display_name(player_keys[mynum][KEY_UP_RIGHT]), (unsigned char) BLACK, 1);
+
+	// Row 2: LEFT, [center], RIGHT
+	keytext.write_xy(40, 66, get_key_display_name(player_keys[mynum][KEY_LEFT]), (unsigned char) BLACK, 1);
+	keytext.write_xy(70, 66, "---", (unsigned char) BLACK, 1);
+	keytext.write_xy(100, 66, get_key_display_name(player_keys[mynum][KEY_RIGHT]), (unsigned char) BLACK, 1);
+
+	// Row 3: DOWN-LEFT, DOWN, DOWN-RIGHT
+	keytext.write_xy(40, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_LEFT]), (unsigned char) BLACK, 1);
+	keytext.write_xy(75, 78, get_key_display_name(player_keys[mynum][KEY_DOWN]), (unsigned char) BLACK, 1);
+	keytext.write_xy(100, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_RIGHT]), (unsigned char) BLACK, 1);
+
+	// Action keys label
+	keytext.write_xy(180, 42, "-- Actions --", (unsigned char) COLOR_BLUE, 1);
+
+	// Action keys in right column
+	char msg[40];
+	snprintf(msg, 40, "Fire: %s", get_key_display_name(player_keys[mynum][KEY_FIRE]));
+	keytext.write_xy(165, 54, msg, (unsigned char) BLACK, 1);
+
+	snprintf(msg, 40, "Special: %s", get_key_display_name(player_keys[mynum][KEY_SPECIAL]));
+	keytext.write_xy(165, 66, msg, (unsigned char) BLACK, 1);
+
+	snprintf(msg, 40, "Yell: %s", get_key_display_name(player_keys[mynum][KEY_YELL]));
+	keytext.write_xy(165, 78, msg, (unsigned char) BLACK, 1);
+
+	snprintf(msg, 40, "Shifter: %s", get_key_display_name(player_keys[mynum][KEY_SHIFTER]));
+	keytext.write_xy(165, 90, msg, (unsigned char) BLACK, 1);
+
+	// Switching keys
+	keytext.write_xy(55, 105, "-- Switching --", (unsigned char) COLOR_BLUE, 1);
+
+	snprintf(msg, 40, "Switch Char: %s", get_key_display_name(player_keys[mynum][KEY_SWITCH]));
+	keytext.write_xy(40, 117, msg, (unsigned char) BLACK, 1);
+
+	snprintf(msg, 40, "Switch Special: %s", get_key_display_name(player_keys[mynum][KEY_SPECIAL_SWITCH]));
+	keytext.write_xy(40, 129, msg, (unsigned char) BLACK, 1);
+
+	// Menu key info
+	keytext.write_xy(165, 117, "Options: 1", (unsigned char) BLACK, 1);
+	keytext.write_xy(165, 129, "Help: Shift+/", (unsigned char) BLACK, 1);
+
+	keytext.write_xy(95, 160, "Press ESC to return", (unsigned char) RED, 1);
+
+	myscreen->buffer_to_screen(0, 0, 320, 200);
+
+	// Wait for ESC
+	while (!keystates[KEYSTATE_ESCAPE])
+	{
+		YIELD_SLEEP(10);
+		get_input_events(POLL);
+	}
+	while (keystates[KEYSTATE_ESCAPE])
+	{
+		YIELD_SLEEP(1);
+		get_input_events(POLL);
+	}
+
+	myscreen->redrawme = 1;
 }
 
 // Waits for a key to be pressed and then released ..

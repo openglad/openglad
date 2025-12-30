@@ -191,6 +191,7 @@ Sint32 change_allied();
 Sint32 level_editor();
 Sint32 main_options();
 Sint32 overscan_adjust(Sint32 arg);
+Sint32 show_general_help();
 
 // Function definitions ..
 #define BEGINMENU               1
@@ -237,4 +238,5 @@ Sint32 overscan_adjust(Sint32 arg);
 #define TOGGLE_HEAL_NUMBERS     42
 #define TOGGLE_GORE             43
 #define RESTORE_DEFAULT_SETTINGS 44
+#define SHOW_HELP               45
 #endif
