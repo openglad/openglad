@@ -70,6 +70,21 @@ pixieN *backdrops[5];
 // Zardus: FIX: this is from view.cpp, so that we can delete it here
 extern options *theprefs;
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+// Flag to signal that game should start (for state machine)
+static bool g_start_game_requested = false;
+// Flag to track if picker has been initialized
+static bool g_picker_initialized = false;
+// Store the current menu state for frame-based operation
+enum PickerMenuState {
+    PICKER_MENU_MAIN,
+    PICKER_MENU_CREATE_TEAM,
+    PICKER_MENU_OTHER
+};
+static PickerMenuState g_picker_menu_state = PICKER_MENU_MAIN;
+#endif
+
 guy  *current_guy = NULL;
 guy  *old_guy = NULL;
 
@@ -987,7 +1002,11 @@ Sint32 create_team_menu(Sint32 arg1)
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	
+
+	// Propagate EXIT if that's why we left the loop
+	if (retvalue & EXIT)
+		return retvalue;
+
 	return REDRAW;
 }
 
@@ -3058,19 +3077,34 @@ Sint32 go_menu(Sint32 arg1)
 
 	if (arg1)
 		arg1 = 1;
-    
+
+    // Make sure we have a valid team
+    if (myscreen->save_data.team_size < 1)
+    {
+        popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
+
+        return REDRAW;
+    }
+
+#ifdef __EMSCRIPTEN__
+    // For Emscripten: Set flag and return EXIT to unwind all menu loops
+    // The state machine in main() will handle starting the game
+    myscreen->save_data.save("save0");
+
+    if (current_guy)
+        delete current_guy;
+    current_guy = NULL;
+
+    g_start_game_requested = true;
+    Log("go_menu: Setting g_start_game_requested, returning EXIT\n");
+    return EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
+#else
+    // Native build: use blocking loop
     do
     {
-        // Make sure we have a valid team
-        if (myscreen->save_data.team_size < 1)
-        {
-            popup_dialog("NEED A TEAM!", "Please hire a\nteam before\nstarting the level");
-            
-            return REDRAW;
-        }
         myscreen->save_data.save("save0");
         release_mouse();
-        
+
         //*******************************
         // Fade out from MENU loop
         //*******************************
@@ -3123,6 +3157,7 @@ Sint32 go_menu(Sint32 arg1)
     while(myscreen->retry);
 
 	return CREATE_TEAM_MENU;
+#endif
 }
 
 void statscopy(guy *dest, guy *source)
@@ -3926,9 +3961,146 @@ Sint32 change_allied()
 
    // Update our button display
    allbuttons[7]->label = message;
-   
+
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);
 
    return OK;
 }
+
+#ifdef __EMSCRIPTEN__
+// ============================================================================
+// Emscripten State Machine Functions
+// These functions allow the picker to work with a non-blocking main loop
+// ============================================================================
+
+// Check if game start was requested (called from main after picker_init)
+bool picker_check_start_requested()
+{
+    Log("picker_check_start_requested: g_start_game_requested=%d\n", g_start_game_requested);
+    return g_start_game_requested;
+}
+
+// Initialize the picker (called once at startup from main)
+void picker_init()
+{
+    Log("picker_init: Initializing picker\n");
+
+    Sint32 i;
+
+    for (i=0; i < MAX_BUTTONS; i++)
+        allbuttons[i] = NULL;
+
+    // Set backdrops to NULL
+    for (i=0; i < 5; i++)
+        backdrops[i] = NULL;
+
+    backpics[0] = read_pixie_file("mainul.pix");
+    backpics[1] = read_pixie_file("mainur.pix");
+    backpics[2] = read_pixie_file("mainll.pix");
+    backpics[3] = read_pixie_file("mainlr.pix");
+
+    backdrops[0] = new pixieN(backpics[0]);
+    backdrops[0]->setxy(0, 0);
+    backdrops[1] = new pixieN(backpics[1]);
+    backdrops[1]->setxy(160, 0);
+    backdrops[2] = new pixieN(backpics[2]);
+    backdrops[2]->setxy(0, 100);
+    backdrops[3] = new pixieN(backpics[3]);
+    backdrops[3]->setxy(160, 100);
+
+    myscreen->viewob[0]->resize(PREF_VIEW_FULL);
+    myscreen->clearbuffer();
+
+    main_title_logo_data = read_pixie_file("title.pix");
+    main_title_logo_pix = new pixieN(main_title_logo_data);
+
+    main_columns_data = read_pixie_file("columns.pix");
+    main_columns_pix = new pixieN(main_columns_data);
+
+    // Get the mouse, timer, & keyboard
+    grab_mouse();
+    grab_timer();
+    clear_keyboard();
+
+    // Load the current saved game, if it exists
+    SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
+    if (loadgame)
+    {
+        SDL_RWclose(loadgame);
+        myscreen->save_data.load("save0");
+    }
+
+    g_picker_initialized = true;
+    g_start_game_requested = false;
+
+    // Start the main menu - this will run its blocking loop
+    // When go_menu returns EXIT with g_start_game_requested, the loop exits
+    mainmenu(1);
+
+    Log("picker_init: mainmenu returned, g_start_game_requested=%d\n", g_start_game_requested);
+}
+
+// Run one frame of the picker - returns true when game should start
+bool picker_frame()
+{
+    // Check if game start was requested
+    if (g_start_game_requested) {
+        Log("picker_frame: Game start requested\n");
+        g_start_game_requested = false;
+        return true;  // Signal to transition to PLAYING state
+    }
+
+    // If we get here without g_start_game_requested, the menus exited normally
+    // (e.g., user quit). For now, just restart the main menu.
+    // In a more complete implementation, we'd track menu state.
+    mainmenu(1);
+
+    // Check again after menu returns
+    if (g_start_game_requested) {
+        Log("picker_frame: Game start requested after mainmenu\n");
+        g_start_game_requested = false;
+        return true;
+    }
+
+    return false;
+}
+
+// Prepare for transitioning to game (cleanup only, initialization done by state machine)
+void picker_cleanup_for_game()
+{
+    Log("picker_cleanup_for_game: Preparing for game\n");
+    // Game initialization is now done in the GAME_STATE_PLAYING handler
+}
+
+// Reinitialize picker after game ends
+void picker_reinit_after_game()
+{
+    Log("picker_reinit_after_game: Reinitializing picker\n");
+
+    // Fade out from game
+    myscreen->fadeblack(0);
+    myscreen->clearbuffer();
+
+    grab_mouse();
+
+    myscreen->reset(1);
+    myscreen->viewob[0]->resize(PREF_VIEW_FULL);
+
+    // Reload save data
+    SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
+    if (loadgame)
+    {
+        SDL_RWclose(loadgame);
+        myscreen->save_data.load("save0");
+    }
+
+    g_start_game_requested = false;
+
+    // Restart the main menu
+    mainmenu(1);
+
+    Log("picker_reinit_after_game: mainmenu returned, g_start_game_requested=%d\n", g_start_game_requested);
+}
+#endif
+

@@ -39,6 +39,18 @@ screen * myscreen;
 
 using namespace std;
 
+#ifdef __EMSCRIPTEN__
+// Game state machine for Emscripten - allows single main loop to handle all states
+enum GameState {
+    GAME_STATE_INTRO,
+    GAME_STATE_PICKER,
+    GAME_STATE_PLAYING,
+    GAME_STATE_QUIT
+};
+static GameState g_game_state = GAME_STATE_INTRO;
+static bool g_state_initialized = false;
+#endif
+
 extern bool debug_draw_paths;
 extern bool debug_draw_obmap;
 
@@ -88,10 +100,17 @@ struct FrameState {
 };
 static FrameState g_frame_state = {false, false, 0, 3};
 
-// Forward declaration
+// Forward declarations
 static void game_frame();
+void glad_init();
 
 #ifdef __EMSCRIPTEN__
+// Forward declarations for state handlers
+void picker_init();
+bool picker_frame();  // Returns true when should transition to game
+void picker_cleanup_for_game();
+void picker_reinit_after_game();
+
 // Emscripten frame wrapper with timing control
 // The browser calls this at ~60 FPS via requestAnimationFrame
 // We accumulate time and only run game logic at the intended frame rate
@@ -107,9 +126,53 @@ static void emscripten_frame_wrapper() {
 	Uint32 target_frame_time = (Uint32)(myscreen->timer_wait * 13.6f);
 	if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
 
-	// Only run game logic if enough time has accumulated
+	// Only run logic if enough time has accumulated
 	if (g_frame_state.accumulated_time >= target_frame_time) {
-		game_frame();
+		switch (g_game_state) {
+			case GAME_STATE_PICKER:
+				if (!g_state_initialized) {
+					picker_reinit_after_game();
+					g_state_initialized = true;
+				}
+				if (picker_frame()) {
+					// Transition to playing state
+					Log("Transitioning from PICKER to PLAYING\n");
+					picker_cleanup_for_game();
+					g_game_state = GAME_STATE_PLAYING;
+					g_state_initialized = false;
+				}
+				break;
+
+			case GAME_STATE_PLAYING:
+				if (!g_state_initialized) {
+					// Initialize game state
+					Log("GAME_STATE_PLAYING: Initializing game\n");
+					release_mouse();
+					myscreen->ready_for_battle(myscreen->save_data.numplayers);
+					glad_init();
+					g_frame_state.done = false;
+					g_frame_state.currentcycle = 0;
+					g_frame_state.cycletime = 3;
+					g_state_initialized = true;
+				}
+				game_frame();
+				if (g_frame_state.done) {
+					Log("Game done, transitioning back to PICKER\n");
+					clear_keyboard();
+					myscreen->level_data.delete_objects();
+					g_game_state = GAME_STATE_PICKER;
+					g_state_initialized = false;
+				}
+				break;
+
+			case GAME_STATE_QUIT:
+				emscripten_cancel_main_loop();
+				break;
+
+			default:
+				break;
+		}
+
 		// Subtract one frame's worth of time (don't reset to 0 to handle remainder)
 		g_frame_state.accumulated_time -= target_frame_time;
 		// Clamp to prevent spiral of death if frames take too long
@@ -117,21 +180,13 @@ static void emscripten_frame_wrapper() {
 			g_frame_state.accumulated_time = 0;
 		}
 	}
-
-	if (g_frame_state.done) {
-		Log("Game done, canceling main loop\n");
-		emscripten_cancel_main_loop();
-		clear_keyboard();
-		myscreen->level_data.delete_objects();
-		Log("Main loop canceled, returning to caller\n");
-	}
 }
 #endif
 
 int main(int argc, char *argv[])
 {
 	io_init(argc, argv);
-	
+
 	cfg.load_settings();
 	cfg.save_settings();
 	cfg.commandline(argc, argv);
@@ -142,14 +197,41 @@ int main(int argc, char *argv[])
     #ifdef OUYA
     OuyaControllerManager::init();
     #endif
-    
+
 	//buffers: setting the seed
 	srand(time(NULL));
 
 	init_input();
 	intro_main(argc, argv);
+
+#ifdef __EMSCRIPTEN__
+	// For Emscripten, initialize picker and start the unified main loop
+	picker_init();
+	Log("main: After picker_init, about to check if game should start\n");
+
+	// Check if picker_init resulted in a game start request
+	extern bool picker_check_start_requested();
+	if (picker_check_start_requested()) {
+		Log("main: Game start was requested during picker_init, starting in PLAYING state\n");
+		g_game_state = GAME_STATE_PLAYING;
+		g_state_initialized = false;  // Will trigger glad_init on first frame
+	} else {
+		Log("main: No game start requested, starting in PICKER state\n");
+		g_game_state = GAME_STATE_PICKER;
+		g_state_initialized = true;
+	}
+
+	// Initialize timing
+	g_frame_state.last_frame_time = SDL_GetTicks();
+	g_frame_state.accumulated_time = 0;
+
+	// Start the unified main loop - handles all game states
+	emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);
+#else
+	// Native build: use traditional blocking calls
 	picker_main(argc, argv);
-	
+#endif
+
 	io_exit();
 	return 0;
 }
@@ -244,7 +326,8 @@ static void game_frame()
 #endif
 }
 
-void glad_main(Sint32 playermode)
+// Initialize the game for playing (called before game loop starts)
+void glad_init()
 {
 	// Zardus: PORT: fade out
 	clear_keyboard();
@@ -279,16 +362,16 @@ void glad_main(Sint32 playermode)
 	g_frame_state.done = false;
 	g_frame_state.currentcycle = 0;
 	g_frame_state.cycletime = 3;
+}
+
+void glad_main(Sint32 playermode)
+{
+	glad_init();
 
 #ifdef __EMSCRIPTEN__
-	// Initialize timing for frame rate control
-	g_frame_state.last_frame_time = SDL_GetTicks();
-	g_frame_state.accumulated_time = 0;
-	// For Emscripten, use the browser's requestAnimationFrame via emscripten_set_main_loop
-	// 0 = use requestAnimationFrame (browser calls us at ~60 FPS)
-	// 1 = simulate infinite loop (required for proper behavior)
-	// Our wrapper handles timing to match the game's intended frame rate
-	emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);
+	// For Emscripten, the unified main loop in main() handles game_frame() calls
+	// via the state machine. We just need to initialize - don't start another loop.
+	// The state machine will detect when g_frame_state.done is true and transition back.
 #else
 	// Native desktop build: use traditional while loop
 	while(!g_frame_state.done)
