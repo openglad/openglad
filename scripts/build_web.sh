@@ -357,6 +357,9 @@ em++ "${OBJ_FILES[@]}" \
     -sASYNCIFY \
     -sASYNCIFY_STACK_SIZE=65536 \
     -sEXIT_RUNTIME=0 \
+    -lidbfs.js \
+    -sEXPORTED_FUNCTIONS='["_main","_on_idbfs_sync_done"]' \
+    -sEXPORTED_RUNTIME_METHODS='["ccall","cwrap"]' \
     -O2 \
     --preload-file "$PROJECT_ROOT/cfg@/cfg" \
     --preload-file "$PROJECT_ROOT/pix@/pix" \

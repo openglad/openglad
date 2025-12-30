@@ -28,6 +28,7 @@
 #include <cstring>
 #include "gparser.h"
 #include "util.h"
+#include "io.h"
 #include "yam.h"
 
 // TODO: Move overscan setting and toInt() to this file.
@@ -119,7 +120,7 @@ bool cfg_store::load_settings()
     }
     
     if(parse_result == Yam::ERROR)
-        Log("Parsing error.\n");
+        LogError("Parsing error in config file.\n");
     
     yam.close_input();
     SDL_RWclose(rwops);
@@ -168,12 +169,15 @@ bool cfg_store::save_settings()
         
         yam.close_output();
         SDL_RWclose(outfile);
-        
+
+        // Sync to persistent storage (IDBFS on web)
+        sync_filesystem();
+
         return true;
     }
     else
     {
-        Log("Couldn't open cfg/openglad.yaml for writing.\n");
+        LogError("Couldn't open cfg/openglad.yaml for writing.\n");
         return false;
     }
 }

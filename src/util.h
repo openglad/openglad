@@ -28,7 +28,11 @@
 
 #include "io.h"
 
-void Log(const char* format, ...);
+void init_logging();  // Set up logging output (call early in main)
+
+void Log(const char* format, ...);       // INFO level - general messages
+void LogWarn(const char* format, ...);   // WARNING level - potential issues
+void LogError(const char* format, ...);  // ERROR level - actual errors
 
 void change_time(Uint32 new_count);
 

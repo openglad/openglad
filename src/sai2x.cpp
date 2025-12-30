@@ -637,7 +637,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 
 	if (!src || !dest)
 	{
-		Log("Error: In Super2xSaI, src or dest are NULL\n");
+		LogError("In Super2xSaI, src or dest are NULL\n");
 		return;
 	}
 
@@ -646,7 +646,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 
 	if ((sbpp != xsai_depth) || (sbpp != dbpp))	/* Must be same color depth */
 	{
-		Log("Error: In Super2xSaI, sbpp or dbpp are not equal to xsai_depth\n");
+		LogError("In Super2xSaI, sbpp or dbpp are not equal to xsai_depth\n");
 		return;
 	}
 
@@ -656,7 +656,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 	if (w < 4 || h < 4)
 	{
 		/* Image is too small to be 2xSaI'ed. */
-		Log("Error: surface to copy is to small, TODO here\n");
+		LogWarn("Surface to copy is too small for 2xSaI\n");
 		return;
 	}	
 	

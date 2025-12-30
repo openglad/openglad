@@ -185,6 +185,7 @@ static void emscripten_frame_wrapper() {
 
 int main(int argc, char *argv[])
 {
+	init_logging();  // Set up logging output (uses JS console on web)
 	io_init(argc, argv);
 
 	cfg.load_settings();

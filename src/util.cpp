@@ -30,6 +30,10 @@
 #include <sys/stat.h>
 #include "base.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #ifdef WINDOWS
 #include "windows.h"
 #include <shlobj.h>
@@ -47,8 +51,63 @@ using namespace std;
 Uint32 start_time=0;
 Uint32 reset_value=0;
 
+#ifdef __EMSCRIPTEN__
+// Custom SDL log output function for web builds
+// Routes messages to the appropriate JavaScript console method
+static void emscripten_log_output(void* userdata, int category, SDL_LogPriority priority, const char* message)
+{
+    (void)userdata;
+    (void)category;
+
+    switch(priority)
+    {
+        case SDL_LOG_PRIORITY_VERBOSE:
+        case SDL_LOG_PRIORITY_DEBUG:
+        case SDL_LOG_PRIORITY_INFO:
+            EM_ASM({
+                console.log(UTF8ToString($0));
+            }, message);
+            break;
+        case SDL_LOG_PRIORITY_WARN:
+            EM_ASM({
+                console.warn(UTF8ToString($0));
+            }, message);
+            break;
+        case SDL_LOG_PRIORITY_ERROR:
+        case SDL_LOG_PRIORITY_CRITICAL:
+        default:
+            EM_ASM({
+                console.error(UTF8ToString($0));
+            }, message);
+            break;
+    }
+}
+#endif
+
+void init_logging()
+{
+#ifdef __EMSCRIPTEN__
+    SDL_LogSetOutputFunction(emscripten_log_output, NULL);
+#endif
+}
 
 void Log(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, format, args);
+    va_end(args);
+}
+
+void LogWarn(const char* format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_WARN, format, args);
+    va_end(args);
+}
+
+void LogError(const char* format, ...)
 {
     va_list args;
     va_start(args, format);

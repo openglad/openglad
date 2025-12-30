@@ -25,6 +25,7 @@
 
 void io_init(int argc, char* argv[]);
 void io_exit();
+void sync_filesystem();  // Sync to persistent storage (IDBFS on web)
 
 
 std::string get_user_path();

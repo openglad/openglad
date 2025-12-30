@@ -1272,7 +1272,7 @@ bool LevelData::load()
 	// Zardus: much much better this way
 	if ( !(infile = open_read_file("scen/", thefile.c_str())))
     {
-        Log("Cannot open level file for reading: %s", thefile.c_str());
+        LogError("Cannot open level file for reading: %s\n", thefile.c_str());
         return false;
     }
 
@@ -1280,7 +1280,7 @@ bool LevelData::load()
 	SDL_RWread(infile, temptext, 1, 3);
 	if (strcmp(temptext, "FSS") != 0)
 	{
-		Log("File %s is not a valid scenario!\n", thefile.c_str());
+		LogError("File %s is not a valid scenario!\n", thefile.c_str());
 		SDL_RWclose(infile);
 		return false;
 	}

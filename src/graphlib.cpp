@@ -55,7 +55,7 @@ PixieData read_pixie_file(const char  * filename)
 	// Zardus: try to find file using open_read_file
 	if (!((infile = open_read_file("pix/", filename)) || (infile = open_read_file(filename))))
     {
-        Log("Cannot open pixie file %s%s!\n", "pix/", filename);
+        LogError("Cannot open pixie file: pix/%s\n", filename);
         exit(5);
     }
 

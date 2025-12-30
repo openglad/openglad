@@ -1791,7 +1791,7 @@ bool video::save_screenshot()
 	SDL_RWops* rwops = open_write_file(buf);
 	if(rwops == NULL)
     {
-        Log("Failed to open file for screenshot.\n");
+        LogError("Failed to open file for screenshot: %s\n", buf);
         return false;
     }
     

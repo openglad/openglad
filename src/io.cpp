@@ -29,6 +29,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #ifdef WIN32
 #include "windows.h"
 #include <shlobj.h>
@@ -71,7 +75,10 @@ int rwops_write_handler(void *data, unsigned char *buffer, size_t size)
 
 std::string get_user_path()
 {
-#ifdef ANDROID
+#ifdef __EMSCRIPTEN__
+    // Use IDBFS mount point for persistent storage in browser
+    return "/persist/";
+#elif defined(ANDROID)
     std::string path = SDL_AndroidGetInternalStoragePath();
     return path + "/";
 #elif defined(__IPHONEOS__)
@@ -164,8 +171,9 @@ SDL_RWops* open_read_file(const char* file, bool debug)
     rwops = SDL_RWFromFile((get_asset_path() + std::string("/") + file).c_str(), "rb");
     if(rwops != NULL) return rwops;
 
-    // give up
-    Log((std::string("Failed to find: ") + file).c_str());
+    // File not found - this may be expected (e.g., keyprefs.dat on first run)
+    if(debug)
+        Log("File not found: %s (may be created on first use)\n", file);
     return NULL;
 }
 
@@ -223,7 +231,7 @@ bool mount_campaign_package(const std::string& id)
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_mount(filename.c_str(), NULL, 0))
     {
-        Log("Failed to mount campaign %s: %s\n", filename.c_str(), PHYSFS_getLastError());
+        LogError("Failed to mount campaign %s: %s\n", filename.c_str(), PHYSFS_getLastError());
         mounted_campaign.clear();
         return false;
     }
@@ -239,7 +247,7 @@ bool unmount_campaign_package(const std::string& id)
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_removeFromSearchPath(filename.c_str()))
     {
-        Log("Failed to unmount campaign file %s: %s\n", filename.c_str(), PHYSFS_getLastError());
+        LogError("Failed to unmount campaign file %s: %s\n", filename.c_str(), PHYSFS_getLastError());
         return false;
     }
     mounted_campaign.clear();
@@ -382,7 +390,7 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     SDL_RWops* in = SDL_RWFromFile(filename.c_str(), "rb");
     if(in == NULL)
     {
-        Log("Could not open file to copy.\n");
+        LogError("Could not open file to copy: %s\n", filename.c_str());
         return;
     }
     
@@ -395,7 +403,7 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     SDL_RWops* out = SDL_RWFromFile(dest_filename.c_str(), "wb");
     if(out == NULL)
     {
-        Log("Could not open destination file.\n");
+        LogError("Could not open destination file: %s\n", dest_filename.c_str());
         SDL_RWclose(in);
         return;
     }
@@ -437,20 +445,67 @@ void restore_default_settings()
     copy_file(get_asset_path() + "cfg/openglad.yaml", get_user_path() + "cfg/openglad.yaml");
 }
 
+#ifdef __EMSCRIPTEN__
+// Flag to track when IDBFS sync is complete
+static volatile int idbfs_sync_done = 0;
+
+// Called from JavaScript when IDBFS sync completes
+extern "C" void EMSCRIPTEN_KEEPALIVE on_idbfs_sync_done()
+{
+    idbfs_sync_done = 1;
+    Log("IDBFS sync complete\n");
+}
+#endif
+
 void io_init(int argc, char* argv[])
 {
+#ifdef __EMSCRIPTEN__
+    // Mount IDBFS for persistent storage in browser
+    Log("Setting up IDBFS for persistent storage...\n");
+
+    EM_ASM({
+        // Create mount point
+        try {
+            FS.mkdir('/persist');
+        } catch(e) {
+            // Directory may already exist
+        }
+
+        // Mount IDBFS
+        FS.mount(IDBFS, {}, '/persist');
+
+        // Sync FROM IndexedDB to populate the virtual filesystem
+        FS.syncfs(true, function(err) {
+            if (err) {
+                console.error('IDBFS load error:', err);
+            } else {
+                console.log('IDBFS loaded from IndexedDB');
+            }
+            // Signal that sync is done
+            Module._on_idbfs_sync_done();
+        });
+    });
+
+    // Wait for sync to complete (ASYNCIFY allows this)
+    Log("Waiting for IDBFS sync...\n");
+    while (!idbfs_sync_done) {
+        emscripten_sleep(10);
+    }
+    Log("IDBFS ready\n");
+#endif
+
     // Make sure our directory tree exists and is set up
     create_dataopenglad();
-    
+
     PHYSFS_init(argv[0]);
     PHYSFS_setWriteDir(get_user_path().c_str());
-    
+
     if(!PHYSFS_mount(get_user_path().c_str(), NULL, 1))
     {
-        Log("Failed to mount user data path.\n");
+        LogError("Failed to mount user data path: %s\n", get_user_path().c_str());
         exit(1);
     }
-    
+
     restore_default_campaigns();
     
     // NOTES!
@@ -462,32 +517,53 @@ void io_init(int argc, char* argv[])
     // SDL_RWops size checking on Android doesn't seem to work!
     
     // Open up the default campaign
-    Log("Mounting default campaign...");
+    Log("Mounting default campaign...\n");
     if (!mount_campaign_package("org.openglad.gladiator"))
     {
-        Log("Failed to mount default campaign: %s\n", PHYSFS_getLastError());
+        LogError("Failed to mount default campaign: %s\n", PHYSFS_getLastError());
         exit(1);
     }
-    Log("Mounted default campaign...");
+    Log("Mounted default campaign\n");
     
     // Set up paths for default assets
     if(!PHYSFS_mount((get_asset_path() + "pix/").c_str(), "pix/", 1))
     {
-        Log("Failed to mount default pix path.\n");
+        LogWarn("Failed to mount default pix path (may be bundled in campaign)\n");
     }
     if(!PHYSFS_mount((get_asset_path() + "sound/").c_str(), "sound/", 1))
     {
-        Log("Failed to mount default sound path.\n");
+        LogWarn("Failed to mount default sound path (may be bundled in campaign)\n");
     }
     if(!PHYSFS_mount((get_asset_path() + "cfg/").c_str(), "cfg/", 1))
     {
-        Log("Failed to mount default cfg path.\n");
+        LogWarn("Failed to mount default cfg path (may be bundled in campaign)\n");
     }
 }
 
 void io_exit()
 {
+#ifdef __EMSCRIPTEN__
+    // Final sync before exit
+    sync_filesystem();
+#endif
     PHYSFS_deinit();
+}
+
+void sync_filesystem()
+{
+#ifdef __EMSCRIPTEN__
+    // Sync virtual filesystem TO IndexedDB for persistence
+    EM_ASM({
+        FS.syncfs(false, function(err) {
+            if (err) {
+                console.error('IDBFS save error:', err);
+            } else {
+                console.log('IDBFS saved to IndexedDB');
+            }
+        });
+    });
+#endif
+    // No-op on non-web platforms (they use real filesystem)
 }
 
 
@@ -577,24 +653,22 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
         {
             if(zip_dir_add(archive, dest_name, ZIP_FL_ENC_GUESS) < 0)
             {
-                // Error
-                Log("error adding dir: %s\n", zip_strerror(archive));
+                LogError("Error adding dir to zip: %s\n", zip_strerror(archive));
             }
         }
         else
         {
             if((s=zip_source_file(archive, src_name, 0, -1)) == NULL || zip_file_add(archive, dest_name, s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
             {
-                // Error
                 zip_source_free(s);
-                Log("error adding file: %s\n", zip_strerror(archive));
+                LogError("Error adding file to zip: %s\n", zip_strerror(archive));
             }
         }
     }
-    
+
     if(zip_close(archive) < 0)
     {
-        Log("Error flushing zip file output: %s\n", zip_strerror(archive));
+        LogError("Error flushing zip file output: %s\n", zip_strerror(archive));
         return false;
     }
     
@@ -892,7 +966,7 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 	SDL_RWops* outfile;
 	if((outfile = open_write_file(scenfile.c_str())) == NULL)
 	{
-		Log("Could not open file for writing: %s\n", scenfile.c_str());
+		LogError("Could not open file for writing: %s\n", scenfile.c_str());
 		return false;
 	}
 	

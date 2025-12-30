@@ -20,6 +20,7 @@
 #include "walker.h"
 #include "guy.h"
 #include "campaign_picker.h"
+#include "io.h"
 #include <cstring>
 
 
@@ -170,7 +171,7 @@ bool SaveData::load(const std::string& filename)
 
 	if ( (infile = open_read_file("save/", temp_filename)) == NULL )
 	{
-		Log("Failed to open save file: %s\n", filename.c_str());
+		LogError("Failed to open save file: %s\n", filename.c_str());
 		return 0;
 	}
     
@@ -189,7 +190,7 @@ bool SaveData::load(const std::string& filename)
 	if ( strcmp(temptext,"GTL"))
 	{
 	    SDL_RWclose(infile);
-		Log("Error, selected file is not a GTL file: %s\n", filename.c_str());
+		LogError("Selected file is not a GTL file: %s\n", filename.c_str());
 		return 0; //not a gtl file
 	}
 
@@ -210,7 +211,7 @@ bool SaveData::load(const std::string& filename)
 		else
 		{
             SDL_RWclose(infile);
-			Log("Error, selected files is not version one: %s\n", filename.c_str());
+			LogError("Save file version not supported: %s\n", filename.c_str());
 			return 0;
 		}
 	}
@@ -533,8 +534,7 @@ bool SaveData::save(const std::string& filename)
 	
 	if ( (outfile = open_write_file("save/", temp_filename)) == NULL ) // open for write
 	{
-		//gotoxy(1, 22);
-		Log("Error in writing team file %s\n", filename.c_str());
+		LogError("Failed to write team file: %s\n", filename.c_str());
 		return 0;
 	}
 
@@ -683,7 +683,10 @@ bool SaveData::save(const std::string& filename)
     }
 
     SDL_RWclose(outfile);
-    
+
+    // Sync to persistent storage (IDBFS on web)
+    sync_filesystem();
+
 	return 1;
 }
 

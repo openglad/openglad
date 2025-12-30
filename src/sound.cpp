@@ -83,7 +83,7 @@ int soundob::init()
     
 	if(Mix_OpenAudio(sample_rate, sample_format, stereo? 2 : 1 , sample_buffer_size) == -1)
 	{
-		Log("ERROR: Mix_OpenAudio: %s\n",Mix_GetError());
+		LogError("Mix_OpenAudio failed: %s\n",Mix_GetError());
 		exit(0);
 	}
 
@@ -134,7 +134,7 @@ void soundob::load_sound(Mix_Chunk **audio, char * file)
 	*audio = Mix_LoadWAV_RW(rw, 0);
 	if(!*audio)
 	{
-		Log("ERROR: Mix_LoadWAV: %s\n",Mix_GetError());
+		LogError("Mix_LoadWAV failed: %s\n",Mix_GetError());
 		exit(0);
 	}
 	SDL_RWclose(rw);
