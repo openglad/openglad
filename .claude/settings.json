@@ -1,8 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(./scripts/build_web.sh)",
+      "Bash(grep:*)",
+      "Bash(source:*)",
+      "Bash(mdfind:*)",
       "Bash(make:*)",
+      "Bash(./scripts/build_web.sh:*)",
       "Bash(python3 -m http.server:*)",
       "Bash(emcc:*)",
       "Bash(em++:*)",
