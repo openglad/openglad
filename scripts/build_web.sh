@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Build script for Emscripten/WebAssembly target
-# Outputs openglad.html, openglad.js, openglad.wasm, and openglad.data to dist/
+# Outputs play.html, play.js, play.wasm, and play.data to dist/
 #
 # This script bypasses autotools and compiles directly with emcc since
 # Emscripten provides SDL2 via its ports system.
