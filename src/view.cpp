@@ -2159,6 +2159,8 @@ Sint32 viewscreen::set_key_prefs()
 
 // Helper function to convert SDL key names to displayable text
 // Only shortens long modifier names to fit in the display
+// NOTE: Uses a static buffer. The returned pointer is only valid until the next call
+// to this function. Callers must use the result immediately before calling again.
 static const char* get_key_display_name(int keycode)
 {
 	static char buffer[20];

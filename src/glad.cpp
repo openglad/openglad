@@ -123,7 +123,11 @@ static void emscripten_frame_wrapper() {
 
 	// Calculate target frame time based on timer_wait (in ticks, 1 tick = 13.6ms)
 	// timer_wait defaults to 6, giving ~82ms per frame (~12 FPS)
-	Uint32 target_frame_time = (Uint32)(myscreen->timer_wait * 13.6f);
+	short timer_wait = 6; // Safe default until myscreen is initialized
+	if (myscreen && myscreen->timer_wait > 0) {
+		timer_wait = myscreen->timer_wait;
+	}
+	Uint32 target_frame_time = (Uint32)(timer_wait * 13.6f);
 	if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
 
 	// Only run logic if enough time has accumulated
