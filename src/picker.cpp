@@ -796,6 +796,9 @@ void redraw_mainmenu()
     allbuttons[0]->set_graphic(FAMILY_NORMAL1);
     allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
 
+    // On native builds, show the version number on the main menu.
+    // On Emscripten/web builds, the version is displayed elsewhere (e.g. in the help UI),
+    // so we skip drawing it here to avoid layout/clutter issues.
 #ifndef __EMSCRIPTEN__
     draw_version_number();
 #endif
