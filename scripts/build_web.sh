@@ -23,6 +23,7 @@ if ! command -v emcc &> /dev/null; then
     EMSDK_LOCATIONS=(
         "$EMSDK"
         "$HOME/emsdk"
+        "$HOME/GitHub/emsdk"
         "/opt/emsdk"
         "/usr/local/emsdk"
         "$HOME/.local/emsdk"

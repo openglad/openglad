@@ -1010,11 +1010,11 @@ short viewscreen::continuous_input()
 			}
 		*/
 
-        // Holding Special key for rapid use (I don't think that's a good idea - MP drain)
-		/*if (isPlayerHoldingKey(mynum, KEY_SPECIAL))
+        // Holding Special key for rapid use (MP cost naturally rate-limits)
+		if (isPlayerHoldingKey(mynum, KEY_SPECIAL))
 		{
 			control->special();
-		}*/
+		}
 		
 		int walkx = 0;
 		int walky = 0;

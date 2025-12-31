@@ -11,7 +11,8 @@
       "Bash(python3 -m http.server:*)",
       "Bash(emcc:*)",
       "Bash(em++:*)",
-      "Bash(premake4:*)"
+      "Bash(premake4:*)",
+      "Edit(**)"
     ]
   }
 }
