@@ -57,16 +57,18 @@ The web build uses Emscripten to compile to WebAssembly, allowing the game to ru
 
    ./scripts/build_web.sh
 
-   This compiles all source files, bundles game assets, and outputs to dist/:
-   - openglad.html  (HTML shell with canvas)
-   - openglad.js    (JavaScript runtime)
-   - openglad.wasm  (WebAssembly binary)
-   - openglad.data  (packaged game assets)
+   This compiles all source files, bundles game assets, and outputs the compiled game files to dist/:
+   - play.html      (HTML shell with canvas that runs the game)
+   - play.js        (JavaScript runtime)
+   - play.wasm      (WebAssembly binary)
+   - play.data      (packaged game assets)
+
+   The web landing page is dist/index.html, which loads play.html.
 
 3. Test locally:
 
    cd dist
    python3 -m http.server 8080
 
-   Then open http://localhost:8080/openglad.html in your browser.
+   Then open http://localhost:8080/index.html in your browser.
 

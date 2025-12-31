@@ -33,9 +33,14 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-#define YIELD_SLEEP(ms) emscripten_sleep(ms)
+  #ifdef __ASYNCIFY__
+    #define YIELD_SLEEP(ms) emscripten_sleep(ms)
+  #else
+    #warning "ASYNCIFY is not enabled; YIELD_SLEEP will be a no-op."
+    #define YIELD_SLEEP(ms) ((void)(ms))
+  #endif
 #else
-#define YIELD_SLEEP(ms) YIELD_SLEEP(ms)
+  #define YIELD_SLEEP(ms) ((void)(ms))
 #endif
 
 //these are for chad's team info page

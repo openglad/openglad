@@ -25,15 +25,15 @@ source ./emsdk_env.sh  # Run in each new terminal, or add to shell profile
 ```
 
 This compiles everything with Emscripten, packages game assets, and outputs to `dist/`:
-- `openglad.html` - HTML shell with canvas
-- `openglad.js` - JavaScript runtime glue
-- `openglad.wasm` - WebAssembly binary
-- `openglad.data` - Packaged game assets
+- `play.html` - HTML shell with canvas
+- `play.js` - JavaScript runtime glue
+- `play.wasm` - WebAssembly binary
+- `play.data` - Packaged game assets
 
 **Run locally:**
 ```bash
 cd dist && python3 -m http.server 8080
-# Then open http://localhost:8080/openglad.html
+# Then open http://localhost:8080/index.html  # or http://localhost:8080/play.html
 ```
 
 ### Native Build (Autotools)
@@ -121,7 +121,7 @@ The build script (`scripts/build_web.sh`) compiles with these key Emscripten fla
 - `-sUSE_SDL=2 -sUSE_SDL_MIXER=2` - SDL2 ports
 - `-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=67108864` - 64MB initial heap
 - `-sASYNCIFY` - Async support for file I/O
-- `--preload-file` - Packages cfg/, pix/, sound/, etc. into openglad.data
+- `--preload-file` - Packages cfg/, pix/, sound/, etc. into play.data
 
 Canvas renders at 320x200 base resolution, scaled with integer factors for crisp pixels (`image-rendering: pixelated`).
 
