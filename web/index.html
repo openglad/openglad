@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Huddle Dungeon</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background: linear-gradient(
+                180deg,
+                #4a5f45 0%,
+                #34452f 50%,
+                #24331f 100%
+            );
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .hero-image {
+            max-width: 80%;
+            max-height: 40vh;
+            margin-bottom: 2rem;
+        }
+
+        .play-button {
+            display: inline-block;
+            padding: 1rem 3rem;
+            font-size: 1.5rem;
+            color: #000;
+            background-color: #fff;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .play-button:hover {
+            background-color: #ccc;
+        }
+
+        .play-button:active {
+            transform: scale(0.98);
+        }
+
+        footer {
+            padding: 1.5rem;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+            line-height: 1.6;
+        }
+
+        footer a {
+            color: #aaa;
+        }
+
+        footer a:hover {
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Huddle Dungeon</h1>
+        <img src="hero.png" alt="Huddle Dungeon" class="hero-image">
+        <a href="play.html" class="play-button">Play</a>
+    </main>
+    <footer>
+        Based on <a href="https://github.com/openglad/openglad">OpenGlad</a>,
+        a port of "Gladiator" by FSGames (open-sourced under GPL v2, 2002).
+        Licensed under <a href="https://www.gnu.org/licenses/old-licenses/gpl-2.0.html">GPL v2</a>.
+        <a href="https://github.com/differentmatt/huddle-dungeon">Source code</a>
+    </footer>
+</body>
+</html>

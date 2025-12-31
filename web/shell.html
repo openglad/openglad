@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenGlad</title>
+    <title>Huddle Dungeon</title>
     <style>
         * {
             margin: 0;
@@ -118,20 +118,17 @@
             var windowWidth = window.innerWidth;
             var windowHeight = window.innerHeight;
 
-            // Calculate scale to fit window
+            // Calculate scale to fit window (maximize canvas size)
             var scaleX = windowWidth / gameWidth;
             var scaleY = windowHeight / gameHeight;
             var scale = Math.min(scaleX, scaleY);
-
-            // Use integer scaling for crisp pixels
-            scale = Math.floor(scale);
-            if (scale < 1) scale = 1;
 
             canvas.style.width = (gameWidth * scale) + 'px';
             canvas.style.height = (gameHeight * scale) + 'px';
         }
 
         window.addEventListener('resize', resizeCanvas);
+        resizeCanvas(); // Initial sizing
 
         var Module = {
             canvas: canvas,

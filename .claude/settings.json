@@ -2,6 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(file:*)",
       "Bash(source:*)",
       "Bash(mdfind:*)",
       "Bash(make:*)",

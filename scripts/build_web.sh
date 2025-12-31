@@ -347,7 +347,7 @@ echo ""
 echo "Linking and packaging assets..."
 
 em++ "${OBJ_FILES[@]}" \
-    -o "$DIST_DIR/openglad.html" \
+    -o "$DIST_DIR/play.html" \
     --shell-file "$PROJECT_ROOT/web/shell.html" \
     -sUSE_SDL=2 \
     -sUSE_SDL_MIXER=2 \
@@ -367,11 +367,15 @@ em++ "${OBJ_FILES[@]}" \
     --preload-file "$PROJECT_ROOT/extra_campaigns@/extra_campaigns" \
     --preload-file "$PROJECT_ROOT/builtin@/builtin"
 
+# Copy landing page and assets
+cp "$PROJECT_ROOT/web/index.html" "$DIST_DIR/index.html"
+cp "$PROJECT_ROOT/web/hero.png" "$DIST_DIR/hero.png" 2>/dev/null || true
+
 echo ""
 echo "Build complete! Output files:"
-ls -lh "$DIST_DIR"/openglad.*
+ls -lh "$DIST_DIR"/index.html "$DIST_DIR"/play.*
 
 echo ""
 echo "To test locally, run:"
 echo "  cd $DIST_DIR && python3 -m http.server 8080"
-echo "Then open http://localhost:8080/openglad.html in your browser."
+echo "Then open http://localhost:8080/ in your browser."
