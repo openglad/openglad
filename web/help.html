@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Help - Huddle Dungeon</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            width: 100%;
+            min-height: 100%;
+            background-color: #000;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background: linear-gradient(
+                180deg,
+                #4a5f45 0%,
+                #34452f 50%,
+                #24331f 100%
+            );
+        }
+
+        header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        header a {
+            color: #fff;
+            text-decoration: none;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        header a:hover {
+            text-decoration: underline;
+        }
+
+        main {
+            flex: 1;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            padding-bottom: 0.5rem;
+        }
+
+        h2 {
+            font-size: 1.4rem;
+            margin: 2rem 0 1rem 0;
+            color: #9cb896;
+        }
+
+        h3 {
+            font-size: 1.1rem;
+            margin: 1.5rem 0 0.75rem 0;
+            color: #c4d4c0;
+        }
+
+        p {
+            margin-bottom: 1rem;
+        }
+
+        ul, ol {
+            margin: 0.5rem 0 1rem 1.5rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        code {
+            background: rgba(0,0,0,0.3);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        .path {
+            background: rgba(0,0,0,0.4);
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+            font-family: monospace;
+            font-size: 0.9rem;
+            display: block;
+        }
+
+        .shortcut {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            padding: 0.15rem 0.5rem;
+            border-radius: 3px;
+            font-family: monospace;
+            margin: 0.1rem;
+        }
+
+        .note {
+            background: rgba(255,255,255,0.1);
+            border-left: 3px solid #9cb896;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        footer {
+            padding: 1.5rem;
+            text-align: center;
+            font-size: 0.85rem;
+            color: #888;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        footer a {
+            color: #aaa;
+        }
+
+        footer a:hover {
+            color: #fff;
+        }
+
+        .back-link {
+            display: inline-block;
+            margin-top: 2rem;
+            padding: 0.75rem 1.5rem;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 4px;
+        }
+
+        .back-link:hover {
+            background: rgba(255,255,255,0.2);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a href="index.html">Huddle Dungeon</a>
+    </header>
+
+    <main>
+        <h1>Help & Troubleshooting</h1>
+
+        <h2>macOS: Arrow Keys Not Working?</h2>
+
+        <p>If pressing arrow keys triggers macOS system actions (like Mission Control or switching between Spaces) instead of controlling the game, you'll need to disable some system keyboard shortcuts.</p>
+
+        <h3>1. Disable Mission Control Shortcuts</h3>
+        <span class="path">System Settings &rarr; Keyboard &rarr; Keyboard Shortcuts &rarr; Mission Control</span>
+        <p>Uncheck (disable) all arrow-based shortcuts:</p>
+        <ul>
+            <li><span class="shortcut">Control + &larr;</span> Move left a space</li>
+            <li><span class="shortcut">Control + &rarr;</span> Move right a space</li>
+            <li><span class="shortcut">Control + &uarr;</span> Mission Control</li>
+            <li><span class="shortcut">Control + &darr;</span> Application windows</li>
+            <li>Any "Switch to Desktop N" entries</li>
+        </ul>
+
+        <h3>2. Disable Accessibility Keyboard Navigation</h3>
+        <span class="path">System Settings &rarr; Accessibility &rarr; Keyboard</span>
+        <p>Set the following option:</p>
+        <ul>
+            <li><strong>Full Keyboard Access</strong> = OFF</li>
+        </ul>
+        <p>This prevents arrow keys from being used for system-wide UI navigation.</p>
+
+        <h3>3. Check for Custom App Shortcuts</h3>
+        <span class="path">System Settings &rarr; Keyboard &rarr; Keyboard Shortcuts &rarr; App Shortcuts</span>
+        <p>Look for and remove any custom shortcuts that use:</p>
+        <ul>
+            <li><span class="shortcut">&#8963;</span> Control + Arrow keys</li>
+            <li><span class="shortcut">&#8997;</span> Option + Arrow keys</li>
+            <li><span class="shortcut">&#8984;</span> Command + Arrow keys</li>
+        </ul>
+
+        <div class="note">
+            <strong>Note:</strong> These are system-wide settings. After changing them, your arrow keys will no longer trigger Mission Control or Spaces switching in any application. You can re-enable them after playing if needed.
+        </div>
+
+        <h2>Game Controls</h2>
+        <p>For detailed game controls and keybindings, press <strong>Help</strong> from the in-game main menu, or press <strong>F1</strong> during gameplay.</p>
+
+        <a href="index.html" class="back-link">&larr; Back to Game</a>
+    </main>
+
+    <footer>
+        <a href="https://github.com/differentmatt/huddle-dungeon">Source code</a> &middot;
+        <a href="https://github.com/differentmatt/huddle-dungeon/issues">Report an issue</a>
+    </footer>
+</body>
+</html>

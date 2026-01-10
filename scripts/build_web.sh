@@ -368,8 +368,9 @@ em++ "${OBJ_FILES[@]}" \
     --preload-file "$PROJECT_ROOT/extra_campaigns@/extra_campaigns" \
     --preload-file "$PROJECT_ROOT/builtin@/builtin"
 
-# Copy landing page and assets
+# Copy landing page, help, and assets
 cp "$PROJECT_ROOT/web/index.html" "$DIST_DIR/index.html"
+cp "$PROJECT_ROOT/web/help.html" "$DIST_DIR/help.html"
 cp "$PROJECT_ROOT/web/hero.png" "$DIST_DIR/hero.png" 2>/dev/null || true
 
 echo ""
