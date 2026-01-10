@@ -1,0 +1,112 @@
+*** CHARACTER CLASSES ***
+
+SOLDIER
+========================
+Basic fighter, good all-around.
+Weapon: Magical returning blade.
+1. Charge: Run forward at high
+   speed, damaging enemies.
+2. Boomerang: Spiraling blade
+   that hits multiple targets.
+3. Whirl: Lash out at all nearby
+   foes, may stun them.
+4. Disarm: Temporarily disarm a
+   nearby opponent.
+
+BARBARIAN
+========================
+Tough fighter, resists magic.
+Weapon: Heavy iron hammer.
+1. Hurl Boulder: Throw rocks at
+   enemies, damage by strength.
+2. Exploding Boulder: Rock that
+   explodes on impact.
+
+ELF
+========================
+Small and hard to hit.
+Has ForestWalk ability.
+Weapon: Thrown stones.
+1-4. Rocks: Increasing amounts
+   of bouncing rocks.
+
+ARCHER
+========================
+Fast with long-range arrows.
+1. Fire Arrows: Spin and fire
+   blazing arrows in all dirs.
+2. Barrage: Stream of arrows at
+   one target.
+3. Exploding Bolt: Single arrow
+   that explodes on impact.
+
+MAGE
+========================
+Slow but powerful magic user.
+Can teleport at any level.
+1. Teleport: Random or memorized
+   location (SHIFTER to mark).
+2. Warp Space: Damages nearby
+   foes with twisted space.
+3. Time Stop: Freeze time for
+   all non-team members.
+4. Energy Wave: Expanding flood
+   of energy through walls.
+5. HeartBurst: Enemies burst into
+   flames from within!
+
+ARCHMAGE
+========================
+Specialized Mage (level 6+).
+Extreme firepower, very weak.
+1. Teleport: Same as Mage.
+2. HeartBurst / Chain Lightning
+   (SHIFTER for chain).
+3. Summon Image / Fire Elemental
+   (SHIFTER for elemental).
+4. Mind Control: Bend enemies
+   to your will temporarily.
+
+CLERIC
+========================
+Slow healer, generates barriers.
+1. Heal: Heal nearby friends.
+   SHIFTER: Mystic Mace defense.
+2. Raise Undead: Bring back the
+   fallen. SHIFTER: Turn Undead.
+3. Raise Ghost: Summon spirits.
+   SHIFTER: Lay spirits to rest.
+4. Resurrect: Full resurrection
+   of fallen comrades.
+
+THIEF
+========================
+Fast with unlimited daggers.
+1. Plant Bomb: Drop explosives.
+2. Cloak: Become invisible.
+3. Taunt: Lure enemies away.
+   SHIFTER: Charm enemies.
+4. Poison Cloud: Create noxious
+   cloud to damage enemies.
+
+DRUID
+========================
+Nature magician, throws lightning.
+1. Grow Tree: Plant trees that
+   block enemies but not friends.
+2. Summon: Call sprites that
+   freeze foes.
+3. Reveal Items: Show treasure
+   and generators on radar.
+4. Protection: Wind shield for
+   nearby teammates.
+
+SPECIAL CLASSES
+========================
+Orc: Strong melee, Howl stuns.
+Fire Elemental: Fast, Starburst.
+Skeleton: Fast, can Tunnel.
+Ghost: Passes through walls,
+  Scare makes enemies flee.
+Faerie: Flying, freezing powder.
+Slime: Grows and splits in two.

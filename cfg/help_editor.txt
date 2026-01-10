@@ -1,0 +1,85 @@
+*** SCENARIO EDITOR ***
+
+OVERVIEW
+========================
+Create levels with background
+maps (.PIX) and objects (.FSS).
+Press H in editor for quick help.
+
+BASIC CONTROLS
+========================
+L: Load (then S for Scenario)
+S: Save (then S for Scenario)
+N: New Name (S=Scen, G=Grid)
+M: Toggle MAP/OBS mode
+G: Toggle grid alignment
+O: Cycle object types
+Ctrl+D: Delete all objects
+
+MAP EDITING (MODE: MAP)
+========================
+Left click: Place selected tile
+Right click: Pick tile from map
+Up/Down: Scroll tile selection
+Ctrl+click: Place without
+  auto-smoothing
+
+OBJECT EDITING (MODE: OBS)
+========================
+Left click: Place object
+Right click: Cycle object type
+Ctrl+click: Delete object
+0-7: Set team number
+[/]: Lower/raise level
+R+click: Rename character
+I+click: Get object info
+
+ALIGNMENT MODES
+========================
+ON: Objects snap to grid
+OFF: Free placement (careful!)
+STACK: Overlap slowly for piles
+
+OBJECT TYPES (O to cycle)
+========================
+Living: Characters (soldiers,
+  elves, mages, etc.)
+Generators: Tents, towers, etc.
+  that spawn enemies
+Player Markers: Where players
+  start (2x2 squares)
+Treasure: Food, gold, potions,
+  exits, keys, teleporters
+Weapons: Doors (set team & level)
+
+EXITS
+========================
+Level of exit = destination
+  scenario number
+Multiple exits can lead to
+  different levels
+Add return exits so players
+  can retreat
+
+TELEPORTERS
+========================
+Same-level teleporters form
+  a loop: A->B->C->A
+Leave space around them for
+  large characters
+
+KEYS & DOORS
+========================
+Key level = door level it opens
+Door team = who passes freely
+  (0=players, 1+=enemies)
+Keys don't vanish - all can
+  pick up same key
+
+TIPS
+========================
+Start with existing scenario
+  to get map dimensions
+Save frequently!
+Don't place 500+ objects
+Test your levels often
