@@ -16,9 +16,12 @@
  */
 #include <string.h>
 #include <stdio.h>
+#include <vector>
+#include <string>
 #include "graph.h"
 #include "util.h"
 #include "version.h"
+#include "io.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -364,8 +367,8 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 }
 
 
-// General help text lines
-static const char* general_help_lines[] = {
+// General help text lines (Controls tab)
+static const char* controls_help_lines[] = {
 	"*** GLADIATOR HELP ***",
 	"",
 	"MOVEMENT KEYS (Default)",
@@ -417,11 +420,161 @@ static const char* general_help_lines[] = {
 	"Press ESC to return to menu",
 };
 
-static const int NUM_HELP_LINES = sizeof(general_help_lines) / sizeof(general_help_lines[0]);
+static const int NUM_CONTROLS_LINES = sizeof(controls_help_lines) / sizeof(controls_help_lines[0]);
+
+// Dynamic help content loaded from files
+static std::vector<std::string> classes_help_lines;
+static std::vector<std::string> editor_help_lines;
+static bool help_files_loaded = false;
+
+// Load a help file into a vector of strings
+static bool load_help_file(const char* filename, std::vector<std::string>& lines)
+{
+	lines.clear();
+	SDL_RWops* infile = open_read_file(filename);
+	if (!infile)
+	{
+		Log("Could not open help file: %s", filename);
+		lines.push_back("Error: Could not load help file.");
+		return false;
+	}
+
+	char line_buf[HELP_WIDTH];
+	int ch;
+	int pos = 0;
+
+	while (true)
+	{
+		if (SDL_RWread(infile, &ch, 1, 1) != 1)
+		{
+			// End of file - save any remaining content
+			if (pos > 0)
+			{
+				line_buf[pos] = '\0';
+				lines.push_back(std::string(line_buf));
+			}
+			break;
+		}
+
+		if (ch == '\n' || ch == '\r')
+		{
+			line_buf[pos] = '\0';
+			lines.push_back(std::string(line_buf));
+			pos = 0;
+
+			// Handle \r\n line endings
+			if (ch == '\r')
+			{
+				char next;
+				if (SDL_RWread(infile, &next, 1, 1) == 1 && next != '\n')
+				{
+					SDL_RWseek(infile, -1, RW_SEEK_CUR);
+				}
+			}
+		}
+		else if (pos < HELP_WIDTH - 1)
+		{
+			line_buf[pos++] = (char)ch;
+		}
+	}
+
+	SDL_RWclose(infile);
+	return true;
+}
+
+// Load all help files (called once)
+static void load_help_files()
+{
+	if (help_files_loaded)
+		return;
+
+	load_help_file("cfg/help_classes.txt", classes_help_lines);
+	load_help_file("cfg/help_editor.txt", editor_help_lines);
+
+	help_files_loaded = true;
+}
+
+// Tab definitions
+enum HelpTab {
+	TAB_CONTROLS = 0,
+	TAB_CLASSES = 1,
+	TAB_EDITOR = 2,
+	NUM_TABS = 3
+};
+
+static const char* tab_names[] = { "Controls", "Classes", "Editor" };
+
+// Helper struct to hold tab content reference
+struct TabContent {
+	const char** static_lines;           // For controls (static array)
+	const std::vector<std::string>* dynamic_lines;  // For classes/editor (loaded from files)
+	int num_lines;
+	bool is_dynamic;
+};
+
+// Helper function to get content for current tab
+static TabContent get_tab_content(int tab)
+{
+	TabContent content;
+	content.static_lines = nullptr;
+	content.dynamic_lines = nullptr;
+	content.is_dynamic = false;
+
+	switch (tab)
+	{
+	case TAB_CONTROLS:
+		content.static_lines = controls_help_lines;
+		content.num_lines = NUM_CONTROLS_LINES;
+		content.is_dynamic = false;
+		break;
+	case TAB_CLASSES:
+		content.dynamic_lines = &classes_help_lines;
+		content.num_lines = (int)classes_help_lines.size();
+		content.is_dynamic = true;
+		break;
+	case TAB_EDITOR:
+		content.dynamic_lines = &editor_help_lines;
+		content.num_lines = (int)editor_help_lines.size();
+		content.is_dynamic = true;
+		break;
+	default:
+		content.static_lines = controls_help_lines;
+		content.num_lines = NUM_CONTROLS_LINES;
+		content.is_dynamic = false;
+		break;
+	}
+	return content;
+}
+
+// Helper to get a line from TabContent
+static const char* get_content_line(const TabContent& content, int index)
+{
+	if (index < 0 || index >= content.num_lines)
+		return "";
+	if (content.is_dynamic && content.dynamic_lines)
+		return (*content.dynamic_lines)[index].c_str();
+	else if (content.static_lines)
+		return content.static_lines[index];
+	return "";
+}
+
+// Tab button dimensions
+#define TAB_Y 20
+#define TAB_HEIGHT 12
+#define TAB_WIDTH 58
+#define TAB_SPACING 2
+#define TAB_START_X (HELPTEXT_LEFT + 10)
+#define CONTENT_TOP (TAB_Y + TAB_HEIGHT + 4)  // Content starts below tabs
 
 Sint32 show_general_help()
 {
-	Sint32 screenlines = NUM_HELP_LINES * 8;
+	// Load help files from disk (only loads once)
+	load_help_files();
+
+	int current_tab = TAB_CONTROLS;
+	TabContent current_content = get_tab_content(current_tab);
+
+	Sint32 screenlines = current_content.num_lines * 8;
 	Sint32 j;
 	Sint32 linesdown;
 	Sint32 changed;
@@ -434,15 +587,80 @@ Sint32 show_general_help()
 	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
 	if (bottomrow < 0) bottomrow = 0;
 
+	// Lambda to update content when tab changes
+	auto switch_tab = [&](int new_tab) {
+		current_tab = new_tab;
+		current_content = get_tab_content(current_tab);
+		screenlines = current_content.num_lines * 8;
+		bottomrow = (screenlines - ((DISPLAY_LINES-1)*8));
+		if (bottomrow < 0) bottomrow = 0;
+		linesdown = 0;
+		changed = 1;
+	};
+
 	clear_keyboard();
 	linesdown = 0;
 	changed = 1;
 	start_time = query_timer();
 
+	// Track previous mouse state for click detection
+	bool prev_mouse_left = false;
+
 	while (!keystates[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(10);
 		get_input_events(POLL);
+
+		// Handle mouse clicks on tabs
+		MouseState& mymouse = query_mouse_no_poll();
+		bool mouse_clicked = mymouse.left && !prev_mouse_left;
+		prev_mouse_left = mymouse.left;
+
+		if (mouse_clicked)
+		{
+			int mx = mymouse.x;
+			int my = mymouse.y;
+
+			// Check if click is in tab area
+			if (my >= TAB_Y && my <= TAB_Y + TAB_HEIGHT)
+			{
+				for (int t = 0; t < NUM_TABS; t++)
+				{
+					int tab_x = TAB_START_X + t * (TAB_WIDTH + TAB_SPACING);
+					if (mx >= tab_x && mx <= tab_x + TAB_WIDTH)
+					{
+						if (t != current_tab)
+						{
+							switch_tab(t);
+						}
+						break;
+					}
+				}
+			}
+		}
+
+		// Handle keyboard tab switching (1, 2, 3 keys)
+		static bool key1_was_pressed = false;
+		static bool key2_was_pressed = false;
+		static bool key3_was_pressed = false;
+
+		if (keystates[KEYSTATE_1] && !key1_was_pressed && current_tab != TAB_CONTROLS)
+		{
+			switch_tab(TAB_CONTROLS);
+		}
+		key1_was_pressed = keystates[KEYSTATE_1];
+
+		if (keystates[KEYSTATE_2] && !key2_was_pressed && current_tab != TAB_CLASSES)
+		{
+			switch_tab(TAB_CLASSES);
+		}
+		key2_was_pressed = keystates[KEYSTATE_2];
+
+		if (keystates[KEYSTATE_3] && !key3_was_pressed && current_tab != TAB_EDITOR)
+		{
+			switch_tab(TAB_EDITOR);
+		}
+		key3_was_pressed = keystates[KEYSTATE_3];
 
 		short scroll_amount = get_and_reset_scroll_amount();
 		if (scroll_amount < 0)
@@ -508,28 +726,66 @@ Sint32 show_general_help()
 		if (changed)
 		{
 			templines = linesdown/8;
-			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
-			                      HELPTEXT_LEFT+240, HELPTEXT_TOP+107, 3, 1);
+
+			// Calculate content area dimensions
+			int content_text_top = CONTENT_TOP + 8;  // Where text starts (after title bar)
+			int content_bottom = content_text_top + (DISPLAY_LINES * 7) + 10;
+
+			// Draw the main dialog background (covers everything)
+			myscreen->draw_button(HELPTEXT_LEFT-4, TAB_Y-4,
+			                      HELPTEXT_LEFT+240, content_bottom + 8, 3, 1);
+
+			// Draw tabs
+			for (int t = 0; t < NUM_TABS; t++)
+			{
+				int tab_x = TAB_START_X + t * (TAB_WIDTH + TAB_SPACING);
+
+				// Draw tab button
+				myscreen->draw_button(tab_x, TAB_Y, tab_x + TAB_WIDTH, TAB_Y + TAB_HEIGHT, 1, 1);
+
+				// Highlight selected tab by drawing over bottom edge
+				if (t == current_tab)
+				{
+					myscreen->draw_text_bar(tab_x + 1, TAB_Y + TAB_HEIGHT - 1,
+					                        tab_x + TAB_WIDTH - 1, TAB_Y + TAB_HEIGHT);
+				}
+
+				// Draw tab label
+				int label_len = strlen(tab_names[t]);
+				int label_x = tab_x + (TAB_WIDTH - label_len * 6) / 2;
+				mytext.write_xy(label_x, TAB_Y + 3, tab_names[t],
+				                (t == current_tab) ? (unsigned char)DARK_BLUE : (unsigned char)BLACK, 1);
+			}
+
+			// Draw content area (below tabs)
+			myscreen->draw_button(HELPTEXT_LEFT-4, CONTENT_TOP,
+			                      HELPTEXT_LEFT+240, content_bottom + 8, 3, 1);
+
+			// Draw content text
 			for (j=0; j < DISPLAY_LINES; j++)
 			{
 				int line_idx = j + templines;
-				if (line_idx >= 0 && line_idx < NUM_HELP_LINES)
+				if (line_idx >= 0 && line_idx < current_content.num_lines)
 				{
-					mytext.write_xy(HELPTEXT_LEFT+2, (short)(TEXT_DOWN(j)-linesdown%8),
-					                general_help_lines[line_idx], (unsigned char)DARK_BLUE, 1);
+					int text_y = content_text_top + (j * 7) - (linesdown % 8);
+					mytext.write_xy(HELPTEXT_LEFT+2, (short)text_y,
+					                get_content_line(current_content, line_idx), (unsigned char)DARK_BLUE, 1);
 				}
 			}
 
-			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
-			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP-2);
-			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
-			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP+103);
+			// Draw title bar (top of content area)
+			myscreen->draw_text_bar(HELPTEXT_LEFT, CONTENT_TOP,
+			                        HELPTEXT_LEFT+240-4, CONTENT_TOP + 6);
 			char title[40];
 			snprintf(title, sizeof(title), "GLADIATOR v%s", OPENGLAD_VERSION_STRING);
-			mytext.write_xy(HELPTEXT_LEFT+60,
-			                HELPTEXT_TOP-7, title, (unsigned char)RED, 1);
-			mytext.write_xy(HELPTEXT_LEFT+52,
-			                HELPTEXT_TOP+98, "ESC TO RETURN", (unsigned char)RED, 1);
+			mytext.write_xy(HELPTEXT_LEFT+60, CONTENT_TOP + 1, title, (unsigned char)RED, 1);
+
+			// Draw footer bar (bottom of content area)
+			myscreen->draw_text_bar(HELPTEXT_LEFT, content_bottom,
+			                        HELPTEXT_LEFT+240-4, content_bottom + 6);
+			mytext.write_xy(HELPTEXT_LEFT+30, content_bottom + 1,
+			                "1/2/3:Tab  ESC:Exit", (unsigned char)RED, 1);
+
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			changed = 0;
 		}
