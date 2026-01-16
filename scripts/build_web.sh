@@ -368,6 +368,15 @@ em++ "${OBJ_FILES[@]}" \
     --preload-file "$PROJECT_ROOT/extra_campaigns@/extra_campaigns" \
     --preload-file "$PROJECT_ROOT/builtin@/builtin"
 
+# Add cache-busting version to prevent stale file issues in production
+BUILD_HASH=$(md5 -q "$DIST_DIR/play.wasm" | cut -c1-8)
+echo "Build hash: $BUILD_HASH"
+
+# Update play.html to use versioned file references
+sed -i '' "s/play\.js/play.js?v=$BUILD_HASH/g" "$DIST_DIR/play.html"
+sed -i '' "s/play\.wasm/play.wasm?v=$BUILD_HASH/g" "$DIST_DIR/play.js"
+sed -i '' "s/play\.data/play.data?v=$BUILD_HASH/g" "$DIST_DIR/play.js"
+
 # Copy landing page, help, and assets
 cp "$PROJECT_ROOT/web/index.html" "$DIST_DIR/index.html"
 cp "$PROJECT_ROOT/web/help.html" "$DIST_DIR/help.html"
