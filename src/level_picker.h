@@ -19,7 +19,13 @@
 #define _LEVEL_PICKER_H__
 
 #include "screen.h"
+#include "level_data.h"
+#include <list>
 
 int pick_level(screen *screenp, int default_level, bool enable_delete = false);
+
+// Get statistics about a level (enemy count, difficulty, exit destinations)
+void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level,
+                   int* num_enemies, float* difficulty, std::list<int>& exits);
 
 #endif

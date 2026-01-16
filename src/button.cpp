@@ -570,6 +570,8 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
         return create_load_menu(arg);
     case CREATE_SAVE_MENU:
         return create_save_menu(arg);
+    case CREATE_PROGRESS_MENU:
+        return create_progress_menu(arg);
     case GO_MENU:
         return go_menu(arg);
     case RETURN_MENU:

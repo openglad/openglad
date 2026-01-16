@@ -28,6 +28,9 @@
 #include "campaign_picker.h"
 #include "level_picker.h"
 #include <cstring>
+#include <set>
+#include <vector>
+#include <algorithm>
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
@@ -343,11 +346,12 @@ button createmenu_buttons[] =
         button("HIRE TROOPS",  KEYSTATE_UNKNOWN, 210, 70, 80, 15, CREATE_HIRE_MENU, -1, MenuNav::DownLeft(5, 1)),
         button("LOAD TEAM", KEYSTATE_UNKNOWN, 30, 100, 80, 15, CREATE_LOAD_MENU, -1, MenuNav::UpDownRight(0, 6, 4)),
         button("SAVE TEAM", KEYSTATE_UNKNOWN, 120, 100, 80, 15, CREATE_SAVE_MENU, -1, MenuNav::UpLeftRight(1, 3, 5)),
-        button("GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 7, 4)),
+        button("GO", KEYSTATE_UNKNOWN,        210, 100, 80, 15, GO_MENU, -1, MenuNav::UpDownLeft(2, 8, 4)),
 
         button("BACK", KEYSTATE_ESCAPE, 30, 140, 60, 30, RETURN_MENU, EXIT, MenuNav::UpRight(3, 7)),
-        button("SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 8, 6)),
-        button("SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(7, 6)),
+        button("PROGRESS", KEYSTATE_UNKNOWN, 120, 140, 80, 20, CREATE_PROGRESS_MENU, -1, MenuNav::UpLeftRight(4, 6, 8)),
+        button("SET LEVEL", KEYSTATE_UNKNOWN, 210, 140, 80, 20, DO_SET_SCEN_LEVEL, EXIT, MenuNav::UpDownLeft(5, 9, 7)),
+        button("SET CAMPAIGN", KEYSTATE_UNKNOWN, 210, 170, 80, 20, DO_PICK_CAMPAIGN, EXIT, MenuNav::UpLeft(8, 7)),
 
     };
 
@@ -998,7 +1002,7 @@ Sint32 create_team_menu(Sint32 arg1)
 	text& mytext = myscreen->text_normal;
 	
 	button* buttons = createmenu_buttons;
-	int num_buttons = 9;
+	int num_buttons = 10;
 	int highlighted_button = 1;
 	localbuttons = init_buttons(buttons, num_buttons);
 	draw_backdrop();
@@ -1094,6 +1098,280 @@ Sint32 create_view_menu(Sint32 arg1)
 	myscreen->clearbuffer();
 
 	return REDRAW;
+}
+
+// Helper struct for progress menu
+struct LevelProgress {
+    int id;
+    char title[24];
+    int num_enemies;
+    bool is_cleared;
+    bool is_current;
+};
+
+// Get list of accessible levels (cleared levels + their exits)
+std::vector<int> get_accessible_levels()
+{
+    std::set<int> accessible;
+    std::set<int> to_process;
+
+    // Start with level 1 (always accessible) and current level
+    accessible.insert(1);
+    to_process.insert(1);
+
+    // Add current level
+    accessible.insert(myscreen->save_data.scen_num);
+
+    // Add all cleared levels
+    const std::string& campaign = myscreen->save_data.current_campaign;
+    auto it = myscreen->save_data.completed_levels.find(campaign);
+    if (it != myscreen->save_data.completed_levels.end()) {
+        for (int level : it->second) {
+            accessible.insert(level);
+            to_process.insert(level);
+        }
+    }
+
+    // For each cleared level, add its exits
+    while (!to_process.empty()) {
+        int level_id = *to_process.begin();
+        to_process.erase(to_process.begin());
+
+        if (myscreen->save_data.is_level_completed(level_id)) {
+            LevelData ld(level_id);
+            if (ld.load()) {
+                std::list<int> exits;
+                getLevelStats(ld, NULL, NULL, NULL, NULL, exits);
+                for (int exit_id : exits) {
+                    if (accessible.find(exit_id) == accessible.end()) {
+                        accessible.insert(exit_id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Convert to sorted vector
+    std::vector<int> result(accessible.begin(), accessible.end());
+    std::sort(result.begin(), result.end());
+    return result;
+}
+
+Sint32 create_progress_menu(Sint32 arg1)
+{
+    Sint32 retvalue = 0;
+    text& mytext = myscreen->text_normal;
+
+    if (arg1)
+        arg1 = 1;
+
+    myscreen->clearbuffer();
+
+    if (localbuttons)
+        delete localbuttons;
+
+    // Get accessible levels
+    std::vector<int> level_ids = get_accessible_levels();
+    std::vector<LevelProgress> levels;
+
+    // Count cleared levels
+    int num_cleared = 0;
+
+    // Load level info for each accessible level
+    for (int level_id : level_ids) {
+        LevelProgress lp;
+        lp.id = level_id;
+        lp.is_cleared = myscreen->save_data.is_level_completed(level_id);
+        lp.is_current = (level_id == myscreen->save_data.scen_num);
+
+        if (lp.is_cleared)
+            num_cleared++;
+
+        // Load level to get title and enemy count
+        LevelData ld(level_id);
+        if (ld.load()) {
+            strncpy(lp.title, ld.title.c_str(), 20);
+            lp.title[20] = '\0';
+            if (strlen(ld.title.c_str()) > 20) {
+                lp.title[17] = '.';
+                lp.title[18] = '.';
+                lp.title[19] = '.';
+            }
+
+            // Count enemies
+            int num_enemies = 0;
+            std::list<int> unused_exits;
+            getLevelStats(ld, NULL, NULL, &num_enemies, NULL, unused_exits);
+            lp.num_enemies = lp.is_cleared ? 0 : num_enemies;
+        } else {
+            snprintf(lp.title, 24, "Level %d", level_id);
+            lp.num_enemies = 0;
+        }
+
+        levels.push_back(lp);
+    }
+
+    // Scrolling state
+    int scroll_offset = 0;
+    int visible_rows = 10;
+
+    // Buttons
+    SDL_Rect prev_btn = {30, 170, 40, 20};
+    SDL_Rect next_btn = {80, 170, 40, 20};
+    SDL_Rect back_btn = {260, 170, 50, 20};
+
+    button buttons[] = {
+        button("PREV", KEYSTATE_UNKNOWN, prev_btn.x, prev_btn.y, prev_btn.w, prev_btn.h, 0, -1, MenuNav::Right(1)),
+        button("NEXT", KEYSTATE_UNKNOWN, next_btn.x, next_btn.y, next_btn.w, next_btn.h, 0, -1, MenuNav::LeftRight(0, 2)),
+        button("BACK", KEYSTATE_ESCAPE, back_btn.x, back_btn.y, back_btn.w, back_btn.h, RETURN_MENU, EXIT, MenuNav::Left(1)),
+    };
+    int num_buttons = 3;
+    int highlighted_button = 2;
+    localbuttons = init_buttons(buttons, num_buttons);
+
+    while (!(retvalue & EXIT))
+    {
+        // Input
+        if (leftmouse(buttons))
+            retvalue = localbuttons->leftclick();
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+
+        // Handle scroll buttons
+        MouseState& mymouse = query_mouse();
+        bool clicked = mymouse.left;
+        if (clicked) {
+            while (mymouse.left) {
+                SDL_Delay(1);
+                get_input_events(POLL);
+            }
+        }
+
+        bool prev_enabled = (scroll_offset > 0);
+        bool next_enabled = (scroll_offset + visible_rows < (int)levels.size());
+
+        bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mymouse.x && mymouse.x <= prev_btn.x + prev_btn.w
+                       && prev_btn.y <= mymouse.y && mymouse.y <= prev_btn.y + prev_btn.h)
+                       || (retvalue == OK && highlighted_button == 0));
+        bool do_next = next_enabled && ((clicked && next_btn.x <= mymouse.x && mymouse.x <= next_btn.x + next_btn.w
+                       && next_btn.y <= mymouse.y && mymouse.y <= next_btn.y + next_btn.h)
+                       || (retvalue == OK && highlighted_button == 1));
+
+        if (do_prev) {
+            scroll_offset--;
+            retvalue = 0;
+        }
+        if (do_next) {
+            scroll_offset++;
+            retvalue = 0;
+        }
+
+        // Check for GO button clicks on level rows
+        if (clicked) {
+            int row_y = 36;
+            int row_height = 13;
+            int go_btn_x = 295;
+            int go_btn_w = 20;
+            for (int i = scroll_offset; i < (int)levels.size() && i < scroll_offset + visible_rows; i++) {
+                LevelProgress& lp = levels[i];
+                if (!lp.is_cleared) {
+                    // Check if click is on this row's GO button
+                    if (mymouse.x >= go_btn_x && mymouse.x <= go_btn_x + go_btn_w &&
+                        mymouse.y >= row_y && mymouse.y <= row_y + row_height) {
+                        // Set current level and exit
+                        myscreen->save_data.scen_num = lp.id;
+                        myscreen->clearbuffer();
+                        return REDRAW;
+                    }
+                }
+                row_y += row_height;
+            }
+        }
+
+        // Reset
+        if (retvalue == OK && highlighted_button != 2)
+            retvalue = 0;
+
+        // Draw
+        myscreen->clearbuffer();
+
+        // Header
+        char header[60];
+        snprintf(header, 60, "Level Progress: %d cleared of %d discovered",
+                 num_cleared, (int)levels.size());
+        mytext.write_xy(160 - strlen(header) * 3, 8, header, DARK_GREEN, 1);
+
+        // Column headers
+        myscreen->draw_text_bar(10, 22, 310, 32);
+        mytext.write_xy(12, 24, "ID", DARK_BLUE, 1);
+        mytext.write_xy(36, 24, "Status", DARK_BLUE, 1);
+        mytext.write_xy(100, 24, "Title", DARK_BLUE, 1);
+        mytext.write_xy(250, 24, "Foes", DARK_BLUE, 1);
+
+        // Level rows
+        int y = 36;
+        int row_height = 13;
+        for (int i = scroll_offset; i < (int)levels.size() && i < scroll_offset + visible_rows; i++) {
+            LevelProgress& lp = levels[i];
+
+            // ID
+            char buf[10];
+            snprintf(buf, 10, "%d", lp.id);
+            mytext.write_xy(12, y + 2, buf, WHITE, 1);
+
+            // Status
+            unsigned char status_color;
+            const char* status_text;
+            if (lp.is_cleared) {
+                status_text = "CLEARED";
+                status_color = DARK_GREEN;
+            } else if (lp.is_current) {
+                status_text = "CURRENT";
+                status_color = YELLOW;
+            } else {
+                status_text = "-------";
+                status_color = WHITE;
+            }
+            mytext.write_xy(36, y + 2, status_text, status_color, 1);
+
+            // Title
+            mytext.write_xy(100, y + 2, lp.title, WHITE, 1);
+
+            // Enemy count
+            if (lp.is_cleared) {
+                mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
+            } else {
+                snprintf(buf, 10, "%d", lp.num_enemies);
+                mytext.write_xy(258, y + 2, buf, WHITE, 1);
+
+                // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
+                myscreen->draw_button(292, y + 1, 310, y + 10, 1, 1);
+                mytext.write_xy(296, y + 2, "GO", DARK_BLUE, 1);
+            }
+
+            y += row_height;
+        }
+
+        // Scroll indicator
+        if (levels.size() > (size_t)visible_rows) {
+            char scroll_info[20];
+            snprintf(scroll_info, 20, "%d-%d of %d",
+                     scroll_offset + 1,
+                     std::min(scroll_offset + visible_rows, (int)levels.size()),
+                     (int)levels.size());
+            mytext.write_xy(140, 172, scroll_info, WHITE, 1);
+        }
+
+        // Buttons
+        draw_buttons(buttons, num_buttons);
+        draw_highlight(buttons[highlighted_button]);
+
+        myscreen->buffer_to_screen(0, 0, 320, 200);
+        SDL_Delay(10);
+    }
+
+    myscreen->clearbuffer();
+    return REDRAW;
 }
 
 std::string get_class_description(unsigned char family)
