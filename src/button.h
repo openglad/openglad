@@ -162,6 +162,7 @@ Sint32 create_hire_menu(Sint32 arg1);  // Purchase new team members
 Sint32 create_train_menu(Sint32 arg1); // Edit or sell team members
 Sint32 create_load_menu(Sint32 arg1); // Load a team
 Sint32 create_save_menu(Sint32 arg1); // Save a team
+Sint32 create_progress_menu(Sint32 arg1); // View level progress
 Sint32 go_menu(Sint32 arg1); // run glad..
 Sint32 increase_stat(Sint32 arg1, Sint32 howmuch=1); // increase a guy's stats
 Sint32 decrease_stat(Sint32 arg1, Sint32 howmuch=1); // decrease a guy's stats
@@ -239,4 +240,5 @@ Sint32 show_general_help();
 #define TOGGLE_GORE             43
 #define RESTORE_DEFAULT_SETTINGS 44
 #define SHOW_HELP               45
+#define CREATE_PROGRESS_MENU    46
 #endif
