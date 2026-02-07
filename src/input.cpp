@@ -424,7 +424,7 @@ void handle_mouse_event(const SDL_Event& event)
             mouse_state.left = 1;
         else if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state.right = 1;
-        
+
         mouse_state.x = (event.button.x - viewport_offset_x) * (320 / viewport_w);
         mouse_state.y = (event.button.y - viewport_offset_y) * (200 / viewport_h);
         break;

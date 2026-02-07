@@ -843,16 +843,20 @@ Sint32 mainmenu(Sint32 arg1)
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
-        
+
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        
+
         // Reset buttons
         if(reset_buttons(localbuttons, buttons, num_buttons, retvalue))
         {
             allbuttons[0]->set_graphic(FAMILY_NORMAL1);
             allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
         }
-		
+
+        // A submenu may have replaced allbuttons — skip draw if exiting
+        if(retvalue & EXIT)
+            break;
+
 		// Draw
 		myscreen->clearbuffer();
         draw_buttons(buttons, num_buttons);

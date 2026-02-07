@@ -98,14 +98,19 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
         }
 	}
 	
-	*num_enemies = num;
-	*max_enemy_level = max_level;
-	if(num == 0)
-        *average_enemy_level = 0;
-    else
-        *average_enemy_level = level_sum/float(num);
-    
-    *difficulty = difficulty_sum - difficulty_sum_friends;
+	if(num_enemies)
+	    *num_enemies = num;
+	if(max_enemy_level)
+	    *max_enemy_level = max_level;
+	if(average_enemy_level)
+	{
+	    if(num == 0)
+            *average_enemy_level = 0;
+        else
+            *average_enemy_level = level_sum/float(num);
+    }
+    if(difficulty)
+        *difficulty = difficulty_sum - difficulty_sum_friends;
     
     exits.sort();
     exits.unique();
