@@ -1,39 +1,53 @@
 These are the build/installation instructions for Openglad.
 
-Openglad provides two methods for building from source.  The primary way is via premake (https://premake.github.io/).  The secondary way is with the Code::Blocks project file (.cbp).
 
-=======
-PREMAKE
-=======
+============
+NATIVE BUILD
+============
 
-premake4.lua is the build script to use with premake.  After installing premake, open a command-line terminal and navigate to the openglad diretory.
+The native build script compiles openglad and the openscen level editor directly
+using gcc/g++ and pkg-config for SDL2 dependency detection.
 
-Entering this command in the terminal will generate GNU Makefiles that can be run with the usual `make` to perform the actual build:
+1. Install dependencies (Debian/Ubuntu):
+
+   sudo apt-get install libsdl2-dev libsdl2-mixer-dev
+
+2. Build:
+
+   ./scripts/build_native.sh
+
+   This produces two binaries in the project root:
+   - openglad    (the game)
+   - openscen    (the level editor)
+
+3. Run:
+
+   ./openglad
+
+
+======================
+LEGACY: PREMAKE (OLD)
+======================
+
+premake4.lua is an older build script for use with premake (https://premake.github.io/).
+It may be out of date with respect to source files and dependencies.
+
 premake4 gmake
+make
 
-
-And this command will generate project files for Visual Studio 2010.
+Or for Visual Studio:
 premake4 vs2010
 
-
-Openglad uses SDL2.  You must download the development files (e.g. from http://libsdl.org/download-2.0.php).  Premake needs to know where these are, so the premake script had the following options:
-cflags
-ldflags
-includedirs
-libdirs
-
-To specify the path for SDL2, one might call premake like so when using a 64-bit compiler:
-premake4 vs2010 includedirs="../SDL2-2.0.4/include" libdirs="../SDL2-2.0.4/lib/x64"
-
-If you installed sdl2 and sdl2-config packages on Linux (like from apt or yum), then you can use:
+SDL2 paths can be passed via:
 premake4 gmake cflags="`sdl2-config --cflags`" ldflags="`sdl2-config --libs`"
 
 
-============
-CODE::BLOCKS
-============
+===========================
+LEGACY: CODE::BLOCKS (OLD)
+===========================
 
-cb_Openglad.cbp is a Code::Blocks (http://www.codeblocks.org/) project file with build configurations for Windows (mingw32) and Linux.  The compiler (include) and linker "Search directories" are hardcoded to relative paths ("../externals/..."), so those need to be changed in the project's Build options so that they point to the appropriate locations for SDL2, SDL2_mixer, and libpng on your system.
+cb_Openglad.cbp is a Code::Blocks project file with build configurations for
+Windows (mingw32) and Linux. May be out of date.
 
 
 =========
