@@ -4,11 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-OpenGlad is a cross-platform C++ port of the DOS game "Gladiator" - a top-down gauntlet-style action RPG with multiplayer support and a built-in scenario editor. Licensed under GPL v2. The current focus is on the web/Emscripten build.
+OpenGlad is a cross-platform C++ port of the DOS game "Gladiator" - a top-down gauntlet-style action RPG with multiplayer support and a built-in scenario editor. Licensed under GPL v2.
 
 ## Build Commands
 
-### Web Build (Primary)
+Both build scripts bypass autotools and compile directly — source file lists are maintained in the scripts themselves.
+
+### Native Build
+
+**Prerequisites (Debian/Ubuntu):**
+```bash
+sudo apt-get install libsdl2-dev libsdl2-mixer-dev
+```
+
+**Build:**
+```bash
+./scripts/build_native.sh
+```
+
+Produces `openglad` and `openscen` binaries in the project root. Object files go in `build-native/`.
+
+```bash
+./openglad    # Run game
+./openscen    # Run level editor
+```
+
+### Web Build
 
 **Prerequisite: Install Emscripten SDK**
 ```bash
@@ -34,16 +55,6 @@ This compiles everything with Emscripten, packages game assets, and outputs to `
 ```bash
 cd dist && python3 -m http.server 8080
 # Then open http://localhost:8080/index.html  # or http://localhost:8080/play.html
-```
-
-### Native Build (Autotools)
-
-```bash
-./autogen.sh
-./configure
-make
-./openglad    # Run game
-./openscen    # Run level editor
 ```
 
 ## Architecture
@@ -113,7 +124,7 @@ The HTML shell template is at `web/shell.html` - handles canvas scaling, loading
 
 **Web build:** Emscripten SDK with SDL2 ports (handled automatically via `-sUSE_SDL=2 -sUSE_SDL_MIXER=2`)
 
-**Native build:** SDL2, SDL2_mixer, libpng, C++11 compiler
+**Native build:** SDL2, SDL2_mixer, C++11 compiler (gcc/g++)
 
 ## Web Build Details
 
