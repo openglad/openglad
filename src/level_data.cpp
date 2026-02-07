@@ -16,6 +16,7 @@
  */
 
 #include "level_data.h"
+#include "test_trace.h"
 #include "yam.h"
 
 #include "pixie.h"
@@ -1258,6 +1259,7 @@ short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 
 bool LevelData::load()
 {
+	TRACE("game", "LevelData::load id=%d", id);
 	SDL_RWops  *infile = NULL;
 	char temptext[10];
 	memset(temptext, 0, 10);
@@ -1342,6 +1344,7 @@ bool LevelData::load()
         back[PIX_GRASSWATER_UR]->set_accel(0);
     }
     
+	TRACE("game", "LevelData::load complete");
 	return (tempvalue != 0);
 }
 

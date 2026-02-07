@@ -77,6 +77,7 @@ Uint32 random(Uint32 x)
 screen::screen(short howmany)
     : video(), level_data(1)
 {
+    TRACE("init", "screen constructor: numviews=%d", howmany);
     // Set the global here so objects we construct here can use it
     myscreen = this;
     

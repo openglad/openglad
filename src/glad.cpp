@@ -187,6 +187,7 @@ static void emscripten_frame_wrapper() {
 }
 #endif
 
+#ifndef TESTING
 int main(int argc, char *argv[])
 {
 	init_logging();  // Set up logging output (uses JS console on web)
@@ -240,6 +241,7 @@ int main(int argc, char *argv[])
 	io_exit();
 	return 0;
 }
+#endif // TESTING
 
 // One frame of the main game loop - called by emscripten_set_main_loop or native while loop
 static void game_frame()

@@ -97,6 +97,7 @@ video::video()
 #endif
         Log("Creating screen %dx%d\n", w, h);
 	E_Screen = new Screen(render, w, h, fullscreen);
+	TRACE("init", "video initialized: %dx%d", w, h);
 }
 
 video::~video()

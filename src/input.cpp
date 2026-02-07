@@ -22,6 +22,7 @@
 
 #include "input.h"
 #include "screen.h"
+#include "test_trace.h"
 #include <stdio.h>
 #include <time.h>
 #include <string.h> //buffers: for strlen

@@ -16,6 +16,7 @@
  */
 
 #include "save_data.h"
+#include "test_trace.h"
 
 #include "walker.h"
 #include "guy.h"
@@ -89,6 +90,7 @@ void SaveData::reset()
 
 bool SaveData::load(const std::string& filename)
 {
+	TRACE("load", "SaveData::load file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *infile;
 	char temp_filename[80];
@@ -414,6 +416,7 @@ bool SaveData::load(const std::string& filename)
 
     SDL_RWclose(infile);
 
+	TRACE("load", "SaveData::load complete: scen=%d team_size=%d", scen_num, team_size);
 	return 1;
 }
 
@@ -450,6 +453,7 @@ void SaveData::update_guys(std::list<walker*>& oblist)
 
 bool SaveData::save(const std::string& filename)
 {
+	TRACE("save", "SaveData::save file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *outfile;
 	char temp_filename[80];
@@ -687,6 +691,7 @@ bool SaveData::save(const std::string& filename)
     // Sync to persistent storage (IDBFS on web)
     sync_filesystem();
 
+	TRACE("save", "SaveData::save complete");
 	return 1;
 }
 
