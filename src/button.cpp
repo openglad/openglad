@@ -471,10 +471,18 @@ Sint32 vbutton::mouse_on()
     }
 }
 
+#ifdef TESTING
+extern SDL_mutex* get_allbuttons_mutex();
+#endif
+
 vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 {
     TRACE("menu", "init_buttons count=%d", numbuttons);
     Sint32 i;
+
+#ifdef TESTING
+    SDL_LockMutex(get_allbuttons_mutex());
+#endif
 
     for (i=1; i < MAX_BUTTONS; i++) // skip # 0!
     {
@@ -482,7 +490,7 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
             delete allbuttons[i];
         allbuttons[i] = NULL;
     }
-    
+
     for (i=0; i < numbuttons; i++)
     {
         allbuttons[i] = new vbutton(buttons[i].x,buttons[i].y,
@@ -493,6 +501,10 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
         allbuttons[i]->hidden = buttons[i].hidden;
         allbuttons[i]->no_draw = buttons[i].no_draw;
     }
+
+#ifdef TESTING
+    SDL_UnlockMutex(get_allbuttons_mutex());
+#endif
 
     return allbuttons[0];
 }

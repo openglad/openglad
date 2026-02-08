@@ -7,6 +7,10 @@
 #include <string>
 #include <vector>
 
+// Mutex to synchronize access to allbuttons[] between injector threads
+// and the main thread during menu transitions. Defined in test_framework.cpp.
+SDL_mutex* get_allbuttons_mutex();
+
 struct Interactable {
     std::string id;
     std::string label;
@@ -17,6 +21,7 @@ struct Interactable {
 // Get all currently active interactables from allbuttons[]
 inline std::vector<Interactable> get_interactables()
 {
+    SDL_LockMutex(get_allbuttons_mutex());
     std::vector<Interactable> result;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
@@ -31,19 +36,25 @@ inline std::vector<Interactable> get_interactables()
         item.hidden = allbuttons[i]->hidden;
         result.push_back(item);
     }
+    SDL_UnlockMutex(get_allbuttons_mutex());
     return result;
 }
 
 // Check if an interactable with this ID exists and is not hidden
 inline bool has_interactable(const std::string& id)
 {
+    SDL_LockMutex(get_allbuttons_mutex());
+    bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
             break;
-        if (allbuttons[i]->id == id && !allbuttons[i]->hidden)
-            return true;
+        if (allbuttons[i]->id == id && !allbuttons[i]->hidden) {
+            found = true;
+            break;
+        }
     }
-    return false;
+    SDL_UnlockMutex(get_allbuttons_mutex());
+    return found;
 }
 
 // Block until an interactable appears (polls allbuttons[]), returns false on timeout
@@ -65,6 +76,9 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
 // converts to window coords, injects SDL click event.
 inline void interact(const std::string& id)
 {
+    SDL_LockMutex(get_allbuttons_mutex());
+    int win_x = -1, win_y = -1;
+    bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
             break;
@@ -74,16 +88,20 @@ inline void interact(const std::string& id)
             int game_y = allbuttons[i]->yloc + allbuttons[i]->height / 2;
 
             // Convert game coords to window coords using viewport globals
-            int win_x = (int)(game_x * (viewport_w / 320.0f) + viewport_offset_x);
-            int win_y = (int)(game_y * (viewport_h / 200.0f) + viewport_offset_y);
+            win_x = (int)(game_x * (viewport_w / 320.0f) + viewport_offset_x);
+            win_y = (int)(game_y * (viewport_h / 200.0f) + viewport_offset_y);
 
             fprintf(stderr, "  [interact] clicking '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);
-            inject_click(win_x, win_y);
-            return;
+            found = true;
+            break;
         }
     }
-    fprintf(stderr, "  [interact] WARNING: '%s' not found in allbuttons\n", id.c_str());
+    SDL_UnlockMutex(get_allbuttons_mutex());
+    if (found)
+        inject_click(win_x, win_y);
+    else
+        fprintf(stderr, "  [interact] WARNING: '%s' not found in allbuttons\n", id.c_str());
 }
 
 #endif // _TEST_INTERACT_H__

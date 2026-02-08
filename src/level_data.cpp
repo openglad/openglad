@@ -1181,11 +1181,24 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         READ_OR_RETURN(infile, &tempwidth, 1, 1);
         if(tempwidth > 0)
         {
-            int width = (unsigned char)tempwidth;
+            int original_width = (unsigned char)tempwidth;
+            int width = original_width;
             if(width >= (int)sizeof(oneline))
                 width = sizeof(oneline) - 1;
             READ_OR_RETURN(infile, oneline, width, 1);
             oneline[width] = 0;
+            // Skip any remaining bytes to keep the stream aligned
+            if(original_width > width)
+            {
+                char discard[256];
+                int remaining = original_width - width;
+                while(remaining > 0)
+                {
+                    int chunk = remaining < (int)sizeof(discard) ? remaining : (int)sizeof(discard);
+                    READ_OR_RETURN(infile, discard, chunk, 1);
+                    remaining -= chunk;
+                }
+            }
         }
         else
             oneline[0] = 0;

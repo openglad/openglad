@@ -2,6 +2,7 @@
 #define _TEST_INPUT_HELPERS_H__
 
 #include "SDL.h"
+#include <cstring>
 
 // Push a fake mouse button down event at game coordinates (x, y).
 // Game coordinates are 320x200; with the default viewport these map

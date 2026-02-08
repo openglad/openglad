@@ -2,6 +2,7 @@
 #define _TEST_FRAMEWORK_H__
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 extern int g_tests_run;
@@ -22,6 +23,10 @@ extern int g_test_registry_count;
 #define REGISTER_TEST(func) \
     static struct _reg_##func { \
         _reg_##func() { \
+            if (g_test_registry_count >= MAX_TESTS) { \
+                fprintf(stderr, "FATAL: too many tests registered (max %d)\n", MAX_TESTS); \
+                abort(); \
+            } \
             g_test_registry[g_test_registry_count].name = #func; \
             g_test_registry[g_test_registry_count].fn = func; \
             g_test_registry_count++; \

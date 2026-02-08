@@ -24,5 +24,10 @@ void test_mainmenu_buttons() {
     TEST_ASSERT(has_interactable("begin"), "BEGIN should be interactable");
     TEST_ASSERT(has_interactable("options"), "OPTIONS should be interactable");
     TEST_ASSERT(has_interactable("quit"), "QUIT should be interactable");
+
+    // Clean up allocated vbuttons to avoid leaking into other tests
+    for (int i = 0; i < MAX_BUTTONS; i++) {
+        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
+    }
 }
 REGISTER_TEST(test_mainmenu_buttons);

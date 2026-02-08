@@ -1,4 +1,14 @@
 #include "test_framework.h"
+#include "SDL.h"
+
+static SDL_mutex* s_allbuttons_mutex = NULL;
+
+SDL_mutex* get_allbuttons_mutex()
+{
+    if (!s_allbuttons_mutex)
+        s_allbuttons_mutex = SDL_CreateMutex();
+    return s_allbuttons_mutex;
+}
 
 int g_tests_run = 0;
 int g_tests_passed = 0;
