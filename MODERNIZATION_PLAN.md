@@ -9,6 +9,7 @@
 
 ## Table of Contents
 
+0. [Phase 0: Toolchain Requirements](#phase-0-toolchain-requirements)
 1. [Phase 1: Build System Modernization](#phase-1-build-system-modernization)
 2. [Phase 2: Mechanical Low-Hanging Fruit](#phase-2-mechanical-low-hanging-fruit)
 3. [Phase 3: Modern Types & Type Safety](#phase-3-modern-types--type-safety)
@@ -19,6 +20,42 @@
 8. [Phase 8: Containers & Algorithms](#phase-8-containers--algorithms)
 9. [Phase 9: Concurrency & Threading (If Applicable)](#phase-9-concurrency--threading)
 10. [Appendix: File Impact Matrix](#appendix-file-impact-matrix)
+
+---
+
+## Phase 0: Toolchain Requirements
+
+**Risk: NONE** | **Effort: LOW** | **Priority: PREREQUISITE**
+
+Before any modernization work begins, verify that all target toolchains support the C++20/23 features this plan depends on.
+
+### 0.1 Minimum Compiler Versions
+
+| Toolchain | Minimum Version | Notes |
+|-----------|----------------|-------|
+| GCC | 14+ | Full C++23 `std::expected`, `std::format`, `<print>` |
+| Clang | 17+ | C++23 `std::expected`; `std::format` requires libc++ 17+ |
+| Emscripten (emsdk) | 3.1.44+ | Uses Clang/LLVM internally; verify SDL2 port compatibility |
+
+### 0.2 Emscripten Feature Verification
+
+Emscripten's C++ standard library support lags behind native compilers. Before committing to any C++20/23 feature, verify it works in the web build:
+
+**Must verify before proceeding:**
+- `std::format` — may require `-sUSE_LIBCXX=1` or a polyfill (`fmt` library)
+- `std::expected` (C++23) — check Emscripten release notes for support status
+- `std::span` (C++20) — generally available but confirm with emsdk version
+- `constexpr` `std::array` / `std::string` — verify no link-time issues
+- `std::erase_if` (C++20) — should be available but confirm
+
+**Verification step:** Create a small test file that uses each planned feature, compile with `em++ -std=c++23`, and confirm it compiles and runs in the browser before starting Phase 1.
+
+### 0.3 CI Matrix
+
+If CI is set up (Phase 1), test against:
+- GCC 14 (native Linux)
+- Clang 17 (native Linux/macOS)
+- emsdk latest (web build)
 
 ---
 
@@ -257,14 +294,19 @@ class living : public walker
 
 **Before** (`glad.cpp:44`):
 ```cpp
-enum GameState { GS_MENU, GS_GAME, GS_EDITOR };
-GameState state = GS_MENU;
+enum GameState {
+    GAME_STATE_INTRO,
+    GAME_STATE_PICKER,
+    GAME_STATE_PLAYING,
+    GAME_STATE_QUIT
+};
+static GameState g_game_state = GAME_STATE_INTRO;
 ```
 
 **After:**
 ```cpp
-enum class GameState { Menu, Game, Editor };
-GameState state = GameState::Menu;
+enum class GameState { Intro, Picker, Playing, Quit };
+static GameState g_game_state = GameState::Intro;
 ```
 
 **Note:** The `#define` constants in `base.h` (lines 154-373) for ACT types, FAMILY types, ORDER types, COMMAND types, etc. are NOT enums but `#define` macros. Converting those to `enum class` is a Phase 7 change due to their pervasive use.
@@ -357,6 +399,42 @@ Also check `treasure.cpp:22` (`#include <math.h>`) and other files for C-style i
 ## Phase 3: Modern Types & Type Safety
 
 **Risk: LOW-MEDIUM** | **Effort: MEDIUM-HIGH** | **Priority: AFTER PHASE 2**
+
+### 3.0 Save File Versioning (Do Before 3.2)
+
+**CRITICAL:** Before converting any binary-serialized types (especially `char name[12]` in `guy.h:49` and `stats.h:81`), implement a save file version header and migration path. The current save format in `save_data.cpp` reads/writes fixed-size structs directly to disk. Changing `char name[12]` to `std::string` will silently corrupt existing save files.
+
+**Step 1: Add a version header to save files:**
+```cpp
+struct SaveFileHeader {
+    char magic[4] = {'O', 'G', 'S', 'V'};  // OpenGlad SaVe
+    uint32_t version = 1;                    // Increment on format changes
+};
+```
+
+**Step 2: Write versioned serialization helpers:**
+```cpp
+// For name fields: always read/write as fixed 12 bytes on disk,
+// convert to/from std::string in memory
+void write_fixed_string(SDL_RWops* outfile, const std::string& s, size_t fixed_len) {
+    std::array<char, 12> buf{};
+    std::copy_n(s.begin(), std::min(s.size(), fixed_len), buf.begin());
+    SDL_RWwrite(outfile, buf.data(), fixed_len, 1);
+}
+
+std::string read_fixed_string(SDL_RWops* infile, size_t fixed_len) {
+    std::array<char, 12> buf{};
+    SDL_RWread(infile, buf.data(), fixed_len, 1);
+    return std::string(buf.data(), strnlen(buf.data(), fixed_len));
+}
+```
+
+**Step 3: Version-gate format changes:**
+- Version 0 (implicit): Current format, no header
+- Version 1: Header present, same binary layout as v0
+- Version 2+: Layout changes (e.g., variable-length strings)
+
+Old saves without the magic header are treated as version 0 and loaded with the legacy code path.
 
 ### 3.1 Replace C-Style Casts with C++ Casts
 
@@ -584,7 +662,7 @@ viewscreen  * viewob[5];
 std::array<std::unique_ptr<viewscreen>, 5> viewob;
 ```
 
-**Currently leaking:** `screen.cpp:249-267` creates `new viewscreen()` objects but the `screen` destructor (`screen.cpp:235`) only deletes `soundp`, not viewscreens.
+**Motivation:** The `screen` destructor (`screen.cpp:235`) deletes `soundp` directly, then delegates to `cleanup()` which loops through and deletes all viewscreens. This works correctly but splits ownership cleanup across two code paths. Using `std::unique_ptr` expresses ownership semantics clearly and makes destruction automatic and self-documenting, eliminating the need for the manual `cleanup()` loop.
 
 ### 4.3 `statistics` Ownership in `walker`
 
@@ -689,7 +767,8 @@ std::string raw_text_input = text;
 // Before:
 class PixieData {
 public:
-    int frames, w, h;
+    unsigned char frames;
+    unsigned char w, h;
     unsigned char* data;
     void free();
 };
@@ -697,7 +776,7 @@ public:
 // After:
 class PixieData {
 public:
-    int frames = 0, w = 0, h = 0;
+    unsigned char frames = 0, w = 0, h = 0;
     std::unique_ptr<unsigned char[]> data;
     // Rule of Five: defaulted move, deleted copy
     PixieData() = default;
@@ -708,6 +787,24 @@ public:
     PixieData& operator=(const PixieData&) = delete;
 };
 ```
+
+**Breaking change: `data_copy()` in `gloader.cpp:317`** returns `PixieData` by value and manually copies the pixel buffer. It is called 5 times (lines 639-648) to share sprite data between similar treasure types (e.g., silver bar copies gold bar graphics). Deleting the copy constructor will break this function.
+
+**Required fix:** Rewrite `data_copy()` to return via move semantics:
+```cpp
+PixieData data_copy(const PixieData& d) {
+    PixieData result;
+    if (!d.valid()) return result;  // moved out via NRVO or move ctor
+    result.frames = d.frames;
+    result.w = d.w;
+    result.h = d.h;
+    size_t size = d.frames * d.w * d.h;
+    result.data = std::make_unique<unsigned char[]>(size);
+    std::copy_n(d.data.get(), size, result.data.get());
+    return result;  // NRVO or implicit move
+}
+```
+This preserves the deep-copy semantics (each treasure type gets its own pixel buffer) while using move to return the result.
 
 ### 4.10 `delete[]` in `gloader.cpp`
 
@@ -838,27 +935,21 @@ inline constexpr int GRID_SIZE = 16;
   ```
 - Conditional compilation macros (`PROT_MODE`, `CHEAT_MODE`)
 
-### 5.5 Use `std::optional` for Nullable Returns
+### 5.5 Nullable Pointer Returns — Keep Current Pattern
 
-**Before** (`screen.cpp` find functions):
+The `find_*` functions in `screen.h:61-69` return `walker*` where `nullptr` means "not found." **Do NOT wrap these in `std::optional<walker*>`** — a pointer is already nullable, and `std::optional<T*>` is an anti-pattern that adds a redundant "empty" state (both `std::nullopt` and `nullptr` would mean "absent").
+
+The current `nullptr` return pattern is idiomatic C++ and should be kept:
 ```cpp
+// This is correct and idiomatic — no changes needed:
 walker* screen::find_near_foe(walker *ob) {
     // ... search ...
     if (found) return target;
-    return NULL;  // sentinel
+    return nullptr;  // clear "not found" sentinel
 }
 ```
 
-**After:**
-```cpp
-std::optional<walker*> screen::find_near_foe(walker *ob) {
-    // ... search ...
-    if (found) return target;
-    return std::nullopt;
-}
-```
-
-**Candidates:** All `find_*` functions in `screen.h:61-69`, `walker::fire()`, `treasure::find_teleport_target()`
+**Where `std::optional` IS appropriate:** Use it for non-pointer value types where there's no natural sentinel, e.g., functions that return `int`/`float`/`short` where any value could be valid.
 
 ### 5.6 Use `std::string_view` for Read-Only String Parameters
 
@@ -1219,14 +1310,19 @@ float hitpoints[200];
 std::array<float, 200> hitpoints{};
 ```
 
-**`gloader.cpp:36-51`** — Animation arrays:
+**`gloader.cpp:36-43`** — Animation direction arrays:
 ```cpp
 // Before:
-signed char bit1[] = {0, -1};
-signed char *ani16[] = {series_16, series_16, ...};
+signed char bit1[] = {(char) 1,(char) 5,(char) 1,(char) 9,(signed char) -1};     // up
+signed char bit2[] = {(char) 13,(char) 17,(char) 13,(char) 21,(signed char) -1}; // up-right
+// ... (8 direction arrays, plus att1-att8 attack arrays)
+
 // After:
-constexpr std::array bit1 = {0, -1};
-// (ani arrays are more complex due to pointer-to-array patterns)
+constexpr std::array<signed char, 5> bit1 = {1, 5, 1, 9, -1};     // up
+constexpr std::array<signed char, 5> bit2 = {13, 17, 13, 21, -1}; // up-right
+// ... (remove redundant C-style casts, use std::array for bounds safety)
+// Note: The ani16/ani8 pointer-to-array tables that reference these
+// will need std::span or const signed char* views.
 ```
 
 ### 8.2 Use `std::span` for Buffer Parameters (C++20)
@@ -1390,15 +1486,22 @@ Files sorted by total modernization touches needed, from most to least impacted:
 
 ## Recommended Execution Order
 
+Phase 5 is split into two sub-phases because some changes are safe mechanical transforms while others interact with ownership:
+
+- **Phase 5a** (safe mechanical): Range-based for loops over read-only iteration, `auto`, `constexpr`, `std::string_view`, structured bindings. These don't interact with ownership and can run in parallel with Phase 2.
+- **Phase 5b** (ownership-dependent): Loop transforms that erase elements (`std::erase_if`), loops that interact with `unique_ptr` containers, and any loop change that depends on Phase 4's ownership model.
+
 ```
-Phase 1 (Build System)
-  └─> Phase 2 (Low-Hanging Fruit) ── safe, mechanical, no behavior change
-        ├─> Phase 3 (Type Safety) ── moderate risk, file-by-file
-        │     └─> Phase 4 (Smart Pointers) ── higher risk, needs careful testing
-        │           └─> Phase 7 (Class Design) ── highest risk, incremental
-        ├─> Phase 5 (Modern Idioms) ── low risk, can parallel with 3-4
-        │     └─> Phase 8 (Containers) ── can parallel with 5
-        └─> Phase 6 (Error Handling) ── after Phase 4 (depends on smart pointers)
+Phase 0 (Toolchain Requirements)
+  └─> Phase 1 (Build System)
+        └─> Phase 2 (Low-Hanging Fruit) ── safe, mechanical, no behavior change
+              ├─> Phase 3 (Type Safety) ── moderate risk, file-by-file
+              │     └─> Phase 4 (Smart Pointers) ── higher risk, needs careful testing
+              │           ├─> Phase 5b (Ownership-dependent loops) ── erase_if, unique_ptr iteration
+              │           ├─> Phase 7 (Class Design) ── highest risk, incremental
+              │           └─> Phase 6 (Error Handling) ── depends on smart pointers
+              ├─> Phase 5a (Safe mechanical idioms) ── parallel with Phase 2
+              └─> Phase 8 (Containers) ── can parallel with 5a
 
 Phase 9 (Concurrency) ── optional, only if profiling shows need
 ```
