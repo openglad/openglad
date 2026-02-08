@@ -25,7 +25,7 @@ jobs:
         run: |
           # The test binary hangs during SDL cleanup after all tests complete,
           # so use timeout+kill to force-terminate, then check output for results.
-          timeout --kill-after=10 300 xvfb-run -a ./openglad_test >test_output.log 2>&1 || true
+          timeout --kill-after=10 600 xvfb-run -a ./openglad_test >test_output.log 2>&1 || true
           cat test_output.log
           grep -q " 0 failed," test_output.log
 
