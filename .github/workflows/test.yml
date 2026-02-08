@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev xvfb
+
+      - name: Build test binary
+        run: ./scripts/build_test.sh
+
+      - name: Run tests
+        run: |
+          # The test binary hangs during SDL cleanup after all tests complete,
+          # so use timeout+kill to force-terminate, then check output for results.
+          timeout --kill-after=10 300 xvfb-run -a ./openglad_test >test_output.log 2>&1 || true
+          cat test_output.log
+          grep -q " 0 failed," test_output.log
+
+  build:
+    name: Native Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev
+
+      - name: Build native binaries
+        run: ./scripts/build_native.sh
