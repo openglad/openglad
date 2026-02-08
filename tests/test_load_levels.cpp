@@ -9,18 +9,14 @@ extern screen* myscreen;
 
 short load_saved_game(const char *filename, screen *myscreen);
 
-// Test: Load multiple different levels and verify they each load correctly
+// Test: Load levels 1-10, covering both version 9 and version 6 scenario formats.
 //
-// Verifies:
-//   1. Levels 1-2 can be loaded without crashing
-//   2. Each level triggers the expected traces
-//
-// Note: Only testing levels 1-2 because some later levels use older scenario
-// formats (version 6) that have a buffer overflow bug in the loader.
+// Levels 3, 4, 8 use version 6 format which previously had a buffer overflow
+// in the description text reader (tempwidth could exceed the 80-byte oneline
+// buffer). This test verifies the fix works.
 
 void test_load_multiple_levels() {
-    // Try loading levels 1 and 2 (version 9 format, known good)
-    for (int level = 1; level <= 2; level++) {
+    for (int level = 1; level <= 10; level++) {
         trace_clear();
 
         myscreen->save_data.scen_num = level;
@@ -30,10 +26,7 @@ void test_load_multiple_levels() {
         short result = load_saved_game("test_level_multi", myscreen);
 
         char msg[80];
-        snprintf(msg, 80, "level %d should trigger load_saved_game trace", level);
-        TEST_ASSERT(trace_contains("game", "load_saved_game"), msg);
-
-        snprintf(msg, 80, "level %d should trigger LevelData::load trace", level);
+        snprintf(msg, 80, "level %d should load successfully", level);
         TEST_ASSERT(trace_contains("game", "level loaded"), msg);
 
         // Clean up loaded objects before loading the next level
