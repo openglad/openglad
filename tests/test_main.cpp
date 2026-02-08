@@ -15,6 +15,14 @@ int main(int argc, char* argv[]) {
     // Force offscreen rendering - no display needed
     SDL_setenv("SDL_VIDEODRIVER", "offscreen", 1);
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
+    // Disable vsync. The Screen constructor (sai2x.cpp) creates the SDL
+    // renderer with SDL_RENDERER_PRESENTVSYNC, which makes SDL_RenderPresent()
+    // block for ~16ms per call even on the offscreen driver when there's no
+    // GPU. The game-loop tests (test_fairy_death, test_overpowered_team) call
+    // SDL_RenderPresent every frame at max speed — with vsync, each frame
+    // takes 16ms instead of microseconds, so the game never finishes before
+    // the test timeout. This env var overrides the flag in SDL_CreateRenderer.
+    SDL_setenv("SDL_RENDER_VSYNC", "0", 1);
 
     // Do global init once
     init_logging();
