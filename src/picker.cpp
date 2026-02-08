@@ -2262,6 +2262,9 @@ void timed_dialog(const char* message, float delay_seconds)
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
 {
     Log("%s, %s: \n", title, message);
+#ifdef TESTING
+    return default_value;
+#endif
     
     myscreen->darken_screen();
     
@@ -2453,6 +2456,10 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message)
 {
     Log("%s, %s\n", title, message);
+#ifdef TESTING
+    TRACE("popup", "%s: %s", title, message);
+    return;
+#endif
     
     myscreen->darken_screen();
     

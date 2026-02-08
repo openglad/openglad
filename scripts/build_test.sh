@@ -280,6 +280,7 @@ TEST_SOURCES=(
     test_guy.cpp
     test_go_no_team.cpp
     test_save_menu.cpp
+    test_fairy_death.cpp
 )
 
 # ----------------------------------------------------------------------------

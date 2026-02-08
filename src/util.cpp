@@ -51,6 +51,13 @@ using namespace std;
 Uint32 start_time=0;
 Uint32 reset_value=0;
 
+float g_game_speed_factor = 1.0f;
+
+void set_game_speed(float factor)
+{
+    g_game_speed_factor = (factor < 0.0f) ? 0.0f : factor;
+}
+
 #ifdef __EMSCRIPTEN__
 // Custom SDL log output function for web builds
 // Routes messages to the appropriate JavaScript console method

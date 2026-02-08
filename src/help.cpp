@@ -75,6 +75,9 @@ char* read_one_line(SDL_RWops *infile, short length)
 //       so that the text scrolls by pixels rather than lines.
 short read_scenario(screen *myscreen)
 {
+#ifdef TESTING
+	return 1;
+#endif
 	Sint32 screenlines = myscreen->level_data.description.size() * 8;
 	Sint32  numlines, j;
 	Sint32 linesdown;

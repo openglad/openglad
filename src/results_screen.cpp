@@ -61,6 +61,10 @@ void show_ending_popup(int ending, int nextlevel)
 
 bool results_screen(int ending, int nextlevel)
 {
+#ifdef TESTING
+    Log("results_screen: ending=%d nextlevel=%d\n", ending, nextlevel);
+    return false;
+#endif
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
     return false;
@@ -322,6 +326,10 @@ Uint32 get_time_bonus(int playernum)
 
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
+#ifdef TESTING
+    Log("results_screen: ending=%d nextlevel=%d\n", ending, nextlevel);
+    return false;
+#endif
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
 

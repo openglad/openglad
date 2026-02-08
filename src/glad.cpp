@@ -127,8 +127,13 @@ static void emscripten_frame_wrapper() {
 	if (myscreen && myscreen->timer_wait > 0) {
 		timer_wait = myscreen->timer_wait;
 	}
-	Uint32 target_frame_time = (Uint32)(timer_wait * 13.6f);
-	if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
+	Uint32 target_frame_time;
+	if (g_game_speed_factor == 0.0f) {
+		target_frame_time = 0; // Max speed: run every browser frame
+	} else {
+		target_frame_time = (Uint32)(timer_wait * 13.6f / g_game_speed_factor);
+		if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
+	}
 
 	// Only run logic if enough time has accumulated
 	if (g_frame_state.accumulated_time >= target_frame_time) {
@@ -329,7 +334,14 @@ static void game_frame()
 
 #ifndef __EMSCRIPTEN__
 	// Zardus: PORT: this is the new FPS cap (not needed for Emscripten - browser handles timing)
-	time_delay(myscreen->timer_wait - query_timer());
+	if (g_game_speed_factor == 0.0f) {
+		// Max speed: no delay
+	} else if (g_game_speed_factor != 1.0f) {
+		Sint32 adjusted_wait = (Sint32)(myscreen->timer_wait / g_game_speed_factor);
+		time_delay(adjusted_wait - query_timer());
+	} else {
+		time_delay(myscreen->timer_wait - query_timer());
+	}
 #endif
 }
 

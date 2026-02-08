@@ -70,17 +70,12 @@ static int go_no_team_injector(void* data)
     fprintf(stderr, "  [test] clicking go (with empty team)\n");
     interact("go");
 
-    // Should get a popup dialog with "ok" button
+    // popup_dialog returns immediately under TESTING, so just wait a moment
+    // for the trace to be written, then verify it was called
     SDL_Delay(500);
-    if (wait_for_interactable("ok", 5000)) {
-        state->saw_popup = true;
-        SDL_Delay(500);
-        fprintf(stderr, "  [test] dismissing 'need a team' popup\n");
-        interact("ok");
-    }
+    state->saw_popup = trace_contains("popup", "NEED A TEAM");
 
-    // Should be back in team menu
-    SDL_Delay(500);
+    // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
     SDL_Delay(1500);
     fprintf(stderr, "  [test] clicking back from team menu\n");
@@ -151,17 +146,12 @@ static int train_no_team_injector(void* data)
     fprintf(stderr, "  [test] clicking train_team (with empty team)\n");
     interact("train_team");
 
-    // Should get a popup
+    // popup_dialog returns immediately under TESTING, so just wait a moment
+    // for the trace to be written, then verify it was called
     SDL_Delay(500);
-    if (wait_for_interactable("ok", 5000)) {
-        state->saw_popup = true;
-        SDL_Delay(500);
-        fprintf(stderr, "  [test] dismissing 'need a team' popup\n");
-        interact("ok");
-    }
+    state->saw_popup = trace_contains("popup", "NEED A TEAM");
 
-    // Should be back in team menu
-    SDL_Delay(500);
+    // Should be back in team menu (popup already dismissed)
     wait_for_interactable("back", 10000);
     SDL_Delay(1500);
     fprintf(stderr, "  [test] clicking back from team menu\n");
