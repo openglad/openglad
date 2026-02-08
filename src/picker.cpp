@@ -103,6 +103,9 @@ short current_team_num = 0;
 // Test infrastructure for picker_mainmenu_loop
 int g_picker_mainmenu_calls = 0;
 int g_picker_max_mainmenu_calls = 0;  // 0 = unlimited
+// Set true while glad_main is running inside go_menu, so tests can
+// wait for the game to finish before clicking menu buttons.
+bool g_test_in_game = false;
 #endif
 
 Sint32 allowable_guys[] =
@@ -3474,7 +3477,13 @@ Sint32 go_menu(Sint32 arg1)
         // Reset viewscreen prefs
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
+#ifdef TESTING
+        g_test_in_game = true;
+#endif
         glad_main(myscreen->save_data.numplayers);
+#ifdef TESTING
+        g_test_in_game = false;
+#endif
 
         Log("Returned from glad_main, retry=%d\n", myscreen->retry);
 

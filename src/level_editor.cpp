@@ -714,6 +714,9 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 
 bool prompt_for_string(const std::string& message, std::string& result)
 {
+#ifdef TESTING
+    return true;  // Accept default name without blocking on text input
+#endif
     myscreen->darken_screen();
     
     int max_chars = 29;
