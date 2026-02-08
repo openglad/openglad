@@ -54,6 +54,10 @@ static bool g_state_initialized = false;
 extern bool debug_draw_paths;
 extern bool debug_draw_obmap;
 
+#ifdef TESTING
+bool g_test_remove_exits = false;
+#endif
+
 // Z's script: #include <process.h>
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -356,6 +360,17 @@ void glad_init()
 
 	// Load the default saved-game ..
 	load_saved_game("save0", myscreen);
+
+#ifdef TESTING
+	// Remove exits so level auto-completes when all enemies die
+	if (g_test_remove_exits) {
+		for (auto e = myscreen->level_data.fxlist.begin(); e != myscreen->level_data.fxlist.end(); e++) {
+			walker* w = *e;
+			if (w && w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT)
+				w->dead = 1;
+		}
+	}
+#endif
 
 	// This will update the 'control' so the screen centers on our guy
 	myscreen->continuous_input();

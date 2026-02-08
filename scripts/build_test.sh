@@ -281,6 +281,7 @@ TEST_SOURCES=(
     test_go_no_team.cpp
     test_save_menu.cpp
     test_fairy_death.cpp
+    test_overpowered_team.cpp
 )
 
 # ----------------------------------------------------------------------------
