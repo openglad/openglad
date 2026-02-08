@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include "graph.h"
 #include "test_trace.h"
 #include "test_framework.h"
@@ -27,11 +29,10 @@ int main(int argc, char* argv[]) {
 
     run_all_tests();
 
-    delete myscreen;
-    myscreen = NULL;
-    delete theprefs;
-    theprefs = NULL;
-    io_exit();
-
-    return g_tests_failed > 0 ? 1 : 0;
+    // Use _exit() to terminate immediately. SDL_Quit() (called by the video
+    // destructor during normal cleanup) hangs on some drivers/configurations.
+    // This is a test binary so we don't need graceful teardown — the OS
+    // reclaims all resources on process exit.
+    fflush(NULL); // _exit() doesn't flush stdio — do it explicitly
+    _exit(g_tests_failed > 0 ? 1 : 0);
 }
