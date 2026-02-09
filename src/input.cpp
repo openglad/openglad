@@ -42,7 +42,7 @@
 void quit(Sint32 arg1);
 
 int raw_key;
-char* raw_text_input = nullptr;
+std::string raw_text_input;
 short key_press_event = 0;    // used to signed key-press
 short text_input_event = 0;    // used to signal text input
 short scroll_amount = 0;  // for scrolling up and down text popups
@@ -391,8 +391,7 @@ void handle_key_event(const SDL_Event& event)
 
 void handle_text_event(const SDL_Event& event)
 {
-    free(raw_text_input);
-    raw_text_input = strdup(event.text.text);
+    raw_text_input = event.text.text;
     text_input_event = 1;
 }
 
@@ -753,9 +752,11 @@ int query_key()
     return raw_key;
 }
 
-char* query_text_input()
+const char* query_text_input()
 {
-    return raw_text_input;
+    if (raw_text_input.empty())
+        return nullptr;
+    return raw_text_input.c_str();
 }
 
 bool query_key_event(int key, const SDL_Event& event)
@@ -862,8 +863,7 @@ void clear_keyboard()
     raw_key = 0;
 
     text_input_event = 0;
-    free(raw_text_input);
-    raw_text_input = nullptr;
+    raw_text_input.clear();
     
     input_continue = false;
     
@@ -1444,8 +1444,7 @@ short query_text_input_event()
 void clear_text_input_event()
 {
     text_input_event = 0;
-    free(raw_text_input);
-    raw_text_input = nullptr;
+    raw_text_input.clear();
 }
 
 

@@ -16,7 +16,6 @@
  */
 
 #include "pixie_data.h"
-#include <cstdlib>
 
 
 PixieData::PixieData()
@@ -27,17 +26,32 @@ PixieData::PixieData(unsigned char frames, unsigned char w, unsigned char h, uns
     : frames(frames), w(w), h(h), data(data)
 {}
 
+PixieData::PixieData(PixieData&& other) noexcept
+    : frames(other.frames), w(other.w), h(other.h), data(std::move(other.data))
+{
+    other.frames = 0;
+    other.w = 0;
+    other.h = 0;
+}
+
+PixieData& PixieData::operator=(PixieData&& other) noexcept
+{
+    if (this != &other)
+    {
+        frames = other.frames;
+        w = other.w;
+        h = other.h;
+        data = std::move(other.data);
+        other.frames = 0;
+        other.w = 0;
+        other.h = 0;
+    }
+    return *this;
+}
+
 bool PixieData::valid() const
 {
     return (data != nullptr && frames != 0 && w != 0 && h != 0);
-}
-
-void PixieData::clear()
-{
-    frames = 0;
-    w = 0;
-    h = 0;
-    data = nullptr;
 }
 
 void PixieData::free()
@@ -45,6 +59,5 @@ void PixieData::free()
     frames = 0;
     w = 0;
     h = 0;
-    delete[] data;
-    data = nullptr;
+    data.reset();
 }

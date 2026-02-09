@@ -25,21 +25,21 @@ static PixieData letters_big;
 
 
 text::text(const char * filename)
-    : sizex(0), sizey(0)
+    : letters(nullptr), sizex(0), sizey(0)
 {
     if(!letters1.valid())
         letters1 = read_pixie_file(TEXT_1);
     if(!letters_big.valid())
         letters_big = read_pixie_file(TEXT_BIG);
-    
+
     std::string temp_filename = (filename && strlen(filename) >= 2) ? filename : "text.pix";
 
     if(temp_filename == TEXT_BIG)
-        letters = letters_big;
+        letters = &letters_big;
     else
-        letters = letters1;
-    sizex = letters.w;
-    sizey = letters.h;
+        letters = &letters1;
+    sizex = letters->w;
+    sizey = letters->h;
 }
 
 text::~text()
@@ -360,7 +360,7 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, static_cast<unsigned char>(color));
 
-	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters.data[letter * sizex * sizey], static_cast<unsigned char>(color));
+	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters->data.get()[letter * sizex * sizey], static_cast<unsigned char>(color));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -370,26 +370,26 @@ short text::write_char_xy(short x, short y, char letter, short to_buffer)
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 
-	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters.data[letter * sizex * sizey], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters->data.get()[letter * sizex * sizey], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter, unsigned char color)
 {
-	myscreen->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey], static_cast<unsigned char>(color));
+	myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(color));
 	return 1;
 }
 
 short text::write_char_xy_alpha(short x, short y, char letter, unsigned char color, Uint8 alpha)
 {
-	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, &letters.data[letter * sizex * sizey], static_cast<unsigned char>(color), alpha);
+	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, &letters->data.get()[letter * sizex * sizey], static_cast<unsigned char>(color), alpha);
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter)
 {
-	myscreen->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey]);
+	myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey]);
 	return 1;
 }
 
@@ -397,11 +397,11 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
 	if (!whereto)
-		myscreen->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey], static_cast<unsigned char>(color));
+		myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(color));
 	else
 		myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       &letters.data[letter *sizex*sizey], static_cast<unsigned char>(color));
+		                       &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(color));
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
@@ -410,11 +410,11 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
 {
 	if (!whereto)
-		myscreen->putdatatext(x, y, sizex, sizey, &letters.data[letter *sizex*sizey]);
+		myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey]);
 	else
 		myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       &letters.data[letter *sizex*sizey], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+		                       &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
@@ -439,7 +439,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 	static char editstring[100], firststring[100];
 	
 	int tempchar;
-	char* temptext;
+	const char* temptext;
 	short has_typed = 0; // hasn't typed yet
 	bool return_null = false;
 
@@ -583,7 +583,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	static char editstring[100], firststring[100];
 	
 	int tempchar;
-	char* temptext;
+	const char* temptext;
 	short has_typed = 0; // hasn't typed yet
 	bool return_null = false;
 

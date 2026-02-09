@@ -19,6 +19,7 @@
 // Definition of LOADER class
 
 #include "base.h"
+#include <vector>
 
 class loader
 {
@@ -29,14 +30,14 @@ class loader
 		void set_derived_stats(walker* w, char order, char family);
 		pixieN *create_pixieN(char order, char family);
 		walker *set_walker(walker *ob, char order, char family);
-		PixieData* graphics;
-		signed char  ***animations;
-		float  *stepsizes;
-		Sint32  *lineofsight;
-		
+		std::vector<PixieData> graphics;
+		std::vector<signed char**> animations;
+		std::vector<float> stepsizes;
+		std::vector<Sint32> lineofsight;
+
 		float  hitpoints[200]; // hack for now
-		char  *act_types;
-		float  *damage;
-		float  *fire_frequency;
+		std::vector<char> act_types;
+		std::vector<float> damage;
+		std::vector<float> fire_frequency;
 };
 

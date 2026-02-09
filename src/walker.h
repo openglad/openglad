@@ -21,6 +21,7 @@
 #include "base.h"
 #include "pixien.h"
 #include "obmap.h"
+#include <memory>
 
 // Opaque state type used by MicroPather for pathfinding nodes.
 // States are encoded grid coordinates (not real pointers), but the
@@ -127,7 +128,7 @@ class walker : public pixieN
 		float damage;
 		float fire_frequency;
 		float busy;
-		statistics *stats;
+		std::unique_ptr<statistics> stats;
 		walker  *collide_ob;
 		walker * foe;
 		walker * leader;

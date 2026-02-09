@@ -17,21 +17,28 @@
 
 #pragma once
 
+#include <memory>
 
 class PixieData
 {
     public:
-    
+
     unsigned char frames;
     unsigned char w, h;
-    unsigned char* data;
-    
+    std::unique_ptr<unsigned char[]> data;
+
     PixieData();
     PixieData(unsigned char frames, unsigned char w, unsigned char h, unsigned char* data);
-    
+
+    // Rule of Five: move-only type
+    PixieData(PixieData&& other) noexcept;
+    PixieData& operator=(PixieData&& other) noexcept;
+    PixieData(const PixieData&) = delete;
+    PixieData& operator=(const PixieData&) = delete;
+
+    ~PixieData() = default;
+
     bool valid() const;
-    
-    void clear();
+
     void free();
 };
-

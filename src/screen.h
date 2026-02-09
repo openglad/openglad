@@ -24,6 +24,7 @@
 #include "obmap.h"
 #include "smooth.h"
 #include <map>
+#include <memory>
 #include <string>
 #include <set>
 #include "level_data.h"
@@ -97,7 +98,7 @@ class screen : public video
 		std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
 		std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
 		unsigned short enemy_freeze; // stops enemies from acting
-		soundob *soundp;
+		std::unique_ptr<soundob> soundp;
 		short redrawme;
 		viewscreen  * viewob[5];
 		short numviews;

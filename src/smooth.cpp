@@ -34,7 +34,7 @@ void smoother::reset()
 
 void smoother::set_target(const PixieData& data)
 {
-	mygrid = data.data;
+	mygrid = data.data.get();
 	maxx = data.w;
 	maxy = data.h;
 }

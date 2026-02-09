@@ -657,7 +657,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 
         if(query_text_input_event())
         {
-            char* temptext = query_text_input();
+            const char* temptext = query_text_input();
             
             if(temptext != nullptr)
             {
@@ -1915,7 +1915,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     {
         // Show the current brush
         myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
-                            0, 0, 320, 200, myscreen->level_data.pixdata[terrain_brush.terrain].data);
+                            0, 0, 320, 200, myscreen->level_data.pixdata[terrain_brush.terrain].data.get());
         // Border
         myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
@@ -1928,7 +1928,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                     GRID_SIZE, GRID_SIZE,
                                     0, 0, 320, 200,
-                                    myscreen->level_data.pixdata[ backgrounds[whichback] ].data);
+                                    myscreen->level_data.pixdata[ backgrounds[whichback] ].data.get());
             }
         }
         myscreen->draw_box(S_RIGHT, PIX_TOP,
@@ -2065,7 +2065,7 @@ void LevelEditorData::clear_terrain()
     int w = level->grid.w;
     int h = level->grid.h;
     
-    std::fill_n(level->grid.data, w*h, static_cast<unsigned char>(1));
+    std::fill_n(level->grid.data.get(), w*h, static_cast<unsigned char>(1));
     resmooth_terrain();
 }
 

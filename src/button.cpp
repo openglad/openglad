@@ -252,8 +252,8 @@ void vbutton::vdisplay()
     {
         mypixie->draw(xloc, yloc, myscreen->viewob[0]);
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters.w+1) )/2)) ,
-                              static_cast<short>(yloc + (height-(mytext.letters.h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                              static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
     {
@@ -263,8 +263,8 @@ void vbutton::vdisplay()
         myscreen->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT,1,1); // right
         myscreen->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM,1,1); // bottom
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters.w+1) )/2)) ,
-                              static_cast<short>(yloc + (height-(mytext.letters.h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                              static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
 }
 
@@ -283,8 +283,8 @@ void vbutton::vdisplay(Sint32 status)
     {
         mypixie->draw(xloc, yloc, myscreen->viewob[0]);
         if (label.size())
-            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters.w+1) )/2)) ,
-                              static_cast<short>(yloc + (height-(mytext.letters.h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                              static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
     }
     else
     {
@@ -296,8 +296,8 @@ void vbutton::vdisplay(Sint32 status)
             myscreen->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_LEFT,1,1); // right
             myscreen->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_TOP,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters.w+1) )/2)) ,
-                                  static_cast<short>(yloc + (height-(mytext.letters.h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                                  static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             myscreen->buffer_to_screen(xloc,yloc,xend-xloc,yend-yloc);
         }
         else if (status == 2) // special (red) button..
@@ -308,8 +308,8 @@ void vbutton::vdisplay(Sint32 status)
             myscreen->draw_box(xend-1,yloc+1,xend-1,yend-2,BUTTON_RIGHT+32,1,1); // right
             myscreen->draw_box(xloc+1,yend-1,xend-1,yend-1,BUTTON_BOTTOM+32,1,1); // bottom
             if (label.size())
-                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters.w+1) )/2)) ,
-                                  static_cast<short>(yloc + (height-(mytext.letters.h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+                mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
+                                  static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
         }
     }
     release_mouse();

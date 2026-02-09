@@ -319,38 +319,32 @@ signed char  *anifood[] = { food1, food1, food1, food1,
 PixieData data_copy(const PixieData& d)
 {
     PixieData result;
-    
+
     if(!d.valid())
         return result;
-    
+
     result.frames = d.frames;
     result.w = d.w;
     result.h = d.h;
-    
-    Sint32 len = d.w * d.h * d.frames;
-    result.data = new unsigned char[len];
-    memcpy(result.data, d.data, len);
-    
+
+    size_t len = d.w * d.h * d.frames;
+    result.data = std::make_unique<unsigned char[]>(len);
+    std::copy_n(d.data.get(), len, result.data.get());
+
     return result;
 }
 
 
 loader::loader()
-    : graphics(nullptr), animations(nullptr), stepsizes(nullptr), lineofsight(nullptr), act_types(nullptr), damage(nullptr), fire_frequency(nullptr)
+    : graphics(SIZE_ORDERS*SIZE_FAMILIES),
+      animations(SIZE_ORDERS*SIZE_FAMILIES, nullptr),
+      stepsizes(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
+      lineofsight(SIZE_ORDERS*SIZE_FAMILIES, 0),
+      act_types(SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM)),
+      damage(SIZE_ORDERS*SIZE_FAMILIES, 0.0f),
+      fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f)
 {
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
-    
-	graphics = new PixieData[SIZE_ORDERS*SIZE_FAMILIES];
-        
-	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];
-	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
-	std::fill_n(act_types, SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM));
-	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
-	std::fill_n(animations, SIZE_ORDERS*SIZE_FAMILIES, nullptr);
-	stepsizes = new float[SIZE_ORDERS*SIZE_FAMILIES];
-	lineofsight = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
-	damage = new float[SIZE_ORDERS*SIZE_FAMILIES];
-	fire_frequency = new float[SIZE_ORDERS*SIZE_FAMILIES];
 
 
 	// Livings
@@ -772,19 +766,10 @@ loader::loader()
 
 loader::~loader(void)
 {
-	int i;
-	for(i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
+	for(int i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
 	    graphics[i].free();
 	}
-	
-	delete[] graphics;
-
-	delete[] animations;
-	delete[] act_types;
-	delete[] stepsizes;
-	delete[] lineofsight;
-	delete[] damage;
-	delete[] fire_frequency;
+	// vectors clean up automatically
 }
 
 void loader::set_derived_stats(walker* w, char order, char family)

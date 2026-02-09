@@ -24,6 +24,7 @@
 #include "physfs.h"
 #include "physfsrwops.h"
 #include <format>
+#include <memory>
 #include <string>
 #include <algorithm>
 #include <cstdio>
@@ -395,7 +396,7 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     
     long size = 100;
     // Grab the data
-    unsigned char* data = static_cast<unsigned char*>(malloc(size));
+    auto data = std::make_unique<unsigned char[]>(size);
     
     // Save it to another file
     Log("Copying to: %s\n", dest_filename.c_str());
@@ -409,15 +410,14 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     
     long total = 0;
     long len = 0;
-    while((len = SDL_RWread(in, data, 1, size)) > 0)
+    while((len = SDL_RWread(in, data.get(), 1, size)) > 0)
     {
-        SDL_RWwrite(out, data, 1, len);
+        SDL_RWwrite(out, data.get(), 1, len);
         total += len;
     }
-    
+
     SDL_RWclose(in);
     SDL_RWclose(out);
-    free(data);
     
     Log("Copied %d bytes.\n", total);
 }
@@ -684,39 +684,26 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
 /* Function with behaviour like `mkdir -p'  */
 int mkpath(const char *s, mode_t mode)
 {
-    char *q, *parent = nullptr, *path = nullptr, *up = nullptr;
-    int rv;
-
-    rv = -1;
-    if (std::string(s) == "." || std::string(s) == "/" || (std::string(s).size() == 3 && s[2] == '/'))
+    std::string s_str(s);
+    if (s_str == "." || s_str == "/" || (s_str.size() == 3 && s[2] == '/'))
         return 0;
 
-    if ((path = strdup(s)) == nullptr)
-        exit(1);
- 
-    if ((q = strdup(s)) == nullptr)
-        exit(1);
+    std::string path_str(s);
+    std::string q_str(s);
 
-    if ((parent = dirname(q)) == nullptr)
-        goto out;
-    
-    if ((up = strdup(parent)) == nullptr)
-        exit(1);
+    char* parent = dirname(q_str.data());
+    if (parent == nullptr)
+        return -1;
 
-    if ((mkpath(up, mode) == -1) && (errno != EEXIST))
-        goto out;
+    std::string up_str(parent);
 
-    if ((mkdir(path, mode) == -1) && (errno != EEXIST))
-        rv = -1;
-    else
-        rv = 0;
+    if ((mkpath(up_str.c_str(), mode) == -1) && (errno != EEXIST))
+        return -1;
 
-out:
-    if (up != nullptr)
-        free(up);
-    free(q);
-    free(path);
-    return (rv);
+    if ((mkdir(path_str.c_str(), mode) == -1) && (errno != EEXIST))
+        return -1;
+
+    return 0;
 }
 
 bool create_path_to_file(const char* filename)

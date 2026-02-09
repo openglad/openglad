@@ -30,7 +30,7 @@
 pixieN::pixieN(const PixieData& data):
 		pixie(data)
 {
-	facings = data.data;
+	facings = data.data.get();
 	frames = data.frames;
 	frame = 0;
 }
@@ -38,7 +38,7 @@ pixieN::pixieN(const PixieData& data):
 pixieN::pixieN(const PixieData& data, int doaccel):
 		pixie(data)
 {
-	facings = data.data;
+	facings = data.data.get();
 	frames = data.frames;
 	frame = 0;
 	if(doaccel)

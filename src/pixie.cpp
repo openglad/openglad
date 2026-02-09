@@ -72,7 +72,7 @@ pixie::~pixie()
 
 void pixie::set_data(const PixieData& data)
 {
-	bmp = data.data;
+	bmp = data.data.get();
 	sizex = data.w;
 	sizey = data.h;
 	size = (unsigned short) (sizex*sizey);

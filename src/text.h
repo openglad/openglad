@@ -62,7 +62,7 @@ class text
                           unsigned char forecolor, unsigned char backcolor);
 		~text();
 
-	    PixieData letters;
+	    const PixieData* letters;
 	    short sizex, sizey;
 };
 

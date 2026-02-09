@@ -148,7 +148,7 @@ screen::screen(short howmany)
 	
 
 	// Init the sound data
-    soundp = new soundob();
+    soundp = std::make_unique<soundob>();
     if(!cfg.is_on("sound", "sound"))
         soundp->set_sound(1);
     first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
@@ -236,9 +236,7 @@ screen::screen(short howmany)
 screen::~screen()
 {
 	release_timer();
-	delete soundp;
-
-	soundp = nullptr;
+	soundp.reset();
 	cleanup(1); //make sure we've cleaned up
 }
 

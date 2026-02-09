@@ -308,11 +308,10 @@ short treasure::eat_me(walker  * eater)
 
 void treasure::set_direct_frame(short whatframe)
 {
-	PixieData data;
 	frame = whatframe;
 
-	data = myscreen->level_data.myloader->graphics[PIX(order, family)];
-	bmp = data.data + frame*size;
+	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
+	bmp = data.data.get() + frame*size;
 
 }
 

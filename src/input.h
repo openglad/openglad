@@ -202,7 +202,7 @@ void sendFakeKeyDownEvent(int keycode);
 void sendFakeKeyUpEvent(int keycode);
 
 int query_key();                                                            // return last keypress
-char* query_text_input();                                                            // return last text input
+const char* query_text_input();                                                            // return last text input
 
 bool query_input_continue();
 short get_and_reset_scroll_amount();

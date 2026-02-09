@@ -63,10 +63,10 @@ PixieData read_pixie_file(const char  * filename)
 	SDL_RWread(infile, &result.h, 1, 1);
 
     size_t size = result.w * result.h * result.frames;
-	result.data = new unsigned char[size];
+	result.data = std::make_unique<unsigned char[]>(size);
 
 	// Now read the data in a big chunk
-	SDL_RWread(infile, result.data, 1, size);
+	SDL_RWread(infile, result.data.get(), 1, size);
     
     SDL_RWclose(infile);
     

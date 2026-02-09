@@ -450,7 +450,7 @@ void LevelData::create_new_grid()
 	pixmaxy = grid.h * GRID_SIZE;
 	
 	int size = grid.w*grid.h;
-    grid.data = new unsigned char[size];
+    grid.data = std::make_unique<unsigned char[]>(size);
 	for(int i = 0; i < size; i++)
     {
         // Color
@@ -517,7 +517,7 @@ void LevelData::resize_grid(int width, int height)
     
     // Delete the old, use the new
     grid.free();
-    grid.data = new_grid;
+    grid.data.reset(new_grid);
     grid.frames = 1;
     grid.w = width;
     grid.h = height;
@@ -1384,7 +1384,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 	SDL_RWwrite(outfile, &x, 1, 1);
 	SDL_RWwrite(outfile, &y, 1, 1);
 
-	SDL_RWwrite(outfile, grid.data, 1, (x*y));
+	SDL_RWwrite(outfile, grid.data.get(), 1, (x*y));
 
 	SDL_RWclose(outfile);        // Close the data file
 	return true;

@@ -47,7 +47,7 @@ walker::walker(const PixieData& data)
     : pixieN(data)
 {
 	// Set our stats ..
-	stats = new statistics(this);
+	stats = std::make_unique<statistics>(this);
 
 	curdir = FACE_DOWN;  // We are facing DOWN
 	enddir = FACE_DOWN;  // We are trying to face DOWN
@@ -198,8 +198,7 @@ walker::~walker()
 	if(myobmap != nullptr)
         myobmap->remove(this); // remove ourselves from obmap lists
     
-	delete stats;
-	stats = nullptr;
+	stats.reset();
 	bmp = nullptr;
 	if (myguy)
 		delete myguy;
@@ -4427,7 +4426,6 @@ void walker::transfer_stats(walker  *newob)
 
 void walker::transform_to(char whatorder, char whatfamily)
 {
-	PixieData data;
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
 	short reset = 0;
@@ -4451,9 +4449,9 @@ void walker::transform_to(char whatorder, char whatfamily)
 	myscreen->set_walker(this, whatorder, whatfamily);
 
 	// Reset the graphics
-	data = myscreen->level_data.myloader->graphics[PIX(order, family)];
-	facings = data.data;
-	bmp = data.data;
+	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
+	facings = data.data.get();
+	bmp = data.data.get();
 	frames = data.frames;
 	frame = 0;
 	cycle = 0;
@@ -4636,11 +4634,10 @@ short walker::eat_me(walker  * eater)
 
 void walker::set_direct_frame(short whichframe)
 {
-	PixieData data;
 	frame = whichframe;
 
-	data = myscreen->level_data.myloader->graphics[PIX(order, family)];
-	bmp = data.data + frame*size;
+	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
+	bmp = data.data.get() + frame*size;
 
 }
 
