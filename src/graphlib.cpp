@@ -23,7 +23,6 @@
 #include "graph.h"
 #include <string>
 #include "util.h"
-using namespace std;
 
 // Use this for globally setting the graphics dir, etc..
 //char pix_directory[80];

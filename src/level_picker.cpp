@@ -32,7 +32,6 @@
 #include <dirent.h>
 #include <cstring>
 
-using namespace std;
 
 
 #define MAX_TEAM_SIZE 24 //max # of guys on a team
@@ -49,7 +48,7 @@ void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
 
 
-void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, list<int>& exits)
+void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level, int* num_enemies, float* difficulty, std::list<int>& exits)
 {
     int num = 0;
     int level_sum = 0;
@@ -117,7 +116,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 }
 
 
-bool isDir(const string& filename)
+bool isDir(const std::string& filename)
 {
     struct stat status;
     stat(filename.c_str(), &status);
@@ -126,15 +125,15 @@ bool isDir(const string& filename)
 }
 
 
-bool sort_scen(const string& first, const string& second)
+bool sort_scen(const std::string& first, const std::string& second)
 {
-    string s1;
-    string s1num;
-    string s2;
-    string s2num;
+    std::string s1;
+    std::string s1num;
+    std::string s2;
+    std::string s2num;
     
     bool gotNum = false;
-    for(string::const_iterator e = first.begin(); e != first.end(); e++)
+    for(std::string::const_iterator e = first.begin(); e != first.end(); e++)
     {
         if(!gotNum && isalpha(*e))
             s1 += *e;
@@ -143,7 +142,7 @@ bool sort_scen(const string& first, const string& second)
     }
     
     gotNum = false;
-    for(string::const_iterator e = second.begin(); e != second.end(); e++)
+    for(std::string::const_iterator e = second.begin(); e != second.end(); e++)
     {
         if(!gotNum && isalpha(*e))
             s2 += *e;
@@ -169,7 +168,7 @@ class BrowserEntry
     float average_enemy_level;
     int num_enemies;
     float difficulty;
-    list<int> exits;
+    std::list<int> exits;
     char scentext[80][80];                         // Array to hold scenario information
     char scentextlines;                    // How many lines of text in scenario info
     
@@ -265,7 +264,7 @@ void BrowserEntry::draw(screen* screenp)
     {
         snprintf(buf, 30, "Exits: ");
         bool first = true;
-        for(list<int>::iterator e = exits.begin(); e != exits.end(); e++)
+        for(std::list<int>::iterator e = exits.begin(); e != exits.end(); e++)
         {
             char buf2[10];
             snprintf(buf2, 10, (first? "%d" : ", %d"), *e);

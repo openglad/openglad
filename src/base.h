@@ -376,13 +376,12 @@ short load_saved_game(const char *filename, screen  *myscreen);
 PixieData read_pixie_file(const char  * filename);
 
 // Some stuff for palette
-typedef struct
+struct rgb
 {
 	char r, g, b;
-}
-rgb;
+};
 
-typedef rgb palette[256];
+using palette = rgb[256];
 
 void set_vga_palette(palette p);
 rgb set_rgb(char r, char g, char b);

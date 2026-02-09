@@ -33,7 +33,6 @@
 #include <string>
 #include <cstring>
 
-using namespace std;
 
 // From picker.cpp
 extern Sint32 calculate_level(Uint32 temp_exp);
@@ -868,7 +867,7 @@ short screen::endgame(short ending, short nextlevel)
 	for(int i = 0; i < save_data.team_size; i++)
     {
         if(save_data.team_list[i] != nullptr)
-            before.insert(make_pair(save_data.team_list[i]->id, save_data.team_list[i]));
+            before.insert(std::make_pair(save_data.team_list[i]->id, save_data.team_list[i]));
     }
 	
     // Get guys from the battle
@@ -876,7 +875,7 @@ short screen::endgame(short ending, short nextlevel)
 	{
 	    walker* ob = *e;
 		if (ob && ob->myguy)
-			after.insert(make_pair(ob->myguy->id, ob));
+			after.insert(std::make_pair(ob->myguy->id, ob));
 	}
 	
 	// Let's show the results!

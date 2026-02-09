@@ -46,7 +46,6 @@
 
 #endif
 
-using namespace std;
 
 Uint32 start_time=0;
 Uint32 reset_value=0;

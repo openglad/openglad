@@ -37,7 +37,6 @@ screen * myscreen;
 #include "OuyaController.h"
 #endif
 
-using namespace std;
 
 #ifdef __EMSCRIPTEN__
 // Game state machine for Emscripten - allows single main loop to handle all states

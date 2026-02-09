@@ -29,7 +29,6 @@
 #include "SDL_mixer.h"
 #include <string>
 #include "util.h"
-using namespace std;
 
 //#define SOUND_DB   0 // define for debugging messages
 

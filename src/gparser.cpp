@@ -35,7 +35,6 @@
 #include "input.h"
 int toInt(const std::string& s);
 
-using namespace std;
 
 cfg_store cfg;
 
@@ -46,10 +45,10 @@ void cfg_store::apply_setting(const std::string& category, const std::string& se
 
 std::string cfg_store::get_setting(const std::string& category, const std::string& setting)
 {
-	map<string, map<string, string> >::iterator a1 = data.find(category);
+	std::map<std::string, std::map<std::string, std::string> >::iterator a1 = data.find(category);
 	if(a1 != data.end())
 	{
-		map<string, string>::iterator a2 = a1->second.find(setting);
+		std::map<std::string, std::string>::iterator a2 = a1->second.find(setting);
 		if(a2 != a1->second.end())
 			return a2->second;
 	}

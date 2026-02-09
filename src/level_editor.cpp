@@ -46,7 +46,6 @@ void quit(Sint32 arg1);
 
 #include <string>
 #include <vector>
-using namespace std;
 #include <stdlib.h>
 #define MINIMUM_TIME 0
 
@@ -869,12 +868,12 @@ public:
 	
 	Uint16 menu_button_height;
 	
-	set<SimpleButton*> menu_buttons;
+	std::set<SimpleButton*> menu_buttons;
 	// The active menu buttons
-	list<pair<SimpleButton*, set<SimpleButton*> > > current_menu;
+	std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > > current_menu;
 	// The mode-specific buttons
-	set<SimpleButton*> mode_buttons;
-	set<SimpleButton*> pan_buttons;
+	std::set<SimpleButton*> mode_buttons;
+	std::set<SimpleButton*> pan_buttons;
 	
 	// Menu buttons
 	
@@ -1181,13 +1180,13 @@ bool button_showing(const std::list<std::pair<SimpleButton*, std::set<SimpleButt
 // Wouldn't spatial partitioning be nice?  Too bad!
 bool LevelEditorData::mouse_on_menus(int mx, int my)
 {
-    for(set<SimpleButton*>::const_iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+    for(std::set<SimpleButton*>::const_iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
     {
         if((*e)->contains(mx, my))
             return true;
     }
     
-    for(set<SimpleButton*>::const_iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
+    for(std::set<SimpleButton*>::const_iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
     {
         if((*e)->contains(mx, my))
             return true;
@@ -1199,8 +1198,8 @@ bool LevelEditorData::mouse_on_menus(int mx, int my)
     
     for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::const_iterator e = current_menu.begin(); e != current_menu.end(); e++)
     {
-        const set<SimpleButton*>& s = e->second;
-        for(set<SimpleButton*>::const_iterator f = s.begin(); f != s.end(); f++)
+        const std::set<SimpleButton*>& s = e->second;
+        for(std::set<SimpleButton*>::const_iterator f = s.begin(); f != s.end(); f++)
         {
             if((*f)->contains(mx, my))
                 return true;
@@ -1687,14 +1686,14 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     myradar.draw(level);
     
     // Draw mode-specific buttons
-    for(set<SimpleButton*>::iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
+    for(std::set<SimpleButton*>::iterator e = mode_buttons.begin(); e != mode_buttons.end(); e++)
         (*e)->draw(myscreen);
         
     if(pan_buttons.size() > 0)
     {
         Rect r(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y);
         myscreen->fastbox(r.x, r.y, r.w, r.h, 13);
-        for(set<SimpleButton*>::iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
+        for(std::set<SimpleButton*>::iterator e = pan_buttons.begin(); e != pan_buttons.end(); e++)
             (*e)->draw(myscreen);
     }
     
@@ -2051,14 +2050,14 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     
     // Draw top menu
-    for(set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
+    for(std::set<SimpleButton*>::iterator e = menu_buttons.begin(); e != menu_buttons.end(); e++)
         (*e)->draw(myscreen);
     
     // Draw submenus
-    for(list<pair<SimpleButton*, set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
+    for(std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > >::iterator e = current_menu.begin(); e != current_menu.end(); e++)
     {
-        set<SimpleButton*>& s = e->second;
-        for(set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
+        std::set<SimpleButton*>& s = e->second;
+        for(std::set<SimpleButton*>::iterator f = s.begin(); f != s.end(); f++)
             (*f)->draw(myscreen);
     }
     
@@ -2115,7 +2114,7 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
                 under_cursor = get_object(worldx, worldy);
                 
                 walker* got_one = nullptr;
-                for(vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+                for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
                 {
                     if(e->target == under_cursor)
                     {
@@ -2130,7 +2129,7 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
             {
                 // Drag the selected objects
                 dragging = true;
-                for(vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
+                for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
                 {
                     walker* w = e->get_object(level);
                     if(w != nullptr)
@@ -2166,9 +2165,9 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
     }
 }
 
-bool is_in_selection(walker* w, const vector<SelectionInfo>& selection)
+bool is_in_selection(walker* w, const std::vector<SelectionInfo>& selection)
 {
-    for(vector<SelectionInfo>::const_iterator e = selection.begin(); e != selection.end(); e++)
+    for(std::vector<SelectionInfo>::const_iterator e = selection.begin(); e != selection.end(); e++)
     {
         if(e->target == w)
             return true;
@@ -2177,7 +2176,7 @@ bool is_in_selection(walker* w, const vector<SelectionInfo>& selection)
 }
 
 // Make sure to use reset_mode_buttons() after this
-void add_contained_objects_to_selection(LevelData* level, const Rectf& area, vector<SelectionInfo>& selection)
+void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std::vector<SelectionInfo>& selection)
 {
     for(auto e = level->oblist.begin(); e != level->oblist.end(); e++)
 	{
@@ -2230,7 +2229,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // FILE
         if(activate_sub_menu_button(mx, my, current_menu, fileButton, true))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&fileCampaignButton);
             s.insert(&fileLevelButton);
             s.insert(&fileQuitButton);
@@ -2239,7 +2238,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Campaign >
         else if(activate_sub_menu_button(mx, my, current_menu, fileCampaignButton))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             //s.insert(&fileCampaignImportButton);
             //s.insert(&fileCampaignShareButton);
             s.insert(&fileCampaignNewButton);
@@ -2482,7 +2481,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Level >
         else if(activate_sub_menu_button(mx, my, current_menu, fileLevelButton))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&fileLevelNewButton);
             s.insert(&fileLevelLoadButton);
             s.insert(&fileLevelSaveButton);
@@ -2590,7 +2589,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // CAMPAIGN
         else if(activate_sub_menu_button(mx, my, current_menu, campaignButton, true))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&campaignInfoButton);
             s.insert(&campaignProfileButton);
             s.insert(&campaignDetailsButton);
@@ -2607,7 +2606,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Profile >
         else if(activate_sub_menu_button(mx, my, current_menu, campaignProfileButton))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&campaignProfileTitleButton);
             s.insert(&campaignProfileDescriptionButton);
             //s.insert(&campaignProfileIconButton);
@@ -2659,7 +2658,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Details >
         else if(activate_sub_menu_button(mx, my, current_menu, campaignDetailsButton))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&campaignDetailsVersionButton);
             s.insert(&campaignDetailsSuggestedPowerButton);
             s.insert(&campaignDetailsFirstLevelButton);
@@ -2752,7 +2751,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // LEVEL
         else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&levelInfoButton);
             s.insert(&levelProfileButton);
             s.insert(&levelDetailsButton);
@@ -2772,7 +2771,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Profile >
         else if(activate_sub_menu_button(mx, my, current_menu, levelProfileButton))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&levelProfileTitleButton);
             s.insert(&levelProfileDescriptionButton);
             current_menu.push_back(std::make_pair(&levelProfileButton, s));
@@ -2799,7 +2798,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Details >
         else if(activate_sub_menu_button(mx, my, current_menu, levelDetailsButton))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&levelDetailsMapSizeButton);
             s.insert(&levelDetailsParValueButton);
             s.insert(&levelDetailsTimeLimitButton);
@@ -2888,7 +2887,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Goals >
         else if(activate_sub_menu_button(mx, my, current_menu, levelGoalsButton))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&levelGoalsEnemiesButton);
             s.insert(&levelGoalsGeneratorsButton);
             s.insert(&levelGoalsNPCsButton);
@@ -2968,7 +2967,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // MODE
         else if(activate_sub_menu_button(mx, my, current_menu, modeButton, true))
         {
-            set<SimpleButton*> s;
+            std::set<SimpleButton*> s;
             s.insert(&modeTerrainButton);
             s.insert(&modeObjectButton);
             s.insert(&modeSelectButton);
