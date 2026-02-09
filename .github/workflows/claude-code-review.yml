@@ -1,19 +1,30 @@
 name: Claude Code Review
 
 on:
+  workflow_dispatch:
   pull_request:
     types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
 
 jobs:
-  claude-review:
-    if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+  check-secret:
+    runs-on: ubuntu-latest
+    outputs:
+      has_key: ${{ steps.check.outputs.has_key }}
+    steps:
+      - name: Check for ANTHROPIC_API_KEY
+        id: check
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
+  claude-review:
+    needs: [check-secret]
+    if: needs.check-secret.outputs.has_key == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
