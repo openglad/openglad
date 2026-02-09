@@ -52,10 +52,16 @@ Emscripten's C++ standard library support lags behind native compilers. Before c
 
 ### 0.3 CI Matrix
 
-If CI is set up (Phase 1), test against:
-- GCC 14 (native Linux)
-- Clang 17 (native Linux/macOS)
+**Existing CI:** A GitHub Actions pipeline (`.github/workflows/test.yml`) already runs on every push and pull request. It has two jobs:
+1. **Run Tests** — builds the test binary via `scripts/build_test.sh` (compiles with `-DTESTING`) and runs all 25+ registered tests headless (`SDL_VIDEODRIVER=offscreen`)
+2. **Native Build** — builds `openglad` and `openscen` via `scripts/build_native.sh` to verify compilation
+
+The current CI uses **GCC with C++11** on `ubuntu-latest`. For modernization, expand the CI matrix to also test against:
+- GCC 14 with `-std=c++23` (native Linux)
+- Clang 17 with `-std=c++23` (native Linux/macOS)
 - emsdk latest (web build)
+
+Each phase should pass the existing CI pipeline before merging. Adding a C++23 CI target in Phase 1 is a prerequisite for later phases.
 
 ---
 
@@ -132,14 +138,50 @@ Encapsulate the Emscripten-specific flags currently in `scripts/build_web.sh:68-
 
 Keep `scripts/build_native.sh` and `scripts/build_web.sh` but convert them to thin wrappers that invoke CMake, preserving backward compatibility for existing workflows.
 
-### 1.5 Files to Create/Modify
+### 1.5 Test Build Target
+
+The project has an existing test suite (25+ tests in `tests/`) built via `scripts/build_test.sh`. The CMake configuration must include a test target:
+
+```cmake
+# Test build
+option(BUILD_TESTING "Build the test suite" OFF)
+if(BUILD_TESTING)
+    # Same game sources, compiled with -DTESTING
+    add_executable(openglad_test
+        ${GAME_SOURCES}
+        ${EXTERNAL_SOURCES}
+        tests/test_main.cpp
+        tests/test_framework.cpp
+        tests/test_trace.cpp
+        tests/test_startup.cpp
+        tests/test_guy.cpp
+        # ... all test source files from tests/
+    )
+    target_compile_definitions(openglad_test PRIVATE TESTING)
+    target_link_libraries(openglad_test PRIVATE SDL2 SDL2_mixer pthread)
+endif()
+```
+
+**Key details:**
+- Tests compile the same game sources with `-DTESTING` (enables trace instrumentation, disables `exit()` in `quit()`, excludes `main()` from `glad.cpp`)
+- Test source files are listed in `TEST_SOURCES` in `scripts/build_test.sh` — the CMake target must mirror this list
+- The test binary runs headless via `SDL_VIDEODRIVER=offscreen` and `SDL_AUDIODRIVER=dummy`
+- Keep `scripts/build_test.sh` as a wrapper (same as 1.4) for backward compatibility with existing CI (`.github/workflows/test.yml`)
+
+### 1.6 Update CI for C++23
+
+Update `.github/workflows/test.yml` to add a C++23 build matrix entry alongside the existing C++11 build. This allows incremental migration — the C++11 job continues to pass until all code is modernized, while the C++23 job validates new code.
+
+### 1.7 Files to Create/Modify
 
 | File | Action |
 |------|--------|
-| `CMakeLists.txt` | CREATE - Main build configuration |
+| `CMakeLists.txt` | CREATE - Main build configuration (native, web, test targets) |
 | `cmake/emscripten.cmake` | CREATE - Emscripten toolchain file |
 | `scripts/build_native.sh` | MODIFY - Wrap CMake native build |
 | `scripts/build_web.sh` | MODIFY - Wrap CMake + Emscripten |
+| `scripts/build_test.sh` | MODIFY - Wrap CMake test build |
+| `.github/workflows/test.yml` | MODIFY - Add C++23 matrix entry |
 
 ---
 
@@ -189,6 +231,8 @@ owner = nullptr;
 ```
 
 **Method:** Global find-and-replace `\bNULL\b` → `nullptr` in all `.cpp` and `.h` files (excluding `src/external/`). Then fix any compilation issues from macro contexts like `base.h:102` where NULL is used in C-compatible function signatures.
+
+**Test impact:** Also apply to test files in `tests/`. The test infrastructure (`test_interact.h`, `test_input_helpers.h`) uses NULL in some places. This is a safe mechanical change — existing tests will continue to pass after replacement.
 
 ### 2.2 Replace `#ifndef`/`#define` Include Guards with `#pragma once`
 
@@ -393,6 +437,19 @@ int r = 0;
 ```
 
 Also check `treasure.cpp:22` (`#include <math.h>`) and other files for C-style includes.
+
+### 2.9 Phase 2 Test Impact
+
+**Risk to existing tests: VERY LOW.** All Phase 2 changes are mechanical and behavior-preserving.
+
+**Existing coverage:** The full test suite (25 tests) serves as a regression safety net for Phase 2. Key tests to watch:
+- `test_guy_creation` / `test_guy_copy` — exercise `guy.h` which gets `#pragma once` and `override` changes
+- `test_save_load_roundtrip` / `test_save_team_then_load` — exercise save/load code paths
+- `test_fairy_death` / `test_overpowered_team` — full game integration tests that exercise walker/living/weap/treasure entity hierarchy (all getting `override` added)
+
+**Required test updates:** Apply `NULL` → `nullptr` in test files too. No other test changes needed.
+
+**New tests to add:** None required — these are mechanical transforms. The existing CI pipeline validates compilation and runtime behavior.
 
 ---
 
@@ -599,6 +656,34 @@ int rwops_write_handler(void *data, unsigned char *buffer, size_t size);
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 // Internal: auto* rwops = static_cast<SDL_RWops*>(data);
 ```
+
+### 3.7 Phase 3 Test Impact
+
+**Risk to existing tests: MEDIUM.** Type changes to `guy.h` and `stats.h` directly affect tested code.
+
+**Existing tests that validate Phase 3 changes:**
+
+| Change | Tests That Cover It |
+|--------|-------------------|
+| `char name[12]` → `std::string` in `guy.h` | `test_guy_creation` (checks default names like "SOLDIER"), `test_guy_copy` (copies name field), `test_save_team_then_load` (persists names through save/load) |
+| `char name[12]` → `std::string` in `stats.h` | `test_fairy_death`, `test_overpowered_team` (exercise stats during gameplay) |
+| Save file versioning (3.0) | `test_save_load_roundtrip`, `test_save_team_then_load` (verify save/load roundtrip) |
+| `sprintf`/`snprintf` → `std::format` | `test_load_multiple_levels` (level loading uses sprintf for filenames) |
+| `strcpy`/`strcat` removal | `test_save_team_then_load` (save_data.cpp uses strcpy extensively) |
+
+**Tests that will need updates:**
+- `test_guy.cpp` — If `guy::name` becomes `std::string`, test assertions comparing names still work (string comparison is compatible), but any code that does `strcpy(guy.name, ...)` in test setup would need updating
+- `test_save_load_team.cpp` — Tests the save/load roundtrip; after save file versioning (3.0), old test save files must still load correctly (version 0 compat path)
+
+**New tests to add:**
+- **Save file version migration test:** Create a v0 (headerless) save file, load it with the new versioned reader, verify data integrity. This is critical — the existing `test_save_load_roundtrip` tests the current format, but Phase 3.0 changes the format.
+- **String boundary tests:** Test `guy::name` with empty strings, max-length strings, and strings that would have overflowed the old 12-char buffer.
+- **`std::format` compatibility test:** Verify `std::format` works in the Emscripten build (part of Phase 0 verification, but should be a CI check).
+
+**Coverage gaps exposed by Phase 3:**
+- No tests for `view.cpp` text buffer rendering (Phase 3.2 changes `textlist[MAX_MESSAGES][80]` to `std::string`)
+- No tests for `screen.h` special_name/alternate_name arrays
+- No tests for `io.cpp` read/write handlers (Phase 3.6 void* typing)
 
 ---
 
@@ -822,6 +907,39 @@ delete[] fire_frequency;
 
 These arrays in `loader` (`gloader.h:38+`) should become `std::vector` or `std::unique_ptr<T[]>`.
 
+### 4.11 Phase 4 Test Impact
+
+**Risk to existing tests: HIGH.** This is the most dangerous phase for test breakage. Smart pointer conversions change ownership semantics throughout the entity system, which is exercised by the two most comprehensive tests.
+
+**Existing tests that validate Phase 4 changes:**
+
+| Change | Tests That Cover It |
+|--------|-------------------|
+| `unique_ptr<walker>` for entity lists (4.1) | `test_fairy_death` (runs full game loop with entity creation, death, and cleanup), `test_overpowered_team` (creates 14 entities, runs combat, verifies win) |
+| `unique_ptr<statistics>` in walker (4.3) | `test_overpowered_team` (programmatically sets `stats->hitpoints`, `stats->max_hitpoints`, etc.), `test_fairy_death` (verifies fairy death via game loop) |
+| `unique_ptr<viewscreen>` in screen (4.2) | `test_screen_creation`, all menu tests (menu rendering goes through viewscreens) |
+| `unique_ptr<soundob>` in screen (4.5) | `test_sdl_init` (initializes sound subsystem) |
+| PixieData RAII (4.9) | `test_load_multiple_levels` (level loading creates PixieData for tiles/sprites), `test_level_data_integrity` |
+
+**Tests that will need updates:**
+- `test_overpowered_team.cpp` — Directly accesses `walker->stats->hitpoints = 200` etc. With `unique_ptr<statistics>`, this still works via `->` but any code that copies or reassigns the stats pointer would break.
+- `test_fairy_death.cpp` — Runs `glad_main()` which exercises the full entity lifecycle (creation → act → death → cleanup). This is the best integration test for validating that `unique_ptr` ownership doesn't cause use-after-free or double-delete.
+- Any test that calls `picker_main()` — The picker creates/destroys UI entities (buttons, pixies, backdrops) that will be affected by smart pointer changes.
+
+**New tests to add:**
+- **Entity lifecycle test:** Create a walker via `create_walker()`, add to entity list, verify it can be found, mark as dead, run cleanup pass, verify it's removed and memory is freed (no leak). This directly validates the Phase 4.1 ownership model.
+- **Entity transfer test:** Test moving a walker between lists (e.g., from `oblist` to `dead_list`) with `unique_ptr` — this is a common pattern in `screen.cpp`.
+- **PixieData move semantics test:** Test that `data_copy()` returns valid data after the Phase 4.9 rewrite, and that the moved-from PixieData is empty.
+- **Double-delete regression tests:** With raw pointers, double-delete was a latent risk. Add ASan to CI (Phase 1.2 enables this) and ensure the full game integration tests (`test_fairy_death`, `test_overpowered_team`) pass under ASan.
+
+**Coverage gaps exposed by Phase 4:**
+- No tests for `loader` destruction (Phase 4.10 `delete[]` arrays) — the loader is created once and never destroyed in tests
+- No tests for `obmap` (spatial indexing) — Phase 4.6 changes its ownership but no test exercises collision detection directly
+- No tests for `pixie`/`pixieN` destruction — sprite cleanup is untested
+- No test for the `screen` destructor path — tests call `_exit()` to avoid SDL cleanup hangs, so the `screen` destructor (Phase 4.2/4.5) is never exercised in tests
+
+**Recommendation:** Run the existing integration tests (`test_fairy_death`, `test_overpowered_team`) under AddressSanitizer after each sub-step of Phase 4. These tests exercise the deepest ownership chains and will surface use-after-free bugs immediately.
+
 ---
 
 ## Phase 5: Modern Idioms (Loops, Algorithms, Lambdas)
@@ -967,6 +1085,25 @@ std::string_view get_scen_title(std::string_view filename, screen *master);
 
 **Apply to:** All `const char*` parameters that are only read, not stored.
 
+### 5.7 Phase 5 Test Impact
+
+**Risk to existing tests: LOW.** Most Phase 5 changes are syntactic (range-based for, auto, constexpr) and don't change behavior.
+
+**Existing coverage:** The full test suite serves as a regression net. The integration tests (`test_fairy_death`, `test_overpowered_team`) exercise the main game loops that contain most of the iterator-based loops being converted.
+
+**Tests that will need updates:**
+- Test code itself should be modernized alongside game code (range-based for, auto, etc.) for consistency, but this is cosmetic, not functional.
+
+**New tests to add:**
+- **`constexpr` validation:** When converting `#define` constants to `constexpr` (5.4), add static_assert tests to verify values match the originals. Example:
+  ```cpp
+  static_assert(MAX_LEVELS == 500);
+  static_assert(GRID_SIZE == 16);
+  ```
+  These compile-time checks catch any value mismatches during the conversion with zero runtime cost.
+
+**Interaction with Phase 4:** Phase 5b (ownership-dependent loops using `std::erase_if` with `unique_ptr`) depends on Phase 4 completing first. The entity cleanup loops in `screen.cpp` are exercised by `test_fairy_death` (entities die and get cleaned up) — run this test after every Phase 5b change.
+
 ---
 
 ## Phase 6: Error Handling Modernization
@@ -1046,6 +1183,23 @@ if (!window) {
 }
 // Caught at top level in main()
 ```
+
+### 6.5 Phase 6 Test Impact
+
+**Risk to existing tests: LOW-MEDIUM.** Error handling changes are mostly additive, but changing return types (`short` → `bool`) affects callers.
+
+**Existing coverage:**
+- `test_load_multiple_levels` / `test_level_fallback` — exercise `LevelData::load()` error paths (loading nonexistent level 9999 falls back to level 1)
+- `test_save_load_roundtrip` — exercises save/load which would be affected by `std::expected` return types
+
+**Tests that will need updates:**
+- If `walker::act()` return type changes from `short` to `bool` (6.3), no existing test directly checks the return value — the game integration tests call it indirectly through `screen::act()`.
+
+**New tests to add:**
+- **Error path tests for `std::expected`:** If `LevelData::load()` returns `std::expected`, add tests that deliberately trigger errors (corrupted files, missing files) and verify the error messages.
+- **Exception safety tests:** If fatal errors throw exceptions (6.4), verify that the test harness catches them gracefully. Note: `test_main.cpp` should wrap test execution in a try/catch to handle unexpected exceptions without crashing the test runner.
+
+**Interaction with TESTING guards:** Currently `quit()` is a no-op under `#ifdef TESTING`. If fatal errors become exceptions instead of `exit()` calls, the TESTING guard behavior may need updating — exceptions propagate naturally without needing a guard.
 
 ---
 
@@ -1269,6 +1423,33 @@ struct GameContext {
 };
 ```
 
+### 7.7 Phase 7 Test Impact
+
+**Risk to existing tests: VERY HIGH.** Encapsulation changes (making public members private, adding getters/setters) will break every test that directly accesses entity fields.
+
+**Existing tests that will break:**
+
+| Encapsulation Change | Tests Affected | Fix Required |
+|---------------------|---------------|-------------|
+| `walker` combat stats (7.1 Group 1) | `test_overpowered_team` — directly sets `stats->hitpoints = 200`, `stats->max_hitpoints = 200`, etc. | Use new setter methods: `stats->set_hitpoints(200)` |
+| `walker` team identity (7.1 Group 3) | `test_overpowered_team` — accesses `team_num` during entity setup | Use `set_team_num()` / `team_num()` |
+| `guy` fields | `test_guy_creation` — checks `guy.family`, `guy.name`; `test_guy_copy` — checks `strength`, `dexterity`, `constitution`, `intelligence`, `armor`, `kills`; `test_guy_level_up` — checks `level`, `strength` | Use getter methods or keep `guy` fields public (simpler data-only struct) |
+| `walker` position (7.1 Group 2) | `test_fairy_death`, `test_overpowered_team` — game loop accesses `worldx`, `worldy` internally | No test code changes needed (accessed internally), but verify integration tests pass |
+| `#define` → `enum class` (7.5) | `test_guy_creation` — uses `FAMILY_SOLDIER`, `FAMILY_ARCHER`, etc.; `test_overpowered_team` — iterates `ORDER_LIVING`, `FAMILY_*` constants | Update to `Order::Living`, `LivingFamily::Soldier`, etc. |
+| Global `myscreen` → GameContext (7.6) | All tests — `test_main.cpp` sets up `myscreen` as a global; test code accesses it directly | Update to `GameContext::instance().screen` |
+
+**Strategy for test compatibility:** Do ONE encapsulation group per PR (as recommended in 7.1). After each group, update the affected test files in the same PR. The test suite provides immediate feedback on what broke.
+
+**New tests to add:**
+- **Const-correctness tests (7.4):** After adding `const` to query methods, add tests that call them through `const walker*` references to verify const-correctness compiles.
+- **Deleted copy constructor tests (7.3):** Add `static_assert(!std::is_copy_constructible_v<walker>)` to verify copy is truly deleted.
+- **`enum class` type safety tests (7.5):** Verify that mixing `Order` and `LivingFamily` values doesn't compile (the whole point of `enum class`).
+
+**Coverage gaps exposed by Phase 7:**
+- No tests for `viewscreen` friend removal (7.2) — no test directly tests rendering internals
+- No tests for `statistics` friend removal (7.2) — stats are accessed through walker, not directly tested in isolation
+- No tests for `screen` singleton / GameContext (7.6) — all tests assume the global `myscreen` pattern
+
 ---
 
 ## Phase 8: Containers & Algorithms
@@ -1392,6 +1573,22 @@ for(auto& [pos, walkers] : pos_to_walker)
 }
 ```
 
+### 8.5 Phase 8 Test Impact
+
+**Risk to existing tests: LOW.** Container changes (`C array` → `std::array`) are largely internal to classes that tests exercise indirectly.
+
+**Existing coverage:**
+- `test_load_multiple_levels` — exercises `gloader.cpp` arrays (animation direction arrays, hitpoints array) being converted to `std::array`
+- `test_level_data_integrity` — verifies loaded level grid data, which lives in arrays being converted
+
+**New tests to add:**
+- **Bounds-checking tests:** `std::array::at()` throws on out-of-bounds access (unlike C arrays which silently corrupt). Add tests that verify array accesses stay within bounds for palette buffers (768 entries), hitpoints arrays (200 entries), and animation tables.
+- **`obmap` algorithm tests (8.3):** The `std::min_element` / `std::erase_if` replacements for manual find-nearest and dead-entity loops are behavior-critical. Add unit tests for `find_near_foe()` and `find_far_foe()` with known entity positions to verify the algorithmic replacements produce identical results.
+
+**Coverage gaps exposed by Phase 8:**
+- No tests for `video.cpp` palette/buffer operations — the video buffers being converted to `std::array` (8.1) are only exercised through rendering, which runs headless (offscreen) in tests
+- No tests for `obmap.cpp` spatial indexing — collision detection is untested
+
 ---
 
 ## Phase 9: Concurrency & Threading
@@ -1508,12 +1705,83 @@ Phase 9 (Concurrency) ── optional, only if profiling shows need
 
 ### Testing Strategy
 
+The project has an existing automated test suite and CI pipeline that must remain green throughout all modernization phases.
+
+#### Existing Test Infrastructure
+
+**Test suite:** 25+ registered tests in `tests/`, built via `scripts/build_test.sh` with `-DTESTING`. Tests run headless (`SDL_VIDEODRIVER=offscreen`, `SDL_AUDIODRIVER=dummy`).
+
+**Test categories and what they cover:**
+
+| Category | Count | Coverage |
+|----------|-------|----------|
+| Startup & init | 2 | SDL init, screen object creation |
+| Menu UI navigation | 10 | Main menu, difficulty, options, help, menu loop regression |
+| Team management UI | 5 | Hire/view/train team, error handling (empty team) |
+| Save/load system | 3 | State roundtrip, team persistence, level fallback |
+| Character data | 5 | Guy creation/copy/leveling, campaign progress, save reset |
+| Level loading | 3 | Multi-version scenarios, data integrity, nonexistent level fallback |
+| Full game integration | 2 | Fairy death (run level, verify loss), overpowered team (hire all types, crank stats, verify win) |
+
+**Test infrastructure features:**
+- `TRACE("category", "message")` — instrumentation macro (no-op in production builds). Tests verify code paths via `trace_contains()` / `trace_count()`.
+- `interact("button_id")` / `wait_for_interactable("id", timeout)` — UI interaction system for testing blocking menu code from background threads.
+- `g_picker_max_mainmenu_calls` — loop iteration limit for menu tests.
+- `cleanup_picker_state()` — cleanup helper for picker globals after menu tests.
+
+**CI pipeline:** `.github/workflows/test.yml` runs on every push and pull request:
+1. **Test job** — builds and runs all tests
+2. **Native build job** — verifies `openglad` and `openscen` compile
+
+#### Per-Phase Testing Requirements
+
 After each sub-phase:
-1. Compile both native (`build_native.sh`) and web (`build_web.sh`) targets
-2. Run the game and verify basic gameplay loop works
-3. Run the level editor (`openscen`) and verify basic editing works
-4. Run with Address Sanitizer and UB Sanitizer (Phase 1 enables these)
-5. Play through at least one complete level
+1. **All existing tests must pass.** Run `./scripts/build_test.sh && ./openglad_test`. No regressions.
+2. **CI must be green.** Push to a branch, verify the GitHub Actions pipeline passes.
+3. Compile both native (`build_native.sh`) and web (`build_web.sh`) targets.
+4. Run with AddressSanitizer and UBSan (Phase 1 enables these in Debug mode).
+5. For high-risk phases (4, 7), also do a manual smoke test: play through at least one complete level.
+
+#### Tests to Add During Modernization
+
+These are prioritized by phase dependency — add each set of tests as part of the corresponding phase's PR:
+
+**Phase 3 (Type Safety):**
+- Save file version migration test (v0 headerless → v1 with header)
+- String boundary tests for `guy::name` (empty, max-length, over-length)
+- `std::format` Emscripten compatibility check
+
+**Phase 4 (Smart Pointers) — HIGHEST PRIORITY for new tests:**
+- Entity lifecycle test (create → add to list → find → mark dead → cleanup → verify freed)
+- Entity list transfer test (move `unique_ptr` between `oblist` and `dead_list`)
+- `PixieData` move semantics test (verify `data_copy()` rewrite)
+- Run `test_fairy_death` and `test_overpowered_team` under ASan after every sub-step
+
+**Phase 7 (Encapsulation):**
+- `static_assert(!std::is_copy_constructible_v<walker>)` for deleted copy
+- Const-correctness compilation tests via `const walker*` references
+- Update all existing tests that directly access public members being encapsulated
+
+**Phase 8 (Containers):**
+- `find_near_foe()` / `find_far_foe()` unit tests with known positions
+- `obmap` collision detection unit tests
+- Bounds-checking tests for converted `std::array` buffers
+
+#### Coverage Gaps (Not Tested Today)
+
+These areas of the codebase have **no automated test coverage** and are affected by modernization:
+
+| Area | Affected Phases | Risk |
+|------|----------------|------|
+| `video.cpp` rendering / palette buffers | 8 (std::array) | Low — internal to rendering |
+| `obmap.cpp` collision/spatial indexing | 4 (ownership), 8 (algorithms) | Medium — correctness-critical |
+| `level_editor.cpp` (openscen) | 2-8 (all phases) | Medium — large file, no tests |
+| Sound system (`soundob`) | 4 (unique_ptr) | Low — simple ownership |
+| `pixie`/`pixieN` sprite lifecycle | 4 (RAII), 7 (Rule of Five) | Medium — complex ownership |
+| `text.cpp` rendering | 3 (std::string), 5 (string_view) | Low — display only |
+| `io.cpp` PhysFS layer | 3 (void* typing), 4 (malloc→unique_ptr) | Medium — file I/O correctness |
+
+The level editor (`openscen`) is the largest untested file (147KB, 4247 lines). It is affected by every phase but has zero test coverage. Consider adding at least a startup/init test for the editor before beginning modernization.
 
 ### Estimated Scope
 
