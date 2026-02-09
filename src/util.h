@@ -19,8 +19,7 @@
 //
 // misc helper functions, and timer
 //
-#ifndef _UTIL_H__
-#define _UTIL_H__
+#pragma once
 
 #include "SDL.h"
 #include <ctype.h>
@@ -62,4 +61,3 @@ void uppercase(std::string &);
 // Zardus: add: set_mult func
 void set_mult(int);
 
-#endif

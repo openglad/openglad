@@ -14,8 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#ifndef __LIVING_H
-#define __LIVING_H
+#pragma once
 
 // Definition of LIVING class
 
@@ -43,6 +42,4 @@ class living : public walker
 	protected:
 		short act_random();
 };
-
-#endif
 

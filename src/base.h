@@ -14,8 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#ifndef __BASE_H
-#define __BASE_H
+#pragma once
 
 // BASE definitions (perhaps this should be broken up some more
 
@@ -388,7 +387,4 @@ typedef rgb palette[256];
 void set_vga_palette(palette p);
 rgb set_rgb(char r, char g, char b);
 short read_palette(FILE  *f, palette p);
-
-
-#endif
 

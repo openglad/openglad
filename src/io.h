@@ -15,8 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __IO_H__
-#define __IO_H__
+#pragma once
 
 #include "SDL.h"
 #include <list>
@@ -82,4 +81,3 @@ iterT list_find(iterT begin, iterT end, const T& value)
     return begin;
 }
 
-#endif

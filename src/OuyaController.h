@@ -1,5 +1,4 @@
-#ifndef _OUYACONTROLLER_H__
-#define _OUYACONTROLLER_H__
+#pragma once
 
 #include "SDL.h"
 
@@ -72,4 +71,3 @@ public:
     static void axis_motion(int player, float LS_X, float LS_Y, float RS_X, float RS_Y, float L2, float R2);
 };
 
-#endif

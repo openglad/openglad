@@ -1,5 +1,4 @@
-#ifndef MOM_SCREEN
-#define MOM_SCREEN
+#pragma once
 
 #include "SDL.h"
 
@@ -45,6 +44,3 @@ class Screen
 
 extern Screen *E_Screen;
 
-
-
-#endif

@@ -15,8 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef _PIXIE_DATA_H__
-#define _PIXIE_DATA_H__
+#pragma once
 
 
 class PixieData
@@ -36,5 +35,3 @@ class PixieData
     void free();
 };
 
-
-#endif

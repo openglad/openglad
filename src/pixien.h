@@ -14,8 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#ifndef __PIXIEN_H
-#define __PIXIEN_H
+#pragma once
 
 // Definition of PIXIEN class
 
@@ -36,6 +35,4 @@ class pixieN : public pixie
 		short frame; // current frame
 		unsigned char * facings;
 };
-
-#endif
 

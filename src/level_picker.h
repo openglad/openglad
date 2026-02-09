@@ -15,8 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef _LEVEL_PICKER_H__
-#define _LEVEL_PICKER_H__
+#pragma once
 
 #include "screen.h"
 #include "level_data.h"
@@ -28,4 +27,3 @@ int pick_level(screen *screenp, int default_level, bool enable_delete = false);
 void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_enemy_level,
                    int* num_enemies, float* difficulty, std::list<int>& exits);
 
-#endif

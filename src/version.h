@@ -1,6 +1,4 @@
-#ifndef _VERSION_H__
-#define _VERSION_H__
+#pragma once
 
 #define OPENGLAD_VERSION_STRING "1.1.1"
 
-#endif

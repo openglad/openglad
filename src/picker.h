@@ -15,9 +15,5 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef __PICKER_H
-#define __PICKER_H
+#pragma once
 
-
-
-#endif

@@ -1,5 +1,4 @@
-#ifndef _VIEW_SIZES_H__
-#define _VIEW_SIZES_H__
+#pragma once
 
 //Screen window boundaries, two player
 #define T_LEFT_ONE 0
@@ -20,4 +19,3 @@
 #define T_HALF_WIDTH 159
 #define T_HALF_HEIGHT 99
 
-#endif

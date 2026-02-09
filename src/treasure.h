@@ -14,8 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#ifndef __TREASURE_H
-#define __TREASURE_H
+#pragma once
 
 // Definition of TREASURE class
 
@@ -37,6 +36,4 @@ class treasure : public walker
 			return ORDER_TREASURE;
 		}
 };
-
-#endif
 

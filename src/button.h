@@ -14,8 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#ifndef __BUTTON_H
-#define __BUTTON_H
+#pragma once
 
 #include "base.h"
 #include "obmap.h"
@@ -243,4 +242,3 @@ Sint32 show_general_help();
 #define RESTORE_DEFAULT_SETTINGS 44
 #define SHOW_HELP               45
 #define CREATE_PROGRESS_MENU    46
-#endif

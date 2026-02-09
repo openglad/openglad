@@ -1,5 +1,4 @@
-#ifndef _TEST_TRACE_H__
-#define _TEST_TRACE_H__
+#pragma once
 
 #ifdef TESTING
 
@@ -38,4 +37,3 @@ inline void trace_write(const char* category, const char* format, ...) {
 
 #endif // TESTING
 
-#endif // _TEST_TRACE_H__

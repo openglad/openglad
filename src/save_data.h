@@ -15,8 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#ifndef _SAVE_DATA_H__
-#define _SAVE_DATA_H__
+#pragma once
 
 #include "SDL.h"
 #include <string>
@@ -68,4 +67,3 @@ public:
 
 #include "walker.h"
 
-#endif

@@ -20,8 +20,7 @@
 // input code
 //
 
-#ifndef _INPUT_H__
-#define _INPUT_H__
+#pragma once
 
 #include "SDL.h"
 #include <ctype.h>
@@ -279,4 +278,3 @@ extern float overscan_percentage;
 
 void update_overscan_setting();
 
-#endif
