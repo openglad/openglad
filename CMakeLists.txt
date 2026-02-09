@@ -1,0 +1,358 @@
+cmake_minimum_required(VERSION 3.25)
+project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
+
+# Target C++20 (C++23 when toolchains catch up)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# C standard for external C libraries
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED OFF)
+
+# Build options
+option(BUILD_TESTING "Build the test suite" OFF)
+option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
+
+# --------------------------------------------------------------------------
+# Source file lists
+# --------------------------------------------------------------------------
+
+set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
+set(EXT_DIR ${SRC_DIR}/external)
+
+# Main game C++ sources
+set(GAME_SOURCES
+    ${SRC_DIR}/glad.cpp
+    ${SRC_DIR}/button.cpp
+    ${SRC_DIR}/effect.cpp
+    ${SRC_DIR}/game.cpp
+    ${SRC_DIR}/graphlib.cpp
+    ${SRC_DIR}/guy.cpp
+    ${SRC_DIR}/help.cpp
+    ${SRC_DIR}/input.cpp
+    ${SRC_DIR}/intro.cpp
+    ${SRC_DIR}/living.cpp
+    ${SRC_DIR}/obmap.cpp
+    ${SRC_DIR}/pal32.cpp
+    ${SRC_DIR}/picker.cpp
+    ${SRC_DIR}/pixie.cpp
+    ${SRC_DIR}/pixien.cpp
+    ${SRC_DIR}/radar.cpp
+    ${SRC_DIR}/screen.cpp
+    ${SRC_DIR}/smooth.cpp
+    ${SRC_DIR}/sound.cpp
+    ${SRC_DIR}/stats.cpp
+    ${SRC_DIR}/text.cpp
+    ${SRC_DIR}/treasure.cpp
+    ${SRC_DIR}/video.cpp
+    ${SRC_DIR}/view.cpp
+    ${SRC_DIR}/walker.cpp
+    ${SRC_DIR}/weap.cpp
+    ${SRC_DIR}/sai2x.cpp
+    ${SRC_DIR}/util.cpp
+    ${SRC_DIR}/io.cpp
+    ${SRC_DIR}/gparser.cpp
+    ${SRC_DIR}/gloader.cpp
+    ${SRC_DIR}/pixie_data.cpp
+    ${SRC_DIR}/level_data.cpp
+    ${SRC_DIR}/level_picker.cpp
+    ${SRC_DIR}/level_editor.cpp
+    ${SRC_DIR}/campaign_picker.cpp
+    ${SRC_DIR}/results_screen.cpp
+    ${SRC_DIR}/save_data.cpp
+)
+
+# External C++ sources
+set(EXT_CXX_SOURCES
+    ${EXT_DIR}/micropather/micropather.cpp
+    ${EXT_DIR}/yam/yam.cpp
+)
+
+# External C sources - libyaml
+set(LIBYAML_SOURCES
+    ${EXT_DIR}/libyaml/src/api.c
+    ${EXT_DIR}/libyaml/src/loader.c
+    ${EXT_DIR}/libyaml/src/parser.c
+    ${EXT_DIR}/libyaml/src/reader.c
+    ${EXT_DIR}/libyaml/src/scanner.c
+    ${EXT_DIR}/libyaml/src/emitter.c
+    ${EXT_DIR}/libyaml/src/dumper.c
+    ${EXT_DIR}/libyaml/src/writer.c
+)
+
+# External C sources - physfs
+set(PHYSFS_SOURCES
+    ${EXT_DIR}/physfs/physfs.c
+    ${EXT_DIR}/physfs/physfs_byteorder.c
+    ${EXT_DIR}/physfs/physfs_unicode.c
+    ${EXT_DIR}/physfs/archivers/dir.c
+    ${EXT_DIR}/physfs/archivers/zip.c
+    ${EXT_DIR}/physfs/archivers/grp.c
+    ${EXT_DIR}/physfs/archivers/qpak.c
+    ${EXT_DIR}/physfs/archivers/hog.c
+    ${EXT_DIR}/physfs/archivers/mvl.c
+    ${EXT_DIR}/physfs/archivers/wad.c
+    ${EXT_DIR}/physfs/platform/posix.c
+    ${EXT_DIR}/physfs/platform/unix.c
+    ${EXT_DIR}/physfs/extras/physfsrwops.c
+)
+
+# External C sources - zlib
+set(ZLIB_SOURCES
+    ${EXT_DIR}/physfs/zlib123/adler32.c
+    ${EXT_DIR}/physfs/zlib123/compress.c
+    ${EXT_DIR}/physfs/zlib123/crc32.c
+    ${EXT_DIR}/physfs/zlib123/deflate.c
+    ${EXT_DIR}/physfs/zlib123/inffast.c
+    ${EXT_DIR}/physfs/zlib123/inflate.c
+    ${EXT_DIR}/physfs/zlib123/inftrees.c
+    ${EXT_DIR}/physfs/zlib123/trees.c
+    ${EXT_DIR}/physfs/zlib123/zutil.c
+)
+
+# External C sources - libzip
+set(LIBZIP_SOURCES
+    ${EXT_DIR}/libzip/zip_add.c
+    ${EXT_DIR}/libzip/zip_add_dir.c
+    ${EXT_DIR}/libzip/zip_add_entry.c
+    ${EXT_DIR}/libzip/zip_close.c
+    ${EXT_DIR}/libzip/zip_delete.c
+    ${EXT_DIR}/libzip/zip_dir_add.c
+    ${EXT_DIR}/libzip/zip_dirent.c
+    ${EXT_DIR}/libzip/zip_discard.c
+    ${EXT_DIR}/libzip/zip_entry.c
+    ${EXT_DIR}/libzip/zip_error.c
+    ${EXT_DIR}/libzip/zip_error_clear.c
+    ${EXT_DIR}/libzip/zip_error_get.c
+    ${EXT_DIR}/libzip/zip_error_get_sys_type.c
+    ${EXT_DIR}/libzip/zip_error_strerror.c
+    ${EXT_DIR}/libzip/zip_error_to_str.c
+    ${EXT_DIR}/libzip/zip_extra_field.c
+    ${EXT_DIR}/libzip/zip_extra_field_api.c
+    ${EXT_DIR}/libzip/zip_fclose.c
+    ${EXT_DIR}/libzip/zip_fdopen.c
+    ${EXT_DIR}/libzip/zip_file_add.c
+    ${EXT_DIR}/libzip/zip_file_error_clear.c
+    ${EXT_DIR}/libzip/zip_file_error_get.c
+    ${EXT_DIR}/libzip/zip_file_get_comment.c
+    ${EXT_DIR}/libzip/zip_file_get_offset.c
+    ${EXT_DIR}/libzip/zip_file_rename.c
+    ${EXT_DIR}/libzip/zip_file_replace.c
+    ${EXT_DIR}/libzip/zip_file_set_comment.c
+    ${EXT_DIR}/libzip/zip_file_strerror.c
+    ${EXT_DIR}/libzip/zip_filerange_crc.c
+    ${EXT_DIR}/libzip/zip_fopen.c
+    ${EXT_DIR}/libzip/zip_fopen_encrypted.c
+    ${EXT_DIR}/libzip/zip_fopen_index.c
+    ${EXT_DIR}/libzip/zip_fopen_index_encrypted.c
+    ${EXT_DIR}/libzip/zip_fread.c
+    ${EXT_DIR}/libzip/zip_get_archive_comment.c
+    ${EXT_DIR}/libzip/zip_get_archive_flag.c
+    ${EXT_DIR}/libzip/zip_get_compression_implementation.c
+    ${EXT_DIR}/libzip/zip_get_encryption_implementation.c
+    ${EXT_DIR}/libzip/zip_get_file_comment.c
+    ${EXT_DIR}/libzip/zip_get_name.c
+    ${EXT_DIR}/libzip/zip_get_num_entries.c
+    ${EXT_DIR}/libzip/zip_get_num_files.c
+    ${EXT_DIR}/libzip/zip_memdup.c
+    ${EXT_DIR}/libzip/zip_name_locate.c
+    ${EXT_DIR}/libzip/zip_new.c
+    ${EXT_DIR}/libzip/zip_open.c
+    ${EXT_DIR}/libzip/zip_rename.c
+    ${EXT_DIR}/libzip/zip_replace.c
+    ${EXT_DIR}/libzip/zip_set_archive_comment.c
+    ${EXT_DIR}/libzip/zip_set_archive_flag.c
+    ${EXT_DIR}/libzip/zip_set_default_password.c
+    ${EXT_DIR}/libzip/zip_set_file_comment.c
+    ${EXT_DIR}/libzip/zip_set_file_compression.c
+    ${EXT_DIR}/libzip/zip_set_name.c
+    ${EXT_DIR}/libzip/zip_source_buffer.c
+    ${EXT_DIR}/libzip/zip_source_close.c
+    ${EXT_DIR}/libzip/zip_source_crc.c
+    ${EXT_DIR}/libzip/zip_source_deflate.c
+    ${EXT_DIR}/libzip/zip_source_error.c
+    ${EXT_DIR}/libzip/zip_source_file.c
+    ${EXT_DIR}/libzip/zip_source_filep.c
+    ${EXT_DIR}/libzip/zip_source_free.c
+    ${EXT_DIR}/libzip/zip_source_function.c
+    ${EXT_DIR}/libzip/zip_source_layered.c
+    ${EXT_DIR}/libzip/zip_source_open.c
+    ${EXT_DIR}/libzip/zip_source_pkware.c
+    ${EXT_DIR}/libzip/zip_source_pop.c
+    ${EXT_DIR}/libzip/zip_source_read.c
+    ${EXT_DIR}/libzip/zip_source_stat.c
+    ${EXT_DIR}/libzip/zip_source_window.c
+    ${EXT_DIR}/libzip/zip_source_zip.c
+    ${EXT_DIR}/libzip/zip_source_zip_new.c
+    ${EXT_DIR}/libzip/zip_stat.c
+    ${EXT_DIR}/libzip/zip_stat_index.c
+    ${EXT_DIR}/libzip/zip_stat_init.c
+    ${EXT_DIR}/libzip/zip_strerror.c
+    ${EXT_DIR}/libzip/zip_string.c
+    ${EXT_DIR}/libzip/zip_unchange.c
+    ${EXT_DIR}/libzip/zip_unchange_all.c
+    ${EXT_DIR}/libzip/zip_unchange_archive.c
+    ${EXT_DIR}/libzip/zip_unchange_data.c
+    ${EXT_DIR}/libzip/zip_utf-8.c
+    ${EXT_DIR}/libzip/zip_err_str.c
+    ${EXT_DIR}/libzip/mkstemp.c
+)
+
+# All external C sources combined
+set(EXTERNAL_C_SOURCES
+    ${LIBYAML_SOURCES}
+    ${PHYSFS_SOURCES}
+    ${ZLIB_SOURCES}
+    ${LIBZIP_SOURCES}
+)
+
+# --------------------------------------------------------------------------
+# Common include directories and compile definitions
+# --------------------------------------------------------------------------
+
+set(COMMON_INCLUDE_DIRS
+    ${SRC_DIR}
+    ${EXT_DIR}/micropather
+    ${EXT_DIR}/yam
+    ${EXT_DIR}/libyaml/include
+    ${EXT_DIR}/physfs
+    ${EXT_DIR}/physfs/extras
+    ${EXT_DIR}/physfs/zlib123
+    ${EXT_DIR}/libzip
+)
+
+set(COMMON_DEFINITIONS
+    USE_BMP_SCREENSHOT=1
+    PHYSFS_NO_CDROM_SUPPORT=1
+    PHYSFS_SUPPORTS_ZIP=1
+    PHYSFS_SUPPORTS_GRP=0
+    PHYSFS_SUPPORTS_WAD=0
+    PHYSFS_SUPPORTS_HOG=0
+    PHYSFS_SUPPORTS_MVL=0
+    PHYSFS_SUPPORTS_QPAK=0
+    PHYSFS_SUPPORTS_LZMA=0
+    YAML_DECLARE_STATIC
+)
+
+# --------------------------------------------------------------------------
+# Helper function to configure a target with common settings
+# --------------------------------------------------------------------------
+
+function(configure_openglad_target target)
+    target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
+    target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
+
+    if(EMSCRIPTEN)
+        target_compile_options(${target} PRIVATE
+            -sUSE_SDL=2
+            -sUSE_SDL_MIXER=2
+            -Wno-constant-conversion
+            -Wno-parentheses-equality
+            -Wno-pointer-bool-conversion
+        )
+    else()
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(SDL2 REQUIRED sdl2 SDL2_mixer)
+        target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(${target} PRIVATE ${SDL2_LIBRARIES} m pthread)
+        target_compile_options(${target} PRIVATE -Wno-parentheses)
+    endif()
+
+    # Suppress warnings for external C code
+    set_source_files_properties(${EXTERNAL_C_SOURCES} ${EXT_CXX_SOURCES}
+        PROPERTIES COMPILE_OPTIONS "-w")
+endfunction()
+
+# --------------------------------------------------------------------------
+# Native targets
+# --------------------------------------------------------------------------
+
+if(NOT EMSCRIPTEN)
+    # --- openglad (main game) ---
+    add_executable(openglad ${GAME_SOURCES} ${EXT_CXX_SOURCES} ${EXTERNAL_C_SOURCES})
+    configure_openglad_target(openglad)
+
+    # --- openscen (level editor) ---
+    if(BUILD_EDITOR)
+        add_executable(openscen ${GAME_SOURCES} ${EXT_CXX_SOURCES} ${EXTERNAL_C_SOURCES})
+        configure_openglad_target(openscen)
+        target_compile_definitions(openscen PRIVATE OPENSCEN)
+    endif()
+
+    # --- openglad_test ---
+    if(BUILD_TESTING)
+        set(TEST_SOURCES
+            ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_game_launch.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_progress.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_back_to_mainmenu.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_new_game.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_hire_team.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_train_team.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_load_team.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_team.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_options_menu.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_help.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_load_levels.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_difficulty.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_guy.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_go_no_team.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_menu.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_fairy_death.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_overpowered_team.cpp
+        )
+
+        # Game sources include test_trace.cpp when TESTING is defined
+        set(TEST_GAME_SOURCES ${GAME_SOURCES})
+        list(APPEND TEST_GAME_SOURCES ${SRC_DIR}/test_trace.cpp)
+
+        add_executable(openglad_test
+            ${TEST_GAME_SOURCES}
+            ${EXT_CXX_SOURCES}
+            ${EXTERNAL_C_SOURCES}
+            ${TEST_SOURCES}
+        )
+        configure_openglad_target(openglad_test)
+        target_compile_definitions(openglad_test PRIVATE TESTING)
+        target_include_directories(openglad_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    endif()
+endif()
+
+# --------------------------------------------------------------------------
+# Emscripten target
+# --------------------------------------------------------------------------
+
+if(EMSCRIPTEN)
+    add_executable(play ${GAME_SOURCES} ${EXT_CXX_SOURCES} ${EXTERNAL_C_SOURCES})
+    configure_openglad_target(play)
+
+    target_link_options(play PRIVATE
+        -sUSE_SDL=2
+        -sUSE_SDL_MIXER=2
+        "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\",\"ogg\"]"
+        -sALLOW_MEMORY_GROWTH=1
+        -sINITIAL_MEMORY=67108864
+        -sASYNCIFY
+        -sASYNCIFY_STACK_SIZE=65536
+        -sEXIT_RUNTIME=0
+        -lidbfs.js
+        "SHELL:-sEXPORTED_FUNCTIONS=[\"_main\",\"_on_idbfs_sync_done\"]"
+        "SHELL:-sEXPORTED_RUNTIME_METHODS=[\"ccall\",\"cwrap\"]"
+        "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/web/shell.html"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/cfg@/cfg"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/pix@/pix"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/sound@/sound"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/extra_campaigns@/extra_campaigns"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/builtin@/builtin"
+    )
+
+    set_target_properties(play PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
+        SUFFIX ".html"
+    )
+endif()

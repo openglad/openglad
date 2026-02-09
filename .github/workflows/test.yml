@@ -16,7 +16,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake
 
       - name: Build test binary
         run: ./scripts/build_test.sh
@@ -34,7 +34,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake
 
       - name: Build native binaries
         run: ./scripts/build_native.sh
