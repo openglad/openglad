@@ -47,7 +47,7 @@ void intro_main(Sint32 argc, char** argv)
 	pixie *ul, *ur, *ll, *lr; // for full-screen displays
 	PixieData uldata, urdata, lldata, lrdata;
 	PixieData gladdata, bigdata;
-	char message[80];
+	const char* message;
 
 	ul = ur = ll = lr = nullptr;
 
@@ -196,25 +196,25 @@ void intro_main(Sint32 argc, char** argv)
 	lldata.free();
 	ll = nullptr;
 
-	strcpy(message, "Additional Artwork By:");
+	message = "Additional Artwork By:";
 	mytext.write_xy(310-mytext.query_width(message),
 	                 30, message, 230, myscreen->viewob[0]);
-	strcpy(message, "Doug Ricket");
+	message = "Doug Ricket";
 	mytext.write_xy(310-mytext.query_width(message),
 	                 50, message, 230, myscreen->viewob[0]);
-	strcpy(message, "Stefan Scandizzo");
+	message = "Stefan Scandizzo";
 	mytext.write_xy(310-mytext.query_width(message),
 	                 60, message, 230, myscreen->viewob[0]);
 
-	strcpy(message, "Special Thanks To:");
+	message = "Special Thanks To:";
 	mytext.write_xy(2, 130, message, 230, myscreen->viewob[0]);
-	strcpy(message, "Kim Kelly  Lara Kirkendall");
+	message = "Kim Kelly  Lara Kirkendall";
 	mytext.write_xy(2, 150, message, 230, myscreen->viewob[0]);
-	strcpy(message, "Lee Martin  Karyn McCreary");
+	message = "Lee Martin  Karyn McCreary";
 	mytext.write_xy(2, 160, message, 230, myscreen->viewob[0]);
-	strcpy(message, "Loki, Ishara, & Mootz");
+	message = "Loki, Ishara, & Mootz";
 	mytext.write_xy(2, 170, message, 230, myscreen->viewob[0]);
-	strcpy(message, "And many others!");
+	message = "And many others!";
 	mytext.write_xy(2, 180, message, 230, myscreen->viewob[0]);
 
 	//myscreen->refresh();

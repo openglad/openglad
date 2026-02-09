@@ -18,6 +18,7 @@
 #pragma once
 
 #include "SDL_mixer.h"
+#include <string>
 
 #define SOUND_BOW       0
 #define SOUND_CLANG     1
@@ -51,14 +52,14 @@ class soundob
 		void shutdown();
 		void play_sound(short whichsound);
 		void set_sound_volume(int);
-		void load_sound(Mix_Chunk **audio, char * file);
+		void load_sound(Mix_Chunk **audio, const char * file);
 		void free_sound(Mix_Chunk **sound);
 
 		unsigned char query_volume();
 		unsigned char set_sound(bool silent);      // Toggle sound on/off
 		void load_sound(SDL_AudioSpec, char *);
 		unsigned char set_volume(unsigned char volumelevel);
-		char soundlist[NUMSOUNDS][40];              // Our list of sounds
+		std::string soundlist[NUMSOUNDS];            // Our list of sounds
 		Mix_Chunk *sound[NUMSOUNDS];		// AudioSpec for loading sounds
 		int baseio, irq, dma, dma16;                // Card-specific information
 		int volume;                       // Volume: 0 - 255

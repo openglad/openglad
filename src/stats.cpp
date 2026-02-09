@@ -21,6 +21,7 @@
 #include "graph.h"
 #include "stats.h"      // for bit flags, etc.
 #include <cmath>
+#include <format>
 
 #define CHECK_STEP_SIZE 1 // (controller->stepsize) // was 1
 
@@ -606,7 +607,6 @@ void statistics::yell_for_help(walker *foe)
 {
 	short howmany;
 	Sint32 deltax, deltay;
-	char message[80];
 
 	controller->yo_delay += 80;
 	
@@ -636,8 +636,8 @@ void statistics::yell_for_help(walker *foe)
 	// Notify friends of need ...
 	if (controller->myguy && (controller->team_num == 0) )
 	{
-		sprintf(message, "%s yells for help!", controller->myguy->name.c_str());
-		myscreen->do_notify(message, controller);
+		std::string message = std::format("{} yells for help!", controller->myguy->name);
+		myscreen->do_notify(message.c_str(), controller);
 	}
 
 }

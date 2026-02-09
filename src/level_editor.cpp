@@ -30,6 +30,7 @@
 #include "sai2x.h"
 #include <algorithm>
 #include <cstring>
+#include <format>
 
 #ifdef OUYA
 #include "OuyaController.h"
@@ -661,7 +662,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
             if(temptext != nullptr)
             {
                 s->insert(cursor_pos, temptext);
-                cursor_pos += strlen(temptext);
+                cursor_pos += static_cast<int>(strlen(temptext));
             }
         }
 		
@@ -1148,9 +1149,7 @@ bool LevelEditorData::saveCampaign()
 bool LevelEditorData::saveLevelAs(int id)
 {
     level->id = id;
-    char buf[20];
-    snprintf(buf, 20, "scen%d", id);
-    level->grid_file = buf;
+    level->grid_file = std::format("scen{}", id);
     
     std::string old_campaign = get_mounted_campaign();
     unpack_campaign(old_campaign);
@@ -1564,9 +1563,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     LevelData d(current_level);
     if(!d.load())
     {
-        char buf[40];
-        snprintf(buf, 40, "Level %d failed to load.", current_level);
-        problems.push_back(buf);
+        problems.push_back(std::format("Level {} failed to load.", current_level));
         return;
     }
     
@@ -1599,9 +1596,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
         }
         else
         {
-            char buf[40];
-            snprintf(buf, 40, "Level %d has no exits.", current_level);
-            problems.push_back(buf);
+            problems.push_back(std::format("Level {} has no exits.", current_level));
             return;
         }
     }
@@ -1615,10 +1610,8 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
 
 bool LevelEditorData::saveLevel()
 {
-    char buf[20];
-    snprintf(buf, 20, "scen%d", level->id);
-    level->grid_file = buf;
-    
+    level->grid_file = std::format("scen{}", level->id);
+
     std::string old_campaign = get_mounted_campaign();
     unpack_campaign(old_campaign);
     bool result = level->save();
@@ -1697,7 +1690,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             (*e)->draw(myscreen);
     }
     
-	char message[50];
+	std::string message;
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
 	Sint32 numobs = myscreen->level_data.numobs;
@@ -1749,9 +1742,8 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             // Too many names to show?
             if(i+1 == 6 && selection.size() > 6)
             {
-                char buf[20];
-                snprintf(buf, 20, "+%d more", int(selection.size()) - 5);
-                scentext.write_xy(lm, L_D(curline++), buf, DARK_BLUE, 1);
+                std::string buf = std::format("+{} more", int(selection.size()) - 5);
+                scentext.write_xy(lm, L_D(curline++), buf.c_str(), DARK_BLUE, 1);
                 break;  // No more
             }
             // Show name
@@ -1766,37 +1758,37 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             if(selection.size() == 1 || !showing_name)
             {
                 // Show family name
-                message[0] = '\0';
+                message.clear();
                 if (e->order == ORDER_LIVING)
-                    strcat(message, livings[e->family]);
+                    message = livings[e->family];
                 else if (e->order == ORDER_GENERATOR)
                     switch (e->family)      // who are we?
                     {
                         case FAMILY_TENT:
-                            strcat(message, "TENT");
+                            message = "TENT";
                             break;
                         case FAMILY_TOWER:
-                            strcat(message, "MAGE TOWER");
+                            message = "MAGE TOWER";
                             break;
                         case FAMILY_BONES:
-                            strcat(message, "BONEPILE");
+                            message = "BONEPILE";
                             break;
                         case FAMILY_TREEHOUSE:
-                            strcat(message, "TREEHOUSE");
+                            message = "TREEHOUSE";
                             break;
                         default:
-                            strcat(message, "GENERATOR");
+                            message = "GENERATOR";
                             break;
                     }
                 else if (e->order == ORDER_SPECIAL)
-                    strcat(message, "START TILE");
+                    message = "START TILE";
                 else if (e->order == ORDER_TREASURE)
-                    strcat(message, treasures[e->family]);
+                    message = treasures[e->family];
                 else if (e->order == ORDER_WEAPON)
-                    strcat(message, weapons[e->family]);
+                    message = weapons[e->family];
                 else
-                    strcat(message, "UNKNOWN");
-                scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+                    message = "UNKNOWN";
+                scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
             }
             
             i++;
@@ -1807,37 +1799,37 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             
             // More info for a single selection
             // Level display
-            message[0] = '\0';
+            message.clear();
             switch(e->order)
             {
                 case ORDER_LIVING:
                 case ORDER_GENERATOR:
-                    sprintf(message, "LEVEL: %u", e->level);
+                    message = std::format("LEVEL: {}", e->level);
                     break;
                 case ORDER_TREASURE:
                     if(e->family == FAMILY_GOLD_BAR || e->family == FAMILY_SILVER_BAR)
-                        sprintf(message, "VALUE: %u", e->level);
+                        message = std::format("VALUE: {}", e->level);
                     else if(e->family == FAMILY_KEY)
-                        sprintf(message, "DOOR ID: %u", e->level);
+                        message = std::format("DOOR ID: {}", e->level);
                     else if(e->family == FAMILY_TELEPORTER)
-                        sprintf(message, "GROUP: %u", e->level);
+                        message = std::format("GROUP: {}", e->level);
                     else if(e->family == FAMILY_EXIT)
-                        sprintf(message, "EXIT TO: %u", e->level);
+                        message = std::format("EXIT TO: {}", e->level);
                     else if(e->family != FAMILY_STAIN)
-                        sprintf(message, "POWER: %u", e->level);
+                        message = std::format("POWER: {}", e->level);
                     break;
                 case ORDER_WEAPON:
                     if(e->family == FAMILY_DOOR)
-                        sprintf(message, "DOOR ID: %u", e->level);
+                        message = std::format("DOOR ID: {}", e->level);
                     else
-                        sprintf(message, "POWER: %u", e->level);
+                        message = std::format("POWER: {}", e->level);
                     break;
                 default:
                     break;
             }
-            
-            if(strlen(message) > 0)
-                scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+
+            if(!message.empty())
+                scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
         }
         
     }
@@ -1848,75 +1840,75 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
         // Get team number ..
-        message[0] = '\0';
+        message.clear();
         if (object_brush.order == ORDER_LIVING)
-            strcat(message, livings[object_brush.family]);
+            message = livings[object_brush.family];
         else if (object_brush.order == ORDER_GENERATOR)
             switch (object_brush.family)      // who are we?
             {
                 case FAMILY_TENT:
-                    strcat(message, "TENT");
+                    message = "TENT";
                     break;
                 case FAMILY_TOWER:
-                    strcat(message, "MAGE TOWER");
+                    message = "MAGE TOWER";
                     break;
                 case FAMILY_BONES:
-                    strcat(message, "BONEPILE");
+                    message = "BONEPILE";
                     break;
                 case FAMILY_TREEHOUSE:
-                    strcat(message, "TREEHOUSE");
+                    message = "TREEHOUSE";
                     break;
                 default:
-                    strcat(message, "GENERATOR");
+                    message = "GENERATOR";
                     break;
             }
         else if (object_brush.order == ORDER_SPECIAL)
-            strcat(message, "START TILE");
+            message = "START TILE";
         else if (object_brush.order == ORDER_TREASURE)
-            strcat(message, treasures[object_brush.family]);
+            message = treasures[object_brush.family];
         else if (object_brush.order == ORDER_WEAPON)
-            strcat(message, weapons[object_brush.family]);
+            message = weapons[object_brush.family];
         else
-            strcat(message, "UNKNOWN");
-        scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
+            message = "UNKNOWN";
+        scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
         // Level display
-        message[0] = '\0';
+        message.clear();
         switch(object_brush.order)
         {
             case ORDER_LIVING:
             case ORDER_GENERATOR:
-                sprintf(message, "LEVEL: %u", object_brush.level);
+                message = std::format("LEVEL: {}", object_brush.level);
                 break;
             case ORDER_TREASURE:
                 if(object_brush.family == FAMILY_GOLD_BAR || object_brush.family == FAMILY_SILVER_BAR)
-                    sprintf(message, "VALUE: %u", object_brush.level);
+                    message = std::format("VALUE: {}", object_brush.level);
                 else if(object_brush.family == FAMILY_KEY)
-                    sprintf(message, "DOOR ID: %u", object_brush.level);
+                    message = std::format("DOOR ID: {}", object_brush.level);
                 else if(object_brush.family == FAMILY_TELEPORTER)
-                    sprintf(message, "GROUP: %u", object_brush.level);
+                    message = std::format("GROUP: {}", object_brush.level);
                 else if(object_brush.family == FAMILY_EXIT)
-                    sprintf(message, "EXIT TO: %u", object_brush.level);
+                    message = std::format("EXIT TO: {}", object_brush.level);
                 else if(object_brush.family != FAMILY_STAIN)
-                    sprintf(message, "POWER: %u", object_brush.level);
+                    message = std::format("POWER: {}", object_brush.level);
                 break;
             case ORDER_WEAPON:
                 if(object_brush.family == FAMILY_DOOR)
-                    sprintf(message, "DOOR ID: %u", object_brush.level);
+                    message = std::format("DOOR ID: {}", object_brush.level);
                 else
-                    sprintf(message, "POWER: %u", object_brush.level);
+                    message = std::format("POWER: {}", object_brush.level);
                 break;
             default:
                 break;
         }
-        
-        if(strlen(message) > 0)
-            scentext.write_xy(lm, L_D(curline++), message, DARK_BLUE, 1);
-        
+
+        if(!message.empty())
+            scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
+
         numobs = myscreen->level_data.numobs;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
-        sprintf(message, "OB: %d", numobs);
-        scentext.write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
+        message = std::format("OB: {}", numobs);
+        scentext.write_xy(lm,L_D(curline++),message.c_str(), DARK_BLUE, 1);
     }
     
     if(mode == Mode::Terrain)
@@ -2598,10 +2590,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, campaignInfoButton))
         {
-            char buf[512];
-            snprintf(buf, 512, "%s\nID: %s\nTitle: %s\nVersion: %s\nAuthors: %s\nContributors: %s\nSugg. Power: %d\nFirst level: %d", 
-                        (campaignchanged? "(unsaved)" : ""), campaign->id.c_str(), campaign->title.c_str(), campaign->version.c_str(), campaign->authors.c_str(), campaign->contributors.c_str(), campaign->suggested_power, campaign->first_level);
-            popup_dialog("Campaign Info", buf);
+            std::string buf = std::format("{}\nID: {}\nTitle: {}\nVersion: {}\nAuthors: {}\nContributors: {}\nSugg. Power: {}\nFirst level: {}",
+                        (campaignchanged? "(unsaved)" : ""), campaign->id, campaign->title, campaign->version, campaign->authors, campaign->contributors, campaign->suggested_power, campaign->first_level);
+            popup_dialog("Campaign Info", buf.c_str());
         }
         // Profile >
         else if(activate_sub_menu_button(mx, my, current_menu, campaignProfileButton))
@@ -2675,9 +2666,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, campaignDetailsSuggestedPowerButton))
         {
-            char buf[20];
-            snprintf(buf, 20, "%d", campaign->suggested_power);
-            std::string power = buf;
+            std::string power = std::format("{}", campaign->suggested_power);
             if(prompt_for_string("Suggested Power", power))
             {
                 campaign->suggested_power = toInt(power);
@@ -2686,9 +2675,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, campaignDetailsFirstLevelButton))
         {
-            char buf[20];
-            snprintf(buf, 20, "%d", campaign->first_level);
-            std::string level = buf;
+            std::string level = std::format("{}", campaign->first_level);
             if(prompt_for_string("First Level", level))
             {
                 campaign->first_level = toInt(level);
@@ -2709,17 +2696,15 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             {
                 if(connected.find(*e) == connected.end())
                 {
-                    char buf[40];
-                    snprintf(buf, 40, "Level %d is not connected.", *e);
-                    problems.push_back(buf);
+                    problems.push_back(std::format("Level {} is not connected.", *e));
                 }
             }
             
             // Get ready to show the user the problems
-            char buf[512];
+            std::string buf;
             if(problems.size() == 0)
             {
-                snprintf(buf, 512, "No problems!");
+                buf = "No problems!";
             }
             else
             {
@@ -2729,24 +2714,19 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     int num_over = problems.size() - 6;
                     while(problems.size() > 6)
                         problems.pop_back();
-                    char buf[40];
-                    snprintf(buf, 40, "%d more problems...", num_over);
-                    problems.push_back(buf);
+                    problems.push_back(std::format("{} more problems...", num_over));
                 }
-                
+
                 // Put all the problems together for the printer
-                buf[0] = '\0';
                 for(std::list<std::string>::iterator e = problems.begin(); e != problems.end(); e++)
                 {
-                    if(e->size() + strlen(buf) + 1 >= 512)
-                        break;
-                    strcat(buf, e->c_str());
-                    strcat(buf, "\n");
+                    buf += *e;
+                    buf += "\n";
                 }
             }
-            
+
             // Show user the problems
-            popup_dialog("Validate Campaign", buf);
+            popup_dialog("Validate Campaign", buf.c_str());
         }
         // LEVEL
         else if(activate_sub_menu_button(mx, my, current_menu, levelButton, true))
@@ -2763,10 +2743,9 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, levelInfoButton))
         {
-            char buf[512];
-            snprintf(buf, 512, "%s\nID number: %d\nTitle: %s\nSize: %ux%u",
-                     (levelchanged? "(unsaved)" : ""), level->id, level->title.c_str(), level->grid.w, level->grid.h);
-            popup_dialog("Level Info", buf);
+            std::string buf = std::format("{}\nID number: {}\nTitle: {}\nSize: {}x{}",
+                     (levelchanged? "(unsaved)" : ""), level->id, level->title, level->grid.w, level->grid.h);
+            popup_dialog("Level Info", buf.c_str());
         }
         // Profile >
         else if(activate_sub_menu_button(mx, my, current_menu, levelProfileButton))
@@ -2808,11 +2787,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         {
             // Using two prompts sequentially
             
-            char buf[20];
-            snprintf(buf, 20, "%u", level->grid.w);
-            std::string width = buf;
-            snprintf(buf, 20, "%u", level->grid.h);
-            std::string height = buf;
+            std::string width = std::format("{}", level->grid.w);
+            std::string height = std::format("{}", level->grid.h);
             
             if(prompt_for_string("Map Width", width))
             {
@@ -2831,18 +2807,17 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     // Size is limited to one byte in the file format
                     if(w < 3 || h < 3 || w > 255 || h > 255)
                     {
-                        char buf[200];
-                        snprintf(buf, 200, "Can't resize grid to %dx%d\n", w, h);
+                        std::string errmsg = std::string("Can't resize grid to ") + std::to_string(w) + "x" + std::to_string(h) + "\n";
                         if(w < 3)
-                            strcat(buf, "Width is too small.\n");
+                            errmsg += "Width is too small.\n";
                         if(h < 3)
-                            strcat(buf, "Height is too small.\n");
+                            errmsg += "Height is too small.\n";
                         if(w > 255)
-                            strcat(buf, "Width is too big (max 255).\n");
+                            errmsg += "Width is too big (max 255).\n";
                         if(h > 255)
-                            strcat(buf, "Height is too big (max 255).\n");
-                        
-                        popup_dialog("Resize Map", buf);
+                            errmsg += "Height is too big (max 255).\n";
+
+                        popup_dialog("Resize Map", errmsg.c_str());
                     }
                     else
                     {
@@ -2859,9 +2834,8 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             draw(myscreen);
                             myscreen->refresh();
                             
-                            char buf[30];
-                            snprintf(buf, 30, "Resized map to %ux%u", level->grid.w, level->grid.h);
-                            timed_dialog(buf);
+                            std::string resize_msg = std::format("Resized map to {}x{}", level->grid.w, level->grid.h);
+                            timed_dialog(resize_msg.c_str());
                             redraw = 1;
                             levelchanged = 1;
                         }
@@ -2910,9 +2884,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsParValueButton))
         {
-            char buf[20];
-            snprintf(buf, 20, "%d", level->par_value);
-            std::string par = buf;
+            std::string par = std::format("{}", level->par_value);
             if(prompt_for_string("Par Value (num)", par))
             {
                 int v = toInt(par);
@@ -2925,9 +2897,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, levelDetailsTimeLimitButton))
         {
-            char buf[20];
-            snprintf(buf, 20, "%d", level->time_bonus_limit);
-            std::string par = buf;
+            std::string par = std::format("{}", level->time_bonus_limit);
             if(prompt_for_string("Time Bonus Limit (num)", par))
             {
                 int v = toInt(par);

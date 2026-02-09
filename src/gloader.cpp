@@ -18,6 +18,7 @@
 #include "gloader.h"
 #include "stats.h"
 #include "walker.h"
+#include <format>
 #include "living.h"
 #include "treasure.h"
 #include "weap.h"
@@ -806,9 +807,8 @@ walker  *loader::create_walker(char order,
 
 	if (!graphics[PIX(order, family)].valid())
 	{
-	    char buf[200];
-	    snprintf(buf, 200, "No valid graphics for walker!\nOrder: %d, Family %d\nPlease report this to the developer!", order, family);
-		popup_dialog("ERROR", buf);
+	    std::string buf = std::format("No valid graphics for walker!\nOrder: {}, Family {}\nPlease report this to the developer!", order, family);
+		popup_dialog("ERROR", buf.c_str());
 		return nullptr;
 	}
 

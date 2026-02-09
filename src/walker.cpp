@@ -22,6 +22,7 @@
 
 #include "graph.h"
 #include "smooth.h"
+#include <format>
 
 // ************************************************************
 //  WALKER -- graphics routines
@@ -1872,7 +1873,7 @@ short walker::attack(walker  *target)
 	walker  *blood; // temporary stain
 	walker *headguy; // guy at top of chain..
 	short playerteam = -1;
-	char message[80];
+	std::string message;
 	float tempdamage = get_base_damage(this);
 	short getscore=0;
 	char targetorder = target->query_order();
@@ -2058,13 +2059,13 @@ short walker::attack(walker  *target)
 					if (target->stats->name.size() && !(target->lifetime)
 					        && (!target->owner) ) // do we have an NPC name?
 					{
-						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name.c_str());
-						myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
+						message = std::format("ENEMY DEATH: {} DIED!", target->stats->name);
+						myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
 					}
 					if(remaining_foes(myscreen, this) == 1)  // This is the last foe
 					{
-						sprintf(message, "All foes defeated!");
-						myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
+						message = "All foes defeated!";
+						myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
 					}
 				}
 				else
@@ -2072,60 +2073,60 @@ short walker::attack(walker  *target)
 					// Alert us of the death
 					if ( (target->owner || target->lifetime) // summoned?
 					        && (target->stats->name.size() ) ) // and have name
-						sprintf(message, "%s Dispelled!", target->stats->name.c_str());
+						message = std::format("{} Dispelled!", target->stats->name);
 					else if (target->stats->name.size()) // do we have an NPC name?
-						sprintf(message, "%s DIED!", target->stats->name.c_str());
+						message = std::format("{} DIED!", target->stats->name);
 					else if (target->myguy && target->myguy->name.size() )
-						sprintf(message, "%s Died!", target->myguy->name.c_str());
+						message = std::format("{} Died!", target->myguy->name);
 					else
 						switch (target->query_family())
 						{
 							case FAMILY_SOLDIER:
-								strcpy(message, "SOLDIER SLAIN");
+								message = "SOLDIER SLAIN";
 								break;
 							case FAMILY_ARCHER:
-								strcpy(message, "ARCHER DIED");
+								message = "ARCHER DIED";
 								break;
 							case FAMILY_THIEF:
-								strcpy(message, "THIEF KILLED");
+								message = "THIEF KILLED";
 								break;
 							case FAMILY_ELF:
-								strcpy(message, "ELF KILLED");
+								message = "ELF KILLED";
 								break;
 							case FAMILY_MAGE:
-								strcpy(message, "MAGE DIED");
+								message = "MAGE DIED";
 								break;
 							case FAMILY_SKELETON:
-								strcpy(message, "SKELETON CRUMBLED");
+								message = "SKELETON CRUMBLED";
 								break;
 							case FAMILY_CLERIC:
-								strcpy(message, "CLERIC DIED");
+								message = "CLERIC DIED";
 								break;
 							case FAMILY_FIREELEMENTAL:
-								strcpy(message, "FIRE ELEMENTAL EXTINGUISHED");
+								message = "FIRE ELEMENTAL EXTINGUISHED";
 								break;
 							case FAMILY_FAERIE:
-								strcpy(message, "FAERIE POPPED");
+								message = "FAERIE POPPED";
 								break;
 							case FAMILY_SMALL_SLIME:
 							case FAMILY_MEDIUM_SLIME:
 							case FAMILY_SLIME:
-								strcpy(message, "SLIME DESTROYED");
+								message = "SLIME DESTROYED";
 								break;
 							case FAMILY_GHOST:
-								strcpy(message, "GHOST VANISHED");
+								message = "GHOST VANISHED";
 								break;
 							case FAMILY_DRUID:
-								strcpy(message,"DRUID VANQUISHED");
+								message = "DRUID VANQUISHED";
 								break;
 							case FAMILY_ORC:
-								strcpy(message,"ORC DIED");
+								message = "ORC DIED";
 								break;
 							default :
-								strcpy(message, "SOMEONE DIED");
+								message = "SOMEONE DIED";
 								break;
 						}
-					myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
+					myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
 				}
 			}
 
@@ -2356,7 +2357,7 @@ short walker::special()
 	short howmany;
 	short didheal;
 	short generic, generic2 = 0;
-	char message[80], tempstr[80];
+	std::string message, tempstr;
 	short person;
 
 	// Are we somehow dead already?
@@ -2585,11 +2586,11 @@ short walker::special()
                                 {
                                     // Inform screen/view to print a message ..
                                     if (didheal == 1)
-                                        sprintf(message, "Cleric healed 1 man!");
+                                        message = "Cleric healed 1 man!";
                                     else
-                                        sprintf(message, "Cleric healed %d men!", didheal);
+                                        message = std::format("Cleric healed {} men!", didheal);
                                     if (team_num == 0 || myguy) // home team
-                                        myscreen->do_notify(message, this);
+                                        myscreen->do_notify(message.c_str(), this);
                                 }
                                 
 								// Play sound ...
@@ -2662,10 +2663,9 @@ short walker::special()
 							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
-								strcpy(message, myguy->name.c_str());
-								sprintf(message, "%s turned %d undead.",
-								        myguy->name.c_str(), generic);
-								myscreen->do_notify(message, this);
+								message = std::format("{} turned {} undead.",
+								        myguy->name, generic);
+								myscreen->do_notify(message.c_str(), this);
 							} // end of notify visually
 						}
 						// Play sound ...
@@ -2722,10 +2722,9 @@ short walker::special()
 							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
-								strcpy(message, myguy->name.c_str());
-								sprintf(message, "%s turned %d undead.",
-								        myguy->name.c_str(), generic);
-								myscreen->do_notify(message, this);
+								message = std::format("{} turned {} undead.",
+								        myguy->name, generic);
+								myscreen->do_notify(message.c_str(), this);
 							} // end of notify visually
 						}
 						// Play sound ...
@@ -2870,8 +2869,8 @@ short walker::special()
 							if ((team_num == 0 || myguy) && user != -1)
 							{
 								myscreen->do_notify("Teleport Marker Placed", this);
-								sprintf(message, "(%d Uses)", newob->lifetime);
-								myscreen->do_notify(message, this);
+								message = std::format("({} Uses)", newob->lifetime);
+								myscreen->do_notify(message.c_str(), this);
 							}
 							busy +=8;
 							// Take an extra cost for placing a marker
@@ -2937,8 +2936,8 @@ short walker::special()
 						generic = 5 + 2*stats->level;
 						if (generic > 50)
 							generic = 50;
-						sprintf(message, "TIME IS FROZEN! (%d rounds)", generic);
-						myscreen->viewob[0]->set_display_text(message, 2);
+						message = std::format("TIME IS FROZEN! ({} rounds)", generic);
+						myscreen->viewob[0]->set_display_text(message.c_str(), 2);
 						myscreen->viewob[0]->redraw();
 						myscreen->viewob[0]->refresh();
 						//myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3058,8 +3057,8 @@ short walker::special()
 						if (team_num == 0 || myguy)
 						{
 							myscreen->do_notify("Teleport Marker Placed", this);
-							sprintf(message, "(%d Uses)", newob->lifetime);
-							myscreen->do_notify(message, this);
+							message = std::format("({} Uses)", newob->lifetime);
+							myscreen->do_notify(message.c_str(), this);
 						}
 						busy +=8;
 						// Take an extra cost for placing a marker
@@ -3410,13 +3409,13 @@ short walker::special()
 						return 0;
 					// Notify screen of our action
 					if (stats->name.size()) // do we have an NPC name?
-						strcpy(message, stats->name.c_str());
+						message = stats->name;
 					else if (myguy && myguy->name.size() )
-						strcpy(message, myguy->name.c_str());
+						message = myguy->name;
 					else
-						strcpy(message, "ArchMage");
-					sprintf(tempstr, "%s has controlled %d men", message, didheal);
-					myscreen->do_notify(tempstr, this);
+						message = "ArchMage";
+					tempstr = std::format("{} has controlled {} men", message, didheal);
+					myscreen->do_notify(tempstr.c_str(), this);
 
 					generic2 = stats->magicpoints - stats->special_cost[static_cast<int>(current_special)];
 					if (generic2 > 0) // sap our extra based on how many guys
@@ -3549,13 +3548,12 @@ short walker::special()
                             }
                         }
 						if (myguy)
-							strcpy(message, myguy->name.c_str());
+							message = std::format("{}: 'Nyah Nyah!'", myguy->name);
 						else if ( stats->name.size() )
-							strcpy(message, stats->name.c_str());
+							message = std::format("{}: 'Nyah Nyah!'", stats->name);
 						else
-							strcpy(message, "THIEF");
-						strcat(message, ": 'Nyah Nyah!'");
-						myscreen->do_notify(message, this);
+							message = "THIEF: 'Nyah Nyah!'";
+						myscreen->do_notify(message.c_str(), this);
 						busy += 2;
 						break; // end of taunt
 					}
@@ -3607,16 +3605,16 @@ short walker::special()
 							return 0;
 						// Notify screen of our action
 						if (stats->name.size()) // do we have an NPC name?
-							strcpy(message, stats->name.c_str());
+							message = stats->name;
 						else if (myguy && myguy->name.size() )
-							strcpy(message, myguy->name.c_str());
+							message = myguy->name;
 						else
-							strcpy(message, "Thief");
+							message = "Thief";
 						if (generic2) // then we actually failed to charm
-							sprintf(tempstr, "%s failed to charm!", message);
+							tempstr = std::format("{} failed to charm!", message);
 						else
-							sprintf(tempstr, "%s charmed an opponent!", message);
-						myscreen->do_notify(tempstr, this);
+							tempstr = std::format("{} charmed an opponent!", message);
+						myscreen->do_notify(tempstr.c_str(), this);
 						busy += 10; // takes a while
 						break; // end of Charm Opponent
 					}
@@ -3811,11 +3809,11 @@ short walker::special()
                             {
                                 // Inform screen/view to print a message ..
                                 if (didheal == 1)
-                                    sprintf(message, "Druid protected 1 man!");
+                                    message = "Druid protected 1 man!";
                                 else
-                                    sprintf(message, "Druid protected %d men!", didheal);
+                                    message = std::format("Druid protected {} men!", didheal);
                                 if (team_num == 0 || myguy) // home team
-                                    myscreen->do_notify(message, this);
+                                    myscreen->do_notify(message.c_str(), this);
                                 // Play sound ...
                                 if (on_screen())
                                     myscreen->soundp->play_sound(SOUND_HEAL);
@@ -3878,16 +3876,15 @@ short walker::special()
 					if (myguy)
 					{
 						myguy->exp += exp_from_action(ExpAction::EatCorpse, this, newob, 0);
-						strcpy(message, myguy->name.c_str());
+						message = std::format("{} ate a corpse.", myguy->name);
 					}
 					else if ( stats->name.size() )
-						strcpy(message, stats->name.c_str());
+						message = std::format("{} ate a corpse.", stats->name);
 					else
-						strcpy(message, "Orc");
-					strcat(message, " ate a corpse.");
-					
+						message = "Orc ate a corpse.";
+
                     if(!cfg.is_on("effects", "heal_numbers"))
-                        myscreen->do_notify(message, this);
+                        myscreen->do_notify(message.c_str(), this);
 					if (stats->hitpoints > stats->max_hitpoints)
 						stats->hitpoints = stats->max_hitpoints;
 					newob->dead = 1;

@@ -284,17 +284,17 @@ void draw_touch_controls(screen* vob)
     vob->fastbox(FIRE_BUTTON_X, FIRE_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 25);
     
     //if(has_special)
-    if(strcmp(vob->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)], "NONE"))
+    if(vob->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE")
         vob->fastbox(SPECIAL_BUTTON_X, SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 26);
-    
+
     //if(has_multiple_specials)
     if(control->current_special != 1
                 || (control->current_special + 1 <= NUM_SPECIALS && control->current_special*3+1 <= control->stats->level
-                     && strcmp(vob->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special) + 1],"NONE") != 0))
+                     && vob->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special) + 1] != "NONE"))
         vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
-    
+
     //if(has_alternate)
-    if(strcmp(vob->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)], "NONE") != 0)
+    if(vob->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE")
         vob->fastbox(ALTERNATE_SPECIAL_BUTTON_X, ALTERNATE_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 28);
 }
 
@@ -599,7 +599,7 @@ void handle_mouse_event(const SDL_Event& event)
             {
                 // Treat KEY_SHIFTER as an action instead of a modifier
                 //if(has_alternate)
-                if(strcmp(myscreen->alternate_name[static_cast<int>(myscreen->viewob[0]->control->query_family())][static_cast<int>(myscreen->viewob[0]->control->current_special)], "NONE") != 0)
+                if(myscreen->alternate_name[static_cast<int>(myscreen->viewob[0]->control->query_family())][static_cast<int>(myscreen->viewob[0]->control->current_special)] != "NONE")
                     sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
             }
             else if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)

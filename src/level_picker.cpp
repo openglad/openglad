@@ -24,6 +24,7 @@
 #include "guy.h"
 #include "button.h"
 
+#include <format>
 #include <list>
 #include <string>
 
@@ -163,13 +164,13 @@ class BrowserEntry
     LevelData level_data;
     SDL_Rect mapAreas;
     radar myradar;
-    char level_name[24];
+    std::string level_name;
     int max_enemy_level;
     float average_enemy_level;
     int num_enemies;
     float difficulty;
     std::list<int> exits;
-    char scentext[80][80];                         // Array to hold scenario information
+    std::string scentext[80];                       // Array to hold scenario information
     char scentextlines;                    // How many lines of text in scenario info
     
     BrowserEntry(screen* screenp, int index, int scen_num);
@@ -202,20 +203,17 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
     getLevelStats(level_data, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
     
     // Store this level's info
-    strncpy(level_name, level_data.title.c_str(), 23);
-    if(level_name[20] != '\0')
+    level_name = level_data.title;
+    if(level_name.size() > 20)
     {
-        level_name[20] = '.';
-        level_name[21] = '.';
-        level_name[22] = '.';
-        level_name[23] = '\0';
+        level_name = level_name.substr(0, 20) + "...";
     }
     
     scentextlines = level_data.description.size();
     int i = 0;
     for(std::list<std::string>::iterator e = level_data.description.begin(); e != level_data.description.end(); e++)
     {
-        strncpy(scentext[i], e->c_str(), 80);
+        scentext[i] = *e;
         i++;
         if(i >= 80)
             break;
@@ -246,39 +244,32 @@ void BrowserEntry::draw(screen* screenp)
     myradar.draw(&level_data);
     
     text& loadtext = myscreen->text_normal;
-    loadtext.write_xy(mapAreas.x, mapAreas.y, level_name, DARK_BLUE, 1);
+    loadtext.write_xy(mapAreas.x, mapAreas.y, level_name.c_str(), DARK_BLUE, 1);
     
-    char buf[30];
-    snprintf(buf, 30, "ID: %d", level_data.id);
-    loadtext.write_xy(x + w + 5, y, buf, WHITE, 1);
-    snprintf(buf, 30, "Enemies: %d", num_enemies);
-    loadtext.write_xy(x + w + 5, y + 8, buf, WHITE, 1);
-    snprintf(buf, 30, "Max level: %d", max_enemy_level);
-    loadtext.write_xy(x + w + 5, y + 16, buf, WHITE, 1);
-    snprintf(buf, 30, "Avg level: %.1f", average_enemy_level);
-    loadtext.write_xy(x + w + 5, y + 24, buf, WHITE, 1);
-    snprintf(buf, 30, "Difficulty: %.0f", difficulty);
-    loadtext.write_xy(x + w + 5, y + 32, buf, RED, 1);
-    
+    std::string buf = std::format("ID: {}", level_data.id);
+    loadtext.write_xy(x + w + 5, y, buf.c_str(), WHITE, 1);
+    buf = std::format("Enemies: {}", num_enemies);
+    loadtext.write_xy(x + w + 5, y + 8, buf.c_str(), WHITE, 1);
+    buf = std::format("Max level: {}", max_enemy_level);
+    loadtext.write_xy(x + w + 5, y + 16, buf.c_str(), WHITE, 1);
+    buf = std::format("Avg level: {:.1f}", average_enemy_level);
+    loadtext.write_xy(x + w + 5, y + 24, buf.c_str(), WHITE, 1);
+    buf = std::format("Difficulty: {:.0f}", difficulty);
+    loadtext.write_xy(x + w + 5, y + 32, buf.c_str(), RED, 1);
+
     if(exits.size() > 0)
     {
-        snprintf(buf, 30, "Exits: ");
+        std::string exits_str = "Exits: ";
         bool first = true;
         for(std::list<int>::iterator e = exits.begin(); e != exits.end(); e++)
         {
-            char buf2[10];
-            snprintf(buf2, 10, (first? "%d" : ", %d"), *e);
-            strncat(buf, buf2, 30);
+            if(!first) exits_str += ", ";
+            exits_str += std::to_string(*e);
             first = false;
         }
-        if(strlen(buf) > 19)
-        {
-            buf[17] = '.';
-            buf[18] = '.';
-            buf[19] = '.';
-            buf[20] = '\0';
-        }
-        loadtext.write_xy(x + w + 5, y + 40, buf, WHITE, 1);
+        if(exits_str.size() > 20)
+            exits_str = exits_str.substr(0, 17) + "...";
+        loadtext.write_xy(x + w + 5, y + 40, exits_str.c_str(), WHITE, 1);
     }
 }
 
@@ -571,9 +562,8 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         // Draw
         myscreen->clearbuffer();
         
-        char buf[20];
-        snprintf(buf, 20, "Army power: %d", army_power);
-        loadtext.write_xy(prev.x + 50, prev.y + 2, buf, RED, 1);
+        std::string buf = std::format("Army power: {}", army_power);
+        loadtext.write_xy(prev.x + 50, prev.y + 2, buf.c_str(), RED, 1);
         
         myscreen->draw_button(prev.x, prev.y, prev.x + prev.w, prev.y + prev.h, 1, 1);
         loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
@@ -583,7 +573,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         {
             myscreen->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
-            loadtext.write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name, DARK_GREEN, 1);
+            loadtext.write_xy(next.x, choose.y + 20, entries[selected_entry]->level_name.c_str(), DARK_GREEN, 1);
         }
         myscreen->draw_button(cancel.x, cancel.y, cancel.x + cancel.w, cancel.y + cancel.h, 1, 1);
         loadtext.write_xy(cancel.x + 2, cancel.y + 2, "Cancel", RED, 1);
@@ -622,7 +612,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             {
                 if(prev.y + 20 + 10*i+1 > descbox.y + descbox.h)
                     break;
-                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i], BLACK, 1);
+                loadtext.write_xy(descbox.x, descbox.y + 10*i+1, entries[selected_entry]->scentext[i].c_str(), BLACK, 1);
             }
         }
         

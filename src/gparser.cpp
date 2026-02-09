@@ -26,6 +26,7 @@
 #include <string>
 #include <cstdlib>
 #include <cstring>
+#include <format>
 #include "gparser.h"
 #include "util.h"
 #include "io.h"
@@ -134,8 +135,7 @@ bool cfg_store::load_settings()
 
 bool cfg_store::save_settings()
 {
-    char buf[40];
-    snprintf(buf, 40, "%.0f", 100*overscan_percentage);
+    std::string buf = std::format("{:.0f}", 100*overscan_percentage);
     apply_setting("graphics", "overscan_percentage", buf);
     
     SDL_RWops* outfile = open_write_file("cfg/openglad.yaml");
@@ -205,7 +205,7 @@ void cfg_store::commandline(int &argc, char **&argv)
 	for(int argnum = 1; argnum < argc; argnum++)
 	{
 		// Look for arguments of 2 chars only:
-		if(argv[argnum][0] == '-' && strlen(argv[argnum]) == 2)
+		if(argv[argnum][0] == '-' && std::string(argv[argnum]).size() == 2)
 		{
 			// To handle arguments which have aditional arguments attached
 			// to them, take care of it within the case statement and

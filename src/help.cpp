@@ -18,6 +18,7 @@
 #include <cstdio>
 #include <vector>
 #include <string>
+#include <format>
 #include "graph.h"
 #include "util.h"
 #include "version.h"
@@ -360,7 +361,7 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 	{
 		//somearray[i] = read_one_line(infile, HELP_WIDTH);
 		someline = read_one_line(infile, HELP_WIDTH);
-		strcpy(somearray[i], someline);
+		snprintf(somearray[i], HELP_WIDTH, "%s", someline);
 		delete[] someline;
 		if (end_of_file)
 			return i;
@@ -754,7 +755,7 @@ Sint32 show_general_help()
 				}
 
 				// Draw tab label
-				int label_len = strlen(tab_names[t]);
+				int label_len = static_cast<int>(strlen(tab_names[t]));
 				int label_x = tab_x + (TAB_WIDTH - label_len * 6) / 2;
 				mytext.write_xy(label_x, TAB_Y + 3, tab_names[t],
 				                (static_cast<HelpTab>(t) == current_tab) ? static_cast<unsigned char>(DARK_BLUE) : static_cast<unsigned char>(BLACK), 1);
@@ -779,9 +780,8 @@ Sint32 show_general_help()
 			// Draw title bar (top of content area)
 			myscreen->draw_text_bar(HELPTEXT_LEFT, CONTENT_TOP,
 			                        HELPTEXT_LEFT+240-4, CONTENT_TOP + 6);
-			char title[40];
-			snprintf(title, sizeof(title), "GLADIATOR v%s", OPENGLAD_VERSION_STRING);
-			mytext.write_xy(HELPTEXT_LEFT+60, CONTENT_TOP + 1, title, static_cast<unsigned char>(RED), 1);
+			std::string title = std::format("GLADIATOR v{}", OPENGLAD_VERSION_STRING);
+			mytext.write_xy(HELPTEXT_LEFT+60, CONTENT_TOP + 1, title.c_str(), static_cast<unsigned char>(RED), 1);
 
 			// Draw footer bar (bottom of content area)
 			myscreen->draw_text_bar(HELPTEXT_LEFT, content_bottom,

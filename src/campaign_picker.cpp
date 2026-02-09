@@ -23,6 +23,7 @@
 #include "guy.h"
 #include "screen.h"
 #include "button.h"
+#include <format>
 #include <vector>
 #include <string>
 
@@ -109,19 +110,19 @@ CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
             switch(yam.event.type)
             {
                 case Yam::PAIR:
-                    if(strcmp(yam.event.scalar, "title") == 0)
+                    if(std::string(yam.event.scalar) == "title")
                         title = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "version") == 0)
+                    else if(std::string(yam.event.scalar) == "version")
                         version = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "authors") == 0)
+                    else if(std::string(yam.event.scalar) == "authors")
                         authors = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "contributors") == 0)
+                    else if(std::string(yam.event.scalar) == "contributors")
                         contributors = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "description") == 0)
+                    else if(std::string(yam.event.scalar) == "description")
                         description = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "suggested_power") == 0)
+                    else if(std::string(yam.event.scalar) == "suggested_power")
                         suggested_power = toInt(yam.event.value);
-                    else if(strcmp(yam.event.scalar, "first_level") == 0)
+                    else if(std::string(yam.event.scalar) == "first_level")
                         first_level = toInt(yam.event.value);
                 break;
                 default:
@@ -164,72 +165,67 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     text& loadtext = myscreen->text_normal;
 
     // Print title
-    char buf[60];
-    snprintf(buf, 30, "%s", title.c_str());
-    loadtext.write_xy(x + w/2 - title.size()*3, y - 22, buf, WHITE, 1);
-    
+    loadtext.write_xy(x + w/2 - title.size()*3, y - 22, title.c_str(), WHITE, 1);
+
     // Rating stars
     std::string rating_text = "";
     for(int i = 0; i < int(rating); i++)
     {
         rating_text += '*';
     }
-    snprintf(buf, 30, "%s", rating_text.c_str());
-    loadtext.write_xy(x + w/2 - rating_text.size()*3, y - 14, buf, WHITE, 1);
-    
+    loadtext.write_xy(x + w/2 - rating_text.size()*3, y - 14, rating_text.c_str(), WHITE, 1);
+
     // Print version
-    snprintf(buf, 30, "v%s", version.c_str());
+    std::string buf = std::format("v{}", version);
     if(rating_text.size() > 0)
-        loadtext.write_xy(x + w/2 + rating_text.size()*3 + 6, y - 14, buf, WHITE, 1);
+        loadtext.write_xy(x + w/2 + rating_text.size()*3 + 6, y - 14, buf.c_str(), WHITE, 1);
     else
-        loadtext.write_xy(x + w/2 - strlen(buf)*3, y - 14, buf, WHITE, 1);
-    
+        loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y - 14, buf.c_str(), WHITE, 1);
+
     // Draw icon button
     myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw icon
 	icon->drawMix(x, y, myscreen->viewob[0]);
 	y += h + 4;
-	
+
 	// Print suggested power
 	if(team_power >= 0)
     {
-        char buf2[30];
-        snprintf(buf, 30, "Your Power: %d", team_power);
+        buf = std::format("Your Power: {}", team_power);
+        std::string buf2;
         if(suggested_power > 0)
-            snprintf(buf2, 30, ", Suggested Power: %d", suggested_power);
-        else
-            buf2[0] = '\0';
-        
-        int len = strlen(buf);
-        int len2 = strlen(buf2);
-        loadtext.write_xy(x + w/2 - (len + len2)*3, y, buf, LIGHT_GREEN, 1);
-        loadtext.write_xy(x + w/2 - (len + len2)*3 + len*6, y, buf2, (team_power >= suggested_power? LIGHT_GREEN : RED), 1);
+            buf2 = std::format(", Suggested Power: {}", suggested_power);
+
+        int len = static_cast<int>(buf.size());
+        int len2 = static_cast<int>(buf2.size());
+        loadtext.write_xy(x + w/2 - (len + len2)*3, y, buf.c_str(), LIGHT_GREEN, 1);
+        loadtext.write_xy(x + w/2 - (len + len2)*3 + len*6, y, buf2.c_str(), (team_power >= suggested_power? LIGHT_GREEN : RED), 1);
     }
     else
     {
         if(suggested_power > 0)
-            snprintf(buf, 30, "Suggested Power: %d", suggested_power);
+            buf = std::format("Suggested Power: {}", suggested_power);
         else
-            buf[0] = '\0';
-        
-        int len = strlen(buf);
-        loadtext.write_xy(x + w/2 - (len)*3, y, buf, LIGHT_GREEN, 1);
+            buf.clear();
+
+        int len = static_cast<int>(buf.size());
+        loadtext.write_xy(x + w/2 - (len)*3, y, buf.c_str(), LIGHT_GREEN, 1);
     }
     y += 8;
-    
+
     // Print completion progress
     if(num_levels_completed < 0)
-        snprintf(buf, 30, "%d level%s", num_levels, (num_levels == 1? "" : "s"));
+        buf = std::format("{} level{}", num_levels, (num_levels == 1? "" : "s"));
     else
-        snprintf(buf, 30, "%d out of %d completed", num_levels_completed, num_levels);
-    loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+        buf = std::format("{} out of {} completed", num_levels_completed, num_levels);
+    loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y, buf.c_str(), WHITE, 1);
     y += 8;
-    
+
     // Print authors
     if(authors.size() > 0)
     {
-        snprintf(buf, 30, "By %s", authors.c_str());
-        loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+        buf = std::format("By {}", authors);
+        loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y, buf.c_str(), WHITE, 1);
     }
     
     // Draw description box
@@ -256,13 +252,12 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     // Print contributors
     if(contributors.size() > 0)
     {
-        snprintf(buf, 60, "Thanks to %s", contributors.c_str());
-        loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+        buf = std::format("Thanks to {}", contributors);
+        loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y, buf.c_str(), WHITE, 1);
         y += 10;
     }
-    
-    snprintf(buf, 60, "%s", id.c_str());
-    loadtext.write_xy(x + w/2 - strlen(buf)*3, y, buf, WHITE, 1);
+
+    loadtext.write_xy(x + w/2 - static_cast<int>(id.size())*3, y, id.c_str(), WHITE, 1);
     
 }
 

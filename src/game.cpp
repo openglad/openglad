@@ -18,41 +18,40 @@
 #include "smooth.h"
 #include "util.h"
 #include "campaign_picker.h"
+#include <format>
 
 void popup_dialog(const char* title, const char* message);
 
 short load_saved_game(const char *filename, screen  *myscreen)
 {
 	TRACE("game", "load_saved_game file=%s scen=%d", filename, myscreen->save_data.scen_num);
-	char          scenfile[20];
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
 	short         myord, myfam;
 	int           multi_team = 0;
 	int           i;
-	
+
 	myscreen->numviews = myscreen->save_data.numplayers;
-	
+
 	myscreen->cleanup(myscreen->numviews);
 	myscreen->initialize_views();
 
 	// Determine the scenario name to load
-	sprintf(scenfile, "scen%d", myscreen->save_data.scen_num);
+	std::string scenfile = std::format("scen{}", myscreen->save_data.scen_num);
 	
 	// And load the scenario ..
 	myscreen->level_data.id = myscreen->save_data.scen_num;
 	if(!myscreen->level_data.load())
 	{
 	    short old_scen = myscreen->save_data.scen_num;
-	    Log("Failed to load \"%s\".  Falling back to loading scenario 1.\n", scenfile);
+	    Log("Failed to load \"%s\".  Falling back to loading scenario 1.\n", scenfile.c_str());
 	    // Failed?  Try level 1.
 		myscreen->save_data.scen_num = 1;
         myscreen->level_data.id = 1;
         if(!myscreen->level_data.load())
         {
-            char buf[200];
-            snprintf(buf, 200, "Fallback loading failed (%d).\nCould not load \"%s\"\nPlease report this problem to the developer!\n", old_scen, scenfile);
-            popup_dialog("ERROR", buf);
+            std::string buf = std::format("Fallback loading failed ({}).\nCould not load \"{}\"\nPlease report this problem to the developer!\n", old_scen, scenfile);
+            popup_dialog("ERROR", buf.c_str());
             exit(2);
         }
 	}

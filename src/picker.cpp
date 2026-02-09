@@ -28,6 +28,8 @@
 #include "campaign_picker.h"
 #include "level_picker.h"
 #include <cstring>
+#include <format>
+#include <string>
 #include <set>
 #include <vector>
 #include <algorithm>
@@ -64,7 +66,7 @@ Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 
 Sint32 leftmouse(button* buttons);
-void family_name_copy(char *name, short family);
+const char* family_name_copy(short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
 PixieData backpics[5];
@@ -91,7 +93,7 @@ static PickerMenuState g_picker_menu_state = PickerMenuState::Main;
 guy  *current_guy = nullptr;
 guy  *old_guy = nullptr;
 
-char  message[80];
+std::string  message;
 Sint32 editguy = 0;        // Global for editing guys ..
 PixieData main_title_logo_data, main_columns_data;
 pixieN  *main_title_logo_pix,*main_columns_pix;
@@ -530,20 +532,18 @@ void view_team(short left, short top, short right, short bottom)
 {
 	char text_down = top+3;
 	int i;
-	char message[30], namecolor, numguys = 0;
+	std::string message;
+	char namecolor, numguys = 0;
 	text& mytext = myscreen->text_normal;
 
 	myscreen->redrawme = 1;
 	myscreen->draw_button(left, top, right, bottom, 2, 1);
 
-	strcpy(message, "  Name  ");
-	mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(BLACK), 1);
+	mytext.write_xy(left+5, text_down, "  Name  ", static_cast<unsigned char>(BLACK), 1);
 
-	strcpy (message, "STR  DEX  CON  INT  ARM");
-	mytext.write_xy(left+80, text_down, message, static_cast<unsigned char>(BLACK), 1);
+	mytext.write_xy(left+80, text_down, "STR  DEX  CON  INT  ARM", static_cast<unsigned char>(BLACK), 1);
 
-	sprintf (message, "Level");
-	mytext.write_xy(left+230, text_down, message, static_cast<unsigned char>(BLACK), 1);
+	mytext.write_xy(left+230, text_down, "Level", static_cast<unsigned char>(BLACK), 1);
 
 	text_down+=6;
 
@@ -554,30 +554,27 @@ void view_team(short left, short top, short right, short bottom)
 		{
 			numguys++;
 
-			strcpy(message, ourteam[i]->name.c_str());
 			// Pick a nice dark color based on family type
 			namecolor = ((ourteam[i]->family +1) << 4) & 255;
-			mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(namecolor), 1);
+			mytext.write_xy(left+5, text_down, ourteam[i]->name.c_str(), static_cast<unsigned char>(namecolor), 1);
 
-			sprintf (message, "%4d %4d %4d %4d %4d",
+			message = std::format("{:4d} {:4d} {:4d} {:4d} {:4d}",
 			         ourteam[i]->strength, ourteam[i]->dexterity,
 			         ourteam[i]->constitution, ourteam[i]->intelligence,
 			         ourteam[i]->armor);
-			mytext.write_xy(left+70, text_down, message, static_cast<unsigned char>(BLACK), 1);
+			mytext.write_xy(left+70, text_down, message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-			sprintf (message, "%2d", ourteam[i]->get_level());
-			mytext.write_xy(left+235, text_down, message, static_cast<unsigned char>(BLACK), 1);
+			message = std::format("{:2d}", ourteam[i]->get_level());
+			mytext.write_xy(left+235, text_down, message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-			family_name_copy(message, ourteam[i]->family);
-			mytext.write_xy(left+260, text_down, message, static_cast<unsigned char>(namecolor), 1);
+			mytext.write_xy(left+260, text_down, family_name_copy(ourteam[i]->family), static_cast<unsigned char>(namecolor), 1);
 
 			text_down+=6;
 		}
 	}
 	if (numguys == 0)
 	{
-		strcpy(message, "*** YOU HAVE NO TEAM! ***");
-		mytext.write_xy(left+80, 60, message, static_cast<unsigned char>(ORANGE_START), 1);
+		mytext.write_xy(left+80, 60, "*** YOU HAVE NO TEAM! ***", static_cast<unsigned char>(ORANGE_START), 1);
 	}
 
 	return;
@@ -590,7 +587,7 @@ void draw_version_number()
 	text& mytext = myscreen->text_normal;
 
 	myscreen->redrawme = 1;
-	int w = strlen(OPENGLAD_VERSION_STRING)*6;
+	int w = static_cast<int>(std::string(OPENGLAD_VERSION_STRING).size())*6;
 	int h = 8;
 	int x = 320 - w - 80;
 	int y = 200 - 12;
@@ -742,7 +739,7 @@ bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sin
 void redraw_mainmenu()
 {
     int count = 0;
-	char message[80];
+	std::string message;
     
     main_title_logo_pix->set_frame(0);
     main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
@@ -800,18 +797,18 @@ void redraw_mainmenu()
         allbuttons[5]->vdisplay();
     }
 
-    sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
+    message = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
     allbuttons[6]->label = message;
 
     // Show the allied mode
     if (myscreen->save_data.allied_mode)
-        sprintf(message, "PVP: Ally");
+        message = "PVP: Ally";
     else
-        sprintf(message, "PVP: Enemy");
+        message = "PVP: Enemy";
     allbuttons[7]->label = message;
     #else
 
-    sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
+    message = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
     allbuttons[2]->label = message;
     
     #endif
@@ -971,45 +968,22 @@ const char* get_family_string(short family)
 }
 
 
-void family_name_copy(char *name, short family)
+const char* family_name_copy(short family)
 {
 	switch(family)
 	{
-		case FAMILY_ARCHER:
-			strcpy(name, "ARCHER");
-			break;
-		case FAMILY_CLERIC:
-			strcpy(name, "CLERIC");
-			break;
-		case FAMILY_DRUID:
-			strcpy(name, "DRUID");
-			break;
-		case FAMILY_ELF:
-			strcpy(name, "ELF");
-			break;
-		case FAMILY_MAGE:
-			strcpy(name, "MAGE");
-			break;
-		case FAMILY_SOLDIER:
-			strcpy(name, "SOLDIER");
-			break;
-		case FAMILY_THIEF:
-			strcpy(name, "THIEF");
-			break;
-		case FAMILY_ARCHMAGE:
-			strcpy(name, "ARCHMAGE");
-			break;
-		case FAMILY_ORC:
-			strcpy(name, "ORC");
-			break;
-		case FAMILY_BIG_ORC:
-			strcpy(name, "ORC CAP.");
-			break;
-		case FAMILY_BARBARIAN:
-			strcpy(name, "BARBAR.");
-			break;
-		default:
-			strcpy(name, "BEAST");
+		case FAMILY_ARCHER:    return "ARCHER";
+		case FAMILY_CLERIC:    return "CLERIC";
+		case FAMILY_DRUID:     return "DRUID";
+		case FAMILY_ELF:       return "ELF";
+		case FAMILY_MAGE:      return "MAGE";
+		case FAMILY_SOLDIER:   return "SOLDIER";
+		case FAMILY_THIEF:     return "THIEF";
+		case FAMILY_ARCHMAGE:  return "ARCHMAGE";
+		case FAMILY_ORC:       return "ORC";
+		case FAMILY_BIG_ORC:   return "ORC CAP.";
+		case FAMILY_BARBARIAN: return "BARBAR.";
+		default:               return "BEAST";
 	}
 }
 
@@ -1067,13 +1041,13 @@ Sint32 create_team_menu(Sint32 arg1)
         draw_buttons(buttons, num_buttons);
         
         // Level name
-        int len = strlen(myscreen->level_data.title.c_str());
+        int len = static_cast<int>(myscreen->level_data.title.size());
         myscreen->draw_rect_filled(buttons[7].x + buttons[7].sizex - 6*len - 2, buttons[7].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
         mytext.write_xy(buttons[7].x + buttons[7].sizex - 6*len, buttons[7].y - 8, WHITE, "%s", myscreen->level_data.title.c_str());
         // Campaign name
-        len = strlen(myscreen->save_data.current_campaign.c_str());
+        len = static_cast<int>(myscreen->save_data.current_campaign.size());
         myscreen->draw_rect_filled(buttons[8].x + buttons[8].sizex - 6*len - 2, buttons[8].y - 8 - 1, 6*len + 4, 8, PURE_BLACK, 150);
-        mytext.write_xy(buttons[8].x + buttons[8].sizex - 6*strlen(myscreen->save_data.current_campaign.c_str()), buttons[8].y - 8, WHITE, "%s", myscreen->save_data.current_campaign.c_str());
+        mytext.write_xy(buttons[8].x + buttons[8].sizex - 6*static_cast<int>(myscreen->save_data.current_campaign.size()), buttons[8].y - 8, WHITE, "%s", myscreen->save_data.current_campaign.c_str());
         
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
@@ -1132,7 +1106,7 @@ Sint32 create_view_menu(Sint32 arg1)
 // Helper struct for progress menu
 struct LevelProgress {
     int id;
-    char title[24];
+    std::string title;
     int num_enemies;
     bool is_cleared;
     bool is_current;
@@ -1219,12 +1193,10 @@ Sint32 create_progress_menu(Sint32 arg1)
         // Load level to get title and enemy count
         LevelData ld(level_id);
         if (ld.load()) {
-            strncpy(lp.title, ld.title.c_str(), 20);
-            lp.title[20] = '\0';
-            if (strlen(ld.title.c_str()) > 20) {
-                lp.title[17] = '.';
-                lp.title[18] = '.';
-                lp.title[19] = '.';
+            if (ld.title.size() > 20) {
+                lp.title = ld.title.substr(0, 17) + "...";
+            } else {
+                lp.title = ld.title;
             }
 
             // Count enemies
@@ -1233,7 +1205,7 @@ Sint32 create_progress_menu(Sint32 arg1)
             getLevelStats(ld, nullptr, nullptr, &num_enemies, nullptr, unused_exits);
             lp.num_enemies = lp.is_cleared ? 0 : num_enemies;
         } else {
-            snprintf(lp.title, 24, "Level %d", level_id);
+            lp.title = std::format("Level {}", level_id);
             lp.num_enemies = 0;
         }
 
@@ -1325,10 +1297,9 @@ Sint32 create_progress_menu(Sint32 arg1)
         myscreen->clearbuffer();
 
         // Header
-        char header[60];
-        snprintf(header, 60, "Level Progress: %d cleared of %d discovered",
+        std::string header = std::format("Level Progress: {} cleared of {} discovered",
                  num_cleared, static_cast<int>(levels.size()));
-        mytext.write_xy(160 - strlen(header) * 3, 8, header, DARK_GREEN, 1);
+        mytext.write_xy(160 - static_cast<int>(header.size()) * 3, 8, header.c_str(), DARK_GREEN, 1);
 
         // Column headers
         myscreen->draw_text_bar(10, 22, 310, 32);
@@ -1344,9 +1315,8 @@ Sint32 create_progress_menu(Sint32 arg1)
             LevelProgress& lp = levels[i];
 
             // ID
-            char buf[10];
-            snprintf(buf, 10, "%d", lp.id);
-            mytext.write_xy(12, y + 2, buf, WHITE, 1);
+            std::string buf = std::format("{}", lp.id);
+            mytext.write_xy(12, y + 2, buf.c_str(), WHITE, 1);
 
             // Status
             unsigned char status_color;
@@ -1364,14 +1334,14 @@ Sint32 create_progress_menu(Sint32 arg1)
             mytext.write_xy(36, y + 2, status_text, status_color, 1);
 
             // Title
-            mytext.write_xy(100, y + 2, lp.title, WHITE, 1);
+            mytext.write_xy(100, y + 2, lp.title.c_str(), WHITE, 1);
 
             // Enemy count
             if (lp.is_cleared) {
                 mytext.write_xy(258, y + 2, "0", DARK_GREEN, 1);
             } else {
-                snprintf(buf, 10, "%d", lp.num_enemies);
-                mytext.write_xy(258, y + 2, buf, WHITE, 1);
+                buf = std::format("{}", lp.num_enemies);
+                mytext.write_xy(258, y + 2, buf.c_str(), WHITE, 1);
 
                 // GO button for non-cleared levels (right edge aligns with BACK button at x=310)
                 myscreen->draw_button(292, y + 1, 310, y + 10, 1, 1);
@@ -1383,12 +1353,11 @@ Sint32 create_progress_menu(Sint32 arg1)
 
         // Scroll indicator
         if (levels.size() > (size_t)visible_rows) {
-            char scroll_info[20];
-            snprintf(scroll_info, 20, "%d-%d of %d",
+            std::string scroll_info = std::format("{}-{} of {}",
                      scroll_offset + 1,
                      std::min(scroll_offset + visible_rows, static_cast<int>(levels.size())),
                      static_cast<int>(levels.size()));
-            mytext.write_xy(140, 172, scroll_info, WHITE, 1);
+            mytext.write_xy(140, 172, scroll_info.c_str(), WHITE, 1);
         }
 
         // Buttons
@@ -1729,15 +1698,15 @@ Sint32 create_hire_menu(Sint32 arg1)
         myscreen->draw_button(cost_box, 1);
         myscreen->draw_button_inverted(cost_box_inner);
         
-        sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_team_num]);
-        mytext.write_xy(cost_box_content.x, cost_box_content.y, message,static_cast<unsigned char>(DARK_BLUE), 1);
+        message = std::format("CASH: {}", myscreen->save_data.m_totalcash[current_team_num]);
+        mytext.write_xy(cost_box_content.x, cost_box_content.y, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
         current_cost = calculate_hire_cost();
         mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
-        sprintf(message, "      %u", current_cost );
+        message = std::format("      {}", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_team_num])
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_CHANGED, 1);
+            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message.c_str(), STAT_CHANGED, 1);
         else
-            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message, STAT_COLOR, 1);
+            mytext.write_xy(cost_box_content.x + 10, cost_box_content.y + 10, message.c_str(), STAT_COLOR, 1);
 
         // Stat box
         myscreen->draw_button(stat_box, 1);
@@ -1751,47 +1720,47 @@ Sint32 create_hire_menu(Sint32 arg1)
         showcolor = STAT_COLOR;
         
         // Strength
-        sprintf(message, "%d", current_guy->strength);
+        message = std::format("{}", current_guy->strength);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
-        
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
         
         linesdown++;
         // Dexterity
-        sprintf(message, "%d", current_guy->dexterity);
+        message = std::format("{}", current_guy->dexterity);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
-        
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
 
         linesdown++;
         // Constitution
-        sprintf(message, "%d", current_guy->constitution);
+        message = std::format("{}", current_guy->constitution);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
-        
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
 
         linesdown++;
         // Intelligence
-        sprintf(message, "%d", current_guy->intelligence);
+        message = std::format("{}", current_guy->intelligence);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
-        
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
 
         linesdown++;
         // Armor
-        sprintf(message, "%d", current_guy->armor);
+        message = std::format("{}", current_guy->armor);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
-        
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
+
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message.c_str(), showcolor, 1);
 		
 		// Separator bar
 		SDL_Rect r = {stat_box_content.x + 10, stat_box_content.y + (linesdown+1)*line_height - 2, stat_box_content.w - 20, 2};
@@ -1982,7 +1951,7 @@ Sint32 create_train_menu(Sint32 arg1)
                    || old_guy->armor < current_guy->armor);
 
         // Strength
-        sprintf(message, "%d", current_guy->strength);
+        message = std::format("{}", current_guy->strength);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
@@ -1991,10 +1960,10 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
 
         // Dexterity
-        sprintf(message, "%d", current_guy->dexterity);
+        message = std::format("{}", current_guy->dexterity);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
@@ -2003,10 +1972,10 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
 
         // Constitution
-        sprintf(message, "%d", current_guy->constitution);
+        message = std::format("{}", current_guy->constitution);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
@@ -2015,10 +1984,10 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
 
         // Intelligence
-        sprintf(message, "%d", current_guy->intelligence);
+        message = std::format("{}", current_guy->intelligence);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
@@ -2027,10 +1996,10 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
 
         // Armor
-        sprintf(message, "%d", current_guy->armor);
+        message = std::format("{}", current_guy->armor);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
@@ -2039,10 +2008,10 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_CHANGED;
         else
             showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
 
         // Level
-        sprintf(message, "%d", current_guy->get_level());
+        message = std::format("{}", current_guy->get_level());
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
                          static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
@@ -2051,7 +2020,7 @@ Sint32 create_train_menu(Sint32 arg1)
             showcolor = STAT_DISABLED;
         else
             showcolor = STAT_COLOR;
-        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message, showcolor, 1);
+        mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, DOWN(linesdown++), message.c_str(), showcolor, 1);
 
 
         // Info box
@@ -2064,25 +2033,24 @@ Sint32 create_train_menu(Sint32 arg1)
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
 		
-        sprintf(message, "Total Kills: %d", current_guy->kills);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
-        
+        message = std::format("Total Kills: {}", current_guy->kills);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), DARK_BLUE, 1);
+
         linesdown++;
         if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
         {
-            sprintf(message, "   Accuracy: %d%% ",
+            message = std::format("   Accuracy: {}% ",
                     (current_guy->total_hits*100)/current_guy->total_shots);
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), DARK_BLUE, 1);
         }
         else // haven't ever hit anyone
         {
-            sprintf(message, "   Accuracy: N/A ");
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, DARK_BLUE, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, "   Accuracy: N/A ", DARK_BLUE, 1);
         }
-        
+
         linesdown++;
-        sprintf(message, " EXPERIENCE: %u", current_guy->exp);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,static_cast<unsigned char>(DARK_BLUE), 1);
+        message = std::format(" EXPERIENCE: {}", current_guy->exp);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
         
         
         linesdown++;
@@ -2124,19 +2092,19 @@ Sint32 create_train_menu(Sint32 arg1)
 		myscreen->draw_button_inverted(r2);
         
         linesdown += 0.4f;
-        sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,static_cast<unsigned char>(DARK_BLUE), 1);
-        
+        message = std::format("CASH: {}", myscreen->save_data.m_totalcash[current_guy->teamnum]);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+
         linesdown++;
         mytext.write_xy(180, info_box_content.y + linesdown*line_height, "COST: ", DARK_BLUE, 1);
-        sprintf(message, "      %u", current_cost );
+        message = std::format("      {}", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_CHANGED, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), STAT_CHANGED, 1);
         else
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message, STAT_COLOR, 1);
+            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), STAT_COLOR, 1);
 
         // Display our team setting ..
-        sprintf(message, "Playing on Team %d", current_guy->teamnum+1);
+        message = std::format("Playing on Team {}", current_guy->teamnum+1);
         allbuttons[18]->label = message;
         allbuttons[18]->vdisplay();
 
@@ -2153,9 +2121,9 @@ Sint32 create_load_menu(Sint32 arg1)
 {
 	Sint32 retvalue=0;
 	Sint32 i;
-	char temp_filename[20];
+	std::string temp_filename;
 	text& loadtext = myscreen->text_normal;
-	char message[80];
+	std::string message;
 
 	if (arg1)
 		arg1 = 1;
@@ -2196,12 +2164,12 @@ Sint32 create_load_menu(Sint32 arg1)
         
         myscreen->draw_button(15,  9, 255, 199, 1, 1);
         myscreen->draw_text_bar(19, 13, 251, 21);
-        strcpy(message, "Gladiator: Load Game");
-        loadtext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
+        message = "Gladiator: Load Game";
+        loadtext.write_xy(135-(static_cast<int>(message.size())*3), 15, message.c_str(), RED, 1);
         for (i=0; i < 10; i++)
         {
-            sprintf(temp_filename, "save%d", i+1);
-            allbuttons[i]->label = get_saved_name(temp_filename);
+            temp_filename = std::format("save{}", i+1);
+            allbuttons[i]->label = get_saved_name(temp_filename.c_str());
             myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
             allbuttons[i]->vdisplay();
             myscreen->draw_box(allbuttons[i]->xloc-1,
@@ -2546,9 +2514,9 @@ Sint32 create_save_menu(Sint32 arg1)
 {
 	Sint32 retvalue=0;
 	Sint32 i;
-	char temp_filename[20];
+	std::string temp_filename;
 	text& savetext = myscreen->text_normal;
-	char message[80];
+	std::string message;
 
 	if (arg1)
 		arg1 = 1;
@@ -2590,12 +2558,12 @@ Sint32 create_save_menu(Sint32 arg1)
         
         myscreen->draw_button(15,  9, 255, 199, 1, 1);
         myscreen->draw_text_bar(19, 13, 251, 21);
-        strcpy(message, "Gladiator: Save Game");
-        savetext.write_xy(135-(strlen(message)*3), 15, message, RED, 1);
+        message = "Gladiator: Save Game";
+        savetext.write_xy(135-(static_cast<int>(message.size())*3), 15, message.c_str(), RED, 1);
         for (i=0; i < 10; i++)
         {
-            sprintf(temp_filename, "save%d", i+1);
-            allbuttons[i]->label = get_saved_name(temp_filename);
+            temp_filename = std::format("save{}", i+1);
+            allbuttons[i]->label = get_saved_name(temp_filename.c_str());
             myscreen->draw_text_bar(23, 23+i*BUTTON_HEIGHT, 246, 36+BUTTON_HEIGHT*i);
             allbuttons[i]->vdisplay();
             myscreen->draw_box(allbuttons[i]->xloc-1,
@@ -2987,7 +2955,7 @@ bool has_name_in_team(const char* name)
     
     for(int i = 0; i < team_size; i++)
     {
-        if(strcmp(ourteam[i]->name.c_str(), name) == 0)
+        if(ourteam[i]->name == name)
             return true;
     }
     
@@ -2996,9 +2964,9 @@ bool has_name_in_team(const char* name)
 
 const char* get_new_name(unsigned char family)
 {
-    static char new_name_buffer[50];
+    static std::string new_name_buffer;
     const char* result = get_random_name(family);
-    
+
     // Try a few times to get a unique name
     int i = 0;
     while(has_name_in_team(result) && i < 10)
@@ -3006,7 +2974,7 @@ const char* get_new_name(unsigned char family)
         result = get_random_name(family);
         i++;
     }
-    
+
     // A bare name is a duplicate?
     if(has_name_in_team(result))
     {
@@ -3014,14 +2982,14 @@ const char* get_new_name(unsigned char family)
         i = 2;
         do
         {
-            snprintf(new_name_buffer, 50, "%s%d", result, i);
+            new_name_buffer = std::format("{}{}", result, i);
             i++;
         }
-        while(has_name_in_team(new_name_buffer));
-        
-        result = new_name_buffer;
+        while(has_name_in_team(new_name_buffer.c_str()));
+
+        result = new_name_buffer.c_str();
     }
-    
+
     return result;
 }
 
@@ -3183,10 +3151,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	
 	clear_keyboard();
-	char temp_name[12];
-	strncpy(temp_name, someguy->name.c_str(), 11);
-	temp_name[11] = '\0';
-	char* new_text = nametext.input_string(176, 20, 11, temp_name);
+	char* new_text = nametext.input_string(176, 20, 11, someguy->name.c_str());
 	if(new_text != nullptr)
 		someguy->name = new_text;
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
@@ -3201,7 +3166,7 @@ Sint32 add_guy(Sint32 ignoreme)
 {
 	Sint32 newfamily = current_guy->family;
 	//buffers: changed typename to type_name due to some compile error
-	char type_name[30];
+	std::string type_name;
 	Sint32 i;
 
 	if (myscreen->save_data.team_size >= MAX_TEAM_SIZE) // abort abort!
@@ -3241,7 +3206,7 @@ Sint32 add_guy(Sint32 ignoreme)
 
 			// Grab a new, generic guy to be edited/bought
 			current_guy = new guy(newfamily);
-			strcpy(type_name, current_guy->name.c_str());
+			type_name = current_guy->name;
 			statscopy(current_guy, ourteam[i]); // set to same stats as just bought
 			current_guy->name = type_name;
             current_guy->name = get_new_name(newfamily);
@@ -3321,8 +3286,7 @@ Sint32 do_save(Sint32 arg1)
     {
         myscreen->save_data.save_name = name;
         
-        char newname[8];
-        snprintf(newname, 8, "save%d", arg1);
+        std::string newname = std::format("save{}", arg1);
         if(myscreen->save_data.save(newname))
             timed_dialog("GAME SAVED");
         else
@@ -3338,9 +3302,7 @@ Sint32 do_save(Sint32 arg1)
 
 Sint32 do_load(Sint32 arg1)
 {
-	char newname[8];
-
-	snprintf(newname, 8, "save%d", arg1);
+	std::string newname = std::format("save{}", arg1);
 
 	if(myscreen->save_data.load(newname))
         timed_dialog("GAME LOADED");
@@ -3353,7 +3315,7 @@ Sint32 do_load(Sint32 arg1)
 const char* get_saved_name(const char * filename)
 {
 	SDL_RWops  *infile;
-	char temp_filename[80];
+	std::string temp_filename;
 
 	char temptext[10] = "GTL";
 	static char savedgame[40];
@@ -3371,21 +3333,19 @@ const char* get_saved_name(const char * filename)
 	//   .
 	//   .
 
-	strcpy(temp_filename, filename);
-	//buffers: PORT: changed .GTL to .gtl
-	strcat(temp_filename, ".gtl"); // gladiator team list
+	temp_filename = std::format("{}.gtl", filename); // gladiator team list
 
-	if ( (infile = open_read_file("save/", temp_filename)) == nullptr ) // open for read
+	if ( (infile = open_read_file("save/", temp_filename.c_str())) == nullptr ) // open for read
 	{
 		return "EMPTY SLOT";
 	}
 
 	// Read id header
 	SDL_RWread(infile, temptext, 3, 1);
-	if ( strcmp(temptext,"GTL"))
+	if ( std::string(temptext) != "GTL")
 	{
 	    SDL_RWclose(infile);
-		strcpy(savedgame, "EMPTY SLOT");
+		snprintf(savedgame, sizeof(savedgame), "EMPTY SLOT");
 		return savedgame;
 	}
 
@@ -3402,12 +3362,12 @@ const char* get_saved_name(const char * filename)
 		else
 		{
             SDL_RWclose(infile);
-			strcpy(savedgame, "SAVED GAME");
+			snprintf(savedgame, sizeof(savedgame), "SAVED GAME");
 			return savedgame;
 		}
 	}
 	else
-		strcpy(savedgame, "SAVED GAME"); // fake the game name
+		snprintf(savedgame, sizeof(savedgame), "SAVED GAME"); // fake the game name
 
     SDL_RWclose(infile);
 	return (savedgame);
@@ -3782,9 +3742,9 @@ Sint32 create_detail_menu(guy *arg1)
        switch (thisguy->family)
        {
            case FAMILY_SOLDIER:
-               sprintf(message, "Level %d soldier has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} soldier has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things (charge)
                WL(2, " Charge");
                WL(3, "  Charge causes you to ");
@@ -3816,9 +3776,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_BARBARIAN:
-               sprintf(message, "Level %d barbarian has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} barbarian has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things (hurl boulder)
                WL(2, " Hurl Boulder");
                WL(3, "  Throw a massive stone");
@@ -3834,9 +3794,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ELF:
-               sprintf(message, "Level %d elf has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} elf has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things (rocks)
                WL(2, " Rocks/Forestwalk");
                WL(3, "  Rocks hurls a few rocks");
@@ -3869,9 +3829,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ARCHER:
-               sprintf(message, "Level %d archer has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} archer has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Fire Arrows     ");
                WL(3, "  An archer can spin in a");
@@ -3904,9 +3864,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_MAGE:
-               sprintf(message, "Level %d Mage has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} Mage has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Teleport/Marker ");
                WL(3, "  Any mage can teleport  ");
@@ -3924,13 +3884,13 @@ Sint32 create_detail_menu(guy *arg1)
                // Can we change to archmage?
                if (thisguy->get_level() >= 6)
                {
-                   sprintf(message,"Level %d Archmage. This",
+                   message = std::format("Level {} Archmage. This",
                            (thisguy->get_level()-6)/2+1);
                    myscreen->draw_dialog(158, 4, 315, 66, "Become ArchMage");
                    WR(-10,"Your Mage is now of high");
                    WR( -9,"enough level to become a");
                    //WR( -8,"Level 1 Archmage. This  ");
-                   WR(-8, message);
+                   WR(-8, message.c_str());
                    WR( -7,"change CANNOT be undone!");
                    WR( -6," Click here to change.  ");
                }
@@ -3960,9 +3920,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ARCHMAGE:
-               sprintf(message, "Level %d ArchMage has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} ArchMage has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Teleport/Marker ");
                WL(3, "  Any mage can teleport  ");
@@ -3997,9 +3957,9 @@ Sint32 create_detail_menu(guy *arg1)
                break;
 
            case FAMILY_CLERIC:
-               sprintf(message, "Level %d Cleric has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} Cleric has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Heal            ");
                WL(3, "  Heal all teammates who ");
@@ -4036,9 +3996,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_DRUID:
-               sprintf(message, "Level %d Druid has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} Druid has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Plant Tree      ");
                WL(3, "  These magical trees    ");
@@ -4073,9 +4033,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_THIEF:
-               sprintf(message, "Level %d Thief has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} Thief has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Drop Bomb       ");
                WL(3, "  Leave a burning bomb to");
@@ -4110,9 +4070,9 @@ Sint32 create_detail_menu(guy *arg1)
                }
                break;
            case FAMILY_ORC:
-               sprintf(message, "Level %d Orc has:", thisguy->get_level());
-               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message, 10, 1);
-               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message, DARK_BLUE, 1);
+               message = std::format("Level {} Orc has:", thisguy->get_level());
+               mytext.write_xy(DETAIL_LM+1, DETAIL_LD(0)+1, message.c_str(), 10, 1);
+               mytext.write_xy(DETAIL_LM, DETAIL_LD(0), message.c_str(), DARK_BLUE, 1);
                // Level 1 things
                WL(2, " Howl            ");
                WL(3, "  Howl in rage, stunning ");
@@ -4246,14 +4206,12 @@ int matherr(struct exception *problem)
 
 Sint32 set_difficulty()
 {
-   char message[80];
-
    current_difficulty = (current_difficulty + 1) % DIFFICULTY_SETTINGS;
-   sprintf(message, "Difficulty: %s", difficulty_names[current_difficulty]);
+   std::string msg = std::format("Difficulty: {}", difficulty_names[current_difficulty]);
    #ifndef DISABLE_MULTIPLAYER
-   allbuttons[6]->label = message;
+   allbuttons[6]->label = msg;
    #else
-   allbuttons[2]->label = message;
+   allbuttons[2]->label = msg;
    #endif
 
    //allbuttons[6]->vdisplay();
@@ -4266,7 +4224,6 @@ Sint32 change_teamnum(Sint32 arg)
 {
    // Change the team number of the current guy
    short current_team;
-   char  message[80];
 
    // What is our current team number?
    if (!current_guy)
@@ -4282,9 +4239,7 @@ Sint32 change_teamnum(Sint32 arg)
    current_guy->teamnum = current_team;
 
    // Update our button display
-   sprintf(message, "Playing on Team %d", current_team + 1);
-
-   allbuttons[18]->label = message;
+   allbuttons[18]->label = std::format("Playing on Team {}", current_team + 1);
    //allbuttons[18]->do_outline = 1;
    //allbuttons[18]->vdisplay();
    //myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -4295,8 +4250,6 @@ Sint32 change_teamnum(Sint32 arg)
 Sint32 change_hire_teamnum(Sint32 arg)
 {
    // Change the team number of the hiring menu ..
-   char  message[80];
-
    current_team_num += arg;
    current_team_num %= 4;
 
@@ -4307,9 +4260,7 @@ Sint32 change_hire_teamnum(Sint32 arg)
    }
 
    // Update our button display
-   sprintf(message, "Hiring for Team %d", current_team_num + 1);
-
-   allbuttons[2]->label = message;
+   allbuttons[2]->label = std::format("Hiring for Team {}", current_team_num + 1);
 
    return OK;
 }
@@ -4317,18 +4268,13 @@ Sint32 change_hire_teamnum(Sint32 arg)
 Sint32 change_allied()
 {
    // Change our allied mode (on or off)
-   char message[80];
-
    myscreen->save_data.allied_mode += 1;
    myscreen->save_data.allied_mode %= 2;
 
    if (myscreen->save_data.allied_mode)
-       sprintf(message, "PVP: Ally");
+       allbuttons[7]->label = "PVP: Ally";
    else
-       sprintf(message, "PVP: Enemy");
-
-   // Update our button display
-   allbuttons[7]->label = message;
+       allbuttons[7]->label = "PVP: Enemy";
 
    //buffers: allbuttons[7]->vdisplay();
    //buffers: myscreen->buffer_to_screen(0, 0, 320, 200);

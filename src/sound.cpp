@@ -89,30 +89,30 @@ int soundob::init()
 	Mix_AllocateChannels(8);
 
 	// Init the sounds ..
-	strcpy(soundlist[SOUND_BOW],      "twang.wav");
-	strcpy(soundlist[SOUND_CLANG],    "clang.wav");
-	strcpy(soundlist[SOUND_DIE1],     "die1.wav");
-	strcpy(soundlist[SOUND_BLAST],    "blast1.wav");
-	strcpy(soundlist[SOUND_SPARKLE],  "faerie1.wav");
-	strcpy(soundlist[SOUND_TELEPORT], "teleport.wav");
-	strcpy(soundlist[SOUND_YO],       "yo.wav");
-	strcpy(soundlist[SOUND_BOLT],     "bolt1.wav");
-	strcpy(soundlist[SOUND_HEAL],     "heal1.wav");
-	strcpy(soundlist[SOUND_CHARGE],   "charge.wav");
-	strcpy(soundlist[SOUND_FWIP],     "fwip.wav");
-	strcpy(soundlist[SOUND_EXPLODE],  "explode1.wav");
-	strcpy(soundlist[SOUND_DIE2],     "die2.wav"); // registered only
-	strcpy(soundlist[SOUND_ROAR],     "roar.wav"); // reg
-	strcpy(soundlist[SOUND_MONEY],    "money.wav"); // reg
-	strcpy(soundlist[SOUND_EAT],      "eat.wav"); // reg
+	soundlist[SOUND_BOW]      = "twang.wav";
+	soundlist[SOUND_CLANG]    = "clang.wav";
+	soundlist[SOUND_DIE1]     = "die1.wav";
+	soundlist[SOUND_BLAST]    = "blast1.wav";
+	soundlist[SOUND_SPARKLE]  = "faerie1.wav";
+	soundlist[SOUND_TELEPORT] = "teleport.wav";
+	soundlist[SOUND_YO]       = "yo.wav";
+	soundlist[SOUND_BOLT]     = "bolt1.wav";
+	soundlist[SOUND_HEAL]     = "heal1.wav";
+	soundlist[SOUND_CHARGE]   = "charge.wav";
+	soundlist[SOUND_FWIP]     = "fwip.wav";
+	soundlist[SOUND_EXPLODE]  = "explode1.wav";
+	soundlist[SOUND_DIE2]     = "die2.wav"; // registered only
+	soundlist[SOUND_ROAR]     = "roar.wav"; // reg
+	soundlist[SOUND_MONEY]    = "money.wav"; // reg
+	soundlist[SOUND_EAT]      = "eat.wav"; // reg
 
 	for (i=0; i < NUMSOUNDS; i++)
 	{
 #ifdef SOUND_DB
-		Log("Loading sound %d: %s\n", i, soundlist[i]);
+		Log("Loading sound %d: %s\n", i, soundlist[i].c_str());
 #endif
 
-		load_sound( &sound[i], soundlist[i] );
+		load_sound( &sound[i], soundlist[i].c_str() );
 	}
 
 	// Set volume (default is loudest)
@@ -126,7 +126,7 @@ int soundob::init()
 	return 1;
 }
 
-void soundob::load_sound(Mix_Chunk **audio, char * file)
+void soundob::load_sound(Mix_Chunk **audio, const char * file)
 {
     SDL_RWops* rw = open_read_file("sound/", file);
 	

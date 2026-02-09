@@ -20,6 +20,7 @@
 
 //#include "graph.h"
 #include <cmath>
+#include <string>
 #include "obmap.h"
 #include "gloader.h"
 #include "screen.h"
@@ -28,6 +29,7 @@
 #include "stats.h"
 #include "guy.h"
 #include <algorithm>
+#include <format>
 #include <cstring>
 
 // Zardus: this is the func to get events
@@ -57,10 +59,10 @@ short treasure::eat_me(walker  * eater)
 {
 	short guys_here;
 	
-	char message[80];
+	std::string message;
 	Sint32 distance;
 	walker  *target, *flash;
-	static char exitname[40];
+	static std::string exitname;
 	Sint32 leftside, rightside;
 
 	switch (family)
@@ -106,8 +108,8 @@ short treasure::eat_me(walker  * eater)
 				eater->flight_left += (150*stats->level);
 				if (eater->user != -1)
 				{
-					sprintf(message, "Potion of Flight(%d)!", stats->level);
-					myscreen->do_notify(message, eater);
+					message = std::format("Potion of Flight({})!", stats->level);
+					myscreen->do_notify(message.c_str(), eater);
 				}
 				dead = 1;
 			}
@@ -119,8 +121,8 @@ short treasure::eat_me(walker  * eater)
 			dead = 1;
 			if (eater->user != -1)
 			{
-				sprintf(message, "Potion of Mana(%d)!", stats->level);
-				myscreen->do_notify(message, eater);
+				message = std::format("Potion of Mana({})!", stats->level);
+				myscreen->do_notify(message.c_str(), eater);
 			}
 			return 1;
 		case FAMILY_INVULNERABLE_POTION:
@@ -130,8 +132,8 @@ short treasure::eat_me(walker  * eater)
 				dead = 1;
 				if (eater->user != -1)
 				{
-					sprintf(message, "Potion of Invulnerability(%d)!", stats->level);
-					myscreen->do_notify(message, eater);
+					message = std::format("Potion of Invulnerability({})!", stats->level);
+					myscreen->do_notify(message.c_str(), eater);
 				}
 			}
 			return 1;
@@ -139,8 +141,8 @@ short treasure::eat_me(walker  * eater)
 			eater->invisibility_left += (150*stats->level);
 			if (eater->user != -1)
 			{
-				sprintf(message, "Potion of Invisibility(%d)!", stats->level);
-				myscreen->do_notify(message, eater);
+				message = std::format("Potion of Invisibility({})!", stats->level);
+				myscreen->do_notify(message.c_str(), eater);
 			}
 			dead = 1;
 			return 1;
@@ -149,8 +151,8 @@ short treasure::eat_me(walker  * eater)
 			eater->speed_bonus = stats->level;
 			if (eater->user != -1)
 			{
-				sprintf(message, "Potion of Speed(%d)!", stats->level);
-				myscreen->do_notify(message, eater);
+				message = std::format("Potion of Speed({})!", stats->level);
+				myscreen->do_notify(message.c_str(), eater);
 			}
 			dead = 1;
 			return 1;
@@ -165,15 +167,17 @@ short treasure::eat_me(walker  * eater)
 			else
 				guys_here = 0;
 			// Get the name of our exit..
-			sprintf(message, "scen%d", stats->level);
-			strcpy(exitname, myscreen->get_scen_title(message, myscreen) );
+			message = std::format("scen{}", stats->level);
+			exitname = myscreen->get_scen_title(message.c_str(), myscreen);
 
-			//buffers: PORT: using strcmp instead of stricmp
-			if (!strcmp(exitname, "none"))
-				sprintf(exitname, "Level %d", stats->level);
+			//buffers: PORT: using std::string comparison instead of stricmp
+			if (exitname == "none")
+			{
+				exitname = std::format("Level {}", stats->level);
+			}
 
-			leftside  = 160 - ( (strlen(exitname) + 18) * 3);
-			rightside = 160 + ( (strlen(exitname) + 18) * 3);
+			leftside  = 160 - ( (static_cast<int>(exitname.size()) + 18) * 3);
+			rightside = 160 + ( (static_cast<int>(exitname.size()) + 18) * 3);
 			// First check to see if we're withdrawing into
 			//    somewhere we've been, in which case we abort
 			//    this level, and set our current level to
@@ -186,9 +190,8 @@ short treasure::eat_me(walker  * eater)
 				leftside -= 12;
 				rightside += 12;
                 
-                char buf[40];
-                snprintf(buf, 40, "Withdraw to %s?", exitname);
-                bool result = yes_or_no_prompt("Exit Field", buf, false);
+                std::string buf = std::format("Withdraw to {}?", exitname);
+                bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
 				// Redraw screen ..
 				myscreen->redrawme = 1;
 
@@ -225,9 +228,8 @@ short treasure::eat_me(walker  * eater)
 			//buffers: also, allow exit if scenario_type == can exit
 			if (!guys_here || (myscreen->level_data.type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
 			{
-                char buf[40];
-                snprintf(buf, 40, "Exit to %s?", exitname);
-                bool result = yes_or_no_prompt("Exit Field", buf, false);
+                std::string buf = std::format("Exit to {}?", exitname);
+                bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
 				// Redraw screen ..
 				myscreen->redrawme = 1;
 
@@ -287,13 +289,13 @@ short treasure::eat_me(walker  * eater)
 			{
 				eater->keys |= static_cast<Sint32>(pow(static_cast<double>(2), stats->level)); // ie, 2, 4, 8, 16...
 				if (eater->myguy)
-					sprintf(message, "%s picks up key %d", eater->myguy->name.c_str(),
+					message = std::format("{} picks up key {}", eater->myguy->name,
 					        stats->level);
 				else
-					sprintf(message, "%s picks up key %d", eater->stats->name.c_str(), stats->level);
+					message = std::format("{} picks up key {}", eater->stats->name, stats->level);
 				if (eater->team_num == 0) // only show players picking up keys
 				{
-					myscreen->do_notify(message, eater);
+					myscreen->do_notify(message.c_str(), eater);
 					if (eater->on_screen())
 						myscreen->soundp->play_sound(SOUND_MONEY);
 				}

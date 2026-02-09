@@ -18,6 +18,7 @@
 #include "graph.h"
 #include <cmath>
 #include <algorithm>
+#include <format>
 
 bool debug_draw_obmap = false;
 
@@ -243,7 +244,6 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
 	short targetorder;//, targetteam, targetfamily;
 	short myorder;
 	//short myteam;
-	static char message[80];
 
 	oxsize = ob->sizex;
 	oysize = ob->sizey;
@@ -302,9 +302,9 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                             // Do we notify?
                             if (!(ob->skip_exit) && (ob->user != -1))
                             {
-                                sprintf(message, "Key %d needed!",
+                                std::string message = std::format("Key {} needed!",
                                         w->stats->level);
-                                myscreen->do_notify(message, ob);
+                                myscreen->do_notify(message.c_str(), ob);
                                 ob->skip_exit = 10;
                             } // end of failed open door notification
                             ob->collide(w);

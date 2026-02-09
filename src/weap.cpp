@@ -20,6 +20,7 @@
 
 #include "graph.h"
 #include "smooth.h"
+#include <format>
 
 weap::weap(const PixieData& data)
     : walker(data)
@@ -34,7 +35,6 @@ weap::~weap()
 
 short weap::act()
 {
-	static char message[80];
 
 	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
@@ -106,9 +106,9 @@ short weap::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				sprintf(message, "Weapon %d doing act random?", family);
+				std::string msg = std::format("Weapon {} doing act random?", family);
 				//Log("Weapon doing act_random?\n");
-				myscreen->do_notify(message, this);
+				myscreen->do_notify(msg.c_str(), this);
 				return 1;
 			}  // END RANDOM
 			//break;

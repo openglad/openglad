@@ -94,8 +94,8 @@ class screen : public video
 		bool retry;  // we should reset the level and go again
 		
 
-		char special_name[NUM_FAMILIES][NUM_SPECIALS][20];
-		char alternate_name[NUM_FAMILIES][NUM_SPECIALS][20];
+		std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
+		std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
 		unsigned short enemy_freeze; // stops enemies from acting
 		soundob *soundp;
 		short redrawme;

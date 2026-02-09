@@ -30,6 +30,7 @@ screen * myscreen;
 #include "gparser.h"
 #include <string>
 #include <cstring>
+#include <format>
 #include "util.h"
 #include "results_screen.h"
 
@@ -715,9 +716,9 @@ void new_draw_value_bar(short left, short top,
 short new_score_panel(screen *myscreen, short do_it)
 {
 #define L_D(x) x*8
-	char message[50];
+	std::string message;
 	//static
-	char tempname[20];
+	std::string tempname;
 	short tempfoes = 0;
 	short players;
 	short tempallies = 0;
@@ -777,22 +778,22 @@ short new_score_panel(screen *myscreen, short do_it)
 
 			// Display name or type, upper left
 			if (control->myguy)
-				strcpy(tempname, control->myguy->name.c_str());
-			else if ( strlen(control->stats->name.c_str()) )
-				strcpy(tempname, control->stats->name.c_str());
+				tempname = control->myguy->name;
+			else if ( !control->stats->name.empty() )
+				tempname = control->stats->name;
 			else
-				strcpy(tempname, namelist[static_cast<int>(control->query_family())]);
+				tempname = namelist[static_cast<int>(control->query_family())];
 
 			//buffers: the name[] var doesn't seem to be used other then
 			//buffers: here so i just commented it.
 			//strcpy(name[players], tempname);
 			//buffers: this strcpy actually copies the name to be displayed
-			strcpy(message, tempname);
+			message = tempname;
 
 			if (draw_button)
 				myscreen->draw_button(lm+1, tm+2, lm+63, tm+9, 1, 1);
 
-			mytext.write_xy(lm+3, tm+4, message, text_color, 1);
+			mytext.write_xy(lm+3, tm+4, message.c_str(), text_color, 1);
 
 			// HP/MP bars; dependent on user settings
 			switch (myscreen->viewob[players]->prefs[PREF_LIFE])
@@ -800,10 +801,10 @@ short new_score_panel(screen *myscreen, short do_it)
 				case PREF_LIFE_TEXT: // display numeric values only
 					if (draw_button)
 						myscreen->draw_button(lm+1, tm+10, lm+63, tm+26, 1, 1);
-					sprintf(message, "HP: %.0f", ceilf(control->stats->hitpoints));
-					mytext.write_xy(lm+5, tm+12, message, text_color, static_cast<short>(1)); // to buffer
-					sprintf(message, "MP: %.0f", ceilf(control->stats->magicpoints));
-					mytext.write_xy(lm+5, tm+20, message, text_color, static_cast<short>(1));
+					message = std::format("HP: {:.0f}", ceilf(control->stats->hitpoints));
+					mytext.write_xy(lm+5, tm+12, message.c_str(), text_color, static_cast<short>(1)); // to buffer
+					message = std::format("MP: {:.0f}", ceilf(control->stats->magicpoints));
+					mytext.write_xy(lm+5, tm+20, message.c_str(), text_color, static_cast<short>(1));
 					break; // end of 'text' case
 				case PREF_LIFE_BARS: // display graphical bars only
 					//if (draw_button)
@@ -820,14 +821,14 @@ short new_score_panel(screen *myscreen, short do_it)
 					//if (draw_button)
 					//  myscreen->draw_button(lm+1, tm+9, lm+63, tm+25, 1, 1);
 					new_draw_value_bar(lm+2, tm+10, control, 0, myscreen);
-					sprintf(message, "HP: %.0f", ceilf(control->stats->hitpoints));
-					mytext.write_xy(lm+5, tm+11, message, static_cast<unsigned char>(BLACK), static_cast<short>(1)); // to buffer
+					message = std::format("HP: {:.0f}", ceilf(control->stats->hitpoints));
+					mytext.write_xy(lm+5, tm+11, message.c_str(), static_cast<unsigned char>(BLACK), static_cast<short>(1)); // to buffer
 
 					//SP BAR
 					//COLORS DEFINED IN GRAPH.H
 					new_draw_value_bar(lm+2, tm+18, control, 1, myscreen);
-					sprintf(message, "MP: %.0f", ceilf(control->stats->magicpoints));
-					mytext.write_xy(lm+5, tm+19, message, static_cast<unsigned char>(BLACK), static_cast<short>(1));
+					message = std::format("MP: {:.0f}", ceilf(control->stats->magicpoints));
+					mytext.write_xy(lm+5, tm+19, message.c_str(), static_cast<unsigned char>(BLACK), static_cast<short>(1));
 					break; // end of 'both' case
 			} // end of HP/MP display case
 
@@ -870,39 +871,39 @@ short new_score_panel(screen *myscreen, short do_it)
                 }
                 else
                 {
-                    sprintf(message, "SC: %u", scorecountup[control->team_num]);
-                    mytext.write_xy(lm+2, bm-8, message, text_color, static_cast<short>(1));
+                    message = std::format("SC: {}", scorecountup[control->team_num]);
+                    mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
 
                     // Level or exp, 2nd bottom left
                     if (control->myguy)
-                        sprintf(message, "XP: %u", control->myguy->exp);
+                        message = std::format("XP: {}", control->myguy->exp);
                     else
-                        sprintf(message, "LEVEL: %i", control->stats->level);
-                    mytext.write_xy(lm+2, bm-16, message, text_color, static_cast<short>(1));
+                        message = std::format("LEVEL: {}", control->stats->level);
+                    mytext.write_xy(lm+2, bm-16, message.c_str(), text_color, static_cast<short>(1));
                 }
                 
 				// Currently-select special
 				if (control->shifter_down &&
-				        strcmp(myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)], "NONE") )
-					sprintf(message, "SPC: %s", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+				        myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE" )
+					message = std::format("SPC: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
 				else
-					sprintf(message, "SPC: %s", myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
-					
-                
+					message = std::format("SPC: {}", myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+
+
 				if (control->stats->magicpoints >= control->stats->special_cost[static_cast<int>(control->current_special)])
-					mytext.write_xy(lm+2, special_y, message, text_color, static_cast<short>(1));
+					mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
 				else
-					mytext.write_xy(lm+2, special_y, message, static_cast<unsigned char>(RED), static_cast<short>(1));
+					mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
                 
                 #ifdef USE_TOUCH_INPUT
                 // Alternate special name (if not "NONE")
-				if (strcmp(myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)], "NONE") )
+				if (myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE" )
                 {
-					sprintf(message, "ALT: %s", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+					message = std::format("ALT: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
                     if (control->stats->magicpoints >= control->stats->special_cost[static_cast<int>(control->current_special)])
-                        mytext.write_xy(lm+2, bm + special_offset + 8, message, text_color, static_cast<short>(1));
+                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
                     else
-                        mytext.write_xy(lm+2, bm + special_offset + 8, message, static_cast<unsigned char>(RED), static_cast<short>(1));
+                        mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
                 }
                 #endif
 
@@ -930,19 +931,19 @@ short new_score_panel(screen *myscreen, short do_it)
 				if (draw_button)
 					myscreen->draw_button(rm-57, tm+1, rm-2, tm+16, 1, 1);
 
-				sprintf(message, "TEAM: %d", tempallies);
+				message = std::format("TEAM: {}", tempallies);
 				#ifndef USE_TOUCH_INPUT
-				mytext.write_xy(rm - 55, tm+2, message, text_color, static_cast<short>(1));
+				mytext.write_xy(rm - 55, tm+2, message.c_str(), text_color, static_cast<short>(1));
 				#else
-				mytext.write_xy(rm - 55, tm+2 + 44 + 8, message, text_color, static_cast<short>(1));
+				mytext.write_xy(rm - 55, tm+2 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
 				#endif
 
 				// Number of foes, 2nd upper right
-				sprintf(message, "FOES: %d", tempfoes);
+				message = std::format("FOES: {}", tempfoes);
 				#ifndef USE_TOUCH_INPUT
-				mytext.write_xy(rm-55, tm+10, message, text_color, static_cast<short>(1));
+				mytext.write_xy(rm-55, tm+10, message.c_str(), text_color, static_cast<short>(1));
 				#else
-				mytext.write_xy(rm-55, tm+10 + 44 + 8, message, text_color, static_cast<short>(1));
+				mytext.write_xy(rm-55, tm+10 + 44 + 8, message.c_str(), text_color, static_cast<short>(1));
 				#endif
 			}
 

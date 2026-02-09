@@ -18,6 +18,7 @@
 
 #include "graph.h"
 #include "sai2x.h"
+#include <format>
 #include <cstring>
 
 #define VIDEO_BUFFER_WIDTH 320
@@ -292,7 +293,7 @@ Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
 	textwidth = dialogtext.query_width(header);
 	left = centerx - (textwidth/2);
 
-	if (header && strlen(header) ) // display a title?
+	if (header && header[0] != '\0') // display a title?
 		dialogtext.write_xy(left, y1+6, header,
 		                    static_cast<unsigned char>(RED), 1); // draw header to buffer
 	draw_text_bar(x1+4, y1+20, x2-4, y2-4); // draw box for text
@@ -1781,18 +1782,17 @@ bool video::save_screenshot()
 	}
 	
 	static int i = 1;
-	char buf[200];
     #ifndef USE_BMP_SCREENSHOT
-	snprintf(buf, 200, "screenshot%d.png", i);
+	std::string buf = std::format("screenshot{}.png", i);
 	#else
-	snprintf(buf, 200, "screenshot%d.bmp", i);
+	std::string buf = std::format("screenshot{}.bmp", i);
 	#endif
 	i++;
-	
-	SDL_RWops* rwops = open_write_file(buf);
+
+	SDL_RWops* rwops = open_write_file(buf.c_str());
 	if(rwops == nullptr)
     {
-        LogError("Failed to open file for screenshot: %s\n", buf);
+        LogError("Failed to open file for screenshot: %s\n", buf.c_str());
         return false;
     }
     

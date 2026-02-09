@@ -32,6 +32,7 @@
 #include "results_screen.h"
 #include <string>
 #include <cstring>
+#include <format>
 
 
 // From picker.cpp
@@ -158,77 +159,77 @@ screen::screen(short howmany)
 	for (i=0; i < NUM_FAMILIES; i++)
 		for (j=0; j < NUM_SPECIALS; j++)
 		{
-			strcpy(special_name[i][j], "NONE");
-			strcpy(alternate_name[i][j], "NONE");
+			special_name[i][j] = "NONE";
+			alternate_name[i][j] = "NONE";
 		}
 
-	strcpy(special_name[FAMILY_SOLDIER][1], "CHARGE");
-	strcpy(special_name[FAMILY_SOLDIER][2], "BOOMERANG");
-	strcpy(special_name[FAMILY_SOLDIER][3], "WHIRLWIND");
-	strcpy(special_name[FAMILY_SOLDIER][4], "DISARM");
+	special_name[FAMILY_SOLDIER][1] = "CHARGE";
+	special_name[FAMILY_SOLDIER][2] = "BOOMERANG";
+	special_name[FAMILY_SOLDIER][3] = "WHIRLWIND";
+	special_name[FAMILY_SOLDIER][4] = "DISARM";
 
-	strcpy(special_name[FAMILY_BARBARIAN][1], "HURL BOULDER");
-	strcpy(special_name[FAMILY_BARBARIAN][2], "EXPLODING BOULDER");
+	special_name[FAMILY_BARBARIAN][1] = "HURL BOULDER";
+	special_name[FAMILY_BARBARIAN][2] = "EXPLODING BOULDER";
 
-	strcpy(special_name[FAMILY_ELF][1], "ROCKS");
-	strcpy(special_name[FAMILY_ELF][2], "BOUNCING ROCKS");
-	strcpy(special_name[FAMILY_ELF][3], "LOTS OF ROCKS");
-	strcpy(special_name[FAMILY_ELF][4], "MEGA ROCKS");
+	special_name[FAMILY_ELF][1] = "ROCKS";
+	special_name[FAMILY_ELF][2] = "BOUNCING ROCKS";
+	special_name[FAMILY_ELF][3] = "LOTS OF ROCKS";
+	special_name[FAMILY_ELF][4] = "MEGA ROCKS";
 
-	strcpy(special_name[FAMILY_ARCHER][1], "FIRE ARROWS");
-	strcpy(special_name[FAMILY_ARCHER][2], "BARRAGE");
-	strcpy(special_name[FAMILY_ARCHER][3], "EXPLODING BOLT");
+	special_name[FAMILY_ARCHER][1] = "FIRE ARROWS";
+	special_name[FAMILY_ARCHER][2] = "BARRAGE";
+	special_name[FAMILY_ARCHER][3] = "EXPLODING BOLT";
 
-	strcpy(special_name[FAMILY_MAGE][1], "TELEPORT");
-	strcpy(alternate_name[FAMILY_MAGE][1], "TELEPORT MARKER");
-	strcpy(special_name[FAMILY_MAGE][2], "WARP SPACE");
-	strcpy(special_name[FAMILY_MAGE][3], "FREEZE TIME");
-	strcpy(special_name[FAMILY_MAGE][4], "ENERGY WAVE");
-	strcpy(special_name[FAMILY_MAGE][5], "HEARTBURST");
+	special_name[FAMILY_MAGE][1] = "TELEPORT";
+	alternate_name[FAMILY_MAGE][1] = "TELEPORT MARKER";
+	special_name[FAMILY_MAGE][2] = "WARP SPACE";
+	special_name[FAMILY_MAGE][3] = "FREEZE TIME";
+	special_name[FAMILY_MAGE][4] = "ENERGY WAVE";
+	special_name[FAMILY_MAGE][5] = "HEARTBURST";
 
-	strcpy(special_name[FAMILY_ARCHMAGE][1], "TELEPORT");
-	strcpy(alternate_name[FAMILY_ARCHMAGE][1], "TELEPORT MARKER");
-	strcpy(special_name[FAMILY_ARCHMAGE][2], "HEARTBURST");
-	strcpy(alternate_name[FAMILY_ARCHMAGE][2], "CHAIN LIGHTNING");
-	strcpy(special_name[FAMILY_ARCHMAGE][3], "SUMMON IMAGE");
-	strcpy(alternate_name[FAMILY_ARCHMAGE][3], "SUMMON ELEMENTAL");
-	strcpy(special_name[FAMILY_ARCHMAGE][4], "MIND CONTROL");
-	//strcpy(alternate_name[FAMILY_ARCHMAGE][4], "SUMMON ELEMENTAL");
+	special_name[FAMILY_ARCHMAGE][1] = "TELEPORT";
+	alternate_name[FAMILY_ARCHMAGE][1] = "TELEPORT MARKER";
+	special_name[FAMILY_ARCHMAGE][2] = "HEARTBURST";
+	alternate_name[FAMILY_ARCHMAGE][2] = "CHAIN LIGHTNING";
+	special_name[FAMILY_ARCHMAGE][3] = "SUMMON IMAGE";
+	alternate_name[FAMILY_ARCHMAGE][3] = "SUMMON ELEMENTAL";
+	special_name[FAMILY_ARCHMAGE][4] = "MIND CONTROL";
+	//alternate_name[FAMILY_ARCHMAGE][4] = "SUMMON ELEMENTAL";
 
 
-	strcpy(special_name[FAMILY_CLERIC][1], "HEAL");
-	strcpy(alternate_name[FAMILY_CLERIC][1], "MYSTIC MACE");
-	strcpy(special_name[FAMILY_CLERIC][2], "RAISE UNDEAD");
-	strcpy(alternate_name[FAMILY_CLERIC][2], "TURN UNDEAD");
-	strcpy(special_name[FAMILY_CLERIC][3], "RAISE GHOST");
-	strcpy(alternate_name[FAMILY_CLERIC][3], "TURN UNDEAD");
-	strcpy(special_name[FAMILY_CLERIC][4], "RESURRECT");
+	special_name[FAMILY_CLERIC][1] = "HEAL";
+	alternate_name[FAMILY_CLERIC][1] = "MYSTIC MACE";
+	special_name[FAMILY_CLERIC][2] = "RAISE UNDEAD";
+	alternate_name[FAMILY_CLERIC][2] = "TURN UNDEAD";
+	special_name[FAMILY_CLERIC][3] = "RAISE GHOST";
+	alternate_name[FAMILY_CLERIC][3] = "TURN UNDEAD";
+	special_name[FAMILY_CLERIC][4] = "RESURRECT";
 
-	strcpy(special_name[FAMILY_DRUID][1], "GROW TREE");
-	strcpy(special_name[FAMILY_DRUID][2], "SUMMON FAERIE");
-	strcpy(special_name[FAMILY_DRUID][3], "REVEAL");
-	strcpy(special_name[FAMILY_DRUID][4], "PROTECTION");
+	special_name[FAMILY_DRUID][1] = "GROW TREE";
+	special_name[FAMILY_DRUID][2] = "SUMMON FAERIE";
+	special_name[FAMILY_DRUID][3] = "REVEAL";
+	special_name[FAMILY_DRUID][4] = "PROTECTION";
 
-	strcpy(special_name[FAMILY_THIEF][1], "DROP BOMB");
-	strcpy(special_name[FAMILY_THIEF][2], "CLOAK");
-	strcpy(special_name[FAMILY_THIEF][3], "TAUNT ENEMY");
-	strcpy(alternate_name[FAMILY_THIEF][3], "CHARM OPPONENT");
-	strcpy(special_name[FAMILY_THIEF][4], "POISON CLOUD");
+	special_name[FAMILY_THIEF][1] = "DROP BOMB";
+	special_name[FAMILY_THIEF][2] = "CLOAK";
+	special_name[FAMILY_THIEF][3] = "TAUNT ENEMY";
+	alternate_name[FAMILY_THIEF][3] = "CHARM OPPONENT";
+	special_name[FAMILY_THIEF][4] = "POISON CLOUD";
 
-	strcpy(special_name[FAMILY_GHOST][1], "SCARE");
+	special_name[FAMILY_GHOST][1] = "SCARE";
 
-	strcpy(special_name[FAMILY_FIREELEMENTAL][1], "STARBURST");
+	special_name[FAMILY_FIREELEMENTAL][1] = "STARBURST";
 
-	strcpy(special_name[FAMILY_ORC][1], "HOWL");
-	strcpy(special_name[FAMILY_ORC][2], "EAT CORPSE");
+	special_name[FAMILY_ORC][1] = "HOWL";
+	special_name[FAMILY_ORC][2] = "EAT CORPSE";
 
-	strcpy(special_name[FAMILY_SMALL_SLIME][1], "GROW");
+	special_name[FAMILY_SMALL_SLIME][1] = "GROW";
 
-	strcpy(special_name[FAMILY_MEDIUM_SLIME][1], "GROW");
+	special_name[FAMILY_MEDIUM_SLIME][1] = "GROW";
 
-	strcpy(special_name[FAMILY_SLIME][1], "SPLIT");
+	special_name[FAMILY_SLIME][1] = "SPLIT";
 
-	strcpy(special_name[FAMILY_SKELETON][1], "TUNNEL");
+	special_name[FAMILY_SKELETON][1] = "TUNNEL";
 
 }
 
@@ -661,7 +662,6 @@ short screen::continuous_input()
 
 short screen::act()
 {
-	static char obmessage[80];
 	Sint32 printed_time = 0; // have we printed message yet?
 	//  static short debug = 0;
 
@@ -697,8 +697,8 @@ short screen::act()
 		{
 			if (!(enemy_freeze%10) && !printed_time)
 			{
-				sprintf(obmessage, "TIME LEFT: %d", enemy_freeze);
-				viewob[0]->set_display_text(obmessage, 10);
+				std::string obmessage = std::format("TIME LEFT: {}", enemy_freeze);
+				viewob[0]->set_display_text(obmessage.c_str(), 10);
 				printed_time = 1;
 			}
 			if (ob && !ob->dead &&
@@ -1067,22 +1067,20 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 {
 	SDL_RWops  *infile = nullptr;
 	char temptext[10] = "XXX";
-	char tempfile[80] = "x.x";
 	char versionnumber = 0;
 	static char buffer[30];
 
-	strcpy(tempfile, filename);
-	strcat(tempfile, ".fss");
+	std::string tempfile = std::string(filename) + ".fss";
 
 	// Zardus: first get the file from scen/
-	if (!(infile = open_read_file("scen/", tempfile)))
+	if (!(infile = open_read_file("scen/", tempfile.c_str())))
 	{
         return "none";
 	}
 
 	// Are we a scenario file?
 	SDL_RWread(infile, temptext, 3, 1);
-	if (strcmp(temptext, "FSS"))
+	if (std::string(temptext) != "FSS")
 	{
 		return "none";
 	}
@@ -1375,8 +1373,6 @@ void screen::report_mem()
 	Memory.FreeLinAddrSpace = 0;
 	// Zardus: PORT: this is aparently an incomplete type:  union REGS regs;
 	// Same here:  struct SREGS sregs;
-	char memreport[80];
-
 	// Zardus: PORT: Undeclared because of problems above:  regs.x.eax = 0x00000500;
 	// Same here:  memset( &sregs, 0, sizeof(sregs) );
 
@@ -1389,11 +1385,11 @@ void screen::report_mem()
 	//sprintf(memreport, "Largest Block: %lu bytes",
 	//  Memory.LargestBlockAvail);
 	//viewob[0]->set_display_text(memreport, STANDARD_TEXT_TIME);
-	sprintf(memreport, "Free Linear address: %u pages",
+	std::string memreport = std::format("Free Linear address: {} pages",
 	        Memory.FreeLinAddrSpace);
 	//  Log(memreport);
 	//  Log("\n");
-	viewob[0]->set_display_text(memreport, 25);
+	viewob[0]->set_display_text(memreport.c_str(), 25);
 	/*
 	       Log( "Largest available block (in bytes): %lu\n",
 	               MemInfo.LargestBlockAvail );

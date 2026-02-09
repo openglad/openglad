@@ -8,6 +8,7 @@
 #include "view.h"
 #include <algorithm>
 #include <cstring>
+#include <format>
 
 #ifdef OUYA
     #include "OuyaController.h"
@@ -35,9 +36,8 @@ void show_ending_popup(int ending, int nextlevel)
 		}
 		else // we're withdrawing to another level
 		{
-		    char buf[255];
-		    snprintf(buf, 255, "Retreating to Level %d\n(You may take this field later)", nextlevel);
-		    popup_dialog("Retreat!", buf);
+		    std::string buf = std::format("Retreating to Level {}\n(You may take this field later)", nextlevel);
+		    popup_dialog("Retreat!", buf.c_str());
 		}
 
 	}
@@ -49,9 +49,8 @@ void show_ending_popup(int ending, int nextlevel)
 	{
 		if (myscreen->save_data.is_level_completed(myscreen->save_data.scen_num)) // this scenario is completed ..
 		{
-		    char buf[255];
-		    snprintf(buf, 255, "Moving on to Level %d", nextlevel);
-		    popup_dialog("Traveling on...", buf);
+		    std::string buf = std::format("Moving on to Level {}", nextlevel);
+		    popup_dialog("Traveling on...", buf.c_str());
 		}
 		else
 		{
@@ -175,7 +174,7 @@ std::vector<std::string> TroopResult::get_gained_specials()
     {
         test1 = (test1 / 3) + 1; // this is the special #
         if ( (test1 <= 4) // raise this when we have more than 4 specials
-                && (strcmp(myscreen->special_name[family][test1], "NONE") ))
+                && (myscreen->special_name[family][test1] != "NONE") )
         {
             result.push_back(myscreen->special_name[family][test1]);
         }
@@ -568,11 +567,10 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 // TODO: Show total possible gold collected?  How is this factored into allscore?
                 if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h)
                 {
-                    char buf[50];
-                    snprintf(buf, 50, "%d", allscore*2);
-                    mytext.write_xy_center_shadow(area.x + area.w/2, y, YELLOW, "%s Gold       ", buf);
-                    std::fill_n(buf, strlen(buf), ' ');
-                    mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Gained", buf);
+                    std::string buf = std::format("{}", allscore*2);
+                    mytext.write_xy_center_shadow(area.x + area.w/2, y, YELLOW, "%s Gold       ", buf.c_str());
+                    std::string spaces(buf.size(), ' ');
+                    mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Gained", spaces.c_str());
                 }
                 if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h)
                 {
@@ -587,22 +585,19 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             BEGIN_IF_IN_SCROLL_AREA;
             if(ending == 0)
             {
-                char buf[50];
-                snprintf(buf, 50, "%d", num_foes_total - num_foes_left);
-                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s Foes         ", buf);
-                std::fill_n(buf, strlen(buf), ' ');
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Defeated", buf);
+                std::string buf = std::format("{}", num_foes_total - num_foes_left);
+                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s Foes         ", buf.c_str());
+                std::string spaces(buf.size(), ' ');
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Defeated", spaces.c_str());
             }
             else
             {
-                char buf[50];
-                char buf2[50];
-                snprintf(buf, 50, "%d", num_foes_total - num_foes_left);
-                snprintf(buf2, 50, "%d", num_foes_total);
-                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s of %s Foes         ", buf, buf2);
-                std::fill_n(buf, strlen(buf), ' ');
-                std::fill_n(buf2, strlen(buf2), ' ');
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s    %s      Defeated", buf, buf2);
+                std::string buf = std::format("{}", num_foes_total - num_foes_left);
+                std::string buf2 = std::format("{}", num_foes_total);
+                mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s of %s Foes         ", buf.c_str(), buf2.c_str());
+                std::string spaces(buf.size(), ' ');
+                std::string spaces2(buf2.size(), ' ');
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s    %s      Defeated", spaces.c_str(), spaces2.c_str());
             }
             END_IF_IN_SCROLL_AREA;
             y += 22;

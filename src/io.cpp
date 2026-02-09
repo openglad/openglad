@@ -23,6 +23,7 @@
 #include "yam.h"
 #include "physfs.h"
 #include "physfsrwops.h"
+#include <format>
 #include <string>
 #include <algorithm>
 #include <cstdio>
@@ -345,13 +346,12 @@ void delete_level(int id)
     
     cleanup_unpacked_campaign();
     unpack_campaign(campaign);
-    char path[256];
     // Delete data file
-    snprintf(path, 256, "%stemp/scen/scen%d.fss", get_user_path().c_str(), id);
-    remove(path);
+    std::string path = std::format("{}temp/scen/scen{}.fss", get_user_path(), id);
+    remove(path.c_str());
     // Delete terrain file
-    snprintf(path, 256, "%stemp/pix/scen%04d.pix", get_user_path().c_str(), id);
-    remove(path);
+    path = std::format("{}temp/pix/scen{:04d}.pix", get_user_path(), id);
+    remove(path.c_str());
     repack_campaign(campaign);
     
     // Remount for consistency in PhysFS
@@ -360,9 +360,8 @@ void delete_level(int id)
 
 void delete_campaign(const std::string& id)
 {
-    char path[256];
-    snprintf(path, 256, "%scampaigns/%s.glad", get_user_path().c_str(), id.c_str());
-    remove(path);
+    std::string path = std::format("{}campaigns/{}.glad", get_user_path(), id);
+    remove(path.c_str());
 }
 
 
@@ -596,7 +595,7 @@ std::list<std::string> list_paths_recursively(const std::string& dirname)
     
     while ((entry = readdir(dir)) != nullptr)
     {
-        if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+        if(std::string(entry->d_name) == "." || std::string(entry->d_name) == "..")
             continue;
         
         
@@ -640,25 +639,23 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
         return false;
     
     struct zip_source *s;
-    char src_name[512];
-    char dest_name[512];
-    
+
     std::list<std::string> files = list_paths_recursively(indir);
     for(std::list<std::string>::iterator e = files.begin(); e != files.end(); e++)
     {
-        snprintf(src_name, 512, "%s%s", indir.c_str(), e->c_str());
-        snprintf(dest_name, 512, "%s", e->c_str());
-        
-        if(src_name[strlen(src_name)-1] == '/')
+        std::string src_name = std::format("{}{}", indir, *e);
+        const std::string& dest_name = *e;
+
+        if(src_name.back() == '/')
         {
-            if(zip_dir_add(archive, dest_name, ZIP_FL_ENC_GUESS) < 0)
+            if(zip_dir_add(archive, dest_name.c_str(), ZIP_FL_ENC_GUESS) < 0)
             {
                 LogError("Error adding dir to zip: %s\n", zip_strerror(archive));
             }
         }
         else
         {
-            if((s=zip_source_file(archive, src_name, 0, -1)) == nullptr || zip_file_add(archive, dest_name, s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
+            if((s=zip_source_file(archive, src_name.c_str(), 0, -1)) == nullptr || zip_file_add(archive, dest_name.c_str(), s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
             {
                 zip_source_free(s);
                 LogError("Error adding file to zip: %s\n", zip_strerror(archive));
@@ -691,7 +688,7 @@ int mkpath(const char *s, mode_t mode)
     int rv;
 
     rv = -1;
-    if (strcmp(s, ".") == 0 || strcmp(s, "/") == 0 || (strlen(s) == 3 && s[2] == '/'))
+    if (std::string(s) == "." || std::string(s) == "/" || (std::string(s).size() == 3 && s[2] == '/'))
         return 0;
 
     if ((path = strdup(s)) == nullptr)
@@ -730,11 +727,9 @@ bool create_path_to_file(const char* filename)
     if(c == nullptr)
         return true;
     
-    char buf[512];
-    snprintf(buf, 512, "%s", filename);
-    buf[c - filename] = '\0';
-    
-    return (mkpath(buf, 0755) >= 0);
+    std::string buf(filename, c - filename);
+
+    return (mkpath(buf.c_str(), 0755) >= 0);
 }
 
 bool create_dir(const std::string& dirname)
@@ -764,11 +759,11 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
     {
         if(zip_stat_index(archive, i, 0, &status) == 0)
         {
-            int len = strlen(status.name);
+            int len = static_cast<int>(strlen(status.name));
             if(status.name[len - 1] == '/')
             {
-                snprintf(buf, buf_size, "%s%s", outdir.c_str(), status.name);
-                create_dir(buf);
+                std::string dirpath = std::format("{}{}", outdir, status.name);
+                create_dir(dirpath);
             }
             else
             {
@@ -778,9 +773,9 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
                     // Error
                     continue;
                 }
-                
-                snprintf(buf, buf_size, "%s%s", outdir.c_str(), status.name);
-                create_path_to_file(buf);
+
+                std::string filepath = std::format("{}{}", outdir, status.name);
+                create_path_to_file(filepath.c_str());
                 SDL_RWops* rwops = open_write_file(outdir.c_str(), status.name);
                 if(rwops == nullptr)
                 {
@@ -946,10 +941,10 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 	unsigned char version = 8;
 	
 	char grid_file_name[8];
-	strncpy(grid_file_name, gridname.c_str(), 8);
+	snprintf(grid_file_name, sizeof(grid_file_name), "%s", gridname.c_str());
 	
 	char scenario_title[30];
-	strncpy(scenario_title, "New Level", 30);
+	snprintf(scenario_title, sizeof(scenario_title), "New Level");
 	
 	unsigned char scenario_type = 1;//SCEN_TYPE_CAN_EXIT;
 	
@@ -961,7 +956,7 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 	
 	unsigned char num_lines = 1;
 	char line_text[50] = "A new scenario.";
-	unsigned char line_length = strlen(line_text);
+	unsigned char line_length = static_cast<unsigned char>(strlen(line_text));
 	
 	SDL_RWops* outfile;
 	if((outfile = open_write_file(scenfile.c_str())) == nullptr)

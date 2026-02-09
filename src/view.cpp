@@ -27,6 +27,8 @@
 #include "version.h"
 
 #include "util.h"
+#include <string>
+#include <format>
 #include "view_sizes.h"
 #include <algorithm>
 #include <cstring>
@@ -183,7 +185,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	for (i=0; i < MAX_MESSAGES; i++)
 	{
 		textcycles[i] = 0;
-		textlist[i][0] = 0; // null message
+		textlist[i].clear(); // null message
 	}
 
 	resize(prefs[PREF_VIEW]); // Properly resize the viewscreen
@@ -334,14 +336,14 @@ void viewscreen::display_text()
 		if (textcycles[i] > 0)  // Display text if there's any there ..
 		{
 			textcycles[i]--;
-			myscreen->text_normal.write_xy( (xview-strlen(textlist[i])*6)/2,
-			                      30+i*6, textlist[i], YELLOW, this );
+			myscreen->text_normal.write_xy( (xview-static_cast<int>(textlist[i].size())*6)/2,
+			                      30+i*6, textlist[i].c_str(), YELLOW, this );
 		}
 	}
 
 	// Clean up any empty slots
 	for (i=0; i < MAX_MESSAGES; i++)
-		if (textcycles[i] < 1 && strlen(textlist[i]) )
+		if (textcycles[i] < 1 && !textlist[i].empty() )
 			shift_text(i); // shift text up, starting at position i
 }
 
@@ -351,10 +353,10 @@ void viewscreen::shift_text(Sint32 row)
 
 	for (i=row; i < (MAX_MESSAGES-1) ; i++)
 	{
-		strcpy(textlist[i], textlist[i+1]);
+		textlist[i] = textlist[i+1];
 		textcycles[i] = textcycles[i+1];
 	}
-	textlist[MAX_MESSAGES-1][0] = 0;
+	textlist[MAX_MESSAGES-1].clear();
 	textcycles[MAX_MESSAGES-1] = 0;
 }
 
@@ -367,7 +369,6 @@ short viewscreen::refresh()
 
 short viewscreen::input(const SDL_Event& event)
 {
-	static char somemessage[80];
 
 	//short i;
 	//short step;
@@ -466,8 +467,8 @@ short viewscreen::input(const SDL_Event& event)
             totaltime = (query_timer_control() - myscreen->timerstart)/72;
             totalframes = (myscreen->framecount);
             framespersec = totalframes / totaltime;
-            sprintf(somemessage, "%u FRAMES PER SEC", framespersec);
-            myscreen->viewob[0]->set_display_text(somemessage, STANDARD_TEXT_TIME);
+            std::string somemessage = std::format("{} FRAMES PER SEC", framespersec);
+            myscreen->viewob[0]->set_display_text(somemessage.c_str(), STANDARD_TEXT_TIME);
         }
 
         if (query_key_event(SDLK_F4, event)) // Memory report
@@ -609,7 +610,7 @@ short viewscreen::input(const SDL_Event& event)
 		
 		control->current_special++;
 		if (control->current_special > (NUM_SPECIALS-1)
-		        || !(strcmp(myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)],"NONE"))
+		        || (myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] == "NONE")
 		        || (((control->current_special-1)*3+1) > control->stats->level) )
 			control->current_special = 1;
 	} //end of switch our special
@@ -1084,7 +1085,7 @@ void viewscreen::set_display_text(const char *newtext, short numcycles)
 		return;
 
 	i = 0;
-	while (strlen(textlist[i]) && i < MAX_MESSAGES)
+	while (!textlist[i].empty() && i < MAX_MESSAGES)
 		i++;
 	if (i >= MAX_MESSAGES) // no room, need to scroll messages
 	{
@@ -1092,7 +1093,7 @@ void viewscreen::set_display_text(const char *newtext, short numcycles)
 		i = MAX_MESSAGES - 1;
 	}
 	//strcpy(infotext, newtext);
-	strcpy(textlist[i], newtext);
+	textlist[i] = newtext;
 
 	if (numcycles > 0)
 		textcycles[i] = numcycles;
@@ -1105,7 +1106,7 @@ void viewscreen::clear_text()
 {
 	Sint32 i;
 	for (i=0; i < MAX_MESSAGES; i++)
-		textlist[i][0] = 0;
+		textlist[i].clear();
 }
 
 short viewscreen::draw_obs()
@@ -1331,7 +1332,8 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 {
 	char teamnum = my_team;
 	char text_down = top+3;
-	char message[30], hpcolor, mpcolor, namecolor, numguys = 0;
+	std::string message;
+	char hpcolor, mpcolor, namecolor, numguys = 0;
 	float hp, mp, maxhp, maxmp;
 	text& mytext = myscreen->text_normal;
 	
@@ -1340,17 +1342,13 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	myscreen->redrawme = 1;
 	myscreen->draw_button(left, top, right, bottom, 2);
 
-	strcpy(message, "  Name  ");
-	mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(BLACK));
+	mytext.write_xy(left+5, text_down, "  Name  ", static_cast<unsigned char>(BLACK));
 
-	strcpy (message, "Health");
-	mytext.write_xy(left+80, text_down, message, static_cast<unsigned char>(BLACK));
+	mytext.write_xy(left+80, text_down, "Health", static_cast<unsigned char>(BLACK));
 
-	sprintf (message, "Power");
-	mytext.write_xy(left+140, text_down, message, static_cast<unsigned char>(BLACK));
+	mytext.write_xy(left+140, text_down, "Power", static_cast<unsigned char>(BLACK));
 
-	sprintf (message, "Level");
-	mytext.write_xy(left+190, text_down, message, static_cast<unsigned char>(BLACK));
+	mytext.write_xy(left+190, text_down, "Level", static_cast<unsigned char>(BLACK));
 
 	text_down+=6;
     
@@ -1411,19 +1409,19 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 				namecolor = BLACK;
 
 			if (w->myguy)
-				strcpy (message, w->myguy->name.c_str());
+				message = w->myguy->name;
 			else
-				strcpy(message, w->stats->name.c_str());
-			mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(namecolor));
+				message = w->stats->name;
+			mytext.write_xy(left+5, text_down, message.c_str(), static_cast<unsigned char>(namecolor));
 
-			sprintf (message, "%4.0f/%.0f", ceilf(hp), maxhp);
-			mytext.write_xy(left+70, text_down, message, static_cast<unsigned char>(hpcolor));
+			message = std::format("{:4.0f}/{:.0f}", ceilf(hp), maxhp);
+			mytext.write_xy(left+70, text_down, message.c_str(), static_cast<unsigned char>(hpcolor));
 
-			sprintf (message, "%4.0f/%.0f", ceilf(mp), maxmp);
-			mytext.write_xy(left+130, text_down, message, static_cast<unsigned char>(mpcolor));
+			message = std::format("{:4.0f}/{:.0f}", ceilf(mp), maxmp);
+			mytext.write_xy(left+130, text_down, message.c_str(), static_cast<unsigned char>(mpcolor));
 
-			sprintf (message, "%2d", w->stats->level);
-			mytext.write_xy(left+195, text_down, message, static_cast<unsigned char>(BLACK));
+			message = std::format("{:2d}", w->stats->level);
+			mytext.write_xy(left+195, text_down, message.c_str(), static_cast<unsigned char>(BLACK));
 
 			text_down+=6;
 		}
@@ -1450,7 +1448,7 @@ void viewscreen::options_menu()
 {
 	text& optiontext = myscreen->text_normal;
 	Sint32 gamespeed;
-	static char message[80], tempstr[80];
+	std::string message, tempstr;
 	signed char gamma = prefs[PREF_GAMMA];
 
 #define LEFT_OPS 49
@@ -1470,104 +1468,103 @@ void viewscreen::options_menu()
 	// Draw the menu button
 	myscreen->draw_button(40, 40, 280, 160, 2, 1);
 	myscreen->draw_text_bar(40+4, 40+4, 280-4, 40+12);
-	char title[50];
-	snprintf(title, 50, "Options Menu (%d)", mynum+1);
-	optiontext.write_xy(160-6*6, OPLINES(0)+2, title, static_cast<unsigned char>(RED), 1);
+	std::string title = std::format("Options Menu ({})", mynum+1);
+	optiontext.write_xy(160-6*6, OPLINES(0)+2, title.c_str(), static_cast<unsigned char>(RED), 1);
 
 
 	gamespeed = change_speed(0);
-	sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
-	optiontext.write_xy(LEFT_OPS, OPLINES(2), message, static_cast<unsigned char>(BLACK), 1);
+	message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
+	optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 	switch (prefs[PREF_VIEW])
 	{
 		case PREF_VIEW_FULL:
-			strcpy(tempstr, "Full Screen");
+			tempstr = "Full Screen";
 			break;
 		case PREF_VIEW_PANELS:
-			strcpy(tempstr, "Large");
+			tempstr = "Large";
 			break;
 		case PREF_VIEW_1:
-			strcpy(tempstr, "Medium");
+			tempstr = "Medium";
 			break;
 		case PREF_VIEW_2:
-			strcpy(tempstr, "Small");
+			tempstr = "Small";
 			break;
 		case PREF_VIEW_3:
-			strcpy(tempstr, "Tiny");
+			tempstr = "Tiny";
 			break;
 		default:
-			strcpy(tempstr, "Weird");
+			tempstr = "Weird";
 			break;
 	}
-	sprintf(message, "Change View Size ([,]) : %s ", tempstr);
-	myscreen->draw_box(LEFT_OPS, OPLINES(3), LEFT_OPS+strlen(message)*6, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(3), message, static_cast<unsigned char>(BLACK), 1);
+	message = std::format("Change View Size ([,]) : {} ", tempstr);
+	myscreen->draw_box(LEFT_OPS, OPLINES(3), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(3)+6, PANEL_COLOR, 1, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	gamma = change_gamma(0);
-	sprintf(message, "Change Brightness (<,>): %d ", gamma);
+	message = std::format("Change Brightness (<,>): {} ", gamma);
 	myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(4), message, static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	if (prefs[PREF_RADAR])
-		sprintf(message, "Radar Display (R)      : ON ");
+		message = "Radar Display (R)      : ON ";
 	else
-		sprintf(message, "Radar Display (R)      : OFF ");
+		message = "Radar Display (R)      : OFF ";
 	myscreen->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(5), message, static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(5), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	switch (prefs[PREF_LIFE])
 	{
 		case PREF_LIFE_TEXT:
-			strcpy(tempstr, "Text Only");
+			tempstr = "Text Only";
 			break;
 		case PREF_LIFE_BARS:
-			strcpy(tempstr, "Bars Only");
+			tempstr = "Bars Only";
 			break;
 		case PREF_LIFE_BOTH:
-			strcpy(tempstr, "Bars and Text");
+			tempstr = "Bars and Text";
 			break;
 		case PREF_LIFE_OFF:
-			strcpy(tempstr, "Off");
+			tempstr = "Off";
 			break;
 		default:
 		case PREF_LIFE_SMALL:
-			strcpy(tempstr, "On");
+			tempstr = "On";
 			break;
 	}
-	sprintf(message, "Hitpoint Display (H)   : %s", tempstr);
+	message = std::format("Hitpoint Display (H)   : {}", tempstr);
 	myscreen->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(6), message, static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(6), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	if (prefs[PREF_FOES])
-		sprintf(message, "Foes Display (F)       : ON ");
+		message = "Foes Display (F)       : ON ";
 	else
-		sprintf(message, "Foes Display (F)       : OFF ");
+		message = "Foes Display (F)       : OFF ";
 	myscreen->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(7), message, static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(7), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	if (prefs[PREF_SCORE])
-		sprintf(message, "Score Display (S)      : ON ");
+		message = "Score Display (S)      : ON ";
 	else
-		sprintf(message, "Score Display (S)      : OFF ");
+		message = "Score Display (S)      : OFF ";
 	myscreen->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(8), message, static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(8), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	optiontext.write_xy(LEFT_OPS, OPLINES(9), "VIEW TEAM INFO (T)", static_cast<unsigned char>(BLACK), 1);
 
 	if (myscreen->cyclemode)
-		sprintf(message,"Color Cycling (C)      : ON ");
+		message = "Color Cycling (C)      : ON ";
 	else
-		sprintf(message,"Color Cycling (C)      : OFF ");
+		message = "Color Cycling (C)      : OFF ";
 	myscreen->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
-	optiontext.write_xy(LEFT_OPS,OPLINES(10),message,static_cast<unsigned char>(BLACK),1);
+	optiontext.write_xy(LEFT_OPS,OPLINES(10),message.c_str(),static_cast<unsigned char>(BLACK),1);
 
 	//if (prefs[PREF_JOY] == PREF_NO_JOY)
 	if(!playerHasJoystick(mynum))
-		sprintf(message, "Joystick Mode (J)      : OFF ");
+		message = "Joystick Mode (J)      : OFF ";
 	else
-		sprintf(message, "Joystick Mode (J)      : ON ");
+		message = "Joystick Mode (J)      : ON ";
 	myscreen->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-	optiontext.write_xy(LEFT_OPS,OPLINES(11),message,static_cast<unsigned char>(BLACK),1);
+	optiontext.write_xy(LEFT_OPS,OPLINES(11),message.c_str(),static_cast<unsigned char>(BLACK),1);
 
 	optiontext.write_xy(LEFT_OPS, OPLINES(12), "EDIT KEY PREFS (K)", static_cast<unsigned char>(BLACK), 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(13), "VIEW KEY BINDINGS (V)", static_cast<unsigned char>(BLACK), 1);
@@ -1583,9 +1580,9 @@ void viewscreen::options_menu()
 		if (keystates[KEYSTATE_KP_PLUS]) // faster game speed
 		{
 			gamespeed = change_speed(1);
-			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
-			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, static_cast<unsigned char>(BLACK), 1);
+			message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
+			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_PLUS])
 			{
@@ -1596,9 +1593,9 @@ void viewscreen::options_menu()
 		if (keystates[KEYSTATE_KP_MINUS]) // slower game speed
 		{
 			gamespeed = change_speed(-1);
-			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
-			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, static_cast<unsigned char>(BLACK), 1);
+			message = std::format("Change Game Speed (+/-): {:2d}  ", gamespeed);
+			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(2), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_MINUS])
 			{
@@ -1616,27 +1613,27 @@ void viewscreen::options_menu()
 			switch (prefs[PREF_VIEW])
 			{
 				case PREF_VIEW_FULL:
-					strcpy(tempstr, "Full Screen");
+					tempstr = "Full Screen";
 					break;
 				case PREF_VIEW_PANELS:
-					strcpy(tempstr, "Large");
+					tempstr = "Large";
 					break;
 				case PREF_VIEW_1:
-					strcpy(tempstr, "Medium");
+					tempstr = "Medium";
 					break;
 				case PREF_VIEW_2:
-					strcpy(tempstr, "Small");
+					tempstr = "Small";
 					break;
 				case PREF_VIEW_3:
-					strcpy(tempstr, "Tiny");
+					tempstr = "Tiny";
 					break;
 				default:
-					strcpy(tempstr, "Weird");
+					tempstr = "Weird";
 					break;
 			}
-			sprintf(message, "Change View Size ([,]) : %s       ", tempstr);
+			message = std::format("Change View Size ([,]) : {}       ", tempstr);
 			myscreen->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_LEFTBRACKET])
 			{
@@ -1654,27 +1651,27 @@ void viewscreen::options_menu()
 			switch (prefs[PREF_VIEW])
 			{
 				case PREF_VIEW_FULL:
-					strcpy(tempstr, "Full Screen");
+					tempstr = "Full Screen";
 					break;
 				case PREF_VIEW_PANELS:
-					strcpy(tempstr, "Large");
+					tempstr = "Large";
 					break;
 				case PREF_VIEW_1:
-					strcpy(tempstr, "Medium");
+					tempstr = "Medium";
 					break;
 				case PREF_VIEW_2:
-					strcpy(tempstr, "Small");
+					tempstr = "Small";
 					break;
 				case PREF_VIEW_3:
-					strcpy(tempstr, "Tiny");
+					tempstr = "Tiny";
 					break;
 				default:
-					strcpy(tempstr, "Weird");
+					tempstr = "Weird";
 					break;
 			}
-			sprintf(message, "Change View Size ([,]) : %s  ", tempstr);
+			message = std::format("Change View Size ([,]) : {}  ", tempstr);
 			myscreen->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_RIGHTBRACKET])
 			{
@@ -1685,9 +1682,9 @@ void viewscreen::options_menu()
 		if (keystates[KEYSTATE_COMMA]) // darken screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(-2);
-			sprintf(message, "Change Brightness (<,>): %d ", gamma);
+			message = std::format("Change Brightness (<,>): {} ", gamma);
 			myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_COMMA])
 			{
@@ -1698,9 +1695,9 @@ void viewscreen::options_menu()
 		if (keystates[KEYSTATE_PERIOD]) // lighten screen
 		{
 			prefs[PREF_GAMMA] = gamma = change_gamma(+2);
-			sprintf(message, "Change Brightness (<,>): %d ", gamma);
+			message = std::format("Change Brightness (<,>): {} ", gamma);
 			myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_PERIOD])
 			{
@@ -1712,11 +1709,11 @@ void viewscreen::options_menu()
 		{
 			prefs[PREF_RADAR] = (prefs[PREF_RADAR]+1)%2;
 			if (prefs[PREF_RADAR])
-				sprintf(message, "Radar Display (R)      : ON ");
+				message = "Radar Display (R)      : ON ";
 			else
-				sprintf(message, "Radar Display (R)      : OFF ");
+				message = "Radar Display (R)      : OFF ";
 			myscreen->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(5), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(5), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_r])
 			{
@@ -1730,25 +1727,25 @@ void viewscreen::options_menu()
 			switch (prefs[PREF_LIFE])
 			{
 				case PREF_LIFE_TEXT:
-					strcpy(tempstr, "Text Only");
+					tempstr = "Text Only";
 					break;
 				case PREF_LIFE_BARS:
-					strcpy(tempstr, "Bars Only");
+					tempstr = "Bars Only";
 					break;
 				case PREF_LIFE_BOTH:
-					strcpy(tempstr, "Bars and Text");
+					tempstr = "Bars and Text";
 					break;
 				case PREF_LIFE_OFF:
-					strcpy(tempstr, "Off");
+					tempstr = "Off";
 					break;
 				default:
 				case PREF_LIFE_SMALL:
-					strcpy(tempstr, "On");
+					tempstr = "On";
 					break;
 			}
-			sprintf(message, "Hitpoint Display (H)   : %s", tempstr);
+			message = std::format("Hitpoint Display (H)   : {}", tempstr);
 			myscreen->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(6), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(6), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_h])
 			{
@@ -1760,11 +1757,11 @@ void viewscreen::options_menu()
 		{
 			prefs[PREF_FOES] = (prefs[PREF_FOES]+1)%2;
 			if (prefs[PREF_FOES])
-				sprintf(message, "Foes Display (F)       : ON ");
+				message = "Foes Display (F)       : ON ";
 			else
-				sprintf(message, "Foes Display (F)       : OFF ");
+				message = "Foes Display (F)       : OFF ";
 			myscreen->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(7), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(7), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_f])
 			{
@@ -1776,11 +1773,11 @@ void viewscreen::options_menu()
 		{
 			prefs[PREF_SCORE] = (prefs[PREF_SCORE]+1)%2;
 			if (prefs[PREF_SCORE])
-				sprintf(message, "Score Display (S)      : ON ");
+				message = "Score Display (S)      : ON ";
 			else
-				sprintf(message, "Score Display (S)      : OFF ");
+				message = "Score Display (S)      : OFF ";
 			myscreen->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(8), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(8), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_s])
 			{
@@ -1806,11 +1803,11 @@ void viewscreen::options_menu()
 				get_input_events(POLL);
 			}
 			if (myscreen->cyclemode)
-				sprintf(message,"Color Cycling (C)      : ON ");
+				message = "Color Cycling (C)      : ON ";
 			else
-				sprintf(message,"Color Cycling (C)      : OFF ");
+				message = "Color Cycling (C)      : OFF ";
 			myscreen->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
-			optiontext.write_xy(LEFT_OPS,OPLINES(10),message,static_cast<unsigned char>(BLACK),1);
+			optiontext.write_xy(LEFT_OPS,OPLINES(10),message.c_str(),static_cast<unsigned char>(BLACK),1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 
 		}
@@ -1824,11 +1821,11 @@ void viewscreen::options_menu()
 		    
 		    // Update joystick display message
             if(!playerHasJoystick(mynum))
-                sprintf(message, "Joystick Mode (J)      : OFF ");
+                message = "Joystick Mode (J)      : OFF ";
             else
-                sprintf(message, "Joystick Mode (J)      : ON ");
+                message = "Joystick Mode (J)      : ON ";
             myscreen->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-            optiontext.write_xy(LEFT_OPS,OPLINES(11),message,static_cast<unsigned char>(BLACK),1);
+            optiontext.write_xy(LEFT_OPS,OPLINES(11),message.c_str(),static_cast<unsigned char>(BLACK),1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
             
             YIELD_SLEEP(500);
@@ -1857,11 +1854,11 @@ void viewscreen::options_menu()
 		{
 			prefs[PREF_OVERLAY] = (prefs[PREF_OVERLAY]+1)%2;
 			if (prefs[PREF_OVERLAY])
-				sprintf(message, "Text-button Display (B): ON ");
+				message = "Text-button Display (B): ON ";
 			else
-				sprintf(message, "Text-button Display (B): OFF ");
+				message = "Text-button Display (B): OFF ";
 			myscreen->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(13), message, static_cast<unsigned char>(BLACK), 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(13), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_b])
 			{
@@ -2163,30 +2160,29 @@ Sint32 viewscreen::set_key_prefs()
 // to this function. Callers must use the result immediately before calling again.
 static const char* get_key_display_name(int keycode)
 {
-	static char buffer[20];
-	const char* name = SDL_GetKeyName(keycode);
+	static std::string buffer;
+	std::string sname = SDL_GetKeyName(keycode);
 
 	// Substitute characters not in the bitmap font
-	if (strcmp(name, "`") == 0) return "~/`";  // Backtick not in font
+	if (sname == "`") return "~/`";  // Backtick not in font
 
 	// Shorten long modifier key names to fit
-	if (strcmp(name, "Left Ctrl") == 0) return "LCtrl";
-	if (strcmp(name, "Right Ctrl") == 0) return "RCtrl";
-	if (strcmp(name, "Left Shift") == 0) return "LShift";
-	if (strcmp(name, "Right Shift") == 0) return "RShift";
-	if (strcmp(name, "Left Alt") == 0) return "LAlt";
-	if (strcmp(name, "Right Alt") == 0) return "RAlt";
-	if (strcmp(name, "Backspace") == 0) return "BkSpc";
-	if (strcmp(name, "CapsLock") == 0) return "Caps";
+	if (sname == "Left Ctrl") return "LCtrl";
+	if (sname == "Right Ctrl") return "RCtrl";
+	if (sname == "Left Shift") return "LShift";
+	if (sname == "Right Shift") return "RShift";
+	if (sname == "Left Alt") return "LAlt";
+	if (sname == "Right Alt") return "RAlt";
+	if (sname == "Backspace") return "BkSpc";
+	if (sname == "CapsLock") return "Caps";
 
 	// Truncate if too long for display
-	if (strlen(name) > 10) {
-		strncpy(buffer, name, 9);
-		buffer[9] = '\0';
-		return buffer;
+	if (sname.size() > 10) {
+		buffer = sname.substr(0, 9);
+		return buffer.c_str();
 	}
 
-	return name;
+	return SDL_GetKeyName(keycode);
 }
 
 // view_key_bindings displays the current key bindings for this player
@@ -2224,27 +2220,27 @@ void viewscreen::view_key_bindings()
 	keytext.write_xy(180, 42, "-- Actions --", static_cast<unsigned char>(COLOR_BLUE), 1);
 
 	// Action keys in right column
-	char msg[40];
-	snprintf(msg, 40, "Fire: %s", get_key_display_name(player_keys[mynum][KEY_FIRE]));
-	keytext.write_xy(165, 54, msg, static_cast<unsigned char>(BLACK), 1);
+	std::string msg;
+	msg = std::format("Fire: {}", get_key_display_name(player_keys[mynum][KEY_FIRE]));
+	keytext.write_xy(165, 54, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	snprintf(msg, 40, "Special: %s", get_key_display_name(player_keys[mynum][KEY_SPECIAL]));
-	keytext.write_xy(165, 66, msg, static_cast<unsigned char>(BLACK), 1);
+	msg = std::format("Special: {}", get_key_display_name(player_keys[mynum][KEY_SPECIAL]));
+	keytext.write_xy(165, 66, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	snprintf(msg, 40, "Yell: %s", get_key_display_name(player_keys[mynum][KEY_YELL]));
-	keytext.write_xy(165, 78, msg, static_cast<unsigned char>(BLACK), 1);
+	msg = std::format("Yell: {}", get_key_display_name(player_keys[mynum][KEY_YELL]));
+	keytext.write_xy(165, 78, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	snprintf(msg, 40, "Shifter: %s", get_key_display_name(player_keys[mynum][KEY_SHIFTER]));
-	keytext.write_xy(165, 90, msg, static_cast<unsigned char>(BLACK), 1);
+	msg = std::format("Shifter: {}", get_key_display_name(player_keys[mynum][KEY_SHIFTER]));
+	keytext.write_xy(165, 90, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	// Switching keys
 	keytext.write_xy(55, 105, "-- Switching --", static_cast<unsigned char>(COLOR_BLUE), 1);
 
-	snprintf(msg, 40, "Switch Char: %s", get_key_display_name(player_keys[mynum][KEY_SWITCH]));
-	keytext.write_xy(40, 117, msg, static_cast<unsigned char>(BLACK), 1);
+	msg = std::format("Switch Char: {}", get_key_display_name(player_keys[mynum][KEY_SWITCH]));
+	keytext.write_xy(40, 117, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	snprintf(msg, 40, "Switch Special: %s", get_key_display_name(player_keys[mynum][KEY_SPECIAL_SWITCH]));
-	keytext.write_xy(40, 129, msg, static_cast<unsigned char>(BLACK), 1);
+	msg = std::format("Switch Special: {}", get_key_display_name(player_keys[mynum][KEY_SPECIAL_SWITCH]));
+	keytext.write_xy(40, 129, msg.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 	// Menu key info
 	keytext.write_xy(165, 117, "Options: 1", static_cast<unsigned char>(BLACK), 1);

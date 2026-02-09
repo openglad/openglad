@@ -155,16 +155,14 @@ void time_delay(Sint32 delay)
 
 void lowercase(char * str)
 {
-    unsigned int i;
-    for (i = 0; i < strlen(str); i++)
+    for (size_t i = 0, len = strlen(str); i < len; i++)
         str[i] = tolower(str[i]);
 }
 
 //buffers: add: another extra routine.
 void uppercase(char *str)
 {
-    unsigned int i;
-    for(i=0; i<strlen(str); i++)
+    for (size_t i = 0, len = strlen(str); i < len; i++)
         str[i] = toupper(str[i]);
 }
 

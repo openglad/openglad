@@ -27,6 +27,8 @@
 #include "screen.h"
 #include "view.h"
 #include <algorithm>
+#include <format>
+#include <string>
 
 
 int toInt(const std::string& s);
@@ -67,22 +69,22 @@ bool CampaignData::load()
             switch(yam.event.type)
             {
                 case Yam::PAIR:
-                    if(strcmp(yam.event.scalar, "title") == 0)
+                    if(std::string(yam.event.scalar) == "title")
                         title = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "version") == 0)
+                    else if(std::string(yam.event.scalar) == "version")
                         version = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "authors") == 0)
+                    else if(std::string(yam.event.scalar) == "authors")
                         authors = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "contributors") == 0)
+                    else if(std::string(yam.event.scalar) == "contributors")
                         contributors = yam.event.value;
-                    else if(strcmp(yam.event.scalar, "description") == 0)
+                    else if(std::string(yam.event.scalar) == "description")
                     {
                         std::string desc = yam.event.value;
                         description = explode(desc, '\n');
                     }
-                    else if(strcmp(yam.event.scalar, "suggested_power") == 0)
+                    else if(std::string(yam.event.scalar) == "suggested_power")
                         suggested_power = toInt(yam.event.value);
-                    else if(strcmp(yam.event.scalar, "first_level") == 0)
+                    else if(std::string(yam.event.scalar) == "first_level")
                         first_level = toInt(yam.event.value);
                 break;
                 default:
@@ -126,20 +128,18 @@ bool CampaignData::save()
         SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
         if(outfile != nullptr)
         {
-            char buf[40];
-            
             Yam yam;
             yam.set_output(rwops_write_handler, outfile);
-            
+
             yam.emit_pair("format_version", "1");
             yam.emit_pair("title", title.c_str());
             yam.emit_pair("version", version.c_str());
-            
-            snprintf(buf, 40, "%d", first_level);
-            yam.emit_pair("first_level", buf);
-            
-            snprintf(buf, 40, "%d", suggested_power);
-            yam.emit_pair("suggested_power", buf);
+
+            std::string buf = std::format("{}", first_level);
+            yam.emit_pair("first_level", buf.c_str());
+
+            buf = std::format("{}", suggested_power);
+            yam.emit_pair("suggested_power", buf.c_str());
             
             yam.emit_pair("authors", authors.c_str());
             yam.emit_pair("contributors", contributors.c_str());
@@ -204,20 +204,18 @@ bool CampaignData::save_as(const std::string& new_id)
         SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
         if(outfile != nullptr)
         {
-            char buf[40];
-            
             Yam yam;
             yam.set_output(rwops_write_handler, outfile);
-            
+
             yam.emit_pair("format_version", "1");
             yam.emit_pair("title", title.c_str());
             yam.emit_pair("version", version.c_str());
-            
-            snprintf(buf, 40, "%d", first_level);
-            yam.emit_pair("first_level", buf);
-            
-            snprintf(buf, 40, "%d", suggested_power);
-            yam.emit_pair("suggested_power", buf);
+
+            std::string buf = std::format("{}", first_level);
+            yam.emit_pair("first_level", buf.c_str());
+
+            buf = std::format("{}", suggested_power);
+            yam.emit_pair("suggested_power", buf.c_str());
             
             yam.emit_pair("authors", authors.c_str());
             yam.emit_pair("contributors", contributors.c_str());
@@ -690,11 +688,11 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	
+	std::string gridpix = std::string(newgrid) + ".pix";
+
     data->delete_grid();
-	
-	data->grid = read_pixie_file(newgrid);
+
+	data->grid = read_pixie_file(gridpix.c_str());
 	data->pixmaxx = data->grid.w * GRID_SIZE;
 	data->pixmaxy = data->grid.h * GRID_SIZE;
 
@@ -796,11 +794,11 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 
 
 	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	
+	std::string gridpix2 = std::string(newgrid) + ".pix";
+
     data->delete_grid();
-    
-	data->grid = read_pixie_file(newgrid);
+
+	data->grid = read_pixie_file(gridpix2.c_str());
 	data->pixmaxx = data->grid.w * GRID_SIZE;
 	data->pixmaxy = data->grid.h * GRID_SIZE;
 
@@ -887,7 +885,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 		new_guy->team_num = tempteam;
 		new_guy->stats->level = templevel;
 		new_guy->stats->name = tempname;
-		if (strlen(tempname) > 1)                      //chad 5/25/95
+		if (new_guy->stats->name.size() > 1)           //chad 5/25/95
 			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
 
 	}
@@ -904,11 +902,11 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now read the grid file...
-	strcat(newgrid, ".pix");
-	
+	std::string gridpix3 = std::string(newgrid) + ".pix";
+
     data->delete_grid();
-    
-	data->grid = read_pixie_file(newgrid);
+
+	data->grid = read_pixie_file(gridpix3.c_str());
 	data->pixmaxx = data->grid.w * GRID_SIZE;
 	data->pixmaxy = data->grid.h * GRID_SIZE;
 
@@ -1000,7 +998,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 		new_guy->team_num = tempteam;
 		new_guy->stats->level = templevel;
 		new_guy->stats->name = tempname;
-		if (strlen(tempname) > 1)                      //chad 5/25/95
+		if (new_guy->stats->name.size() > 1)           //chad 5/25/95
 			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
 
 	}
@@ -1017,14 +1015,14 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now read the grid file to our master screen ..
-	strcat(newgrid, ".pix");
-	
+	std::string gridpix4 = std::string(newgrid) + ".pix";
+
     data->delete_grid();
-    
-	data->grid = read_pixie_file(newgrid);
+
+	data->grid = read_pixie_file(gridpix4.c_str());
 	data->pixmaxx = data->grid.w * GRID_SIZE;
 	data->pixmaxy = data->grid.h * GRID_SIZE;
-	
+
 	data->mysmoother.set_target(data->grid);
 
 	// Fix up doors, etc.
@@ -1163,7 +1161,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         else
             new_guy->stats->level = templevel;
         new_guy->stats->name = tempname;
-        if (strlen(tempname) > 1)                      //chad 5/25/95
+        if (new_guy->stats->name.size() > 1)           //chad 5/25/95
             new_guy->stats->set_bit_flags(BIT_NAMED, 1);
 
     }
@@ -1203,9 +1201,9 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
     
     // Now read the grid file to our master screen ..
-    strcat(newgrid, ".pix");
-    
-    data->grid = read_pixie_file(newgrid);
+    std::string gridpix5 = std::string(newgrid) + ".pix";
+
+    data->grid = read_pixie_file(gridpix5.c_str());
     data->pixmaxx = data->grid.w * GRID_SIZE;
     data->pixmaxy = data->grid.h * GRID_SIZE;
     
@@ -1277,10 +1275,7 @@ bool LevelData::load()
 	char versionnumber = 0;
 	
 	// Build up the file name (scen#.fss)
-	std::string thefile = "scen";
-	char buf[10];
-	snprintf(buf, 10, "%d.fss", id);
-	thefile += buf;
+	std::string thefile = std::format("scen{}.fss", id);
 
 	// Zardus: much much better this way
 	if ( !(infile = open_read_file("scen/", thefile.c_str())))
@@ -1291,7 +1286,7 @@ bool LevelData::load()
 
 	// Are we a scenario file?
 	SDL_RWread(infile, temptext, 1, 3);
-	if (strcmp(temptext, "FSS") != 0)
+	if (std::string(temptext) != "FSS")
 	{
 		LogError("File %s is not a valid scenario!\n", thefile.c_str());
 		SDL_RWclose(infile);
@@ -1409,7 +1404,7 @@ bool LevelData::save()
 	Sint32 listsize;
 	Sint32 i;
 	char temp_version = VERSION_NUM;
-	char temp_filename[80];
+	std::string temp_filename;
 	char numlines, tempwidth;
 	char oneline[80];
 	char tempname[12] = {};
@@ -1445,11 +1440,11 @@ bool LevelData::save()
 
 	// Zardus: PORT: no longer need to put in scen/ in this part
 	//strcpy(temp_filename, scen_directory);
-	snprintf(temp_filename, 80, "scen%d.fss", this->id);
+	temp_filename = std::format("scen{}.fss", this->id);
 
-	if ( (outfile = open_write_file("temp/scen/", temp_filename)) == nullptr ) // open for write
+	if ( (outfile = open_write_file("temp/scen/", temp_filename.c_str())) == nullptr ) // open for write
 	{
-		Log("Could not open file for writing: %s%s\n", "temp/scen/", temp_filename);
+		Log("Could not open file for writing: %s%s\n", "temp/scen/", temp_filename.c_str());
 		return false;
 	}
 
@@ -1460,11 +1455,11 @@ bool LevelData::save()
 	SDL_RWwrite(outfile, &temp_version, 1, 1);
 
 	// Write name of current grid...
-	strncpy(temp_grid, this->grid_file.c_str(), 8);  // Do NOT include extension
+	snprintf(temp_grid, 9, "%s", this->grid_file.c_str());  // Do NOT include extension (max 8 chars)
 	SDL_RWwrite(outfile, temp_grid, 8, 1);
 
 	// Write the scenario title, if it exists
-	strcpy(scentitle, this->title.c_str());
+	snprintf(scentitle, sizeof(scentitle), "%s", this->title.c_str());
 	SDL_RWwrite(outfile, scentitle, 30, 1);
 
 	// Write the scenario type info
@@ -1509,7 +1504,7 @@ bool LevelData::save()
         currenty  = w->ypos;
         //templevel = w->stats->level;
         shortlevel = w->stats->level;
-        strncpy(tempname, w->stats->name.c_str(), 11); tempname[11] = '\0';
+        snprintf(tempname, sizeof(tempname), "%s", w->stats->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1541,7 +1536,7 @@ bool LevelData::save()
         currenty  = ob->ypos;
         //templevel = ob->stats->level;
         shortlevel = ob->stats->level;
-        strncpy(tempname, ob->stats->name.c_str(), 11); tempname[11] = '\0';
+        snprintf(tempname, sizeof(tempname), "%s", ob->stats->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1572,7 +1567,7 @@ bool LevelData::save()
         currentx  = ob->xpos;
         currenty  = ob->ypos;
         shortlevel = ob->stats->level;
-        strncpy(tempname, ob->stats->name.c_str(), 11); tempname[11] = '\0';
+        snprintf(tempname, sizeof(tempname), "%s", ob->stats->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1592,8 +1587,8 @@ bool LevelData::save()
 	std::list<std::string>::iterator e = this->description.begin();
 	for (i=0; i < numlines; i++)
 	{
-		strcpy(oneline, e->c_str());
-		tempwidth = strlen(oneline);
+		snprintf(oneline, sizeof(oneline), "%s", e->c_str());
+		tempwidth = static_cast<unsigned char>(e->size());
 		SDL_RWwrite(outfile, &tempwidth, 1, 1);
 		SDL_RWwrite(outfile, oneline, tempwidth, 1);
 		e++;

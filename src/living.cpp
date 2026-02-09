@@ -346,7 +346,7 @@ short living::act()
 					{
 						current_special = static_cast<char>(random((stats->level+2)/3) + 1);
 						if ( (current_special > 4) ||
-						        (!strcmp(myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special)], "NONE"))
+						        (myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special)] == "NONE")
 						   )
 							current_special = 1;
 						if (check_special() )

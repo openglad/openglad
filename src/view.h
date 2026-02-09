@@ -20,6 +20,7 @@
 
 #include "base.h"
 #include "level_data.h"
+#include <string>
 
 // Viewscreen-related defines
 inline constexpr signed char PREF_LIFE = 0;
@@ -106,7 +107,7 @@ class viewscreen
 		Sint32 gamma; // for gamma correction
 #define MAX_MESSAGES 5  // max of 5 lines, currently
 
-		char textlist[MAX_MESSAGES][80]; // max of 80-wide
+		std::string textlist[MAX_MESSAGES];
 		short textcycles[MAX_MESSAGES];  // cycles to display screen-text
 		
 		char infotext[80]; // text to display

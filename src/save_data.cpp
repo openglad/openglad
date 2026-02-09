@@ -17,6 +17,7 @@
 
 #include "save_data.h"
 #include "test_trace.h"
+#include <format>
 
 #include "walker.h"
 #include "guy.h"
@@ -24,6 +25,7 @@
 #include "io.h"
 #include <algorithm>
 #include <cstring>
+#include <string>
 
 
 #ifdef USE_TOUCH_INPUT
@@ -94,12 +96,11 @@ bool SaveData::load(const std::string& filename)
 	TRACE("load", "SaveData::load file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *infile;
-	char temp_filename[80];
 
 	char temptext[10] = "GTL";
 	char savedgame[40];
 	char temp_campaign[41];
-	strcpy(temp_campaign, "org.openglad.gladiator");
+	snprintf(temp_campaign, sizeof(temp_campaign), "org.openglad.gladiator");
 	temp_campaign[40] = '\0';
 	char temp_version = 9;
 	Uint32 newcash;
@@ -169,10 +170,9 @@ bool SaveData::load(const std::string& filename)
 	//     2-bytes Level index
     
     Log("Loading save: %s\n", filename.c_str());
-	strcpy(temp_filename, filename.c_str());
-	strcat(temp_filename, ".gtl"); // gladiator team list
+	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
 
-	if ( (infile = open_read_file("save/", temp_filename)) == nullptr )
+	if ( (infile = open_read_file("save/", temp_filename.c_str())) == nullptr )
 	{
 		LogError("Failed to open save file: %s\n", filename.c_str());
 		return 0;
@@ -190,7 +190,7 @@ bool SaveData::load(const std::string& filename)
 
 	// Read id header
 	SDL_RWread(infile, temptext, 3, 1);
-	if ( strcmp(temptext,"GTL"))
+	if ( std::string(temptext) != "GTL")
 	{
 	    SDL_RWclose(infile);
 		LogError("Selected file is not a GTL file: %s\n", filename.c_str());
@@ -225,7 +225,7 @@ bool SaveData::load(const std::string& filename)
 	{
 		SDL_RWread(infile, temp_campaign, 1, 40);
 		temp_campaign[40] = '\0';
-		if(strlen(temp_campaign) > 3)
+		if(std::string(temp_campaign).size() > 3)
             current_campaign = temp_campaign;
         else
             current_campaign = "org.openglad.gladiator";
@@ -286,7 +286,7 @@ bool SaveData::load(const std::string& filename)
 		temp_order = ORDER_LIVING; // may be changed later
 		// Read name of current guy...
 		std::fill_n(guyname, 12, '\0');
-		strcpy(guyname, tempname);
+		snprintf(guyname, sizeof(guyname), "%s", tempname);
 		// Now write all those values
 		SDL_RWread(infile, &temp_order, 1, 1);
 		SDL_RWread(infile, &temp_family,1, 1);
@@ -457,7 +457,6 @@ bool SaveData::save(const std::string& filename)
 	TRACE("save", "SaveData::save file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *outfile;
-	char temp_filename[80];
 	char savedgame[41];
 	std::fill_n(savedgame, 41, '\0');
 	char temp_campaign[41];
@@ -534,10 +533,9 @@ bool SaveData::save(const std::string& filename)
 
 	//strcpy(temp_filename, scen_directory);
 	Log("Saving save: %s\n", filename.c_str());
-	strcpy(temp_filename, filename.c_str());
-	strcat(temp_filename, ".gtl"); // gladiator team list
-	
-	if ( (outfile = open_write_file("save/", temp_filename)) == nullptr ) // open for write
+	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
+
+	if ( (outfile = open_write_file("save/", temp_filename.c_str())) == nullptr ) // open for write
 	{
 		LogError("Failed to write team file: %s\n", filename.c_str());
 		return 0;
@@ -554,12 +552,12 @@ bool SaveData::save(const std::string& filename)
 	SDL_RWwrite(outfile, &temp_registered, 2, 1);
 
 	// Write the name
-	strncpy(savedgame, save_name.c_str(), 40);
+	snprintf(savedgame, sizeof(savedgame), "%s", save_name.c_str());
 	SDL_RWwrite(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
 	Log("Saving campaign status: %s\n", current_campaign.c_str());
-	strncpy(temp_campaign, current_campaign.c_str(), 40);
+	snprintf(temp_campaign, sizeof(temp_campaign), "%s", current_campaign.c_str());
 	SDL_RWwrite(outfile, temp_campaign, 40, 1);
 
 	// Write scenario number
@@ -606,7 +604,7 @@ bool SaveData::save(const std::string& filename)
         temp_family= temp_guy->family;
         // Write name of current guy...
         std::fill_n(guyname, 12, '\0');
-        strncpy(guyname, temp_guy->name.c_str(), 11);
+        snprintf(guyname, sizeof(guyname), "%s", temp_guy->name.c_str());
         temp_str = temp_guy->strength;
         temp_dex = temp_guy->dexterity;
         temp_con = temp_guy->constitution;
@@ -665,7 +663,7 @@ bool SaveData::save(const std::string& filename)
         // Campaign ID
         char campaign[41];
         std::fill_n(campaign, 41, '\0');
-        strcpy(campaign, e->first.c_str());
+        snprintf(campaign, sizeof(campaign), "%s", e->first.c_str());
         SDL_RWwrite(outfile, campaign, 1, 40);
         
         short index = 1;

@@ -16,6 +16,7 @@
  */
 #include "graph.h"
 #include <cstring>
+#include <string>
 
 void get_input_events(bool);
 
@@ -31,11 +32,9 @@ text::text(const char * filename)
     if(!letters_big.valid())
         letters_big = read_pixie_file(TEXT_BIG);
     
-    const char* temp_filename = filename;
-	if (!temp_filename || strlen(temp_filename) < 2)
-		temp_filename = "text.pix";
-		
-    if(strcmp(temp_filename, TEXT_BIG) == 0)
+    std::string temp_filename = (filename && strlen(filename) >= 2) ? filename : "text.pix";
+
+    if(temp_filename == TEXT_BIG)
         letters = letters_big;
     else
         letters = letters1;
@@ -55,7 +54,7 @@ short text::query_width(const char *string) // returns width, in pixels
 	short over = 0;
 
 	if (sizex < 9) // small, monospaced font
-		return (sizex+1)*strlen(string);
+		return (sizex+1)*static_cast<short>(strlen(string));
 
 	while (string[i])
 	{
@@ -449,12 +448,12 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 
 	if (begin)
 	{
-		strcpy(editstring, begin);
+		snprintf(editstring, sizeof(editstring), "%s", begin);
 	}
-	strcpy(firststring, begin); // default case
+	snprintf(firststring, sizeof(firststring), "%s", begin); // default case
 	current_length = static_cast<short>(strlen(editstring));
 	myscreen->draw_box(x, y, x+maxlength*(sizex+1), y+sizey, backcolor, 1, 1);
-	if (strlen(begin))
+	if (begin && begin[0] != '\0')
 		myscreen->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
 	write_xy(x, y, editstring, WHITE, 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -485,7 +484,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
                 string_done = 1;
             else if (tempchar == SDLK_ESCAPE)
             {
-                strcpy(editstring, firststring);
+                snprintf(editstring, sizeof(editstring), "%s", firststring);
                 string_done = 1;
                 return_null = true;
             }
@@ -593,12 +592,12 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 
 	if (begin)
 	{
-		strcpy(editstring, begin);
+		snprintf(editstring, sizeof(editstring), "%s", begin);
 	}
-	strcpy(firststring, begin); // default case
+	snprintf(firststring, sizeof(firststring), "%s", begin); // default case
 	current_length = static_cast<short>(strlen(editstring));
 	myscreen->draw_button(x, y, x+maxlength*(sizex+1), y+sizey, 1);
-	if (strlen(begin))
+	if (begin && begin[0] != '\0')
 		myscreen->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
 	write_xy(x, y - 10, message, DARK_GREEN, 1);
 	write_xy(x, y, editstring, WHITE, 1);
@@ -630,7 +629,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
                 string_done = 1;
             else if (tempchar == SDLK_ESCAPE)
             {
-                strcpy(editstring, firststring);
+                snprintf(editstring, sizeof(editstring), "%s", firststring);
                 string_done = 1;
                 return_null = true;
             }
