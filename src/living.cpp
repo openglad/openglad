@@ -36,7 +36,7 @@ living::living(const PixieData& data)
 living::~living()
 {}
 
-short living::act()
+bool living::act()
 {
 	if (bonus_rounds>0 && !dead)  // we get extra rounds to act this cycle
 	{
@@ -504,7 +504,7 @@ bool walkerIsAutoAttackable(walker* ob)
              || ob->query_family() == FAMILY_DOOR);
 }
 
-short living::collide(walker  *ob)
+bool living::collide(walker  *ob)
 {
 	collide_ob = ob;
 	//return 1; // debug
@@ -529,7 +529,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 
 // Returns true or false on whether it's good to do
 // the special or not ..
-short living::check_special()
+bool living::check_special()
 {
 	Uint32 distance, myrange;
 	short howmany;
@@ -830,7 +830,7 @@ short living::facing(short x, short y)
 	}
 }
 
-short living::act_random()
+bool living::act_random()
 {
 	//  short newx, newy; // apparently not used anymore
 	short xdist, ydist;
@@ -865,7 +865,7 @@ short living::act_random()
 
 }
 
-short living::do_action()
+bool living::do_action()
 {
 
 	if (!action)

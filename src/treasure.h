@@ -26,9 +26,9 @@ class treasure : public walker
 	public:
 		treasure(const PixieData& data);
 		~treasure() override;
-		short          act() override;
+		bool           act() override;
 		//short                    death(); // called upon destruction
-		short          eat_me(walker  * eater) override;
+		bool           eat_me(walker  * eater) override;
 		walker  * find_teleport_target();
 		void         set_direct_frame(short whatframe) override;
 		char         query_order() override

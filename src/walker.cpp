@@ -113,7 +113,7 @@ walker::walker(const PixieData& data)
 	last_hitpoints = 0.0f;
 }
 
-short
+bool
 walker::reset(void)
 {
 
@@ -218,7 +218,7 @@ void walker::worldmove(float x, float y)
 	return setworldxy(worldx+x, worldy+y);
 }
 
-short walker::setxy(short x, short y)
+bool walker::setxy(short x, short y)
 {
     worldx = x;
     worldy = y;
@@ -634,12 +634,12 @@ bool walker::turn(short targetdir)
 // This is the function you actually call when you want something
 // to fire.  It initializes the animation if animation is valid
 // and checks to see if the object is too busy.
-short walker::init_fire()
+bool walker::init_fire()
 {
 	return init_fire(lastx, lasty);
 }
 
-short walker::init_fire(short xdir, short ydir)
+bool walker::init_fire(short xdir, short ydir)
 {
 	// Turn if we want to fire another direction
 
@@ -1012,7 +1012,7 @@ void walker::DamageNumber::draw(viewscreen* view_buf)
 #define ATTACK_LUNGE_SIZE 5
 #define HIT_RECOIL_SIZE 3
 
-short walker::draw(viewscreen  *view_buf)
+bool walker::draw(viewscreen  *view_buf)
 {
     // Update the drawing coords from the real position
     xpos = worldx;
@@ -1214,7 +1214,7 @@ short walker::draw(viewscreen  *view_buf)
 	return 1;
 }
 
-short walker::draw_tile(viewscreen  *view_buf)
+bool walker::draw_tile(viewscreen  *view_buf)
 {
 	Sint32 xscreen, yscreen;
 
@@ -1522,7 +1522,7 @@ void walker::draw_path(viewscreen* view_buf)
     }
 }
 
-short walker::act()
+bool walker::act()
 {
 	short temp;
 
@@ -1680,7 +1680,7 @@ short walker::query_old_act_type()
 	return old_act_type;
 }
 
-short walker::collide(walker  *ob)
+bool walker::collide(walker  *ob)
 {
 	collide_ob = ob;
 	return 1;
@@ -1867,7 +1867,7 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
     }
 }
 
-short walker::attack(walker  *target)
+bool walker::attack(walker  *target)
 {
 	walker  *blood; // temporary stain
 	walker *headguy; // guy at top of chain..
@@ -2153,7 +2153,7 @@ short walker::attack(walker  *target)
 	return 1;
 }
 
-short walker::animate()
+bool walker::animate()
 {
 	walker  * newob;
 
@@ -2250,7 +2250,7 @@ short walker::animate()
 	return 1;
 }
 
-short walker::set_order_family(char neworder, char newfamily)
+bool walker::set_order_family(char neworder, char newfamily)
 {
 	order = neworder;
 	family = newfamily;
@@ -2318,7 +2318,7 @@ walker  *walker::create_weapon()
 	return weapon;
 }
 
-short walker::query_next_to()
+bool walker::query_next_to()
 {
 	short newx, newy;
 
@@ -2344,7 +2344,7 @@ short walker::query_next_to()
 	}
 }
 
-short walker::special()
+bool walker::special()
 {
 	walker  * newob;
 	weap * fireob;
@@ -2926,7 +2926,7 @@ short walker::special()
 					if (team_num == 0 || myguy) // the player's team
 					{
 						myscreen->enemy_freeze += 20 + 11*stats->level;
-						set_palette(myscreen->bluepalette);
+						set_palette(myscreen->bluepalette.data());
 					}
 					else
 					{
@@ -3960,7 +3960,7 @@ short walker::special()
 	return 0;
 }
 
-short walker::teleport()
+bool walker::teleport()
 {
 	short newx,newy;
 	Sint32 distance;
@@ -4010,7 +4010,7 @@ short walker::teleport()
 	return 1;
 }
 
-short walker::teleport_ranged(Sint32 range)
+bool walker::teleport_ranged(Sint32 range)
 {
 	short newx,newy;
 	short keep_going = 200; // maxtries
@@ -4076,7 +4076,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 // If we find one, we init_fire.  If not,
 // we do nothing. init_fire will take care of
 // turning us if we need it.
-short walker::fire_check(short xdelta, short ydelta)
+bool walker::fire_check(short xdelta, short ydelta)
 {
 	walker  *weapon = nullptr;
 	//  short newx=0, newy=0;
@@ -4209,7 +4209,7 @@ short walker::fire_check(short xdelta, short ydelta)
 *
 ****************************************************/
 
-short
+bool
 walker::act_generate()
 {
 	if ( myscreen->level_data.numobs < MAXOBS &&
@@ -4230,7 +4230,7 @@ walker::act_generate()
 	return 1;
 }
 
-short
+bool
 walker::act_fire()
 {
 	if (!(lineofsight--)) // this is the range of the weapon
@@ -4254,7 +4254,7 @@ walker::act_fire()
 	return 1;
 }
 
-short
+bool
 walker::act_guard()
 {
 
@@ -4275,7 +4275,7 @@ walker::act_guard()
 		return 0;
 }
 
-short
+bool
 walker::act_random()
 {
 	short newx, newy;
@@ -4472,7 +4472,7 @@ void walker::transform_to(char whatorder, char whatfamily)
 
 // death is called when an object dies (or weapon destructed, etc.)
 // for special effects ..
-short walker::death()
+bool walker::death()
 {
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
@@ -4615,7 +4615,7 @@ void walker::generate_bloodspot()
 
 }
 
-short walker::eat_me(walker  * eater)
+bool walker::eat_me(walker  * eater)
 {
 	if (eater)
 		Log("EATING A NON-TREASURE!\n");
@@ -4638,7 +4638,7 @@ walker * walker::do_summon(char whatfamily, unsigned short lifetime)
 	return nullptr;
 }
 
-short walker::check_special()
+bool walker::check_special()
 {
 	Log("Should not be hitting walker::check_special\n");
 	return 0;

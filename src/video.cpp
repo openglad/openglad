@@ -60,8 +60,8 @@ video::video()
 	fadeDuration = 500;
 
 	// Load our palettes ..
-	load_and_set_palette("our.pal", ourpalette);
-	load_palette("our.pal", redpalette);
+	load_and_set_palette("our.pal", ourpalette.data());
+	load_palette("our.pal", redpalette.data());
 
 	// Create the red-shifted palette
 	for (i=32; i < 256; i++)
@@ -70,7 +70,7 @@ video::video()
 		redpalette[i*3+2] /= 2;
 	}
 
-	load_palette("our.pal", bluepalette);
+	load_palette("our.pal", bluepalette.data());
 
 	// Create the blue-shifted palette
 	//for (i=32; i < 256; i++)
@@ -129,7 +129,7 @@ void video::set_fullscreen(bool fullscreen)
 
 unsigned char * video::getbuffer()
 {
-	return &videobuffer[0];
+	return videobuffer.data();
 }
 
 void video::clearbuffer()

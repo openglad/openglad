@@ -85,18 +85,18 @@ class viewscreen
 		viewscreen(short x, short y, short length, short height, short whatnum);
 		~viewscreen();
 		void clear();
-		short draw ();
-		short redraw();
-		short redraw(LevelData* data, bool draw_radar = true);
-		short refresh();
+		bool draw ();
+		bool redraw();
+		bool redraw(LevelData* data, bool draw_radar = true);
+		bool refresh();
 		short input(const SDL_Event& event);
 		short continuous_input();
 		void set_display_text(std::string_view newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
-		short draw_obs(); //moved here to fix radar
-		short draw_obs(LevelData* data);
+		bool draw_obs(); //moved here to fix radar
+		bool draw_obs(LevelData* data);
 		void resize(short x, short y, short length, short height);
 		void resize(char whatmode); // set according to preferences ..
 		void view_team();

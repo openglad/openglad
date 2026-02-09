@@ -313,8 +313,8 @@ static void game_frame()
 				}
 				else
 				{
-					set_palette(myscreen->ourpalette);  // restore normal palette
-					adjust_palette(myscreen->ourpalette, myscreen->viewob[0]->gamma);
+					set_palette(myscreen->ourpalette.data());  // restore normal palette
+					adjust_palette(myscreen->ourpalette.data(), myscreen->viewob[0]->gamma);
 				}
 				break;
 			}

@@ -49,13 +49,13 @@ class screen : public video
 		bool query_passable(float x, float y, walker  *ob);
 		bool query_object_passable(float x, float y, walker  *ob);
 		bool query_grid_passable(float x, float y, walker  *ob);
-		short redraw();
+		bool redraw();
 		void refresh();
 		walker  * first_of(unsigned char whatorder, unsigned char whatfamily,
 		                   int team_num = -1);
 		short input(const SDL_Event& event);
 		short continuous_input();
-		short act();
+		bool act();
 
 		short endgame(short ending);
 		short endgame(short ending, short nextlevel); // what level next?
@@ -78,7 +78,7 @@ class screen : public video
 		void add_level_completed(const std::string& campaign, int level_index);
 
         // General drawing data
-		unsigned char newpalette[768];
+		std::array<unsigned char, 768> newpalette{};
 		short palmode;
 		
 		// Level data

@@ -19,6 +19,7 @@
 // Definition of LOADER class
 
 #include "base.h"
+#include <array>
 #include <vector>
 
 class loader
@@ -35,7 +36,7 @@ class loader
 		std::vector<float> stepsizes;
 		std::vector<Sint32> lineofsight;
 
-		float  hitpoints[200]; // hack for now
+		std::array<float, 200> hitpoints{}; // hack for now
 		std::vector<char> act_types;
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;

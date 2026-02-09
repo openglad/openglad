@@ -209,7 +209,7 @@ void viewscreen::clear()
 	}
 }
 
-short viewscreen::redraw()
+bool viewscreen::redraw()
 {
 	short i,j;
 	short xneg = 0;
@@ -268,7 +268,7 @@ short viewscreen::redraw()
 
 }
 
-short viewscreen::redraw(LevelData* data, bool draw_radar)
+bool viewscreen::redraw(LevelData* data, bool draw_radar)
 {
 	short i,j;
 	short xneg = 0;
@@ -360,7 +360,7 @@ void viewscreen::shift_text(Sint32 row)
 	textcycles[MAX_MESSAGES-1] = 0;
 }
 
-short viewscreen::refresh()
+bool viewscreen::refresh()
 {
 	// The first two values are screwy... I don't know why
 	myscreen->buffer_to_screen(xloc, yloc, xview, yview);
@@ -770,7 +770,7 @@ short viewscreen::input(const SDL_Event& event)
 		if (query_key_event(SDLK_F1, event)) // freeze time
 		{
 			myscreen->enemy_freeze += 50;
-			set_palette(myscreen->bluepalette);
+			set_palette(myscreen->bluepalette.data());
 			//clear_key_code(SDLK_F1);
 		}//end freeze time
 
@@ -1107,12 +1107,12 @@ void viewscreen::clear_text()
 		textlist[i].clear();
 }
 
-short viewscreen::draw_obs()
+bool viewscreen::draw_obs()
 {
     return draw_obs(&myscreen->level_data);
 }
 
-short viewscreen::draw_obs(LevelData* data)
+bool viewscreen::draw_obs(LevelData* data)
 {
 	// First draw the special effects
 	for(auto& uptr : data->fxlist)
@@ -1897,18 +1897,18 @@ Sint32 viewscreen::change_gamma(Sint32 whichway)
 {
 	if (whichway > 1)  // lighter
 	{
-		load_palette("our.pal", myscreen->newpalette);
-		adjust_palette(myscreen->newpalette, ++gamma);
+		load_palette("our.pal", myscreen->newpalette.data());
+		adjust_palette(myscreen->newpalette.data(), ++gamma);
 	}
 	if (whichway < -1)  // darker
 	{
-		load_palette("our.pal", myscreen->newpalette);
-		adjust_palette(myscreen->newpalette, --gamma);
+		load_palette("our.pal", myscreen->newpalette.data());
+		adjust_palette(myscreen->newpalette.data(), --gamma);
 	}
 	if (whichway == -1) // set to default
 	{
 		gamma = 0;
-		load_palette("our.pal", myscreen->newpalette);
+		load_palette("our.pal", myscreen->newpalette.data());
 	}
 	// So 0 just means report
 	return static_cast<Sint32>(gamma);

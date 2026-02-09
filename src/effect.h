@@ -30,9 +30,9 @@ class effect : public walker
 	public:
 		effect(const PixieData& data);
 		~effect() override;
-		short act() override;
-		short animate() override;
-		short death() override;
+		bool act() override;
+		bool animate() override;
+		bool death() override;
 		char query_order() override
 		{
 			return ORDER_FX;

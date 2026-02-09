@@ -95,7 +95,7 @@ screen::screen(short howmany)
 	control_hp = 0;
 
 	// Load the palette ..
-	load_and_set_palette("our.pal", newpalette);
+	load_and_set_palette("our.pal", newpalette.data());
 
 	// load the pixie graphics data into memory
 
@@ -610,7 +610,7 @@ void screen::clear()
 //           finding which grid squares are on screen.  For each on
 //           screen, it pashorts the appropriate graphics pixie onto
 //           the screen by calling the function DRAW in PIXIE.
-short screen::redraw()
+bool screen::redraw()
 {
 	short i;
 	for (i=0; i < numviews; i++)
@@ -657,7 +657,7 @@ short screen::continuous_input()
 	return 1;
 }
 
-short screen::act()
+bool screen::act()
 {
 	Sint32 printed_time = 0; // have we printed message yet?
 	//  static short debug = 0;
@@ -667,7 +667,7 @@ short screen::act()
 	if (enemy_freeze)
 		enemy_freeze--;
 	if (enemy_freeze == 1)
-		set_palette(ourpalette);
+		set_palette(ourpalette.data());
 
     for(auto& uptr : level_data.oblist)
     {

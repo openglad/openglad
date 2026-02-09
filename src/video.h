@@ -20,6 +20,7 @@
 
 #include "base.h"
 #include "text.h"
+#include <array>
 
 class video
 {
@@ -139,12 +140,12 @@ class video
 
 		int fadeDuration;
 
-		unsigned char ourpalette[768]; // our standard glad palette
-		unsigned char redpalette[768]; // for 'faded' backgrounds during menus
-		unsigned char bluepalette[768]; // for special effects like time-freeze
-		unsigned char dospalette[768]; // store the dos palette so we can restore it later
+		std::array<unsigned char, 768> ourpalette{}; // our standard glad palette
+		std::array<unsigned char, 768> redpalette{}; // for 'faded' backgrounds during menus
+		std::array<unsigned char, 768> bluepalette{}; // for special effects like time-freeze
+		std::array<unsigned char, 768> dospalette{}; // store the dos palette so we can restore it later
 
-		unsigned char videobuffer[64000]; //our new unified video buffer
+		std::array<unsigned char, 64000> videobuffer{}; //our new unified video buffer
 		short cyclemode; //color cycling on or off
 
 

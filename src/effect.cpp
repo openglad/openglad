@@ -39,7 +39,7 @@ effect::~effect()
 	// Zardus: PORT: that parent object problem again:  walker::~walker();
 }
 
-short effect::act()
+bool effect::act()
 {
 	short temp;
 	float xd, yd;
@@ -551,7 +551,7 @@ short effect::act()
 	return 0;
 }
 
-short effect::animate()
+bool effect::animate()
 {
 
 	set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
@@ -578,7 +578,7 @@ short effect::animate()
 
 // death is called when an object dies (or weapon destructed, etc.)
 // for special effects ..
-short effect::death()
+bool effect::death()
 {
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse

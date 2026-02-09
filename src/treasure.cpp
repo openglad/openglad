@@ -49,13 +49,13 @@ treasure::~treasure()
 	//bufffers: PORT: cannot call destructor w/o obj: walker::~walker();
 }
 
-short treasure::act()
+bool treasure::act()
 {
 	// Abort all later code for now ..
 	return 1;
 }
 
-short treasure::eat_me(walker  * eater)
+bool treasure::eat_me(walker  * eater)
 {
 	short guys_here;
 	

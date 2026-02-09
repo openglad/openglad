@@ -27,10 +27,10 @@ class weap : public walker
 		weap(const PixieData& data);
 		~weap() override;
 
-		short act() override;
-		short animate() override;
-		short death() override;
-		short setxy(short x, short y) override;
+		bool act() override;
+		bool animate() override;
+		bool death() override;
+		bool setxy(short x, short y) override;
 		char  query_order() override
 		{
 			return ORDER_WEAPON;

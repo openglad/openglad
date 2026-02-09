@@ -26,10 +26,10 @@ class living : public walker
 	public:
 		living(const PixieData& data);
 		~living() override;
-		short          act() override;
-		short          check_special() override;
-		short          collide(walker  *ob) override;
-		short          do_action(); // perform overriding action
+		bool           act() override;
+		bool           check_special() override;
+		bool           collide(walker  *ob) override;
+		bool           do_action(); // perform overriding action
 		walker*        do_summon(char whatfamily, unsigned short lifetime) override;
 		short          facing(short x, short y) override;
 		void           set_difficulty(Uint32 whatlevel) override;
@@ -40,6 +40,6 @@ class living : public walker
 		}
 		bool walk(float x, float y) override;
 	protected:
-		short act_random() override;
+		bool act_random() override;
 };
 

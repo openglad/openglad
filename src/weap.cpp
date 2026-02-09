@@ -33,7 +33,7 @@ weap::~weap()
 	//buffers: PORT: can't call destructor w/o obj: walker::~walker();
 }
 
-short weap::act()
+bool weap::act()
 {
 
 	// Make sure everyone we're pointing to is valid
@@ -125,7 +125,7 @@ short weap::act()
 
 // death is called when an object dies (weapon destructed, etc.)
 // for special effects ..
-short weap::death()
+bool weap::death()
 {
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
@@ -244,7 +244,7 @@ short weap::death()
 
 }
 
-short weap::animate()
+bool weap::animate()
 {
 	//walker  * newob;
 
@@ -307,7 +307,7 @@ short weap::animate()
 	return 1;
 }
 
-short weap::setxy(short x, short y)
+bool weap::setxy(short x, short y)
 {
 	return walker::setxy(x, y);
 }
