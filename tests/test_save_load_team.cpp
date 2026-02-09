@@ -85,7 +85,7 @@ void test_save_team_then_load() {
     // Now reset everything -- simulating starting a new game
     myscreen->save_data.reset();
     TEST_ASSERT_EQ(0, myscreen->save_data.team_size, "team_size should be 0 after reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->save_data.totalcash, "totalcash should be 0 after reset");
+    TEST_ASSERT_EQ(0, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be 0 after reset");
 
     // Load the saved team back
     trace_clear();
@@ -95,8 +95,8 @@ void test_save_team_then_load() {
     // Verify team data was restored
     TEST_ASSERT_EQ(3, myscreen->save_data.team_size, "team should have 3 members");
     TEST_ASSERT_EQ(3, myscreen->save_data.scen_num, "scen_num should be restored");
-    TEST_ASSERT_EQ(77777, (int)myscreen->save_data.totalcash, "totalcash should be restored");
-    TEST_ASSERT_EQ(42000, (int)myscreen->save_data.totalscore, "totalscore should be restored");
+    TEST_ASSERT_EQ(77777, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be restored");
+    TEST_ASSERT_EQ(42000, static_cast<int>(myscreen->save_data.totalscore), "totalscore should be restored");
 
     // Verify individual guy data was restored
     TEST_ASSERT(myscreen->save_data.team_list[0] != nullptr, "first guy should exist");

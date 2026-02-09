@@ -255,7 +255,7 @@ short viewscreen::redraw()
 					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 			}
 			else if(gridp.valid())
-				backp[(int)gridp.data[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+				backp[static_cast<int>(gridp.data[i + maxx * j])]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
@@ -314,7 +314,7 @@ short viewscreen::redraw(LevelData* data, bool draw_radar)
 					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 			}
 			else if(gridp.valid())
-				backp[(int)gridp.data[i + maxx * j]]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+				backp[static_cast<int>(gridp.data[i + maxx * j])]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
 		}
 
 	draw_obs(data); //moved here to put the radar on top of obs
@@ -382,7 +382,7 @@ short viewscreen::input(const SDL_Event& event)
 	if (control && control->user == -1)
 	{
 		control->set_act_type(ACT_CONTROL);
-		control->user = (char) mynum;
+		control->user = static_cast<char>(mynum);
 		control->stats->clear_command();
 	}
     // TODO: Factor out this code, which is duplicated in continuous_input()
@@ -609,7 +609,7 @@ short viewscreen::input(const SDL_Event& event)
 		
 		control->current_special++;
 		if (control->current_special > (NUM_SPECIALS-1)
-		        || !(strcmp(myscreen->special_name[(int)control->query_family()][(int)control->current_special],"NONE"))
+		        || !(strcmp(myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)],"NONE"))
 		        || (((control->current_special-1)*3+1) > control->stats->level) )
 			control->current_special = 1;
 	} //end of switch our special
@@ -887,7 +887,7 @@ short viewscreen::continuous_input()
 	if (control && control->user == -1)
 	{
 		control->set_act_type(ACT_CONTROL);
-		control->user = (char) mynum;
+		control->user = static_cast<char>(mynum);
 		control->stats->clear_command();
 	}
 
@@ -1341,16 +1341,16 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	myscreen->draw_button(left, top, right, bottom, 2);
 
 	strcpy(message, "  Name  ");
-	mytext.write_xy(left+5, text_down, message, (unsigned char) BLACK);
+	mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(BLACK));
 
 	strcpy (message, "Health");
-	mytext.write_xy(left+80, text_down, message, (unsigned char) BLACK);
+	mytext.write_xy(left+80, text_down, message, static_cast<unsigned char>(BLACK));
 
 	sprintf (message, "Power");
-	mytext.write_xy(left+140, text_down, message, (unsigned char) BLACK);
+	mytext.write_xy(left+140, text_down, message, static_cast<unsigned char>(BLACK));
 
 	sprintf (message, "Level");
-	mytext.write_xy(left+190, text_down, message, (unsigned char) BLACK);
+	mytext.write_xy(left+190, text_down, message, static_cast<unsigned char>(BLACK));
 
 	text_down+=6;
     
@@ -1414,16 +1414,16 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 				strcpy (message, w->myguy->name.c_str());
 			else
 				strcpy(message, w->stats->name.c_str());
-			mytext.write_xy(left+5, text_down, message, (unsigned char) namecolor);
+			mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(namecolor));
 
 			sprintf (message, "%4.0f/%.0f", ceilf(hp), maxhp);
-			mytext.write_xy(left+70, text_down, message, (unsigned char) hpcolor);
+			mytext.write_xy(left+70, text_down, message, static_cast<unsigned char>(hpcolor));
 
 			sprintf (message, "%4.0f/%.0f", ceilf(mp), maxmp);
-			mytext.write_xy(left+130, text_down, message, (unsigned char) mpcolor);
+			mytext.write_xy(left+130, text_down, message, static_cast<unsigned char>(mpcolor));
 
 			sprintf (message, "%2d", w->stats->level);
-			mytext.write_xy(left+195, text_down, message, (unsigned char) BLACK);
+			mytext.write_xy(left+195, text_down, message, static_cast<unsigned char>(BLACK));
 
 			text_down+=6;
 		}
@@ -1472,12 +1472,12 @@ void viewscreen::options_menu()
 	myscreen->draw_text_bar(40+4, 40+4, 280-4, 40+12);
 	char title[50];
 	snprintf(title, 50, "Options Menu (%d)", mynum+1);
-	optiontext.write_xy(160-6*6, OPLINES(0)+2, title, (unsigned char) RED, 1);
+	optiontext.write_xy(160-6*6, OPLINES(0)+2, title, static_cast<unsigned char>(RED), 1);
 
 
 	gamespeed = change_speed(0);
 	sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
-	optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(2), message, static_cast<unsigned char>(BLACK), 1);
 	switch (prefs[PREF_VIEW])
 	{
 		case PREF_VIEW_FULL:
@@ -1501,19 +1501,19 @@ void viewscreen::options_menu()
 	}
 	sprintf(message, "Change View Size ([,]) : %s ", tempstr);
 	myscreen->draw_box(LEFT_OPS, OPLINES(3), LEFT_OPS+strlen(message)*6, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(3), message, static_cast<unsigned char>(BLACK), 1);
 
 	gamma = change_gamma(0);
 	sprintf(message, "Change Brightness (<,>): %d ", gamma);
 	myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(4), message, static_cast<unsigned char>(BLACK), 1);
 
 	if (prefs[PREF_RADAR])
 		sprintf(message, "Radar Display (R)      : ON ");
 	else
 		sprintf(message, "Radar Display (R)      : OFF ");
 	myscreen->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(5), message, static_cast<unsigned char>(BLACK), 1);
 
 	switch (prefs[PREF_LIFE])
 	{
@@ -1536,30 +1536,30 @@ void viewscreen::options_menu()
 	}
 	sprintf(message, "Hitpoint Display (H)   : %s", tempstr);
 	myscreen->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(6), message, static_cast<unsigned char>(BLACK), 1);
 
 	if (prefs[PREF_FOES])
 		sprintf(message, "Foes Display (F)       : ON ");
 	else
 		sprintf(message, "Foes Display (F)       : OFF ");
 	myscreen->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(7), message, static_cast<unsigned char>(BLACK), 1);
 
 	if (prefs[PREF_SCORE])
 		sprintf(message, "Score Display (S)      : ON ");
 	else
 		sprintf(message, "Score Display (S)      : OFF ");
 	myscreen->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(8), message, static_cast<unsigned char>(BLACK), 1);
 
-	optiontext.write_xy(LEFT_OPS, OPLINES(9), "VIEW TEAM INFO (T)", (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(9), "VIEW TEAM INFO (T)", static_cast<unsigned char>(BLACK), 1);
 
 	if (myscreen->cyclemode)
 		sprintf(message,"Color Cycling (C)      : ON ");
 	else
 		sprintf(message,"Color Cycling (C)      : OFF ");
 	myscreen->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
-	optiontext.write_xy(LEFT_OPS,OPLINES(10),message,(unsigned char) BLACK,1);
+	optiontext.write_xy(LEFT_OPS,OPLINES(10),message,static_cast<unsigned char>(BLACK),1);
 
 	//if (prefs[PREF_JOY] == PREF_NO_JOY)
 	if(!playerHasJoystick(mynum))
@@ -1567,10 +1567,10 @@ void viewscreen::options_menu()
 	else
 		sprintf(message, "Joystick Mode (J)      : ON ");
 	myscreen->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-	optiontext.write_xy(LEFT_OPS,OPLINES(11),message,(unsigned char) BLACK,1);
+	optiontext.write_xy(LEFT_OPS,OPLINES(11),message,static_cast<unsigned char>(BLACK),1);
 
-	optiontext.write_xy(LEFT_OPS, OPLINES(12), "EDIT KEY PREFS (K)", (unsigned char) BLACK, 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(13), "VIEW KEY BINDINGS (V)", (unsigned char) BLACK, 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(12), "EDIT KEY PREFS (K)", static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(13), "VIEW KEY BINDINGS (V)", static_cast<unsigned char>(BLACK), 1);
 
 	// Draw the current screen
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -1585,7 +1585,7 @@ void viewscreen::options_menu()
 			gamespeed = change_speed(1);
 			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
 			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_PLUS])
 			{
@@ -1598,7 +1598,7 @@ void viewscreen::options_menu()
 			gamespeed = change_speed(-1);
 			sprintf(message, "Change Game Speed (+/-): %2d  ", gamespeed);
 			myscreen->draw_box(LEFT_OPS, OPLINES(2), LEFT_OPS+strlen(message)*6, OPLINES(2)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(2), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_KP_MINUS])
 			{
@@ -1636,7 +1636,7 @@ void viewscreen::options_menu()
 			}
 			sprintf(message, "Change View Size ([,]) : %s       ", tempstr);
 			myscreen->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_LEFTBRACKET])
 			{
@@ -1674,7 +1674,7 @@ void viewscreen::options_menu()
 			}
 			sprintf(message, "Change View Size ([,]) : %s  ", tempstr);
 			myscreen->draw_box(45, OPLINES(3), 275, OPLINES(3)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(3), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_RIGHTBRACKET])
 			{
@@ -1687,7 +1687,7 @@ void viewscreen::options_menu()
 			prefs[PREF_GAMMA] = gamma = change_gamma(-2);
 			sprintf(message, "Change Brightness (<,>): %d ", gamma);
 			myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_COMMA])
 			{
@@ -1700,7 +1700,7 @@ void viewscreen::options_menu()
 			prefs[PREF_GAMMA] = gamma = change_gamma(+2);
 			sprintf(message, "Change Brightness (<,>): %d ", gamma);
 			myscreen->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(4), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_PERIOD])
 			{
@@ -1716,7 +1716,7 @@ void viewscreen::options_menu()
 			else
 				sprintf(message, "Radar Display (R)      : OFF ");
 			myscreen->draw_box(45, OPLINES(5), 275, OPLINES(5)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(5), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(5), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_r])
 			{
@@ -1748,7 +1748,7 @@ void viewscreen::options_menu()
 			}
 			sprintf(message, "Hitpoint Display (H)   : %s", tempstr);
 			myscreen->draw_box(45, OPLINES(6), 275, OPLINES(6)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(6), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(6), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_h])
 			{
@@ -1764,7 +1764,7 @@ void viewscreen::options_menu()
 			else
 				sprintf(message, "Foes Display (F)       : OFF ");
 			myscreen->draw_box(45, OPLINES(7), 275, OPLINES(7)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(7), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(7), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_f])
 			{
@@ -1780,7 +1780,7 @@ void viewscreen::options_menu()
 			else
 				sprintf(message, "Score Display (S)      : OFF ");
 			myscreen->draw_box(45, OPLINES(8), 275, OPLINES(8)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(8), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(8), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_s])
 			{
@@ -1799,7 +1799,7 @@ void viewscreen::options_menu()
 
 		if (keystates[KEYSTATE_c])
 		{
-			myscreen->cyclemode= (short) ((myscreen->cyclemode+1) %2);
+			myscreen->cyclemode= static_cast<short>((myscreen->cyclemode+1) %2);
 			while (keystates[KEYSTATE_c])
 			{
 				YIELD_SLEEP(1);
@@ -1810,7 +1810,7 @@ void viewscreen::options_menu()
 			else
 				sprintf(message,"Color Cycling (C)      : OFF ");
 			myscreen->draw_box(45,OPLINES(10),275,OPLINES(10)+6,PANEL_COLOR,1,1);
-			optiontext.write_xy(LEFT_OPS,OPLINES(10),message,(unsigned char) BLACK,1);
+			optiontext.write_xy(LEFT_OPS,OPLINES(10),message,static_cast<unsigned char>(BLACK),1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 
 		}
@@ -1828,7 +1828,7 @@ void viewscreen::options_menu()
             else
                 sprintf(message, "Joystick Mode (J)      : ON ");
             myscreen->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
-            optiontext.write_xy(LEFT_OPS,OPLINES(11),message,(unsigned char) BLACK,1);
+            optiontext.write_xy(LEFT_OPS,OPLINES(11),message,static_cast<unsigned char>(BLACK),1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
             
             YIELD_SLEEP(500);
@@ -1861,7 +1861,7 @@ void viewscreen::options_menu()
 			else
 				sprintf(message, "Text-button Display (B): OFF ");
 			myscreen->draw_box(45, OPLINES(13), 275, OPLINES(13)+6, PANEL_COLOR, 1, 1);
-			optiontext.write_xy(LEFT_OPS, OPLINES(13), message, (unsigned char) BLACK, 1);
+			optiontext.write_xy(LEFT_OPS, OPLINES(13), message, static_cast<unsigned char>(BLACK), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			while (keystates[KEYSTATE_b])
 			{
@@ -1896,7 +1896,7 @@ Sint32 viewscreen::change_speed(Sint32 whichway)
 		if (myscreen->timer_wait > 20)
 			myscreen->timer_wait = 20;
 	}
-	return (Sint32) ((20-myscreen->timer_wait)/2+1);
+	return static_cast<Sint32>((20-myscreen->timer_wait)/2+1);
 }
 
 Sint32 viewscreen::change_gamma(Sint32 whichway)
@@ -1917,7 +1917,7 @@ Sint32 viewscreen::change_gamma(Sint32 whichway)
 		load_palette("our.pal", myscreen->newpalette);
 	}
 	// So 0 just means report
-	return (Sint32) gamma;
+	return static_cast<Sint32>(gamma);
 }
 
 // **************************************************
@@ -2077,76 +2077,76 @@ Sint32 viewscreen::set_key_prefs()
 
 	// Draw the menu button
 	myscreen->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
-	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", (unsigned char) RED, 1);
+	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press a key for 'UP':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press a key for 'UP':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_UP);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press a key for 'UP-RIGHT':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press a key for 'UP-RIGHT':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_UP_RIGHT);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press a key for 'RIGHT':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press a key for 'RIGHT':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_RIGHT);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press a key for 'DOWN-RIGHT':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press a key for 'DOWN-RIGHT':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_DOWN_RIGHT);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press a key for 'DOWN':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press a key for 'DOWN':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_DOWN);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press a key for 'DOWN-LEFT':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press a key for 'DOWN-LEFT':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_DOWN_LEFT);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(8), "Press a key for 'LEFT':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(8), "Press a key for 'LEFT':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_LEFT);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(9), "Press a key for 'UP-LEFT':", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(9), "Press a key for 'UP-LEFT':", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_UP_LEFT);
 
 	// Draw the menu button; back to the top for us!
 	myscreen->draw_button(40, 40, 280, 160, 2, 1); // same as options menu
-	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", (unsigned char) RED, 1);
+	keytext.write_xy(160-6*6, OPLINES(0), "Keyboard Menu", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press your 'FIRE' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(2), "Press your 'FIRE' key:", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_FIRE);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press your 'SPECIAL' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(3), "Press your 'SPECIAL' key:", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SPECIAL);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SPECIAL SWITCH' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(4), "Press your 'SPECIAL SWITCH' key:", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SPECIAL_SWITCH);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'YELL' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(5), "Press your 'YELL' key:", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_YELL);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'SWITCHING' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(6), "Press your 'SWITCHING' key:", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SWITCH);
 
-	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", (unsigned char) RED, 1);
+	keytext.write_xy(LEFT_OPS, OPLINES(7), "Press your 'SHIFTER' key:", static_cast<unsigned char>(RED), 1);
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	assignKeyFromWaitEvent(mynum, KEY_SHIFTER);
 
-	//  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", (unsigned char) RED, 1);
+	//  keytext.write_xy(LEFT_OPS, OPLINES(8), "Press your 'MENU (PREFS)' key:", static_cast<unsigned char>(RED), 1);
 	//  allkeys[mynum][KEY_PREFS] = get_keypress();
 
 	if (CHEAT_MODE) // are cheats enabled?
 	{
-		keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", (unsigned char) RED, 1);
+		keytext.write_xy(LEFT_OPS, OPLINES(9), "Press your 'CHEATS' key:", static_cast<unsigned char>(RED), 1);
 		myscreen->buffer_to_screen(0, 0, 320, 200);
         assignKeyFromWaitEvent(mynum, KEY_CHEAT);
 	}
@@ -2199,58 +2199,58 @@ void viewscreen::view_key_bindings()
 
 	// Draw the menu box
 	myscreen->draw_button(20, 20, 300, 180, 2, 1);
-	keytext.write_xy(95, 28, "Current Key Bindings", (unsigned char) RED, 1);
+	keytext.write_xy(95, 28, "Current Key Bindings", static_cast<unsigned char>(RED), 1);
 
 	// Movement keys label
-	keytext.write_xy(55, 42, "-- Movement --", (unsigned char) COLOR_BLUE, 1);
+	keytext.write_xy(55, 42, "-- Movement --", static_cast<unsigned char>(COLOR_BLUE), 1);
 
 	// Visual 3x3 grid for directional keys
 	// Row 1: UP-LEFT, UP, UP-RIGHT
-	keytext.write_xy(40, 54, get_key_display_name(player_keys[mynum][KEY_UP_LEFT]), (unsigned char) BLACK, 1);
-	keytext.write_xy(75, 54, get_key_display_name(player_keys[mynum][KEY_UP]), (unsigned char) BLACK, 1);
-	keytext.write_xy(100, 54, get_key_display_name(player_keys[mynum][KEY_UP_RIGHT]), (unsigned char) BLACK, 1);
+	keytext.write_xy(40, 54, get_key_display_name(player_keys[mynum][KEY_UP_LEFT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(75, 54, get_key_display_name(player_keys[mynum][KEY_UP]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(100, 54, get_key_display_name(player_keys[mynum][KEY_UP_RIGHT]), static_cast<unsigned char>(BLACK), 1);
 
 	// Row 2: LEFT, [center], RIGHT
-	keytext.write_xy(40, 66, get_key_display_name(player_keys[mynum][KEY_LEFT]), (unsigned char) BLACK, 1);
-	keytext.write_xy(70, 66, "---", (unsigned char) BLACK, 1);
-	keytext.write_xy(100, 66, get_key_display_name(player_keys[mynum][KEY_RIGHT]), (unsigned char) BLACK, 1);
+	keytext.write_xy(40, 66, get_key_display_name(player_keys[mynum][KEY_LEFT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(70, 66, "---", static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(100, 66, get_key_display_name(player_keys[mynum][KEY_RIGHT]), static_cast<unsigned char>(BLACK), 1);
 
 	// Row 3: DOWN-LEFT, DOWN, DOWN-RIGHT
-	keytext.write_xy(40, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_LEFT]), (unsigned char) BLACK, 1);
-	keytext.write_xy(75, 78, get_key_display_name(player_keys[mynum][KEY_DOWN]), (unsigned char) BLACK, 1);
-	keytext.write_xy(100, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_RIGHT]), (unsigned char) BLACK, 1);
+	keytext.write_xy(40, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_LEFT]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(75, 78, get_key_display_name(player_keys[mynum][KEY_DOWN]), static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(100, 78, get_key_display_name(player_keys[mynum][KEY_DOWN_RIGHT]), static_cast<unsigned char>(BLACK), 1);
 
 	// Action keys label
-	keytext.write_xy(180, 42, "-- Actions --", (unsigned char) COLOR_BLUE, 1);
+	keytext.write_xy(180, 42, "-- Actions --", static_cast<unsigned char>(COLOR_BLUE), 1);
 
 	// Action keys in right column
 	char msg[40];
 	snprintf(msg, 40, "Fire: %s", get_key_display_name(player_keys[mynum][KEY_FIRE]));
-	keytext.write_xy(165, 54, msg, (unsigned char) BLACK, 1);
+	keytext.write_xy(165, 54, msg, static_cast<unsigned char>(BLACK), 1);
 
 	snprintf(msg, 40, "Special: %s", get_key_display_name(player_keys[mynum][KEY_SPECIAL]));
-	keytext.write_xy(165, 66, msg, (unsigned char) BLACK, 1);
+	keytext.write_xy(165, 66, msg, static_cast<unsigned char>(BLACK), 1);
 
 	snprintf(msg, 40, "Yell: %s", get_key_display_name(player_keys[mynum][KEY_YELL]));
-	keytext.write_xy(165, 78, msg, (unsigned char) BLACK, 1);
+	keytext.write_xy(165, 78, msg, static_cast<unsigned char>(BLACK), 1);
 
 	snprintf(msg, 40, "Shifter: %s", get_key_display_name(player_keys[mynum][KEY_SHIFTER]));
-	keytext.write_xy(165, 90, msg, (unsigned char) BLACK, 1);
+	keytext.write_xy(165, 90, msg, static_cast<unsigned char>(BLACK), 1);
 
 	// Switching keys
-	keytext.write_xy(55, 105, "-- Switching --", (unsigned char) COLOR_BLUE, 1);
+	keytext.write_xy(55, 105, "-- Switching --", static_cast<unsigned char>(COLOR_BLUE), 1);
 
 	snprintf(msg, 40, "Switch Char: %s", get_key_display_name(player_keys[mynum][KEY_SWITCH]));
-	keytext.write_xy(40, 117, msg, (unsigned char) BLACK, 1);
+	keytext.write_xy(40, 117, msg, static_cast<unsigned char>(BLACK), 1);
 
 	snprintf(msg, 40, "Switch Special: %s", get_key_display_name(player_keys[mynum][KEY_SPECIAL_SWITCH]));
-	keytext.write_xy(40, 129, msg, (unsigned char) BLACK, 1);
+	keytext.write_xy(40, 129, msg, static_cast<unsigned char>(BLACK), 1);
 
 	// Menu key info
-	keytext.write_xy(165, 117, "Options: 1", (unsigned char) BLACK, 1);
-	keytext.write_xy(165, 129, "Help: Shift+/", (unsigned char) BLACK, 1);
+	keytext.write_xy(165, 117, "Options: 1", static_cast<unsigned char>(BLACK), 1);
+	keytext.write_xy(165, 129, "Help: Shift+/", static_cast<unsigned char>(BLACK), 1);
 
-	keytext.write_xy(95, 160, "Press ESC to return", (unsigned char) RED, 1);
+	keytext.write_xy(95, 160, "Press ESC to return", static_cast<unsigned char>(RED), 1);
 
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 

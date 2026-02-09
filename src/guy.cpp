@@ -142,35 +142,35 @@ Sint32 guy::query_heart_value() // how much are we worth?
 	// Get strength cost ..
 	temp = strength - normal->strength; // difference..
 	temp = MAX(temp,0);
-	cost += (Sint32) (pow( temp, RAISE)
-	                * (Sint32)statcosts[(int)family][0]);
+	cost += static_cast<Sint32>(pow( temp, RAISE)
+	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][0]));
 
 	// Get dexterity cost ..
 	temp = dexterity - normal->dexterity; // difference..
 	temp = MAX(temp,0);
-	cost += (Sint32) (pow( temp, RAISE)
-	                * (Sint32)statcosts[(int)family][1]);
+	cost += static_cast<Sint32>(pow( temp, RAISE)
+	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][1]));
 
 	// Get constitution cost ..
 	temp = constitution - normal->constitution; // difference..
 	temp = MAX(temp,0);
-	cost += (Sint32) (pow( temp, RAISE)
-	                * (Sint32)statcosts[(int)family][2]);
+	cost += static_cast<Sint32>(pow( temp, RAISE)
+	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][2]));
 
 	// Get intelligence cost ..
 	temp = intelligence - normal->intelligence; // difference..
 	temp = MAX(temp,0);
-	cost += (Sint32) (pow( temp, RAISE)
-	                * (Sint32)statcosts[(int)family][3]);
+	cost += static_cast<Sint32>(pow( temp, RAISE)
+	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][3]));
 
 	// Get armor cost ..
 	temp = armor - normal->armor; // difference..
 	temp = MAX(temp,0);
-	cost += (Sint32) (pow( temp, RAISE)
-	                * (Sint32)statcosts[(int)family][4]);
+	cost += static_cast<Sint32>(pow( temp, RAISE)
+	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][4]));
 
 	// Add in the base cost value for the guy ..
-	cost += (Sint32) costlist[(int)family];
+	cost += static_cast<Sint32>(costlist[static_cast<int>(family)]);
 	
 	delete normal;
 
@@ -530,7 +530,7 @@ void guy::update_derived_stats(walker* w)
 
     // Fighters: limited weapons
     if (w->query_family() == FAMILY_SOLDIER)
-        w->weapons_left = (short) ((w->stats->level+1) / 2);
+        w->weapons_left = static_cast<short>((w->stats->level+1) / 2);
         
 
     // Set the heal delay ..
@@ -546,7 +546,7 @@ void guy::update_derived_stats(walker* w)
     if (w->stats->current_heal_delay > 1)
     {
         w->stats->max_heal_delay /=
-            (Sint32) (w->stats->current_heal_delay + 1);
+            static_cast<Sint32>(w->stats->current_heal_delay + 1);
     }
     w->stats->current_heal_delay = 0; //start off without healing
 
@@ -569,7 +569,7 @@ void guy::update_derived_stats(walker* w)
     if (w->stats->current_magic_delay > 1)
     {
         w->stats->max_magic_delay /=
-            (Sint32) (w->stats->current_magic_delay + 1);
+            static_cast<Sint32>(w->stats->current_magic_delay + 1);
     }
     w->stats->current_magic_delay = 0; //start off without magic regen
 

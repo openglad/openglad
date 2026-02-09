@@ -391,7 +391,7 @@ short effect::act()
 					xd = random(3)-1;
 					yd = random(3)-1;
 				}
-				stats->add_command(COMMAND_WALK, (short) random(20), (short) xd, (short) yd);
+				stats->add_command(COMMAND_WALK, static_cast<short>(random(20)), static_cast<short>(xd), static_cast<short>(yd));
 			}
 			break; // end of cloud
 		case FAMILY_CHAIN: // chain lightning ..
@@ -623,7 +623,7 @@ short effect::death()
 						generic -= random(w->myguy->constitution);
 					if (generic > 0)
 						w->stats->force_command(COMMAND_WALK,
-						                               (short) generic, (short) tempx, (short) tempy);
+						                               static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));
 				} // end of valid target
 			} // end of cycle through scare list
 			
@@ -658,7 +658,7 @@ short effect::death()
 			                                 &howmany, this);
             
 			// Damage our tile location ..
-			myscreen->damage_tile( (short) (xpos+(sizex/2)), (short) (ypos+(sizey/2)) );
+			myscreen->damage_tile( static_cast<short>(xpos+(sizex/2)), static_cast<short>(ypos+(sizey/2)) );
 			if (howmany < 1)
 				return 0;
 			// Set our team number to garbage so we can hurt everyone
@@ -686,7 +686,7 @@ short effect::death()
 					generic = 2+owner->stats->level/15;
 					if (generic > 8) // max of about 8 steps
 						generic = 8;
-					w->stats->force_command(COMMAND_WALK,generic,(short)xdelta,(short)ydelta);
+					w->stats->force_command(COMMAND_WALK,generic,static_cast<short>(xdelta),static_cast<short>(ydelta));
 					// Damage (attack) the object
 					if (w == owner) // do less damage
 					{
@@ -719,19 +719,19 @@ short hits(short x,  short y,  short xsize,  short ysize,
 	short ydown,  y2down;
 
 	//return 0; // debug
-	x2right = (short) (x2+xsize2);
+	x2right = static_cast<short>(x2+xsize2);
 	if (x > x2right)
 		return 0;
 
-	xright = (short) (x+xsize);
+	xright = static_cast<short>(x+xsize);
 	if (xright < x2)
 		return 0;
 
-	y2down = (short) (y2+ysize2);
+	y2down = static_cast<short>(y2+ysize2);
 	if (y > y2down)
 		return 0;
 
-	ydown = (short) (y+ysize);
+	ydown = static_cast<short>(y+ysize);
 	if (ydown < y2)
 		return 0;
 

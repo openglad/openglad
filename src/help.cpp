@@ -57,7 +57,7 @@ char* read_one_line(SDL_RWops *infile, short length)
 
 	for (i=0; i < length; i++)
 	{
-		readvalue = (short) SDL_RWread(infile, &temp, 1, 1);
+		readvalue = static_cast<short>(SDL_RWread(infile, &temp, 1, 1));
 		if (readvalue != 1)
 		{
 			end_of_file = 1;
@@ -173,8 +173,8 @@ short read_scenario(screen *myscreen)
             {
                 std::string s = myscreen->level_data.get_description_line(j+templines);
 				if(s.size() > 0)
-					mytext.write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8),
-					                 s.c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
+					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(TEXT_DOWN(j)-linesdown%8),
+					                 s.c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
             }
 
 
@@ -184,9 +184,9 @@ short read_scenario(screen *myscreen)
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
 			                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP+103);
 			mytext.write_xy(HELPTEXT_LEFT+40,
-			                 HELPTEXT_TOP-7, "SCENARIO INFORMATION", (unsigned char) RED, 1);
+			                 HELPTEXT_TOP-7, "SCENARIO INFORMATION", static_cast<unsigned char>(RED), 1);
 			mytext.write_xy(HELPTEXT_LEFT+30,
-			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", (unsigned char) RED, 1);
+			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			changed = 0;
 		} // end of changed drawing loop
@@ -199,7 +199,7 @@ short read_scenario(screen *myscreen)
 		get_input_events(POLL);
 	}
 
-	return (short) numlines;
+	return static_cast<short>(numlines);
 }
 
 short read_campaign_intro(screen * myscreen)
@@ -310,7 +310,7 @@ short read_campaign_intro(screen * myscreen)
 				if(data.getDescriptionLine(j+templines).size() == 0)
                     continue;
                 
-                mytext.write_xy(HELPTEXT_LEFT+2, (short) (TEXT_DOWN(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), (unsigned char) DARK_BLUE, 1 ); // to buffer!
+                mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(TEXT_DOWN(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
             }
 
 			
@@ -320,9 +320,9 @@ short read_campaign_intro(screen * myscreen)
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP+103);
 			mytext.write_xy(HELPTEXT_LEFT+240/2 - data.title.size()*3,
-			                 HELPTEXT_TOP-7, data.title.c_str(), (unsigned char) RED, 1);
+			                 HELPTEXT_TOP-7, data.title.c_str(), static_cast<unsigned char>(RED), 1);
 			mytext.write_xy(HELPTEXT_LEFT+52,
-			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", (unsigned char) RED, 1);
+			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
 			//myscreen->buffer_to_screen(0, 0, 320, 200);
 			myscreen->buffer_to_screen(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,244,119);
 
@@ -340,7 +340,7 @@ short read_campaign_intro(screen * myscreen)
 		get_input_events(POLL);
 	}
 	//delete mytext;
-	return (short) (numlines);
+	return static_cast<short>(numlines);
 }
 
 
@@ -477,7 +477,7 @@ static bool load_help_file(const char* filename, std::vector<std::string>& lines
 		}
 		else if (pos < HELP_WIDTH - 1)
 		{
-			line_buf[pos++] = (char)ch;
+			line_buf[pos++] = static_cast<char>(ch);
 		}
 	}
 
@@ -532,12 +532,12 @@ static TabContent get_tab_content(HelpTab tab)
 		break;
 	case HelpTab::Classes:
 		content.dynamic_lines = &classes_help_lines;
-		content.num_lines = (int)classes_help_lines.size();
+		content.num_lines = static_cast<int>(classes_help_lines.size());
 		content.is_dynamic = true;
 		break;
 	case HelpTab::Editor:
 		content.dynamic_lines = &editor_help_lines;
-		content.num_lines = (int)editor_help_lines.size();
+		content.num_lines = static_cast<int>(editor_help_lines.size());
 		content.is_dynamic = true;
 		break;
 	default:
@@ -757,7 +757,7 @@ Sint32 show_general_help()
 				int label_len = strlen(tab_names[t]);
 				int label_x = tab_x + (TAB_WIDTH - label_len * 6) / 2;
 				mytext.write_xy(label_x, TAB_Y + 3, tab_names[t],
-				                (static_cast<HelpTab>(t) == current_tab) ? (unsigned char)DARK_BLUE : (unsigned char)BLACK, 1);
+				                (static_cast<HelpTab>(t) == current_tab) ? static_cast<unsigned char>(DARK_BLUE) : static_cast<unsigned char>(BLACK), 1);
 			}
 
 			// Draw content area (below tabs)
@@ -771,8 +771,8 @@ Sint32 show_general_help()
 				if (line_idx >= 0 && line_idx < current_content.num_lines)
 				{
 					int text_y = content_text_top + (j * 7) - (linesdown % 8);
-					mytext.write_xy(HELPTEXT_LEFT+2, (short)text_y,
-					                get_content_line(current_content, line_idx), (unsigned char)DARK_BLUE, 1);
+					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_y),
+					                get_content_line(current_content, line_idx), static_cast<unsigned char>(DARK_BLUE), 1);
 				}
 			}
 
@@ -781,13 +781,13 @@ Sint32 show_general_help()
 			                        HELPTEXT_LEFT+240-4, CONTENT_TOP + 6);
 			char title[40];
 			snprintf(title, sizeof(title), "GLADIATOR v%s", OPENGLAD_VERSION_STRING);
-			mytext.write_xy(HELPTEXT_LEFT+60, CONTENT_TOP + 1, title, (unsigned char)RED, 1);
+			mytext.write_xy(HELPTEXT_LEFT+60, CONTENT_TOP + 1, title, static_cast<unsigned char>(RED), 1);
 
 			// Draw footer bar (bottom of content area)
 			myscreen->draw_text_bar(HELPTEXT_LEFT, content_bottom,
 			                        HELPTEXT_LEFT+240-4, content_bottom + 6);
 			mytext.write_xy(HELPTEXT_LEFT+30, content_bottom + 1,
-			                "1/2/3:Tab  ESC:Exit", (unsigned char)RED, 1);
+			                "1/2/3:Tab  ESC:Exit", static_cast<unsigned char>(RED), 1);
 
 			myscreen->buffer_to_screen(0, 0, 320, 200);
 			changed = 0;

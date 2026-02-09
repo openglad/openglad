@@ -164,7 +164,7 @@ bool statistics::has_commands()
 short statistics::try_command(short whatcommand, short iterations)
 {
 	if (whatcommand == COMMAND_RANDOM_WALK)
-		return try_command(COMMAND_WALK, iterations, (short) (random(3)-1), (short) (random(3)-1));
+		return try_command(COMMAND_WALK, iterations, static_cast<short>(random(3)-1), static_cast<short>(random(3)-1));
 	else
 		return try_command(whatcommand, iterations, 0, 0);
 }
@@ -179,7 +179,7 @@ short statistics::try_command(short whatcommand, short iterations,
 void statistics::set_command(short whatcommand, short iterations)
 {
 	if (whatcommand == COMMAND_RANDOM_WALK)
-		set_command(COMMAND_WALK, iterations, (short) (random(3)-1), (short) (random(3)-1));
+		set_command(COMMAND_WALK, iterations, static_cast<short>(random(3)-1), static_cast<short>(random(3)-1));
 	else
 		set_command(whatcommand, iterations, 0, 0);
 }
@@ -292,16 +292,16 @@ short statistics::do_command()
 					result = 1;  // don't get too close
 					break;
 				}
-				newx = (short) (controller->leader->xpos - controller->xpos); // total horizontal distance..
-				newy = (short) (controller->leader->ypos - controller->ypos);
+				newx = static_cast<short>(controller->leader->xpos - controller->xpos); // total horizontal distance..
+				newy = static_cast<short>(controller->leader->ypos - controller->ypos);
 				if (abs(newx) > abs(3*newy))
 					newy = 0;
 				if (abs(newy) > abs(3*newx))
 					newx = 0;
 				if (newx)                      // If it's not 0, then get
-					newx = (short) (newx / abs(newx));     // the normal of it..
+					newx = static_cast<short>(newx / abs(newx));     // the normal of it..
 				if (newy)
-					newy = (short) (newy / abs(newy));
+					newy = static_cast<short>(newy / abs(newy));
 			}  // end of if we had a foe ..
 			
 			controller->walkstep(newx, newy);
@@ -369,8 +369,8 @@ short statistics::do_command()
 				break;
 			}
 			// Try to walk toward foe, and/or attack ..
-			deltax = (short) (controller->foe->xpos - controller->xpos);
-			deltay = (short) (controller->foe->ypos - controller->ypos);
+			deltax = static_cast<short>(controller->foe->xpos - controller->xpos);
+			deltay = static_cast<short>(controller->foe->ypos - controller->ypos);
 			if (abs(deltax) > abs(3*deltay))
 				deltay = 0;
 			if (abs(deltay) > abs(3*deltax))
@@ -383,7 +383,7 @@ short statistics::do_command()
 				controller->walkstep(deltax, deltay);
 			else // (controller->fire_check(deltax, deltay))
 			{
-				force_command(COMMAND_FIRE,(short) random(5),deltax,deltay);
+				force_command(COMMAND_FIRE,static_cast<short>(random(5)),deltax,deltay);
 				controller->init_fire(deltax,deltay);
 			}
 			break;
@@ -564,12 +564,12 @@ void statistics::hit_response(walker  *who)
 				distance = controller->distance_to_ob(foe);
 				if (distance < 64) // too close!
 				{
-					deltax = (short) (controller->xpos - foe->xpos);
+					deltax = static_cast<short>(controller->xpos - foe->xpos);
 					if (deltax)
-						deltax = (short) (deltax / abs(deltax));
-					deltay = (short) (controller->ypos - foe->ypos);
+						deltax = static_cast<short>(deltax / abs(deltax));
+					deltay = static_cast<short>(controller->ypos - foe->ypos);
 					if (deltay)
-						deltay = (short) (deltay / abs(deltay));
+						deltay = static_cast<short>(deltay / abs(deltay));
 					// Run away
 					force_command(COMMAND_WALK, 8, deltax, deltay);
 				}  // end of too-close check
@@ -644,7 +644,7 @@ void statistics::yell_for_help(walker *foe)
 
 short statistics::query_bit_flags(Sint32 myvalue)
 {
-	return (short) (myvalue & bit_flags);
+	return static_cast<short>(myvalue & bit_flags);
 }
 
 void statistics::clear_bit_flags()
@@ -859,18 +859,18 @@ bool statistics::right_walk()
 		}
 		else  // turn left
 		{
-			controller->enddir = (char) ((controller->enddir+6) %8);  // turn left
+			controller->enddir = static_cast<char>((controller->enddir+6) %8);  // turn left
 			return controller->turn(controller->enddir);
 		}
 	}
 	else if (forward_blocked())
 	{
-		controller->enddir = (char) ((controller->enddir+6) %8);  // turn left
+		controller->enddir = static_cast<char>((controller->enddir+6) %8);  // turn left
 		return controller->turn(controller->enddir);
 	}
 	else if (right_back_blocked())
 	{
-		controller->enddir = (char) ((controller->enddir+2) %8);  // turn right
+		controller->enddir = static_cast<char>((controller->enddir+2) %8);  // turn right
 		switch (controller->enddir)
 		{
 			case FACE_UP:
@@ -993,7 +993,7 @@ bool statistics::direct_walk()
 	{
 		clear_command();
 		controller->turn(controller->facing(xdelta, ydelta));
-		add_command(COMMAND_ATTACK,(short) (30+random(25)),0,0);
+		add_command(COMMAND_ATTACK,static_cast<short>(30+random(25)),0,0);
 		return 1;
 	}
 
@@ -1092,7 +1092,7 @@ bool statistics::walk_to_foe()
 		xdelta = xdest - controller->xpos;
 		ydelta = ydest - controller->ypos;
         
-		tempdistance = (Uint32) controller->distance_to_ob(foe);
+		tempdistance = static_cast<Uint32>(controller->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
 		if (tempdistance < PATHING_MIN_DISTANCE || myscreen->level_data.myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
 		{
@@ -1103,7 +1103,7 @@ bool statistics::walk_to_foe()
 			    walker* firstfoe = foelist.front();
 				clear_command();
 				controller->turn(controller->facing(xdelta, ydelta));
-				controller->stats->try_command(COMMAND_ATTACK,(short) (30+ random(25)), 1, 1);
+				controller->stats->try_command(COMMAND_ATTACK,static_cast<short>(30+ random(25)), 1, 1);
 				myscreen->find_near_foe(controller);
 				if (!controller->foe && firstfoe)
 				{
@@ -1128,7 +1128,7 @@ bool statistics::walk_to_foe()
     if(controller->path_to_foe.size() > 0)
     {
         controller->follow_path_to_foe();
-        last_distance = (Uint32) controller->distance_to_ob(foe);
+        last_distance = static_cast<Uint32>(controller->distance_to_ob(foe));
     }
     else if(tempdistance < last_distance)// are we closer than we've ever been?
 	{

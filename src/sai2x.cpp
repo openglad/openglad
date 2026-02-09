@@ -80,8 +80,8 @@ void Super2xSaI_ex2(
 
 	for (int y = 0; y < srch; y++) 
 	{
-		Uint32* bP = (Uint32*) srcPtr;
-		Uint32* dP = (Uint32*) dstPtr;
+		Uint32* bP = reinterpret_cast<Uint32*>(srcPtr);
+		Uint32* dP = reinterpret_cast<Uint32*>(dstPtr);
 	
 		for (int x = 0; x < srcw; x++) 
 		{
@@ -272,8 +272,8 @@ void Scale_SuperEagle(
 
     for (int y = 0; y < srch; y++)
 	{
-		Uint32 *bP = (Uint32*) srcPtr;
-		Uint32 *dP = (Uint32*) dstPtr;
+		Uint32 *bP = reinterpret_cast<Uint32*>(srcPtr);
+		Uint32 *dP = reinterpret_cast<Uint32*>(dstPtr);
 
 		for (int x = 0; x < srcw; x++)
 		{
@@ -500,17 +500,17 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 	src_line[2] = src + src_pitch;
 	src_line[3] = src + src_pitch * 2;
 	
-	dst_line[0] = (unsigned char*) dest;
-	dst_line[1] = (unsigned char*) dest + dest_pitch;
+	dst_line[0] = reinterpret_cast<unsigned char*>(dest);
+	dst_line[1] = reinterpret_cast<unsigned char*>(dest) + dest_pitch;
 	
 	x = 0, y = 0;
 	Uint32 *lbp;
-	lbp = (Uint32*)src_line[0];
+	lbp = reinterpret_cast<Uint32*>(src_line[0]);
 	color[0] = *lbp;       color[1] = color[0];   color[2] = color[0];    color[3] = color[0];
 	color[4] = color[0];   color[5] = color[0];   color[6] = *(lbp + 1);  color[7] = *(lbp + 2);
-	lbp = (Uint32*)src_line[2];
+	lbp = reinterpret_cast<Uint32*>(src_line[2]);
 	color[8] = *lbp;     color[9] = color[8];     color[10] = *(lbp + 1); color[11] = *(lbp + 2);
-	lbp = (Uint32*)src_line[3];
+	lbp = reinterpret_cast<Uint32*>(src_line[3]);
 	color[12] = *lbp;    color[13] = color[12];   color[14] = *(lbp + 1); color[15] = *(lbp + 2);
 
 	for (y = 0; y < height; y++) {
@@ -594,10 +594,10 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 			
 			if (x < width - 3) {
 				x += 3;
-				color[3] = *(((Uint32*)src_line[0]) + x);
-				color[7] = *(((Uint32*)src_line[1]) + x);
-				color[11] = *(((Uint32*)src_line[2]) + x);
-				color[15] = *(((Uint32*)src_line[3]) + x);
+				color[3] = *((reinterpret_cast<Uint32*>(src_line[0])) + x);
+				color[7] = *((reinterpret_cast<Uint32*>(src_line[1])) + x);
+				color[11] = *((reinterpret_cast<Uint32*>(src_line[2])) + x);
+				color[15] = *((reinterpret_cast<Uint32*>(src_line[3])) + x);
 				x -= 3;
 			}
 		}
@@ -615,18 +615,18 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 			
 		/* Then shift the color matrix up */
 		Uint32 *lbp;
-		lbp = (Uint32*)src_line[0];
+		lbp = reinterpret_cast<Uint32*>(src_line[0]);
 		color[0] = *lbp; color[1] = color[0]; color[2] = *(lbp + 1); color[3] = *(lbp + 2);
-		lbp = (Uint32*)src_line[1];
+		lbp = reinterpret_cast<Uint32*>(src_line[1]);
 		color[4] = *lbp; color[5] = color[4]; color[6] = *(lbp + 1); color[7] = *(lbp + 2);
-		lbp = (Uint32*)src_line[2];
+		lbp = reinterpret_cast<Uint32*>(src_line[2]);
 		color[8] = *lbp; color[9] = color[9]; color[10] = *(lbp + 1); color[11] = *(lbp + 2);
-		lbp = (Uint32*)src_line[3];
+		lbp = reinterpret_cast<Uint32*>(src_line[3]);
 		color[12] = *lbp; color[13] = color[12]; color[14] = *(lbp + 1); color[15] = *(lbp + 2);
 		
 		if (y < height - 1) {
-			dst_line[0] = (unsigned char*) dest + dest_pitch*(y*2+2);
-			dst_line[1] = (unsigned char*) dest + dest_pitch*(y*2+3);
+			dst_line[0] = reinterpret_cast<unsigned char*>(dest) + dest_pitch*(y*2+2);
+			dst_line[1] = reinterpret_cast<unsigned char*>(dest) + dest_pitch*(y*2+3);
 		}
 	}
 }
@@ -661,10 +661,10 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 	}	
 	
 	Super2xSaI_ex(
-			(unsigned char*) src->pixels + src->pitch*s_y + s_x*sbpp, 
+			reinterpret_cast<unsigned char*>(src->pixels) + src->pitch*s_y + s_x*sbpp, 
 			src->pitch, 
 			nullptr, 
-			(unsigned char*) dest->pixels + dest->pitch*d_y +d_x*dbpp, 
+			reinterpret_cast<unsigned char*>(dest->pixels) + dest->pitch*d_y +d_x*dbpp,
 			dest->pitch, 
 			w, h);
 	return;
@@ -774,8 +774,8 @@ void Screen::swap(int x, int y, int w, int h)
                 }
                 SDL_LockSurface( render2 );
                 Super2xSaI_ex2(
-                        (unsigned char*) render->pixels, x, y, w, h, render->pitch, render->h,
-                        (unsigned char*) render2->pixels, 2*x, 2*y, render2->pitch);
+                        reinterpret_cast<unsigned char*>(render->pixels), x, y, w, h, render->pitch, render->h,
+                        reinterpret_cast<unsigned char*>(render2->pixels), 2*x, 2*y, render2->pitch);
                 SDL_UnlockSurface( render2 );
                 
                 source_surface = render2;
@@ -788,8 +788,8 @@ void Screen::swap(int x, int y, int w, int h)
                     render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
                 }
                 SDL_LockSurface( render2 );
-                Scale_SuperEagle((unsigned char*) render->pixels, x, y, w, h, render->pitch, render->h,
-                                 (unsigned char*) render2->pixels, 2*x, 2*y, render2->pitch);
+                Scale_SuperEagle(reinterpret_cast<unsigned char*>(render->pixels), x, y, w, h, render->pitch, render->h,
+                                 reinterpret_cast<unsigned char*>(render2->pixels), 2*x, 2*y, render2->pitch);
                 SDL_UnlockSurface( render2 );
                 
                 source_surface = render2;

@@ -537,13 +537,13 @@ void view_team(short left, short top, short right, short bottom)
 	myscreen->draw_button(left, top, right, bottom, 2, 1);
 
 	strcpy(message, "  Name  ");
-	mytext.write_xy(left+5, text_down, message, (unsigned char) BLACK, 1);
+	mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(BLACK), 1);
 
 	strcpy (message, "STR  DEX  CON  INT  ARM");
-	mytext.write_xy(left+80, text_down, message, (unsigned char) BLACK, 1);
+	mytext.write_xy(left+80, text_down, message, static_cast<unsigned char>(BLACK), 1);
 
 	sprintf (message, "Level");
-	mytext.write_xy(left+230, text_down, message, (unsigned char) BLACK, 1);
+	mytext.write_xy(left+230, text_down, message, static_cast<unsigned char>(BLACK), 1);
 
 	text_down+=6;
 
@@ -557,19 +557,19 @@ void view_team(short left, short top, short right, short bottom)
 			strcpy(message, ourteam[i]->name.c_str());
 			// Pick a nice dark color based on family type
 			namecolor = ((ourteam[i]->family +1) << 4) & 255;
-			mytext.write_xy(left+5, text_down, message, (unsigned char)namecolor, 1);
+			mytext.write_xy(left+5, text_down, message, static_cast<unsigned char>(namecolor), 1);
 
 			sprintf (message, "%4d %4d %4d %4d %4d",
 			         ourteam[i]->strength, ourteam[i]->dexterity,
 			         ourteam[i]->constitution, ourteam[i]->intelligence,
 			         ourteam[i]->armor);
-			mytext.write_xy(left+70, text_down, message, (unsigned char) BLACK, 1);
+			mytext.write_xy(left+70, text_down, message, static_cast<unsigned char>(BLACK), 1);
 
 			sprintf (message, "%2d", ourteam[i]->get_level());
-			mytext.write_xy(left+235, text_down, message, (unsigned char) BLACK, 1);
+			mytext.write_xy(left+235, text_down, message, static_cast<unsigned char>(BLACK), 1);
 
 			family_name_copy(message, ourteam[i]->family);
-			mytext.write_xy(left+260, text_down, message, (unsigned char)namecolor, 1);
+			mytext.write_xy(left+260, text_down, message, static_cast<unsigned char>(namecolor), 1);
 
 			text_down+=6;
 		}
@@ -577,7 +577,7 @@ void view_team(short left, short top, short right, short bottom)
 	if (numguys == 0)
 	{
 		strcpy(message, "*** YOU HAVE NO TEAM! ***");
-		mytext.write_xy(left+80, 60, message, (unsigned char)ORANGE_START, 1);
+		mytext.write_xy(left+80, 60, message, static_cast<unsigned char>(ORANGE_START), 1);
 	}
 
 	return;
@@ -595,7 +595,7 @@ void draw_version_number()
 	int x = 320 - w - 80;
 	int y = 200 - 12;
 	myscreen->fastbox(x, y, w, h, PURE_BLACK);
-	mytext.write_xy(x, y, OPENGLAD_VERSION_STRING, (unsigned char) DARK_BLUE, 1);
+	mytext.write_xy(x, y, OPENGLAD_VERSION_STRING, static_cast<unsigned char>(DARK_BLUE), 1);
 }
 
 #ifdef USE_CONTROLLER_INPUT
@@ -1277,7 +1277,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         }
 
         bool prev_enabled = (scroll_offset > 0);
-        bool next_enabled = (scroll_offset + visible_rows < (int)levels.size());
+        bool next_enabled = (scroll_offset + visible_rows < static_cast<int>(levels.size()));
 
         bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mymouse.x && mymouse.x <= prev_btn.x + prev_btn.w
                        && prev_btn.y <= mymouse.y && mymouse.y <= prev_btn.y + prev_btn.h)
@@ -1301,7 +1301,7 @@ Sint32 create_progress_menu(Sint32 arg1)
             int row_height = 13;
             int go_btn_x = 295;
             int go_btn_w = 20;
-            for (int i = scroll_offset; i < (int)levels.size() && i < scroll_offset + visible_rows; i++) {
+            for (int i = scroll_offset; i < static_cast<int>(levels.size()) && i < scroll_offset + visible_rows; i++) {
                 LevelProgress& lp = levels[i];
                 if (!lp.is_cleared) {
                     // Check if click is on this row's GO button
@@ -1327,7 +1327,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         // Header
         char header[60];
         snprintf(header, 60, "Level Progress: %d cleared of %d discovered",
-                 num_cleared, (int)levels.size());
+                 num_cleared, static_cast<int>(levels.size()));
         mytext.write_xy(160 - strlen(header) * 3, 8, header, DARK_GREEN, 1);
 
         // Column headers
@@ -1340,7 +1340,7 @@ Sint32 create_progress_menu(Sint32 arg1)
         // Level rows
         int y = 36;
         int row_height = 13;
-        for (int i = scroll_offset; i < (int)levels.size() && i < scroll_offset + visible_rows; i++) {
+        for (int i = scroll_offset; i < static_cast<int>(levels.size()) && i < scroll_offset + visible_rows; i++) {
             LevelProgress& lp = levels[i];
 
             // ID
@@ -1386,8 +1386,8 @@ Sint32 create_progress_menu(Sint32 arg1)
             char scroll_info[20];
             snprintf(scroll_info, 20, "%d-%d of %d",
                      scroll_offset + 1,
-                     std::min(scroll_offset + visible_rows, (int)levels.size()),
-                     (int)levels.size());
+                     std::min(scroll_offset + visible_rows, static_cast<int>(levels.size())),
+                     static_cast<int>(levels.size()));
             mytext.write_xy(140, 172, scroll_info, WHITE, 1);
         }
 
@@ -1698,7 +1698,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         myscreen->draw_button_inverted(name_box_inner);
         
         text& mytext = myscreen->text_normal;
-        mytext.write_xy(name_box.x + name_box.w/2 - 3*strlen(family_name), name_box.y + 6, family_name, (unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(name_box.x + name_box.w/2 - 3*strlen(family_name), name_box.y + 6, family_name, static_cast<unsigned char>(DARK_BLUE), 1);
         
 		show_guy(query_timer()-start_time, 0, description_box.x + description_box.w/2, name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2); // 0 means current_guy
         change_hire_teamnum(0);
@@ -1730,7 +1730,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         myscreen->draw_button_inverted(cost_box_inner);
         
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_team_num]);
-        mytext.write_xy(cost_box_content.x, cost_box_content.y, message,(unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(cost_box_content.x, cost_box_content.y, message,static_cast<unsigned char>(DARK_BLUE), 1);
         current_cost = calculate_hire_cost();
         mytext.write_xy(cost_box_content.x, cost_box_content.y + 10, "COST: ", DARK_BLUE, 1);
         sprintf(message, "      %u", current_cost );
@@ -1753,7 +1753,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Strength
         sprintf(message, "%d", current_guy->strength);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "STR:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 0), showcolor, 1);
@@ -1762,7 +1762,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Dexterity
         sprintf(message, "%d", current_guy->dexterity);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "DEX:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 1), showcolor, 1);
@@ -1771,7 +1771,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Constitution
         sprintf(message, "%d", current_guy->constitution);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "CON:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 2), showcolor, 1);
@@ -1780,7 +1780,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Intelligence
         sprintf(message, "%d", current_guy->intelligence);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "INT:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET + 18, stat_box_content.y + linesdown*line_height, get_training_cost_rating(last_family, 3), showcolor, 1);
@@ -1789,7 +1789,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Armor
         sprintf(message, "%d", current_guy->armor);
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height, "ARMOR:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         
         mytext.write_xy(stat_box_content.x + STAT_NUM_OFFSET, stat_box_content.y + linesdown*line_height, message, showcolor, 1);
 		
@@ -1965,7 +1965,7 @@ Sint32 create_train_menu(Sint32 arg1)
         
         text& mytext = myscreen->text_normal;
         mytext.write_xy(80 - mytext.query_width(current_guy->name.c_str())/2, 14,
-                         current_guy->name.c_str(),(unsigned char) DARK_BLUE, 1);
+                         current_guy->name.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
         myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
         myscreen->draw_text_bar(42, 70, 116, 156);
 
@@ -1984,7 +1984,7 @@ Sint32 create_train_menu(Sint32 arg1)
         // Strength
         sprintf(message, "%d", current_guy->strength);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  STR:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
         else if (here->strength < current_guy->strength)
@@ -1996,7 +1996,7 @@ Sint32 create_train_menu(Sint32 arg1)
         // Dexterity
         sprintf(message, "%d", current_guy->dexterity);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  DEX:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
         else if (here->dexterity < current_guy->dexterity)
@@ -2008,7 +2008,7 @@ Sint32 create_train_menu(Sint32 arg1)
         // Constitution
         sprintf(message, "%d", current_guy->constitution);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  CON:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
         else if (here->constitution < current_guy->constitution)
@@ -2020,7 +2020,7 @@ Sint32 create_train_menu(Sint32 arg1)
         // Intelligence
         sprintf(message, "%d", current_guy->intelligence);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "  INT:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
         else if (here->intelligence < current_guy->intelligence)
@@ -2032,7 +2032,7 @@ Sint32 create_train_menu(Sint32 arg1)
         // Armor
         sprintf(message, "%d", current_guy->armor);
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "ARMOR:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
             showcolor = STAT_LEVELED;
         else if (here->armor < current_guy->armor)
@@ -2044,7 +2044,7 @@ Sint32 create_train_menu(Sint32 arg1)
         // Level
         sprintf(message, "%d", current_guy->get_level());
         mytext.write_xy(stat_box_content.x, DOWN(linesdown), "LEVEL:",
-                         (unsigned char) STAT_COLOR, 1);
+                         static_cast<unsigned char>(STAT_COLOR), 1);
         if (level_increased)
             showcolor = STAT_CHANGED;
         else if(stat_increased)
@@ -2082,7 +2082,7 @@ Sint32 create_train_menu(Sint32 arg1)
         
         linesdown++;
         sprintf(message, " EXPERIENCE: %u", current_guy->exp);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,static_cast<unsigned char>(DARK_BLUE), 1);
         
         
         linesdown++;
@@ -2125,7 +2125,7 @@ Sint32 create_train_menu(Sint32 arg1)
         
         linesdown += 0.4f;
         sprintf(message, "CASH: %u", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,(unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message,static_cast<unsigned char>(DARK_BLUE), 1);
         
         linesdown++;
         mytext.write_xy(180, info_box_content.y + linesdown*line_height, "COST: ", DARK_BLUE, 1);
@@ -2240,7 +2240,7 @@ void timed_dialog(const char* message, float delay_seconds)
     int rightside = 160 + width/2 + 12;
     
     myscreen->draw_button(leftside, 80, rightside, 110, 1);
-    gladtext.write_xy(160 - width/2, 94, message, (unsigned char) DARK_BLUE, 1);
+    gladtext.write_xy(160 - width/2, 94, message, static_cast<unsigned char>(DARK_BLUE), 1);
 
     myscreen->buffer_to_screen(0, 0, 320, 200); // refresh screen
 
@@ -2336,7 +2336,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 		j = 0;
         for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
         
@@ -2432,7 +2432,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 		j = 0;
         for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
         
@@ -2530,7 +2530,7 @@ void popup_dialog(const char* title, const char* message)
 		j = 0;
         for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - e->size()*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), (unsigned char) DARK_BLUE, 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - e->size()*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
 		
@@ -2746,24 +2746,24 @@ Uint32 calculate_hire_cost()
 		ob->armor = statlist[myfamily][BUT_ARMOR];
 
 	// Now figure out costs ..
-	temp += (Sint32)((pow( (Sint32)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_STR]);
-	temp += (Sint32)((pow( (Sint32)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_DEX]);
-	temp += (Sint32)((pow( (Sint32)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_CON]);
-	temp += (Sint32)((pow( (Sint32)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_INT]);
-	temp += (Sint32)((pow( (Sint32)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
     
 	if (ob->get_level() < statlist[myfamily][BUT_LEVEL])
 		ob->upgrade_to_level(statlist[myfamily][BUT_LEVEL]);
 		
-	if ((Sint32) calculate_exp(ob->get_level()) < 0) // overflow
+	if (static_cast<Sint32>(calculate_exp(ob->get_level())) < 0) // overflow
 		ob->upgrade_to_level(1);
     
-	temp += (Sint32) (calculate_exp(ob->get_level()));
+	temp += static_cast<Sint32>(calculate_exp(ob->get_level()));
 	
 	if (temp < 0)
 	{
@@ -2774,7 +2774,7 @@ Uint32 calculate_hire_cost()
 		//temp = -1;  // This used to be an error code checked by picker.cpp line 2213
 		temp = 0;
 	}
-	return (Uint32)temp;
+	return static_cast<Uint32>(temp);
 }
 
 // This version compares current_guy versus the old version ..
@@ -2808,33 +2808,33 @@ Uint32 calculate_train_cost(guy  *oldguy)
 	if (ob->get_level() < oldguy->get_level())
 		ob->upgrade_to_level(oldguy->get_level());
 	if (calculate_exp(ob->get_level()) > oldguy->exp)
-		temp += (Sint32)(calculate_exp(ob->get_level()) - oldguy->exp);
+		temp += static_cast<Sint32>(calculate_exp(ob->get_level()) - oldguy->exp);
 
 	if (ob->get_level() <= old_guy->get_level()) // Only count these costs if the level is not being upgraded
     {
 	// First we have our 'total increased value..'
-	temp += (Sint32)((pow( (Sint32)(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_STR]);
-	temp += (Sint32)((pow( (Sint32)(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_DEX]);
-	temp += (Sint32)((pow( (Sint32)(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_CON]);
-	temp += (Sint32)((pow( (Sint32)(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_INT]);
-	temp += (Sint32)((pow( (Sint32)(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
+	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
 
 	// Now subtract what we've already paid for ..
-	temp -= (Sint32)((pow( (Sint32)(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_STR]);
-	temp -= (Sint32)((pow( (Sint32)(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_DEX]);
-	temp -= (Sint32)((pow( (Sint32)(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_CON]);
-	temp -= (Sint32)((pow( (Sint32)(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_INT]);
-	temp -= (Sint32)((pow( (Sint32)(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
-	               * (Sint32)statcosts[myfamily][BUT_ARMOR]);
+	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->strength - statlist[myfamily][BUT_STR]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_STR]));
+	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->dexterity - statlist[myfamily][BUT_DEX]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_DEX]));
+	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->constitution - statlist[myfamily][BUT_CON]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_CON]));
+	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->intelligence - statlist[myfamily][BUT_INT]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_INT]));
+	temp -= static_cast<Sint32>((pow( static_cast<Sint32>(oldguy->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
+	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
     }
     
 
@@ -2846,7 +2846,7 @@ Uint32 calculate_train_cost(guy  *oldguy)
 
 	}
 
-	return (Uint32)temp;
+	return static_cast<Uint32>(temp);
 }
 
 
@@ -3774,7 +3774,7 @@ Sint32 create_detail_menu(guy *arg1)
        
        text& mytext = myscreen->text_normal;
        mytext.write_xy(80 - mytext.query_width(current_guy->name.c_str())/2, 14,
-                        current_guy->name.c_str(),(unsigned char) DARK_BLUE, 1);
+                        current_guy->name.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
        myscreen->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        myscreen->draw_text_bar(160, 90, 162, 160);
 
@@ -4275,7 +4275,7 @@ Sint32 change_teamnum(Sint32 arg)
 
    // We can be from team 0 (default) to team 3 .. make sure
    // we don't exceed this range.
-   current_team += (short)arg;
+   current_team += static_cast<short>(arg);
    current_team %= 4;
 
    // Set our team number ..

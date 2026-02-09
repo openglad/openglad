@@ -53,7 +53,7 @@ Sint32 smoother::query_x_y(Sint32 x, Sint32 y)
 		return PIX_GRASS1;
 
 	// Else, return our simple grid data ..
-	return (Sint32) mygrid[x + y*maxx];
+	return static_cast<Sint32>(mygrid[x + y*maxx]);
 }
 
 Sint32 smoother::query_genre_x_y(Sint32 x, Sint32 y)
@@ -900,6 +900,6 @@ void smoother::set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue)
 	if (!mygrid)
 		return;
 
-	mygrid[x+y*maxx] = (char)whatvalue;
+	mygrid[x+y*maxx] = static_cast<char>(whatvalue);
 }
 

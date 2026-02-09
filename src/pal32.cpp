@@ -140,7 +140,7 @@ void adjust_palette(unsigned char *whichpal, short amount)
 {
 	short i;
 	short tempcol;
-	short multiple = (short) (amount * 10);
+	short multiple = static_cast<short>(amount * 10);
 
 	// Copy whichpal to temppal for setting ..
 	for (i=0; i < 768; i++)
@@ -149,14 +149,14 @@ void adjust_palette(unsigned char *whichpal, short amount)
 
 		// Now modify the current color bit based on 'amount'
 		// Convert the 'amount' to = x*10% + x; ie, 2=(20% +2) increase
-		tempcol = (short) ( ( ( tempcol * (100+multiple) ) / 100) + amount);
+		tempcol = static_cast<short>( ( ( tempcol * (100+multiple) ) / 100) + amount);
 		if (tempcol < 0)
 			tempcol = 0;
 		if (tempcol > 63)
 			tempcol = 63;
 
 		// Now set the current palette index to modified bit value
-		curpal[i] = (char) tempcol;
+		curpal[i] = static_cast<char>(tempcol);
 	}
 }
 
@@ -167,17 +167,17 @@ void adjust_palette(unsigned char *whichpal, short amount)
 void cycle_palette(unsigned char *newpalette, short start, short end, short shift)
 {
 	short i;
-	short length = (short) (end-start);
+	short length = static_cast<short>(end-start);
 	short newval;
 	short colorspot;
 
 	// Copy over the palette info ..
 	for (i=0; i < 768; i+=3)
 	{
-		colorspot = (short) (i/3);
+		colorspot = static_cast<short>(i/3);
 		if ( (colorspot>= start) && (colorspot <= end) )
 		{
-			newval = (short) (colorspot-shift);
+			newval = static_cast<short>(colorspot-shift);
 			if (newval<start)
 				newval += length;
 			newval *= 3;
@@ -207,9 +207,9 @@ void query_palette_reg(unsigned char index, int *red, int *green, int *blue)
 {
 	int tred, tgreen, tblue;
 
-	tred = (int)curpal[index*3];
-	tgreen = (int)curpal[index*3+1];
-	tblue = (int)curpal[index*3+2];
+	tred = static_cast<int>(curpal[index*3]);
+	tgreen = static_cast<int>(curpal[index*3+1]);
+	tblue = static_cast<int>(curpal[index*3+2]);
 
 	*red = tred;
 	*green = tgreen;

@@ -38,8 +38,8 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 treasure::treasure(const PixieData& data)
     : walker(data)
 {
-	ignore =(char) 0;
-	dead =  (char) 0;
+	ignore =static_cast<char>(0);
+	dead =  static_cast<char>(0);
 }
 
 treasure::~treasure()
@@ -283,9 +283,9 @@ short treasure::eat_me(walker  * eater)
 			death();
 			return 1;
 		case FAMILY_KEY: // get the key to this door ..
-			if (!(eater->keys & (Sint32)(pow((double) 2, stats->level)) )) // just got it?
+			if (!(eater->keys & static_cast<Sint32>(pow(static_cast<double>(2), stats->level)) )) // just got it?
 			{
-				eater->keys |= (Sint32) (pow((double)2, stats->level)); // ie, 2, 4, 8, 16...
+				eater->keys |= static_cast<Sint32>(pow(static_cast<double>(2), stats->level)); // ie, 2, 4, 8, 16...
 				if (eater->myguy)
 					sprintf(message, "%s picks up key %d", eater->myguy->name.c_str(),
 					        stats->level);

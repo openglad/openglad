@@ -332,7 +332,7 @@ void OuyaControllerManager::key_down(int player, int button)
         SDL_zero(event);
         event.type = BUTTON_DOWN_EVENT;
         event.user.code = player;
-        event.user.data1 = (void*)button;
+        event.user.data1 = reinterpret_cast<void*>(static_cast<intptr_t>(button));
         event.user.data2 = 0;
         SDL_PushEvent(&event);
     }
@@ -350,7 +350,7 @@ void OuyaControllerManager::key_up(int player, int button)
         SDL_zero(event);
         event.type = BUTTON_UP_EVENT;
         event.user.code = player;
-        event.user.data1 = (void*)button;
+        event.user.data1 = reinterpret_cast<void*>(static_cast<intptr_t>(button));
         event.user.data2 = 0;
         SDL_PushEvent(&event);
     }

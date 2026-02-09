@@ -244,7 +244,7 @@ int cleanup()
 {
 	Sint32 i;
 	int red,green,blue; //buffers: PORT: changed to ints
-	query_palette_reg((unsigned char)0, &red, &green, &blue); // Resets palette to read mode
+	query_palette_reg(static_cast<unsigned char>(0), &red, &green, &blue); // Resets palette to read mode
 	release_timer();
 	myscreen->clear();
 	myscreen->refresh();

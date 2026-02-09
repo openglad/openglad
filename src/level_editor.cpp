@@ -55,7 +55,7 @@ void quit(Sint32 arg1);
 #define S_UP 1
 #define S_DOWN 188
 
-#define VERSION_NUM (char) 8 // save scenario type info
+static constexpr char VERSION_NUM = 8; // save scenario type info
 #define SCROLLSIZE 8
 
 #define NUM_BACKGROUNDS PIX_MAX

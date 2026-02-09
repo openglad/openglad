@@ -33,7 +33,7 @@ void test_save_load_roundtrip() {
 
     // Verify restored values
     TEST_ASSERT_EQ(3, myscreen->save_data.scen_num, "scen_num should be restored");
-    TEST_ASSERT_EQ(12345, (int)myscreen->save_data.totalcash, "totalcash should be restored");
-    TEST_ASSERT_EQ(67890, (int)myscreen->save_data.totalscore, "totalscore should be restored");
+    TEST_ASSERT_EQ(12345, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be restored");
+    TEST_ASSERT_EQ(67890, static_cast<int>(myscreen->save_data.totalscore), "totalscore should be restored");
 }
 REGISTER_TEST(test_save_load_roundtrip);

@@ -54,9 +54,9 @@ void radar::start()
 
 void radar::start(LevelData* data)
 {
-	sizex = (unsigned short) data->grid.w;
-	sizey = (unsigned short) data->grid.h;
-	size = (unsigned short) (((unsigned short) sizex)*((unsigned short) sizey));
+	sizex = static_cast<unsigned short>(data->grid.w);
+	sizey = static_cast<unsigned short>(data->grid.h);
+	size = (unsigned short) ((static_cast<unsigned short>(sizex))*(static_cast<unsigned short>(sizey)));
 	xview = RADAR_X;
 	yview = RADAR_Y;
 	radarx = 0;
@@ -74,32 +74,32 @@ void radar::start(LevelData* data)
         {
             // At bottom
             #ifdef REDUCE_OVERSCAN
-            xloc = (short) ( ((viewscreenp->endx - xview) - 8) );
-            yloc = (short) ( ((viewscreenp->endy - yview) - 8) );
+            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 8) );
+            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 8) );
             #else
-            xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
-            yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 4) );
+            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 4) );
             #endif
         }
         else
         {
             // At top
             #ifdef REDUCE_OVERSCAN
-            xloc = (short) ( ((viewscreenp->endx - xview) - 8) );
-            yloc = (short) (viewscreenp->yloc + 8);
+            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 8) );
+            yloc = static_cast<short>(viewscreenp->yloc + 8);
             #else
-            xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
-            yloc = (short) (viewscreenp->yloc + 4);
+            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 4) );
+            yloc = static_cast<short>(viewscreenp->yloc + 4);
             #endif
         }
         #else
             // At bottom
             #ifdef REDUCE_OVERSCAN
-            xloc = (short) ( ((viewscreenp->endx - xview) - 8) );
-            yloc = (short) ( ((viewscreenp->endy - yview) - 8) );
+            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 8) );
+            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 8) );
             #else
-            xloc = (short) ( ((viewscreenp->endx - xview) - 4) );
-            yloc = (short) ( ((viewscreenp->endy - yview) - 4) );
+            xloc = static_cast<short>( ((viewscreenp->endx - xview) - 4) );
+            yloc = static_cast<short>( ((viewscreenp->endy - yview) - 4) );
             #endif
         #endif
     }
@@ -145,22 +145,22 @@ short radar::draw(LevelData* data)
 
 	if (viewscreenp && viewscreenp->control)
 	{
-		radarx = (short) (viewscreenp->control->xpos/GRID_SIZE - xview/2);
-		radary = (short) (viewscreenp->control->ypos/GRID_SIZE - yview/2);
+		radarx = static_cast<short>(viewscreenp->control->xpos/GRID_SIZE - xview/2);
+		radary = static_cast<short>(viewscreenp->control->ypos/GRID_SIZE - yview/2);
 		if (viewscreenp->control->view_all > 0)
 			can_see = 1;
 		obteam = viewscreenp->control->team_num;
 	}
 	else
 	{
-		radarx = (short) (data->topx/GRID_SIZE - xview/2);
-		radary = (short) (data->topy/GRID_SIZE - yview/2);
+		radarx = static_cast<short>(data->topx/GRID_SIZE - xview/2);
+		radary = static_cast<short>(data->topy/GRID_SIZE - yview/2);
 		obteam = 0;
 	}
 	if (radarx > (sizex - xview))
-		radarx = (short) (sizex - xview);
+		radarx = static_cast<short>(sizex - xview);
 	if (radary > (sizey - yview))
-		radary = (short) (sizey - yview);
+		radary = static_cast<short>(sizey - yview);
 	if (radarx < 0)
 		radarx = 0;
 	if (radary < 0)
@@ -203,7 +203,7 @@ short radar::draw(LevelData* data)
 			            || (oborder == ORDER_GENERATOR && can_see)
 			           )
 			        && (obteam==ob->team_num || ob->invisibility_left < 1 || can_see)
-			        && on_screen( (short) ((ob->xpos+1)/GRID_SIZE), (short) ((ob->ypos+1)/GRID_SIZE), radarx, radary)
+			        && on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE), static_cast<short>((ob->ypos+1)/GRID_SIZE), radarx, radary)
 			   )
 				do_show = 1;
 			if (do_show)
@@ -225,7 +225,7 @@ short radar::draw(LevelData* data)
 					tempcolor = (ob->query_team_color());
 					if (viewscreenp && viewscreenp->control == ob)
 					{
-						tempcolor = (unsigned char) (random(256));
+						tempcolor = static_cast<unsigned char>(random(256));
 						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
 						{
 							myscreen->pointb(tempx-1,tempy,tempcolor, alpha);
@@ -260,7 +260,7 @@ short radar::draw(LevelData* data)
 					else if (oborder == ORDER_LIVING)
 						myscreen->pointb(tempx,tempy,tempcolor, alpha);
 					else if (oborder == ORDER_GENERATOR)
-						myscreen->pointb(tempx,tempy,(char)(tempcolor+1), alpha);
+						myscreen->pointb(tempx,tempy,static_cast<char>(tempcolor+1), alpha);
 					else if (oborder == ORDER_TREASURE) // currently life gems
 						myscreen->pointb(tempx,tempy,COLOR_FIRE, alpha);
 					else
@@ -286,19 +286,19 @@ short radar::draw(LevelData* data)
 					switch (obfamily)
 					{
 						case FAMILY_GOLD_BAR:
-							do_show = (short) (YELLOW + random(5));
+							do_show = static_cast<short>(YELLOW + random(5));
 							break;
 						case FAMILY_SILVER_BAR:
-							do_show = (short) (GREY + random(5));
+							do_show = static_cast<short>(GREY + random(5));
 							break;
 						case FAMILY_DRUMSTICK:
-							do_show = (short) (COLOR_BROWN + random(2));
+							do_show = static_cast<short>(COLOR_BROWN + random(2));
 							break;
 						case FAMILY_MAGIC_POTION:
 						case FAMILY_INVIS_POTION:
 						case FAMILY_INVULNERABLE_POTION:
 						case FAMILY_FLIGHT_POTION:
-							do_show = (short) (COLOR_BLUE + random(5));
+							do_show = static_cast<short>(COLOR_BLUE + random(5));
 							break;
 						default:
 							do_show = 0;
@@ -306,10 +306,10 @@ short radar::draw(LevelData* data)
 					}
 				}
 				if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
-					do_show = (short) LIGHT_BLUE + random(7);
+					do_show = static_cast<short>(LIGHT_BLUE) + random(7);
 			}
-			if (!on_screen( (short) ((ob->xpos+1)/GRID_SIZE),
-			                (short) ((ob->ypos+1)/GRID_SIZE),
+			if (!on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE),
+			                static_cast<short>((ob->ypos+1)/GRID_SIZE),
 			                radarx, radary) )
 				do_show = 0;
 			if (do_show)
@@ -328,7 +328,7 @@ short radar::draw(LevelData* data)
 						Log("bad radar, bad\n");
 						return 1;
 					}
-					myscreen->pointb(tempx,tempy,(char)do_show, alpha);
+					myscreen->pointb(tempx,tempy,static_cast<char>(do_show), alpha);
 				}//draw the blob onto the radar
 			} // end of valid do_show
 		}  // end of if here->ob
@@ -378,7 +378,7 @@ void radar::update(LevelData* data)
 		for (j = 0; j < sizey; j++)
 		{
 			// Check if item in background grid
-			switch ((unsigned char)data->grid.data[i+sizex*j])
+			switch (static_cast<unsigned char>(data->grid.data[i+sizex*j]))
 			{
 				case PIX_GRASS1:  // grass is green
 				case PIX_GRASS_DARK_1:
@@ -415,14 +415,14 @@ void radar::update(LevelData* data)
 				case PIX_GRASS_LIGHT_LEFT_BOTTOM:
 				case PIX_GRASS_LIGHT_LEFT:
 				case PIX_GRASS_LIGHT_LEFT_TOP:
-					temp = (short) (COLOR_GREEN + random(3) + 3);
+					temp = static_cast<short>(COLOR_GREEN + random(3) + 3);
 					break;
 				case PIX_TREE_M1: // Trees are green
 				case PIX_TREE_ML:
 				case PIX_TREE_T1:
 				case PIX_TREE_MR:
 				case PIX_TREE_MT:
-					temp = (short) (COLOR_TREES + random(3));
+					temp = static_cast<short>(COLOR_TREES + random(3));
 					break;
 				case PIX_TREE_B1: // Trunks are brown
 					temp = COLOR_BROWN + 6;
@@ -546,7 +546,7 @@ void radar::update(LevelData* data)
 				default:
 					temp =  0;
 			}
-			bmp[i+sizex*j] = (unsigned char) temp;
+			bmp[i+sizex*j] = static_cast<unsigned char>(temp);
 		}
 
 }

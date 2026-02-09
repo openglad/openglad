@@ -344,9 +344,9 @@ short living::act()
 					// Should we do our special? Are we full of magic?
 					if (stats->magicpoints >= stats->special_cost[1])
 					{
-						current_special = (char) (random((stats->level+2)/3) + 1);
+						current_special = static_cast<char>(random((stats->level+2)/3) + 1);
 						if ( (current_special > 4) ||
-						        (!strcmp(myscreen->special_name[(int)family][(int)current_special], "NONE"))
+						        (!strcmp(myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special)], "NONE"))
 						   )
 							current_special = 1;
 						if (check_special() )
@@ -368,7 +368,7 @@ short living::act()
 					}
 					if (foe) // && random(2) )
 					{
-						curdir = enddir = (char) ((enddir/2) * 2);
+						curdir = enddir = static_cast<char>((enddir/2) * 2);
 						//stats->try_command(COMMAND_SEARCH, 40, 0, 0);
 						stats->try_command(COMMAND_SEARCH, 300, 0, 0);
 					}
@@ -478,7 +478,7 @@ bool living::walk(float x, float y)
 	}
 	else // Just changing direction
 	{
-		enddir = (char) dir;
+		enddir = static_cast<char>(dir);
 
 		// Technically, control gets and EXTRA call to TURN
 		//   because first we call WALK, then ACT, whereas
@@ -537,7 +537,7 @@ short living::check_special()
 	shifter_down = random(2); // on or off, randomly ..
 
 	// Make sure we have enough ..
-	if (stats->magicpoints < stats->special_cost[(int)current_special])
+	if (stats->magicpoints < stats->special_cost[static_cast<int>(current_special)])
 		current_special = 1; // make us do default ..
 
 	switch (family)
@@ -545,7 +545,7 @@ short living::check_special()
 		case FAMILY_SOLDIER:   // Check for foe in range x
 			if (foe) // already have a foe ..
 			{
-				distance = (Uint32) distance_to_ob(foe);//Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe));//Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 square min
 					return 1;
 				return 0;
@@ -555,7 +555,7 @@ short living::check_special()
 				foe = myscreen->find_near_foe(this);
 				if (!foe)
 					return 0;
-				distance = (Uint32) distance_to_ob(foe); // (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe)); // (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 min
 					return 1;
 				return 0;
@@ -567,7 +567,7 @@ short living::check_special()
 		case FAMILY_ORC:
 			if (foe) // already have a foe ..
 			{
-				distance = (Uint32) distance_to_ob(foe); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
@@ -577,7 +577,7 @@ short living::check_special()
 				foe = myscreen->find_near_foe(this);
 				if (!foe)
 					return 0;
-				distance = (Uint32) distance_to_ob(foe); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
@@ -588,7 +588,7 @@ short living::check_special()
 			{
 				if (foe) // already have a foe ..
 				{
-					distance = (Uint32) distance_to_ob(foe); // (deltax*deltax) + Sint32 (deltay*deltay);
+					distance = static_cast<Uint32>(distance_to_ob(foe)); // (deltax*deltax) + Sint32 (deltay*deltay);
 					if (distance < 130 && distance > 35) // about 6 squares max, 2 min
 						return 0;
 				}
@@ -678,7 +678,7 @@ void living::set_difficulty(Uint32 whatlevel)
 {
 	//  Sint32 calcdelay,calcrate;  // apparently not used anymore
 	Uint32 dif1 = difficulty_level[current_difficulty];
-	Uint32 levmult = (Uint32) whatlevel*(Uint32) whatlevel;
+	Uint32 levmult = static_cast<Uint32>(whatlevel)*static_cast<Uint32>(whatlevel);
 
 	switch (family)
 	{
@@ -704,7 +704,7 @@ void living::set_difficulty(Uint32 whatlevel)
 		case FAMILY_SOLDIER:  // default as soldier
 			stats->max_hitpoints   += 13*levmult;
 			stats->max_magicpoints += 8*levmult;
-			weapons_left = (short) ((whatlevel+1) / 2);
+			weapons_left = static_cast<short>((whatlevel+1) / 2);
 			damage += 5*whatlevel;
 			stats->armor += 2*levmult;
 			break;
@@ -723,7 +723,7 @@ void living::set_difficulty(Uint32 whatlevel)
 		default:
 			stats->max_hitpoints   += 11*levmult;
 			stats->max_magicpoints += 11*levmult;
-			damage += (short) 4*whatlevel;
+			damage += static_cast<short>(4)*whatlevel;
 			stats->armor += 2*levmult;
 			break;
 	}
@@ -752,7 +752,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	if (stats->current_heal_delay > 1)
 	{
 		stats->max_heal_delay /=
-		    (Sint32) (stats->current_heal_delay + 1);
+		    static_cast<Sint32>(stats->current_heal_delay + 1);
 	}
 	stats->current_heal_delay = 0; //start off without healing
 
@@ -766,7 +766,7 @@ void living::set_difficulty(Uint32 whatlevel)
 
 	// Set the magic delay ..
 	stats->max_magic_delay = REGEN;
-	stats->current_magic_delay = (Sint32) (levmult*30);//for calculation only
+	stats->current_magic_delay = static_cast<Sint32>(levmult*30);//for calculation only
 
 	while (stats->current_magic_delay > REGEN)
 	{
@@ -777,7 +777,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	if (stats->current_magic_delay > 1)
 	{
 		stats->max_magic_delay /=
-		    (Sint32) (stats->current_magic_delay + 1);
+		    static_cast<Sint32>(stats->current_magic_delay + 1);
 	}
 	stats->current_magic_delay = 0; //start off without magic regen
 
@@ -791,7 +791,7 @@ void living::set_difficulty(Uint32 whatlevel)
 
 short living::facing(short x, short y)
 {
-	Sint32 bigy = (Sint32) (y*1000);
+	Sint32 bigy = static_cast<Sint32>(y*1000);
 	Sint32 slope;
 
 	if (!x)
@@ -841,8 +841,8 @@ short living::act_random()
 	if (!foe)
 		return stats->try_command(COMMAND_RANDOM_WALK,40);
 
-	xdist = (short) (foe->xpos - xpos);
-	ydist = (short) (foe->ypos - ypos);
+	xdist = static_cast<short>(foe->xpos - xpos);
+	ydist = static_cast<short>(foe->ypos - ypos);
 
 	// If foe is in firing range, turn and fire
 	if (abs(xdist) < lineofsight*GRID_SIZE &&
@@ -851,7 +851,7 @@ short living::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats->set_command(COMMAND_FIRE, (short) random(24), xdist, ydist);
+			stats->set_command(COMMAND_FIRE, static_cast<short>(random(24)), xdist, ydist);
 			return 1;
 		}
 		else

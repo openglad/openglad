@@ -117,9 +117,9 @@ short obmap::query_list(walker  *ob, short x, short y)
 		return 1;
 	}
 	startnumx = hash(x);
-	endnumx   = hash( (short) (x+ob->sizex) );
+	endnumx   = hash( static_cast<short>(x+ob->sizex) );
 	startnumy = hash(y);
-	endnumy   = hash( (short) (y+ob->sizey) );
+	endnumy   = hash( static_cast<short>(y+ob->sizey) );
 
 	// For each y grid row we are in...
 	for (numx = startnumx; numx <= endnumx; numx++)
@@ -172,9 +172,9 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 		return 0;
 
 	startnumx = hash(x);
-	endnumx   = hash( (short) (x + ob->sizex) );
+	endnumx   = hash( static_cast<short>(x + ob->sizex) );
 	startnumy = hash(y);
-	endnumy   = hash( (short) (y + ob->sizey) );
+	endnumy   = hash( static_cast<short>(y + ob->sizey) );
 
     // Figure out all of the positions that are occupied
 	std::list<std::pair<short,short> > pos;
@@ -214,7 +214,7 @@ short obmap::hash(short y)
 	//  For now, this assumes no one is smaller than size 8
 	//  Also note that the hash table never loops.
 	// return (y/8);
-	short num = (short) (y/OBRES) ;
+	short num = static_cast<short>(y/OBRES) ;
 	if (num > 198)
 		num = 199;
 	if (num < 0)
@@ -287,7 +287,7 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                               && (w->query_family() == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
-                        if (ob->keys & (Sint32) (pow((double) 2, w->stats->level)))
+                        if (ob->keys & static_cast<Sint32>(pow(static_cast<double>(2), w->stats->level)))
                         {
                             // Open the door ..
                             w->dead = 1;
@@ -347,19 +347,19 @@ short collide(short x,  short y,  short xsize,  short ysize,
 	ysize -= 2;
 	ysize2 -= 2;
 
-	x2right = (short) (x2+xsize2);
+	x2right = static_cast<short>(x2+xsize2);
 	if (x > x2right)
 		return 0;
 
-	xright = (short) (x+xsize);
+	xright = static_cast<short>(x+xsize);
 	if (xright < x2)
 		return 0;
 
-	y2down = (short) (y2+ysize2);
+	y2down = static_cast<short>(y2+ysize2);
 	if (y > y2down)
 		return 0;
 
-	ydown = (short) (y+ysize);
+	ydown = static_cast<short>(y+ysize);
 	if (ydown < y2)
 		return 0;
 

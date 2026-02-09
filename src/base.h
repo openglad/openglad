@@ -323,7 +323,7 @@ char* read_one_line(SDL_RWops *infile, short length);
 #define COMMAND_ATTACK 12       // attack / move to a close, current foe
 #define COMMAND_RIGHT_WALK 13   // use right-hand rule ONLY; no direct walk
 #define COMMAND_UNCHARM 14      // recover from being 'charmed'
-#define REGEN (Sint32) 4000       // used to calculate time between heals
+inline constexpr Sint32 REGEN = 4000;       // used to calculate time between heals
 
 #define STANDARD_TEXT_TIME 75   // how many cycles to display text?
 #define TEXT_1 "text.pix"       // standard text pixie
@@ -360,16 +360,16 @@ short load_saved_game(const char *filename, screen  *myscreen);
 #define SHIFT_BLOCKY       6  //  courtroom style
 
 
-#define SCEN_TYPE_CAN_EXIT (char) 1 // make these go by power of 2, 1,2,4,8
-#define SCEN_TYPE_GEN_EXIT (char) 2
-#define SCEN_TYPE_SAVE_ALL (char) 4 // save named npc's
+inline constexpr char SCEN_TYPE_CAN_EXIT = 1; // make these go by power of 2, 1,2,4,8
+inline constexpr char SCEN_TYPE_GEN_EXIT = 2;
+inline constexpr char SCEN_TYPE_SAVE_ALL = 4; // save named npc's
 
 #define OUTLINE_NAMED         7              // #defines for outline colors
 #define OUTLINE_INVULNERABLE  224            //
 #define OUTLINE_FLYING        208            //
 #define OUTLINE_INVISIBLE query_team_color() //
 
-#define ACTION_FOLLOW (char) 1
+inline constexpr char ACTION_FOLLOW = 1;
 
 #include "pixie_data.h"
 

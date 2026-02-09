@@ -31,7 +31,7 @@
 
 int toInt(const std::string& s);
 
-#define VERSION_NUM (char) 9 // save scenario type info
+static constexpr char VERSION_NUM = 9; // save scenario type info
 
 
 
@@ -748,7 +748,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 	// Get grid file to load
 	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
-	lowercase((char *)newgrid);
+	lowercase(newgrid);
 	data->grid_file = newgrid;
 
 	// Determine number of objects to load ...
@@ -790,7 +790,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 	{
 		SDL_RWread(infile, &tempwidth, 1, 1);
 		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[(int)tempwidth] = 0;
+		oneline[static_cast<int>(tempwidth)] = 0;
 		data->description.push_back(oneline);
 	}
 
@@ -852,7 +852,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	// Get grid file to load
 	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
-	lowercase((char *)newgrid);
+	lowercase(newgrid);
 	data->grid_file = newgrid;
 
 	// Determine number of objects to load ...
@@ -899,7 +899,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	{
 		SDL_RWread(infile, &tempwidth, 1, 1);
 		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[(int)tempwidth] = 0;
+		oneline[static_cast<int>(tempwidth)] = 0;
 		data->description.push_back(oneline);
 	}
 
@@ -962,7 +962,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	// Get grid file to load
 	SDL_RWread(infile, newgrid, 8, 1);
 	//buffers: PORT: make sure grid name is lowercase
-	lowercase((char *)newgrid);
+	lowercase(newgrid);
 	data->grid_file = newgrid;
 
 	// Get the scenario type information
@@ -1012,7 +1012,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	{
 		SDL_RWread(infile, &tempwidth, 1, 1);
 		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[(int)tempwidth] = 0;
+		oneline[static_cast<int>(tempwidth)] = 0;
 		data->description.push_back(oneline);
 	}
 
@@ -1111,7 +1111,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     // Get grid file to load
     READ_OR_RETURN(infile, newgrid, 8, 1);
     // Zardus: FIX: make sure they're lowercased
-    lowercase((char *)newgrid);
+    lowercase(newgrid);
 	data->grid_file = newgrid;
 
     // Get scenario title, if it exists
@@ -1181,9 +1181,9 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         READ_OR_RETURN(infile, &tempwidth, 1, 1);
         if(tempwidth > 0)
         {
-            int original_width = (unsigned char)tempwidth;
+            int original_width = static_cast<unsigned char>(tempwidth);
             int width = original_width;
-            if(width >= (int)sizeof(oneline))
+            if(width >= static_cast<int>(sizeof(oneline)))
                 width = sizeof(oneline) - 1;
             READ_OR_RETURN(infile, oneline, width, 1);
             oneline[width] = 0;
@@ -1194,7 +1194,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
                 int remaining = original_width - width;
                 while(remaining > 0)
                 {
-                    int chunk = remaining < (int)sizeof(discard) ? remaining : (int)sizeof(discard);
+                    int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
                     READ_OR_RETURN(infile, discard, chunk, 1);
                     remaining -= chunk;
                 }

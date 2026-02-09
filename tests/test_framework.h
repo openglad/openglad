@@ -47,7 +47,7 @@ extern int g_test_registry_count;
     do { \
         if ((expected) != (actual)) { \
             fprintf(stderr, "  FAIL: %s (expected %d, got %d) (%s:%d)\n", \
-                    msg, (int)(expected), (int)(actual), __FILE__, __LINE__); \
+                    msg, static_cast<int>(expected), static_cast<int>(actual), __FILE__, __LINE__); \
             g_tests_failed++; \
             g_tests_run++; \
             return; \

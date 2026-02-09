@@ -396,7 +396,7 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     
     long size = 100;
     // Grab the data
-    unsigned char* data = (unsigned char*)malloc(size);
+    unsigned char* data = static_cast<unsigned char*>(malloc(size));
     
     // Save it to another file
     Log("Copying to: %s\n", dest_filename.c_str());

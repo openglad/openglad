@@ -37,11 +37,11 @@ class vbutton;
 #define BUT_LEVEL 5
 
 // Button edge-colors
-#define BUTTON_FACING (char) 13 //12
-#define BUTTON_TOP    (char) 15 //14
-#define BUTTON_BOTTOM (char) 11 //10
-#define BUTTON_LEFT   (char) 14 //13
-#define BUTTON_RIGHT  (char) 12 //11
+inline constexpr char BUTTON_FACING = 13; //12
+inline constexpr char BUTTON_TOP    = 15; //14
+inline constexpr char BUTTON_BOTTOM = 11; //10
+inline constexpr char BUTTON_LEFT   = 14; //13
+inline constexpr char BUTTON_RIGHT  = 12; //11
 
 extern screen *myscreen;
 

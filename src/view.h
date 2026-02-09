@@ -22,34 +22,34 @@
 #include "level_data.h"
 
 // Viewscreen-related defines
-#define PREF_LIFE (signed char) 0
-  #define PREF_LIFE_TEXT  (signed char) 0
-  #define PREF_LIFE_BARS  (signed char) 1
-  #define PREF_LIFE_BOTH  (signed char) 2
-  #define PREF_LIFE_SMALL (signed char) 3
-  #define PREF_LIFE_OFF   (signed char) 4
-#define PREF_SCORE (signed char) 1
-  #define PREF_SCORE_OFF (signed char) 0
-  #define PREF_SCORE_ON  (signed char) 1
-#define PREF_VIEW (signed char) 2
-  #define PREF_VIEW_FULL   (signed char) 0
-  #define PREF_VIEW_PANELS (signed char) 1
-  #define PREF_VIEW_1      (signed char) 2
-  #define PREF_VIEW_2      (signed char) 3
-  #define PREF_VIEW_3      (signed char) 4
-#define PREF_JOY (signed char) 3
-  #define PREF_NO_JOY (signed char) 0
-  #define PREF_USE_JOY (signed char) 1
-#define PREF_RADAR (signed char) 4
-  #define PREF_RADAR_OFF   (signed char) 0
-  #define PREF_RADAR_ON    (signed char) 1
-#define PREF_FOES (signed char) 5
-  #define PREF_FOES_OFF    (signed char) 0
-  #define PREF_FOES_ON     (signed char) 1
-#define PREF_GAMMA (signed char) 6
-#define PREF_OVERLAY (signed char) 7
-  #define PREF_OVERLAY_OFF (signed char) 0
-  #define PREF_OVERLAY_ON  (signed char) 1
+inline constexpr signed char PREF_LIFE = 0;
+  inline constexpr signed char PREF_LIFE_TEXT  = 0;
+  inline constexpr signed char PREF_LIFE_BARS  = 1;
+  inline constexpr signed char PREF_LIFE_BOTH  = 2;
+  inline constexpr signed char PREF_LIFE_SMALL = 3;
+  inline constexpr signed char PREF_LIFE_OFF   = 4;
+inline constexpr signed char PREF_SCORE = 1;
+  inline constexpr signed char PREF_SCORE_OFF = 0;
+  inline constexpr signed char PREF_SCORE_ON  = 1;
+inline constexpr signed char PREF_VIEW = 2;
+  inline constexpr signed char PREF_VIEW_FULL   = 0;
+  inline constexpr signed char PREF_VIEW_PANELS = 1;
+  inline constexpr signed char PREF_VIEW_1      = 2;
+  inline constexpr signed char PREF_VIEW_2      = 3;
+  inline constexpr signed char PREF_VIEW_3      = 4;
+inline constexpr signed char PREF_JOY = 3;
+  inline constexpr signed char PREF_NO_JOY = 0;
+  inline constexpr signed char PREF_USE_JOY = 1;
+inline constexpr signed char PREF_RADAR = 4;
+  inline constexpr signed char PREF_RADAR_OFF   = 0;
+  inline constexpr signed char PREF_RADAR_ON    = 1;
+inline constexpr signed char PREF_FOES = 5;
+  inline constexpr signed char PREF_FOES_OFF    = 0;
+  inline constexpr signed char PREF_FOES_ON     = 1;
+inline constexpr signed char PREF_GAMMA = 6;
+inline constexpr signed char PREF_OVERLAY = 7;
+  inline constexpr signed char PREF_OVERLAY_OFF = 0;
+  inline constexpr signed char PREF_OVERLAY_ON  = 1;
 
 #define PREF_MAX 8  // == 1 + highest pref ..
 

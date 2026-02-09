@@ -26,22 +26,22 @@
 //
 
 // These are for the bit-flags
-#define BIT_FLYING     (Sint32)     1  // fly over water, trees
-#define BIT_SWIMMING   (Sint32)     2  // move over water
-#define BIT_ANIMATE    (Sint32)     4  // animate even when not moving
-#define BIT_INVINCIBLE (Sint32)     8  // can't be harmed
-#define BIT_NO_RANGED  (Sint32)    16  // no ranged attack
-#define BIT_IMMORTAL   (Sint32)    32  // for weapons that don't die when
-//   they hit
-#define BIT_NO_COLLIDE (Sint32)    64  // fly through walkers
-#define BIT_PHANTOM    (Sint32)   128  // use phantomputbuffer instead of
-//   walkerputbuffer
-#define BIT_NAMED      (Sint32)   256  // has a name (will have outline)
-#define BIT_FORESTWALK (Sint32)   512  // can walk through forests
-#define BIT_MAGICAL    (Sint32)  1024  // generally for magical weapons
-#define BIT_FIRE       (Sint32)  2048  // for any flame weapons
-#define BIT_ETHEREAL   (Sint32)  4096  // fly "through" walls
-#define BIT_LAST       (Sint32)  8192
+inline constexpr Sint32 BIT_FLYING     =     1;  // fly over water, trees
+inline constexpr Sint32 BIT_SWIMMING   =     2;  // move over water
+inline constexpr Sint32 BIT_ANIMATE    =     4;  // animate even when not moving
+inline constexpr Sint32 BIT_INVINCIBLE =     8;  // can't be harmed
+inline constexpr Sint32 BIT_NO_RANGED  =    16;  // no ranged attack
+inline constexpr Sint32 BIT_IMMORTAL   =    32;  // for weapons that don't die when
+                                                  //   they hit
+inline constexpr Sint32 BIT_NO_COLLIDE =    64;  // fly through walkers
+inline constexpr Sint32 BIT_PHANTOM    =   128;  // use phantomputbuffer instead of
+                                                  //   walkerputbuffer
+inline constexpr Sint32 BIT_NAMED      =   256;  // has a name (will have outline)
+inline constexpr Sint32 BIT_FORESTWALK =   512;  // can walk through forests
+inline constexpr Sint32 BIT_MAGICAL    =  1024;  // generally for magical weapons
+inline constexpr Sint32 BIT_FIRE       =  2048;  // for any flame weapons
+inline constexpr Sint32 BIT_ETHEREAL   =  4096;  // fly "through" walls
+inline constexpr Sint32 BIT_LAST       =  8192;
 // Other special effects, etc.
 #define FAERIE_FREEZE_TIME    40
 

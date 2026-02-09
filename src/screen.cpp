@@ -61,7 +61,7 @@ Uint32 random(Uint32 x)
 {
 	if (x < 1)
 		return 0;
-	return (Uint32) ( ((Uint32) rand()) % x);
+	return static_cast<Uint32>( (static_cast<Uint32>(rand())) % x);
 }
 
 // ************************************************************
@@ -374,7 +374,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 	Sint32 ytarg; //the for loop target
 	Sint32 dist;
 	// NOTE: we're going to shrink dimensions by one in each..
-	//Sint32 xover = (Sint32) (x+ob->sizex-1), yover = (Sint32) (y+ob->sizey-1);
+	//Sint32 xover = static_cast<Sint32>(x+ob->sizex-1), yover = static_cast<Sint32>(y+ob->sizey-1);
 	Sint32 xover = x+ob->sizex, yover = y+ob->sizey;
 
 	// Again, this is for shrinking ...
@@ -409,7 +409,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 
 		{
 			// Check if item in background grid
-			switch ((unsigned char)level_data.grid.data[i+level_data.grid.w*j])
+			switch (static_cast<unsigned char>(level_data.grid.data[i+level_data.grid.w*j]))
 			{
 				case PIX_GRASS1:  // grass is pass..
 				case PIX_GRASS2:
@@ -1001,7 +1001,7 @@ walker *screen::find_near_foe(walker  *ob)
 		xchange++; //change whether we do x or y in each for loop
 		if (!(xchange%2))
 		{
-			resolution = (short) (-resolution); // reverse direction around the search every other for
+			resolution = static_cast<short>(-resolution); // reverse direction around the search every other for
 			spread++; // increase the search width every other for
 		}
 	}//end while
@@ -1170,7 +1170,7 @@ walker  * screen::find_nearest_blood(walker  *who)
 		if (w && w->query_order() == ORDER_TREASURE &&
 		        w->query_family() == FAMILY_STAIN && !w->dead)
 		{
-			newdistance = (Uint32) who->distance_to_ob_center(w);
+			newdistance = static_cast<Uint32>(who->distance_to_ob_center(w));
 			if (newdistance < distance)
 			{
 				distance = newdistance;
@@ -1192,8 +1192,8 @@ std::list<walker*> screen::find_in_range(std::list<walker*>& somelist, Sint32 ra
 	if(!ob)
 		return result;
 
-	//obx = (short) (ob->xpos + (ob->sizex/2) );  // center of object
-	//oby = (short) (ob->ypos + (ob->sizey/2) );
+	//obx = static_cast<short>(ob->xpos + (ob->sizex/2) );  // center of object
+	//oby = static_cast<short>(ob->ypos + (ob->sizey/2) );
 
 	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
@@ -1326,17 +1326,17 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 	short xover, yover;
 	short gridloc;
 
-	xover = (short) (xloc / GRID_SIZE);
-	yover = (short) (yloc / GRID_SIZE);
+	xover = static_cast<short>(xloc / GRID_SIZE);
+	yover = static_cast<short>(yloc / GRID_SIZE);
 
 	if (xover < 0 || yover < 0)
 		return 0;
 	if (xover >= level_data.grid.w || yover >= level_data.grid.h)
 		return 0;
 
-	gridloc = (short) (yover*level_data.grid.w+xover);
+	gridloc = static_cast<short>(yover*level_data.grid.w+xover);
 
-	switch ((unsigned char)level_data.grid.data[gridloc])
+	switch (static_cast<unsigned char>(level_data.grid.data[gridloc]))
 	{
 		case PIX_GRASS1: // grass
 		case PIX_GRASS2:

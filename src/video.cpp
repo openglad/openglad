@@ -28,7 +28,7 @@
 #define ASSERT(x) if (!(x)) return 0;
 
 
-unsigned char * videoptr = (unsigned char*) VIDEO_LINEAR;
+unsigned char * videoptr = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
 
 Screen *E_Screen;
 
@@ -294,7 +294,7 @@ Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
 
 	if (header && strlen(header) ) // display a title?
 		dialogtext.write_xy(left, y1+6, header,
-		                    (unsigned char) RED, 1); // draw header to buffer
+		                    static_cast<unsigned char>(RED), 1); // draw header to buffer
 	draw_text_bar(x1+4, y1+20, x2-4, y2-4); // draw box for text
 
 	return x1+6;  // where text should begin to display, left-aligned
@@ -736,8 +736,8 @@ void video::do_cycle(Sint32 curmode, Sint32 maxmode)
 		                  &tempcol[1], &tempcol[2]);        // get first color
 		for (i=ORANGE_END; i > ORANGE_START; i--)
 		{
-			query_palette_reg((char) (i-1), &curcol[0], &curcol[1], &curcol[2]);
-			set_palette_reg((char) i, (char) curcol[0],(char) curcol[1], (char) curcol[2]);
+			query_palette_reg(static_cast<char>(i-1), &curcol[0], &curcol[1], &curcol[2]);
+			set_palette_reg(static_cast<char>(i), static_cast<char>(curcol[0]),static_cast<char>(curcol[1]), static_cast<char>(curcol[2]));
 		}
 		set_palette_reg(ORANGE_START, tempcol[0],
 		                tempcol[1], tempcol[2]);        // reassign last to first
@@ -747,8 +747,8 @@ void video::do_cycle(Sint32 curmode, Sint32 maxmode)
 		                  &tempcol[1], &tempcol[2]);        // get first color
 		for (i=WATER_END; i > WATER_START; i--)
 		{
-			query_palette_reg((char) (i-1), &curcol[0], &curcol[1], &curcol[2]);
-			set_palette_reg((char) i, curcol[0], curcol[1], curcol[2]);
+			query_palette_reg(static_cast<char>(i-1), &curcol[0], &curcol[1], &curcol[2]);
+			set_palette_reg(static_cast<char>(i), curcol[0], curcol[1], curcol[2]);
 		}
 		set_palette_reg(WATER_START, tempcol[0],
 		                tempcol[1], tempcol[2]);        // reassign last to first
@@ -1117,8 +1117,8 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 				buffoff++;
 				continue;
 			}
-			if (curcolor > (unsigned char) 247)
-				curcolor = (unsigned char) (teamcolor+(255-curcolor));
+			if (curcolor > static_cast<unsigned char>(247))
+				curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 			//buffers: PORT: videobuffer[buffoff++] = curcolor;
 			pointb(walkerstartx+curx,walkerstarty+cury,curcolor);
 		}
@@ -1186,8 +1186,8 @@ void video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
 				continue;
 			}
 			
-			if (curcolor > (unsigned char) 247)
-				curcolor = (unsigned char) (teamcolor+(255-curcolor));
+			if (curcolor > static_cast<unsigned char>(247))
+				curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 			
 			int r,g,b;
             query_palette_reg(curcolor,&r,&g,&b);
@@ -1277,8 +1277,8 @@ void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                                 buffoff++;
                                 continue;
                         }
-                        if (curcolor > (unsigned char) 247)
-                                curcolor = (unsigned char) (teamcolor+(255-curcolor));
+                        if (curcolor > static_cast<unsigned char>(247))
+                                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 			query_palette_reg(curcolor,&r,&g,&b);
                         color = SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4);
 
@@ -1349,8 +1349,8 @@ void video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                                 buffoff++;
                                 continue;
                         }
-                        if (curcolor > (unsigned char) 247)
-                                curcolor = (unsigned char) (teamcolor+(255-curcolor));
+                        if (curcolor > static_cast<unsigned char>(247))
+                                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
                         
                         pointb(curx + walkerstartx, cury + walkerstarty, teamcolor, alpha);
                 }
@@ -1470,8 +1470,8 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 						continue;
 					} //end of transparency check
 
-					if (curcolor > (unsigned char) 247)
-						curcolor = (unsigned char) (teamcolor+(255-curcolor));
+					if (curcolor > static_cast<unsigned char>(247))
+						curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 
 					if (outline)
 					{
@@ -1547,8 +1547,8 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 						continue;
 					} //end of transparency check
 
-					if (curcolor > (unsigned char) 247)
-						curcolor = (unsigned char) (teamcolor+(255-curcolor));
+					if (curcolor > static_cast<unsigned char>(247))
+						curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 
 					if (curx==0 || cury==0 || curx==(walkerwidth-1) || cury==(totrows-1))
 					{
@@ -1579,7 +1579,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					break;
 
 				case SHIFT_RIGHT_RANDOM:
-					shift = (signed char) random(2);
+					shift = static_cast<signed char>(random(2));
 					break;
 
 				default:
@@ -1610,7 +1610,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 						ty = buffoff/320;
 						tx = buffoff-ty*320;
 						;
-						pointb(tx,ty,(int)r,(int)g,(int)b);
+						pointb(tx,ty,static_cast<int>(r),static_cast<int>(g),static_cast<int>(b));
 						buffoff++;
 					}
 
@@ -1671,8 +1671,8 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 							buffoff++;
 							continue;
 						}
-						if (curcolor > (unsigned char) 247)
-							curcolor = (unsigned char) (teamcolor+(255-curcolor));
+						if (curcolor > static_cast<unsigned char>(247))
+							curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
 						videobuffer[buffoff++] = curcolor;
 					} //end each row
 
@@ -1712,7 +1712,7 @@ void video::get_pixel(int x, int y, Uint8 *r, Uint8 *g, Uint8 *b)
 	Uint32 col = 0;
 	Uint8 q=0,w=0,e=0;
 
-	char *p = (char *)E_Screen->render->pixels;
+	char *p = reinterpret_cast<char*>(E_Screen->render->pixels);
 	p += E_Screen->render->pitch*y;
 	p += E_Screen->render->format->BytesPerPixel*x;
 

@@ -139,7 +139,7 @@ void test_save_data_reset() {
     myscreen->save_data.reset();
 
     TEST_ASSERT_EQ(0, myscreen->save_data.team_size, "team_size should be 0 after reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->save_data.totalcash, "totalcash should be 0 after reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->save_data.totalscore, "totalscore should be 0 after reset");
+    TEST_ASSERT_EQ(0, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be 0 after reset");
+    TEST_ASSERT_EQ(0, static_cast<int>(myscreen->save_data.totalscore), "totalscore should be 0 after reset");
 }
 REGISTER_TEST(test_save_data_reset);

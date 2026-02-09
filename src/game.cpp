@@ -63,7 +63,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	{
 	    walker* w = *e;
 		if (w)
-			w->set_difficulty((Uint32)w->stats->level);
+			w->set_difficulty(static_cast<Uint32>(w->stats->level));
 	}
 
 	// Cycle through the team list ..
@@ -88,7 +88,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 		// First, try to find a marker that's the correct team number ..
 		replace_walker = myscreen->first_of(ORDER_SPECIAL,
 		                                    FAMILY_RESERVED_TEAM,
-		                                    (int)temp_guy->teamnum);
+		                                    static_cast<int>(temp_guy->teamnum));
 		// If that doesn't work, though, grab any marker we can ..
 		if (!replace_walker)
 			replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);

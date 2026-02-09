@@ -88,8 +88,8 @@ inline void interact(const std::string& id)
             int game_y = allbuttons[i]->yloc + allbuttons[i]->height / 2;
 
             // Convert game coords to window coords using viewport globals
-            win_x = (int)(game_x * (viewport_w / 320.0f) + viewport_offset_x);
-            win_y = (int)(game_y * (viewport_h / 200.0f) + viewport_offset_y);
+            win_x = static_cast<int>(game_x * (viewport_w / 320.0f) + viewport_offset_x);
+            win_y = static_cast<int>(game_y * (viewport_h / 200.0f) + viewport_offset_y);
 
             fprintf(stderr, "  [interact] clicking '%s' at game(%d,%d) win(%d,%d)\n",
                     id.c_str(), game_x, game_y, win_x, win_y);

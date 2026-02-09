@@ -33,14 +33,14 @@ void popup_dialog(const char* title, const char* message);
 extern float derived_bonuses[NUM_FAMILIES][8];
 
 // These are for monsters and us
-signed char bit1[] = {(char) 1,(char) 5,(char) 1,(char) 9,(signed char) -1};     // up
-signed char bit2[] = {(char) 13,(char) 17,(char) 13,(char) 21,(signed char) -1}; // up-right
-signed char bit3[] = {(char) 2,(char) 6,(char) 2,(char) 10,(signed char) -1};    // right
-signed char bit4[] = {(char) 14,(char) 18,(char) 14,(char) 22,(signed char) -1}; // down-right
-signed char bit5[] = {(char) 0,(char) 4,(char) 0,(char) 8,(signed char) -1};     // down
-signed char bit6[] = {(char) 12,(char) 16,(char) 12,(char) 20,(signed char) -1}; // down-left
-signed char bit7[] = {(char) 3,(char) 7,(char) 3,(char) 11,(signed char) -1};    // left
-signed char bit8[] = {(char) 15,(char) 19,(char) 15,(char) 23,(signed char) -1}; // up-left
+signed char bit1[] = {static_cast<char>(1),static_cast<char>(5),static_cast<char>(1),static_cast<char>(9),static_cast<signed char>(-1)};     // up
+signed char bit2[] = {static_cast<char>(13),static_cast<char>(17),static_cast<char>(13),static_cast<char>(21),static_cast<signed char>(-1)}; // up-right
+signed char bit3[] = {static_cast<char>(2),static_cast<char>(6),static_cast<char>(2),static_cast<char>(10),static_cast<signed char>(-1)};    // right
+signed char bit4[] = {static_cast<char>(14),static_cast<char>(18),static_cast<char>(14),static_cast<char>(22),static_cast<signed char>(-1)}; // down-right
+signed char bit5[] = {static_cast<char>(0),static_cast<char>(4),static_cast<char>(0),static_cast<char>(8),static_cast<signed char>(-1)};     // down
+signed char bit6[] = {static_cast<char>(12),static_cast<char>(16),static_cast<char>(12),static_cast<char>(20),static_cast<signed char>(-1)}; // down-left
+signed char bit7[] = {static_cast<char>(3),static_cast<char>(7),static_cast<char>(3),static_cast<char>(11),static_cast<signed char>(-1)};    // left
+signed char bit8[] = {static_cast<char>(15),static_cast<char>(19),static_cast<char>(15),static_cast<char>(23),static_cast<signed char>(-1)}; // up-left
 
 signed char att1[] = {1,5,1,-1};       // up
 signed char att2[] = {13,17,13,-1};    // up-right
