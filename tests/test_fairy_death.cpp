@@ -17,6 +17,7 @@ extern int g_picker_max_mainmenu_calls;
 
 #ifdef TESTING
 extern bool g_test_in_game;
+extern int g_test_max_game_frames;
 #endif
 
 // Globals defined in picker.cpp that we need for cleanup
@@ -104,6 +105,7 @@ static int fairy_injector(void* data)
     wait_for_interactable("go", 10000);
     SDL_Delay(500);
 
+    g_test_max_game_frames = 50000;
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");
@@ -117,7 +119,8 @@ static int fairy_injector(void* data)
     while (!g_test_in_game) SDL_Delay(50);   // wait for game to start
     while (g_test_in_game) SDL_Delay(50);     // wait for game to end
 
-    // Restore speed
+    // Restore test settings
+    g_test_max_game_frames = 0;
     set_game_speed(state->original_speed);
 
     // Now we're truly back in create_team_menu with fresh buttons

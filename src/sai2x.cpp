@@ -720,7 +720,11 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     
     update_overscan_setting();
     
+    #ifdef TESTING
+    renderer = SDL_CreateRenderer(window, -1, 0);
+    #else
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
+    #endif
     
     render = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
 	render_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 200);

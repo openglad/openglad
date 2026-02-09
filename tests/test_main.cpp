@@ -15,14 +15,16 @@ int main(int argc, char* argv[]) {
     // Force offscreen rendering - no display needed
     SDL_setenv("SDL_VIDEODRIVER", "offscreen", 1);
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
-    // Disable vsync. The Screen constructor (sai2x.cpp) creates the SDL
-    // renderer with SDL_RENDERER_PRESENTVSYNC, which makes SDL_RenderPresent()
-    // block for ~16ms per call even on the offscreen driver when there's no
-    // GPU. The game-loop tests (test_fairy_death, test_overpowered_team) call
-    // SDL_RenderPresent every frame at max speed — with vsync, each frame
-    // takes 16ms instead of microseconds, so the game never finishes before
-    // the test timeout. This env var overrides the flag in SDL_CreateRenderer.
-    SDL_setenv("SDL_RENDER_VSYNC", "0", 1);
+    // Game-loop tests (test_fairy_death, test_overpowered_team) run the full
+    // game simulation at max speed. Three compile-time optimizations make
+    // this fast enough for CI:
+    //   1. sai2x.cpp creates the renderer without SDL_RENDERER_PRESENTVSYNC
+    //      so SDL_RenderPresent doesn't block ~16ms per call.
+    //   2. glad.cpp skips redraw()/refresh() in game_frame() so we don't
+    //      burn CPU on software rendering that nobody sees.
+    //   3. glad.cpp enforces g_test_max_game_frames so game-loop tests
+    //      can't run indefinitely (e.g. level NPCs keeping the game alive
+    //      after hired characters die).
 
     // Do global init once
     init_logging();

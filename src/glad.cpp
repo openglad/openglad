@@ -56,6 +56,7 @@ extern bool debug_draw_obmap;
 
 #ifdef TESTING
 bool g_test_remove_exits = false;
+int g_test_max_game_frames = 0;
 #endif
 
 // Z's script: #include <process.h>
@@ -260,9 +261,11 @@ static void game_frame()
 
 	if (myscreen->redrawme)
 	{
+#ifndef TESTING
 		myscreen->draw_panels(myscreen->numviews);
 		score_panel(myscreen, 1);
 		myscreen->refresh();
+#endif
 		myscreen->redrawme = 0;
 	}
 	if (myscreen->end)
@@ -272,11 +275,20 @@ static void game_frame()
 	}
 	myscreen->act();
 	myscreen->framecount++;
+#ifdef TESTING
+	if (g_test_max_game_frames > 0 && myscreen->framecount >= g_test_max_game_frames)
+	{
+		myscreen->endgame(1);
+		g_frame_state.done = true;
+		return;
+	}
+#endif
 	if (myscreen->end)
 	{
 		g_frame_state.done = true;
 		return;
 	}
+#ifndef TESTING
 	myscreen->redraw();
 
 	if(debug_draw_obmap)
@@ -287,6 +299,7 @@ static void game_frame()
 	#endif
 	score_panel(myscreen);
 	myscreen->refresh();
+#endif
 
 	SDL_Event event;
 	while(SDL_PollEvent(&event))
