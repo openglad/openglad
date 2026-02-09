@@ -128,7 +128,7 @@ std::string get_asset_path()
     // Assumes UNIX with /proc
     char path[512];
     int maxPathSize = 512;
-    memset(path, 0, maxPathSize);
+    std::fill_n(path, maxPathSize, '\0');
     readlink("/proc/self/exe", path, maxPathSize);
     path[maxPathSize-1] = '\0';
     std::string s = path;

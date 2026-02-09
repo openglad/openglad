@@ -28,6 +28,7 @@
 #include "level_picker.h"
 #include "campaign_picker.h"
 #include "sai2x.h"
+#include <algorithm>
 #include <cstring>
 
 #ifdef OUYA
@@ -2072,7 +2073,7 @@ void LevelEditorData::clear_terrain()
     int w = level->grid.w;
     int h = level->grid.h;
     
-    memset(level->grid.data, 1, w*h);
+    std::fill_n(level->grid.data, w*h, static_cast<unsigned char>(1));
     resmooth_terrain();
 }
 

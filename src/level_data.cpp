@@ -1067,16 +1067,12 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     short listsize;
     short i;
     walker * new_guy;
-    char newgrid[16]; // 8-byte grid name + ".pix" + null
-    memset(newgrid, 0, 16);
+    char newgrid[16] = {}; // 8-byte grid name + ".pix" + null
     char new_scen_type; // read the scenario type
-    char oneline[80];
-    memset(oneline, 0, 80);
+    char oneline[80] = {};
     char numlines = 0, tempwidth;
-    char tempname[12];
-    memset(tempname, 0, 12);
-    char scentitle[30];
-    memset(scentitle, 0, 30);
+    char tempname[12] = {};
+    char scentitle[30] = {};
     short temp_par = 1;
     short temp_time_limit = 4000;
 
@@ -1277,8 +1273,7 @@ bool LevelData::load()
 {
 	TRACE("game", "LevelData::load id=%d", id);
 	SDL_RWops  *infile = nullptr;
-	char temptext[10];
-	memset(temptext, 0, 10);
+	char temptext[10] = {};
 	char versionnumber = 0;
 	
 	// Build up the file name (scen#.fss)
@@ -1409,8 +1404,7 @@ bool LevelData::save()
 	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
 	SDL_RWops  *outfile;
 	char temptext[10] = "FSS";
-	char temp_grid[20];
-    memset(temp_grid, 0, 20);
+	char temp_grid[20] = {};
 	char temp_scen_type = 0;
 	Sint32 listsize;
 	Sint32 i;
@@ -1418,10 +1412,8 @@ bool LevelData::save()
 	char temp_filename[80];
 	char numlines, tempwidth;
 	char oneline[80];
-	char tempname[12];
-    memset(tempname, 0, 12);
-	char scentitle[30];
-    memset(scentitle, 0, 30);
+	char tempname[12] = {};
+	char scentitle[30] = {};
 	short temp_par;
 	short temp_time_limit;
 

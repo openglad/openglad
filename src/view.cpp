@@ -1928,7 +1928,7 @@ options::options()
 {
 	int i;
 	SDL_RWops *infile;
-	memcpy(allkeys, *normalkeys, 64 * sizeof(int)); // Allocate our normal keys
+	std::copy_n(*normalkeys, 64, allkeys[0]); // Copy our normal keys
 
 	// Set up preference defaults
 	for(i=0; i<4; i++)
@@ -1967,9 +1967,9 @@ short options::load(viewscreen *viewp)
 	short prefnum = viewp->mynum;
 	// Yes, we are ACTUALLY COPYING the data
 	if(viewp->prefs != prefs[prefnum])
-        memcpy(viewp->prefs, prefs[prefnum], 10);
+        std::copy_n(prefs[prefnum], 10, viewp->prefs);
     if(viewp->mykeys != allkeys[prefnum])
-        memcpy(viewp->mykeys, allkeys[prefnum], 16 * sizeof(int));
+        std::copy_n(allkeys[prefnum], 16, viewp->mykeys);
 	return 1;
 }
 
@@ -1985,8 +1985,8 @@ short options::save(viewscreen *viewp)
 	SDL_RWops *outfile;
 
 	// Yes, we are ACTUALLY COPYING the data
-	memcpy(prefs[prefnum], viewp->prefs, 10);
-	memcpy(allkeys[prefnum], viewp->mykeys, 16 * sizeof (int));
+	std::copy_n(viewp->prefs, 10, prefs[prefnum]);
+	std::copy_n(viewp->mykeys, 16, allkeys[prefnum]);
 
 	outfile = open_write_file(KEY_FILE);
 

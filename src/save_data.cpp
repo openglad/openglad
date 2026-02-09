@@ -22,6 +22,7 @@
 #include "guy.h"
 #include "campaign_picker.h"
 #include "io.h"
+#include <algorithm>
 #include <cstring>
 
 
@@ -284,7 +285,7 @@ bool SaveData::load(const std::string& filename)
 		// Get temp values to be read
 		temp_order = ORDER_LIVING; // may be changed later
 		// Read name of current guy...
-		memset(guyname, 0, 12);
+		std::fill_n(guyname, 12, '\0');
 		strcpy(guyname, tempname);
 		// Now write all those values
 		SDL_RWread(infile, &temp_order, 1, 1);
@@ -360,7 +361,7 @@ bool SaveData::load(const std::string& filename)
     if(temp_version < 8)
     {
         char levelstatus[MAX_LEVELS];
-        memset(levelstatus, 0, 500);
+        std::fill_n(levelstatus, 500, '\0');
         
         if (temp_version >= 5)
             SDL_RWread(infile, levelstatus, 500, 1);
@@ -458,9 +459,9 @@ bool SaveData::save(const std::string& filename)
 	SDL_RWops  *outfile;
 	char temp_filename[80];
 	char savedgame[41];
-	memset(savedgame, 0, 41);
+	std::fill_n(savedgame, 41, '\0');
 	char temp_campaign[41];
-	memset(temp_campaign, 0, 41);
+	std::fill_n(temp_campaign, 41, '\0');
 
 	char temptext[10] = "GTL";
 	char temp_version = 9;
@@ -604,7 +605,7 @@ bool SaveData::save(const std::string& filename)
         temp_order = ORDER_LIVING;
         temp_family= temp_guy->family;
         // Write name of current guy...
-        memset(guyname, 0, 12);
+        std::fill_n(guyname, 12, '\0');
         strncpy(guyname, temp_guy->name.c_str(), 11);
         temp_str = temp_guy->strength;
         temp_dex = temp_guy->dexterity;
@@ -663,7 +664,7 @@ bool SaveData::save(const std::string& filename)
     {
         // Campaign ID
         char campaign[41];
-        memset(campaign, 0, 41);
+        std::fill_n(campaign, 41, '\0');
         strcpy(campaign, e->first.c_str());
         SDL_RWwrite(outfile, campaign, 1, 40);
         

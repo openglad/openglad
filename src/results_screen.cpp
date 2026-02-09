@@ -6,6 +6,7 @@
 #include "guy.h"
 #include "stats.h"
 #include "view.h"
+#include <algorithm>
 #include <cstring>
 
 #ifdef OUYA
@@ -570,7 +571,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                     char buf[50];
                     snprintf(buf, 50, "%d", allscore*2);
                     mytext.write_xy_center_shadow(area.x + area.w/2, y, YELLOW, "%s Gold       ", buf);
-                    memset(buf, ' ', strlen(buf));
+                    std::fill_n(buf, strlen(buf), ' ');
                     mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Gained", buf);
                 }
                 if(area_inner.y < y && y + 10 < area_inner.y + area_inner.h)
@@ -589,7 +590,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 char buf[50];
                 snprintf(buf, 50, "%d", num_foes_total - num_foes_left);
                 mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s Foes         ", buf);
-                memset(buf, ' ', strlen(buf));
+                std::fill_n(buf, strlen(buf), ' ');
                 mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s      Defeated", buf);
             }
             else
@@ -599,8 +600,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 snprintf(buf, 50, "%d", num_foes_total - num_foes_left);
                 snprintf(buf2, 50, "%d", num_foes_total);
                 mytext.write_xy_center_shadow(area.x + area.w/2, y, PURE_WHITE, "%s of %s Foes         ", buf, buf2);
-                memset(buf, ' ', strlen(buf));
-                memset(buf2, ' ', strlen(buf2));
+                std::fill_n(buf, strlen(buf), ' ');
+                std::fill_n(buf2, strlen(buf2), ' ');
                 mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "%s    %s      Defeated", buf, buf2);
             }
             END_IF_IN_SCROLL_AREA;

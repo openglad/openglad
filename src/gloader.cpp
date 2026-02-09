@@ -22,6 +22,7 @@
 #include "treasure.h"
 #include "weap.h"
 #include "effect.h"
+#include <algorithm>
 #include <cstring>
 
 void popup_dialog(const char* title, const char* message);
@@ -336,15 +337,15 @@ PixieData data_copy(const PixieData& d)
 loader::loader()
     : graphics(nullptr), animations(nullptr), stepsizes(nullptr), lineofsight(nullptr), act_types(nullptr), damage(nullptr), fire_frequency(nullptr)
 {
-	memset(hitpoints, 0, 200*sizeof(float));
+	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
     
 	graphics = new PixieData[SIZE_ORDERS*SIZE_FAMILIES];
         
 	//  hitpoints = new char[SIZE_ORDERS*SIZE_FAMILIES];
 	act_types = new char[SIZE_ORDERS*SIZE_FAMILIES];
-	memset(act_types, ACT_RANDOM, SIZE_ORDERS*SIZE_FAMILIES);
+	std::fill_n(act_types, SIZE_ORDERS*SIZE_FAMILIES, static_cast<char>(ACT_RANDOM));
 	animations = new signed char**[SIZE_ORDERS*SIZE_FAMILIES];
-	memset(animations, 0, SIZE_ORDERS*SIZE_FAMILIES);
+	std::fill_n(animations, SIZE_ORDERS*SIZE_FAMILIES, nullptr);
 	stepsizes = new float[SIZE_ORDERS*SIZE_FAMILIES];
 	lineofsight = new Sint32[SIZE_ORDERS*SIZE_FAMILIES];
 	damage = new float[SIZE_ORDERS*SIZE_FAMILIES];
