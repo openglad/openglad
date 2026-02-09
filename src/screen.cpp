@@ -30,6 +30,7 @@
 #include "input.h"
 #include "view_sizes.h"
 #include "results_screen.h"
+#include <algorithm>
 #include <string>
 #include <cstring>
 #include <format>
@@ -815,29 +816,15 @@ bool screen::act()
 		e++;
 	}
 
-	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end();)
-	{
-	    walker* ob = e->get();
-		if(ob && ob->dead)
-		{
-			e = level_data.fxlist.erase(e);
-			continue;
-		}
+	std::erase_if(level_data.fxlist, [](const auto& uptr) {
+		walker* ob = uptr.get();
+		return ob && ob->dead;
+	});
 
-		e++;
-	}
-
-	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end();)
-	{
-	    walker* ob = e->get();
-		if (ob && ob->dead)
-		{
-            e = level_data.weaplist.erase(e);
-            continue;
-		}
-
-		e++;
-	}
+	std::erase_if(level_data.weaplist, [](const auto& uptr) {
+		walker* ob = uptr.get();
+		return ob && ob->dead;
+	});
 
 	return 1;
 }

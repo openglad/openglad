@@ -521,39 +521,15 @@ void LevelData::resize_grid(int width, int height)
     int y = 0;
     int w = grid.w * GRID_SIZE;
     int h = grid.h * GRID_SIZE;
-    
-    for(auto e = oblist.begin(); e != oblist.end();)
-	{
-	    walker* ob = e->get();
-		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
-		{
-			e = oblist.erase(e);
-		}
-		else
-            e++;
-	}
 
-    for(auto e = fxlist.begin(); e != fxlist.end();)
-	{
-	    walker* ob = e->get();
-		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
-		{
-			e = fxlist.erase(e);
-		}
-		else
-            e++;
-	}
+    auto off_map = [x, y, w, h](const std::unique_ptr<walker>& uptr) {
+        walker* ob = uptr.get();
+        return ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h);
+    };
 
-    for(auto e = weaplist.begin(); e != weaplist.end();)
-	{
-	    walker* ob = e->get();
-		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
-		{
-			e = weaplist.erase(e);
-		}
-		else
-            e++;
-	}
+    std::erase_if(oblist, off_map);
+    std::erase_if(fxlist, off_map);
+    std::erase_if(weaplist, off_map);
 }
 
 void LevelData::delete_objects()
