@@ -17,6 +17,7 @@
 #include "graph.h"
 #include <cstring>
 #include <string>
+#include <string_view>
 
 void get_input_events(bool);
 
@@ -48,15 +49,15 @@ text::~text()
 	//free(letters-3);  // letters is offset by 3 bytes on load
 	//letters = nullptr;
 }
-short text::query_width(const char *string) // returns width, in pixels
+short text::query_width(std::string_view string) // returns width, in pixels
 {
 	unsigned short i=0;
 	short over = 0;
 
 	if (sizex < 9) // small, monospaced font
-		return (sizex+1)*static_cast<short>(strlen(string));
+		return (sizex+1)*static_cast<short>(string.size());
 
-	while (string[i])
+	while (i < string.size())
 	{
 		if (string[i] >= 65 && string[i] <= 93) // uppercase
 			over += sizex;
@@ -68,10 +69,10 @@ short text::query_width(const char *string) // returns width, in pixels
 	return over;
 }
 
-short text::write_xy(short x, short y, const char *string, unsigned char color)
+short text::write_xy(short x, short y, std::string_view string, unsigned char color)
 {
 	unsigned short i = 0;
-	while(string[i])
+	while(i < string.size())
 	{
 		write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color));
 		i++;
@@ -182,10 +183,10 @@ short text::write_xy_center_shadow(short x, short y, unsigned char color, const 
 	return 1;
 }
 
-short text::write_xy(short x, short y, const char *string)
+short text::write_xy(short x, short y, std::string_view string)
 {
 	unsigned short i = 0;
-	while(string[i])
+	while(i < string.size())
 	{
 		write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 		i++;
@@ -193,7 +194,7 @@ short text::write_xy(short x, short y, const char *string)
 	return 1;
 }
 
-short text::write_xy(short x, short y, const char *string, unsigned char color,
+short text::write_xy(short x, short y, std::string_view string, unsigned char color,
                      short to_buffer)
 {
 	unsigned short i = 0;
@@ -201,7 +202,7 @@ short text::write_xy(short x, short y, const char *string, unsigned char color,
 	short over = 0;
 
 	if (sizex < 9) // small, monospaced font
-		while(string[i])
+		while(i < string.size())
 		{
 			if (!to_buffer)
 				write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color));
@@ -211,7 +212,7 @@ short text::write_xy(short x, short y, const char *string, unsigned char color,
 			over += sizex+1;
 		}
 	else // larger font, help out the lowercase ..
-		while(string[i])
+		while(i < string.size())
 		{
 			write_char_xy(static_cast<short>(x+over), y, string[i], static_cast<unsigned char>(color), static_cast<short>(1));
 			if (string[i] >=65 && string[i] <= 92) // uppercase
@@ -223,7 +224,7 @@ short text::write_xy(short x, short y, const char *string, unsigned char color,
 
 	if (to_buffer)
 	{
-		width = (unsigned short) ((sizex+1)*strlen(string));
+		width = (unsigned short) ((sizex+1)*string.size());
 		width -= width%4;
 		width +=4;
 		//myscreen->buffer_to_screen(x, y, width, sizey);
@@ -232,11 +233,11 @@ short text::write_xy(short x, short y, const char *string, unsigned char color,
 	return over;
 }
 
-short text::write_xy(short x, short y, const char *string, short to_buffer)
+short text::write_xy(short x, short y, std::string_view string, short to_buffer)
 {
 	unsigned short i = 0;
 	unsigned short width;
-	while(string[i])
+	while(i < string.size())
 	{
 		if (!to_buffer)
 			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
@@ -246,7 +247,7 @@ short text::write_xy(short x, short y, const char *string, short to_buffer)
 	}
 	if (to_buffer)
 	{
-		width = (unsigned short) ((sizex+1)*strlen(string));
+		width = (unsigned short) ((sizex+1)*string.size());
 		width -= width%4;
 		width +=4;
 		//myscreen->buffer_to_screen(x, y, width, sizey);
@@ -255,11 +256,11 @@ short text::write_xy(short x, short y, const char *string, short to_buffer)
 	return 1;
 }
 
-short text::write_xy(short x, short y, const char *string, unsigned char color,
+short text::write_xy(short x, short y, std::string_view string, unsigned char color,
                      viewscreen *whereto)
 {
 	unsigned short i = 0;
-	while(string[i])
+	while(i < string.size())
 	{
 		if (!whereto)
 			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color));
@@ -270,10 +271,10 @@ short text::write_xy(short x, short y, const char *string, unsigned char color,
 	return 1;
 }
 
-short text::write_xy(short x, short y, const char *string, viewscreen *whereto)
+short text::write_xy(short x, short y, std::string_view string, viewscreen *whereto)
 {
 	unsigned short i = 0;
-	while(string[i])
+	while(i < string.size())
 	{
 		if (!whereto)
 			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
@@ -284,30 +285,30 @@ short text::write_xy(short x, short y, const char *string, viewscreen *whereto)
 	return 1;
 }
 
-short text::write_y(short y, const char *string, unsigned char color)
+short text::write_y(short y, std::string_view string, unsigned char color)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
-	len = static_cast<unsigned short>(strlen(string));
+	len = static_cast<unsigned short>(string.size());
 	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
 	return write_xy(xstart, y, string, static_cast<unsigned char>(color));
 }
 
-short text::write_y(short y, const char *string)
+short text::write_y(short y, std::string_view string)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
-	len = static_cast<unsigned short>(strlen(string));
+	len = static_cast<unsigned short>(string.size());
 	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
 	return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 }
 
-short text::write_y(short y, const char *string, unsigned char color,
+short text::write_y(short y, std::string_view string, unsigned char color,
                     short to_buffer)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
-	len = static_cast<unsigned short>(strlen(string));
+	len = static_cast<unsigned short>(string.size());
 	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
 	if (!to_buffer)
 		return write_xy(xstart, y, string, static_cast<unsigned char>(color));
@@ -315,11 +316,11 @@ short text::write_y(short y, const char *string, unsigned char color,
 		return write_xy(xstart, y, string, static_cast<unsigned char>(color), to_buffer);
 }
 
-short text::write_y(short y, const char *string, short to_buffer)
+short text::write_y(short y, std::string_view string, short to_buffer)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
-	len = static_cast<unsigned short>(strlen(string));
+	len = static_cast<unsigned short>(string.size());
 	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
 	if (!to_buffer)
 		return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
@@ -327,12 +328,12 @@ short text::write_y(short y, const char *string, short to_buffer)
 		return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR), to_buffer);
 }
 
-short text::write_y(short y, const char *string, unsigned char color,
+short text::write_y(short y, std::string_view string, unsigned char color,
                     viewscreen *whereto)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
-	len = static_cast<unsigned short>(strlen(string));
+	len = static_cast<unsigned short>(string.size());
 	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
 	if (!whereto)
 		return write_xy(xstart, y, string, static_cast<unsigned char>(color));
@@ -340,11 +341,11 @@ short text::write_y(short y, const char *string, unsigned char color,
 		return write_xy(xstart, y, string, static_cast<unsigned char>(color), whereto);
 }
 
-short text::write_y(short y, const char *string, viewscreen *whereto)
+short text::write_y(short y, std::string_view string, viewscreen *whereto)
 {
 	unsigned short len = 0;
 	unsigned short xstart;
-	len = static_cast<unsigned short>(strlen(string));
+	len = static_cast<unsigned short>(string.size());
 	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
 	if (!whereto)
 		return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));

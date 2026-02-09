@@ -392,9 +392,9 @@ short viewscreen::input(const SDL_Event& event)
 	    control = nullptr;
 	    
 		// First look for a player character, not already controlled
-		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+		for(auto& uptr : myscreen->level_data.oblist)
 		{
-		    walker* w = e->get();
+		    walker* w = uptr.get();
 			if (w &&
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
@@ -410,9 +410,9 @@ short viewscreen::input(const SDL_Event& event)
 		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
-            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+            for(auto& uptr : myscreen->level_data.oblist)
             {
-                walker* w = e->get();
+                walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -429,9 +429,9 @@ short viewscreen::input(const SDL_Event& event)
 		{
 			// Now try for ANYONE who's left alive...
 			// NOTE: You can end up as a bad guy here if you are using an allied team
-            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+            for(auto& uptr : myscreen->level_data.oblist)
             {
-                walker* w = e->get();
+                walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -622,9 +622,9 @@ short viewscreen::input(const SDL_Event& event)
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
-		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+		for(auto& uptr : myscreen->level_data.oblist)
 		{
-		    walker* w = e->get();
+		    walker* w = uptr.get();
 			if (w && (w->query_order() == ORDER_LIVING) &&
 			        (w->query_act_type() != ACT_CONTROL) &&
 			        (w->team_num == control->team_num) &&
@@ -650,9 +650,9 @@ short viewscreen::input(const SDL_Event& event)
 		switch (control->action)
 		{
 			case 0:   // not set ..
-				for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+				for(auto& uptr : myscreen->level_data.oblist)
 				{
-				    walker* w = e->get();
+				    walker* w = uptr.get();
 					if (w &&
 					        (w->team_num == control->team_num) && w->is_friendly(control)
 					   )
@@ -666,9 +666,9 @@ short viewscreen::input(const SDL_Event& event)
 				myscreen->do_notify("SUMMONING DEFENSE!", control);
 				break;
 			case ACTION_FOLLOW:  // turn back to normal mode..
-				for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+				for(auto& uptr : myscreen->level_data.oblist)
 				{
-				    walker* w = e->get();
+				    walker* w = uptr.get();
 					if (w && (w->query_order() == ORDER_LIVING) &&
 					        (w->query_act_type() != ACT_CONTROL) &&
 					        (w->team_num == control->team_num)
@@ -715,9 +715,9 @@ short viewscreen::input(const SDL_Event& event)
                 myscreen->save_data.my_team++;
                 myscreen->save_data.my_team %= MAX_TEAM;
                 
-                for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+                for(auto& uptr : myscreen->level_data.oblist)
                 {
-                    walker* w = e->get();
+                    walker* w = uptr.get();
                     if ( (w->team_num == myscreen->save_data.my_team) &&
                             (w->query_order() == ORDER_LIVING)
                        )
@@ -738,9 +738,9 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_F12, event)) // kill living bad guys
 		{
-			for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+			for(auto& uptr : myscreen->level_data.oblist)
 			{
-			    walker* w = e->get();
+			    walker* w = uptr.get();
 				if (w && w->query_order() == ORDER_LIVING &&
 					        !control->is_friendly(w) )
 						//w->team_num != control->team_num)
@@ -898,9 +898,9 @@ short viewscreen::continuous_input()
 	    control = nullptr;
 	    
 		// First look for a player character, not already controlled
-		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+		for(auto& uptr : myscreen->level_data.oblist)
 		{
-		    walker* w = e->get();
+		    walker* w = uptr.get();
 			if (w &&
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
@@ -916,9 +916,9 @@ short viewscreen::continuous_input()
 		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
-            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+            for(auto& uptr : myscreen->level_data.oblist)
             {
-                walker* w = e->get();
+                walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -935,9 +935,9 @@ short viewscreen::continuous_input()
 		{
 			// Now try for ANYONE who's left alive...
 			// NOTE: You can end up as a bad guy here if you are using an allied team
-            for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+            for(auto& uptr : myscreen->level_data.oblist)
             {
-                walker* w = e->get();
+                walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -1078,12 +1078,9 @@ short viewscreen::continuous_input()
 	return 1;
 }
 
-void viewscreen::set_display_text(const char *newtext, short numcycles)
+void viewscreen::set_display_text(std::string_view newtext, short numcycles)
 {
 	Sint32 i;
-
-	if (!newtext)
-		return;
 
 	i = 0;
 	while (!textlist[i].empty() && i < MAX_MESSAGES)
@@ -1118,25 +1115,25 @@ short viewscreen::draw_obs()
 short viewscreen::draw_obs(LevelData* data)
 {
 	// First draw the special effects
-	for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
+	for(auto& uptr : data->fxlist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if(w && !w->dead)
 			w->draw(this);
 	}
 
 	// Now do real objects
-	for(auto e = data->oblist.begin(); e != data->oblist.end(); e++)
+	for(auto& uptr : data->oblist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if(w && !w->dead)
 			w->draw(this);
 	}
 
 	// Finally draw the weapons
-	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
+	for(auto& uptr : data->weaplist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if(w && !w->dead)
 			w->draw(this);
 	}
@@ -1355,9 +1352,9 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
     
     // Build the list of characters
     std::list<walker*> ls;
-	for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+	for(auto& uptr : myscreen->level_data.oblist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && !w->dead
 		        && w->query_order() == ORDER_LIVING
 		        && w->team_num == teamnum
@@ -1370,9 +1367,8 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	// NOTE: The old code sorted the list by hitpoints.  I would do that again, but I'll probably just be removing this function anyway.
     
     // Go through the list and draw the entries
-    for(auto e = ls.begin(); e != ls.end(); e++)
+    for(auto* w : ls)
 	{
-	    walker* w = *e;
 		if (w)
 		{
 			if (numguys++ > 30)

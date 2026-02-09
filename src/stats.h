@@ -43,7 +43,7 @@ inline constexpr Sint32 BIT_FIRE       =  2048;  // for any flame weapons
 inline constexpr Sint32 BIT_ETHEREAL   =  4096;  // fly "through" walls
 inline constexpr Sint32 BIT_LAST       =  8192;
 // Other special effects, etc.
-#define FAERIE_FREEZE_TIME    40
+inline constexpr int FAERIE_FREEZE_TIME = 40;
 
 
 // Class statistics,

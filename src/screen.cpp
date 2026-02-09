@@ -669,9 +669,9 @@ short screen::act()
 	if (enemy_freeze == 1)
 		set_palette(ourpalette);
 
-    for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+    for(auto& uptr : level_data.oblist)
     {
-        walker* ob = e->get();
+        walker* ob = uptr.get();
 		if (!enemy_freeze) // normal functionality
 		{
 			if (ob && !ob->dead)
@@ -717,9 +717,9 @@ short screen::act()
 	}
 
 	// Let the weapons act ...
-	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end(); e++)
+	for(auto& uptr : level_data.weaplist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 		if (ob && !ob->dead)
 		{
 			ob->act();
@@ -733,9 +733,9 @@ short screen::act()
 	}  // end of weapons acting
 
 	// Quickly check the background for exits, etc.
-	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
+	for(auto& uptr : level_data.fxlist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 		if (ob && !ob->dead)
 		{
 			if (ob->query_order() == ORDER_TREASURE &&
@@ -754,9 +754,9 @@ short screen::act()
         return 1;
     
 	// Make sure we're all pointing to legal targets
-	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+	for(auto& uptr : level_data.oblist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
         if (ob->foe && ob->foe->dead)
             ob->foe = nullptr;
         if (ob->leader && ob->leader->dead)
@@ -767,9 +767,9 @@ short screen::act()
             ob->collide_ob = nullptr;
 	}
 
-	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end(); e++)
+	for(auto& uptr : level_data.weaplist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
         if (ob->foe && ob->foe->dead)
             ob->foe = nullptr;
         if (ob->leader && ob->leader->dead)
@@ -866,9 +866,9 @@ short screen::endgame(short ending, short nextlevel)
     }
 	
     // Get guys from the battle
-    for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+    for(auto& uptr : level_data.oblist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 		if (ob && ob->myguy)
 			after.insert(std::make_pair(ob->myguy->id, ob));
 	}
@@ -978,9 +978,8 @@ walker *screen::find_near_foe(walker  *ob)
 			}
 
 			std::list<walker*>& ls = level_data.myobmap->obmap_get_list(targx,targy);
-			for(auto e = ls.begin(); e != ls.end(); e++) //go through the list we received
+			for(auto* w : ls) //go through the list we received
 			{
-			    walker* w = *e;
 				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
 				        (random(w->invisibility_left/20)==0)
 				   )
@@ -1026,9 +1025,9 @@ walker  *screen::find_far_foe(walker  *ob)
 	distance = 10000;
 	ob->stats->last_distance = 10000;
 
-    for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+    for(auto& uptr : level_data.oblist)
 	{
-	    walker* foe = e->get();
+	    walker* foe = uptr.get();
 		if (foe == nullptr || foe->dead)
 			continue;
         
@@ -1104,9 +1103,9 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,
                            int team_num)
 {
-	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+	for(auto& uptr : level_data.oblist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 		if (ob && !ob->dead)
 		{
 			if (ob->query_order() == whatorder &&
@@ -1157,9 +1156,9 @@ walker  * screen::find_nearest_blood(walker  *who)
 
 	distance = 800;
 
-	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
+	for(auto& uptr : level_data.fxlist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && w->query_order() == ORDER_TREASURE &&
 		        w->query_family() == FAMILY_STAIN && !w->dead)
 		{
@@ -1188,9 +1187,9 @@ std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& som
 	//obx = static_cast<short>(ob->xpos + (ob->sizex/2) );  // center of object
 	//oby = static_cast<short>(ob->ypos + (ob->sizey/2) );
 
-	for(auto e = somelist.begin(); e != somelist.end(); e++)
+	for(auto& uptr : somelist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && !w->dead)
 		{
 			if (ob->distance_to_ob(w) <= range)
@@ -1213,9 +1212,9 @@ walker* screen::find_nearest_player(walker *ob)
 	if (!ob)
 		return nullptr;
 
-	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+	for(auto& uptr : level_data.oblist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && (w->user != -1) )
 		{
 			tempdistance = ob->distance_to_ob(w);
@@ -1238,9 +1237,9 @@ std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>
 	if(!ob)
 		return result;
 
-	for(auto e = somelist.begin(); e != somelist.end(); e++)
+	for(auto& uptr : somelist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && !w->dead &&
 		        (w->query_order() == ORDER_LIVING ||
 		         w->query_order() == ORDER_GENERATOR)
@@ -1267,9 +1266,9 @@ std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walke
 	if(!ob)
 		return result;
 
-	for(auto e = somelist.begin(); e != somelist.end(); e++)
+	for(auto& uptr : somelist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && !w->dead && w->query_order() == ORDER_LIVING
 		        && ( ob->is_friendly(w) )
 		   )
@@ -1293,9 +1292,9 @@ std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<w
 	if(!ob)
 		return result;
 
-	for(auto e = somelist.begin(); e != somelist.end(); e++)
+	for(auto& uptr : somelist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && !w->dead &&
 		        (w->query_order() == ORDER_WEAPON)
 		        && ( ob->is_friendly(w) )
@@ -1344,7 +1343,7 @@ char screen::damage_tile(short xloc, short yloc) // damage the specified tile
 	return level_data.grid.data[gridloc];
 }
 
-void screen::do_notify(const char *message, walker  *who)
+void screen::do_notify(std::string_view message, walker  *who)
 {
 	short i,sent=0;
 	for(i=0;i<numviews;i++)

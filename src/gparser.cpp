@@ -147,20 +147,20 @@ bool cfg_store::save_settings()
         yam.set_output(rwops_write_handler, outfile);
         
         // Each category is a mapping that holds setting/value pairs
-        for(auto e = data.begin(); e != data.end(); e++)
+        for(auto& [category, settings] : data)
         {
-            if(e->first.size() > 0)
+            if(category.size() > 0)
             {
-                yam.emit_scalar(e->first.c_str());
+                yam.emit_scalar(category.c_str());
                 yam.emit_begin_mapping();
             }
-            
-            for(auto f = e->second.begin(); f != e->second.end(); f++)
+
+            for(auto& [key, value] : settings)
             {
-                yam.emit_pair(f->first.c_str(), f->second.c_str());
+                yam.emit_pair(key.c_str(), value.c_str());
             }
-            
-            if(e->first.size() > 0)
+
+            if(category.size() > 0)
             {
                 yam.emit_end_mapping();
             }

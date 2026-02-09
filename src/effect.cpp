@@ -147,20 +147,18 @@ short effect::act()
 			foelist = myscreen->find_foe_weapons_in_range(
 			              myscreen->level_data.oblist, sizex, &temp, this);
             
-			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
+			for(auto* w : foelist)  // first weapons
 			{
-			    walker* w = *e;
 				stats->hitpoints -= w->damage;
 				w->dead = 1;
 				w->death();
 			}
-			
+
 			foelist = myscreen->find_foes_in_range(
 			              myscreen->level_data.oblist, sizex, &temp, this);
-            
-			for(auto e = foelist.begin(); e != foelist.end(); e++)  // second enemies
+
+			for(auto* w : foelist)  // second enemies
 			{
-			    walker* w = *e;
 				stats->hitpoints -= w->damage;
 				attack(w);
 				dead = 0;
@@ -262,20 +260,18 @@ short effect::act()
 			foelist = myscreen->find_foe_weapons_in_range(
 			              myscreen->level_data.oblist, sizex*2, &temp, this);
 			              
-			for(auto e = foelist.begin(); e != foelist.end(); e++)  // first weapons
+			for(auto* w : foelist)  // first weapons
 			{
-			    walker* w = *e;
 				stats->hitpoints -= w->damage;
 				w->dead = 1;
 				w->death();
 			}
-			
+
 			foelist = myscreen->find_foes_in_range(
 			              myscreen->level_data.oblist, sizex, &temp, this);
-            
-			for(auto e = foelist.begin(); e != foelist.end(); e++) // second enemies
+
+			for(auto* w : foelist) // second enemies
 			{
-			    walker* w = *e;
 				stats->hitpoints -= w->damage;
 				attack(w);
 				dead = 0;
@@ -368,9 +364,8 @@ short effect::act()
 			foelist = myscreen->find_foes_in_range(
 			              myscreen->level_data.oblist, sizex, &temp, this);
             
-			for(auto e = foelist.begin(); e != foelist.end(); e++) //
+			for(auto* w : foelist) //
 			{
-			    walker* w = *e;
 				if (hits(xpos, ypos, sizex, sizey, // this is the cloud
 				         w->xpos, w->ypos,
 				         w->sizex, w->sizey)
@@ -434,15 +429,15 @@ short effect::act()
 				if (temp && generic>20) // more foes to find ..
 				{
 					numfoes = random(owner->stats->level)+1;
-					for(auto e = foelist.begin(); e != foelist.end() && numfoes > 0; e++, numfoes--)
+					for(auto* w : foelist)
 					{
-					    walker* w = *e;
+					    if (numfoes <= 0) break;
 						if (w != leader && w->skip_exit<1) // don't hit current guy, etc.
 						{
 							newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_CHAIN);
 							if (!newob)
 								return 0; // failsafe
-                            
+
 							newob->owner = owner;  // our caster
 							newob->leader = w; // guy to attack
 							newob->stats->level = stats->level;
@@ -451,6 +446,7 @@ short effect::act()
 							newob->team_num = team_num;
 							newob->center_on(this);
 						} // end of wasn't current guy case
+						numfoes--;
 					} // end of loop for nearby foes we found
 				} // end of check for nearby foes
                 
@@ -607,9 +603,8 @@ short effect::death()
 			if (howmany < 1)
 				return 0;
             
-            for(auto e = foelist.begin(); e != foelist.end(); e++)
+            for(auto* w : foelist)
 			{
-			    walker* w = *e;
 				if (w && w->query_order() == ORDER_LIVING)
 				{
 					tempx = w->xpos - xpos;
@@ -663,9 +658,8 @@ short effect::death()
 				return 0;
 			// Set our team number to garbage so we can hurt everyone
 			//team_num = 50;
-			for(auto e = foelist.begin(); e != foelist.end(); e++)
+			for(auto* w : foelist)
 			{
-			    walker* w = *e;
 				if (w && !w->dead &&
 				        (w->query_order() != ORDER_TREASURE) &&
 				        (w->query_order() != ORDER_FX) &&

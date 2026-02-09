@@ -199,9 +199,9 @@ short treasure::eat_me(walker  * eater)
 				{
 					clear_keyboard();
 					// Delete all of our current information and abort ..
-					for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+					for(auto& uptr : myscreen->level_data.oblist)
 					{
-					    walker* w = e->get();
+					    walker* w = uptr.get();
 						if (w && w->query_order() == ORDER_LIVING)
 						{
 							w->dead = 1;

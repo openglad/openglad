@@ -26,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <set>
 #include "level_data.h"
 #include "save_data.h"
@@ -68,7 +69,7 @@ class screen : public video
 		std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
 		std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
 		char damage_tile(short xloc, short yloc); // damage the specified tile
-		void do_notify(const char *message, walker  *who);  // printing text
+		void do_notify(std::string_view message, walker  *who);  // printing text
 		void report_mem();
 		walker *set_walker(walker *ob, char order, char family);
 		const char* get_scen_title(const char *filename, screen *master);

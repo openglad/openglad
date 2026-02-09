@@ -612,9 +612,9 @@ std::list<std::string> list_paths_recursively(const std::string& dirname)
             if(subdir.size() > 0 && subdir[subdir.size()-1] != '/')
                 subdir += '/';
             ls.push_back(subdir);
-            for(std::list<std::string>::iterator e = sublist.begin(); e != sublist.end(); e++)
+            for(auto& sub : sublist)
             {
-                ls.push_back(subdir + *e);
+                ls.push_back(subdir + sub);
             }
         }
         else
@@ -641,10 +641,10 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
     struct zip_source *s;
 
     std::list<std::string> files = list_paths_recursively(indir);
-    for(std::list<std::string>::iterator e = files.begin(); e != files.end(); e++)
+    for(auto& file : files)
     {
-        std::string src_name = std::format("{}{}", indir, *e);
-        const std::string& dest_name = *e;
+        std::string src_name = std::format("{}{}", indir, file);
+        const std::string& dest_name = file;
 
         if(src_name.back() == '/')
         {

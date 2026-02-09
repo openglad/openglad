@@ -61,14 +61,14 @@ class radar;
 class soundob;
 class smoother;
 
-#define DIFFICULTY_SETTINGS 3
+inline constexpr int DIFFICULTY_SETTINGS = 3;
 
 Uint32 random(Uint32 x);
 
-#define VIDEO_ADDRESS 0xA000
-#define VIDEO_LINEAR ( (VIDEO_ADDRESS) << 4)
+inline constexpr int VIDEO_ADDRESS = 0xA000;
+inline constexpr int VIDEO_LINEAR = VIDEO_ADDRESS << 4;
 
-#define DPMI_INT        0x31
+inline constexpr int DPMI_INT = 0x31;
 struct meminfo
 {
 	unsigned LargestBlockAvail;
@@ -85,9 +85,9 @@ struct meminfo
 
 extern screen * myscreen; // global, availible to anyone
 
-#define MAX_LEVELS 500 // Maximum number of scenarios allowed ..
+inline constexpr int MAX_LEVELS = 500; // Maximum number of scenarios allowed ..
 
-#define GRID_SIZE 16
+inline constexpr int GRID_SIZE = 16;
 
 #define PROT_MODE 1  // comment this out when not in protected mode
 #ifdef PROT_MODE
@@ -96,33 +96,33 @@ extern screen * myscreen; // global, availible to anyone
 #endif
 
 // Used for the help-text system:
-#define MAX_LINES 100   // maximum number of lines in helpfile
-#define HELP_WIDTH 100   // maximum length of display line
+inline constexpr int MAX_LINES = 100;   // maximum number of lines in helpfile
+inline constexpr int HELP_WIDTH = 100;   // maximum length of display line
 short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile);
 short   read_campaign_intro(screen *myscreen);
 short   read_scenario(screen  *myscreen);
 char* read_one_line(SDL_RWops *infile, short length);
 
 //color defines:
-#define DEFAULT_TEXT_COLOR 88
+inline constexpr unsigned char DEFAULT_TEXT_COLOR = 88;
 
-#define PURE_WHITE   15
-#define PURE_BLACK   0
-#define WHITE        24
-#define BLACK        160
-#define GREY         23
-#define YELLOW       88
-#define RED          40
-#define DARK_BLUE    72
-#define LIGHT_BLUE   120
-#define DARK_GREEN   63
-#define LIGHT_GREEN  56
+inline constexpr unsigned char PURE_WHITE   = 15;
+inline constexpr unsigned char PURE_BLACK   = 0;
+inline constexpr unsigned char WHITE        = 24;
+inline constexpr unsigned char BLACK        = 160;
+inline constexpr unsigned char GREY         = 23;
+inline constexpr unsigned char YELLOW       = 88;
+inline constexpr unsigned char RED          = 40;
+inline constexpr unsigned char DARK_BLUE    = 72;
+inline constexpr unsigned char LIGHT_BLUE   = 120;
+inline constexpr unsigned char DARK_GREEN   = 63;
+inline constexpr unsigned char LIGHT_GREEN  = 56;
 
 // Color cycling:
-#define WATER_START  208
-#define WATER_END    223
-#define ORANGE_START 224
-#define ORANGE_END   231
+inline constexpr unsigned char WATER_START  = 208;
+inline constexpr unsigned char WATER_END    = 223;
+inline constexpr unsigned char ORANGE_START = 224;
+inline constexpr unsigned char ORANGE_END   = 231;
 
 // Random defines:
 //#define PROFILING
@@ -131,32 +131,32 @@ char* read_one_line(SDL_RWops *infile, short length);
 // Picture Object class defs
 
 // HP BAR COLOR DEFINES
-#define BAR_BACK_COLOR 11
-#define BOX_COLOR 0
-#define LOW_HP_COLOR 42
-#define MID_HP_COLOR 237
-#define HIGH_HP_COLOR 61
-#define MAX_HP_COLOR 56 // When hp's are over max :)
+inline constexpr unsigned char BAR_BACK_COLOR = 11;
+inline constexpr unsigned char BOX_COLOR = 0;
+inline constexpr unsigned char LOW_HP_COLOR = 42;
+inline constexpr unsigned char MID_HP_COLOR = 237;
+inline constexpr unsigned char HIGH_HP_COLOR = 61;
+inline constexpr unsigned char MAX_HP_COLOR = 56; // When hp's are over max :)
 
 // MP BAR COLOR DEFINES
-#define LOW_MP_COLOR 42
-#define MID_MP_COLOR 108
-#define HIGH_MP_COLOR 72
-#define MAX_MP_COLOR 64 // When mp's are over max :)
+inline constexpr unsigned char LOW_MP_COLOR = 42;
+inline constexpr unsigned char MID_MP_COLOR = 108;
+inline constexpr unsigned char HIGH_MP_COLOR = 72;
+inline constexpr unsigned char MAX_MP_COLOR = 64; // When mp's are over max :)
 
 // Generators are limited by this number
-#define MAXOBS 150
+inline constexpr int MAXOBS = 150;
 
 
 
 // Act types
-#define ACT_RANDOM 0
-#define ACT_FIRE 1
-#define ACT_CONTROL 2
-#define ACT_GUARD 3
-#define ACT_GENERATE 4
-#define ACT_DIE 5
-#define ACT_SIT 6
+inline constexpr int ACT_RANDOM = 0;
+inline constexpr int ACT_FIRE = 1;
+inline constexpr int ACT_CONTROL = 2;
+inline constexpr int ACT_GUARD = 3;
+inline constexpr int ACT_GENERATE = 4;
+inline constexpr int ACT_DIE = 5;
+inline constexpr int ACT_SIT = 6;
 
 // Team types
 
@@ -165,171 +165,171 @@ char* read_one_line(SDL_RWops *infile, short length);
 //              #define KNIGHT_TEAM 2
 //              #define MAX_TEAM 2
 
-#define MAX_TEAM 7
+inline constexpr int MAX_TEAM = 7;
 
 // Other screen-type things
-#define NUM_SPECIALS 6
+inline constexpr int NUM_SPECIALS = 6;
 
 // Animation Types : Livings
-#define ANI_WALK 0
-#define ANI_ATTACK 1
-#define ANI_TELE_OUT 2
-#define ANI_SKEL_GROW 3
-#define ANI_TELE_IN 3
-#define ANI_SLIME_SPLIT 4
+inline constexpr int ANI_WALK = 0;
+inline constexpr int ANI_ATTACK = 1;
+inline constexpr int ANI_TELE_OUT = 2;
+inline constexpr int ANI_SKEL_GROW = 3;
+inline constexpr int ANI_TELE_IN = 3;
+inline constexpr int ANI_SLIME_SPLIT = 4;
 
 // Animations types : weapons
-#define ANI_GROW 1 // Trees have no attack animation
-#define ANI_GLOWGROW 1 // Neither do sparkles
-#define ANI_GLOWPULSE 2 // sparkles cycling
+inline constexpr int ANI_GROW = 1; // Trees have no attack animation
+inline constexpr int ANI_GLOWGROW = 1; // Neither do sparkles
+inline constexpr int ANI_GLOWPULSE = 2; // sparkles cycling
 
 // These are for effect objects ..
-#define ANI_EXPAND_8 1 //1
-#define ANI_DOOR_OPEN 1 // Door opening
-#define ANI_SCARE    1 // 2 ghost scare
-#define ANI_BOMB     1 // 3 thief's bomb
-#define ANI_EXPLODE  1 // 4
-#define ANI_SPIN     1 // for the marker
+inline constexpr int ANI_EXPAND_8 = 1; //1
+inline constexpr int ANI_DOOR_OPEN = 1; // Door opening
+inline constexpr int ANI_SCARE    = 1; // 2 ghost scare
+inline constexpr int ANI_BOMB     = 1; // 3 thief's bomb
+inline constexpr int ANI_EXPLODE  = 1; // 4
+inline constexpr int ANI_SPIN     = 1; // for the marker
 
 // Orders
-#define ORDER_LIVING 0
-#define ORDER_WEAPON 1
-#define ORDER_TREASURE 2
-#define ORDER_GENERATOR 3
-#define ORDER_FX 4
-#define ORDER_SPECIAL 5
-#define ORDER_BUTTON1 6
+inline constexpr int ORDER_LIVING = 0;
+inline constexpr int ORDER_WEAPON = 1;
+inline constexpr int ORDER_TREASURE = 2;
+inline constexpr int ORDER_GENERATOR = 3;
+inline constexpr int ORDER_FX = 4;
+inline constexpr int ORDER_SPECIAL = 5;
+inline constexpr int ORDER_BUTTON1 = 6;
 
 // Living families
-#define FAMILY_SOLDIER 0
-#define FAMILY_ELF 1
-#define FAMILY_ARCHER 2
-#define FAMILY_MAGE 3
-#define FAMILY_SKELETON 4
-#define FAMILY_CLERIC 5
-#define FAMILY_FIREELEMENTAL 6
-#define FAMILY_FAERIE 7
-#define FAMILY_SLIME 8
-#define FAMILY_SMALL_SLIME 9
-#define FAMILY_MEDIUM_SLIME 10
-#define FAMILY_THIEF 11
-#define FAMILY_GHOST 12
-#define FAMILY_DRUID 13
-#define FAMILY_ORC   14
-#define FAMILY_BIG_ORC 15
-#define FAMILY_BARBARIAN 16
-#define FAMILY_ARCHMAGE 17
-#define FAMILY_GOLEM 18
-#define FAMILY_GIANT_SKELETON 19
-#define FAMILY_TOWER1 20
-#define NUM_FAMILIES 21  // # of families; make sure to change the
+inline constexpr int FAMILY_SOLDIER = 0;
+inline constexpr int FAMILY_ELF = 1;
+inline constexpr int FAMILY_ARCHER = 2;
+inline constexpr int FAMILY_MAGE = 3;
+inline constexpr int FAMILY_SKELETON = 4;
+inline constexpr int FAMILY_CLERIC = 5;
+inline constexpr int FAMILY_FIREELEMENTAL = 6;
+inline constexpr int FAMILY_FAERIE = 7;
+inline constexpr int FAMILY_SLIME = 8;
+inline constexpr int FAMILY_SMALL_SLIME = 9;
+inline constexpr int FAMILY_MEDIUM_SLIME = 10;
+inline constexpr int FAMILY_THIEF = 11;
+inline constexpr int FAMILY_GHOST = 12;
+inline constexpr int FAMILY_DRUID = 13;
+inline constexpr int FAMILY_ORC   = 14;
+inline constexpr int FAMILY_BIG_ORC = 15;
+inline constexpr int FAMILY_BARBARIAN = 16;
+inline constexpr int FAMILY_ARCHMAGE = 17;
+inline constexpr int FAMILY_GOLEM = 18;
+inline constexpr int FAMILY_GIANT_SKELETON = 19;
+inline constexpr int FAMILY_TOWER1 = 20;
+inline constexpr int NUM_FAMILIES = 21;  // # of families; make sure to change the
 // SIZE_FAMILIES in loader.cpp as well
 // (or your code will act weird)
 
-#define PIX(a,b) (NUM_FAMILIES*a+b)
+constexpr int PIX(int a, int b) { return NUM_FAMILIES * a + b; }
 
 //Weapon families
-#define FAMILY_KNIFE 0
-#define FAMILY_ROCK 1
-#define FAMILY_ARROW 2
-#define FAMILY_FIREBALL 3
-#define FAMILY_TREE 4
-#define FAMILY_METEOR 5
-#define FAMILY_SPRINKLE 6
-#define FAMILY_BONE 7
-#define FAMILY_BLOOD 8
-#define FAMILY_BLOB 9
-#define FAMILY_FIRE_ARROW 10
-#define FAMILY_LIGHTNING 11
-#define FAMILY_GLOW 12
-#define FAMILY_WAVE 13
-#define FAMILY_WAVE2 14
-#define FAMILY_WAVE3 15
-#define FAMILY_CIRCLE_PROTECTION 16
-#define FAMILY_HAMMER 17
-#define FAMILY_DOOR 18
-#define FAMILY_BOULDER 19
+inline constexpr int FAMILY_KNIFE = 0;
+inline constexpr int FAMILY_ROCK = 1;
+inline constexpr int FAMILY_ARROW = 2;
+inline constexpr int FAMILY_FIREBALL = 3;
+inline constexpr int FAMILY_TREE = 4;
+inline constexpr int FAMILY_METEOR = 5;
+inline constexpr int FAMILY_SPRINKLE = 6;
+inline constexpr int FAMILY_BONE = 7;
+inline constexpr int FAMILY_BLOOD = 8;
+inline constexpr int FAMILY_BLOB = 9;
+inline constexpr int FAMILY_FIRE_ARROW = 10;
+inline constexpr int FAMILY_LIGHTNING = 11;
+inline constexpr int FAMILY_GLOW = 12;
+inline constexpr int FAMILY_WAVE = 13;
+inline constexpr int FAMILY_WAVE2 = 14;
+inline constexpr int FAMILY_WAVE3 = 15;
+inline constexpr int FAMILY_CIRCLE_PROTECTION = 16;
+inline constexpr int FAMILY_HAMMER = 17;
+inline constexpr int FAMILY_DOOR = 18;
+inline constexpr int FAMILY_BOULDER = 19;
 
 // Treasure families
-#define FAMILY_STAIN 0
-#define FAMILY_DRUMSTICK 1
-#define FAMILY_GOLD_BAR 2
-#define FAMILY_SILVER_BAR 3
-#define FAMILY_MAGIC_POTION 4
-#define FAMILY_INVIS_POTION 5
-#define FAMILY_INVULNERABLE_POTION 6
-#define FAMILY_FLIGHT_POTION 7
-#define FAMILY_EXIT 8
-#define FAMILY_TELEPORTER 9
-#define FAMILY_LIFE_GEM 10 // generated upon death
-#define FAMILY_KEY 11
-#define FAMILY_SPEED_POTION 12
-#define MAX_TREASURE 12          // # of biggest treasure..
+inline constexpr int FAMILY_STAIN = 0;
+inline constexpr int FAMILY_DRUMSTICK = 1;
+inline constexpr int FAMILY_GOLD_BAR = 2;
+inline constexpr int FAMILY_SILVER_BAR = 3;
+inline constexpr int FAMILY_MAGIC_POTION = 4;
+inline constexpr int FAMILY_INVIS_POTION = 5;
+inline constexpr int FAMILY_INVULNERABLE_POTION = 6;
+inline constexpr int FAMILY_FLIGHT_POTION = 7;
+inline constexpr int FAMILY_EXIT = 8;
+inline constexpr int FAMILY_TELEPORTER = 9;
+inline constexpr int FAMILY_LIFE_GEM = 10; // generated upon death
+inline constexpr int FAMILY_KEY = 11;
+inline constexpr int FAMILY_SPEED_POTION = 12;
+inline constexpr int MAX_TREASURE = 12;          // # of biggest treasure..
 
 // Generator families
-#define FAMILY_TENT 0  // skeletons
-#define FAMILY_TOWER 1 // mages
-#define FAMILY_BONES 2 // ghosts
-#define FAMILY_TREEHOUSE 3 // elves :)
+inline constexpr int FAMILY_TENT = 0;  // skeletons
+inline constexpr int FAMILY_TOWER = 1; // mages
+inline constexpr int FAMILY_BONES = 2; // ghosts
+inline constexpr int FAMILY_TREEHOUSE = 3; // elves :)
 
 // FX families
-//#define FAMILY_STAIN 0
-#define FAMILY_EXPAND 0
-#define FAMILY_GHOST_SCARE 1
-#define FAMILY_BOMB 2
-#define FAMILY_EXPLOSION 3      // Bombs, etc.
-#define FAMILY_FLASH 4          // Used for teleporter effects
-#define FAMILY_MAGIC_SHIELD 5   // revolving protective shield
-#define FAMILY_KNIFE_BACK  6    // Returning blade
-#define FAMILY_BOOMERANG  7     // Circling boomerang
-#define FAMILY_CLOUD 8          // purple poison cloud
-#define FAMILY_MARKER 9         // Marker for Mages Teleport
-#define FAMILY_CHAIN 10         // 'Chain lightning' effect
-#define FAMILY_DOOR_OPEN 11     // The open door
-#define FAMILY_HIT 12           // Show when hit
+//inline constexpr int FAMILY_STAIN = 0;  // same as treasure FAMILY_STAIN
+inline constexpr int FAMILY_EXPAND = 0;
+inline constexpr int FAMILY_GHOST_SCARE = 1;
+inline constexpr int FAMILY_BOMB = 2;
+inline constexpr int FAMILY_EXPLOSION = 3;      // Bombs, etc.
+inline constexpr int FAMILY_FLASH = 4;          // Used for teleporter effects
+inline constexpr int FAMILY_MAGIC_SHIELD = 5;   // revolving protective shield
+inline constexpr int FAMILY_KNIFE_BACK  = 6;    // Returning blade
+inline constexpr int FAMILY_BOOMERANG  = 7;     // Circling boomerang
+inline constexpr int FAMILY_CLOUD = 8;          // purple poison cloud
+inline constexpr int FAMILY_MARKER = 9;         // Marker for Mages Teleport
+inline constexpr int FAMILY_CHAIN = 10;         // 'Chain lightning' effect
+inline constexpr int FAMILY_DOOR_OPEN = 11;     // The open door
+inline constexpr int FAMILY_HIT = 12;           // Show when hit
 
 // Special families
-#define FAMILY_RESERVED_TEAM 0
+inline constexpr int FAMILY_RESERVED_TEAM = 0;
 
 // Button graphic families
-#define FAMILY_NORMAL1 0
-#define FAMILY_PLUS 1
-#define FAMILY_MINUS 2
-#define FAMILY_WRENCH 3
+inline constexpr int FAMILY_NORMAL1 = 0;
+inline constexpr int FAMILY_PLUS = 1;
+inline constexpr int FAMILY_MINUS = 2;
+inline constexpr int FAMILY_WRENCH = 3;
 
 // Facings
-#define FACE_UP 0
-#define FACE_UP_RIGHT 1
-#define FACE_RIGHT 2
-#define FACE_DOWN_RIGHT 3
-#define FACE_DOWN 4
-#define FACE_DOWN_LEFT 5
-#define FACE_LEFT 6
-#define FACE_UP_LEFT 7
-#define NUM_FACINGS 8
+inline constexpr int FACE_UP = 0;
+inline constexpr int FACE_UP_RIGHT = 1;
+inline constexpr int FACE_RIGHT = 2;
+inline constexpr int FACE_DOWN_RIGHT = 3;
+inline constexpr int FACE_DOWN = 4;
+inline constexpr int FACE_DOWN_LEFT = 5;
+inline constexpr int FACE_LEFT = 6;
+inline constexpr int FACE_UP_LEFT = 7;
+inline constexpr int NUM_FACINGS = 8;
 
 // Stats defines
-#define COMMAND_WALK 1
-#define COMMAND_FIRE 2
-#define COMMAND_RANDOM_WALK 3   // walk random dir ..
-#define COMMAND_DIE 4   // bug fixing ..
-#define COMMAND_FOLLOW 5
-#define COMMAND_RUSH 6  // Rush your enemy!
-#define COMMAND_MULTIDO 7 // Do <com1> commands in one round
-#define COMMAND_QUICK_FIRE 8 // Fires with no busy or animation
-#define COMMAND_SET_WEAPON 9 // set weapon type
-#define COMMAND_RESET_WEAPON 10 // restores weapon to default
-#define COMMAND_SEARCH 11       // use right-hand rule to find foe
-#define COMMAND_ATTACK 12       // attack / move to a close, current foe
-#define COMMAND_RIGHT_WALK 13   // use right-hand rule ONLY; no direct walk
-#define COMMAND_UNCHARM 14      // recover from being 'charmed'
+inline constexpr int COMMAND_WALK = 1;
+inline constexpr int COMMAND_FIRE = 2;
+inline constexpr int COMMAND_RANDOM_WALK = 3;   // walk random dir ..
+inline constexpr int COMMAND_DIE = 4;   // bug fixing ..
+inline constexpr int COMMAND_FOLLOW = 5;
+inline constexpr int COMMAND_RUSH = 6;  // Rush your enemy!
+inline constexpr int COMMAND_MULTIDO = 7; // Do <com1> commands in one round
+inline constexpr int COMMAND_QUICK_FIRE = 8; // Fires with no busy or animation
+inline constexpr int COMMAND_SET_WEAPON = 9; // set weapon type
+inline constexpr int COMMAND_RESET_WEAPON = 10; // restores weapon to default
+inline constexpr int COMMAND_SEARCH = 11;       // use right-hand rule to find foe
+inline constexpr int COMMAND_ATTACK = 12;       // attack / move to a close, current foe
+inline constexpr int COMMAND_RIGHT_WALK = 13;   // use right-hand rule ONLY; no direct walk
+inline constexpr int COMMAND_UNCHARM = 14;      // recover from being 'charmed'
 inline constexpr Sint32 REGEN = 4000;       // used to calculate time between heals
 
-#define STANDARD_TEXT_TIME 75   // how many cycles to display text?
-#define TEXT_1 "text.pix"       // standard text pixie
-#define TEXT_BIG "textbig.pix"       // standard text pixie
+inline constexpr int STANDARD_TEXT_TIME = 75;   // how many cycles to display text?
+inline constexpr const char* TEXT_1 = "text.pix";       // standard text pixie
+inline constexpr const char* TEXT_BIG = "textbig.pix";       // standard text pixie
 
-#define DONT_DELETE 1
+inline constexpr int DONT_DELETE = 1;
 
 #ifndef PROT_MODE
 // sound
@@ -346,27 +346,27 @@ char* get_cfg_item(char *section, char *item);
 // Functions in game.cpp
 short load_saved_game(const char *filename, screen  *myscreen);
 
-#define NORMAL_MODE    0     // #defines for walkputbuffer mode type
-#define INVISIBLE_MODE 1     //
-#define PHANTOM_MODE   2     //
-#define OUTLINE_MODE   3     //
+inline constexpr int NORMAL_MODE    = 0;     // for walkputbuffer mode type
+inline constexpr int INVISIBLE_MODE = 1;
+inline constexpr int PHANTOM_MODE   = 2;
+inline constexpr int OUTLINE_MODE   = 3;
 
-#define SHIFT_LIGHTER      0  //  #defines for phantomputbuffer
-#define SHIFT_DARKER       1  //
-#define SHIFT_LEFT         2  //
-#define SHIFT_RIGHT        3  //
-#define SHIFT_RIGHT_RANDOM 4  //  shifts right 1 or 2 spaces (whole image)
-#define SHIFT_RANDOM       5  //  shifts 1 or 2 right (on pixel x pixel basis)
-#define SHIFT_BLOCKY       6  //  courtroom style
+inline constexpr int SHIFT_LIGHTER      = 0;  //  for phantomputbuffer
+inline constexpr int SHIFT_DARKER       = 1;
+inline constexpr int SHIFT_LEFT         = 2;
+inline constexpr int SHIFT_RIGHT        = 3;
+inline constexpr int SHIFT_RIGHT_RANDOM = 4;  //  shifts right 1 or 2 spaces (whole image)
+inline constexpr int SHIFT_RANDOM       = 5;  //  shifts 1 or 2 right (on pixel x pixel basis)
+inline constexpr int SHIFT_BLOCKY       = 6;  //  courtroom style
 
 
 inline constexpr char SCEN_TYPE_CAN_EXIT = 1; // make these go by power of 2, 1,2,4,8
 inline constexpr char SCEN_TYPE_GEN_EXIT = 2;
 inline constexpr char SCEN_TYPE_SAVE_ALL = 4; // save named npc's
 
-#define OUTLINE_NAMED         7              // #defines for outline colors
-#define OUTLINE_INVULNERABLE  224            //
-#define OUTLINE_FLYING        208            //
+inline constexpr unsigned char OUTLINE_NAMED         = 7;              // for outline colors
+inline constexpr unsigned char OUTLINE_INVULNERABLE  = 224;
+inline constexpr unsigned char OUTLINE_FLYING        = 208;
 #define OUTLINE_INVISIBLE query_team_color() //
 
 inline constexpr char ACTION_FOLLOW = 1;

@@ -169,12 +169,12 @@ void uppercase(char *str)
 // kari: yet two extra
 void lowercase(std::string &str)
 {
-    for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
-        *iter = tolower(*iter);
+    for(auto& c : str)
+        c = tolower(c);
 }
 
 void uppercase(std::string &str)
 {
-    for(std::string::iterator iter = str.begin(); iter!=str.end(); ++iter)
-        *iter = toupper(*iter);
+    for(auto& c : str)
+        c = toupper(c);
 }

@@ -2478,9 +2478,8 @@ short walker::special()
                         std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
                                                               32+stats->level*2, &howmany, this);
                         
-                        for(auto e = newlist.begin(); e != newlist.end(); e++)
+                        for(auto* w : newlist)
                         {
-                            walker* w = *e;
                             if (w)
                             {
                                 tempx = w->xpos - xpos;
@@ -2508,9 +2507,8 @@ short walker::special()
                     
                         generic = 0;
                         
-                        for(auto e = newlist.begin(); e != newlist.end(); e++)
+                        for(auto* w : newlist)
                         {
-                            walker* w = *e;
                             if (w)
                             {
                                 if (random(stats->level) >= random(w->stats->level))
@@ -2548,9 +2546,9 @@ short walker::special()
 						didheal = 0;
 						if (howmany > 1) // some friends here ..
 						{
-						    for(auto e = newlist.begin(); e != newlist.end(); e++)
+						    for(auto* w : newlist)
 							{
-								newob = *e;
+								newob = w;
 								if (newob->stats->hitpoints < newob->stats->max_hitpoints &&
 								        newob != this )
 								{
@@ -2834,9 +2832,9 @@ short walker::special()
 						}
 						// Remove a marker, if present
 						generic = 0; // used to check progress
-						for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+						for(auto& uptr : myscreen->level_data.oblist)
 						{
-						    walker* ob = e->get();
+						    walker* ob = uptr.get();
 							if (ob &&
 							        ob->query_order() == ORDER_FX &&
 							        ob->query_family() == FAMILY_MARKER &&
@@ -2943,9 +2941,8 @@ short walker::special()
 						std::list<walker*> newlist = myscreen->find_friends_in_range(
 						              myscreen->level_data.oblist, 30000, &howmany, this);
 						
-						for(auto e = newlist.begin(); e != newlist.end(); e++)
+						for(auto* w : newlist)
 						{
-						    walker* w = *e;
 							if (w)
 								w->bonus_rounds += generic;
 						}
@@ -2982,14 +2979,12 @@ short walker::special()
 					busy += 5;
 					
 					// Create explosions on top of the target objects
-					for(auto e = newlist.begin(); e != newlist.end(); e++)
+					for(auto* ob : newlist)
 					{
-					    walker* ob = *e;
-					    
 						newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
 						if (!newob)
 							return 0; // failsafe
-                        
+
 						newob->owner = this;
 						newob->team_num = team_num;
 						newob->stats->level = stats->level;
@@ -3023,9 +3018,9 @@ short walker::special()
 						}
 						// Remove a marker, if present
 						generic = 0; // used to check progress
-						for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+						for(auto& uptr : myscreen->level_data.oblist)
 						{
-						    walker* ob = e->get();
+						    walker* ob = uptr.get();
 							if (ob &&
 							        ob->query_order() == ORDER_FX &&
 							        ob->query_family() == FAMILY_MARKER &&
@@ -3105,13 +3100,12 @@ short walker::special()
                             busy += 5;
                             
                             // Create explosions on the target objects
-                            for(auto e = newlist.begin(); e != newlist.end(); e++)
+                            for(auto* ob : newlist)
                             {
-                                walker* ob = *e;
                                 newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
                                 if (!newob)
                                     return 0; // failsafe
-                                
+
                                 newob->owner = this;
                                 newob->team_num = team_num;
                                 newob->stats->level = stats->level;
@@ -3147,9 +3141,8 @@ short walker::special()
                             
                             // find closest of our foes in range
                             generic = 30000;
-                            for(auto e = newlist.begin(); e != newlist.end(); e++)
+                            for(auto* w : newlist)
                             {
-                                walker* w = *e;
                                 short dist = distance_to_ob_center(w);
                                 if (generic > dist)
                                 {
@@ -3377,9 +3370,9 @@ short walker::special()
                         didheal = 0; // howmany actually done yet?
                         generic2 = stats->magicpoints - stats->special_cost[static_cast<int>(current_special)] + 10;
                         
-                        for(auto e = newlist.begin(); e != newlist.end() && (generic2 >= 10); e++)
+                        for(auto* ob : newlist)
                         {
-                            walker* ob = *e;
+                            if (generic2 < 10) break;
                             if ( (ob->real_team_num == 255) && // never been charmed
                                     (ob->query_order() == ORDER_LIVING) && // alive
                                     (ob->charm_left <= 10) // not too charmed
@@ -3532,9 +3525,8 @@ short walker::special()
                             std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
                                                                   80+4*stats->level, &howmany, this);
                             
-                            for(auto e = newlist.begin(); e != newlist.end(); e++)
+                            for(auto* ob : newlist)
                             {
-                                walker* ob = *e;
                                 if (ob && (random(stats->level) >=
                                                  random(ob->stats->level)) )
                                 {
@@ -3569,9 +3561,9 @@ short walker::special()
                                 return 0; // noone to influence
                             
                             didheal = 0; // howmany actually done yet?
-                            for(auto e = newlist.begin(); e != newlist.end() && !didheal; e++)
+                            for(auto* ob : newlist)
                             {
-                                walker* ob = *e;
+                                if (didheal) break;
                                 if ( (ob->real_team_num == 255) && // never been charmed
                                         (ob->query_order() == ORDER_LIVING) && // alive
                                         1 // (ob->charm_left <= 10) // not too charmed
@@ -3753,16 +3745,16 @@ short walker::special()
                         if (howmany > 1) // some friends here ..
                         {
                             //Log("Found %d friends\n", howmany-1);
-                            for(auto e = newlist.begin(); e != newlist.end(); e++)
+                            for(auto* w : newlist)
                             {
-                                newob = *e;
+                                newob = w;
                                 if (newob != this) // not for ourselves
                                 {
                                     // First see if this person already has protection (slow)
                                     tempwalk = nullptr;
-                                    for(auto f = myscreen->level_data.oblist.begin(); f != myscreen->level_data.oblist.end(); f++)
+                                    for(auto& uptr : myscreen->level_data.oblist)
                                     {
-                                        walker* ob = f->get();
+                                        walker* ob = uptr.get();
                                         if (ob && ob->owner == newob
                                                 && ob->query_order() == ORDER_WEAPON
                                                 && ob->query_family() == FAMILY_CIRCLE_PROTECTION
@@ -3837,9 +3829,8 @@ short walker::special()
                         std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      160+(20*stats->level), &howmany, this);
                         
-                        for(auto e = newlist.begin(); e != newlist.end(); e++)
+                        for(auto* ob : newlist)
                         {
-                            walker* ob = *e;
                             if (ob)
                             {
                                 if (ob->myguy)
@@ -3976,9 +3967,9 @@ short walker::teleport()
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
-	for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
+	for(auto& uptr : myscreen->level_data.oblist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 		if (ob &&
 		        ob->query_order() == ORDER_FX &&
 		        ob->query_family() == FAMILY_MARKER &&
@@ -4053,9 +4044,8 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 	if (!targets)
 		return -1;
 
-    for(auto e = deadlist.begin(); e != deadlist.end(); e++)
+    for(auto* w : deadlist)
 	{
-	    walker* w = *e;
 		if (w
 		        && ( (w->query_family() == FAMILY_SKELETON) ||
 		             (w->query_family() == FAMILY_GHOST)

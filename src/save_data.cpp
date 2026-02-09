@@ -435,9 +435,9 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 
 
     // Remove new (or existing) "guys" from the list and store them in this SaveData to be saved and trained.
-    for(auto e = oblist.begin(); e != oblist.end(); e++)
+    for(auto& uptr : oblist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 		if (ob && !ob->dead && ob->myguy)
 		{
 		    // Take this one

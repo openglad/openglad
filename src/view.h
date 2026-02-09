@@ -21,6 +21,7 @@
 #include "base.h"
 #include "level_data.h"
 #include <string>
+#include <string_view>
 
 // Viewscreen-related defines
 inline constexpr signed char PREF_LIFE = 0;
@@ -52,7 +53,9 @@ inline constexpr signed char PREF_OVERLAY = 7;
   inline constexpr signed char PREF_OVERLAY_OFF = 0;
   inline constexpr signed char PREF_OVERLAY_ON  = 1;
 
-#define PREF_MAX 8  // == 1 + highest pref ..
+inline constexpr int PREF_MAX = 8;  // == 1 + highest pref ..
+
+inline constexpr int MAX_MESSAGES = 5;  // max of 5 lines, currently
 
 class viewscreen;
 
@@ -88,7 +91,7 @@ class viewscreen
 		short refresh();
 		short input(const SDL_Event& event);
 		short continuous_input();
-		void set_display_text(const char *newtext, short numcycles);
+		void set_display_text(std::string_view newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward
 		void clear_text(void); // clear all text in buffer
@@ -105,7 +108,6 @@ class viewscreen
 		Sint32 change_gamma(Sint32 whichway);
 
 		Sint32 gamma; // for gamma correction
-#define MAX_MESSAGES 5  // max of 5 lines, currently
 
 		std::string textlist[MAX_MESSAGES];
 		short textcycles[MAX_MESSAGES];  // cycles to display screen-text

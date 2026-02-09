@@ -294,9 +294,9 @@ int get_num_foes(LevelData& level)
 {
     int result = 0;
     
-	for(auto e = level.oblist.begin(); e != level.oblist.end(); e++)
+	for(auto& uptr : level.oblist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 	    // Not dead, not hired, not on red team
 		if (ob && !ob->dead && ob->query_order() == ORDER_LIVING && ob->myguy == nullptr && ob->team_num != 0)
 		{
@@ -380,33 +380,33 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     std::vector<TroopResult> troops;
     
     // Get the guys from "before"
-    for(std::map<int, guy*>::iterator e = before.begin(); e != before.end(); e++)
+    for(auto& [id, g] : before)
     {
-        used_troops.insert(e->first);
-        troops.push_back(TroopResult(e->second, after[e->first]));
+        used_troops.insert(id);
+        troops.push_back(TroopResult(g, after[id]));
     }
-    
+
     // Get the ones from "after" that weren't in "before"
-    for(std::map<int, walker*>::iterator e = after.begin(); e != after.end(); e++)
+    for(auto& [id, w] : after)
     {
-        if(used_troops.insert(e->first).second)
-            troops.push_back(TroopResult(before[e->first], e->second));
+        if(used_troops.insert(id).second)
+            troops.push_back(TroopResult(before[id], w));
     }
     
     walker* mvp = nullptr;
     float mvp_points = 0;
-    for(std::vector<TroopResult>::iterator e = troops.begin(); e != troops.end(); e++)
+    for(auto& troop : troops)
     {
         float points = 0;
-        
-        if(e->after == nullptr)
+
+        if(troop.after == nullptr)
             continue;
-            
-        points = e->after->myguy->scen_damage + 3*e->after->myguy->scen_damage_taken;
-        
+
+        points = troop.after->myguy->scen_damage + 3*troop.after->myguy->scen_damage_taken;
+
         if(mvp_points < points)
         {
-            mvp = e->after;
+            mvp = troop.after;
             mvp_points = points;
         }
     }
@@ -415,11 +415,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     std::vector<int> recruits;
     std::vector<int> losses;
     int i = 0;
-    for(std::vector<TroopResult>::iterator e = troops.begin(); e != troops.end(); e++)
+    for(auto& troop : troops)
     {
-        if(e->is_dead())
+        if(troop.is_dead())
             losses.push_back(i);
-        else if(e->is_new())
+        else if(troop.is_new())
             recruits.push_back(i);
         i++;
     }
@@ -619,10 +619,10 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 mytext.write_xy(x, y, DARK_BLUE, "%d Recruits:", recruits.size());
                 END_IF_IN_SCROLL_AREA;
                 y += 22;
-                for(std::vector<int>::iterator e = recruits.begin(); e != recruits.end(); e++)
+                for(auto idx : recruits)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(x, y, DARK_BLUE, " + %s the %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    mytext.write_xy(x, y, DARK_BLUE, " + %s the %s LVL %d", troops[idx].get_name().c_str(), troops[idx].get_class_name().c_str(), troops[idx].get_level());
                     END_IF_IN_SCROLL_AREA;
                     
                     y += 11;
@@ -637,10 +637,10 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 END_IF_IN_SCROLL_AREA;
                 
                 y += 22;
-                for(std::vector<int>::iterator e = losses.begin(); e != losses.end(); e++)
+                for(auto idx : losses)
                 {
                     BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(x, y, DARK_BLUE, " - %s the %s LVL %d", troops[*e].get_name().c_str(), troops[*e].get_class_name().c_str(), troops[*e].get_level());
+                    mytext.write_xy(x, y, DARK_BLUE, " - %s the %s LVL %d", troops[idx].get_name().c_str(), troops[idx].get_class_name().c_str(), troops[idx].get_level());
                     END_IF_IN_SCROLL_AREA;
                     
                     y += 11;
@@ -729,11 +729,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                         mytext.write_xy(area.x + 20, y, DARK_BLUE, "Gained special%s:", (specials.size() == 1? "" : "s"));
                         END_IF_IN_SCROLL_AREA;
                         
-                        for(std::vector<std::string>::iterator e = specials.begin(); e != specials.end(); e++)
+                        for(auto& spec : specials)
                         {
                             y += 10;
                             BEGIN_IF_IN_SCROLL_AREA;
-                            mytext.write_xy(area.x + 30, y, DARK_BLUE, "%s", (*e).c_str());
+                            mytext.write_xy(area.x + 30, y, DARK_BLUE, "%s", spec.c_str());
                             END_IF_IN_SCROLL_AREA;
                         }
                     }

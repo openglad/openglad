@@ -1688,9 +1688,9 @@ Sint32 create_hire_menu(Sint32 arg1)
         }
         
         int i = 0;
-        for(std::list<std::string>::iterator e = desc.begin(); e != desc.end(); e++)
+        for(auto& line : desc)
         {
-            mytext.write_xy(description_box_content.x, description_box_content.y + i*10, DARK_BLUE, "%s", e->c_str());
+            mytext.write_xy(description_box_content.x, description_box_content.y + i*10, DARK_BLUE, "%s", line.c_str());
             i++;
         }
         
@@ -2249,22 +2249,22 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
     // Get the max dimensions needed to display it
     int w = strlen(title)*9;
     int h = 30 + 10*ls.size();
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    for(auto& line : ls)
     {
-        if(int(e->size()*pix_per_char) > w)
-            w = e->size()*pix_per_char;
+        if(int(line.size()*pix_per_char) > w)
+            w = line.size()*pix_per_char;
     }
-    
+
     // Centered bounds
     int leftside  = 160 - w/2 - 12;
     int rightside = 160 + w/2 + 12;
     int j = 0;
-	
+
 	int dumbcount;
 
 	if (localbuttons)
 		delete (localbuttons);
-    
+
 	button* buttons = yes_or_no_buttons;
 	int num_buttons = 2;
 	int highlighted_button = (default_value? 0 : 1);
@@ -2302,9 +2302,9 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 		// Draw
 		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
 		j = 0;
-        for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+        for(auto& line : ls)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
         
@@ -2345,22 +2345,22 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
     // Get the max dimensions needed to display it
     int w = strlen(title)*9;
     int h = 30 + 10*ls.size();
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    for(auto& line : ls)
     {
-        if(int(e->size()*pix_per_char) > w)
-            w = e->size()*pix_per_char;
+        if(int(line.size()*pix_per_char) > w)
+            w = line.size()*pix_per_char;
     }
-    
+
     // Centered bounds
     int leftside  = 160 - w/2 - 12;
     int rightside = 160 + w/2 + 12;
     int j = 0;
-    
+
 	int dumbcount;
 
 	if (localbuttons)
 		delete (localbuttons);
-    
+
 	button* buttons = no_or_yes_buttons;
 	int num_buttons = 2;
 	int highlighted_button = (default_value? 1 : 0);
@@ -2398,19 +2398,19 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 		// Draw
 		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
 		j = 0;
-        for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+        for(auto& line : ls)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
-        
+
         draw_buttons(buttons, num_buttons);
-        
+
         draw_highlight_interior(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
-	
+
     if(retvalue == YES)
     {
         Log("YES\n");
@@ -2444,16 +2444,16 @@ void popup_dialog(const char* title, const char* message)
     // Get the max dimensions needed to display it
     int w = strlen(title)*9;
     int h = 30 + 10*ls.size();
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    for(auto& line : ls)
     {
-        if(int(e->size()*pix_per_char) > w)
-            w = e->size()*pix_per_char;
+        if(int(line.size()*pix_per_char) > w)
+            w = line.size()*pix_per_char;
     }
-    
+
     // Centered bounds
     int leftside  = 160 - w/2 - 12;
     int rightside = 160 + w/2 + 12;
-    
+
     // Draw background
     int dumbcount;
     
@@ -2496,9 +2496,9 @@ void popup_dialog(const char* title, const char* message)
 		// Draw
 		dumbcount = myscreen->draw_dialog(leftside, 80 - h/2, rightside, 80 + h/2, title);
 		j = 0;
-        for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+        for(auto& line : ls)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - e->size()*pix_per_char/2, 104 - h/2 + 10*j, e->c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - line.size()*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
 		

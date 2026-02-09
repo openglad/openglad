@@ -995,9 +995,9 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	data->mysmoother.set_target(data->grid);
 
 	// Fix up doors, etc.
-	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
+	for(auto& uptr : data->weaplist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && w->query_family()==FAMILY_DOOR)
 		{
 			if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
@@ -1185,9 +1185,9 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     data->mysmoother.set_target(data->grid);
 
     // Fix up doors, etc.
-	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
+	for(auto& uptr : data->weaplist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
         if (w && w->query_family()==FAMILY_DOOR)
         {
             if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
@@ -1449,9 +1449,9 @@ bool LevelData::save()
 	SDL_RWwrite(outfile, &listsize, 2, 1);
 
 	// Okay, we've written header .. now dump the data ..
-	for(auto e = oblist.begin(); e != oblist.end(); e++)
+	for(auto& uptr : oblist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
         if (w == nullptr)
         {
             Log("Unexpected nullptr object.\n");
@@ -1481,9 +1481,9 @@ bool LevelData::save()
 	}
 
 	// Now dump the fxlist data ..
-	for(auto e = fxlist.begin(); e != fxlist.end(); e++)
+	for(auto& uptr : fxlist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
         if (ob == nullptr)
         {
             Log("Unexpected nullptr fx object.\n");
@@ -1513,9 +1513,9 @@ bool LevelData::save()
 	}
 
 	// Now dump the weaplist data ..
-	for(auto e = weaplist.begin(); e != weaplist.end(); e++)
+	for(auto& uptr : weaplist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
         if (ob == nullptr)
         {
             Log("Unexpected nullptr weap object.\n");
@@ -1547,14 +1547,12 @@ bool LevelData::save()
 	//printf("saving %d lines\n", numlines);
 
 	SDL_RWwrite(outfile, &numlines, 1, 1);
-	std::list<std::string>::iterator e = this->description.begin();
-	for (i=0; i < numlines; i++)
+	for (auto& line : this->description)
 	{
-		snprintf(oneline, sizeof(oneline), "%s", e->c_str());
-		tempwidth = static_cast<unsigned char>(e->size());
+		snprintf(oneline, sizeof(oneline), "%s", line.c_str());
+		tempwidth = static_cast<unsigned char>(line.size());
 		SDL_RWwrite(outfile, &tempwidth, 1, 1);
 		SDL_RWwrite(outfile, oneline, tempwidth, 1);
-		e++;
 	}
 
 	SDL_RWclose(outfile);

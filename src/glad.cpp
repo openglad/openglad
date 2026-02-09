@@ -368,8 +368,8 @@ void glad_init()
 #ifdef TESTING
 	// Remove exits so level auto-completes when all enemies die
 	if (g_test_remove_exits) {
-		for (auto e = myscreen->level_data.fxlist.begin(); e != myscreen->level_data.fxlist.end(); e++) {
-			walker* w = e->get();
+		for (auto& uptr : myscreen->level_data.fxlist) {
+			walker* w = uptr.get();
 			if (w && w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT)
 				w->dead = 1;
 		}
@@ -430,9 +430,9 @@ short remaining_foes(screen *myscreen, walker* myguy)
 	short myfoes = 0;
 
 	const auto& foelist = myscreen->level_data.oblist;
-	for(auto e = foelist.begin(); e != foelist.end(); e++)
+	for(auto& uptr : foelist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && !w->dead &&
 		        (w->query_order() == ORDER_LIVING) &&
 		        !myguy->is_friendly(w) )
@@ -448,9 +448,9 @@ short remaining_team(screen *myscreen, char myteam)
 	short myfoes = 0;
 
 	const auto& foelist = myscreen->level_data.oblist;
-	for(auto e = foelist.begin(); e != foelist.end(); e++)
+	for(auto& uptr : foelist)
 	{
-	    walker* w = e->get();
+	    walker* w = uptr.get();
 		if (w && !w->dead &&
 		        (w->query_order() == ORDER_LIVING) &&
 		        (myteam == w->team_num) )

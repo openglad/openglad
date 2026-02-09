@@ -613,9 +613,8 @@ void statistics::yell_for_help(walker *foe)
 	// Get AI-controlled allies to target my foe
 	std::list<walker*> helplist = myscreen->find_friends_in_range(
 	               myscreen->level_data.oblist, 160, &howmany, controller);
-	for(auto e = helplist.begin(); e != helplist.end(); e++)
+	for(auto* w : helplist)
 	{
-	    walker* w = *e;
 		w->leader = controller;
 		if (foe != w->foe)
 			w->stats->last_distance = w->stats->current_distance = 32000;

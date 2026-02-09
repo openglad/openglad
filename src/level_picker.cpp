@@ -61,9 +61,9 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
     exits.clear();
     
     // Go through objects
-	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
+	for(auto& uptr : level_data.oblist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
         switch(ob->query_order())
         {
             case ORDER_LIVING:
@@ -84,9 +84,9 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 	}
 	
 	// Go through effects
-	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
+	for(auto& uptr : level_data.fxlist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
         switch(ob->query_order())
         {
             case ORDER_TREASURE:
@@ -211,9 +211,9 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
     
     scentextlines = level_data.description.size();
     int i = 0;
-    for(std::list<std::string>::iterator e = level_data.description.begin(); e != level_data.description.end(); e++)
+    for(auto& line : level_data.description)
     {
-        scentext[i] = *e;
+        scentext[i] = line;
         i++;
         if(i >= 80)
             break;
@@ -261,10 +261,10 @@ void BrowserEntry::draw(screen* screenp)
     {
         std::string exits_str = "Exits: ";
         bool first = true;
-        for(std::list<int>::iterator e = exits.begin(); e != exits.end(); e++)
+        for(auto exit_level : exits)
         {
             if(!first) exits_str += ", ";
-            exits_str += std::to_string(*e);
+            exits_str += std::to_string(exit_level);
             first = false;
         }
         if(exits_str.size() > 20)

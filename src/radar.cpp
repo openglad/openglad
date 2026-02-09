@@ -270,9 +270,9 @@ short radar::draw(LevelData* data)
 		}
 	} // go back to new screen lists (weapons, etc.)
 
-    for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
+    for(auto& uptr : data->fxlist)
 	{
-	    walker* ob = e->get();
+	    walker* ob = uptr.get();
 		if (ob && !ob->dead)
 		{
 			oborder  = ob->query_order();

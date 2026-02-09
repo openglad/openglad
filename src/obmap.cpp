@@ -48,57 +48,57 @@ void obmap::draw()
     short offsetx = myscreen->viewob[0]->topx;
     short offsety = myscreen->viewob[0]->topy;
     // Draw the number of obs in each pile
-    for(auto e = pos_to_walker.begin(); e != pos_to_walker.end(); e++)
+    for(auto& [pos, walkers] : pos_to_walker)
     {
-        short cx = unhash(e->first.first) - offsetx + OBRES/2;
-        short cy = unhash(e->first.second) - offsety + OBRES/2;
+        short cx = unhash(pos.first) - offsetx + OBRES/2;
+        short cy = unhash(pos.second) - offsety + OBRES/2;
         myscreen->draw_box(cx - OBRES/2, cy - OBRES/2, cx + OBRES/2, cy + OBRES/2, YELLOW, false);
-        t.write_xy_center(cx, cy, YELLOW, "%d", e->second.size());
+        t.write_xy_center(cx, cy, YELLOW, "%d", walkers.size());
     }
     
     // Draw a box for each walker
-    for(auto e = walker_to_pos.begin(); e != walker_to_pos.end(); e++)
+    for(auto& [w, positions] : walker_to_pos)
     {
         // Get bounds
         bool unset = true;
         SDL_Rect r = {0, 0, 1, 1};
-        for(auto f = e->second.begin(); f != e->second.end(); f++)
+        for(auto& [px, py] : positions)
         {
             if(unset)
             {
-                r.x = f->first;
-                r.y = f->second;
+                r.x = px;
+                r.y = py;
                 unset = false;
                 continue;
             }
-            if(f->first < r.x)
+            if(px < r.x)
             {
-                r.w += r.x - f->first;
-                r.x = f->first;
+                r.w += r.x - px;
+                r.x = px;
             }
-            if(f->second < r.y)
+            if(py < r.y)
             {
-                r.h += r.y - f->second;
-                r.y = f->second;
+                r.h += r.y - py;
+                r.y = py;
             }
-            if(f->first > r.x + r.w)
+            if(px > r.x + r.w)
             {
-                r.w += f->first - (r.x + r.w);
+                r.w += px - (r.x + r.w);
             }
-            if(f->second > r.y + r.h)
+            if(py > r.y + r.h)
             {
-                r.h += f->second - (r.y + r.h);
+                r.h += py - (r.y + r.h);
             }
         }
-        
+
         if(!unset)
         {
             // Draw the rect
             short x = unhash(r.x) - offsetx;
             short y = unhash(r.y) - offsety;
-            short w = unhash(r.w);
-            short h = unhash(r.h);
-            myscreen->draw_box(x, y, x + w, y + h, e->first->query_team_color(), false);
+            short bw = unhash(r.w);
+            short bh = unhash(r.h);
+            myscreen->draw_box(x, y, x + bw, y + bh, w->query_team_color(), false);
         }
     }
 }
@@ -145,10 +145,10 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
     if(e != walker_to_pos.end())
     {
         // For each position...
-        for(auto f = e->second.begin(); f != e->second.end(); f++)
+        for(auto& pos : e->second)
         {
             // Get the pile
-            auto g = pos_to_walker.find(*f);
+            auto g = pos_to_walker.find(pos);
             
             // Find our guy in this pile and remove him
             auto h = std::find(g->second.begin(), g->second.end(), ob);
@@ -255,9 +255,8 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
         return 1;
 
 	// Check each object to see if sizes collide.
-	for(auto e = pile.begin(); e != pile.end(); e++)
+	for(auto* w : pile)
 	{
-	    walker* w = *e;
 	    if (w != ob && !w->dead)
         {
             targetorder = w->query_order();
