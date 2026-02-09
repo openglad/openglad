@@ -19,6 +19,7 @@
 
 #include "SDL.h"
 #include <list>
+#include <memory>
 #include <string>
 
 class screen;
@@ -50,7 +51,7 @@ public:
     int num_levels;
     
     PixieData icondata;
-    pixie* icon;
+    std::unique_ptr<pixie> icon;
     
     CampaignData(const std::string& id);
     ~CampaignData();
@@ -82,7 +83,7 @@ public:
     Sint32 pixmaxx, pixmaxy;
     
     smoother mysmoother;
-    loader* myloader;
+    std::unique_ptr<loader> myloader;
     int numobs;
     std::list<walker*> oblist;
     std::list<walker*> fxlist;  // fx--explosions, etc.
@@ -90,12 +91,12 @@ public:
     // Keep a list of dead guys so weapons can still have valid owners
     std::list<walker*> dead_list;
     
-    obmap* myobmap;
+    std::unique_ptr<obmap> myobmap;
     std::list<std::string> description;
     
     // Drawing details
     PixieData pixdata[PIX_MAX];
-    pixieN* back[PIX_MAX];
+    std::unique_ptr<pixieN> back[PIX_MAX];
     Sint32 topx, topy;
     
     LevelData(int id);

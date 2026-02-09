@@ -742,13 +742,13 @@ void redraw_mainmenu()
 	std::string message;
     
     main_title_logo_pix->set_frame(0);
-    main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0]);
+    main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0].get());
     main_title_logo_pix->set_frame(1);
-    main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0]);
+    main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0].get());
     main_columns_pix->set_frame(0);
-    main_columns_pix->drawMix(12,40, myscreen->viewob[0]);
+    main_columns_pix->drawMix(12,40, myscreen->viewob[0].get());
     main_columns_pix->set_frame(1);
-    main_columns_pix->drawMix(242,40, myscreen->viewob[0]);
+    main_columns_pix->drawMix(242,40, myscreen->viewob[0].get());
     //main_columns_pix->next_frame();
     
     #ifndef DISABLE_MULTIPLAYER
@@ -3062,7 +3062,7 @@ void show_guy(Sint32 frames, Sint32 who, short centerx, short centery) // shows 
 	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
 	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
 	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
-	mywalker->draw(myscreen->viewob[0]);
+	mywalker->draw(myscreen->viewob[0].get());
 	delete mywalker;
 }
 // Sets current_guy to 'whichguy' in the teamlist, and

@@ -168,7 +168,7 @@ short pixie::on_screen()
 	short i;
 	for (i=0; i < myscreen->numviews; i++)
 	{
-		if (on_screen(myscreen->viewob[i]))
+		if (on_screen(myscreen->viewob[i].get()))
 			return 1;
 	}
 	return 0;

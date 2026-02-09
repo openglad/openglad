@@ -976,7 +976,7 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
+    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0].get(), myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -1968,7 +1968,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
         level->myloader->set_walker(newob, object_brush.order, object_brush.family);
         newob->team_num = object_brush.team;
-        newob->draw_tile(myscreen->viewob[0]);
+        newob->draw_tile(myscreen->viewob[0].get());
         // Border
         myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
@@ -1988,11 +1988,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
                     level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
                     newob->team_num = object_brush.team;
-                    newob->draw_tile(myscreen->viewob[0]);
+                    newob->draw_tile(myscreen->viewob[0].get());
                 }
             }
         }
-        
+
         #ifndef USE_TOUCH_INPUT
         
         // Draw cursor
@@ -2031,7 +2031,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             }
             
             // Draw current brush near cursor
-            newob->draw(myscreen->viewob[0]);
+            newob->draw(myscreen->viewob[0].get());
         }
         #endif
         
@@ -3121,7 +3121,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         }  // end of failure to put guy
                         else if(!object_brush.snap_to_grid)
                         {
-                            newob->draw(myscreen->viewob[0]);
+                            newob->draw(myscreen->viewob[0].get());
                             myscreen->buffer_to_screen(0, 0, 320, 200);
                             start_time_s = query_timer();
                             MouseState& mymouse = query_mouse_no_poll();

@@ -39,14 +39,14 @@ static constexpr char VERSION_NUM = 9; // save scenario type info
 
 
 CampaignData::CampaignData(const std::string& id)
-    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0), icon(nullptr)
+    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0)
 {
     description.push_back("No description.");
 }
 
 CampaignData::~CampaignData()
 {
-	delete icon;
+	icon.reset();
 	icondata.free();
 }
 
@@ -101,7 +101,7 @@ bool CampaignData::load()
         std::string icon_file = "icon.pix";
         icondata = read_pixie_file(icon_file.c_str());
         if(icondata.valid())
-            icon = new pixie(icondata);
+            icon = std::make_unique<pixie>(icondata);
         
         // Count the number of levels
         std::list<int> levels = list_levels();
@@ -291,21 +291,16 @@ LevelData::LevelData(int id)
     : id(id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
     , myloader(nullptr), numobs(0), topx(0), topy(0)
 {
-    for (int i = 0; i < PIX_MAX; i++)
-    {
-        back[i] = nullptr;
-    }
-    
-	myobmap = new obmap;
-	
-    myloader = new loader;
-	
+	myobmap = std::make_unique<obmap>();
+
+    myloader = std::make_unique<loader>();
+
     // Load map data from a pixie format
     load_map_data(pixdata);
 
     // Initialize a pixie for each background piece
     for(int i = 0; i < PIX_MAX; i++)
-        back[i] = new pixieN(pixdata[i], 0);
+        back[i] = std::make_unique<pixieN>(pixdata[i], 0);
 
     //buffers: after we set all the tiles to use acceleration, we go
     //through the tiles that have pal cycling to turn of the accel.
@@ -330,20 +325,15 @@ LevelData::~LevelData()
 {
     delete_objects();
     delete_grid();
-    delete myloader;
-    
-    delete myobmap;
+    myloader.reset();
+
+    myobmap.reset();
     
         
     for (int i = 0; i < PIX_MAX; i++)
     {
         pixdata[i].free();
-        
-        if (back[i])
-        {
-            delete back[i];
-            back[i] = nullptr;
-        }
+        back[i].reset();
     }
 }
 
@@ -352,8 +342,7 @@ void LevelData::clear()
     delete_objects();
     delete_grid();
     
-    delete myobmap;
-	myobmap = new obmap();
+	myobmap = std::make_unique<obmap>();
     
     title = "New Level";
     type = 0;
@@ -373,8 +362,8 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
     walker* w = myloader->create_walker(order, family, myscreen);
     if(w == nullptr)
         return nullptr;
-    
-    w->myobmap = this->myobmap;
+
+    w->myobmap = this->myobmap.get();
     if (order == ORDER_LIVING)
         numobs++;
     
@@ -385,7 +374,7 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
 walker* LevelData::add_fx_ob(char order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen, false);
-    w->myobmap = this->myobmap;
+    w->myobmap = this->myobmap.get();
 
 	//numobs++;
 	//w->ignore = 1;
@@ -397,8 +386,8 @@ walker* LevelData::add_fx_ob(char order, char family)
 walker* LevelData::add_weap_ob(char order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen);
-    w->myobmap = this->myobmap;
-    
+    w->myobmap = this->myobmap.get();
+
     weaplist.push_back(w);
 	return w;
 }
@@ -1298,8 +1287,7 @@ bool LevelData::load()
     Log("Loading version %d scenario", versionnumber);
     
     // Reset the loader (which holds graphics for the objects to use)
-    delete myloader;
-    myloader = new loader;
+    myloader = std::make_unique<loader>();
     
     // Do the rest of the loading
     clear();
@@ -1316,20 +1304,15 @@ bool LevelData::load()
         for (int i = 0; i < PIX_MAX; i++)
         {
             pixdata[i].free();
-            
-            if (back[i])
-            {
-                delete back[i];
-                back[i] = nullptr;
-            }
+            back[i].reset();
         }
-        
+
         // Load map data from a pixie format
         load_map_data(pixdata);
 
         // Initialize a pixie for each background piece
         for(int i = 0; i < PIX_MAX; i++)
-            back[i] = new pixieN(pixdata[i], 0);
+            back[i] = std::make_unique<pixieN>(pixdata[i], 0);
 
         //buffers: after we set all the tiles to use acceleration, we go
         //through the tiles that have pal cycling to turn of the accel.

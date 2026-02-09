@@ -215,7 +215,7 @@ short viewscreen::redraw()
 	short xneg = 0;
 	short yneg = 0;
 	walker  *controlob = control;
-	pixieN  **backp = myscreen->level_data.back;
+	auto& backp = myscreen->level_data.back;
 	PixieData& gridp = myscreen->level_data.grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
@@ -274,7 +274,7 @@ short viewscreen::redraw(LevelData* data, bool draw_radar)
 	short xneg = 0;
 	short yneg = 0;
 	walker  *controlob = control;
-	pixieN  **backp = data->back;
+	auto& backp = data->back;
 	PixieData& gridp = data->grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;

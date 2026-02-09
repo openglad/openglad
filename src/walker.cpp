@@ -103,7 +103,7 @@ walker::walker(const PixieData& data)
 
 	myobmap = nullptr;
 	if(myscreen != nullptr)
-        myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
+        myobmap = myscreen->level_data.myobmap.get();  // default obmap (spatial partitioning optimization?) changed when added to a list
     
 	path_check_counter = 5 + rand()%10;
 	hurt_flash = false;

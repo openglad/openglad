@@ -185,7 +185,7 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     // Draw icon button
     myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw icon
-	icon->drawMix(x, y, myscreen->viewob[0]);
+	icon->drawMix(x, y, myscreen->viewob[0].get());
 	y += h + 4;
 
 	// Print suggested power

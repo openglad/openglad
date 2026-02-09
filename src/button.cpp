@@ -250,7 +250,7 @@ void vbutton::vdisplay()
     text& mytext = myscreen->text_normal;
     if (mypixie) // then use the graphic
     {
-        mypixie->draw(xloc, yloc, myscreen->viewob[0]);
+        mypixie->draw(xloc, yloc, myscreen->viewob[0].get());
         if (label.size())
             mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
@@ -281,7 +281,7 @@ void vbutton::vdisplay(Sint32 status)
     text& mytext = myscreen->text_normal;
     if (mypixie) // then use the graphic
     {
-        mypixie->draw(xloc, yloc, myscreen->viewob[0]);
+        mypixie->draw(xloc, yloc, myscreen->viewob[0].get());
         if (label.size())
             mytext.write_xy( static_cast<short>( ((xloc+xend)/2) - (((label.size()-1)* (mytext.letters->w+1) )/2)) ,
                               static_cast<short>(yloc + (height-(mytext.letters->h))/2), label.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
@@ -514,7 +514,7 @@ void draw_backdrop()
     Sint32 i;
     for (i=0; i < 5; i++)
         if (backdrops[i])
-            backdrops[i]->draw(myscreen->viewob[0]);
+            backdrops[i]->draw(myscreen->viewob[0].get());
 }
 
 void draw_buttons(button * buttons, Sint32 numbuttons)

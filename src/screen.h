@@ -100,7 +100,7 @@ class screen : public video
 		unsigned short enemy_freeze; // stops enemies from acting
 		std::unique_ptr<soundob> soundp;
 		short redrawme;
-		viewscreen  * viewob[5];
+		std::unique_ptr<viewscreen> viewob[5];
 		short numviews;
 		Uint32 timerstart;
 		Uint32 framecount;

@@ -134,7 +134,7 @@ class walker : public pixieN
 		walker * leader;
 		walker * owner;                // for weapons
 		walker * myself;
-		guy  *myguy;                   // our special stats..
+		guy  *myguy;                   // Non-owning — owned by SaveData::team_list
 		short dead;                    // safety check
 		char ignore;                   // for non-colliding objects
 		unsigned short default_weapon;
