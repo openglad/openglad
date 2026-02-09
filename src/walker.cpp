@@ -2055,10 +2055,10 @@ short walker::attack(walker  *target)
 						myscreen->save_data.m_score[team_num] += tempdamage + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
-					if (strlen(target->stats->name) && !(target->lifetime)
+					if (target->stats->name.size() && !(target->lifetime)
 					        && (!target->owner) ) // do we have an NPC name?
 					{
-						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name);
+						sprintf(message, "ENEMY DEATH: %s DIED!", target->stats->name.c_str());
 						myscreen->viewob[0]->set_display_text(message, STANDARD_TEXT_TIME);
 					}
 					if(remaining_foes(myscreen, this) == 1)  // This is the last foe
@@ -2071,12 +2071,12 @@ short walker::attack(walker  *target)
 				{
 					// Alert us of the death
 					if ( (target->owner || target->lifetime) // summoned?
-					        && (strlen(target->stats->name) ) ) // and have name
-						sprintf(message, "%s Dispelled!", target->stats->name);
-					else if (strlen(target->stats->name)) // do we have an NPC name?
-						sprintf(message, "%s DIED!", target->stats->name);
-					else if (target->myguy && strlen(target->myguy->name) )
-						sprintf(message, "%s Died!", target->myguy->name);
+					        && (target->stats->name.size() ) ) // and have name
+						sprintf(message, "%s Dispelled!", target->stats->name.c_str());
+					else if (target->stats->name.size()) // do we have an NPC name?
+						sprintf(message, "%s DIED!", target->stats->name.c_str());
+					else if (target->myguy && target->myguy->name.size() )
+						sprintf(message, "%s Died!", target->myguy->name.c_str());
 					else
 						switch (target->query_family())
 						{
@@ -2220,7 +2220,7 @@ short walker::animate()
 			{
 				delete newob->myguy;  // can't be 'sustained' if too low
 				newob->myguy = nullptr;
-				strcpy(newob->stats->name, "SLIME"); // generic name
+				newob->stats->name = "SLIME"; // generic name
 				newob->stats->level = calculate_level(myguy->exp/2);
 			}
 			else if (newob->myguy) // split our experience
@@ -2662,9 +2662,9 @@ short walker::special()
 							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
-								strcpy(message, myguy->name);
+								strcpy(message, myguy->name.c_str());
 								sprintf(message, "%s turned %d undead.",
-								        myguy->name, generic);
+								        myguy->name.c_str(), generic);
 								myscreen->do_notify(message, this);
 							} // end of notify visually
 						}
@@ -2722,9 +2722,9 @@ short walker::special()
 							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
-								strcpy(message, myguy->name);
+								strcpy(message, myguy->name.c_str());
 								sprintf(message, "%s turned %d undead.",
-								        myguy->name, generic);
+								        myguy->name.c_str(), generic);
 								myscreen->do_notify(message, this);
 							} // end of notify visually
 						}
@@ -3355,7 +3355,7 @@ short walker::special()
 									newob->stats->armor = 0;
 									newob->foe = foe; // just to help out ..
 									newob->stats->set_bit_flags(BIT_MAGICAL, 1); // we're magical
-									strcpy(newob->stats->name, "Phantom");
+									newob->stats->name = "Phantom";
 								} // end of successfully put summoned creature-image
 							} // end of I and J loops
 						if (!generic) // we never found a legal spot
@@ -3409,10 +3409,10 @@ short walker::special()
 					if (!didheal) // didn't actually get anyone?
 						return 0;
 					// Notify screen of our action
-					if (strlen(stats->name)) // do we have an NPC name?
-						strcpy(message, stats->name);
-					else if (myguy && strlen(myguy->name) )
-						strcpy(message, myguy->name);
+					if (stats->name.size()) // do we have an NPC name?
+						strcpy(message, stats->name.c_str());
+					else if (myguy && myguy->name.size() )
+						strcpy(message, myguy->name.c_str());
 					else
 						strcpy(message, "ArchMage");
 					sprintf(tempstr, "%s has controlled %d men", message, didheal);
@@ -3549,9 +3549,9 @@ short walker::special()
                             }
                         }
 						if (myguy)
-							strcpy(message, myguy->name);
-						else if ( strlen(stats->name) )
-							strcpy(message, stats->name);
+							strcpy(message, myguy->name.c_str());
+						else if ( stats->name.size() )
+							strcpy(message, stats->name.c_str());
 						else
 							strcpy(message, "THIEF");
 						strcat(message, ": 'Nyah Nyah!'");
@@ -3606,10 +3606,10 @@ short walker::special()
 						if (!didheal)
 							return 0;
 						// Notify screen of our action
-						if (strlen(stats->name)) // do we have an NPC name?
-							strcpy(message, stats->name);
-						else if (myguy && strlen(myguy->name) )
-							strcpy(message, myguy->name);
+						if (stats->name.size()) // do we have an NPC name?
+							strcpy(message, stats->name.c_str());
+						else if (myguy && myguy->name.size() )
+							strcpy(message, myguy->name.c_str());
 						else
 							strcpy(message, "Thief");
 						if (generic2) // then we actually failed to charm
@@ -3878,10 +3878,10 @@ short walker::special()
 					if (myguy)
 					{
 						myguy->exp += exp_from_action(ExpAction::EatCorpse, this, newob, 0);
-						strcpy(message, myguy->name);
+						strcpy(message, myguy->name.c_str());
 					}
-					else if ( strlen(stats->name) )
-						strcpy(message, stats->name);
+					else if ( stats->name.size() )
+						strcpy(message, stats->name.c_str());
 					else
 						strcpy(message, "Orc");
 					strcat(message, " ate a corpse.");
@@ -4400,7 +4400,7 @@ void walker::transfer_stats(walker  *newob)
 	if (myguy)
 	{
 		newguy = new guy();
-		strcpy(newguy->name, myguy->name);
+		newguy->name = myguy->name;
 		newguy->strength = myguy->strength;
 		newguy->constitution = myguy->constitution;
 		newguy->dexterity = myguy->dexterity;
@@ -4514,7 +4514,7 @@ short walker::death()
 		case ORDER_LIVING:
 			if (   (team_num == 0 || myguy) // our team
 			        && (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
-			        && (strlen(stats->name)) // we were named
+			        && (stats->name.size()) // we were named
 			   )
 				return myscreen->endgame(SCEN_TYPE_SAVE_ALL); // failed
 			switch (family)
@@ -4534,8 +4534,8 @@ short walker::death()
 					newob->set_difficulty(stats->level);
 					newob->foe = foe;
 					newob->leader = leader;
-					if (strlen(stats->name))
-						strcpy(stats->name, newob->stats->name);
+					if (stats->name.size())
+						stats->name = newob->stats->name;
 					if (myguy)
 					{
 						newob->myguy = myguy;
@@ -4553,8 +4553,8 @@ short walker::death()
 					newob->set_difficulty(stats->level);
 					newob->foe = foe;
 					newob->leader = leader;
-					if (strlen(stats->name))
-						strcpy(stats->name, newob->stats->name);
+					if (stats->name.size())
+						stats->name = newob->stats->name;
 					if (myguy)
 					{
 						newob->myguy = myguy;

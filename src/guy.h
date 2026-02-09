@@ -45,7 +45,7 @@ class guy
         
 		void update_derived_stats(walker* w);
 
-		char name[12];
+		std::string name;
 		char family;  // our family
 		short strength;
 		short dexterity;

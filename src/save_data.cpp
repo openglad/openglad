@@ -310,7 +310,7 @@ bool SaveData::load(const std::string& filename)
 		SDL_RWread(infile, filler, 8, 1);
 		// Now set the values ..
 		temp_guy->family       = temp_family;
-		strcpy(temp_guy->name,guyname);
+		temp_guy->name = guyname;
 		temp_guy->strength     = temp_str;
 		temp_guy->dexterity    = temp_dex;
 		temp_guy->constitution = temp_con;
@@ -604,10 +604,8 @@ bool SaveData::save(const std::string& filename)
         temp_order = ORDER_LIVING;
         temp_family= temp_guy->family;
         // Write name of current guy...
-        strcpy(guyname, temp_guy->name);
-        // Set any chars under 12 not used to 0 ..
-        for (int j = strlen(guyname); j < 12; j++)
-            guyname[j] = 0;
+        memset(guyname, 0, 12);
+        strncpy(guyname, temp_guy->name.c_str(), 11);
         temp_str = temp_guy->strength;
         temp_dex = temp_guy->dexterity;
         temp_con = temp_guy->constitution;

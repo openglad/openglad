@@ -610,7 +610,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             {
                 BEGIN_IF_IN_SCROLL_AREA;
                 
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy->name, get_family_string(mvp->myguy->family));
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy->name.c_str(), get_family_string(mvp->myguy->family));
                 mytext.write_xy_center(area.x + area.w/2, y + 8, DARK_BLUE, "(%.0f pts)", mvp_points);
                 y += 22;
                 

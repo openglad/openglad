@@ -11,32 +11,32 @@ extern screen* myscreen;
 void test_guy_creation() {
     guy soldier(FAMILY_SOLDIER);
     TEST_ASSERT_EQ(FAMILY_SOLDIER, soldier.family, "soldier should have soldier family");
-    TEST_ASSERT_STR_EQ("SOLDIER", soldier.name, "soldier should be named SOLDIER");
+    TEST_ASSERT_STR_EQ("SOLDIER", soldier.name.c_str(), "soldier should be named SOLDIER");
     TEST_ASSERT(soldier.strength > 0, "soldier should have positive strength");
 
     guy archer(FAMILY_ARCHER);
     TEST_ASSERT_EQ(FAMILY_ARCHER, archer.family, "archer should have archer family");
-    TEST_ASSERT_STR_EQ("ARCHER", archer.name, "archer should be named ARCHER");
+    TEST_ASSERT_STR_EQ("ARCHER", archer.name.c_str(), "archer should be named ARCHER");
 
     guy mage(FAMILY_MAGE);
     TEST_ASSERT_EQ(FAMILY_MAGE, mage.family, "mage should have mage family");
-    TEST_ASSERT_STR_EQ("MAGE", mage.name, "mage should be named MAGE");
+    TEST_ASSERT_STR_EQ("MAGE", mage.name.c_str(), "mage should be named MAGE");
 
     guy cleric(FAMILY_CLERIC);
     TEST_ASSERT_EQ(FAMILY_CLERIC, cleric.family, "cleric should have cleric family");
-    TEST_ASSERT_STR_EQ("CLERIC", cleric.name, "cleric should be named CLERIC");
+    TEST_ASSERT_STR_EQ("CLERIC", cleric.name.c_str(), "cleric should be named CLERIC");
 
     guy elf(FAMILY_ELF);
     TEST_ASSERT_EQ(FAMILY_ELF, elf.family, "elf should have elf family");
-    TEST_ASSERT_STR_EQ("ELF", elf.name, "elf should be named ELF");
+    TEST_ASSERT_STR_EQ("ELF", elf.name.c_str(), "elf should be named ELF");
 
     guy thief(FAMILY_THIEF);
     TEST_ASSERT_EQ(FAMILY_THIEF, thief.family, "thief should have thief family");
-    TEST_ASSERT_STR_EQ("THIEF", thief.name, "thief should be named THIEF");
+    TEST_ASSERT_STR_EQ("THIEF", thief.name.c_str(), "thief should be named THIEF");
 
     guy druid(FAMILY_DRUID);
     TEST_ASSERT_EQ(FAMILY_DRUID, druid.family, "druid should have druid family");
-    TEST_ASSERT_STR_EQ("DRUID", druid.name, "druid should be named DRUID");
+    TEST_ASSERT_STR_EQ("DRUID", druid.name.c_str(), "druid should be named DRUID");
 }
 REGISTER_TEST(test_guy_creation);
 
@@ -44,7 +44,7 @@ REGISTER_TEST(test_guy_creation);
 // Test: Guy copy constructor preserves all fields
 void test_guy_copy() {
     guy original(FAMILY_ARCHER);
-    strcpy(original.name, "LEGOLAS");
+    original.name = "LEGOLAS";
     original.strength = 30;
     original.dexterity = 50;
     original.constitution = 20;
@@ -54,7 +54,7 @@ void test_guy_copy() {
 
     guy copy(original);
 
-    TEST_ASSERT_STR_EQ("LEGOLAS", copy.name, "copy name should match");
+    TEST_ASSERT_STR_EQ("LEGOLAS", copy.name.c_str(), "copy name should match");
     TEST_ASSERT_EQ(FAMILY_ARCHER, copy.family, "copy family should match");
     TEST_ASSERT_EQ(30, copy.strength, "copy strength should match");
     TEST_ASSERT_EQ(50, copy.dexterity, "copy dexterity should match");

@@ -886,7 +886,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 		new_guy->setxy(currentx, currenty);
 		new_guy->team_num = tempteam;
 		new_guy->stats->level = templevel;
-		strcpy(new_guy->stats->name, tempname);
+		new_guy->stats->name = tempname;
 		if (strlen(tempname) > 1)                      //chad 5/25/95
 			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
 
@@ -999,7 +999,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 		new_guy->setxy(currentx, currenty);
 		new_guy->team_num = tempteam;
 		new_guy->stats->level = templevel;
-		strcpy(new_guy->stats->name, tempname);
+		new_guy->stats->name = tempname;
 		if (strlen(tempname) > 1)                      //chad 5/25/95
 			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
 
@@ -1166,7 +1166,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
             new_guy->stats->level = shortlevel;
         else
             new_guy->stats->level = templevel;
-        strcpy(new_guy->stats->name, tempname);
+        new_guy->stats->name = tempname;
         if (strlen(tempname) > 1)                      //chad 5/25/95
             new_guy->stats->set_bit_flags(BIT_NAMED, 1);
 
@@ -1517,7 +1517,7 @@ bool LevelData::save()
         currenty  = w->ypos;
         //templevel = w->stats->level;
         shortlevel = w->stats->level;
-        strcpy(tempname, w->stats->name);
+        strncpy(tempname, w->stats->name.c_str(), 11); tempname[11] = '\0';
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1549,7 +1549,7 @@ bool LevelData::save()
         currenty  = ob->ypos;
         //templevel = ob->stats->level;
         shortlevel = ob->stats->level;
-        strcpy(tempname, ob->stats->name);
+        strncpy(tempname, ob->stats->name.c_str(), 11); tempname[11] = '\0';
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1580,7 +1580,7 @@ bool LevelData::save()
         currentx  = ob->xpos;
         currenty  = ob->ypos;
         shortlevel = ob->stats->level;
-        strcpy(tempname, ob->stats->name);
+        strncpy(tempname, ob->stats->name.c_str(), 11); tempname[11] = '\0';
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);

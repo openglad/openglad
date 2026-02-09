@@ -636,7 +636,7 @@ void statistics::yell_for_help(walker *foe)
 	// Notify friends of need ...
 	if (controller->myguy && (controller->team_num == 0) )
 	{
-		sprintf(message, "%s yells for help!", controller->myguy->name);
+		sprintf(message, "%s yells for help!", controller->myguy->name.c_str());
 		myscreen->do_notify(message, controller);
 	}
 

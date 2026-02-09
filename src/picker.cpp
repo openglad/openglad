@@ -554,7 +554,7 @@ void view_team(short left, short top, short right, short bottom)
 		{
 			numguys++;
 
-			strcpy(message, ourteam[i]->name);
+			strcpy(message, ourteam[i]->name.c_str());
 			// Pick a nice dark color based on family type
 			namecolor = ((ourteam[i]->family +1) << 4) & 255;
 			mytext.write_xy(left+5, text_down, message, (unsigned char)namecolor, 1);
@@ -1964,8 +1964,8 @@ Sint32 create_train_menu(Sint32 arg1)
         myscreen->draw_text_bar(36, 10, 124, 22);
         
         text& mytext = myscreen->text_normal;
-        mytext.write_xy(80 - mytext.query_width(current_guy->name)/2, 14,
-                         current_guy->name,(unsigned char) DARK_BLUE, 1);
+        mytext.write_xy(80 - mytext.query_width(current_guy->name.c_str())/2, 14,
+                         current_guy->name.c_str(),(unsigned char) DARK_BLUE, 1);
         myscreen->draw_button(38, 66, 120, 160, 1, 1); // stats box
         myscreen->draw_text_bar(42, 70, 116, 156);
 
@@ -2987,7 +2987,7 @@ bool has_name_in_team(const char* name)
     
     for(int i = 0; i < team_size; i++)
     {
-        if(strcmp(ourteam[i]->name, name) == 0)
+        if(strcmp(ourteam[i]->name.c_str(), name) == 0)
             return true;
     }
     
@@ -3053,8 +3053,7 @@ Sint32 cycle_guy(Sint32 whichway)
 	// Make the new guy
 	current_guy = new guy(newfamily);
 	current_guy->teamnum = current_team_num;
-	strncpy(current_guy->name, get_new_name(newfamily), 12);
-	current_guy->name[11] = '\0';
+	current_guy->name = get_new_name(newfamily);
 
 	show_guy(0, 0);
 
@@ -3184,10 +3183,12 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	
 	clear_keyboard();
-	char* new_text = nametext.input_string(176, 20, 11, someguy->name);
-	if(new_text == nullptr)
-        new_text = someguy->name;
-	memmove(someguy->name, new_text, strlen(new_text)+1);  // Could be overlapping strings
+	char temp_name[12];
+	strncpy(temp_name, someguy->name.c_str(), 11);
+	temp_name[11] = '\0';
+	char* new_text = nametext.input_string(176, 20, 11, temp_name);
+	if(new_text != nullptr)
+		someguy->name = new_text;
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
 
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -3228,7 +3229,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			
 			std::string name = ourteam[i]->name;
 			if(prompt_for_string("NAME THIS CHARACTER", name))
-                strncpy(ourteam[i]->name, name.c_str(), 12);
+                ourteam[i]->name = name;
             
 			grab_mouse();
 
@@ -3240,11 +3241,10 @@ Sint32 add_guy(Sint32 ignoreme)
 
 			// Grab a new, generic guy to be edited/bought
 			current_guy = new guy(newfamily);
-			strcpy(type_name, current_guy->name);
+			strcpy(type_name, current_guy->name.c_str());
 			statscopy(current_guy, ourteam[i]); // set to same stats as just bought
-			strcpy(current_guy->name, type_name);
-            strncpy(current_guy->name, get_new_name(newfamily), 12);
-            current_guy->name[11] = '\0';
+			current_guy->name = type_name;
+            current_guy->name = get_new_name(newfamily);
 
 			// Return okay status
 			return OK;
@@ -3548,7 +3548,7 @@ void statscopy(guy *dest, guy *source)
 	dest->scen_shots = source->scen_shots;
 	dest->scen_hits = source->scen_hits;
 
-	strcpy(dest->name, source->name);
+	dest->name = source->name;
 }
 
 void quit(Sint32 arg1)
@@ -3773,8 +3773,8 @@ Sint32 create_detail_menu(guy *arg1)
        myscreen->draw_text_bar(36, 10, 124, 22);
        
        text& mytext = myscreen->text_normal;
-       mytext.write_xy(80 - mytext.query_width(current_guy->name)/2, 14,
-                        current_guy->name,(unsigned char) DARK_BLUE, 1);
+       mytext.write_xy(80 - mytext.query_width(current_guy->name.c_str())/2, 14,
+                        current_guy->name.c_str(),(unsigned char) DARK_BLUE, 1);
        myscreen->draw_dialog(5, 68, 315, 167, "Character Special Abilities");
        myscreen->draw_text_bar(160, 90, 162, 160);
 

@@ -1362,7 +1362,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		if (w && !w->dead
 		        && w->query_order() == ORDER_LIVING
 		        && w->team_num == teamnum
-		        && (w->stats->name || w->myguy)) //&& w->owner == nullptr)
+		        && (!w->stats->name.empty() || w->myguy)) //&& w->owner == nullptr)
 		{
 		    ls.push_back(w);
 		}
@@ -1411,9 +1411,9 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 				namecolor = BLACK;
 
 			if (w->myguy)
-				strcpy (message, w->myguy->name);
+				strcpy (message, w->myguy->name.c_str());
 			else
-				strcpy(message, w->stats->name);
+				strcpy(message, w->stats->name.c_str());
 			mytext.write_xy(left+5, text_down, message, (unsigned char) namecolor);
 
 			sprintf (message, "%4.0f/%.0f", ceilf(hp), maxhp);

@@ -777,9 +777,9 @@ short new_score_panel(screen *myscreen, short do_it)
 
 			// Display name or type, upper left
 			if (control->myguy)
-				strcpy(tempname, control->myguy->name);
-			else if ( strlen(control->stats->name) )
-				strcpy(tempname, control->stats->name);
+				strcpy(tempname, control->myguy->name.c_str());
+			else if ( strlen(control->stats->name.c_str()) )
+				strcpy(tempname, control->stats->name.c_str());
 			else
 				strcpy(tempname, namelist[(int)control->query_family()]);
 

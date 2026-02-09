@@ -77,7 +77,7 @@ class statistics
 		bool direct_walk(); // walk in a line toward foe ..
 		bool walk_to_foe(); // try to walk intelligently towards foe
 
-		char name[12]; // for NPC's, normally ..
+		std::string name; // for NPC's, normally ..
 		char old_order, old_family;
 		Uint32 last_distance;
 		Sint32 current_distance;  // Distances (to foe) are used for AI walking

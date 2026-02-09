@@ -61,17 +61,17 @@ void test_save_team_then_load() {
     myscreen->save_data.totalscore = 42000;
 
     guy* soldier = new guy(FAMILY_SOLDIER);
-    strcpy(soldier->name, "TESTGUY1");
+    soldier->name = "TESTGUY1";
     soldier->strength = 25;
     soldier->dexterity = 15;
 
     guy* archer = new guy(FAMILY_ARCHER);
-    strcpy(archer->name, "TESTGUY2");
+    archer->name = "TESTGUY2";
     archer->strength = 10;
     archer->intelligence = 20;
 
     guy* mage = new guy(FAMILY_MAGE);
-    strcpy(mage->name, "TESTGUY3");
+    mage->name = "TESTGUY3";
 
     myscreen->save_data.team_list[0] = soldier;
     myscreen->save_data.team_list[1] = archer;
@@ -100,7 +100,7 @@ void test_save_team_then_load() {
 
     // Verify individual guy data was restored
     TEST_ASSERT(myscreen->save_data.team_list[0] != nullptr, "first guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY1", myscreen->save_data.team_list[0]->name,
+    TEST_ASSERT_STR_EQ("TESTGUY1", myscreen->save_data.team_list[0]->name.c_str(),
         "first guy name should be restored");
     TEST_ASSERT_EQ(25, myscreen->save_data.team_list[0]->strength,
         "first guy strength should be restored");
@@ -108,7 +108,7 @@ void test_save_team_then_load() {
         "first guy dexterity should be restored");
 
     TEST_ASSERT(myscreen->save_data.team_list[1] != nullptr, "second guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY2", myscreen->save_data.team_list[1]->name,
+    TEST_ASSERT_STR_EQ("TESTGUY2", myscreen->save_data.team_list[1]->name.c_str(),
         "second guy name should be restored");
     TEST_ASSERT_EQ(FAMILY_ARCHER, myscreen->save_data.team_list[1]->family,
         "second guy should be an archer");
@@ -116,7 +116,7 @@ void test_save_team_then_load() {
         "second guy intelligence should be restored");
 
     TEST_ASSERT(myscreen->save_data.team_list[2] != nullptr, "third guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY3", myscreen->save_data.team_list[2]->name,
+    TEST_ASSERT_STR_EQ("TESTGUY3", myscreen->save_data.team_list[2]->name.c_str(),
         "third guy name should be restored");
     TEST_ASSERT_EQ(FAMILY_MAGE, myscreen->save_data.team_list[2]->family,
         "third guy should be a mage");

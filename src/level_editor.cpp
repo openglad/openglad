@@ -1312,8 +1312,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 std::string name = obj->stats->name;
                 if(prompt_for_string("Rename", name))
                 {
-                    strncpy(obj->stats->name, name.c_str(), 11);
-                    obj->stats->name[11] = '\0';
+                    obj->stats->name = name;
                     selection.front().name = obj->stats->name;
                     levelchanged = 1;
                 }
@@ -3060,8 +3059,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         std::string name = newob->collide_ob->stats->name;
                         if(prompt_for_string("Rename", name))
                         {
-                            strncpy(newob->collide_ob->stats->name, name.c_str(), 11);
-                            newob->collide_ob->stats->name[11] = '\0';
+                            newob->collide_ob->stats->name = name;
                             levelchanged = 1;
                         }
                     }

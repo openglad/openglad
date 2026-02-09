@@ -287,10 +287,10 @@ short treasure::eat_me(walker  * eater)
 			{
 				eater->keys |= (Sint32) (pow((double)2, stats->level)); // ie, 2, 4, 8, 16...
 				if (eater->myguy)
-					sprintf(message, "%s picks up key %d", eater->myguy->name,
+					sprintf(message, "%s picks up key %d", eater->myguy->name.c_str(),
 					        stats->level);
 				else
-					sprintf(message, "%s picks up key %d", eater->stats->name, stats->level);
+					sprintf(message, "%s picks up key %d", eater->stats->name.c_str(), stats->level);
 				if (eater->team_num == 0) // only show players picking up keys
 				{
 					myscreen->do_notify(message, eater);

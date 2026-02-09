@@ -39,7 +39,7 @@ int MAX(int a,int b)
 
 guy::guy()
 {
-	strcpy(name, "SOLDIER");
+	name = "SOLDIER";
 	family = FAMILY_SOLDIER;
 	strength = 0;
 	dexterity = 0;
@@ -101,8 +101,7 @@ guy::guy(int whatfamily)
     }
     
     // Set name
-    strncpy(name, get_family_string(whatfamily), 12);
-    name[11] = '\0';
+    name = get_family_string(whatfamily);
 	
 	id = guy_id_counter++;
 }
@@ -124,7 +123,7 @@ guy::guy(const guy& copy)
     , id(copy.id)
     , level(copy.level)
 {
-    strcpy(name, copy.name);
+    name = copy.name;
 }
 
 guy::~guy()
