@@ -230,13 +230,13 @@ Sint32 backgrounds[] = {
 class ObjectType
 {
 public:
-    unsigned char order;
+    Order order;
     unsigned char family;
-    
+
     ObjectType()
-        : order(0), family(0)
+        : order(Order::Living), family(0)
     {}
-    ObjectType(unsigned char order, unsigned char family)
+    ObjectType(Order order, unsigned char family)
         : order(order), family(family)
     {}
 };
@@ -761,21 +761,21 @@ class EditorObjectBrush
 public:
     
     bool snap_to_grid;
-    Sint32 order;
+    Order order;
     Sint32 family;
     char team;
     unsigned short level;
     bool picking;
     
     EditorObjectBrush()
-        : snap_to_grid(true), order(ORDER_LIVING), family(0), team(1), level(1), picking(false)
+        : snap_to_grid(true), order(Order::Living), family(0), team(1), level(1), picking(false)
     {}
     
     void set(walker* target)
     {
         if(target == nullptr)
         {
-            order = ORDER_LIVING;
+            order = Order::Living;
             family = 0;
             team = 1;
             level = 1;
@@ -797,17 +797,17 @@ public:
     std::string name;
     short x, y;
     unsigned short w, h;
-    unsigned char order;
+    Order order;
     unsigned char family;
     unsigned short level;
     walker* target;
-    
-    
+
+
     SelectionInfo()
-        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1), target(nullptr)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(Order::Living), family(FAMILY_SOLDIER), level(1), target(nullptr)
     {}
     SelectionInfo(walker* target)
-        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1), target(target)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(Order::Living), family(FAMILY_SOLDIER), level(1), target(target)
     {
         set(target);
     }
@@ -820,7 +820,7 @@ public:
         y = 0;
         w = GRID_SIZE;
         h = GRID_SIZE;
-        order = ORDER_LIVING;
+        order = Order::Living;
         family = FAMILY_SOLDIER;
         level = 1;
     }
@@ -1247,7 +1247,7 @@ void LevelEditorData::reset_mode_buttons()
         break;
         case Mode::Select:
         mode_buttons.insert(&gridSnapButton);
-        if(selection.size() == 1 && selection.front().order == ORDER_LIVING)
+        if(selection.size() == 1 && selection.front().order == Order::Living)
         {
             mode_buttons.insert(&setNameButton);
         }
@@ -1305,7 +1305,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     }
     else if(button == &setNameButton)
     {
-        if(selection.size() == 1 && selection.front().order == ORDER_LIVING)
+        if(selection.size() == 1 && selection.front().order == Order::Living)
         {
             walker* obj = selection.front().get_object(level);
             if(obj != nullptr)
@@ -1404,7 +1404,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(auto& sel : selection)
         {
             walker* obj = sel.get_object(level);
-            if(obj != nullptr && obj->query_order() == ORDER_LIVING)
+            if(obj != nullptr && obj->query_order() == Order::Living)
             {
                 if(sel.family > 0)
                     sel.family--;
@@ -1426,7 +1426,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(auto& sel : selection)
         {
             walker* obj = sel.get_object(level);
-            if(obj != nullptr && obj->query_order() == ORDER_LIVING)
+            if(obj != nullptr && obj->query_order() == Order::Living)
             {
                 if(sel.family+1 < NUM_FAMILIES)
                     sel.family++;
@@ -1572,7 +1572,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     for(auto& uptr : d.fxlist)
     {
         walker* w = uptr.get();
-        if(w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT && w->stats != nullptr)
+        if(w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT && w->stats != nullptr)
             exits.insert(w->stats->level);
     }
     
@@ -1747,7 +1747,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 break;  // No more
             }
             // Show name
-            else if(sel.name.size() > 0 && sel.order == ORDER_LIVING)
+            else if(sel.name.size() > 0 && sel.order == Order::Living)
             {
                 scentext.write_xy(lm, L_D(curline++), ("\"" + sel.name + "\"").c_str(), DARK_BLUE, 1);
                 showing_name = true;
@@ -1759,9 +1759,9 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             {
                 // Show family name
                 message.clear();
-                if (sel.order == ORDER_LIVING)
+                if (sel.order == Order::Living)
                     message = livings[sel.family];
-                else if (sel.order == ORDER_GENERATOR)
+                else if (sel.order == Order::Generator)
                     switch (sel.family)      // who are we?
                     {
                         case FAMILY_TENT:
@@ -1780,11 +1780,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                             message = "GENERATOR";
                             break;
                     }
-                else if (sel.order == ORDER_SPECIAL)
+                else if (sel.order == Order::Special)
                     message = "START TILE";
-                else if (sel.order == ORDER_TREASURE)
+                else if (sel.order == Order::Treasure)
                     message = treasures[sel.family];
-                else if (sel.order == ORDER_WEAPON)
+                else if (sel.order == Order::Weapon)
                     message = weapons[sel.family];
                 else
                     message = "UNKNOWN";
@@ -1802,11 +1802,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             message.clear();
             switch(sel.order)
             {
-                case ORDER_LIVING:
-                case ORDER_GENERATOR:
+                case Order::Living:
+                case Order::Generator:
                     message = std::format("LEVEL: {}", sel.level);
                     break;
-                case ORDER_TREASURE:
+                case Order::Treasure:
                     if(sel.family == FAMILY_GOLD_BAR || sel.family == FAMILY_SILVER_BAR)
                         message = std::format("VALUE: {}", sel.level);
                     else if(sel.family == FAMILY_KEY)
@@ -1818,7 +1818,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     else if(sel.family != FAMILY_STAIN)
                         message = std::format("POWER: {}", sel.level);
                     break;
-                case ORDER_WEAPON:
+                case Order::Weapon:
                     if(sel.family == FAMILY_DOOR)
                         message = std::format("DOOR ID: {}", sel.level);
                     else
@@ -1841,9 +1841,9 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         
         // Get team number ..
         message.clear();
-        if (object_brush.order == ORDER_LIVING)
+        if (object_brush.order == Order::Living)
             message = livings[object_brush.family];
-        else if (object_brush.order == ORDER_GENERATOR)
+        else if (object_brush.order == Order::Generator)
             switch (object_brush.family)      // who are we?
             {
                 case FAMILY_TENT:
@@ -1862,11 +1862,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     message = "GENERATOR";
                     break;
             }
-        else if (object_brush.order == ORDER_SPECIAL)
+        else if (object_brush.order == Order::Special)
             message = "START TILE";
-        else if (object_brush.order == ORDER_TREASURE)
+        else if (object_brush.order == Order::Treasure)
             message = treasures[object_brush.family];
-        else if (object_brush.order == ORDER_WEAPON)
+        else if (object_brush.order == Order::Weapon)
             message = weapons[object_brush.family];
         else
             message = "UNKNOWN";
@@ -1876,11 +1876,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         message.clear();
         switch(object_brush.order)
         {
-            case ORDER_LIVING:
-            case ORDER_GENERATOR:
+            case Order::Living:
+            case Order::Generator:
                 message = std::format("LEVEL: {}", object_brush.level);
                 break;
-            case ORDER_TREASURE:
+            case Order::Treasure:
                 if(object_brush.family == FAMILY_GOLD_BAR || object_brush.family == FAMILY_SILVER_BAR)
                     message = std::format("VALUE: {}", object_brush.level);
                 else if(object_brush.family == FAMILY_KEY)
@@ -1892,7 +1892,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 else if(object_brush.family != FAMILY_STAIN)
                     message = std::format("POWER: {}", object_brush.level);
                 break;
-            case ORDER_WEAPON:
+            case Order::Weapon:
                 if(object_brush.family == FAMILY_DOOR)
                     message = std::format("DOOR ID: {}", object_brush.level);
                 else
@@ -1969,7 +1969,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         // Background
         myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_BLACK, 1, 1);
         // Guy
-        walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+        walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
         newob->setxy(lm+25 + level->topx, PIX_TOP-16-1 + level->topy);
         newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
         level->myloader->set_walker(newob, object_brush.order, object_brush.family);
@@ -3027,7 +3027,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 }
                 else if (keystates[KEYSTATE_r]) // (re)name the current object
                 {
-                    newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+                    newob = level->add_ob(Order::Living, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
                     if (some_hit(windowx, windowy, newob, level))
                     {
@@ -3045,7 +3045,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     rect_selecting = false;
                     if(mx < 245-4 || my > L_D(7)-2)
                     {
-                        newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+                        newob = level->add_ob(Order::Living, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
                         if (some_hit(windowx, windowy, newob, level))
                         {
@@ -3236,7 +3236,7 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
 walker* LevelEditorData::get_object(int x, int y)
 {
     walker* result = nullptr;
-    walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
+    walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
     newob->setxy(x, y);
     if (some_hit(x, y, newob, level))
     {
@@ -3415,19 +3415,19 @@ Sint32 level_editor()
 	object_pane.clear();
 	for(int i = 0; i < NUM_FAMILIES; i++)
     {
-        object_pane.push_back(ObjectType(ORDER_LIVING, i));
+        object_pane.push_back(ObjectType(Order::Living, i));
     }
 	for(int i = 0; i < MAX_TREASURE+1; i++)
     {
-        object_pane.push_back(ObjectType(ORDER_TREASURE, i));
+        object_pane.push_back(ObjectType(Order::Treasure, i));
     }
 	for(int i = 0; i < 4; i++)
     {
-        object_pane.push_back(ObjectType(ORDER_GENERATOR, i));
+        object_pane.push_back(ObjectType(Order::Generator, i));
     }
     
-    object_pane.push_back(ObjectType(ORDER_WEAPON, FAMILY_DOOR));
-    object_pane.push_back(ObjectType(ORDER_SPECIAL, FAMILY_RESERVED_TEAM));
+    object_pane.push_back(ObjectType(Order::Weapon, FAMILY_DOOR));
+    object_pane.push_back(ObjectType(Order::Special, FAMILY_RESERVED_TEAM));
 	
 	// Minimap
 	myradar.start(data.level);

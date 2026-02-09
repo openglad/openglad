@@ -241,8 +241,8 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
 {
 	short oxsize, oysize;
 	short x2,y2,xsize2,ysize2;
-	short targetorder;//, targetteam, targetfamily;
-	short myorder;
+	Order targetorder;//, targetteam, targetfamily;
+	Order myorder;
 	//short myteam;
 
 	oxsize = ob->sizex;
@@ -262,13 +262,13 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
             targetorder = w->query_order();
             
             // Let our own team's weapons pass over us
-            if((targetorder == ORDER_WEAPON || myorder == ORDER_WEAPON) && ob->is_friendly(w))
+            if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
-            else if(targetorder == ORDER_WEAPON && myorder == ORDER_WEAPON && (random(10) > 3))
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (random(10) > 3))
                 continue;
             // Weapons never hit treasure
-            else if(targetorder == ORDER_TREASURE && myorder == ORDER_WEAPON)
+            else if(targetorder == Order::Treasure && myorder == Order::Weapon)
                 continue;
             else
             {
@@ -278,11 +278,11 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                 ysize2 = w->sizey;
                 if(collide(x,y,oxsize,oysize,x2,y2,xsize2,ysize2))
                 {
-                    if ( targetorder == ORDER_TREASURE )
+                    if ( targetorder == Order::Treasure )
                     {
                         w->eat_me(ob);
                     }
-                    else if ( (targetorder == ORDER_WEAPON)
+                    else if ( (targetorder == Order::Weapon)
                               && (w->query_family() == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?

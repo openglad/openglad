@@ -501,7 +501,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 						return 0;
 				case PIX_TREE_B1:  // Tree bottoms
 					{
-						if (ob->query_order() == ORDER_WEAPON
+						if (ob->query_order() == Order::Weapon
 						        || ob->stats->query_bit_flags(BIT_FORESTWALK) )
 							break;
 						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left)
@@ -524,7 +524,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 				case PIX_WALL_ARROW_GRASS_DARK:
 					{
 						//if (!ob->owner)
-						if (ob->query_order()==ORDER_LIVING)
+						if (ob->query_order()==Order::Living)
 							return 0;
 
 						if (abs(ob->xpos - ob->owner->xpos)>
@@ -565,7 +565,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 				case PIX_BOULDER_3:
 				case PIX_BOULDER_4:
 					{
-						if (ob->query_order() == ORDER_WEAPON)
+						if (ob->query_order() == Order::Weapon)
 							break;
 						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left)
 							break;
@@ -683,7 +683,7 @@ bool screen::act()
 				if (ob && !ob->dead)
 				{
 					if (!ob->is_friendly_to_team(save_data.my_team) &&
-					        ob->query_order() == ORDER_LIVING)
+					        ob->query_order() == Order::Living)
 						level_done = 0;
 					// Testing .. trying to FORCE foes :)
 					if (ob->foe == nullptr && ob->leader == nullptr)
@@ -700,8 +700,8 @@ bool screen::act()
 				printed_time = 1;
 			}
 			if (ob && !ob->dead &&
-			        ( (    (ob->query_order() != ORDER_LIVING)
-			               && (ob->query_order() != ORDER_GENERATOR)
+			        ( (    (ob->query_order() != Order::Living)
+			               && (ob->query_order() != Order::Generator)
 			          ) || (ob->team_num == 0) )
 			   )
 			{
@@ -709,7 +709,7 @@ bool screen::act()
 				if (ob && !ob->dead)
 				{
 					if (!ob->is_friendly_to_team(save_data.my_team) &&
-					        ob->query_order() == ORDER_LIVING)
+					        ob->query_order() == Order::Living)
 						level_done = 0;
 				}
 			}
@@ -727,7 +727,7 @@ bool screen::act()
 			if (ob && !ob->dead)
 			{
 				if (!ob->is_friendly_to_team(save_data.my_team) &&
-				        ob->query_order() == ORDER_LIVING)
+				        ob->query_order() == Order::Living)
 					level_done = 0;
 			}
 		}
@@ -739,7 +739,7 @@ bool screen::act()
 	    walker* ob = uptr.get();
 		if (ob && !ob->dead)
 		{
-			if (ob->query_order() == ORDER_TREASURE &&
+			if (ob->query_order() == Order::Treasure &&
 			        ob->query_family() == FAMILY_EXIT &&
 			        level_done != 0)
 			{
@@ -806,7 +806,7 @@ bool screen::act()
 
             //level_data.remove_ob(ob);
             // Remove from the list directly here so we can preserve our iterator
-			if(ob->query_order() == ORDER_LIVING)
+			if(ob->query_order() == Order::Living)
                 level_data.numobs--;
 
             e = level_data.oblist.erase(e);
@@ -971,8 +971,8 @@ walker *screen::find_near_foe(walker  *ob)
 				        (random(w->invisibility_left/20)==0)
 				   )
 				{
-					if (w->query_order() == ORDER_LIVING ||
-					        w->query_order() == ORDER_GENERATOR)
+					if (w->query_order() == Order::Living ||
+					        w->query_order() == Order::Generator)
 						//done separately since they are logically more significant
 						return w; // this should be a valid foe
 				}
@@ -1022,8 +1022,8 @@ walker  *screen::find_far_foe(walker  *ob)
 		if (ob->is_friendly(foe) == 0)
 		{
 			if (
-			    (foe->query_order() == ORDER_LIVING ||
-			     foe->query_order() == ORDER_GENERATOR)  &&
+			    (foe->query_order() == Order::Living ||
+			     foe->query_order() == Order::Generator)  &&
 			    (!(random(foe->invisibility_left/20)))
 			)
 			{
@@ -1039,7 +1039,7 @@ walker  *screen::find_far_foe(walker  *ob)
 	return endfoe;
 }
 
-walker* screen::set_walker(walker *ob, char order, char family)
+walker* screen::set_walker(walker *ob, Order order, char family)
 {
     return level_data.myloader->set_walker(ob, order, family);
 }
@@ -1087,7 +1087,7 @@ const char* screen::get_scen_title(const char *filename, screen *master)
 
 
 // Look for the first non-dead instance of a given walker ..
-walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,
+walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
                            int team_num)
 {
 	for(auto& uptr : level_data.oblist)
@@ -1146,7 +1146,7 @@ walker  * screen::find_nearest_blood(walker  *who)
 	for(auto& uptr : level_data.fxlist)
 	{
 	    walker* w = uptr.get();
-		if (w && w->query_order() == ORDER_TREASURE &&
+		if (w && w->query_order() == Order::Treasure &&
 		        w->query_family() == FAMILY_STAIN && !w->dead)
 		{
 			newdistance = static_cast<Uint32>(who->distance_to_ob_center(w));
@@ -1228,8 +1228,8 @@ std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead &&
-		        (w->query_order() == ORDER_LIVING ||
-		         w->query_order() == ORDER_GENERATOR)
+		        (w->query_order() == Order::Living ||
+		         w->query_order() == Order::Generator)
 		        && (ob->is_friendly(w) == 0)
 		   )
 		{
@@ -1256,7 +1256,7 @@ std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walke
 	for(auto& uptr : somelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead && w->query_order() == ORDER_LIVING
+		if (w && !w->dead && w->query_order() == Order::Living
 		        && ( ob->is_friendly(w) )
 		   )
 		{
@@ -1283,7 +1283,7 @@ std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<w
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead &&
-		        (w->query_order() == ORDER_WEAPON)
+		        (w->query_order() == Order::Weapon)
 		        && ( ob->is_friendly(w) )
 		   )
 		{

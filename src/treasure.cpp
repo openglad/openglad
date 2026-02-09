@@ -202,7 +202,7 @@ bool treasure::eat_me(walker  * eater)
 					for(auto& uptr : myscreen->level_data.oblist)
 					{
 					    walker* w = uptr.get();
-						if (w && w->query_order() == ORDER_LIVING)
+						if (w && w->query_order() == Order::Living)
 						{
 							w->dead = 1;
 							myscreen->level_data.myobmap->remove(w);
@@ -270,7 +270,7 @@ bool treasure::eat_me(walker  * eater)
 				return 1;
 			}
 			// Now do special effects
-			flash = myscreen->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
+			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			return 1;
@@ -278,7 +278,7 @@ bool treasure::eat_me(walker  * eater)
 			if (eater->team_num != team_num) // only our team can get these
 				return 1;
 			myscreen->save_data.m_score[eater->team_num] += stats->hitpoints;
-			flash = myscreen->level_data.add_ob(ORDER_FX, FAMILY_FLASH);
+			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			dead = 1;
@@ -335,7 +335,7 @@ walker  * treasure::find_teleport_target()
 	    walker* w = e->get();
 		if (w && !w->dead)
 		{
-			if (w->query_order() == ORDER_TREASURE &&
+			if (w->query_order() == Order::Treasure &&
 			        w->query_family() == FAMILY_TELEPORTER &&
 			        w->stats->level == stats->level)
 			{
@@ -351,7 +351,7 @@ walker  * treasure::find_teleport_target()
 	    walker* w = e->get();
 		if (w && !w->dead)
 		{
-			if (w->query_order() == ORDER_TREASURE &&
+			if (w->query_order() == Order::Treasure &&
 			        w->query_family() == FAMILY_TELEPORTER &&
 			        w->stats->level == stats->level)
 			{

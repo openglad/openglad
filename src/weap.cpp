@@ -143,7 +143,7 @@ bool weap::death()
 		case FAMILY_KNIFE: // for returning knife
 			if (owner && owner->query_family() != FAMILY_SOLDIER)
 				break;  // only soldiers get returning knives
-			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_KNIFE_BACK);
+			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
 			newob->owner = owner;
 			newob->center_on(this);
 			newob->lastx = lastx;
@@ -193,7 +193,7 @@ bool weap::death()
 				break;  // skip_exit means we're supposed to explode :)
 			if (!owner || owner->dead)
 				owner = this;
-			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
+			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 			if (!newob)
 				break; // failsafe
 			if (on_screen())
@@ -207,16 +207,16 @@ bool weap::death()
 			break;  // end fire (exploding) arrows
 		case FAMILY_WAVE: // grow to wave2
 			dead = 0;
-			transform_to(ORDER_WEAPON, FAMILY_WAVE2);
+			transform_to(Order::Weapon, FAMILY_WAVE2);
 			stats->hitpoints = stats->max_hitpoints;
 			break;  // end wave -> wave2
 		case FAMILY_WAVE2: // grow to wave3
 			dead = 0;
-			transform_to(ORDER_WEAPON, FAMILY_WAVE3);
+			transform_to(Order::Weapon, FAMILY_WAVE3);
 			stats->hitpoints = stats->max_hitpoints;
 			break;  // end wave2 -> wave3
 		case FAMILY_DOOR: // display open picture
-			newob = myscreen->level_data.add_weap_ob(ORDER_FX, FAMILY_DOOR_OPEN);
+			newob = myscreen->level_data.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
 			newob->ani_type = ANI_DOOR_OPEN;

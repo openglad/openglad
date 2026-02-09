@@ -55,7 +55,7 @@ class screen : public video
 		bool query_grid_passable(float x, float y, walker  *ob);
 		bool redraw();
 		void refresh();
-		walker  * first_of(unsigned char whatorder, unsigned char whatfamily,
+		walker  * first_of(Order whatorder, unsigned char whatfamily,
 		                   int team_num = -1);
 		short input(const SDL_Event& event);
 		short continuous_input();
@@ -75,7 +75,7 @@ class screen : public video
 		char damage_tile(short xloc, short yloc); // damage the specified tile
 		void do_notify(std::string_view message, walker  *who);  // printing text
 		void report_mem();
-		walker *set_walker(walker *ob, char order, char family);
+		walker *set_walker(walker *ob, Order order, char family);
 		const char* get_scen_title(const char *filename, screen *master);
 		bool is_level_completed(int level_index) const;
 		int get_num_levels_completed(const std::string& campaign) const;

@@ -35,9 +35,9 @@ class weap : public walker
 		bool animate() override;
 		bool death() override;
 		bool setxy(short x, short y) override;
-		char  query_order() const override
+		Order query_order() const override
 		{
-			return ORDER_WEAPON;
+			return Order::Weapon;
 		}
 
 		// Weapons-only related variables; use with care

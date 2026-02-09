@@ -322,7 +322,7 @@ bool effect::act()
 						yd = owner->ypos - ypos;
 				}
 				setworldxy(worldx+xd, worldy+yd);
-				newob = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_KNIFE);
+				newob = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
 				newob->damage = damage;
 				newob->owner = owner;
 				newob->team_num = team_num;
@@ -401,7 +401,7 @@ bool effect::act()
 			         leader->xpos, leader->ypos, leader->sizex, leader->sizey))
 			{
 				// Do things ..
-				newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
+				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
 				if (!newob)
 				{
 					dead = 1;
@@ -434,7 +434,7 @@ bool effect::act()
 					    if (numfoes <= 0) break;
 						if (w != leader && w->skip_exit<1) // don't hit current guy, etc.
 						{
-							newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_CHAIN);
+							newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
 							if (!newob)
 								return 0; // failsafe
 
@@ -506,7 +506,7 @@ bool effect::act()
 		case FAMILY_DOOR_OPEN:
 
 			// Here is how doors work.  They start out as a FAMILY_DOOR
-			//  from ORDER_WEAPON under the weaplist.  When the door is
+			//  from Order::Weapon under the weaplist.  When the door is
 			//  collided with, the obmap marks the door as dead, and spawns
 			//  the FAMILY_DOOR_OPEN on the weaplist (this object).  It
 			//  animates ANI_DOOR_OPEN, and when it is done, it dies and
@@ -516,7 +516,7 @@ bool effect::act()
 
 			if (ani_type != ANI_WALK)
 				return animate();
-			newob = myscreen->level_data.add_fx_ob(ORDER_FX, FAMILY_DOOR_OPEN);
+			newob = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
 			newob->ani_type = ANI_WALK;
@@ -605,7 +605,7 @@ bool effect::death()
             
             for(auto* w : foelist)
 			{
-				if (w && w->query_order() == ORDER_LIVING)
+				if (w && w->query_order() == Order::Living)
 				{
 					tempx = w->xpos - xpos;
 					if (tempx)
@@ -628,7 +628,7 @@ bool effect::death()
 				owner = this;
 			if (on_screen())
 				myscreen->soundp->play_sound(SOUND_EXPLODE);
-			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
+			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 			newob->owner = owner;
 			newob->stats->hitpoints = 0;
 			newob->stats->level = owner->stats->level;
@@ -661,11 +661,11 @@ bool effect::death()
 			for(auto* w : foelist)
 			{
 				if (w && !w->dead &&
-				        (w->query_order() != ORDER_TREASURE) &&
-				        (w->query_order() != ORDER_FX) &&
+				        (w->query_order() != Order::Treasure) &&
+				        (w->query_order() != Order::FX) &&
 				        (!skip_exit || w != owner)
 				   ) //&&
-					//       w->query_order() == ORDER_LIVING
+					//       w->query_order() == Order::Living
 					//     && w->team_num != owner->team_num
 					//      )
 				{

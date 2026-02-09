@@ -381,7 +381,7 @@ void glad_init()
 	if (g_test_remove_exits) {
 		for (auto& uptr : myscreen->level_data.fxlist) {
 			walker* w = uptr.get();
-			if (w && w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT)
+			if (w && w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT)
 				w->dead = 1;
 		}
 	}
@@ -445,7 +445,7 @@ short remaining_foes(screen *myscreen, walker* myguy)
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead &&
-		        (w->query_order() == ORDER_LIVING) &&
+		        (w->query_order() == Order::Living) &&
 		        !myguy->is_friendly(w) )
 			myfoes++;
 	}
@@ -463,7 +463,7 @@ short remaining_team(screen *myscreen, char myteam)
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead &&
-		        (w->query_order() == ORDER_LIVING) &&
+		        (w->query_order() == Order::Living) &&
 		        (myteam == w->team_num) )
 			myfoes++;
 	}

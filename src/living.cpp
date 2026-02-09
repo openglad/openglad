@@ -279,7 +279,7 @@ bool living::act()
 	// Find new action
 
 	// Turn if you want to (...turn, around the world...)
-	if (curdir != enddir && query_order() == ORDER_LIVING)
+	if (curdir != enddir && query_order() == Order::Living)
 		return turn(enddir);
 
 
@@ -396,7 +396,7 @@ short living::shove(walker  *target, short x, short y)
 {
 	//return 0; //debug memory
 
-	if (target && !target->dead && (query_order()==ORDER_LIVING) &&  //we are alive
+	if (target && !target->dead && (query_order()==Order::Living) &&  //we are alive
 	        (is_friendly(target)) // we are allied
 	   )
 		// Make sure WE don't get shoved
@@ -460,7 +460,7 @@ bool living::walk(float x, float y)
 		{
 			if (collide_ob && !collide_ob->dead)
 			{
-				if (collide_ob->query_order() == ORDER_LIVING && is_friendly(collide_ob) )
+				if (collide_ob->query_order() == Order::Living && is_friendly(collide_ob) )
 				{
 					shove(collide_ob, x, y);
 				}
@@ -493,7 +493,7 @@ bool living::walk(float x, float y)
 
 bool walkerIsAutoAttackable(walker* ob)
 {
-    return (ob->query_order() == ORDER_LIVING
+    return (ob->query_order() == Order::Living
              || ob->query_family() == FAMILY_TENT
              || ob->query_family() == FAMILY_TOWER
              || ob->query_family() == FAMILY_TOWER1
@@ -518,10 +518,10 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 {
 	walker  *newob;
 
-	newob = myscreen->level_data.add_ob(ORDER_LIVING, whatfamily);
+	newob = myscreen->level_data.add_ob(Order::Living, whatfamily);
 	newob->owner = this;
 	newob->lifetime = lifetime;
-	newob->transform_to(ORDER_LIVING, whatfamily);
+	newob->transform_to(Order::Living, whatfamily);
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
 
 	return newob;

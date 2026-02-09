@@ -63,8 +63,8 @@ class walker : public pixieN
 		virtual bool collide(walker  *ob);
 		bool attack(walker  *target);
 		virtual bool animate();
-		bool set_order_family(char order, char family);
-		virtual char query_order() const
+		bool set_order_family(Order order, char family);
+		virtual Order query_order() const
 		{
 			return order;
 		}
@@ -85,7 +85,7 @@ class walker : public pixieN
 		bool turn(short targetdir);
 		short spaces_clear(); // how many (of 8) spaces around us are clear
 		void transfer_stats(walker  *newob); // transfer values to new walker
-		void transform_to(char whatorder, char whatfamily); // change picture, etc.
+		void transform_to(Order whatorder, char whatfamily); // change picture, etc.
 		virtual bool death(); // called when death/destruction occurs ..
 		void generate_bloodspot(); // make a permanent stain ..
 		virtual walker  *do_summon(char whatfamily, unsigned short lifetime);
@@ -98,7 +98,7 @@ class walker : public pixieN
 		unsigned char query_team_color() const;
 		Sint32 is_friendly(const walker *target) const;
 		Sint32 is_friendly_to_team(unsigned char team) const;
-		inline short query_type(char oval, char fval) const
+		inline short query_type(Order oval, char fval) const
 		{
 			if (oval == order && fval == family)
 				return 1;
@@ -198,7 +198,8 @@ class walker : public pixieN
 		virtual bool act_random();
 		char act_type,old_act_type;
 		char enddir;  // Proposed direction facing
-		char order, family;
+		Order order;
+		char family;
 
 
 };

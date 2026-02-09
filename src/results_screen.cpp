@@ -251,7 +251,7 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 
 	newfamily = myguy->family;
 
-	mywalker = myscreen->level_data.myloader->create_walker(ORDER_LIVING,
+	mywalker = myscreen->level_data.myloader->create_walker(Order::Living,
 	           newfamily,myscreen);
 	mywalker->stats->bit_flags = 0;
 	mywalker->curdir = FACE_DOWN;
@@ -298,7 +298,7 @@ int get_num_foes(LevelData& level)
 	{
 	    walker* ob = uptr.get();
 	    // Not dead, not hired, not on red team
-		if (ob && !ob->dead && ob->query_order() == ORDER_LIVING && ob->myguy == nullptr && ob->team_num != 0)
+		if (ob && !ob->dead && ob->query_order() == Order::Living && ob->myguy == nullptr && ob->team_num != 0)
 		{
 		    result++;
 		}

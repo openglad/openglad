@@ -131,7 +131,8 @@ short radar::draw(LevelData* data)
 {
 	Sint32 tempx, tempy, tempz;
 	unsigned char tempcolor;
-	short oborder, obfamily, obteam;
+	Order oborder{};
+	short obfamily, obteam;
 	short can_see = 0, do_show = 0;
 	Sint32 listtype = 0;
 
@@ -202,10 +203,10 @@ short radar::draw(LevelData* data)
 		    
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
-			if ((oborder == ORDER_LIVING || oborder == ORDER_WEAPON
-			            || (oborder == ORDER_TREASURE && (ob->query_family() == FAMILY_LIFE_GEM))
-			            || (oborder == ORDER_TREASURE && (ob->query_family() == FAMILY_EXIT))
-			            || (oborder == ORDER_GENERATOR && can_see)
+			if ((oborder == Order::Living || oborder == Order::Weapon
+			            || (oborder == Order::Treasure && (ob->query_family() == FAMILY_LIFE_GEM))
+			            || (oborder == Order::Treasure && (ob->query_family() == FAMILY_EXIT))
+			            || (oborder == Order::Generator && can_see)
 			           )
 			        && (obteam==ob->team_num || ob->invisibility_left < 1 || can_see)
 			        && on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE), static_cast<short>((ob->ypos+1)/GRID_SIZE), radarx, radary)
@@ -262,11 +263,11 @@ short radar::draw(LevelData* data)
 							myscreen->pointb(tempx+1,tempy+1,tempcolor, alpha);
 						}
 					}
-					else if (oborder == ORDER_LIVING)
+					else if (oborder == Order::Living)
 						myscreen->pointb(tempx,tempy,tempcolor, alpha);
-					else if (oborder == ORDER_GENERATOR)
+					else if (oborder == Order::Generator)
 						myscreen->pointb(tempx,tempy,static_cast<char>(tempcolor+1), alpha);
-					else if (oborder == ORDER_TREASURE) // currently life gems
+					else if (oborder == Order::Treasure) // currently life gems
 						myscreen->pointb(tempx,tempy,COLOR_FIRE, alpha);
 					else
 						myscreen->pointb(tempx,tempy,COLOR_WHITE, alpha);
@@ -284,7 +285,7 @@ short radar::draw(LevelData* data)
 			obfamily = ob->query_family();
 
 			do_show = 0; // don't show, by default
-			if (oborder == ORDER_TREASURE)
+			if (oborder == Order::Treasure)
 			{
 				if (can_see)
 				{

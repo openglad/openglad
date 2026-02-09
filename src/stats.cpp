@@ -65,7 +65,7 @@ statistics::statistics(walker  * someguy)
     }
     else
     {
-        old_order = ORDER_LIVING;
+        old_order = Order::Living;
         old_family = FAMILY_SOLDIER;
     }
 
@@ -236,7 +236,7 @@ short statistics::do_command()
 			controller->walkstep(com1, com2);
 			break;
 		case COMMAND_FIRE:
-			if (!(controller->query_order() == ORDER_LIVING))
+			if (!(controller->query_order() == Order::Living))
 			{
 				Log("commanding a non-living to fire?");
 				break;
@@ -320,7 +320,7 @@ short statistics::do_command()
 				do_command();
 			break;
 		case COMMAND_RUSH:    // Fighter's special
-			if (controller->query_order() == ORDER_LIVING)
+			if (controller->query_order() == Order::Living)
 			{
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
@@ -443,12 +443,12 @@ void statistics::hit_response(walker  *who)
 	if (controller->query_act_type() == ACT_CONTROL)
 		return;
 
-	if (controller->query_order() != ORDER_LIVING)
+	if (controller->query_order() != Order::Living)
 		return;
 
 	// Set quick-reference values ..
 	myfamily = controller->query_family();
-	if (who->query_order() == ORDER_WEAPON && who->owner)
+	if (who->query_order() == Order::Weapon && who->owner)
 		foe = who->owner;
 	else
 		foe = who;

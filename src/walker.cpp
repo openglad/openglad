@@ -322,7 +322,7 @@ bool walker::walkstep(float x, float y)
 	lastx = x*stepsize;
 	lasty = y*stepsize;
 
-	if (order==ORDER_LIVING && family==FAMILY_TOWER1)
+	if (order==Order::Living && family==FAMILY_TOWER1)
 	{
 		curdir = facing(x, y);
 		enddir = curdir;
@@ -481,7 +481,7 @@ bool walker::walk(float x, float y)
 
 	dir = facing(x, y);
 
-	if (order==ORDER_LIVING && family==FAMILY_TOWER1)
+	if (order==Order::Living && family==FAMILY_TOWER1)
 	{
 		curdir = dir;
 		return 1;
@@ -585,7 +585,7 @@ bool walker::turn(short targetdir)
 		curdir = static_cast<char>((curdir+7) %8);
 
 	// Now set our lastx and lasty (facing) variables correctly
-	if ( (order!=ORDER_LIVING) || (family!=FAMILY_TOWER1) )
+	if ( (order!=Order::Living) || (family!=FAMILY_TOWER1) )
 	{
 		switch (curdir)
 		{
@@ -650,7 +650,7 @@ bool walker::init_fire(short xdir, short ydir)
 	{
 		enddir = static_cast<char>(facing(xdir, ydir));
 	}
-	if (curdir != enddir && query_order() == ORDER_LIVING)
+	if (curdir != enddir && query_order() == Order::Living)
 	{
 		//if (family==FAMILY_TOWER1)
 		//  enddir = curdir;
@@ -665,7 +665,7 @@ bool walker::init_fire(short xdir, short ydir)
 
 	busy += fire_frequency; // This pauses a few rounds
 
-	//  if (ani_type == ANI_WALK && query_order() == ORDER_LIVING)
+	//  if (ani_type == ANI_WALK && query_order() == Order::Living)
 	if (ani_type == ANI_WALK)  // This should allow generators to animate
 	{
 		ani_type = ANI_ATTACK;
@@ -766,7 +766,7 @@ walker  * walker::fire()
 				
                 if(cfg.is_on("effects", "attack_lunge"))
                 {
-                    if(query_order() == ORDER_LIVING)
+                    if(query_order() == Order::Living)
                     {
                         attack_lunge = 1.0f;
                         attack_lunge_angle = get_current_angle();
@@ -789,7 +789,7 @@ walker  * walker::fire()
 	}
 	else
 	{
-		if (order==ORDER_LIVING && family==FAMILY_SOLDIER)
+		if (order==Order::Living && family==FAMILY_SOLDIER)
         {
             if(weapons_left <= 0)
             {
@@ -831,7 +831,7 @@ walker  * walker::fire()
 			else //play_sound(SOUND_FWIP);
 				myscreen->soundp->play_sound(SOUND_FWIP);
 		}
-		if (order == ORDER_GENERATOR)
+		if (order == Order::Generator)
 		{
 			switch (family)
 			{
@@ -849,7 +849,7 @@ walker  * walker::fire()
 					break;
 			}
 		}
-		else if (order == ORDER_LIVING)
+		else if (order == Order::Living)
 		{
 			switch (family)
 			{
@@ -936,7 +936,7 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
     if(!cfg.is_on("effects", "mini_hp_bar"))
         return;
     
-    if(w->query_order() != ORDER_LIVING && w->query_order() != ORDER_GENERATOR)
+    if(w->query_order() != Order::Living && w->query_order() != Order::Generator)
         return;
     
 	Sint32 xscreen = static_cast<Sint32>(w->xpos - view_buf->topx + view_buf->xloc);
@@ -1557,7 +1557,7 @@ bool walker::act()
 	// Find new action
 
 	// Turn if you want to
-	//  if (curdir != enddir && query_order() == ORDER_LIVING)
+	//  if (curdir != enddir && query_order() == Order::Living)
 	//       return turn(enddir);
 
 
@@ -1801,9 +1801,9 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     if(cfg.is_on("effects", "hit_anim"))
     {
         // Create hit effect
-        if(query_order() != ORDER_FX || query_family() == FAMILY_KNIFE_BACK)
+        if(query_order() != Order::FX || query_family() == FAMILY_KNIFE_BACK)
         {
-           walker* newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_HIT);
+           walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_HIT);
             if (newob)
             {
                 newob->owner = target;
@@ -1833,7 +1833,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
         
         if(cfg.is_on("effects", "hit_recoil"))
         {
-            if(target->query_order() == ORDER_LIVING)
+            if(target->query_order() == Order::Living)
             {
                 target->hit_recoil = 1.0f;
                 target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
@@ -1845,7 +1845,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage)
 {
 	// Record damage done for records ..
-	if (attacker && attacker->myguy && target->query_order() == ORDER_LIVING)  // hit a living
+	if (attacker && attacker->myguy && target->query_order() == Order::Living)  // hit a living
     {
 		attacker->myguy->total_damage += tempdamage;
 		attacker->myguy->scen_damage += tempdamage;
@@ -1880,7 +1880,7 @@ bool walker::attack(walker  *target)
 	std::string message;
 	float tempdamage = get_base_damage(this);
 	short getscore=0;
-	char targetorder = target->query_order();
+	Order targetorder = target->query_order();
 	char targetfamily= target->query_family();
 	walker *attacker; // us or our owner ..
 	static short tom = 0;
@@ -1891,15 +1891,15 @@ bool walker::attack(walker  *target)
 	if (target && target->dead)
 		return 0;
 
-	//if ( (targetorder == ORDER_LIVING && is_friendly(target) ) ||
-	if ( is_friendly(target) || (targetorder == ORDER_TREASURE) )
+	//if ( (targetorder == Order::Living && is_friendly(target) ) ||
+	if ( is_friendly(target) || (targetorder == Order::Treasure) )
 		return 0;
 
 	if (target->stats->query_bit_flags(BIT_INVINCIBLE) ||
 	        target->invulnerable_left != 0 )
 		return 0;
 
-	if (order != ORDER_LIVING && owner)
+	if (order != Order::Living && owner)
 		attacker = owner;
 	else
 		attacker = this;
@@ -1909,13 +1909,13 @@ bool walker::attack(walker  *target)
 	while (headguy->owner && (headguy->owner != headguy) )
 		headguy = headguy->owner;
 
-	if (headguy->myguy && headguy->user == 0 && order == ORDER_WEAPON)
+	if (headguy->myguy && headguy->user == 0 && order == Order::Weapon)
 		tom++;
 
 	// Modify attack value based on things like magical attacks, etc.
 	switch (targetorder) // generally going to be livings..
 	{
-		case ORDER_LIVING:
+		case Order::Living:
 			// Hit a living target, so we get credit for a hit
 			if (attacker->myguy)
             {
@@ -1962,7 +1962,7 @@ bool walker::attack(walker  *target)
 
 	// Set our target to fighting our owner
 	//in the case of our weapon hit something
-	if (order != ORDER_LIVING && owner)
+	if (order != Order::Living && owner)
 	{
 		owner->foe = target;
 		target->stats->hit_response(owner);
@@ -1984,7 +1984,7 @@ bool walker::attack(walker  *target)
 		}
 	}
 
-	if (order == ORDER_WEAPON)
+	if (order == Order::Weapon)
 	{
 		stats->hitpoints -= tempdamage;
 		damage--;
@@ -1998,7 +1998,7 @@ bool walker::attack(walker  *target)
 		switch (query_family())
 		{
 			case FAMILY_SPRINKLE:   // Faerie's fire freezes foes :)
-				if (targetorder == ORDER_LIVING)
+				if (targetorder == Order::Living)
 				{
 					if (target->myguy)
 						target->stats->frozen_delay =
@@ -2021,7 +2021,7 @@ bool walker::attack(walker  *target)
 
 	// Positive score for hurting enemies, negative for us
 	if (owner &&
-	        (targetorder != ORDER_WEAPON) ) // are we still alive?
+	        (targetorder != Order::Weapon) ) // are we still alive?
 	{
 		if (playerteam != target->team_num)
 		{
@@ -2036,7 +2036,7 @@ bool walker::attack(walker  *target)
 
 	if (target->stats->hitpoints <= 0)
 	{
-		if (targetorder == ORDER_LIVING)
+		if (targetorder == Order::Living)
 		{
 			if (playerteam > -1)
 			{
@@ -2136,13 +2136,13 @@ bool walker::attack(walker  *target)
 
 			/* Blood splats at death */
 			// Make temporary stain:
-			blood = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_BLOOD);
+			blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
 			blood->team_num = target->team_num;
 			blood->ani_type = ANI_GROW;
 			blood->ignore = 1; // so that we can be walked over .. ?
 			blood->setxy(target->xpos,target->ypos);
 		}
-		if (on_screen() && targetorder == ORDER_LIVING)
+		if (on_screen() && targetorder == Order::Living)
 		{
 			if (random(2))
 				myscreen->soundp->play_sound(SOUND_DIE1);
@@ -2167,7 +2167,7 @@ bool walker::animate()
 	if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
 	{
 		//          if (ani_type == ANI_ATTACK &&
-		//                        query_order() == ORDER_LIVING)
+		//                        query_order() == Order::Living)
 		if (ani_type == ANI_ATTACK)
 		{
 			fire();
@@ -2177,13 +2177,13 @@ bool walker::animate()
 		}
 		// finished teleport out sequence
 		//          if (ani_type == ANI_SKEL_GROW && family == FAMILY_SKELETON)
-		if (ani_type == ANI_SKEL_GROW && query_type(ORDER_LIVING, FAMILY_SKELETON))
+		if (ani_type == ANI_SKEL_GROW && query_type(Order::Living, FAMILY_SKELETON))
 		{
 			ani_type = ANI_WALK;
 			cycle = 0;
 			return 1;
 		}
-		if (ani_type == ANI_TELE_OUT && order == ORDER_LIVING)
+		if (ani_type == ANI_TELE_OUT && order == Order::Living)
 		{
 			if (family == FAMILY_MAGE || family==FAMILY_ARCHMAGE)
 			{
@@ -2207,16 +2207,16 @@ bool walker::animate()
 			}
 		}
 		// Were we a slime who just split?
-		if (ani_type == ANI_SLIME_SPLIT && order == ORDER_LIVING)
+		if (ani_type == ANI_SLIME_SPLIT && order == Order::Living)
 		{
 			ani_type = ANI_WALK;
 			cycle = 0;
 			// First, shrink (and move) normal guy ..
-			transform_to(ORDER_LIVING, FAMILY_SMALL_SLIME);
+			transform_to(Order::Living, FAMILY_SMALL_SLIME);
 			setxy(xpos-10, ypos+10); // diagonal 'down left' of normal
 
 			// Create a new small slime ..
-			newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_SMALL_SLIME);
+			newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
 			newob->setxy(xpos+12, ypos-12);
 			// Transfer stats/etc. across to new guy ..
 			//stats->magicpoints -= stats->special_cost[0];
@@ -2255,7 +2255,7 @@ bool walker::animate()
 	return 1;
 }
 
-bool walker::set_order_family(char neworder, char newfamily)
+bool walker::set_order_family(Order neworder, char newfamily)
 {
 	order = neworder;
 	family = newfamily;
@@ -2269,9 +2269,9 @@ walker  *walker::create_weapon()
 
 
 	// Special case for generators
-	if (query_order() == ORDER_GENERATOR)
+	if (query_order() == Order::Generator)
 	{
-		weapon = myscreen->level_data.add_ob(ORDER_LIVING, static_cast<char>(default_weapon));
+		weapon = myscreen->level_data.add_ob(Order::Living, static_cast<char>(default_weapon));
 		weapon->team_num = team_num;
 		weapon->owner = this;
 		weapon->set_difficulty(stats->level);
@@ -2280,7 +2280,7 @@ walker  *walker::create_weapon()
 	// Normally, only livings fire
 	weapon_type = current_weapon;
 
-	weapon = myscreen->level_data.add_ob(ORDER_WEAPON, static_cast<char>(weapon_type));
+	weapon = myscreen->level_data.add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	weapon->team_num = team_num;
 	weapon->owner = this;
 	weapon->set_difficulty(stats->level);
@@ -2382,7 +2382,7 @@ bool walker::special()
 	if (stats->magicpoints < stats->special_cost[static_cast<int>(current_special)])
 		return 0;
 
-	if (query_order() != ORDER_LIVING)
+	if (query_order() != Order::Living)
 	{
 		return 0;
 	}
@@ -2451,7 +2451,7 @@ bool walker::special()
 						return 0;
 					break;
 				case 2: // boomerang
-					newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_BOOMERANG);
+					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOOMERANG);
 					newob->owner = this;
 					newob->team_num = team_num;
 					newob->ani_type = 1; // dummy, non-zero value
@@ -2626,7 +2626,7 @@ bool walker::special()
                         }
 
 						// All okay, let's summon!
-						newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
+						newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 						if (!newob) // safety check
 							return 0;
 						newob->owner = this;
@@ -2743,7 +2743,7 @@ bool walker::special()
 							distance = static_cast<Uint32>(distance_to_ob(newob)); //(targetx-xpos)*(targetx-xpos) + (targety-ypos)*(targety-ypos);
 							if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
 							{
-								//alive = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_SKELETON);
+								//alive = myscreen->level_data.add_ob(Order::Living, FAMILY_SKELETON);
 								alive = do_summon(FAMILY_GHOST, 150 + (stats->level*40) );
 								if (!alive)
 									return 0;
@@ -2777,7 +2777,7 @@ bool walker::special()
 						{
 							if ( is_friendly(newob) ) // normal resurrection
 							{
-								alive = myscreen->level_data.add_ob(ORDER_LIVING, newob->stats->old_family);
+								alive = myscreen->level_data.add_ob(Order::Living, newob->stats->old_family);
 								if(!alive)
 									return 0; // failsafe
 								newob->transfer_stats(alive);  // restore our old values ..
@@ -2841,7 +2841,7 @@ bool walker::special()
 						{
 						    walker* ob = uptr.get();
 							if (ob &&
-							        ob->query_order() == ORDER_FX &&
+							        ob->query_order() == Order::FX &&
 							        ob->query_family() == FAMILY_MARKER &&
 							        ob->owner == this &&
 							        !ob->dead
@@ -2858,7 +2858,7 @@ bool walker::special()
 						generic = 0; // force new placement, for now
 						if (!generic) // didn't remove a marker, so place one
 						{
-							newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MARKER);
+							newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
 							if (!newob)
 								return 0; // failsafe
 							newob->owner = this;
@@ -2957,7 +2957,7 @@ bool walker::special()
 					newob = fire();
 					if (!newob)
 						return 0; // failed somehow? !?!
-					alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_WAVE);
+					alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_WAVE);
 					alive->center_on(newob);
 					alive->owner = this;
 					alive->stats->level = stats->level;
@@ -2986,7 +2986,7 @@ bool walker::special()
 					// Create explosions on top of the target objects
 					for(auto* ob : newlist)
 					{
-						newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
+						newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
 						if (!newob)
 							return 0; // failsafe
 
@@ -3027,7 +3027,7 @@ bool walker::special()
 						{
 						    walker* ob = uptr.get();
 							if (ob &&
-							        ob->query_order() == ORDER_FX &&
+							        ob->query_order() == Order::FX &&
 							        ob->query_family() == FAMILY_MARKER &&
 							        ob->owner == this &&
 							        !ob->dead
@@ -3043,7 +3043,7 @@ bool walker::special()
 							}
 						}  // end of cycle through object list
 						// Now place a marker ..
-						newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MARKER);
+						newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
 						if (!newob)
 							return 0; // failsafe
 						newob->owner = this;
@@ -3107,7 +3107,7 @@ bool walker::special()
                             // Create explosions on the target objects
                             for(auto* ob : newlist)
                             {
-                                newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION);
+                                newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
                                 if (!newob)
                                     return 0; // failsafe
 
@@ -3133,7 +3133,7 @@ bool walker::special()
                                 myguy->total_shots++; // so can get > 100% :)
                                 myguy->scen_shots++;
                             }
-                            newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_CHAIN);
+                            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
                             newob->center_on(this);
                             newob->owner = this;
                             newob->stats->level = stats->level;
@@ -3176,7 +3176,7 @@ bool walker::special()
 						generic /= 2;
 						stats->magicpoints -= generic;
 						// First make the guy we'd summon, at least physically
-						newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_FIREELEMENTAL);
+						newob = myscreen->level_data.add_ob(Order::Living, FAMILY_FIREELEMENTAL);
 						if (!newob)
 							return 0; // failsafe
 						// We need to check for a space around the archmage...
@@ -3323,7 +3323,7 @@ bool walker::special()
 						}
 
 						// Now make the guy we'd summon, at least physically
-						newob = myscreen->level_data.add_ob(ORDER_LIVING, person);
+						newob = myscreen->level_data.add_ob(Order::Living, person);
 						if (!newob)
 							return 0; // failsafe
 						// We need to check for a space around the archmage...
@@ -3379,7 +3379,7 @@ bool walker::special()
                         {
                             if (generic2 < 10) break;
                             if ( (ob->real_team_num == 255) && // never been charmed
-                                    (ob->query_order() == ORDER_LIVING) && // alive
+                                    (ob->query_order() == Order::Living) && // alive
                                     (ob->charm_left <= 10) // not too charmed
                                )
                             {
@@ -3464,9 +3464,9 @@ bool walker::special()
 			if (spaces_clear() > 7) // room to grow?
 			{
 				if (query_family() == FAMILY_SMALL_SLIME)
-					transform_to(ORDER_LIVING, FAMILY_MEDIUM_SLIME);
+					transform_to(Order::Living, FAMILY_MEDIUM_SLIME);
 				else
-					transform_to(ORDER_LIVING, FAMILY_SLIME);
+					transform_to(Order::Living, FAMILY_SLIME);
 			}
 			else
 			{
@@ -3479,7 +3479,7 @@ bool walker::special()
 			cycle = 0;
 			break;
 		case FAMILY_GHOST: // do nifty scare thing
-			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_GHOST_SCARE); //,1 == underneath
+			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_GHOST_SCARE); //,1 == underneath
 			newob->ani_type = ANI_SCARE;
 			newob->setxy(xpos+sizex/2 - newob->sizex/2,
 			             ypos+sizey/2 - newob->sizey/2);
@@ -3492,7 +3492,7 @@ bool walker::special()
 			switch (current_special)
 			{
 				case 1:  // drop a bomb, unregistered
-					newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_BOMB, 1); // 1 == underneath
+					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOMB, 1); // 1 == underneath
 					newob->ani_type = ANI_BOMB;
 					if (myguy)
                     {
@@ -3570,7 +3570,7 @@ bool walker::special()
                             {
                                 if (didheal) break;
                                 if ( (ob->real_team_num == 255) && // never been charmed
-                                        (ob->query_order() == ORDER_LIVING) && // alive
+                                        (ob->query_order() == Order::Living) && // alive
                                         1 // (ob->charm_left <= 10) // not too charmed
                                    )
                                 {
@@ -3618,7 +3618,7 @@ bool walker::special()
 				default:
 					if (busy > 0)
 						return 0;
-					newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_CLOUD);
+					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CLOUD);
 					if (!newob)
 						return 0; // failsafe
 					busy += 5;
@@ -3705,7 +3705,7 @@ bool walker::special()
 					if (!newob)
 						return 0;
 					busy += (fire_frequency * 2);
-					alive = myscreen->level_data.add_ob(ORDER_WEAPON,FAMILY_TREE);
+					alive = myscreen->level_data.add_ob(Order::Weapon,FAMILY_TREE);
 					alive->setxy(newob->xpos,newob->ypos);
 					alive->team_num = team_num;
 					alive->ani_type = ANI_GROW;
@@ -3719,7 +3719,7 @@ bool walker::special()
 					newob = fire();
 					if (!newob)
 						return 0;
-					alive = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_FAERIE);
+					alive = myscreen->level_data.add_ob(Order::Living, FAMILY_FAERIE);
 					alive->setxy(newob->xpos, newob->ypos);
 					alive->team_num = team_num;
 					alive->owner = this;
@@ -3761,7 +3761,7 @@ bool walker::special()
                                     {
                                         walker* ob = uptr.get();
                                         if (ob && ob->owner == newob
-                                                && ob->query_order() == ORDER_WEAPON
+                                                && ob->query_order() == Order::Weapon
                                                 && ob->query_family() == FAMILY_CIRCLE_PROTECTION
                                            ) // found a circle already on newob ...
                                            {
@@ -3771,7 +3771,7 @@ bool walker::special()
                                     }
                                     if (!tempwalk) // target wasn't protected yet
                                     {
-                                        alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
+                                        alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
                                         if (!alive) // failed somehow
                                             return 0;
                                         
@@ -3783,7 +3783,7 @@ bool walker::special()
                                     } // end of target wasn't protected
                                     else
                                     {
-                                        alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_CIRCLE_PROTECTION);
+                                        alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
                                         if (!alive) // failed somehow
                                             return 0;
                                         
@@ -3915,7 +3915,7 @@ bool walker::special()
 					newob = fire();
 					if (!newob)
 						return 0; // failed somehow? !?!
-					alive = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_BOULDER);
+					alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BOULDER);
 					alive->center_on(newob);
 					alive->owner = this;
 					alive->stats->level = stats->level;
@@ -3976,7 +3976,7 @@ bool walker::teleport()
 	{
 	    walker* ob = uptr.get();
 		if (ob &&
-		        ob->query_order() == ORDER_FX &&
+		        ob->query_order() == Order::FX &&
 		        ob->query_family() == FAMILY_MARKER &&
 		        ob->owner == this &&
 		        !ob->dead
@@ -4092,7 +4092,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	short targetdir;
 
 	// Allow generators to 'always' succeed
-	if (order == ORDER_GENERATOR)
+	if (order == Order::Generator)
 		return 1;
 
 	weapon = create_weapon();
@@ -4419,7 +4419,7 @@ void walker::transfer_stats(walker  *newob)
 
 // change picture, etc. but NOT stats (use transfer_stats for that)
 
-void walker::transform_to(char whatorder, char whatfamily)
+void walker::transform_to(Order whatorder, char whatfamily)
 {
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
@@ -4492,7 +4492,7 @@ bool walker::death()
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
-		newob = myscreen->level_data.add_ob(ORDER_TREASURE, FAMILY_LIFE_GEM, 1);
+		newob = myscreen->level_data.add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
 		newob->stats->hitpoints = myguy->query_heart_value();
 		newob->stats->hitpoints *= 0.75 / 2;  // 75%, divided by 2, since score is doubled at end of level
 		newob->team_num = team_num;
@@ -4501,7 +4501,7 @@ bool walker::death()
 
 	switch (order)
 	{
-		case ORDER_LIVING:
+		case Order::Living:
 			if (   (team_num == 0 || myguy) // our team
 			        && (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
 			        && (stats->name.size()) // we were named
@@ -4517,8 +4517,8 @@ bool walker::death()
 					break;
 				case FAMILY_SLIME: // shrink to medium ..
 					dead = 1;
-					//transform_to(ORDER_LIVING, FAMILY_MEDIUM_SLIME);
-					newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_MEDIUM_SLIME);
+					//transform_to(Order::Living, FAMILY_MEDIUM_SLIME);
+					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
 					newob->team_num = team_num;
 					newob->stats->level = stats->level;
 					newob->set_difficulty(stats->level);
@@ -4536,8 +4536,8 @@ bool walker::death()
 					break;
 				case FAMILY_MEDIUM_SLIME: // shrink to small ..
 					dead = 1;
-					//transform_to(ORDER_LIVING, FAMILY_SMALL_SLIME);
-					newob = myscreen->level_data.add_ob(ORDER_LIVING, FAMILY_SMALL_SLIME);
+					//transform_to(Order::Living, FAMILY_SMALL_SLIME);
+					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
 					newob->team_num = team_num;
 					newob->stats->level = stats->level;
 					newob->set_difficulty(stats->level);
@@ -4562,10 +4562,10 @@ bool walker::death()
 					break;
 			}  // end of family switch
 			break;  // end of order livings case
-		case ORDER_GENERATOR:  // go up in flames :>
+		case Order::Generator:  // go up in flames :>
 			for (i=0; i < 4; i++)
 			{
-				newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_EXPLOSION, 1);
+				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
 				newob->team_num = team_num;
@@ -4578,8 +4578,8 @@ bool walker::death()
 					myscreen->soundp->play_sound(SOUND_EXPLODE);
 			}
 			break;
-		case ORDER_FX:
-			//case ORDER_TREASURE:
+		case Order::FX:
+			//case Order::Treasure:
 			Log("Effect dying in walker?\n");
 			break;          // end of effect object case
 		default:
@@ -4598,11 +4598,11 @@ void walker::generate_bloodspot()
 
 	dead = 1; // just in case ..
 
-	bloodstain = myscreen->level_data.add_fx_ob(ORDER_TREASURE, FAMILY_STAIN);
+	bloodstain = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
 	bloodstain->ignore = 1;
 	transfer_stats(bloodstain);
 
-	bloodstain->order  = ORDER_TREASURE;
+	bloodstain->order  = Order::Treasure;
 	bloodstain->family = FAMILY_STAIN;
 	bloodstain->stats->old_order = order;
 	bloodstain->stats->old_family= family;
@@ -4610,7 +4610,7 @@ void walker::generate_bloodspot()
 	bloodstain->team_num = team_num;
 	bloodstain->dead = 0;
 	bloodstain->setxy(xpos, ypos);
-	//data = myscreen->myloader->graphics[PIX(ORDER_TREASURE, FAMILY_STAIN)];
+	//data = myscreen->myloader->graphics[PIX(Order::Treasure, FAMILY_STAIN)];
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
@@ -4674,7 +4674,7 @@ void walker::set_difficulty(Uint32 whatlevel)
 
 	switch (order)
 	{
-		case ORDER_GENERATOR:
+		case Order::Generator:
 			temp = 100*whatlevel;
 			temp = (temp * dif1) / 100;
 			stats->hitpoints = temp;

@@ -37,9 +37,9 @@ class effect : public walker
 		bool act() override;
 		bool animate() override;
 		bool death() override;
-		char query_order() const override
+		Order query_order() const override
 		{
-			return ORDER_FX;
+			return Order::FX;
 		}
 };
 

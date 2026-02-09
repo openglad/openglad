@@ -397,7 +397,7 @@ short viewscreen::input(const SDL_Event& event)
 		    walker* w = uptr.get();
 			if (w &&
 			        !w->dead &&
-			        w->query_order() == ORDER_LIVING &&
+			        w->query_order() == Order::Living &&
 			        w->user == -1 && // mean's we're not player-controlled
 			        w->myguy &&
 			        w->team_num == my_team) // makes a difference for PvP
@@ -415,7 +415,7 @@ short viewscreen::input(const SDL_Event& event)
                 walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
-                        w->query_order() == ORDER_LIVING &&
+                        w->query_order() == Order::Living &&
                         w->user == -1 && // mean's we're not player-controlled
                         w->team_num == my_team) // makes a difference for PvP
                 {
@@ -434,7 +434,7 @@ short viewscreen::input(const SDL_Event& event)
                 walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
-                        w->query_order() == ORDER_LIVING &&
+                        w->query_order() == Order::Living &&
                         w->myguy)
                 {
                     control = w;
@@ -518,7 +518,7 @@ short viewscreen::input(const SDL_Event& event)
             for(; e != oblist.end(); e++)
             {
                 walker* w = e->get();
-                if (w->query_order() == ORDER_LIVING &&
+                if (w->query_order() == Order::Living &&
                         w->is_friendly(oldcontrol) && w->team_num == my_team &&
                         w->real_team_num == 255 && w->user == -1)
                 {
@@ -533,7 +533,7 @@ short viewscreen::input(const SDL_Event& event)
                 for(e = oblist.begin(); e != mine; e++)
                 {
                     walker* w = e->get();
-                    if (w->query_order() == ORDER_LIVING &&
+                    if (w->query_order() == Order::Living &&
                             w->is_friendly(oldcontrol) && w->team_num == my_team &&
                             w->real_team_num == 255 && w->user == -1)
                     {
@@ -559,7 +559,7 @@ short viewscreen::input(const SDL_Event& event)
             for(; e != oblist.rend(); e++)
             {
                 walker* w = e->get();
-                if (w->query_order() == ORDER_LIVING &&
+                if (w->query_order() == Order::Living &&
                         w->is_friendly(oldcontrol) && w->team_num == my_team &&
                         w->real_team_num == 255 && w->user == -1)
                 {
@@ -574,7 +574,7 @@ short viewscreen::input(const SDL_Event& event)
                 for(e = oblist.rbegin(); e != mine; e++)
                 {
                     walker* w = e->get();
-                    if (w->query_order() == ORDER_LIVING &&
+                    if (w->query_order() == Order::Living &&
                             w->is_friendly(oldcontrol) && w->team_num == my_team &&
                             w->real_team_num == 255 && w->user == -1)
                     {
@@ -625,7 +625,7 @@ short viewscreen::input(const SDL_Event& event)
 		for(auto& uptr : myscreen->level_data.oblist)
 		{
 		    walker* w = uptr.get();
-			if (w && (w->query_order() == ORDER_LIVING) &&
+			if (w && (w->query_order() == Order::Living) &&
 			        (w->query_act_type() != ACT_CONTROL) &&
 			        (w->team_num == control->team_num) &&
 			        (!w->leader) )
@@ -669,7 +669,7 @@ short viewscreen::input(const SDL_Event& event)
 				for(auto& uptr : myscreen->level_data.oblist)
 				{
 				    walker* w = uptr.get();
-					if (w && (w->query_order() == ORDER_LIVING) &&
+					if (w && (w->query_order() == Order::Living) &&
 					        (w->query_act_type() != ACT_CONTROL) &&
 					        (w->team_num == control->team_num)
 					   )
@@ -719,7 +719,7 @@ short viewscreen::input(const SDL_Event& event)
                 {
                     walker* w = uptr.get();
                     if ( (w->team_num == myscreen->save_data.my_team) &&
-                            (w->query_order() == ORDER_LIVING)
+                            (w->query_order() == Order::Living)
                        )
                     {
                         result = w;
@@ -741,7 +741,7 @@ short viewscreen::input(const SDL_Event& event)
 			for(auto& uptr : myscreen->level_data.oblist)
 			{
 			    walker* w = uptr.get();
-				if (w && w->query_order() == ORDER_LIVING &&
+				if (w && w->query_order() == Order::Living &&
 					        !control->is_friendly(w) )
 						//w->team_num != control->team_num)
                 {
@@ -776,7 +776,7 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_F2, event)) // generate magic shield
 		{
-			newob = myscreen->level_data.add_ob(ORDER_FX, FAMILY_MAGIC_SHIELD);
+			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 			newob->owner = control;
 			newob->team_num = control->team_num;
 			newob->ani_type = 1; // dummy, non-zero value
@@ -903,7 +903,7 @@ short viewscreen::continuous_input()
 		    walker* w = uptr.get();
 			if (w &&
 			        !w->dead &&
-			        w->query_order() == ORDER_LIVING &&
+			        w->query_order() == Order::Living &&
 			        w->user == -1 && // mean's we're not player-controlled
 			        w->myguy &&
 			        w->team_num == my_team) // makes a difference for PvP
@@ -921,7 +921,7 @@ short viewscreen::continuous_input()
                 walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
-                        w->query_order() == ORDER_LIVING &&
+                        w->query_order() == Order::Living &&
                         w->user == -1 && // mean's we're not player-controlled
                         w->team_num == my_team) // makes a difference for PvP
                 {
@@ -940,7 +940,7 @@ short viewscreen::continuous_input()
                 walker* w = uptr.get();
                 if (w &&
                         !w->dead &&
-                        w->query_order() == ORDER_LIVING &&
+                        w->query_order() == Order::Living &&
                         w->myguy)
                 {
                     control = w;
@@ -1063,7 +1063,7 @@ short viewscreen::continuous_input()
 	         myscreen->control_hp = control->stats->hitpoints;
 	//       draw_box(S_LEFT, S_UP, S_RIGHT-1, S_DOWN-1, 44, 1);  // red flash
 	         // Make temporary stain:
-	         blood = myscreen->level_data.add_ob(ORDER_WEAPON, FAMILY_BLOOD);
+	         blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
 	         blood->team_num = control->team_num;
 	         blood->ani_type = ANI_GROW;
 	         blood->setxy(control->xpos,control->ypos);
@@ -1356,7 +1356,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	{
 	    walker* w = uptr.get();
 		if (w && !w->dead
-		        && w->query_order() == ORDER_LIVING
+		        && w->query_order() == Order::Living
 		        && w->team_num == teamnum
 		        && (!w->stats->name.empty() || w->myguy)) //&& w->owner == nullptr)
 		{

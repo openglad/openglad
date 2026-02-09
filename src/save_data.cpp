@@ -111,7 +111,8 @@ bool SaveData::load(const std::string& filename)
 
 	char tempname[12] = "FRED";
 	char guyname[12] = "JOE";
-	char temp_order, temp_family;
+	unsigned char temp_order;
+	char temp_family;
 	short temp_str, temp_dex, temp_con;
 	short temp_short, temp_arm, temp_lev;
 	unsigned char temp_numplayers;
@@ -283,7 +284,7 @@ bool SaveData::load(const std::string& filename)
         team_size++;
         
 		// Get temp values to be read
-		temp_order = ORDER_LIVING; // may be changed later
+		temp_order = static_cast<unsigned char>(Order::Living); // may be changed later
 		// Read name of current guy...
 		std::fill_n(guyname, 12, '\0');
 		snprintf(guyname, sizeof(guyname), "%s", tempname);
@@ -472,7 +473,8 @@ bool SaveData::save(const std::string& filename)
 	short i;
 
 	char guyname[12] = "JOE";
-	char temp_order, temp_family;
+	unsigned char temp_order;
+	char temp_family;
 	short temp_str, temp_dex, temp_con;
 	short temp_short, temp_arm, temp_lev;
 	unsigned char numplayers = this->numplayers;
@@ -600,7 +602,7 @@ bool SaveData::save(const std::string& filename)
 	    guy* temp_guy = team_list[i];
 	    
         // Get temp values to be saved
-        temp_order = ORDER_LIVING;
+        temp_order = static_cast<unsigned char>(Order::Living);
         temp_family= temp_guy->family;
         // Write name of current guy...
         std::fill_n(guyname, 12, '\0');

@@ -38,9 +38,9 @@ class living : public walker
 		short          facing(short x, short y) override;
 		void           set_difficulty(Uint32 whatlevel) override;
 		short          shove(walker  *target, short x, short y) override;
-		char           query_order() const override
+		Order          query_order() const override
 		{
-			return ORDER_LIVING;
+			return Order::Living;
 		}
 		bool walk(float x, float y) override;
 	protected:

@@ -353,9 +353,9 @@ void LevelData::clear()
     topy = 0;
 }
 
-walker* LevelData::add_ob(char order, char family, bool atstart)
+walker* LevelData::add_ob(Order order, char family, bool atstart)
 {
-	if (order == ORDER_WEAPON)
+	if (order == Order::Weapon)
 		return add_weap_ob(order, family);
 
     // Create the walker
@@ -364,14 +364,14 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
-    if (order == ORDER_LIVING)
+    if (order == Order::Living)
         numobs++;
     
     oblist.push_back(std::unique_ptr<walker>(w));
     return w;
 }
 
-walker* LevelData::add_fx_ob(char order, char family)
+walker* LevelData::add_fx_ob(Order order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen, false);
     w->myobmap = this->myobmap.get();
@@ -383,7 +383,7 @@ walker* LevelData::add_fx_ob(char order, char family)
 	return w;
 }
 
-walker* LevelData::add_weap_ob(char order, char family)
+walker* LevelData::add_weap_ob(Order order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen);
     w->myobmap = this->myobmap.get();
@@ -394,7 +394,7 @@ walker* LevelData::add_weap_ob(char order, char family)
 
 short LevelData::remove_ob(walker  *ob)
 {
-	if (ob && ob->query_order() == ORDER_LIVING)
+	if (ob && ob->query_order() == Order::Living)
 		numobs--;
 
     auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
@@ -618,10 +618,10 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 		SDL_RWread(infile, &tempfacing, 1, 1);
 		SDL_RWread(infile, &tempcommand, 1, 1);
 		SDL_RWread(infile, tempreserved, 11, 1);
-		if (temporder == ORDER_TREASURE)
-			new_guy = data->add_fx_ob(temporder, tempfamily);  // create new object
+		if (static_cast<Order>(temporder) == Order::Treasure)
+			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);  // create new object
 		else
-			new_guy = data->add_ob(temporder, tempfamily);  // create new object
+			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
 		if (!new_guy)
 		{
 			Log("Error creating object!\n");
@@ -711,11 +711,11 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 		SDL_RWread(infile, &tempcommand, 1, 1);
 		SDL_RWread(infile, &templevel, 1, 1);
 		SDL_RWread(infile, tempreserved, 10, 1);
-		if (temporder == ORDER_TREASURE)
-			//              new_guy = master->add_fx_ob(temporder, tempfamily);  // create new object
-			new_guy = data->add_ob(temporder, tempfamily, 1); // add to top of list
+		if (static_cast<Order>(temporder) == Order::Treasure)
+			//              new_guy = master->add_fx_ob(static_cast<Order>(temporder), tempfamily);  // create new object
+			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily, 1); // add to top of list
 		else
-			new_guy = data->add_ob(temporder, tempfamily);  // create new object
+			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
 		if (!new_guy)
 		{
 			Log("Error creating object!\n");
@@ -816,11 +816,11 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 		SDL_RWread(infile, &templevel, 1, 1);
 		SDL_RWread(infile, tempname, 12, 1);
 		SDL_RWread(infile, tempreserved, 10, 1);
-		if (temporder == ORDER_TREASURE)
-			//new_guy = data->add_ob(temporder, tempfamily, 1); // add to top of list
-			new_guy = data->add_fx_ob(temporder, tempfamily);
+		if (static_cast<Order>(temporder) == Order::Treasure)
+			//new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily, 1); // add to top of list
+			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
 		else
-			new_guy = data->add_ob(temporder, tempfamily);  // create new object
+			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
 		if (!new_guy)
 		{
 			Log("Error creating object!\n");
@@ -930,10 +930,10 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 		SDL_RWread(infile, &templevel, 1, 1);
 		SDL_RWread(infile, tempname, 12, 1);
 		SDL_RWread(infile, tempreserved, 10, 1);
-		if (temporder == ORDER_TREASURE)
-			new_guy = data->add_fx_ob(temporder, tempfamily);
+		if (static_cast<Order>(temporder) == Order::Treasure)
+			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
 		else
-			new_guy = data->add_ob(temporder, tempfamily);  // create new object
+			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
 		if (!new_guy)
 		{
 			Log("Error creating object!\n");
@@ -1089,10 +1089,10 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
             READ_OR_RETURN(infile, &templevel, 1, 1);
         READ_OR_RETURN(infile, tempname, 12, 1);
         READ_OR_RETURN(infile, tempreserved, 10, 1);
-        if (temporder == ORDER_TREASURE)
-            new_guy = data->add_fx_ob(temporder, tempfamily);
+        if (static_cast<Order>(temporder) == Order::Treasure)
+            new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
         else
-            new_guy = data->add_ob(temporder, tempfamily);  // create new object
+            new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily);  // create new object
         if (!new_guy)
         {
             Log("Error creating object when loading.\n");
@@ -1332,7 +1332,8 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 bool LevelData::save()
 {
 	Sint32 currentx, currenty;
-	char temporder, tempfamily;
+	unsigned char temporder;
+	char tempfamily;
 	char tempteam, tempfacing, tempcommand;
 	short shortlevel;
 	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
@@ -1434,7 +1435,7 @@ bool LevelData::save()
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }
-        temporder = w->query_order();
+        temporder = static_cast<unsigned char>(w->query_order());
         tempfacing= w->curdir;
         tempfamily= w->query_family();
         tempteam  = w->team_num;
@@ -1466,7 +1467,7 @@ bool LevelData::save()
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }
-        temporder = ob->query_order();
+        temporder = static_cast<unsigned char>(ob->query_order());
         tempfacing= ob->curdir;
         tempfamily= ob->query_family();
         tempteam  = ob->team_num;
@@ -1498,7 +1499,7 @@ bool LevelData::save()
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }
-        temporder = ob->query_order();
+        temporder = static_cast<unsigned char>(ob->query_order());
         tempfacing= ob->curdir;
         tempfamily= ob->query_family();
         tempteam  = ob->team_num;

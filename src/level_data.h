@@ -22,6 +22,9 @@
 #include <memory>
 #include <string>
 
+// Forward-declare Order enum class (defined in base.h)
+enum class Order : unsigned char;
+
 class screen;
 class pixie;
 class pixieN;
@@ -105,9 +108,9 @@ public:
     bool load();
     bool save();
     
-    walker* add_ob(char order, char family, bool atstart = false);
-    walker* add_fx_ob(char order, char family);
-    walker* add_weap_ob(char order, char family);
+    walker* add_ob(Order order, char family, bool atstart = false);
+    walker* add_fx_ob(Order order, char family);
+    walker* add_weap_ob(Order order, char family);
     short remove_ob(walker  *ob);
     
     void create_new_grid();

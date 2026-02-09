@@ -35,9 +35,9 @@ class treasure : public walker
 		bool           eat_me(walker  * eater) override;
 		walker  * find_teleport_target();
 		void         set_direct_frame(short whatframe) override;
-		char         query_order() const override
+		Order        query_order() const override
 		{
-			return ORDER_TREASURE;
+			return Order::Treasure;
 		}
 };
 

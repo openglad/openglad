@@ -192,13 +192,15 @@ inline constexpr int ANI_EXPLODE  = 1; // 4
 inline constexpr int ANI_SPIN     = 1; // for the marker
 
 // Orders
-inline constexpr int ORDER_LIVING = 0;
-inline constexpr int ORDER_WEAPON = 1;
-inline constexpr int ORDER_TREASURE = 2;
-inline constexpr int ORDER_GENERATOR = 3;
-inline constexpr int ORDER_FX = 4;
-inline constexpr int ORDER_SPECIAL = 5;
-inline constexpr int ORDER_BUTTON1 = 6;
+enum class Order : unsigned char {
+    Living = 0,
+    Weapon = 1,
+    Treasure = 2,
+    Generator = 3,
+    FX = 4,
+    Special = 5,
+    Button1 = 6
+};
 
 // Living families
 inline constexpr int FAMILY_SOLDIER = 0;
@@ -227,6 +229,7 @@ inline constexpr int NUM_FAMILIES = 21;  // # of families; make sure to change t
 // (or your code will act weird)
 
 constexpr int PIX(int a, int b) { return NUM_FAMILIES * a + b; }
+constexpr int PIX(Order a, int b) { return NUM_FAMILIES * static_cast<int>(a) + b; }
 
 //Weapon families
 inline constexpr int FAMILY_KNIFE = 0;

@@ -66,7 +66,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 	    walker* ob = uptr.get();
         switch(ob->query_order())
         {
-            case ORDER_LIVING:
+            case Order::Living:
                 if(ob->team_num != 0)
                 {
                     num++;
@@ -89,7 +89,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 	    walker* ob = uptr.get();
         switch(ob->query_order())
         {
-            case ORDER_TREASURE:
+            case Order::Treasure:
                 if(ob->query_family() == FAMILY_EXIT)
                 {
                     exits.push_back(ob->stats->level);

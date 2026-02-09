@@ -27,7 +27,8 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	TRACE("game", "load_saved_game file=%s scen=%d", filename, myscreen->save_data.scen_num);
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
-	short         myord, myfam;
+	Order         myord{};
+	short         myfam;
 	int           multi_team = 0;
 	int           i;
 
@@ -84,12 +85,12 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			multi_team = 1;
 
 		// First, try to find a marker that's the correct team number ..
-		replace_walker = myscreen->first_of(ORDER_SPECIAL,
+		replace_walker = myscreen->first_of(Order::Special,
 		                                    FAMILY_RESERVED_TEAM,
 		                                    static_cast<int>(temp_guy->teamnum));
 		// If that doesn't work, though, grab any marker we can ..
 		if (!replace_walker)
-			replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);
+			replace_walker = myscreen->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 		if (replace_walker)
 		{
 			temp_walker->setxy(replace_walker->xpos, replace_walker->ypos);
@@ -103,11 +104,11 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	}
     
     // Destroy all player markers (by setting them to dead)
-	replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);
+	replace_walker = myscreen->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	while (replace_walker)
 	{
 		replace_walker->dead = 1;
-		replace_walker = myscreen->first_of(ORDER_SPECIAL, FAMILY_RESERVED_TEAM);
+		replace_walker = myscreen->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	}
 
 	// Have we already done this scenario?
@@ -122,9 +123,9 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			    // Kill everything except for our team, exits, and teleporters
 				myfam = w->query_family();
 				myord = w->query_order();
-				if ( ( (w->team_num==0 || w->myguy) && myord==ORDER_LIVING) || //living team member
-				        (myord==ORDER_TREASURE && myfam==FAMILY_EXIT) || // exit
-				        (myord==ORDER_TREASURE && myfam==FAMILY_TELEPORTER)  // teleporters
+				if ( ( (w->team_num==0 || w->myguy) && myord==Order::Living) || //living team member
+				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
+				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 				   )
 				{
 					// do nothing; legal guy
@@ -141,9 +142,9 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			{
 				myfam = w->query_family();
 				myord = w->query_order();
-				if ( (w->team_num==0 && myord==ORDER_LIVING) || //living team member
-				        (myord==ORDER_TREASURE && myfam==FAMILY_EXIT) || // exit
-				        (myord==ORDER_TREASURE && myfam==FAMILY_TELEPORTER)  // teleporters
+				if ( (w->team_num==0 && myord==Order::Living) || //living team member
+				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
+				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 
 				   )
 				{
@@ -161,9 +162,9 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			{
 				myfam = w->query_family();
 				myord = w->query_order();
-				if ( (w->team_num==0 && myord==ORDER_LIVING) || //living team member
-				        (myord==ORDER_TREASURE && myfam==FAMILY_EXIT) || // exit
-				        (myord==ORDER_TREASURE && myfam==FAMILY_TELEPORTER)  // teleporters
+				if ( (w->team_num==0 && myord==Order::Living) || //living team member
+				        (myord==Order::Treasure && myfam==FAMILY_EXIT) || // exit
+				        (myord==Order::Treasure && myfam==FAMILY_TELEPORTER)  // teleporters
 
 				   )
 				{

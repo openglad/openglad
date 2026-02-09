@@ -1769,26 +1769,26 @@ Sint32 create_hire_menu(Sint32 arg1)
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
         linesdown++;
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "HP:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset - 9, stat_box_content.y + linesdown*line_height + 4, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, last_family)] + current_guy->get_hp_bonus()));
+        mytext.write_xy(stat_box_content.x + derived_offset - 9, stat_box_content.y + linesdown*line_height + 4, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(Order::Living, last_family)] + current_guy->get_hp_bonus()));
         
         mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "MP:", STAT_DERIVED, 1);
         mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 9, stat_box_content.y + linesdown*line_height + 4, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
 		
 		linesdown++;
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, last_family)] + current_guy->get_damage_bonus());
+        mytext.write_xy(stat_box_content.x + derived_offset - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(Order::Living, last_family)] + current_guy->get_damage_bonus());
         
         mytext.write_xy(stat_box_content.x + derived_offset + 18, stat_box_content.y + linesdown*line_height + 4, "DEF:", STAT_DERIVED, 1);
         mytext.write_xy(stat_box_content.x + 2*derived_offset + 18 - 3, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.0f", current_guy->get_armor_bonus());
 		
 		linesdown++;
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "SPD:", STAT_DERIVED, 1);
-        mytext.write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, last_family)] + current_guy->get_speed_bonus());
+        mytext.write_xy(stat_box_content.x + derived_offset, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(Order::Living, last_family)] + current_guy->get_speed_bonus());
         
 		linesdown++;
         mytext.write_xy(stat_box_content.x, stat_box_content.y + linesdown*line_height + 4, "ATK SPD:", STAT_DERIVED, 1);
         // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
-        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, last_family)] - current_guy->get_fire_frequency_bonus();
+        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(Order::Living, last_family)] - current_guy->get_fire_frequency_bonus();
         if(fire_freq < 1)
             fire_freq = 1;
         mytext.write_xy(stat_box_content.x + derived_offset + 21, stat_box_content.y + linesdown*line_height + 4, showcolor, "%.1f", 10.0f/fire_freq);
@@ -2061,25 +2061,25 @@ Sint32 create_train_menu(Sint32 arg1)
         linesdown += 0.4f;
         
         mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "HP:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + derived_offset - 9, info_box_content.y + linesdown*line_height, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_hp_bonus()));
+        mytext.write_xy(info_box_content.x + derived_offset - 9, info_box_content.y + linesdown*line_height, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(Order::Living, current_guy->family)] + current_guy->get_hp_bonus()));
         
         mytext.write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "MP:", STAT_DERIVED, 1);
         mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_box_content.y + linesdown*line_height, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
 		
 		linesdown++;
         mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + derived_offset - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_damage_bonus());
+        mytext.write_xy(info_box_content.x + derived_offset - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(Order::Living, current_guy->family)] + current_guy->get_damage_bonus());
         
         mytext.write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "DEF:", STAT_DERIVED, 1);
         mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", current_guy->get_armor_bonus());
 		
 		linesdown++;
         mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "SPD:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + derived_offset, info_box_content.y + linesdown*line_height, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(ORDER_LIVING, current_guy->family)] + current_guy->get_speed_bonus());
+        mytext.write_xy(info_box_content.x + derived_offset, info_box_content.y + linesdown*line_height, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(Order::Living, current_guy->family)] + current_guy->get_speed_bonus());
         
 		linesdown++;
         mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK SPD:", STAT_DERIVED, 1);
-        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(ORDER_LIVING, current_guy->family)] - current_guy->get_fire_frequency_bonus();
+        float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(Order::Living, current_guy->family)] - current_guy->get_fire_frequency_bonus();
         if(fire_freq < 1)
             fire_freq = 1;
         // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
@@ -3049,7 +3049,7 @@ void show_guy(Sint32 frames, Sint32 who, short centerx, short centery) // shows 
 		newfamily = myscreen->save_data.team_list[editguy]->family;
 	newfamily = current_guy->family;
 
-	mywalker = myscreen->level_data.myloader->create_walker(ORDER_LIVING,
+	mywalker = myscreen->level_data.myloader->create_walker(Order::Living,
 	           newfamily,myscreen);
 	mywalker->stats->bit_flags = 0;
 	mywalker->curdir = ((frames/192) + FACE_DOWN)%8;
