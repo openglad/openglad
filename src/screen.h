@@ -39,7 +39,7 @@ class screen : public video
 
 		void reset(short howmany);
 		void ready_for_battle(short howmany);
-		virtual ~screen();
+		~screen() override;
 		void initialize_views();
 		void cleanup(short);
 		void clear();

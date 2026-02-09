@@ -25,13 +25,13 @@ class treasure : public walker
 {
 	public:
 		treasure(const PixieData& data);
-		virtual ~treasure();
-		short          act();
+		~treasure() override;
+		short          act() override;
 		//short                    death(); // called upon destruction
-		short          eat_me(walker  * eater);
+		short          eat_me(walker  * eater) override;
 		walker  * find_teleport_target();
-		void         set_direct_frame(short whatframe);
-		char         query_order()
+		void         set_direct_frame(short whatframe) override;
+		char         query_order() override
 		{
 			return ORDER_TREASURE;
 		}

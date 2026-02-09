@@ -29,11 +29,11 @@ class effect : public walker
 {
 	public:
 		effect(const PixieData& data);
-		virtual ~effect();
-		short act();
-		short animate();
-		short death(); // called on destruction
-		char query_order()
+		~effect() override;
+		short act() override;
+		short animate() override;
+		short death() override;
+		char query_order() override
 		{
 			return ORDER_FX;
 		}

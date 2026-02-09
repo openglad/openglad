@@ -25,13 +25,13 @@ class weap : public walker
 {
 	public:
 		weap(const PixieData& data);
-		virtual ~weap();
+		~weap() override;
 
-		short act();
-		short animate();
-		short death(); // called on destruction
-		short setxy(short x, short y);
-		char  query_order()
+		short act() override;
+		short animate() override;
+		short death() override;
+		short setxy(short x, short y) override;
+		char  query_order() override
 		{
 			return ORDER_WEAPON;
 		}
