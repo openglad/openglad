@@ -110,7 +110,9 @@ class walker : public pixieN
 		Uint32 keys; // used to open doors
 		short view_all;     // used for seeing treasures, etc. on radar
 		short shifter_down; // is our shifter/alternate key pressed?
-		short bonus_rounds; // used if an object has extra rounds this cycle
+		// Accessors for bonus_rounds (field now in protected)
+		short bonus_rounds() const { return bonus_rounds_; }
+		void set_bonus_rounds(short b) { bonus_rounds_ = b; }
 		short death_called; // if death has already been called
 		short weapons_left;   // for fighter's blades
 		short yo_delay;
@@ -134,12 +136,20 @@ class walker : public pixieN
 		float busy;
 		std::unique_ptr<statistics> stats;
 		walker  *collide_ob;
-		walker * foe;
-		walker * leader;
-		walker * owner;                // for weapons
+		// Accessors for combat pointers (fields now in protected)
+		walker* foe() const { return foe_; }
+		void set_foe(walker* f) { foe_ = f; }
+		walker* leader() const { return leader_; }
+		void set_leader(walker* l) { leader_ = l; }
+		walker* owner() const { return owner_; }
+		void set_owner(walker* o) { owner_ = o; }
 		walker * myself;
-		guy  *myguy;                   // Non-owning — owned by SaveData::team_list
-		short dead;                    // safety check
+		// Accessors for myguy (field now in protected)
+		guy* myguy() const { return myguy_; }
+		void set_myguy(guy* g) { myguy_ = g; }
+		// Accessors for dead (field now in protected)
+		bool is_dead() const { return dead_ != 0; }
+		void set_dead(short d) { dead_ = d; }
 		char ignore;                   // for non-colliding objects
 		unsigned short default_weapon;
 		unsigned short current_weapon;
@@ -151,7 +161,9 @@ class walker : public pixieN
 		unsigned char drawcycle;
 		char current_special;
 		Sint32 lifetime; // how much life summoned guys have ..
-		short skip_exit; // cycles after failed exit choice
+		// Accessors for skip_exit (field now in protected)
+		short skip_exit() const { return skip_exit_; }
+		void set_skip_exit(short s) { skip_exit_ = s; }
 		unsigned char outline;
 		short speed_bonus;             // These two are used for
 		short speed_bonus_left;        // speed potions, etc.
@@ -205,6 +217,13 @@ class walker : public pixieN
 		// Zardus: FIX: lets make these unsigned so that real_team_num doesn't wrap around from 255 to -1 :-)
 		unsigned char team_num_;
 		unsigned char real_team_num_; // for 'Charm', etc.
+		short bonus_rounds_; // used if an object has extra rounds this cycle
+		short dead_;                   // safety check
+		short skip_exit_; // cycles after failed exit choice
+		guy  *myguy_;                  // Non-owning — owned by SaveData::team_list
+		walker * foe_;
+		walker * leader_;
+		walker * owner_;               // for weapons
 
 
 };

@@ -37,15 +37,15 @@ bool weap::act()
 {
 
 	// Make sure everyone we're pointing to is valid
-	if (foe && foe->dead)
-		foe = nullptr;
-	if (leader && leader->dead)
-		leader = nullptr;
-	if (owner && owner->dead)
-		owner = nullptr;
+	if (foe_ && foe_->is_dead())
+		foe_ = nullptr;
+	if (leader_ && leader_->is_dead())
+		leader_ = nullptr;
+	if (owner_ && owner_->is_dead())
+		owner_ = nullptr;
 
-	if (!owner)
-		owner = this; //to fix cases where our parent died!
+	if (!owner_)
+		owner_ = this; //to fix cases where our parent died!
 
 	collide_ob = nullptr; // always start with no collision..
 
@@ -100,7 +100,7 @@ bool weap::act()
 			}
 		case ACT_DIE:
 			{
-				this->dead = 1;
+				this->set_dead(1);
 				return 1;
 			}
 			// We are randomly walking toward enemy
@@ -141,10 +141,10 @@ bool weap::death()
 	switch (family)
 	{
 		case FAMILY_KNIFE: // for returning knife
-			if (owner && owner->query_family() != FAMILY_SOLDIER)
+			if (owner_ && owner_->query_family() != FAMILY_SOLDIER)
 				break;  // only soldiers get returning knives
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
-			newob->owner = owner;
+			newob->set_owner(owner_);
 			newob->center_on(this);
 			newob->lastx = lastx;
 			newob->lasty = lasty;
@@ -155,11 +155,11 @@ bool weap::death()
 		case FAMILY_ROCK: // used for the elf's bouncing rock, etc.
 			if (!do_bounce || !lineofsight || collide_ob) // died of natural causes
 				break;
-			dead = 0; // first, un-dead us so we can collide ..
+			dead_ = 0; // first, un-dead us so we can collide ..
 			// Did we hit a barrier?
 			if (myscreen->query_grid_passable(xpos+lastx, ypos+lasty, this))
 			{
-				dead = 1;
+				dead_ = 1;
 				break; // if not, die like normal
 			}
 			if (myscreen->query_grid_passable(xpos-lastx, ypos+lasty, this))
@@ -185,33 +185,33 @@ bool weap::death()
 				break;
 			}
 			// Else we're really stuck, so die :)
-			dead = 1;
+			dead_ = 1;
 			break;
 		case FAMILY_FIRE_ARROW: // only for exploding, really
 		case FAMILY_BOULDER:
-			if (!skip_exit)
-				break;  // skip_exit means we're supposed to explode :)
-			if (!owner || owner->dead)
-				owner = this;
+			if (!skip_exit_)
+				break;  // skip_exit_ means we're supposed to explode :)
+			if (!owner_ || owner_->is_dead())
+				owner_ = this;
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 			if (!newob)
 				break; // failsafe
 			if (on_screen())
 				myscreen->soundp->play_sound(SOUND_EXPLODE);
-			newob->owner = owner;
+			newob->set_owner(owner_);
 			newob->stats->hitpoints = 0;
-			newob->stats->level = owner->stats->level;
+			newob->stats->level = owner_->stats->level;
 			newob->ani_type = ANI_EXPLODE;
 			newob->center_on(this);
 			newob->damage = damage*2;
 			break;  // end fire (exploding) arrows
 		case FAMILY_WAVE: // grow to wave2
-			dead = 0;
+			dead_ = 0;
 			transform_to(Order::Weapon, FAMILY_WAVE2);
 			stats->hitpoints = stats->max_hitpoints;
 			break;  // end wave -> wave2
 		case FAMILY_WAVE2: // grow to wave3
-			dead = 0;
+			dead_ = 0;
 			transform_to(Order::Weapon, FAMILY_WAVE3);
 			stats->hitpoints = stats->max_hitpoints;
 			break;  // end wave2 -> wave3
@@ -270,12 +270,12 @@ bool weap::animate()
 			}
 			break;
 		case FAMILY_CIRCLE_PROTECTION:
-			if (!owner || owner->dead || stats->hitpoints <= 0)
+			if (!owner_ || owner_->is_dead() || stats->hitpoints <= 0)
 			{
-				dead = 1;
+				dead_ = 1;
 				return death();
 			}
-			center_on(owner);
+			center_on(owner_);
 			break;
 		case FAMILY_GLOW:
 			if (ani_type > 2) // illegal case
@@ -289,7 +289,7 @@ bool weap::animate()
 			}
 			if (lifetime-- < 1)
 			{
-				dead = 1;
+				dead_ = 1;
 				death();
 			}
 			break;

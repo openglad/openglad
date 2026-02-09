@@ -268,7 +268,7 @@ void get_input_events(bool type)
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
-    if(control == nullptr || control->dead)
+    if(control == nullptr || control->is_dead())
         return;
     
     if(moving)

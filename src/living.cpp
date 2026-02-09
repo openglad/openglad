@@ -38,41 +38,41 @@ living::~living()
 
 bool living::act()
 {
-	if (bonus_rounds>0 && !dead)  // we get extra rounds to act this cycle
+	if (bonus_rounds_>0 && !dead_)  // we get extra rounds to act this cycle
 	{
-		bonus_rounds--;
+		bonus_rounds_--;
 		act();
 	}
-	if (dead)
+	if (dead_)
 		return 0;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe && (foe->dead || (random(foe->invisibility_left/20) > 0) ) )
-		foe = nullptr;
-	if (is_friendly(foe))
-		foe = nullptr;
-	if (leader && leader->dead)
-		leader = nullptr;
-	if (owner && owner->dead)
+	if (foe_ && (foe_->is_dead() || (random(foe_->invisibility_left/20) > 0) ) )
+		foe_ = nullptr;
+	if (is_friendly(foe_))
+		foe_ = nullptr;
+	if (leader_ && leader_->is_dead())
+		leader_ = nullptr;
+	if (owner_ && owner_->is_dead())
 	{
 		//owner = nullptr;
 		// A living who had an owner who is now dead, dies as well
-		dead = 1;
+		dead_ = 1;
 		death();
 		return 0;
 	}
 
 	if (lifetime)
 	{
-		if (!owner || owner->dead) // our owner gone?
+		if (!owner_ || owner_->is_dead()) // our owner_ gone?
 		{
-			dead = 1;
+			dead_ = 1;
 			death();
 			return 0;
 		}
 		if (--lifetime < 1)
 		{
-			dead = 1;
+			dead_ = 1;
 			return death();
 		}
 		// Do other things based on our type ..
@@ -83,15 +83,15 @@ bool living::act()
 				{
 					// Take a 'toll' of one health and 3 mp of mage, if there
 					Sint32 temp = 0;
-					if (owner->stats->hitpoints >= (owner->stats->max_hitpoints/3) )
+					if (owner_->stats->hitpoints >= (owner_->stats->max_hitpoints/3) )
 					{
 						temp = 1;
-						owner->stats->hitpoints--;
+						owner_->stats->hitpoints--;
 					}
-					if (temp && (owner->stats->magicpoints >= 3) )
+					if (temp && (owner_->stats->magicpoints >= 3) )
 					{
 						temp += 1;
-						owner->stats->magicpoints -= 3;
+						owner_->stats->magicpoints -= 3;
 					}
 					if (temp == 2) // had both MP and HP, so heal 1 unit
 						stats->hitpoints++;
@@ -117,7 +117,7 @@ bool living::act()
 
 	// Regenerate magic
 	if (stats->magicpoints < stats->max_magicpoints &&
-	        !(myscreen->enemy_freeze || bonus_rounds) )
+	        !(myscreen->enemy_freeze || bonus_rounds_) )
 	{
 		stats->magicpoints += stats->magic_per_round;
 		stats->current_magic_delay++;
@@ -136,7 +136,7 @@ bool living::act()
     else
     {
         if (stats->hitpoints < stats->max_hitpoints &&
-                !(myscreen->enemy_freeze || bonus_rounds))
+                !(myscreen->enemy_freeze || bonus_rounds_))
         {
             stats->hitpoints += stats->heal_per_round;
             stats->current_heal_delay++;
@@ -176,7 +176,7 @@ bool living::act()
 		
 		if (stats->hitpoints <= 0)
 		{
-			dead = 1;
+			dead_ = 1;
 			death();
 		}
 	}
@@ -210,8 +210,8 @@ bool living::act()
         }
 
         float temp;
-		if (myguy)
-			temp = (4 - myguy->dexterity/10.0f);
+		if (myguy_)
+			temp = (4 - myguy_->dexterity/10.0f);
 		else
 			temp = (4 - stats->level/2.0f);
 		if (temp < 0)
@@ -291,8 +291,8 @@ bool living::act()
 			return 1;
 	}
 
-	if (skip_exit > 0)
-		skip_exit--;
+	if (skip_exit_ > 0)
+		skip_exit_--;
 
 	// Do we have a generic action-type set?
 	if (action  && (user == -1) )
@@ -333,7 +333,7 @@ bool living::act()
 			}
 		case ACT_DIE:
 			{
-				this->dead = 1;
+				this->set_dead(1);
 				return 1;
 			}
 			// We are randomly walking toward enemy
@@ -362,11 +362,11 @@ bool living::act()
 					act_random();
 				else // 4 of 5 times
 				{
-					if (!foe)
+					if (!foe_)
 					{
-						foe = myscreen->find_near_foe(this);
+						foe_ = myscreen->find_near_foe(this);
 					}
-					if (foe) // && random(2) )
+					if (foe_) // && random(2) )
 					{
 						curdir = enddir = static_cast<char>((enddir/2) * 2);
 						//stats->try_command(COMMAND_SEARCH, 40, 0, 0);
@@ -375,7 +375,7 @@ bool living::act()
 					//else if (foe)
 					//  stats->try_command(COMMAND_RIGHT_WALK,40,0,0);
 					else if (!random(2))
-						foe = myscreen->find_far_foe(this);
+						foe_ = myscreen->find_far_foe(this);
 					else
 						stats->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -396,7 +396,7 @@ short living::shove(walker  *target, short x, short y)
 {
 	//return 0; //debug memory
 
-	if (target && !target->dead && (query_order()==Order::Living) &&  //we are alive
+	if (target && !target->is_dead() && (query_order()==Order::Living) &&  //we are alive
 	        (is_friendly(target)) // we are allied
 	   )
 		// Make sure WE don't get shoved
@@ -458,7 +458,7 @@ bool living::walk(float x, float y)
 		}
 		else //Invalid move?
 		{
-			if (collide_ob && !collide_ob->dead)
+			if (collide_ob && !collide_ob->is_dead())
 			{
 				if (collide_ob->query_order() == Order::Living && is_friendly(collide_ob) )
 				{
@@ -509,7 +509,7 @@ bool living::collide(walker  *ob)
 	collide_ob = ob;
 	//return 1; // debug
 	if ( ob && walkerIsAutoAttackable(ob) && (is_friendly(ob) == 0)
-	        && !ob->dead && !dead)
+	        && !ob->is_dead() && !dead_)
 		init_fire();
 	return 1;
 }
@@ -519,7 +519,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 	walker  *newob;
 
 	newob = myscreen->level_data.add_ob(Order::Living, whatfamily);
-	newob->owner = this;
+	newob->set_owner(this);
 	newob->lifetime = lifetime;
 	newob->transform_to(Order::Living, whatfamily);
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
@@ -542,42 +542,42 @@ bool living::check_special()
 
 	switch (family)
 	{
-		case FAMILY_SOLDIER:   // Check for foe in range x
-			if (foe) // already have a foe ..
+		case FAMILY_SOLDIER:   // Check for foe_ in range x
+			if (foe_) // already have a foe_ ..
 			{
-				distance = static_cast<Uint32>(distance_to_ob(foe));//Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe_));//Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 square min
 					return 1;
 				return 0;
 			}
-			else // get a new foe ..
+			else // get a new foe_ ..
 			{
-				foe = myscreen->find_near_foe(this);
-				if (!foe)
+				foe_ = myscreen->find_near_foe(this);
+				if (!foe_)
 					return 0;
-				distance = static_cast<Uint32>(distance_to_ob(foe)); // (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe_)); // (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 75 && distance > 20) // about 3 squares max, 1 min
 					return 1;
 				return 0;
 			}
 			//break; // end of fighter case
-		case FAMILY_FIREELEMENTAL:     // Check for foe in range x
+		case FAMILY_FIREELEMENTAL:     // Check for foe_ in range x
 		case FAMILY_ARCHER:
 		case FAMILY_GHOST:
 		case FAMILY_ORC:
-			if (foe) // already have a foe ..
+			if (foe_) // already have a foe_ ..
 			{
-				distance = static_cast<Uint32>(distance_to_ob(foe)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe_)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
 			}
-			else // get a new foe ..
+			else // get a new foe_ ..
 			{
-				foe = myscreen->find_near_foe(this);
-				if (!foe)
+				foe_ = myscreen->find_near_foe(this);
+				if (!foe_)
 					return 0;
-				distance = static_cast<Uint32>(distance_to_ob(foe)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
+				distance = static_cast<Uint32>(distance_to_ob(foe_)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
 				if (distance < 130) // about 6 squares
 					return 1;
 				return 0;
@@ -586,13 +586,13 @@ bool living::check_special()
 		case FAMILY_THIEF:
 			if (current_special == 1) // drop bomb
 			{
-				if (foe) // already have a foe ..
+				if (foe_) // already have a foe_ ..
 				{
-					distance = static_cast<Uint32>(distance_to_ob(foe)); // (deltax*deltax) + Sint32 (deltay*deltay);
+					distance = static_cast<Uint32>(distance_to_ob(foe_)); // (deltax*deltax) + Sint32 (deltay*deltay);
 					if (distance < 130 && distance > 35) // about 6 squares max, 2 min
 						return 0;
 				}
-				else // get a new foe ..
+				else // get a new foe_ ..
 				{
 					myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                        110, &howmany, this);
@@ -836,13 +836,13 @@ bool living::act_random()
 	short xdist, ydist;
 
 	// Find our foe
-	if (!random(80) || (!foe))
-		foe = myscreen->find_near_foe(this);
-	if (!foe)
+	if (!random(80) || (!foe_))
+		foe_ = myscreen->find_near_foe(this);
+	if (!foe_)
 		return stats->try_command(COMMAND_RANDOM_WALK,40);
 
-	xdist = static_cast<short>(foe->xpos - xpos);
-	ydist = static_cast<short>(foe->ypos - ypos);
+	xdist = static_cast<short>(foe_->xpos - xpos);
+	ydist = static_cast<short>(foe_->ypos - ypos);
 
 	// If foe is in firing range, turn and fire
 	if (abs(xdist) < lineofsight*GRID_SIZE &&
@@ -873,15 +873,15 @@ bool living::do_action()
 
 	switch (action)
 	{
-		case ACTION_FOLLOW: // follow our leader, attack his targets ..
-			if (foe)
+		case ACTION_FOLLOW: // follow our leader_, attack his targets ..
+			if (foe_)
 				return 0;       // continue as normal
-			leader = myscreen->find_nearest_player(this);
-			if (!leader)
+			leader_ = myscreen->find_nearest_player(this);
+			if (!leader_)
 				return 0;       // continue as normal ... shouldn't happen
-			if (leader->foe)
+			if (leader_->foe())
 			{
-				foe = leader->foe;
+				foe_ = leader_->foe();
 				return 0;       // continue from this point ..
 			}
 			// Else follow our leader

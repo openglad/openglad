@@ -382,7 +382,7 @@ void glad_init()
 		for (auto& uptr : myscreen->level_data.fxlist) {
 			walker* w = uptr.get();
 			if (w && w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT)
-				w->dead = 1;
+				w->set_dead(1);
 		}
 	}
 #endif
@@ -444,7 +444,7 @@ short remaining_foes(screen *myscreen, walker* myguy)
 	for(auto& uptr : foelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead &&
+		if (w && !w->is_dead() &&
 		        (w->query_order() == Order::Living) &&
 		        !myguy->is_friendly(w) )
 			myfoes++;
@@ -462,7 +462,7 @@ short remaining_team(screen *myscreen, char myteam)
 	for(auto& uptr : foelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead &&
+		if (w && !w->is_dead() &&
 		        (w->query_order() == Order::Living) &&
 		        (myteam == w->team_num()) )
 			myfoes++;
@@ -770,7 +770,7 @@ short new_score_panel(screen *myscreen, short do_it)
 		tm = myscreen->viewob[players]->yloc + OVERSCAN_PADDING;
 		rm = myscreen->viewob[players]->endx - OVERSCAN_PADDING;
 		bm = myscreen->viewob[players]->endy - OVERSCAN_PADDING;
-		if (control && !control->dead && control->user == players)
+		if (control && !control->is_dead() && control->user == players)
 		{
 			// Get the button-drawing info ..
 			draw_button = myscreen->viewob[players]->prefs[PREF_OVERLAY];
@@ -788,8 +788,8 @@ short new_score_panel(screen *myscreen, short do_it)
 			//draw_radar_gems(myscreen);
 
 			// Display name or type, upper left
-			if (control->myguy)
-				tempname = control->myguy->name;
+			if (control->myguy())
+				tempname = control->myguy()->name;
 			else if ( !control->stats->name.empty() )
 				tempname = control->stats->name;
 			else
@@ -886,8 +886,8 @@ short new_score_panel(screen *myscreen, short do_it)
                     mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
 
                     // Level or exp, 2nd bottom left
-                    if (control->myguy)
-                        message = std::format("XP: {}", control->myguy->exp);
+                    if (control->myguy())
+                        message = std::format("XP: {}", control->myguy()->exp);
                     else
                         message = std::format("LEVEL: {}", control->stats->level);
                     mytext.write_xy(lm+2, bm-16, message.c_str(), text_color, static_cast<short>(1));

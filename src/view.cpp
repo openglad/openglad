@@ -261,7 +261,7 @@ bool viewscreen::redraw()
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
-	if (control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (control && !control->is_dead() && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
 	return 1;
@@ -320,7 +320,7 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 		}
 
 	draw_obs(data); //moved here to put the radar on top of obs
-	if (draw_radar && control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (draw_radar && control && !control->is_dead() && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
 	return 1;
@@ -387,7 +387,7 @@ short viewscreen::input(const SDL_Event& event)
 		control->stats->clear_command();
 	}
     // TODO: Factor out this code, which is duplicated in continuous_input()
-	if (!control || control->dead)
+	if (!control || control->is_dead())
 	{
 	    control = nullptr;
 	    
@@ -396,10 +396,10 @@ short viewscreen::input(const SDL_Event& event)
 		{
 		    walker* w = uptr.get();
 			if (w &&
-			        !w->dead &&
+			        !w->is_dead() &&
 			        w->query_order() == Order::Living &&
 			        w->user == -1 && // mean's we're not player-controlled
-			        w->myguy &&
+			        w->myguy() &&
 			        w->team_num() == my_team) // makes a difference for PvP
             {
                 control = w;
@@ -414,7 +414,7 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->dead &&
+                        !w->is_dead() &&
                         w->query_order() == Order::Living &&
                         w->user == -1 && // mean's we're not player-controlled
                         w->team_num() == my_team) // makes a difference for PvP
@@ -433,9 +433,9 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->dead &&
+                        !w->is_dead() &&
                         w->query_order() == Order::Living &&
-                        w->myguy)
+                        w->myguy())
                 {
                     control = w;
                     break;
@@ -452,9 +452,9 @@ short viewscreen::input(const SDL_Event& event)
 		myscreen->control_hp = control->stats->hitpoints;
 	}
 
-	if (control && control->bonus_rounds) // do we have extra rounds?
+	if (control && control->bonus_rounds()) // do we have extra rounds?
 	{
-		control->bonus_rounds--;
+		control->set_bonus_rounds(control->bonus_rounds() - 1);
 		
 		if (control->lastx != 0.0f || control->lasty != 0.0f)
 			control->walk();
@@ -628,11 +628,11 @@ short viewscreen::input(const SDL_Event& event)
 			if (w && (w->query_order() == Order::Living) &&
 			        (w->query_act_type() != ACT_CONTROL) &&
 			        (w->team_num() == control->team_num()) &&
-			        (!w->leader) )
+			        (!w->leader()) )
 			{
 				// Remove any current foe ..
-				w->leader = control;
-				w->foe = nullptr;
+				w->set_leader(control);
+				w->set_foe(nullptr);
 				w->stats->force_command(COMMAND_FOLLOW, 100, 0, 0);
 				//w->action = ACTION_FOLLOW;
 			}
@@ -658,8 +658,8 @@ short viewscreen::input(const SDL_Event& event)
 					   )
 					{
 						// Remove any current foe ..
-						w->leader = control;
-						w->foe = nullptr;
+						w->set_leader(control);
+						w->set_foe(nullptr);
 						w->action = ACTION_FOLLOW;
 					}
 				}
@@ -777,7 +777,7 @@ short viewscreen::input(const SDL_Event& event)
 		if (query_key_event(SDLK_F2, event)) // generate magic shield
 		{
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-			newob->owner = control;
+			newob->set_owner(control);
 			newob->set_team_num(control->team_num());
 			newob->ani_type = 1; // dummy, non-zero value
 			newob->lifetime = 200;
@@ -844,7 +844,7 @@ short viewscreen::input(const SDL_Event& event)
 		control->stats->clear_command();
 
 	// If we're frozen ..
-	if (control->dead || control->stats->frozen_delay)
+	if (control->is_dead() || control->stats->frozen_delay)
 	{
 		return 1;
 	}
@@ -893,7 +893,7 @@ short viewscreen::continuous_input()
 		control->stats->clear_command();
 	}
 
-	if (!control || control->dead)
+	if (!control || control->is_dead())
 	{
 	    control = nullptr;
 	    
@@ -902,10 +902,10 @@ short viewscreen::continuous_input()
 		{
 		    walker* w = uptr.get();
 			if (w &&
-			        !w->dead &&
+			        !w->is_dead() &&
 			        w->query_order() == Order::Living &&
 			        w->user == -1 && // mean's we're not player-controlled
-			        w->myguy &&
+			        w->myguy() &&
 			        w->team_num() == my_team) // makes a difference for PvP
             {
                 control = w;
@@ -920,7 +920,7 @@ short viewscreen::continuous_input()
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->dead &&
+                        !w->is_dead() &&
                         w->query_order() == Order::Living &&
                         w->user == -1 && // mean's we're not player-controlled
                         w->team_num() == my_team) // makes a difference for PvP
@@ -939,9 +939,9 @@ short viewscreen::continuous_input()
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->dead &&
+                        !w->is_dead() &&
                         w->query_order() == Order::Living &&
-                        w->myguy)
+                        w->myguy())
                 {
                     control = w;
                     break;
@@ -958,9 +958,9 @@ short viewscreen::continuous_input()
 		myscreen->control_hp = control->stats->hitpoints;
 	}
 
-	if (control && control->bonus_rounds) // do we have extra rounds?
+	if (control && control->bonus_rounds()) // do we have extra rounds?
 	{
-		control->bonus_rounds--;
+		control->set_bonus_rounds(control->bonus_rounds() - 1);
 		
 		if (control->lastx || control->lasty)
 			control->walk();
@@ -1067,7 +1067,7 @@ short viewscreen::continuous_input()
 	         blood->set_team_num(control->team_num());
 	         blood->ani_type = ANI_GROW;
 	         blood->setxy(control->xpos,control->ypos);
-	         blood->owner = control;
+	         blood->set_owner(control);
 	         //blood->draw(this);
 	//       redraw();
 	         //refresh();
@@ -1118,7 +1118,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	for(auto& uptr : data->fxlist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->is_dead())
 			w->draw(this);
 	}
 
@@ -1126,7 +1126,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	for(auto& uptr : data->oblist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->is_dead())
 			w->draw(this);
 	}
 
@@ -1134,7 +1134,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	for(auto& uptr : data->weaplist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->dead)
+		if(w && !w->is_dead())
 			w->draw(this);
 	}
 
@@ -1355,10 +1355,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	for(auto& uptr : myscreen->level_data.oblist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead
+		if (w && !w->is_dead()
 		        && w->query_order() == Order::Living
 		        && w->team_num() == teamnum
-		        && (!w->stats->name.empty() || w->myguy)) //&& w->owner == nullptr)
+		        && (!w->stats->name.empty() || w->myguy())) //&& w->owner() == nullptr)
 		{
 		    ls.push_back(w);
 		}
@@ -1405,8 +1405,8 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 			else
 				namecolor = BLACK;
 
-			if (w->myguy)
-				message = w->myguy->name;
+			if (w->myguy())
+				message = w->myguy()->name;
 			else
 				message = w->stats->name;
 			mytext.write_xy(left+5, text_down, message.c_str(), static_cast<unsigned char>(namecolor));

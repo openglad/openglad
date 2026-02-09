@@ -279,7 +279,7 @@ short radar::draw(LevelData* data)
     for(auto& uptr : data->fxlist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
+		if (ob && !ob->is_dead())
 		{
 			oborder  = ob->query_order();
 			obfamily = ob->query_family();

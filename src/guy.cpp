@@ -501,7 +501,7 @@ float guy::get_fire_frequency_bonus() const
 
 void guy::update_derived_stats(walker* w)
 {
-    guy* temp_guy = w->myguy;
+    guy* temp_guy = w->myguy();
     myscreen->level_data.myloader->set_derived_stats(w, Order::Living, temp_guy->family);
     
     
@@ -584,7 +584,7 @@ walker* guy::create_walker(screen* myscreen)
 {
     guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->level_data.myloader->create_walker(Order::Living, temp_guy->family, nullptr);
-    temp_walker->myguy = temp_guy;
+    temp_walker->set_myguy(temp_guy);
     temp_walker->stats->level = temp_guy->level;
     
     update_derived_stats(temp_walker);
@@ -600,7 +600,7 @@ walker* guy::create_and_add_walker(screen* myscreen)
 {
     guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->level_data.add_ob(Order::Living, temp_guy->family);
-    temp_walker->myguy = temp_guy;
+    temp_walker->set_myguy(temp_guy);
     temp_walker->stats->level = temp_guy->level;
     
     update_derived_stats(temp_walker);

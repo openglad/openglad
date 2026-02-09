@@ -439,10 +439,10 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
     for(auto& uptr : oblist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead && ob->myguy)
+		if (ob && !ob->is_dead() && ob->myguy())
 		{
 		    // Take this one
-			team_list[team_size] = new guy(*ob->myguy);
+			team_list[team_size] = new guy(*ob->myguy());
 			// Update his level from the experience
 			Uint32 exp = team_list[team_size]->exp;
 			team_list[team_size]->upgrade_to_level(calculate_level(team_list[team_size]->exp));

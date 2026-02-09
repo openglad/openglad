@@ -3109,7 +3109,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         newob->setxy(windowx, windowy);
                         newob->set_team_num(object_brush.team);
                         newob->stats->level = object_brush.level;
-                        newob->dead = 0; // just in case
+                        newob->set_dead(0); // just in case
                         newob->collide_ob = 0;
                         // Is there already something there?
                         if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, level))

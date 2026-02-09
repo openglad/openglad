@@ -527,11 +527,11 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 						if (ob->query_order()==Order::Living)
 							return 0;
 
-						if (abs(ob->xpos - ob->owner->xpos)>
-						        abs(ob->ypos - ob->owner->ypos))
-							dist = abs(ob->xpos - ob->owner->xpos);
+						if (abs(ob->xpos - ob->owner()->xpos)>
+						        abs(ob->ypos - ob->owner()->ypos))
+							dist = abs(ob->xpos - ob->owner()->xpos);
 						else
-							dist = abs(ob->ypos - ob->owner->ypos);
+							dist = abs(ob->ypos - ob->owner()->ypos);
 						dist -= (GRID_SIZE/2);
 						if (dist < GRID_SIZE)
 							dist += GRID_SIZE;
@@ -582,7 +582,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 
 bool screen::query_object_passable(float x, float y, walker  *ob)
 {
-	if (ob->dead)
+	if (ob->is_dead())
 		return 1;
 	return level_data.myobmap->query_list(ob, x, y);
 }
@@ -675,19 +675,19 @@ bool screen::act()
         walker* ob = uptr.get();
 		if (!enemy_freeze) // normal functionality
 		{
-			if (ob && !ob->dead)
+			if (ob && !ob->is_dead())
 			{
 				ob->in_act = 1; // Zardus: while acting, in_act is set
 				ob->act();
 				ob->in_act = 0;
-				if (ob && !ob->dead)
+				if (ob && !ob->is_dead())
 				{
 					if (!ob->is_friendly_to_team(save_data.my_team) &&
 					        ob->query_order() == Order::Living)
 						level_done = 0;
 					// Testing .. trying to FORCE foes :)
-					if (ob->foe == nullptr && ob->leader == nullptr)
-						ob->foe = myscreen->find_far_foe(ob);
+					if (ob->foe() == nullptr && ob->leader() == nullptr)
+						ob->set_foe(myscreen->find_far_foe(ob));
 				}
 			}
 		}
@@ -699,14 +699,14 @@ bool screen::act()
 				viewob[0]->set_display_text(obmessage.c_str(), 10);
 				printed_time = 1;
 			}
-			if (ob && !ob->dead &&
+			if (ob && !ob->is_dead() &&
 			        ( (    (ob->query_order() != Order::Living)
 			               && (ob->query_order() != Order::Generator)
 			          ) || (ob->team_num() == 0) )
 			   )
 			{
 				ob->act();
-				if (ob && !ob->dead)
+				if (ob && !ob->is_dead())
 				{
 					if (!ob->is_friendly_to_team(save_data.my_team) &&
 					        ob->query_order() == Order::Living)
@@ -721,10 +721,10 @@ bool screen::act()
 	for(auto& uptr : level_data.weaplist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
+		if (ob && !ob->is_dead())
 		{
 			ob->act();
-			if (ob && !ob->dead)
+			if (ob && !ob->is_dead())
 			{
 				if (!ob->is_friendly_to_team(save_data.my_team) &&
 				        ob->query_order() == Order::Living)
@@ -737,7 +737,7 @@ bool screen::act()
 	for(auto& uptr : level_data.fxlist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
+		if (ob && !ob->is_dead())
 		{
 			if (ob->query_order() == Order::Treasure &&
 			        ob->query_family() == FAMILY_EXIT &&
@@ -758,26 +758,26 @@ bool screen::act()
 	for(auto& uptr : level_data.oblist)
 	{
 	    walker* ob = uptr.get();
-        if (ob->foe && ob->foe->dead)
-            ob->foe = nullptr;
-        if (ob->leader && ob->leader->dead)
-            ob->leader = nullptr;
-        if (ob->owner && ob->owner->dead)
-            ob->owner = nullptr;
-        if (ob->collide_ob && ob->collide_ob->dead)
+        if (ob->foe() && ob->foe()->is_dead())
+            ob->set_foe(nullptr);
+        if (ob->leader() && ob->leader()->is_dead())
+            ob->set_leader(nullptr);
+        if (ob->owner() && ob->owner()->is_dead())
+            ob->set_owner(nullptr);
+        if (ob->collide_ob && ob->collide_ob->is_dead())
             ob->collide_ob = nullptr;
 	}
 
 	for(auto& uptr : level_data.weaplist)
 	{
 	    walker* ob = uptr.get();
-        if (ob->foe && ob->foe->dead)
-            ob->foe = nullptr;
-        if (ob->leader && ob->leader->dead)
-            ob->leader = nullptr;
-        if (ob->owner && ob->owner->dead)
-            ob->owner = nullptr;
-        if (ob->collide_ob && ob->collide_ob->dead)
+        if (ob->foe() && ob->foe()->is_dead())
+            ob->set_foe(nullptr);
+        if (ob->leader() && ob->leader()->is_dead())
+            ob->set_leader(nullptr);
+        if (ob->owner() && ob->owner()->is_dead())
+            ob->set_owner(nullptr);
+        if (ob->collide_ob && ob->collide_ob->is_dead())
             ob->collide_ob = nullptr;
 	}
 
@@ -786,7 +786,7 @@ bool screen::act()
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end();)
 	{
 	    walker* ob = e->get();
-		if (ob && ob->dead && ob->myguy == nullptr)
+		if (ob && ob->is_dead() && ob->myguy() == nullptr)
 		{
 		    // Delete the dead thing safely
 
@@ -818,12 +818,12 @@ bool screen::act()
 
 	std::erase_if(level_data.fxlist, [](const auto& uptr) {
 		walker* ob = uptr.get();
-		return ob && ob->dead;
+		return ob && ob->is_dead();
 	});
 
 	std::erase_if(level_data.weaplist, [](const auto& uptr) {
 		walker* ob = uptr.get();
-		return ob && ob->dead;
+		return ob && ob->is_dead();
 	});
 
 	return 1;
@@ -856,8 +856,8 @@ short screen::endgame(short ending, short nextlevel)
     for(auto& uptr : level_data.oblist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && ob->myguy)
-			after.insert(std::make_pair(ob->myguy->id, ob));
+		if (ob && ob->myguy())
+			after.insert(std::make_pair(ob->myguy()->id, ob));
 	}
 	
 	// Let's show the results!
@@ -967,7 +967,7 @@ walker *screen::find_near_foe(walker  *ob)
 			std::list<walker*>& ls = level_data.myobmap->obmap_get_list(targx,targy);
 			for(auto* w : ls) //go through the list we received
 			{
-				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
+				if (!(w->is_dead()) && (ob->is_friendly(w)==0)  &&
 				        (random(w->invisibility_left/20)==0)
 				   )
 				{
@@ -1015,7 +1015,7 @@ walker  *screen::find_far_foe(walker  *ob)
     for(auto& uptr : level_data.oblist)
 	{
 	    walker* foe = uptr.get();
-		if (foe == nullptr || foe->dead)
+		if (foe == nullptr || foe->is_dead())
 			continue;
         
 		// Check for valid objects ..
@@ -1093,7 +1093,7 @@ walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
 	for(auto& uptr : level_data.oblist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
+		if (ob && !ob->is_dead())
 		{
 			if (ob->query_order() == whatorder &&
 			        ob->query_family()== whatfamily)
@@ -1147,7 +1147,7 @@ walker  * screen::find_nearest_blood(walker  *who)
 	{
 	    walker* w = uptr.get();
 		if (w && w->query_order() == Order::Treasure &&
-		        w->query_family() == FAMILY_STAIN && !w->dead)
+		        w->query_family() == FAMILY_STAIN && !w->is_dead())
 		{
 			newdistance = static_cast<Uint32>(who->distance_to_ob_center(w));
 			if (newdistance < distance)
@@ -1177,7 +1177,7 @@ std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& som
 	for(auto& uptr : somelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead)
+		if (w && !w->is_dead())
 		{
 			if (ob->distance_to_ob(w) <= range)
 			{
@@ -1227,7 +1227,7 @@ std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>
 	for(auto& uptr : somelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead &&
+		if (w && !w->is_dead() &&
 		        (w->query_order() == Order::Living ||
 		         w->query_order() == Order::Generator)
 		        && (ob->is_friendly(w) == 0)
@@ -1256,7 +1256,7 @@ std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walke
 	for(auto& uptr : somelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead && w->query_order() == Order::Living
+		if (w && !w->is_dead() && w->query_order() == Order::Living
 		        && ( ob->is_friendly(w) )
 		   )
 		{
@@ -1282,7 +1282,7 @@ std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<w
 	for(auto& uptr : somelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->dead &&
+		if (w && !w->is_dead() &&
 		        (w->query_order() == Order::Weapon)
 		        && ( ob->is_friendly(w) )
 		   )

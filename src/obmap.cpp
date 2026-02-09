@@ -112,7 +112,7 @@ short obmap::query_list(walker  *ob, short x, short y)
 {
 	short numx, startnumx, endnumx;
 	short numy, startnumy, endnumy;
-	if (!ob || ob->dead)
+	if (!ob || ob->is_dead())
 	{
 		Log("Bad ob to query_list.\n");
 		return 1;
@@ -257,7 +257,7 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
 	// Check each object to see if sizes collide.
 	for(auto* w : pile)
 	{
-	    if (w != ob && !w->dead)
+	    if (w != ob && !w->is_dead())
         {
             targetorder = w->query_order();
             
@@ -289,7 +289,7 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                         if (ob->keys & static_cast<Sint32>(pow(static_cast<double>(2), w->stats->level)))
                         {
                             // Open the door ..
-                            w->dead = 1;
+                            w->set_dead(1);
                             w->death();
                             ob->collide(w);
                             if (ob->stats->query_bit_flags(BIT_NO_COLLIDE))
@@ -299,12 +299,12 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                         else
                         {
                             // Do we notify?
-                            if (!(ob->skip_exit) && (ob->user != -1))
+                            if (!(ob->skip_exit()) && (ob->user != -1))
                             {
                                 std::string message = std::format("Key {} needed!",
                                         w->stats->level);
                                 myscreen->do_notify(message.c_str(), ob);
-                                ob->skip_exit = 10;
+                                ob->set_skip_exit(10);
                             } // end of failed open door notification
                             ob->collide(w);
                             return 0; // failed to open door
