@@ -1,7 +1,7 @@
 # OpenGlad C++ Modernization Plan
 
 > **Target:** C++23 where supported, C++20 as baseline
-> **Scope:** All 39 main source files (~43K lines) in `src/`, excluding `src/external/`
+> **Scope:** All primary C++ source files compiled by `scripts/build_native.sh` in `src/` (excluding `src/external/` and test-only/auxiliary sources)
 > **Approach:** Phased, from safe mechanical changes to architectural refactoring
 > **Guiding Principle:** Each phase should leave the codebase compiling and functional
 
@@ -69,7 +69,7 @@ Each phase should pass the existing CI pipeline before merging. Adding a C++23 C
 
 **Risk: LOW** | **Effort: MEDIUM** | **Priority: DO FIRST**
 
-The project currently uses two custom bash scripts (`scripts/build_native.sh`, `scripts/build_web.sh`) that compile directly without a proper build system. Both target **C++11** (`-std=c++11`).
+The project currently uses three custom bash scripts (`scripts/build_native.sh`, `scripts/build_web.sh`, `scripts/build_test.sh`) that compile directly without a proper build system. All target **C++11** (`-std=c++11`).
 
 ### 1.1 Create CMakeLists.txt
 
@@ -471,16 +471,16 @@ struct SaveFileHeader {
 
 **Step 2: Write versioned serialization helpers:**
 ```cpp
-// For name fields: always read/write as fixed 12 bytes on disk,
+// For name fields: always read/write as a fixed number of bytes on disk,
 // convert to/from std::string in memory
 void write_fixed_string(SDL_RWops* outfile, const std::string& s, size_t fixed_len) {
-    std::array<char, 12> buf{};
+    std::vector<char> buf(fixed_len, '\0');
     std::copy_n(s.begin(), std::min(s.size(), fixed_len), buf.begin());
     SDL_RWwrite(outfile, buf.data(), fixed_len, 1);
 }
 
 std::string read_fixed_string(SDL_RWops* infile, size_t fixed_len) {
-    std::array<char, 12> buf{};
+    std::vector<char> buf(fixed_len, '\0');
     SDL_RWread(infile, buf.data(), fixed_len, 1);
     return std::string(buf.data(), strnlen(buf.data(), fixed_len));
 }
@@ -1084,6 +1084,8 @@ std::string_view get_scen_title(std::string_view filename, screen *master);
 ```
 
 **Apply to:** All `const char*` parameters that are only read, not stored.
+
+**Caveat — null termination:** `std::string_view` is **not** guaranteed to be null-terminated. Functions that pass the argument directly to C APIs requiring null-terminated strings (e.g., `strcpy`, `fopen`, `SDL_RWFromFile`, `open_read_file`) must use `const std::string&` instead, or explicitly convert via `std::string(sv).c_str()`. For example, `screen::get_scen_title` does `strcpy(tempfile, filename)` internally, so its `filename` parameter should take `const std::string&`, not `std::string_view`.
 
 ### 5.7 Phase 5 Test Impact
 
