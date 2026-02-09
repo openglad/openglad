@@ -27,6 +27,10 @@ class pixieN : public pixie
 		pixieN(const PixieData& data);
 		pixieN(const PixieData& data, int doaccel);
 		~pixieN() override;
+		pixieN(const pixieN&) = delete;
+		pixieN& operator=(const pixieN&) = delete;
+		pixieN(pixieN&&) = delete;
+		pixieN& operator=(pixieN&&) = delete;
 		short set_frame(short framenum);
 		short query_frame();
 		short next_frame();

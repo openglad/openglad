@@ -27,6 +27,10 @@ class loader
 	public:
 		loader();
 		virtual ~loader(void);
+		loader(const loader&) = delete;
+		loader& operator=(const loader&) = delete;
+		loader(loader&&) = delete;
+		loader& operator=(loader&&) = delete;
 		walker  *create_walker(char order, char family, screen  *screenp, bool cache_weapons = true);
 		void set_derived_stats(walker* w, char order, char family);
 		pixieN *create_pixieN(char order, char family);

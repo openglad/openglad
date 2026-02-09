@@ -60,12 +60,12 @@ class statistics
 		void set_command(short whatcommand, short iterations, short info1, short info2);
 		void add_command(short whatcommand, short iterations, short info1, short info2);
 		void force_command(short whatcommand, short iterations, short info1, short info2);
-		bool has_commands();
+		bool has_commands() const;
 		void clear_command();
 		short do_command();
 		void hit_response(walker * who);
 		void yell_for_help(walker *foe);  // yell and run away
-		short query_bit_flags(Sint32 myvalue);
+		short query_bit_flags(Sint32 myvalue) const;
         void clear_bit_flags();
 		void set_bit_flags(Sint32 someflag, short newvalue); // sets a single flag
 		bool right_blocked(); // is our right blocked?

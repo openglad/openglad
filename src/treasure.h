@@ -26,12 +26,16 @@ class treasure : public walker
 	public:
 		treasure(const PixieData& data);
 		~treasure() override;
+		treasure(const treasure&) = delete;
+		treasure& operator=(const treasure&) = delete;
+		treasure(treasure&&) = delete;
+		treasure& operator=(treasure&&) = delete;
 		bool           act() override;
 		//short                    death(); // called upon destruction
 		bool           eat_me(walker  * eater) override;
 		walker  * find_teleport_target();
 		void         set_direct_frame(short whatframe) override;
-		char         query_order() override
+		char         query_order() const override
 		{
 			return ORDER_TREASURE;
 		}

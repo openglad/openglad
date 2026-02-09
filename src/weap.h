@@ -26,12 +26,16 @@ class weap : public walker
 	public:
 		weap(const PixieData& data);
 		~weap() override;
+		weap(const weap&) = delete;
+		weap& operator=(const weap&) = delete;
+		weap(weap&&) = delete;
+		weap& operator=(weap&&) = delete;
 
 		bool act() override;
 		bool animate() override;
 		bool death() override;
 		bool setxy(short x, short y) override;
-		char  query_order() override
+		char  query_order() const override
 		{
 			return ORDER_WEAPON;
 		}

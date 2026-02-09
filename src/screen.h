@@ -42,6 +42,10 @@ class screen : public video
 		void reset(short howmany);
 		void ready_for_battle(short howmany);
 		~screen() override;
+		screen(const screen&) = delete;
+		screen& operator=(const screen&) = delete;
+		screen(screen&&) = delete;
+		screen& operator=(screen&&) = delete;
 		void initialize_views();
 		void cleanup(short);
 		void clear();

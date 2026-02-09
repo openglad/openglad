@@ -153,7 +153,7 @@ void statistics::force_command(short whatcommand, short iterations,
 	commands.front().commandcount = iterations;
 }
 
-bool statistics::has_commands()
+bool statistics::has_commands() const
 {
 	return !commands.empty();
 }
@@ -641,7 +641,7 @@ void statistics::yell_for_help(walker *foe)
 
 }
 
-short statistics::query_bit_flags(Sint32 myvalue)
+short statistics::query_bit_flags(Sint32 myvalue) const
 {
 	return static_cast<short>(myvalue & bit_flags);
 }

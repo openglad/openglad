@@ -30,10 +30,14 @@ class effect : public walker
 	public:
 		effect(const PixieData& data);
 		~effect() override;
+		effect(const effect&) = delete;
+		effect& operator=(const effect&) = delete;
+		effect(effect&&) = delete;
+		effect& operator=(effect&&) = delete;
 		bool act() override;
 		bool animate() override;
 		bool death() override;
-		char query_order() override
+		char query_order() const override
 		{
 			return ORDER_FX;
 		}

@@ -26,6 +26,10 @@ class living : public walker
 	public:
 		living(const PixieData& data);
 		~living() override;
+		living(const living&) = delete;
+		living& operator=(const living&) = delete;
+		living(living&&) = delete;
+		living& operator=(living&&) = delete;
 		bool           act() override;
 		bool           check_special() override;
 		bool           collide(walker  *ob) override;
@@ -34,7 +38,7 @@ class living : public walker
 		short          facing(short x, short y) override;
 		void           set_difficulty(Uint32 whatlevel) override;
 		short          shove(walker  *target, short x, short y) override;
-		char           query_order() override
+		char           query_order() const override
 		{
 			return ORDER_LIVING;
 		}

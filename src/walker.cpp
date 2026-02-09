@@ -1664,7 +1664,7 @@ short walker::restore_act_type()
 	return old_act_type;
 }
 
-short walker::query_act_type()
+short walker::query_act_type() const
 {
 	return act_type;
 }
@@ -1675,7 +1675,7 @@ short walker::set_old_act_type(short num)
 	return num;
 }
 
-short walker::query_old_act_type()
+short walker::query_old_act_type() const
 {
 	return old_act_type;
 }
@@ -4687,7 +4687,7 @@ void walker::set_difficulty(Uint32 whatlevel)
 	return;
 }
 
-Sint32 walker::distance_to_ob(walker  * target)
+Sint32 walker::distance_to_ob(const walker  * target) const
 {
 	//Sint32 xdelta,ydelta;
 
@@ -4700,7 +4700,7 @@ Sint32 walker::distance_to_ob(walker  * target)
 
 }
 
-Sint32 walker::distance_to_ob_center(walker * target)
+Sint32 walker::distance_to_ob_center(const walker * target) const
 {
 	Sint32 xdelta,ydelta;
 
@@ -4711,7 +4711,7 @@ Sint32 walker::distance_to_ob_center(walker * target)
 	return static_cast<Sint32>(xdelta*xdelta + ydelta*ydelta);
 }
 
-unsigned char walker::query_team_color()
+unsigned char walker::query_team_color() const
 {
 	// Debugging ..
 	//if (foe && !foe->dead)
@@ -4720,14 +4720,14 @@ unsigned char walker::query_team_color()
 	//  return static_cast<unsigned char>(7*16 + 40);
 }
 
-Sint32 walker::is_friendly(walker *target)
+Sint32 walker::is_friendly(const walker *target) const
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
 	//short allied_mode;
 	short has_myguy;
-	walker *headguy;
-	walker *headus, *headtarget;
+	const walker *headguy;
+	const walker *headus, *headtarget;
 
 	// In case we're passed a null pointer somehow,
 	// we're always unfriendly :)
@@ -4788,14 +4788,14 @@ Sint32 walker::is_friendly(walker *target)
 	return 1;
 }
 
-Sint32 walker::is_friendly_to_team(unsigned char team)
+Sint32 walker::is_friendly_to_team(unsigned char team) const
 {
 	// is_friendly_to_team determines if _team_ is "friendly"
 	// towards this walker.
 	//short allied_mode;
 	short has_myguy;
-	walker *headguy;
-	walker *headus;
+	const walker *headguy;
+	const walker *headus;
 	
 	// If dead, we're also unfriendly :)
 	if (dead)

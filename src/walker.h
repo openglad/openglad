@@ -35,6 +35,10 @@ class walker : public pixieN
 		friend class command;
 		walker(const PixieData& data);
 		~walker() override;
+		walker(const walker&) = delete;
+		walker& operator=(const walker&) = delete;
+		walker(walker&&) = delete;
+		walker& operator=(walker&&) = delete;
 		bool reset(void);
 		short move(short x, short y);
 		void worldmove(float x, float y);
@@ -55,18 +59,18 @@ class walker : public pixieN
 		virtual bool act();
 		short set_act_type(short num);
 		short restore_act_type();
-		short query_act_type();
+		short query_act_type() const;
 		short set_old_act_type(short num);
-		short query_old_act_type();
+		short query_old_act_type() const;
 		virtual bool collide(walker  *ob);
 		bool attack(walker  *target);
 		virtual bool animate();
 		bool set_order_family(char order, char family);
-		virtual char query_order()
+		virtual char query_order() const
 		{
 			return order;
 		}
-		char query_family()
+		char query_family() const
 		{
 			return family;
 		}
@@ -90,13 +94,13 @@ class walker : public pixieN
 		virtual bool check_special();
 		void center_on(walker  *target);  // center us on target
 		virtual void set_difficulty(Uint32 whatlevel);
-		Sint32 distance_to_ob(walker * target);
-		Sint32 distance_to_ob_center(walker * target);
+		Sint32 distance_to_ob(const walker * target) const;
+		Sint32 distance_to_ob_center(const walker * target) const;
 		virtual short facing(short x, short y);
-		unsigned char query_team_color();
-		Sint32 is_friendly(walker *target);
-		Sint32 is_friendly_to_team(unsigned char team);
-		inline short query_type(char oval, char fval)
+		unsigned char query_team_color() const;
+		Sint32 is_friendly(const walker *target) const;
+		Sint32 is_friendly_to_team(unsigned char team) const;
+		inline short query_type(char oval, char fval) const
 		{
 			if (oval == order && fval == family)
 				return 1;

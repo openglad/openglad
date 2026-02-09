@@ -27,7 +27,11 @@ class video
 	public:
 		video();
 		virtual ~video();
-		
+		video(const video&) = delete;
+		video& operator=(const video&) = delete;
+		video(video&&) = delete;
+		video& operator=(video&&) = delete;
+
         void set_fullscreen(bool fullscreen);
         
 		void clearbuffer();

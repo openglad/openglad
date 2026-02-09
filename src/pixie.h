@@ -26,6 +26,10 @@ class pixie
 		pixie(const PixieData& data);
 		pixie(const PixieData& data, int doaccel);
 		virtual ~pixie();
+		pixie(const pixie&) = delete;
+		pixie& operator=(const pixie&) = delete;
+		pixie(pixie&&) = delete;
+		pixie& operator=(pixie&&) = delete;
 		short setxy(short x, short y);
 		virtual short move (short x, short y);
 		short draw (viewscreen  *view_buf);
