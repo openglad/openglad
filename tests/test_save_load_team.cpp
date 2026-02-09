@@ -24,16 +24,16 @@ extern vbutton *localbuttons;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = nullptr; }
         backpics[i].free();
     }
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
+        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = nullptr; }
     }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    localbuttons = nullptr;
+    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = nullptr; }
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = nullptr; }
     main_title_logo_data.free();
 }
 
@@ -99,7 +99,7 @@ void test_save_team_then_load() {
     TEST_ASSERT_EQ(42000, (int)myscreen->save_data.totalscore, "totalscore should be restored");
 
     // Verify individual guy data was restored
-    TEST_ASSERT(myscreen->save_data.team_list[0] != NULL, "first guy should exist");
+    TEST_ASSERT(myscreen->save_data.team_list[0] != nullptr, "first guy should exist");
     TEST_ASSERT_STR_EQ("TESTGUY1", myscreen->save_data.team_list[0]->name,
         "first guy name should be restored");
     TEST_ASSERT_EQ(25, myscreen->save_data.team_list[0]->strength,
@@ -107,7 +107,7 @@ void test_save_team_then_load() {
     TEST_ASSERT_EQ(15, myscreen->save_data.team_list[0]->dexterity,
         "first guy dexterity should be restored");
 
-    TEST_ASSERT(myscreen->save_data.team_list[1] != NULL, "second guy should exist");
+    TEST_ASSERT(myscreen->save_data.team_list[1] != nullptr, "second guy should exist");
     TEST_ASSERT_STR_EQ("TESTGUY2", myscreen->save_data.team_list[1]->name,
         "second guy name should be restored");
     TEST_ASSERT_EQ(FAMILY_ARCHER, myscreen->save_data.team_list[1]->family,
@@ -115,7 +115,7 @@ void test_save_team_then_load() {
     TEST_ASSERT_EQ(20, myscreen->save_data.team_list[1]->intelligence,
         "second guy intelligence should be restored");
 
-    TEST_ASSERT(myscreen->save_data.team_list[2] != NULL, "third guy should exist");
+    TEST_ASSERT(myscreen->save_data.team_list[2] != nullptr, "third guy should exist");
     TEST_ASSERT_STR_EQ("TESTGUY3", myscreen->save_data.team_list[2]->name,
         "third guy name should be restored");
     TEST_ASSERT_EQ(FAMILY_MAGE, myscreen->save_data.team_list[2]->family,
@@ -184,12 +184,12 @@ void test_load_team_menu() {
 
     LoadMenuState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(load_menu_injector, "load_menu_test", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

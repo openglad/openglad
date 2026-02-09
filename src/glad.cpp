@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
     #endif
 
 	//buffers: setting the seed
-	srand(time(NULL));
+	srand(time(nullptr));
 
 	init_input();
 	intro_main(argc, argv);

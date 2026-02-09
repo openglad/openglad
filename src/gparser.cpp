@@ -79,7 +79,7 @@ bool cfg_store::load_settings()
     
     Log("Loading settings\n");
     SDL_RWops* rwops = open_read_file("cfg/openglad.yaml", true);
-    if(rwops == NULL)
+    if(rwops == nullptr)
 	{
 		Log("Could not open config file. Using defaults.");
 		return false;
@@ -140,7 +140,7 @@ bool cfg_store::save_settings()
     apply_setting("graphics", "overscan_percentage", buf);
     
     SDL_RWops* outfile = open_write_file("cfg/openglad.yaml");
-    if(outfile != NULL)
+    if(outfile != nullptr)
     {
         Log("Saving settings\n");
         

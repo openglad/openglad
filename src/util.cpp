@@ -94,7 +94,7 @@ static void emscripten_log_output(void* userdata, int category, SDL_LogPriority 
 void init_logging()
 {
 #ifdef __EMSCRIPTEN__
-    SDL_LogSetOutputFunction(emscripten_log_output, NULL);
+    SDL_LogSetOutputFunction(emscripten_log_output, nullptr);
 #endif
 }
 

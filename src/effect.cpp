@@ -50,13 +50,13 @@ short effect::act()
 
 	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
-		foe = NULL;
+		foe = nullptr;
 	if (leader && leader->dead)
-		leader = NULL;
+		leader = nullptr;
 	if (owner && owner->dead)
-		owner = NULL;
+		owner = nullptr;
 
-	collide_ob = NULL; // always start with no collision..
+	collide_ob = nullptr; // always start with no collision..
 
 	// Any special actions ..
 	switch (family) // determine what to do..

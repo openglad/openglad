@@ -657,7 +657,7 @@ void video::ver_line(Sint32 x, Sint32 y, Sint32 length, unsigned char color, Sin
 void video::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color)
 {
     SDL_Surface* Surface = E_Screen->render;
-    if(Surface == NULL)
+    if(Surface == nullptr)
         return;
     
     // Did the line miss the screen completely?
@@ -1790,7 +1790,7 @@ bool video::save_screenshot()
 	i++;
 	
 	SDL_RWops* rwops = open_write_file(buf);
-	if(rwops == NULL)
+	if(rwops == nullptr)
     {
         LogError("Failed to open file for screenshot: %s\n", buf);
         return false;
@@ -1863,21 +1863,21 @@ int video::FadeBetween(
 	bool bOldNull = false, bNewNull = false;
 	int i = 1;
 
-	//Set NULL pointers to temporary black screens
+	//Set nullptr pointers to temporary black screens
 	//(for simple fade-in/out effects).
 	if (!pOldSurface)
 	{
 		bOldNull = true;
 		pOldSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
-		SDL_FillRect(pOldSurface,NULL,0);
+		SDL_FillRect(pOldSurface,nullptr,0);
 	}
 	if (!pNewSurface)
 	{
 		bNewNull = true;
 		pNewSurface = SDL_CreateRGBSurface(SDL_SWSURFACE,
 			CX_SCREEN, CY_SCREEN, 24, 0, 0, 0, 0);
-		SDL_FillRect(pNewSurface,NULL,0);
+		SDL_FillRect(pNewSurface,nullptr,0);
 	}
 	if (bOldNull && bNewNull) return 0;	//nothing to do
 
@@ -1943,7 +1943,7 @@ int video::FadeBetween(
 	}
 
 	//Show new screen entirely.
-	SDL_BlitSurface(pNewSurface, NULL, pOldSurface, NULL);
+	SDL_BlitSurface(pNewSurface, nullptr, pOldSurface, nullptr);
 	// Screen::Swap() does the work
 	E_Screen->swap(0,0,320,200);
 	

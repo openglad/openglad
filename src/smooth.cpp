@@ -22,12 +22,12 @@
 #include "graph.h"
 
 smoother::smoother()
-    : mygrid(NULL), maxx(0), maxy(0)
+    : mygrid(nullptr), maxx(0), maxy(0)
 {}
 
 void smoother::reset()
 {
-    mygrid = NULL;
+    mygrid = nullptr;
     maxx = 0;
     maxy = 0;
 }

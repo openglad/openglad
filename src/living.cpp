@@ -48,14 +48,14 @@ short living::act()
 
 	// Make sure everyone we're pointing to is valid
 	if (foe && (foe->dead || (random(foe->invisibility_left/20) > 0) ) )
-		foe = NULL;
+		foe = nullptr;
 	if (is_friendly(foe))
-		foe = NULL;
+		foe = nullptr;
 	if (leader && leader->dead)
-		leader = NULL;
+		leader = nullptr;
 	if (owner && owner->dead)
 	{
-		//owner = NULL;
+		//owner = nullptr;
 		// A living who had an owner who is now dead, dies as well
 		dead = 1;
 		death();
@@ -105,7 +105,7 @@ short living::act()
 	}  // end of summoned monster stuff
 
 
-	collide_ob = NULL; // always start with no collison..
+	collide_ob = nullptr; // always start with no collison..
 
 	/*
 	  if (ignore)

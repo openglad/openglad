@@ -40,6 +40,6 @@ int main(int argc, char* argv[]) {
     // destructor during normal cleanup) hangs on some drivers/configurations.
     // This is a test binary so we don't need graceful teardown — the OS
     // reclaims all resources on process exit.
-    fflush(NULL); // _exit() doesn't flush stdio — do it explicitly
+    fflush(nullptr); // _exit() doesn't flush stdio — do it explicitly
     _exit(g_tests_failed > 0 ? 1 : 0);
 }

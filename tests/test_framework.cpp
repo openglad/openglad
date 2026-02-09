@@ -1,7 +1,7 @@
 #include "test_framework.h"
 #include "SDL.h"
 
-static SDL_mutex* s_allbuttons_mutex = NULL;
+static SDL_mutex* s_allbuttons_mutex = nullptr;
 
 SDL_mutex* get_allbuttons_mutex()
 {

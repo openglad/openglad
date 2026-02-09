@@ -43,7 +43,7 @@ radar::radar(viewscreen * myview, screen * myscreen, short whatnum)
 	screenp = myscreen;
 	viewscreenp = myview;
 	mynum = whatnum; //what number viewscreen we are, to get control's position
-	bmp = NULL;
+	bmp = nullptr;
     force_lower_position = false;
 }
 
@@ -103,7 +103,7 @@ void radar::start(LevelData* data)
             #endif
         #endif
     }
-    if(bmp != NULL)
+    if(bmp != nullptr)
         delete[] bmp;
     bmp = new unsigned char[size];
 	update(data);
@@ -117,7 +117,7 @@ radar::~radar()
 	if (bmp)
 	{
 		delete[] bmp;
-		bmp = NULL;
+		bmp = nullptr;
 	}
 }
 

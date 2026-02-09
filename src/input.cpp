@@ -42,7 +42,7 @@
 void quit(Sint32 arg1);
 
 int raw_key;
-char* raw_text_input = NULL;
+char* raw_text_input = nullptr;
 short key_press_event = 0;    // used to signed key-press
 short text_input_event = 0;    // used to signal text input
 short scroll_amount = 0;  // for scrolling up and down text popups
@@ -64,7 +64,7 @@ bool firing = false;
 SDL_FingerID firingTouch = 0;
 #endif
 
-const Uint8* keystates = NULL;
+const Uint8* keystates = nullptr;
 
 MouseState mouse_state;
 
@@ -201,12 +201,12 @@ bool touch_keystate[4][NUM_KEYS] = {
 
 void init_input()
 {
-    keystates = SDL_GetKeyboardState(NULL);
+    keystates = SDL_GetKeyboardState(nullptr);
 
     // Set up joysticks
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
     {
-        joysticks[i] = NULL;
+        joysticks[i] = nullptr;
     }
 
     int numjoy;
@@ -216,7 +216,7 @@ void init_input()
     for(int i = 0; i < numjoy; i++)
     {
         joysticks[i] = SDL_JoystickOpen(i);
-        if(joysticks[i] == NULL)
+        if(joysticks[i] == nullptr)
             continue;
         player_joy[i] = JoyData(i);
     }
@@ -268,7 +268,7 @@ void get_input_events(bool type)
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;
-    if(control == NULL || control->dead)
+    if(control == nullptr || control->dead)
         return;
     
     if(moving)
@@ -863,7 +863,7 @@ void clear_keyboard()
 
     text_input_event = 0;
     free(raw_text_input);
-    raw_text_input = NULL;
+    raw_text_input = nullptr;
     
     input_continue = false;
     
@@ -903,7 +903,7 @@ JoyData::JoyData(int index)
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
     SDL_Joystick *js = joysticks[index];
-    if(js == NULL)
+    if(js == nullptr)
         return;
 
     this->index = index;
@@ -1195,14 +1195,14 @@ void resetJoystick(int player_num)
     // Set up joysticks
     for(int i = 0; i < MAX_NUM_JOYSTICKS; i++)
     {
-        joysticks[i] = NULL;
+        joysticks[i] = nullptr;
     }
 
     int numjoy = SDL_NumJoysticks();
     for(int i = 0; i < numjoy; i++)
     {
         joysticks[i] = SDL_JoystickOpen(i);
-        if(joysticks[i] == NULL)
+        if(joysticks[i] == nullptr)
             continue;
         // The joystick indices might change here.
         // FIXME: There's a chance that players will not have the joysticks they expect and
@@ -1445,7 +1445,7 @@ void clear_text_input_event()
 {
     text_input_event = 0;
     free(raw_text_input);
-    raw_text_input = NULL;
+    raw_text_input = nullptr;
 }
 
 

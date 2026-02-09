@@ -47,7 +47,7 @@ text::~text()
 {
     // TODO: Free letters somewhere better (it's a global leak for now, so no hurry)
 	//free(letters-3);  // letters is offset by 3 bytes on load
-	//letters = NULL;
+	//letters = nullptr;
 }
 short text::query_width(const char *string) // returns width, in pixels
 {
@@ -83,7 +83,7 @@ short text::write_xy(short x, short y, const char *string, unsigned char color)
 static char text_buffer[255];
 short text::write_xy(short x, short y, unsigned char color, const char* formatted_string, ...)
 {
-    if(formatted_string == NULL)
+    if(formatted_string == nullptr)
         return 0;
     
     va_list lst;
@@ -102,7 +102,7 @@ short text::write_xy(short x, short y, unsigned char color, const char* formatte
 
 short text::write_xy_shadow(short x, short y, unsigned char color, const char* formatted_string, ...)
 {
-    if(formatted_string == NULL)
+    if(formatted_string == nullptr)
         return 0;
     
     va_list lst;
@@ -123,7 +123,7 @@ short text::write_xy_shadow(short x, short y, unsigned char color, const char* f
 
 short text::write_xy_center(short x, short y, unsigned char color, const char* formatted_string, ...)
 {
-    if(formatted_string == NULL)
+    if(formatted_string == nullptr)
         return 0;
     
     va_list lst;
@@ -143,7 +143,7 @@ short text::write_xy_center(short x, short y, unsigned char color, const char* f
 
 short text::write_xy_center_alpha(short x, short y, unsigned char color, Uint8 alpha, const char* formatted_string, ...)
 {
-    if(formatted_string == NULL)
+    if(formatted_string == nullptr)
         return 0;
     
     va_list lst;
@@ -163,7 +163,7 @@ short text::write_xy_center_alpha(short x, short y, unsigned char color, Uint8 a
 
 short text::write_xy_center_shadow(short x, short y, unsigned char color, const char* formatted_string, ...)
 {
-    if(formatted_string == NULL)
+    if(formatted_string == nullptr)
         return 0;
     
     va_list lst;
@@ -469,7 +469,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 	{
 	
         tempchar = 0;
-        temptext = NULL;
+        temptext = nullptr;
         
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event() && !query_text_input_event())
@@ -526,7 +526,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
                                   y+sizey+1, 1);
             }
             
-            if ( temptext != NULL &&
+            if ( temptext != nullptr &&
                       (current_length + short(strlen(temptext)) < maxlength) )
             {
                 
@@ -564,7 +564,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
     
 	clear_keyboard();
 	if(return_null)
-        return NULL;
+        return nullptr;
 	return editstring;
 
 }
@@ -614,7 +614,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	{
 	
         tempchar = 0;
-        temptext = NULL;
+        temptext = nullptr;
         
 		// Wait for a key to be pressed ..
 		while (!query_key_press_event() && !query_text_input_event())
@@ -671,7 +671,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
                                   y+sizey+1, 1);
             }
             
-            if ( temptext != NULL &&
+            if ( temptext != nullptr &&
                       (current_length + short(strlen(temptext)) < maxlength) )
             {
                 
@@ -710,7 +710,7 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
     
 	clear_keyboard();
 	if(return_null)
-        return NULL;
+        return nullptr;
 	return editstring;
 
 }

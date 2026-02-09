@@ -16,7 +16,7 @@ void test_mainmenu_buttons() {
 
     trace_clear();
     vbutton* result = init_buttons(test_buttons, 3);
-    TEST_ASSERT(result != NULL, "init_buttons should return non-NULL");
+    TEST_ASSERT(result != nullptr, "init_buttons should return non-nullptr");
     TEST_ASSERT(trace_contains("menu", "init_buttons"), "init_buttons trace should be logged");
     TEST_ASSERT(trace_contains("menu", "count=3"), "button count should be in trace");
 
@@ -27,7 +27,7 @@ void test_mainmenu_buttons() {
 
     // Clean up allocated vbuttons to avoid leaking into other tests
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
+        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = nullptr; }
     }
 }
 REGISTER_TEST(test_mainmenu_buttons);

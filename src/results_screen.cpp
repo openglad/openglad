@@ -103,15 +103,15 @@ public:
 TroopResult::TroopResult(guy* before, walker* after)
     : before(before), after(after)
 {
-    if(after != NULL && after->myguy == NULL)
-        after = NULL;
+    if(after != nullptr && after->myguy == nullptr)
+        after = nullptr;
 }
 
 std::string TroopResult::get_name()
 {
-    if(before != NULL)
+    if(before != nullptr)
         return before->name;
-    if(after != NULL)
+    if(after != nullptr)
         return after->myguy->name;
     return std::string();
 }
@@ -119,9 +119,9 @@ std::string TroopResult::get_name()
 char TroopResult::get_family()
 {
     char family = FAMILY_SOLDIER;
-    if(before != NULL)
+    if(before != nullptr)
         family = before->family;
-    if(after != NULL)
+    if(after != nullptr)
         family = after->myguy->family;
     return family;
 }
@@ -130,18 +130,18 @@ const char* get_family_string(short family);
 
 std::string TroopResult::get_class_name()
 {
-    if(before != NULL)
+    if(before != nullptr)
         return get_family_string(before->family);
-    if(after != NULL)
+    if(after != nullptr)
         return get_family_string(after->myguy->family);
     return std::string();
 }
 
 int TroopResult::get_level()
 {
-    if(after != NULL)
+    if(after != nullptr)
         return calculate_level(after->myguy->exp);
-    if(before != NULL)
+    if(before != nullptr)
         return calculate_level(before->exp);
     
     return 0;
@@ -149,7 +149,7 @@ int TroopResult::get_level()
 
 bool TroopResult::gained_level()
 {
-    if(after == NULL || before == NULL)
+    if(after == nullptr || before == nullptr)
         return false;
     
     return calculate_level(after->myguy->exp) > before->get_level();
@@ -157,7 +157,7 @@ bool TroopResult::gained_level()
 
 bool TroopResult::lost_level()
 {
-    if(after == NULL || before == NULL)
+    if(after == nullptr || before == nullptr)
         return false;
     
     return calculate_level(after->myguy->exp) < before->get_level();
@@ -185,7 +185,7 @@ std::vector<std::string> TroopResult::get_gained_specials()
 
 float TroopResult::get_XP_base()
 {
-    if(before == NULL)
+    if(before == nullptr)
         return 0.0f;
     
     if(gained_level())
@@ -196,7 +196,7 @@ float TroopResult::get_XP_base()
 
 float TroopResult::get_XP_gain()
 {
-    if(after == NULL || before == NULL)
+    if(after == nullptr || before == nullptr)
         return 0.0f;
         
     if(gained_level())
@@ -210,7 +210,7 @@ float TroopResult::get_XP_gain()
 
 int TroopResult::get_tallies()
 {
-    if(after == NULL)
+    if(after == nullptr)
         return 0;
     
     return after->myguy->scen_kills;
@@ -218,7 +218,7 @@ int TroopResult::get_tallies()
 
 float TroopResult::get_HP()
 {
-    if(after == NULL)
+    if(after == nullptr)
         return 0.0f;
     
     if(after->myguy->scen_min_hp > after->stats->hitpoints)
@@ -234,7 +234,7 @@ bool TroopResult::is_dead()
 
 bool TroopResult::is_new()
 {
-    return (before == NULL && after != NULL);
+    return (before == nullptr && after != nullptr);
 }
 
 
@@ -269,15 +269,15 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 
 void TroopResult::draw_guy(int cx, int cy, int frame)
 {
-    guy* myguy = NULL;
-    if(after != NULL)
+    guy* myguy = nullptr;
+    if(after != nullptr)
         myguy = after->myguy;
-    else if(before != NULL)
+    else if(before != nullptr)
         myguy = before;
     else
         return;
     
-    if(!is_dead() && myguy != NULL)
+    if(!is_dead() && myguy != nullptr)
         show_guy(frame, myguy, cx, cy);
 }
 
@@ -298,7 +298,7 @@ int get_num_foes(LevelData& level)
 	{
 	    walker* ob = *e;
 	    // Not dead, not hired, not on red team
-		if (ob && !ob->dead && ob->query_order() == ORDER_LIVING && ob->myguy == NULL && ob->team_num != 0)
+		if (ob && !ob->dead && ob->query_order() == ORDER_LIVING && ob->myguy == nullptr && ob->team_num != 0)
 		{
 		    result++;
 		}
@@ -393,13 +393,13 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             troops.push_back(TroopResult(before[e->first], e->second));
     }
     
-    walker* mvp = NULL;
+    walker* mvp = nullptr;
     float mvp_points = 0;
     for(std::vector<TroopResult>::iterator e = troops.begin(); e != troops.end(); e++)
     {
         float points = 0;
         
-        if(e->after == NULL)
+        if(e->after == nullptr)
             continue;
             
         points = e->after->myguy->scen_damage + 3*e->after->myguy->scen_damage_taken;
@@ -606,7 +606,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             END_IF_IN_SCROLL_AREA;
             y += 22;
             
-            if(mvp != NULL)
+            if(mvp != nullptr)
             {
                 BEGIN_IF_IN_SCROLL_AREA;
                 

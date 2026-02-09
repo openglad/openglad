@@ -109,9 +109,9 @@ class vbutton
 		        Sint32 pass, const std::string& msg, char family, int hot );
 		~vbutton();
 		void set_graphic(char family);
-		Sint32 leftclick(button* buttons = NULL);  // Checks all buttons for the click
+		Sint32 leftclick(button* buttons = nullptr);  // Checks all buttons for the click
 		Sint32 leftclick(Sint32 whichone);  // Clicks this vbutton
-		Sint32 rightclick(button* buttons = NULL); //is called when the button is right clicked
+		Sint32 rightclick(button* buttons = nullptr); //is called when the button is right clicked
 		Sint32 rightclick(Sint32 whichone);  // Clicks this vbutton
 		Sint32 mouse_on(); //determines if mouse is on this button, returns 1 if true
 		void vdisplay();

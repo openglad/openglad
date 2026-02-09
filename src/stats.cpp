@@ -34,7 +34,7 @@ statistics::statistics(walker  * someguy)
 		controller = someguy;
 	else
 	{
-		controller = NULL;
+		controller = nullptr;
 		Log("made a stats with no controller!\n");
 	}
 	hitpoints = max_hitpoints = 10;
@@ -57,7 +57,7 @@ statistics::statistics(walker  * someguy)
 	// AI finding routine values ..
 	last_distance = current_distance = 15000;
 
-    if(controller != NULL)
+    if(controller != nullptr)
     {
         old_order = controller->order;
         old_family= controller->family;
@@ -73,7 +73,7 @@ statistics::statistics(walker  * someguy)
 
 statistics::~statistics()
 {
-	controller = NULL;
+	controller = nullptr;
 	delete_me = 1;
 }
 
@@ -88,7 +88,7 @@ void statistics::clear_command()
 		controller->team_num = controller->real_team_num;
 		controller->real_team_num = 255;
 	}
-	controller->leader = NULL;
+	controller->leader = nullptr;
 }
 
 void statistics::add_command(short whatcommand, short iterations,
@@ -258,7 +258,7 @@ short statistics::do_command()
 			if (controller->foe) // if we have foe, don't follow this round
 			{
 				commands.front().commandcount = 0;
-				controller->leader = NULL;
+				controller->leader = nullptr;
 				result = 0;
 				break;
 			}
@@ -275,7 +275,7 @@ short statistics::do_command()
 					else
 					{
 						commands.front().commandcount = 0;
-						controller->leader = NULL;
+						controller->leader = nullptr;
 						result = 0;
 						break;
 					}
@@ -288,7 +288,7 @@ short statistics::do_command()
 				distance = controller->distance_to_ob(controller->leader);
 				if (distance < 60)
 				{
-					controller->leader = NULL;
+					controller->leader = nullptr;
 					result = 1;  // don't get too close
 					break;
 				}
@@ -307,7 +307,7 @@ short statistics::do_command()
 			controller->walkstep(newx, newy);
 			if (commands.front().commandcount < 2)
             {
-				controller->leader = NULL;
+				controller->leader = nullptr;
             }
 			break;
 		case COMMAND_QUICK_FIRE:

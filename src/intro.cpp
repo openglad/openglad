@@ -49,7 +49,7 @@ void intro_main(Sint32 argc, char** argv)
 	PixieData gladdata, bigdata;
 	char message[80];
 
-	ul = ur = ll = lr = NULL;
+	ul = ur = ll = lr = nullptr;
 
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 	grab_timer();
@@ -131,7 +131,7 @@ void intro_main(Sint32 argc, char** argv)
 	ul->draw(myscreen->viewob[0]);
 	delete ul;
 	uldata.free();
-	ul = NULL;
+	ul = nullptr;
 
 	urdata = read_pixie_file("game2ur.pix");
 	ur = new pixie(urdata);
@@ -139,7 +139,7 @@ void intro_main(Sint32 argc, char** argv)
 	ur->draw(myscreen->viewob[0]);
 	delete ur;
 	urdata.free();
-	ur = NULL;
+	ur = nullptr;
 
 	lldata = read_pixie_file("game2ll.pix");
 	ll = new pixie(lldata);
@@ -147,7 +147,7 @@ void intro_main(Sint32 argc, char** argv)
 	ll->draw(myscreen->viewob[0]);
 	delete ll;
 	lldata.free();
-	ll = NULL;
+	ll = nullptr;
 
 	lrdata = read_pixie_file("game2lr.pix");
 	lr = new pixie(lrdata);
@@ -155,7 +155,7 @@ void intro_main(Sint32 argc, char** argv)
 	lr->draw(myscreen->viewob[0]);
 	delete lr;
 	lrdata.free();
-	lr = NULL;
+	lr = nullptr;
 
 	//myscreen->refresh();
 
@@ -186,7 +186,7 @@ void intro_main(Sint32 argc, char** argv)
 	ul->draw(myscreen->viewob[0]);
 	delete ul;
 	uldata.free();
-	ul = NULL;
+	ul = nullptr;
 
 	lldata = read_pixie_file("game5.pix");
 	ll = new pixie(lldata);
@@ -194,7 +194,7 @@ void intro_main(Sint32 argc, char** argv)
 	ll->draw(myscreen->viewob[0]);
 	delete ll;
 	lldata.free();
-	ll = NULL;
+	ll = nullptr;
 
 	strcpy(message, "Additional Artwork By:");
 	mytext.write_xy(310-mytext.query_width(message),

@@ -181,7 +181,7 @@ class BrowserEntry
 };
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
-    : level_data(scen_num), myradar(NULL, myscreen, 0)
+    : level_data(scen_num), myradar(nullptr, myscreen, 0)
 {
     level_data.load();
     
@@ -315,7 +315,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         if(i < level_list_length)
             entries[i] = new BrowserEntry(myscreen, i, level_list[current_level_index + i]);
         else
-            entries[i] = NULL;
+            entries[i] = nullptr;
     }
     
     int selected_entry = -1;
@@ -432,7 +432,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                     for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
                     {
                         entries[i] = entries[i-1];
-                        if(entries[i] != NULL)
+                        if(entries[i] != nullptr)
                             entries[i]->updateIndex(i);
                     }
                     // Load the new top one
@@ -455,7 +455,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                     for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
                     {
                         entries[i] = entries[i+1];
-                        if(entries[i] != NULL)
+                        if(entries[i] != nullptr)
                             entries[i]->updateIndex(i);
                     }
                     // Load the new bottom one
@@ -512,7 +512,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                         if(i < level_list_length)
                             entries[i] = new BrowserEntry(myscreen, i, level_list[current_level_index + i]);
                         else
-                            entries[i] = NULL;
+                            entries[i] = nullptr;
                     }
                     
                     selected_entry = -1;
@@ -539,7 +539,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             // Select
             for(int i = 0; i < NUM_BROWSE_RADARS; i++)
             {
-                if(i < level_list_length && entries[i] != NULL)
+                if(i < level_list_length && entries[i] != nullptr)
                 {
                     int x = entries[i]->myradar.xloc;
                     int y = entries[i]->myradar.yloc;
@@ -580,7 +580,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         loadtext.write_xy(prev.x + 2, prev.y + 2, "Prev", DARK_BLUE, 1);
         myscreen->draw_button(next.x, next.y, next.x + next.w, next.y + next.h, 1, 1);
         loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
-        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
+        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != nullptr)
         {
             myscreen->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
@@ -600,7 +600,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         if(selected_entry != -1)
         {
             int i = selected_entry;
-            if(i < level_list_length && entries[i] != NULL)
+            if(i < level_list_length && entries[i] != nullptr)
             {
                 int x = entries[i]->myradar.xloc - 4;
                 int y = entries[i]->myradar.yloc - 4;
@@ -611,12 +611,12 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         }
         for(int i = 0; i < NUM_BROWSE_RADARS; i++)
         {
-            if(i < level_list_length && entries[i] != NULL)
+            if(i < level_list_length && entries[i] != nullptr)
                 entries[i]->draw(myscreen);
         }
         
         // Description
-        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != NULL)
+        if(selected_entry != -1 && selected_entry < level_list_length && entries[selected_entry] != nullptr)
         {
             myscreen->draw_box(descbox.x, descbox.y, descbox.x + descbox.w, descbox.y + descbox.h, GREY, 1, 1);
             for(int i = 0; i < entries[selected_entry]->scentextlines; i++)

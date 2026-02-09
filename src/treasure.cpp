@@ -75,7 +75,7 @@ short treasure::eat_me(walker  * eater)
 				if (eater->stats->hitpoints > eater->stats->max_hitpoints)
 					eater->stats->hitpoints = eater->stats->max_hitpoints;
                 
-                do_heal_effects(NULL, eater, amount);
+                do_heal_effects(nullptr, eater, amount);
                 
 				dead = 1;
 				if (on_screen())
@@ -323,7 +323,7 @@ walker  * treasure::find_teleport_target()
 	// First find where we are in the list ...
     auto mine = std::find(ls.begin(), ls.end(), this);
     if(mine == ls.end())
-        return NULL;
+        return nullptr;
     
 	// Now search the rest of the list ..
 	auto e = mine;
@@ -359,6 +359,6 @@ walker  * treasure::find_teleport_target()
 		}
 	}
 
-	return NULL;
+	return nullptr;
 }
 

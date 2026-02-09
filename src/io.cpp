@@ -146,35 +146,35 @@ std::string get_asset_path()
 
 SDL_RWops* open_read_file(const char* file, bool debug)
 {
-    SDL_RWops* rwops = NULL;
+    SDL_RWops* rwops = nullptr;
     
     if(debug)
 	    Log((std::string("Trying via PHYSFS: ") + file).c_str());
     rwops = PHYSFSRWOPS_openRead(file);
-    if(rwops != NULL) return rwops;
+    if(rwops != nullptr) return rwops;
 
     // now try opening in the current directory
     if(debug)
 	    Log((std::string("Trying to open: ") + file).c_str());
     rwops = SDL_RWFromFile(file, "rb");
-    if(rwops != NULL) return rwops;
+    if(rwops != nullptr) return rwops;
 
     // now try opening in the user directory
     if(debug)
 	    Log((std::string("Trying to open: ") + get_user_path() + file).c_str());
     rwops = SDL_RWFromFile((get_user_path() + std::string("/") + file).c_str(), "rb");
-    if(rwops != NULL) return rwops;
+    if(rwops != nullptr) return rwops;
 
     // now try opening in the asset directory
     if(debug)
 	    Log((std::string("Trying to open: ") + get_asset_path() + file).c_str());
     rwops = SDL_RWFromFile((get_asset_path() + std::string("/") + file).c_str(), "rb");
-    if(rwops != NULL) return rwops;
+    if(rwops != nullptr) return rwops;
 
     // File not found - this may be expected (e.g., keyprefs.dat on first run)
     if(debug)
         Log("File not found: %s (may be created on first use)\n", file);
-    return NULL;
+    return nullptr;
 }
 
 SDL_RWops* open_read_file(const char* path, const char* file)
@@ -185,7 +185,7 @@ SDL_RWops* open_read_file(const char* path, const char* file)
 SDL_RWops* open_write_file(const char* file)
 {
     SDL_RWops* rwops = PHYSFSRWOPS_openWrite(file);
-    if(rwops != NULL)
+    if(rwops != nullptr)
         return rwops;
     return SDL_RWFromFile(file, "wb");
 }
@@ -202,7 +202,7 @@ std::list<std::string> list_files(const std::string& dirname)
     std::list<std::string> fileList;
     char** files = PHYSFS_enumerateFiles(dirname.c_str());
     char** p = files;
-    while(p != NULL && *p != NULL)
+    while(p != nullptr && *p != nullptr)
     {
         fileList.push_back(*p);
         p++;
@@ -229,7 +229,7 @@ bool mount_campaign_package(const std::string& id)
     Log(std::string("Mounting campaign package: " + id).c_str());
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
-    if(!PHYSFS_mount(filename.c_str(), NULL, 0))
+    if(!PHYSFS_mount(filename.c_str(), nullptr, 0))
     {
         LogError("Failed to mount campaign %s: %s\n", filename.c_str(), PHYSFS_getLastError());
         mounted_campaign.clear();
@@ -388,7 +388,7 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
 {
     Log("Copying file: %s\n", filename.c_str());
     SDL_RWops* in = SDL_RWFromFile(filename.c_str(), "rb");
-    if(in == NULL)
+    if(in == nullptr)
     {
         LogError("Could not open file to copy: %s\n", filename.c_str());
         return;
@@ -401,7 +401,7 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     // Save it to another file
     Log("Copying to: %s\n", dest_filename.c_str());
     SDL_RWops* out = SDL_RWFromFile(dest_filename.c_str(), "wb");
-    if(out == NULL)
+    if(out == nullptr)
     {
         LogError("Could not open destination file: %s\n", dest_filename.c_str());
         SDL_RWclose(in);
@@ -500,7 +500,7 @@ void io_init(int argc, char* argv[])
     PHYSFS_init(argv[0]);
     PHYSFS_setWriteDir(get_user_path().c_str());
 
-    if(!PHYSFS_mount(get_user_path().c_str(), NULL, 1))
+    if(!PHYSFS_mount(get_user_path().c_str(), nullptr, 1))
     {
         LogError("Failed to mount user data path: %s\n", get_user_path().c_str());
         exit(1);
@@ -591,10 +591,10 @@ std::list<std::string> list_paths_recursively(const std::string& dirname)
     DIR* dir = opendir(_dirname.c_str());
     dirent* entry;
     
-    if(dir == NULL)
+    if(dir == nullptr)
         return ls;
     
-    while ((entry = readdir(dir)) != NULL)
+    while ((entry = readdir(dir)) != nullptr)
     {
         if(strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
@@ -636,7 +636,7 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
     
     int err = 0;
     zip* archive = zip_open(outfile.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
-    if(archive == NULL)
+    if(archive == nullptr)
         return false;
     
     struct zip_source *s;
@@ -658,7 +658,7 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
         }
         else
         {
-            if((s=zip_source_file(archive, src_name, 0, -1)) == NULL || zip_file_add(archive, dest_name, s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
+            if((s=zip_source_file(archive, src_name, 0, -1)) == nullptr || zip_file_add(archive, dest_name, s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
             {
                 zip_source_free(s);
                 LogError("Error adding file to zip: %s\n", zip_strerror(archive));
@@ -687,23 +687,23 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
 /* Function with behaviour like `mkdir -p'  */
 int mkpath(const char *s, mode_t mode)
 {
-    char *q, *parent = NULL, *path = NULL, *up = NULL;
+    char *q, *parent = nullptr, *path = nullptr, *up = nullptr;
     int rv;
 
     rv = -1;
     if (strcmp(s, ".") == 0 || strcmp(s, "/") == 0 || (strlen(s) == 3 && s[2] == '/'))
         return 0;
 
-    if ((path = strdup(s)) == NULL)
+    if ((path = strdup(s)) == nullptr)
         exit(1);
  
-    if ((q = strdup(s)) == NULL)
+    if ((q = strdup(s)) == nullptr)
         exit(1);
 
-    if ((parent = dirname(q)) == NULL)
+    if ((parent = dirname(q)) == nullptr)
         goto out;
     
-    if ((up = strdup(parent)) == NULL)
+    if ((up = strdup(parent)) == nullptr)
         exit(1);
 
     if ((mkpath(up, mode) == -1) && (errno != EEXIST))
@@ -715,7 +715,7 @@ int mkpath(const char *s, mode_t mode)
         rv = 0;
 
 out:
-    if (up != NULL)
+    if (up != nullptr)
         free(up);
     free(q);
     free(path);
@@ -725,9 +725,9 @@ out:
 bool create_path_to_file(const char* filename)
 {
     const char* c = strrchr(filename, '/');
-    if(c == NULL)
+    if(c == nullptr)
         c = strrchr(filename, '\\');
-    if(c == NULL)
+    if(c == nullptr)
         return true;
     
     char buf[512];
@@ -752,7 +752,7 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
     
     int err = 0;
     zip* archive = zip_open(infile.c_str(), 0, &err);
-    if(archive == NULL)
+    if(archive == nullptr)
         return false;
     
     struct zip_stat status;
@@ -773,7 +773,7 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
             else
             {
                 file = zip_fopen_index(archive, i, 0);
-                if(file == NULL)
+                if(file == nullptr)
                 {
                     // Error
                     continue;
@@ -782,7 +782,7 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
                 snprintf(buf, buf_size, "%s%s", outdir.c_str(), status.name);
                 create_path_to_file(buf);
                 SDL_RWops* rwops = open_write_file(outdir.c_str(), status.name);
-                if(rwops == NULL)
+                if(rwops == nullptr)
                 {
                     // Error
                     continue;
@@ -823,7 +823,7 @@ bool create_new_map_pix(const std::string& filename, int w, int h)
 	
 	unsigned char c;
 	SDL_RWops* outfile = open_write_file(filename.c_str());
-	if(outfile == NULL)
+	if(outfile == nullptr)
         return false;
     
     c = 1;  // Frames
@@ -869,7 +869,7 @@ bool create_new_pix(const std::string& filename, int w, int h, unsigned char fil
 	
 	unsigned char c;
 	SDL_RWops* outfile = open_write_file(filename.c_str());
-	if(outfile == NULL)
+	if(outfile == nullptr)
         return false;
     
     c = 1;  // Frames
@@ -893,7 +893,7 @@ bool create_new_pix(const std::string& filename, int w, int h, unsigned char fil
 bool create_new_campaign_descriptor(const std::string& filename)
 {
 	SDL_RWops* outfile = open_write_file(filename.c_str());
-	if(outfile == NULL)
+	if(outfile == nullptr)
         return false;
     
     Yam yam;
@@ -964,7 +964,7 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 	unsigned char line_length = strlen(line_text);
 	
 	SDL_RWops* outfile;
-	if((outfile = open_write_file(scenfile.c_str())) == NULL)
+	if((outfile = open_write_file(scenfile.c_str())) == nullptr)
 	{
 		LogError("Could not open file for writing: %s\n", scenfile.c_str());
 		return false;

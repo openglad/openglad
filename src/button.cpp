@@ -120,13 +120,13 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     xend = xloc + width;
     yend = yloc + height;
     label = msg;
-    next = NULL;
-    //  prev = NULL;
+    next = nullptr;
+    //  prev = nullptr;
     had_focus = 0;
     do_outline = 0;
     depressed = 0;
 
-    mypixie = NULL; // by default, no graphic picture
+    mypixie = nullptr; // by default, no graphic picture
 
     hotkey = hot;
 
@@ -140,7 +140,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
                  Sint32 func_code, Sint32 pass, const std::string& msg, int hot )
 {
     arg = pass;
-    fun = NULL; // don't use this!
+    fun = nullptr; // don't use this!
     myfunc = func_code;
     xloc = xpos;
     yloc = ypos;
@@ -149,13 +149,13 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     xend = xloc + width;
     yend = yloc + height;
     label = msg;
-    next = NULL;
-    //  prev = NULL;
+    next = nullptr;
+    //  prev = nullptr;
     had_focus = 0;
     do_outline = 0;
     depressed = 0;
 
-    mypixie = NULL; // no graphic by default
+    mypixie = nullptr; // no graphic by default
 
     hotkey = hot;
 
@@ -170,7 +170,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
                  int hot )
 {
     arg = pass;
-    fun = NULL; // don't use this!
+    fun = nullptr; // don't use this!
     myfunc = func_code;
     xloc = xpos;
     yloc = ypos;
@@ -179,8 +179,8 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     xend = xloc + width;
     yend = yloc + height;
     label = msg;
-    next = NULL;
-    //  prev = NULL;
+    next = nullptr;
+    //  prev = nullptr;
     had_focus = 0;
     do_outline = 0;
     depressed = 0;
@@ -201,10 +201,10 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 
 vbutton::vbutton() //for pointers
 {
-    next = NULL;
-    //  prev = NULL;
+    next = nullptr;
+    //  prev = nullptr;
     had_focus = do_outline = depressed = 0;
-    mypixie = NULL;
+    mypixie = nullptr;
 }
 
 vbutton::~vbutton()
@@ -217,10 +217,10 @@ vbutton::~vbutton()
       myscreen->buffer_to_screen(xloc-4,yloc-4,xend + 4, yend+4);
       grab_mouse();
 
-      if (next != NULL)
+      if (next != nullptr)
       {
         delete next;
-        next = NULL;
+        next = nullptr;
       }
     */
 }
@@ -326,7 +326,7 @@ Sint32 vbutton::leftclick(button* buttons)
     // First check hotkeys ...
     while (allbuttons[whichone])
     {
-        if(buttons == NULL || !buttons[whichone].hidden)
+        if(buttons == nullptr || !buttons[whichone].hidden)
         {
             retvalue = allbuttons[whichone]->leftclick(1);
             if (retvalue != -1)
@@ -338,7 +338,7 @@ Sint32 vbutton::leftclick(button* buttons)
     whichone = 0;
     while (allbuttons[whichone])
     {
-        if(buttons == NULL || !buttons[whichone].hidden)
+        if(buttons == nullptr || !buttons[whichone].hidden)
         {
             retvalue = allbuttons[whichone]->leftclick(2);
             if (retvalue != -1)
@@ -355,7 +355,7 @@ Sint32 vbutton::rightclick(button* buttons)
     Sint32 retvalue=0;
     while (allbuttons[whichone])
     {
-        if(buttons == NULL || !buttons[whichone].hidden)
+        if(buttons == nullptr || !buttons[whichone].hidden)
         {
             retvalue = allbuttons[whichone]->rightclick(whichone);
             if (retvalue != -1)
@@ -488,7 +488,7 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     {
         if (allbuttons[i])
             delete allbuttons[i];
-        allbuttons[i] = NULL;
+        allbuttons[i] = nullptr;
     }
 
     for (i=0; i < numbuttons; i++)
@@ -610,7 +610,7 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
     case NAME_GUY: // name some guy
         return name_guy(arg);
     case CREATE_DETAIL_MENU:
-        return create_detail_menu(NULL);
+        return create_detail_menu(nullptr);
     case DO_SET_SCEN_LEVEL:
         return do_set_scen_level(arg);
     case DO_PICK_CAMPAIGN:

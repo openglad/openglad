@@ -200,8 +200,8 @@ signed char  *anislime[] = {
                                slime_pulse, slime_pulse, slime_pulse, slime_pulse,
                                slime_pulse, slime_pulse, slime_pulse, slime_pulse, // 16 == tele_out (ignored)
                                slime_pulse, slime_pulse, slime_pulse, slime_pulse,
-                               NULL, NULL, NULL, NULL,                             // 24 == tele_in (ignored)
-                               NULL, NULL, NULL, NULL,
+                               nullptr, nullptr, nullptr, nullptr,                             // 24 == tele_in (ignored)
+                               nullptr, nullptr, nullptr, nullptr,
                                slime_split, slime_split, slime_split, slime_split, // 32 == slime splits
                                slime_split, slime_split, slime_split, slime_split,
                            };
@@ -334,7 +334,7 @@ PixieData data_copy(const PixieData& d)
 
 
 loader::loader()
-    : graphics(NULL), animations(NULL), stepsizes(NULL), lineofsight(NULL), act_types(NULL), damage(NULL), fire_frequency(NULL)
+    : graphics(nullptr), animations(nullptr), stepsizes(nullptr), lineofsight(nullptr), act_types(nullptr), damage(nullptr), fire_frequency(nullptr)
 {
 	memset(hitpoints, 0, 200*sizeof(float));
     
@@ -808,7 +808,7 @@ walker  *loader::create_walker(char order,
 	    char buf[200];
 	    snprintf(buf, 200, "No valid graphics for walker!\nOrder: %d, Family %d\nPlease report this to the developer!", order, family);
 		popup_dialog("ERROR", buf);
-		return NULL;
+		return nullptr;
 	}
 
 	if (order == ORDER_LIVING)
@@ -822,7 +822,7 @@ walker  *loader::create_walker(char order,
 	else
 		ob = new walker(graphics[PIX(order, family)]);
 	if (!ob)
-		return NULL;
+		return nullptr;
 
 	ob->stats->hitpoints = hitpoints[PIX(order, family)];
 	ob->stats->max_hitpoints = hitpoints[PIX(order, family)];
@@ -1127,7 +1127,7 @@ pixieN *loader::create_pixieN(char order, char family)
 	if (!graphics[PIX(order, family)].valid())
 	{
 		Log("Alert! No valid graphics for pixieN\n");
-		return NULL;
+		return nullptr;
 	}
 
 	newpixie = new pixieN(graphics[PIX(order, family)]);

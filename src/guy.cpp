@@ -584,7 +584,7 @@ void guy::update_derived_stats(walker* w)
 walker* guy::create_walker(screen* myscreen)
 {
     guy* temp_guy = new guy(*this);
-    walker* temp_walker = myscreen->level_data.myloader->create_walker(ORDER_LIVING, temp_guy->family, NULL);
+    walker* temp_walker = myscreen->level_data.myloader->create_walker(ORDER_LIVING, temp_guy->family, nullptr);
     temp_walker->myguy = temp_guy;
     temp_walker->stats->level = temp_guy->level;
     

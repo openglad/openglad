@@ -24,16 +24,16 @@ extern vbutton *localbuttons;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = nullptr; }
         backpics[i].free();
     }
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
+        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = nullptr; }
     }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    localbuttons = nullptr;
+    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = nullptr; }
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = nullptr; }
     main_title_logo_data.free();
 }
 
@@ -128,12 +128,12 @@ void test_hire_menu_browsing() {
 
     HireState state = { false, false, false, 0 };
     SDL_Thread* thread = SDL_CreateThread(hire_injector, "hire_test", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

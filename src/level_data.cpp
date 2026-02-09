@@ -37,7 +37,7 @@ int toInt(const std::string& s);
 
 
 CampaignData::CampaignData(const std::string& id)
-    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0), icon(NULL)
+    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0), icon(nullptr)
 {
     description.push_back("No description.");
 }
@@ -124,7 +124,7 @@ bool CampaignData::save()
         //unmount_campaign_package(ascreen->current_campaign);
         
         SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
-        if(outfile != NULL)
+        if(outfile != nullptr)
         {
             char buf[40];
             
@@ -202,7 +202,7 @@ bool CampaignData::save_as(const std::string& new_id)
     {
         // Save the descriptor file
         SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
-        if(outfile != NULL)
+        if(outfile != nullptr)
         {
             char buf[40];
             
@@ -291,11 +291,11 @@ std::string CampaignData::getDescriptionLine(int i)
 
 LevelData::LevelData(int id)
     : id(id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
-    , myloader(NULL), numobs(0), topx(0), topy(0)
+    , myloader(nullptr), numobs(0), topx(0), topy(0)
 {
     for (int i = 0; i < PIX_MAX; i++)
     {
-        back[i] = NULL;
+        back[i] = nullptr;
     }
     
 	myobmap = new obmap;
@@ -344,7 +344,7 @@ LevelData::~LevelData()
         if (back[i])
         {
             delete back[i];
-            back[i] = NULL;
+            back[i] = nullptr;
         }
     }
 }
@@ -373,8 +373,8 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
 
     // Create the walker
     walker* w = myloader->create_walker(order, family, myscreen);
-    if(w == NULL)
-        return NULL;
+    if(w == nullptr)
+        return nullptr;
     
     w->myobmap = this->myobmap;
     if (order == ORDER_LIVING)
@@ -536,7 +536,7 @@ void LevelData::resize_grid(int width, int height)
     for(auto e = oblist.begin(); e != oblist.end();)
 	{
 	    walker* ob = *e;
-		if(ob == NULL || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
+		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
 			delete ob;
 			e = oblist.erase(e);
@@ -548,7 +548,7 @@ void LevelData::resize_grid(int width, int height)
     for(auto e = fxlist.begin(); e != fxlist.end();)
 	{
 	    walker* ob = *e;
-		if(ob == NULL || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
+		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
 			delete ob;
 			e = fxlist.erase(e);
@@ -560,7 +560,7 @@ void LevelData::resize_grid(int width, int height)
     for(auto e = weaplist.begin(); e != weaplist.end();)
 	{
 	    walker* ob = *e;
-		if(ob == NULL || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
+		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
 			delete ob;
 			e = weaplist.erase(e);
@@ -1240,7 +1240,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
 short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 {
-    if(data == NULL)
+    if(data == nullptr)
         return 0;
     
     short result = 0;
@@ -1276,7 +1276,7 @@ short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 bool LevelData::load()
 {
 	TRACE("game", "LevelData::load id=%d", id);
-	SDL_RWops  *infile = NULL;
+	SDL_RWops  *infile = nullptr;
 	char temptext[10];
 	memset(temptext, 0, 10);
 	char versionnumber = 0;
@@ -1330,7 +1330,7 @@ bool LevelData::load()
             if (back[i])
             {
                 delete back[i];
-                back[i] = NULL;
+                back[i] = nullptr;
             }
         }
         
@@ -1381,7 +1381,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 
 	lowercase (fullpath);
 
-	if ( (outfile = open_write_file("temp/pix/", fullpath.c_str())) == NULL )
+	if ( (outfile = open_write_file("temp/pix/", fullpath.c_str())) == nullptr )
 	{
 		Log("Failed to save map file: %s%s\n", "temp/pix/", fullpath.c_str());
 		return false;
@@ -1455,7 +1455,7 @@ bool LevelData::save()
 	//strcpy(temp_filename, scen_directory);
 	snprintf(temp_filename, 80, "scen%d.fss", this->id);
 
-	if ( (outfile = open_write_file("temp/scen/", temp_filename)) == NULL ) // open for write
+	if ( (outfile = open_write_file("temp/scen/", temp_filename)) == nullptr ) // open for write
 	{
 		Log("Could not open file for writing: %s%s\n", "temp/scen/", temp_filename);
 		return false;
@@ -1502,9 +1502,9 @@ bool LevelData::save()
 	for(auto e = oblist.begin(); e != oblist.end(); e++)
 	{
 	    walker* w = *e;
-        if (w == NULL)
+        if (w == nullptr)
         {
-            Log("Unexpected NULL object.\n");
+            Log("Unexpected nullptr object.\n");
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }
@@ -1534,9 +1534,9 @@ bool LevelData::save()
 	for(auto e = fxlist.begin(); e != fxlist.end(); e++)
 	{
 	    walker* ob = *e;
-        if (ob == NULL)
+        if (ob == nullptr)
         {
-            Log("Unexpected NULL fx object.\n");
+            Log("Unexpected nullptr fx object.\n");
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }
@@ -1566,9 +1566,9 @@ bool LevelData::save()
 	for(auto e = weaplist.begin(); e != weaplist.end(); e++)
 	{
 	    walker* ob = *e;
-        if (ob == NULL)
+        if (ob == nullptr)
         {
-            Log("Unexpected NULL weap object.\n");
+            Log("Unexpected nullptr weap object.\n");
             SDL_RWclose(outfile);
             return false;  // Something wrong! Too few objects..
         }

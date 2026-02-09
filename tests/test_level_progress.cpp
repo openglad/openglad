@@ -93,18 +93,18 @@ static void cleanup_picker_state()
     // Clean up picker globals without deleting myscreen
     // (picker_quit() deletes myscreen which other tests still need)
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = nullptr; }
         backpics[i].free();
     }
     // localbuttons == allbuttons[0] (returned by init_buttons), so just
     // delete everything via allbuttons to avoid double-free.
     for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
+        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = nullptr; }
     }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    localbuttons = nullptr;
+    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = nullptr; }
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = nullptr; }
     main_title_logo_data.free();
 }
 
@@ -120,14 +120,14 @@ void test_level_progress_menu() {
     // Start the event injector thread
     EventSequence seq = { false, false };
     SDL_Thread* thread = SDL_CreateThread(event_injector_thread, "test_injector", &seq);
-    TEST_ASSERT(thread != NULL, "failed to create event injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create event injector thread");
 
     // Limit picker_mainmenu_loop to 1 iteration (this test only needs one pass)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
     // This blocks until menus unwind -- the injector thread drives navigation
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     // Wait for thread to finish
     int thread_result;

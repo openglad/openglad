@@ -47,8 +47,8 @@ pixieN::pixieN(const PixieData& data, int doaccel):
 
 pixieN::~pixieN()
 {
-	bmp = NULL;
-	facings = NULL;
+	bmp = nullptr;
+	facings = nullptr;
 	frames = 0;
 	frame = 0;
 }

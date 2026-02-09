@@ -88,8 +88,8 @@ enum PickerMenuState {
 static PickerMenuState g_picker_menu_state = PICKER_MENU_MAIN;
 #endif
 
-guy  *current_guy = NULL;
-guy  *old_guy = NULL;
+guy  *current_guy = nullptr;
+guy  *old_guy = nullptr;
 
 char  message[80];
 Sint32 editguy = 0;        // Global for editing guys ..
@@ -170,14 +170,14 @@ void picker_main(Sint32 argc, char  **argv)
 	Sint32 i;
 
 	for (i=0; i < MAX_BUTTONS; i++)
-		allbuttons[i] = NULL;
+		allbuttons[i] = nullptr;
 
 	// Get main dir ..
 	//strcpy(main_dir, "");
 
-	// Set backdrops to NULL
+	// Set backdrops to nullptr
 	for (i=0; i < 5; i++)
-		backdrops[i] = NULL;
+		backdrops[i] = nullptr;
 
 	backpics[0] = read_pixie_file("mainul.pix");
 	backpics[1] = read_pixie_file("mainur.pix");
@@ -231,7 +231,7 @@ void picker_quit()
 		if (backdrops[i])
 		{
 			delete backdrops[i];
-			backdrops[i] = NULL;
+			backdrops[i] = nullptr;
 		}
 		
         backpics[i].free();
@@ -251,7 +251,7 @@ void picker_quit()
 
 #if 0
 	if (cfgfile)
-		cfgfile = NULL;
+		cfgfile = nullptr;
 #endif
 }
 
@@ -496,7 +496,7 @@ Sint32 leftmouse(button* buttons)
 
 	while (allbuttons[i])
 	{
-	    if(buttons != NULL && !buttons[i].hidden)
+	    if(buttons != nullptr && !buttons[i].hidden)
         {
             allbuttons[i]->mouse_on();
             if (keystates[allbuttons[i]->hotkey])
@@ -842,7 +842,7 @@ Sint32 mainmenu(Sint32 arg1)
 	if(arg1)
 		arg1 = 1;
 
-	if(localbuttons != NULL)
+	if(localbuttons != nullptr)
 		delete localbuttons; //we'll make a new set
     
 	button* buttons = mainmenu_buttons;
@@ -917,7 +917,7 @@ Sint32 beginmenu(Sint32 arg1)
 
     // Reset the save data so we have a fresh, new team
 	myscreen->save_data.reset();
-	current_guy = NULL;
+	current_guy = nullptr;
 	
 	// Clear the labeling counter
 	for (int i = 0; i < NUM_FAMILIES; i++)
@@ -1170,7 +1170,7 @@ std::vector<int> get_accessible_levels()
             LevelData ld(level_id);
             if (ld.load()) {
                 std::list<int> exits;
-                getLevelStats(ld, NULL, NULL, NULL, NULL, exits);
+                getLevelStats(ld, nullptr, nullptr, nullptr, nullptr, exits);
                 for (int exit_id : exits) {
                     if (accessible.find(exit_id) == accessible.end()) {
                         accessible.insert(exit_id);
@@ -1230,7 +1230,7 @@ Sint32 create_progress_menu(Sint32 arg1)
             // Count enemies
             int num_enemies = 0;
             std::list<int> unused_exits;
-            getLevelStats(ld, NULL, NULL, &num_enemies, NULL, unused_exits);
+            getLevelStats(ld, nullptr, nullptr, &num_enemies, nullptr, unused_exits);
             lp.num_enemies = lp.is_cleared ? 0 : num_enemies;
         } else {
             snprintf(lp.title, 24, "Level %d", level_id);
@@ -3047,7 +3047,7 @@ Sint32 cycle_guy(Sint32 whichway)
 	if (current_guy)
 	{
 		delete current_guy;
-		current_guy = NULL;
+		current_guy = nullptr;
 	}
 
 	// Make the new guy
@@ -3185,7 +3185,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	
 	clear_keyboard();
 	char* new_text = nametext.input_string(176, 20, 11, someguy->name);
-	if(new_text == NULL)
+	if(new_text == nullptr)
         new_text = someguy->name;
 	memmove(someguy->name, new_text, strlen(new_text)+1);  // Could be overlapping strings
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
@@ -3223,7 +3223,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			current_guy->teamnum = current_team_num;
 			ourteam[i] = current_guy;
 			myscreen->save_data.team_size++;
-			current_guy = NULL;
+			current_guy = nullptr;
 			release_mouse();
 			
 			std::string name = ourteam[i]->name;
@@ -3375,7 +3375,7 @@ const char* get_saved_name(const char * filename)
 	//buffers: PORT: changed .GTL to .gtl
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = open_read_file("save/", temp_filename)) == NULL ) // open for read
+	if ( (infile = open_read_file("save/", temp_filename)) == nullptr ) // open for read
 	{
 		return "EMPTY SLOT";
 	}
@@ -3420,7 +3420,7 @@ Sint32 delete_all()
 	for (int i = 0; i < myscreen->save_data.team_size; i++)
     {
         delete myscreen->save_data.team_list[i];
-        myscreen->save_data.team_list[i] = NULL;
+        myscreen->save_data.team_list[i] = nullptr;
     }
     
     myscreen->save_data.team_size = 0;
@@ -3451,7 +3451,7 @@ Sint32 go_menu(Sint32 arg1)
 
     if (current_guy)
         delete current_guy;
-    current_guy = NULL;
+    current_guy = nullptr;
 
     g_start_game_requested = true;
     Log("go_menu: Setting g_start_game_requested, returning EXIT\n");
@@ -3472,7 +3472,7 @@ Sint32 go_menu(Sint32 arg1)
 
         if (current_guy)
             delete current_guy;
-        current_guy = NULL;
+        current_guy = nullptr;
 
         // Reset viewscreen prefs
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
@@ -3583,7 +3583,7 @@ Sint32 main_options()
 {
     text& mytext = myscreen->text_normal;
     
-	if(localbuttons != NULL)
+	if(localbuttons != nullptr)
 		delete localbuttons; //we'll make a new set
     
     #if defined(OUYA) || defined(ANDROID)
@@ -4357,11 +4357,11 @@ void picker_init()
     Sint32 i;
 
     for (i=0; i < MAX_BUTTONS; i++)
-        allbuttons[i] = NULL;
+        allbuttons[i] = nullptr;
 
-    // Set backdrops to NULL
+    // Set backdrops to nullptr
     for (i=0; i < 5; i++)
-        backdrops[i] = NULL;
+        backdrops[i] = nullptr;
 
     backpics[0] = read_pixie_file("mainul.pix");
     backpics[1] = read_pixie_file("mainur.pix");

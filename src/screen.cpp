@@ -90,8 +90,8 @@ screen::screen(short howmany)
 	timerstart = query_timer_control();
 	framecount = 0;
 
-	//  control = NULL;
-	//myradar[0] = myradar[1] = NULL; // very important! :)
+	//  control = nullptr;
+	//myradar[0] = myradar[1] = nullptr; // very important! :)
 	control_hp = 0;
 
 	// Load the palette ..
@@ -138,7 +138,7 @@ screen::screen(short howmany)
 	// Set up the viewscreen poshorters
 	numviews = howmany; // # of viewscreens
 	for (i=0; i < MAX_VIEWS; i++)
-		viewob[i] = NULL;
+		viewob[i] = nullptr;
     
     initialize_views();
 
@@ -238,7 +238,7 @@ screen::~screen()
 	release_timer();
 	delete soundp;
 
-	soundp = NULL;
+	soundp = nullptr;
 	cleanup(1); //make sure we've cleaned up
 }
 
@@ -281,7 +281,7 @@ void screen::cleanup(short howmany)
     for (i=0; i < MAX_VIEWS; i++)
     {
         delete (viewob[i]);
-        viewob[i] = NULL;
+        viewob[i] = nullptr;
     }
 }
 
@@ -603,7 +603,7 @@ void screen::clear()
 	//buffers: PORT:         videobuffer[i] = 0;
 	//buffers: PORT:  }
 	clearbuffer();
-	//SDL_FillRect(screen,NULL,SDL_MapRGB(screen->format,0,0,0));
+	//SDL_FillRect(screen,nullptr,SDL_MapRGB(screen->format,0,0,0));
 
 	for (i=0; i < numviews; i ++)
 		viewob[i]->clear();
@@ -689,7 +689,7 @@ short screen::act()
 					        ob->query_order() == ORDER_LIVING)
 						level_done = 0;
 					// Testing .. trying to FORCE foes :)
-					if (ob->foe == NULL && ob->leader == NULL)
+					if (ob->foe == nullptr && ob->leader == nullptr)
 						ob->foe = myscreen->find_far_foe(ob);
 				}
 			}
@@ -762,26 +762,26 @@ short screen::act()
 	{
 	    walker* ob = *e;
         if (ob->foe && ob->foe->dead)
-            ob->foe = NULL;
+            ob->foe = nullptr;
         if (ob->leader && ob->leader->dead)
-            ob->leader = NULL;
+            ob->leader = nullptr;
         if (ob->owner && ob->owner->dead)
-            ob->owner = NULL;
+            ob->owner = nullptr;
         if (ob->collide_ob && ob->collide_ob->dead)
-            ob->collide_ob = NULL;
+            ob->collide_ob = nullptr;
 	}
 	
 	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end(); e++)
 	{
 	    walker* ob = *e;
         if (ob->foe && ob->foe->dead)
-            ob->foe = NULL;
+            ob->foe = nullptr;
         if (ob->leader && ob->leader->dead)
-            ob->leader = NULL;
+            ob->leader = nullptr;
         if (ob->owner && ob->owner->dead)
-            ob->owner = NULL;
+            ob->owner = nullptr;
         if (ob->collide_ob && ob->collide_ob->dead)
-            ob->collide_ob = NULL;
+            ob->collide_ob = nullptr;
 	}
 
 
@@ -789,7 +789,7 @@ short screen::act()
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end();)
 	{
 	    walker* ob = *e;
-		if (ob && ob->dead && ob->myguy == NULL)
+		if (ob && ob->dead && ob->myguy == nullptr)
 		{
 		    // Delete the dead thing safely
 		    
@@ -800,7 +800,7 @@ short screen::act()
 			    for(int i = 0; i < numviews; i++)
 			    {
 			        if(ob == viewob[i]->control)
-                        viewob[i]->control = NULL;
+                        viewob[i]->control = nullptr;
 			    }
 			}
 			
@@ -867,7 +867,7 @@ short screen::endgame(short ending, short nextlevel)
 	// Get guys from before battle
 	for(int i = 0; i < save_data.team_size; i++)
     {
-        if(save_data.team_list[i] != NULL)
+        if(save_data.team_list[i] != nullptr)
             before.insert(make_pair(save_data.team_list[i]->id, save_data.team_list[i]));
     }
 	
@@ -956,7 +956,7 @@ walker *screen::find_near_foe(walker  *ob)
 	if (!ob)
 	{
 		Log("no ob in find near foe.\n");
-		return NULL;
+		return nullptr;
 	}
 	targx = ob->xpos;
 	targy = ob->ypos;
@@ -1020,22 +1020,22 @@ walker  *screen::find_far_foe(walker  *ob)
 	if (!ob)
 	{
 		Log("no ob in find far foe.\n");
-		return NULL;
+		return nullptr;
 	}
 
 	// Get our current coordinates
 	//targx = ob->xpos;
 	//targy = ob->ypos;
 
-	// Set our 'default' foe to NULL
-	endfoe = NULL;
+	// Set our 'default' foe to nullptr
+	endfoe = nullptr;
 	distance = 10000;
 	ob->stats->last_distance = 10000;
 
     for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
 	    walker* foe = *e;
-		if (foe == NULL || foe->dead)
+		if (foe == nullptr || foe->dead)
 			continue;
         
 		// Check for valid objects ..
@@ -1066,7 +1066,7 @@ walker* screen::set_walker(walker *ob, char order, char family)
 
 const char* screen::get_scen_title(const char *filename, screen *master)
 {
-	SDL_RWops  *infile = NULL;
+	SDL_RWops  *infile = nullptr;
 	char temptext[10] = "XXX";
 	char tempfile[80] = "x.x";
 	char versionnumber = 0;
@@ -1125,7 +1125,7 @@ walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,
 			}
 		}
 	}
-	return NULL;
+	return nullptr;
 }
 
 void screen::draw_panels(short howmany)
@@ -1158,10 +1158,10 @@ void screen::draw_panels(short howmany)
 walker  * screen::find_nearest_blood(walker  *who)
 {
 	Sint32 distance, newdistance;
-	walker  *returnob = NULL;
+	walker  *returnob = nullptr;
 
 	if (!who)
-		return NULL;
+		return nullptr;
 
 	distance = 800;
 
@@ -1214,12 +1214,12 @@ std::list<walker*> screen::find_in_range(std::list<walker*>& somelist, Sint32 ra
 
 walker* screen::find_nearest_player(walker *ob)
 {
-	walker *returnob = NULL;
+	walker *returnob = nullptr;
 	Uint32 distance = 32000;
 	Uint32 tempdistance;
 
 	if (!ob)
-		return NULL;
+		return nullptr;
 
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{

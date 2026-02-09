@@ -156,7 +156,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	endx = xloc+width;
 	endy = yloc+height;
 	//buffer = (char  *)new char[xview*yview];
-	control = NULL;
+	control = nullptr;
 	gamma = 0;
 	prefsob = theprefs;
 
@@ -194,7 +194,7 @@ viewscreen::~viewscreen()
 {
 	if (myradar)
 		delete myradar;
-	myradar = NULL;
+	myradar = nullptr;
 }
 
 void viewscreen::clear()
@@ -388,7 +388,7 @@ short viewscreen::input(const SDL_Event& event)
     // TODO: Factor out this code, which is duplicated in continuous_input()
 	if (!control || control->dead)
 	{
-	    control = NULL;
+	    control = nullptr;
 	    
 		// First look for a player character, not already controlled
 		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
@@ -496,7 +496,7 @@ short viewscreen::input(const SDL_Event& event)
 			control->restore_act_type();
 			control->user = -1;
 		}
-		control = NULL;
+		control = nullptr;
 		
 		auto& oblist = myscreen->level_data.oblist;
 		
@@ -630,7 +630,7 @@ short viewscreen::input(const SDL_Event& event)
 			{
 				// Remove any current foe ..
 				w->leader = control;
-				w->foe = NULL;
+				w->foe = nullptr;
 				w->stats->force_command(COMMAND_FOLLOW, 100, 0, 0);
 				//w->action = ACTION_FOLLOW;
 			}
@@ -657,7 +657,7 @@ short viewscreen::input(const SDL_Event& event)
 					{
 						// Remove any current foe ..
 						w->leader = control;
-						w->foe = NULL;
+						w->foe = nullptr;
 						w->action = ACTION_FOLLOW;
 					}
 				}
@@ -701,8 +701,8 @@ short viewscreen::input(const SDL_Event& event)
 		{
 			changedteam[mynum] = 1;  // to debounce keys
 			
-			walker* result = NULL;
-			//              control = NULL;
+			walker* result = nullptr;
+			//              control = nullptr;
 			control->user = -1;
 			control->set_act_type(ACT_RANDOM); // hope this works
             
@@ -725,9 +725,9 @@ short viewscreen::input(const SDL_Event& event)
                     }
                 }
             }
-            while(result == NULL && myscreen->save_data.my_team != oldteam);
+            while(result == nullptr && myscreen->save_data.my_team != oldteam);
             
-            if(result != NULL)
+            if(result != nullptr)
                 control = result;
             
 			control->user = mynum;
@@ -893,7 +893,7 @@ short viewscreen::continuous_input()
 
 	if (!control || control->dead)
 	{
-	    control = NULL;
+	    control = nullptr;
 	    
 		// First look for a player character, not already controlled
 		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
@@ -1362,7 +1362,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		if (w && !w->dead
 		        && w->query_order() == ORDER_LIVING
 		        && w->team_num == teamnum
-		        && (w->stats->name || w->myguy)) //&& w->owner == NULL)
+		        && (w->stats->name || w->myguy)) //&& w->owner == nullptr)
 		{
 		    ls.push_back(w);
 		}

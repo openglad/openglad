@@ -20,7 +20,7 @@
 
 
 PixieData::PixieData()
-    : frames(0), w(0), h(0), data(NULL)
+    : frames(0), w(0), h(0), data(nullptr)
 {}
 
 PixieData::PixieData(unsigned char frames, unsigned char w, unsigned char h, unsigned char* data)
@@ -29,7 +29,7 @@ PixieData::PixieData(unsigned char frames, unsigned char w, unsigned char h, uns
 
 bool PixieData::valid() const
 {
-    return (data != NULL && frames != 0 && w != 0 && h != 0);
+    return (data != nullptr && frames != 0 && w != 0 && h != 0);
 }
 
 void PixieData::clear()
@@ -37,7 +37,7 @@ void PixieData::clear()
     frames = 0;
     w = 0;
     h = 0;
-    data = NULL;
+    data = nullptr;
 }
 
 void PixieData::free()
@@ -46,5 +46,5 @@ void PixieData::free()
     w = 0;
     h = 0;
     delete[] data;
-    data = NULL;
+    data = nullptr;
 }

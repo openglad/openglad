@@ -94,7 +94,7 @@ public:
 };
 
 CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
-    : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icon(NULL), num_levels_completed(num_levels_completed)
+    : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icon(nullptr), num_levels_completed(num_levels_completed)
 {
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package(id))
@@ -272,7 +272,7 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
 CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 {
     std::string old_campaign_id = get_mounted_campaign();
-    CampaignEntry* result = NULL;
+    CampaignEntry* result = nullptr;
     CampaignResult ret_value;
     
     text& loadtext = myscreen->text_normal;
@@ -290,7 +290,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
     {
         int num_completed = -1;
-        if(save_data != NULL)
+        if(save_data != nullptr)
             num_completed = save_data->get_num_levels_completed(*e);
         entries.push_back(new CampaignEntry(*e, num_completed));
         
@@ -302,7 +302,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 
     // Figure out how good the player's army is
     int army_power = -1;
-    if(save_data != NULL)
+    if(save_data != nullptr)
     {
         army_power = 0;
         for(int i=0; i<MAX_TEAM_SIZE; i++)
@@ -358,7 +358,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
 	
 	buttons[prev_index].hidden = (current_campaign_index == 0);
 	buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
-	buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL);
+	buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr);
 	buttons[delete_index].hidden = !enable_delete;
 	buttons[reset_index].hidden = enable_delete;
 	
@@ -434,7 +434,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         // Choose
         else if(do_choose)
         {
-            if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
+            if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
             {
                 result = entries[current_campaign_index];
                 done = true;
@@ -475,7 +475,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                 for(std::list<std::string>::iterator e = campaign_ids.begin(); e != campaign_ids.end(); e++)
                 {
                     int num_completed = -1;
-                    if(save_data != NULL)
+                    if(save_data != nullptr)
                         num_completed = save_data->get_num_levels_completed(*e);
                     entries.push_back(new CampaignEntry(*e, num_completed));
                 }
@@ -489,7 +489,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             std::string campaign;
             if(prompt_for_string("Enter Campaign ID", campaign) && campaign.size() > 0)
             {
-                result = NULL;
+                result = nullptr;
                 ret_value.id = campaign;
                 done = true;
                 break;
@@ -512,7 +512,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         {
             buttons[prev_index].hidden = (current_campaign_index == 0);
             buttons[next_index].hidden = (current_campaign_index + 1 >= entries.size());
-            buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL);
+            buttons[choose_index].hidden = !(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr);
             buttons[delete_index].hidden = !enable_delete;
             buttons[reset_index].hidden = enable_delete;
 
@@ -547,7 +547,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
             loadtext.write_xy(next.x + 2, next.y + 2, "Next", DARK_BLUE, 1);
         }
         
-        if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
+        if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
         {
             myscreen->draw_button(choose.x, choose.y, choose.x + choose.w, choose.y + choose.h, 1, 1);
             loadtext.write_xy(choose.x + 9, choose.y + 2, "OK", DARK_GREEN, 1);
@@ -569,7 +569,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         loadtext.write_xy(id_button.x + 2, id_button.y + 2, "Enter ID", DARK_BLUE, 1);
         
         // Draw entry
-        if(current_campaign_index < entries.size() && entries[current_campaign_index] != NULL)
+        if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
             entries[current_campaign_index]->draw(area, army_power);
 
         draw_highlight(buttons[highlighted_button]);
@@ -586,7 +586,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     // Restore old campaign
     mount_campaign_package(old_campaign_id);
     
-    if(result != NULL)
+    if(result != nullptr)
     {
         ret_value.id = result->id;
         ret_value.first_level = result->first_level;

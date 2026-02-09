@@ -658,7 +658,7 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
         {
             char* temptext = query_text_input();
             
-            if(temptext != NULL)
+            if(temptext != nullptr)
             {
                 s->insert(cursor_pos, temptext);
                 cursor_pos += strlen(temptext);
@@ -730,7 +730,7 @@ bool prompt_for_string(const std::string& message, std::string& result)
     
     char* str = myscreen->text_normal.input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
     
-    if(str == NULL)
+    if(str == nullptr)
         return false;
     
     result = str;
@@ -771,7 +771,7 @@ public:
     
     void set(walker* target)
     {
-        if(target == NULL)
+        if(target == nullptr)
         {
             order = ORDER_LIVING;
             family = 0;
@@ -802,7 +802,7 @@ public:
     
     
     SelectionInfo()
-        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1), target(NULL)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1), target(nullptr)
     {}
     SelectionInfo(walker* target)
         : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(ORDER_LIVING), family(FAMILY_SOLDIER), level(1), target(target)
@@ -824,7 +824,7 @@ public:
     }
     void set(walker* target)
     {
-        if(target == NULL)
+        if(target == nullptr)
             clear();
         else
         {
@@ -844,7 +844,7 @@ public:
     walker* get_object(LevelData* level)
     {
         if(!valid)
-            return NULL;
+            return nullptr;
         
         return target;
     }
@@ -1308,7 +1308,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         if(selection.size() == 1 && selection.front().order == ORDER_LIVING)
         {
             walker* obj = selection.front().get_object(level);
-            if(obj != NULL)
+            if(obj != nullptr)
             {
                 std::string name = obj->stats->name;
                 if(prompt_for_string("Rename", name))
@@ -1328,7 +1328,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
             {
                 walker* obj = e->get_object(level);
-                if(obj != NULL)
+                if(obj != nullptr)
                 {
                     if(obj->team_num > 0)
                         obj->team_num--;
@@ -1353,7 +1353,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
             {
                 walker* obj = e->get_object(level);
-                if(obj != NULL)
+                if(obj != nullptr)
                 {
                     if(obj->team_num < MAX_TEAM)
                         obj->team_num++;
@@ -1376,7 +1376,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
             walker* obj = e->get_object(level);
-            if(obj != NULL)
+            if(obj != nullptr)
             {
                 if(obj->stats->level > 1)
                 {
@@ -1392,7 +1392,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
             walker* obj = e->get_object(level);
-            if(obj != NULL)
+            if(obj != nullptr)
             {
                 obj->stats->level++;
                 e->level = obj->stats->level;
@@ -1405,7 +1405,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
             walker* obj = e->get_object(level);
-            if(obj != NULL && obj->query_order() == ORDER_LIVING)
+            if(obj != nullptr && obj->query_order() == ORDER_LIVING)
             {
                 if(e->family > 0)
                     e->family--;
@@ -1427,7 +1427,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
             walker* obj = e->get_object(level);
-            if(obj != NULL && obj->query_order() == ORDER_LIVING)
+            if(obj != nullptr && obj->query_order() == ORDER_LIVING)
             {
                 if(e->family+1 < NUM_FAMILIES)
                     e->family++;
@@ -1449,7 +1449,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
             walker* obj = e->get_object(level);
-            if(obj != NULL)
+            if(obj != nullptr)
             {
                 if(obj->curdir < FACE_UP_LEFT)
                     obj->curdir++;
@@ -1465,7 +1465,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
             walker* obj = e->get_object(level);
-            if(obj != NULL)
+            if(obj != nullptr)
             {
                 level->remove_ob(obj);
                 delete obj;
@@ -1576,7 +1576,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     for(auto e = d.fxlist.begin(); e != d.fxlist.end(); e++)
     {
         walker* w = *e;
-        if(w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT && w->stats != NULL)
+        if(w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT && w->stats != nullptr)
             exits.insert(w->stats->level);
     }
     
@@ -2108,13 +2108,13 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
             Sint32 worldx = mx + level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
             Sint32 worldy = my + level->topy - myscreen->viewob[0]->yloc; // - S_UP
             
-            walker* under_cursor = NULL;
+            walker* under_cursor = nullptr;
             if(!dragging && !rect_selecting)
             {
                 // Did we start dragging a selected object?
                 under_cursor = get_object(worldx, worldy);
                 
-                walker* got_one = NULL;
+                walker* got_one = nullptr;
                 for(vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
                 {
                     if(e->target == under_cursor)
@@ -2126,14 +2126,14 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
                 under_cursor = got_one;
             }
             
-            if((dragging || under_cursor != NULL) && selection.size() > 0)
+            if((dragging || under_cursor != nullptr) && selection.size() > 0)
             {
                 // Drag the selected objects
                 dragging = true;
                 for(vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
                 {
                     walker* w = e->get_object(level);
-                    if(w != NULL)
+                    if(w != nullptr)
                     {
                         w->setxy(w->xpos + dx, w->ypos + dy);
                         
@@ -2396,7 +2396,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             
             if(!cancel)
             {
-                CampaignResult result = pick_campaign(NULL, true);
+                CampaignResult result = pick_campaign(nullptr, true);
                 if(result.id.size() > 0)
                 {
                     if(loadCampaign(result.id))
@@ -2458,7 +2458,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, fileCampaignSaveAsButton))
         {
-            CampaignResult result = pick_campaign(NULL, true);
+            CampaignResult result = pick_campaign(nullptr, true);
             if(result.id.size() > 0)
             {
                 std::list<std::string> campaigns = list_campaigns();
@@ -3040,7 +3040,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
 
             if (mode == SELECT)
             {
-                walker* newob = NULL;
+                walker* newob = nullptr;
                 
                 if(rect_selecting && (fabs(selection_rect.w) > 15 || fabs(selection_rect.h > 15)))
                 {
@@ -3130,7 +3130,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 } // end of background grid window
                 else if(mx < 245-4 || my > L_D(7)-2)
                 {
-                    walker* newob = NULL;
+                    walker* newob = nullptr;
                     if(!object_brush.picking)
                     {
                         // Create new object here (apply brush)
@@ -3148,7 +3148,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             {
                                 level->remove_ob(newob);
                                 delete newob;
-                                newob = NULL;
+                                newob = nullptr;
                             }
                         }  // end of failure to put guy
                         else if(!object_brush.snap_to_grid)
@@ -3235,7 +3235,7 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
         
         // Get object from level
         walker* w = get_object(windowx, windowy);
-        if(w != NULL)
+        if(w != nullptr)
         {
             object_brush.set(w);
         }
@@ -3266,7 +3266,7 @@ void LevelEditorData::set_terrain(int x, int y, unsigned char terrain)
 
 walker* LevelEditorData::get_object(int x, int y)
 {
-    walker* result = NULL;
+    walker* result = nullptr;
     walker* newob = level->add_ob(ORDER_LIVING, FAMILY_ELF);
     newob->setxy(x, y);
     if (some_hit(x, y, newob, level))
@@ -4243,8 +4243,8 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
         }
 	}
 
-	ob->collide_ob = NULL;
-	return NULL;
+	ob->collide_ob = nullptr;
+	return nullptr;
 }
 
 

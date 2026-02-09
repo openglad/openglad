@@ -46,7 +46,7 @@ SaveData::SaveData()
 	team_size = 0;
 	for(int i = 0; i < MAX_TEAM_SIZE; i++)
     {
-        team_list[i] = NULL;
+        team_list[i] = nullptr;
     }
 }
 
@@ -78,7 +78,7 @@ void SaveData::reset()
 	for(int i = 0; i < team_size; i++)
     {
         delete team_list[i];
-        team_list[i] = NULL;
+        team_list[i] = nullptr;
     }
 	team_size = 0;
 	
@@ -171,7 +171,7 @@ bool SaveData::load(const std::string& filename)
 	strcpy(temp_filename, filename.c_str());
 	strcat(temp_filename, ".gtl"); // gladiator team list
 
-	if ( (infile = open_read_file("save/", temp_filename)) == NULL )
+	if ( (infile = open_read_file("save/", temp_filename)) == nullptr )
 	{
 		LogError("Failed to open save file: %s\n", filename.c_str());
 		return 0;
@@ -183,7 +183,7 @@ bool SaveData::load(const std::string& filename)
 	for(int i = 0; i < team_size; i++)
     {
         delete team_list[i];
-        team_list[i] = NULL;
+        team_list[i] = nullptr;
     }
     team_size = 0;
 
@@ -428,7 +428,7 @@ void SaveData::update_guys(std::list<walker*>& oblist)
 	for(int i = 0; i < team_size; i++)
     {
         delete team_list[i];
-        team_list[i] = NULL;
+        team_list[i] = nullptr;
     }
     team_size = 0;
     
@@ -536,7 +536,7 @@ bool SaveData::save(const std::string& filename)
 	strcpy(temp_filename, filename.c_str());
 	strcat(temp_filename, ".gtl"); // gladiator team list
 	
-	if ( (outfile = open_write_file("save/", temp_filename)) == NULL ) // open for write
+	if ( (outfile = open_write_file("save/", temp_filename)) == nullptr ) // open for write
 	{
 		LogError("Failed to write team file: %s\n", filename.c_str());
 		return 0;

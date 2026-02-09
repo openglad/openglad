@@ -489,7 +489,7 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 {
 
 
-	unused=NULL;	//for avoid warning
+	unused=nullptr;	//for avoid warning
 	//int j;
 	unsigned int x, y;
 	Uint32 color[16];
@@ -637,7 +637,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 
 	if (!src || !dest)
 	{
-		LogError("In Super2xSaI, src or dest are NULL\n");
+		LogError("In Super2xSaI, src or dest are nullptr\n");
 		return;
 	}
 
@@ -663,7 +663,7 @@ void Super2xSaI(SDL_Surface *src, SDL_Surface *dest, int s_x, int s_y, int d_x, 
 	Super2xSaI_ex(
 			(unsigned char*) src->pixels + src->pitch*s_y + s_x*sbpp, 
 			src->pitch, 
-			NULL, 
+			nullptr, 
 			(unsigned char*) dest->pixels + dest->pitch*d_y +d_x*dbpp, 
 			dest->pitch, 
 			w, h);
@@ -711,7 +711,7 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
                         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                         w, h,
                         window_flags);
-    if(window == NULL)
+    if(window == nullptr)
         exit(1);
     
     SDL_GetWindowSize(window, &w, &h);
@@ -728,8 +728,8 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     
     render = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
 	render_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 320, 200);
-    render2 = NULL;  // To be initialized when we actually need it
-    render2_tex = NULL;
+    render2 = nullptr;  // To be initialized when we actually need it
+    render2_tex = nullptr;
 }
 
 Screen::~Screen()
@@ -751,7 +751,7 @@ void Screen::SaveBMP(SDL_Surface* screen, char* filename)
 
 void Screen::clear()
 {
-	SDL_FillRect(render, NULL, 0x000000);
+	SDL_FillRect(render, nullptr, 0x000000);
 }
 
 void Screen::clear(int x, int y, int w, int h)
@@ -767,7 +767,7 @@ void Screen::swap(int x, int y, int w, int h)
     
 	switch(Engine) {
 		case SAI:
-                if(render2 == NULL)
+                if(render2 == nullptr)
                 {
                     render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
                     render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
@@ -782,7 +782,7 @@ void Screen::swap(int x, int y, int w, int h)
                 dest_texture = render2_tex;
             break;
 		case EAGLE:
-                if(render2 == NULL)
+                if(render2 == nullptr)
                 {
                     render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
                     render2_tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, 640, 400);
@@ -799,11 +799,11 @@ void Screen::swap(int x, int y, int w, int h)
             break;
 	}
 	
-    SDL_UpdateTexture(dest_texture, NULL, source_surface->pixels, source_surface->pitch);
+    SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
     
     SDL_Rect dest = {int(viewport_offset_x), int(viewport_offset_y), int(viewport_w), int(viewport_h)};
 
-    SDL_RenderCopy(renderer, dest_texture, NULL, &dest);
+    SDL_RenderCopy(renderer, dest_texture, nullptr, &dest);
     SDL_RenderPresent(renderer);
 }
 
@@ -812,13 +812,13 @@ void Screen::clear_window()
     SDL_Surface* source_surface = render;
     SDL_Texture* dest_texture = render_tex;
     
-    SDL_FillRect(source_surface, NULL, 0x000000);
+    SDL_FillRect(source_surface, nullptr, 0x000000);
     
-    SDL_UpdateTexture(dest_texture, NULL, source_surface->pixels, source_surface->pitch);
+    SDL_UpdateTexture(dest_texture, nullptr, source_surface->pixels, source_surface->pitch);
     
     SDL_Rect dest = {0, 0, int(window_w), int(window_h)};
 
-    SDL_RenderCopy(renderer, dest_texture, NULL, &dest);
+    SDL_RenderCopy(renderer, dest_texture, nullptr, &dest);
 }
 
 #undef GET_RESULT

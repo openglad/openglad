@@ -38,16 +38,16 @@ short weap::act()
 
 	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
-		foe = NULL;
+		foe = nullptr;
 	if (leader && leader->dead)
-		leader = NULL;
+		leader = nullptr;
 	if (owner && owner->dead)
-		owner = NULL;
+		owner = nullptr;
 
 	if (!owner)
 		owner = this; //to fix cases where our parent died!
 
-	collide_ob = NULL; // always start with no collision..
+	collide_ob = nullptr; // always start with no collision..
 
 	// Complete previous animations (like firing)
 	if (ani_type != ANI_WALK)
@@ -131,7 +131,7 @@ short weap::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 
-	walker  *newob = NULL;
+	walker  *newob = nullptr;
 
 	if (death_called)  // Make sure we don't get multiple deaths
 		return 0;

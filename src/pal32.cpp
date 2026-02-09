@@ -47,7 +47,7 @@ short load_and_set_palette(const char *filename, unsigned char *newpalette)
 	short i;
 
 	//buffers: don't need this file stuff since we use our_pal_lookup instead
-	/*	if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
+	/*	if ( (infile = fopen(filename, "rb")) == nullptr ) // open for read
 		{
 			Log("Error in reading palette file %s\n", filename);
 			return 0;
@@ -92,7 +92,7 @@ short load_palette(const char *filename, unsigned char *newpalette)
 	short i;
 
 	/* buffers: we don't need this since we use our_pal_lookup() now
-		if ( (infile = fopen(filename, "rb")) == NULL ) // open for read
+		if ( (infile = fopen(filename, "rb")) == nullptr ) // open for read
 		{
 			Log("Error in reading palette file %s\n", filename);
 			return 0;

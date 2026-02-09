@@ -53,17 +53,17 @@ walker::walker(const PixieData& data)
 	lastx = 0;
 	lasty = 0;
 	act_type = ACT_RANDOM;
-	collide_ob = NULL;
+	collide_ob = nullptr;
 	cycle = 0;
-	ani = NULL;
+	ani = nullptr;
 	team_num = 0;
 	real_team_num = 255;  // to show nothing's changed
 	ani_type = 0;
 	busy = 0;
-	foe = NULL;
-	leader = NULL;
-	owner = NULL;
-	myguy = NULL;
+	foe = nullptr;
+	leader = nullptr;
+	owner = nullptr;
+	myguy = nullptr;
 	myself = this;
 	dead = 0; // we're alive
 
@@ -100,8 +100,8 @@ walker::walker(const PixieData& data)
 
 	weapons_left = 1; // default, used for fighters
 
-	myobmap = NULL;
-	if(myscreen != NULL)
+	myobmap = nullptr;
+	if(myscreen != nullptr)
         myobmap = myscreen->level_data.myobmap;  // default obmap (spatial partitioning optimization?) changed when added to a list
     
 	path_check_counter = 5 + rand()%10;
@@ -124,22 +124,22 @@ walker::reset(void)
 	//  lastx = 0;
 	//  lasty = 0;
 	//  act_type = ACT_RANDOM;
-	//  collide_ob = NULL;
+	//  collide_ob = nullptr;
 
 	// // cycle = 0;
 
-	//  ani = NULL;
+	//  ani = nullptr;
 
 	// //  team_num = 0;
 	// //  ani_type = 0;
 	// //  busy = 0;
 
-	//  foe = NULL;
-	//  leader = NULL;
-	//  owner = NULL;
-	//  myguy = NULL;
+	//  foe = nullptr;
+	//  leader = nullptr;
+	//  owner = nullptr;
+	//  myguy = nullptr;
 	//  myself = this;
-	//  ani = NULL;
+	//  ani = nullptr;
 	dead = 0; // we're alive
 
 	death_called = 0;
@@ -188,22 +188,22 @@ walker::~walker()
 {
 	//  Log("(Death) Removed ORDER %d FAMILY %d, pos %dx%d\n", order, family,
 	//    xpos, ypos); //debugging memory
-	foe = NULL;
-	leader = NULL;
-	owner = NULL;
-	collide_ob = NULL;
+	foe = nullptr;
+	leader = nullptr;
+	owner = nullptr;
+	collide_ob = nullptr;
 	dead = 1;
 	
-	if(myobmap != NULL)
+	if(myobmap != nullptr)
         myobmap->remove(this); // remove ourselves from obmap lists
     
 	delete stats;
-	stats = NULL;
-	bmp = NULL;
+	stats = nullptr;
+	bmp = nullptr;
 	if (myguy)
 		delete myguy;
-	myguy = NULL;
-	myself = NULL;
+	myguy = nullptr;
+	myself = nullptr;
 
 
 }
@@ -683,17 +683,17 @@ short walker::init_fire(short xdir, short ydir)
 
 walker  * walker::fire()
 {
-	walker  *weapon = NULL;
+	walker  *weapon = nullptr;
 	signed char waver;
 	//short xp, yp;
 
 	// Do we have enough spellpoints for our weapon
 	if (stats->magicpoints < stats->weapon_cost)
-		return NULL;
+		return nullptr;
 
 	weapon = create_weapon();
 	if (!weapon)
-		return NULL;
+		return nullptr;
 
 	stats->magicpoints -= stats->weapon_cost;
 
@@ -779,12 +779,12 @@ walker  * walker::fire()
             }
 		}
 		weapon->dead = 1;
-		return NULL;
+		return nullptr;
 	}
 	else if (stats->query_bit_flags(BIT_NO_RANGED))
 	{
 		weapon->dead = 1;
-		return NULL;
+		return nullptr;
 	}
 	else
 	{
@@ -795,7 +795,7 @@ walker  * walker::fire()
                 // Give back the magic it cost, since we didn't throw it
                 stats->magicpoints += stats->weapon_cost;
                 weapon->dead = 1;
-                return NULL;
+                return nullptr;
             }
             else
                 weapons_left--;
@@ -839,7 +839,7 @@ walker  * walker::fire()
 				case FAMILY_TREEHOUSE: // elves also no lifetime
 					weapon->stats->level = random(stats->level)+1;
 					weapon->set_difficulty( (Uint32) weapon->stats->level );
-					weapon->owner = NULL;
+					weapon->owner = nullptr;
 					break;
 				default: // tents, bones, etc
 					weapon->lifetime = 800 + stats->level*11;
@@ -1115,7 +1115,7 @@ short walker::draw(viewscreen  *view_buf)
 	    outline = 0;
 	}
 	
-	if(view_buf->control != NULL)
+	if(view_buf->control != nullptr)
     {
         if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
             outline = OUTLINE_INVISIBLE;
@@ -1133,7 +1133,7 @@ short walker::draw(viewscreen  *view_buf)
         phantom_mode = SHIFT_RANDOM;
         should_draw_hp = false;
     }
-	else if (invisibility_left && view_buf->control != NULL)  //WE ARE INVISIBLE
+	else if (invisibility_left && view_buf->control != nullptr)  //WE ARE INVISIBLE
 	{
 		if (this->team_num == view_buf->control->team_num)
         {
@@ -1378,7 +1378,7 @@ using namespace micropather;
 #define GET_STATE_Y(state) (intptr_t(state)/MAP_WIDTH * GRID_SIZE)
 #define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
 
-walker* path_walker = NULL;
+walker* path_walker = nullptr;
 
 class Map : public Graph
 {
@@ -1528,13 +1528,13 @@ short walker::act()
 
 	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
-		foe = NULL;
+		foe = nullptr;
 	if (leader && leader->dead)
-		leader = NULL;
+		leader = nullptr;
 	if (owner && owner->dead)
-		owner = NULL;
+		owner = nullptr;
 
-	collide_ob = NULL; // always start with no collison..
+	collide_ob = nullptr; // always start with no collison..
 
 	// Complete previous animations (like firing)
 	if (ani_type != ANI_WALK)
@@ -1859,7 +1859,7 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
     if(tempdamage > 0)
         target->regen_delay = 50;
     
-    if(target->myguy != NULL)
+    if(target->myguy != nullptr)
     {
         target->myguy->scen_damage_taken += tempdamage;
         if(target->myguy->scen_min_hp > target->stats->hitpoints)
@@ -1880,7 +1880,7 @@ short walker::attack(walker  *target)
 	walker *attacker; // us or our owner ..
 	static short tom = 0;
 
-	if (myguy != NULL || team_num == 0)
+	if (myguy != nullptr || team_num == 0)
 		getscore = 1;
 
 	if (target && target->dead)
@@ -2148,7 +2148,7 @@ short walker::attack(walker  *target)
 		target->dead = 1;
 		target->death(); // any special effect upon death ..
 	}
-	collide_ob = NULL;
+	collide_ob = nullptr;
 
 	return 1;
 }
@@ -2219,7 +2219,7 @@ short walker::animate()
 			if (newob->myguy && newob->myguy->exp < (1000*stats->level) )
 			{
 				delete newob->myguy;  // can't be 'sustained' if too low
-				newob->myguy = NULL;
+				newob->myguy = nullptr;
 				strcpy(newob->stats->name, "SLIME"); // generic name
 				newob->stats->level = calculate_level(myguy->exp/2);
 			}
@@ -2659,7 +2659,7 @@ short walker::special()
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
-							myguy->exp += exp_from_action(EXP_TURN_UNDEAD, this, NULL, generic); // (stats->level/2));
+							myguy->exp += exp_from_action(EXP_TURN_UNDEAD, this, nullptr, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
 								strcpy(message, myguy->name);
@@ -2719,7 +2719,7 @@ short walker::special()
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
-							myguy->exp += exp_from_action(EXP_TURN_UNDEAD, this, NULL, generic); // (stats->level/2));
+							myguy->exp += exp_from_action(EXP_TURN_UNDEAD, this, nullptr, generic); // (stats->level/2));
 							if (team_num == 0 || myguy)
 							{
 								strcpy(message, myguy->name);
@@ -3399,7 +3399,7 @@ short walker::special()
                                 {
                                     ob->real_team_num = ob->team_num;
                                     ob->team_num = team_num;
-                                    ob->foe = NULL; // allow choice of new foe
+                                    ob->foe = nullptr; // allow choice of new foe
                                     ob->charm_left = 25 + random(generic*20);
                                 }
                                 didheal++;
@@ -3593,7 +3593,7 @@ short walker::special()
                                         ob->real_team_num = ob->team_num;
                                         ob->team_num = team_num;
                                         if (foe == ob)
-                                            ob->foe = NULL;
+                                            ob->foe = nullptr;
                                         else
                                             ob->foe = foe;
                                         ob->charm_left = 75 + generic*25;
@@ -3762,7 +3762,7 @@ short walker::special()
                                 if (newob != this) // not for ourselves
                                 {
                                     // First see if this person already has protection (slow)
-                                    tempwalk = NULL;
+                                    tempwalk = nullptr;
                                     for(auto f = myscreen->level_data.oblist.begin(); f != myscreen->level_data.oblist.end(); f++)
                                     {
                                         walker* ob = *f;
@@ -3873,7 +3873,7 @@ short walker::special()
 					if (distance > 24) // must be close enough
 						return 0;
 					stats->hitpoints += newob->stats->level*5;
-					do_heal_effects(NULL, this, newob->stats->level*5);
+					do_heal_effects(nullptr, this, newob->stats->level*5);
 					// Print the eating notice
 					if (myguy)
 					{
@@ -4092,7 +4092,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 // turning us if we need it.
 short walker::fire_check(short xdelta, short ydelta)
 {
-	walker  *weapon = NULL;
+	walker  *weapon = nullptr;
 	//  short newx=0, newy=0;
 	short i, loops;
 	short xdir = 0;
@@ -4108,7 +4108,7 @@ short walker::fire_check(short xdelta, short ydelta)
 	if (!weapon)
 		return 0;
 	set_weapon_heading(weapon); // set lastx, lasty based on our facing...
-	weapon->collide_ob = NULL;
+	weapon->collide_ob = nullptr;
 	// Based on facing, we alter the weapon's proposed
 	//   size so the collision check is fooled into checking
 	//   a Sint32 strip equal to the lineofsight times the size
@@ -4206,7 +4206,7 @@ short walker::fire_check(short xdelta, short ydelta)
 		if ( !myscreen->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
 		{
 			weapon->dead = 1;
-			//foe = NULL;  // can't hit this guy
+			//foe = nullptr;  // can't hit this guy
 			//stats->try_command(COMMAND_RANDOM_WALK, random(8));
 			return 0;
 		}
@@ -4319,7 +4319,7 @@ walker::act_random()
 		}
 		else
 			// Nearest foe is blocked
-			//foe = NULL;
+			//foe = nullptr;
 			turn(facing(xdist,ydist));
 	}
 
@@ -4347,7 +4347,7 @@ walker::act_random()
 	}
 
 	// If blocked
-	collide_ob = NULL;
+	collide_ob = nullptr;
 
 	// We can slide now, so always just walkstep, NOT using
 	// stepsize ..
@@ -4492,7 +4492,7 @@ short walker::death()
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)
-	walker  *newob = NULL;
+	walker  *newob = nullptr;
 	Sint32 i;
 
 	if (death_called)
@@ -4539,7 +4539,7 @@ short walker::death()
 					if (myguy)
 					{
 						newob->myguy = myguy;
-						myguy = NULL;
+						myguy = nullptr;
 					}
 					newob->center_on(this);
 					stats->hitpoints = stats->max_hitpoints;
@@ -4558,7 +4558,7 @@ short walker::death()
 					if (myguy)
 					{
 						newob->myguy = myguy;
-						myguy = NULL;
+						myguy = nullptr;
 					}
 					newob->center_on(this);
 					stats->hitpoints = stats->max_hitpoints;
@@ -4651,7 +4651,7 @@ walker * walker::do_summon(char whatfamily, unsigned short lifetime)
 {
 	if (whatfamily || lifetime)
 		Log("Should not be hitting walker::do_summon!\n");
-	return NULL;
+	return nullptr;
 }
 
 short walker::check_special()
@@ -4747,7 +4747,7 @@ Sint32 walker::is_friendly(walker *target)
 
 	// In case we're passed a null pointer somehow,
 	// we're always unfriendly :)
-	if (target == NULL)
+	if (target == nullptr)
 		return 0;
 	// If either of us is dead, we're also unfriendly :)
 	if (dead || target->dead)
@@ -4772,9 +4772,9 @@ Sint32 walker::is_friendly(walker *target)
 	// Now, if we or the target don't contain a "myguy" pointer,
 	// then we don't care about allied_mode, and we'll
 	// treat our state as always in 'enemy' mode
-	if (headtarget->myguy == NULL && headus->myguy == NULL)
+	if (headtarget->myguy == nullptr && headus->myguy == nullptr)
 		has_myguy = 0;
-    else if(headtarget->myguy == NULL || headus->myguy == NULL)
+    else if(headtarget->myguy == nullptr || headus->myguy == nullptr)
         has_myguy = 2;
 	else
 		has_myguy = 1;
@@ -4793,7 +4793,7 @@ Sint32 walker::is_friendly(walker *target)
         // One person is missing a myguy pointer.
         // The one with a myguy pointer is owned by a player.
         // If the other person belongs to team 0 (red), then they are friendly.
-        return (headtarget->myguy == NULL && headtarget->team_num == 0) || (headus->myguy == NULL && headus->team_num == 0);
+        return (headtarget->myguy == nullptr && headtarget->team_num == 0) || (headus->myguy == nullptr && headus->team_num == 0);
     }
 
 	// If we're in 'friendly' mode, then everyone with
@@ -4831,7 +4831,7 @@ Sint32 walker::is_friendly_to_team(unsigned char team)
 	// Now, if we or the target don't contain a "myguy" pointer,
 	// then we don't care about allied_mode, and we'll
 	// treat our state as always in 'enemy' mode
-	if (headus->myguy == NULL)
+	if (headus->myguy == nullptr)
 		has_myguy = 0;
 	else
 		has_myguy = 1;

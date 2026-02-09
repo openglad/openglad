@@ -50,7 +50,7 @@ PixieData read_pixie_file(const char  * filename)
 	// <pixie data>               <x*y*frames> bytes
     
     PixieData result;
-	SDL_RWops  *infile = NULL;
+	SDL_RWops  *infile = nullptr;
 
 	// Zardus: try to find file using open_read_file
 	if (!((infile = open_read_file("pix/", filename)) || (infile = open_read_file(filename))))

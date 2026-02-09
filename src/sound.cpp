@@ -41,7 +41,7 @@ soundob::soundob()
 	// Do stuff
 	silence = 0;        // default is sound ON
 	for (int i=0; i < NUMSOUNDS; i++)
-		sound[i] = NULL;
+		sound[i] = nullptr;
 	init();
 }
 
@@ -52,7 +52,7 @@ soundob::soundob(bool silent)
 {
 	silence = silent;
 	for (int i=0; i < NUMSOUNDS; i++)
-		sound[i] = NULL;
+		sound[i] = nullptr;
 	init();             // init will do nothing if silent is set
 }
 
@@ -69,7 +69,7 @@ int soundob::init()
 	for (i=0; i < NUMSOUNDS; i++)
     {
 		Mix_FreeChunk(sound[i]);
-		sound[i] = NULL;
+		sound[i] = nullptr;
     }
 
 	// Do we have sounds on?
@@ -156,7 +156,7 @@ void soundob::shutdown()
 		return;
 
 	for (i=0; i < NUMSOUNDS; i++)
-		if (sound[i] != NULL)
+		if (sound[i] != nullptr)
 			free_sound(&sound[i]);
 
 	Mix_CloseAudio();
