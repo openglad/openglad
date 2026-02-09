@@ -17,7 +17,6 @@ extern int g_picker_max_mainmenu_calls;
 
 #ifdef TESTING
 extern bool g_test_in_game;
-extern int g_test_max_game_frames;
 #endif
 
 // Globals defined in picker.cpp that we need for cleanup
@@ -46,13 +45,18 @@ static void cleanup_picker_state()
     main_title_logo_data.free();
 }
 
-// Test: hire a lone fairy via the UI, start level 1 at max speed, stand there,
+// Test: hire a lone fairy via the UI, start level 4 at max speed, stand there,
 // and confirm we lose.
 //
 // Flow:
 //   Main Menu -> Begin New Game -> (dismiss campaign intro) ->
 //   Hire Menu -> NEXT x12 to reach FAERIE -> HIRE ME -> BACK ->
-//   Team Menu -> GO -> game runs -> fairy dies -> BACK -> exits
+//   Team Menu -> (set scen_num=4) -> GO -> game runs -> fairy dies -> BACK -> exits
+//
+// Uses level 4 because levels 1-3 have team0 NPC allies that keep the
+// game alive after the fairy dies (view.cpp hands control to any team0
+// entity). Level 4 has no team0 NPCs, so endgame(1) fires immediately
+// when the fairy dies.
 //
 // The fairy has the lowest HP of all characters. With no input, enemies
 // swarm and kill it quickly.
@@ -105,7 +109,7 @@ static int fairy_injector(void* data)
     wait_for_interactable("go", 10000);
     SDL_Delay(500);
 
-    g_test_max_game_frames = 50000;
+    myscreen->save_data.scen_num = 4;
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");
@@ -120,7 +124,6 @@ static int fairy_injector(void* data)
     while (g_test_in_game) SDL_Delay(50);     // wait for game to end
 
     // Restore test settings
-    g_test_max_game_frames = 0;
     set_game_speed(state->original_speed);
 
     // Now we're truly back in create_team_menu with fresh buttons
@@ -162,9 +165,9 @@ void test_fairy_death() {
 
     TEST_ASSERT(state.finished, "injector thread should have completed");
 
-    // We lost — level 1 should NOT be marked completed
-    TEST_ASSERT(!myscreen->save_data.is_level_completed(1),
-                "level 1 should NOT be completed (fairy should have died)");
+    // We lost — level 4 should NOT be marked completed
+    TEST_ASSERT(!myscreen->save_data.is_level_completed(4),
+                "level 4 should NOT be completed (fairy should have died)");
 
     fprintf(stderr, "  [test] Fairy died as expected via UI hire flow\n");
 }

@@ -16,15 +16,12 @@ int main(int argc, char* argv[]) {
     SDL_setenv("SDL_VIDEODRIVER", "offscreen", 1);
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
     // Game-loop tests (test_fairy_death, test_overpowered_team) run the full
-    // game simulation at max speed. Three compile-time optimizations make
+    // game simulation at max speed. Two compile-time optimizations make
     // this fast enough for CI:
     //   1. sai2x.cpp creates the renderer without SDL_RENDERER_PRESENTVSYNC
     //      so SDL_RenderPresent doesn't block ~16ms per call.
     //   2. glad.cpp skips redraw()/refresh() in game_frame() so we don't
     //      burn CPU on software rendering that nobody sees.
-    //   3. glad.cpp enforces g_test_max_game_frames so game-loop tests
-    //      can't run indefinitely (e.g. level NPCs keeping the game alive
-    //      after hired characters die).
 
     // Do global init once
     init_logging();
