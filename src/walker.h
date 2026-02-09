@@ -22,6 +22,11 @@
 #include "pixien.h"
 #include "obmap.h"
 
+// Opaque state type used by MicroPather for pathfinding nodes.
+// States are encoded grid coordinates (not real pointers), but the
+// micropather library API requires void*.
+using MicroPatherState = void*;
+
 class walker : public pixieN
 {
 	public:
@@ -150,7 +155,7 @@ class walker : public pixieN
 		bool in_act;
 		obmap* myobmap;
 		int path_check_counter;
-		std::vector<void*> path_to_foe;  // Result from pathfinding
+		std::vector<MicroPatherState> path_to_foe;  // Result from pathfinding
 		
 		// TODO: Move this to screen class so it doesn't get overlapped by other walkers drawing
 		class DamageNumber

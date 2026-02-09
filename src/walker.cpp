@@ -1373,7 +1373,7 @@ using namespace micropather;
 #define MAP_WIDTH 400
 #define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
 
-#define MAKE_STATE(x, y) (void*)intptr_t(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE))
+#define MAKE_STATE(x, y) (MicroPatherState)intptr_t(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE))
 #define GET_STATE_X(state) (intptr_t(state)%MAP_WIDTH * GRID_SIZE)
 #define GET_STATE_Y(state) (intptr_t(state)/MAP_WIDTH * GRID_SIZE)
 #define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
@@ -1460,8 +1460,8 @@ void walker::find_path_to_foe()
 {
     float totalCost = 0.0f;
 
-    void* startState = MAKE_STATE(xpos, ypos);
-    void* endState = MAKE_STATE(foe->xpos, foe->ypos);
+    MicroPatherState startState = MAKE_STATE(xpos, ypos);
+    MicroPatherState endState = MAKE_STATE(foe->xpos, foe->ypos);
     
     path_to_foe.clear();
     pather.Reset();  // Assume that the old paths are invalid
@@ -1473,8 +1473,8 @@ void walker::follow_path_to_foe()
 {
     while(path_to_foe.size() > 0)
     {
-        std::vector<void*>::iterator node = path_to_foe.begin();
-        void* state = *node;
+        std::vector<MicroPatherState>::iterator node = path_to_foe.begin();
+        MicroPatherState state = *node;
         int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos);
         int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos);
         
@@ -1506,7 +1506,7 @@ void walker::draw_path(viewscreen* view_buf)
     short offsetx = view_buf->topx - view_buf->xloc - 8;
     short offsety = view_buf->topy - view_buf->yloc - 8;
     
-    std::vector<void*>::iterator e = path_to_foe.begin();
+    std::vector<MicroPatherState>::iterator e = path_to_foe.begin();
     int px = GET_STATE_X(*e) - offsetx;
     int py = GET_STATE_Y(*e) - offsety;
     while(e != path_to_foe.end())
