@@ -1,19 +1,14 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, synchronize]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+  # To enable automatic PR reviews, configure ANTHROPIC_API_KEY as a
+  # repository secret and uncomment the pull_request trigger below.
+  workflow_dispatch:
+  # pull_request:
+  #   types: [opened, synchronize]
 
 jobs:
   claude-review:
-    if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
-
     runs-on: ubuntu-latest
     permissions:
       contents: read
