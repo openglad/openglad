@@ -367,7 +367,7 @@ walker* LevelData::add_ob(char order, char family, bool atstart)
     if (order == ORDER_LIVING)
         numobs++;
     
-    oblist.push_back(w);
+    oblist.push_back(std::unique_ptr<walker>(w));
     return w;
 }
 
@@ -379,7 +379,7 @@ walker* LevelData::add_fx_ob(char order, char family)
 	//numobs++;
 	//w->ignore = 1;
 	
-	fxlist.push_back(w);
+	fxlist.push_back(std::unique_ptr<walker>(w));
 	return w;
 }
 
@@ -388,7 +388,7 @@ walker* LevelData::add_weap_ob(char order, char family)
 	walker* w = myloader->create_walker(order, family, myscreen);
     w->myobmap = this->myobmap.get();
 
-    weaplist.push_back(w);
+    weaplist.push_back(std::unique_ptr<walker>(w));
 	return w;
 }
 
@@ -396,25 +396,27 @@ short LevelData::remove_ob(walker  *ob)
 {
 	if (ob && ob->query_order() == ORDER_LIVING)
 		numobs--;
-    
-    std::list<walker*>::iterator e = std::find(weaplist.begin(), weaplist.end(), ob);
+
+    auto pred = [ob](const std::unique_ptr<walker>& p) { return p.get() == ob; };
+
+    auto e = std::find_if(weaplist.begin(), weaplist.end(), pred);
     if(e != weaplist.end())
     {
         weaplist.erase(e);
         return 1;
     }
-    
-    e = std::find(fxlist.begin(), fxlist.end(), ob);
-    if(e != fxlist.end())
+
+    auto f = std::find_if(fxlist.begin(), fxlist.end(), pred);
+    if(f != fxlist.end())
     {
-        fxlist.erase(e);
+        fxlist.erase(f);
         return 1;
     }
-    
-    e = std::find(oblist.begin(), oblist.end(), ob);
-    if(e != oblist.end())
+
+    auto g = std::find_if(oblist.begin(), oblist.end(), pred);
+    if(g != oblist.end())
     {
-        oblist.erase(e);
+        oblist.erase(g);
         return 1;
     }
 
@@ -522,34 +524,31 @@ void LevelData::resize_grid(int width, int height)
     
     for(auto e = oblist.begin(); e != oblist.end();)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
-			delete ob;
 			e = oblist.erase(e);
 		}
 		else
             e++;
 	}
-    
+
     for(auto e = fxlist.begin(); e != fxlist.end();)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
-			delete ob;
 			e = fxlist.erase(e);
 		}
 		else
             e++;
 	}
-    
+
     for(auto e = weaplist.begin(); e != weaplist.end();)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if(ob == nullptr || (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		{
-			delete ob;
 			e = weaplist.erase(e);
 		}
 		else
@@ -559,28 +558,9 @@ void LevelData::resize_grid(int width, int height)
 
 void LevelData::delete_objects()
 {
-    for(auto e = oblist.begin(); e != oblist.end(); e++)
-	{
-	    delete *e;
-	}
 	oblist.clear();
-	
-    for(auto e = fxlist.begin(); e != fxlist.end(); e++)
-	{
-	    delete *e;
-	}
 	fxlist.clear();
-	
-    for(auto e = weaplist.begin(); e != weaplist.end(); e++)
-	{
-	    delete *e;
-	}
 	weaplist.clear();
-    
-    for(std::list<walker*>::iterator e = dead_list.begin(); e != dead_list.end(); e++)
-    {
-        delete *e;
-    }
     dead_list.clear();
 
 	numobs = 0;
@@ -1017,7 +997,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	// Fix up doors, etc.
 	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && w->query_family()==FAMILY_DOOR)
 		{
 			if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
@@ -1207,7 +1187,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     // Fix up doors, etc.
 	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
         if (w && w->query_family()==FAMILY_DOOR)
         {
             if (data->mysmoother.query_genre_x_y(w->xpos/GRID_SIZE,
@@ -1217,7 +1197,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
             }
         }
     }
-    
+
     return 1;
 } // end load_version_6
 
@@ -1471,7 +1451,7 @@ bool LevelData::save()
 	// Okay, we've written header .. now dump the data ..
 	for(auto e = oblist.begin(); e != oblist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
         if (w == nullptr)
         {
             Log("Unexpected nullptr object.\n");
@@ -1503,7 +1483,7 @@ bool LevelData::save()
 	// Now dump the fxlist data ..
 	for(auto e = fxlist.begin(); e != fxlist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
         if (ob == nullptr)
         {
             Log("Unexpected nullptr fx object.\n");
@@ -1535,7 +1515,7 @@ bool LevelData::save()
 	// Now dump the weaplist data ..
 	for(auto e = weaplist.begin(); e != weaplist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
         if (ob == nullptr)
         {
             Log("Unexpected nullptr weap object.\n");

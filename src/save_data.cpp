@@ -423,7 +423,7 @@ bool SaveData::load(const std::string& filename)
 
 Sint32 calculate_level(Uint32 temp_exp);
 
-void SaveData::update_guys(std::list<walker*>& oblist)
+void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 {
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)
@@ -432,12 +432,12 @@ void SaveData::update_guys(std::list<walker*>& oblist)
         team_list[i] = nullptr;
     }
     team_size = 0;
-    
-    
+
+
     // Remove new (or existing) "guys" from the list and store them in this SaveData to be saved and trained.
     for(auto e = oblist.begin(); e != oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && !ob->dead && ob->myguy)
 		{
 		    // Take this one

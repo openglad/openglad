@@ -63,10 +63,10 @@ class screen : public video
 		void draw_panels(short howmany);
 		walker* find_nearest_blood(walker *who);
 		walker* find_nearest_player(walker *ob);
-		std::list<walker*> find_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
-		std::list<walker*> find_foes_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
-		std::list<walker*> find_friends_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
-		std::list<walker*> find_foe_weapons_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
+		std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
 		char damage_tile(short xloc, short yloc); // damage the specified tile
 		void do_notify(const char *message, walker  *who);  // printing text
 		void report_mem();

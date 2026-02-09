@@ -1466,7 +1466,6 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             if(obj != nullptr)
             {
                 level->remove_ob(obj);
-                delete obj;
                 levelchanged = 1;
             }
         }
@@ -1571,7 +1570,7 @@ void get_connected_level_exits(int current_level, const std::list<int>& levels, 
     std::set<int> exits;
     for(auto e = d.fxlist.begin(); e != d.fxlist.end(); e++)
     {
-        walker* w = *e;
+        walker* w = e->get();
         if(w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT && w->stats != nullptr)
             exits.insert(w->stats->level);
     }
@@ -2036,7 +2035,6 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         #endif
         
         level->remove_ob(newob);
-        delete newob;
     }
     
     
@@ -2172,7 +2170,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std
 {
     for(auto e = level->oblist.begin(); e != level->oblist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
 		{
 		    if(!is_in_selection(w, selection))
@@ -2182,7 +2180,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std
 
     for(auto e = level->fxlist.begin(); e != level->fxlist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
 		{
 		    if(!is_in_selection(w, selection))
@@ -2192,7 +2190,7 @@ void add_contained_objects_to_selection(LevelData* level, const Rectf& area, std
 
     for(auto e = level->weaplist.begin(); e != level->weaplist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if(w && area.contains(w->xpos + w->sizex/2, w->ypos + w->sizey/2))
 		{
 		    if(!is_in_selection(w, selection))
@@ -3035,7 +3033,6 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         }
                     }
                     level->remove_ob(newob);
-                    delete newob;
                 }
                 else // select this object
                 {
@@ -3076,8 +3073,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             selection.clear();  // Deselect if not trying to grab more
                         
                         level->remove_ob(newob);
-                        delete newob;
-                        
+
                         reset_mode_buttons();
                     }
                 }  // end of info mode
@@ -3115,7 +3111,6 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             if (newob)
                             {
                                 level->remove_ob(newob);
-                                delete newob;
                                 newob = nullptr;
                             }
                         }  // end of failure to put guy
@@ -3242,7 +3237,6 @@ walker* LevelEditorData::get_object(int x, int y)
         result = newob->collide_ob;
     }
     level->remove_ob(newob);
-    delete newob;
     return result;
 }
 
@@ -3256,21 +3250,21 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 
     for(auto e = level->oblist.begin(); e != level->oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		    return true;
 	}
 
     for(auto e = level->fxlist.begin(); e != level->fxlist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		    return true;
 	}
 
     for(auto e = level->weaplist.begin(); e != level->weaplist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if(ob && (x > ob->xpos || ob->xpos >= x + w || y > ob->ypos || ob->ypos >= y + h))
 		    return true;
 	}
@@ -4174,7 +4168,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 {
     for(auto e = data->oblist.begin(); e != data->oblist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && w != ob
             && check_collide(x, y, ob->sizex, ob->sizey,
 			                  w->xpos, w->ypos,
@@ -4184,10 +4178,10 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
             return w;
         }
 	}
-	
+
     for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && w != ob
             && check_collide(x, y, ob->sizex, ob->sizey,
 			                  w->xpos, w->ypos,
@@ -4197,10 +4191,10 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
             return w;
         }
 	}
-	
+
     for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && w != ob
             && check_collide(x, y, ob->sizex, ob->sizey,
 			                  w->xpos, w->ypos,

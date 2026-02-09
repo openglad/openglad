@@ -63,7 +63,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
     // Go through objects
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
         switch(ob->query_order())
         {
             case ORDER_LIVING:
@@ -86,7 +86,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 	// Go through effects
 	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
         switch(ob->query_order())
         {
             case ORDER_TREASURE:

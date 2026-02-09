@@ -296,7 +296,7 @@ int get_num_foes(LevelData& level)
     
 	for(auto e = level.oblist.begin(); e != level.oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 	    // Not dead, not hired, not on red team
 		if (ob && !ob->dead && ob->query_order() == ORDER_LIVING && ob->myguy == nullptr && ob->team_num != 0)
 		{

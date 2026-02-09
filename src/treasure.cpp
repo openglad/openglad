@@ -201,7 +201,7 @@ short treasure::eat_me(walker  * eater)
 					// Delete all of our current information and abort ..
 					for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 					{
-					    walker* w = *e;
+					    walker* w = e->get();
 						if (w && w->query_order() == ORDER_LIVING)
 						{
 							w->dead = 1;
@@ -322,16 +322,17 @@ walker  * treasure::find_teleport_target()
 	//Log("Teleporting from #%d ..", number);
 
 	// First find where we are in the list ...
-    auto mine = std::find(ls.begin(), ls.end(), this);
+    auto pred = [this](const std::unique_ptr<walker>& p) { return p.get() == this; };
+    auto mine = std::find_if(ls.begin(), ls.end(), pred);
     if(mine == ls.end())
         return nullptr;
-    
+
 	// Now search the rest of the list ..
 	auto e = mine;
 	e++;
 	for(; e != ls.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && !w->dead)
 		{
 			if (w->query_order() == ORDER_TREASURE &&
@@ -347,7 +348,7 @@ walker  * treasure::find_teleport_target()
 	// Hit the end of the list, look from top down now ..
 	for(e = ls.begin(); e != mine; e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && !w->dead)
 		{
 			if (w->query_order() == ORDER_TREASURE &&

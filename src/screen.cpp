@@ -671,7 +671,7 @@ short screen::act()
 
     for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
     {
-        walker* ob = *e;
+        walker* ob = e->get();
 		if (!enemy_freeze) // normal functionality
 		{
 			if (ob && !ob->dead)
@@ -719,7 +719,7 @@ short screen::act()
 	// Let the weapons act ...
 	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && !ob->dead)
 		{
 			ob->act();
@@ -735,7 +735,7 @@ short screen::act()
 	// Quickly check the background for exits, etc.
 	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && !ob->dead)
 		{
 			if (ob->query_order() == ORDER_TREASURE &&
@@ -756,7 +756,7 @@ short screen::act()
 	// Make sure we're all pointing to legal targets
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
         if (ob->foe && ob->foe->dead)
             ob->foe = nullptr;
         if (ob->leader && ob->leader->dead)
@@ -766,10 +766,10 @@ short screen::act()
         if (ob->collide_ob && ob->collide_ob->dead)
             ob->collide_ob = nullptr;
 	}
-	
+
 	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
         if (ob->foe && ob->foe->dead)
             ob->foe = nullptr;
         if (ob->leader && ob->leader->dead)
@@ -784,11 +784,11 @@ short screen::act()
 	// Remove dead objects
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end();)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && ob->dead && ob->myguy == nullptr)
 		{
 		    // Delete the dead thing safely
-		    
+
 			// Is it a player?
 			if(ob->user != -1)
 			{
@@ -799,45 +799,43 @@ short screen::act()
                         viewob[i]->control = nullptr;
 			    }
 			}
-			
+
 			// Save dead guys to be deleted later.  Delete everything else right now.  This is so the "owner" of weapons remains valid.
-            level_data.dead_list.push_back(ob);
-            
+            level_data.dead_list.push_back(std::move(*e));
+
             //level_data.remove_ob(ob);
             // Remove from the list directly here so we can preserve our iterator
 			if(ob->query_order() == ORDER_LIVING)
                 level_data.numobs--;
-            
+
             e = level_data.oblist.erase(e);
             continue;
 		}
-		
+
 		e++;
 	}
-	
+
 	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end();)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if(ob && ob->dead)
 		{
-			delete ob;
 			e = level_data.fxlist.erase(e);
 			continue;
 		}
-		
+
 		e++;
 	}
-	
+
 	for(auto e = level_data.weaplist.begin(); e != level_data.weaplist.end();)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && ob->dead)
 		{
-            delete ob;
             e = level_data.weaplist.erase(e);
             continue;
 		}
-		
+
 		e++;
 	}
 
@@ -870,7 +868,7 @@ short screen::endgame(short ending, short nextlevel)
     // Get guys from the battle
     for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && ob->myguy)
 			after.insert(std::make_pair(ob->myguy->id, ob));
 	}
@@ -1030,7 +1028,7 @@ walker  *screen::find_far_foe(walker  *ob)
 
     for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-	    walker* foe = *e;
+	    walker* foe = e->get();
 		if (foe == nullptr || foe->dead)
 			continue;
         
@@ -1108,7 +1106,7 @@ walker  * screen::first_of(unsigned char whatorder, unsigned char whatfamily,
 {
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && !ob->dead)
 		{
 			if (ob->query_order() == whatorder &&
@@ -1161,7 +1159,7 @@ walker  * screen::find_nearest_blood(walker  *who)
 
 	for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && w->query_order() == ORDER_TREASURE &&
 		        w->query_family() == FAMILY_STAIN && !w->dead)
 		{
@@ -1177,13 +1175,13 @@ walker  * screen::find_nearest_blood(walker  *who)
 
 }
 
-std::list<walker*> screen::find_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob)
 {
 	//short obx, oby;
     std::list<walker*> result;
-    
+
 	*howmany = 0;
-	
+
 	if(!ob)
 		return result;
 
@@ -1192,7 +1190,7 @@ std::list<walker*> screen::find_in_range(std::list<walker*>& somelist, Sint32 ra
 
 	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && !w->dead)
 		{
 			if (ob->distance_to_ob(w) <= range)
@@ -1217,7 +1215,7 @@ walker* screen::find_nearest_player(walker *ob)
 
 	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && (w->user != -1) )
 		{
 			tempdistance = ob->distance_to_ob(w);
@@ -1232,17 +1230,17 @@ walker* screen::find_nearest_player(walker *ob)
 	return returnob;
 }
 
-std::list<walker*> screen::find_foes_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob)
 {
     std::list<walker*> result;
     *howmany = 0;
-    
+
 	if(!ob)
 		return result;
 
 	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && !w->dead &&
 		        (w->query_order() == ORDER_LIVING ||
 		         w->query_order() == ORDER_GENERATOR)
@@ -1260,18 +1258,18 @@ std::list<walker*> screen::find_foes_in_range(std::list<walker*>& somelist, Sint
 	return result;
 }
 
-std::list<walker*> screen::find_friends_in_range(std::list<walker*>& somelist, Sint32 range,
+std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
                                       short *howmany, walker  *ob)
 {
     std::list<walker*> result;
     *howmany = 0;
-    
+
 	if(!ob)
 		return result;
 
 	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && !w->dead && w->query_order() == ORDER_LIVING
 		        && ( ob->is_friendly(w) )
 		   )
@@ -1287,17 +1285,17 @@ std::list<walker*> screen::find_friends_in_range(std::list<walker*>& somelist, S
 	return result;
 }
 
-std::list<walker*> screen::find_foe_weapons_in_range(std::list<walker*>& somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob)
 {
     std::list<walker*> result;
     *howmany = 0;
-    
+
 	if(!ob)
 		return result;
 
 	for(auto e = somelist.begin(); e != somelist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && !w->dead &&
 		        (w->query_order() == ORDER_WEAPON)
 		        && ( ob->is_friendly(w) )

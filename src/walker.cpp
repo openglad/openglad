@@ -2836,7 +2836,7 @@ short walker::special()
 						generic = 0; // used to check progress
 						for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 						{
-						    walker* ob = *e;
+						    walker* ob = e->get();
 							if (ob &&
 							        ob->query_order() == ORDER_FX &&
 							        ob->query_family() == FAMILY_MARKER &&
@@ -3025,7 +3025,7 @@ short walker::special()
 						generic = 0; // used to check progress
 						for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 						{
-						    walker* ob = *e;
+						    walker* ob = e->get();
 							if (ob &&
 							        ob->query_order() == ORDER_FX &&
 							        ob->query_family() == FAMILY_MARKER &&
@@ -3762,7 +3762,7 @@ short walker::special()
                                     tempwalk = nullptr;
                                     for(auto f = myscreen->level_data.oblist.begin(); f != myscreen->level_data.oblist.end(); f++)
                                     {
-                                        walker* ob = *f;
+                                        walker* ob = f->get();
                                         if (ob && ob->owner == newob
                                                 && ob->query_order() == ORDER_WEAPON
                                                 && ob->query_family() == FAMILY_CIRCLE_PROTECTION
@@ -3978,7 +3978,7 @@ short walker::teleport()
 	// NOTE: it must be a bit away from us ..
 	for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob &&
 		        ob->query_order() == ORDER_FX &&
 		        ob->query_family() == FAMILY_MARKER &&

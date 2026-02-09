@@ -85,11 +85,11 @@ public:
     smoother mysmoother;
     std::unique_ptr<loader> myloader;
     int numobs;
-    std::list<walker*> oblist;
-    std::list<walker*> fxlist;  // fx--explosions, etc.
-    std::list<walker*> weaplist;  // weapons
+    std::list<std::unique_ptr<walker>> oblist;
+    std::list<std::unique_ptr<walker>> fxlist;  // fx--explosions, etc.
+    std::list<std::unique_ptr<walker>> weaplist;  // weapons
     // Keep a list of dead guys so weapons can still have valid owners
-    std::list<walker*> dead_list;
+    std::list<std::unique_ptr<walker>> dead_list;
     
     std::unique_ptr<obmap> myobmap;
     std::list<std::string> description;

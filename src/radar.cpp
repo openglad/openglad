@@ -177,7 +177,7 @@ short radar::draw(LevelData* data)
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)
 	{
-	    std::list<walker*>* ls;
+	    std::list<std::unique_ptr<walker>>* ls;
 		if (listtype == 0) // do oblist, standard
 		{
 			ls = &data->oblist;
@@ -193,7 +193,7 @@ short radar::draw(LevelData* data)
 
         for(auto e = ls->begin(); e != ls->end(); e++)
 		{
-		    walker* ob = *e;
+		    walker* ob = e->get();
 		    
             oborder = ob->query_order();
 			do_show = 0; // don't show, by default
@@ -272,7 +272,7 @@ short radar::draw(LevelData* data)
 
     for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
 	{
-	    walker* ob = *e;
+	    walker* ob = e->get();
 		if (ob && !ob->dead)
 		{
 			oborder  = ob->query_order();

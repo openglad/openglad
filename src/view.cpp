@@ -394,7 +394,7 @@ short viewscreen::input(const SDL_Event& event)
 		// First look for a player character, not already controlled
 		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 		{
-		    walker* w = *e;
+		    walker* w = e->get();
 			if (w &&
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
@@ -406,13 +406,13 @@ short viewscreen::input(const SDL_Event& event)
 				break;
             }
 		}
-		
+
 		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
             for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
-                walker* w = *e;
+                walker* w = e->get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -431,7 +431,7 @@ short viewscreen::input(const SDL_Event& event)
 			// NOTE: You can end up as a bad guy here if you are using an allied team
             for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
-                walker* w = *e;
+                walker* w = e->get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -445,7 +445,7 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (!control)  // then there's nobody left!
 			return myscreen->endgame(1);
-        
+
 		if (control->user == -1)
 			control->user = mynum; // show that we're controlled now
 		control->set_act_type(ACT_CONTROL);
@@ -500,23 +500,24 @@ short viewscreen::input(const SDL_Event& event)
 		control = nullptr;
 		
 		auto& oblist = myscreen->level_data.oblist;
-		
+		auto pred = [oldcontrol](const std::unique_ptr<walker>& p) { return p.get() == oldcontrol; };
+
 		if(!reverse)
 		{
             // Get where we are in the list
-            auto mine = std::find(oblist.begin(), oblist.end(), oldcontrol);
+            auto mine = std::find_if(oblist.begin(), oblist.end(), pred);
             if(mine == oblist.end())
             {
                 Log("Failed to find self in oblist!\n");
                 return 1;
             }
-            
+
             // Look past our current spot
             auto e = mine;
             e++;
             for(; e != oblist.end(); e++)
             {
-                walker* w = *e;
+                walker* w = e->get();
                 if (w->query_order() == ORDER_LIVING &&
                         w->is_friendly(oldcontrol) && w->team_num == my_team &&
                         w->real_team_num == 255 && w->user == -1)
@@ -525,13 +526,13 @@ short viewscreen::input(const SDL_Event& event)
                     break;
                 }
             }
-            
+
             if(!control)
             {
                 // Look before our current spot
                 for(e = oblist.begin(); e != mine; e++)
                 {
-                    walker* w = *e;
+                    walker* w = e->get();
                     if (w->query_order() == ORDER_LIVING &&
                             w->is_friendly(oldcontrol) && w->team_num == my_team &&
                             w->real_team_num == 255 && w->user == -1)
@@ -545,19 +546,19 @@ short viewscreen::input(const SDL_Event& event)
 		else
 		{
             // Get where we are in the list
-            auto mine = std::find(oblist.rbegin(), oblist.rend(), oldcontrol);
+            auto mine = std::find_if(oblist.rbegin(), oblist.rend(), pred);
             if(mine == oblist.rend())
             {
                 Log("Failed to find self in oblist!\n");
                 return 1;
             }
-            
+
             // Look past our current spot
             auto e = mine;
             e++;
             for(; e != oblist.rend(); e++)
             {
-                walker* w = *e;
+                walker* w = e->get();
                 if (w->query_order() == ORDER_LIVING &&
                         w->is_friendly(oldcontrol) && w->team_num == my_team &&
                         w->real_team_num == 255 && w->user == -1)
@@ -566,13 +567,13 @@ short viewscreen::input(const SDL_Event& event)
                     break;
                 }
             }
-            
+
             if(!control)
             {
                 // Look before our current spot
                 for(e = oblist.rbegin(); e != mine; e++)
                 {
-                    walker* w = *e;
+                    walker* w = e->get();
                     if (w->query_order() == ORDER_LIVING &&
                             w->is_friendly(oldcontrol) && w->team_num == my_team &&
                             w->real_team_num == 255 && w->user == -1)
@@ -623,7 +624,7 @@ short viewscreen::input(const SDL_Event& event)
 	{
 		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 		{
-		    walker* w = *e;
+		    walker* w = e->get();
 			if (w && (w->query_order() == ORDER_LIVING) &&
 			        (w->query_act_type() != ACT_CONTROL) &&
 			        (w->team_num == control->team_num) &&
@@ -651,7 +652,7 @@ short viewscreen::input(const SDL_Event& event)
 			case 0:   // not set ..
 				for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 				{
-				    walker* w = *e;
+				    walker* w = e->get();
 					if (w &&
 					        (w->team_num == control->team_num) && w->is_friendly(control)
 					   )
@@ -667,7 +668,7 @@ short viewscreen::input(const SDL_Event& event)
 			case ACTION_FOLLOW:  // turn back to normal mode..
 				for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 				{
-				    walker* w = *e;
+				    walker* w = e->get();
 					if (w && (w->query_order() == ORDER_LIVING) &&
 					        (w->query_act_type() != ACT_CONTROL) &&
 					        (w->team_num == control->team_num)
@@ -716,7 +717,7 @@ short viewscreen::input(const SDL_Event& event)
                 
                 for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
                 {
-                    walker* w = *e;
+                    walker* w = e->get();
                     if ( (w->team_num == myscreen->save_data.my_team) &&
                             (w->query_order() == ORDER_LIVING)
                        )
@@ -739,7 +740,7 @@ short viewscreen::input(const SDL_Event& event)
 		{
 			for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 			{
-			    walker* w = *e;
+			    walker* w = e->get();
 				if (w && w->query_order() == ORDER_LIVING &&
 					        !control->is_friendly(w) )
 						//w->team_num != control->team_num)
@@ -899,7 +900,7 @@ short viewscreen::continuous_input()
 		// First look for a player character, not already controlled
 		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 		{
-		    walker* w = *e;
+		    walker* w = e->get();
 			if (w &&
 			        !w->dead &&
 			        w->query_order() == ORDER_LIVING &&
@@ -911,13 +912,13 @@ short viewscreen::continuous_input()
 				break;
             }
 		}
-		
+
 		if (!control)
 		{
 			// Second, look for anyone on our team, NPC or not
             for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
-                walker* w = *e;
+                walker* w = e->get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -936,7 +937,7 @@ short viewscreen::continuous_input()
 			// NOTE: You can end up as a bad guy here if you are using an allied team
             for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
             {
-                walker* w = *e;
+                walker* w = e->get();
                 if (w &&
                         !w->dead &&
                         w->query_order() == ORDER_LIVING &&
@@ -1119,7 +1120,7 @@ short viewscreen::draw_obs(LevelData* data)
 	// First draw the special effects
 	for(auto e = data->fxlist.begin(); e != data->fxlist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if(w && !w->dead)
 			w->draw(this);
 	}
@@ -1127,7 +1128,7 @@ short viewscreen::draw_obs(LevelData* data)
 	// Now do real objects
 	for(auto e = data->oblist.begin(); e != data->oblist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if(w && !w->dead)
 			w->draw(this);
 	}
@@ -1135,7 +1136,7 @@ short viewscreen::draw_obs(LevelData* data)
 	// Finally draw the weapons
 	for(auto e = data->weaplist.begin(); e != data->weaplist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if(w && !w->dead)
 			w->draw(this);
 	}
@@ -1356,7 +1357,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
     std::list<walker*> ls;
 	for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w && !w->dead
 		        && w->query_order() == ORDER_LIVING
 		        && w->team_num == teamnum

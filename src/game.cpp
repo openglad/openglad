@@ -57,10 +57,9 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	}
 
 	TRACE("game", "level loaded: scen%d", myscreen->level_data.id);
-	std::list<walker*> foelist = myscreen->level_data.oblist;
-	for(auto e = foelist.begin(); e != foelist.end(); e++)
+	for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 	{
-	    walker* w = *e;
+	    walker* w = e->get();
 		if (w)
 			w->set_difficulty(static_cast<Uint32>(w->stats->level));
 	}
@@ -115,10 +114,9 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	if (myscreen->save_data.is_level_completed(myscreen->save_data.scen_num))
 	{
 		//                Log("already done level\n");
-		foelist = myscreen->level_data.oblist;
-		for(auto e = foelist.begin(); e != foelist.end(); e++)
+		for(auto e = myscreen->level_data.oblist.begin(); e != myscreen->level_data.oblist.end(); e++)
 		{
-		    walker* w = *e;
+		    walker* w = e->get();
 			if (w)
 			{
 			    // Kill everything except for our team, exits, and teleporters
@@ -135,11 +133,10 @@ short load_saved_game(const char *filename, screen  *myscreen)
 					w->dead = 1;
 			}
 		}
-		
-		foelist = myscreen->level_data.weaplist;
-		for(auto e = foelist.begin(); e != foelist.end(); e++)
+
+		for(auto e = myscreen->level_data.weaplist.begin(); e != myscreen->level_data.weaplist.end(); e++)
 		{
-		    walker* w = *e;
+		    walker* w = e->get();
 			if (w)
 			{
 				myfam = w->query_family();
@@ -157,10 +154,9 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			}
 		}
 
-		foelist = myscreen->level_data.fxlist;
-		for(auto e = foelist.begin(); e != foelist.end(); e++)
+		for(auto e = myscreen->level_data.fxlist.begin(); e != myscreen->level_data.fxlist.end(); e++)
 		{
-		    walker* w = *e;
+		    walker* w = e->get();
 			if (w)
 			{
 				myfam = w->query_family();
