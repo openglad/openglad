@@ -46,7 +46,7 @@ void quit(Sint32 arg1);
 
 #include <string>
 #include <vector>
-#include <stdlib.h>
+#include <cstdlib>
 #define MINIMUM_TIME 0
 
 

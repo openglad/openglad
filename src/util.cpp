@@ -23,9 +23,9 @@
 
 #include "version.h"
 
-#include <stdio.h>
-#include <time.h>
-#include <string.h> //buffers: for strlen
+#include <cstdio>
+#include <ctime>
+#include <cstring> //buffers: for strlen
 #include <string>
 #include <sys/stat.h>
 #include "base.h"
@@ -37,7 +37,6 @@
 #ifdef WINDOWS
 #include "windows.h"
 #include <shlobj.h>
-#include <time.h>
 #include <direct.h>
 
 #ifndef mkdir

@@ -23,9 +23,9 @@
 #include "input.h"
 #include "screen.h"
 #include "test_trace.h"
-#include <stdio.h>
-#include <time.h>
-#include <string.h> //buffers: for strlen
+#include <cstdio>
+#include <ctime>
+#include <cstring> //buffers: for strlen
 #include <string>
 
 #ifdef __EMSCRIPTEN__

@@ -25,7 +25,7 @@
 */
 
 #include "pal32.h"
-#include <stdio.h>
+#include <cstdio>
 #include "SDL_types.h"
 
 char temppal[768];    // for loading, setting, etc.

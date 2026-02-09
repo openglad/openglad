@@ -25,7 +25,7 @@
 #include "physfsrwops.h"
 #include <string>
 #include <algorithm>
-#include <stdio.h>
+#include <cstdio>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -36,7 +36,7 @@
 #ifdef WIN32
 #include "windows.h"
 #include <shlobj.h>
-#include <time.h>
+#include <ctime>
 #include <direct.h>
 
 #ifndef mkdir
@@ -681,7 +681,7 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
 #include <sys/stat.h>
 #include <errno.h>
 #include <libgen.h>
-#include <string.h>
+#include <cstring>
 
 // From http://niallohiggins.com/2009/01/08/mkpath-mkdir-p-alike-in-c-for-unix/
 /* Function with behaviour like `mkdir -p'  */

@@ -15,7 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include "graph.h"
-#include <math.h>
+#include <cmath>
 #include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
 

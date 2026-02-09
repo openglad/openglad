@@ -26,7 +26,7 @@
 screen * myscreen;
 
 #include "colors.h"
-#include <time.h>
+#include <ctime>
 #include "gparser.h"
 #include <string>
 #include <cstring>

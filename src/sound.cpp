@@ -22,9 +22,9 @@
 	buffers: 8/16/02: *sound works now.
 */
 
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
+#include <cstring>
+#include <cstdlib>
+#include <cstdio>
 #include "soundob.h"
 #include "SDL_mixer.h"
 #include <string>

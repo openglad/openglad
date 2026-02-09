@@ -157,7 +157,7 @@ void Super2xSaI_ex2(
 				product2b = product1b = color5;
 			else if (color5 == color3 && color2 == color6)
 			{
-			   	register int r = 0;
+			   	int r = 0;
 
                	r += GET_RESULT (color6, color5, color1, colorA1);
                	r += GET_RESULT (color6, color5, color4, colorB1);
@@ -415,7 +415,7 @@ void Scale_SuperEagle(
             else
             if (color5 == color3 && color2 == color6)
             {
-               register int r = 0;
+               int r = 0;
 
                r += GET_RESULT (color6, color5, color1, colorA1);
                r += GET_RESULT (color6, color5, color4, colorB1);

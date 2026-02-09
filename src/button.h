@@ -22,7 +22,7 @@
 #include "pixien.h"
 #include "text.h"
 #include "screen.h"
-#include <math.h>
+#include <cmath>
 #include "input.h"
 
 class vbutton;

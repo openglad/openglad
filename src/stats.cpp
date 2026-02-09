@@ -20,7 +20,7 @@
 
 #include "graph.h"
 #include "stats.h"      // for bit flags, etc.
-#include <math.h>
+#include <cmath>
 
 #define CHECK_STEP_SIZE 1 // (controller->stepsize) // was 1
 

@@ -24,12 +24,12 @@
 			: *added math.h,ctype.h
 */
 
-#include <stdio.h>
-#include <stdlib.h>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <fstream>
-#include <math.h>
-#include <ctype.h>
+#include <cmath>
+#include <cctype>
 #include "sounds.h"
 #include "SDL.h"
 #include "input.h"

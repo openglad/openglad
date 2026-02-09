@@ -23,7 +23,7 @@
 #pragma once
 
 #include "SDL.h"
-#include <ctype.h>
+#include <cctype>
 #include <string>
 #include "video.h"
 

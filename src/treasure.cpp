@@ -19,7 +19,7 @@
 //
 
 //#include "graph.h"
-#include <math.h>
+#include <cmath>
 #include "obmap.h"
 #include "gloader.h"
 #include "screen.h"
