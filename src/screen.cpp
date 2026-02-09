@@ -702,7 +702,7 @@ bool screen::act()
 			if (ob && !ob->dead &&
 			        ( (    (ob->query_order() != Order::Living)
 			               && (ob->query_order() != Order::Generator)
-			          ) || (ob->team_num == 0) )
+			          ) || (ob->team_num() == 0) )
 			   )
 			{
 				ob->act();
@@ -1098,7 +1098,7 @@ walker  * screen::first_of(Order whatorder, unsigned char whatfamily,
 			if (ob->query_order() == whatorder &&
 			        ob->query_family()== whatfamily)
 			{
-				if (team_num == -1 || team_num == ob->team_num)
+				if (team_num == -1 || team_num == ob->team_num())
 					return ob;
 			}
 		}

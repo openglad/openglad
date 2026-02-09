@@ -187,10 +187,10 @@ bool living::act()
 	else
 	{
 		charm_left = 0;
-		if (real_team_num != 255)
+		if (real_team_num_ != 255)
 		{
-			team_num = real_team_num;
-			real_team_num = 255;
+			team_num_ = real_team_num_;
+			real_team_num_ = 255;
 		}
 	}
 
@@ -729,7 +729,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	}
 
 	// Adjust for difficulty settings now...
-	if (team_num != 0)  // do all EXCEPT player characters
+	if (team_num_ != 0)  // do all EXCEPT player characters
 	{
 		stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
 		stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;

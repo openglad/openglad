@@ -3057,7 +3057,7 @@ void show_guy(Sint32 frames, Sint32 who, short centerx, short centery) // shows 
 	for (i=0; i <= (frames/12)%4; i++)
 		mywalker->animate();
 	//mywalker->team_num = ourteam[editguy]->teamnum;
-	mywalker->team_num = current_guy->teamnum;
+	mywalker->set_team_num(current_guy->teamnum);
 
 	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
 	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);

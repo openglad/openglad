@@ -84,10 +84,10 @@ void statistics::clear_command()
 	// Make sure our weapon type is restored to normal ..
 	controller->current_weapon = controller->default_weapon;
 	// Make sure we're back to our real team
-	if (controller->real_team_num != 255)
+	if (controller->real_team_num() != 255)
 	{
-		controller->team_num = controller->real_team_num;
-		controller->real_team_num = 255;
+		controller->set_team_num(controller->real_team_num());
+		controller->set_real_team_num(255);
 	}
 	controller->leader = nullptr;
 }
@@ -395,10 +395,10 @@ short statistics::do_command()
 			    add_command(COMMAND_UNCHARM, commandcount-1, 0, 0);
 			    commandcount = 1;
 			  }
-			  else if (controller->real_team_num != 255)
+			  else if (controller->real_team_num() != 255)
 			  {
-			    controller->team_num = controller->real_team_num;
-			    controller->real_team_num = 255;
+			    controller->set_team_num(controller->real_team_num());
+			    controller->set_real_team_num(255);
 			  }
 			*/
 			break;  // end of uncharm case
@@ -633,7 +633,7 @@ void statistics::yell_for_help(walker *foe)
 	// Run away
 	force_command(COMMAND_WALK, 16, deltax, deltay);
 	// Notify friends of need ...
-	if (controller->myguy && (controller->team_num == 0) )
+	if (controller->myguy && (controller->team_num() == 0) )
 	{
 		std::string message = std::format("{} yells for help!", controller->myguy->name);
 		myscreen->do_notify(message.c_str(), controller);

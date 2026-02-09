@@ -259,7 +259,7 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 	for (i=0; i <= (frames/4)%4; i++)
 		mywalker->animate();
     
-	mywalker->team_num = myguy->teamnum;
+	mywalker->set_team_num(myguy->teamnum);
     
     viewscreen* view_buf = myscreen->viewob[0].get();
 	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
@@ -298,7 +298,7 @@ int get_num_foes(LevelData& level)
 	{
 	    walker* ob = uptr.get();
 	    // Not dead, not hired, not on red team
-		if (ob && !ob->dead && ob->query_order() == Order::Living && ob->myguy == nullptr && ob->team_num != 0)
+		if (ob && !ob->dead && ob->query_order() == Order::Living && ob->myguy == nullptr && ob->team_num() != 0)
 		{
 		    result++;
 		}

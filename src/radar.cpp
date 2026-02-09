@@ -151,7 +151,7 @@ short radar::draw(LevelData* data)
 		radary = static_cast<short>(viewscreenp->control->ypos/GRID_SIZE - yview/2);
 		if (viewscreenp->control->view_all > 0)
 			can_see = 1;
-		obteam = viewscreenp->control->team_num;
+		obteam = viewscreenp->control->team_num();
 	}
 	else
 	{
@@ -208,7 +208,7 @@ short radar::draw(LevelData* data)
 			            || (oborder == Order::Treasure && (ob->query_family() == FAMILY_EXIT))
 			            || (oborder == Order::Generator && can_see)
 			           )
-			        && (obteam==ob->team_num || ob->invisibility_left < 1 || can_see)
+			        && (obteam==ob->team_num() || ob->invisibility_left < 1 || can_see)
 			        && on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE), static_cast<short>((ob->ypos+1)/GRID_SIZE), radarx, radary)
 			   )
 				do_show = 1;

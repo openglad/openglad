@@ -590,8 +590,8 @@ walker* guy::create_walker(screen* myscreen)
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->team_num = temp_guy->teamnum;
-    temp_walker->real_team_num = 255;
+    temp_walker->set_team_num(temp_guy->teamnum);
+    temp_walker->set_real_team_num(255);
     
     return temp_walker;
 }
@@ -606,8 +606,8 @@ walker* guy::create_and_add_walker(screen* myscreen)
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->team_num = temp_guy->teamnum;
-    temp_walker->real_team_num = 255;
+    temp_walker->set_team_num(temp_guy->teamnum);
+    temp_walker->set_real_team_num(255);
     
     return temp_walker;
 }

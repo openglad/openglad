@@ -325,7 +325,7 @@ bool effect::act()
 				newob = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
 				newob->damage = damage;
 				newob->owner = owner;
-				newob->team_num = team_num;
+				newob->set_team_num(team_num_);
 				newob->death_called = 1; // to ensure no spawning of more ..
 				newob->setworldxy(worldx, worldy);
 				if (!myscreen->query_object_passable(xpos+xd, ypos+yd, newob))
@@ -409,7 +409,7 @@ bool effect::act()
 					return 1; // failsafe
 				}
 				newob->owner = owner;
-				newob->team_num = team_num;
+				newob->set_team_num(team_num_);
 				newob->stats->level = stats->level;
 				newob->damage = damage;
 				newob->ani_type = ANI_EXPLODE;
@@ -443,7 +443,7 @@ bool effect::act()
 							newob->stats->level = stats->level;
 							newob->stats->set_bit_flags(BIT_MAGICAL, 1);
 							newob->damage = generic;
-							newob->team_num = team_num;
+							newob->set_team_num(team_num_);
 							newob->center_on(this);
 						} // end of wasn't current guy case
 						numfoes--;
@@ -522,7 +522,7 @@ bool effect::act()
 			newob->ani_type = ANI_WALK;
 			newob->setworldxy(worldx, worldy);
 			newob->stats->level = stats->level;
-			newob->team_num = team_num;
+			newob->set_team_num(team_num_);
 			newob->ignore = 1;
 			newob->curdir = curdir;
 			// set correct frame

@@ -58,8 +58,8 @@ walker::walker(const PixieData& data)
 	collide_ob = nullptr;
 	cycle = 0;
 	ani = nullptr;
-	team_num = 0;
-	real_team_num = 255;  // to show nothing's changed
+	team_num_ = 0;
+	real_team_num_ = 255;  // to show nothing's changed
 	ani_type = 0;
 	busy = 0;
 	foe = nullptr;
@@ -1054,7 +1054,7 @@ bool walker::draw(viewscreen  *view_buf)
 			if      (flight_left)
 				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 
 			if (outline != OUTLINE_NAMED)
@@ -1068,7 +1068,7 @@ bool walker::draw(viewscreen  *view_buf)
 			//else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
 
 			if (view_buf->control)
-				if      (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if      (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 
 			if (outline != OUTLINE_NAMED)
@@ -1095,7 +1095,7 @@ bool walker::draw(viewscreen  *view_buf)
 			else if (flight_left)
 				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 		}
 		else
@@ -1107,7 +1107,7 @@ bool walker::draw(viewscreen  *view_buf)
 			else if (invulnerable_left)
 				outline = OUTLINE_INVULNERABLE;
 			else if (view_buf->control)
-				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 		}
 	}
@@ -1118,7 +1118,7 @@ bool walker::draw(viewscreen  *view_buf)
 	
 	if(view_buf->control != nullptr)
     {
-        if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+        if(outline == 0 && user != -1 && this != view_buf->control && this->team_num() == view_buf->control->team_num())
             outline = OUTLINE_INVISIBLE;
     }
     
@@ -1136,7 +1136,7 @@ bool walker::draw(viewscreen  *view_buf)
     }
 	else if (invisibility_left && view_buf->control != nullptr)  //WE ARE INVISIBLE
 	{
-		if (this->team_num == view_buf->control->team_num)
+		if (this->team_num() == view_buf->control->team_num())
         {
             fill_mode = INVISIBLE_MODE;
             invisibility_amount = ( invisibility_left + 10 );
@@ -1242,7 +1242,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 			if      (flight_left)
 				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 
 			if (outline != OUTLINE_NAMED)
@@ -1256,7 +1256,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 			//else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
 
 			if (view_buf->control)
-				if      (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if      (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 
 			if (outline != OUTLINE_NAMED)
@@ -1283,7 +1283,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 			else if (flight_left)
 				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 		}
 		else
@@ -1295,7 +1295,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 			else if (invulnerable_left)
 				outline = OUTLINE_INVULNERABLE;
 			else if (view_buf->control)
-				if (stats->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+				if (stats->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
 					outline = OUTLINE_NAMED;
 		}
 	}
@@ -1304,7 +1304,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 	    outline = 0;
 	}
 	
-    if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+    if(outline == 0 && user != -1 && this != view_buf->control && this->team_num() == view_buf->control->team_num())
         outline = OUTLINE_INVISIBLE;
 
 	auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
@@ -1321,7 +1321,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 
 	else if (invisibility_left)  //WE ARE INVISIBLE
 	{
-		if (this->team_num == view_buf->control->team_num)
+		if (this->team_num() == view_buf->control->team_num())
 			myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 			                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
@@ -1807,7 +1807,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
             if (newob)
             {
                 newob->owner = target;
-                newob->team_num = team_num;
+                newob->set_team_num(team_num_);
                 newob->stats->level = 1;
                 newob->damage = 0;
                 newob->ani_type = 1 + rand()%3;
@@ -1885,7 +1885,7 @@ bool walker::attack(walker  *target)
 	walker *attacker; // us or our owner ..
 	static short tom = 0;
 
-	if (myguy != nullptr || team_num == 0)
+	if (myguy != nullptr || team_num_ == 0)
 		getscore = 1;
 
 	if (target && target->dead)
@@ -1979,7 +1979,7 @@ bool walker::attack(walker  *target)
             myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += tempdamage + target->stats->level;
+                myscreen->save_data.m_score[team_num_] += tempdamage + target->stats->level;
             }
 		}
 	}
@@ -2023,11 +2023,11 @@ bool walker::attack(walker  *target)
 	if (owner &&
 	        (targetorder != Order::Weapon) ) // are we still alive?
 	{
-		if (playerteam != target->team_num)
+		if (playerteam != target->team_num())
 		{
 			if (getscore)
 			{
-				myscreen->save_data.m_score[team_num] += tempdamage + target->stats->level; // / 2;
+				myscreen->save_data.m_score[team_num_] += tempdamage + target->stats->level; // / 2;
 			}
 			if (headguy->myguy)
 				headguy->myguy->exp += newexp;
@@ -2040,7 +2040,7 @@ bool walker::attack(walker  *target)
 		{
 			if (playerteam > -1)
 			{
-				if (playerteam != target->team_num)
+				if (playerteam != target->team_num())
 				{
 					if (headguy->myguy)  // headguy can == this
 					{
@@ -2057,7 +2057,7 @@ bool walker::attack(walker  *target)
 					//}
 					if (getscore)
 					{
-						myscreen->save_data.m_score[team_num] += tempdamage + (10 * target->stats->level);
+						myscreen->save_data.m_score[team_num_] += tempdamage + (10 * target->stats->level);
 					}
 					// If named, alert us of the enemy's death
 					if (target->stats->name.size() && !(target->lifetime)
@@ -2137,7 +2137,7 @@ bool walker::attack(walker  *target)
 			/* Blood splats at death */
 			// Make temporary stain:
 			blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
-			blood->team_num = target->team_num;
+			blood->set_team_num(target->team_num());
 			blood->ani_type = ANI_GROW;
 			blood->ignore = 1; // so that we can be walked over .. ?
 			blood->setxy(target->xpos,target->ypos);
@@ -2243,7 +2243,7 @@ bool walker::animate()
 				newob->myguy->exp = exp;
 			}
 
-			newob->team_num = team_num;
+			newob->set_team_num(team_num_);
 			newob->foe = foe;
 			newob->leader = leader;
 			return 1;
@@ -2272,7 +2272,7 @@ walker  *walker::create_weapon()
 	if (query_order() == Order::Generator)
 	{
 		weapon = myscreen->level_data.add_ob(Order::Living, static_cast<char>(default_weapon));
-		weapon->team_num = team_num;
+		weapon->set_team_num(team_num_);
 		weapon->owner = this;
 		weapon->set_difficulty(stats->level);
 		return weapon;
@@ -2281,7 +2281,7 @@ walker  *walker::create_weapon()
 	weapon_type = current_weapon;
 
 	weapon = myscreen->level_data.add_ob(Order::Weapon, static_cast<char>(weapon_type));
-	weapon->team_num = team_num;
+	weapon->set_team_num(team_num_);
 	weapon->owner = this;
 	weapon->set_difficulty(stats->level);
 	weapon->damage = (weapon->damage * (stats->level+3))/4;
@@ -2453,7 +2453,7 @@ bool walker::special()
 				case 2: // boomerang
 					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOOMERANG);
 					newob->owner = this;
-					newob->team_num = team_num;
+					newob->set_team_num(team_num_);
 					newob->ani_type = 1; // dummy, non-zero value
 					newob->lifetime = 30 + (stats->level)*12;
 					newob->stats->hitpoints += stats->level*12;
@@ -2527,7 +2527,7 @@ bool walker::special()
                         {
                             if (on_screen())
                                 myscreen->soundp->play_sound(SOUND_CHARGE);
-                            if (team_num == 0 || myguy) // player's team
+                            if (team_num_ == 0 || myguy) // player's team
                                 myscreen->do_notify("Fighter Disarmed Enemy!", this);
                             busy += 5;
                         }
@@ -2591,7 +2591,7 @@ bool walker::special()
                                         message = "Cleric healed 1 man!";
                                     else
                                         message = std::format("Cleric healed {} men!", didheal);
-                                    if (team_num == 0 || myguy) // home team
+                                    if (team_num_ == 0 || myguy) // home team
                                         myscreen->do_notify(message.c_str(), this);
                                 }
                                 
@@ -2630,7 +2630,7 @@ bool walker::special()
 						if (!newob) // safety check
 							return 0;
 						newob->owner = this;
-						newob->team_num = team_num;
+						newob->set_team_num(team_num_);
 						newob->ani_type = 1; // dummy, non-zero value
 						// Specify settings based on our mana ..
 						generic = stats->magicpoints - stats->special_cost[static_cast<int>(current_special)];
@@ -2653,7 +2653,7 @@ bool walker::special()
 							return 0;
 						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
-							if ( (team_num == 0 || myguy) && on_screen() )
+							if ( (team_num_ == 0 || myguy) && on_screen() )
 								myscreen->do_notify("You need 60 Int to Turn Undead", this);
 							busy +=5;
 							return 0;
@@ -2663,7 +2663,7 @@ bool walker::special()
 						if (myguy && generic)
 						{
 							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats->level/2));
-							if (team_num == 0 || myguy)
+							if (team_num_ == 0 || myguy)
 							{
 								message = std::format("{} turned {} undead.",
 								        myguy->name, generic);
@@ -2687,7 +2687,7 @@ bool walker::special()
 								alive = do_summon(FAMILY_SKELETON, 125 + (stats->level*40) );
 								if (!alive)
 									return 0;
-								alive->team_num = team_num;
+								alive->set_team_num(team_num_);
 								alive->stats->level = random(stats->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats->level));
 								alive->setxy(newob->xpos, newob->ypos);
@@ -2712,7 +2712,7 @@ bool walker::special()
 							return 0;
 						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
-							if ((team_num == 0 || myguy) && on_screen() )
+							if ((team_num_ == 0 || myguy) && on_screen() )
 								myscreen->do_notify("You need 60 Int to Turn Undead", this);
 							busy +=5;
 							return 0;
@@ -2722,7 +2722,7 @@ bool walker::special()
 						if (myguy && generic)
 						{
 							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats->level/2));
-							if (team_num == 0 || myguy)
+							if (team_num_ == 0 || myguy)
 							{
 								message = std::format("{} turned {} undead.",
 								        myguy->name, generic);
@@ -2749,7 +2749,7 @@ bool walker::special()
 									return 0;
 								alive->stats->level = random(stats->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats->level));
-								alive->team_num = team_num;
+								alive->set_team_num(team_num_);
 								alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
 								//myscreen->remove_fx_ob(newob);
@@ -2783,7 +2783,7 @@ bool walker::special()
 								newob->transfer_stats(alive);  // restore our old values ..
 								alive->stats->hitpoints = (alive->stats->max_hitpoints)/2;
 								do_heal_effects(this, alive, (alive->stats->max_hitpoints)/2);
-								alive->team_num = newob->team_num;
+								alive->set_team_num(newob->team_num());
 								
 								if(myguy) // take some EXP away as penalty if we're a player
 								{
@@ -2799,7 +2799,7 @@ bool walker::special()
 								alive = do_summon(FAMILY_GHOST, 200);
 								if (!alive)
 									return 0;
-								alive->team_num = team_num;
+								alive->set_team_num(team_num_);
 								alive->stats->level = random(stats->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats->level));
 								alive->owner = this;
@@ -2849,7 +2849,7 @@ bool walker::special()
 							{
 								ob->dead = 1;
 								ob->death();
-								if ((team_num == 0 || myguy) && user!=-1)
+								if ((team_num_ == 0 || myguy) && user!=-1)
 									myscreen->do_notify("(Old Marker Removed)", this);
 								busy += 8;
 								break;
@@ -2868,7 +2868,7 @@ bool walker::special()
 							else
 								newob->lifetime = (stats->level / 4) + 1;
 							newob->ani_type = ANI_SPIN; // non-walking
-							if ((team_num == 0 || myguy) && user != -1)
+							if ((team_num_ == 0 || myguy) && user != -1)
 							{
 								myscreen->do_notify("Teleport Marker Placed", this);
 								message = std::format("({} Uses)", newob->lifetime);
@@ -2928,7 +2928,7 @@ bool walker::special()
 					lasty = tempy;
 					break;
 				case 3:  // Freeze time
-					if (team_num == 0 || myguy) // the player's team
+					if (team_num_ == 0 || myguy) // the player's team
 					{
 						myscreen->enemy_freeze += 20 + 11*stats->level;
 						set_palette(myscreen->bluepalette);
@@ -2991,7 +2991,7 @@ bool walker::special()
 							return 0; // failsafe
 
 						newob->owner = this;
-						newob->team_num = team_num;
+						newob->set_team_num(team_num_);
 						newob->stats->level = stats->level;
 						newob->damage = generic;
 						newob->center_on(ob);
@@ -3035,7 +3035,7 @@ bool walker::special()
 							{
 								ob->dead = 1;
 								ob->death();
-								if (team_num == 0 || myguy)
+								if (team_num_ == 0 || myguy)
 									myscreen->do_notify("(Old Marker Removed)", this);
 								busy += 8;
 								generic = 1;
@@ -3053,7 +3053,7 @@ bool walker::special()
 						else
 							newob->lifetime = (stats->level / 4) + 1;
 						newob->ani_type = 2; // non-walking
-						if (team_num == 0 || myguy)
+						if (team_num_ == 0 || myguy)
 						{
 							myscreen->do_notify("Teleport Marker Placed", this);
 							message = std::format("({} Uses)", newob->lifetime);
@@ -3112,7 +3112,7 @@ bool walker::special()
                                     return 0; // failsafe
 
                                 newob->owner = this;
-                                newob->team_num = team_num;
+                                newob->set_team_num(team_num_);
                                 newob->stats->level = stats->level;
                                 newob->stats->set_bit_flags(BIT_MAGICAL, 1);
                                 newob->damage = generic;
@@ -3137,7 +3137,7 @@ bool walker::special()
                             newob->center_on(this);
                             newob->owner = this;
                             newob->stats->level = stats->level;
-                            newob->team_num = team_num;
+                            newob->set_team_num(team_num_);
                             // Use half our remaining magic ..
                             generic = stats->magicpoints - stats->special_cost[2];
                             generic /= 2;
@@ -3195,7 +3195,7 @@ bool walker::special()
 									             ypos+((newob->sizey+1)*j));
 									newob->stats->level = (stats->level+1)/2;
 									newob->set_difficulty(newob->stats->level);
-									newob->team_num = team_num; // set to our team
+									newob->set_team_num(team_num_); // set to our team
 									newob->owner = this; // we're owned!
 									newob->lifetime = 200 + 60*stats->level;
 								} // end of successfully put summoned creature
@@ -3342,7 +3342,7 @@ bool walker::special()
 									             ypos+((newob->sizey+1)*j));
 									newob->stats->level = (stats->level+2)/3;
 									newob->set_difficulty(newob->stats->level);
-									newob->team_num = team_num; // set to our team
+									newob->set_team_num(team_num_); // set to our team
 									newob->owner = this; // we're owned!
 									newob->lifetime = 100 + 20*stats->level;
 									//newob->stats->armor = -(newob->stats->max_hitpoints*10);
@@ -3378,7 +3378,7 @@ bool walker::special()
                         for(auto* ob : newlist)
                         {
                             if (generic2 < 10) break;
-                            if ( (ob->real_team_num == 255) && // never been charmed
+                            if ( (ob->real_team_num() == 255) && // never been charmed
                                     (ob->query_order() == Order::Living) && // alive
                                     (ob->charm_left <= 10) // not too charmed
                                )
@@ -3387,14 +3387,14 @@ bool walker::special()
                                 generic = stats->level - ob->stats->level;
                                 if (generic < 0 || (!random(20)) ) // trying to control a higher-level
                                 {
-                                    ob->real_team_num = ob->team_num;
-                                    ob->team_num = random(8);
+                                    ob->set_real_team_num(ob->team_num());
+                                    ob->set_team_num(random(8));
                                     ob->charm_left = 25 + random(generic*20);
                                 }
                                 else
                                 {
-                                    ob->real_team_num = ob->team_num;
-                                    ob->team_num = team_num;
+                                    ob->set_real_team_num(ob->team_num());
+                                    ob->set_team_num(team_num_);
                                     ob->foe = nullptr; // allow choice of new foe
                                     ob->charm_left = 25 + random(generic*20);
                                 }
@@ -3485,7 +3485,7 @@ bool walker::special()
 			             ypos+sizey/2 - newob->sizey/2);
 			newob->owner = this;
 			newob->stats->level = stats->level;
-			newob->team_num = team_num; // so we scare OTHER teams
+			newob->set_team_num(team_num_); // so we scare OTHER teams
 			// Actual scare effect done in scare's "death" in effect
 			break;
 		case FAMILY_THIEF:
@@ -3569,7 +3569,7 @@ bool walker::special()
                             for(auto* ob : newlist)
                             {
                                 if (didheal) break;
-                                if ( (ob->real_team_num == 255) && // never been charmed
+                                if ( (ob->real_team_num() == 255) && // never been charmed
                                         (ob->query_order() == Order::Living) && // alive
                                         1 // (ob->charm_left <= 10) // not too charmed
                                    )
@@ -3584,8 +3584,8 @@ bool walker::special()
                                     }
                                     else
                                     {
-                                        ob->real_team_num = ob->team_num;
-                                        ob->team_num = team_num;
+                                        ob->set_real_team_num(ob->team_num());
+                                        ob->set_team_num(team_num_);
                                         if (foe == ob)
                                             ob->foe = nullptr;
                                         else
@@ -3627,7 +3627,7 @@ bool walker::special()
 					newob->center_on(this);
 					newob->invisibility_left = 10;
 					newob->ani_type = ANI_SPIN; // non-walking
-					newob->team_num = team_num;
+					newob->set_team_num(team_num_);
 					newob->stats->level = stats->level;
 					newob->damage = stats->level;
 					newob->owner = this;
@@ -3707,7 +3707,7 @@ bool walker::special()
 					busy += (fire_frequency * 2);
 					alive = myscreen->level_data.add_ob(Order::Weapon,FAMILY_TREE);
 					alive->setxy(newob->xpos,newob->ypos);
-					alive->team_num = team_num;
+					alive->set_team_num(team_num_);
 					alive->ani_type = ANI_GROW;
 					alive->owner = this;
 					newob->dead = 1;
@@ -3721,7 +3721,7 @@ bool walker::special()
 						return 0;
 					alive = myscreen->level_data.add_ob(Order::Living, FAMILY_FAERIE);
 					alive->setxy(newob->xpos, newob->ypos);
-					alive->team_num = team_num;
+					alive->set_team_num(team_num_);
 					alive->owner = this;
 					alive->lifetime = 50 + stats->level*(40);
 					newob->dead = 1;
@@ -3777,7 +3777,7 @@ bool walker::special()
                                         
                                         alive->owner = newob;
                                         alive->center_on(newob);
-                                        alive->team_num = newob->team_num;
+                                        alive->set_team_num(newob->team_num());
                                         alive->stats->level = newob->stats->level;
                                         didheal++;
                                     } // end of target wasn't protected
@@ -3808,7 +3808,7 @@ bool walker::special()
                                     message = "Druid protected 1 man!";
                                 else
                                     message = std::format("Druid protected {} men!", didheal);
-                                if (team_num == 0 || myguy) // home team
+                                if (team_num_ == 0 || myguy) // home team
                                     myscreen->do_notify(message.c_str(), this);
                                 // Play sound ...
                                 if (on_screen())
@@ -4495,14 +4495,14 @@ bool walker::death()
 		newob = myscreen->level_data.add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
 		newob->stats->hitpoints = myguy->query_heart_value();
 		newob->stats->hitpoints *= 0.75 / 2;  // 75%, divided by 2, since score is doubled at end of level
-		newob->team_num = team_num;
+		newob->set_team_num(team_num_);
 		newob->center_on(this);
 	}
 
 	switch (order)
 	{
 		case Order::Living:
-			if (   (team_num == 0 || myguy) // our team
+			if (   (team_num_ == 0 || myguy) // our team
 			        && (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
 			        && (stats->name.size()) // we were named
 			   )
@@ -4519,7 +4519,7 @@ bool walker::death()
 					dead = 1;
 					//transform_to(Order::Living, FAMILY_MEDIUM_SLIME);
 					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
-					newob->team_num = team_num;
+					newob->set_team_num(team_num_);
 					newob->stats->level = stats->level;
 					newob->set_difficulty(stats->level);
 					newob->foe = foe;
@@ -4538,7 +4538,7 @@ bool walker::death()
 					dead = 1;
 					//transform_to(Order::Living, FAMILY_SMALL_SLIME);
 					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
-					newob->team_num = team_num;
+					newob->set_team_num(team_num_);
 					newob->stats->level = stats->level;
 					newob->set_difficulty(stats->level);
 					newob->foe = foe;
@@ -4568,7 +4568,7 @@ bool walker::death()
 				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
-				newob->team_num = team_num;
+				newob->set_team_num(team_num_);
 				newob->stats->level = stats->level;
 				newob->ani_type = ANI_EXPLODE;
 				newob->setxy(xpos+random(sizex-8)+4, ypos+4+random(sizey-8) );
@@ -4607,7 +4607,7 @@ void walker::generate_bloodspot()
 	bloodstain->stats->old_order = order;
 	bloodstain->stats->old_family= family;
 
-	bloodstain->team_num = team_num;
+	bloodstain->set_team_num(team_num_);
 	bloodstain->dead = 0;
 	bloodstain->setxy(xpos, ypos);
 	//data = myscreen->myloader->graphics[PIX(Order::Treasure, FAMILY_STAIN)];
@@ -4680,7 +4680,7 @@ void walker::set_difficulty(Uint32 whatlevel)
 			stats->hitpoints = temp;
 			break;
 		default:  // adjust standard settings for the rest ..
-			if (team_num != 0)  // do all EXCEPT player characters
+			if (team_num_ != 0)  // do all EXCEPT player characters
 			{
 				stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
 				stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
@@ -4720,7 +4720,7 @@ unsigned char walker::query_team_color() const
 {
 	// Debugging ..
 	//if (foe && !foe->dead)
-	return static_cast<unsigned char>(team_num*16+40);
+	return static_cast<unsigned char>(team_num_*16+40);
 	//else
 	//  return static_cast<unsigned char>(7*16 + 40);
 }
@@ -4773,7 +4773,7 @@ Sint32 walker::is_friendly(const walker *target) const
 	// we are not friendly
 	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
-		return (headus->team_num == headtarget->team_num);
+		return (headus->team_num() == headtarget->team_num());
 	}
 	
 	// Allied
@@ -4782,7 +4782,7 @@ Sint32 walker::is_friendly(const walker *target) const
         // One person is missing a myguy pointer.
         // The one with a myguy pointer is owned by a player.
         // If the other person belongs to team 0 (red), then they are friendly.
-        return (headtarget->myguy == nullptr && headtarget->team_num == 0) || (headus->myguy == nullptr && headus->team_num == 0);
+        return (headtarget->myguy == nullptr && headtarget->team_num() == 0) || (headus->myguy == nullptr && headus->team_num() == 0);
     }
 
 	// If we're in 'friendly' mode, then everyone with
@@ -4829,7 +4829,7 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 	// If so, then our team number must match.
 	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
-		return (headus->team_num == team);
+		return (headus->team_num() == team);
 	}
 	
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)

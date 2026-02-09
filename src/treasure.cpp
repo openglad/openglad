@@ -85,18 +85,18 @@ bool treasure::eat_me(walker  * eater)
 				return 1;
 			}
 		case FAMILY_GOLD_BAR:
-			if (eater->team_num == 0 || eater->myguy)
+			if (eater->team_num() == 0 || eater->myguy)
 			{
-				myscreen->save_data.m_score[eater->team_num] += (200*stats->level);
+				myscreen->save_data.m_score[eater->team_num()] += (200*stats->level);
 				dead = 1;
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_MONEY);
 			}
 			return 1;
 		case FAMILY_SILVER_BAR:
-			if (eater->team_num == 0 || eater->myguy)
+			if (eater->team_num() == 0 || eater->myguy)
 			{
-				myscreen->save_data.m_score[eater->team_num] += (50*stats->level);
+				myscreen->save_data.m_score[eater->team_num()] += (50*stats->level);
 				dead = 1;
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_MONEY);
@@ -275,9 +275,9 @@ bool treasure::eat_me(walker  * eater)
 			flash->center_on(this);
 			return 1;
 		case FAMILY_LIFE_GEM: // get back some of lost man's xp ..
-			if (eater->team_num != team_num) // only our team can get these
+			if (eater->team_num() != team_num_) // only our team can get these
 				return 1;
-			myscreen->save_data.m_score[eater->team_num] += stats->hitpoints;
+			myscreen->save_data.m_score[eater->team_num()] += stats->hitpoints;
 			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
@@ -293,7 +293,7 @@ bool treasure::eat_me(walker  * eater)
 					        stats->level);
 				else
 					message = std::format("{} picks up key {}", eater->stats->name, stats->level);
-				if (eater->team_num == 0) // only show players picking up keys
+				if (eater->team_num() == 0) // only show players picking up keys
 				{
 					myscreen->do_notify(message.c_str(), eater);
 					if (eater->on_screen())

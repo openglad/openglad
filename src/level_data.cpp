@@ -629,7 +629,7 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 		}
 		new_guy ->setxy(currentx, currenty);
 		//       Log("X: %d  Y: %d  \n", currentx, currenty);
-		new_guy ->team_num = tempteam;
+		new_guy ->set_team_num(tempteam);
 	}
 
 	// Now read the grid file to our master screen ..
@@ -722,7 +722,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
+		new_guy->set_team_num(tempteam);
 		new_guy->stats->level = templevel;
 	}
 
@@ -827,7 +827,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
+		new_guy->set_team_num(tempteam);
 		new_guy->stats->level = templevel;
 		new_guy->stats->name = tempname;
 		if (new_guy->stats->name.size() > 1)           //chad 5/25/95
@@ -940,7 +940,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 			return 0;
 		}
 		new_guy->setxy(currentx, currenty);
-		new_guy->team_num = tempteam;
+		new_guy->set_team_num(tempteam);
 		new_guy->stats->level = templevel;
 		new_guy->stats->name = tempname;
 		if (new_guy->stats->name.size() > 1)           //chad 5/25/95
@@ -1100,7 +1100,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         }
         
         new_guy->setxy(currentx, currenty);
-        new_guy->team_num = tempteam;
+        new_guy->set_team_num(tempteam);
         if (version >= 7)
             new_guy->stats->level = shortlevel;
         else
@@ -1438,7 +1438,7 @@ bool LevelData::save()
         temporder = static_cast<unsigned char>(w->query_order());
         tempfacing= w->curdir;
         tempfamily= w->query_family();
-        tempteam  = w->team_num;
+        tempteam  = w->team_num();
         tempcommand=w->query_act_type();
         currentx  = w->xpos;
         currenty  = w->ypos;
@@ -1470,7 +1470,7 @@ bool LevelData::save()
         temporder = static_cast<unsigned char>(ob->query_order());
         tempfacing= ob->curdir;
         tempfamily= ob->query_family();
-        tempteam  = ob->team_num;
+        tempteam  = ob->team_num();
         tempcommand=ob->query_act_type();
         currentx  = ob->xpos;
         currenty  = ob->ypos;
@@ -1502,7 +1502,7 @@ bool LevelData::save()
         temporder = static_cast<unsigned char>(ob->query_order());
         tempfacing= ob->curdir;
         tempfamily= ob->query_family();
-        tempteam  = ob->team_num;
+        tempteam  = ob->team_num();
         tempcommand=ob->query_act_type();
         currentx  = ob->xpos;
         currenty  = ob->ypos;

@@ -119,9 +119,11 @@ class walker : public pixieN
 		signed char cycle;
 		signed char  **ani;
 		char action;
-		// Zardus: FIX: lets make these unsigned so that real_team_num doesn't wrap around from 255 to -1 :-)
-		unsigned char team_num;
-		unsigned char real_team_num; // for 'Charm', etc.
+		// Accessors for team_num / real_team_num (fields now in protected)
+		unsigned char team_num() const { return team_num_; }
+		void set_team_num(unsigned char t) { team_num_ = t; }
+		unsigned char real_team_num() const { return real_team_num_; }
+		void set_real_team_num(unsigned char t) { real_team_num_ = t; }
 		char ani_type;
 		float worldx, worldy;  // Floating point buffer for movement
 		float stepsize;
@@ -200,6 +202,9 @@ class walker : public pixieN
 		char enddir;  // Proposed direction facing
 		Order order;
 		char family;
+		// Zardus: FIX: lets make these unsigned so that real_team_num doesn't wrap around from 255 to -1 :-)
+		unsigned char team_num_;
+		unsigned char real_team_num_; // for 'Charm', etc.
 
 
 };

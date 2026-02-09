@@ -400,7 +400,7 @@ short viewscreen::input(const SDL_Event& event)
 			        w->query_order() == Order::Living &&
 			        w->user == -1 && // mean's we're not player-controlled
 			        w->myguy &&
-			        w->team_num == my_team) // makes a difference for PvP
+			        w->team_num() == my_team) // makes a difference for PvP
             {
                 control = w;
 				break;
@@ -417,7 +417,7 @@ short viewscreen::input(const SDL_Event& event)
                         !w->dead &&
                         w->query_order() == Order::Living &&
                         w->user == -1 && // mean's we're not player-controlled
-                        w->team_num == my_team) // makes a difference for PvP
+                        w->team_num() == my_team) // makes a difference for PvP
                 {
                     control = w;
                     break;
@@ -519,8 +519,8 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = e->get();
                 if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                        w->real_team_num == 255 && w->user == -1)
+                        w->is_friendly(oldcontrol) && w->team_num() == my_team &&
+                        w->real_team_num() == 255 && w->user == -1)
                 {
                     control = w;
                     break;
@@ -534,8 +534,8 @@ short viewscreen::input(const SDL_Event& event)
                 {
                     walker* w = e->get();
                     if (w->query_order() == Order::Living &&
-                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                            w->real_team_num == 255 && w->user == -1)
+                            w->is_friendly(oldcontrol) && w->team_num() == my_team &&
+                            w->real_team_num() == 255 && w->user == -1)
                     {
                         control = w;
                         break;
@@ -560,8 +560,8 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = e->get();
                 if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                        w->real_team_num == 255 && w->user == -1)
+                        w->is_friendly(oldcontrol) && w->team_num() == my_team &&
+                        w->real_team_num() == 255 && w->user == -1)
                 {
                     control = w;
                     break;
@@ -575,8 +575,8 @@ short viewscreen::input(const SDL_Event& event)
                 {
                     walker* w = e->get();
                     if (w->query_order() == Order::Living &&
-                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                            w->real_team_num == 255 && w->user == -1)
+                            w->is_friendly(oldcontrol) && w->team_num() == my_team &&
+                            w->real_team_num() == 255 && w->user == -1)
                     {
                         control = w;
                         break;
@@ -627,7 +627,7 @@ short viewscreen::input(const SDL_Event& event)
 		    walker* w = uptr.get();
 			if (w && (w->query_order() == Order::Living) &&
 			        (w->query_act_type() != ACT_CONTROL) &&
-			        (w->team_num == control->team_num) &&
+			        (w->team_num() == control->team_num()) &&
 			        (!w->leader) )
 			{
 				// Remove any current foe ..
@@ -654,7 +654,7 @@ short viewscreen::input(const SDL_Event& event)
 				{
 				    walker* w = uptr.get();
 					if (w &&
-					        (w->team_num == control->team_num) && w->is_friendly(control)
+					        (w->team_num() == control->team_num()) && w->is_friendly(control)
 					   )
 					{
 						// Remove any current foe ..
@@ -671,7 +671,7 @@ short viewscreen::input(const SDL_Event& event)
 				    walker* w = uptr.get();
 					if (w && (w->query_order() == Order::Living) &&
 					        (w->query_act_type() != ACT_CONTROL) &&
-					        (w->team_num == control->team_num)
+					        (w->team_num() == control->team_num())
 					   )
 					{
 						// Set to normal operation
@@ -718,7 +718,7 @@ short viewscreen::input(const SDL_Event& event)
                 for(auto& uptr : myscreen->level_data.oblist)
                 {
                     walker* w = uptr.get();
-                    if ( (w->team_num == myscreen->save_data.my_team) &&
+                    if ( (w->team_num() == myscreen->save_data.my_team) &&
                             (w->query_order() == Order::Living)
                        )
                     {
@@ -778,7 +778,7 @@ short viewscreen::input(const SDL_Event& event)
 		{
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 			newob->owner = control;
-			newob->team_num = control->team_num;
+			newob->set_team_num(control->team_num());
 			newob->ani_type = 1; // dummy, non-zero value
 			newob->lifetime = 200;
 			//clear_key_code(SDLK_F2);
@@ -906,7 +906,7 @@ short viewscreen::continuous_input()
 			        w->query_order() == Order::Living &&
 			        w->user == -1 && // mean's we're not player-controlled
 			        w->myguy &&
-			        w->team_num == my_team) // makes a difference for PvP
+			        w->team_num() == my_team) // makes a difference for PvP
             {
                 control = w;
 				break;
@@ -923,7 +923,7 @@ short viewscreen::continuous_input()
                         !w->dead &&
                         w->query_order() == Order::Living &&
                         w->user == -1 && // mean's we're not player-controlled
-                        w->team_num == my_team) // makes a difference for PvP
+                        w->team_num() == my_team) // makes a difference for PvP
                 {
                     control = w;
                     break;
@@ -1064,7 +1064,7 @@ short viewscreen::continuous_input()
 	//       draw_box(S_LEFT, S_UP, S_RIGHT-1, S_DOWN-1, 44, 1);  // red flash
 	         // Make temporary stain:
 	         blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
-	         blood->team_num = control->team_num;
+	         blood->set_team_num(control->team_num());
 	         blood->ani_type = ANI_GROW;
 	         blood->setxy(control->xpos,control->ypos);
 	         blood->owner = control;
@@ -1357,7 +1357,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	    walker* w = uptr.get();
 		if (w && !w->dead
 		        && w->query_order() == Order::Living
-		        && w->team_num == teamnum
+		        && w->team_num() == teamnum
 		        && (!w->stats->name.empty() || w->myguy)) //&& w->owner == nullptr)
 		{
 		    ls.push_back(w);

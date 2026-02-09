@@ -464,7 +464,7 @@ short remaining_team(screen *myscreen, char myteam)
 	    walker* w = uptr.get();
 		if (w && !w->dead &&
 		        (w->query_order() == Order::Living) &&
-		        (myteam == w->team_num) )
+		        (myteam == w->team_num()) )
 			myfoes++;
 	}
 
@@ -495,9 +495,9 @@ void draw_radar_gems(screen  *myscreen)
 	short team_light;
 
 	static short old_team_num = -1;
-	if (old_team_num == myscreen->viewob[0]->control->team_num)
+	if (old_team_num == myscreen->viewob[0]->control->team_num())
 		return;
-	old_team_num = myscreen->viewob[0]->control->team_num;
+	old_team_num = myscreen->viewob[0]->control->team_num();
 
 	team_light = myscreen->viewob[0]->control->query_team_color();
 
@@ -782,7 +782,7 @@ short new_score_panel(screen *myscreen, short do_it)
 			// Get current number of foes
 			tempfoes = remaining_foes(myscreen, control);
 			// Get current number of team-members
-			tempallies = remaining_team(myscreen, control->team_num);
+			tempallies = remaining_team(myscreen, control->team_num());
 
 			// Draw the pretty gems
 			//draw_radar_gems(myscreen);
@@ -859,19 +859,19 @@ short new_score_panel(screen *myscreen, short do_it)
 
 				// Get our score ..
 				if (control)
-					myscore = myscreen->save_data.m_score[control->team_num];
+					myscore = myscreen->save_data.m_score[control->team_num()];
 				else
 					myscore = 0;
-				if (scorecountup[control->team_num] > myscore)
-					scorecountup[control->team_num] = myscore;
-				if (scorecountup[control->team_num] < myscore)
+				if (scorecountup[control->team_num()] > myscore)
+					scorecountup[control->team_num()] = myscore;
+				if (scorecountup[control->team_num()] < myscore)
 				{
-					scorecountup[control->team_num]++;
-					scorecountup[control->team_num] += static_cast<Uint32>(random( (myscore - scorecountup[control->team_num]))/12 );
+					scorecountup[control->team_num()]++;
+					scorecountup[control->team_num()] += static_cast<Uint32>(random( (myscore - scorecountup[control->team_num()]))/12 );
 				}
-				if (scorecountup[control->team_num] > myscore)
-					scorecountup[control->team_num] = myscore;
-				myscreen->save_data.m_score[control->team_num] = myscore;
+				if (scorecountup[control->team_num()] > myscore)
+					scorecountup[control->team_num()] = myscore;
+				myscreen->save_data.m_score[control->team_num()] = myscore;
 				//above should count up the score towards the current amount
 				
 				int special_y = bm + special_offset;
@@ -882,7 +882,7 @@ short new_score_panel(screen *myscreen, short do_it)
                 }
                 else
                 {
-                    message = std::format("SC: {}", scorecountup[control->team_num]);
+                    message = std::format("SC: {}", scorecountup[control->team_num()]);
                     mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
 
                     // Level or exp, 2nd bottom left

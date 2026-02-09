@@ -222,7 +222,7 @@ bool weap::death()
 			newob->ani_type = ANI_DOOR_OPEN;
 			newob->setxy(xpos, ypos);
 			newob->stats->level = stats->level;
-			newob->team_num = team_num;
+			newob->set_team_num(team_num_);
 			//      newob->ignore = 1;
 			// What way are we 'facing'?
 			if (myscreen->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
