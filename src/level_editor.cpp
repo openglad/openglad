@@ -80,7 +80,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
 
-enum ModeEnum {TERRAIN, OBJECT, SELECT};
+enum class Mode { Terrain, Object, Select };
 
 void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y);
 walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
@@ -857,7 +857,7 @@ public:
     CampaignData* campaign;
     LevelData* level;
     
-	ModeEnum mode;
+	Mode mode;
     EditorTerrainBrush terrain_brush;
     EditorObjectBrush object_brush;
     std::vector<SelectionInfo> selection;
@@ -975,7 +975,7 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), mode(TERRAIN), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
+    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0], myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -1227,7 +1227,7 @@ void LevelEditorData::reset_mode_buttons()
     mode_buttons.clear();
     switch(mode)
     {
-        case TERRAIN:
+        case Mode::Terrain:
         mode_buttons.insert(&pickerButton);
         mode_buttons.insert(&terrainSmoothButton);
         if(terrain_brush.picking)
@@ -1235,7 +1235,7 @@ void LevelEditorData::reset_mode_buttons()
         else
             pickerButton.set_colors_normal();
         break;
-        case OBJECT:
+        case Mode::Object:
         mode_buttons.insert(&pickerButton);
         mode_buttons.insert(&gridSnapButton);
         mode_buttons.insert(&prevTeamButton);
@@ -1245,7 +1245,7 @@ void LevelEditorData::reset_mode_buttons()
         else
             pickerButton.set_colors_normal();
         break;
-        case SELECT:
+        case Mode::Select:
         mode_buttons.insert(&gridSnapButton);
         if(selection.size() == 1 && selection.front().order == ORDER_LIVING)
         {
@@ -1270,7 +1270,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
 {
     if(button == &pickerButton)
     {
-        if(mode == TERRAIN)
+        if(mode == Mode::Terrain)
         {
             terrain_brush.picking = !terrain_brush.picking;
             if(terrain_brush.picking)
@@ -1278,7 +1278,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             else
                 pickerButton.set_colors_normal();
         }
-        else if(mode == OBJECT)
+        else if(mode == Mode::Object)
         {
             object_brush.picking = !object_brush.picking;
             if(object_brush.picking)
@@ -1323,7 +1323,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     }
     else if(button == &prevTeamButton)
     {
-        if(mode == SELECT)
+        if(mode == Mode::Select)
         {
             for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
             {
@@ -1338,7 +1338,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 }
             }
         }
-        else if(mode == OBJECT)
+        else if(mode == Mode::Object)
         {
             if(object_brush.team > 0)
                 object_brush.team--;
@@ -1348,7 +1348,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     }
     else if(button == &nextTeamButton)
     {
-        if(mode == SELECT)
+        if(mode == Mode::Select)
         {
             for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
             {
@@ -1363,7 +1363,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 }
             }
         }
-        else if(mode == OBJECT)
+        else if(mode == Mode::Object)
         {
             if(object_brush.team < MAX_TEAM)
                 object_brush.team++;
@@ -1663,7 +1663,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 {
     text& scentext = myscreen->text_normal;
     // Draw selection indicators
-    if(mode == SELECT && selection.size() > 0)
+    if(mode == Mode::Select && selection.size() > 0)
     {
         for(std::vector<SelectionInfo>::iterator e = selection.begin(); e != selection.end(); e++)
         {
@@ -1735,7 +1735,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	    };
 
     // Info box for select mode
-    if(mode == SELECT && selection.size() > 0)
+    if(mode == Mode::Select && selection.size() > 0)
     {
         // Draw the info box background
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
@@ -1843,7 +1843,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         
     }
     
-    if(mode == OBJECT)
+    if(mode == Mode::Object)
     {
         // Draw the bounding box
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
@@ -1920,7 +1920,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         scentext.write_xy(lm,L_D(curline++),message, DARK_BLUE, 1);
     }
     
-    if(mode == TERRAIN)
+    if(mode == Mode::Terrain)
     {
         // Show the current brush
         myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
@@ -1966,7 +1966,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         }
         #endif
     }
-    else if(mode == OBJECT)
+    else if(mode == Mode::Object)
     {
         // Draw current brush
         // Background
@@ -2103,7 +2103,7 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
     MouseState& mymouse = query_mouse_no_poll();
     if(mymouse.left)
     {
-        if(mode == SELECT && !mouse_on_menus(mouse_last_x, mouse_last_y))
+        if(mode == Mode::Select && !mouse_on_menus(mouse_last_x, mouse_last_y))
         {
             Sint32 worldx = mx + level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
             Sint32 worldy = my + level->topy - myscreen->viewob[0]->yloc; // - S_UP
@@ -2976,19 +2976,19 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, modeTerrainButton))
         {
-            mode = TERRAIN;
+            mode = Mode::Terrain;
             modeButton.label = "Edit (Terrain)";
             reset_mode_buttons();
         }
         else if(activate_menu_choice(mx, my, *this, modeObjectButton))
         {
-            mode = OBJECT;
+            mode = Mode::Object;
             modeButton.label = "Edit (Objects)";
             reset_mode_buttons();
         }
         else if(activate_menu_choice(mx, my, *this, modeSelectButton))
         {
-            mode = SELECT;
+            mode = Mode::Select;
             modeButton.label = "Edit (Select)";
             reset_mode_buttons();
         }
@@ -3022,7 +3022,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         // Clicked and released off the menu
         
         // Zardus: ADD: can move map by clicking on minimap
-        if ((mode != SELECT || (!rect_selecting && !dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
+        if ((mode != Mode::Select || (!rect_selecting && !dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
                 && my > myscreen->viewob[0]->endy - myradar.yview - 4
                 && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
         {
@@ -3038,7 +3038,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 windowy -= (windowy%GRID_SIZE);
             }
 
-            if (mode == SELECT)
+            if (mode == Mode::Select)
             {
                 walker* newob = nullptr;
                 
@@ -3114,7 +3114,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     }
                 }  // end of info mode
             }
-            else if (mode == OBJECT)
+            else if (mode == Mode::Object)
             {
                 if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
                 {
@@ -3173,7 +3173,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     }
                 }
             }  // end of putting a guy
-            if (mode == TERRAIN)
+            if (mode == Mode::Terrain)
             {
                 if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
                 {
@@ -3210,7 +3210,7 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
     Sint32 windowy = my + level->topy - myscreen->viewob[0]->yloc; // - S_UP
     
     // Set brush to the grid tile
-    if(mode == TERRAIN)
+    if(mode == Mode::Terrain)
     {
         // Snap to grid
         windowx -= (windowx%GRID_SIZE);
@@ -3224,7 +3224,7 @@ void LevelEditorData::pick_by_mouse(int mx, int my)
         if(is_in_grid(windowx, windowy))
             terrain_brush.terrain = get_terrain(windowx, windowy);
     }
-    else if(mode == OBJECT)
+    else if(mode == Mode::Object)
     {
         // Snap to grid
         if (object_brush.snap_to_grid)
@@ -3310,26 +3310,26 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 	return false;
 }
 
-enum EventTypeEnum {HANDLED_EVENT, TEXT_EVENT, SCROLL_EVENT, MOUSE_MOTION_EVENT, MOUSE_DOWN_EVENT, MOUSE_UP_EVENT, KEY_DOWN_EVENT};
+enum class EventType { Handled, Text, Scroll, MouseMotion, MouseDown, MouseUp, KeyDown };
 
-EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
+EventType handle_basic_editor_event(const SDL_Event& event)
 {
     switch (event.type)
     {
     case SDL_WINDOWEVENT:   
         handle_window_event(event);
-        return HANDLED_EVENT;
+        return EventType::Handled;
     case SDL_TEXTINPUT:
         handle_text_event(event);
-        return TEXT_EVENT;
+        return EventType::Text;
     case SDL_MOUSEWHEEL:
         handle_mouse_event(event);
-        return SCROLL_EVENT;
+        return EventType::Scroll;
     case SDL_FINGERMOTION:
         handle_mouse_event(event);
         mouse_motion_x = event.tfinger.dx*320;
         mouse_motion_y = event.tfinger.dy*200;
-        return MOUSE_MOTION_EVENT;
+        return EventType::MouseMotion;
     case SDL_FINGERUP:
         {
             MouseState& mymouse = query_mouse_no_poll();
@@ -3343,21 +3343,21 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
             else
                 mouse_up_button = 0;
         }
-        return MOUSE_UP_EVENT;
+        return EventType::MouseUp;
     case SDL_FINGERDOWN:
         handle_mouse_event(event);
-        return MOUSE_DOWN_EVENT;
+        return EventType::MouseDown;
     case SDL_KEYDOWN:
         handle_key_event(event);
-        return KEY_DOWN_EVENT;
+        return EventType::KeyDown;
     case SDL_KEYUP:
         handle_key_event(event);
-        return HANDLED_EVENT;
+        return EventType::Handled;
     case SDL_MOUSEMOTION:
         handle_mouse_event(event);
         mouse_motion_x = event.motion.xrel * (320 / viewport_w);
         mouse_motion_y = event.motion.yrel * (200 / viewport_h);
-        return MOUSE_MOTION_EVENT;
+        return EventType::MouseMotion;
     case SDL_MOUSEBUTTONUP:
         {
             MouseState& mymouse = query_mouse_no_poll();
@@ -3371,24 +3371,24 @@ EventTypeEnum handle_basic_editor_event(const SDL_Event& event)
             else
                 mouse_up_button = 0;
         }
-        return MOUSE_UP_EVENT;
+        return EventType::MouseUp;
     case SDL_MOUSEBUTTONDOWN:
         handle_mouse_event(event);
-        return MOUSE_DOWN_EVENT;
+        return EventType::MouseDown;
     case SDL_JOYAXISMOTION:
         handle_joy_event(event);
-        return HANDLED_EVENT;
+        return EventType::Handled;
     case SDL_JOYBUTTONDOWN:
         handle_joy_event(event);
-        return HANDLED_EVENT;
+        return EventType::Handled;
     case SDL_JOYBUTTONUP:
         handle_joy_event(event);
-        return HANDLED_EVENT;
+        return EventType::Handled;
     case SDL_QUIT:
         quit(0);
-        return HANDLED_EVENT;
+        return EventType::Handled;
     default:
-        return HANDLED_EVENT;
+        return EventType::Handled;
     }
 }
 
@@ -3408,7 +3408,7 @@ Sint32 level_editor()
     EditorTerrainBrush& terrain_brush = data.terrain_brush;
     EditorObjectBrush& object_brush = data.object_brush;
     
-    ModeEnum& mode = data.mode;
+    Mode& mode = data.mode;
     radar& myradar = data.myradar;
     
 	Sint32 i,j;
@@ -3532,10 +3532,10 @@ Sint32 level_editor()
             #endif
             switch(handle_basic_editor_event(event))
             {
-            case MOUSE_MOTION_EVENT:
+            case EventType::MouseMotion:
                 data.mouse_motion(mymouse.x, mymouse.y, mouse_motion_x, mouse_motion_y);
                 break;
-            case MOUSE_DOWN_EVENT:
+            case EventType::MouseDown:
                 if(mymouse.left)
                 {
                     mouse_last_x = mymouse.x;
@@ -3544,7 +3544,7 @@ Sint32 level_editor()
                     data.mouse_down(mymouse.x, mymouse.y);
                 }
                 break;
-            case MOUSE_UP_EVENT:
+            case EventType::MouseUp:
                 
                 if(mouse_up_button == MOUSE_LEFT)
                 {
@@ -3558,7 +3558,7 @@ Sint32 level_editor()
                     redraw = 1;
                 }
                 break;
-            case KEY_DOWN_EVENT:
+            case EventType::KeyDown:
                 redraw = 1;
                 if(event.key.keysym.sym == SDLK_ESCAPE)
                 {
@@ -3590,7 +3590,7 @@ Sint32 level_editor()
                 // Toggle grid alignment
                 else if(event.key.keysym.sym == SDLK_g)
                 {
-                    if(mode == OBJECT || mode == SELECT)
+                    if(mode == Mode::Object || mode == Mode::Select)
                         data.activate_mode_button(&data.gridSnapButton);
                 }
                 // Save scenario
@@ -3627,43 +3627,43 @@ Sint32 level_editor()
                 // Change level of current guy being placed ..
                 else if(event.key.keysym.sym == SDLK_RIGHTBRACKET)
                 {
-                    if(mode == OBJECT)
+                    if(mode == Mode::Object)
                         object_brush.level++;
                 }
                 else if(event.key.keysym.sym == SDLK_LEFTBRACKET)
                 {
-                    if(mode == OBJECT && object_brush.level > 1)
+                    if(mode == Mode::Object && object_brush.level > 1)
                         object_brush.level--;
                 }
                 else if(event.key.keysym.sym == SDLK_DELETE)
                 {
-                    if(mode == SELECT)
+                    if(mode == Mode::Select)
                         data.activate_mode_button(&data.deleteButton);
                 }
                 else if(event.key.keysym.sym == SDLK_o)
                 {
-                    if(mode == OBJECT)
+                    if(mode == Mode::Object)
                     {
-                        mode = SELECT;
+                        mode = Mode::Select;
                         data.modeButton.label = "Edit (Select)";
                     }
                     else
                     {
-                        mode = OBJECT;
+                        mode = Mode::Object;
                         data.modeButton.label = "Edit (Objects)";
                     }
                     data.reset_mode_buttons();
                 }
                 else if(event.key.keysym.sym == SDLK_t)
                 {
-                    if(mode == TERRAIN)
+                    if(mode == Mode::Terrain)
                     {
-                        mode = SELECT;
+                        mode = Mode::Select;
                         data.modeButton.label = "Edit (Select)";
                     }
                     else
                     {
-                        mode = TERRAIN;
+                        mode = Mode::Terrain;
                         data.modeButton.label = "Edit (Terrain)";
                     }
                     data.reset_mode_buttons();
@@ -3690,7 +3690,7 @@ Sint32 level_editor()
             int dx = 0;
             int dy = 0;
             OuyaController& c = OuyaControllerManager::getController(0);
-            if(!c.isStickBeyondDeadzone(OuyaController::AXIS_LS_X))
+            if(!c.isStickBeyondDeadzone(OuyaController::AxisEnum::LsX))
             {
                 if(isPlayerHoldingKey(0, KEY_UP) || isPlayerHoldingKey(0, KEY_UP_LEFT) || isPlayerHoldingKey(0, KEY_UP_RIGHT))
                 {
@@ -3711,8 +3711,8 @@ Sint32 level_editor()
             }
             else
             {
-                dx = 5*c.getAxisValue(OuyaController::AXIS_LS_X);
-                dy = 5*c.getAxisValue(OuyaController::AXIS_LS_Y);
+                dx = 5*c.getAxisValue(OuyaController::AxisEnum::LsX);
+                dy = 5*c.getAxisValue(OuyaController::AxisEnum::LsY);
             }
             
             if(mymouse.x + dx < 0)
@@ -3746,8 +3746,8 @@ Sint32 level_editor()
             
             const OuyaController& c = OuyaControllerManager::getController(0);
             
-            float vx = c.getAxisValue(OuyaController::AXIS_RS_X);
-            float vy = c.getAxisValue(OuyaController::AXIS_RS_Y);
+            float vx = c.getAxisValue(OuyaController::AxisEnum::RsX);
+            float vy = c.getAxisValue(OuyaController::AxisEnum::RsY);
             
             // Scroll the tile selector when over it
             if(Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y))
@@ -3919,7 +3919,7 @@ Sint32 level_editor()
             else if(off_menu)
             {
                 // Zardus: ADD: can move map by clicking on minimap
-                if ((mode != SELECT || (!data.rect_selecting && !data.dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
+                if ((mode != Mode::Select || (!data.rect_selecting && !data.dragging)) && mx > myscreen->viewob[0]->endx - myradar.xview - 4
                         && my > myscreen->viewob[0]->endy - myradar.yview - 4
                         && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4)
                 {
@@ -3937,7 +3937,7 @@ Sint32 level_editor()
                     windowy = mymouse.y + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
                     windowy -= (windowy%GRID_SIZE);
 
-                    if (mode == TERRAIN)
+                    if (mode == Mode::Terrain)
                     {
                         if (mx >= S_RIGHT && my >= PIX_TOP && my <= PIX_BOTTOM)
                         {

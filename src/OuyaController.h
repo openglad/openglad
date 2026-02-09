@@ -9,12 +9,12 @@ class OuyaController
 public:
     friend class OuyaControllerManager;
     
-    enum ButtonEnum {BUTTON_O = 96, BUTTON_U = 99, BUTTON_Y = 100, BUTTON_A = 97,
-                     BUTTON_L1 = 102, BUTTON_R1 = 103, BUTTON_L3 = 106, BUTTON_R3 = 107,
-                     BUTTON_MENU = 82,
-                     BUTTON_DPAD_UP = 19, BUTTON_DPAD_RIGHT = 22, BUTTON_DPAD_DOWN = 20, BUTTON_DPAD_LEFT = 21};
-    
-    enum AxisEnum {AXIS_LS_X = 0, AXIS_LS_Y = 1, AXIS_RS_X = 11, AXIS_RS_Y = 14, AXIS_L2 = 17, AXIS_R2 = 18};
+    enum class ButtonEnum {O = 96, U = 99, Y = 100, A = 97,
+                     L1 = 102, R1 = 103, L3 = 106, R3 = 107,
+                     Menu = 82,
+                     DpadUp = 19, DpadRight = 22, DpadDown = 20, DpadLeft = 21};
+
+    enum class AxisEnum {LsX = 0, LsY = 1, RsX = 11, RsY = 14, L2 = 17, R2 = 18};
     
     static const int NUM_BUTTONS = 13;
     static const int NUM_AXES = 6;

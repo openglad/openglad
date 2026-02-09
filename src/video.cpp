@@ -38,7 +38,7 @@ video::video()
 	Sint32 i;
 	RenderEngine render;
 	fullscreen = 0;
-    render = NoZoom;
+    render = RenderEngine::NoZoom;
 
 	if(cfg.is_on("graphics","fullscreen"))
 		fullscreen = 1;
@@ -48,13 +48,13 @@ video::video()
 	
 	std::string qresult = cfg.get_setting("graphics", "render");
 	if(qresult == "normal")
-		render = NoZoom;
+		render = RenderEngine::NoZoom;
 	else if(qresult == "sai")
-		render = SAI;
+		render = RenderEngine::SAI;
 	else if(qresult == "eagle")
-		render = EAGLE;
+		render = RenderEngine::Eagle;
 	else if(qresult == "double")
-		render = DOUBLE;
+		render = RenderEngine::Double;
 	
 	fadeDuration = 500;
 
@@ -1771,8 +1771,8 @@ bool video::save_screenshot()
     
 	switch(E_Screen->Engine)
 	{
-		case SAI:
-		case EAGLE:
+		case RenderEngine::SAI:
+		case RenderEngine::Eagle:
             surf = E_Screen->render2;
 		    break;
         default:

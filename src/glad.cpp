@@ -41,13 +41,13 @@ using namespace std;
 
 #ifdef __EMSCRIPTEN__
 // Game state machine for Emscripten - allows single main loop to handle all states
-enum GameState {
-    GAME_STATE_INTRO,
-    GAME_STATE_PICKER,
-    GAME_STATE_PLAYING,
-    GAME_STATE_QUIT
+enum class GameState {
+    Intro,
+    Picker,
+    Playing,
+    Quit
 };
-static GameState g_game_state = GAME_STATE_INTRO;
+static GameState g_game_state = GameState::Intro;
 static bool g_state_initialized = false;
 #endif
 
@@ -142,7 +142,7 @@ static void emscripten_frame_wrapper() {
 	// Only run logic if enough time has accumulated
 	if (g_frame_state.accumulated_time >= target_frame_time) {
 		switch (g_game_state) {
-			case GAME_STATE_PICKER:
+			case GameState::Picker:
 				if (!g_state_initialized) {
 					picker_reinit_after_game();
 					g_state_initialized = true;
@@ -151,15 +151,15 @@ static void emscripten_frame_wrapper() {
 					// Transition to playing state
 					Log("Transitioning from PICKER to PLAYING\n");
 					picker_cleanup_for_game();
-					g_game_state = GAME_STATE_PLAYING;
+					g_game_state = GameState::Playing;
 					g_state_initialized = false;
 				}
 				break;
 
-			case GAME_STATE_PLAYING:
+			case GameState::Playing:
 				if (!g_state_initialized) {
 					// Initialize game state
-					Log("GAME_STATE_PLAYING: Initializing game\n");
+					Log("GameState::Playing: Initializing game\n");
 					release_mouse();
 					myscreen->ready_for_battle(myscreen->save_data.numplayers);
 					glad_init();
@@ -173,12 +173,12 @@ static void emscripten_frame_wrapper() {
 					Log("Game done, transitioning back to PICKER\n");
 					clear_keyboard();
 					myscreen->level_data.delete_objects();
-					g_game_state = GAME_STATE_PICKER;
+					g_game_state = GameState::Picker;
 					g_state_initialized = false;
 				}
 				break;
 
-			case GAME_STATE_QUIT:
+			case GameState::Quit:
 				emscripten_cancel_main_loop();
 				break;
 
@@ -228,11 +228,11 @@ int main(int argc, char *argv[])
 	extern bool picker_check_start_requested();
 	if (picker_check_start_requested()) {
 		Log("main: Game start was requested during picker_init, starting in PLAYING state\n");
-		g_game_state = GAME_STATE_PLAYING;
+		g_game_state = GameState::Playing;
 		g_state_initialized = false;  // Will trigger glad_init on first frame
 	} else {
 		Log("main: No game start requested, starting in PICKER state\n");
-		g_game_state = GAME_STATE_PICKER;
+		g_game_state = GameState::Picker;
 		g_state_initialized = true;
 	}
 

@@ -498,11 +498,11 @@ static void load_help_files()
 }
 
 // Tab definitions
-enum HelpTab {
-	TAB_CONTROLS = 0,
-	TAB_CLASSES = 1,
-	TAB_EDITOR = 2,
-	NUM_TABS = 3
+enum class HelpTab {
+	Controls = 0,
+	Classes = 1,
+	Editor = 2,
+	NumTabs = 3
 };
 
 static const char* tab_names[] = { "Controls", "Classes", "Editor" };
@@ -516,7 +516,7 @@ struct TabContent {
 };
 
 // Helper function to get content for current tab
-static TabContent get_tab_content(int tab)
+static TabContent get_tab_content(HelpTab tab)
 {
 	TabContent content;
 	content.static_lines = nullptr;
@@ -525,17 +525,17 @@ static TabContent get_tab_content(int tab)
 
 	switch (tab)
 	{
-	case TAB_CONTROLS:
+	case HelpTab::Controls:
 		content.static_lines = controls_help_lines;
 		content.num_lines = NUM_CONTROLS_LINES;
 		content.is_dynamic = false;
 		break;
-	case TAB_CLASSES:
+	case HelpTab::Classes:
 		content.dynamic_lines = &classes_help_lines;
 		content.num_lines = (int)classes_help_lines.size();
 		content.is_dynamic = true;
 		break;
-	case TAB_EDITOR:
+	case HelpTab::Editor:
 		content.dynamic_lines = &editor_help_lines;
 		content.num_lines = (int)editor_help_lines.size();
 		content.is_dynamic = true;
@@ -574,7 +574,7 @@ Sint32 show_general_help()
 	// Load help files from disk (only loads once)
 	load_help_files();
 
-	int current_tab = TAB_CONTROLS;
+	HelpTab current_tab = HelpTab::Controls;
 	TabContent current_content = get_tab_content(current_tab);
 
 	Sint32 screenlines = current_content.num_lines * 8;
@@ -591,7 +591,7 @@ Sint32 show_general_help()
 	if (bottomrow < 0) bottomrow = 0;
 
 	// Lambda to update content when tab changes
-	auto switch_tab = [&](int new_tab) {
+	auto switch_tab = [&](HelpTab new_tab) {
 		current_tab = new_tab;
 		current_content = get_tab_content(current_tab);
 		screenlines = current_content.num_lines * 8;
@@ -627,14 +627,14 @@ Sint32 show_general_help()
 			// Check if click is in tab area
 			if (my >= TAB_Y && my <= TAB_Y + TAB_HEIGHT)
 			{
-				for (int t = 0; t < NUM_TABS; t++)
+				for (int t = 0; t < static_cast<int>(HelpTab::NumTabs); t++)
 				{
 					int tab_x = TAB_START_X + t * (TAB_WIDTH + TAB_SPACING);
 					if (mx >= tab_x && mx <= tab_x + TAB_WIDTH)
 					{
-						if (t != current_tab)
+						if (static_cast<HelpTab>(t) != current_tab)
 						{
-							switch_tab(t);
+							switch_tab(static_cast<HelpTab>(t));
 						}
 						break;
 					}
@@ -647,21 +647,21 @@ Sint32 show_general_help()
 		static bool key2_was_pressed = false;
 		static bool key3_was_pressed = false;
 
-		if (keystates[KEYSTATE_1] && !key1_was_pressed && current_tab != TAB_CONTROLS)
+		if (keystates[KEYSTATE_1] && !key1_was_pressed && current_tab != HelpTab::Controls)
 		{
-			switch_tab(TAB_CONTROLS);
+			switch_tab(HelpTab::Controls);
 		}
 		key1_was_pressed = keystates[KEYSTATE_1];
 
-		if (keystates[KEYSTATE_2] && !key2_was_pressed && current_tab != TAB_CLASSES)
+		if (keystates[KEYSTATE_2] && !key2_was_pressed && current_tab != HelpTab::Classes)
 		{
-			switch_tab(TAB_CLASSES);
+			switch_tab(HelpTab::Classes);
 		}
 		key2_was_pressed = keystates[KEYSTATE_2];
 
-		if (keystates[KEYSTATE_3] && !key3_was_pressed && current_tab != TAB_EDITOR)
+		if (keystates[KEYSTATE_3] && !key3_was_pressed && current_tab != HelpTab::Editor)
 		{
-			switch_tab(TAB_EDITOR);
+			switch_tab(HelpTab::Editor);
 		}
 		key3_was_pressed = keystates[KEYSTATE_3];
 
@@ -739,7 +739,7 @@ Sint32 show_general_help()
 			                      HELPTEXT_LEFT+240, content_bottom + 8, 3, 1);
 
 			// Draw tabs
-			for (int t = 0; t < NUM_TABS; t++)
+			for (int t = 0; t < static_cast<int>(HelpTab::NumTabs); t++)
 			{
 				int tab_x = TAB_START_X + t * (TAB_WIDTH + TAB_SPACING);
 
@@ -747,7 +747,7 @@ Sint32 show_general_help()
 				myscreen->draw_button(tab_x, TAB_Y, tab_x + TAB_WIDTH, TAB_Y + TAB_HEIGHT, 1, 1);
 
 				// Highlight selected tab by drawing over bottom edge
-				if (t == current_tab)
+				if (static_cast<HelpTab>(t) == current_tab)
 				{
 					myscreen->draw_text_bar(tab_x + 1, TAB_Y + TAB_HEIGHT - 1,
 					                        tab_x + TAB_WIDTH - 1, TAB_Y + TAB_HEIGHT);
@@ -757,7 +757,7 @@ Sint32 show_general_help()
 				int label_len = strlen(tab_names[t]);
 				int label_x = tab_x + (TAB_WIDTH - label_len * 6) / 2;
 				mytext.write_xy(label_x, TAB_Y + 3, tab_names[t],
-				                (t == current_tab) ? (unsigned char)DARK_BLUE : (unsigned char)BLACK, 1);
+				                (static_cast<HelpTab>(t) == current_tab) ? (unsigned char)DARK_BLUE : (unsigned char)BLACK, 1);
 			}
 
 			// Draw content area (below tabs)

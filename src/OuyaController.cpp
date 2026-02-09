@@ -29,31 +29,31 @@ bool& OuyaController::getButtonValue(ButtonEnum button)
 {
     switch(button)
     {
-    case BUTTON_O:
+    case ButtonEnum::O:
         return button_state[0];
-    case BUTTON_U:
+    case ButtonEnum::U:
         return button_state[1];
-    case BUTTON_Y:
+    case ButtonEnum::Y:
         return button_state[2];
-    case BUTTON_A:
+    case ButtonEnum::A:
         return button_state[3];
-    case BUTTON_L1:
+    case ButtonEnum::L1:
         return button_state[4];
-    case BUTTON_R1:
+    case ButtonEnum::R1:
         return button_state[5];
-    case BUTTON_L3:
+    case ButtonEnum::L3:
         return button_state[6];
-    case BUTTON_R3:
+    case ButtonEnum::R3:
         return button_state[7];
-    case BUTTON_MENU:
+    case ButtonEnum::Menu:
         return button_state[8];
-    case BUTTON_DPAD_UP:
+    case ButtonEnum::DpadUp:
         return button_state[9];
-    case BUTTON_DPAD_RIGHT:
+    case ButtonEnum::DpadRight:
         return button_state[10];
-    case BUTTON_DPAD_DOWN:
+    case ButtonEnum::DpadDown:
         return button_state[11];
-    case BUTTON_DPAD_LEFT:
+    case ButtonEnum::DpadLeft:
         return button_state[12];
     }
     SDL_assert(false);
@@ -64,31 +64,31 @@ bool OuyaController::getButtonValue(ButtonEnum button) const
 {
     switch(button)
     {
-    case BUTTON_O:
+    case ButtonEnum::O:
         return button_state[0];
-    case BUTTON_U:
+    case ButtonEnum::U:
         return button_state[1];
-    case BUTTON_Y:
+    case ButtonEnum::Y:
         return button_state[2];
-    case BUTTON_A:
+    case ButtonEnum::A:
         return button_state[3];
-    case BUTTON_L1:
+    case ButtonEnum::L1:
         return button_state[4];
-    case BUTTON_R1:
+    case ButtonEnum::R1:
         return button_state[5];
-    case BUTTON_L3:
+    case ButtonEnum::L3:
         return button_state[6];
-    case BUTTON_R3:
+    case ButtonEnum::R3:
         return button_state[7];
-    case BUTTON_MENU:
+    case ButtonEnum::Menu:
         return button_state[8];
-    case BUTTON_DPAD_UP:
+    case ButtonEnum::DpadUp:
         return button_state[9];
-    case BUTTON_DPAD_RIGHT:
+    case ButtonEnum::DpadRight:
         return button_state[10];
-    case BUTTON_DPAD_DOWN:
+    case ButtonEnum::DpadDown:
         return button_state[11];
-    case BUTTON_DPAD_LEFT:
+    case ButtonEnum::DpadLeft:
         return button_state[12];
     }
     return false;
@@ -98,17 +98,17 @@ float& OuyaController::getAxisValue(AxisEnum axis)
 {
     switch(axis)
     {
-    case AXIS_LS_X:
+    case AxisEnum::LsX:
         return axis_state[0];
-    case AXIS_LS_Y:
+    case AxisEnum::LsY:
         return axis_state[1];
-    case AXIS_RS_X:
+    case AxisEnum::RsX:
         return axis_state[2];
-    case AXIS_RS_Y:
+    case AxisEnum::RsY:
         return axis_state[3];
-    case AXIS_L2:
+    case AxisEnum::L2:
         return axis_state[4];
-    case AXIS_R2:
+    case AxisEnum::R2:
         return axis_state[5];
     }
     SDL_assert(false);
@@ -119,17 +119,17 @@ float OuyaController::getAxisValue(AxisEnum axis) const
 {
     switch(axis)
     {
-    case AXIS_LS_X:
+    case AxisEnum::LsX:
         return axis_state[0];
-    case AXIS_LS_Y:
+    case AxisEnum::LsY:
         return axis_state[1];
-    case AXIS_RS_X:
+    case AxisEnum::RsX:
         return axis_state[2];
-    case AXIS_RS_Y:
+    case AxisEnum::RsY:
         return axis_state[3];
-    case AXIS_L2:
+    case AxisEnum::L2:
         return axis_state[4];
-    case AXIS_R2:
+    case AxisEnum::R2:
         return axis_state[5];
     }
     return 0.0f;
@@ -146,30 +146,30 @@ float OuyaController::getNormalizedAxisValue(AxisEnum axis) const
     float dzone = DEADZONE;
     switch(axis)
     {
-    case AXIS_LS_X:
+    case AxisEnum::LsX:
         value = axis_state[0];
         dir = atan2(axis_state[1], axis_state[0]);
         dzone = fabs(dzone*cos(dir));
         break;
-    case AXIS_LS_Y:
+    case AxisEnum::LsY:
         value = axis_state[1];
         dir = atan2(axis_state[1], axis_state[0]);
         dzone = fabs(dzone*sin(dir));
         break;
-    case AXIS_RS_X:
+    case AxisEnum::RsX:
         value = axis_state[2];
         dir = atan2(axis_state[3], axis_state[2]);
         dzone = fabs(dzone*cos(dir));
         break;
-    case AXIS_RS_Y:
+    case AxisEnum::RsY:
         value = axis_state[3];
         dir = atan2(axis_state[3], axis_state[2]);
         dzone = fabs(dzone*sin(dir));
         break;
-    case AXIS_L2:
+    case AxisEnum::L2:
         value = axis_state[4];
         break;
-    case AXIS_R2:
+    case AxisEnum::R2:
         value = axis_state[5];
         break;
     default:
@@ -191,17 +191,17 @@ bool OuyaController::isStickBeyondDeadzone(AxisEnum axis) const
 {
     switch(axis)
     {
-    case AXIS_LS_X:
+    case AxisEnum::LsX:
         return dist(axis_state[0], axis_state[1]) >= DEADZONE;
-    case AXIS_LS_Y:
+    case AxisEnum::LsY:
         return dist(axis_state[0], axis_state[1]) >= DEADZONE;
-    case AXIS_RS_X:
+    case AxisEnum::RsX:
         return dist(axis_state[2], axis_state[3]) >= DEADZONE;
-    case AXIS_RS_Y:
+    case AxisEnum::RsY:
         return dist(axis_state[2], axis_state[3]) >= DEADZONE;
-    case AXIS_L2:
+    case AxisEnum::L2:
         return fabs(axis_state[4]) >= DEADZONE;
-    case AXIS_R2:
+    case AxisEnum::R2:
         return fabs(axis_state[5]) >= DEADZONE;
     }
     return false;
@@ -218,28 +218,28 @@ bool OuyaController::isStickInNegativeCone(AxisEnum axis) const
     
     switch(axis)
     {
-    case AXIS_LS_X:
+    case AxisEnum::LsX:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
             return dir < -135.0f + DIAG_OFFSET || dir > 135.0f - DIAG_OFFSET;
         }
-    case AXIS_LS_Y:
+    case AxisEnum::LsY:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
             return -135.0f - DIAG_OFFSET < dir && dir < -45.0f + DIAG_OFFSET;
         }
-    case AXIS_RS_X:
+    case AxisEnum::RsX:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
             return dir < -135.0f + DIAG_OFFSET || dir > 135.0f - DIAG_OFFSET;
         }
-    case AXIS_RS_Y:
+    case AxisEnum::RsY:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
             return -135.0f - DIAG_OFFSET < dir && dir < -45.0f + DIAG_OFFSET;
         }
-    case AXIS_L2:
-    case AXIS_R2:
+    case AxisEnum::L2:
+    case AxisEnum::R2:
         return false;
     }
     return false;
@@ -252,28 +252,28 @@ bool OuyaController::isStickInPositiveCone(AxisEnum axis) const
     
     switch(axis)
     {
-    case AXIS_LS_X:
+    case AxisEnum::LsX:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
             return -45.0f - DIAG_OFFSET < dir && dir < 45.0f + DIAG_OFFSET;
         }
-    case AXIS_LS_Y:
+    case AxisEnum::LsY:
         {
             float dir = atan2(axis_state[1], axis_state[0]) * 180 / M_PI;
             return 135.0f + DIAG_OFFSET > dir && dir > 45.0f - DIAG_OFFSET;
         }
-    case AXIS_RS_X:
+    case AxisEnum::RsX:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
             return -45.0f - DIAG_OFFSET < dir && dir < 45.0f + DIAG_OFFSET;
         }
-    case AXIS_RS_Y:
+    case AxisEnum::RsY:
         {
             float dir = atan2(axis_state[3], axis_state[2]) * 180 / M_PI;
             return 135.0f + DIAG_OFFSET > dir && dir > 45.0f - DIAG_OFFSET;
         }
-    case AXIS_L2:
-    case AXIS_R2:
+    case AxisEnum::L2:
+    case AxisEnum::R2:
         return false;
     }
     return false;
@@ -324,7 +324,7 @@ void OuyaControllerManager::key_down(int player, int button)
 {
     SDL_assert(player >= 0 && player < MAX_PLAYERS);
     
-    controller[player].getButtonValue(OuyaController::ButtonEnum(button)) = true;
+    controller[player].getButtonValue(static_cast<OuyaController::ButtonEnum>(button)) = true;
     
     if(send_user_events)
     {
@@ -342,7 +342,7 @@ void OuyaControllerManager::key_up(int player, int button)
 {
     SDL_assert(player >= 0 && player < MAX_PLAYERS);
     
-    controller[player].getButtonValue(OuyaController::ButtonEnum(button)) = false;
+    controller[player].getButtonValue(static_cast<OuyaController::ButtonEnum>(button)) = false;
     
     if(send_user_events)
     {
@@ -361,12 +361,12 @@ void OuyaControllerManager::axis_motion(int player, float LS_X, float LS_Y, floa
     SDL_assert(player >= 0 && player < MAX_PLAYERS);
     
     OuyaController& c = controller[player];
-    c.getAxisValue(OuyaController::AXIS_LS_X) = LS_X;
-    c.getAxisValue(OuyaController::AXIS_LS_Y) = LS_Y;
-    c.getAxisValue(OuyaController::AXIS_RS_X) = RS_X;
-    c.getAxisValue(OuyaController::AXIS_RS_Y) = RS_Y;
-    c.getAxisValue(OuyaController::AXIS_L2) = L2;
-    c.getAxisValue(OuyaController::AXIS_R2) = R2;
+    c.getAxisValue(OuyaController::AxisEnum::LsX) = LS_X;
+    c.getAxisValue(OuyaController::AxisEnum::LsY) = LS_Y;
+    c.getAxisValue(OuyaController::AxisEnum::RsX) = RS_X;
+    c.getAxisValue(OuyaController::AxisEnum::RsY) = RS_Y;
+    c.getAxisValue(OuyaController::AxisEnum::L2) = L2;
+    c.getAxisValue(OuyaController::AxisEnum::R2) = R2;
     
     if(send_user_events)
     {

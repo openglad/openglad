@@ -719,13 +719,13 @@ void handle_events(const SDL_Event& event)
     #ifdef OUYA
         if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
         {
-            if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_O)
+            if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::O)
                 input_continue = true;
-            else if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_DPAD_UP)
+            else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::DpadUp)
                 scroll_amount = 5;
-            else if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_DPAD_DOWN)
+            else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::DpadDown)
                 scroll_amount = -5;
-            else if(OuyaController::ButtonEnum(int(event.user.data1)) == OuyaController::BUTTON_MENU)
+            else if(static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1)) == OuyaController::ButtonEnum::Menu)
                 sendFakeKeyDownEvent(SDLK_ESCAPE);
             key_press_event = 1;
         }
@@ -734,7 +734,7 @@ void handle_events(const SDL_Event& event)
             const OuyaController& c = OuyaControllerManager::getController(event.user.code);
             
             // This should not be in an event or else it's jerky.
-            float v = c.getAxisValue(OuyaController::AXIS_LS_Y) + c.getAxisValue(OuyaController::AXIS_RS_Y);
+            float v = c.getAxisValue(OuyaController::AxisEnum::LsY) + c.getAxisValue(OuyaController::AxisEnum::RsY);
             if(fabs(v) > OuyaController::DEADZONE)
                 scroll_amount = -5*v;
         }
@@ -1218,27 +1218,27 @@ void resetJoystick(int player_num)
 bool ouyaJoystickInDirection(int player, int key_enum)
 {
     const OuyaController& c = OuyaControllerManager::getController(player);
-    if(!c.isStickBeyondDeadzone(OuyaController::AXIS_LS_X))
+    if(!c.isStickBeyondDeadzone(OuyaController::AxisEnum::LsX))
         return false;
     
     switch(key_enum)
     {
     case KEY_UP:
-        return (c.getAxisValue(OuyaController::AXIS_LS_Y) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_X) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_X));
+        return (c.getAxisValue(OuyaController::AxisEnum::LsY) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsX) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsX));
     case KEY_UP_RIGHT:
-        return (c.getAxisValue(OuyaController::AXIS_LS_Y) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) > OuyaController::DEADZONE);
+        return (c.getAxisValue(OuyaController::AxisEnum::LsY) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) > OuyaController::DEADZONE);
     case KEY_RIGHT:
-        return (c.getAxisValue(OuyaController::AXIS_LS_X) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_Y) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_Y));
+        return (c.getAxisValue(OuyaController::AxisEnum::LsX) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsY) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsY));
     case KEY_DOWN_RIGHT:
-        return (c.getAxisValue(OuyaController::AXIS_LS_Y) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) > OuyaController::DEADZONE);
+        return (c.getAxisValue(OuyaController::AxisEnum::LsY) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) > OuyaController::DEADZONE);
     case KEY_DOWN:
-        return (c.getAxisValue(OuyaController::AXIS_LS_Y) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_X) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_X));
+        return (c.getAxisValue(OuyaController::AxisEnum::LsY) > OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsX) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsX));
     case KEY_DOWN_LEFT:
-        return (c.getAxisValue(OuyaController::AXIS_LS_Y) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) < -OuyaController::DEADZONE);
+        return (c.getAxisValue(OuyaController::AxisEnum::LsY) > OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) < -OuyaController::DEADZONE);
     case KEY_LEFT:
-        return (c.getAxisValue(OuyaController::AXIS_LS_X) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AXIS_LS_Y) && !c.isStickInPositiveCone(OuyaController::AXIS_LS_Y));
+        return (c.getAxisValue(OuyaController::AxisEnum::LsX) < -OuyaController::DEADZONE && !c.isStickInNegativeCone(OuyaController::AxisEnum::LsY) && !c.isStickInPositiveCone(OuyaController::AxisEnum::LsY));
     case KEY_UP_LEFT:
-        return (c.getAxisValue(OuyaController::AXIS_LS_Y) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AXIS_LS_X) < -OuyaController::DEADZONE);
+        return (c.getAxisValue(OuyaController::AxisEnum::LsY) < -OuyaController::DEADZONE && c.getAxisValue(OuyaController::AxisEnum::LsX) < -OuyaController::DEADZONE);
     }
     return false;
 }
@@ -1251,41 +1251,41 @@ bool isPlayerHoldingKey(int player_index, int key_enum)
     switch(key_enum)
     {
     case KEY_UP:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_UP) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT) || c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT)))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadUp) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadLeft) || c.getButtonValue(OuyaController::ButtonEnum::DpadRight)))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_UP_RIGHT:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_UP) && c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadUp) && c.getButtonValue(OuyaController::ButtonEnum::DpadRight))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_RIGHT:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_UP) || c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN)))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadRight) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadUp) || c.getButtonValue(OuyaController::ButtonEnum::DpadDown)))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_DOWN_RIGHT:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN) && c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadDown) && c.getButtonValue(OuyaController::ButtonEnum::DpadRight))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_DOWN:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT) || c.getButtonValue(OuyaController::BUTTON_DPAD_RIGHT)))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadDown) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadLeft) || c.getButtonValue(OuyaController::ButtonEnum::DpadRight)))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_DOWN_LEFT:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN) && c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadDown) && c.getButtonValue(OuyaController::ButtonEnum::DpadLeft))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_LEFT:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT) && !(c.getButtonValue(OuyaController::BUTTON_DPAD_UP) || c.getButtonValue(OuyaController::BUTTON_DPAD_DOWN)))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadLeft) && !(c.getButtonValue(OuyaController::ButtonEnum::DpadUp) || c.getButtonValue(OuyaController::ButtonEnum::DpadDown)))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_UP_LEFT:
-        return (c.getButtonValue(OuyaController::BUTTON_DPAD_UP) && c.getButtonValue(OuyaController::BUTTON_DPAD_LEFT))
+        return (c.getButtonValue(OuyaController::ButtonEnum::DpadUp) && c.getButtonValue(OuyaController::ButtonEnum::DpadLeft))
                || ouyaJoystickInDirection(player_index, key_enum);
     case KEY_FIRE:
-        return c.getButtonValue(OuyaController::BUTTON_O);
+        return c.getButtonValue(OuyaController::ButtonEnum::O);
     case KEY_SPECIAL:
-        return c.getButtonValue(OuyaController::BUTTON_A);
+        return c.getButtonValue(OuyaController::ButtonEnum::A);
     case KEY_SWITCH:
-        return c.getButtonValue(OuyaController::BUTTON_L1);
+        return c.getButtonValue(OuyaController::ButtonEnum::L1);
     case KEY_SPECIAL_SWITCH:
-        return c.getButtonValue(OuyaController::BUTTON_U);
+        return c.getButtonValue(OuyaController::ButtonEnum::U);
     case KEY_YELL:
-        return c.getButtonValue(OuyaController::BUTTON_Y);
+        return c.getButtonValue(OuyaController::ButtonEnum::Y);
     case KEY_SHIFTER:
-        return c.getButtonValue(OuyaController::BUTTON_R1);
+        return c.getButtonValue(OuyaController::ButtonEnum::R1);
     case KEY_PREFS:
         return false;
     case KEY_CHEAT:
@@ -1313,30 +1313,30 @@ bool didPlayerPressKey(int player_index, int key_enum, const SDL_Event& event)
     
     if(event.type == OuyaControllerManager::BUTTON_DOWN_EVENT)
     {
-        OuyaController::ButtonEnum button = OuyaController::ButtonEnum(int(event.user.data1));
+        OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1));
         
         switch(key_enum)
         {
         case KEY_UP:
-            return (button == OuyaController::BUTTON_DPAD_UP);
+            return (button == OuyaController::ButtonEnum::DpadUp);
         case KEY_RIGHT:
-            return (button == OuyaController::BUTTON_DPAD_RIGHT);
+            return (button == OuyaController::ButtonEnum::DpadRight);
         case KEY_DOWN:
-            return (button == OuyaController::BUTTON_DPAD_DOWN);
+            return (button == OuyaController::ButtonEnum::DpadDown);
         case KEY_LEFT:
-            return (button == OuyaController::BUTTON_DPAD_LEFT);
+            return (button == OuyaController::ButtonEnum::DpadLeft);
         case KEY_FIRE:
-            return (button == OuyaController::BUTTON_O);
+            return (button == OuyaController::ButtonEnum::O);
         case KEY_SPECIAL:
-            return (button == OuyaController::BUTTON_A);
+            return (button == OuyaController::ButtonEnum::A);
         case KEY_SWITCH:
-            return (button == OuyaController::BUTTON_L1);
+            return (button == OuyaController::ButtonEnum::L1);
         case KEY_SPECIAL_SWITCH:
-            return (button == OuyaController::BUTTON_U);
+            return (button == OuyaController::ButtonEnum::U);
         case KEY_YELL:
-            return (button == OuyaController::BUTTON_Y);
+            return (button == OuyaController::ButtonEnum::Y);
         case KEY_SHIFTER:
-            return (button == OuyaController::BUTTON_R1);
+            return (button == OuyaController::ButtonEnum::R1);
         default:
             return false;
         }
@@ -1382,30 +1382,30 @@ bool didPlayerReleaseKey(int player_index, int key_enum, const SDL_Event& event)
     if(event.user.code != player_index)
         return false;
     
-    OuyaController::ButtonEnum button = OuyaController::ButtonEnum(int(event.user.data1));
+    OuyaController::ButtonEnum button = static_cast<OuyaController::ButtonEnum>(reinterpret_cast<intptr_t>(event.user.data1));
     
     switch(key_enum)
     {
     case KEY_UP:
-        return (button == OuyaController::BUTTON_DPAD_UP);
+        return (button == OuyaController::ButtonEnum::DpadUp);
     case KEY_RIGHT:
-        return (button == OuyaController::BUTTON_DPAD_RIGHT);
+        return (button == OuyaController::ButtonEnum::DpadRight);
     case KEY_DOWN:
-        return (button == OuyaController::BUTTON_DPAD_DOWN);
+        return (button == OuyaController::ButtonEnum::DpadDown);
     case KEY_LEFT:
-        return (button == OuyaController::BUTTON_DPAD_LEFT);
+        return (button == OuyaController::ButtonEnum::DpadLeft);
     case KEY_FIRE:
-        return (button == OuyaController::BUTTON_O);
+        return (button == OuyaController::ButtonEnum::O);
     case KEY_SPECIAL:
-        return (button == OuyaController::BUTTON_A);
+        return (button == OuyaController::ButtonEnum::A);
     case KEY_SWITCH:
-        return (button == OuyaController::BUTTON_L1);
+        return (button == OuyaController::ButtonEnum::L1);
     case KEY_SPECIAL_SWITCH:
-        return (button == OuyaController::BUTTON_U);
+        return (button == OuyaController::ButtonEnum::U);
     case KEY_YELL:
-        return (button == OuyaController::BUTTON_Y);
+        return (button == OuyaController::ButtonEnum::Y);
     case KEY_SHIFTER:
-        return (button == OuyaController::BUTTON_R1);
+        return (button == OuyaController::ButtonEnum::R1);
     default:
         return false;
     }

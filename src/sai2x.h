@@ -2,13 +2,13 @@
 
 #include "SDL.h"
 
-typedef enum 
+enum class RenderEngine
 {
 	NoZoom = 0x01,
 	SAI = 0x02,
-	EAGLE = 0x03,
-	DOUBLE = 0x04
-} RenderEngine;
+	Eagle = 0x03,
+	Double = 0x04
+};
 
 class Screen
 {

@@ -679,10 +679,10 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
 	Engine = engine;
 	switch(Engine)
 	{
-	case SAI:
+	case RenderEngine::SAI:
 		Init_2xSaI();
 		break;
-	case EAGLE:
+	case RenderEngine::Eagle:
 		Init_2xSaI();
 		break;
 	default:
@@ -766,7 +766,7 @@ void Screen::swap(int x, int y, int w, int h)
     SDL_Texture* dest_texture = render_tex;
     
 	switch(Engine) {
-		case SAI:
+		case RenderEngine::SAI:
                 if(render2 == nullptr)
                 {
                     render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);
@@ -781,7 +781,7 @@ void Screen::swap(int x, int y, int w, int h)
                 source_surface = render2;
                 dest_texture = render2_tex;
             break;
-		case EAGLE:
+		case RenderEngine::Eagle:
                 if(render2 == nullptr)
                 {
                     render2 = SDL_CreateRGBSurface(SDL_SWSURFACE, 640, 400, 32, 0, 0, 0, 0);

@@ -498,7 +498,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         {
             const OuyaController& c = OuyaControllerManager::getController(0);
 
-            float v = c.getAxisValue(OuyaController::AXIS_LS_Y) + c.getAxisValue(OuyaController::AXIS_RS_Y);
+            float v = c.getAxisValue(OuyaController::AxisEnum::LsY) + c.getAxisValue(OuyaController::AxisEnum::RsY);
             if(fabs(v) > OuyaController::DEADZONE)
                 scroll -= -5*v;
         }

@@ -80,12 +80,12 @@ static bool g_start_game_requested = false;
 // Flag to track if picker has been initialized
 static bool g_picker_initialized = false;
 // Store the current menu state for frame-based operation
-enum PickerMenuState {
-    PICKER_MENU_MAIN,
-    PICKER_MENU_CREATE_TEAM,
-    PICKER_MENU_OTHER
+enum class PickerMenuState {
+    Main,
+    CreateTeam,
+    Other
 };
-static PickerMenuState g_picker_menu_state = PICKER_MENU_MAIN;
+static PickerMenuState g_picker_menu_state = PickerMenuState::Main;
 #endif
 
 guy  *current_guy = nullptr;
