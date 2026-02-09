@@ -21,6 +21,7 @@
 */
 #include "graph.h"
 #include "colors.h"
+#include <span>
 
 #define RADAR_X 60  // These are the dimensions of the radar
 #define RADAR_Y 44  // viewport
@@ -169,10 +170,14 @@ short radar::draw(LevelData* data)
     unsigned char alpha = 255;
     if(myscreen->numviews > 2 && !(myscreen->numviews == 3 && mynum == 0))
         alpha = 127;
-	myscreen->putbuffer_alpha(xloc, yloc,
-	                   sizex,sizey,
-	                   xloc,yloc,xloc + xview,yloc + yview,
-	                   &bmp[radarx + (radary * sizex)], alpha);
+	{
+		size_t offset = radarx + (radary * sizex);
+		auto radar_span = std::span<const unsigned char>{&bmp[offset], static_cast<size_t>(sizex * sizey) - offset};
+		myscreen->putbuffer_alpha(xloc, yloc,
+		                   sizex,sizey,
+		                   xloc,yloc,xloc + xview,yloc + yview,
+		                   radar_span, alpha);
+	}
 
 	// Now determine what objects are visible on the radar ..
 	while (listtype <= 1)

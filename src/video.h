@@ -21,6 +21,7 @@
 #include "base.h"
 #include "text.h"
 #include <array>
+#include <span>
 
 class video
 {
@@ -58,26 +59,26 @@ class video
 		void draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char color);
 		void do_cycle(Sint32 curmode, Sint32 maxmode);
 		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-		             unsigned char  *sourcedata);
-        void putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char  *sourcedata, unsigned char alpha);
+		             std::span<const unsigned char> sourcedata);
+		void putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+		             std::span<const unsigned char> sourcedata, unsigned char alpha);
 		void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-		                             unsigned char  *sourcedata);
+		                 std::span<const unsigned char> sourcedata);
 		void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-		             unsigned char  *sourcedata, unsigned char color);
-           
-		 void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
-		                              unsigned char  *sourcedata, unsigned char color);
+		             std::span<const unsigned char> sourcedata, unsigned char color);
+		void putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
+		                 std::span<const unsigned char> sourcedata, unsigned char color);
 
 		void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 		               Sint32 tilewidth, Sint32 tileheight,
 		               Sint32 portstartx, Sint32 portstarty,
 		               Sint32 portendx, Sint32 portendy,
-		               unsigned char * sourceptr);
+		               std::span<const unsigned char> sourceptr);
 		void putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
 		               Sint32 tilewidth, Sint32 tileheight,
 		               Sint32 portstartx, Sint32 portstarty,
 		               Sint32 portendx, Sint32 portendy,
-		               unsigned char * sourceptr, unsigned char alpha);
+		               std::span<const unsigned char> sourceptr, unsigned char alpha);
 		void putbuffer(Sint32 tilestartx, Sint32 tilestarty,
 		               Sint32 tilewidth, Sint32 tileheight,
 		               Sint32 portstartx, Sint32 portstarty,
@@ -87,29 +88,28 @@ class video
 		                   Sint32 walkerwidth, Sint32 walkerheight,
 		                   Sint32 portstartx, Sint32 portstarty,
 		                   Sint32 portendx, Sint32 portendy,
-		                   unsigned char  *sourceptr, unsigned char teamcolor);
+		                   std::span<const unsigned char> sourceptr, unsigned char teamcolor);
 		void walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
 		                   Sint32 walkerwidth, Sint32 walkerheight,
 		                   Sint32 portstartx, Sint32 portstarty,
 		                   Sint32 portendx, Sint32 portendy,
-		                   unsigned char  *sourceptr, unsigned char teamcolor);
+		                   std::span<const unsigned char> sourceptr, unsigned char teamcolor);
 		void walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
-                                   Sint32 walkerwidth, Sint32 walkerheight,
-                                   Sint32 portstartx, Sint32 portstarty,
-                                   Sint32 portendx, Sint32 portendy,
-                                   unsigned char  *sourceptr, unsigned char teamcolor);
+		                   Sint32 walkerwidth, Sint32 walkerheight,
+		                   Sint32 portstartx, Sint32 portstarty,
+		                   Sint32 portendx, Sint32 portendy,
+		                   std::span<const unsigned char> sourceptr, unsigned char teamcolor);
 		void walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
-                                   Sint32 walkerwidth, Sint32 walkerheight,
-                                   Sint32 portstartx, Sint32 portstarty,
-                                   Sint32 portendx, Sint32 portendy,
-                                   unsigned char  *sourceptr, unsigned char teamcolor, Uint8 alpha);
-
+		                   Sint32 walkerwidth, Sint32 walkerheight,
+		                   Sint32 portstartx, Sint32 portstarty,
+		                   Sint32 portendx, Sint32 portendy,
+		                   std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha);
 
 		void walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 		                   Sint32 walkerwidth, Sint32 walkerheight,
 		                   Sint32 portstartx, Sint32 portstarty,
 		                   Sint32 portendx, Sint32 portendy,
-		                   unsigned char  *sourceptr, unsigned char teamcolor,
+		                   std::span<const unsigned char> sourceptr, unsigned char teamcolor,
 		                   unsigned char mode, Sint32 invisibility,
 		                   unsigned char outline, unsigned char shifttype);
 		void buffer_to_screen(Sint32 viewstartx,Sint32 viewstarty,

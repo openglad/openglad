@@ -26,6 +26,7 @@
 
 #include "pal32.h"
 #include <cstdio>
+#include <span>
 #include "SDL_types.h"
 
 char temppal[768];    // for loading, setting, etc.
@@ -42,7 +43,7 @@ char our_pal_lookup(int index);
 // stores palette info in NEWPALETTE, and
 // sets the current palette to this.
 //
-short load_and_set_palette(const char *filename, unsigned char *newpalette)
+short load_and_set_palette(const char *filename, std::span<unsigned char> newpalette)
 {
 	short i;
 
@@ -52,13 +53,13 @@ short load_and_set_palette(const char *filename, unsigned char *newpalette)
 			Log("Error in reading palette file %s\n", filename);
 			return 0;
 		}
-	 
+
 		if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
 		{
 			Log("Error: Corrupt palette file %s!\n", filename);
 			return 0;
 		}
-	 
+
 		fclose(infile);
 	*/
 	// Copy back the palette info ..
@@ -76,7 +77,7 @@ short load_and_set_palette(const char *filename, unsigned char *newpalette)
 // save_palette
 // save the dos palette so we can restore it when done
 //
-short save_palette(unsigned char * whatpalette)
+short save_palette(std::span<const unsigned char> whatpalette)
 {
 	//buffers: PORT: we don't have a palette to save :P
 	return 0;
@@ -87,7 +88,7 @@ short save_palette(unsigned char * whatpalette)
 // load_palette
 // Loads palette from file FILENAME into NEWPALETTE
 //
-short load_palette(const char *filename, unsigned char *newpalette)
+short load_palette(const char *filename, std::span<unsigned char> newpalette)
 {
 	short i;
 
@@ -97,13 +98,13 @@ short load_palette(const char *filename, unsigned char *newpalette)
 			Log("Error in reading palette file %s\n", filename);
 			return 0;
 		}
-	 
+
 		if (fread(temppal, 1, 768, infile) != 768 || ferror(infile))
 		{
 			Log("Error: Corrupt palette file %s!\n", filename);
 			return 0;
 		}
-	 
+
 		fclose(infile);
 	*/
 	// Copy back the palette info ..
@@ -119,7 +120,7 @@ short load_palette(const char *filename, unsigned char *newpalette)
 // set_palette
 // Sets the current palette to NEWPALETTE.
 //
-short set_palette(unsigned char *newpalette)
+short set_palette(std::span<const unsigned char> newpalette)
 {
 	short i;
 
@@ -136,7 +137,7 @@ short set_palette(unsigned char *newpalette)
 //  on whichpal based on a positive or negative amount;
 //  displays new palette, but does NOT affect whichpal
 //
-void adjust_palette(unsigned char *whichpal, short amount)
+void adjust_palette(std::span<const unsigned char> whichpal, short amount)
 {
 	short i;
 	short tempcol;
@@ -164,7 +165,7 @@ void adjust_palette(unsigned char *whichpal, short amount)
 // cycle_palette
 // Cycle and display newpalette
 //
-void cycle_palette(unsigned char *newpalette, short start, short end, short shift)
+void cycle_palette(std::span<unsigned char> newpalette, short start, short end, short shift)
 {
 	short i;
 	short length = static_cast<short>(end-start);

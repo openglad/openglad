@@ -20,6 +20,7 @@
 #include "sai2x.h"
 #include <format>
 #include <cstring>
+#include <span>
 
 #define VIDEO_BUFFER_WIDTH 320
 #define VIDEO_WIDTH 320
@@ -60,8 +61,8 @@ video::video()
 	fadeDuration = 500;
 
 	// Load our palettes ..
-	load_and_set_palette("our.pal", ourpalette.data());
-	load_palette("our.pal", redpalette.data());
+	load_and_set_palette("our.pal", ourpalette);
+	load_palette("our.pal", redpalette);
 
 	// Create the red-shifted palette
 	for (i=32; i < 256; i++)
@@ -70,7 +71,7 @@ video::video()
 		redpalette[i*3+2] /= 2;
 	}
 
-	load_palette("our.pal", bluepalette.data());
+	load_palette("our.pal", bluepalette);
 
 	// Create the blue-shifted palette
 	//for (i=32; i < 256; i++)
@@ -759,7 +760,7 @@ void video::do_cycle(Sint32 curmode, Sint32 maxmode)
 //video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char  *sourcedata)
+void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -779,7 +780,7 @@ void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, un
 }
 
 // putdata with alpha blending
-void video::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char  *sourcedata, unsigned char alpha)
+void video::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char alpha)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -797,7 +798,7 @@ void video::putdata_alpha(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysi
 }
 
 
-void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char  *sourcedata)
+void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata)
 {
         Sint32 curx, cury;
         unsigned char curcolor;
@@ -806,7 +807,7 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 	SDL_Rect rect;
 
 	for(cury = starty;cury < starty +ysize;cury++)
- 	{	
+ 	{
 		for (curx = startx; curx < startx +xsize; curx++)
 	        {
 			curcolor = sourcedata[num++];
@@ -829,7 +830,7 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 //video::putdata
 //draws objects to screen, respecting transparency
 //used by text
-void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char  *sourcedata, unsigned char color)
+void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -851,7 +852,7 @@ void video::putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, un
 		}
 }
 
-void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char  *sourcedata, unsigned char color)
+void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, std::span<const unsigned char> sourcedata, unsigned char color)
 {
         Sint32 curx, cury;
         unsigned char curcolor;
@@ -892,14 +893,14 @@ void video::putbuffer(Sint32 tilestartx, Sint32 tilestarty,
                       Sint32 tilewidth, Sint32 tileheight,
                       Sint32 portstartx, Sint32 portstarty,
                       Sint32 portendx, Sint32 portendy,
-                      unsigned char * sourceptr)
+                      std::span<const unsigned char> sourceptr)
 {
 	int i,j,num;
 	Sint32 xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
 	//Uint32 targetshifter,sourceshifter; //these let you wrap around in the arrays
 	Sint32 totrows,rowsize; //number of rows and width of each row in the source
 	//Uint32 offssource,offstarget; //offsets into each array, for clipping and wrap
-	unsigned char * sourcebufptr = &sourceptr[0];
+	const unsigned char * sourcebufptr = sourceptr.data();
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
 
@@ -948,14 +949,14 @@ void video::putbuffer_alpha(Sint32 tilestartx, Sint32 tilestarty,
                       Sint32 tilewidth, Sint32 tileheight,
                       Sint32 portstartx, Sint32 portstarty,
                       Sint32 portendx, Sint32 portendy,
-                      unsigned char * sourceptr, unsigned char alpha)
+                      std::span<const unsigned char> sourceptr, unsigned char alpha)
 {
 	int i,j,num;
 	Sint32 xmin=0, xmax=tilewidth, ymin=0, ymax=tileheight;
 	//Uint32 targetshifter,sourceshifter; //these let you wrap around in the arrays
 	Sint32 totrows,rowsize; //number of rows and width of each row in the source
 	//Uint32 offssource,offstarget; //offsets into each array, for clipping and wrap
-	unsigned char * sourcebufptr = &sourceptr[0];
+	const unsigned char * sourcebufptr = sourceptr.data();
 	if (tilestartx >= portendx || tilestarty >= portendy )
 		return; // abort, the tile is drawing outside the clipping region
 
@@ -1064,7 +1065,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor)
+                          std::span<const unsigned char> sourceptr, unsigned char teamcolor)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -1132,7 +1133,7 @@ void video::walkputbuffer_flash(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor)
+                          std::span<const unsigned char> sourceptr, unsigned char teamcolor)
 {
 	Sint32 curx, cury;
 	unsigned char curcolor;
@@ -1224,7 +1225,7 @@ void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor)
+                          std::span<const unsigned char> sourceptr, unsigned char teamcolor)
 {
         Sint32 curx, cury;
         unsigned char curcolor;
@@ -1298,7 +1299,7 @@ void video::walkputbuffertext_alpha(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor, Uint8 alpha)
+                          std::span<const unsigned char> sourceptr, unsigned char teamcolor, Uint8 alpha)
 {
         Sint32 curx, cury;
         unsigned char curcolor;
@@ -1365,7 +1366,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
                           Sint32 walkerwidth, Sint32 walkerheight,
                           Sint32 portstartx, Sint32 portstarty,
                           Sint32 portendx, Sint32 portendy,
-                          unsigned char  *sourceptr, unsigned char teamcolor,
+                          std::span<const unsigned char> sourceptr, unsigned char teamcolor,
                           unsigned char mode, Sint32 invisibility,
                           unsigned char outline, unsigned char shifttype)
 {

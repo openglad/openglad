@@ -16,6 +16,7 @@
  */
 #include "graph.h"
 #include <cstring>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -361,7 +362,8 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, static_cast<unsigned char>(color));
 
-	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters->data.get()[letter * sizex * sizey], static_cast<unsigned char>(color));
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(color));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
@@ -371,38 +373,43 @@ short text::write_char_xy(short x, short y, char letter, short to_buffer)
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 
-	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, &letters->data.get()[letter * sizex * sizey], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter, unsigned char color)
 {
-	myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(color));
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	myscreen->putdatatext(x, y, sizex, sizey, char_span, static_cast<unsigned char>(color));
 	return 1;
 }
 
 short text::write_char_xy_alpha(short x, short y, char letter, unsigned char color, Uint8 alpha)
 {
-	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, &letters->data.get()[letter * sizex * sizey], static_cast<unsigned char>(color), alpha);
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(color), alpha);
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter)
 {
-	myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey]);
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	myscreen->putdatatext(x, y, sizex, sizey, char_span);
 	return 1;
 }
 
 short text::write_char_xy(short x, short y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
 	if (!whereto)
-		myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(color));
+		myscreen->putdatatext(x, y, sizex, sizey, char_span, static_cast<unsigned char>(color));
 	else
 		myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(color));
+		                       char_span, static_cast<unsigned char>(color));
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
@@ -410,12 +417,13 @@ short text::write_char_xy(short x, short y, char letter, unsigned char color,
 
 short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
 {
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
 	if (!whereto)
-		myscreen->putdatatext(x, y, sizex, sizey, &letters->data.get()[letter *sizex*sizey]);
+		myscreen->putdatatext(x, y, sizex, sizey, char_span);
 	else
 		myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       &letters->data.get()[letter *sizex*sizey], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+		                       char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;

@@ -96,7 +96,7 @@ screen::screen(short howmany)
 	control_hp = 0;
 
 	// Load the palette ..
-	load_and_set_palette("our.pal", newpalette.data());
+	load_and_set_palette("our.pal", newpalette);
 
 	// load the pixie graphics data into memory
 
@@ -668,7 +668,7 @@ bool screen::act()
 	if (enemy_freeze)
 		enemy_freeze--;
 	if (enemy_freeze == 1)
-		set_palette(ourpalette.data());
+		set_palette(ourpalette);
 
     for(auto& uptr : level_data.oblist)
     {

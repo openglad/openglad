@@ -23,6 +23,7 @@
 #include "graph.h"
 #include "smooth.h"
 #include <format>
+#include <span>
 
 // ************************************************************
 //  WALKER -- graphics routines
@@ -1164,26 +1165,28 @@ bool walker::draw(viewscreen  *view_buf)
     {
         hurt_flash = false;
         
+        auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
         myscreen->walkputbuffer_flash(xscreen, yscreen, sizex, sizey,
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
-                                   bmp, query_team_color());
+                                   bmp_span, query_team_color());
     }
     else
     {
+        auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
         if(fill_mode == 0 && outline_style == 0)
         {
             myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
                                    view_buf->xloc, view_buf->yloc,
                                    view_buf->endx, view_buf->endy,
-                                   bmp, query_team_color());
+                                   bmp_span, query_team_color());
         }
         else
         {
             myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
                                     view_buf->xloc, view_buf->yloc,
                                     view_buf->endx, view_buf->endy,
-                                    bmp, query_team_color(),
+                                    bmp_span, query_team_color(),
                                     fill_mode, //mode
                                     invisibility_amount, //invisibility
                                     outline_style, //outline
@@ -1304,11 +1307,13 @@ bool walker::draw_tile(viewscreen  *view_buf)
     if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
         outline = OUTLINE_INVISIBLE;
 
+	auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
+
 	if (stats->query_bit_flags(BIT_PHANTOM)) //WE ARE A PHANTOM
 		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                        bmp, query_team_color(),
+		                        bmp_span, query_team_color(),
 		                        PHANTOM_MODE, //mode
 		                        0, //invisibility
 		                        0, //outline
@@ -1320,20 +1325,20 @@ bool walker::draw_tile(viewscreen  *view_buf)
 			myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 			                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-			                        bmp, query_team_color(),
+			                        bmp_span, query_team_color(),
 			                        INVISIBLE_MODE,  //mode
 			                        ( invisibility_left + 10 ), //invisibility
 			                        outline,  //outline
 			                        0 ); //type of phantom
 	}
-	else if (stats->query_bit_flags(BIT_FORESTWALK) && 
+	else if (stats->query_bit_flags(BIT_FORESTWALK) &&
 	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats->query_bit_flags(BIT_FLYING)
 	         && (flight_left < 1) )
 		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                        bmp, query_team_color(),
+		                        bmp_span, query_team_color(),
 		                        INVISIBLE_MODE,  //mode
 		                        1000, //invisibility
 		                        1,  //outline
@@ -1344,12 +1349,12 @@ bool walker::draw_tile(viewscreen  *view_buf)
 		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                        bmp, query_team_color(),
+		                        bmp_span, query_team_color(),
 		                        OUTLINE_MODE, //mode
 		                        0, //invisibility
 		                        outline, //outline
 		                        0 ); //type of phantom
-		                        
+
         draw_smallHealthBar(this, view_buf);
 	}
 	else
@@ -1357,8 +1362,8 @@ bool walker::draw_tile(viewscreen  *view_buf)
 		myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
 		                       view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
-		                       bmp, query_team_color());
-        
+		                       bmp_span, query_team_color());
+
         draw_smallHealthBar(this, view_buf);
 	}
 
@@ -2926,7 +2931,7 @@ bool walker::special()
 					if (team_num == 0 || myguy) // the player's team
 					{
 						myscreen->enemy_freeze += 20 + 11*stats->level;
-						set_palette(myscreen->bluepalette.data());
+						set_palette(myscreen->bluepalette);
 					}
 					else
 					{

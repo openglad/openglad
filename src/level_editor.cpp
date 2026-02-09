@@ -26,6 +26,7 @@
 #include "stats.h"
 #include "level_data.h"
 #include "level_picker.h"
+#include <span>
 #include "campaign_picker.h"
 #include "sai2x.h"
 #include <algorithm>
@@ -1913,8 +1914,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     if(mode == Mode::Terrain)
     {
         // Show the current brush
-        myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
-                            0, 0, 320, 200, myscreen->level_data.pixdata[terrain_brush.terrain].data.get());
+        {
+            auto& pix = myscreen->level_data.pixdata[terrain_brush.terrain];
+            myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
+                                0, 0, 320, 200, {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
+        }
         // Border
         myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
@@ -1924,10 +1928,13 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             for (j=0; j < 4; j++)
             {
                 whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
-                myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
-                                    GRID_SIZE, GRID_SIZE,
-                                    0, 0, 320, 200,
-                                    myscreen->level_data.pixdata[ backgrounds[whichback] ].data.get());
+                {
+                    auto& pix = myscreen->level_data.pixdata[ backgrounds[whichback] ];
+                    myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
+                                        GRID_SIZE, GRID_SIZE,
+                                        0, 0, 320, 200,
+                                        {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
+                }
             }
         }
         myscreen->draw_box(S_RIGHT, PIX_TOP,

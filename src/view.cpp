@@ -770,7 +770,7 @@ short viewscreen::input(const SDL_Event& event)
 		if (query_key_event(SDLK_F1, event)) // freeze time
 		{
 			myscreen->enemy_freeze += 50;
-			set_palette(myscreen->bluepalette.data());
+			set_palette(myscreen->bluepalette);
 			//clear_key_code(SDLK_F1);
 		}//end freeze time
 
@@ -1897,18 +1897,18 @@ Sint32 viewscreen::change_gamma(Sint32 whichway)
 {
 	if (whichway > 1)  // lighter
 	{
-		load_palette("our.pal", myscreen->newpalette.data());
-		adjust_palette(myscreen->newpalette.data(), ++gamma);
+		load_palette("our.pal", myscreen->newpalette);
+		adjust_palette(myscreen->newpalette, ++gamma);
 	}
 	if (whichway < -1)  // darker
 	{
-		load_palette("our.pal", myscreen->newpalette.data());
-		adjust_palette(myscreen->newpalette.data(), --gamma);
+		load_palette("our.pal", myscreen->newpalette);
+		adjust_palette(myscreen->newpalette, --gamma);
 	}
 	if (whichway == -1) // set to default
 	{
 		gamma = 0;
-		load_palette("our.pal", myscreen->newpalette.data());
+		load_palette("our.pal", myscreen->newpalette);
 	}
 	// So 0 just means report
 	return static_cast<Sint32>(gamma);

@@ -123,7 +123,7 @@ short pixie::draw(viewscreen * view_buf)
 		myscreen->putbuffer(xscreen, yscreen, sizex, sizey,
 		                             view_buf->xloc, view_buf->yloc,
 		                             view_buf->endx, view_buf->endy,
-		                             bmp);
+		                             {bmp, static_cast<size_t>(sizex * sizey)});
 	}
 
 	return 1;
@@ -151,7 +151,7 @@ short pixie::drawMix(viewscreen * view_buf)
 	myscreen->walkputbuffer(xscreen, yscreen, sizex, sizey,
 	                                 view_buf->xloc, view_buf->yloc,
 	                                 view_buf->endx, view_buf->endy,
-	                                 bmp, RED);
+	                                 {bmp, static_cast<size_t>(sizex * sizey)}, RED);
 
 	return 1;
 }
@@ -159,7 +159,7 @@ short pixie::drawMix(viewscreen * view_buf)
 
 short pixie::put_screen(short x, short y)
 {
-	myscreen->putdata(x, y, sizex, sizey, bmp);
+	myscreen->putdata(x, y, sizex, sizey, {bmp, static_cast<size_t>(sizex * sizey)});
 	return 1;
 }
 
