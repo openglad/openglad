@@ -2,6 +2,8 @@
 #include "sai2x.h"
 #include "util.h"
 #include "input.h"
+#include <stdexcept>
+#include <string>
 //#include "os_depend.h"
 
 // Private var for SAI2x
@@ -712,7 +714,7 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
                         w, h,
                         window_flags);
     if(window == nullptr)
-        exit(1);
+        throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
     
     SDL_GetWindowSize(window, &w, &h);
     window_w = w;

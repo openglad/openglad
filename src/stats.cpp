@@ -60,8 +60,8 @@ statistics::statistics(walker  * someguy)
 
     if(controller != nullptr)
     {
-        old_order = controller->order;
-        old_family= controller->family;
+        old_order = controller->query_order();
+        old_family= controller->query_family();
     }
     else
     {
@@ -858,19 +858,19 @@ bool statistics::right_walk()
 		}
 		else  // turn left
 		{
-			controller->enddir = static_cast<char>((controller->enddir+6) %8);  // turn left
-			return controller->turn(controller->enddir);
+			controller->set_enddir(static_cast<char>((controller->get_enddir()+6) %8));  // turn left
+			return controller->turn(controller->get_enddir());
 		}
 	}
 	else if (forward_blocked())
 	{
-		controller->enddir = static_cast<char>((controller->enddir+6) %8);  // turn left
-		return controller->turn(controller->enddir);
+		controller->set_enddir(static_cast<char>((controller->get_enddir()+6) %8));  // turn left
+		return controller->turn(controller->get_enddir());
 	}
 	else if (right_back_blocked())
 	{
-		controller->enddir = static_cast<char>((controller->enddir+2) %8);  // turn right
-		switch (controller->enddir)
+		controller->set_enddir(static_cast<char>((controller->get_enddir()+2) %8));  // turn right
+		switch (controller->get_enddir())
 		{
 			case FACE_UP:
 				xdelta = 0;

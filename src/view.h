@@ -78,10 +78,6 @@ class options
 class viewscreen
 {
 	public:
-		friend class walker;
-		friend class pixieN;
-		friend class pixie;
-		friend class text;
 		viewscreen(short x, short y, short length, short height, short whatnum);
 		~viewscreen();
 		void clear();
@@ -124,6 +120,9 @@ class viewscreen
 		signed char prefs[10]; // User preferences ..
 		radar * myradar;
 		short radarstart; //has the radar been started yet?
+
+		short get_xview() const { return xview; }
+		short get_yview() const { return yview; }
 
 	protected:
 		options *prefsob;

@@ -28,6 +28,7 @@
 #include <string>
 #include <algorithm>
 #include <cstdio>
+#include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -501,8 +502,9 @@ void io_init(int argc, char* argv[])
 
     if(!PHYSFS_mount(get_user_path().c_str(), nullptr, 1))
     {
-        LogError("Failed to mount user data path: %s\n", get_user_path().c_str());
-        exit(1);
+        std::string msg = std::format("Fatal: Failed to mount user data path: {}", get_user_path());
+        LogError("%s\n", msg.c_str());
+        throw std::runtime_error(msg);
     }
 
     restore_default_campaigns();
@@ -519,8 +521,9 @@ void io_init(int argc, char* argv[])
     Log("Mounting default campaign...\n");
     if (!mount_campaign_package("org.openglad.gladiator"))
     {
-        LogError("Failed to mount default campaign: %s\n", PHYSFS_getLastError());
-        exit(1);
+        std::string msg = std::format("Fatal: Failed to mount default campaign: {}", PHYSFS_getLastError());
+        LogError("%s\n", msg.c_str());
+        throw std::runtime_error(msg);
     }
     Log("Mounted default campaign\n");
     

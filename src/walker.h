@@ -31,8 +31,6 @@ using MicroPatherState = void*;
 class walker : public pixieN
 {
 	public:
-		friend class statistics;
-		friend class command;
 		walker(const PixieData& data);
 		~walker() override;
 		walker(const walker&) = delete;
@@ -189,6 +187,9 @@ class walker : public pixieN
         void do_heal_effects(walker* healer, walker* target, short amount);
         void do_hit_effects(walker* attacker, walker* target, short tempdamage);
         void do_combat_damage(walker* attacker, walker* target, short tempdamage);
+
+		char get_enddir() const { return enddir; }
+		void set_enddir(char dir) { enddir = dir; }
 
 	protected:
 		bool act_generate();

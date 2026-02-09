@@ -31,6 +31,7 @@ screen * myscreen;
 #include <string>
 #include <cstring>
 #include <format>
+#include <stdexcept>
 #include "util.h"
 #include "results_screen.h"
 
@@ -199,6 +200,8 @@ static void emscripten_frame_wrapper() {
 #ifndef TESTING
 int main(int argc, char *argv[])
 {
+	try
+	{
 	init_logging();  // Set up logging output (uses JS console on web)
 	io_init(argc, argv);
 
@@ -248,6 +251,14 @@ int main(int argc, char *argv[])
 #endif
 
 	io_exit();
+
+	}
+	catch (const std::runtime_error& e)
+	{
+		LogError("Unrecoverable error: %s\n", e.what());
+		return 1;
+	}
+
 	return 0;
 }
 #endif // TESTING
