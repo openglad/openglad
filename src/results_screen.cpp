@@ -61,6 +61,10 @@ void show_ending_popup(int ending, int nextlevel)
 
 bool results_screen(int ending, int nextlevel)
 {
+#ifdef TESTING
+    Log("results_screen: ending=%d nextlevel=%d\n", ending, nextlevel);
+    return false;
+#endif
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
     return false;
@@ -322,6 +326,10 @@ Uint32 get_time_bonus(int playernum)
 
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
+#ifdef TESTING
+    Log("results_screen: ending=%d nextlevel=%d\n", ending, nextlevel);
+    return false;
+#endif
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
 
@@ -452,10 +460,10 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 	int num_buttons = 4;
 	
 	button buttons[] = {
-        button("OK", KEYSTATE_UNKNOWN, ok_rect.x, ok_rect.y, ok_rect.w, ok_rect.h, 0, -1 , MenuNav::UpRight(overview_index, retry_index)),
-        button("RETRY", KEYSTATE_UNKNOWN, retry_rect.x, retry_rect.y, retry_rect.w, retry_rect.h, 0, -1 , MenuNav::UpLeft(troops_index, ok_index)),
-        button("OVERVIEW", KEYSTATE_UNKNOWN, overview_rect.x, overview_rect.y, overview_rect.w, overview_rect.h, 0, -1 , MenuNav::DownRight(ok_index, troops_index)),
-        button("TROOPS", KEYSTATE_UNKNOWN, troops_rect.x, troops_rect.y, troops_rect.w, troops_rect.h, 0, -1 , MenuNav::DownLeft(retry_index, overview_index)),
+        button("ok", "OK", KEYSTATE_UNKNOWN, ok_rect.x, ok_rect.y, ok_rect.w, ok_rect.h, 0, -1 , MenuNav::UpRight(overview_index, retry_index)),
+        button("retry", "RETRY", KEYSTATE_UNKNOWN, retry_rect.x, retry_rect.y, retry_rect.w, retry_rect.h, 0, -1 , MenuNav::UpLeft(troops_index, ok_index)),
+        button("overview", "OVERVIEW", KEYSTATE_UNKNOWN, overview_rect.x, overview_rect.y, overview_rect.w, overview_rect.h, 0, -1 , MenuNav::DownRight(ok_index, troops_index)),
+        button("troops", "TROOPS", KEYSTATE_UNKNOWN, troops_rect.x, troops_rect.y, troops_rect.w, troops_rect.h, 0, -1 , MenuNav::DownLeft(retry_index, overview_index)),
 	};
 	
 	

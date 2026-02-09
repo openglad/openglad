@@ -16,6 +16,7 @@
  */
 
 #include "level_data.h"
+#include "test_trace.h"
 #include "yam.h"
 
 #include "pixie.h"
@@ -632,7 +633,7 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
+	char newgrid[16] = "grid.pix";  // default grid
 
 	// Format of a scenario object list file version 2 is:
 	// 3-byte header: 'FSS'
@@ -716,7 +717,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
+	char newgrid[16] = "grid.pix";  // default grid
 	char oneline[80];
 	char numlines, tempwidth;
 
@@ -818,7 +819,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
+	char newgrid[16] = "grid.pix";  // default grid
 	char oneline[80];
 	char numlines, tempwidth;
 	char tempname[12];
@@ -927,7 +928,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[12] = "grid.pix";  // default grid
+	char newgrid[16] = "grid.pix";  // default grid
 	char new_scen_type; // read the scenario type
 	char oneline[80];
 	char numlines, tempwidth;
@@ -1066,8 +1067,8 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     short listsize;
     short i;
     walker * new_guy;
-    char newgrid[12];
-    memset(newgrid, 0, 12);
+    char newgrid[16]; // 8-byte grid name + ".pix" + null
+    memset(newgrid, 0, 16);
     char new_scen_type; // read the scenario type
     char oneline[80];
     memset(oneline, 0, 80);
@@ -1124,7 +1125,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         READ_OR_RETURN(infile, &temp_par, 2, 1);
     }
     // else we're using the value of the level ..
-    
+
     if (version >= 9)
     {
         READ_OR_RETURN(infile, &temp_time_limit, 2, 1);
@@ -1180,8 +1181,24 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         READ_OR_RETURN(infile, &tempwidth, 1, 1);
         if(tempwidth > 0)
         {
-            READ_OR_RETURN(infile, oneline, tempwidth, 1);
-            oneline[(int)tempwidth] = 0;
+            int original_width = (unsigned char)tempwidth;
+            int width = original_width;
+            if(width >= (int)sizeof(oneline))
+                width = sizeof(oneline) - 1;
+            READ_OR_RETURN(infile, oneline, width, 1);
+            oneline[width] = 0;
+            // Skip any remaining bytes to keep the stream aligned
+            if(original_width > width)
+            {
+                char discard[256];
+                int remaining = original_width - width;
+                while(remaining > 0)
+                {
+                    int chunk = remaining < (int)sizeof(discard) ? remaining : (int)sizeof(discard);
+                    READ_OR_RETURN(infile, discard, chunk, 1);
+                    remaining -= chunk;
+                }
+            }
         }
         else
             oneline[0] = 0;
@@ -1258,6 +1275,7 @@ short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 
 bool LevelData::load()
 {
+	TRACE("game", "LevelData::load id=%d", id);
 	SDL_RWops  *infile = NULL;
 	char temptext[10];
 	memset(temptext, 0, 10);
@@ -1342,6 +1360,7 @@ bool LevelData::load()
         back[PIX_GRASSWATER_UR]->set_accel(0);
     }
     
+	TRACE("game", "LevelData::load complete");
 	return (tempvalue != 0);
 }
 

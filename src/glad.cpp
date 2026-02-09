@@ -54,6 +54,10 @@ static bool g_state_initialized = false;
 extern bool debug_draw_paths;
 extern bool debug_draw_obmap;
 
+#ifdef TESTING
+bool g_test_remove_exits = false;
+#endif
+
 // Z's script: #include <process.h>
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -127,8 +131,13 @@ static void emscripten_frame_wrapper() {
 	if (myscreen && myscreen->timer_wait > 0) {
 		timer_wait = myscreen->timer_wait;
 	}
-	Uint32 target_frame_time = (Uint32)(timer_wait * 13.6f);
-	if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
+	Uint32 target_frame_time;
+	if (g_game_speed_factor == 0.0f) {
+		target_frame_time = 0; // Max speed: run every browser frame
+	} else {
+		target_frame_time = (Uint32)(timer_wait * 13.6f / g_game_speed_factor);
+		if (target_frame_time < 16) target_frame_time = 16; // Minimum ~60 FPS cap
+	}
 
 	// Only run logic if enough time has accumulated
 	if (g_frame_state.accumulated_time >= target_frame_time) {
@@ -187,6 +196,7 @@ static void emscripten_frame_wrapper() {
 }
 #endif
 
+#ifndef TESTING
 int main(int argc, char *argv[])
 {
 	init_logging();  // Set up logging output (uses JS console on web)
@@ -240,6 +250,7 @@ int main(int argc, char *argv[])
 	io_exit();
 	return 0;
 }
+#endif // TESTING
 
 // One frame of the main game loop - called by emscripten_set_main_loop or native while loop
 static void game_frame()
@@ -249,9 +260,11 @@ static void game_frame()
 
 	if (myscreen->redrawme)
 	{
+#ifndef TESTING
 		myscreen->draw_panels(myscreen->numviews);
 		score_panel(myscreen, 1);
 		myscreen->refresh();
+#endif
 		myscreen->redrawme = 0;
 	}
 	if (myscreen->end)
@@ -266,6 +279,7 @@ static void game_frame()
 		g_frame_state.done = true;
 		return;
 	}
+#ifndef TESTING
 	myscreen->redraw();
 
 	if(debug_draw_obmap)
@@ -276,6 +290,7 @@ static void game_frame()
 	#endif
 	score_panel(myscreen);
 	myscreen->refresh();
+#endif
 
 	SDL_Event event;
 	while(SDL_PollEvent(&event))
@@ -327,7 +342,14 @@ static void game_frame()
 
 #ifndef __EMSCRIPTEN__
 	// Zardus: PORT: this is the new FPS cap (not needed for Emscripten - browser handles timing)
-	time_delay(myscreen->timer_wait - query_timer());
+	if (g_game_speed_factor == 0.0f) {
+		// Max speed: no delay
+	} else if (g_game_speed_factor != 1.0f) {
+		Sint32 adjusted_wait = (Sint32)(myscreen->timer_wait / g_game_speed_factor);
+		time_delay(adjusted_wait - query_timer());
+	} else {
+		time_delay(myscreen->timer_wait - query_timer());
+	}
 #endif
 }
 
@@ -342,6 +364,17 @@ void glad_init()
 
 	// Load the default saved-game ..
 	load_saved_game("save0", myscreen);
+
+#ifdef TESTING
+	// Remove exits so level auto-completes when all enemies die
+	if (g_test_remove_exits) {
+		for (auto e = myscreen->level_data.fxlist.begin(); e != myscreen->level_data.fxlist.end(); e++) {
+			walker* w = *e;
+			if (w && w->query_order() == ORDER_TREASURE && w->query_family() == FAMILY_EXIT)
+				w->dead = 1;
+		}
+	}
+#endif
 
 	// This will update the 'control' so the screen centers on our guy
 	myscreen->continuous_input();

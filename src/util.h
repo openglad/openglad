@@ -43,6 +43,10 @@ Sint32 query_timer();
 Sint32 query_timer_control();
 void time_delay(Sint32);
 
+// Game speed factor: 1.0 = normal, 2.0 = 2x speed, 0.0 = max speed (no delays)
+extern float g_game_speed_factor;
+void set_game_speed(float factor);
+
 // Zardus: add: lowercase func
 void lowercase(char *);
 

@@ -35,6 +35,7 @@
 #include "stats.h"
 #include "guy.h"
 #include "radar.h"
+#include "test_trace.h"
 
 
 #endif //end of graph.h

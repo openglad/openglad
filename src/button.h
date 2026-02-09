@@ -78,6 +78,7 @@ private:
 
 struct button
 {
+	std::string id;    // Unique identifier for test interaction API
 	std::string label;
 	int hotkey;
 	Sint32 x, y;
@@ -87,12 +88,12 @@ struct button
 	MenuNav nav;
 	bool hidden;  // Does not draw or accept clicks
 	bool no_draw;  // Does not draw but still accepts clicks
-	
-	button(const std::string& label, int hotkey, Sint32 x, Sint32 y, Sint32 w, Sint32 h, Sint32 callback_ID, Sint32 callback_arg, const MenuNav& nav, bool hidden = false)
-        : label(label), hotkey(hotkey), x(x), y(y), sizex(w), sizey(h), myfun(callback_ID), arg1(callback_arg), nav(nav), hidden(hidden), no_draw(false)
+
+	button(const std::string& id, const std::string& label, int hotkey, Sint32 x, Sint32 y, Sint32 w, Sint32 h, Sint32 callback_ID, Sint32 callback_arg, const MenuNav& nav, bool hidden = false)
+        : id(id), label(label), hotkey(hotkey), x(x), y(y), sizex(w), sizey(h), myfun(callback_ID), arg1(callback_arg), nav(nav), hidden(hidden), no_draw(false)
 	{}
-	button(Sint32 x, Sint32 y, Sint32 w, Sint32 h, Sint32 callback_ID, Sint32 callback_arg, const MenuNav& nav, bool hidden = false, bool no_draw = false)
-        : hotkey(KEYSTATE_UNKNOWN), x(x), y(y), sizex(w), sizey(h), myfun(callback_ID), arg1(callback_arg), nav(nav), hidden(hidden), no_draw(no_draw)
+	button(const std::string& id, Sint32 x, Sint32 y, Sint32 w, Sint32 h, Sint32 callback_ID, Sint32 callback_arg, const MenuNav& nav, bool hidden = false, bool no_draw = false)
+        : id(id), hotkey(KEYSTATE_UNKNOWN), x(x), y(y), sizex(w), sizey(h), myfun(callback_ID), arg1(callback_arg), nav(nav), hidden(hidden), no_draw(no_draw)
 	{}
 };
 
@@ -118,6 +119,7 @@ class vbutton
 		Sint32 do_call(Sint32 whatfunc, Sint32 arg);
 		Sint32 do_call_right(Sint32 whatfunc, Sint32 arg);  // for right-button
 
+		std::string id; // Unique identifier for test interaction API
 		Sint32 xloc; //the x position in screen-coords
 		Sint32 yloc; //the y position in screen-coords
 		std::string label; //the label on the button

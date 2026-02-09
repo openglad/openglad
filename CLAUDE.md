@@ -140,7 +140,95 @@ Canvas renders at 320x200 base resolution, scaled with integer factors for crisp
 
 1. `main()` → SDL init, create screen
 2. `intro_main()` → splash screen
-3. `picker_main()` → team selection
+3. `picker_main()` → team selection (loops via `picker_mainmenu_loop()`)
 4. `glad_main()` → main game loop
 5. `screen->act()` → game logic per frame
 6. `screen->redraw()` → render to display
+
+## Testing
+
+### Build & Run
+
+```bash
+./scripts/build_test.sh   # Compiles with -DTESTING, outputs openglad_test
+./openglad_test            # Runs all tests headless (SDL_VIDEODRIVER=offscreen)
+```
+
+Tests live in `tests/`, test infra in `tests/test_framework.h`. New test source files must be added to `TEST_SOURCES` in `scripts/build_test.sh`.
+
+### Writing Tests
+
+**Basic structure:** Write a void function, use `TEST_ASSERT` macros, register it:
+
+```cpp
+#include "graph.h"
+#include "test_trace.h"
+#include "test_framework.h"
+
+void test_my_thing() {
+    TEST_ASSERT(condition, "message on failure");
+    TEST_ASSERT_EQ(expected, actual, "message");
+}
+REGISTER_TEST(test_my_thing);
+```
+
+**Traces:** Game code writes `TRACE("category", "message %d", val)` (no-op in non-test builds). Tests verify behavior with `trace_contains("category", "substring")` and `trace_count("category")`. Call `trace_clear()` at the start of a test.
+
+### Testing Menu UI / Interactive Flows
+
+Menu functions (`mainmenu`, `create_team_menu`, etc.) block in event loops. To test them, spawn a thread that drives navigation while the main thread runs the blocking menu code.
+
+**Pattern** (see `test_level_progress.cpp` and `test_back_to_mainmenu.cpp`):
+
+```cpp
+#include "test_interact.h"   // has_interactable, wait_for_interactable, interact
+#include "test_input_helpers.h"  // inject_click, inject_key_press (low-level)
+
+static int my_injector_thread(void* data) {
+    // Wait for button to exist + extra delay for fadeblack to finish
+    wait_for_interactable("continue_game", 5000);
+    SDL_Delay(1500);
+
+    // Click it by ID -- handles coordinate conversion automatically
+    interact("continue_game");
+
+    // Wait for next screen's buttons to appear
+    SDL_Delay(500);
+    wait_for_interactable("back", 10000);
+    SDL_Delay(1500);
+
+    interact("back");
+    return 0;
+}
+
+void test_my_menu_flow() {
+    // Set up save data, etc.
+    SDL_Thread* thread = SDL_CreateThread(my_injector_thread, "injector", &state);
+
+    // picker_mainmenu_loop has a test-only iteration limit to prevent infinite loops
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;  // exit after 1 mainmenu iteration
+
+    picker_main(0, NULL);  // blocks until menus unwind
+    SDL_WaitThread(thread, &result);
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;  // reset
+}
+REGISTER_TEST(test_my_menu_flow);
+```
+
+**Key rules for menu tests:**
+- Use `interact("button_id")` to click buttons — don't compute raw coordinates
+- Use `wait_for_interactable("id", timeout_ms)` before clicking — buttons aren't ready until `init_buttons` runs
+- Always `SDL_Delay(1500)` after `wait_for_interactable` — `fadeblack()` eats events during the fade animation
+- Set `g_picker_max_mainmenu_calls` to limit loop iterations so the test exits
+- `quit()` is a no-op under `TESTING` (doesn't call `exit(0)`)
+- Clean up picker globals after the test (delete backdrops, allbuttons, pixies) — see `cleanup_picker_state()` in existing tests
+
+### `#ifdef TESTING` Guards
+
+The test build compiles the same game sources with `-DTESTING`. Use this for:
+- `TRACE(...)` calls to instrument code (no-op in production)
+- Test-only globals like `g_picker_max_mainmenu_calls` for loop control
+- Making `exit(0)` calls safe (e.g. `quit()` skips cleanup and exit under TESTING)
+- `main()` in `glad.cpp` is excluded (test has its own `main` in `test_main.cpp`)

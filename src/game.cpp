@@ -23,6 +23,7 @@ void popup_dialog(const char* title, const char* message);
 
 short load_saved_game(const char *filename, screen  *myscreen)
 {
+	TRACE("game", "load_saved_game file=%s scen=%d", filename, myscreen->save_data.scen_num);
 	char          scenfile[20];
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
@@ -56,6 +57,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
         }
 	}
 
+	TRACE("game", "level loaded: scen%d", myscreen->level_data.id);
 	std::list<walker*> foelist = myscreen->level_data.oblist;
 	for(auto e = foelist.begin(); e != foelist.end(); e++)
 	{
