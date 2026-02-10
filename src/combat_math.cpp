@@ -40,3 +40,36 @@ float compute_base_damage(float base_damage, IRandom& rng)
     return d - sqrtd / 2.0f + static_cast<float>(rng.next(static_cast<Uint32>(floorf(sqrtd))));
 }
 
+// FAERIE_FREEZE_TIME is 40 (from stats.h)
+static constexpr Sint32 FREEZE_BASE_TIME = 40;
+
+Sint32 compute_freeze_duration(Sint32 level, Sint32 constitution, IRandom& rng)
+{
+    Sint32 max_time;
+    if (constitution > 0)
+        max_time = FREEZE_BASE_TIME + (level * 2) - (constitution / 21);
+    else
+        max_time = FREEZE_BASE_TIME + (level * 2);
+
+    if (max_time <= 0)
+        return 0;
+
+    Sint32 result = static_cast<Sint32>(rng.next(static_cast<Uint32>(max_time)));
+    return (result < 0) ? 0 : result;
+}
+
+HealResult compute_heal_amount(Sint32 magicpoints, Sint32 level, IRandom& rng)
+{
+    Sint32 base = magicpoints / 4 + static_cast<Sint32>(rng.next(static_cast<Uint32>(magicpoints / 4)));
+    Sint32 cost = base / 2;
+    // Add bonus healing from level
+    Sint32 amount = base + level * 5;
+    return {amount, cost};
+}
+
+Sint32 compute_charm_duration(Sint32 level_diff, IRandom& rng)
+{
+    Sint32 generic = (level_diff > 0) ? level_diff : 0;
+    return 25 + static_cast<Sint32>(rng.next(static_cast<Uint32>(generic * 20)));
+}
+

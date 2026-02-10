@@ -2002,15 +2002,9 @@ bool walker::attack(walker  *target)
 			case FAMILY_SPRINKLE:   // Faerie's fire freezes foes :)
 				if (targetorder == Order::Living)
 				{
-					if (target->myguy)
-						target->stats()->frozen_delay =
-						    rng(FAERIE_FREEZE_TIME + (owner->stats()->level*2) -
-						           (target->myguy->constitution/21) );
-					else
-						target->stats()->frozen_delay =
-						    random (FAERIE_FREEZE_TIME + (owner->stats()->level*2) );
-					if (target->stats()->frozen_delay < 0)
-						target->stats()->frozen_delay = 0;
+					Sint32 con = target->myguy ? target->myguy->constitution : 0;
+					target->stats()->frozen_delay =
+					    compute_freeze_duration(owner->stats()->level, con, *ctx().rng);
 				}
 				break;
 			default :
@@ -2562,10 +2556,9 @@ bool walker::special()
 								        newob != this )
 								{
 								    // Get the cost first
-									generic = stats_->magicpoints/4 + rng(stats_->magicpoints/4);
-									int cost = generic/2;
-									// Add bonus healing
-									generic += stats_->level*5;
+									HealResult heal = compute_heal_amount(stats_->magicpoints, stats_->level, *ctx().rng);
+									generic = heal.amount;
+									int cost = heal.cost;
 									if(stats_->magicpoints < cost)
                                     {
                                         generic -= stats_->magicpoints;
