@@ -774,11 +774,11 @@ loader::~loader(void)
 
 void loader::set_derived_stats(walker* w, Order order, char family)
 {
-	w->stepsize = stepsizes[PIX(order, family)];
-	w->normal_stepsize = w->stepsize;
-	w->lineofsight = lineofsight[PIX(order, family)];
-	w->damage = damage[PIX(order, family)];
-	w->fire_frequency = fire_frequency[PIX(order, family)];
+	w->set_stepsize(stepsizes[PIX(order, family)]);
+	w->set_normal_stepsize(w->stepsize());
+	w->set_lineofsight(lineofsight[PIX(order, family)]);
+	w->set_damage(damage[PIX(order, family)]);
+	w->set_fire_frequency(fire_frequency[PIX(order, family)]);
 }
 
 walker  *loader::create_walker(Order order,
@@ -882,7 +882,7 @@ walker  *loader::set_walker(walker *ob,
 					break;
 				case FAMILY_SKELETON:
 					ob->default_weapon = FAMILY_BONE;
-					ob->ani_type = ANI_SKEL_GROW;
+					ob->set_ani_type(ANI_SKEL_GROW);
 					ob->stats->weapon_cost = 0; // free bones
 					ob->stats->special_cost[1] = 10; // tunnel
 					break;
@@ -981,7 +981,7 @@ walker  *loader::set_walker(walker *ob,
 					return ob;
 					break;
 			}
-			ob->current_weapon = ob->default_weapon;
+			ob->set_current_weapon(ob->default_weapon);
 			break; // end of livings
 		case Order::Weapon:
 			switch (family)
@@ -999,7 +999,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats->set_bit_flags(BIT_FLYING, 1);
 					break;
 				case FAMILY_GLOW: // cleric's shield glad
-					ob->lifetime = 350;
+					ob->set_lifetime(350);
 					break;
 				case FAMILY_WAVE:
 					ob->stats->set_bit_flags(BIT_IMMORTAL, 1);
@@ -1027,7 +1027,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats->set_bit_flags(BIT_NO_COLLIDE, 1);
 					ob->stats->set_bit_flags(BIT_PHANTOM, 1);
 					ob->stats->set_bit_flags(BIT_FLYING, 1);
-					ob->ani_type = 5; // anything non-zero
+					ob->set_ani_type(5); // anything non-zero
 					break;
 				default:
 					break;
@@ -1036,7 +1036,7 @@ walker  *loader::set_walker(walker *ob,
 			switch (family)
 			{
 				case FAMILY_STAIN:  // permanent bloodstains
-					ob->ignore = 1;
+					ob->set_ignore(1);
 					break;
 				case FAMILY_GOLD_BAR:
 					ob->set_direct_frame(0);
@@ -1084,7 +1084,7 @@ walker  *loader::set_walker(walker *ob,
 			}
 			break;
 		case Order::FX:
-			ob->ani_type = 0;
+			ob->set_ani_type(0);
 			switch (family)
 			{
 				case FAMILY_MAGIC_SHIELD:

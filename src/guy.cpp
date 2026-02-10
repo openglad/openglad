@@ -512,25 +512,25 @@ void guy::update_derived_stats(walker* w)
     w->stats->max_magicpoints = temp_guy->get_mp_bonus();
     w->stats->magicpoints = w->stats->max_magicpoints;
 
-    w->damage += temp_guy->get_damage_bonus();
+    w->set_damage(w->damage() + temp_guy->get_damage_bonus());
 
     // No class base value for armor...
     w->stats->armor = temp_guy->get_armor_bonus();
-    
+
     //stepsize makes us run faster, max for a non-weapon is 12
-    w->stepsize += temp_guy->get_speed_bonus();
-    if (w->stepsize > 12)
-        w->stepsize = 12;
-    w->normal_stepsize = w->stepsize;
+    w->set_stepsize(w->stepsize() + temp_guy->get_speed_bonus());
+    if (w->stepsize() > 12)
+        w->set_stepsize(12);
+    w->set_normal_stepsize(w->stepsize());
 
     //fire_frequency makes us fire faster, min is 1
-    w->fire_frequency -= temp_guy->get_fire_frequency_bonus();
-    if (w->fire_frequency < 1)
-        w->fire_frequency = 1;
+    w->set_fire_frequency(w->fire_frequency() - temp_guy->get_fire_frequency_bonus());
+    if (w->fire_frequency() < 1)
+        w->set_fire_frequency(1);
 
     // Fighters: limited weapons
     if (w->query_family() == FAMILY_SOLDIER)
-        w->weapons_left = static_cast<short>((w->stats->level+1) / 2);
+        w->set_weapons_left(static_cast<short>((w->stats->level+1) / 2));
         
 
     // Set the heal delay ..

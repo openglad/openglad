@@ -30,7 +30,7 @@ living::living(const PixieData& data)
     : walker(data)
 {
 	current_special = 1;
-	lifetime = 0;
+	lifetime_ = 0;
 }
 
 living::~living()
@@ -38,7 +38,7 @@ living::~living()
 
 bool living::act()
 {
-	if (bonus_rounds_>0 && !dead_)  // we get extra rounds to act this cycle
+	if (bonus_rounds_>0 && !dead_)  // we get extra rounds to act this cycle_
 	{
 		bonus_rounds_--;
 		act();
@@ -47,7 +47,7 @@ bool living::act()
 		return 0;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe_ && (foe_->is_dead() || (random(foe_->invisibility_left/20) > 0) ) )
+	if (foe_ && (foe_->is_dead() || (random(foe_->invisibility_left()/20) > 0) ) )
 		foe_ = nullptr;
 	if (is_friendly(foe_))
 		foe_ = nullptr;
@@ -62,7 +62,7 @@ bool living::act()
 		return 0;
 	}
 
-	if (lifetime)
+	if (lifetime_)
 	{
 		if (!owner_ || owner_->is_dead()) // our owner_ gone?
 		{
@@ -70,7 +70,7 @@ bool living::act()
 			death();
 			return 0;
 		}
-		if (--lifetime < 1)
+		if (--lifetime_ < 1)
 		{
 			dead_ = 1;
 			return death();
@@ -95,8 +95,8 @@ bool living::act()
 					}
 					if (temp == 2) // had both MP and HP, so heal 1 unit
 						stats->hitpoints++;
-					else // else go down one more unit of lifetime
-						lifetime--;
+					else // else go down one more unit of lifetime_
+						lifetime_--;
 				} // end of hurt elemental
 				break;  // end of elemental drain
 			default:
@@ -108,7 +108,7 @@ bool living::act()
 	collide_ob = nullptr; // always start with no collison..
 
 	/*
-	  if (ignore)
+	  if (ignore_)
 	  {
 	         Log("ignoring living\n");
 	         return 0;
@@ -131,8 +131,8 @@ bool living::act()
 	} // end magic increment section
 
 	//Regenerate hitpoints
-	if(regen_delay > 0)  // Delay after being hit
-        regen_delay--;
+	if(regen_delay_ > 0)  // Delay after being hit
+        regen_delay_--;
     else
     {
         if (stats->hitpoints < stats->max_hitpoints &&
@@ -151,25 +151,25 @@ bool living::act()
     }
 
 	// Special-viewing
-	if (view_all > 0)
-		view_all--;
+	if (view_all_ > 0)
+		view_all_--;
 
 	// Invulnerability
-	if (invulnerable_left > 0)
-		invulnerable_left--;
+	if (invulnerable_left_ > 0)
+		invulnerable_left_--;
 
 	// Invisibility
-	if (invisibility_left > 0)
-		invisibility_left--;
+	if (invisibility_left_ > 0)
+		invisibility_left_--;
 	else
 		outline = 0;
 
 	// Flight
-	if (flight_left > 0)
-		flight_left--;
-	if (!myscreen->query_grid_passable(xpos, ypos, this) && !flight_left)
+	if (flight_left_ > 0)
+		flight_left_--;
+	if (!myscreen->query_grid_passable(xpos, ypos, this) && !flight_left_)
 	{
-		flight_left++;
+		flight_left_++;
 		stats->hitpoints--;
 		if(cfg.is_on("effects", "damage_numbers"))
             damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
@@ -182,11 +182,11 @@ bool living::act()
 	}
 
 	// Charmed-ness
-	if (charm_left > 1)
-		charm_left--;
+	if (charm_left_ > 1)
+		charm_left_--;
 	else
 	{
-		charm_left = 0;
+		charm_left_ = 0;
 		if (real_team_num_ != 255)
 		{
 			team_num_ = real_team_num_;
@@ -216,18 +216,18 @@ bool living::act()
 			temp = (4 - stats->level/2.0f);
 		if (temp < 0)
 			temp = 0;
-		stepsize -= temp;
-		if (stepsize < 1)
-			stepsize = 1;
+		stepsize_ -= temp;
+		if (stepsize_ < 1)
+			stepsize_ = 1;
 	}  // end of forestwalk check
 	else
-		stepsize = normal_stepsize;
+		stepsize_ = normal_stepsize_;
 
 	// Speed bonus
-	if (speed_bonus_left > 1)
+	if (speed_bonus_left_ > 1)
 	{
-		speed_bonus_left--;
-		stepsize += speed_bonus;
+		speed_bonus_left_--;
+		stepsize_ += speed_bonus_;
 	}
 	
 	
@@ -256,7 +256,7 @@ bool living::act()
                 else
                     temp = 40 - stats->level;
                 if (!(drawcycle%temp)) // then we get to see..
-                    view_all += 1;
+                    view_all_ += 1;
 		    }
 			break;
 		default:
@@ -264,7 +264,7 @@ bool living::act()
 	}  // end of special family auto-powers
 
 	// Complete previous animations (like firing)
-	if (ani_type != ANI_WALK)
+	if (ani_type_ != ANI_WALK)
 		return animate();
 
 	// Are we frozen?
@@ -274,16 +274,16 @@ bool living::act()
 		return 1;
 	}
 
-	if (busy > 0)
-		busy--; // This allows busy to be our FIRING delay.
-	// Find new action
+	if (busy_ > 0)
+		busy_--; // This allows busy_ to be our FIRING delay.
+	// Find new action_
 
 	// Turn if you want to (...turn, around the world...)
 	if (curdir != enddir && query_order() == Order::Living)
 		return turn(enddir);
 
 
-	// Are we performing some action?
+	// Are we performing some action_?
 	if (stats->has_commands())
 	{
 		Sint32 temp = stats->do_command();
@@ -294,8 +294,8 @@ bool living::act()
 	if (skip_exit_ > 0)
 		skip_exit_--;
 
-	// Do we have a generic action-type set?
-	if (action  && (user == -1) )
+	// Do we have a generic action_-type set?
+	if (action_  && (user == -1) )
 	{
 		Sint32 temp = do_action();
 		if (temp)
@@ -424,8 +424,8 @@ bool living::walk(float x, float y)
 	//  short distance; // distance between current and desired facings
 
 	// Repeat last walk.
-	//  lastx = x;
-	//  lasty = y;
+	//  lastx_ = x;
+	//  lasty_ = y;
 
 	dir = facing(x, y);
 
@@ -448,12 +448,12 @@ bool living::walk(float x, float y)
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
-			cycle++;
-			//if (!ani || (curdir*cycle > sizeof(ani)) )
+			cycle_++;
+			//if (!ani || (curdir*cycle_ > sizeof(ani)) )
 			//  Log("WALKER::WALK: Bad ani!\n");
-			if (ani[curdir][cycle] == -1)
-				cycle = 0;
-			set_frame(ani[curdir][cycle]);
+			if (ani[curdir][cycle_] == -1)
+				cycle_ = 0;
+			set_frame(ani[curdir][cycle_]);
 			return 1;
 		}
 		else //Invalid move?
@@ -467,10 +467,10 @@ bool living::walk(float x, float y)
 			}  // end hit some object
 			if (stats->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
 			{
-				cycle++;
-				if (ani[curdir][cycle] == -1)
-					cycle = 0;
-				set_frame(ani[curdir][cycle]);
+				cycle_++;
+				if (ani[curdir][cycle_] == -1)
+					cycle_ = 0;
+				set_frame(ani[curdir][cycle_]);
 			}
 
 			return 0;
@@ -520,7 +520,7 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 
 	newob = myscreen->level_data.add_ob(Order::Living, whatfamily);
 	newob->set_owner(this);
-	newob->lifetime = lifetime;
+	newob->set_lifetime(lifetime);
 	newob->transform_to(Order::Living, whatfamily);
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
 
@@ -685,45 +685,45 @@ void living::set_difficulty(Uint32 whatlevel)
 		case FAMILY_ARCHER:
 			stats->max_hitpoints   += 11*levmult;
 			stats->max_magicpoints += 12*levmult;
-			damage += 4*whatlevel;
+			damage_ += 4*whatlevel;
 			stats->armor += levmult;
 			break;
 		case FAMILY_MAGE:
 			stats->max_hitpoints   += 7*levmult;
 			stats->max_magicpoints += 14*levmult;
-			damage += 3*whatlevel;
+			damage_ += 3*whatlevel;
 			stats->armor += levmult/2.0f;
 			break;
 		case FAMILY_CLERIC:
 		case FAMILY_DRUID:
 			stats->max_hitpoints   += 9*levmult;
 			stats->max_magicpoints += 12*levmult;
-			damage += 4*whatlevel;
+			damage_ += 4*whatlevel;
 			stats->armor += levmult/2.0f;
 			break;
 		case FAMILY_SOLDIER:  // default as soldier
 			stats->max_hitpoints   += 13*levmult;
 			stats->max_magicpoints += 8*levmult;
-			weapons_left = static_cast<short>((whatlevel+1) / 2);
-			damage += 5*whatlevel;
+			weapons_left_ = static_cast<short>((whatlevel+1) / 2);
+			damage_ += 5*whatlevel;
 			stats->armor += 2*levmult;
 			break;
 		case FAMILY_ORC:
 			stats->max_hitpoints   += 14*levmult;
 			stats->max_magicpoints += 7*levmult;
-			damage += 6*whatlevel;
+			damage_ += 6*whatlevel;
 			stats->armor += 3*levmult;
 			break;
 		case FAMILY_GOLEM:
 			stats->max_hitpoints   += 18*levmult;
 			stats->max_magicpoints += 5*levmult;
-			damage += 7*whatlevel;
+			damage_ += 7*whatlevel;
 			stats->armor += 4*levmult;
 			break;
 		default:
 			stats->max_hitpoints   += 11*levmult;
 			stats->max_magicpoints += 11*levmult;
-			damage += static_cast<short>(4)*whatlevel;
+			damage_ += static_cast<short>(4)*whatlevel;
 			stats->armor += 2*levmult;
 			break;
 	}
@@ -733,7 +733,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	{
 		stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
 		stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
-		damage = (damage * dif1) / 100.0f;
+		damage_ = (damage_ * dif1) / 100.0f;
 	}
 
 	stats->hitpoints = stats->max_hitpoints;
@@ -845,8 +845,8 @@ bool living::act_random()
 	ydist = static_cast<short>(foe_->ypos - ypos);
 
 	// If foe is in firing range, turn and fire
-	if (abs(xdist) < lineofsight*GRID_SIZE &&
-	        abs(ydist) < lineofsight*GRID_SIZE)
+	if (abs(xdist) < lineofsight_*GRID_SIZE &&
+	        abs(ydist) < lineofsight_*GRID_SIZE)
 	{
 		if (fire_check(xdist, ydist))
 		{
@@ -868,10 +868,10 @@ bool living::act_random()
 bool living::do_action()
 {
 
-	if (!action)
+	if (!action_)
 		return 0;
 
-	switch (action)
+	switch (action_)
 	{
 		case ACTION_FOLLOW: // follow our leader_, attack his targets ..
 			if (foe_)

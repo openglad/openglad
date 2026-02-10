@@ -495,7 +495,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 				case PIX_TREE_T1:
 					if (ob->stats->query_bit_flags(BIT_FORESTWALK) )
 						break;
-					else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left)
+					else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left())
 						break;
 					else
 						return 0;
@@ -504,7 +504,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 						if (ob->query_order() == Order::Weapon
 						        || ob->stats->query_bit_flags(BIT_FORESTWALK) )
 							break;
-						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left)
+						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left())
 							break;
 						else
 							return 0;
@@ -567,7 +567,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 					{
 						if (ob->query_order() == Order::Weapon)
 							break;
-						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left)
+						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left())
 							break;
 						else
 							return 0;
@@ -968,7 +968,7 @@ walker *screen::find_near_foe(walker  *ob)
 			for(auto* w : ls) //go through the list we received
 			{
 				if (!(w->is_dead()) && (ob->is_friendly(w)==0)  &&
-				        (random(w->invisibility_left/20)==0)
+				        (random(w->invisibility_left()/20)==0)
 				   )
 				{
 					if (w->query_order() == Order::Living ||
@@ -1024,7 +1024,7 @@ walker  *screen::find_far_foe(walker  *ob)
 			if (
 			    (foe->query_order() == Order::Living ||
 			     foe->query_order() == Order::Generator)  &&
-			    (!(random(foe->invisibility_left/20)))
+			    (!(random(foe->invisibility_left()/20)))
 			)
 			{
 				tempdistance = ob->distance_to_ob(foe);

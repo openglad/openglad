@@ -50,14 +50,14 @@ bool weap::act()
 	collide_ob = nullptr; // always start with no collision..
 
 	// Complete previous animations (like firing)
-	if (ani_type != ANI_WALK)
+	if (ani_type_ != ANI_WALK)
 		return animate();
 
-	//  Log("weap %d is ani %d\n", family, ani_type);
+	//  Log("weap %d is ani %d\n", family, ani_type_);
 
 	if (myscreen->level_data.mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
-		if (lineofsight)
-			lineofsight--;
+		if (lineofsight_)
+			lineofsight_--;
 
 	switch (act_type)
 	{
@@ -133,10 +133,10 @@ bool weap::death()
 
 	walker  *newob = nullptr;
 
-	if (death_called)  // Make sure we don't get multiple deaths
+	if (death_called_)  // Make sure we don't get multiple deaths
 		return 0;
 
-	death_called = 1;
+	death_called_ = 1;
 
 	switch (family)
 	{
@@ -146,42 +146,42 @@ bool weap::death()
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
 			newob->set_owner(owner_);
 			newob->center_on(this);
-			newob->lastx = lastx;
-			newob->lasty = lasty;
-			newob->stepsize = stepsize;
-			newob->ani_type = ANI_ATTACK;
-			newob->damage = damage;
+			newob->set_lastx(lastx_);
+			newob->set_lasty(lasty_);
+			newob->set_stepsize(stepsize_);
+			newob->set_ani_type(ANI_ATTACK);
+			newob->set_damage(damage_);
 			break;  // end of soldier returning knife
 		case FAMILY_ROCK: // used for the elf's bouncing rock, etc.
-			if (!do_bounce || !lineofsight || collide_ob) // died of natural causes
+			if (!do_bounce || !lineofsight_ || collide_ob) // died of natural causes
 				break;
 			dead_ = 0; // first, un-dead us so we can collide ..
 			// Did we hit a barrier?
-			if (myscreen->query_grid_passable(xpos+lastx, ypos+lasty, this))
+			if (myscreen->query_grid_passable(xpos+lastx_, ypos+lasty_, this))
 			{
 				dead_ = 1;
 				break; // if not, die like normal
 			}
-			if (myscreen->query_grid_passable(xpos-lastx, ypos+lasty, this))
+			if (myscreen->query_grid_passable(xpos-lastx_, ypos+lasty_, this))
 			{
-				setxy(xpos-lastx, ypos+lasty);  // bounce 'down-left'
-				lastx = -lastx;
-				death_called = 0;
+				setxy(xpos-lastx_, ypos+lasty_);  // bounce 'down-left'
+				lastx_ = -lastx_;
+				death_called_ = 0;
 				break;
 			}
-			if (myscreen->query_grid_passable(xpos+lastx, ypos-lasty, this))
+			if (myscreen->query_grid_passable(xpos+lastx_, ypos-lasty_, this))
 			{
-				setxy(xpos+lastx, ypos-lasty); // bounce 'up-right'
-				lasty = -lasty;
-				death_called = 0;
+				setxy(xpos+lastx_, ypos-lasty_); // bounce 'up-right'
+				lasty_ = -lasty_;
+				death_called_ = 0;
 				break;
 			}
-			if (myscreen->query_grid_passable(xpos-lastx, ypos-lasty, this))
+			if (myscreen->query_grid_passable(xpos-lastx_, ypos-lasty_, this))
 			{
-				setxy(xpos-lastx, ypos-lasty);
-				lastx = -lastx;
-				lasty = -lasty;
-				death_called = 0;
+				setxy(xpos-lastx_, ypos-lasty_);
+				lastx_ = -lastx_;
+				lasty_ = -lasty_;
+				death_called_ = 0;
 				break;
 			}
 			// Else we're really stuck, so die :)
@@ -201,9 +201,9 @@ bool weap::death()
 			newob->set_owner(owner_);
 			newob->stats->hitpoints = 0;
 			newob->stats->level = owner_->stats->level;
-			newob->ani_type = ANI_EXPLODE;
+			newob->set_ani_type(ANI_EXPLODE);
 			newob->center_on(this);
-			newob->damage = damage*2;
+			newob->set_damage(damage_*2);
 			break;  // end fire (exploding) arrows
 		case FAMILY_WAVE: // grow to wave2
 			dead_ = 0;
@@ -219,11 +219,11 @@ bool weap::death()
 			newob = myscreen->level_data.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
-			newob->ani_type = ANI_DOOR_OPEN;
+			newob->set_ani_type(ANI_DOOR_OPEN);
 			newob->setxy(xpos, ypos);
 			newob->stats->level = stats->level;
 			newob->set_team_num(team_num_);
-			//      newob->ignore = 1;
+			//      newob->ignore_ = 1;
 			// What way are we 'facing'?
 			if (myscreen->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
 			        == TYPE_WALL) // a wall above us?
@@ -248,25 +248,25 @@ bool weap::animate()
 {
 	//walker  * newob;
 
-	// We never use ani_type as  as I can tell; always use 0
-	//  if (ani_type)
+	// We never use ani_type_ as  as I can tell; always use 0
+	//  if (ani_type_)
 	//  {
-	//       Log("weap ani_type = %d\n", ani_type);
-	//       ani_type = 0;
+	//       Log("weap ani_type_ = %d\n", ani_type_);
+	//       ani_type_ = 0;
 	//  }
 
 	switch (family)
 	{
 		case FAMILY_TREE:
 		case FAMILY_BLOOD:
-			if (ani_type > 1)
-				ani_type = 0;
-			set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-			cycle++;
-			if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
+			if (ani_type_ > 1)
+				ani_type_ = 0;
+			set_frame(ani[curdir+ani_type_*NUM_FACINGS][cycle_]);
+			cycle_++;
+			if (ani[curdir+ani_type_*NUM_FACINGS][cycle_] == -1)
 			{
-				ani_type = 0; //ANI_WALK;
-				cycle = 0;
+				ani_type_ = 0; //ANI_WALK;
+				cycle_ = 0;
 			}
 			break;
 		case FAMILY_CIRCLE_PROTECTION:
@@ -278,28 +278,28 @@ bool weap::animate()
 			center_on(owner_);
 			break;
 		case FAMILY_GLOW:
-			if (ani_type > 2) // illegal case
-				ani_type = 2; // pulse case
-			set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-			cycle++;
-			if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
+			if (ani_type_ > 2) // illegal case
+				ani_type_ = 2; // pulse case
+			set_frame(ani[curdir+ani_type_*NUM_FACINGS][cycle_]);
+			cycle_++;
+			if (ani[curdir+ani_type_*NUM_FACINGS][cycle_] == -1)
 			{
-				ani_type = 2; // pulse
-				cycle = 0;
+				ani_type_ = 2; // pulse
+				cycle_ = 0;
 			}
-			if (lifetime-- < 1)
+			if (lifetime_-- < 1)
 			{
 				dead_ = 1;
 				death();
 			}
 			break;
 		default:
-			ani_type = 0;
-			set_frame(ani[curdir][cycle]);
-			cycle++;
-			if (ani[curdir][cycle] == -1)
+			ani_type_ = 0;
+			set_frame(ani[curdir][cycle_]);
+			cycle_++;
+			if (ani[curdir][cycle_] == -1)
 			{
-				cycle = 0;
+				cycle_ = 0;
 			}
 			break;
 	} // end of family switch

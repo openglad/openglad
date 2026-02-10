@@ -255,7 +255,7 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 	           newfamily,myscreen);
 	mywalker->stats->bit_flags = 0;
 	mywalker->curdir = FACE_DOWN;
-	mywalker->ani_type = ANI_WALK;
+	mywalker->set_ani_type(ANI_WALK);
 	for (i=0; i <= (frames/4)%4; i++)
 		mywalker->animate();
     

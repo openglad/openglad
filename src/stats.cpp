@@ -23,7 +23,7 @@
 #include <cmath>
 #include <format>
 
-#define CHECK_STEP_SIZE 1 // (controller->stepsize) // was 1
+#define CHECK_STEP_SIZE 1 // (controller->stepsize()) // was 1
 
 // COMMAND declarations defined at bottom
 
@@ -82,7 +82,7 @@ void statistics::clear_command()
 {
 	commands.clear();
 	// Make sure our weapon type is restored to normal ..
-	controller->current_weapon = controller->default_weapon;
+	controller->set_current_weapon(controller->default_weapon);
 	// Make sure we're back to our real team
 	if (controller->real_team_num() != 255)
 	{
@@ -338,10 +338,10 @@ short statistics::do_command()
 			}
 			break;
 		case COMMAND_SET_WEAPON: // set weapon to specified type
-			controller->current_weapon = com1;
+			controller->set_current_weapon(com1);
 			break;
 		case COMMAND_RESET_WEAPON: // reset weapon to default type
-			controller->current_weapon = controller->default_weapon;
+			controller->set_current_weapon(controller->default_weapon);
 			break;
 		case COMMAND_SEARCH: // use right-hand rule to find foe
 			if (controller->foe() && !controller->foe()->is_dead())
@@ -475,7 +475,7 @@ void statistics::hit_response(walker  *who)
 				// teleport
 				controller->current_special = 1; // teleport to safety
 				controller->shifter_down = 0;    // TELEPORT, not other
-				controller->busy = 0; // force-allow us to special
+				controller->set_busy(0); // force-allow us to special
 				controller->special();
 			}
 			else
@@ -489,7 +489,7 @@ void statistics::hit_response(walker  *who)
 			}
 			break;
 		case FAMILY_ARCHMAGE:
-			controller->busy = 0; // yes, this is a cheat..
+			controller->set_busy(0); // yes, this is a cheat..
 			if (controller->myguy()) // are we a player's character?
 				threshold = (3 * max_hitpoints)/5; // then flee at 60%
 			else                   // we're an enemy, so be braver :>
@@ -499,7 +499,7 @@ void statistics::hit_response(walker  *who)
 				// teleport
 				controller->current_special = 1; // teleport to safety
 				controller->shifter_down = 0;
-				controller->busy = 0; // force-allow us to special
+				controller->set_busy(0); // force-allow us to special
 				controller->special();
 			}
 			else  // find out how many foes are around us, etc...
@@ -533,7 +533,7 @@ void statistics::hit_response(walker  *who)
 								controller->shifter_down = 0;
 								if (magicpoints >= special_cost[1])  // then leave! :)
 								{
-									controller->busy = 0;
+									controller->set_busy(0);
 									controller->special();
 								}
 								return;
@@ -545,7 +545,7 @@ void statistics::hit_response(walker  *who)
 						{
 							if (magicpoints >= special_cost[1])  // then leave! :)
 							{
-								controller->busy = 0;
+								controller->set_busy(0);
 								controller->special();
 							}
 							return;
@@ -668,7 +668,7 @@ bool statistics::right_blocked()
 {
 	float xdelta, ydelta;
 	float controlx = controller->xpos, controly = controller->ypos;
-	float mystep = controller->stepsize;
+	float mystep = controller->stepsize();
 
 	mystep = CHECK_STEP_SIZE;
 	switch (controller->curdir)
@@ -718,7 +718,7 @@ bool statistics::right_blocked()
 bool statistics::right_forward_blocked()
 {
 	float controlx = controller->xpos, controly = controller->ypos;
-	float mystep = controller->stepsize;
+	float mystep = controller->stepsize();
 
 	mystep = CHECK_STEP_SIZE;
 	switch (controller->curdir)
@@ -751,7 +751,7 @@ bool statistics::right_forward_blocked()
 bool statistics::right_back_blocked()
 {
 	float controlx = controller->xpos, controly = controller->ypos;
-	float mystep = controller->stepsize;
+	float mystep = controller->stepsize();
 
 	mystep = CHECK_STEP_SIZE;
 	switch (controller->curdir)
@@ -843,8 +843,8 @@ bool statistics::right_walk()
 	{
 		if (!forward_blocked())  // walk forward
 		{
-			xdelta = controller->lastx;
-			ydelta = controller->lasty;
+			xdelta = controller->lastx();
+			ydelta = controller->lasty();
 			if (abs(xdelta) > abs(3*ydelta))
 				ydelta = 0;
 			if (abs(ydelta) > abs(3*xdelta))
@@ -971,8 +971,8 @@ bool statistics::direct_walk()
 	//  short xdistance, ydistance;
 	//  Uint32 tempdistance;
 	//  char olddir = controller->curdir;
-	//  short oldlastx = controller->lastx;
-	//  short oldlasty = controller->lasty;
+	//  short oldlastx = controller->lastx();
+	//  short oldlasty = controller->lasty();
 
 	if (!foe)
 		return 0;
@@ -1001,8 +1001,8 @@ bool statistics::direct_walk()
 	if (ydelta)
 		ydelta = ydelta / fabs(ydelta);
 
-	xdeltastep = xdelta*controller->stepsize;
-	ydeltastep = ydelta*controller->stepsize;
+	xdeltastep = xdelta*controller->stepsize();
+	ydeltastep = ydelta*controller->stepsize();
 
 	// Tom's note on 8/3/97: I think these would work better if
 	// replaced by some sort of single "if forward_blocked()"

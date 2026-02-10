@@ -40,7 +40,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 treasure::treasure(const PixieData& data)
     : walker(data)
 {
-	ignore =static_cast<char>(0);
+	ignore_ =static_cast<char>(0);
 	dead_ = static_cast<char>(0);
 }
 
@@ -105,7 +105,7 @@ bool treasure::eat_me(walker  * eater)
 		case FAMILY_FLIGHT_POTION:
 			if (!eater->stats->query_bit_flags(BIT_FLYING) )
 			{
-				eater->flight_left += (150*stats->level);
+				eater->set_flight_left(eater->flight_left() + (150*stats->level));
 				if (eater->user != -1)
 				{
 					message = std::format("Potion of Flight({})!", stats->level);
@@ -128,7 +128,7 @@ bool treasure::eat_me(walker  * eater)
 		case FAMILY_INVULNERABLE_POTION:
 			if (!eater->stats->query_bit_flags(BIT_INVINCIBLE) )
 			{
-				eater->invulnerable_left += (150*stats->level);
+				eater->set_invulnerable_left(eater->invulnerable_left() + (150*stats->level));
 				dead_ = 1;
 				if (eater->user != -1)
 				{
@@ -138,7 +138,7 @@ bool treasure::eat_me(walker  * eater)
 			}
 			return 1;
 		case FAMILY_INVIS_POTION:
-			eater->invisibility_left += (150*stats->level);
+			eater->set_invisibility_left(eater->invisibility_left() + (150*stats->level));
 			if (eater->user != -1)
 			{
 				message = std::format("Potion of Invisibility({})!", stats->level);
@@ -147,8 +147,8 @@ bool treasure::eat_me(walker  * eater)
 			dead_ = 1;
 			return 1;
 		case FAMILY_SPEED_POTION:
-			eater->speed_bonus_left += 50*stats->level;
-			eater->speed_bonus = stats->level;
+			eater->set_speed_bonus_left(eater->speed_bonus_left() + 50*stats->level);
+			eater->set_speed_bonus(stats->level);
 			if (eater->user != -1)
 			{
 				message = std::format("Potion of Speed({})!", stats->level);
@@ -271,7 +271,7 @@ bool treasure::eat_me(walker  * eater)
 			}
 			// Now do special effects
 			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
-			flash->ani_type = ANI_EXPAND_8;
+			flash->set_ani_type(ANI_EXPAND_8);
 			flash->center_on(this);
 			return 1;
 		case FAMILY_LIFE_GEM: // get back some of lost man's xp ..
@@ -279,21 +279,21 @@ bool treasure::eat_me(walker  * eater)
 				return 1;
 			myscreen->save_data.m_score[eater->team_num()] += stats->hitpoints;
 			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
-			flash->ani_type = ANI_EXPAND_8;
+			flash->set_ani_type(ANI_EXPAND_8);
 			flash->center_on(this);
 			dead_ = 1;
 			death();
 			return 1;
 		case FAMILY_KEY: // get the key to this door ..
-			if (!(eater->keys & static_cast<Sint32>(pow(static_cast<double>(2), stats->level)) )) // just got it?
+			if (!(eater->keys() & static_cast<Sint32>(pow(static_cast<double>(2), stats->level)) )) // just got it?
 			{
-				eater->keys |= static_cast<Sint32>(pow(static_cast<double>(2), stats->level)); // ie, 2, 4, 8, 16...
+				eater->set_keys(eater->keys() | static_cast<Sint32>(pow(static_cast<double>(2), stats->level))); // ie, 2, 4, 8, 16...
 				if (eater->myguy())
 					message = std::format("{} picks up key {}", eater->myguy()->name,
 					        stats->level);
 				else
 					message = std::format("{} picks up key {}", eater->stats->name, stats->level);
-				if (eater->team_num() == 0) // only show players picking up keys
+				if (eater->team_num() == 0) // only show players picking up keys_
 				{
 					myscreen->do_notify(message.c_str(), eater);
 					if (eater->on_screen())

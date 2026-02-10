@@ -1411,7 +1411,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 else
                     sel.family = NUM_FAMILIES-1;
                 level->myloader->set_walker(obj, sel.order, sel.family);
-                obj->ani_type = ANI_WALK;
+                obj->set_ani_type(ANI_WALK);
                 obj->transform_to(sel.order, sel.family);
                 obj->set_frame(obj->ani[obj->curdir][0]);
                 obj->setxy(sel.x, sel.y);
@@ -1433,7 +1433,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 else
                     sel.family = 0;
                 level->myloader->set_walker(obj, sel.order, sel.family);
-                obj->ani_type = ANI_WALK;
+                obj->set_ani_type(ANI_WALK);
                 obj->transform_to(sel.order, sel.family);
                 obj->set_frame(obj->ani[obj->curdir][0]);
                 obj->setxy(sel.x, sel.y);

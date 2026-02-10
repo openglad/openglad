@@ -456,7 +456,7 @@ short viewscreen::input(const SDL_Event& event)
 	{
 		control->set_bonus_rounds(control->bonus_rounds() - 1);
 		
-		if (control->lastx != 0.0f || control->lasty != 0.0f)
+		if (control->lastx() != 0.0f || control->lasty() != 0.0f)
 			control->walk();
 	}
 
@@ -647,7 +647,7 @@ short viewscreen::input(const SDL_Event& event)
 	if (isPlayerHoldingKey(mynum, KEY_SHIFTER) && didPlayerPressKey(mynum, KEY_YELL, event)
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // change guys' behavior
 	{
-		switch (control->action)
+		switch (control->action())
 		{
 			case 0:   // not set ..
 				for(auto& uptr : myscreen->level_data.oblist)
@@ -660,7 +660,7 @@ short viewscreen::input(const SDL_Event& event)
 						// Remove any current foe ..
 						w->set_leader(control);
 						w->set_foe(nullptr);
-						w->action = ACTION_FOLLOW;
+						w->set_action(ACTION_FOLLOW);
 					}
 				}
 				myscreen->do_notify("SUMMONING DEFENSE!", control);
@@ -675,14 +675,14 @@ short viewscreen::input(const SDL_Event& event)
 					   )
 					{
 						// Set to normal operation
-						w->action = 0;
+						w->set_action(0);
 					}
 				}
-				control->action = 0; // for our reference
+				control->set_action(0); // for our reference
 				myscreen->do_notify("RELEASING MEN!", control);
 				break;
 			default:
-				control->action = 0;
+				control->set_action(0);
 				break;
 		} // end of switch for action mode
 		
@@ -779,8 +779,8 @@ short viewscreen::input(const SDL_Event& event)
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 			newob->set_owner(control);
 			newob->set_team_num(control->team_num());
-			newob->ani_type = 1; // dummy, non-zero value
-			newob->lifetime = 200;
+			newob->set_ani_type(1); // dummy, non-zero value
+			newob->set_lifetime(200);
 			//clear_key_code(SDLK_F2);
 		}//end generate magic shield
 
@@ -815,8 +815,8 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_s, event)) // give us faster speed ..
 		{
-			control->speed_bonus_left += 20;
-			control->speed_bonus = control->normal_stepsize;
+			control->set_speed_bonus_left(control->speed_bonus_left() + 20);
+			control->set_speed_bonus(control->normal_stepsize());
 		}
 
 		if (query_key_event(SDLK_t, event)) // transform to new shape
@@ -828,8 +828,8 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_v, event)) // invisibility
 		{
-			if (control->invisibility_left < 3000)
-				control->invisibility_left += 100;
+			if (control->invisibility_left() < 3000)
+				control->set_invisibility_left(control->invisibility_left() + 100);
 		}
 
 	} //end of cheat keys
@@ -962,7 +962,7 @@ short viewscreen::continuous_input()
 	{
 		control->set_bonus_rounds(control->bonus_rounds() - 1);
 		
-		if (control->lastx || control->lasty)
+		if (control->lastx() || control->lasty())
 			control->walk();
 	}
 
@@ -981,7 +981,7 @@ short viewscreen::continuous_input()
 		return 1;
 
 
-	if (control->ani_type != ANI_WALK)
+	if (control->ani_type() != ANI_WALK)
 	{
 		control->animate();
 	}
@@ -1042,10 +1042,10 @@ short viewscreen::continuous_input()
 		}
 		else if (control->stats->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
 		{
-			control->cycle++;
-			if (control->ani[control->curdir][control->cycle] == -1)
-				control->cycle = 0;
-			control->set_frame(control->ani[control->curdir][control->cycle]);
+			control->set_cycle(control->cycle() + 1);
+			if (control->ani[control->curdir][control->cycle()] == -1)
+				control->set_cycle(0);
+			control->set_frame(control->ani[control->curdir][control->cycle()]);
 		}
 
 		// Standard fire
@@ -1065,7 +1065,7 @@ short viewscreen::continuous_input()
 	         // Make temporary stain:
 	         blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
 	         blood->set_team_num(control->team_num());
-	         blood->ani_type = ANI_GROW;
+	         blood->set_ani_type(ANI_GROW);
 	         blood->setxy(control->xpos,control->ypos);
 	         blood->set_owner(control);
 	         //blood->draw(this);
