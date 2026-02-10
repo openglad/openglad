@@ -111,6 +111,12 @@ Deliverable: fewer use-after-free risks and simpler tests.
   - GameContext, IRandom (ProductionRandom, FixedRandom, SeededRandom)
   - InputState snapshot and PlayerInput direction helpers
   - Deterministic RNG end-to-end via GameContext injection
+  - Freeze duration, heal amount, charm duration (combat specials)
+  - XP polynomial (compute_xp_from_attack), kill XP, all ExpAction types
+  - HP/MP regen tick logic (delay threshold, frozen state, post-damage cooldown)
+  - calculate_exp/calculate_level with known values and roundtrip properties
+  - Stat bonus formulas (HP, MP, damage, armor, speed, fire frequency)
+  - upgrade_to_level stat growth and family differentiation
 - ⬜ Still needed:
   - AI command selection with deterministic RNG
   - save/load serialization of `GameState` (pure encode/decode)

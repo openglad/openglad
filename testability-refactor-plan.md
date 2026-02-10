@@ -148,6 +148,10 @@ This item is explicitly optional; we should only do it if the first two refactor
 - Added test filter support (pass substring arg to openglad_test)
 - Introduced GameContext with IRandom, InputState (modernization-plan-2)
 - Converted all core simulation random() calls to injectable RNG
+- Extracted freeze/heal/charm duration calculations into combat_math
+- Extracted XP polynomial and all ExpAction types into combat_math
+- Extracted HP/MP regen tick logic into pure functions
+- Added comprehensive tests for calculate_exp/calculate_level and stat bonuses
 
 ## Guardrails
 
