@@ -501,7 +501,7 @@ float guy::get_fire_frequency_bonus() const
 
 void guy::update_derived_stats(walker* w)
 {
-    guy* temp_guy = w->myguy();
+    guy* temp_guy = w->myguy;
     myscreen->level_data.myloader->set_derived_stats(w, Order::Living, temp_guy->family);
     
     
@@ -512,25 +512,25 @@ void guy::update_derived_stats(walker* w)
     w->stats()->max_magicpoints = temp_guy->get_mp_bonus();
     w->stats()->magicpoints = w->stats()->max_magicpoints;
 
-    w->set_damage(w->damage() + temp_guy->get_damage_bonus());
+    w->damage = w->damage + temp_guy->get_damage_bonus();
 
     // No class base value for armor...
     w->stats()->armor = temp_guy->get_armor_bonus();
 
     //stepsize makes us run faster, max for a non-weapon is 12
-    w->set_stepsize(w->stepsize() + temp_guy->get_speed_bonus());
-    if (w->stepsize() > 12)
-        w->set_stepsize(12);
-    w->set_normal_stepsize(w->stepsize());
+    w->stepsize = w->stepsize + temp_guy->get_speed_bonus();
+    if (w->stepsize > 12)
+        w->stepsize = 12;
+    w->normal_stepsize = w->stepsize;
 
     //fire_frequency makes us fire faster, min is 1
-    w->set_fire_frequency(w->fire_frequency() - temp_guy->get_fire_frequency_bonus());
-    if (w->fire_frequency() < 1)
-        w->set_fire_frequency(1);
+    w->fire_frequency = w->fire_frequency - temp_guy->get_fire_frequency_bonus();
+    if (w->fire_frequency < 1)
+        w->fire_frequency = 1;
 
     // Fighters: limited weapons
     if (w->query_family() == FAMILY_SOLDIER)
-        w->set_weapons_left(static_cast<short>((w->stats()->level+1) / 2));
+        w->weapons_left = static_cast<short>((w->stats()->level+1) / 2);
         
 
     // Set the heal delay ..
@@ -584,14 +584,14 @@ walker* guy::create_walker(screen* myscreen)
 {
     guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->level_data.myloader->create_walker(Order::Living, temp_guy->family, nullptr);
-    temp_walker->set_myguy(temp_guy);
+    temp_walker->myguy = temp_guy;
     temp_walker->stats()->level = temp_guy->level;
     
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->set_team_num(temp_guy->teamnum);
-    temp_walker->set_real_team_num(255);
+    temp_walker->team_num = temp_guy->teamnum;
+    temp_walker->real_team_num = 255;
     
     return temp_walker;
 }
@@ -600,14 +600,14 @@ walker* guy::create_and_add_walker(screen* myscreen)
 {
     guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->level_data.add_ob(Order::Living, temp_guy->family);
-    temp_walker->set_myguy(temp_guy);
+    temp_walker->myguy = temp_guy;
     temp_walker->stats()->level = temp_guy->level;
     
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->set_team_num(temp_guy->teamnum);
-    temp_walker->set_real_team_num(255);
+    temp_walker->team_num = temp_guy->teamnum;
+    temp_walker->real_team_num = 255;
     
     return temp_walker;
 }

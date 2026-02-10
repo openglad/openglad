@@ -774,11 +774,11 @@ loader::~loader(void)
 
 void loader::set_derived_stats(walker* w, Order order, char family)
 {
-	w->set_stepsize(stepsizes[PIX(order, family)]);
-	w->set_normal_stepsize(w->stepsize());
-	w->set_lineofsight(lineofsight[PIX(order, family)]);
-	w->set_damage(damage[PIX(order, family)]);
-	w->set_fire_frequency(fire_frequency[PIX(order, family)]);
+	w->stepsize = stepsizes[PIX(order, family)];
+	w->normal_stepsize = w->stepsize;
+	w->lineofsight = lineofsight[PIX(order, family)];
+	w->damage = damage[PIX(order, family)];
+	w->fire_frequency = fire_frequency[PIX(order, family)];
 }
 
 walker  *loader::create_walker(Order order,
@@ -818,7 +818,7 @@ walker  *loader::create_walker(Order order,
 	set_walker(ob, order, family);
 	
 	if(order == Order::Living)
-        ob->set_frame(ob->ani()[ob->curdir()][0]);
+        ob->set_frame(ob->ani[ob->curdir][0]);
 	return ob;
 }
 
@@ -830,7 +830,7 @@ walker  *loader::set_walker(walker *ob,
 
 	ob->set_order_family(order,family);
 	ob->set_act_type(act_types[PIX(order, family)]);
-	ob->set_ani(animations[PIX(order, family)]);
+	ob->ani = animations[PIX(order, family)];
 	
 	set_derived_stats(ob, order, family);
 
@@ -849,7 +849,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->special_cost[3] = 120; // whirlwind
 					ob->stats()->special_cost[4] = 150; // disarm
 					ob->stats()->weapon_cost = 2;
-					ob->set_default_weapon(FAMILY_KNIFE);
+					ob->default_weapon = FAMILY_KNIFE;
 					break;
 				case FAMILY_ELF:
 					ob->stats()->special_cost[1] = 10;
@@ -857,23 +857,23 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->special_cost[3] = 30;
 					ob->stats()->special_cost[4] = 40;
 					ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-					ob->set_default_weapon(FAMILY_ROCK);
+					ob->default_weapon = FAMILY_ROCK;
 					break;
 				case FAMILY_ARCHER:
 					ob->stats()->special_cost[1] = 20;  // fire arrows
 					ob->stats()->special_cost[2] = 60; // 3-arrows
 					ob->stats()->special_cost[3] = 70; // exploding bolt
-					ob->set_default_weapon(FAMILY_ARROW);
+					ob->default_weapon = FAMILY_ARROW;
 					break;
 				case FAMILY_THIEF:
 					ob->stats()->special_cost[1] = 35;  // bomb
 					ob->stats()->special_cost[2] = 125; // cloak, R
 					ob->stats()->special_cost[3] = 100; // taunt, R
 					ob->stats()->special_cost[4] = 150; // poison cloud, R
-					ob->set_default_weapon(FAMILY_KNIFE);
+					ob->default_weapon = FAMILY_KNIFE;
 					break;
 				case FAMILY_CLERIC:
-					ob->set_default_weapon(FAMILY_GLOW); //FAMILY_TREE;
+					ob->default_weapon = FAMILY_GLOW; //FAMILY_TREE;
 					ob->stats()->weapon_cost = 8;
 					ob->stats()->special_cost[1] = 2; // heal / mystic mace
 					ob->stats()->special_cost[2] = 20; // skeleton
@@ -881,15 +881,15 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->special_cost[4] = 150; // raise dead
 					break;
 				case FAMILY_SKELETON:
-					ob->set_default_weapon(FAMILY_BONE);
-					ob->set_ani_type(ANI_SKEL_GROW);
+					ob->default_weapon = FAMILY_BONE;
+					ob->ani_type = ANI_SKEL_GROW;
 					ob->stats()->weapon_cost = 0; // free bones
 					ob->stats()->special_cost[1] = 10; // tunnel
 					break;
 				case FAMILY_FAERIE:
 					ob->stats()->set_bit_flags(BIT_ANIMATE, 1);
 					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					ob->set_default_weapon(FAMILY_SPRINKLE);
+					ob->default_weapon = FAMILY_SPRINKLE;
 					ob->stats()->weapon_cost = 2;
 					break;
 				case FAMILY_MAGE:
@@ -899,7 +899,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->special_cost[4] = 70; // energy wave
 					ob->stats()->special_cost[5] = 100; // heartburst
 					ob->stats()->weapon_cost = 5;
-					ob->set_default_weapon(FAMILY_FIREBALL);
+					ob->default_weapon = FAMILY_FIREBALL;
 					break;
 				case FAMILY_ARCHMAGE:
 					ob->stats()->special_cost[1] = 10;  // cost to teleport
@@ -907,13 +907,13 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->special_cost[3] = 500;  // summon elemental
 					ob->stats()->special_cost[4] = 150; // Mind-control enemies
 					ob->stats()->weapon_cost = 12;
-					ob->set_default_weapon(FAMILY_FIREBALL);
+					ob->default_weapon = FAMILY_FIREBALL;
 					break;
 				case FAMILY_FIREELEMENTAL:
 					ob->stats()->set_bit_flags(BIT_ANIMATE, 1);
 					ob->stats()->special_cost[1] = 50; // fireballs
 					ob->stats()->max_magicpoints = 150;
-					ob->set_default_weapon(FAMILY_METEOR);
+					ob->default_weapon = FAMILY_METEOR;
 					break;
 				case FAMILY_SLIME:
 				case FAMILY_SMALL_SLIME:
@@ -924,7 +924,7 @@ walker  *loader::set_walker(walker *ob,
 					//                         ob->stats()->magicpoints = 0;
 					if (family == FAMILY_SMALL_SLIME)
 						ob->stats()->set_bit_flags(BIT_NO_RANGED, 1); // no ranged attack
-					ob->set_default_weapon(FAMILY_BLOB);
+					ob->default_weapon = FAMILY_BLOB;
 					ob->stats()->weapon_cost = 0; // free slimeball
 					break;
 				case FAMILY_GHOST:
@@ -933,11 +933,11 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->set_bit_flags(BIT_FLYING, 1);
 					ob->stats()->set_bit_flags(BIT_ETHEREAL, 1);
 					ob->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-					ob->set_default_weapon(FAMILY_KNIFE);
+					ob->default_weapon = FAMILY_KNIFE;
 					ob->stats()->weapon_cost = 0; // free melee
 					break;
 				case FAMILY_DRUID:
-					ob->set_default_weapon(FAMILY_LIGHTNING);
+					ob->default_weapon = FAMILY_LIGHTNING;
 					ob->stats()->weapon_cost = 4;
 					ob->stats()->special_cost[1] = 15; // grow tree
 					ob->stats()->special_cost[2] = 80; // summon faerie
@@ -948,31 +948,31 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->special_cost[1] = 25; // howl
 					ob->stats()->special_cost[2] = 20; // eat corpse
 					ob->stats()->weapon_cost = 2;
-					ob->set_default_weapon(FAMILY_ROCK);
+					ob->default_weapon = FAMILY_ROCK;
 					ob->stats()->set_bit_flags(BIT_NO_RANGED, 1);
 					break;
 				case FAMILY_BIG_ORC:
 					ob->stats()->weapon_cost = 2;
-					ob->set_default_weapon(FAMILY_KNIFE);
+					ob->default_weapon = FAMILY_KNIFE;
 					break;
 				case FAMILY_BARBARIAN:
 					ob->stats()->weapon_cost = 2;
-					ob->set_default_weapon(FAMILY_HAMMER);
+					ob->default_weapon = FAMILY_HAMMER;
 					ob->stats()->special_cost[1] = 20; // hurl boulder
 					ob->stats()->special_cost[2] = 30; // exploding boulder
 					break;
 				case FAMILY_GOLEM:
 					ob->stats()->weapon_cost = 2;
 					//ob->stats()->set_bit_flags(BIT_NO_RANGED, 1);
-					ob->set_default_weapon(FAMILY_BOULDER); // default for now
+					ob->default_weapon = FAMILY_BOULDER; // default for now
 					break;
 				case FAMILY_GIANT_SKELETON:
 					ob->stats()->weapon_cost = 2;
-					ob->set_default_weapon(FAMILY_BOULDER); // default for now
+					ob->default_weapon = FAMILY_BOULDER; // default for now
 					break;
 				case FAMILY_TOWER1: // not *really* a living ...
 					ob->stats()->weapon_cost = 2;
-					ob->set_default_weapon(FAMILY_ARROW);
+					ob->default_weapon = FAMILY_ARROW;
 					//ob->stepsize = 0;
 					//ob->normal_stepsize = 0;
 					break;
@@ -981,7 +981,7 @@ walker  *loader::set_walker(walker *ob,
 					return ob;
 					break;
 			}
-			ob->set_current_weapon(ob->default_weapon());
+			ob->current_weapon = ob->default_weapon;
 			break; // end of livings
 		case Order::Weapon:
 			switch (family)
@@ -999,7 +999,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->set_bit_flags(BIT_FLYING, 1);
 					break;
 				case FAMILY_GLOW: // cleric's shield glad
-					ob->set_lifetime(350);
+					ob->lifetime = 350;
 					break;
 				case FAMILY_WAVE:
 					ob->stats()->set_bit_flags(BIT_IMMORTAL, 1);
@@ -1027,7 +1027,7 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
 					ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
 					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					ob->set_ani_type(5); // anything non-zero
+					ob->ani_type = 5; // anything non-zero
 					break;
 				default:
 					break;
@@ -1036,7 +1036,7 @@ walker  *loader::set_walker(walker *ob,
 			switch (family)
 			{
 				case FAMILY_STAIN:  // permanent bloodstains
-					ob->set_ignore(1);
+					ob->ignore = 1;
 					break;
 				case FAMILY_GOLD_BAR:
 					ob->set_direct_frame(0);
@@ -1067,24 +1067,24 @@ walker  *loader::set_walker(walker *ob,
 			{
 				case FAMILY_TOWER:
 					ob->stats()->weapon_cost = 0;
-					ob->set_default_weapon(FAMILY_MAGE);
+					ob->default_weapon = FAMILY_MAGE;
 					break;
 				case FAMILY_BONES: // ghost bone pile
 					ob->stats()->weapon_cost = 0;
-					ob->set_default_weapon(FAMILY_GHOST);
+					ob->default_weapon = FAMILY_GHOST;
 					break;
 				case FAMILY_TREEHOUSE: // elf tree-house
 					ob->stats()->weapon_cost = 0;
-					ob->set_default_weapon(FAMILY_ELF);
+					ob->default_weapon = FAMILY_ELF;
 					break;
 				default:
-					ob->set_default_weapon(FAMILY_SKELETON);
+					ob->default_weapon = FAMILY_SKELETON;
 					ob->stats()->weapon_cost = 0;
 					break;
 			}
 			break;
 		case Order::FX:
-			ob->set_ani_type(0);
+			ob->ani_type = 0;
 			switch (family)
 			{
 				case FAMILY_MAGIC_SHIELD:

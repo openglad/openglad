@@ -50,68 +50,68 @@ walker::walker(const PixieData& data)
 	// Set our stats ..
 	stats_ = std::make_unique<statistics>(this);
 
-	curdir_ = FACE_DOWN;  // We are facing DOWN
+	curdir = FACE_DOWN;  // We are facing DOWN
 	enddir = FACE_DOWN;  // We are trying to face DOWN
-	lastx_ = 0;
-	lasty_ = 0;
+	lastx = 0;
+	lasty = 0;
 	act_type = ACT_RANDOM;
-	collide_ob_ = nullptr;
-	cycle_ = 0;
-	ani_ = nullptr;
-	team_num_ = 0;
-	real_team_num_ = 255;  // to show nothing's changed
-	ani_type_ = 0;
-	busy_ = 0;
-	foe_ = nullptr;
-	leader_ = nullptr;
-	owner_ = nullptr;
-	myguy_ = nullptr;
+	collide_ob = nullptr;
+	cycle = 0;
+	ani = nullptr;
+	team_num = 0;
+	real_team_num = 255;  // to show nothing's changed
+	ani_type = 0;
+	busy = 0;
+	foe = nullptr;
+	leader = nullptr;
+	owner = nullptr;
+	myguy = nullptr;
 	myself_ = this;
-	dead_ = 0; // we're alive
+	dead = 0; // we're alive
 
-	death_called_ = 0;
+	death_called = 0;
 
 
-	bonus_rounds_ = 0;
-	shifter_down_ = 0; // the player's shifter/alternate is NOT pressed
-	view_all_ = 0;     // by default can't see treasures, etc. on radar
-	keys_ = 0; // no keys
+	bonus_rounds = 0;
+	shifter_down = 0; // the player's shifter/alternate is NOT pressed
+	view_all = 0;     // by default can't see treasures, etc. on radar
+	keys = 0; // no keys
 
-	action_ = 0; // no special action mode
-	ignore_ = 0; // don't ignore us! Collide with us...
-	default_weapon_ = current_weapon_ = FAMILY_KNIFE; // just in case ..
-	user_ = -1; // default user status = no user
+	action = 0; // no special action mode
+	ignore = 0; // don't ignore us! Collide with us...
+	default_weapon = current_weapon = FAMILY_KNIFE; // just in case ..
+	user = -1; // default user status = no user
 	// Set our stats ..
 	set_frame(0);
 
-	yo_delay_ = 0;
+	yo_delay = 0;
 
-	flight_left_ = 0;
-	invulnerable_left_ = 0;
-	invisibility_left_ = 0;
-	speed_bonus_ = 0;
-	speed_bonus_left_ = 0;
+	flight_left = 0;
+	invulnerable_left = 0;
+	invisibility_left = 0;
+	speed_bonus = 0;
+	speed_bonus_left = 0;
 	regen_delay_ = 0;
 	charm_left_ = 0;
-	outline_ = 0;
-	drawcycle_ = 0;
+	outline = 0;
+	drawcycle = 0;
 
-	skip_exit_ = 0;
+	skip_exit = 0;
 	xpos = ypos = -1; //this to correct a problem with these not being alloced?
 	worldx_ = worldy_ = -1;
 
-	weapons_left_ = 1; // default, used for fighters
+	weapons_left = 1; // default, used for fighters
 
-	myobmap_ = nullptr;
+	myobmap = nullptr;
 	if(myscreen != nullptr)
-        myobmap_ = myscreen->level_data.myobmap.get();  // default obmap (spatial partitioning optimization?) changed when added to a list
+        myobmap = myscreen->level_data.myobmap.get();  // default obmap (spatial partitioning optimization?) changed when added to a list
 
-	path_check_counter_ = 5 + rand()%10;
-	hurt_flash_ = false;
-	attack_lunge_ = 0.0f;
-	hit_recoil_ = 0.0f;
+	path_check_counter = 5 + rand()%10;
+	hurt_flash = false;
+	attack_lunge = 0.0f;
+	hit_recoil = 0.0f;
 
-	last_hitpoints_ = 0.0f;
+	last_hitpoints = 0.0f;
 }
 
 bool
@@ -123,18 +123,18 @@ walker::reset(void)
 
 	//  curdir = 0;  // We are facing UP
 	//  enddir = 0;  // We are trying to face UP
-	//  lastx_ = 0;
-	//  lasty_ = 0;
+	//  lastx = 0;
+	//  lasty = 0;
 	//  act_type = ACT_RANDOM;
 	//  collide_ob = nullptr;
 
-	// // cycle_ = 0;
+	// // cycle = 0;
 
 	//  ani = nullptr;
 
 	// //  team_num = 0;
-	// //  ani_type_ = 0;
-	// //  busy_ = 0;
+	// //  ani_type = 0;
+	// //  busy = 0;
 
 	//  foe = nullptr;
 	//  leader = nullptr;
@@ -142,46 +142,46 @@ walker::reset(void)
 	//  myguy = nullptr;
 	//  myself = this;
 	//  ani = nullptr;
-	dead_ = 0; // we're alive
+	dead = 0; // we're alive
 
-	death_called_ = 0;
+	death_called = 0;
 
 
 	//  bonus_rounds = 0;
 	//  shifter_down = 0; // the player's shifter/alternate is NOT pressed
-	//  view_all_ = 0;     // by default can't see treasures, etc. on radar
+	//  view_all = 0;     // by default can't see treasures, etc. on radar
 	//  keys = 0; // no keys
 
-	//  action_ = 0; // no special action_ mode
-	ignore_ = 0; // don't ignore us! Collide with us...
-	//  default_weapon = current_weapon_ = FAMILY_KNIFE; // just in case ..
+	//  action = 0; // no special action mode
+	ignore = 0; // don't ignore us! Collide with us...
+	//  default_weapon = current_weapon = FAMILY_KNIFE; // just in case ..
 	//  user = -1; // default user status = no user
 	// Set our stats ..
 	//  set_frame(0);
 
 	//  yo_delay = 0;
 
-	flight_left_ = 0;
-	//  invulnerable_left_ = 0;
-	//  invisibility_left_ = 0;
-	//  outline_ = 0;
+	flight_left = 0;
+	//  invulnerable_left = 0;
+	//  invisibility_left = 0;
+	//  outline = 0;
 	//  drawcycle = 0;
 
 	//  skip_exit = 0;
 	//  xpos = ypos = -1; //this to correct a problem with these not being alloced?
 
-	//  weapons_left_ = 1; // default, used for fighters
-	path_check_counter_ = 5 + rand()%10;
+	//  weapons_left = 1; // default, used for fighters
+	path_check_counter = 5 + rand()%10;
     regen_delay_ = 0;
 
 	if (stats_)
 		stats_->bit_flags = 0;
 
-	hurt_flash_ = false;
-	attack_lunge_ = 0.0f;
-	hit_recoil_ = 0.0f;
+	hurt_flash = false;
+	attack_lunge = 0.0f;
+	hit_recoil = 0.0f;
 
-	last_hitpoints_ = 0.0f;
+	last_hitpoints = 0.0f;
 	
 	return 1;
 }
@@ -190,20 +190,20 @@ walker::~walker()
 {
 	//  Log("(Death) Removed ORDER %d FAMILY %d, pos %dx%d\n", order, family,
 	//    xpos, ypos); //debugging memory
-	foe_ = nullptr;
-	leader_ = nullptr;
-	owner_ = nullptr;
-	collide_ob_ = nullptr;
-	dead_ = 1;
+	foe = nullptr;
+	leader = nullptr;
+	owner = nullptr;
+	collide_ob = nullptr;
+	dead = 1;
 
-	if(myobmap_ != nullptr)
-        myobmap_->remove(this); // remove ourselves from obmap lists
+	if(myobmap != nullptr)
+        myobmap->remove(this); // remove ourselves from obmap lists
 
 	stats_.reset();
 	bmp = nullptr;
-	if (myguy_)
-		delete myguy_;
-	myguy_ = nullptr;
+	if (myguy)
+		delete myguy;
+	myguy = nullptr;
 	myself_ = nullptr;
 
 
@@ -224,10 +224,10 @@ bool walker::setxy(short x, short y)
     worldx_ = x;
     worldy_ = y;
     
-	if (!ignore_)
-		myobmap_->move(this, x, y);
+	if (!ignore)
+		myobmap->move(this, x, y);
 	else // just remove us, in case :)
-		myobmap_->remove(this);
+		myobmap->remove(this);
 
 	return pixie::setxy(x, y);
 }
@@ -237,10 +237,10 @@ void walker::setworldxy(float x, float y)
     worldx_ = x;
     worldy_ = y;
     
-	if (!ignore_)
-		myobmap_->move(this, x, y);
+	if (!ignore)
+		myobmap->move(this, x, y);
 	else // just remove us, in case :)
-		myobmap_->remove(this);
+		myobmap->remove(this);
 
 	pixie::setxy(x, y);
 }
@@ -251,7 +251,7 @@ void walker::setworldxy(float x, float y)
 // It calls the lower level function MOVE.
 bool walker::walk()
 {
-	return walker::walk(lastx_, lasty_);
+	return walker::walk(lastx, lasty);
 }
 
 short walker::facing(short x, short y)
@@ -310,8 +310,8 @@ bool walker::walkstep(float x, float y)
 {
 	short returnvalue;
 	short ret1 = 0, ret2 = 0;
-	short oldcurdir = curdir_;
-	float step = stepsize_;
+	short oldcurdir = curdir;
+	float step = stepsize;
 	float halfstep;
 	Sint32 i;
 	//walker *control1 = myscreen->viewob[0]->control;
@@ -319,18 +319,18 @@ bool walker::walkstep(float x, float y)
 	short mycycle;
 
 	// Repeat last walk.
-	lastx_ = x*stepsize_;
-	lasty_ = y*stepsize_;
+	lastx = x*stepsize;
+	lasty = y*stepsize;
 
 	if (order==Order::Living && family==FAMILY_TOWER1)
 	{
-		curdir_ = facing(x, y);
-		enddir = curdir_;
-		lastx_ = x;
-		lasty_ = y;
+		curdir = facing(x, y);
+		enddir = curdir;
+		lastx = x;
+		lasty = y;
 		return 1;
 	}
-	returnvalue = walk(x*stepsize_, y*stepsize_);
+	returnvalue = walk(x*stepsize, y*stepsize);
 	halfstep = 1;
 
 	if (!returnvalue) // couldn't walk this direction ..
@@ -338,49 +338,49 @@ bool walker::walkstep(float x, float y)
 		returnvalue = walk(x*halfstep, y*halfstep); // Now try a baby step
 		if (!returnvalue) // if we still fail
 		{
-			if (user_ == -1) // means we are an npc
+			if (user == -1) // means we are an npc
 			{
 				switch (facing(x, y))
 				{
 					case FACE_UP:    // For cardinal directions, fail if
-						curdir_ = FACE_LEFT;
+						curdir = FACE_LEFT;
 						ret1 = walk(-step, 0);
 						break;
 					case FACE_RIGHT: // we can't walk this direction
-						curdir_ = FACE_UP;
+						curdir = FACE_UP;
 						ret1 = walk(0, -step);
 						break;
 					case FACE_DOWN:
-						curdir_ = FACE_RIGHT;
+						curdir = FACE_RIGHT;
 						ret1 = walk(step, 0);
 						break;
 					case FACE_LEFT:
-						curdir_ = FACE_DOWN;
+						curdir = FACE_DOWN;
 						ret1 = walk(0, step);
 						break;
 						//return returnvalue;
 					case FACE_UP_RIGHT:
-						curdir_ = FACE_UP;
+						curdir = FACE_UP;
 						ret1 = walk(0, y*step);
-						curdir_ = FACE_RIGHT;
+						curdir = FACE_RIGHT;
 						ret2 = walk(x*step, 0);
 						break;
 					case FACE_DOWN_RIGHT:
-						curdir_ = FACE_DOWN;
+						curdir = FACE_DOWN;
 						ret1 = walk(0, y*step);
-						curdir_ = FACE_RIGHT;
+						curdir = FACE_RIGHT;
 						ret2 = walk(x*step, 0);
 						break;
 					case FACE_DOWN_LEFT:
-						curdir_ = FACE_DOWN;
+						curdir = FACE_DOWN;
 						ret1 = walk(0, y*step);
-						curdir_ = FACE_LEFT;
+						curdir = FACE_LEFT;
 						ret2 = walk(x*step, 0);
 						break;
 					case FACE_UP_LEFT:
-						curdir_ = FACE_UP;
+						curdir = FACE_UP;
 						ret1 = walk(0, y*step);
-						curdir_ = FACE_LEFT;
+						curdir = FACE_LEFT;
 						ret2 = walk(x*step, 0);
 						break;
 					default:
@@ -393,8 +393,8 @@ bool walker::walkstep(float x, float y)
 			{
 			    // We can't move where we want to.  Can we slide against the wall?
 			    
-				// Store our cycle_
-				mycycle = cycle_;
+				// Store our cycle
+				mycycle = cycle;
 				short myfacing = facing(x, y);
                 bool gotup = false, gotover = false;
                 short dx = 0, dy = 0;
@@ -445,30 +445,30 @@ bool walker::walkstep(float x, float y)
                         if (!gotup && gotover)  // moved horizontally
                         {
                             if(dx > 0)
-                                curdir_ = FACE_RIGHT;
+                                curdir = FACE_RIGHT;
                             else
-                                curdir_ = FACE_LEFT;
+                                curdir = FACE_LEFT;
                         }
                         else if (gotup && !gotover) // moved vertically
                         {
                             if(dy < 0)
-                                curdir_ = FACE_UP;
+                                curdir = FACE_UP;
                             else
-                                curdir_ = FACE_DOWN;
+                                curdir = FACE_DOWN;
                         }
                         if (gotup || gotover) // we moved somewhere?
                         {
-                            cycle_ = mycycle;
-                            cycle_++;
-                            if (ani_[curdir_][cycle_] == -1)
-                                cycle_ = 0;
-                            set_frame(ani_[curdir_][cycle_]);
+                            cycle = mycycle;
+                            cycle++;
+                            if (ani[curdir][cycle] == -1)
+                                cycle = 0;
+                            set_frame(ani[curdir][cycle]);
                         }  // end of cycled us a frame
                     }
                 }
 			}
 
-			curdir_ = static_cast<char>(oldcurdir);
+			curdir = static_cast<char>(oldcurdir);
 			return ( ret1 || ret2 );
 		}
 	}
@@ -483,7 +483,7 @@ bool walker::walk(float x, float y)
 
 	if (order==Order::Living && family==FAMILY_TOWER1)
 	{
-		curdir_ = dir;
+		curdir = dir;
 		return 1;
 	}
 
@@ -493,7 +493,7 @@ bool walker::walk(float x, float y)
 		//this happens sometimes, and shouldn't, but it is non-fatal
 		return 1;
 	}
-	if (curdir_ == dir)  // if continue direction
+	if (curdir == dir)  // if continue direction
 	{
 		// check if off map
 		if (x+xpos < 0 ||
@@ -509,12 +509,12 @@ bool walker::walk(float x, float y)
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
-			cycle_++;
-			//if (!ani || (curdir*cycle_ > sizeof(ani)) )
+			cycle++;
+			//if (!ani || (curdir*cycle > sizeof(ani)) )
 			//  Log("WALKER::WALK: Bad ani!\n");
-			if (ani_[curdir_][cycle_] == -1)
-				cycle_ = 0;
-			set_frame(ani_[curdir_][cycle_]);
+			if (ani[curdir][cycle] == -1)
+				cycle = 0;
+			set_frame(ani[curdir][cycle]);
 			return 1;
 		}
 		else //Invalid move?
@@ -523,19 +523,19 @@ bool walker::walk(float x, float y)
 
 			if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
 			{
-				cycle_++;
-				if (ani_[curdir_][cycle_] == -1)
-					cycle_ = 0;
-				set_frame(ani_[curdir_][cycle_]);
+				cycle++;
+				if (ani[curdir][cycle] == -1)
+					cycle = 0;
+				set_frame(ani[curdir][cycle]);
 			}
 			return 0;
 		}
 	}
 	else  // changed direction
 	{
-		curdir_ = static_cast<char>(dir);
-		cycle_ = 0;
-		set_frame(ani_[curdir_][cycle_]);
+		curdir = static_cast<char>(dir);
+		cycle = 0;
+		set_frame(ani[curdir][cycle]);
 		worldmove(0,0);
 	}
 	return 1;
@@ -543,7 +543,7 @@ bool walker::walk(float x, float y)
 
 float walker::get_current_angle()
 {
-    switch (curdir_)
+    switch (curdir)
     {
         case FACE_UP:
             return -M_PI_2;
@@ -576,58 +576,58 @@ bool walker::turn(short targetdir)
 	//   our next facing should be based on our current one.
 
 	// Find how  we have to turn.
-	distance = static_cast<short>(curdir_ - targetdir);
+	distance = static_cast<short>(curdir - targetdir);
 
 	// Figure out if we should turn clockwise or counterclockwise
 	if ( ( (distance >= -4) && (distance < 0) ) || (distance >= 4) )
-		curdir_ = static_cast<char>((curdir_+1) %8);
+		curdir = static_cast<char>((curdir+1) %8);
 	else
-		curdir_ = static_cast<char>((curdir_+7) %8);
+		curdir = static_cast<char>((curdir+7) %8);
 
-	// Now set our lastx_ and lasty_ (facing) variables correctly
+	// Now set our lastx and lasty (facing) variables correctly
 	if ( (order!=Order::Living) || (family!=FAMILY_TOWER1) )
 	{
-		switch (curdir_)
+		switch (curdir)
 		{
 			case FACE_UP:
-				lastx_ = 0;
-				lasty_ = -stepsize_;
+				lastx = 0;
+				lasty = -stepsize;
 				break;
 			case FACE_UP_RIGHT:
-				lastx_ = stepsize_;
-				lasty_ = -stepsize_;
+				lastx = stepsize;
+				lasty = -stepsize;
 				break;
 			case FACE_RIGHT:
-				lastx_ = stepsize_;
-				lasty_ = 0;
+				lastx = stepsize;
+				lasty = 0;
 				break;
 			case FACE_DOWN_RIGHT:
-				lastx_ = stepsize_;
-				lasty_ = stepsize_;
+				lastx = stepsize;
+				lasty = stepsize;
 				break;
 			case FACE_DOWN:
-				lastx_ = 0;
-				lasty_ = stepsize_;
+				lastx = 0;
+				lasty = stepsize;
 				break;
 			case FACE_DOWN_LEFT:
-				lastx_ = -stepsize_;
-				lasty_ = stepsize_;
+				lastx = -stepsize;
+				lasty = stepsize;
 				break;
 			case FACE_LEFT:
-				lastx_ = -stepsize_;
-				lasty_ = 0;
+				lastx = -stepsize;
+				lasty = 0;
 				break;
 			case FACE_UP_LEFT:
-				lastx_ = -stepsize_;
-				lasty_ = -stepsize_;
+				lastx = -stepsize;
+				lasty = -stepsize;
 				break;
 			default :
-				lastx_ = 0;
-				lasty_ = -stepsize_;
+				lastx = 0;
+				lasty = -stepsize;
 		}
 	}
-	cycle_ = 0;
-	set_frame(ani_[curdir_][cycle_]);
+	cycle = 0;
+	set_frame(ani[curdir][cycle]);
 	worldmove(0,0);
 	return true;
 }
@@ -637,7 +637,7 @@ bool walker::turn(short targetdir)
 // and checks to see if the object is too busy.
 bool walker::init_fire()
 {
-	return init_fire(lastx_, lasty_);
+	return init_fire(lastx, lasty);
 }
 
 bool walker::init_fire(short xdir, short ydir)
@@ -646,11 +646,11 @@ bool walker::init_fire(short xdir, short ydir)
 
 	// If a non-player fires in a set direction, turn!
 
-	if (facing(xdir, ydir) != curdir_)
+	if (facing(xdir, ydir) != curdir)
 	{
 		enddir = static_cast<char>(facing(xdir, ydir));
 	}
-	if (curdir_ != enddir && query_order() == Order::Living)
+	if (curdir != enddir && query_order() == Order::Living)
 	{
 		//if (family==FAMILY_TOWER1)
 		//  enddir = curdir;
@@ -660,16 +660,16 @@ bool walker::init_fire(short xdir, short ydir)
 			return turn(enddir);
 	}
 
-	if (busy_ > 0)
+	if (busy > 0)
 		return 0;  // Too busy
 
-	busy_ += fire_frequency_; // This pauses a few rounds
+	busy += fire_frequency; // This pauses a few rounds
 
-	//  if (ani_type_ == ANI_WALK && query_order() == Order::Living)
-	if (ani_type_ == ANI_WALK)  // This should allow generators to animate
+	//  if (ani_type == ANI_WALK && query_order() == Order::Living)
+	if (ani_type == ANI_WALK)  // This should allow generators to animate
 	{
-		ani_type_ = ANI_ATTACK;
-		cycle_ = 0;
+		ani_type = ANI_ATTACK;
+		cycle = 0;
 		animate();
 		return 1;
 	}
@@ -699,57 +699,57 @@ walker  * walker::fire()
 	stats_->magicpoints -= stats_->weapon_cost;
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize_)/2); // Absolute amount ..
+	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
 	waver = static_cast<signed char>(random(waver+1) - waver/2);
 
-	switch(facing(lastx_, lasty_))
+	switch(facing(lastx, lasty))
 	{
 		case FACE_RIGHT:
 			weapon->setxy(xpos+sizex+1,ypos+(sizey - weapon->sizey)/2);
-			weapon->lastx_ = weapon->stepsize_;
-			weapon->lasty_ = waver;
+			weapon->lastx = weapon->stepsize;
+			weapon->lasty = waver;
 			break;
 		case FACE_LEFT:
 			weapon->setxy(xpos - weapon->sizex-1, ypos+(sizey-weapon->sizey)/2);
-			weapon->lastx_ = -weapon->stepsize_;
-			weapon->lasty_ = waver;
+			weapon->lastx = -weapon->stepsize;
+			weapon->lasty = waver;
 			break;
 		case FACE_DOWN:
 			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos+sizey+1);
-			weapon->lasty_ = weapon->stepsize_;
-			weapon->lastx_ = waver;
+			weapon->lasty = weapon->stepsize;
+			weapon->lastx = waver;
 			break;
 		case FACE_UP:
 			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos - weapon->sizey-1);
-			weapon->lasty_ = - weapon->stepsize_;
-			weapon->lastx_ = waver;
+			weapon->lasty = - weapon->stepsize;
+			weapon->lastx = waver;
 			break;
 		case FACE_UP_RIGHT:
 			weapon->setxy(xpos+sizex+1, ypos-weapon->sizey-1);
-			weapon->lastx_ = weapon->stepsize_ + waver;
-			weapon->lasty_ = -weapon->stepsize_ + waver;
+			weapon->lastx = weapon->stepsize + waver;
+			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_UP_LEFT:
 			weapon->setxy(xpos - weapon->sizex-1, ypos-weapon->sizey-1);
-			weapon->lastx_ = -weapon->stepsize_ - waver;
-			weapon->lasty_ = -weapon->stepsize_ + waver;
+			weapon->lastx = -weapon->stepsize - waver;
+			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_DOWN_RIGHT:
 			weapon->setxy(xpos+sizex+1, ypos + sizey+1);
-			weapon->lasty_ = weapon->stepsize_ + waver;
-			weapon->lastx_ = weapon->stepsize_ - waver;
+			weapon->lasty = weapon->stepsize + waver;
+			weapon->lastx = weapon->stepsize - waver;
 			break;
 		case FACE_DOWN_LEFT:
 			weapon->setxy(xpos - weapon->sizex-1, ypos+sizey+1);
-			weapon->lasty_ = weapon->stepsize_ + waver;
-			weapon->lastx_ = -weapon->stepsize_ + waver;
+			weapon->lasty = weapon->stepsize + waver;
+			weapon->lastx = -weapon->stepsize + waver;
 			break;
 	}
 
 	weapon->set_frame(frame);
 	// Make sure our current direction is wrong so first walk
 	// will just be draw (grumble curse)
-	weapon->set_curdir(static_cast<char>((frame+1)%2));
+	weapon->curdir = static_cast<char>((frame+1)%2);
 
 	//xp = weapon->xpos;
 	//yp = weapon->ypos;
@@ -758,9 +758,9 @@ walker  * walker::fire()
 	if (!myscreen->query_passable(weapon->xpos, weapon->ypos, weapon))
 	{
 		// *** Melee combat ***
-		if (weapon->collide_ob() && !weapon->collide_ob()->is_dead())
+		if (weapon->collide_ob && !weapon->collide_ob->dead)
 		{
-			if (attack(weapon->collide_ob()) && on_screen() )
+			if (attack(weapon->collide_ob) && on_screen() )
 			{
 				myscreen->soundp->play_sound(SOUND_CLANG);
 				
@@ -768,45 +768,45 @@ walker  * walker::fire()
                 {
                     if(query_order() == Order::Living)
                     {
-                        attack_lunge_ = 1.0f;
-                        attack_lunge_angle_ = get_current_angle();
+                        attack_lunge = 1.0f;
+                        attack_lunge_angle = get_current_angle();
                     }
                 }
 			}
-			if (myguy_)
+			if (myguy)
             {
-				myguy_->total_shots++; // record that we fired/attacked
-				myguy_->scen_shots++;
+				myguy->total_shots++; // record that we fired/attacked
+				myguy->scen_shots++;
             }
 		}
-		weapon->set_dead(1);
+		weapon->dead = 1;
 		return nullptr;
 	}
 	else if (stats_->query_bit_flags(BIT_NO_RANGED))
 	{
-		weapon->set_dead(1);
+		weapon->dead = 1;
 		return nullptr;
 	}
 	else
 	{
 		if (order==Order::Living && family==FAMILY_SOLDIER)
         {
-            if(weapons_left_ <= 0)
+            if(weapons_left <= 0)
             {
                 // Give back the magic it cost, since we didn't throw it
                 stats_->magicpoints += stats_->weapon_cost;
-                weapon->set_dead(1);
+                weapon->dead = 1;
                 return nullptr;
             }
             else
-                weapons_left_--;
+                weapons_left--;
         }
         
 		// Record our shot ..
-		if (myguy_)
+		if (myguy)
         {
-			myguy_->total_shots++;
-			myguy_->scen_shots++;
+			myguy->total_shots++;
+			myguy->scen_shots++;
         }
 
 		// *** Ranged combat ***
@@ -836,14 +836,14 @@ walker  * walker::fire()
 			switch (family)
 			{
 				case FAMILY_TOWER: // mages, no lifetime
-					weapon->ani_type_ = ANI_TELE_IN; // mages teleport
+					weapon->ani_type = ANI_TELE_IN; // mages teleport
 				case FAMILY_TREEHOUSE: // elves also no lifetime
 					weapon->stats()->level = random(stats_->level)+1;
 					weapon->set_difficulty( static_cast<Uint32>(weapon->stats()->level) );
-					weapon->set_owner(nullptr);
+					weapon->owner = nullptr;
 					break;
 				default: // tents, bones, etc
-					weapon->lifetime_ = 800 + stats_->level*11;
+					weapon->lifetime = 800 + stats_->level*11;
 					weapon->stats()->level = random(stats_->level)+1;
 					weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
 					break;
@@ -859,7 +859,7 @@ walker  * walker::fire()
                         // magic for more damage ...
                         float extra = stats_->magicpoints / 20;
                         stats_->magicpoints -= extra;
-                        weapon->damage_ += extra; // get this in damage
+                        weapon->damage += extra; // get this in damage
 				    }
 					break;
 				default: // do nothing
@@ -876,50 +876,50 @@ void walker::set_weapon_heading(walker *weapon)
 	signed char waver;
 
 	// Determine how much the thrown weapon can 'waver'
-	waver = static_cast<signed char>((weapon->stepsize_)/2); // Absolute amount ..
+	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
 	waver = static_cast<signed char>(random(waver+1) - waver/2);
 
-	switch(facing(lastx_, lasty_))  // these are from the 'owner_'
+	switch(facing(lastx, lasty))  // these are from the 'owner'
 	{
 		case FACE_RIGHT:
 			weapon->setxy(xpos+sizex+1,ypos+(sizey - weapon->sizey)/2);
-			weapon->lastx_ = weapon->stepsize_;
-			weapon->lasty_ = waver;
+			weapon->lastx = weapon->stepsize;
+			weapon->lasty = waver;
 			break;
 		case FACE_LEFT:
 			weapon->setxy(xpos - weapon->sizex-1, ypos+(sizey-weapon->sizey)/2);
-			weapon->lastx_ = -weapon->stepsize_;
-			weapon->lasty_ = waver;
+			weapon->lastx = -weapon->stepsize;
+			weapon->lasty = waver;
 			break;
 		case FACE_DOWN:
 			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos+sizey+1);
-			weapon->lasty_ = weapon->stepsize_;
-			weapon->lastx_ = waver;
+			weapon->lasty = weapon->stepsize;
+			weapon->lastx = waver;
 			break;
 		case FACE_UP:
 			weapon->setxy(xpos+(sizex-weapon->sizex)/2, ypos - weapon->sizey-1);
-			weapon->lasty_ = - weapon->stepsize_;
-			weapon->lastx_ = waver;
+			weapon->lasty = - weapon->stepsize;
+			weapon->lastx = waver;
 			break;
 		case FACE_UP_RIGHT:
 			weapon->setxy(xpos+sizex+1, ypos-weapon->sizey-1);
-			weapon->lastx_ = weapon->stepsize_ + waver;
-			weapon->lasty_ = -weapon->stepsize_ + waver;
+			weapon->lastx = weapon->stepsize + waver;
+			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_UP_LEFT:
 			weapon->setxy(xpos - weapon->sizex-1, ypos-weapon->sizey-1);
-			weapon->lastx_ = -weapon->stepsize_ - waver;
-			weapon->lasty_ = -weapon->stepsize_ + waver;
+			weapon->lastx = -weapon->stepsize - waver;
+			weapon->lasty = -weapon->stepsize + waver;
 			break;
 		case FACE_DOWN_RIGHT:
 			weapon->setxy(xpos+sizex+1, ypos + sizey+1);
-			weapon->lasty_ = weapon->stepsize_ + waver;
-			weapon->lastx_ = weapon->stepsize_ - waver;
+			weapon->lasty = weapon->stepsize + waver;
+			weapon->lastx = weapon->stepsize - waver;
 			break;
 		case FACE_DOWN_LEFT:
 			weapon->setxy(xpos - weapon->sizex-1, ypos+sizey+1);
-			weapon->lasty_ = weapon->stepsize_ + waver;
-			weapon->lastx_ = -weapon->stepsize_ + waver;
+			weapon->lasty = weapon->stepsize + waver;
+			weapon->lastx = -weapon->stepsize + waver;
 			break;
 	}
 
@@ -957,7 +957,7 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
        return;
     
     // Last hit's effect
-    float last_points = w->last_hitpoints();
+    float last_points = w->last_hitpoints;
     float last_ratio = float(last_points)/w->stats()->max_hitpoints;
     
     // Current HP
@@ -983,7 +983,7 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
         {
             Uint16 max_w = r.w;
             
-            if(w->last_hitpoints() > w->stats()->hitpoints && last_ratio <= 1.0f)
+            if(w->last_hitpoints > w->stats()->hitpoints && last_ratio <= 1.0f)
                 myscreen->draw_box(r.x, r.y, r.x + r.w*last_ratio, r.y + r.h, 53, 1);
                 
             myscreen->draw_box(r.x, r.y, r.x + r.w*ratio, r.y + r.h, whatcolor, 1);
@@ -1024,102 +1024,102 @@ bool walker::draw(viewscreen  *view_buf)
 	//no need for on screen check, it will be checked at the draw level
 	//and the draw level code is cleaner anyway
 	//if (!this) return 0;
-	if (dead_)
+	if (dead)
 	{
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
 	//if (!bmp) {Log("No bitmap!\n"); return 0;}
-	drawcycle_++;
+	drawcycle++;
 
 	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
 	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
 	
-	if(attack_lunge_ > 0.0f)
+	if(attack_lunge > 0.0f)
     {
-        xscreen += attack_lunge_*ATTACK_LUNGE_SIZE*cos(attack_lunge_angle_);
-        yscreen += attack_lunge_*ATTACK_LUNGE_SIZE*sin(attack_lunge_angle_);
+        xscreen += attack_lunge*ATTACK_LUNGE_SIZE*cos(attack_lunge_angle);
+        yscreen += attack_lunge*ATTACK_LUNGE_SIZE*sin(attack_lunge_angle);
     }
     
-	if(hit_recoil_ > 0.0f)
+	if(hit_recoil > 0.0f)
     {
-        xscreen += hit_recoil_*HIT_RECOIL_SIZE*cos(hit_recoil_angle_);
-        yscreen += hit_recoil_*HIT_RECOIL_SIZE*sin(hit_recoil_angle_);
+        xscreen += hit_recoil*HIT_RECOIL_SIZE*cos(hit_recoil_angle);
+        yscreen += hit_recoil*HIT_RECOIL_SIZE*sin(hit_recoil_angle);
     }
 
-	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left_ || flight_left_ || invulnerable_left_)
+	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
 	{
-		if (outline_ == OUTLINE_INVULNERABLE)
+		if (outline == OUTLINE_INVULNERABLE)
 		{
-			if      (flight_left_)
-				outline_ = OUTLINE_FLYING;
+			if      (flight_left)
+				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 
-			if (outline_ != OUTLINE_NAMED)
-				if (invisibility_left_)
-					outline_ = OUTLINE_INVISIBLE;
+			if (outline != OUTLINE_NAMED)
+				if (invisibility_left)
+					outline = OUTLINE_INVISIBLE;
 		}
-		else if (outline_ == OUTLINE_FLYING)
+		else if (outline == OUTLINE_FLYING)
 		{
-			//if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline_ = OUTLINE_NAMED;
-			//else if (invisibility_left_) outline_ = OUTLINE_INVISIBLE;
-			//else if (invulnerable_left_) outline_ = OUTLINE_INVULNERABLE;
+			//if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
+			//else if (invisibility_left) outline = OUTLINE_INVISIBLE;
+			//else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
 
 			if (view_buf->control)
-				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 
-			if (outline_ != OUTLINE_NAMED)
+			if (outline != OUTLINE_NAMED)
 			{
-				if (invisibility_left_)
-					outline_ = OUTLINE_INVISIBLE;
-				else if (invulnerable_left_)
-					outline_ = OUTLINE_INVULNERABLE;
+				if (invisibility_left)
+					outline = OUTLINE_INVISIBLE;
+				else if (invulnerable_left)
+					outline = OUTLINE_INVULNERABLE;
 			}
 		}
-		else if (outline_ == OUTLINE_NAMED)
+		else if (outline == OUTLINE_NAMED)
 		{
-			if      (invisibility_left_)
-				outline_ = OUTLINE_INVISIBLE;
-			else if (invulnerable_left_)
-				outline_ = OUTLINE_INVULNERABLE;
-			else if (flight_left_)
-				outline_ = OUTLINE_FLYING;
+			if      (invisibility_left)
+				outline = OUTLINE_INVISIBLE;
+			else if (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
 		}
-		else if (outline_ == OUTLINE_INVISIBLE)
+		else if (outline == OUTLINE_INVISIBLE)
 		{
-			if      (invulnerable_left_)
-				outline_ = OUTLINE_INVULNERABLE;
-			else if (flight_left_)
-				outline_ = OUTLINE_FLYING;
+			if      (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 		}
 		else
 		{
-			if      (invisibility_left_)
-				outline_ = OUTLINE_INVISIBLE;
-			else if (flight_left_)
-				outline_ = OUTLINE_FLYING;
-			else if (invulnerable_left_)
-				outline_ = OUTLINE_INVULNERABLE;
+			if      (invisibility_left)
+				outline = OUTLINE_INVISIBLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
+			else if (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
 			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 		}
 	}
 	else
 	{
-	    outline_ = 0;
+	    outline = 0;
 	}
 	
 	if(view_buf->control != nullptr)
     {
-        if(outline_ == 0 && user_ != -1 && this != view_buf->control && this->team_num() == view_buf->control->team_num())
-            outline_ = OUTLINE_INVISIBLE;
+        if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+            outline = OUTLINE_INVISIBLE;
     }
     
     bool should_draw_hp = true;
@@ -1134,36 +1134,36 @@ bool walker::draw(viewscreen  *view_buf)
         phantom_mode = SHIFT_RANDOM;
         should_draw_hp = false;
     }
-	else if (invisibility_left_ && view_buf->control != nullptr)  //WE ARE INVISIBLE
+	else if (invisibility_left && view_buf->control != nullptr)  //WE ARE INVISIBLE
 	{
-		if (this->team_num() == view_buf->control->team_num())
+		if (this->team_num == view_buf->control->team_num)
         {
             fill_mode = INVISIBLE_MODE;
-            invisibility_amount = ( invisibility_left_ + 10 );
-            outline_style = outline_;
+            invisibility_amount = ( invisibility_left + 10 );
+            outline_style = outline;
             should_draw_hp = false;
         }
 	}
 	else if (stats_->query_bit_flags(BIT_FORESTWALK) && 
 	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats_->query_bit_flags(BIT_FLYING)
-	         && (flight_left_ < 1) )
+	         && (flight_left < 1) )
     {
         fill_mode = INVISIBLE_MODE;
         invisibility_amount = 1000;
         outline_style = 1;
         should_draw_hp = false;
     }
-	else if (outline_)    // WE HAVE SOME OUTLINE
+	else if (outline)    // WE HAVE SOME OUTLINE
 	{
 	    fill_mode = OUTLINE_MODE;
-	    outline_style = outline_;
+	    outline_style = outline;
 	}
 	
 	// Draw me
-	if(hurt_flash_)
+	if(hurt_flash)
     {
-        hurt_flash_ = false;
+        hurt_flash = false;
         
         auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
         myscreen->walkputbuffer_flash(xscreen, yscreen, sizex, sizey,
@@ -1197,12 +1197,12 @@ bool walker::draw(viewscreen  *view_buf)
 	if(should_draw_hp)
         draw_smallHealthBar(this, view_buf);
 	
-	for(auto e = damage_numbers_.begin(); e != damage_numbers_.end();)
+	for(auto e = damage_numbers.begin(); e != damage_numbers.end();)
     {
         e->t -= 0.05f;
         if(e->t < 0)
         {
-            e = damage_numbers_.erase(e);
+            e = damage_numbers.erase(e);
             continue;
         }
         
@@ -1224,88 +1224,88 @@ bool walker::draw_tile(viewscreen  *view_buf)
 	//no need for on screen check, it will be checked at the draw level
 	//and the draw level code is cleaner anyway
 	//if (!this) return 0;
-	if (dead_)
+	if (dead)
 	{
 		Log("drawing a dead guy!\n");
 		return 0;
 	}
 	//if (!bmp) {Log("No bitmap!\n"); return 0;}
-	drawcycle_++;
+	drawcycle++;
 
 	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
 	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
 
-	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left_ || flight_left_ || invulnerable_left_)
+	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
 	{
-		if (outline_ == OUTLINE_INVULNERABLE)
+		if (outline == OUTLINE_INVULNERABLE)
 		{
-			if      (flight_left_)
-				outline_ = OUTLINE_FLYING;
+			if      (flight_left)
+				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 
-			if (outline_ != OUTLINE_NAMED)
-				if (invisibility_left_)
-					outline_ = OUTLINE_INVISIBLE;
+			if (outline != OUTLINE_NAMED)
+				if (invisibility_left)
+					outline = OUTLINE_INVISIBLE;
 		}
-		else if (outline_ == OUTLINE_FLYING)
+		else if (outline == OUTLINE_FLYING)
 		{
-			//if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline_ = OUTLINE_NAMED;
-			//else if (invisibility_left_) outline_ = OUTLINE_INVISIBLE;
-			//else if (invulnerable_left_) outline_ = OUTLINE_INVULNERABLE;
+			//if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
+			//else if (invisibility_left) outline = OUTLINE_INVISIBLE;
+			//else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
 
 			if (view_buf->control)
-				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 
-			if (outline_ != OUTLINE_NAMED)
+			if (outline != OUTLINE_NAMED)
 			{
-				if (invisibility_left_)
-					outline_ = OUTLINE_INVISIBLE;
-				else if (invulnerable_left_)
-					outline_ = OUTLINE_INVULNERABLE;
+				if (invisibility_left)
+					outline = OUTLINE_INVISIBLE;
+				else if (invulnerable_left)
+					outline = OUTLINE_INVULNERABLE;
 			}
 		}
-		else if (outline_ == OUTLINE_NAMED)
+		else if (outline == OUTLINE_NAMED)
 		{
-			if      (invisibility_left_)
-				outline_ = OUTLINE_INVISIBLE;
-			else if (invulnerable_left_)
-				outline_ = OUTLINE_INVULNERABLE;
-			else if (flight_left_)
-				outline_ = OUTLINE_FLYING;
+			if      (invisibility_left)
+				outline = OUTLINE_INVISIBLE;
+			else if (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
 		}
-		else if (outline_ == OUTLINE_INVISIBLE)
+		else if (outline == OUTLINE_INVISIBLE)
 		{
-			if      (invulnerable_left_)
-				outline_ = OUTLINE_INVULNERABLE;
-			else if (flight_left_)
-				outline_ = OUTLINE_FLYING;
+			if      (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
 			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 		}
 		else
 		{
-			if      (invisibility_left_)
-				outline_ = OUTLINE_INVISIBLE;
-			else if (flight_left_)
-				outline_ = OUTLINE_FLYING;
-			else if (invulnerable_left_)
-				outline_ = OUTLINE_INVULNERABLE;
+			if      (invisibility_left)
+				outline = OUTLINE_INVISIBLE;
+			else if (flight_left)
+				outline = OUTLINE_FLYING;
+			else if (invulnerable_left)
+				outline = OUTLINE_INVULNERABLE;
 			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num_!=view_buf->control->team_num()))
-					outline_ = OUTLINE_NAMED;
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+					outline = OUTLINE_NAMED;
 		}
 	}
 	else
 	{
-	    outline_ = 0;
+	    outline = 0;
 	}
 	
-    if(outline_ == 0 && user_ != -1 && this != view_buf->control && this->team_num() == view_buf->control->team_num())
-        outline_ = OUTLINE_INVISIBLE;
+    if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+        outline = OUTLINE_INVISIBLE;
 
 	auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
 
@@ -1319,22 +1319,22 @@ bool walker::draw_tile(viewscreen  *view_buf)
 		                        0, //outline
 		                        SHIFT_RANDOM); //type of phantom
 
-	else if (invisibility_left_)  //WE ARE INVISIBLE
+	else if (invisibility_left)  //WE ARE INVISIBLE
 	{
-		if (this->team_num() == view_buf->control->team_num())
+		if (this->team_num == view_buf->control->team_num)
 			myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 			                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
 			                        bmp_span, query_team_color(),
 			                        INVISIBLE_MODE,  //mode
-			                        ( invisibility_left_ + 10 ), //invisibility
-			                        outline_,  //outline
+			                        ( invisibility_left + 10 ), //invisibility
+			                        outline,  //outline
 			                        0 ); //type of phantom
 	}
 	else if (stats_->query_bit_flags(BIT_FORESTWALK) &&
 	         myscreen->level_data.mysmoother.query_genre_x_y(xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	         && !stats_->query_bit_flags(BIT_FLYING)
-	         && (flight_left_ < 1) )
+	         && (flight_left < 1) )
 		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
 		                       xscreen+GRID_SIZE, yscreen+GRID_SIZE,
@@ -1344,7 +1344,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 		                        1,  //outline
 		                        0 ); //type of phantom
 
-	else if (outline_)    // WE HAVE SOME OUTLINE
+	else if (outline)    // WE HAVE SOME OUTLINE
 	{
 		myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
 		                        view_buf->xloc, view_buf->yloc,
@@ -1352,7 +1352,7 @@ bool walker::draw_tile(viewscreen  *view_buf)
 		                        bmp_span, query_team_color(),
 		                        OUTLINE_MODE, //mode
 		                        0, //invisibility
-		                        outline_, //outline
+		                        outline, //outline
 		                        0 ); //type of phantom
 
         draw_smallHealthBar(this, view_buf);
@@ -1436,10 +1436,10 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
                 cost.cost = sqrtf(i*i + j*j);
             
             // Smoothing heuristic using cross-product.  This penalizes going away from a straight line to the goal.
-            int dx1 = adj_x - ALIGN_TO_GRID(path_walker->foe()->xpos);
-            int dy1 = adj_y - ALIGN_TO_GRID(path_walker->foe()->ypos);
-            int dx2 = path_walker->xpos - ALIGN_TO_GRID(path_walker->foe()->xpos);
-            int dy2 = path_walker->ypos - ALIGN_TO_GRID(path_walker->foe()->ypos);
+            int dx1 = adj_x - ALIGN_TO_GRID(path_walker->foe->xpos);
+            int dy1 = adj_y - ALIGN_TO_GRID(path_walker->foe->ypos);
+            int dx2 = path_walker->xpos - ALIGN_TO_GRID(path_walker->foe->xpos);
+            int dy2 = path_walker->ypos - ALIGN_TO_GRID(path_walker->foe->ypos);
             float cross = dx1*dy2 - dx2*dy1;
             cost.cost += fabs(cross)*0.01f;
             
@@ -1466,19 +1466,19 @@ void walker::find_path_to_foe()
     float totalCost = 0.0f;
 
     MicroPatherState startState = MAKE_STATE(xpos, ypos);
-    MicroPatherState endState = MAKE_STATE(foe_->xpos, foe_->ypos);
+    MicroPatherState endState = MAKE_STATE(foe->xpos, foe->ypos);
     
-    path_to_foe_.clear();
+    path_to_foe.clear();
     pather.Reset();  // Assume that the old paths are invalid
     path_walker = this;  // Set the walker that the path is being generated for
-    pather.Solve( startState, endState, &path_to_foe_, &totalCost );  // There's a result returned from this, but we don't need it.
+    pather.Solve( startState, endState, &path_to_foe, &totalCost );  // There's a result returned from this, but we don't need it.
 }
 
 void walker::follow_path_to_foe()
 {
-    while(path_to_foe_.size() > 0)
+    while(path_to_foe.size() > 0)
     {
-        std::vector<MicroPatherState>::iterator node = path_to_foe_.begin();
+        std::vector<MicroPatherState>::iterator node = path_to_foe.begin();
         MicroPatherState state = *node;
         int dx = GET_STATE_X(state) - ALIGN_TO_GRID(xpos);
         int dy = GET_STATE_Y(state) - ALIGN_TO_GRID(ypos);
@@ -1497,13 +1497,13 @@ void walker::follow_path_to_foe()
         }
         
         // We already made it to this node, so remove it
-        path_to_foe_.erase(node);
+        path_to_foe.erase(node);
     }
 }
 
 void walker::draw_path(viewscreen* view_buf)
 {
-    if(path_to_foe_.size() == 0)
+    if(path_to_foe.size() == 0)
         return;
     
     unsigned char mycolor = query_team_color() + intptr_t(this)%5;  // Our pointer is a unique integer... but probably aligned to 4 bytes.
@@ -1511,10 +1511,10 @@ void walker::draw_path(viewscreen* view_buf)
     short offsetx = view_buf->topx - view_buf->xloc - 8;
     short offsety = view_buf->topy - view_buf->yloc - 8;
     
-    std::vector<MicroPatherState>::iterator e = path_to_foe_.begin();
+    std::vector<MicroPatherState>::iterator e = path_to_foe.begin();
     int px = GET_STATE_X(*e) - offsetx;
     int py = GET_STATE_Y(*e) - offsety;
-    while(e != path_to_foe_.end())
+    while(e != path_to_foe.end())
     {
         int x1 = GET_STATE_X(*e) - offsetx;
         int y1 = GET_STATE_Y(*e) - offsety;
@@ -1532,17 +1532,17 @@ bool walker::act()
 	short temp;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe_ && foe_->is_dead())
-		foe_ = nullptr;
-	if (leader_ && leader_->is_dead())
-		leader_ = nullptr;
-	if (owner_ && owner_->is_dead())
-		owner_ = nullptr;
+	if (foe && foe->dead)
+		foe = nullptr;
+	if (leader && leader->dead)
+		leader = nullptr;
+	if (owner && owner->dead)
+		owner = nullptr;
 
-	collide_ob_ = nullptr; // always start with no collison..
+	collide_ob = nullptr; // always start with no collison..
 
 	// Complete previous animations (like firing)
-	if (ani_type_ != ANI_WALK)
+	if (ani_type != ANI_WALK)
 		return animate();
 
 	// Are we frozen?
@@ -1552,8 +1552,8 @@ bool walker::act()
 		return 1;
 	}
 
-	if (busy_ > 0)
-		busy_--; // This allows busy to be our FIRING delay.
+	if (busy > 0)
+		busy--; // This allows busy to be our FIRING delay.
 	// Find new action
 
 	// Turn if you want to
@@ -1574,18 +1574,18 @@ bool walker::act()
 			return 1;
 	}
 	
-	if(attack_lunge_ > 0.0f)
+	if(attack_lunge > 0.0f)
     {
-        attack_lunge_ -= 0.4f;
-        if(attack_lunge_ < 0.0f)
-            attack_lunge_ = 0.0f;
+        attack_lunge -= 0.4f;
+        if(attack_lunge < 0.0f)
+            attack_lunge = 0.0f;
     }
 	
-	if(hit_recoil_ > 0.0f)
+	if(hit_recoil > 0.0f)
     {
-        hit_recoil_ -= 0.6f;
-        if(hit_recoil_ < 0.0f)
-            hit_recoil_ = 0.0f;
+        hit_recoil -= 0.6f;
+        if(hit_recoil < 0.0f)
+            hit_recoil = 0.0f;
     }
 	
 	switch (act_type)
@@ -1617,7 +1617,7 @@ bool walker::act()
 			}
 		case ACT_DIE:
 			{
-				this->set_dead(1);
+				this->dead = 1;
 				return 1;
 			}
 			// We are randomly walking toward enemy
@@ -1636,11 +1636,11 @@ bool walker::act()
 				}
 				else    //3 of 4 times
 				{
-					if (!foe_)
+					if (!foe)
 					{
-						foe_ = myscreen->find_far_foe(this);
+						foe = myscreen->find_far_foe(this);
 					}
-					if (foe_)
+					if (foe)
 						//stats_->try_command(COMMAND_SEARCH, 60, 0, 0);
 						stats_->try_command(COMMAND_SEARCH, 500, 0, 0);
 					return 1;
@@ -1687,7 +1687,7 @@ short walker::query_old_act_type() const
 
 bool walker::collide(walker  *ob)
 {
-	collide_ob_ = ob;
+	collide_ob = ob;
 	return 1;
 }
 
@@ -1758,7 +1758,7 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 
 float get_base_damage(walker* w)
 {
-    float d = w->damage();
+    float d = w->damage;
     float sqrtd = sqrtf(d);
     return d - sqrtd/2.0f + random(floor(sqrtd));
 }
@@ -1781,8 +1781,8 @@ void walker::do_heal_effects(walker* healer, walker* target, short amount)
         return;
     
     if(healer)
-        healer->damage_numbers().push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
-	target->damage_numbers().push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
+        healer->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
+	target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, amount, 56));
 }
 
 void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
@@ -1791,9 +1791,9 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     {
         // Orange numbers for the attacker to see
         if(attacker)
-            attacker->damage_numbers().push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
+            attacker->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, 235));
         // RED numbers for the target to see
-        target->damage_numbers().push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
+        target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
     }
 	if (target->stats()->hitpoints < 0)
 		tempdamage += target->stats()->hitpoints;
@@ -1806,11 +1806,11 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
            walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_HIT);
             if (newob)
             {
-                newob->set_owner(target);
-                newob->set_team_num(team_num_);
+                newob->owner = target;
+                newob->team_num = team_num;
                 newob->stats()->level = 1;
-                newob->damage_ = 0;
-                newob->ani_type_ = 1 + rand()%3;
+                newob->damage = 0;
+                newob->ani_type = 1 + rand()%3;
                 if(attacker == this)
                 {
                     newob->center_on(target);
@@ -1829,14 +1829,14 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     if(tempdamage > 0)
     {
         if(cfg.is_on("effects", "hit_flash"))
-            target->set_hurt_flash(true);
+            target->hurt_flash = true;
         
         if(cfg.is_on("effects", "hit_recoil"))
         {
             if(target->query_order() == Order::Living)
             {
-                target->set_hit_recoil(1.0f);
-                target->set_hit_recoil_angle(atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2));
+                target->hit_recoil = 1.0f;
+                target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
             }
         }
     }
@@ -1845,14 +1845,14 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage)
 {
 	// Record damage done for records ..
-	if (attacker && attacker->myguy() && target->query_order() == Order::Living)  // hit a living
+	if (attacker && attacker->myguy && target->query_order() == Order::Living)  // hit a living
     {
-		attacker->myguy()->total_damage += tempdamage;
-		attacker->myguy()->scen_damage += tempdamage;
+		attacker->myguy->total_damage += tempdamage;
+		attacker->myguy->scen_damage += tempdamage;
     }
     
     // Deal the damage
-    target->set_last_hitpoints(target->stats()->hitpoints);
+    target->last_hitpoints = target->stats()->hitpoints;
 	target->stats()->hitpoints -= tempdamage;
 	
 	do_hit_effects(attacker, target, tempdamage);
@@ -1864,11 +1864,11 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
     if(tempdamage > 0)
         target->regen_delay_ = 50;
     
-    if(target->myguy() != nullptr)
+    if(target->myguy != nullptr)
     {
-        target->myguy()->scen_damage_taken += tempdamage;
-        if(target->myguy()->scen_min_hp > target->stats()->hitpoints)
-            target->myguy()->scen_min_hp = target->stats()->hitpoints;
+        target->myguy->scen_damage_taken += tempdamage;
+        if(target->myguy->scen_min_hp > target->stats()->hitpoints)
+            target->myguy->scen_min_hp = target->stats()->hitpoints;
     }
 }
 
@@ -1882,13 +1882,13 @@ bool walker::attack(walker  *target)
 	short getscore=0;
 	Order targetorder = target->query_order();
 	char targetfamily= target->query_family();
-	walker *attacker; // us or our owner_ ..
+	walker *attacker; // us or our owner ..
 	static short tom = 0;
 
-	if (myguy_ != nullptr || team_num_ == 0)
+	if (myguy != nullptr || team_num == 0)
 		getscore = 1;
 
-	if (target && target->is_dead())
+	if (target && target->dead)
 		return 0;
 
 	//if ( (targetorder == Order::Living && is_friendly(target) ) ||
@@ -1896,20 +1896,20 @@ bool walker::attack(walker  *target)
 		return 0;
 
 	if (target->stats()->query_bit_flags(BIT_INVINCIBLE) ||
-	        target->invulnerable_left_ != 0 )
+	        target->invulnerable_left != 0 )
 		return 0;
 
-	if (order != Order::Living && owner_)
-		attacker = owner_;
+	if (order != Order::Living && owner)
+		attacker = owner;
 	else
 		attacker = this;
 
 	// who's the top on our chain (ie, weapon->summoned->mage)
 	headguy = this;
-	while (headguy->owner() && (headguy->owner() != headguy) )
-		headguy = headguy->owner();
+	while (headguy->owner && (headguy->owner != headguy) )
+		headguy = headguy->owner;
 
-	if (headguy->myguy() && headguy->user() == 0 && order == Order::Weapon)
+	if (headguy->myguy && headguy->user == 0 && order == Order::Weapon)
 		tom++;
 
 	// Modify attack value based on things like magical attacks, etc.
@@ -1917,10 +1917,10 @@ bool walker::attack(walker  *target)
 	{
 		case Order::Living:
 			// Hit a living target, so we get credit for a hit
-			if (attacker->myguy())
+			if (attacker->myguy)
             {
-				attacker->myguy()->total_hits++;
-				attacker->myguy()->scen_hits++;
+				attacker->myguy->total_hits++;
+				attacker->myguy->scen_hits++;
             }
 
 			switch (targetfamily)
@@ -1942,10 +1942,10 @@ bool walker::attack(walker  *target)
 		default:
 			// We hit something, but it wasn't living, so don't count
 			// as a shot, OR as a hit ..
-			if (attacker->myguy())
+			if (attacker->myguy)
             {
-				attacker->myguy()->total_shots--; // since we already counted it
-				attacker->myguy()->scen_shots--;
+				attacker->myguy->total_shots--; // since we already counted it
+				attacker->myguy->scen_shots--;
             }
 			break;
 	} // end of checking orders
@@ -1962,24 +1962,24 @@ bool walker::attack(walker  *target)
 
 	// Set our target to fighting our owner
 	//in the case of our weapon hit something
-	if (order != Order::Living && owner_)
+	if (order != Order::Living && owner)
 	{
-		owner_->set_foe(target);
-		target->stats()->hit_response(owner_);
-		if (headguy->myguy())
+		owner->foe = target;
+		target->stats()->hit_response(owner);
+		if (headguy->myguy)
 		{
-            headguy->myguy()->exp += newexp;
+            headguy->myguy->exp += newexp;
 		}
 	}
 	else  //melee combat, set target to hit_response to us
 	{
 		target->stats()->hit_response(this);
-		if (myguy_)
+		if (myguy)
 		{
-            myguy_->exp += newexp;
+            myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num_] += tempdamage + target->stats()->level;
+                myscreen->save_data.m_score[team_num] += tempdamage + target->stats()->level;
             }
 		}
 	}
@@ -1987,11 +1987,11 @@ bool walker::attack(walker  *target)
 	if (order == Order::Weapon)
 	{
 		stats_->hitpoints -= tempdamage;
-		damage_--;
+		damage--;
 		if (stats_->hitpoints <= 0)
 		{
 			if (!stats_->query_bit_flags(BIT_IMMORTAL))
-				dead_ = 1;
+				dead = 1;
 			death();
 		}
 		//special effects
@@ -2000,13 +2000,13 @@ bool walker::attack(walker  *target)
 			case FAMILY_SPRINKLE:   // Faerie's fire freezes foes :)
 				if (targetorder == Order::Living)
 				{
-					if (target->myguy())
+					if (target->myguy)
 						target->stats()->frozen_delay =
-						    random(FAERIE_FREEZE_TIME + (owner_->stats()->level*2) -
-						           (target->myguy()->constitution/21) );
+						    random(FAERIE_FREEZE_TIME + (owner->stats()->level*2) -
+						           (target->myguy->constitution/21) );
 					else
 						target->stats()->frozen_delay =
-						    random (FAERIE_FREEZE_TIME + (owner_->stats()->level*2) );
+						    random (FAERIE_FREEZE_TIME + (owner->stats()->level*2) );
 					if (target->stats()->frozen_delay < 0)
 						target->stats()->frozen_delay = 0;
 				}
@@ -2020,17 +2020,17 @@ bool walker::attack(walker  *target)
 	playerteam = 0;
 
 	// Positive score for hurting enemies, negative for us
-	if (owner_ &&
+	if (owner &&
 	        (targetorder != Order::Weapon) ) // are we still alive?
 	{
-		if (playerteam != target->team_num())
+		if (playerteam != target->team_num)
 		{
 			if (getscore)
 			{
-				myscreen->save_data.m_score[team_num_] += tempdamage + target->stats()->level; // / 2;
+				myscreen->save_data.m_score[team_num] += tempdamage + target->stats()->level; // / 2;
 			}
-			if (headguy->myguy())
-				headguy->myguy()->exp += newexp;
+			if (headguy->myguy)
+				headguy->myguy->exp += newexp;
 		}
 	}
 
@@ -2040,14 +2040,14 @@ bool walker::attack(walker  *target)
 		{
 			if (playerteam > -1)
 			{
-				if (playerteam != target->team_num())
+				if (playerteam != target->team_num)
 				{
-					if (headguy->myguy())  // headguy can == this
+					if (headguy->myguy)  // headguy can == this
 					{
-						headguy->myguy()->exp += newexp + exp_from_action(ExpAction::Kill, this, target, 0);
-						headguy->myguy()->kills++;
-						headguy->myguy()->scen_kills++;
-						headguy->myguy()->level_kills += target->stats()->level;
+						headguy->myguy->exp += newexp + exp_from_action(ExpAction::Kill, this, target, 0);
+						headguy->myguy->kills++;
+						headguy->myguy->scen_kills++;
+						headguy->myguy->level_kills += target->stats()->level;
 					}
 					//else if (myguy)
 					//{
@@ -2057,16 +2057,16 @@ bool walker::attack(walker  *target)
 					//}
 					if (getscore)
 					{
-						myscreen->save_data.m_score[team_num_] += tempdamage + (10 * target->stats()->level);
+						myscreen->save_data.m_score[team_num] += tempdamage + (10 * target->stats()->level);
 					}
 					// If named, alert us of the enemy's death
-					if (target->stats()->name.size() && !(target->lifetime_)
-					        && (!target->owner()) ) // do we have an NPC name?
+					if (target->stats()->name.size() && !(target->lifetime)
+					        && (!target->owner) ) // do we have an NPC name?
 					{
 						message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
 						myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
 					}
-					if(remaining_foes(myscreen, this) == 1)  // This is the last foe_
+					if(remaining_foes(myscreen, this) == 1)  // This is the last foe
 					{
 						message = "All foes defeated!";
 						myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
@@ -2075,13 +2075,13 @@ bool walker::attack(walker  *target)
 				else
 				{
 					// Alert us of the death
-					if ( (target->owner() || target->lifetime_) // summoned?
+					if ( (target->owner || target->lifetime) // summoned?
 					        && (target->stats()->name.size() ) ) // and have name
 						message = std::format("{} Dispelled!", target->stats()->name);
 					else if (target->stats()->name.size()) // do we have an NPC name?
 						message = std::format("{} DIED!", target->stats()->name);
-					else if (target->myguy() && target->myguy()->name.size() )
-						message = std::format("{} Died!", target->myguy()->name);
+					else if (target->myguy && target->myguy->name.size() )
+						message = std::format("{} Died!", target->myguy->name);
 					else
 						switch (target->query_family())
 						{
@@ -2137,9 +2137,9 @@ bool walker::attack(walker  *target)
 			/* Blood splats at death */
 			// Make temporary stain:
 			blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
-			blood->set_team_num(target->team_num());
-			blood->ani_type_ = ANI_GROW;
-			blood->ignore_ = 1; // so that we can be walked over .. ?
+			blood->team_num = target->team_num;
+			blood->ani_type = ANI_GROW;
+			blood->ignore = 1; // so that we can be walked over .. ?
 			blood->setxy(target->xpos,target->ypos);
 		}
 		if (on_screen() && targetorder == Order::Living)
@@ -2150,10 +2150,10 @@ bool walker::attack(walker  *target)
 				myscreen->soundp->play_sound(SOUND_DIE2);
 		}
 
-		target->set_dead(1);
+		target->dead = 1;
 		target->death(); // any special effect upon death ..
 	}
-	collide_ob_ = nullptr;
+	collide_ob = nullptr;
 
 	return 1;
 }
@@ -2162,55 +2162,55 @@ bool walker::animate()
 {
 	walker  * newob;
 
-	set_frame(ani_[curdir_+ani_type_*NUM_FACINGS][cycle_]);
-	cycle_++;
-	if (ani_[curdir_+ani_type_*NUM_FACINGS][cycle_] == -1)
+	set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
+	cycle++;
+	if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
 	{
-		//          if (ani_type_ == ANI_ATTACK &&
+		//          if (ani_type == ANI_ATTACK &&
 		//                        query_order() == Order::Living)
-		if (ani_type_ == ANI_ATTACK)
+		if (ani_type == ANI_ATTACK)
 		{
 			fire();
-			ani_type_ = ANI_WALK;
-			cycle_ = 0;
+			ani_type = ANI_WALK;
+			cycle = 0;
 			return 1;
 		}
 		// finished teleport out sequence
-		//          if (ani_type_ == ANI_SKEL_GROW && family == FAMILY_SKELETON)
-		if (ani_type_ == ANI_SKEL_GROW && query_type(Order::Living, FAMILY_SKELETON))
+		//          if (ani_type == ANI_SKEL_GROW && family == FAMILY_SKELETON)
+		if (ani_type == ANI_SKEL_GROW && query_type(Order::Living, FAMILY_SKELETON))
 		{
-			ani_type_ = ANI_WALK;
-			cycle_ = 0;
+			ani_type = ANI_WALK;
+			cycle = 0;
 			return 1;
 		}
-		if (ani_type_ == ANI_TELE_OUT && order == Order::Living)
+		if (ani_type == ANI_TELE_OUT && order == Order::Living)
 		{
 			if (family == FAMILY_MAGE || family==FAMILY_ARCHMAGE)
 			{
-				ani_type_ = ANI_TELE_IN;
-				cycle_ = 0;
+				ani_type = ANI_TELE_IN;
+				cycle = 0;
 				teleport();
 				return 1;
 			}
 			else if (family == FAMILY_SKELETON)
 			{
-				ani_type_ = ANI_TELE_IN;
-				cycle_ = 0;
+				ani_type = ANI_TELE_IN;
+				cycle = 0;
 				teleport_ranged(stats_->level*18);
 				return 1;
 			}
 			else
 			{
-				ani_type_ = ANI_WALK;
-				cycle_ = 0;
+				ani_type = ANI_WALK;
+				cycle = 0;
 				return 0;
 			}
 		}
 		// Were we a slime who just split?
-		if (ani_type_ == ANI_SLIME_SPLIT && order == Order::Living)
+		if (ani_type == ANI_SLIME_SPLIT && order == Order::Living)
 		{
-			ani_type_ = ANI_WALK;
-			cycle_ = 0;
+			ani_type = ANI_WALK;
+			cycle = 0;
 			// First, shrink (and move) normal guy ..
 			transform_to(Order::Living, FAMILY_SMALL_SLIME);
 			setxy(xpos-10, ypos+10); // diagonal 'down left' of normal
@@ -2221,36 +2221,36 @@ bool walker::animate()
 			// Transfer stats/etc. across to new guy ..
 			//stats_->magicpoints -= stats_->special_cost[0];
 			transfer_stats(newob);
-			if (newob->myguy() && newob->myguy()->exp < (1000*stats_->level) )
+			if (newob->myguy && newob->myguy->exp < (1000*stats_->level) )
 			{
-				delete newob->myguy();  // can't be 'sustained' if too low
-				newob->set_myguy(nullptr);
+				delete newob->myguy;  // can't be 'sustained' if too low
+				newob->myguy = nullptr;
 				newob->stats()->name = "SLIME"; // generic name
-				newob->stats()->level = calculate_level(myguy_->exp/2);
+				newob->stats()->level = calculate_level(myguy->exp/2);
 			}
-			else if (newob->myguy()) // split our experience
+			else if (newob->myguy) // split our experience
 			{
-				Uint32 exp = myguy_->exp / 2;
+				Uint32 exp = myguy->exp / 2;
 				
 				short newlevel = calculate_level(exp);
 				// Downgrade us and the copy
-				myguy_->upgrade_to_level(newlevel);
-				myguy_->update_derived_stats(this);
-				myguy_->exp = exp;
+				myguy->upgrade_to_level(newlevel);
+				myguy->update_derived_stats(this);
+				myguy->exp = exp;
 				
-				newob->myguy()->upgrade_to_level(newlevel);
-				newob->myguy()->update_derived_stats(newob);
-				newob->myguy()->exp = exp;
+				newob->myguy->upgrade_to_level(newlevel);
+				newob->myguy->update_derived_stats(newob);
+				newob->myguy->exp = exp;
 			}
 
-			newob->set_team_num(team_num_);
-			newob->set_foe(foe_);
-			newob->set_leader(leader_);
+			newob->team_num = team_num;
+			newob->foe = foe;
+			newob->leader = leader;
 			return 1;
 		}
 
-		ani_type_ = ANI_WALK;
-		cycle_ = 0;
+		ani_type = ANI_WALK;
+		cycle = 0;
 	}
 	return 1;
 }
@@ -2271,42 +2271,42 @@ walker  *walker::create_weapon()
 	// Special case for generators
 	if (query_order() == Order::Generator)
 	{
-		weapon = myscreen->level_data.add_ob(Order::Living, static_cast<char>(default_weapon_));
-		weapon->set_team_num(team_num_);
-		weapon->set_owner(this);
+		weapon = myscreen->level_data.add_ob(Order::Living, static_cast<char>(default_weapon));
+		weapon->team_num = team_num;
+		weapon->owner = this;
 		weapon->set_difficulty(stats_->level);
 		return weapon;
 	}
 	// Normally, only livings fire
-	weapon_type = current_weapon_;
+	weapon_type = current_weapon;
 
 	weapon = myscreen->level_data.add_ob(Order::Weapon, static_cast<char>(weapon_type));
-	weapon->set_team_num(team_num_);
-	weapon->set_owner(this);
+	weapon->team_num = team_num;
+	weapon->owner = this;
 	weapon->set_difficulty(stats_->level);
-	weapon->damage_ = (weapon->damage_ * (stats_->level+3))/4;
-	if (myguy_)
+	weapon->damage = (weapon->damage * (stats_->level+3))/4;
+	if (myguy)
 	{
-		weapon->lineofsight_ += (myguy_->strength / 23) + (myguy_->dexterity / 31);
-		weapon->damage_ += (myguy_->strength / 7.0f);
+		weapon->lineofsight += (myguy->strength / 23) + (myguy->dexterity / 31);
+		weapon->damage += (myguy->strength / 7.0f);
 	}
 	else
 	{
-		weapon->damage_ *= stats_->level;
+		weapon->damage *= stats_->level;
 	}
-	weapon->lineofsight_ += (stats_->level / 3);
-	switch ( facing(lastx_, lasty_) ) // make 'circular' ranges
+	weapon->lineofsight += (stats_->level / 3);
+	switch ( facing(lastx, lasty) ) // make 'circular' ranges
 	{
 		case FACE_UP:
 		case FACE_RIGHT:
 		case FACE_DOWN:
 		case FACE_LEFT:
 			// this will multiply by 1.207 ..
-			weapon->lineofsight_ *= 309;
-			weapon->lineofsight_ /= 256; // = 1.207 for circular range
+			weapon->lineofsight *= 309;
+			weapon->lineofsight /= 256; // = 1.207 for circular range
 			// this will multiply by 1.414
-			weapon->stepsize_ *= 362;
-			weapon->stepsize_ /= 256;
+			weapon->stepsize *= 362;
+			weapon->stepsize /= 256;
 			break;
 		default :
 			break;
@@ -2314,11 +2314,11 @@ walker  *walker::create_weapon()
 
 	if (query_family() == FAMILY_CLERIC)
 	{
-		weapon->ani_type_ = ANI_GLOWGROW;
-		weapon->lifetime_ += (stats_->level * 110);
+		weapon->ani_type = ANI_GLOWGROW;
+		weapon->lifetime += (stats_->level * 110);
 	}
 	//  if (query_family() == FAMILY_DRUID)
-	//       weapon->ani_type_ = ANI_GROW;
+	//       weapon->ani_type = ANI_GROW;
 	//duhhhh he's not using this as his normal weapon
 	return weapon;
 }
@@ -2330,13 +2330,13 @@ bool walker::query_next_to()
 	newx = xpos;
 	newy = ypos;
 
-	if (lastx_ > 0)
+	if (lastx > 0)
 		newx += sizex;
-	else if (lastx_ < 0)
+	else if (lastx < 0)
 		newx += -sizex;
-	if (lasty_ > 0)
+	if (lasty > 0)
 		newy += sizey;
-	else //if (lasty_ < 0)
+	else //if (lasty < 0)
 		newy += -sizey;
 
 	if (!myscreen->query_object_passable(newx, newy, this))
@@ -2365,7 +2365,7 @@ bool walker::special()
 	short person;
 
 	// Are we somehow dead already?
-	if (dead_)
+	if (dead)
 	{
 		Log("Dead guy doing special!\n");
 		return 0;
@@ -2379,7 +2379,7 @@ bool walker::special()
 	}
 
 	// Do we have enough for our special ability?
-	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special_)])
+	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
 		return 0;
 
 	if (query_order() != Order::Living)
@@ -2389,14 +2389,14 @@ bool walker::special()
 	switch (query_family())
 	{
 		case FAMILY_ARCHER:
-			switch(current_special_)
+			switch(current_special)
 			{
 				case 1: // fire arrows
-					tempx = lastx_;
-					tempy = lasty_;
-					curdir_ = -1;
-					lastx_ = 0;
-					lasty_ = 0;
+					tempx = lastx;
+					tempy = lasty;
+					curdir = -1;
+					lastx = 0;
+					lasty = 0;
 					stats_->magicpoints += (8*stats_->weapon_cost);
 					stats_->add_command(COMMAND_SET_WEAPON, 1, FAMILY_FIRE_ARROW, 0);
 					stats_->add_command(COMMAND_QUICK_FIRE, 1, 0, -1);
@@ -2407,43 +2407,43 @@ bool walker::special()
 					stats_->add_command(COMMAND_QUICK_FIRE, 1, -1, 1);
 					stats_->add_command(COMMAND_QUICK_FIRE, 1, -1, 0);
 					stats_->add_command(COMMAND_QUICK_FIRE, 1, -1, -1);
-					//                  stats_->add_command(COMMAND_WALK, 1, tempx/stepsize_, tempy/stepsize_);
+					//                  stats_->add_command(COMMAND_WALK, 1, tempx/stepsize, tempy/stepsize);
 					stats_->add_command(COMMAND_RESET_WEAPON, 1, 0, 0);
 					break;
 				case 2:  // flurry of arrows
-					if (busy_)
+					if (busy)
 						return 0;
 					stats_->magicpoints += (3*stats_->weapon_cost);
 					fire();
 					fire();
 					fire();
-					busy_ += (fire_frequency_ * 2);
+					busy += (fire_frequency * 2);
 					break;
 				case 3: // exploding arrows
 				case 4:
 				default:
-					if (busy_)
+					if (busy)
 						return 0;
-					generic = current_weapon_;
-					current_weapon_ = FAMILY_FIRE_ARROW;
+					generic = current_weapon;
+					current_weapon = FAMILY_FIRE_ARROW;
 					newob = fire();
-					current_weapon_ = generic;
+					current_weapon = generic;
 					if (!newob)
 						return 0; // failsafe
-					newob->set_skip_exit(5000); // used as a dummy variable to
+					newob->skip_exit = 5000; // used as a dummy variable to
 					// signify exploding .. :(
 					newob->stats()->hitpoints = 500; // buffed arrows
-					newob->damage_ *= 2;
+					newob->damage *= 2;
 					break;
 			}
 			break;  // end of archer
 		case FAMILY_SOLDIER:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1: // charge enemy
 					if (!stats_->forward_blocked())
 					{
-						stats_->add_command(COMMAND_RUSH, 3, lastx_/stepsize_, lasty_/stepsize_);
+						stats_->add_command(COMMAND_RUSH, 3, lastx/stepsize, lasty/stepsize);
 						if (on_screen())
 							myscreen->soundp->play_sound(SOUND_CHARGE);
 					}
@@ -2452,23 +2452,23 @@ bool walker::special()
 					break;
 				case 2: // boomerang
 					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOOMERANG);
-					newob->set_owner(this);
-					newob->set_team_num(team_num_);
-					newob->ani_type_ = 1; // dummy, non-zero value
-					newob->lifetime_ = 30 + (stats_->level)*12;
+					newob->owner = this;
+					newob->team_num = team_num;
+					newob->ani_type = 1; // dummy, non-zero value
+					newob->lifetime = 30 + (stats_->level)*12;
 					newob->stats()->hitpoints += stats_->level*12;
 					newob->stats()->max_hitpoints = newob->stats()->hitpoints;
-					newob->damage_ += stats_->level*4;
+					newob->damage += stats_->level*4;
 					break;
 				case 3: // whirlwind attack
-					if (busy_)
+					if (busy)
 						return 0; // can't do while attacking, etc.
-					busy_ += 8;
-					tempx = lastx_;
-					tempy = lasty_;
-					curdir_ = -1;
-					lastx_ = 0;
-					lasty_ = 0;
+					busy += 8;
+					tempx = lastx;
+					tempy = lasty;
+					curdir = -1;
+					lastx = 0;
+					lasty = 0;
 					//stats_->magicpoints += (8*stats_->weapon_cost);
 					stats_->add_command(COMMAND_WALK, 1, 0, -1);
 					stats_->add_command(COMMAND_WALK, 1, 1, -1);
@@ -2501,7 +2501,7 @@ bool walker::special()
 					}
 					break; // end of whirlwind attack
 				case 4:  // Disarm opponent
-					if (busy_)
+					if (busy)
 						return 0;
 					if (!stats_->forward_blocked())
 						return 0; // can't do this if no frontal enemy
@@ -2517,7 +2517,7 @@ bool walker::special()
                             if (w)
                             {
                                 if (random(stats_->level) >= random(w->stats()->level))
-                                    w->busy_ += 6*(stats_->level -
+                                    w->busy += 6*(stats_->level -
                                                             w->stats()->level + 1);
                                 generic = 1; // disarmed at least one guy
                             }
@@ -2527,9 +2527,9 @@ bool walker::special()
                         {
                             if (on_screen())
                                 myscreen->soundp->play_sound(SOUND_CHARGE);
-                            if (team_num_ == 0 || myguy_) // player's team
+                            if (team_num == 0 || myguy) // player's team
                                 myscreen->do_notify("Fighter Disarmed Enemy!", this);
-                            busy_ += 5;
+                            busy += 5;
                         }
                         else
                             return 0;
@@ -2540,10 +2540,10 @@ bool walker::special()
 			}
 			break; // end of fighter
 		case FAMILY_CLERIC:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1:  // heal / mystic mace
-					if (!shifter_down_) // then do normal heal
+					if (!shifter_down) // then do normal heal
 					{
 						std::list<walker*> newlist = myscreen->find_friends_in_range(myscreen->level_data.oblist,
 						          60, &howmany, this);
@@ -2573,8 +2573,8 @@ bool walker::special()
                                     // Do the heal
 									newob->stats()->hitpoints += generic;
 									stats_->magicpoints -= cost;
-									if (myguy_)
-										myguy_->exp += exp_from_action(ExpAction::Heal, this, newob, generic);
+									if (myguy)
+										myguy->exp += exp_from_action(ExpAction::Heal, this, newob, generic);
 									didheal++;
 									
                                     do_heal_effects(this, newob, generic);
@@ -2591,7 +2591,7 @@ bool walker::special()
                                         message = "Cleric healed 1 man!";
                                     else
                                         message = std::format("Cleric healed {} men!", didheal);
-                                    if (team_num_ == 0 || myguy_) // home team
+                                    if (team_num == 0 || myguy) // home team
                                         myscreen->do_notify(message.c_str(), this);
                                 }
                                 
@@ -2609,64 +2609,64 @@ bool walker::special()
 						// First do legality checks:
 
 						// Can't do more than 1/5 rounds
-						if (busy_ > 0)
+						if (busy > 0)
 							return 0;
 
 						// Do we have the int?
-						if (myguy_ && myguy_->intelligence < 50) // need 50+
+						if (myguy && myguy->intelligence < 50) // need 50+
 						{
-							if (user_ != -1) // only players get this
+							if (user != -1) // only players get this
 								myscreen->do_notify("50 Int required for Mystic Mace!", this);
 							return 0;
 						}
-						if (myguy_)
+						if (myguy)
                         {
-							myguy_->total_shots++; // record that we fired/attacked
-							myguy_->scen_shots++;
+							myguy->total_shots++; // record that we fired/attacked
+							myguy->scen_shots++;
                         }
 
 						// All okay, let's summon!
 						newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 						if (!newob) // safety check
 							return 0;
-						newob->set_owner(this);
-						newob->set_team_num(team_num_);
-						newob->ani_type_ = 1; // dummy, non-zero value
+						newob->owner = this;
+						newob->team_num = team_num;
+						newob->ani_type = 1; // dummy, non-zero value
 						// Specify settings based on our mana ..
-						generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special_)];
+						generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
 						generic /= 2; // get half our excess magic
 
-						newob->lifetime_ = 100 + generic;
+						newob->lifetime = 100 + generic;
 						newob->stats()->hitpoints += generic / 2;
-						newob->damage_ += generic / 4.0f;
+						newob->damage += generic / 4.0f;
 
 						// Remove those excess magic points :>
 						stats_->magicpoints -= generic;
 
-						busy_ += 5;
+						busy += 5;
 						break;
 					}  // end of mystic mace
 				case 2:  // raise skeletons
-					if (shifter_down_) // turn undead, low level
+					if (shifter_down) // turn undead, low level
 					{
-						if (busy_ > 0)
+						if (busy > 0)
 							return 0;
-						if (myguy_ && myguy_->intelligence < 60) // check for minimum req.
+						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
-							if ( (team_num_ == 0 || myguy_) && on_screen() )
+							if ( (team_num == 0 || myguy) && on_screen() )
 								myscreen->do_notify("You need 60 Int to Turn Undead", this);
-							busy_ +=5;
+							busy +=5;
 							return 0;
 						}
 						if ( (generic=turn_undead(4*stats_->level, stats_->level)) == -1 )
 							return 0; // failed to turn undead
-						if (myguy_ && generic)
+						if (myguy && generic)
 						{
-							myguy_->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats_->level/2));
-							if (team_num_ == 0 || myguy_)
+							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats_->level/2));
+							if (team_num == 0 || myguy)
 							{
 								message = std::format("{} turned {} undead.",
-								        myguy_->name, generic);
+								        myguy->name, generic);
 								myscreen->do_notify(message.c_str(), this);
 							} // end of notify visually
 						}
@@ -2687,16 +2687,16 @@ bool walker::special()
 								alive = do_summon(FAMILY_SKELETON, 125 + (stats_->level*40) );
 								if (!alive)
 									return 0;
-								alive->set_team_num(team_num_);
+								alive->team_num = team_num;
 								alive->stats()->level = random(stats_->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
 								alive->setxy(newob->xpos, newob->ypos);
-								alive->set_owner(this);
+								alive->owner = this;
 								//myscreen->remove_fx_ob(newob);
 								//myscreen->remove_ob(newob, 0);
-								newob->set_dead(1);
-								if (myguy_)
-									myguy_->exp += exp_from_action(ExpAction::RaiseSkeleton, this, alive, 0);
+								newob->dead = 1;
+								if (myguy)
+									myguy->exp += exp_from_action(ExpAction::RaiseSkeleton, this, alive, 0);
 							} // end passable check
 							else
 								return 0;
@@ -2706,26 +2706,26 @@ bool walker::special()
 					} // end of the else-check
 					break;
 				case 3: // Raise ghosts ..
-					if (shifter_down_) // turn undead, high level
+					if (shifter_down) // turn undead, high level
 					{
-						if (busy_ > 0)
+						if (busy > 0)
 							return 0;
-						if (myguy_ && myguy_->intelligence < 60) // check for minimum req.
+						if (myguy && myguy->intelligence < 60) // check for minimum req.
 						{
-							if ((team_num_ == 0 || myguy_) && on_screen() )
+							if ((team_num == 0 || myguy) && on_screen() )
 								myscreen->do_notify("You need 60 Int to Turn Undead", this);
-							busy_ +=5;
+							busy +=5;
 							return 0;
 						}
 						if ( (generic=turn_undead(4*stats_->level, stats_->level)) == -1 )
 							return 0; // failed to turn undead
-						if (myguy_ && generic)
+						if (myguy && generic)
 						{
-							myguy_->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats_->level/2));
-							if (team_num_ == 0 || myguy_)
+							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats_->level/2));
+							if (team_num == 0 || myguy)
 							{
 								message = std::format("{} turned {} undead.",
-								        myguy_->name, generic);
+								        myguy->name, generic);
 								myscreen->do_notify(message.c_str(), this);
 							} // end of notify visually
 						}
@@ -2749,14 +2749,14 @@ bool walker::special()
 									return 0;
 								alive->stats()->level = random(stats_->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
-								alive->set_team_num(team_num_);
+								alive->team_num = team_num;
 								alive->setxy(newob->xpos, newob->ypos);
-								alive->set_owner(this);
+								alive->owner = this;
 								//myscreen->remove_fx_ob(newob);
 								//myscreen->remove_ob(newob, 0);
-								newob->set_dead(1);
-								if (myguy_)
-									myguy_->exp += exp_from_action(ExpAction::RaiseGhost, this, alive, 0);
+								newob->dead = 1;
+								if (myguy)
+									myguy->exp += exp_from_action(ExpAction::RaiseGhost, this, alive, 0);
 							} // end of passable check
 							else
 								return 0;
@@ -2783,15 +2783,15 @@ bool walker::special()
 								newob->transfer_stats(alive);  // restore our old values ..
 								alive->stats()->hitpoints = (alive->stats()->max_hitpoints)/2;
 								do_heal_effects(this, alive, (alive->stats()->max_hitpoints)/2);
-								alive->set_team_num(newob->team_num());
+								alive->team_num = newob->team_num;
 								
-								if(myguy_) // take some EXP away as penalty if we're a player
+								if(myguy) // take some EXP away as penalty if we're a player
 								{
 								    unsigned short exp_loss = exp_from_action(ExpAction::ResurrectPenalty, this, newob, 0);
-									if(myguy_->exp >= exp_loss)
-										myguy_->exp -= exp_loss;
+									if(myguy->exp >= exp_loss)
+										myguy->exp -= exp_loss;
 									else
-										myguy_->exp = 0;
+										myguy->exp = 0;
 								}
 							}
 							else // raise an opponent as undead
@@ -2799,17 +2799,17 @@ bool walker::special()
 								alive = do_summon(FAMILY_GHOST, 200);
 								if (!alive)
 									return 0;
-								alive->set_team_num(team_num_);
+								alive->team_num = team_num;
 								alive->stats()->level = random(stats_->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
-								alive->set_owner(this);
+								alive->owner = this;
 							}
 							alive->setxy(newob->xpos, newob->ypos);
 							//myscreen->remove_fx_ob(newob);
 							//myscreen->remove_ob(newob, 0);
-							newob->set_dead(1);
-							if (myguy_)
-								myguy_->exp += exp_from_action(ExpAction::Resurrect, this, alive, 0);
+							newob->dead = 1;
+							if (myguy)
+								myguy->exp += exp_from_action(ExpAction::Resurrect, this, alive, 0);
 						} // end of passable
 						else
 							return 0;
@@ -2820,18 +2820,18 @@ bool walker::special()
 			}
 			break; // end of cleric
 		case FAMILY_MAGE:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1:  // Teleport
-					if (ani_type_ == ANI_TELE_OUT || ani_type_ == ANI_TELE_IN)
+					if (ani_type == ANI_TELE_OUT || ani_type == ANI_TELE_IN)
 						return 0;
-					if (shifter_down_) // leave/remove a marker
+					if (shifter_down) // leave/remove a marker
 					{
-						if (busy_ > 0)
+						if (busy > 0)
 							return 0;
-						if (myguy_ && (myguy_->intelligence < 75) )
+						if (myguy && (myguy->intelligence < 75) )
 						{
-							if (user_ != -1) // we're a real player ..
+							if (user != -1) // we're a real player ..
 								myscreen->do_notify("Need 75 Int for Marker!", this);
 							return 0; // so as not to charge player
 						}
@@ -2843,15 +2843,15 @@ bool walker::special()
 							if (ob &&
 							        ob->query_order() == Order::FX &&
 							        ob->query_family() == FAMILY_MARKER &&
-							        ob->owner() == this &&
-							        !ob->is_dead()
+							        ob->owner == this &&
+							        !ob->dead
 							   )
 							{
-								ob->set_dead(1);
+								ob->dead = 1;
 								ob->death();
-								if ((team_num_ == 0 || myguy_) && user_!=-1)
+								if ((team_num == 0 || myguy) && user!=-1)
 									myscreen->do_notify("(Old Marker Removed)", this);
-								busy_ += 8;
+								busy += 8;
 								break;
 							}
 						}
@@ -2861,22 +2861,22 @@ bool walker::special()
 							newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
 							if (!newob)
 								return 0; // failsafe
-							newob->set_owner(this);
+							newob->owner = this;
 							newob->center_on(this);
-							if (myguy_)
-								newob->lifetime_ = myguy_->intelligence / 33;
+							if (myguy)
+								newob->lifetime = myguy->intelligence / 33;
 							else
-								newob->lifetime_ = (stats_->level / 4) + 1;
-							newob->ani_type_ = ANI_SPIN; // non-walking
-							if ((team_num_ == 0 || myguy_) && user_ != -1)
+								newob->lifetime = (stats_->level / 4) + 1;
+							newob->ani_type = ANI_SPIN; // non-walking
+							if ((team_num == 0 || myguy) && user != -1)
 							{
 								myscreen->do_notify("Teleport Marker Placed", this);
-								message = std::format("({} Uses)", newob->lifetime_);
+								message = std::format("({} Uses)", newob->lifetime);
 								myscreen->do_notify(message.c_str(), this);
 							}
-							busy_ +=8;
+							busy +=8;
 							// Take an extra cost for placing a marker
-							generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special_)];
+							generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
 							generic /= 2; // reduce our 'extra' by half
 							stats_->magicpoints -= generic;
 						}
@@ -2885,15 +2885,15 @@ bool walker::special()
 					{
 						if (on_screen())
 							myscreen->soundp->play_sound(SOUND_TELEPORT);
-						ani_type_ = ANI_TELE_OUT;
-						cycle_ = 0;
+						ani_type = ANI_TELE_OUT;
+						cycle = 0;
 					}
 					break;
 				case 2:
-					tempx = lastx_; // store our facing
-					tempy = lasty_;
+					tempx = lastx; // store our facing
+					tempy = lasty;
 					// Do we have extra magic points to spend?
-					generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special_)];
+					generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
 					if (generic > 0)
 					{
 						generic = generic / 15;        // take 7% of remaining magic...
@@ -2908,27 +2908,27 @@ bool walker::special()
 						{
 							if (i || j)
 							{
-								lastx_ = i;
-								lasty_ = j;
+								lastx = i;
+								lasty = j;
 								newob = fire();
 								if (newob)
 								{
-									newob->damage_ += generic; // bonus for extra mp
-									newob->lineofsight_ += (generic/3);
-									if (newob->lastx_ != 0.0f)
-										newob->lastx_ /= fabs(newob->lastx_);
-									if (newob->lasty_ != 0.0f)
-										newob->lasty_ /= fabs(newob->lasty_);
+									newob->damage += generic; // bonus for extra mp
+									newob->lineofsight += (generic/3);
+									if (newob->lastx != 0.0f)
+										newob->lastx /= fabs(newob->lastx);
+									if (newob->lasty != 0.0f)
+										newob->lasty /= fabs(newob->lasty);
 								}  // end got a valid weapon
 							}  // end checked for not center
 						} // end did all 8 directions
 
 					// Restore old facing
-					lastx_ = tempx;
-					lasty_ = tempy;
+					lastx = tempx;
+					lasty = tempy;
 					break;
 				case 3:  // Freeze time
-					if (team_num_ == 0 || myguy_) // the player's team
+					if (team_num == 0 || myguy) // the player's team
 					{
 						myscreen->enemy_freeze += 20 + 11*stats_->level;
 						set_palette(myscreen->bluepalette);
@@ -2949,7 +2949,7 @@ bool walker::special()
 						for(auto* w : newlist)
 						{
 							if (w)
-								w->set_bonus_rounds(w->bonus_rounds() + generic);
+								w->bonus_rounds = w->bonus_rounds + generic;
 						}
 					}
 					break;
@@ -2959,11 +2959,11 @@ bool walker::special()
 						return 0; // failed somehow? !?!
 					alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_WAVE);
 					alive->center_on(newob);
-					alive->set_owner(this);
+					alive->owner = this;
 					alive->stats()->level = stats_->level;
-					alive->lastx_ = newob->lastx_;
-					alive->lasty_ = newob->lasty_;
-					newob->set_dead(1);
+					alive->lastx = newob->lastx;
+					alive->lasty = newob->lasty;
+					newob->dead = 1;
 					break;
 				case 5:
 				default: // Burst enemies into flame ..
@@ -2976,12 +2976,12 @@ bool walker::special()
 					generic = stats_->magicpoints - stats_->special_cost[5];
 					generic /= 2;
 					generic /= howmany; // so do half magic, div enemies
-					if (myguy_)
+					if (myguy)
                     {
-						myguy_->total_shots += howmany;
-						myguy_->scen_shots += howmany;
+						myguy->total_shots += howmany;
+						myguy->scen_shots += howmany;
                     }
-					busy_ += 5;
+					busy += 5;
 					
 					// Create explosions on top of the target objects
 					for(auto* ob : newlist)
@@ -2990,16 +2990,16 @@ bool walker::special()
 						if (!newob)
 							return 0; // failsafe
 
-						newob->set_owner(this);
-						newob->set_team_num(team_num_);
+						newob->owner = this;
+						newob->team_num = team_num;
 						newob->stats()->level = stats_->level;
-						newob->damage_ = generic;
+						newob->damage = generic;
 						newob->center_on(ob);
 						if (on_screen())
 							myscreen->soundp->play_sound(SOUND_EXPLODE);
-						newob->ani_type_ = ANI_EXPLODE;
+						newob->ani_type = ANI_EXPLODE;
 						newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-						newob->set_skip_exit(100); // don't hurt caster
+						newob->skip_exit = 100; // don't hurt caster
 						stats_->magicpoints -= generic;
 					}
 					break; // end of burst enemies
@@ -3007,16 +3007,16 @@ bool walker::special()
 			}
 			break; // end of mage
 		case FAMILY_ARCHMAGE:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1:  // Teleport
-					if (ani_type_ == ANI_TELE_OUT || ani_type_ == ANI_TELE_IN)
+					if (ani_type == ANI_TELE_OUT || ani_type == ANI_TELE_IN)
 						return 0;
-					if (shifter_down_) // leave/remove a marker
+					if (shifter_down) // leave/remove a marker
 					{
-						if (busy_ > 0)
+						if (busy > 0)
 							return 0;
-						if (myguy_ && (myguy_->intelligence < 75) )
+						if (myguy && (myguy->intelligence < 75) )
 						{
 							myscreen->do_notify("Need 75 Int for Marker!", this);
 							return 0; // so as not to charge player
@@ -3029,15 +3029,15 @@ bool walker::special()
 							if (ob &&
 							        ob->query_order() == Order::FX &&
 							        ob->query_family() == FAMILY_MARKER &&
-							        ob->owner() == this &&
-							        !ob->is_dead()
+							        ob->owner == this &&
+							        !ob->dead
 							   )
 							{
-								ob->set_dead(1);
+								ob->dead = 1;
 								ob->death();
-								if (team_num_ == 0 || myguy_)
+								if (team_num == 0 || myguy)
 									myscreen->do_notify("(Old Marker Removed)", this);
-								busy_ += 8;
+								busy += 8;
 								generic = 1;
 								break;
 							}
@@ -3046,22 +3046,22 @@ bool walker::special()
 						newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
 						if (!newob)
 							return 0; // failsafe
-						newob->set_owner(this);
+						newob->owner = this;
 						newob->center_on(this);
-						if (myguy_)
-							newob->lifetime_ = myguy_->intelligence / 33;
+						if (myguy)
+							newob->lifetime = myguy->intelligence / 33;
 						else
-							newob->lifetime_ = (stats_->level / 4) + 1;
-						newob->ani_type_ = 2; // non-walking
-						if (team_num_ == 0 || myguy_)
+							newob->lifetime = (stats_->level / 4) + 1;
+						newob->ani_type = 2; // non-walking
+						if (team_num == 0 || myguy)
 						{
 							myscreen->do_notify("Teleport Marker Placed", this);
-							message = std::format("({} Uses)", newob->lifetime_);
+							message = std::format("({} Uses)", newob->lifetime);
 							myscreen->do_notify(message.c_str(), this);
 						}
-						busy_ +=8;
+						busy +=8;
 						// Take an extra cost for placing a marker
-						generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special_)];
+						generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
 						generic /= 2; // reduce our 'extra' by half
 						stats_->magicpoints -= generic;
 					} // end of put a marker (shifter_down)
@@ -3069,17 +3069,17 @@ bool walker::special()
 					{
 						if (on_screen())
 							myscreen->soundp->play_sound(SOUND_TELEPORT);
-						ani_type_ = ANI_TELE_OUT;
-						cycle_ = 0;
+						ani_type = ANI_TELE_OUT;
+						cycle = 0;
 					}
 					break;  // end of ArchMage's teleport
 				case 2: // Burst enemies into flame, or chain lightning..
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
-					if (shifter_down_)
+					if (shifter_down)
 					{
-						if (myguy_)
-							generic = 200+myguy_->intelligence/2;  // range to scan for enemies
+						if (myguy)
+							generic = 200+myguy->intelligence/2;  // range to scan for enemies
 						else
 							generic = 200+stats_->level*5;
 					}
@@ -3092,17 +3092,17 @@ bool walker::special()
                         if (!howmany)
                             return 0; // didn't find any enemies..
                         
-                        if (!shifter_down_) // normal usage
+                        if (!shifter_down) // normal usage
                         {
                             generic = stats_->magicpoints - stats_->special_cost[2];
                             generic /= 2;
                             generic /= howmany; // so do half magic, div enemies
-                            if (myguy_)
+                            if (myguy)
                             {
-                                myguy_->total_shots += howmany;
-                                myguy_->scen_shots += howmany;
+                                myguy->total_shots += howmany;
+                                myguy->scen_shots += howmany;
                             }
-                            busy_ += 5;
+                            busy += 5;
                             
                             // Create explosions on the target objects
                             for(auto* ob : newlist)
@@ -3111,38 +3111,38 @@ bool walker::special()
                                 if (!newob)
                                     return 0; // failsafe
 
-                                newob->set_owner(this);
-                                newob->set_team_num(team_num_);
+                                newob->owner = this;
+                                newob->team_num = team_num;
                                 newob->stats()->level = stats_->level;
                                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-                                newob->damage_ = generic;
+                                newob->damage = generic;
                                 newob->center_on(ob);
                                 if (on_screen())
                                     myscreen->soundp->play_sound(SOUND_EXPLODE);
-                                newob->ani_type_ = ANI_EXPLODE;
+                                newob->ani_type = ANI_EXPLODE;
                                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-                                newob->set_skip_exit(100); // don't hurt caster
+                                newob->skip_exit = 100; // don't hurt caster
                                 stats_->magicpoints -= generic;
                             }
                         } // end of heartburst, standard case
                         else // do chain-lightning
                         {
-                            busy_ += 5;
-                            if (myguy_)
+                            busy += 5;
+                            if (myguy)
                             {
-                                myguy_->total_shots++; // so can get > 100% :)
-                                myguy_->scen_shots++;
+                                myguy->total_shots++; // so can get > 100% :)
+                                myguy->scen_shots++;
                             }
                             newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
                             newob->center_on(this);
-                            newob->set_owner(this);
+                            newob->owner = this;
                             newob->stats()->level = stats_->level;
-                            newob->set_team_num(team_num_);
+                            newob->team_num = team_num;
                             // Use half our remaining magic ..
                             generic = stats_->magicpoints - stats_->special_cost[2];
                             generic /= 2;
                             stats_->magicpoints -= generic;
-                            newob->damage_ = generic;
+                            newob->damage = generic;
                             
                             // find closest of our foes in range
                             generic = 30000;
@@ -3152,22 +3152,22 @@ bool walker::special()
                                 if (generic > dist)
                                 {
                                     generic = dist;
-                                    newob->set_leader(w);
+                                    newob->leader = w;
                                 }
                             }
-                            //newob->ani_type_ = ANI_ATTACK;
+                            //newob->ani_type = ANI_ATTACK;
                         } // end of chain-lightning
                     }
 					break; // end of burst enemies, chain lightning
 				case 3: // Summoning .. real or illusion
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
-					if (shifter_down_) // then we do true summoning ..
+					if (shifter_down) // then we do true summoning ..
 					{
 						// Do we have the int?
-						if (myguy_ && myguy_->intelligence < 150) // need 150+
+						if (myguy && myguy->intelligence < 150) // need 150+
 						{
-							if (user_ != -1) // only players get this
+							if (user != -1) // only players get this
 								myscreen->do_notify("150 Int required to Summon!", this);
 							return 0;
 						}
@@ -3195,17 +3195,17 @@ bool walker::special()
 									             ypos+((newob->sizey+1)*j));
 									newob->stats()->level = (stats_->level+1)/2;
 									newob->set_difficulty(newob->stats()->level);
-									newob->set_team_num(team_num_); // set to our team
-									newob->set_owner(this); // we're owned!
-									newob->lifetime_ = 200 + 60*stats_->level;
+									newob->team_num = team_num; // set to our team
+									newob->owner = this; // we're owned!
+									newob->lifetime = 200 + 60*stats_->level;
 								} // end of successfully put summoned creature
 							} // end of I and J loops
 						if (!generic) // we never found a legal spot
 						{
-							newob->set_dead(1);
+							newob->dead = 1;
 							return 0;
 						}
-						busy_ += 15; // takes lots of time :)
+						busy += 15; // takes lots of time :)
 					}  // end of shifter_down true summoning
 					else // standard, illusion-only
 					{
@@ -3342,28 +3342,28 @@ bool walker::special()
 									             ypos+((newob->sizey+1)*j));
 									newob->stats()->level = (stats_->level+2)/3;
 									newob->set_difficulty(newob->stats()->level);
-									newob->set_team_num(team_num_); // set to our team
-									newob->set_owner(this); // we're owned!
-									newob->lifetime_ = 100 + 20*stats_->level;
+									newob->team_num = team_num; // set to our team
+									newob->owner = this; // we're owned!
+									newob->lifetime = 100 + 20*stats_->level;
 									//newob->stats()->armor = -(newob->stats()->max_hitpoints*10);
 									newob->stats()->max_hitpoints = 1;
 									newob->stats()->hitpoints = 0;
 									newob->stats()->armor = 0;
-									newob->set_foe(foe_); // just to help out ..
+									newob->foe = foe; // just to help out ..
 									newob->stats()->set_bit_flags(BIT_MAGICAL, 1); // we're magical
 									newob->stats()->name = "Phantom";
 								} // end of successfully put summoned creature-image
 							} // end of I and J loops
 						if (!generic) // we never found a legal spot
 						{
-							newob->set_dead(1);
+							newob->dead = 1;
 							return 0;
 						}
-						busy_ += 15; // takes lots of time :)
+						busy += 15; // takes lots of time :)
 					}  // end of summon illusion
 					break;  // end of summoning/illusion cases
 				case 4: // Mind-control enemies
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
 						
                     {
@@ -3373,12 +3373,12 @@ bool walker::special()
                             return 0; // noone to influence
                         
                         didheal = 0; // howmany actually done yet?
-                        generic2 = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special_)] + 10;
+                        generic2 = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)] + 10;
                         
                         for(auto* ob : newlist)
                         {
                             if (generic2 < 10) break;
-                            if ( (ob->real_team_num() == 255) && // never been charmed
+                            if ( (ob->real_team_num == 255) && // never been charmed
                                     (ob->query_order() == Order::Living) && // alive
                                     (ob->charm_left_ <= 10) // not too charmed
                                )
@@ -3387,15 +3387,15 @@ bool walker::special()
                                 generic = stats_->level - ob->stats()->level;
                                 if (generic < 0 || (!random(20)) ) // trying to control a higher-level
                                 {
-                                    ob->set_real_team_num(ob->team_num());
-                                    ob->set_team_num(random(8));
+                                    ob->real_team_num = ob->team_num;
+                                    ob->team_num = random(8);
                                     ob->charm_left_ = 25 + random(generic*20);
                                 }
                                 else
                                 {
-                                    ob->set_real_team_num(ob->team_num());
-                                    ob->set_team_num(team_num_);
-                                    ob->set_foe(nullptr); // allow choice of new foe_
+                                    ob->real_team_num = ob->team_num;
+                                    ob->team_num = team_num;
+                                    ob->foe = nullptr; // allow choice of new foe
                                     ob->charm_left_ = 25 + random(generic*20);
                                 }
                                 didheal++;
@@ -3407,14 +3407,14 @@ bool walker::special()
 					// Notify screen of our action
 					if (stats_->name.size()) // do we have an NPC name?
 						message = stats_->name;
-					else if (myguy_ && myguy_->name.size() )
-						message = myguy_->name;
+					else if (myguy && myguy->name.size() )
+						message = myguy->name;
 					else
 						message = "ArchMage";
 					tempstr = std::format("{} has controlled {} men", message, didheal);
 					myscreen->do_notify(tempstr.c_str(), this);
 
-					generic2 = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special_)];
+					generic2 = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
 					if (generic2 > 0) // sap our extra based on how many guys
 					{
 						while ( (didheal > 0) && (generic2 >= 10) )
@@ -3424,22 +3424,22 @@ bool walker::special()
 							didheal--;
 						}
 					}  // end of extra-cost sapping
-					busy_ += 10; // takes a while
+					busy += 10; // takes a while
 					break; // end of Mind control
 				default:
 					break;
 			}
 			break; // end of ArchMage
 		case FAMILY_FIREELEMENTAL:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1:  // lots o' fireballs
 				case 2:
 				case 3:
 				case 4:
 				default:
-					tempx = lastx_; // store our facing
-					tempy = lasty_;
+					tempx = lastx; // store our facing
+					tempy = lasty;
 					// Now face each direction and fire ..
 					stats_->magicpoints += (8*stats_->weapon_cost);
 					for (i=-1;i<2;i++)
@@ -3447,15 +3447,15 @@ bool walker::special()
 						{
 							if (i || j)
 							{
-								lastx_ = i;
-								lasty_ = j;
+								lastx = i;
+								lasty = j;
 								fire();
 							}
 						}
 
 					// Restore old facing
-					lastx_ = tempx;
-					lasty_ = tempy;
+					lastx = tempx;
+					lasty = tempy;
 					break;
 			}
 			break; // end of fire elemental
@@ -3475,34 +3475,34 @@ bool walker::special()
 			}
 			break;
 		case FAMILY_SLIME:  // Big slime splits to two small slimes
-			ani_type_ = ANI_SLIME_SPLIT;
-			cycle_ = 0;
+			ani_type = ANI_SLIME_SPLIT;
+			cycle = 0;
 			break;
 		case FAMILY_GHOST: // do nifty scare thing
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_GHOST_SCARE); //,1 == underneath
-			newob->ani_type_ = ANI_SCARE;
+			newob->ani_type = ANI_SCARE;
 			newob->setxy(xpos+sizex/2 - newob->sizex/2,
 			             ypos+sizey/2 - newob->sizey/2);
-			newob->set_owner(this);
+			newob->owner = this;
 			newob->stats()->level = stats_->level;
-			newob->set_team_num(team_num_); // so we scare OTHER teams
+			newob->team_num = team_num; // so we scare OTHER teams
 			// Actual scare effect done in scare's "death" in effect
 			break;
 		case FAMILY_THIEF:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1:  // drop a bomb, unregistered
 					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOMB, 1); // 1 == underneath
-					newob->ani_type_ = ANI_BOMB;
-					if (myguy_)
+					newob->ani_type = ANI_BOMB;
+					if (myguy)
                     {
-						myguy_->total_shots++;
-						myguy_->scen_shots++;
+						myguy->total_shots++;
+						myguy->scen_shots++;
                     }
-					newob->damage_ = (stats_->level+1)*15;
+					newob->damage = (stats_->level+1)*15;
 					newob->setxy(xpos+sizex/2 - newob->sizex/2,
 					             ypos+sizey/2 - newob->sizey/2);
-					newob->set_owner(this);
+					newob->owner = this;
 					// Run away if we're AI
 					person = 0;
 					for (i=0; i < myscreen->numviews; i++)
@@ -3518,12 +3518,12 @@ bool walker::special()
 					}
 					break;
 				case 2: // thief cloaking ability, Registered
-					invisibility_left_ += 20 + ((random(20))*stats_->level);
+					invisibility_left += 20 + ((random(20))*stats_->level);
 					break;
 				case 3: // thief Taunt (draw enemies), Registered
-					if (!shifter_down_) // normal taunt
+					if (!shifter_down) // normal taunt
 					{
-						if (busy_ > 0)
+						if (busy > 0)
 							return 0;
 							
                         {
@@ -3536,26 +3536,26 @@ bool walker::special()
                                                  random(ob->stats()->level)) )
                                 {
                                     // Set our enemy's foe to us..
-                                    ob->set_foe(this);
-                                    ob->set_leader(this); // a hack, yeah
+                                    ob->foe = this;
+                                    ob->leader = this; // a hack, yeah
                                     if (ob->query_act_type() != ACT_CONTROL)
                                         ob->stats()->force_command(COMMAND_FOLLOW, 10+random(stats_->level), 0, 0);
                                 }
                             }
                         }
-						if (myguy_)
-							message = std::format("{}: 'Nyah Nyah!'", myguy_->name);
+						if (myguy)
+							message = std::format("{}: 'Nyah Nyah!'", myguy->name);
 						else if ( stats_->name.size() )
 							message = std::format("{}: 'Nyah Nyah!'", stats_->name);
 						else
 							message = "THIEF: 'Nyah Nyah!'";
 						myscreen->do_notify(message.c_str(), this);
-						busy_ += 2;
+						busy += 2;
 						break; // end of taunt
 					}
 					else // charm opponent
 					{
-						if (busy_ > 0)
+						if (busy > 0)
 							return 0;
                         
                         {
@@ -3569,7 +3569,7 @@ bool walker::special()
                             for(auto* ob : newlist)
                             {
                                 if (didheal) break;
-                                if ( (ob->real_team_num() == 255) && // never been charmed
+                                if ( (ob->real_team_num == 255) && // never been charmed
                                         (ob->query_order() == Order::Living) && // alive
                                         1 // (ob->charm_left_ <= 10) // not too charmed
                                    )
@@ -3578,18 +3578,18 @@ bool walker::special()
                                     if (generic < 0 || (!random(20)) ) // trying to control a higher-level
                                     {
                                         // Enemy gets free attack ..
-                                        ob->set_foe(this);
+                                        ob->foe = this;
                                         ob->attack(this);
                                         generic2 = 1;
                                     }
                                     else
                                     {
-                                        ob->set_real_team_num(ob->team_num());
-                                        ob->set_team_num(team_num_);
-                                        if (foe_ == ob)
-                                            ob->set_foe(nullptr);
+                                        ob->real_team_num = ob->team_num;
+                                        ob->team_num = team_num;
+                                        if (foe == ob)
+                                            ob->foe = nullptr;
                                         else
-                                            ob->set_foe(foe_);
+                                            ob->foe = foe;
                                         ob->charm_left_ = 75 + generic*25;
                                         generic2 = 0;
                                     }
@@ -3602,8 +3602,8 @@ bool walker::special()
 						// Notify screen of our action
 						if (stats_->name.size()) // do we have an NPC name?
 							message = stats_->name;
-						else if (myguy_ && myguy_->name.size() )
-							message = myguy_->name;
+						else if (myguy && myguy->name.size() )
+							message = myguy->name;
 						else
 							message = "Thief";
 						if (generic2) // then we actually failed to charm
@@ -3611,44 +3611,44 @@ bool walker::special()
 						else
 							tempstr = std::format("{} charmed an opponent!", message);
 						myscreen->do_notify(tempstr.c_str(), this);
-						busy_ += 10; // takes a while
+						busy += 10; // takes a while
 						break; // end of Charm Opponent
 					}
 				case 4: // throw poison cloud
 				default:
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
 					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CLOUD);
 					if (!newob)
 						return 0; // failsafe
-					busy_ += 5;
-					newob->ignore_ = 1;
-					newob->lifetime_ = 40 + 3*stats_->level;
+					busy += 5;
+					newob->ignore = 1;
+					newob->lifetime = 40 + 3*stats_->level;
 					newob->center_on(this);
-					newob->invisibility_left_ = 10;
-					newob->ani_type_ = ANI_SPIN; // non-walking
-					newob->set_team_num(team_num_);
+					newob->invisibility_left = 10;
+					newob->ani_type = ANI_SPIN; // non-walking
+					newob->team_num = team_num;
 					newob->stats()->level = stats_->level;
-					newob->damage_ = stats_->level;
-					newob->set_owner(this);
+					newob->damage = stats_->level;
+					newob->owner = this;
 					break;
 			}
 			break;
 		case FAMILY_ELF:
-			switch(current_special_)
+			switch(current_special)
 			{
 				case 1:  // some rocks (normal)
 					stats_->magicpoints += (2*stats_->weapon_cost);
 					fireob = static_cast<weap*>(fire());
                     if (!fireob) // failsafe
                         return 0;
-					fireob->lastx_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
-					fireob->lasty_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					fireob = static_cast<weap*>(fire());
                     if (!fireob) // failsafe
                         return 0;
-					fireob->lastx_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
-					fireob->lasty_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					break;
 				case 2:  // more rocks, and bouncing
 					stats_->magicpoints += (3*stats_->weapon_cost);
@@ -3657,11 +3657,11 @@ bool walker::special()
 						fireob = static_cast<weap*>(fire());
 						if (!fireob) // failsafe
 							return 0;
-						fireob->lineofsight_ *= 3;  // we get 50% longer, too!
-						fireob->lineofsight_ /= 2;
+						fireob->lineofsight *= 3;  // we get 50% longer, too!
+						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
-                        fireob->lastx_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
-                        fireob->lasty_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					}
 					break;
 				case 3:
@@ -3671,10 +3671,10 @@ bool walker::special()
 						fireob = static_cast<weap*>(fire());
 						if (!fireob) // failsafe
 							return 0;
-						fireob->lineofsight_ *= 2;  // get double distance
+						fireob->lineofsight *= 2;  // get double distance
 						fireob->do_bounce = 1;
-                        fireob->lastx_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
-                        fireob->lasty_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					}
 					break;
 				case 4:
@@ -3685,35 +3685,35 @@ bool walker::special()
 						fireob = static_cast<weap*>(fire());
 						if (!fireob) // failsafe
 							return 0;
-						fireob->lineofsight_ *= 5;  // we get 150% longer, too!
-						fireob->lineofsight_ /= 2;
+						fireob->lineofsight *= 5;  // we get 150% longer, too!
+						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
-                        fireob->lastx_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
-                        fireob->lasty_ *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
 					}
 					break;
 			}
 			break;
 		case FAMILY_DRUID:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1: // plant tree
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
 					stats_->magicpoints += stats_->weapon_cost;
 					newob = fire();
 					if (!newob)
 						return 0;
-					busy_ += (fire_frequency_ * 2);
+					busy += (fire_frequency * 2);
 					alive = myscreen->level_data.add_ob(Order::Weapon,FAMILY_TREE);
 					alive->setxy(newob->xpos,newob->ypos);
-					alive->set_team_num(team_num_);
-					alive->ani_type_ = ANI_GROW;
-					alive->set_owner(this);
-					newob->set_dead(1);
+					alive->team_num = team_num;
+					alive->ani_type = ANI_GROW;
+					alive->owner = this;
+					newob->dead = 1;
 					break;
 				case 2:  // summon faerie
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
 					stats_->magicpoints += stats_->weapon_cost;
 					newob = fire();
@@ -3721,26 +3721,26 @@ bool walker::special()
 						return 0;
 					alive = myscreen->level_data.add_ob(Order::Living, FAMILY_FAERIE);
 					alive->setxy(newob->xpos, newob->ypos);
-					alive->set_team_num(team_num_);
-					alive->set_owner(this);
-					alive->lifetime_ = 50 + stats_->level*(40);
-					newob->set_dead(1);
+					alive->team_num = team_num;
+					alive->owner = this;
+					alive->lifetime = 50 + stats_->level*(40);
+					newob->dead = 1;
 					if (!myscreen->query_passable(alive->xpos, alive->ypos, alive))
 					{
-						alive->set_dead(1);
+						alive->dead = 1;
 						return 0;
 					}
-					busy_ += (fire_frequency_ * 3);
+					busy += (fire_frequency * 3);
 					break;
 				case 3: // reveal items
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
-					view_all_ += stats_->level*10;
-					busy_ += (fire_frequency_ * 4);
+					view_all += stats_->level*10;
+					busy += (fire_frequency * 4);
 					break;
 				case 4:  // circle of protection
 				default:
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
                     
                     {
@@ -3760,7 +3760,7 @@ bool walker::special()
                                     for(auto& uptr : myscreen->level_data.oblist)
                                     {
                                         walker* ob = uptr.get();
-                                        if (ob && ob->owner() == newob
+                                        if (ob && ob->owner == newob
                                                 && ob->query_order() == Order::Weapon
                                                 && ob->query_family() == FAMILY_CIRCLE_PROTECTION
                                            ) // found a circle already on newob ...
@@ -3775,9 +3775,9 @@ bool walker::special()
                                         if (!alive) // failed somehow
                                             return 0;
                                         
-                                        alive->set_owner(newob);
+                                        alive->owner = newob;
                                         alive->center_on(newob);
-                                        alive->set_team_num(newob->team_num());
+                                        alive->team_num = newob->team_num;
                                         alive->stats()->level = newob->stats()->level;
                                         didheal++;
                                     } // end of target wasn't protected
@@ -3788,14 +3788,14 @@ bool walker::special()
                                             return 0;
                                         
                                         tempwalk->stats()->hitpoints += alive->stats()->hitpoints;
-                                        alive->set_dead(1);
+                                        alive->dead = 1;
                                         didheal++;
                                         // TODO: Should we show healing numbers here?
                                     } // end of target WAS protected
                                     
                                     // Get experience either way
-                                    if (myguy_)
-                                        myguy_->exp += exp_from_action(ExpAction::Protection, this, newob, 0);
+                                    if (myguy)
+                                        myguy->exp += exp_from_action(ExpAction::Protection, this, newob, 0);
                                     
                                 }  // end of did one guy
                             }  // end of cycling through guys
@@ -3808,7 +3808,7 @@ bool walker::special()
                                     message = "Druid protected 1 man!";
                                 else
                                     message = std::format("Druid protected {} men!", didheal);
-                                if (team_num_ == 0 || myguy_) // home team
+                                if (team_num == 0 || myguy) // home team
                                     myscreen->do_notify(message.c_str(), this);
                                 // Play sound ...
                                 if (on_screen())
@@ -3823,12 +3823,12 @@ bool walker::special()
 			} // end of switch on druid case
 			break;
 		case FAMILY_ORC: // registered monster
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1:  // yell and 'freeze' foes
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
-					busy_ += 2;
+					busy += 2;
 					
 					{
                         std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
@@ -3838,8 +3838,8 @@ bool walker::special()
                         {
                             if (ob)
                             {
-                                if (ob->myguy())
-                                    tempx = ob->myguy()->constitution;
+                                if (ob->myguy)
+                                    tempx = ob->myguy->constitution;
                                 else
                                     tempx = ob->stats()->hitpoints / 30;
                                 tempy = 10 + random(stats_->level*10) - random(tempx*10);
@@ -3868,10 +3868,10 @@ bool walker::special()
 					stats_->hitpoints += newob->stats()->level*5;
 					do_heal_effects(nullptr, this, newob->stats()->level*5);
 					// Print the eating notice
-					if (myguy_)
+					if (myguy)
 					{
-						myguy_->exp += exp_from_action(ExpAction::EatCorpse, this, newob, 0);
-						message = std::format("{} ate a corpse.", myguy_->name);
+						myguy->exp += exp_from_action(ExpAction::EatCorpse, this, newob, 0);
+						message = std::format("{} ate a corpse.", myguy->name);
 					}
 					else if ( stats_->name.size() )
 						message = std::format("{} ate a corpse.", stats_->name);
@@ -3882,86 +3882,86 @@ bool walker::special()
                         myscreen->do_notify(message.c_str(), this);
 					if (stats_->hitpoints > stats_->max_hitpoints)
 						stats_->hitpoints = stats_->max_hitpoints;
-					newob->set_dead(1);
+					newob->dead = 1;
 					newob->death();
 					break; // end of eat corpse
 			} // end of orc case
 			break;
 		case FAMILY_SKELETON:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1:  // Tunnel
 				case 2:
 				case 3:
 				case 4:
 				default:
-					if (ani_type_ == ANI_TELE_OUT || ani_type_ == ANI_TELE_IN)
+					if (ani_type == ANI_TELE_OUT || ani_type == ANI_TELE_IN)
 						return 0;
-					ani_type_ = ANI_TELE_OUT;
-					cycle_ = 0;
+					ani_type = ANI_TELE_OUT;
+					cycle = 0;
 					break;
 					break; // end of tunnel case
 			} // end of skeleton case
 			break; // end of Skeleton
 		case FAMILY_BARBARIAN:
-			switch (current_special_)
+			switch (current_special)
 			{
 				case 1: // Hurl Boulder
 				case 2: // Exploding Boulder
 				case 3:
 				case 4:
-					if (busy_ > 0)
+					if (busy > 0)
 						return 0;
 					newob = fire();
 					if (!newob)
 						return 0; // failed somehow? !?!
 					alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BOULDER);
 					alive->center_on(newob);
-					alive->set_owner(this);
+					alive->owner = this;
 					alive->stats()->level = stats_->level;
-					alive->lastx_ = newob->lastx_;
-					alive->lasty_ = newob->lasty_;
+					alive->lastx = newob->lastx;
+					alive->lasty = newob->lasty;
 					// Set our boulder's speed and extra damage ..
-					if (myguy_)
+					if (myguy)
 					{
-						alive->stepsize_ = 1.0f + myguy_->strength / 7;
-						alive->damage_ += myguy_->strength / 5.0f;
+						alive->stepsize = 1.0f + myguy->strength / 7;
+						alive->damage += myguy->strength / 5.0f;
 					}
 					else
 					{
-						alive->stepsize_ = stats_->level * 2;
-						alive->damage_ += stats_->level;
+						alive->stepsize = stats_->level * 2;
+						alive->damage += stats_->level;
 					}
-					if (alive->stepsize_ < 1)
-						alive->stepsize_ = 1;
-					if (alive->stepsize_ > 15)
-						alive->stepsize_ = 15;
+					if (alive->stepsize < 1)
+						alive->stepsize = 1;
+					if (alive->stepsize > 15)
+						alive->stepsize = 15;
 
-					if (alive->lasty_ > 0)
-						alive->lasty_ = alive->stepsize_;
-					else if (alive->lasty_ < 0)
-						alive->lasty_ = -(alive->stepsize_);
+					if (alive->lasty > 0)
+						alive->lasty = alive->stepsize;
+					else if (alive->lasty < 0)
+						alive->lasty = -(alive->stepsize);
 
-					if (alive->lastx_ > 0)
-						alive->lastx_ = alive->stepsize_;
-					else if (alive->lastx_ < 0)
-						alive->lastx_ = -(alive->stepsize_);
+					if (alive->lastx > 0)
+						alive->lastx = alive->stepsize;
+					else if (alive->lastx < 0)
+						alive->lastx = -(alive->stepsize);
 
 					// If we're on 'exploding boulder,' then
 					// make it explode on impact.
-					if (current_special_ == 2)
-						alive->set_skip_exit(5000); // signify exploding
+					if (current_special == 2)
+						alive->skip_exit = 5000; // signify exploding
 					else
-						alive->set_skip_exit(0);
-					newob->set_dead(1);
-					busy_ += 1 + current_special_ * 5;
+						alive->skip_exit = 0;
+					newob->dead = 1;
+					busy += 1 + current_special * 5;
 					break; // end of hurl boulder
 			} // end of Barbarian
 			break;
 
 	} // end of family switch
 
-	stats_->magicpoints -= stats_->special_cost[static_cast<int>(current_special_)];
+	stats_->magicpoints -= stats_->special_cost[static_cast<int>(current_special)];
 	return 0;
 }
 
@@ -3978,8 +3978,8 @@ bool walker::teleport()
 		if (ob &&
 		        ob->query_order() == Order::FX &&
 		        ob->query_family() == FAMILY_MARKER &&
-		        ob->owner() == this &&
-		        !ob->is_dead()
+		        ob->owner == this &&
+		        !ob->dead
 		   )
 		{
 			// Found our marker!
@@ -3987,17 +3987,17 @@ bool walker::teleport()
 			        && (distance = distance_to_ob(ob) > 64) )
 			{
 				center_on(ob);
-				ob->lifetime_--;
-				if (ob->lifetime_ < 1)
+				ob->lifetime--;
+				if (ob->lifetime < 1)
 				{
-					ob->set_dead(1);
+					ob->dead = 1;
 					ob->death();
 				}
 				return 1;
 			} // end of successful transport
 			else  // blocked somehow?
 			{
-				if (user_ != -1 && (distance > 64) ) // only tell players
+				if (user != -1 && (distance > 64) ) // only tell players
 					myscreen->do_notify("Marker is Blocked!", this);
 			}
 		}
@@ -4059,7 +4059,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 		{
 			if (random(range*40) > random(w->stats()->level*10) )
 			{
-				w->set_dead(1);
+				w->dead = 1;
 				w->stats()->hitpoints = 0;
 				//w->death();
 				attack(w); // to generate bloodspot, etc.
@@ -4098,13 +4098,13 @@ bool walker::fire_check(short xdelta, short ydelta)
 	weapon = create_weapon();
 	if (!weapon)
 		return 0;
-	set_weapon_heading(weapon); // set lastx_, lasty_ based on our facing...
-	weapon->set_collide_ob(nullptr);
+	set_weapon_heading(weapon); // set lastx, lasty based on our facing...
+	weapon->collide_ob = nullptr;
 	// Based on facing, we alter the weapon's proposed
 	//   size so the collision check is fooled into checking
-	//   a Sint32 strip equal to the lineofsight_ times the size
+	//   a Sint32 strip equal to the lineofsight times the size
 	//   of the weapon.
-	if (!foe_)     // nobody to fire at?
+	if (!foe)     // nobody to fire at?
 	{
 		//Log("fire check, no foe.\n");
 		//this does happen! but it appears harmless
@@ -4113,28 +4113,28 @@ bool walker::fire_check(short xdelta, short ydelta)
 
 	if (stats_->query_bit_flags(BIT_NO_RANGED))
 	{
-		weapon->set_dead(1);
+		weapon->dead = 1;
 		return 0;
 	}
 
 	if (stats_->weapon_cost > stats_->magicpoints)
 	{
-		weapon->set_dead(1);
+		weapon->dead = 1;
 		return 0;
 	}
 
-	distance = distance_to_ob(foe_);
-	if (distance > static_cast<Sint32>( static_cast<Sint32>(weapon->stepsize_) * static_cast<Sint32>(weapon->lineofsight_)) )
+	distance = distance_to_ob(foe);
+	if (distance > static_cast<Sint32>( static_cast<Sint32>(weapon->stepsize) * static_cast<Sint32>(weapon->lineofsight)) )
 	{
-		weapon->set_dead(1);
+		weapon->dead = 1;
 		return 0;
 	}
 
 	targetdir = facing(xdelta,ydelta);
-	if (targetdir != curdir_)
+	if (targetdir != curdir)
 	{
 		//         turn(targetdir);
-		weapon->set_dead(1);
+		weapon->dead = 1;
 		return 0;
 	}
 
@@ -4147,43 +4147,43 @@ bool walker::fire_check(short xdelta, short ydelta)
 	/* // why are we assuming walls don't matter in these two cases?
 	  if (!xdelta || !ydelta) // aligned on a major axis
 	  {
-	         weapon->set_dead(1);
+	         weapon->dead = 1;
 	         return 1;
 	  }
 	 
 	  if ( abs( abs(xdelta) - abs(ydelta) ) < 3)
 	  {
-	         weapon->set_dead(1);
+	         weapon->dead = 1;
 	         return 1;
 	  }
 	  else
 	  {
-	         weapon->set_dead(1);
+	         weapon->dead = 1;
 	//         return 0;
 	  }
 	*/
 
 	// Run weapon through where it would go if all went well ..
-	for (i=0; i < weapon->lineofsight_; i++)
+	for (i=0; i < weapon->lineofsight; i++)
 	{
-		weapon->setxy(weapon->xpos + i*weapon->lastx_,
-		              weapon->ypos + i*weapon->lasty_);
+		weapon->setxy(weapon->xpos + i*weapon->lastx,
+		              weapon->ypos + i*weapon->lasty);
 		if ( !myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit a wall, so fail
-			weapon->set_dead(1);
+			weapon->dead = 1;
 			return 0;
 		}
 		if ( !myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit an enemy, so good!
-			weapon->set_dead(1);
+			weapon->dead = 1;
 			return 1;
 		}
 	}
 	// By this point, we should have won or lost .. fail if we went our
 	// range and didn't hit anyone ..
-	weapon->set_dead(1);
+	weapon->dead = 1;
 	return 0;
 
 	// Determine # of loops to look for guy
@@ -4196,12 +4196,12 @@ bool walker::fire_check(short xdelta, short ydelta)
 	for (i=0; i <= loops; i+=8)  // half a grid square
 		if ( !myscreen->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
 		{
-			weapon->set_dead(1);
+			weapon->dead = 1;
 			//foe = nullptr;  // can't hit this guy
 			//stats_->try_command(COMMAND_RANDOM_WALK, random(8));
 			return 0;
 		}
-	weapon->set_dead(1);
+	weapon->dead = 1;
 
 	// We have a good chance of hitting, so ..
 	return 1;
@@ -4221,13 +4221,13 @@ walker::act_generate()
 	        (random(stats_->level*3) > (random(300+(myscreen->level_data.numobs*8)) ) )
 	   )
 	{
-		lastx_ = 1-random(3);
-		lasty_ = 1-random(3);
-		if (!lastx_ && !lasty_)
-			lastx_ = 1;
-		init_fire(lastx_, lasty_);
-		//    lastx_ = 0;
-		//    lasty_ = 0;
+		lastx = 1-random(3);
+		lasty = 1-random(3);
+		if (!lastx && !lasty)
+			lastx = 1;
+		init_fire(lastx, lasty);
+		//    lastx = 0;
+		//    lasty = 0;
 		stats_->hitpoints++;
 		if (stats_->hitpoints > stats_->max_hitpoints)
 			stats_->hitpoints--;
@@ -4238,21 +4238,21 @@ walker::act_generate()
 bool
 walker::act_fire()
 {
-	if (!(lineofsight_--)) // this is the range of the weapon
+	if (!(lineofsight--)) // this is the range of the weapon
 	{
-		dead_ = 1;
+		dead = 1;
 		death();
 	}
 	else if (!walk() || stats_->query_bit_flags(BIT_NO_COLLIDE))
 	{
-		// Hit the collide_ob_;
-		if (collide_ob_ && !collide_ob_->is_dead())
+		// Hit the collide_ob;
+		if (collide_ob && !collide_ob->dead)
 		{
-			attack(collide_ob_);
+			attack(collide_ob);
 		}
 		if (!stats_->query_bit_flags(BIT_IMMORTAL))
 		{
-			dead_ = 1;
+			dead = 1;
 			death();
 		}
 	}
@@ -4265,14 +4265,14 @@ walker::act_guard()
 
 	// Check all directions for foes
 	//   if we find one, fire
-	//              if (fire_check(lastx_, lasty_) ||
-	//                       fire_check(lasty_, lastx_) ||
-	//                       fire_check(-lasty_, -lastx_) ||
-	//                       fire_check(-lastx_, -lasty_))
-	foe_ = myscreen->find_near_foe(this);
-	if (foe_)
+	//              if (fire_check(lastx, lasty) ||
+	//                       fire_check(lasty, lastx) ||
+	//                       fire_check(-lasty, -lastx) ||
+	//                       fire_check(-lastx, -lasty))
+	foe = myscreen->find_near_foe(this);
+	if (foe)
 	{
-		curdir_ = static_cast<char>(facing(foe_->xpos - xpos, foe_->ypos-ypos));
+		curdir = static_cast<char>(facing(foe->xpos - xpos, foe->ypos-ypos));
 		stats_->try_command(COMMAND_FIRE,random(30));
 		return 1;
 	}
@@ -4290,17 +4290,17 @@ walker::act_random()
 	//if (random(sizex/GRID_SIZE)) return 0;
 
 	// Find our foe
-	if (!random(70) || (!foe_))
-		foe_ = myscreen->find_far_foe(this);
-	if (!foe_)
+	if (!random(70) || (!foe))
+		foe = myscreen->find_far_foe(this);
+	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
 
-	xdist = foe_->xpos - xpos;
-	ydist = foe_->ypos - ypos;
+	xdist = foe->xpos - xpos;
+	ydist = foe->ypos - ypos;
 
 	// If foe is in firing range, turn and fire
-	if (abs(xdist) < lineofsight_*GRID_SIZE &&
-	        abs(ydist) < lineofsight_*GRID_SIZE)
+	if (abs(xdist) < lineofsight*GRID_SIZE &&
+	        abs(ydist) < lineofsight*GRID_SIZE)
 	{
 		if (fire_check(xdist, ydist))
 		{
@@ -4318,7 +4318,7 @@ walker::act_random()
 	newx = 0;
 	newy = 0;
 
-	if (foe_)
+	if (foe)
 	{
 		newx = xdist;    // total horizontal distance..
 		if (newx)                      // If it's not 0, then get
@@ -4327,7 +4327,7 @@ walker::act_random()
 		newy = ydist;
 		if (newy)
 			newy = newy / abs(newy);
-	}  // end of if we had a foe_ ..
+	}  // end of if we had a foe ..
 	else
 	{
 		while ( !newx && !newy)
@@ -4338,7 +4338,7 @@ walker::act_random()
 	}
 
 	// If blocked
-	collide_ob_ = nullptr;
+	collide_ob = nullptr;
 
 	// We can slide now, so always just walkstep, NOT using
 	// stepsize ..
@@ -4388,32 +4388,32 @@ void walker::transfer_stats(walker  *newob)
 	newob->stats()->delete_me = stats_->delete_me;
 
 	// Do we have a 'guy' ?
-	if (myguy_)
+	if (myguy)
 	{
 		newguy = new guy();
-		newguy->name = myguy_->name;
-		newguy->strength = myguy_->strength;
-		newguy->constitution = myguy_->constitution;
-		newguy->dexterity = myguy_->dexterity;
-		newguy->intelligence = myguy_->intelligence;
-		newguy->set_level_number(myguy_->get_level());
-		newguy->armor = myguy_->armor;
-		newguy->exp = myguy_->exp;
+		newguy->name = myguy->name;
+		newguy->strength = myguy->strength;
+		newguy->constitution = myguy->constitution;
+		newguy->dexterity = myguy->dexterity;
+		newguy->intelligence = myguy->intelligence;
+		newguy->set_level_number(myguy->get_level());
+		newguy->armor = myguy->armor;
+		newguy->exp = myguy->exp;
 		// 'Kill-stats'
-		newguy->kills = myguy_->kills;
-		newguy->level_kills = myguy_->level_kills;
-		newguy->total_damage = myguy_->total_damage;
-		newguy->total_hits = myguy_->total_hits;
-		newguy->total_shots = myguy_->total_shots;
+		newguy->kills = myguy->kills;
+		newguy->level_kills = myguy->level_kills;
+		newguy->total_damage = myguy->total_damage;
+		newguy->total_hits = myguy->total_hits;
+		newguy->total_shots = myguy->total_shots;
 		
-		newguy->scen_damage = myguy_->scen_damage;
-		newguy->scen_kills = myguy_->scen_kills;
-		newguy->scen_damage_taken = myguy_->scen_damage_taken;
-		newguy->scen_min_hp = myguy_->scen_min_hp;
-		newguy->scen_shots = myguy_->scen_shots;
-		newguy->scen_hits = myguy_->scen_hits;
+		newguy->scen_damage = myguy->scen_damage;
+		newguy->scen_kills = myguy->scen_kills;
+		newguy->scen_damage_taken = myguy->scen_damage_taken;
+		newguy->scen_min_hp = myguy->scen_min_hp;
+		newguy->scen_shots = myguy->scen_shots;
+		newguy->scen_hits = myguy->scen_hits;
 		
-		newob->set_myguy(newguy);
+		newob->myguy = newguy;
 	}
 }
 
@@ -4427,7 +4427,7 @@ void walker::transform_to(Order whatorder, char whatfamily)
 	short tempact = query_act_type();;
 
 	// First remove us from the collision table..
-	myobmap_->remove(this);
+	myobmap->remove(this);
 
 	if (order == whatorder) // same object type
 	{
@@ -4449,7 +4449,7 @@ void walker::transform_to(Order whatorder, char whatfamily)
 	bmp = data.data.get();
 	frames = data.frames;
 	frame = 0;
-	cycle_ = 0;
+	cycle = 0;
 
 	// Deal with resizing and centering ..
 	xcenter = xpos + sizex/2;
@@ -4467,7 +4467,7 @@ void walker::transform_to(Order whatorder, char whatfamily)
 		set_act_type(tempact);
 
 	setxy(tempxpos, tempypos);  // automatically re-adds us to the list ..
-	// set_frame(ani_[curdir_+ani_type_*NUM_FACINGS][cycle_]);
+	// set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
 	// Don't manually set the frame here -- it can break circles
 	// of protection, etc., which are special cases .. instead:
 	set_frame(0);
@@ -4485,24 +4485,24 @@ bool walker::death()
 	walker  *newob = nullptr;
 	Sint32 i;
 
-	if (death_called_)
+	if (death_called)
 		return 0;
 
-	death_called_ = 1;
+	death_called = 1;
 
-	if (myguy_) // were we a real character?  Then make a heart ..
+	if (myguy) // were we a real character?  Then make a heart ..
 	{
 		newob = myscreen->level_data.add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
-		newob->stats()->hitpoints = myguy_->query_heart_value();
+		newob->stats()->hitpoints = myguy->query_heart_value();
 		newob->stats()->hitpoints *= 0.75 / 2;  // 75%, divided by 2, since score is doubled at end of level
-		newob->set_team_num(team_num_);
+		newob->team_num = team_num;
 		newob->center_on(this);
 	}
 
 	switch (order)
 	{
 		case Order::Living:
-			if (   (team_num_ == 0 || myguy_) // our team
+			if (   (team_num == 0 || myguy) // our team
 			        && (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
 			        && (stats_->name.size()) // we were named
 			   )
@@ -4510,45 +4510,45 @@ bool walker::death()
 			switch (family)
 			{
 				case FAMILY_FIREELEMENTAL:  // make us explode
-					dead_ = 0;
+					dead = 0;
 					stats_->magicpoints += stats_->special_cost[1];
 					special();
-					dead_ = 1;
+					dead = 1;
 					break;
 				case FAMILY_SLIME: // shrink to medium ..
-					dead_ = 1;
+					dead = 1;
 					//transform_to(Order::Living, FAMILY_MEDIUM_SLIME);
 					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
-					newob->set_team_num(team_num_);
+					newob->team_num = team_num;
 					newob->stats()->level = stats_->level;
 					newob->set_difficulty(stats_->level);
-					newob->set_foe(foe_);
-					newob->set_leader(leader_);
+					newob->foe = foe;
+					newob->leader = leader;
 					if (stats_->name.size())
 						stats_->name = newob->stats()->name;
-					if (myguy_)
+					if (myguy)
 					{
-						newob->set_myguy(myguy_);
-						myguy_ = nullptr;
+						newob->myguy = myguy;
+						myguy = nullptr;
 					}
 					newob->center_on(this);
 					stats_->hitpoints = stats_->max_hitpoints;
 					break;
 				case FAMILY_MEDIUM_SLIME: // shrink to small ..
-					dead_ = 1;
+					dead = 1;
 					//transform_to(Order::Living, FAMILY_SMALL_SLIME);
 					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
-					newob->set_team_num(team_num_);
+					newob->team_num = team_num;
 					newob->stats()->level = stats_->level;
 					newob->set_difficulty(stats_->level);
-					newob->set_foe(foe_);
-					newob->set_leader(leader_);
+					newob->foe = foe;
+					newob->leader = leader;
 					if (stats_->name.size())
 						stats_->name = newob->stats()->name;
-					if (myguy_)
+					if (myguy)
 					{
-						newob->set_myguy(myguy_);
-						myguy_ = nullptr;
+						newob->myguy = myguy;
+						myguy = nullptr;
 					}
 					newob->center_on(this);
 					stats_->hitpoints = stats_->max_hitpoints;
@@ -4568,11 +4568,11 @@ bool walker::death()
 				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
-				newob->set_team_num(team_num_);
+				newob->team_num = team_num;
 				newob->stats()->level = stats_->level;
-				newob->ani_type_ = ANI_EXPLODE;
+				newob->ani_type = ANI_EXPLODE;
 				newob->setxy(xpos+random(sizex-8)+4, ypos+4+random(sizey-8) );
-				newob->damage_ = stats_->level*2;
+				newob->damage = stats_->level*2;
 				newob->set_frame(random(3));
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_EXPLODE);
@@ -4596,10 +4596,10 @@ void walker::generate_bloodspot()
 	//char  *data;
 	// Make permanent stain:
 
-	dead_ = 1; // just in case ..
+	dead = 1; // just in case ..
 
 	bloodstain = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
-	bloodstain->ignore_ = 1;
+	bloodstain->ignore = 1;
 	transfer_stats(bloodstain);
 
 	bloodstain->order  = Order::Treasure;
@@ -4607,15 +4607,15 @@ void walker::generate_bloodspot()
 	bloodstain->stats()->old_order = order;
 	bloodstain->stats()->old_family= family;
 
-	bloodstain->set_team_num(team_num_);
-	bloodstain->set_dead(0);
+	bloodstain->team_num = team_num;
+	bloodstain->dead = 0;
 	bloodstain->setxy(xpos, ypos);
 	//data = myscreen->myloader->graphics[PIX(Order::Treasure, FAMILY_STAIN)];
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
 	bloodstain->set_frame(random(4));  // has no effect yet ..
-	bloodstain->ani_type_ = ANI_WALK;
+	bloodstain->ani_type = ANI_WALK;
 	//bloodstain->bmp = (char *) (data+3); // our image
 
 }
@@ -4680,11 +4680,11 @@ void walker::set_difficulty(Uint32 whatlevel)
 			stats_->hitpoints = temp;
 			break;
 		default:  // adjust standard settings for the rest ..
-			if (team_num_ != 0)  // do all EXCEPT player characters
+			if (team_num != 0)  // do all EXCEPT player characters
 			{
 				stats_->max_hitpoints = (stats_->max_hitpoints*dif1) / 100.0f;
 				stats_->max_magicpoints = (stats_->max_magicpoints*dif1) / 100.0f;
-				damage_ = (damage_ * dif1) / 100.0f;
+				damage = (damage * dif1) / 100.0f;
 			}
 			break;
 	}
@@ -4720,7 +4720,7 @@ unsigned char walker::query_team_color() const
 {
 	// Debugging ..
 	//if (foe && !foe->dead)
-	return static_cast<unsigned char>(team_num_*16+40);
+	return static_cast<unsigned char>(team_num*16+40);
 	//else
 	//  return static_cast<unsigned char>(7*16 + 40);
 }
@@ -4739,19 +4739,19 @@ Sint32 walker::is_friendly(const walker *target) const
 	if (target == nullptr)
 		return 0;
 	// If either of us is dead, we're also unfriendly :)
-	if (dead_ || target->is_dead())
+	if (dead || target->dead)
 		return 0;
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->is_dead() == 0) && (headguy->owner() != headguy) )
-		headguy = headguy->owner();
+	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
+		headguy = headguy->owner;
 	headus = headguy;
 	// Now our target ..
 	headguy = target;
-	while (headguy->owner() && (headguy->owner()->is_dead() == 0) && (headguy->owner() != headguy) )
-		headguy = headguy->owner();
+	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
+		headguy = headguy->owner;
 	headtarget = headguy;
 
 	// First, get our allied setting from screen ..
@@ -4761,9 +4761,9 @@ Sint32 walker::is_friendly(const walker *target) const
 	// Now, if we or the target don't contain a "myguy" pointer,
 	// then we don't care about allied_mode, and we'll
 	// treat our state as always in 'enemy' mode
-	if (headtarget->myguy() == nullptr && headus->myguy() == nullptr)
+	if (headtarget->myguy == nullptr && headus->myguy == nullptr)
 		has_myguy = 0;
-    else if(headtarget->myguy() == nullptr || headus->myguy() == nullptr)
+    else if(headtarget->myguy == nullptr || headus->myguy == nullptr)
         has_myguy = 2;
 	else
 		has_myguy = 1;
@@ -4773,7 +4773,7 @@ Sint32 walker::is_friendly(const walker *target) const
 	// we are not friendly
 	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
-		return (headus->team_num() == headtarget->team_num());
+		return (headus->team_num == headtarget->team_num);
 	}
 	
 	// Allied
@@ -4782,7 +4782,7 @@ Sint32 walker::is_friendly(const walker *target) const
         // One person is missing a myguy pointer.
         // The one with a myguy pointer is owned by a player.
         // If the other person belongs to team 0 (red), then they are friendly.
-        return (headtarget->myguy() == nullptr && headtarget->team_num() == 0) || (headus->myguy() == nullptr && headus->team_num() == 0);
+        return (headtarget->myguy == nullptr && headtarget->team_num == 0) || (headus->myguy == nullptr && headus->team_num == 0);
     }
 
 	// If we're in 'friendly' mode, then everyone with
@@ -4803,14 +4803,14 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 	const walker *headus;
 	
 	// If dead, we're also unfriendly :)
-	if (dead_)
+	if (dead)
 		return 0;
 
 	// who's the top on our chains (ie, weapon->summoned->mage)
 	// First us ..
 	headguy = this;
-	while (headguy->owner() && (headguy->owner()->is_dead() == 0) && (headguy->owner() != headguy) )
-		headguy = headguy->owner();
+	while (headguy->owner && (headguy->owner->dead == 0) && (headguy->owner != headguy) )
+		headguy = headguy->owner;
 	headus = headguy;
 	
 	// First, get our allied setting from screen ..
@@ -4820,7 +4820,7 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 	// Now, if we or the target don't contain a "myguy" pointer,
 	// then we don't care about allied_mode, and we'll
 	// treat our state as always in 'enemy' mode
-	if (headus->myguy() == nullptr)
+	if (headus->myguy == nullptr)
 		has_myguy = 0;
 	else
 		has_myguy = 1;
@@ -4829,7 +4829,7 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 	// If so, then our team number must match.
 	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
 	{
-		return (headus->team_num() == team);
+		return (headus->team_num == team);
 	}
 	
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)

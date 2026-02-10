@@ -382,7 +382,7 @@ void glad_init()
 		for (auto& uptr : myscreen->level_data.fxlist) {
 			walker* w = uptr.get();
 			if (w && w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT)
-				w->set_dead(1);
+				w->dead = 1;
 		}
 	}
 #endif
@@ -444,7 +444,7 @@ short remaining_foes(screen *myscreen, walker* myguy)
 	for(auto& uptr : foelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->is_dead() &&
+		if (w && !w->dead &&
 		        (w->query_order() == Order::Living) &&
 		        !myguy->is_friendly(w) )
 			myfoes++;
@@ -462,9 +462,9 @@ short remaining_team(screen *myscreen, char myteam)
 	for(auto& uptr : foelist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->is_dead() &&
+		if (w && !w->dead &&
 		        (w->query_order() == Order::Living) &&
-		        (myteam == w->team_num()) )
+		        (myteam == w->team_num) )
 			myfoes++;
 	}
 
@@ -495,9 +495,9 @@ void draw_radar_gems(screen  *myscreen)
 	short team_light;
 
 	static short old_team_num = -1;
-	if (old_team_num == myscreen->viewob[0]->control->team_num())
+	if (old_team_num == myscreen->viewob[0]->control->team_num)
 		return;
-	old_team_num = myscreen->viewob[0]->control->team_num();
+	old_team_num = myscreen->viewob[0]->control->team_num;
 
 	team_light = myscreen->viewob[0]->control->query_team_color();
 
@@ -770,7 +770,7 @@ short new_score_panel(screen *myscreen, short do_it)
 		tm = myscreen->viewob[players]->yloc + OVERSCAN_PADDING;
 		rm = myscreen->viewob[players]->endx - OVERSCAN_PADDING;
 		bm = myscreen->viewob[players]->endy - OVERSCAN_PADDING;
-		if (control && !control->is_dead() && control->user() == players)
+		if (control && !control->dead && control->user == players)
 		{
 			// Get the button-drawing info ..
 			draw_button = myscreen->viewob[players]->prefs[PREF_OVERLAY];
@@ -782,14 +782,14 @@ short new_score_panel(screen *myscreen, short do_it)
 			// Get current number of foes
 			tempfoes = remaining_foes(myscreen, control);
 			// Get current number of team-members
-			tempallies = remaining_team(myscreen, control->team_num());
+			tempallies = remaining_team(myscreen, control->team_num);
 
 			// Draw the pretty gems
 			//draw_radar_gems(myscreen);
 
 			// Display name or type, upper left
-			if (control->myguy())
-				tempname = control->myguy()->name;
+			if (control->myguy)
+				tempname = control->myguy->name;
 			else if ( !control->stats()->name.empty() )
 				tempname = control->stats()->name;
 			else
@@ -859,19 +859,19 @@ short new_score_panel(screen *myscreen, short do_it)
 
 				// Get our score ..
 				if (control)
-					myscore = myscreen->save_data.m_score[control->team_num()];
+					myscore = myscreen->save_data.m_score[control->team_num];
 				else
 					myscore = 0;
-				if (scorecountup[control->team_num()] > myscore)
-					scorecountup[control->team_num()] = myscore;
-				if (scorecountup[control->team_num()] < myscore)
+				if (scorecountup[control->team_num] > myscore)
+					scorecountup[control->team_num] = myscore;
+				if (scorecountup[control->team_num] < myscore)
 				{
-					scorecountup[control->team_num()]++;
-					scorecountup[control->team_num()] += static_cast<Uint32>(random( (myscore - scorecountup[control->team_num()]))/12 );
+					scorecountup[control->team_num]++;
+					scorecountup[control->team_num] += static_cast<Uint32>(random( (myscore - scorecountup[control->team_num]))/12 );
 				}
-				if (scorecountup[control->team_num()] > myscore)
-					scorecountup[control->team_num()] = myscore;
-				myscreen->save_data.m_score[control->team_num()] = myscore;
+				if (scorecountup[control->team_num] > myscore)
+					scorecountup[control->team_num] = myscore;
+				myscreen->save_data.m_score[control->team_num] = myscore;
 				//above should count up the score towards the current amount
 				
 				int special_y = bm + special_offset;
@@ -882,36 +882,36 @@ short new_score_panel(screen *myscreen, short do_it)
                 }
                 else
                 {
-                    message = std::format("SC: {}", scorecountup[control->team_num()]);
+                    message = std::format("SC: {}", scorecountup[control->team_num]);
                     mytext.write_xy(lm+2, bm-8, message.c_str(), text_color, static_cast<short>(1));
 
                     // Level or exp, 2nd bottom left
-                    if (control->myguy())
-                        message = std::format("XP: {}", control->myguy()->exp);
+                    if (control->myguy)
+                        message = std::format("XP: {}", control->myguy->exp);
                     else
                         message = std::format("LEVEL: {}", control->stats()->level);
                     mytext.write_xy(lm+2, bm-16, message.c_str(), text_color, static_cast<short>(1));
                 }
                 
 				// Currently-select special
-				if (control->shifter_down() &&
-				        myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())] != "NONE" )
-					message = std::format("SPC: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())]);
+				if (control->shifter_down &&
+				        myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE" )
+					message = std::format("SPC: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
 				else
-					message = std::format("SPC: {}", myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())]);
+					message = std::format("SPC: {}", myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
 
 
-				if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special())])
+				if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special)])
 					mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
 				else
 					mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
                 
                 #ifdef USE_TOUCH_INPUT
                 // Alternate special name (if not "NONE")
-				if (myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())] != "NONE" )
+				if (myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE" )
                 {
-					message = std::format("ALT: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())]);
-                    if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special())])
+					message = std::format("ALT: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+                    if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special)])
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
                     else
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));

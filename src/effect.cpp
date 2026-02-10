@@ -31,7 +31,7 @@ short hits(short x,  short y,  short xsize,  short ysize,
 effect::effect(const PixieData& data)
     : walker(data)
 {
-	ignore_ = 1; // don't collide with other objects
+	ignore = 1; // don't collide with other objects
 }
 
 effect::~effect()
@@ -49,30 +49,30 @@ bool effect::act()
 	std::list<walker*> foelist;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe_ && foe_->is_dead())
-		foe_ = nullptr;
-	if (leader_ && leader_->is_dead())
-		leader_ = nullptr;
-	if (owner_ && owner_->is_dead())
-		owner_ = nullptr;
+	if (foe && foe->dead)
+		foe = nullptr;
+	if (leader && leader->dead)
+		leader = nullptr;
+	if (owner && owner->dead)
+		owner = nullptr;
 
-	collide_ob_ = nullptr; // always start with no collision..
+	collide_ob = nullptr; // always start with no collision..
 
 	// Any special actions ..
 	switch (family) // determine what to do..
 	{
 		case FAMILY_GHOST_SCARE:
-			if (owner_)
-				center_on(owner_);
+			if (owner)
+				center_on(owner);
 			break;
-		case FAMILY_MAGIC_SHIELD: // revolve around owner_
-			if (!owner_ || owner_->is_dead())
+		case FAMILY_MAGIC_SHIELD: // revolve around owner
+			if (!owner || owner->dead)
 			{
-				dead_ = 1;
+				dead = 1;
 				death();
 				break;
 			}
-			switch (drawcycle_ % 16)
+			switch (drawcycle % 16)
 			{
 				case 0:
 					xd = 0;
@@ -142,15 +142,15 @@ bool effect::act()
 					yd = -22;
 					break;
 			}
-			center_on(owner_);
+			center_on(owner);
 			setworldxy(worldx_+xd, worldy_+yd);
 			foelist = myscreen->find_foe_weapons_in_range(
 			              myscreen->level_data.oblist, sizex, &temp, this);
             
 			for(auto* w : foelist)  // first weapons
 			{
-				stats_->hitpoints -= w->damage();
-				w->set_dead(1);
+				stats_->hitpoints -= w->damage;
+				w->dead = 1;
 				w->death();
 			}
 
@@ -159,29 +159,29 @@ bool effect::act()
 
 			for(auto* w : foelist)  // second enemies
 			{
-				stats_->hitpoints -= w->damage();
+				stats_->hitpoints -= w->damage;
 				attack(w);
-				dead_ = 0;
+				dead = 0;
 			}
 			
-			if ( (stats_->hitpoints <= 0) || (lifetime_-- < 0) )
+			if ( (stats_->hitpoints <= 0) || (lifetime-- < 0) )
 			{
-				dead_ = 1;
+				dead = 1;
 				death();
 			}
 			break; // end of magic shield case
 		case FAMILY_BOOMERANG: // fighter's boomerang
-			// Zardus: FIX: if the drawcycle_ is in its >253s, the boomerang dies. This will fix the bug where
+			// Zardus: FIX: if the drawcycle is in its >253s, the boomerang dies. This will fix the bug where
 			// the boomerang comes back to 0 (owner) after spiraling around all the way if the owner has
 			// that good of an ability (to keep its life so high). This caps boomerang ability, though... Another
-			// fix could be to make the drawcycle_ var an int or at least something with more capacity than char.
-			if (!owner_ || owner_->is_dead() || drawcycle_ > 253)
+			// fix could be to make the drawcycle var an int or at least something with more capacity than char.
+			if (!owner || owner->dead || drawcycle > 253)
 			{
-				dead_ = 1;
+				dead = 1;
 				death();
 				break;
 			}
-			switch (drawcycle_ % 16)
+			switch (drawcycle % 16)
 			{
 				case 0:
 					xd = 0;
@@ -251,19 +251,19 @@ bool effect::act()
 					yd = -22;
 					break;
 			}
-			xd *= (drawcycle_+4);
+			xd *= (drawcycle+4);
 			xd /= 48;
-			yd *= (drawcycle_+4);
+			yd *= (drawcycle+4);
 			yd /= 48;
-			center_on(owner_);
+			center_on(owner);
 			setworldxy(worldx_+xd, worldy_+yd);
 			foelist = myscreen->find_foe_weapons_in_range(
 			              myscreen->level_data.oblist, sizex*2, &temp, this);
 			              
 			for(auto* w : foelist)  // first weapons
 			{
-				stats_->hitpoints -= w->damage();
-				w->set_dead(1);
+				stats_->hitpoints -= w->damage;
+				w->dead = 1;
 				w->death();
 			}
 
@@ -272,94 +272,94 @@ bool effect::act()
 
 			for(auto* w : foelist) // second enemies
 			{
-				stats_->hitpoints -= w->damage();
+				stats_->hitpoints -= w->damage;
 				attack(w);
-				dead_ = 0;
+				dead = 0;
 			}
 			
-			if ( (stats_->hitpoints <= 0) || (lifetime_-- < 0) )
+			if ( (stats_->hitpoints <= 0) || (lifetime-- < 0) )
 			{
-				dead_ = 1;
+				dead = 1;
 				death();
 			}
 			break; // end of boomerang case
 		case FAMILY_KNIFE_BACK: // returning blade
-			if (!owner_ || owner_->is_dead())
+			if (!owner || owner->dead)
 			{
-				dead_ = 1;
+				dead = 1;
 				break;
 			}
-			distance = distance_to_ob(owner_);
+			distance = distance_to_ob(owner);
 			if (distance > 10)
 			{
 				xd = yd = 0; // zero out distance movements
-				if (owner_->xpos > xpos)
+				if (owner->xpos > xpos)
 				{
-					if ( (owner_->xpos - xpos) > stepsize_ )
-						xd = stepsize_;
+					if ( (owner->xpos - xpos) > stepsize )
+						xd = stepsize;
 					else
-						xd = owner_->xpos - xpos;
+						xd = owner->xpos - xpos;
 				}
-				else if (owner_->xpos < xpos)
+				else if (owner->xpos < xpos)
 				{
-					if ( (xpos - owner_->xpos) > stepsize_ )
-						xd = -stepsize_;
+					if ( (xpos - owner->xpos) > stepsize )
+						xd = -stepsize;
 					else
-						xd = owner_->xpos - xpos;
+						xd = owner->xpos - xpos;
 				}
-				if (owner_->ypos > ypos)
+				if (owner->ypos > ypos)
 				{
-					if ( (owner_->ypos - ypos) > stepsize_ )
-						yd = stepsize_;
+					if ( (owner->ypos - ypos) > stepsize )
+						yd = stepsize;
 					else
-						yd = owner_->ypos - ypos;
+						yd = owner->ypos - ypos;
 				}
-				else if (owner_->ypos < ypos)
+				else if (owner->ypos < ypos)
 				{
-					if ( (ypos - owner_->ypos) > stepsize_ )
-						yd = -stepsize_;
+					if ( (ypos - owner->ypos) > stepsize )
+						yd = -stepsize;
 					else
-						yd = owner_->ypos - ypos;
+						yd = owner->ypos - ypos;
 				}
 				setworldxy(worldx_+xd, worldy_+yd);
 				newob = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
-				newob->set_damage(damage_);
-				newob->set_owner(owner_);
-				newob->set_team_num(team_num_);
-				newob->set_death_called(1); // to ensure no spawning of more ..
+				newob->damage = damage;
+				newob->owner = owner;
+				newob->team_num = team_num;
+				newob->death_called = 1; // to ensure no spawning of more ..
 				newob->setworldxy(worldx_, worldy_);
 				if (!myscreen->query_object_passable(xpos+xd, ypos+yd, newob))
 				{
-					newob->attack(newob->collide_ob());
-					damage_ /= 4.0f;
+					newob->attack(newob->collide_ob);
+					damage /= 4.0f;
 					//setxy(xpos-(2*xd)+random(xd), ypos-(2*yd)+random(yd));
 				}
-				newob->set_dead(1);
+				newob->dead = 1;
 			}
 			else
 			{
-				owner_->set_weapons_left(owner_->weapons_left() + 1);
+				owner->weapons_left = owner->weapons_left + 1;
 				//if (owner->user != -1)
 				//{
-				//  sprintf(message, "Knives now %d", owner->weapons_left_);
+				//  sprintf(message, "Knives now %d", owner->weapons_left);
 				//  myscreen->do_notify(message, owner);
 				//}
-				ani_type_ = ANI_WALK;
-				dead_ = 1;
+				ani_type = ANI_WALK;
+				dead = 1;
 			}
 			break;
 		case FAMILY_CLOUD: // poison cloud
-			if (lifetime_ > 0)
-				lifetime_--;
+			if (lifetime > 0)
+				lifetime--;
 			else
 			{
-				dead_ = 1;
+				dead = 1;
 				death();
 			}
-			if (lifetime_ < 8)
-				invisibility_left_ +=3;
-			if (invisibility_left_ > 0)
-				invisibility_left_--;
+			if (lifetime < 8)
+				invisibility_left +=3;
+			if (invisibility_left > 0)
+				invisibility_left--;
 			// Hit any nearby foes (not friends, for now)
 			foelist = myscreen->find_foes_in_range(
 			              myscreen->level_data.oblist, sizex, &temp, this);
@@ -375,7 +375,7 @@ bool effect::act()
 				} // end of actual hit
 			}
 			
-			// Are we performing some action_?
+			// Are we performing some action?
 			if (stats_->has_commands())
 				temp = stats_->do_command();
 			else
@@ -390,113 +390,113 @@ bool effect::act()
 			}
 			break; // end of cloud
 		case FAMILY_CHAIN: // chain lightning ..
-			if (!leader_ || lineofsight_<1 || !owner_) // lost our leader_, etc.? kill us ..
+			if (!leader || lineofsight<1 || !owner) // lost our leader, etc.? kill us ..
 			{
-				dead_ = 1;
+				dead = 1;
 				death();
 				return 1;
 			}
 			// Are we at our leader? If so, attack him :)
 			if (hits(xpos, ypos, sizex, sizey,
-			         leader_->xpos, leader_->ypos, leader_->sizex, leader_->sizey))
+			         leader->xpos, leader->ypos, leader->sizex, leader->sizey))
 			{
 				// Do things ..
 				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
 				if (!newob)
 				{
-					dead_ = 1;
+					dead = 1;
 					death();
 					return 1; // failsafe
 				}
-				newob->set_owner(owner_);
-				newob->set_team_num(team_num_);
+				newob->owner = owner;
+				newob->team_num = team_num;
 				newob->stats()->level = stats_->level;
-				newob->set_damage(damage_);
-				newob->set_ani_type(ANI_EXPLODE);
+				newob->damage = damage;
+				newob->ani_type = ANI_EXPLODE;
 				newob->center_on(this);
-				leader_->set_skip_exit(leader_->skip_exit() + 3); // can't hit us for 3 rounds ..
+				leader->skip_exit = leader->skip_exit + 3; // can't hit us for 3 rounds ..
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_EXPLODE);
 				// Now make new objects to seek out foes ..
 				// First, are our offspring powerful enough at 1/2 our power?
-				generic = (damage_)/2;
-				if (owner_->myguy())
+				generic = (damage)/2;
+				if (owner->myguy)
 					foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
-					                                      240+(owner_->myguy()->intelligence/2), &temp, this);
+					                                      240+(owner->myguy->intelligence/2), &temp, this);
 				else
 					foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      240+stats_->level*5, &temp, this);
 				if (temp && generic>20) // more foes to find ..
 				{
-					numfoes = random(owner_->stats()->level)+1;
+					numfoes = random(owner->stats()->level)+1;
 					for(auto* w : foelist)
 					{
 					    if (numfoes <= 0) break;
-						if (w != leader_ && w->skip_exit()<1) // don't hit current guy, etc.
+						if (w != leader && w->skip_exit<1) // don't hit current guy, etc.
 						{
 							newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
 							if (!newob)
 								return 0; // failsafe
 
-							newob->set_owner(owner_);  // our caster
-							newob->set_leader(w); // guy to attack
+							newob->owner = owner;  // our caster
+							newob->leader = w; // guy to attack
 							newob->stats()->level = stats_->level;
 							newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-							newob->set_damage(generic);
-							newob->set_team_num(team_num_);
+							newob->damage = generic;
+							newob->team_num = team_num;
 							newob->center_on(this);
 						} // end of wasn't current guy case
 						numfoes--;
 					} // end of loop for nearby foes we found
 				} // end of check for nearby foes
                 
-				dead_ = 1;
+				dead = 1;
 				death();
 				return 1;
 			}
 			// Move toward our leader ..
-			lineofsight_--;
-			distance = distance_to_ob_center(leader_);
-			if (distance > stepsize_*2)
+			lineofsight--;
+			distance = distance_to_ob_center(leader);
+			if (distance > stepsize*2)
 			{
 				xd = yd = 0; // zero out distance movements
-				if (leader_->xpos > xpos)
+				if (leader->xpos > xpos)
 				{
-					if ( (leader_->xpos - xpos) > stepsize_ )
-						xd = stepsize_;
+					if ( (leader->xpos - xpos) > stepsize )
+						xd = stepsize;
 					else
-						xd = leader_->xpos - xpos;
+						xd = leader->xpos - xpos;
 				}
-				else if (leader_->xpos < xpos)
+				else if (leader->xpos < xpos)
 				{
-					if ( (xpos - leader_->xpos) > stepsize_ )
-						xd = -stepsize_;
+					if ( (xpos - leader->xpos) > stepsize )
+						xd = -stepsize;
 					else
-						xd = leader_->xpos - xpos;
+						xd = leader->xpos - xpos;
 				}
-				if (leader_->ypos > ypos)
+				if (leader->ypos > ypos)
 				{
-					if ( (leader_->ypos - ypos) > stepsize_ )
-						yd = stepsize_;
+					if ( (leader->ypos - ypos) > stepsize )
+						yd = stepsize;
 					else
-						yd = leader_->ypos - ypos;
+						yd = leader->ypos - ypos;
 				}
-				else if (leader_->ypos < ypos)
+				else if (leader->ypos < ypos)
 				{
-					if ( (ypos - leader_->ypos) > stepsize_ )
-						yd = -stepsize_;
+					if ( (ypos - leader->ypos) > stepsize )
+						yd = -stepsize;
 					else
-						yd = leader_->ypos - ypos;
+						yd = leader->ypos - ypos;
 				}
 				// Set our facing?
-				curdir_ = facing(xd, yd);
-				set_frame(ani_[curdir_][0]);
+				curdir = facing(xd, yd);
+				set_frame(ani[curdir][0]);
 			} // end of big step
 			else
 			{
 				//xd = leader->xpos;
 				//yd = leader->ypos;
-				center_on(leader_);
+				center_on(leader);
 				return 1;
 			}
 			setworldxy(worldx_+xd, worldy_+yd);
@@ -514,20 +514,20 @@ bool effect::act()
 			//  is that now that it is on the fxlist, it won't act anymore,
 			//  thus preventing it from continuously respawning itself.
 
-			if (ani_type_ != ANI_WALK)
+			if (ani_type != ANI_WALK)
 				return animate();
 			newob = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
-			newob->set_ani_type(ANI_WALK);
+			newob->ani_type = ANI_WALK;
 			newob->setworldxy(worldx_, worldy_);
 			newob->stats()->level = stats_->level;
-			newob->set_team_num(team_num_);
-			newob->set_ignore(1);
-			newob->set_curdir(curdir_);
+			newob->team_num = team_num;
+			newob->ignore = 1;
+			newob->curdir = curdir;
 			// set correct frame
 			newob->animate();
-			dead_ = 1;
+			dead = 1;
 			death();
 			return 1;
 			break;
@@ -537,13 +537,13 @@ bool effect::act()
 	}
 
 	// Complete previous animations (like firing)
-	if (ani_type_ != ANI_WALK)
+	if (ani_type != ANI_WALK)
 		return animate();
 
 	switch (family) // determine what to do..
 	{
 		default:
-			dead_ = 1;
+			dead = 1;
 			death();
 			break;
 	}
@@ -554,8 +554,8 @@ bool effect::act()
 bool effect::animate()
 {
 
-	set_frame(ani_[curdir_+ani_type_*NUM_FACINGS][cycle_]);
-	cycle_++;
+	set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
+	cycle++;
 
 	switch (family)
 	{
@@ -564,12 +564,12 @@ bool effect::animate()
 		case FAMILY_KNIFE_BACK:
 		case FAMILY_CLOUD:
 		case FAMILY_MARKER:
-			if (ani_[curdir_+ani_type_*NUM_FACINGS][cycle_] == -1)
-				cycle_ = 0;
+			if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
+				cycle = 0;
 			break;
 		default:
-			if (ani_[curdir_+ani_type_*NUM_FACINGS][cycle_] == -1)
-				ani_type_ = ANI_WALK;
+			if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
+				ani_type = ANI_WALK;
 			break;
 	}
 
@@ -589,17 +589,17 @@ bool effect::death()
 	Sint32 xdelta,ydelta;
 	Sint32 tempx, tempy, generic;
 
-	if (death_called_)
+	if (death_called)
 		return 0;
-	death_called_ = 1;
+	death_called = 1;
 
 	switch (family)
 	{
 		case FAMILY_GHOST_SCARE: // the ghost's scare
-			if (!owner_ || owner_->is_dead())
+			if (!owner || owner->dead)
 				return 0;
-			foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist, 50+(10*owner_->stats()->level),
-			                                        &howmany, owner_);
+			foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist, 50+(10*owner->stats()->level),
+			                                        &howmany, owner);
 			if (howmany < 1)
 				return 0;
             
@@ -613,39 +613,39 @@ bool effect::death()
 					tempy = w->ypos - ypos;
 					if (tempy)
 						tempy = tempy / (abs(tempy));
-					generic = (owner_->stats()->level*25);
-					if (w->myguy())
-						generic -= random(w->myguy()->constitution);
+					generic = (owner->stats()->level*25);
+					if (w->myguy)
+						generic -= random(w->myguy->constitution);
 					if (generic > 0)
 						w->stats()->force_command(COMMAND_WALK,
 						                               static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));
 				} // end of valid target
-			} // end of cycle_ through scare list
+			} // end of cycle through scare list
 			
 			break;  // end of ghost scare
 		case FAMILY_BOMB: // Burning bomb
-			if (!owner_ || owner_->is_dead())
-				owner_ = this;
+			if (!owner || owner->dead)
+				owner = this;
 			if (on_screen())
 				myscreen->soundp->play_sound(SOUND_EXPLODE);
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
-			newob->set_owner(owner_);
+			newob->owner = owner;
 			newob->stats()->hitpoints = 0;
-			newob->stats()->level = owner_->stats()->level;
-			newob->set_ani_type(ANI_EXPLODE);
+			newob->stats()->level = owner->stats()->level;
+			newob->ani_type = ANI_EXPLODE;
 			//newob->setxy(xpos, ypos);
 			newob->center_on(this);
-			newob->set_damage(damage_);
+			newob->damage = damage;
 			break;
 
 		case FAMILY_EXPLOSION: // the bomb's explosion
-			if (!owner_ || owner_->is_dead())
-				owner_ = this;
+			if (!owner || owner->dead)
+				owner = this;
 			// Set the max distance for a bomb ..
-			generic = 4*owner_->stats()->level;
+			generic = 4*owner->stats()->level;
 			if (generic > 96) // set max range to about 6 tiles
 				generic = 96;
-			if (skip_exit_) // magical, ie mage, don't go far ..
+			if (skip_exit) // magical, ie mage, don't go far ..
 			{
 				generic = 16;
 			}
@@ -660,10 +660,10 @@ bool effect::death()
 			//team_num = 50;
 			for(auto* w : foelist)
 			{
-				if (w && !w->is_dead() &&
+				if (w && !w->dead &&
 				        (w->query_order() != Order::Treasure) &&
 				        (w->query_order() != Order::FX) &&
-				        (!skip_exit_ || w != owner_)
+				        (!skip_exit || w != owner)
 				   ) //&&
 					//       w->query_order() == Order::Living
 					//     && w->team_num != owner->team_num
@@ -677,22 +677,22 @@ bool effect::death()
 					if (ydelta)
 						ydelta = ydelta/abs(ydelta);
 					// Set the distance to 'shove' by explosion
-					generic = 2+owner_->stats()->level/15;
+					generic = 2+owner->stats()->level/15;
 					if (generic > 8) // max of about 8 steps
 						generic = 8;
 					w->stats()->force_command(COMMAND_WALK,generic,static_cast<short>(xdelta),static_cast<short>(ydelta));
 					// Damage (attack) the object
-					if (w == owner_) // do less damage_
+					if (w == owner) // do less damage
 					{
-						damage_ /= 4.0f;
+						damage /= 4.0f;
 						attack(w);
-						damage_ *= 4.0f;
+						damage *= 4.0f;
 					}
-					else if (!owner_->is_dead() && owner_->is_friendly(w))
+					else if (!owner->dead && owner->is_friendly(w))
 					{
-						damage_ /= 2.0f;
+						damage /= 2.0f;
 						attack(w);
-						damage_ *= 2.0f;
+						damage *= 2.0f;
 					}
 					else
 						attack(w);

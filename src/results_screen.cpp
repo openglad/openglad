@@ -103,7 +103,7 @@ public:
 TroopResult::TroopResult(guy* before, walker* after)
     : before(before), after(after)
 {
-    if(after != nullptr && after->myguy() == nullptr)
+    if(after != nullptr && after->myguy == nullptr)
         after = nullptr;
 }
 
@@ -112,7 +112,7 @@ std::string TroopResult::get_name()
     if(before != nullptr)
         return before->name;
     if(after != nullptr)
-        return after->myguy()->name;
+        return after->myguy->name;
     return std::string();
 }
 
@@ -122,7 +122,7 @@ char TroopResult::get_family()
     if(before != nullptr)
         family = before->family;
     if(after != nullptr)
-        family = after->myguy()->family;
+        family = after->myguy->family;
     return family;
 }
 
@@ -133,14 +133,14 @@ std::string TroopResult::get_class_name()
     if(before != nullptr)
         return get_family_string(before->family);
     if(after != nullptr)
-        return get_family_string(after->myguy()->family);
+        return get_family_string(after->myguy->family);
     return std::string();
 }
 
 int TroopResult::get_level()
 {
     if(after != nullptr)
-        return calculate_level(after->myguy()->exp);
+        return calculate_level(after->myguy->exp);
     if(before != nullptr)
         return calculate_level(before->exp);
     
@@ -152,7 +152,7 @@ bool TroopResult::gained_level()
     if(after == nullptr || before == nullptr)
         return false;
     
-    return calculate_level(after->myguy()->exp) > before->get_level();
+    return calculate_level(after->myguy->exp) > before->get_level();
 }
 
 bool TroopResult::lost_level()
@@ -160,7 +160,7 @@ bool TroopResult::lost_level()
     if(after == nullptr || before == nullptr)
         return false;
     
-    return calculate_level(after->myguy()->exp) < before->get_level();
+    return calculate_level(after->myguy->exp) < before->get_level();
 }
 
 std::vector<std::string> TroopResult::get_gained_specials()
@@ -200,12 +200,12 @@ float TroopResult::get_XP_gain()
         return 0.0f;
         
     if(gained_level())
-        return (after->myguy()->exp - calculate_exp(before->get_level() + 1))/float(calculate_exp(before->get_level() + 2));
+        return (after->myguy->exp - calculate_exp(before->get_level() + 1))/float(calculate_exp(before->get_level() + 2));
     
     if(lost_level())
-        return (after->myguy()->exp - before->exp)/float(calculate_exp(before->get_level()));
+        return (after->myguy->exp - before->exp)/float(calculate_exp(before->get_level()));
     
-    return (after->myguy()->exp - before->exp)/float(calculate_exp(before->get_level() + 1));
+    return (after->myguy->exp - before->exp)/float(calculate_exp(before->get_level() + 1));
 }
 
 int TroopResult::get_tallies()
@@ -213,7 +213,7 @@ int TroopResult::get_tallies()
     if(after == nullptr)
         return 0;
     
-    return after->myguy()->scen_kills;
+    return after->myguy->scen_kills;
 }
 
 float TroopResult::get_HP()
@@ -221,10 +221,10 @@ float TroopResult::get_HP()
     if(after == nullptr)
         return 0.0f;
     
-    if(after->myguy()->scen_min_hp > after->stats()->hitpoints)
+    if(after->myguy->scen_min_hp > after->stats()->hitpoints)
         return 1.0f;
     
-    return after->myguy()->scen_min_hp/after->stats()->max_hitpoints;
+    return after->myguy->scen_min_hp/after->stats()->max_hitpoints;
 }
 
 bool TroopResult::is_dead()
@@ -254,12 +254,12 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 	mywalker = myscreen->level_data.myloader->create_walker(Order::Living,
 	           newfamily,myscreen);
 	mywalker->stats()->bit_flags = 0;
-	mywalker->set_curdir(FACE_DOWN);
-	mywalker->set_ani_type(ANI_WALK);
+	mywalker->curdir = FACE_DOWN;
+	mywalker->ani_type = ANI_WALK;
 	for (i=0; i <= (frames/4)%4; i++)
 		mywalker->animate();
     
-	mywalker->set_team_num(myguy->teamnum);
+	mywalker->team_num = myguy->teamnum;
     
     viewscreen* view_buf = myscreen->viewob[0].get();
 	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
@@ -271,7 +271,7 @@ void TroopResult::draw_guy(int cx, int cy, int frame)
 {
     guy* myguy = nullptr;
     if(after != nullptr)
-        myguy = after->myguy();
+        myguy = after->myguy;
     else if(before != nullptr)
         myguy = before;
     else
@@ -298,7 +298,7 @@ int get_num_foes(LevelData& level)
 	{
 	    walker* ob = uptr.get();
 	    // Not dead, not hired, not on red team
-		if (ob && !ob->is_dead() && ob->query_order() == Order::Living && ob->myguy() == nullptr && ob->team_num() != 0)
+		if (ob && !ob->dead && ob->query_order() == Order::Living && ob->myguy == nullptr && ob->team_num != 0)
 		{
 		    result++;
 		}
@@ -402,7 +402,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         if(troop.after == nullptr)
             continue;
 
-        points = troop.after->myguy()->scen_damage + 3*troop.after->myguy()->scen_damage_taken;
+        points = troop.after->myguy->scen_damage + 3*troop.after->myguy->scen_damage_taken;
 
         if(mvp_points < points)
         {
@@ -606,7 +606,7 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
             {
                 BEGIN_IF_IN_SCROLL_AREA;
                 
-                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy()->name.c_str(), get_family_string(mvp->myguy()->family));
+                mytext.write_xy_center(area.x + area.w/2, y, DARK_BLUE, "MVP: %s the %s", mvp->myguy->name.c_str(), get_family_string(mvp->myguy->family));
                 mytext.write_xy_center(area.x + area.w/2, y + 8, DARK_BLUE, "(%.0f pts)", mvp_points);
                 y += 22;
                 

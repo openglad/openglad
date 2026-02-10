@@ -23,7 +23,7 @@
 #include <cmath>
 #include <format>
 
-#define CHECK_STEP_SIZE 1 // (controller->stepsize()) // was 1
+#define CHECK_STEP_SIZE 1 // (controller->stepsize) // was 1
 
 // COMMAND declarations defined at bottom
 
@@ -82,14 +82,14 @@ void statistics::clear_command()
 {
 	commands.clear();
 	// Make sure our weapon type is restored to normal ..
-	controller->set_current_weapon(controller->default_weapon());
+	controller->current_weapon = controller->default_weapon;
 	// Make sure we're back to our real team
-	if (controller->real_team_num() != 255)
+	if (controller->real_team_num != 255)
 	{
-		controller->set_team_num(controller->real_team_num());
-		controller->set_real_team_num(255);
+		controller->team_num = controller->real_team_num;
+		controller->real_team_num = 255;
 	}
-	controller->set_leader(nullptr);
+	controller->leader = nullptr;
 }
 
 void statistics::add_command(short whatcommand, short iterations,
@@ -250,33 +250,33 @@ short statistics::do_command()
 			controller->init_fire(com1, com2);
 			break;
 		case COMMAND_DIE:  // debugging, not currently used
-			if (!controller->is_dead())
+			if (!controller->dead)
 				Log("Trying to make a living ob die!\n");
 			if (commands.front().commandcount < 2)  // then delete us ..
 				delete_me = 1;
 			break;
 		case COMMAND_FOLLOW:   // follow the leader
-			if (controller->foe()) // if we have foe, don't follow this round
+			if (controller->foe) // if we have foe, don't follow this round
 			{
 				commands.front().commandcount = 0;
-				controller->set_leader(nullptr);
+				controller->leader = nullptr;
 				result = 0;
 				break;
 			}
-			if (!controller->leader())
+			if (!controller->leader)
 			{
 				if (myscreen->numviews == 1)
-					controller->set_leader(myscreen->viewob[0]->control);
+					controller->leader = myscreen->viewob[0]->control;
 				else
 				{
-					if (myscreen->viewob[0]->control->yo_delay())
-						controller->set_leader(myscreen->viewob[0]->control);
-					else if (myscreen->viewob[1]->control->yo_delay())
-						controller->set_leader(myscreen->viewob[1]->control);
+					if (myscreen->viewob[0]->control->yo_delay)
+						controller->leader = myscreen->viewob[0]->control;
+					else if (myscreen->viewob[1]->control->yo_delay)
+						controller->leader = myscreen->viewob[1]->control;
 					else
 					{
 						commands.front().commandcount = 0;
-						controller->set_leader(nullptr);
+						controller->leader = nullptr;
 						result = 0;
 						break;
 					}
@@ -284,17 +284,17 @@ short statistics::do_command()
 			}
 			
 			// Do we have a leader now?
-			if(controller->leader())
+			if(controller->leader)
 			{
-				distance = controller->distance_to_ob(controller->leader());
+				distance = controller->distance_to_ob(controller->leader);
 				if (distance < 60)
 				{
-					controller->set_leader(nullptr);
+					controller->leader = nullptr;
 					result = 1;  // don't get too close
 					break;
 				}
-				newx = static_cast<short>(controller->leader()->xpos - controller->xpos); // total horizontal distance..
-				newy = static_cast<short>(controller->leader()->ypos - controller->ypos);
+				newx = static_cast<short>(controller->leader->xpos - controller->xpos); // total horizontal distance..
+				newy = static_cast<short>(controller->leader->ypos - controller->ypos);
 				if (abs(newx) > abs(3*newy))
 					newy = 0;
 				if (abs(newy) > abs(3*newx))
@@ -308,7 +308,7 @@ short statistics::do_command()
 			controller->walkstep(newx, newy);
 			if (commands.front().commandcount < 2)
             {
-				controller->set_leader(nullptr);
+				controller->leader = nullptr;
             }
 			break;
 		case COMMAND_QUICK_FIRE:
@@ -325,9 +325,9 @@ short statistics::do_command()
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
-				if (controller->collide_ob()) // We hit someone
+				if (controller->collide_ob) // We hit someone
 				{
-					target = controller->collide_ob();
+					target = controller->collide_ob;
 					controller->attack(target);
 					target->stats()->clear_command();
 					// A violent shove... we can't call shove since we
@@ -338,13 +338,13 @@ short statistics::do_command()
 			}
 			break;
 		case COMMAND_SET_WEAPON: // set weapon to specified type
-			controller->set_current_weapon(com1);
+			controller->current_weapon = com1;
 			break;
 		case COMMAND_RESET_WEAPON: // reset weapon to default type
-			controller->set_current_weapon(controller->default_weapon());
+			controller->current_weapon = controller->default_weapon;
 			break;
 		case COMMAND_SEARCH: // use right-hand rule to find foe
-			if (controller->foe() && !controller->foe()->is_dead())
+			if (controller->foe && !controller->foe->dead)
 				walk_to_foe();
 			else // stop trying to walk to this foe
             {
@@ -352,9 +352,9 @@ short statistics::do_command()
             }
 			break;
 		case COMMAND_RIGHT_WALK: // right-hand-walk ONLY
-			if (controller->foe())
+			if (controller->foe)
 			{
-				distance = controller->distance_to_ob(controller->foe());
+				distance = controller->distance_to_ob(controller->foe);
 				if (distance > 120 && distance < 240)
 					right_walk();
 				else
@@ -363,15 +363,15 @@ short statistics::do_command()
 			}
 			break;
 		case COMMAND_ATTACK: // attack a nearby, set foe
-			if (!controller->foe() || controller->foe()->is_dead())
+			if (!controller->foe || controller->foe->dead)
 			{
 				commands.front().commandcount = 0;
 				result = 1;
 				break;
 			}
 			// Try to walk toward foe, and/or attack ..
-			deltax = static_cast<short>(controller->foe()->xpos - controller->xpos);
-			deltay = static_cast<short>(controller->foe()->ypos - controller->ypos);
+			deltax = static_cast<short>(controller->foe->xpos - controller->xpos);
+			deltay = static_cast<short>(controller->foe->ypos - controller->ypos);
 			if (abs(deltax) > abs(3*deltay))
 				deltay = 0;
 			if (abs(deltay) > abs(3*deltax))
@@ -395,10 +395,10 @@ short statistics::do_command()
 			    add_command(COMMAND_UNCHARM, commandcount-1, 0, 0);
 			    commandcount = 1;
 			  }
-			  else if (controller->real_team_num() != 255)
+			  else if (controller->real_team_num != 255)
 			  {
-			    controller->set_team_num(controller->real_team_num());
-			    controller->set_real_team_num(255);
+			    controller->team_num = controller->real_team_num;
+			    controller->real_team_num = 255;
 			  }
 			*/
 			break;  // end of uncharm case
@@ -437,7 +437,7 @@ void statistics::hit_response(walker  *who)
 
 	if (!who || !controller)
 		return;
-	if (who->is_dead() || controller->is_dead())
+	if (who->dead || controller->dead)
 		return;
 
 	if (controller->query_act_type() == ACT_CONTROL)
@@ -448,8 +448,8 @@ void statistics::hit_response(walker  *who)
 
 	// Set quick-reference values ..
 	myfamily = controller->query_family();
-	if (who->query_order() == Order::Weapon && who->owner())
-		foe = who->owner();
+	if (who->query_order() == Order::Weapon && who->owner)
+		foe = who->owner;
 	else
 		foe = who;
 
@@ -464,7 +464,7 @@ void statistics::hit_response(walker  *who)
 	switch (myfamily)
 	{
 		case FAMILY_MAGE:
-			if (controller->myguy()) // are we a player's character?
+			if (controller->myguy) // are we a player's character?
 				threshold = (3 * max_hitpoints)/5; // then flee at 60%
 			else                   // we're an enemy, so be braver :>
 				threshold = (3 * max_hitpoints)/8; // flee at 3/8
@@ -473,41 +473,41 @@ void statistics::hit_response(walker  *who)
 				// Clear old command ..
 				// clear_command();
 				// teleport
-				controller->set_current_special(1); // teleport to safety
-				controller->set_shifter_down(0);    // TELEPORT, not other
-				controller->set_busy(0); // force-allow us to special
+				controller->current_special = 1; // teleport to safety
+				controller->shifter_down = 0;    // TELEPORT, not other
+				controller->busy = 0; // force-allow us to special
 				controller->special();
 			}
 			else
 			{
-				if (controller->foe() != foe) // we're hit by a new enemy
+				if (controller->foe != foe) // we're hit by a new enemy
 				{
-					controller->set_foe(foe);
-					foe->set_foe(controller);
+					controller->foe = foe;
+					foe->foe = controller;
 					last_distance = current_distance = 15000;
 				}
 			}
 			break;
 		case FAMILY_ARCHMAGE:
-			controller->set_busy(0); // yes, this is a cheat..
-			if (controller->myguy()) // are we a player's character?
+			controller->busy = 0; // yes, this is a cheat..
+			if (controller->myguy) // are we a player's character?
 				threshold = (3 * max_hitpoints)/5; // then flee at 60%
 			else                   // we're an enemy, so be braver :>
 				threshold = (3 * max_hitpoints)/8; // flee at 3/8
 			if ( (hitpoints < threshold) && possible_specials[1] && random(3) )
 			{
 				// teleport
-				controller->set_current_special(1); // teleport to safety
-				controller->set_shifter_down(0);
-				controller->set_busy(0); // force-allow us to special
+				controller->current_special = 1; // teleport to safety
+				controller->shifter_down = 0;
+				controller->busy = 0; // force-allow us to special
 				controller->special();
 			}
 			else  // find out how many foes are around us, etc...
 			{
-				if (controller->foe() != foe) // we're hit by a new enemy
+				if (controller->foe != foe) // we're hit by a new enemy
 				{
-					controller->set_foe(foe);
-					foe->set_foe(controller);
+					controller->foe = foe;
+					foe->foe = controller;
 					last_distance = current_distance = 15000;
 				}
 				myscreen->find_foes_in_range(myscreen->level_data.oblist,
@@ -517,7 +517,7 @@ void statistics::hit_response(walker  *who)
 				{
 					if (possible_specials[3]) // can we summon illusion?
 					{
-						controller->set_current_special(3);
+						controller->current_special = 3;
 						if (controller->special())
 							return;
 					} // end of do 3rd special
@@ -526,26 +526,26 @@ void statistics::hit_response(walker  *who)
 						//if (howmany < 3) // 2 or fewer enemies, so lightning..
 						if (random(2)) // 50/50 now
 						{
-							controller->set_shifter_down(1); // lightning
-							controller->set_current_special(2);
+							controller->shifter_down = 1; // lightning
+							controller->current_special = 2;
 							if (controller->special())
 							{
-								controller->set_shifter_down(0);
+								controller->shifter_down = 0;
 								if (magicpoints >= special_cost[1])  // then leave! :)
 								{
-									controller->set_busy(0);
+									controller->busy = 0;
 									controller->special();
 								}
 								return;
 							}
 						} // end of lightning
-						controller->set_shifter_down(0);
-						controller->set_current_special(2);
+						controller->shifter_down = 0;
+						controller->current_special = 2;
 						if (controller->special())
 						{
 							if (magicpoints >= special_cost[1])  // then leave! :)
 							{
-								controller->set_busy(0);
+								controller->busy = 0;
 								controller->special();
 							}
 							return;
@@ -556,9 +556,9 @@ void statistics::hit_response(walker  *who)
 			break;
 		case FAMILY_ARCHER: // stay at range ..
 			{
-				if (!controller->foe() || controller->foe() != foe)
+				if (!controller->foe || controller->foe != foe)
 				{
-					controller->set_foe(foe);
+					controller->foe = foe;
 					clear_command();
 					last_distance = current_distance = 15000;
 				}
@@ -580,22 +580,22 @@ void statistics::hit_response(walker  *who)
 			// Chance of doing special ..
 			if (controller->check_special() && !random(3) )
 				controller->special();
-			if (controller->myguy()) // are we a player's character?
+			if (controller->myguy) // are we a player's character?
 				threshold = (5 * max_hitpoints)/10; // then flee at 50%
 			else                   // we're an enemy, so be braver :>
 				threshold = (5 * max_hitpoints)/16; // flee at 5/16%
 			if ( (hitpoints < threshold)
-			        && !controller->yo_delay()) // then yell for help & run ..
+			        && !controller->yo_delay) // then yell for help & run ..
 			{
 				yell_for_help(foe);
 			} // end of yell for help
-			if (controller->foe() != foe) // we're attacked by a new enemy
+			if (controller->foe != foe) // we're attacked by a new enemy
 			{
 				// Clear old commands ..
 				clear_command();
 				// Attack our attacker
-				controller->set_foe(foe);
-				foe->set_foe(controller);
+				controller->foe = foe;
+				foe->foe = controller;
 				last_distance = current_distance = 32000;
 			}
 			break;
@@ -608,17 +608,17 @@ void statistics::yell_for_help(walker *foe)
 	short howmany;
 	Sint32 deltax, deltay;
 
-	controller->set_yo_delay(controller->yo_delay() + 80);
+	controller->yo_delay = controller->yo_delay + 80;
 	
 	// Get AI-controlled allies to target my foe
 	std::list<walker*> helplist = myscreen->find_friends_in_range(
 	               myscreen->level_data.oblist, 160, &howmany, controller);
 	for(auto* w : helplist)
 	{
-		w->set_leader(controller);
-		if (foe != w->foe())
+		w->leader = controller;
+		if (foe != w->foe)
 			w->stats()->last_distance = w->stats()->current_distance = 32000;
-		w->set_foe(foe);
+		w->foe = foe;
 		//if (w->query_act_type() != ACT_CONTROL)
 		//  w->stats()->force_command(COMMAND_FOLLOW, 80, 0, 0);
 	}
@@ -633,9 +633,9 @@ void statistics::yell_for_help(walker *foe)
 	// Run away
 	force_command(COMMAND_WALK, 16, deltax, deltay);
 	// Notify friends of need ...
-	if (controller->myguy() && (controller->team_num() == 0) )
+	if (controller->myguy && (controller->team_num == 0) )
 	{
-		std::string message = std::format("{} yells for help!", controller->myguy()->name);
+		std::string message = std::format("{} yells for help!", controller->myguy->name);
 		myscreen->do_notify(message.c_str(), controller);
 	}
 
@@ -668,10 +668,10 @@ bool statistics::right_blocked()
 {
 	float xdelta, ydelta;
 	float controlx = controller->xpos, controly = controller->ypos;
-	float mystep = controller->stepsize();
+	float mystep = controller->stepsize;
 
 	mystep = CHECK_STEP_SIZE;
-	switch (controller->curdir())
+	switch (controller->curdir)
 	{
 		case FACE_UP:
 			xdelta = mystep;
@@ -718,10 +718,10 @@ bool statistics::right_blocked()
 bool statistics::right_forward_blocked()
 {
 	float controlx = controller->xpos, controly = controller->ypos;
-	float mystep = controller->stepsize();
+	float mystep = controller->stepsize;
 
 	mystep = CHECK_STEP_SIZE;
-	switch (controller->curdir())
+	switch (controller->curdir)
 	{
 		case FACE_UP:
 			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
@@ -751,10 +751,10 @@ bool statistics::right_forward_blocked()
 bool statistics::right_back_blocked()
 {
 	float controlx = controller->xpos, controly = controller->ypos;
-	float mystep = controller->stepsize();
+	float mystep = controller->stepsize;
 
 	mystep = CHECK_STEP_SIZE;
-	switch (controller->curdir())
+	switch (controller->curdir)
 	{
 		case FACE_UP:
 			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
@@ -788,7 +788,7 @@ bool statistics::forward_blocked()
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = CHECK_STEP_SIZE;
 
-	switch (controller->curdir())
+	switch (controller->curdir)
 	{
 		case FACE_UP:
 			xdelta = 0;
@@ -843,8 +843,8 @@ bool statistics::right_walk()
 	{
 		if (!forward_blocked())  // walk forward
 		{
-			xdelta = controller->lastx();
-			ydelta = controller->lasty();
+			xdelta = controller->lastx;
+			ydelta = controller->lasty;
 			if (abs(xdelta) > abs(3*ydelta))
 				ydelta = 0;
 			if (abs(ydelta) > abs(3*xdelta))
@@ -858,19 +858,19 @@ bool statistics::right_walk()
 		}
 		else  // turn left
 		{
-			controller->set_enddir(static_cast<char>((controller->get_enddir()+6) %8));  // turn left
-			return controller->turn(controller->get_enddir());
+			controller->enddir = static_cast<char>((controller->enddir+6) %8);  // turn left
+			return controller->turn(controller->enddir);
 		}
 	}
 	else if (forward_blocked())
 	{
-		controller->set_enddir(static_cast<char>((controller->get_enddir()+6) %8));  // turn left
-		return controller->turn(controller->get_enddir());
+		controller->enddir = static_cast<char>((controller->enddir+6) %8);  // turn left
+		return controller->turn(controller->enddir);
 	}
 	else if (right_back_blocked())
 	{
-		controller->set_enddir(static_cast<char>((controller->get_enddir()+2) %8));  // turn right
-		switch (controller->get_enddir())
+		controller->enddir = static_cast<char>((controller->enddir+2) %8);  // turn right
+		switch (controller->enddir)
 		{
 			case FACE_UP:
 				xdelta = 0;
@@ -915,7 +915,7 @@ bool statistics::right_walk()
 	{
 		if (!direct_walk()) //we can't even walk straight to our foe
 		{
-			switch (controller->curdir())
+			switch (controller->curdir)
 			{
 				case FACE_UP:
 					xdelta = 0;
@@ -963,16 +963,16 @@ bool statistics::right_walk()
 
 bool statistics::direct_walk()
 {
-	walker * foe = controller->foe();
+	walker * foe = controller->foe;
 	float xdest, ydest;
 	float xdelta, ydelta;
 	float xdeltastep, ydeltastep;
 	float controlx = controller->xpos, controly = controller->ypos;
 	//  short xdistance, ydistance;
 	//  Uint32 tempdistance;
-	//  char olddir = controller->curdir();
-	//  short oldlastx = controller->lastx();
-	//  short oldlasty = controller->lasty();
+	//  char olddir = controller->curdir;
+	//  short oldlastx = controller->lastx;
+	//  short oldlasty = controller->lasty;
 
 	if (!foe)
 		return 0;
@@ -1001,8 +1001,8 @@ bool statistics::direct_walk()
 	if (ydelta)
 		ydelta = ydelta / fabs(ydelta);
 
-	xdeltastep = xdelta*controller->stepsize();
-	ydeltastep = ydelta*controller->stepsize();
+	xdeltastep = xdelta*controller->stepsize;
+	ydeltastep = ydelta*controller->stepsize;
 
 	// Tom's note on 8/3/97: I think these would work better if
 	// replaced by some sort of single "if forward_blocked()"
@@ -1065,7 +1065,7 @@ bool statistics::direct_walk()
 
 bool statistics::walk_to_foe()
 {
-    walker* foe = controller->foe();
+    walker* foe = controller->foe;
 	float xdest, ydest;
 	float xdelta, ydelta;
 	Uint32 tempdistance = 9999999L;
@@ -1077,13 +1077,13 @@ bool statistics::walk_to_foe()
 		return 0;
 	}
 
-	controller->set_path_check_counter(controller->path_check_counter() - 1);
+	controller->path_check_counter = controller->path_check_counter - 1;
 	// This makes us only check every few rounds, to save
 	// processing time
-	if(controller->path_check_counter() <= 0)
+	if(controller->path_check_counter <= 0)
 	{
-	    controller->set_path_check_counter(5 + rand()%10);
-	    controller->path_to_foe().clear();
+	    controller->path_check_counter = 5 + rand()%10;
+	    controller->path_to_foe.clear();
 	    
 		xdest = foe->xpos;
 		ydest = foe->ypos;
@@ -1104,9 +1104,9 @@ bool statistics::walk_to_foe()
 				controller->turn(controller->facing(xdelta, ydelta));
 				controller->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ random(25)), 1, 1);
 				myscreen->find_near_foe(controller);
-				if (!controller->foe() && firstfoe)
+				if (!controller->foe && firstfoe)
 				{
-					controller->set_foe(firstfoe);
+					controller->foe = firstfoe;
 					last_distance = controller->distance_to_ob(foe);
 				}
 				controller->init_fire();
@@ -1124,7 +1124,7 @@ bool statistics::walk_to_foe()
         }
 	} //end if do_check
 
-    if(controller->path_to_foe().size() > 0)
+    if(controller->path_to_foe.size() > 0)
     {
         controller->follow_path_to_foe();
         last_distance = static_cast<Uint32>(controller->distance_to_ob(foe));

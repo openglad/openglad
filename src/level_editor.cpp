@@ -784,7 +784,7 @@ public:
         {
             order = target->query_order();
             family = target->query_family();
-            team = target->team_num();
+            team = target->team_num;
             level = target->stats()->level;
         }
     }
@@ -1329,10 +1329,10 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 walker* obj = sel.get_object(level);
                 if(obj != nullptr)
                 {
-                    if(obj->team_num() > 0)
-                        obj->set_team_num(obj->team_num() - 1);
+                    if(obj->team_num > 0)
+                        obj->team_num = obj->team_num - 1;
                     else
-                        obj->set_team_num(MAX_TEAM);
+                        obj->team_num = MAX_TEAM;
                     levelchanged = 1;
                 }
             }
@@ -1354,10 +1354,10 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 walker* obj = sel.get_object(level);
                 if(obj != nullptr)
                 {
-                    if(obj->team_num() < MAX_TEAM)
-                        obj->set_team_num(obj->team_num() + 1);
+                    if(obj->team_num < MAX_TEAM)
+                        obj->team_num = obj->team_num + 1;
                     else
-                        obj->set_team_num(0);
+                        obj->team_num = 0;
                     levelchanged = 1;
                 }
             }
@@ -1411,9 +1411,9 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 else
                     sel.family = NUM_FAMILIES-1;
                 level->myloader->set_walker(obj, sel.order, sel.family);
-                obj->set_ani_type(ANI_WALK);
+                obj->ani_type = ANI_WALK;
                 obj->transform_to(sel.order, sel.family);
-                obj->set_frame(obj->ani()[obj->curdir()][0]);
+                obj->set_frame(obj->ani[obj->curdir][0]);
                 obj->setxy(sel.x, sel.y);
                 sel.set(obj);
 
@@ -1433,9 +1433,9 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
                 else
                     sel.family = 0;
                 level->myloader->set_walker(obj, sel.order, sel.family);
-                obj->set_ani_type(ANI_WALK);
+                obj->ani_type = ANI_WALK;
                 obj->transform_to(sel.order, sel.family);
-                obj->set_frame(obj->ani()[obj->curdir()][0]);
+                obj->set_frame(obj->ani[obj->curdir][0]);
                 obj->setxy(sel.x, sel.y);
                 sel.set(obj);
 
@@ -1450,11 +1450,11 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
             walker* obj = sel.get_object(level);
             if(obj != nullptr)
             {
-                if(obj->curdir() < FACE_UP_LEFT)
-                    obj->set_curdir(obj->curdir() + 1);
+                if(obj->curdir < FACE_UP_LEFT)
+                    obj->curdir = obj->curdir + 1;
                 else
-                    obj->set_curdir(FACE_UP);
-				obj->set_frame(obj->ani()[obj->curdir()][0]);
+                    obj->curdir = FACE_UP;
+				obj->set_frame(obj->ani[obj->curdir][0]);
                 levelchanged = 1;
             }
         }
@@ -1973,7 +1973,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         newob->setxy(lm+25 + level->topx, PIX_TOP-16-1 + level->topy);
         newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
         level->myloader->set_walker(newob, object_brush.order, object_brush.family);
-        newob->set_team_num(object_brush.team);
+        newob->team_num = object_brush.team;
         newob->draw_tile(myscreen->viewob[0].get());
         // Border
         myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
@@ -1993,7 +1993,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->topx, PIX_TOP+j*GRID_SIZE + level->topy);
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
                     level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
-                    newob->set_team_num(object_brush.team);
+                    newob->team_num = object_brush.team;
                     newob->draw_tile(myscreen->viewob[0].get());
                 }
             }
@@ -2016,7 +2016,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             newob->setxy(mx + level->topx, my + level->topy);
             newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
             level->myloader->set_walker(newob, object_brush.order, object_brush.family);
-            newob->set_team_num(object_brush.team);
+            newob->team_num = object_brush.team;
             
             // Get size rounded up to nearest GRID_SIZE
             int w = newob->sizex;
@@ -3031,10 +3031,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     newob->setxy(windowx, windowy);
                     if (some_hit(windowx, windowy, newob, level))
                     {
-                        std::string name = newob->collide_ob()->stats()->name;
+                        std::string name = newob->collide_ob->stats()->name;
                         if(prompt_for_string("Rename", name))
                         {
-                            newob->collide_ob()->stats()->name = name;
+                            newob->collide_ob->stats()->name = name;
                             levelchanged = 1;
                         }
                     }
@@ -3050,7 +3050,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         if (some_hit(windowx, windowy, newob, level))
                         {
                             // Clicked on a guy
-                            walker* w = newob->collide_ob();
+                            walker* w = newob->collide_ob;
                             if(keystates[KEYSTATE_LCTRL] || keystates[KEYSTATE_RCTRL])
                             {
                                 // Select/deselect another guy
@@ -3107,10 +3107,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         levelchanged = 1;
                         newob = level->add_ob(object_brush.order, object_brush.family);
                         newob->setxy(windowx, windowy);
-                        newob->set_team_num(object_brush.team);
+                        newob->team_num = object_brush.team;
                         newob->stats()->level = object_brush.level;
-                        newob->set_dead(0); // just in case
-                        newob->set_collide_ob(nullptr);
+                        newob->dead = 0; // just in case
+                        newob->collide_ob = nullptr;
                         // Is there already something there?
                         if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, level))
                         {
@@ -3240,7 +3240,7 @@ walker* LevelEditorData::get_object(int x, int y)
     newob->setxy(x, y);
     if (some_hit(x, y, newob, level))
     {
-        result = newob->collide_ob();
+        result = newob->collide_ob;
     }
     level->remove_ob(newob);
     return result;
@@ -4180,7 +4180,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 			                  w->xpos, w->ypos,
 			                  w->sizex, w->sizey) )
         {
-            ob->set_collide_ob(w);
+            ob->collide_ob = w;
             return w;
         }
 	}
@@ -4193,7 +4193,7 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 			                  w->xpos, w->ypos,
 			                  w->sizex, w->sizey) )
         {
-            ob->set_collide_ob(w);
+            ob->collide_ob = w;
             return w;
         }
 	}
@@ -4206,12 +4206,12 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 			                  w->xpos, w->ypos,
 			                  w->sizex, w->sizey) )
         {
-            ob->set_collide_ob(w);
+            ob->collide_ob = w;
             return w;
         }
 	}
 
-	ob->set_collide_ob(nullptr);
+	ob->collide_ob = nullptr;
 	return nullptr;
 }
 

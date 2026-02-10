@@ -261,7 +261,7 @@ bool viewscreen::redraw()
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
-	if (control && !control->is_dead() && control->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw();
 	display_text();
 	return 1;
@@ -320,7 +320,7 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 		}
 
 	draw_obs(data); //moved here to put the radar on top of obs
-	if (draw_radar && control && !control->is_dead() && control->user() == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
+	if (draw_radar && control && !control->dead && control->user == mynum && prefs[PREF_RADAR] == PREF_RADAR_ON)
 		myradar->draw(data);
 	display_text();
 	return 1;
@@ -380,14 +380,14 @@ short viewscreen::input(const SDL_Event& event)
 	walker *newob; // for general-purpose use
 	walker  * oldcontrol = control; // So we know if we changed guys
 
-	if (control && control->user() == -1)
+	if (control && control->user == -1)
 	{
 		control->set_act_type(ACT_CONTROL);
-		control->set_user(static_cast<char>(mynum));
+		control->user = static_cast<char>(mynum);
 		control->stats()->clear_command();
 	}
     // TODO: Factor out this code, which is duplicated in continuous_input()
-	if (!control || control->is_dead())
+	if (!control || control->dead)
 	{
 	    control = nullptr;
 	    
@@ -396,11 +396,11 @@ short viewscreen::input(const SDL_Event& event)
 		{
 		    walker* w = uptr.get();
 			if (w &&
-			        !w->is_dead() &&
+			        !w->dead &&
 			        w->query_order() == Order::Living &&
-			        w->user() == -1 && // mean's we're not player-controlled
-			        w->myguy() &&
-			        w->team_num() == my_team) // makes a difference for PvP
+			        w->user == -1 && // mean's we're not player-controlled
+			        w->myguy &&
+			        w->team_num == my_team) // makes a difference for PvP
             {
                 control = w;
 				break;
@@ -414,10 +414,10 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->is_dead() &&
+                        !w->dead &&
                         w->query_order() == Order::Living &&
-                        w->user() == -1 && // mean's we're not player-controlled
-                        w->team_num() == my_team) // makes a difference for PvP
+                        w->user == -1 && // mean's we're not player-controlled
+                        w->team_num == my_team) // makes a difference for PvP
                 {
                     control = w;
                     break;
@@ -433,9 +433,9 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->is_dead() &&
+                        !w->dead &&
                         w->query_order() == Order::Living &&
-                        w->myguy())
+                        w->myguy)
                 {
                     control = w;
                     break;
@@ -446,17 +446,17 @@ short viewscreen::input(const SDL_Event& event)
 		if (!control)  // then there's nobody left!
 			return myscreen->endgame(1);
 
-		if (control->user() == -1)
-			control->set_user(mynum); // show that we're controlled now
+		if (control->user == -1)
+			control->user = mynum; // show that we're controlled now
 		control->set_act_type(ACT_CONTROL);
 		myscreen->control_hp = control->stats()->hitpoints;
 	}
 
-	if (control && control->bonus_rounds()) // do we have extra rounds?
+	if (control && control->bonus_rounds) // do we have extra rounds?
 	{
-		control->set_bonus_rounds(control->bonus_rounds() - 1);
+		control->bonus_rounds = control->bonus_rounds - 1;
 		
-		if (control->lastx() != 0.0f || control->lasty() != 0.0f)
+		if (control->lastx != 0.0f || control->lasty != 0.0f)
 			control->walk();
 	}
 
@@ -492,10 +492,10 @@ short viewscreen::input(const SDL_Event& event)
 		
         // Unset our control
 		changedchar[mynum] = 1;
-		if (control->user() == mynum)
+		if (control->user == mynum)
 		{
 			control->restore_act_type();
-			control->set_user(-1);
+			control->user = -1;
 		}
 		control = nullptr;
 		
@@ -519,8 +519,8 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = e->get();
                 if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-                        w->real_team_num() == 255 && w->user() == -1)
+                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                        w->real_team_num == 255 && w->user == -1)
                 {
                     control = w;
                     break;
@@ -534,8 +534,8 @@ short viewscreen::input(const SDL_Event& event)
                 {
                     walker* w = e->get();
                     if (w->query_order() == Order::Living &&
-                            w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-                            w->real_team_num() == 255 && w->user() == -1)
+                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                            w->real_team_num == 255 && w->user == -1)
                     {
                         control = w;
                         break;
@@ -560,8 +560,8 @@ short viewscreen::input(const SDL_Event& event)
             {
                 walker* w = e->get();
                 if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-                        w->real_team_num() == 255 && w->user() == -1)
+                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                        w->real_team_num == 255 && w->user == -1)
                 {
                     control = w;
                     break;
@@ -575,8 +575,8 @@ short viewscreen::input(const SDL_Event& event)
                 {
                     walker* w = e->get();
                     if (w->query_order() == Order::Living &&
-                            w->is_friendly(oldcontrol) && w->team_num() == my_team &&
-                            w->real_team_num() == 255 && w->user() == -1)
+                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
+                            w->real_team_num == 255 && w->user == -1)
                     {
                         control = w;
                         break;
@@ -609,16 +609,16 @@ short viewscreen::input(const SDL_Event& event)
 	{
 		changedspec[mynum] = 1;
 		
-		control->set_current_special(control->current_special() + 1);
-		if (control->current_special() > (NUM_SPECIALS-1)
-		        || (myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())] == "NONE")
-		        || (((control->current_special()-1)*3+1) > control->stats()->level) )
-			control->set_current_special(1);
+		control->current_special = control->current_special + 1;
+		if (control->current_special > (NUM_SPECIALS-1)
+		        || (myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] == "NONE")
+		        || (((control->current_special-1)*3+1) > control->stats()->level) )
+			control->current_special = 1;
 	} //end of switch our special
 
 
 
-	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay()
+	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay
 	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
 	{
@@ -627,18 +627,18 @@ short viewscreen::input(const SDL_Event& event)
 		    walker* w = uptr.get();
 			if (w && (w->query_order() == Order::Living) &&
 			        (w->query_act_type() != ACT_CONTROL) &&
-			        (w->team_num() == control->team_num()) &&
-			        (!w->leader()) )
+			        (w->team_num == control->team_num) &&
+			        (!w->leader) )
 			{
 				// Remove any current foe ..
-				w->set_leader(control);
-				w->set_foe(nullptr);
+				w->leader = control;
+				w->foe = nullptr;
 				w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
 				//w->action = ACTION_FOLLOW;
 			}
 		}
 		
-		control->set_yo_delay(30);
+		control->yo_delay = 30;
 		myscreen->soundp->play_sound(SOUND_YO);
 		myscreen->do_notify("Yo!", control);
 	} //end of yo for friends
@@ -647,20 +647,20 @@ short viewscreen::input(const SDL_Event& event)
 	if (isPlayerHoldingKey(mynum, KEY_SHIFTER) && didPlayerPressKey(mynum, KEY_YELL, event)
 	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // change guys' behavior
 	{
-		switch (control->action())
+		switch (control->action)
 		{
 			case 0:   // not set ..
 				for(auto& uptr : myscreen->level_data.oblist)
 				{
 				    walker* w = uptr.get();
 					if (w &&
-					        (w->team_num() == control->team_num()) && w->is_friendly(control)
+					        (w->team_num == control->team_num) && w->is_friendly(control)
 					   )
 					{
 						// Remove any current foe ..
-						w->set_leader(control);
-						w->set_foe(nullptr);
-						w->set_action(ACTION_FOLLOW);
+						w->leader = control;
+						w->foe = nullptr;
+						w->action = ACTION_FOLLOW;
 					}
 				}
 				myscreen->do_notify("SUMMONING DEFENSE!", control);
@@ -671,18 +671,18 @@ short viewscreen::input(const SDL_Event& event)
 				    walker* w = uptr.get();
 					if (w && (w->query_order() == Order::Living) &&
 					        (w->query_act_type() != ACT_CONTROL) &&
-					        (w->team_num() == control->team_num())
+					        (w->team_num == control->team_num)
 					   )
 					{
 						// Set to normal operation
-						w->set_action(0);
+						w->action = 0;
 					}
 				}
-				control->set_action(0); // for our reference
+				control->action = 0; // for our reference
 				myscreen->do_notify("RELEASING MEN!", control);
 				break;
 			default:
-				control->set_action(0);
+				control->action = 0;
 				break;
 		} // end of switch for action mode
 		
@@ -705,7 +705,7 @@ short viewscreen::input(const SDL_Event& event)
 			
 			walker* result = nullptr;
 			//              control = nullptr;
-			control->set_user(-1);
+			control->user = -1;
 			control->set_act_type(ACT_RANDOM); // hope this works
             
             short oldteam = myscreen->save_data.my_team;
@@ -718,7 +718,7 @@ short viewscreen::input(const SDL_Event& event)
                 for(auto& uptr : myscreen->level_data.oblist)
                 {
                     walker* w = uptr.get();
-                    if ( (w->team_num() == myscreen->save_data.my_team) &&
+                    if ( (w->team_num == myscreen->save_data.my_team) &&
                             (w->query_order() == Order::Living)
                        )
                     {
@@ -732,7 +732,7 @@ short viewscreen::input(const SDL_Event& event)
             if(result != nullptr)
                 control = result;
             
-			control->set_user(mynum);
+			control->user = mynum;
 			control->set_act_type(ACT_CONTROL);
 		} // end of change team
 
@@ -777,10 +777,10 @@ short viewscreen::input(const SDL_Event& event)
 		if (query_key_event(SDLK_F2, event)) // generate magic shield
 		{
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-			newob->set_owner(control);
-			newob->set_team_num(control->team_num());
-			newob->set_ani_type(1); // dummy, non-zero value
-			newob->set_lifetime(200);
+			newob->owner = control;
+			newob->team_num = control->team_num;
+			newob->ani_type = 1; // dummy, non-zero value
+			newob->lifetime = 200;
 			//clear_key_code(SDLK_F2);
 		}//end generate magic shield
 
@@ -815,8 +815,8 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_s, event)) // give us faster speed ..
 		{
-			control->set_speed_bonus_left(control->speed_bonus_left() + 20);
-			control->set_speed_bonus(control->normal_stepsize());
+			control->speed_bonus_left = control->speed_bonus_left + 20;
+			control->speed_bonus = control->normal_stepsize;
 		}
 
 		if (query_key_event(SDLK_t, event)) // transform to new shape
@@ -828,15 +828,15 @@ short viewscreen::input(const SDL_Event& event)
 
 		if (query_key_event(SDLK_v, event)) // invisibility
 		{
-			if (control->invisibility_left() < 3000)
-				control->set_invisibility_left(control->invisibility_left() + 100);
+			if (control->invisibility_left < 3000)
+				control->invisibility_left = control->invisibility_left + 100;
 		}
 
 	} //end of cheat keys
 
 
 	// Make sure we're not in use by another player
-	if (control->user() != mynum)
+	if (control->user != mynum)
 		return 1;
 
 	// if we changed control characters
@@ -844,7 +844,7 @@ short viewscreen::input(const SDL_Event& event)
 		control->stats()->clear_command();
 
 	// If we're frozen ..
-	if (control->is_dead() || control->stats()->frozen_delay)
+	if (control->dead || control->stats()->frozen_delay)
 	{
 		return 1;
 	}
@@ -857,12 +857,12 @@ short viewscreen::input(const SDL_Event& event)
 	    // Treat this as an action, not a modifier
 		if (didPlayerPressKey(mynum, KEY_SHIFTER, event))
         {
-            control->set_shifter_down(1);
+            control->shifter_down = 1;
 			control->special();
-			control->set_shifter_down(0);
+			control->shifter_down = 0;
         }
 	    #else
-	    control->set_shifter_down(isPlayerHoldingKey(mynum, KEY_SHIFTER));
+	    control->shifter_down = isPlayerHoldingKey(mynum, KEY_SHIFTER);
         #endif
 
 		if (didPlayerPressKey(mynum, KEY_SPECIAL, event))
@@ -886,14 +886,14 @@ short viewscreen::continuous_input()
 	//short step;
 	walker  * oldcontrol = control; // So we know if we changed guys
 
-	if (control && control->user() == -1)
+	if (control && control->user == -1)
 	{
 		control->set_act_type(ACT_CONTROL);
-		control->set_user(static_cast<char>(mynum));
+		control->user = static_cast<char>(mynum);
 		control->stats()->clear_command();
 	}
 
-	if (!control || control->is_dead())
+	if (!control || control->dead)
 	{
 	    control = nullptr;
 	    
@@ -902,11 +902,11 @@ short viewscreen::continuous_input()
 		{
 		    walker* w = uptr.get();
 			if (w &&
-			        !w->is_dead() &&
+			        !w->dead &&
 			        w->query_order() == Order::Living &&
-			        w->user() == -1 && // mean's we're not player-controlled
-			        w->myguy() &&
-			        w->team_num() == my_team) // makes a difference for PvP
+			        w->user == -1 && // mean's we're not player-controlled
+			        w->myguy &&
+			        w->team_num == my_team) // makes a difference for PvP
             {
                 control = w;
 				break;
@@ -920,10 +920,10 @@ short viewscreen::continuous_input()
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->is_dead() &&
+                        !w->dead &&
                         w->query_order() == Order::Living &&
-                        w->user() == -1 && // mean's we're not player-controlled
-                        w->team_num() == my_team) // makes a difference for PvP
+                        w->user == -1 && // mean's we're not player-controlled
+                        w->team_num == my_team) // makes a difference for PvP
                 {
                     control = w;
                     break;
@@ -939,9 +939,9 @@ short viewscreen::continuous_input()
             {
                 walker* w = uptr.get();
                 if (w &&
-                        !w->is_dead() &&
+                        !w->dead &&
                         w->query_order() == Order::Living &&
-                        w->myguy())
+                        w->myguy)
                 {
                     control = w;
                     break;
@@ -952,17 +952,17 @@ short viewscreen::continuous_input()
 		if (!control)  // then there's nobody left!
 			return myscreen->endgame(1);
 
-		if (control->user() == -1)
-			control->set_user(mynum); // show that we're controlled now
+		if (control->user == -1)
+			control->user = mynum; // show that we're controlled now
 		control->set_act_type(ACT_CONTROL);
 		myscreen->control_hp = control->stats()->hitpoints;
 	}
 
-	if (control && control->bonus_rounds()) // do we have extra rounds?
+	if (control && control->bonus_rounds) // do we have extra rounds?
 	{
-		control->set_bonus_rounds(control->bonus_rounds() - 1);
+		control->bonus_rounds = control->bonus_rounds - 1;
 		
-		if (control->lastx() || control->lasty())
+		if (control->lastx || control->lasty)
 			control->walk();
 	}
 
@@ -970,18 +970,18 @@ short viewscreen::continuous_input()
 
 
 	// Make sure we haven't yelled recently (this is here because it is guaranteed to run exactly once each frame)
-	if (control->yo_delay() > 0)
-		control->set_yo_delay(control->yo_delay() - 1);
+	if (control->yo_delay > 0)
+		control->yo_delay = control->yo_delay - 1;
 
 	// Before here, all keys should check for !KEY_CHEAT
 
 
 	// Make sure we're not in use by another player
-	if (control->user() != mynum)
+	if (control->user != mynum)
 		return 1;
 
 
-	if (control->ani_type() != ANI_WALK)
+	if (control->ani_type != ANI_WALK)
 	{
 		control->animate();
 	}
@@ -1004,9 +1004,9 @@ short viewscreen::continuous_input()
         #ifndef USE_TOUCH_INPUT
         // We will handle this as an action in input() instead.
 		if (isPlayerHoldingKey(mynum, KEY_SHIFTER))
-			control->set_shifter_down(1);
+			control->shifter_down = 1;
 		else
-			control->set_shifter_down(0);
+			control->shifter_down = 0;
         #endif
 
 		/* Danged testing code confused the hell out of me!! (Zardus) Who's idea was to put this in?
@@ -1042,10 +1042,10 @@ short viewscreen::continuous_input()
 		}
 		else if (control->stats()->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
 		{
-			control->set_cycle(control->cycle() + 1);
-			if (control->ani()[control->curdir()][control->cycle()] == -1)
-				control->set_cycle(0);
-			control->set_frame(control->ani()[control->curdir()][control->cycle()]);
+			control->cycle = control->cycle + 1;
+			if (control->ani[control->curdir][control->cycle] == -1)
+				control->cycle = 0;
+			control->set_frame(control->ani[control->curdir][control->cycle]);
 		}
 
 		// Standard fire
@@ -1064,10 +1064,10 @@ short viewscreen::continuous_input()
 	//       draw_box(S_LEFT, S_UP, S_RIGHT-1, S_DOWN-1, 44, 1);  // red flash
 	         // Make temporary stain:
 	         blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
-	         blood->set_team_num(control->team_num());
-	         blood->set_ani_type(ANI_GROW);
+	         blood->team_num = control->team_num;
+	         blood->ani_type = ANI_GROW;
 	         blood->setxy(control->xpos,control->ypos);
-	         blood->set_owner(control);
+	         blood->owner = control;
 	         //blood->draw(this);
 	//       redraw();
 	         //refresh();
@@ -1118,7 +1118,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	for(auto& uptr : data->fxlist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->is_dead())
+		if(w && !w->dead)
 			w->draw(this);
 	}
 
@@ -1126,7 +1126,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	for(auto& uptr : data->oblist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->is_dead())
+		if(w && !w->dead)
 			w->draw(this);
 	}
 
@@ -1134,7 +1134,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	for(auto& uptr : data->weaplist)
 	{
 	    walker* w = uptr.get();
-		if(w && !w->is_dead())
+		if(w && !w->dead)
 			w->draw(this);
 	}
 
@@ -1355,10 +1355,10 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	for(auto& uptr : myscreen->level_data.oblist)
 	{
 	    walker* w = uptr.get();
-		if (w && !w->is_dead()
+		if (w && !w->dead
 		        && w->query_order() == Order::Living
-		        && w->team_num() == teamnum
-		        && (!w->stats()->name.empty() || w->myguy())) //&& w->owner() == nullptr)
+		        && w->team_num == teamnum
+		        && (!w->stats()->name.empty() || w->myguy)) //&& w->owner == nullptr)
 		{
 		    ls.push_back(w);
 		}
@@ -1405,8 +1405,8 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 			else
 				namecolor = BLACK;
 
-			if (w->myguy())
-				message = w->myguy()->name;
+			if (w->myguy)
+				message = w->myguy->name;
 			else
 				message = w->stats()->name;
 			mytext.write_xy(left+5, text_down, message.c_str(), static_cast<unsigned char>(namecolor));

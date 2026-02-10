@@ -67,7 +67,7 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
         switch(ob->query_order())
         {
             case Order::Living:
-                if(ob->team_num() != 0)
+                if(ob->team_num != 0)
                 {
                     num++;
                     level_sum += ob->stats()->level;
