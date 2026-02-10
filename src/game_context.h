@@ -67,25 +67,43 @@ private:
 // ---------------------------------------------------------------------------
 // InputState — per-frame snapshot of what each player is doing
 // ---------------------------------------------------------------------------
-// Phase 2 will flesh this out. For now it's a placeholder so the
-// GameContext struct is complete.
+// Maps to the game's 16 abstract key actions per player (KEY_UP through
+// KEY_CHEAT). The "held" array tracks continuously-held keys; "pressed"
+// tracks one-shot events for the current frame.
 
 inline constexpr int MAX_PLAYERS = 4;
+inline constexpr int NUM_INPUT_KEYS = 16;
+
+// Indices match KEY_UP..KEY_CHEAT from input.h
+enum class InputKey : int {
+    Up = 0, UpRight = 1, Right = 2, DownRight = 3,
+    Down = 4, DownLeft = 5, Left = 6, UpLeft = 7,
+    Fire = 8, Special = 9, Switch = 10, SpecialSwitch = 11,
+    Yell = 12, Shifter = 13, Prefs = 14, Cheat = 15
+};
 
 struct PlayerInput {
-    float move_x = 0.0f;     // -1..1 horizontal
-    float move_y = 0.0f;     // -1..1 vertical
-    bool fire = false;
-    bool special = false;
-    bool yell = false;
-    bool shift = false;      // alternate action modifier
-    bool prefs = false;       // open preferences
+    // Held state: true while the key is physically down
+    bool held[NUM_INPUT_KEYS] = {};
+
+    // Pressed this frame: true only on the frame the key transitions down
+    bool pressed[NUM_INPUT_KEYS] = {};
+
+    // Derived movement direction from held directional keys (-1, 0, or 1)
+    int move_x() const;
+    int move_y() const;
 };
 
 struct InputState {
     PlayerInput players[MAX_PLAYERS] = {};
     bool quit_requested = false;
+
+    void clear();
 };
+
+// Populate an InputState from the current SDL keyboard/joystick state.
+// Called once per frame before game logic runs.
+void input_state_from_sdl(InputState& out);
 
 // ---------------------------------------------------------------------------
 // GameContext

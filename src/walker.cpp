@@ -22,6 +22,7 @@
 
 #include "graph.h"
 #include "combat_math.h"
+#include "game_context.h"
 #include "smooth.h"
 #include "test_trace.h"
 #include <format>
@@ -1761,7 +1762,7 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 
 float get_base_damage(walker* w)
 {
-    return compute_base_damage(w->damage, random);
+    return compute_base_damage(w->damage, *ctx().rng);
 }
 
 float get_damage_reduction(walker* w, float damage, walker* target)

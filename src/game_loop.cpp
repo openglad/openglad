@@ -1,6 +1,7 @@
 #include "game_loop.h"
 
 #include "colors.h"
+#include "game_context.h"
 #include "graph.h"
 #include "input.h"
 #include "pal32.h"
@@ -114,6 +115,9 @@ bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
         st.done = true;
         return true;
     }
+
+    // Snapshot current input state for the frame
+    input_state_from_sdl(ctx().input);
 
     s.continuous_input();
 

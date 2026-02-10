@@ -113,11 +113,77 @@ void test_input_state_default()
 {
     InputState state;
     TEST_ASSERT(!state.quit_requested, "default InputState should not have quit_requested");
-    TEST_ASSERT(!state.players[0].fire, "default player input should not have fire");
-    TEST_ASSERT_EQ(0, static_cast<int>(state.players[0].move_x),
+    TEST_ASSERT(!state.players[0].held[static_cast<int>(InputKey::Fire)],
+                "default player fire should be false");
+    TEST_ASSERT_EQ(0, state.players[0].move_x(),
                     "default player move_x should be 0");
+    TEST_ASSERT_EQ(0, state.players[0].move_y(),
+                    "default player move_y should be 0");
 }
 REGISTER_TEST(test_input_state_default);
+
+void test_input_state_clear()
+{
+    InputState state;
+    state.players[0].held[static_cast<int>(InputKey::Fire)] = true;
+    state.players[1].pressed[static_cast<int>(InputKey::Special)] = true;
+    state.quit_requested = true;
+
+    state.clear();
+
+    TEST_ASSERT(!state.players[0].held[static_cast<int>(InputKey::Fire)],
+                "clear() should reset held keys");
+    TEST_ASSERT(!state.players[1].pressed[static_cast<int>(InputKey::Special)],
+                "clear() should reset pressed keys");
+    TEST_ASSERT(!state.quit_requested, "clear() should reset quit_requested");
+}
+REGISTER_TEST(test_input_state_clear);
+
+void test_player_input_move_directions()
+{
+    PlayerInput p = {};
+
+    // Left only
+    p.held[static_cast<int>(InputKey::Left)] = true;
+    TEST_ASSERT_EQ(-1, p.move_x(), "Left key should give move_x=-1");
+    TEST_ASSERT_EQ(0, p.move_y(), "Left key should give move_y=0");
+
+    // Reset and test diagonal
+    for (auto& h : p.held) h = false;
+    p.held[static_cast<int>(InputKey::DownRight)] = true;
+    TEST_ASSERT_EQ(1, p.move_x(), "DownRight should give move_x=1");
+    TEST_ASSERT_EQ(1, p.move_y(), "DownRight should give move_y=1");
+
+    // UpLeft
+    for (auto& h : p.held) h = false;
+    p.held[static_cast<int>(InputKey::UpLeft)] = true;
+    TEST_ASSERT_EQ(-1, p.move_x(), "UpLeft should give move_x=-1");
+    TEST_ASSERT_EQ(-1, p.move_y(), "UpLeft should give move_y=-1");
+
+    // Opposing directions cancel
+    for (auto& h : p.held) h = false;
+    p.held[static_cast<int>(InputKey::Left)] = true;
+    p.held[static_cast<int>(InputKey::Right)] = true;
+    TEST_ASSERT_EQ(0, p.move_x(), "Left+Right should cancel to move_x=0");
+}
+REGISTER_TEST(test_player_input_move_directions);
+
+void test_input_state_from_sdl_captures_held()
+{
+    // This test verifies input_state_from_sdl() populates from the
+    // actual SDL keyboard state. Since no keys are pressed in the test
+    // environment, all should be false.
+    InputState state;
+    input_state_from_sdl(state);
+
+    for (int p = 0; p < MAX_PLAYERS; p++) {
+        for (int k = 0; k < NUM_INPUT_KEYS; k++) {
+            TEST_ASSERT(!state.players[p].held[k],
+                        "no keys should be held in test environment");
+        }
+    }
+}
+REGISTER_TEST(test_input_state_from_sdl_captures_held);
 
 // ---------------------------------------------------------------------------
 // IRandom-based combat math overload
