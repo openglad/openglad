@@ -315,6 +315,15 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_save_menu.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_fairy_death.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_overpowered_team.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smoother.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_primitives.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_text_rendering.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
