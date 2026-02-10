@@ -16,7 +16,7 @@ struct TestEntry {
     test_func_t fn;
 };
 
-#define MAX_TESTS 512
+#define MAX_TESTS 768
 extern TestEntry g_test_registry[MAX_TESTS];
 extern int g_test_registry_count;
 
