@@ -107,24 +107,69 @@ class walker : public pixieN
 		};
 
 
-		short shifter_down; // is our shifter/alternate key pressed?
-		std::unique_ptr<statistics> stats;
-		walker  *collide_ob;
-		unsigned short default_weapon;
-		signed char user;              // are we being used by anyone?
-		signed char curdir;  // Current direction facing
-		signed char  **ani;
-		unsigned char drawcycle;
-		char current_special;
-		unsigned char outline;
-		short yo_delay;
-		// Zardus: ADD: in_act should be set while in an action
-		bool in_act;
-		obmap* myobmap;
-		int path_check_counter;
-		std::vector<MicroPatherState> path_to_foe;  // Result from pathfinding
-
 		// --- Encapsulated field accessors ---
+		// stats (unique_ptr ownership is protected; getter returns raw pointer)
+		statistics* stats() const { return stats_.get(); }
+		// shifter_down
+		short shifter_down() const { return shifter_down_; }
+		void set_shifter_down(short s) { shifter_down_ = s; }
+		// collide_ob
+		walker* collide_ob() const { return collide_ob_; }
+		void set_collide_ob(walker* c) { collide_ob_ = c; }
+		// default_weapon
+		unsigned short default_weapon() const { return default_weapon_; }
+		void set_default_weapon(unsigned short w) { default_weapon_ = w; }
+		// user
+		signed char user() const { return user_; }
+		void set_user(signed char u) { user_ = u; }
+		// curdir
+		signed char curdir() const { return curdir_; }
+		void set_curdir(signed char d) { curdir_ = d; }
+		// ani
+		signed char** ani() const { return ani_; }
+		void set_ani(signed char** a) { ani_ = a; }
+		// drawcycle
+		unsigned char drawcycle() const { return drawcycle_; }
+		void set_drawcycle(unsigned char d) { drawcycle_ = d; }
+		// current_special
+		char current_special() const { return current_special_; }
+		void set_current_special(char s) { current_special_ = s; }
+		// outline
+		unsigned char outline() const { return outline_; }
+		void set_outline(unsigned char o) { outline_ = o; }
+		// yo_delay
+		short yo_delay() const { return yo_delay_; }
+		void set_yo_delay(short y) { yo_delay_ = y; }
+		// in_act
+		bool in_act() const { return in_act_; }
+		void set_in_act(bool a) { in_act_ = a; }
+		// myobmap
+		obmap* myobmap() const { return myobmap_; }
+		void set_myobmap(obmap* m) { myobmap_ = m; }
+		// path_check_counter
+		int path_check_counter() const { return path_check_counter_; }
+		void set_path_check_counter(int c) { path_check_counter_ = c; }
+		// path_to_foe
+		std::vector<MicroPatherState>& path_to_foe() { return path_to_foe_; }
+		const std::vector<MicroPatherState>& path_to_foe() const { return path_to_foe_; }
+		// hurt_flash
+		bool hurt_flash() const { return hurt_flash_; }
+		void set_hurt_flash(bool h) { hurt_flash_ = h; }
+		// attack_lunge
+		float attack_lunge() const { return attack_lunge_; }
+		void set_attack_lunge(float v) { attack_lunge_ = v; }
+		// attack_lunge_angle
+		float attack_lunge_angle() const { return attack_lunge_angle_; }
+		void set_attack_lunge_angle(float v) { attack_lunge_angle_ = v; }
+		// hit_recoil
+		float hit_recoil() const { return hit_recoil_; }
+		void set_hit_recoil(float v) { hit_recoil_ = v; }
+		// hit_recoil_angle
+		float hit_recoil_angle() const { return hit_recoil_angle_; }
+		void set_hit_recoil_angle(float v) { hit_recoil_angle_ = v; }
+		// last_hitpoints
+		float last_hitpoints() const { return last_hitpoints_; }
+		void set_last_hitpoints(float v) { last_hitpoints_ = v; }
 		// team_num / real_team_num
 		unsigned char team_num() const { return team_num_; }
 		void set_team_num(unsigned char t) { team_num_ = t; }
@@ -212,16 +257,10 @@ class walker : public pixieN
             DamageNumber(float x, float y, float value, unsigned char color);
             void draw(viewscreen* view_buf);
 		};
-		std::list<DamageNumber> damage_numbers;
-		
-		bool hurt_flash;
-		float attack_lunge;
-		float attack_lunge_angle;
-		float hit_recoil;
-		float hit_recoil_angle;
-		
-		float last_hitpoints;
-		
+		// damage_numbers
+		std::list<DamageNumber>& damage_numbers() { return damage_numbers_; }
+		const std::list<DamageNumber>& damage_numbers() const { return damage_numbers_; }
+
 		float get_current_angle();
         void do_heal_effects(walker* healer, walker* target, short amount);
         void do_hit_effects(walker* attacker, walker* target, short tempdamage);
@@ -276,6 +315,29 @@ class walker : public pixieN
 		Sint32 lifetime_;              // how much life summoned guys have ..
 		short speed_bonus_;            // These two are used for
 		short speed_bonus_left_;       // speed potions, etc.
+		// Remaining encapsulated fields
+		std::unique_ptr<statistics> stats_;
+		walker* collide_ob_;
+		unsigned short default_weapon_;
+		signed char user_;             // are we being used by anyone?
+		signed char curdir_;           // Current direction facing
+		signed char** ani_;
+		unsigned char drawcycle_;
+		char current_special_;
+		unsigned char outline_;
+		short shifter_down_;           // is our shifter/alternate key pressed?
+		short yo_delay_;
+		bool in_act_;                  // set while in an action
+		obmap* myobmap_;
+		int path_check_counter_;
+		std::vector<MicroPatherState> path_to_foe_;  // Result from pathfinding
+		bool hurt_flash_;
+		float attack_lunge_;
+		float attack_lunge_angle_;
+		float hit_recoil_;
+		float hit_recoil_angle_;
+		float last_hitpoints_;
+		std::list<DamageNumber> damage_numbers_;
 
 
 };

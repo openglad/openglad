@@ -47,7 +47,7 @@ bool weap::act()
 	if (!owner_)
 		owner_ = this; //to fix cases where our parent died!
 
-	collide_ob = nullptr; // always start with no collision..
+	collide_ob_ = nullptr; // always start with no collision..
 
 	// Complete previous animations (like firing)
 	if (ani_type_ != ANI_WALK)
@@ -153,7 +153,7 @@ bool weap::death()
 			newob->set_damage(damage_);
 			break;  // end of soldier returning knife
 		case FAMILY_ROCK: // used for the elf's bouncing rock, etc.
-			if (!do_bounce || !lineofsight_ || collide_ob) // died of natural causes
+			if (!do_bounce || !lineofsight_ || collide_ob_) // died of natural causes
 				break;
 			dead_ = 0; // first, un-dead us so we can collide ..
 			// Did we hit a barrier?
@@ -199,8 +199,8 @@ bool weap::death()
 			if (on_screen())
 				myscreen->soundp->play_sound(SOUND_EXPLODE);
 			newob->set_owner(owner_);
-			newob->stats->hitpoints = 0;
-			newob->stats->level = owner_->stats->level;
+			newob->stats()->hitpoints = 0;
+			newob->stats()->level = owner_->stats()->level;
 			newob->set_ani_type(ANI_EXPLODE);
 			newob->center_on(this);
 			newob->set_damage(damage_*2);
@@ -208,12 +208,12 @@ bool weap::death()
 		case FAMILY_WAVE: // grow to wave2
 			dead_ = 0;
 			transform_to(Order::Weapon, FAMILY_WAVE2);
-			stats->hitpoints = stats->max_hitpoints;
+			stats_->hitpoints = stats_->max_hitpoints;
 			break;  // end wave -> wave2
 		case FAMILY_WAVE2: // grow to wave3
 			dead_ = 0;
 			transform_to(Order::Weapon, FAMILY_WAVE3);
-			stats->hitpoints = stats->max_hitpoints;
+			stats_->hitpoints = stats_->max_hitpoints;
 			break;  // end wave2 -> wave3
 		case FAMILY_DOOR: // display open picture
 			newob = myscreen->level_data.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
@@ -221,19 +221,19 @@ bool weap::death()
 				break;
 			newob->set_ani_type(ANI_DOOR_OPEN);
 			newob->setxy(xpos, ypos);
-			newob->stats->level = stats->level;
+			newob->stats()->level = stats_->level;
 			newob->set_team_num(team_num_);
 			//      newob->ignore_ = 1;
 			// What way are we 'facing'?
 			if (myscreen->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
 			        == TYPE_WALL) // a wall above us?
 			{
-				newob->curdir = FACE_RIGHT;
+				newob->set_curdir(FACE_RIGHT);
 				//        newob->setxy(xpos, ypos-12); // and move us 'up'
 			}
 			else
 			{
-				curdir = FACE_UP;
+				curdir_ = FACE_UP;
 			}
 			break; // end open the door ..
 		default:
@@ -261,16 +261,16 @@ bool weap::animate()
 		case FAMILY_BLOOD:
 			if (ani_type_ > 1)
 				ani_type_ = 0;
-			set_frame(ani[curdir+ani_type_*NUM_FACINGS][cycle_]);
+			set_frame(ani_[curdir_+ani_type_*NUM_FACINGS][cycle_]);
 			cycle_++;
-			if (ani[curdir+ani_type_*NUM_FACINGS][cycle_] == -1)
+			if (ani_[curdir_+ani_type_*NUM_FACINGS][cycle_] == -1)
 			{
 				ani_type_ = 0; //ANI_WALK;
 				cycle_ = 0;
 			}
 			break;
 		case FAMILY_CIRCLE_PROTECTION:
-			if (!owner_ || owner_->is_dead() || stats->hitpoints <= 0)
+			if (!owner_ || owner_->is_dead() || stats_->hitpoints <= 0)
 			{
 				dead_ = 1;
 				return death();
@@ -280,9 +280,9 @@ bool weap::animate()
 		case FAMILY_GLOW:
 			if (ani_type_ > 2) // illegal case
 				ani_type_ = 2; // pulse case
-			set_frame(ani[curdir+ani_type_*NUM_FACINGS][cycle_]);
+			set_frame(ani_[curdir_+ani_type_*NUM_FACINGS][cycle_]);
 			cycle_++;
-			if (ani[curdir+ani_type_*NUM_FACINGS][cycle_] == -1)
+			if (ani_[curdir_+ani_type_*NUM_FACINGS][cycle_] == -1)
 			{
 				ani_type_ = 2; // pulse
 				cycle_ = 0;
@@ -295,9 +295,9 @@ bool weap::animate()
 			break;
 		default:
 			ani_type_ = 0;
-			set_frame(ani[curdir][cycle_]);
+			set_frame(ani_[curdir_][cycle_]);
 			cycle_++;
-			if (ani[curdir][cycle_] == -1)
+			if (ani_[curdir_][cycle_] == -1)
 			{
 				cycle_ = 0;
 			}

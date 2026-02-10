@@ -505,17 +505,17 @@ void guy::update_derived_stats(walker* w)
     myscreen->level_data.myloader->set_derived_stats(w, Order::Living, temp_guy->family);
     
     
-    w->stats->max_hitpoints += temp_guy->get_hp_bonus();
-    w->stats->hitpoints = w->stats->max_hitpoints;
+    w->stats()->max_hitpoints += temp_guy->get_hp_bonus();
+    w->stats()->hitpoints = w->stats()->max_hitpoints;
     
     // No class base value for MP...
-    w->stats->max_magicpoints = temp_guy->get_mp_bonus();
-    w->stats->magicpoints = w->stats->max_magicpoints;
+    w->stats()->max_magicpoints = temp_guy->get_mp_bonus();
+    w->stats()->magicpoints = w->stats()->max_magicpoints;
 
     w->set_damage(w->damage() + temp_guy->get_damage_bonus());
 
     // No class base value for armor...
-    w->stats->armor = temp_guy->get_armor_bonus();
+    w->stats()->armor = temp_guy->get_armor_bonus();
 
     //stepsize makes us run faster, max for a non-weapon is 12
     w->set_stepsize(w->stepsize() + temp_guy->get_speed_bonus());
@@ -530,54 +530,54 @@ void guy::update_derived_stats(walker* w)
 
     // Fighters: limited weapons
     if (w->query_family() == FAMILY_SOLDIER)
-        w->set_weapons_left(static_cast<short>((w->stats->level+1) / 2));
+        w->set_weapons_left(static_cast<short>((w->stats()->level+1) / 2));
         
 
     // Set the heal delay ..
-    w->stats->max_heal_delay = REGEN;
-    w->stats->current_heal_delay = temp_guy->constitution + temp_guy->strength/6.0f + 20 + 1000; //for purposes of calculation only
+    w->stats()->max_heal_delay = REGEN;
+    w->stats()->current_heal_delay = temp_guy->constitution + temp_guy->strength/6.0f + 20 + 1000; //for purposes of calculation only
 
-    while (w->stats->current_heal_delay > REGEN)
+    while (w->stats()->current_heal_delay > REGEN)
     {
-        w->stats->current_heal_delay -= REGEN;
-        w->stats->heal_per_round++;
+        w->stats()->current_heal_delay -= REGEN;
+        w->stats()->heal_per_round++;
     } // this takes care of the integer part, now calculate the fraction
 
-    if (w->stats->current_heal_delay > 1)
+    if (w->stats()->current_heal_delay > 1)
     {
-        w->stats->max_heal_delay /=
-            static_cast<Sint32>(w->stats->current_heal_delay + 1);
+        w->stats()->max_heal_delay /=
+            static_cast<Sint32>(w->stats()->current_heal_delay + 1);
     }
-    w->stats->current_heal_delay = 0; //start off without healing
+    w->stats()->current_heal_delay = 0; //start off without healing
 
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our heal_per_round as one higher, and the math must
     //have been screwed up some how
-    if (w->stats->max_heal_delay < 2)
-        w->stats->max_heal_delay = 2;
+    if (w->stats()->max_heal_delay < 2)
+        w->stats()->max_heal_delay = 2;
 
     // Set the magic delay ..
-    w->stats->max_magic_delay = REGEN;
-    w->stats->current_magic_delay = temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200;
+    w->stats()->max_magic_delay = REGEN;
+    w->stats()->current_magic_delay = temp_guy->intelligence * 45 + temp_guy->dexterity * 15 + 200;
 
-    while (w->stats->current_magic_delay > REGEN)
+    while (w->stats()->current_magic_delay > REGEN)
     {
-        w->stats->current_magic_delay -= REGEN;
-        w->stats->magic_per_round++;
+        w->stats()->current_magic_delay -= REGEN;
+        w->stats()->magic_per_round++;
     } // this takes care of the integer part, now calculate the fraction
 
-    if (w->stats->current_magic_delay > 1)
+    if (w->stats()->current_magic_delay > 1)
     {
-        w->stats->max_magic_delay /=
-            static_cast<Sint32>(w->stats->current_magic_delay + 1);
+        w->stats()->max_magic_delay /=
+            static_cast<Sint32>(w->stats()->current_magic_delay + 1);
     }
-    w->stats->current_magic_delay = 0; //start off without magic regen
+    w->stats()->current_magic_delay = 0; //start off without magic regen
 
     //make sure we have at least a 2 wait, otherwise we should have
     //calculated our magic_per_round as one higher, and the math must
     //have been screwed up some how
-    if (w->stats->max_magic_delay < 2)
-        w->stats->max_magic_delay = 2;
+    if (w->stats()->max_magic_delay < 2)
+        w->stats()->max_magic_delay = 2;
 }
 
 walker* guy::create_walker(screen* myscreen)
@@ -585,7 +585,7 @@ walker* guy::create_walker(screen* myscreen)
     guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->level_data.myloader->create_walker(Order::Living, temp_guy->family, nullptr);
     temp_walker->set_myguy(temp_guy);
-    temp_walker->stats->level = temp_guy->level;
+    temp_walker->stats()->level = temp_guy->level;
     
     update_derived_stats(temp_walker);
 
@@ -601,7 +601,7 @@ walker* guy::create_and_add_walker(screen* myscreen)
     guy* temp_guy = new guy(*this);
     walker* temp_walker = myscreen->level_data.add_ob(Order::Living, temp_guy->family);
     temp_walker->set_myguy(temp_guy);
-    temp_walker->stats->level = temp_guy->level;
+    temp_walker->stats()->level = temp_guy->level;
     
     update_derived_stats(temp_walker);
 

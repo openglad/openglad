@@ -384,7 +384,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 		return 0;
 
 	// Are we ethereal?
-	if (ob->stats->query_bit_flags(BIT_ETHEREAL) )
+	if (ob->stats()->query_bit_flags(BIT_ETHEREAL) )
 		return 1; //moved up to avoid unneeded calculation
 
 	// Zardus: PORT: Does the grid exist?
@@ -493,18 +493,18 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 				case PIX_TREE_MR:
 				case PIX_TREE_MT:
 				case PIX_TREE_T1:
-					if (ob->stats->query_bit_flags(BIT_FORESTWALK) )
+					if (ob->stats()->query_bit_flags(BIT_FORESTWALK) )
 						break;
-					else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left())
+					else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
 						break;
 					else
 						return 0;
 				case PIX_TREE_B1:  // Tree bottoms
 					{
 						if (ob->query_order() == Order::Weapon
-						        || ob->stats->query_bit_flags(BIT_FORESTWALK) )
+						        || ob->stats()->query_bit_flags(BIT_FORESTWALK) )
 							break;
-						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left())
+						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
 							break;
 						else
 							return 0;
@@ -567,7 +567,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 					{
 						if (ob->query_order() == Order::Weapon)
 							break;
-						else if (ob->stats->query_bit_flags(BIT_FLYING) || ob->flight_left())
+						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left())
 							break;
 						else
 							return 0;
@@ -677,9 +677,9 @@ bool screen::act()
 		{
 			if (ob && !ob->is_dead())
 			{
-				ob->in_act = 1; // Zardus: while acting, in_act is set
+				ob->set_in_act(true); // Zardus: while acting, in_act is set
 				ob->act();
-				ob->in_act = 0;
+				ob->set_in_act(false);
 				if (ob && !ob->is_dead())
 				{
 					if (!ob->is_friendly_to_team(save_data.my_team) &&
@@ -764,8 +764,8 @@ bool screen::act()
             ob->set_leader(nullptr);
         if (ob->owner() && ob->owner()->is_dead())
             ob->set_owner(nullptr);
-        if (ob->collide_ob && ob->collide_ob->is_dead())
-            ob->collide_ob = nullptr;
+        if (ob->collide_ob() && ob->collide_ob()->is_dead())
+            ob->set_collide_ob(nullptr);
 	}
 
 	for(auto& uptr : level_data.weaplist)
@@ -777,8 +777,8 @@ bool screen::act()
             ob->set_leader(nullptr);
         if (ob->owner() && ob->owner()->is_dead())
             ob->set_owner(nullptr);
-        if (ob->collide_ob && ob->collide_ob->is_dead())
-            ob->collide_ob = nullptr;
+        if (ob->collide_ob() && ob->collide_ob()->is_dead())
+            ob->set_collide_ob(nullptr);
 	}
 
 
@@ -791,7 +791,7 @@ bool screen::act()
 		    // Delete the dead thing safely
 
 			// Is it a player?
-			if(ob->user != -1)
+			if(ob->user() != -1)
 			{
 			    // Remove it from its viewscreen
 			    for(int i = 0; i < numviews; i++)
@@ -1010,7 +1010,7 @@ walker  *screen::find_far_foe(walker  *ob)
 	// Set our 'default' foe to nullptr
 	endfoe = nullptr;
 	distance = 10000;
-	ob->stats->last_distance = 10000;
+	ob->stats()->last_distance = 10000;
 
     for(auto& uptr : level_data.oblist)
 	{
@@ -1202,7 +1202,7 @@ walker* screen::find_nearest_player(walker *ob)
 	for(auto& uptr : level_data.oblist)
 	{
 	    walker* w = uptr.get();
-		if (w && (w->user != -1) )
+		if (w && (w->user() != -1) )
 		{
 			tempdistance = ob->distance_to_ob(w);
 			if (tempdistance < distance)

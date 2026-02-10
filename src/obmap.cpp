@@ -286,23 +286,23 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                               && (w->query_family() == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
-                        if (ob->keys() & static_cast<Sint32>(pow(static_cast<double>(2), w->stats->level)))
+                        if (ob->keys() & static_cast<Sint32>(pow(static_cast<double>(2), w->stats()->level)))
                         {
                             // Open the door ..
                             w->set_dead(1);
                             w->death();
                             ob->collide(w);
-                            if (ob->stats->query_bit_flags(BIT_NO_COLLIDE))
+                            if (ob->stats()->query_bit_flags(BIT_NO_COLLIDE))
                                 return 1;
                             return 0; // block for this round
                         } // end of unlocked door
                         else
                         {
                             // Do we notify?
-                            if (!(ob->skip_exit()) && (ob->user != -1))
+                            if (!(ob->skip_exit()) && (ob->user() != -1))
                             {
                                 std::string message = std::format("Key {} needed!",
-                                        w->stats->level);
+                                        w->stats()->level);
                                 myscreen->do_notify(message.c_str(), ob);
                                 ob->set_skip_exit(10);
                             } // end of failed open door notification
@@ -313,14 +313,14 @@ short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pil
                     else
                     {
                         ob->collide(w);
-                        if (ob->stats->query_bit_flags(BIT_NO_COLLIDE))
+                        if (ob->stats()->query_bit_flags(BIT_NO_COLLIDE))
                             return 1;
                         return 0;
                     }
                 }
                 else
                     // if (ob->collide_ob) //let's just assume its safe
-                    ob->collide_ob = nullptr;
+                    ob->set_collide_ob(nullptr);
             }
         }
 	}

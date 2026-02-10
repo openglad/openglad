@@ -363,7 +363,7 @@ walker* LevelData::add_ob(Order order, char family, bool atstart)
     if(w == nullptr)
         return nullptr;
 
-    w->myobmap = this->myobmap.get();
+    w->set_myobmap(this->myobmap.get());
     if (order == Order::Living)
         numobs++;
     
@@ -374,7 +374,7 @@ walker* LevelData::add_ob(Order order, char family, bool atstart)
 walker* LevelData::add_fx_ob(Order order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen, false);
-    w->myobmap = this->myobmap.get();
+    w->set_myobmap(this->myobmap.get());
 
 	//numobs++;
 	//w->ignore = 1;
@@ -386,7 +386,7 @@ walker* LevelData::add_fx_ob(Order order, char family)
 walker* LevelData::add_weap_ob(Order order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen);
-    w->myobmap = this->myobmap.get();
+    w->set_myobmap(this->myobmap.get());
 
     weaplist.push_back(std::unique_ptr<walker>(w));
 	return w;
@@ -723,7 +723,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 		}
 		new_guy->setxy(currentx, currenty);
 		new_guy->set_team_num(tempteam);
-		new_guy->stats->level = templevel;
+		new_guy->stats()->level = templevel;
 	}
 
 	// Now get the lines of text to read ..
@@ -828,10 +828,10 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 		}
 		new_guy->setxy(currentx, currenty);
 		new_guy->set_team_num(tempteam);
-		new_guy->stats->level = templevel;
-		new_guy->stats->name = tempname;
-		if (new_guy->stats->name.size() > 1)           //chad 5/25/95
-			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
+		new_guy->stats()->level = templevel;
+		new_guy->stats()->name = tempname;
+		if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
+			new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
 
 	}
 
@@ -941,10 +941,10 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 		}
 		new_guy->setxy(currentx, currenty);
 		new_guy->set_team_num(tempteam);
-		new_guy->stats->level = templevel;
-		new_guy->stats->name = tempname;
-		if (new_guy->stats->name.size() > 1)           //chad 5/25/95
-			new_guy->stats->set_bit_flags(BIT_NAMED, 1);
+		new_guy->stats()->level = templevel;
+		new_guy->stats()->name = tempname;
+		if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
+			new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
 
 	}
 
@@ -1102,12 +1102,12 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
         new_guy->setxy(currentx, currenty);
         new_guy->set_team_num(tempteam);
         if (version >= 7)
-            new_guy->stats->level = shortlevel;
+            new_guy->stats()->level = shortlevel;
         else
-            new_guy->stats->level = templevel;
-        new_guy->stats->name = tempname;
-        if (new_guy->stats->name.size() > 1)           //chad 5/25/95
-            new_guy->stats->set_bit_flags(BIT_NAMED, 1);
+            new_guy->stats()->level = templevel;
+        new_guy->stats()->name = tempname;
+        if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
+            new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
 
     }
     
@@ -1436,15 +1436,15 @@ bool LevelData::save()
             return false;  // Something wrong! Too few objects..
         }
         temporder = static_cast<unsigned char>(w->query_order());
-        tempfacing= w->curdir;
+        tempfacing= w->curdir();
         tempfamily= w->query_family();
         tempteam  = w->team_num();
         tempcommand=w->query_act_type();
         currentx  = w->xpos;
         currenty  = w->ypos;
-        //templevel = w->stats->level;
-        shortlevel = w->stats->level;
-        snprintf(tempname, sizeof(tempname), "%s", w->stats->name.c_str());
+        //templevel = w->stats()->level;
+        shortlevel = w->stats()->level;
+        snprintf(tempname, sizeof(tempname), "%s", w->stats()->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1468,15 +1468,15 @@ bool LevelData::save()
             return false;  // Something wrong! Too few objects..
         }
         temporder = static_cast<unsigned char>(ob->query_order());
-        tempfacing= ob->curdir;
+        tempfacing= ob->curdir();
         tempfamily= ob->query_family();
         tempteam  = ob->team_num();
         tempcommand=ob->query_act_type();
         currentx  = ob->xpos;
         currenty  = ob->ypos;
-        //templevel = ob->stats->level;
-        shortlevel = ob->stats->level;
-        snprintf(tempname, sizeof(tempname), "%s", ob->stats->name.c_str());
+        //templevel = ob->stats()->level;
+        shortlevel = ob->stats()->level;
+        snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);
@@ -1500,14 +1500,14 @@ bool LevelData::save()
             return false;  // Something wrong! Too few objects..
         }
         temporder = static_cast<unsigned char>(ob->query_order());
-        tempfacing= ob->curdir;
+        tempfacing= ob->curdir();
         tempfamily= ob->query_family();
         tempteam  = ob->team_num();
         tempcommand=ob->query_act_type();
         currentx  = ob->xpos;
         currenty  = ob->ypos;
-        shortlevel = ob->stats->level;
-        snprintf(tempname, sizeof(tempname), "%s", ob->stats->name.c_str());
+        shortlevel = ob->stats()->level;
+        snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
         SDL_RWwrite(outfile, &currentx, 2, 1);

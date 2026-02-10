@@ -29,7 +29,7 @@ extern Sint32 current_difficulty;
 living::living(const PixieData& data)
     : walker(data)
 {
-	current_special = 1;
+	current_special_ = 1;
 	lifetime_ = 0;
 }
 
@@ -79,22 +79,22 @@ bool living::act()
 		switch (family)
 		{
 			case FAMILY_FIREELEMENTAL: // we take a toll from our mage ..
-				if (stats->hitpoints < stats->max_hitpoints) // we're hurt
+				if (stats_->hitpoints < stats_->max_hitpoints) // we're hurt
 				{
 					// Take a 'toll' of one health and 3 mp of mage, if there
 					Sint32 temp = 0;
-					if (owner_->stats->hitpoints >= (owner_->stats->max_hitpoints/3) )
+					if (owner_->stats()->hitpoints >= (owner_->stats()->max_hitpoints/3) )
 					{
 						temp = 1;
-						owner_->stats->hitpoints--;
+						owner_->stats()->hitpoints--;
 					}
-					if (temp && (owner_->stats->magicpoints >= 3) )
+					if (temp && (owner_->stats()->magicpoints >= 3) )
 					{
 						temp += 1;
-						owner_->stats->magicpoints -= 3;
+						owner_->stats()->magicpoints -= 3;
 					}
 					if (temp == 2) // had both MP and HP, so heal 1 unit
-						stats->hitpoints++;
+						stats_->hitpoints++;
 					else // else go down one more unit of lifetime_
 						lifetime_--;
 				} // end of hurt elemental
@@ -105,7 +105,7 @@ bool living::act()
 	}  // end of summoned monster stuff
 
 
-	collide_ob = nullptr; // always start with no collison..
+	collide_ob_ = nullptr; // always start with no collison..
 
 	/*
 	  if (ignore_)
@@ -116,18 +116,18 @@ bool living::act()
 	*/
 
 	// Regenerate magic
-	if (stats->magicpoints < stats->max_magicpoints &&
+	if (stats_->magicpoints < stats_->max_magicpoints &&
 	        !(myscreen->enemy_freeze || bonus_rounds_) )
 	{
-		stats->magicpoints += stats->magic_per_round;
-		stats->current_magic_delay++;
-		if (stats->current_magic_delay >= stats->max_magic_delay)
+		stats_->magicpoints += stats_->magic_per_round;
+		stats_->current_magic_delay++;
+		if (stats_->current_magic_delay >= stats_->max_magic_delay)
 		{
-			stats->magicpoints++;
-			stats->current_magic_delay = 0;
+			stats_->magicpoints++;
+			stats_->current_magic_delay = 0;
 		}
-		if (stats->magicpoints > stats->max_magicpoints)
-			stats->magicpoints = stats->max_magicpoints;
+		if (stats_->magicpoints > stats_->max_magicpoints)
+			stats_->magicpoints = stats_->max_magicpoints;
 	} // end magic increment section
 
 	//Regenerate hitpoints
@@ -135,18 +135,18 @@ bool living::act()
         regen_delay_--;
     else
     {
-        if (stats->hitpoints < stats->max_hitpoints &&
+        if (stats_->hitpoints < stats_->max_hitpoints &&
                 !(myscreen->enemy_freeze || bonus_rounds_))
         {
-            stats->hitpoints += stats->heal_per_round;
-            stats->current_heal_delay++;
-            if (stats->current_heal_delay >= stats->max_heal_delay)
+            stats_->hitpoints += stats_->heal_per_round;
+            stats_->current_heal_delay++;
+            if (stats_->current_heal_delay >= stats_->max_heal_delay)
             {
-                stats->hitpoints++;
-                stats->current_heal_delay = 0;
+                stats_->hitpoints++;
+                stats_->current_heal_delay = 0;
             }
-            if (stats->hitpoints > stats->max_hitpoints)
-                stats->hitpoints = stats->max_hitpoints;
+            if (stats_->hitpoints > stats_->max_hitpoints)
+                stats_->hitpoints = stats_->max_hitpoints;
         } // end hitpoint increment section
     }
 
@@ -162,7 +162,7 @@ bool living::act()
 	if (invisibility_left_ > 0)
 		invisibility_left_--;
 	else
-		outline = 0;
+		outline_ = 0;
 
 	// Flight
 	if (flight_left_ > 0)
@@ -170,11 +170,11 @@ bool living::act()
 	if (!myscreen->query_grid_passable(xpos, ypos, this) && !flight_left_)
 	{
 		flight_left_++;
-		stats->hitpoints--;
+		stats_->hitpoints--;
 		if(cfg.is_on("effects", "damage_numbers"))
-            damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
+            damage_numbers_.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
 		
-		if (stats->hitpoints <= 0)
+		if (stats_->hitpoints <= 0)
 		{
 			dead_ = 1;
 			death();
@@ -194,7 +194,7 @@ bool living::act()
 		}
 	}
 
-	if ( stats->query_bit_flags(BIT_FORESTWALK) &&
+	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
 	            myscreen->level_data.mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
 	            || myscreen->level_data.mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
@@ -204,16 +204,16 @@ bool living::act()
 	   )
 	{
 		// charge us a point of magic ..
-		if (stats->magicpoints > 0.0f && stats->current_magic_delay == 0)
+		if (stats_->magicpoints > 0.0f && stats_->current_magic_delay == 0)
         {
-            stats->magicpoints--;
+            stats_->magicpoints--;
         }
 
         float temp;
 		if (myguy_)
 			temp = (4 - myguy_->dexterity/10.0f);
 		else
-			temp = (4 - stats->level/2.0f);
+			temp = (4 - stats_->level/2.0f);
 		if (temp < 0)
 			temp = 0;
 		stepsize_ -= temp;
@@ -231,18 +231,18 @@ bool living::act()
 	}
 	
 	
-	if(attack_lunge > 0.0f)
+	if(attack_lunge_ > 0.0f)
     {
-        attack_lunge -= 0.4f;
-        if(attack_lunge < 0.0f)
-            attack_lunge = 0.0f;
+        attack_lunge_ -= 0.4f;
+        if(attack_lunge_ < 0.0f)
+            attack_lunge_ = 0.0f;
     }
 	
-	if(hit_recoil > 0.0f)
+	if(hit_recoil_ > 0.0f)
     {
-        hit_recoil -= 0.6f;
-        if(hit_recoil < 0.0f)
-            hit_recoil = 0.0f;
+        hit_recoil_ -= 0.6f;
+        if(hit_recoil_ < 0.0f)
+            hit_recoil_ = 0.0f;
     }
 
 	// Special things for various different living types
@@ -251,11 +251,11 @@ bool living::act()
 		case FAMILY_ARCHMAGE:  // gets bonus viewing, at times
 		    {
 		        Sint32 temp;
-                if (stats->level >= 40)
+                if (stats_->level >= 40)
                     temp = 1;
                 else
-                    temp = 40 - stats->level;
-                if (!(drawcycle%temp)) // then we get to see..
+                    temp = 40 - stats_->level;
+                if (!(drawcycle_%temp)) // then we get to see..
                     view_all_ += 1;
 		    }
 			break;
@@ -268,9 +268,9 @@ bool living::act()
 		return animate();
 
 	// Are we frozen?
-	if (stats->frozen_delay)
+	if (stats_->frozen_delay)
 	{
-		stats->frozen_delay--;
+		stats_->frozen_delay--;
 		return 1;
 	}
 
@@ -279,14 +279,14 @@ bool living::act()
 	// Find new action_
 
 	// Turn if you want to (...turn, around the world...)
-	if (curdir != enddir && query_order() == Order::Living)
+	if (curdir_ != enddir && query_order() == Order::Living)
 		return turn(enddir);
 
 
 	// Are we performing some action_?
-	if (stats->has_commands())
+	if (stats_->has_commands())
 	{
-		Sint32 temp = stats->do_command();
+		Sint32 temp = stats_->do_command();
 		if (temp)
 			return 1;
 	}
@@ -295,7 +295,7 @@ bool living::act()
 		skip_exit_--;
 
 	// Do we have a generic action_-type set?
-	if (action_  && (user == -1) )
+	if (action_  && (user_ == -1) )
 	{
 		Sint32 temp = do_action();
 		if (temp)
@@ -342,13 +342,13 @@ bool living::act()
 				if (!random(5) ) //1 in 5 to do our special
 				{
 					// Should we do our special? Are we full of magic?
-					if (stats->magicpoints >= stats->special_cost[1])
+					if (stats_->magicpoints >= stats_->special_cost[1])
 					{
-						current_special = static_cast<char>(random((stats->level+2)/3) + 1);
-						if ( (current_special > 4) ||
-						        (myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special)] == "NONE")
+						current_special_ = static_cast<char>(random((stats_->level+2)/3) + 1);
+						if ( (current_special_ > 4) ||
+						        (myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special_)] == "NONE")
 						   )
-							current_special = 1;
+							current_special_ = 1;
 						if (check_special() )
 							return special();
 					}
@@ -368,16 +368,16 @@ bool living::act()
 					}
 					if (foe_) // && random(2) )
 					{
-						curdir = enddir = static_cast<char>((enddir/2) * 2);
-						//stats->try_command(COMMAND_SEARCH, 40, 0, 0);
-						stats->try_command(COMMAND_SEARCH, 300, 0, 0);
+						curdir_ = enddir = static_cast<char>((enddir/2) * 2);
+						//stats_->try_command(COMMAND_SEARCH, 40, 0, 0);
+						stats_->try_command(COMMAND_SEARCH, 300, 0, 0);
 					}
 					//else if (foe)
-					//  stats->try_command(COMMAND_RIGHT_WALK,40,0,0);
+					//  stats_->try_command(COMMAND_RIGHT_WALK,40,0,0);
 					else if (!random(2))
 						foe_ = myscreen->find_far_foe(this);
 					else
-						stats->try_command(COMMAND_RANDOM_WALK,20);
+						stats_->try_command(COMMAND_RANDOM_WALK,20);
 
 					return 1;
 				}
@@ -405,13 +405,13 @@ short living::shove(walker  *target, short x, short y)
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
 			//   all commands
-			target->stats->clear_command();
+			target->stats()->clear_command();
 			if (target->query_family()==FAMILY_CLERIC)
 			{
-				target->current_special = 1; // healing
+				target->set_current_special(1); // healing
 				target->special();
 			}
-			target->stats->set_command(COMMAND_WALK,4,x ,y );
+			target->stats()->set_command(COMMAND_WALK,4,x ,y );
 			return 1;
 		}
 	return 0;
@@ -429,7 +429,7 @@ bool living::walk(float x, float y)
 
 	dir = facing(x, y);
 
-	if (curdir == dir)  // if continue direction
+	if (curdir_ == dir)  // if continue direction
 	{
 		// check if off map
 		if (x+xpos < 0 ||
@@ -451,26 +451,26 @@ bool living::walk(float x, float y)
 			cycle_++;
 			//if (!ani || (curdir*cycle_ > sizeof(ani)) )
 			//  Log("WALKER::WALK: Bad ani!\n");
-			if (ani[curdir][cycle_] == -1)
+			if (ani_[curdir_][cycle_] == -1)
 				cycle_ = 0;
-			set_frame(ani[curdir][cycle_]);
+			set_frame(ani_[curdir_][cycle_]);
 			return 1;
 		}
 		else //Invalid move?
 		{
-			if (collide_ob && !collide_ob->is_dead())
+			if (collide_ob_ && !collide_ob_->is_dead())
 			{
-				if (collide_ob->query_order() == Order::Living && is_friendly(collide_ob) )
+				if (collide_ob_->query_order() == Order::Living && is_friendly(collide_ob_) )
 				{
-					shove(collide_ob, x, y);
+					shove(collide_ob_, x, y);
 				}
 			}  // end hit some object
-			if (stats->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
+			if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
 			{
 				cycle_++;
-				if (ani[curdir][cycle_] == -1)
+				if (ani_[curdir_][cycle_] == -1)
 					cycle_ = 0;
-				set_frame(ani[curdir][cycle_]);
+				set_frame(ani_[curdir_][cycle_]);
 			}
 
 			return 0;
@@ -485,7 +485,7 @@ bool living::walk(float x, float y)
 		//   other walkers call ACT.  This would cause control
 		//   to turn TWICE on the first call to walk, which is bad.
 		//   So we stop that behavior here.
-		if (this->query_act_type() != ACT_CONTROL || stats->has_commands())
+		if (this->query_act_type() != ACT_CONTROL || stats_->has_commands())
 			turn(enddir);
 	}
 	return 1;
@@ -506,7 +506,7 @@ bool walkerIsAutoAttackable(walker* ob)
 
 bool living::collide(walker  *ob)
 {
-	collide_ob = ob;
+	collide_ob_ = ob;
 	//return 1; // debug
 	if ( ob && walkerIsAutoAttackable(ob) && (is_friendly(ob) == 0)
 	        && !ob->is_dead() && !dead_)
@@ -534,11 +534,11 @@ bool living::check_special()
 	Uint32 distance, myrange;
 	short howmany;
 
-	shifter_down = random(2); // on or off, randomly ..
+	shifter_down_ = random(2); // on or off, randomly ..
 
 	// Make sure we have enough ..
-	if (stats->magicpoints < stats->special_cost[static_cast<int>(current_special)])
-		current_special = 1; // make us do default ..
+	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special_)])
+		current_special_ = 1; // make us do default ..
 
 	switch (family)
 	{
@@ -584,7 +584,7 @@ bool living::check_special()
 			}
 			//break; // end of fighter case
 		case FAMILY_THIEF:
-			if (current_special == 1) // drop bomb
+			if (current_special_ == 1) // drop bomb
 			{
 				if (foe_) // already have a foe_ ..
 				{
@@ -603,12 +603,12 @@ bool living::check_special()
 				}
 				break; // end of thief case
 			} // end of bomb
-			else if (current_special == 3)
+			else if (current_special_ == 3)
 			{
-				if (!shifter_down) // taunt
-					myrange = 80 + 4*stats->level;
+				if (!shifter_down_) // taunt
+					myrange = 80 + 4*stats_->level;
 				else               // charm
-					myrange = 16 + 4*stats->level;
+					myrange = 16 + 4*stats_->level;
 
 				myscreen->find_foes_in_range(myscreen->level_data.oblist,
 				                                        myrange, &howmany, this);
@@ -636,20 +636,20 @@ bool living::check_special()
 			else
 				return 0;
 		case FAMILY_CLERIC: // any friends?
-			if (current_special == 1) // healing
+			if (current_special_ == 1) // healing
 			{
 				myscreen->find_friends_in_range(myscreen->level_data.oblist,
 				            60, &howmany, this);
 
 				if (howmany > 1) // other than ourselves?
 				{
-					shifter_down = 0; // we're HEALING
+					shifter_down_ = 0; // we're HEALING
 					return 1;
 				}
-				else if (stats->magicpoints >= (stats->max_magicpoints/2) )
+				else if (stats_->magicpoints >= (stats_->max_magicpoints/2) )
 				{
 					// Do mace ...
-					shifter_down = 1;
+					shifter_down_ = 1;
 					return 1;
 				}
 				else
@@ -683,109 +683,109 @@ void living::set_difficulty(Uint32 whatlevel)
 	switch (family)
 	{
 		case FAMILY_ARCHER:
-			stats->max_hitpoints   += 11*levmult;
-			stats->max_magicpoints += 12*levmult;
+			stats_->max_hitpoints   += 11*levmult;
+			stats_->max_magicpoints += 12*levmult;
 			damage_ += 4*whatlevel;
-			stats->armor += levmult;
+			stats_->armor += levmult;
 			break;
 		case FAMILY_MAGE:
-			stats->max_hitpoints   += 7*levmult;
-			stats->max_magicpoints += 14*levmult;
+			stats_->max_hitpoints   += 7*levmult;
+			stats_->max_magicpoints += 14*levmult;
 			damage_ += 3*whatlevel;
-			stats->armor += levmult/2.0f;
+			stats_->armor += levmult/2.0f;
 			break;
 		case FAMILY_CLERIC:
 		case FAMILY_DRUID:
-			stats->max_hitpoints   += 9*levmult;
-			stats->max_magicpoints += 12*levmult;
+			stats_->max_hitpoints   += 9*levmult;
+			stats_->max_magicpoints += 12*levmult;
 			damage_ += 4*whatlevel;
-			stats->armor += levmult/2.0f;
+			stats_->armor += levmult/2.0f;
 			break;
 		case FAMILY_SOLDIER:  // default as soldier
-			stats->max_hitpoints   += 13*levmult;
-			stats->max_magicpoints += 8*levmult;
+			stats_->max_hitpoints   += 13*levmult;
+			stats_->max_magicpoints += 8*levmult;
 			weapons_left_ = static_cast<short>((whatlevel+1) / 2);
 			damage_ += 5*whatlevel;
-			stats->armor += 2*levmult;
+			stats_->armor += 2*levmult;
 			break;
 		case FAMILY_ORC:
-			stats->max_hitpoints   += 14*levmult;
-			stats->max_magicpoints += 7*levmult;
+			stats_->max_hitpoints   += 14*levmult;
+			stats_->max_magicpoints += 7*levmult;
 			damage_ += 6*whatlevel;
-			stats->armor += 3*levmult;
+			stats_->armor += 3*levmult;
 			break;
 		case FAMILY_GOLEM:
-			stats->max_hitpoints   += 18*levmult;
-			stats->max_magicpoints += 5*levmult;
+			stats_->max_hitpoints   += 18*levmult;
+			stats_->max_magicpoints += 5*levmult;
 			damage_ += 7*whatlevel;
-			stats->armor += 4*levmult;
+			stats_->armor += 4*levmult;
 			break;
 		default:
-			stats->max_hitpoints   += 11*levmult;
-			stats->max_magicpoints += 11*levmult;
+			stats_->max_hitpoints   += 11*levmult;
+			stats_->max_magicpoints += 11*levmult;
 			damage_ += static_cast<short>(4)*whatlevel;
-			stats->armor += 2*levmult;
+			stats_->armor += 2*levmult;
 			break;
 	}
 
 	// Adjust for difficulty settings now...
 	if (team_num_ != 0)  // do all EXCEPT player characters
 	{
-		stats->max_hitpoints = (stats->max_hitpoints*dif1) / 100.0f;
-		stats->max_magicpoints = (stats->max_magicpoints*dif1) / 100.0f;
+		stats_->max_hitpoints = (stats_->max_hitpoints*dif1) / 100.0f;
+		stats_->max_magicpoints = (stats_->max_magicpoints*dif1) / 100.0f;
 		damage_ = (damage_ * dif1) / 100.0f;
 	}
 
-	stats->hitpoints = stats->max_hitpoints;
-	stats->magicpoints = stats->max_magicpoints;
+	stats_->hitpoints = stats_->max_hitpoints;
+	stats_->magicpoints = stats_->max_magicpoints;
 
-	stats->max_heal_delay = REGEN; //defined in graph.h
-	stats->current_heal_delay =
+	stats_->max_heal_delay = REGEN; //defined in graph.h
+	stats_->current_heal_delay =
 	    (levmult * 4); //for purposes of calculation only
 
-	while (stats->current_heal_delay > REGEN)
+	while (stats_->current_heal_delay > REGEN)
 	{
-		stats->current_heal_delay -= REGEN;
-		stats->heal_per_round++;
+		stats_->current_heal_delay -= REGEN;
+		stats_->heal_per_round++;
 	} // this takes care of the integer part, now calculate the fraction
 
-	if (stats->current_heal_delay > 1)
+	if (stats_->current_heal_delay > 1)
 	{
-		stats->max_heal_delay /=
-		    static_cast<Sint32>(stats->current_heal_delay + 1);
+		stats_->max_heal_delay /=
+		    static_cast<Sint32>(stats_->current_heal_delay + 1);
 	}
-	stats->current_heal_delay = 0; //start off without healing
+	stats_->current_heal_delay = 0; //start off without healing
 
 	//make sure we have at least a 2 wait, otherwise we should have
 	//calculated our heal_per_round as one higher, and the math must
 	//have been screwed up some how
-	if (stats->max_heal_delay < 2)
-		stats->max_heal_delay = 2;
+	if (stats_->max_heal_delay < 2)
+		stats_->max_heal_delay = 2;
 
 
 
 	// Set the magic delay ..
-	stats->max_magic_delay = REGEN;
-	stats->current_magic_delay = static_cast<Sint32>(levmult*30);//for calculation only
+	stats_->max_magic_delay = REGEN;
+	stats_->current_magic_delay = static_cast<Sint32>(levmult*30);//for calculation only
 
-	while (stats->current_magic_delay > REGEN)
+	while (stats_->current_magic_delay > REGEN)
 	{
-		stats->current_magic_delay -= REGEN;
-		stats->magic_per_round++;
+		stats_->current_magic_delay -= REGEN;
+		stats_->magic_per_round++;
 	} // this takes care of the integer part, now calculate the fraction
 
-	if (stats->current_magic_delay > 1)
+	if (stats_->current_magic_delay > 1)
 	{
-		stats->max_magic_delay /=
-		    static_cast<Sint32>(stats->current_magic_delay + 1);
+		stats_->max_magic_delay /=
+		    static_cast<Sint32>(stats_->current_magic_delay + 1);
 	}
-	stats->current_magic_delay = 0; //start off without magic regen
+	stats_->current_magic_delay = 0; //start off without magic regen
 
 	//make sure we have at least a 2 wait, otherwise we should have
 	//calculated our magic_per_round as one higher, and the math must
 	//have been screwed up some how
-	if (stats->max_magic_delay < 2)
-		stats->max_magic_delay = 2;
+	if (stats_->max_magic_delay < 2)
+		stats_->max_magic_delay = 2;
 
 }
 
@@ -839,7 +839,7 @@ bool living::act_random()
 	if (!random(80) || (!foe_))
 		foe_ = myscreen->find_near_foe(this);
 	if (!foe_)
-		return stats->try_command(COMMAND_RANDOM_WALK,40);
+		return stats_->try_command(COMMAND_RANDOM_WALK,40);
 
 	xdist = static_cast<short>(foe_->xpos - xpos);
 	ydist = static_cast<short>(foe_->ypos - ypos);
@@ -851,7 +851,7 @@ bool living::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats->set_command(COMMAND_FIRE, static_cast<short>(random(24)), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, static_cast<short>(random(24)), xdist, ydist);
 			return 1;
 		}
 		else
@@ -859,8 +859,8 @@ bool living::act_random()
 			turn(facing(xdist,ydist));
 	}
 
-	stats->try_command(COMMAND_SEARCH,200,0,0);
-	//stats->try_command(COMMAND_RIGHT_WALK,50, 0, 0);
+	stats_->try_command(COMMAND_SEARCH,200,0,0);
+	//stats_->try_command(COMMAND_RIGHT_WALK,50, 0, 0);
 	return 1;
 
 }
@@ -885,7 +885,7 @@ bool living::do_action()
 				return 0;       // continue from this point ..
 			}
 			// Else follow our leader
-			stats->force_command(COMMAND_FOLLOW, 5, 0, 0);
+			stats_->force_command(COMMAND_FOLLOW, 5, 0, 0);
 			return 1;
 		default:
 			return 0;

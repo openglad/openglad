@@ -3051,8 +3051,8 @@ void show_guy(Sint32 frames, Sint32 who, short centerx, short centery) // shows 
 
 	mywalker = myscreen->level_data.myloader->create_walker(Order::Living,
 	           newfamily,myscreen);
-	mywalker->stats->bit_flags = 0;
-	mywalker->curdir = ((frames/192) + FACE_DOWN)%8;
+	mywalker->stats()->bit_flags = 0;
+	mywalker->set_curdir(((frames/192) + FACE_DOWN)%8);
 	mywalker->set_ani_type(ANI_WALK);
 	for (i=0; i <= (frames/12)%4; i++)
 		mywalker->animate();

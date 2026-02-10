@@ -289,7 +289,7 @@ void draw_touch_controls(screen* vob)
 
     //if(has_multiple_specials)
     if(control->current_special != 1
-                || (control->current_special + 1 <= NUM_SPECIALS && control->current_special*3+1 <= control->stats->level
+                || (control->current_special + 1 <= NUM_SPECIALS && control->current_special*3+1 <= control->stats()->level
                      && vob->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special) + 1] != "NONE"))
         vob->fastbox(NEXT_SPECIAL_BUTTON_X, NEXT_SPECIAL_BUTTON_Y, BUTTON_DIM, BUTTON_DIM, 27);
 

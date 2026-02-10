@@ -62,7 +62,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	{
 	    walker* w = uptr.get();
 		if (w)
-			w->set_difficulty(static_cast<Uint32>(w->stats->level));
+			w->set_difficulty(static_cast<Uint32>(w->stats()->level));
 	}
 
 	// Cycle through the team list ..

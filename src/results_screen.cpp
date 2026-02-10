@@ -221,10 +221,10 @@ float TroopResult::get_HP()
     if(after == nullptr)
         return 0.0f;
     
-    if(after->myguy()->scen_min_hp > after->stats->hitpoints)
+    if(after->myguy()->scen_min_hp > after->stats()->hitpoints)
         return 1.0f;
     
-    return after->myguy()->scen_min_hp/after->stats->max_hitpoints;
+    return after->myguy()->scen_min_hp/after->stats()->max_hitpoints;
 }
 
 bool TroopResult::is_dead()
@@ -253,8 +253,8 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 
 	mywalker = myscreen->level_data.myloader->create_walker(Order::Living,
 	           newfamily,myscreen);
-	mywalker->stats->bit_flags = 0;
-	mywalker->curdir = FACE_DOWN;
+	mywalker->stats()->bit_flags = 0;
+	mywalker->set_curdir(FACE_DOWN);
 	mywalker->set_ani_type(ANI_WALK);
 	for (i=0; i <= (frames/4)%4; i++)
 		mywalker->animate();

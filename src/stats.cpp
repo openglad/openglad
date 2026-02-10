@@ -82,7 +82,7 @@ void statistics::clear_command()
 {
 	commands.clear();
 	// Make sure our weapon type is restored to normal ..
-	controller->set_current_weapon(controller->default_weapon);
+	controller->set_current_weapon(controller->default_weapon());
 	// Make sure we're back to our real team
 	if (controller->real_team_num() != 255)
 	{
@@ -269,9 +269,9 @@ short statistics::do_command()
 					controller->set_leader(myscreen->viewob[0]->control);
 				else
 				{
-					if (myscreen->viewob[0]->control->yo_delay)
+					if (myscreen->viewob[0]->control->yo_delay())
 						controller->set_leader(myscreen->viewob[0]->control);
-					else if (myscreen->viewob[1]->control->yo_delay)
+					else if (myscreen->viewob[1]->control->yo_delay())
 						controller->set_leader(myscreen->viewob[1]->control);
 					else
 					{
@@ -325,14 +325,14 @@ short statistics::do_command()
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
 				controller->walkstep(com1, com2);
-				if (controller->collide_ob) // We hit someone
+				if (controller->collide_ob()) // We hit someone
 				{
-					target = controller->collide_ob;
+					target = controller->collide_ob();
 					controller->attack(target);
-					target->stats->clear_command();
+					target->stats()->clear_command();
 					// A violent shove... we can't call shove since we
 					//  made shove unable to shove enemies.
-					target->stats->force_command(COMMAND_WALK,
+					target->stats()->force_command(COMMAND_WALK,
 					                             4,com1,com2 );
 				}
 			}
@@ -341,7 +341,7 @@ short statistics::do_command()
 			controller->set_current_weapon(com1);
 			break;
 		case COMMAND_RESET_WEAPON: // reset weapon to default type
-			controller->set_current_weapon(controller->default_weapon);
+			controller->set_current_weapon(controller->default_weapon());
 			break;
 		case COMMAND_SEARCH: // use right-hand rule to find foe
 			if (controller->foe() && !controller->foe()->is_dead())
@@ -473,8 +473,8 @@ void statistics::hit_response(walker  *who)
 				// Clear old command ..
 				// clear_command();
 				// teleport
-				controller->current_special = 1; // teleport to safety
-				controller->shifter_down = 0;    // TELEPORT, not other
+				controller->set_current_special(1); // teleport to safety
+				controller->set_shifter_down(0);    // TELEPORT, not other
 				controller->set_busy(0); // force-allow us to special
 				controller->special();
 			}
@@ -497,8 +497,8 @@ void statistics::hit_response(walker  *who)
 			if ( (hitpoints < threshold) && possible_specials[1] && random(3) )
 			{
 				// teleport
-				controller->current_special = 1; // teleport to safety
-				controller->shifter_down = 0;
+				controller->set_current_special(1); // teleport to safety
+				controller->set_shifter_down(0);
 				controller->set_busy(0); // force-allow us to special
 				controller->special();
 			}
@@ -517,7 +517,7 @@ void statistics::hit_response(walker  *who)
 				{
 					if (possible_specials[3]) // can we summon illusion?
 					{
-						controller->current_special = 3;
+						controller->set_current_special(3);
 						if (controller->special())
 							return;
 					} // end of do 3rd special
@@ -526,11 +526,11 @@ void statistics::hit_response(walker  *who)
 						//if (howmany < 3) // 2 or fewer enemies, so lightning..
 						if (random(2)) // 50/50 now
 						{
-							controller->shifter_down = 1; // lightning
-							controller->current_special = 2;
+							controller->set_shifter_down(1); // lightning
+							controller->set_current_special(2);
 							if (controller->special())
 							{
-								controller->shifter_down = 0;
+								controller->set_shifter_down(0);
 								if (magicpoints >= special_cost[1])  // then leave! :)
 								{
 									controller->set_busy(0);
@@ -539,8 +539,8 @@ void statistics::hit_response(walker  *who)
 								return;
 							}
 						} // end of lightning
-						controller->shifter_down = 0;
-						controller->current_special = 2;
+						controller->set_shifter_down(0);
+						controller->set_current_special(2);
 						if (controller->special())
 						{
 							if (magicpoints >= special_cost[1])  // then leave! :)
@@ -585,7 +585,7 @@ void statistics::hit_response(walker  *who)
 			else                   // we're an enemy, so be braver :>
 				threshold = (5 * max_hitpoints)/16; // flee at 5/16%
 			if ( (hitpoints < threshold)
-			        && !controller->yo_delay) // then yell for help & run ..
+			        && !controller->yo_delay()) // then yell for help & run ..
 			{
 				yell_for_help(foe);
 			} // end of yell for help
@@ -608,7 +608,7 @@ void statistics::yell_for_help(walker *foe)
 	short howmany;
 	Sint32 deltax, deltay;
 
-	controller->yo_delay += 80;
+	controller->set_yo_delay(controller->yo_delay() + 80);
 	
 	// Get AI-controlled allies to target my foe
 	std::list<walker*> helplist = myscreen->find_friends_in_range(
@@ -617,10 +617,10 @@ void statistics::yell_for_help(walker *foe)
 	{
 		w->set_leader(controller);
 		if (foe != w->foe())
-			w->stats->last_distance = w->stats->current_distance = 32000;
+			w->stats()->last_distance = w->stats()->current_distance = 32000;
 		w->set_foe(foe);
 		//if (w->query_act_type() != ACT_CONTROL)
-		//  w->stats->force_command(COMMAND_FOLLOW, 80, 0, 0);
+		//  w->stats()->force_command(COMMAND_FOLLOW, 80, 0, 0);
 	}
 	
 	// Force run in the opposite direction
@@ -671,7 +671,7 @@ bool statistics::right_blocked()
 	float mystep = controller->stepsize();
 
 	mystep = CHECK_STEP_SIZE;
-	switch (controller->curdir)
+	switch (controller->curdir())
 	{
 		case FACE_UP:
 			xdelta = mystep;
@@ -721,7 +721,7 @@ bool statistics::right_forward_blocked()
 	float mystep = controller->stepsize();
 
 	mystep = CHECK_STEP_SIZE;
-	switch (controller->curdir)
+	switch (controller->curdir())
 	{
 		case FACE_UP:
 			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
@@ -754,7 +754,7 @@ bool statistics::right_back_blocked()
 	float mystep = controller->stepsize();
 
 	mystep = CHECK_STEP_SIZE;
-	switch (controller->curdir)
+	switch (controller->curdir())
 	{
 		case FACE_UP:
 			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
@@ -788,7 +788,7 @@ bool statistics::forward_blocked()
 	float controlx = controller->xpos, controly = controller->ypos;
 	float mystep = CHECK_STEP_SIZE;
 
-	switch (controller->curdir)
+	switch (controller->curdir())
 	{
 		case FACE_UP:
 			xdelta = 0;
@@ -915,7 +915,7 @@ bool statistics::right_walk()
 	{
 		if (!direct_walk()) //we can't even walk straight to our foe
 		{
-			switch (controller->curdir)
+			switch (controller->curdir())
 			{
 				case FACE_UP:
 					xdelta = 0;
@@ -970,7 +970,7 @@ bool statistics::direct_walk()
 	float controlx = controller->xpos, controly = controller->ypos;
 	//  short xdistance, ydistance;
 	//  Uint32 tempdistance;
-	//  char olddir = controller->curdir;
+	//  char olddir = controller->curdir();
 	//  short oldlastx = controller->lastx();
 	//  short oldlasty = controller->lasty();
 
@@ -1077,13 +1077,13 @@ bool statistics::walk_to_foe()
 		return 0;
 	}
 
-	controller->path_check_counter--;
+	controller->set_path_check_counter(controller->path_check_counter() - 1);
 	// This makes us only check every few rounds, to save
 	// processing time
-	if(controller->path_check_counter <= 0)
+	if(controller->path_check_counter() <= 0)
 	{
-	    controller->path_check_counter = 5 + rand()%10;
-	    controller->path_to_foe.clear();
+	    controller->set_path_check_counter(5 + rand()%10);
+	    controller->path_to_foe().clear();
 	    
 		xdest = foe->xpos;
 		ydest = foe->ypos;
@@ -1102,7 +1102,7 @@ bool statistics::walk_to_foe()
 			    walker* firstfoe = foelist.front();
 				clear_command();
 				controller->turn(controller->facing(xdelta, ydelta));
-				controller->stats->try_command(COMMAND_ATTACK,static_cast<short>(30+ random(25)), 1, 1);
+				controller->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ random(25)), 1, 1);
 				myscreen->find_near_foe(controller);
 				if (!controller->foe() && firstfoe)
 				{
@@ -1124,7 +1124,7 @@ bool statistics::walk_to_foe()
         }
 	} //end if do_check
 
-    if(controller->path_to_foe.size() > 0)
+    if(controller->path_to_foe().size() > 0)
     {
         controller->follow_path_to_foe();
         last_distance = static_cast<Uint32>(controller->distance_to_ob(foe));

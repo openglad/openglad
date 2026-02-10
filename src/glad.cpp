@@ -541,28 +541,28 @@ void draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = control->stats->hitpoints;
+		points = control->stats()->hitpoints;
 
-		if (float_eq(points, control->stats->max_hitpoints))
+		if (float_eq(points, control->stats()->max_hitpoints))
 			whatcolor = MAX_HP_COLOR;
-		else if ( (points * 3) < control->stats->max_hitpoints)
+		else if ( (points * 3) < control->stats()->max_hitpoints)
 			whatcolor = LOW_HP_COLOR;
-		else if ( (points * 3 / 2) < control->stats->max_hitpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_hitpoints)
 			whatcolor = MID_HP_COLOR;
-		else if (points < control->stats->max_hitpoints)
+		else if (points < control->stats()->max_hitpoints)
 			whatcolor = HIGH_HP_COLOR;
 		else 
 			whatcolor = ORANGE_START;
 
-		if (points > control->stats->max_hitpoints)
+		if (points > control->stats()->max_hitpoints)
 			bar_length = 60;
 		else
-			bar_length = ceilf(points * 60 / control->stats->max_hitpoints);
+			bar_length = ceilf(points * 60 / control->stats()->max_hitpoints);
 		bar_remainder = 60 - bar_length;
 
 		myscreen->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
 		//myscreen->fastbox(left, top, 61, 6, BOX_COLOR, 1);
-		if ( points > control->stats->max_hitpoints)
+		if ( points > control->stats()->max_hitpoints)
 			for (i=0;i<bar_length/2;i++)
 				for (j=0; j<3; j++)
 				{
@@ -599,27 +599,27 @@ void draw_value_bar(short left, short top,
 	}  // end of doing hp stuff..
 	else if (mode == 1) // sp stuff ..
 	{
-		points = control->stats->magicpoints;
+		points = control->stats()->magicpoints;
 
-		if (float_eq(points, control->stats->max_magicpoints))
+		if (float_eq(points, control->stats()->max_magicpoints))
 			whatcolor = MAX_MP_COLOR;
-		else if ( (points * 3) < control->stats->max_magicpoints)
+		else if ( (points * 3) < control->stats()->max_magicpoints)
 			whatcolor = LOW_MP_COLOR;
-		else if ( (points * 3 / 2) < control->stats->max_magicpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_magicpoints)
 			whatcolor = MID_MP_COLOR;
-		else if (points < control->stats->max_magicpoints)
+		else if (points < control->stats()->max_magicpoints)
 			whatcolor = HIGH_MP_COLOR;
 		else 
 			whatcolor = WATER_START;
 
-		if (points > control->stats->max_magicpoints)
+		if (points > control->stats()->max_magicpoints)
 			bar_length = 60;
 		else
-			bar_length = ceilf(points * 60 / control->stats->max_magicpoints);
+			bar_length = ceilf(points * 60 / control->stats()->max_magicpoints);
 		bar_remainder = 60 - bar_length;
 
 		myscreen->draw_box(left, top, left+61, top+6, BOX_COLOR, 0);
-		if ( points > control->stats->max_magicpoints)
+		if ( points > control->stats()->max_magicpoints)
 			for (i=0;i<bar_length/2;i++)
 				for (j=0; j<3; j++)
 				{
@@ -667,23 +667,23 @@ void new_draw_value_bar(short left, short top,
 
 	if (mode == 0) // hitpoint bar
 	{
-		points = control->stats->hitpoints;
+		points = control->stats()->hitpoints;
 
-		if (float_eq(points, control->stats->max_hitpoints))
+		if (float_eq(points, control->stats()->max_hitpoints))
 			whatcolor = MAX_HP_COLOR;
-		else if ( (points * 3) < control->stats->max_hitpoints)
+		else if ( (points * 3) < control->stats()->max_hitpoints)
 			whatcolor = LOW_HP_COLOR;
-		else if ( (points * 3 / 2) < control->stats->max_hitpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_hitpoints)
 			whatcolor = MID_HP_COLOR;
-		else if (points < control->stats->max_hitpoints)
+		else if (points < control->stats()->max_hitpoints)
 			whatcolor = HIGH_HP_COLOR;
 		else 
 			whatcolor = ORANGE_START;
 
-		if (points > control->stats->max_hitpoints)
+		if (points > control->stats()->max_hitpoints)
 			bar_length = 60;
 		else
-			bar_length = ceilf(points * 60 / control->stats->max_hitpoints);
+			bar_length = ceilf(points * 60 / control->stats()->max_hitpoints);
 		//bar_remainder = 60 - bar_length;
 
 		draw_percentage_bar(left, top, BAR_BACK_COLOR, 60, myscreen);
@@ -692,23 +692,23 @@ void new_draw_value_bar(short left, short top,
 	}  // end of doing hp stuff..
 	else if (mode == 1) // sp stuff ..
 	{
-		points = control->stats->magicpoints;
+		points = control->stats()->magicpoints;
 
-		if (float_eq(points, control->stats->max_magicpoints))
+		if (float_eq(points, control->stats()->max_magicpoints))
 			whatcolor = MAX_MP_COLOR;
-		else if ( (points * 3) < control->stats->max_magicpoints)
+		else if ( (points * 3) < control->stats()->max_magicpoints)
 			whatcolor = LOW_MP_COLOR;
-		else if ( (points * 3 / 2) < control->stats->max_magicpoints)
+		else if ( (points * 3 / 2) < control->stats()->max_magicpoints)
 			whatcolor = MID_MP_COLOR;
-		else if (points < control->stats->max_magicpoints)
+		else if (points < control->stats()->max_magicpoints)
 			whatcolor = HIGH_MP_COLOR;
 		else 
 			whatcolor = WATER_START;
 
-		if (points > control->stats->max_magicpoints)
+		if (points > control->stats()->max_magicpoints)
 			bar_length = 60;
 		else
-			bar_length = ceilf(points * 60 / control->stats->max_magicpoints);
+			bar_length = ceilf(points * 60 / control->stats()->max_magicpoints);
 		//bar_remainder = 60 - bar_length;
 
 		draw_percentage_bar(left, top, BAR_BACK_COLOR, 60, myscreen);
@@ -770,7 +770,7 @@ short new_score_panel(screen *myscreen, short do_it)
 		tm = myscreen->viewob[players]->yloc + OVERSCAN_PADDING;
 		rm = myscreen->viewob[players]->endx - OVERSCAN_PADDING;
 		bm = myscreen->viewob[players]->endy - OVERSCAN_PADDING;
-		if (control && !control->is_dead() && control->user == players)
+		if (control && !control->is_dead() && control->user() == players)
 		{
 			// Get the button-drawing info ..
 			draw_button = myscreen->viewob[players]->prefs[PREF_OVERLAY];
@@ -790,8 +790,8 @@ short new_score_panel(screen *myscreen, short do_it)
 			// Display name or type, upper left
 			if (control->myguy())
 				tempname = control->myguy()->name;
-			else if ( !control->stats->name.empty() )
-				tempname = control->stats->name;
+			else if ( !control->stats()->name.empty() )
+				tempname = control->stats()->name;
 			else
 				tempname = namelist[static_cast<int>(control->query_family())];
 
@@ -812,9 +812,9 @@ short new_score_panel(screen *myscreen, short do_it)
 				case PREF_LIFE_TEXT: // display numeric values only
 					if (draw_button)
 						myscreen->draw_button(lm+1, tm+10, lm+63, tm+26, 1, 1);
-					message = std::format("HP: {:.0f}", ceilf(control->stats->hitpoints));
+					message = std::format("HP: {:.0f}", ceilf(control->stats()->hitpoints));
 					mytext.write_xy(lm+5, tm+12, message.c_str(), text_color, static_cast<short>(1)); // to buffer
-					message = std::format("MP: {:.0f}", ceilf(control->stats->magicpoints));
+					message = std::format("MP: {:.0f}", ceilf(control->stats()->magicpoints));
 					mytext.write_xy(lm+5, tm+20, message.c_str(), text_color, static_cast<short>(1));
 					break; // end of 'text' case
 				case PREF_LIFE_BARS: // display graphical bars only
@@ -832,13 +832,13 @@ short new_score_panel(screen *myscreen, short do_it)
 					//if (draw_button)
 					//  myscreen->draw_button(lm+1, tm+9, lm+63, tm+25, 1, 1);
 					new_draw_value_bar(lm+2, tm+10, control, 0, myscreen);
-					message = std::format("HP: {:.0f}", ceilf(control->stats->hitpoints));
+					message = std::format("HP: {:.0f}", ceilf(control->stats()->hitpoints));
 					mytext.write_xy(lm+5, tm+11, message.c_str(), static_cast<unsigned char>(BLACK), static_cast<short>(1)); // to buffer
 
 					//SP BAR
 					//COLORS DEFINED IN GRAPH.H
 					new_draw_value_bar(lm+2, tm+18, control, 1, myscreen);
-					message = std::format("MP: {:.0f}", ceilf(control->stats->magicpoints));
+					message = std::format("MP: {:.0f}", ceilf(control->stats()->magicpoints));
 					mytext.write_xy(lm+5, tm+19, message.c_str(), static_cast<unsigned char>(BLACK), static_cast<short>(1));
 					break; // end of 'both' case
 			} // end of HP/MP display case
@@ -889,29 +889,29 @@ short new_score_panel(screen *myscreen, short do_it)
                     if (control->myguy())
                         message = std::format("XP: {}", control->myguy()->exp);
                     else
-                        message = std::format("LEVEL: {}", control->stats->level);
+                        message = std::format("LEVEL: {}", control->stats()->level);
                     mytext.write_xy(lm+2, bm-16, message.c_str(), text_color, static_cast<short>(1));
                 }
                 
 				// Currently-select special
-				if (control->shifter_down &&
-				        myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE" )
-					message = std::format("SPC: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+				if (control->shifter_down() &&
+				        myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())] != "NONE" )
+					message = std::format("SPC: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())]);
 				else
-					message = std::format("SPC: {}", myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
+					message = std::format("SPC: {}", myscreen->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())]);
 
 
-				if (control->stats->magicpoints >= control->stats->special_cost[static_cast<int>(control->current_special)])
+				if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special())])
 					mytext.write_xy(lm+2, special_y, message.c_str(), text_color, static_cast<short>(1));
 				else
 					mytext.write_xy(lm+2, special_y, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));
                 
                 #ifdef USE_TOUCH_INPUT
                 // Alternate special name (if not "NONE")
-				if (myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] != "NONE" )
+				if (myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())] != "NONE" )
                 {
-					message = std::format("ALT: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)]);
-                    if (control->stats->magicpoints >= control->stats->special_cost[static_cast<int>(control->current_special)])
+					message = std::format("ALT: {}", myscreen->alternate_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special())]);
+                    if (control->stats()->magicpoints >= control->stats()->special_cost[static_cast<int>(control->current_special())])
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), text_color, static_cast<short>(1));
                     else
                         mytext.write_xy(lm+2, bm + special_offset + 8, message.c_str(), static_cast<unsigned char>(RED), static_cast<short>(1));

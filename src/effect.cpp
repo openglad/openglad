@@ -56,7 +56,7 @@ bool effect::act()
 	if (owner_ && owner_->is_dead())
 		owner_ = nullptr;
 
-	collide_ob = nullptr; // always start with no collision..
+	collide_ob_ = nullptr; // always start with no collision..
 
 	// Any special actions ..
 	switch (family) // determine what to do..
@@ -72,7 +72,7 @@ bool effect::act()
 				death();
 				break;
 			}
-			switch (drawcycle % 16)
+			switch (drawcycle_ % 16)
 			{
 				case 0:
 					xd = 0;
@@ -149,7 +149,7 @@ bool effect::act()
             
 			for(auto* w : foelist)  // first weapons
 			{
-				stats->hitpoints -= w->damage();
+				stats_->hitpoints -= w->damage();
 				w->set_dead(1);
 				w->death();
 			}
@@ -159,29 +159,29 @@ bool effect::act()
 
 			for(auto* w : foelist)  // second enemies
 			{
-				stats->hitpoints -= w->damage();
+				stats_->hitpoints -= w->damage();
 				attack(w);
 				dead_ = 0;
 			}
 			
-			if ( (stats->hitpoints <= 0) || (lifetime_-- < 0) )
+			if ( (stats_->hitpoints <= 0) || (lifetime_-- < 0) )
 			{
 				dead_ = 1;
 				death();
 			}
 			break; // end of magic shield case
 		case FAMILY_BOOMERANG: // fighter's boomerang
-			// Zardus: FIX: if the drawcycle is in its >253s, the boomerang dies. This will fix the bug where
+			// Zardus: FIX: if the drawcycle_ is in its >253s, the boomerang dies. This will fix the bug where
 			// the boomerang comes back to 0 (owner) after spiraling around all the way if the owner has
 			// that good of an ability (to keep its life so high). This caps boomerang ability, though... Another
-			// fix could be to make the drawcycle var an int or at least something with more capacity than char.
-			if (!owner_ || owner_->is_dead() || drawcycle > 253)
+			// fix could be to make the drawcycle_ var an int or at least something with more capacity than char.
+			if (!owner_ || owner_->is_dead() || drawcycle_ > 253)
 			{
 				dead_ = 1;
 				death();
 				break;
 			}
-			switch (drawcycle % 16)
+			switch (drawcycle_ % 16)
 			{
 				case 0:
 					xd = 0;
@@ -251,9 +251,9 @@ bool effect::act()
 					yd = -22;
 					break;
 			}
-			xd *= (drawcycle+4);
+			xd *= (drawcycle_+4);
 			xd /= 48;
-			yd *= (drawcycle+4);
+			yd *= (drawcycle_+4);
 			yd /= 48;
 			center_on(owner_);
 			setworldxy(worldx_+xd, worldy_+yd);
@@ -262,7 +262,7 @@ bool effect::act()
 			              
 			for(auto* w : foelist)  // first weapons
 			{
-				stats->hitpoints -= w->damage();
+				stats_->hitpoints -= w->damage();
 				w->set_dead(1);
 				w->death();
 			}
@@ -272,12 +272,12 @@ bool effect::act()
 
 			for(auto* w : foelist) // second enemies
 			{
-				stats->hitpoints -= w->damage();
+				stats_->hitpoints -= w->damage();
 				attack(w);
 				dead_ = 0;
 			}
 			
-			if ( (stats->hitpoints <= 0) || (lifetime_-- < 0) )
+			if ( (stats_->hitpoints <= 0) || (lifetime_-- < 0) )
 			{
 				dead_ = 1;
 				death();
@@ -330,7 +330,7 @@ bool effect::act()
 				newob->setworldxy(worldx_, worldy_);
 				if (!myscreen->query_object_passable(xpos+xd, ypos+yd, newob))
 				{
-					newob->attack(newob->collide_ob);
+					newob->attack(newob->collide_ob());
 					damage_ /= 4.0f;
 					//setxy(xpos-(2*xd)+random(xd), ypos-(2*yd)+random(yd));
 				}
@@ -376,8 +376,8 @@ bool effect::act()
 			}
 			
 			// Are we performing some action_?
-			if (stats->has_commands())
-				temp = stats->do_command();
+			if (stats_->has_commands())
+				temp = stats_->do_command();
 			else
 			{
 				xd = yd = 0;
@@ -386,7 +386,7 @@ bool effect::act()
 					xd = random(3)-1;
 					yd = random(3)-1;
 				}
-				stats->add_command(COMMAND_WALK, static_cast<short>(random(20)), static_cast<short>(xd), static_cast<short>(yd));
+				stats_->add_command(COMMAND_WALK, static_cast<short>(random(20)), static_cast<short>(xd), static_cast<short>(yd));
 			}
 			break; // end of cloud
 		case FAMILY_CHAIN: // chain lightning ..
@@ -410,7 +410,7 @@ bool effect::act()
 				}
 				newob->set_owner(owner_);
 				newob->set_team_num(team_num_);
-				newob->stats->level = stats->level;
+				newob->stats()->level = stats_->level;
 				newob->set_damage(damage_);
 				newob->set_ani_type(ANI_EXPLODE);
 				newob->center_on(this);
@@ -425,10 +425,10 @@ bool effect::act()
 					                                      240+(owner_->myguy()->intelligence/2), &temp, this);
 				else
 					foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
-					                                      240+stats->level*5, &temp, this);
+					                                      240+stats_->level*5, &temp, this);
 				if (temp && generic>20) // more foes to find ..
 				{
-					numfoes = random(owner_->stats->level)+1;
+					numfoes = random(owner_->stats()->level)+1;
 					for(auto* w : foelist)
 					{
 					    if (numfoes <= 0) break;
@@ -440,8 +440,8 @@ bool effect::act()
 
 							newob->set_owner(owner_);  // our caster
 							newob->set_leader(w); // guy to attack
-							newob->stats->level = stats->level;
-							newob->stats->set_bit_flags(BIT_MAGICAL, 1);
+							newob->stats()->level = stats_->level;
+							newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
 							newob->set_damage(generic);
 							newob->set_team_num(team_num_);
 							newob->center_on(this);
@@ -489,8 +489,8 @@ bool effect::act()
 						yd = leader_->ypos - ypos;
 				}
 				// Set our facing?
-				curdir = facing(xd, yd);
-				set_frame(ani[curdir][0]);
+				curdir_ = facing(xd, yd);
+				set_frame(ani_[curdir_][0]);
 			} // end of big step
 			else
 			{
@@ -521,10 +521,10 @@ bool effect::act()
 				break;
 			newob->set_ani_type(ANI_WALK);
 			newob->setworldxy(worldx_, worldy_);
-			newob->stats->level = stats->level;
+			newob->stats()->level = stats_->level;
 			newob->set_team_num(team_num_);
 			newob->set_ignore(1);
-			newob->curdir = curdir;
+			newob->set_curdir(curdir_);
 			// set correct frame
 			newob->animate();
 			dead_ = 1;
@@ -554,7 +554,7 @@ bool effect::act()
 bool effect::animate()
 {
 
-	set_frame(ani[curdir+ani_type_*NUM_FACINGS][cycle_]);
+	set_frame(ani_[curdir_+ani_type_*NUM_FACINGS][cycle_]);
 	cycle_++;
 
 	switch (family)
@@ -564,11 +564,11 @@ bool effect::animate()
 		case FAMILY_KNIFE_BACK:
 		case FAMILY_CLOUD:
 		case FAMILY_MARKER:
-			if (ani[curdir+ani_type_*NUM_FACINGS][cycle_] == -1)
+			if (ani_[curdir_+ani_type_*NUM_FACINGS][cycle_] == -1)
 				cycle_ = 0;
 			break;
 		default:
-			if (ani[curdir+ani_type_*NUM_FACINGS][cycle_] == -1)
+			if (ani_[curdir_+ani_type_*NUM_FACINGS][cycle_] == -1)
 				ani_type_ = ANI_WALK;
 			break;
 	}
@@ -598,7 +598,7 @@ bool effect::death()
 		case FAMILY_GHOST_SCARE: // the ghost's scare
 			if (!owner_ || owner_->is_dead())
 				return 0;
-			foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist, 50+(10*owner_->stats->level),
+			foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist, 50+(10*owner_->stats()->level),
 			                                        &howmany, owner_);
 			if (howmany < 1)
 				return 0;
@@ -613,11 +613,11 @@ bool effect::death()
 					tempy = w->ypos - ypos;
 					if (tempy)
 						tempy = tempy / (abs(tempy));
-					generic = (owner_->stats->level*25);
+					generic = (owner_->stats()->level*25);
 					if (w->myguy())
 						generic -= random(w->myguy()->constitution);
 					if (generic > 0)
-						w->stats->force_command(COMMAND_WALK,
+						w->stats()->force_command(COMMAND_WALK,
 						                               static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));
 				} // end of valid target
 			} // end of cycle_ through scare list
@@ -630,8 +630,8 @@ bool effect::death()
 				myscreen->soundp->play_sound(SOUND_EXPLODE);
 			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 			newob->set_owner(owner_);
-			newob->stats->hitpoints = 0;
-			newob->stats->level = owner_->stats->level;
+			newob->stats()->hitpoints = 0;
+			newob->stats()->level = owner_->stats()->level;
 			newob->set_ani_type(ANI_EXPLODE);
 			//newob->setxy(xpos, ypos);
 			newob->center_on(this);
@@ -642,7 +642,7 @@ bool effect::death()
 			if (!owner_ || owner_->is_dead())
 				owner_ = this;
 			// Set the max distance for a bomb ..
-			generic = 4*owner_->stats->level;
+			generic = 4*owner_->stats()->level;
 			if (generic > 96) // set max range to about 6 tiles
 				generic = 96;
 			if (skip_exit_) // magical, ie mage, don't go far ..
@@ -677,10 +677,10 @@ bool effect::death()
 					if (ydelta)
 						ydelta = ydelta/abs(ydelta);
 					// Set the distance to 'shove' by explosion
-					generic = 2+owner_->stats->level/15;
+					generic = 2+owner_->stats()->level/15;
 					if (generic > 8) // max of about 8 steps
 						generic = 8;
-					w->stats->force_command(COMMAND_WALK,generic,static_cast<short>(xdelta),static_cast<short>(ydelta));
+					w->stats()->force_command(COMMAND_WALK,generic,static_cast<short>(xdelta),static_cast<short>(ydelta));
 					// Damage (attack) the object
 					if (w == owner_) // do less damage_
 					{

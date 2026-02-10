@@ -68,14 +68,14 @@ bool treasure::eat_me(walker  * eater)
 	switch (family)
 	{
 		case FAMILY_DRUMSTICK:
-			if (eater->stats->hitpoints >= eater->stats->max_hitpoints)
+			if (eater->stats()->hitpoints >= eater->stats()->max_hitpoints)
 				return 1;
 			else
 			{
-			    short amount = 10*stats->level + random(10*stats->level);
-				eater->stats->hitpoints += amount;
-				if (eater->stats->hitpoints > eater->stats->max_hitpoints)
-					eater->stats->hitpoints = eater->stats->max_hitpoints;
+			    short amount = 10*stats_->level + random(10*stats_->level);
+				eater->stats()->hitpoints += amount;
+				if (eater->stats()->hitpoints > eater->stats()->max_hitpoints)
+					eater->stats()->hitpoints = eater->stats()->max_hitpoints;
                 
                 do_heal_effects(nullptr, eater, amount);
                 
@@ -87,7 +87,7 @@ bool treasure::eat_me(walker  * eater)
 		case FAMILY_GOLD_BAR:
 			if (eater->team_num() == 0 || eater->myguy())
 			{
-				myscreen->save_data.m_score[eater->team_num()] += (200*stats->level);
+				myscreen->save_data.m_score[eater->team_num()] += (200*stats_->level);
 				dead_ = 1;
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_MONEY);
@@ -96,68 +96,68 @@ bool treasure::eat_me(walker  * eater)
 		case FAMILY_SILVER_BAR:
 			if (eater->team_num() == 0 || eater->myguy())
 			{
-				myscreen->save_data.m_score[eater->team_num()] += (50*stats->level);
+				myscreen->save_data.m_score[eater->team_num()] += (50*stats_->level);
 				dead_ = 1;
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_MONEY);
 			}
 			return 1;
 		case FAMILY_FLIGHT_POTION:
-			if (!eater->stats->query_bit_flags(BIT_FLYING) )
+			if (!eater->stats()->query_bit_flags(BIT_FLYING) )
 			{
-				eater->set_flight_left(eater->flight_left() + (150*stats->level));
-				if (eater->user != -1)
+				eater->set_flight_left(eater->flight_left() + (150*stats_->level));
+				if (eater->user() != -1)
 				{
-					message = std::format("Potion of Flight({})!", stats->level);
+					message = std::format("Potion of Flight({})!", stats_->level);
 					myscreen->do_notify(message.c_str(), eater);
 				}
 				dead_ = 1;
 			}
 			return 1;
 		case FAMILY_MAGIC_POTION:
-			if (eater->stats->magicpoints < eater->stats->max_magicpoints)
-				eater->stats->magicpoints = eater->stats->max_magicpoints;
-			eater->stats->magicpoints += (50*stats->level);
+			if (eater->stats()->magicpoints < eater->stats()->max_magicpoints)
+				eater->stats()->magicpoints = eater->stats()->max_magicpoints;
+			eater->stats()->magicpoints += (50*stats_->level);
 			dead_ = 1;
-			if (eater->user != -1)
+			if (eater->user() != -1)
 			{
-				message = std::format("Potion of Mana({})!", stats->level);
+				message = std::format("Potion of Mana({})!", stats_->level);
 				myscreen->do_notify(message.c_str(), eater);
 			}
 			return 1;
 		case FAMILY_INVULNERABLE_POTION:
-			if (!eater->stats->query_bit_flags(BIT_INVINCIBLE) )
+			if (!eater->stats()->query_bit_flags(BIT_INVINCIBLE) )
 			{
-				eater->set_invulnerable_left(eater->invulnerable_left() + (150*stats->level));
+				eater->set_invulnerable_left(eater->invulnerable_left() + (150*stats_->level));
 				dead_ = 1;
-				if (eater->user != -1)
+				if (eater->user() != -1)
 				{
-					message = std::format("Potion of Invulnerability({})!", stats->level);
+					message = std::format("Potion of Invulnerability({})!", stats_->level);
 					myscreen->do_notify(message.c_str(), eater);
 				}
 			}
 			return 1;
 		case FAMILY_INVIS_POTION:
-			eater->set_invisibility_left(eater->invisibility_left() + (150*stats->level));
-			if (eater->user != -1)
+			eater->set_invisibility_left(eater->invisibility_left() + (150*stats_->level));
+			if (eater->user() != -1)
 			{
-				message = std::format("Potion of Invisibility({})!", stats->level);
+				message = std::format("Potion of Invisibility({})!", stats_->level);
 				myscreen->do_notify(message.c_str(), eater);
 			}
 			dead_ = 1;
 			return 1;
 		case FAMILY_SPEED_POTION:
-			eater->set_speed_bonus_left(eater->speed_bonus_left() + 50*stats->level);
-			eater->set_speed_bonus(stats->level);
-			if (eater->user != -1)
+			eater->set_speed_bonus_left(eater->speed_bonus_left() + 50*stats_->level);
+			eater->set_speed_bonus(stats_->level);
+			if (eater->user() != -1)
 			{
-				message = std::format("Potion of Speed({})!", stats->level);
+				message = std::format("Potion of Speed({})!", stats_->level);
 				myscreen->do_notify(message.c_str(), eater);
 			}
 			dead_ = 1;
 			return 1;
 		case FAMILY_EXIT: // go to another level, possibly
-			if (eater->in_act) return 1;
+			if (eater->in_act()) return 1;
 			if (eater->query_act_type()!= ACT_CONTROL || (eater->skip_exit() > 1))
 				return 1;
 			eater->set_skip_exit(10);
@@ -167,13 +167,13 @@ bool treasure::eat_me(walker  * eater)
 			else
 				guys_here = 0;
 			// Get the name of our exit..
-			message = std::format("scen{}", stats->level);
+			message = std::format("scen{}", stats_->level);
 			exitname = myscreen->get_scen_title(message.c_str(), myscreen);
 
 			//buffers: PORT: using std::string comparison instead of stricmp
 			if (exitname == "none")
 			{
-				exitname = std::format("Level {}", stats->level);
+				exitname = std::format("Level {}", stats_->level);
 			}
 
 			leftside  = 160 - ( (static_cast<int>(exitname.size()) + 18) * 3);
@@ -182,7 +182,7 @@ bool treasure::eat_me(walker  * eater)
 			//    somewhere we've been, in which case we abort
 			//    this level, and set our current level to
 			//    that pointed to by the exit ...
-			if ( myscreen->save_data.is_level_completed(stats->level)
+			if ( myscreen->save_data.is_level_completed(stats_->level)
 			        && !myscreen->save_data.is_level_completed(myscreen->save_data.scen_num)
 			        && (guys_here != 0)
 			   ) // okay to leave
@@ -213,14 +213,14 @@ bool treasure::eat_me(walker  * eater)
                     myscreen->save_data.load("save0");
                     
                     // Go to the exit's level
-					myscreen->save_data.scen_num = stats->level;
+					myscreen->save_data.scen_num = stats_->level;
 					myscreen->end = 1;
 					
                     // Autosave because we escaped to a new level
 					// Save with the new current level
                     myscreen->save_data.save("save0");
 
-					return myscreen->endgame(1, stats->level); // retreat
+					return myscreen->endgame(1, stats_->level); // retreat
 				}  // end of accepted withdraw to new level ..
 				clear_keyboard();
 			} // end of checking for withdrawal to completed level
@@ -236,7 +236,7 @@ bool treasure::eat_me(walker  * eater)
 				if(result) // accepted level change
 				{
 					clear_keyboard();
-					return myscreen->endgame(0, stats->level);
+					return myscreen->endgame(0, stats_->level);
 				}
 				clear_keyboard();
 				return 1;
@@ -277,7 +277,7 @@ bool treasure::eat_me(walker  * eater)
 		case FAMILY_LIFE_GEM: // get back some of lost man's xp ..
 			if (eater->team_num() != team_num_) // only our team can get these
 				return 1;
-			myscreen->save_data.m_score[eater->team_num()] += stats->hitpoints;
+			myscreen->save_data.m_score[eater->team_num()] += stats_->hitpoints;
 			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
 			flash->set_ani_type(ANI_EXPAND_8);
 			flash->center_on(this);
@@ -285,14 +285,14 @@ bool treasure::eat_me(walker  * eater)
 			death();
 			return 1;
 		case FAMILY_KEY: // get the key to this door ..
-			if (!(eater->keys() & static_cast<Sint32>(pow(static_cast<double>(2), stats->level)) )) // just got it?
+			if (!(eater->keys() & static_cast<Sint32>(pow(static_cast<double>(2), stats_->level)) )) // just got it?
 			{
-				eater->set_keys(eater->keys() | static_cast<Sint32>(pow(static_cast<double>(2), stats->level))); // ie, 2, 4, 8, 16...
+				eater->set_keys(eater->keys() | static_cast<Sint32>(pow(static_cast<double>(2), stats_->level))); // ie, 2, 4, 8, 16...
 				if (eater->myguy())
 					message = std::format("{} picks up key {}", eater->myguy()->name,
-					        stats->level);
+					        stats_->level);
 				else
-					message = std::format("{} picks up key {}", eater->stats->name, stats->level);
+					message = std::format("{} picks up key {}", eater->stats()->name, stats_->level);
 				if (eater->team_num() == 0) // only show players picking up keys_
 				{
 					myscreen->do_notify(message.c_str(), eater);
@@ -337,7 +337,7 @@ walker  * treasure::find_teleport_target()
 		{
 			if (w->query_order() == Order::Treasure &&
 			        w->query_family() == FAMILY_TELEPORTER &&
-			        w->stats->level == stats->level)
+			        w->stats()->level == stats_->level)
 			{
 				//Log(" to target %d\n", number);
 				return w;
@@ -353,7 +353,7 @@ walker  * treasure::find_teleport_target()
 		{
 			if (w->query_order() == Order::Treasure &&
 			        w->query_family() == FAMILY_TELEPORTER &&
-			        w->stats->level == stats->level)
+			        w->stats()->level == stats_->level)
 			{
 				//Log(" to looped target %d\n", number);
 				return w;
