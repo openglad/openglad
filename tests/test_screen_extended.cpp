@@ -1,0 +1,225 @@
+#include "graph.h"
+#include "guy.h"
+#include "gloader.h"
+#include "test_framework.h"
+
+extern screen* myscreen;
+
+static walker* make_walker_at(char family, short x, short y, unsigned char team)
+{
+    guy g(family);
+    g.teamnum = team;
+    g.upgrade_to_level(2, true);
+    walker* w = g.create_walker(myscreen);
+    if (w) w->setxy(x, y);
+    return w;
+}
+
+// ---------------------------------------------------------------------------
+// screen::act smoke test - exercises the main game loop tick
+// ---------------------------------------------------------------------------
+
+void test_screen_act_empty()
+{
+    myscreen->act();
+}
+REGISTER_TEST(test_screen_act_empty);
+
+// ---------------------------------------------------------------------------
+// add_ob / remove_ob
+// ---------------------------------------------------------------------------
+
+void test_screen_add_ob_living()
+{
+    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "add_ob should succeed");
+    w->setxy(50, 50);
+    w->dead = 1; // mark for cleanup
+}
+REGISTER_TEST(test_screen_add_ob_living);
+
+void test_screen_add_ob_weapon()
+{
+    walker* w = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(w != nullptr, "add_ob weapon should succeed");
+    w->dead = 1;
+}
+REGISTER_TEST(test_screen_add_ob_weapon);
+
+void test_screen_add_ob_treasure()
+{
+    walker* w = myscreen->level_data.add_ob(Order::Treasure, FAMILY_STAIN, 1);
+    TEST_ASSERT(w != nullptr, "add_ob treasure should succeed");
+    w->dead = 1;
+}
+REGISTER_TEST(test_screen_add_ob_treasure);
+
+void test_screen_add_ob_effect()
+{
+    walker* w = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+    TEST_ASSERT(w != nullptr, "add_ob effect should succeed");
+    w->dead = 1;
+}
+REGISTER_TEST(test_screen_add_ob_effect);
+
+// ---------------------------------------------------------------------------
+// query_grid_passable - extended tests for all terrain types
+// ---------------------------------------------------------------------------
+
+void test_screen_query_grid_passable_walking()
+{
+    loader* l = myscreen->level_data.myloader.get();
+    if (!l) return;
+    walker* w = l->create_walker(Order::Living, FAMILY_SOLDIER, myscreen);
+    if (!w) return;
+    w->setxy(100, 100);
+
+    // Test various grid positions
+    short result = myscreen->query_grid_passable(100, 100, w);
+    (void)result;
+
+    result = myscreen->query_grid_passable(50, 50, w);
+    (void)result;
+
+    result = myscreen->query_grid_passable(200, 150, w);
+    (void)result;
+
+    delete w;
+}
+REGISTER_TEST(test_screen_query_grid_passable_walking);
+
+void test_screen_query_grid_passable_weapon()
+{
+    loader* l = myscreen->level_data.myloader.get();
+    if (!l) return;
+    walker* w = l->create_walker(Order::Weapon, FAMILY_KNIFE, myscreen);
+    if (!w) return;
+    w->setxy(100, 100);
+
+    short result = myscreen->query_grid_passable(100, 100, w);
+    (void)result;
+
+    delete w;
+}
+REGISTER_TEST(test_screen_query_grid_passable_weapon);
+
+// ---------------------------------------------------------------------------
+// query_passable
+// ---------------------------------------------------------------------------
+
+void test_screen_query_passable_living()
+{
+    walker* w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
+    if (!w) return;
+
+    short result = myscreen->query_passable(100, 100, w);
+    (void)result;
+
+    result = myscreen->query_passable(50, 50, w);
+    (void)result;
+
+    delete w;
+}
+REGISTER_TEST(test_screen_query_passable_living);
+
+// ---------------------------------------------------------------------------
+// first_of extended (various order types)
+// ---------------------------------------------------------------------------
+
+void test_screen_first_of_weapon()
+{
+    walker* result = myscreen->first_of(Order::Weapon, FAMILY_KNIFE);
+    (void)result; // may be null if no knives exist
+}
+REGISTER_TEST(test_screen_first_of_weapon);
+
+void test_screen_first_of_treasure()
+{
+    walker* result = myscreen->first_of(Order::Treasure, FAMILY_STAIN);
+    (void)result;
+}
+REGISTER_TEST(test_screen_first_of_treasure);
+
+// ---------------------------------------------------------------------------
+// save_data access
+// ---------------------------------------------------------------------------
+
+void test_screen_save_data_score()
+{
+    Sint32 old_score = myscreen->save_data.m_score[0];
+    myscreen->save_data.m_score[0] += 100;
+    TEST_ASSERT(myscreen->save_data.m_score[0] > old_score, "score should increase");
+    myscreen->save_data.m_score[0] = old_score; // restore
+}
+REGISTER_TEST(test_screen_save_data_score);
+
+// ---------------------------------------------------------------------------
+// do_notify
+// ---------------------------------------------------------------------------
+
+void test_screen_do_notify_with_walker()
+{
+    walker* w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
+    if (!w) return;
+    myscreen->do_notify("Test notification", w);
+    delete w;
+}
+REGISTER_TEST(test_screen_do_notify_with_walker);
+
+// ---------------------------------------------------------------------------
+// find functions with populated lists
+// ---------------------------------------------------------------------------
+
+void test_screen_find_near_foe_with_enemies()
+{
+    walker* seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
+    walker* enemy = make_walker_at(FAMILY_ORC, 70, 50, 1);
+    if (!seeker || !enemy) {
+        delete seeker;
+        delete enemy;
+        return;
+    }
+
+    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
+
+    walker* found = myscreen->find_near_foe(seeker);
+    (void)found;
+
+    myscreen->level_data.oblist.pop_back();
+    delete seeker;
+}
+REGISTER_TEST(test_screen_find_near_foe_with_enemies);
+
+void test_screen_find_far_foe_with_enemies()
+{
+    walker* seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
+    walker* enemy = make_walker_at(FAMILY_ORC, 200, 150, 1);
+    if (!seeker || !enemy) {
+        delete seeker;
+        delete enemy;
+        return;
+    }
+
+    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
+
+    walker* found = myscreen->find_far_foe(seeker);
+    (void)found;
+
+    myscreen->level_data.oblist.pop_back();
+    delete seeker;
+}
+REGISTER_TEST(test_screen_find_far_foe_with_enemies);
+
+// ---------------------------------------------------------------------------
+// damage_tile extended
+// ---------------------------------------------------------------------------
+
+void test_screen_damage_tile_various()
+{
+    // Test various positions
+    char r1 = myscreen->damage_tile(50, 50);
+    char r2 = myscreen->damage_tile(100, 100);
+    char r3 = myscreen->damage_tile(200, 150);
+    (void)r1; (void)r2; (void)r3;
+}
+REGISTER_TEST(test_screen_damage_tile_various);

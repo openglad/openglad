@@ -336,6 +336,15 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_living_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_guy_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_combat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_draw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gloader_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_screen_extended.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
