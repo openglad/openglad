@@ -24,6 +24,8 @@ set(EXT_DIR ${SRC_DIR}/external)
 # Main game C++ sources
 set(GAME_SOURCES
     ${SRC_DIR}/glad.cpp
+    ${SRC_DIR}/game_loop.cpp
+    ${SRC_DIR}/combat_math.cpp
     ${SRC_DIR}/button.cpp
     ${SRC_DIR}/effect.cpp
     ${SRC_DIR}/game.cpp
@@ -286,6 +288,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_combat_math.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_game_launch.cpp

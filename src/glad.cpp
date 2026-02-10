@@ -18,6 +18,7 @@
 #include "version.h"
 
 #include "graph.h"
+#include "game_loop.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -93,20 +94,9 @@ void glad_main(screen *myscreen, Sint32 playermode);
 extern options *theprefs;
 
 // Frame state for main game loop (used by Emscripten and native builds)
-struct FrameState {
-	bool done;
-	bool initialized;
-	short currentcycle;
-	short cycletime;
-#ifdef __EMSCRIPTEN__
-	Uint32 last_frame_time;
-	Uint32 accumulated_time;
-#endif
-};
-static FrameState g_frame_state = {false, false, 0, 3};
+static GameLoopFrameState g_frame_state{};
 
 // Forward declarations
-static void game_frame();
 void glad_init();
 
 #ifdef __EMSCRIPTEN__
@@ -169,7 +159,7 @@ static void emscripten_frame_wrapper() {
 					g_frame_state.cycletime = 3;
 					g_state_initialized = true;
 				}
-				game_frame();
+				game_frame(*myscreen, g_frame_state);
 				if (g_frame_state.done) {
 					Log("Game done, transitioning back to PICKER\n");
 					clear_keyboard();
@@ -263,107 +253,6 @@ int main(int argc, char *argv[])
 }
 #endif // TESTING
 
-// One frame of the main game loop - called by emscripten_set_main_loop or native while loop
-static void game_frame()
-{
-	// Reset the timer count to zero ...
-	reset_timer();
-
-	if (myscreen->redrawme)
-	{
-#ifndef TESTING
-		myscreen->draw_panels(myscreen->numviews);
-		score_panel(myscreen, 1);
-		myscreen->refresh();
-#endif
-		myscreen->redrawme = 0;
-	}
-	if (myscreen->end)
-	{
-		g_frame_state.done = true;
-		return;
-	}
-	myscreen->act();
-	myscreen->framecount++;
-	if (myscreen->end)
-	{
-		g_frame_state.done = true;
-		return;
-	}
-#ifndef TESTING
-	myscreen->redraw();
-
-	if(debug_draw_obmap)
-		myscreen->level_data.myobmap->draw();  // debug drawing for object collision map
-
-	#ifdef USE_TOUCH_INPUT
-	draw_touch_controls(myscreen);
-	#endif
-	score_panel(myscreen);
-	myscreen->refresh();
-#endif
-
-	SDL_Event event;
-	while(SDL_PollEvent(&event))
-	{
-		handle_events(event);
-		if(event.type == SDL_KEYDOWN)
-		{
-			if(event.key.keysym.sym == SDLK_F11)
-				debug_draw_paths = !debug_draw_paths;
-			else if(event.key.keysym.sym == SDLK_F12)
-				debug_draw_obmap = !debug_draw_obmap;
-			else if(event.key.keysym.sym == SDLK_ESCAPE)
-			{
-				bool result = yes_or_no_prompt("Abort Mission", "Quit this mission?", false);
-				myscreen->redrawme = 1;
-				if (result) // player wants to quit
-				{
-					g_frame_state.done = true;
-					results_screen(2, -1); // Should not show an extra popup
-				}
-				else
-				{
-					set_palette(myscreen->ourpalette);  // restore normal palette
-					adjust_palette(myscreen->ourpalette, myscreen->viewob[0]->gamma);
-				}
-				break;
-			}
-		}
-
-		myscreen->input(event);
-	}
-	if (myscreen->end || g_frame_state.done)
-	{
-		g_frame_state.done = true;
-		return;
-	}
-
-	myscreen->continuous_input();
-
-	if (myscreen->end)
-	{
-		g_frame_state.done = true;
-		return;
-	}
-
-	// Now cycle palette ..
-	if (myscreen->cyclemode)
-		myscreen->do_cycle(g_frame_state.currentcycle++, g_frame_state.cycletime);
-
-#ifndef __EMSCRIPTEN__
-	// Zardus: PORT: this is the new FPS cap (not needed for Emscripten - browser handles timing)
-	if (g_game_speed_factor == 0.0f) {
-		// Max speed: no delay
-	} else if (g_game_speed_factor != 1.0f) {
-		Sint32 adjusted_wait = static_cast<Sint32>(myscreen->timer_wait / g_game_speed_factor);
-		time_delay(adjusted_wait - query_timer());
-	} else {
-		time_delay(myscreen->timer_wait - query_timer());
-	}
-#endif
-}
-
 // Initialize the game for playing (called before game loop starts)
 void glad_init()
 {
@@ -425,7 +314,7 @@ void glad_main(Sint32 playermode)
 	// Native desktop build: use traditional while loop
 	while(!g_frame_state.done)
 	{
-		game_frame();
+		game_frame(*myscreen, g_frame_state);
 	}
 
 	clear_keyboard();

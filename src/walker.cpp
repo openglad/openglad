@@ -21,6 +21,7 @@
 */
 
 #include "graph.h"
+#include "combat_math.h"
 #include "smooth.h"
 #include <format>
 #include <span>
@@ -1758,20 +1759,13 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 
 float get_base_damage(walker* w)
 {
-    float d = w->damage;
-    float sqrtd = sqrtf(d);
-    return d - sqrtd/2.0f + random(floor(sqrtd));
+    return compute_base_damage(w->damage, random);
 }
 
 float get_damage_reduction(walker* w, float damage, walker* target)
 {
-    if(damage <= 0)
-        return 0;
-
-    float result = target->stats()->armor/2.0f;
-    if(result > damage - 1)
-        return damage - 1;  // Always do at least 1 damage
-    return result;
+    (void)w; // kept for minimal churn at call sites
+    return compute_damage_reduction(damage, target->stats()->armor);
 }
 
 
