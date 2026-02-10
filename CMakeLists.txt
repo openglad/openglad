@@ -13,6 +13,7 @@ set(CMAKE_C_STANDARD_REQUIRED OFF)
 # Build options
 option(BUILD_TESTING "Build the test suite" OFF)
 option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
+option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" OFF)
 
 # --------------------------------------------------------------------------
 # Source file lists
@@ -323,6 +324,18 @@ if(NOT EMSCRIPTEN)
         configure_openglad_target(openglad_test)
         target_compile_definitions(openglad_test PRIVATE TESTING)
         target_include_directories(openglad_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+
+        if(ENABLE_COVERAGE)
+            if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+                # Coverage builds can be extremely slow at -O0; -O1 is usually
+                # a good compromise while still producing accurate line coverage.
+                target_compile_options(openglad_test PRIVATE -O1 -g --coverage)
+                target_link_options(openglad_test PRIVATE --coverage)
+                target_compile_definitions(openglad_test PRIVATE ENABLE_COVERAGE)
+            else()
+                message(WARNING "ENABLE_COVERAGE is ON but compiler is not GCC/Clang; ignoring coverage flags")
+            endif()
+        endif()
     endif()
 endif()
 

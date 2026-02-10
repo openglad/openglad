@@ -2,6 +2,13 @@
 *.o
 *.exe
 obj/
+/build-native/
+/build-test/
+/build-coverage/
+/coverage/
+/openglad
+/openscen
+/openglad_test
 
 # Emscripten build
 /build-web/

@@ -11,6 +11,11 @@
 extern screen* myscreen;
 extern options* theprefs;
 
+#ifdef ENABLE_COVERAGE
+// Ensure coverage data is flushed even though we terminate via _exit().
+extern "C" void __gcov_dump();
+#endif
+
 int main(int argc, char* argv[]) {
     // Force offscreen rendering - no display needed
     SDL_setenv("SDL_VIDEODRIVER", "offscreen", 1);
@@ -41,5 +46,8 @@ int main(int argc, char* argv[]) {
     // This is a test binary so we don't need graceful teardown — the OS
     // reclaims all resources on process exit.
     fflush(nullptr); // _exit() doesn't flush stdio — do it explicitly
+#ifdef ENABLE_COVERAGE
+    __gcov_dump();
+#endif
     _exit(g_tests_failed > 0 ? 1 : 0);
 }
