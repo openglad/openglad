@@ -33,6 +33,9 @@
 #include <set>
 #include <vector>
 #include <algorithm>
+#ifdef TESTING
+#include <atomic>
+#endif
 // Z's script: #include <process.h>
 // Z's script: #include <i86.h> //_enable, _disable
 
@@ -108,6 +111,9 @@ int g_picker_max_mainmenu_calls = 0;  // 0 = unlimited
 // Set true while glad_main is running inside go_menu, so tests can
 // wait for the game to finish before clicking menu buttons.
 bool g_test_in_game = false;
+// Monotonic counter incremented each time go_menu starts glad_main, so
+// injector threads can't miss a fast start+finish transition.
+std::atomic<int> g_test_game_epoch{0};
 #endif
 
 Sint32 allowable_guys[] =
@@ -3438,6 +3444,7 @@ Sint32 go_menu(Sint32 arg1)
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
 #ifdef TESTING
+        g_test_game_epoch.fetch_add(1, std::memory_order_release);
         g_test_in_game = true;
 #endif
         glad_main(myscreen->save_data.numplayers);
@@ -4417,4 +4424,3 @@ void picker_reinit_after_game()
     Log("picker_reinit_after_game: mainmenu returned, g_start_game_requested={}\n", g_start_game_requested);
 }
 #endif
-

@@ -8,6 +8,8 @@
 #include "save_data.h"
 #include "util.h"
 
+#include <atomic>
+
 extern screen* myscreen;
 
 // Forward declarations from picker.cpp
@@ -25,6 +27,7 @@ extern vbutton *localbuttons;
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern bool g_test_in_game;
+extern std::atomic<int> g_test_game_epoch;
 #endif
 
 // Number of hireable character types in allowable_guys[]
@@ -130,15 +133,40 @@ static int op_injector(void* data)
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");
+    int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
     interact("go");
 
     // -- Wait for glad_main to finish --
     // Old buttons from create_team_menu persist through glad_main, so
     // wait_for_interactable("back") would return immediately (stale buttons).
-    // Instead, poll g_test_in_game which is set/cleared around glad_main.
+    // Instead, wait for a monotonic epoch increment and then poll g_test_in_game
+    // which is set/cleared around glad_main.
     fprintf(stderr, "  [test] waiting for game to finish...\n");
-    while (!g_test_in_game) SDL_Delay(50);   // wait for game to start
-    while (g_test_in_game) SDL_Delay(50);     // wait for game to end
+    {
+        int waited_ms = 0;
+        const int poll_ms = 50;
+        while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+            SDL_Delay(poll_ms);
+            waited_ms += poll_ms;
+        }
+        if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before) {
+            fprintf(stderr, "  [test] ERROR: game never started (epoch unchanged)\n");
+            set_game_speed(state->original_speed);
+            g_test_remove_exits = false;
+            return 0;
+        }
+        waited_ms = 0;
+        while (g_test_in_game && waited_ms < 60000) {
+            SDL_Delay(poll_ms);
+            waited_ms += poll_ms;
+        }
+        if (g_test_in_game) {
+            fprintf(stderr, "  [test] ERROR: game did not finish within timeout\n");
+            set_game_speed(state->original_speed);
+            g_test_remove_exits = false;
+            return 0;
+        }
+    }
 
     // Now we're truly back in create_team_menu with fresh buttons
     wait_for_interactable("back", 10000);
