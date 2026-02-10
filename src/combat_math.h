@@ -47,6 +47,32 @@ HealResult compute_heal_amount(Sint32 magicpoints, Sint32 level, IRandom& rng);
 // Returns: charm duration in ticks
 Sint32 compute_charm_duration(Sint32 level_diff, IRandom& rng);
 
+// Regeneration tick result.
+struct RegenTickResult {
+    float new_value;        // new HP or MP
+    Sint32 new_delay;       // updated current delay counter
+};
+
+// Compute one tick of regeneration (HP or MP).
+// current: current HP/MP, max_val: cap, per_round: amount added each tick,
+// current_delay: current delay counter, max_delay: delay threshold for bonus +1.
+// frozen: if true, no regen occurs.
+// Returns new value and delay counter.
+RegenTickResult compute_regen_tick(float current, float max_val, float per_round,
+                                   Sint32 current_delay, Sint32 max_delay, bool frozen);
+
+// Compute HP regen considering regen_delay (post-damage cooldown).
+// regen_delay: ticks remaining before regen starts (decremented each tick).
+// Returns: updated regen_delay (caller should store it back).
+struct HpRegenResult {
+    float new_hp;
+    Sint32 new_heal_delay;
+    Sint32 new_regen_delay;
+};
+HpRegenResult compute_hp_regen_tick(float current_hp, float max_hp, float heal_per_round,
+                                     Sint32 current_heal_delay, Sint32 max_heal_delay,
+                                     Sint32 regen_delay, bool frozen);
+
 // XP from dealing damage: quintic polynomial based on level difference.
 // level_diff: attacker_level - target_level
 // damage: damage dealt

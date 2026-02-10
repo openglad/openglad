@@ -288,3 +288,85 @@ void test_xp_from_action_eat_corpse()
     TEST_ASSERT_EQ(20, (int)xp, "EatCorpse XP should be target_level*5");
 }
 REGISTER_TEST(test_xp_from_action_eat_corpse);
+
+// ---------------------------------------------------------------------------
+// compute_regen_tick tests
+// ---------------------------------------------------------------------------
+
+void test_regen_tick_basic()
+{
+    // current=50, max=100, per_round=0.5, delay=0/10, not frozen
+    RegenTickResult r = compute_regen_tick(50.0f, 100.0f, 0.5f, 0, 10, false);
+    TEST_ASSERT(r.new_value > 50.4f && r.new_value < 50.6f, "should add per_round");
+    TEST_ASSERT_EQ(1, (int)r.new_delay, "delay should increment");
+}
+REGISTER_TEST(test_regen_tick_basic);
+
+void test_regen_tick_delay_threshold()
+{
+    // At delay 9/10, threshold triggers bonus +1 and resets delay
+    RegenTickResult r = compute_regen_tick(50.0f, 100.0f, 0.5f, 9, 10, false);
+    // Should get per_round (0.5) + bonus (1.0) = 51.5
+    TEST_ASSERT(r.new_value > 51.4f && r.new_value < 51.6f, "should add per_round + bonus at threshold");
+    TEST_ASSERT_EQ(0, (int)r.new_delay, "delay should reset at threshold");
+}
+REGISTER_TEST(test_regen_tick_delay_threshold);
+
+void test_regen_tick_caps_at_max()
+{
+    // current=99.8, max=100, per_round=0.5 -> should cap at 100
+    RegenTickResult r = compute_regen_tick(99.8f, 100.0f, 0.5f, 0, 10, false);
+    TEST_ASSERT(r.new_value > 99.9f && r.new_value < 100.1f, "should cap at max_val");
+}
+REGISTER_TEST(test_regen_tick_caps_at_max);
+
+void test_regen_tick_frozen()
+{
+    // Frozen: no regen
+    RegenTickResult r = compute_regen_tick(50.0f, 100.0f, 0.5f, 5, 10, true);
+    TEST_ASSERT(r.new_value > 49.9f && r.new_value < 50.1f, "frozen should prevent regen");
+    TEST_ASSERT_EQ(5, (int)r.new_delay, "delay should not change when frozen");
+}
+REGISTER_TEST(test_regen_tick_frozen);
+
+void test_regen_tick_already_full()
+{
+    // At max: no regen
+    RegenTickResult r = compute_regen_tick(100.0f, 100.0f, 0.5f, 5, 10, false);
+    TEST_ASSERT(r.new_value > 99.9f && r.new_value < 100.1f, "full HP should not regen");
+    TEST_ASSERT_EQ(5, (int)r.new_delay, "delay should not change when full");
+}
+REGISTER_TEST(test_regen_tick_already_full);
+
+// ---------------------------------------------------------------------------
+// compute_hp_regen_tick tests
+// ---------------------------------------------------------------------------
+
+void test_hp_regen_with_regen_delay()
+{
+    // regen_delay=5: should just decrement delay, no healing
+    HpRegenResult r = compute_hp_regen_tick(50.0f, 100.0f, 0.5f, 0, 10, 5, false);
+    TEST_ASSERT(r.new_hp > 49.9f && r.new_hp < 50.1f, "should not heal during regen delay");
+    TEST_ASSERT_EQ(0, (int)r.new_heal_delay, "heal delay unchanged during regen delay");
+    TEST_ASSERT_EQ(4, (int)r.new_regen_delay, "regen delay should decrement");
+}
+REGISTER_TEST(test_hp_regen_with_regen_delay);
+
+void test_hp_regen_delay_expires()
+{
+    // regen_delay=1: last tick of delay, still no healing this tick
+    HpRegenResult r = compute_hp_regen_tick(50.0f, 100.0f, 0.5f, 0, 10, 1, false);
+    TEST_ASSERT(r.new_hp > 49.9f && r.new_hp < 50.1f, "no healing on last delay tick");
+    TEST_ASSERT_EQ(0, (int)r.new_regen_delay, "regen delay should reach 0");
+}
+REGISTER_TEST(test_hp_regen_delay_expires);
+
+void test_hp_regen_no_delay()
+{
+    // regen_delay=0: normal regen
+    HpRegenResult r = compute_hp_regen_tick(50.0f, 100.0f, 0.5f, 0, 10, 0, false);
+    TEST_ASSERT(r.new_hp > 50.4f && r.new_hp < 50.6f, "should heal normally when no delay");
+    TEST_ASSERT_EQ(1, (int)r.new_heal_delay, "heal delay should increment");
+    TEST_ASSERT_EQ(0, (int)r.new_regen_delay, "regen delay should remain 0");
+}
+REGISTER_TEST(test_hp_regen_no_delay);

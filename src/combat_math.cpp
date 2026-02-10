@@ -73,6 +73,35 @@ Sint32 compute_charm_duration(Sint32 level_diff, IRandom& rng)
     return 25 + static_cast<Sint32>(rng.next(static_cast<Uint32>(generic * 20)));
 }
 
+RegenTickResult compute_regen_tick(float current, float max_val, float per_round,
+                                   Sint32 current_delay, Sint32 max_delay, bool frozen)
+{
+    if (frozen || current >= max_val)
+        return {current, current_delay};
+
+    float val = current + per_round;
+    Sint32 delay = current_delay + 1;
+    if (delay >= max_delay) {
+        val += 1.0f;
+        delay = 0;
+    }
+    if (val > max_val)
+        val = max_val;
+    return {val, delay};
+}
+
+HpRegenResult compute_hp_regen_tick(float current_hp, float max_hp, float heal_per_round,
+                                     Sint32 current_heal_delay, Sint32 max_heal_delay,
+                                     Sint32 regen_delay, bool frozen)
+{
+    if (regen_delay > 0)
+        return {current_hp, current_heal_delay, regen_delay - 1};
+
+    RegenTickResult r = compute_regen_tick(current_hp, max_hp, heal_per_round,
+                                           current_heal_delay, max_heal_delay, frozen);
+    return {r.new_value, r.new_delay, 0};
+}
+
 short compute_xp_from_attack(Sint32 level_diff, float damage)
 {
     float x = static_cast<float>(level_diff);

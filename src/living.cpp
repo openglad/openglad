@@ -20,6 +20,7 @@
 
 #include "graph.h"
 #include "game_context.h"
+#include "combat_math.h"
 #include "smooth.h"
 #include <cstring>
 
@@ -122,39 +123,27 @@ bool living::act()
 	*/
 
 	// Regenerate magic
-	if (stats_->magicpoints < stats_->max_magicpoints &&
-	        !(myscreen->enemy_freeze || bonus_rounds) )
 	{
-		stats_->magicpoints += stats_->magic_per_round;
-		stats_->current_magic_delay++;
-		if (stats_->current_magic_delay >= stats_->max_magic_delay)
-		{
-			stats_->magicpoints++;
-			stats_->current_magic_delay = 0;
-		}
-		if (stats_->magicpoints > stats_->max_magicpoints)
-			stats_->magicpoints = stats_->max_magicpoints;
-	} // end magic increment section
+		bool frozen = myscreen->enemy_freeze || bonus_rounds;
+		RegenTickResult mp = compute_regen_tick(stats_->magicpoints, stats_->max_magicpoints,
+		                                        stats_->magic_per_round,
+		                                        stats_->current_magic_delay, stats_->max_magic_delay,
+		                                        frozen);
+		stats_->magicpoints = mp.new_value;
+		stats_->current_magic_delay = mp.new_delay;
+	}
 
-	//Regenerate hitpoints
-	if(regen_delay_ > 0)  // Delay after being hit
-        regen_delay_--;
-    else
-    {
-        if (stats_->hitpoints < stats_->max_hitpoints &&
-                !(myscreen->enemy_freeze || bonus_rounds))
-        {
-            stats_->hitpoints += stats_->heal_per_round;
-            stats_->current_heal_delay++;
-            if (stats_->current_heal_delay >= stats_->max_heal_delay)
-            {
-                stats_->hitpoints++;
-                stats_->current_heal_delay = 0;
-            }
-            if (stats_->hitpoints > stats_->max_hitpoints)
-                stats_->hitpoints = stats_->max_hitpoints;
-        } // end hitpoint increment section
-    }
+	// Regenerate hitpoints
+	{
+		bool frozen = myscreen->enemy_freeze || bonus_rounds;
+		HpRegenResult hp = compute_hp_regen_tick(stats_->hitpoints, stats_->max_hitpoints,
+		                                          stats_->heal_per_round,
+		                                          stats_->current_heal_delay, stats_->max_heal_delay,
+		                                          regen_delay_, frozen);
+		stats_->hitpoints = hp.new_hp;
+		stats_->current_heal_delay = hp.new_heal_delay;
+		regen_delay_ = hp.new_regen_delay;
+	}
 
 	// Special-viewing
 	if (view_all > 0)
