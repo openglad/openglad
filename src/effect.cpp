@@ -24,6 +24,7 @@
 
 //#include "graph.h"
 #include "effect.h"
+#include "test_trace.h"
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
@@ -39,6 +40,19 @@ effect::~effect()
 	// Zardus: PORT: that parent object problem again:  walker::~walker();
 }
 
+static void orbit_offset(int drawcycle, float &xd, float &yd)
+{
+    static const float orbit_table[16][2] = {
+        {  0, -24}, { -9, -22}, {-17, -17}, {-22,  -9},
+        {-24,   0}, {-22,   9}, {-17,  17}, { -9,  22},
+        {  0,  24}, {  9,  22}, { 17,  17}, { 22,   9},
+        { 24,   0}, { 22,  -9}, { 17, -17}, {  9, -22},
+    };
+    int idx = drawcycle % 16;
+    xd = orbit_table[idx][0];
+    yd = orbit_table[idx][1];
+}
+
 bool effect::act()
 {
 	short temp;
@@ -47,6 +61,8 @@ bool effect::act()
 	walker *newob;
 	short numfoes;
 	std::list<walker*> foelist;
+
+	TRACE("effect", "effect::act family=%d drawcycle=%d", family, drawcycle);
 
 	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
@@ -72,76 +88,7 @@ bool effect::act()
 				death();
 				break;
 			}
-			switch (drawcycle % 16)
-			{
-				case 0:
-					xd = 0;
-					yd = -24;
-					break;
-				case 1:
-					xd = -9;
-					yd = -22;
-					break;
-				case 2:
-					xd = -17;
-					yd = -17;
-					break;
-				case 3:
-					xd = -22;
-					yd = -9;
-					break;
-
-				case 4:
-					xd = -24;
-					yd = 0;
-					break;
-				case 5:
-					xd = -22;
-					yd = 9;
-					break;
-				case 6:
-					xd = -17;
-					yd = 17;
-					break;
-				case 7:
-					xd = -9;
-					yd = 22;
-					break;
-
-				case 8:
-					xd = 0;
-					yd = 24;
-					break;
-				case 9:
-					xd = 9;
-					yd = 22;
-					break;
-				case 10:
-					xd = 17;
-					yd = 17;
-					break;
-				case 11:
-					xd = 22;
-					yd = 9;
-					break;
-
-				case 12:
-					xd = 24;
-					yd = 0;
-					break;
-				case 13:
-					xd = 22;
-					yd = -9;
-					break;
-				case 14:
-					xd = 17;
-					yd = -17;
-					break;
-				case 15:
-					xd = 9;
-					yd = -22;
-					break;
-			}
+			orbit_offset(drawcycle, xd, yd);
 			center_on(owner);
 			setworldxy(worldx_+xd, worldy_+yd);
 			foelist = myscreen->find_foe_weapons_in_range(
@@ -181,76 +128,7 @@ bool effect::act()
 				death();
 				break;
 			}
-			switch (drawcycle % 16)
-			{
-				case 0:
-					xd = 0;
-					yd = -24;
-					break;
-				case 1:
-					xd = -9;
-					yd = -22;
-					break;
-				case 2:
-					xd = -17;
-					yd = -17;
-					break;
-				case 3:
-					xd = -22;
-					yd = -9;
-					break;
-
-				case 4:
-					xd = -24;
-					yd = 0;
-					break;
-				case 5:
-					xd = -22;
-					yd = 9;
-					break;
-				case 6:
-					xd = -17;
-					yd = 17;
-					break;
-				case 7:
-					xd = -9;
-					yd = 22;
-					break;
-
-				case 8:
-					xd = 0;
-					yd = 24;
-					break;
-				case 9:
-					xd = 9;
-					yd = 22;
-					break;
-				case 10:
-					xd = 17;
-					yd = 17;
-					break;
-				case 11:
-					xd = 22;
-					yd = 9;
-					break;
-
-				case 12:
-					xd = 24;
-					yd = 0;
-					break;
-				case 13:
-					xd = 22;
-					yd = -9;
-					break;
-				case 14:
-					xd = 17;
-					yd = -17;
-					break;
-				case 15:
-					xd = 9;
-					yd = -22;
-					break;
-			}
+			orbit_offset(drawcycle, xd, yd);
 			xd *= (drawcycle+4);
 			xd /= 48;
 			yd *= (drawcycle+4);
@@ -576,10 +454,24 @@ bool effect::animate()
 	return 1;
 }
 
+static Sint32 compute_explosion_range(Sint32 level, short skip_exit)
+{
+    Sint32 range = level * 4;
+    if (skip_exit > 0)
+        range = 0;
+    if (range > 96)
+        range = 96;
+    if (range < 16)
+        range = 16;
+    return range;
+}
+
 // death is called when an object dies (or weapon destructed, etc.)
 // for special effects ..
 bool effect::death()
 {
+	TRACE("effect", "effect::death family=%d", family);
+
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)
@@ -642,13 +534,7 @@ bool effect::death()
 			if (!owner || owner->dead)
 				owner = this;
 			// Set the max distance for a bomb ..
-			generic = 4*owner->stats()->level;
-			if (generic > 96) // set max range to about 6 tiles
-				generic = 96;
-			if (skip_exit) // magical, ie mage, don't go far ..
-			{
-				generic = 16;
-			}
+			generic = compute_explosion_range(owner->stats()->level, skip_exit);
 			foelist = myscreen->find_in_range(myscreen->level_data.oblist, 15+generic,
 			                                 &howmany, this);
             

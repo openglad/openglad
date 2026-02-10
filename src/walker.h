@@ -124,6 +124,7 @@ class walker : public pixieN
             void draw(viewscreen* view_buf);
 		};
 
+		void compute_outline(const walker* viewer_control);
 		float get_current_angle();
         void do_heal_effects(walker* healer, walker* target, short amount);
         void do_hit_effects(walker* attacker, walker* target, short tempdamage);

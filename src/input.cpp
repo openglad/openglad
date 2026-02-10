@@ -793,6 +793,15 @@ bool isPlayerKey(int player_num, SDLKey key)
 SDL_Event wait_for_key_event()
 {
     SDL_Event event;
+    memset(&event, 0, sizeof(event));
+#ifdef TESTING
+    // In test mode, return immediately with a fake ESC keypress
+    event.type = SDL_KEYDOWN;
+    event.key.keysym.sym = SDLK_ESCAPE;
+    event.key.keysym.scancode = SDL_SCANCODE_ESCAPE;
+    TRACE("input", "wait_for_key_event: returning fake ESC (test mode)");
+    return event;
+#else
     while(1)
     {
         while(SDL_PollEvent(&event))
@@ -808,6 +817,7 @@ SDL_Event wait_for_key_event()
         YIELD_SLEEP(10);
     }
     return event;
+#endif
 }
 
 void quit_if_quit_event(const SDL_Event& event)
@@ -848,7 +858,9 @@ void assignKeyFromWaitEvent(int player_num, int key_enum)
     else if(isJoystickEvent(event))
         player_joy[player_num].setKeyFromEvent(key_enum, event);
 
+#ifndef TESTING
     YIELD_SLEEP(400);
+#endif
     clear_events();
 }
 
@@ -886,6 +898,10 @@ short get_and_reset_scroll_amount()
 
 void wait_for_key(int somekey)
 {
+#ifdef TESTING
+    TRACE("input", "wait_for_key: skipping wait (test mode)");
+    return;
+#else
     // First wait for key press ..
     while (!keystates[SDL_GetScancodeFromKey(somekey)])
         get_input_events(WAIT);
@@ -893,6 +909,7 @@ void wait_for_key(int somekey)
     // And now for the key to be released ..
     while (!keystates[SDL_GetScancodeFromKey(somekey)])
         get_input_events(WAIT);
+#endif
 }
 
 JoyData::JoyData()

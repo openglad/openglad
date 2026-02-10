@@ -23,6 +23,7 @@
 #include "graph.h"
 #include "combat_math.h"
 #include "smooth.h"
+#include "test_trace.h"
 #include <format>
 #include <span>
 
@@ -1218,32 +1219,16 @@ bool walker::draw(viewscreen  *view_buf)
 	return 1;
 }
 
-bool walker::draw_tile(viewscreen  *view_buf)
+void walker::compute_outline(const walker* viewer_control)
 {
-	Sint32 xscreen, yscreen;
-
-	//no need for on screen check, it will be checked at the draw level
-	//and the draw level code is cleaner anyway
-	//if (!this) return 0;
-	if (dead)
-	{
-		Log("drawing a dead guy!\n");
-		return 0;
-	}
-	//if (!bmp) {Log("No bitmap!\n"); return 0;}
-	drawcycle++;
-
-	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
-	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
-
 	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
 	{
 		if (outline == OUTLINE_INVULNERABLE)
 		{
 			if      (flight_left)
 				outline = OUTLINE_FLYING;
-			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+			else if (viewer_control)
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
 					outline = OUTLINE_NAMED;
 
 			if (outline != OUTLINE_NAMED)
@@ -1252,12 +1237,8 @@ bool walker::draw_tile(viewscreen  *view_buf)
 		}
 		else if (outline == OUTLINE_FLYING)
 		{
-			//if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num)) outline = OUTLINE_NAMED;
-			//else if (invisibility_left) outline = OUTLINE_INVISIBLE;
-			//else if (invulnerable_left) outline = OUTLINE_INVULNERABLE;
-
-			if (view_buf->control)
-				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+			if (viewer_control)
+				if      (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
 					outline = OUTLINE_NAMED;
 
 			if (outline != OUTLINE_NAMED)
@@ -1283,8 +1264,8 @@ bool walker::draw_tile(viewscreen  *view_buf)
 				outline = OUTLINE_INVULNERABLE;
 			else if (flight_left)
 				outline = OUTLINE_FLYING;
-			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+			else if (viewer_control)
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
 					outline = OUTLINE_NAMED;
 		}
 		else
@@ -1295,8 +1276,8 @@ bool walker::draw_tile(viewscreen  *view_buf)
 				outline = OUTLINE_FLYING;
 			else if (invulnerable_left)
 				outline = OUTLINE_INVULNERABLE;
-			else if (view_buf->control)
-				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=view_buf->control->team_num))
+			else if (viewer_control)
+				if (stats_->query_bit_flags (BIT_NAMED) && (team_num!=viewer_control->team_num))
 					outline = OUTLINE_NAMED;
 		}
 	}
@@ -1304,9 +1285,30 @@ bool walker::draw_tile(viewscreen  *view_buf)
 	{
 	    outline = 0;
 	}
-	
-    if(outline == 0 && user != -1 && this != view_buf->control && this->team_num == view_buf->control->team_num)
+
+    if(outline == 0 && user != -1 && viewer_control && this != viewer_control && this->team_num == viewer_control->team_num)
         outline = OUTLINE_INVISIBLE;
+}
+
+bool walker::draw_tile(viewscreen  *view_buf)
+{
+	Sint32 xscreen, yscreen;
+
+	//no need for on screen check, it will be checked at the draw level
+	//and the draw level code is cleaner anyway
+	//if (!this) return 0;
+	if (dead)
+	{
+		Log("drawing a dead guy!\n");
+		return 0;
+	}
+	//if (!bmp) {Log("No bitmap!\n"); return 0;}
+	drawcycle++;
+
+	xscreen = static_cast<Sint32>(xpos - view_buf->topx + view_buf->xloc);
+	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
+
+	compute_outline(view_buf->control);
 
 	auto bmp_span = std::span<const unsigned char>{bmp, static_cast<size_t>(sizex * sizey)};
 
@@ -1949,7 +1951,7 @@ bool walker::attack(walker  *target)
 		tempdamage = 0;
     
     do_combat_damage(attacker, target, tempdamage);
-
+    TRACE("walker", "attack: %s deals %.0f damage", attacker->stats_->name.c_str(), tempdamage);
 
     // Base exp from attack damage
 	short newexp = exp_from_action(ExpAction::Attack, this, target, tempdamage);
@@ -2357,6 +2359,8 @@ bool walker::special()
 	short generic, generic2 = 0;
 	std::string message, tempstr;
 	short person;
+
+	TRACE("walker", "special: family=%d current_special=%d", family, current_special);
 
 	// Are we somehow dead already?
 	if (dead)

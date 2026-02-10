@@ -32,6 +32,7 @@
 #include "view_sizes.h"
 #include <algorithm>
 #include <cstring>
+#include "test_trace.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -367,6 +368,59 @@ bool viewscreen::refresh()
 	return 1;
 }
 
+walker* viewscreen::find_next_control()
+{
+    TRACE("view", "find_next_control for player %d team %d", mynum, my_team);
+
+    // First look for a player character, not already controlled
+    for(auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w &&
+                !w->dead &&
+                w->query_order() == Order::Living &&
+                w->user == -1 &&
+                w->myguy &&
+                w->team_num == my_team)
+        {
+            TRACE("view", "find_next_control found player character '%s'", w->stats()->name.c_str());
+            return w;
+        }
+    }
+
+    // Second, look for anyone on our team, NPC or not
+    for(auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w &&
+                !w->dead &&
+                w->query_order() == Order::Living &&
+                w->user == -1 &&
+                w->team_num == my_team)
+        {
+            TRACE("view", "find_next_control found team member '%s'", w->stats()->name.c_str());
+            return w;
+        }
+    }
+
+    // Now try for ANYONE who's left alive...
+    for(auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w &&
+                !w->dead &&
+                w->query_order() == Order::Living &&
+                w->myguy)
+        {
+            TRACE("view", "find_next_control found fallback character '%s'", w->stats()->name.c_str());
+            return w;
+        }
+    }
+
+    TRACE("view", "find_next_control found no one");
+    return nullptr;
+}
+
 short viewscreen::input(const SDL_Event& event)
 {
 
@@ -386,68 +440,15 @@ short viewscreen::input(const SDL_Event& event)
 		control->user = static_cast<char>(mynum);
 		control->stats()->clear_command();
 	}
-    // TODO: Factor out this code, which is duplicated in continuous_input()
 	if (!control || control->dead)
 	{
-	    control = nullptr;
-	    
-		// First look for a player character, not already controlled
-		for(auto& uptr : myscreen->level_data.oblist)
-		{
-		    walker* w = uptr.get();
-			if (w &&
-			        !w->dead &&
-			        w->query_order() == Order::Living &&
-			        w->user == -1 && // mean's we're not player-controlled
-			        w->myguy &&
-			        w->team_num == my_team) // makes a difference for PvP
-            {
-                control = w;
-				break;
-            }
-		}
+		control = find_next_control();
 
 		if (!control)
-		{
-			// Second, look for anyone on our team, NPC or not
-            for(auto& uptr : myscreen->level_data.oblist)
-            {
-                walker* w = uptr.get();
-                if (w &&
-                        !w->dead &&
-                        w->query_order() == Order::Living &&
-                        w->user == -1 && // mean's we're not player-controlled
-                        w->team_num == my_team) // makes a difference for PvP
-                {
-                    control = w;
-                    break;
-                }
-            }
-		}  // done with second search
-
-		if (!control)
-		{
-			// Now try for ANYONE who's left alive...
-			// NOTE: You can end up as a bad guy here if you are using an allied team
-            for(auto& uptr : myscreen->level_data.oblist)
-            {
-                walker* w = uptr.get();
-                if (w &&
-                        !w->dead &&
-                        w->query_order() == Order::Living &&
-                        w->myguy)
-                {
-                    control = w;
-                    break;
-                }
-            }
-		}  // done with all searches
-
-		if (!control)  // then there's nobody left!
 			return myscreen->endgame(1);
 
 		if (control->user == -1)
-			control->user = mynum; // show that we're controlled now
+			control->user = mynum;
 		control->set_act_type(ACT_CONTROL);
 		myscreen->control_hp = control->stats()->hitpoints;
 	}
@@ -895,65 +896,13 @@ short viewscreen::continuous_input()
 
 	if (!control || control->dead)
 	{
-	    control = nullptr;
-	    
-		// First look for a player character, not already controlled
-		for(auto& uptr : myscreen->level_data.oblist)
-		{
-		    walker* w = uptr.get();
-			if (w &&
-			        !w->dead &&
-			        w->query_order() == Order::Living &&
-			        w->user == -1 && // mean's we're not player-controlled
-			        w->myguy &&
-			        w->team_num == my_team) // makes a difference for PvP
-            {
-                control = w;
-				break;
-            }
-		}
+		control = find_next_control();
 
 		if (!control)
-		{
-			// Second, look for anyone on our team, NPC or not
-            for(auto& uptr : myscreen->level_data.oblist)
-            {
-                walker* w = uptr.get();
-                if (w &&
-                        !w->dead &&
-                        w->query_order() == Order::Living &&
-                        w->user == -1 && // mean's we're not player-controlled
-                        w->team_num == my_team) // makes a difference for PvP
-                {
-                    control = w;
-                    break;
-                }
-            }
-		}  // done with second search
-
-		if (!control)
-		{
-			// Now try for ANYONE who's left alive...
-			// NOTE: You can end up as a bad guy here if you are using an allied team
-            for(auto& uptr : myscreen->level_data.oblist)
-            {
-                walker* w = uptr.get();
-                if (w &&
-                        !w->dead &&
-                        w->query_order() == Order::Living &&
-                        w->myguy)
-                {
-                    control = w;
-                    break;
-                }
-            }
-		}  // done with all searches
-
-		if (!control)  // then there's nobody left!
 			return myscreen->endgame(1);
 
 		if (control->user == -1)
-			control->user = mynum; // show that we're controlled now
+			control->user = mynum;
 		control->set_act_type(ACT_CONTROL);
 		myscreen->control_hp = control->stats()->hitpoints;
 	}
@@ -1320,6 +1269,34 @@ void viewscreen::resize(char whatmode)
 
 } // end of resize(whatmode)
 
+unsigned char compute_hp_color(float hp, float maxhp)
+{
+    if ( (hp * 3) < maxhp)
+        return LOW_HP_COLOR;
+    else if ( (hp * 3 / 2) < maxhp)
+        return MID_HP_COLOR -3;
+    else if (hp < maxhp)
+        return MAX_HP_COLOR+4;
+    else if (hp == maxhp)
+        return HIGH_HP_COLOR+2;
+    else
+        return ORANGE_START;
+}
+
+unsigned char compute_mp_color(float mp, float maxmp)
+{
+    if ( (mp * 3) < maxmp)
+        return LOW_MP_COLOR;
+    else if ( (mp * 3 / 2) < maxmp)
+        return MID_MP_COLOR;
+    else if (mp < maxmp)
+        return MAX_MP_COLOR;
+    else if (mp == maxmp)
+        return HIGH_MP_COLOR+3;
+    else
+        return WATER_START;
+}
+
 void viewscreen::view_team()
 {
 	view_team(VIEW_TEAM_LEFT, VIEW_TEAM_TOP,
@@ -1378,27 +1355,9 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 			maxhp = w->stats()->max_hitpoints;
 			maxmp = w->stats()->max_magicpoints;
 
-			if ( (hp * 3) < maxhp)
-				hpcolor = LOW_HP_COLOR;
-			else if ( (hp * 3 / 2) < maxhp)
-				hpcolor = MID_HP_COLOR -3;
-			else if (hp < maxhp)
-				hpcolor = MAX_HP_COLOR+4;
-			else if (hp == maxhp)
-				hpcolor = HIGH_HP_COLOR+2;
-			else
-				hpcolor = ORANGE_START;
+			hpcolor = compute_hp_color(hp, maxhp);
 
-			if ( (mp * 3) < maxmp)
-				mpcolor = LOW_MP_COLOR;
-			else if ( (mp * 3 / 2) < maxmp)
-				mpcolor = MID_MP_COLOR;
-			else if (mp < maxmp)
-				mpcolor = MAX_MP_COLOR;
-			else if (mp == maxmp)
-				mpcolor = HIGH_MP_COLOR+3;
-			else
-				mpcolor = WATER_START;
+			mpcolor = compute_mp_color(mp, maxmp);
 
 			if (w == control)
 				namecolor = RED;
@@ -1426,6 +1385,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 
 	myscreen->swap();
 
+#ifndef TESTING
 	while (!keystates[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(10);  // Yield to browser event loop
@@ -1437,6 +1397,7 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 		YIELD_SLEEP(1);
 		get_input_events(POLL);
 	}
+#endif
 
 	return;
 }

@@ -18,6 +18,7 @@
 
 #include "graph.h"
 #include "sai2x.h"
+#include "test_trace.h"
 #include <format>
 #include <cstring>
 #include <span>
@@ -1922,6 +1923,12 @@ int video::FadeBetween(
 	memcpy(colorst, prt, size);
 
 	//Fade from old to new surface.  Effect takes constant time.
+#ifdef TESTING
+	// In test mode, just do a direct blit instead of animated fade
+	if(pNewSurface)
+		SDL_BlitSurface(pNewSurface, NULL, DestSurface, NULL);
+	TRACE("video", "FadeBetween: skipping animation (test mode)");
+#else
 	Uint32
 		dwFirstPaint = SDL_GetTicks(),
 		dwNow = dwFirstPaint;
@@ -1938,6 +1945,7 @@ int video::FadeBetween(
 			break;
 		}
 	} while (Sint32(dwNow) - Sint32(dwFirstPaint) + 50 < fadeDuration);	// constant-time effect
+#endif
 
 	if ( SDL_MUSTLOCK(pNewSurface) ) {
 		SDL_UnlockSurface(pNewSurface);

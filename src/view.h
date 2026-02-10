@@ -102,6 +102,7 @@ class viewscreen
 		void view_key_bindings(); // display current key bindings
 		Sint32 change_speed(Sint32 whichway);
 		Sint32 change_gamma(Sint32 whichway);
+		walker* find_next_control();
 
 		Sint32 gamma; // for gamma correction
 
