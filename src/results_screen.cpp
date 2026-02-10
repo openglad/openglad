@@ -62,7 +62,7 @@ void show_ending_popup(int ending, int nextlevel)
 bool results_screen(int ending, int nextlevel)
 {
 #ifdef TESTING
-    Log("results_screen: ending=%d nextlevel=%d\n", ending, nextlevel);
+    Log("results_screen: ending={} nextlevel={}\n", ending, nextlevel);
     return false;
 #endif
     // Popup the ending dialog
@@ -313,21 +313,21 @@ Uint32 get_time_bonus(int playernum)
         return 0;
     Uint32 frames = myscreen->framecount;
     Uint32 time_limit = (myscreen->level_data.time_bonus_limit > 0? myscreen->level_data.time_bonus_limit : 0);
-    Log("Frames used: %d\n", frames);
+    Log("Frames used: {}\n", frames);
     if(frames >= time_limit)
         return 0;
     
     short par_value = myscreen->level_data.par_value;
     Uint32 score = myscreen->save_data.m_score[playernum];
     float multiplier = (1 + par_value/10.0f) * float(time_limit - frames)/time_limit;
-    Log("Time bonus: %.0f\n", score * multiplier);
+    Log("Time bonus: {:.0f}\n", score * multiplier);
     return score * multiplier;
 }
 
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
 #ifdef TESTING
-    Log("results_screen: ending=%d nextlevel=%d\n", ending, nextlevel);
+    Log("results_screen: ending={} nextlevel={}\n", ending, nextlevel);
     return false;
 #endif
     // Popup the ending dialog

@@ -2195,7 +2195,7 @@ Sint32 create_load_menu(Sint32 arg1)
 
 void timed_dialog(const char* message, float delay_seconds)
 {
-    Log("%s\n", message);
+    Log("{}\n", message);
     
     myscreen->darken_screen();
     
@@ -2232,7 +2232,7 @@ void timed_dialog(const char* message, float delay_seconds)
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
 {
-    Log("%s, %s: \n", title, message);
+    Log("{}, {}: \n", title, message);
 #ifdef TESTING
     return default_value;
 #endif
@@ -2331,7 +2331,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value)
 {
-    Log("%s, %s: \n", title, message);
+    Log("{}, {}: \n", title, message);
     
     myscreen->darken_screen();
     
@@ -2426,7 +2426,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 
 void popup_dialog(const char* title, const char* message)
 {
-    Log("%s, %s\n", title, message);
+    Log("{}, {}\n", title, message);
 #ifdef TESTING
     TRACE("popup", "%s: %s", title, message);
     return;
@@ -3445,7 +3445,7 @@ Sint32 go_menu(Sint32 arg1)
         g_test_in_game = false;
 #endif
 
-        Log("Returned from glad_main, retry=%d\n", myscreen->retry);
+        Log("Returned from glad_main, retry={}\n", myscreen->retry);
 
         //*******************************
         // Fade out from ACTION loop
@@ -3520,7 +3520,7 @@ void quit(Sint32 arg1)
 
 	delete theprefs;
 	picker_quit();  // deletes the screen objects
-	Log("quit(%d)\n", arg1);
+	Log("quit({})\n", arg1);
 	exit(0);
 #endif
 }
@@ -4189,7 +4189,7 @@ Sint32 do_set_scen_level(Sint32 arg1)
        else  // We're good
        {
            myscreen->save_data.scen_num = templevel;
-           Log("Set level to %d\n", templevel);
+           Log("Set level to {}\n", templevel);
        }
    }
 
@@ -4291,7 +4291,7 @@ Sint32 change_allied()
 // Check if game start was requested (called from main after picker_init)
 bool picker_check_start_requested()
 {
-    Log("picker_check_start_requested: g_start_game_requested=%d\n", g_start_game_requested);
+    Log("picker_check_start_requested: g_start_game_requested={}\n", g_start_game_requested);
     return g_start_game_requested;
 }
 
@@ -4352,7 +4352,7 @@ void picker_init()
     // When go_menu returns EXIT with g_start_game_requested, the loop exits
     mainmenu(1);
 
-    Log("picker_init: mainmenu returned, g_start_game_requested=%d\n", g_start_game_requested);
+    Log("picker_init: mainmenu returned, g_start_game_requested={}\n", g_start_game_requested);
 }
 
 // Run one frame of the picker - returns true when game should start
@@ -4414,7 +4414,7 @@ void picker_reinit_after_game()
     // Restart the main menu
     mainmenu(1);
 
-    Log("picker_reinit_after_game: mainmenu returned, g_start_game_requested=%d\n", g_start_game_requested);
+    Log("picker_reinit_after_game: mainmenu returned, g_start_game_requested={}\n", g_start_game_requested);
 }
 #endif
 

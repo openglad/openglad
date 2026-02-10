@@ -255,7 +255,7 @@ int main(int argc, char *argv[])
 	}
 	catch (const std::runtime_error& e)
 	{
-		LogError("Unrecoverable error: %s\n", e.what());
+		LogError("Unrecoverable error: {}\n", e.what());
 		return 1;
 	}
 

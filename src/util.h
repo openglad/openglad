@@ -23,15 +23,42 @@
 
 #include "SDL.h"
 #include <cctype>
+#include <format>
 #include <string>
+#include <string_view>
+#include <utility>
 
 #include "io.h"
 
 void init_logging();  // Set up logging output (call early in main)
 
-void Log(const char* format, ...);       // INFO level - general messages
-void LogWarn(const char* format, ...);   // WARNING level - potential issues
-void LogError(const char* format, ...);  // ERROR level - actual errors
+// Implementation functions - use the Log/LogWarn/LogError wrappers instead
+void LogImpl(const char* msg);
+void LogWarnImpl(const char* msg);
+void LogErrorImpl(const char* msg);
+
+// Single-argument overloads (no formatting needed)
+inline void Log(const char* msg) { LogImpl(msg); }
+inline void LogWarn(const char* msg) { LogWarnImpl(msg); }
+inline void LogError(const char* msg) { LogErrorImpl(msg); }
+
+inline void Log(std::string_view msg) { LogImpl(std::string(msg).c_str()); }
+inline void LogWarn(std::string_view msg) { LogWarnImpl(std::string(msg).c_str()); }
+inline void LogError(std::string_view msg) { LogErrorImpl(std::string(msg).c_str()); }
+
+// std::format overloads - type-safe formatting
+template<typename... Args>
+void Log(std::format_string<Args...> fmt, Args&&... args) {
+    LogImpl(std::format(fmt, std::forward<Args>(args)...).c_str());
+}
+template<typename... Args>
+void LogWarn(std::format_string<Args...> fmt, Args&&... args) {
+    LogWarnImpl(std::format(fmt, std::forward<Args>(args)...).c_str());
+}
+template<typename... Args>
+void LogError(std::format_string<Args...> fmt, Args&&... args) {
+    LogErrorImpl(std::format(fmt, std::forward<Args>(args)...).c_str());
+}
 
 void change_time(Uint32 new_count);
 

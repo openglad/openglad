@@ -438,7 +438,7 @@ static bool load_help_file(const char* filename, std::vector<std::string>& lines
 	SDL_RWops* infile = open_read_file(filename);
 	if (!infile)
 	{
-		Log("Could not open help file: %s", filename);
+		Log("Could not open help file: {}", filename);
 		lines.push_back("Error: Could not load help file.");
 		return false;
 	}

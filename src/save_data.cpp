@@ -170,12 +170,12 @@ bool SaveData::load(const std::string& filename)
 	//   List of n level indices
 	//     2-bytes Level index
     
-    Log("Loading save: %s\n", filename.c_str());
+    Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
 
 	if ( (infile = open_read_file("save/", temp_filename.c_str())) == nullptr )
 	{
-		LogError("Failed to open save file: %s\n", filename.c_str());
+		LogError("Failed to open save file: {}\n", filename);
 		return 0;
 	}
     
@@ -194,7 +194,7 @@ bool SaveData::load(const std::string& filename)
 	if ( std::string(temptext) != "GTL")
 	{
 	    SDL_RWclose(infile);
-		LogError("Selected file is not a GTL file: %s\n", filename.c_str());
+		LogError("Selected file is not a GTL file: {}\n", filename);
 		return 0; //not a gtl file
 	}
 
@@ -215,7 +215,7 @@ bool SaveData::load(const std::string& filename)
 		else
 		{
             SDL_RWclose(infile);
-			LogError("Save file version not supported: %s\n", filename.c_str());
+			LogError("Save file version not supported: {}\n", filename);
 			return 0;
 		}
 	}
@@ -407,12 +407,12 @@ bool SaveData::load(const std::string& filename)
         }
     }
     
-	Log("Loading campaign: %s\n", current_campaign.c_str());
+	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level >= 0)
     {
         if(scen_num != current_level)
-            Log("Error: Loaded scen_num %d, but found current_level %d\n", scen_num, current_level);
+            Log("Error: Loaded scen_num {}, but found current_level {}\n", scen_num, current_level);
         //scen_num = current_level;
     }
 
@@ -534,12 +534,12 @@ bool SaveData::save(const std::string& filename)
 	//     2-bytes Level index
 
 	//strcpy(temp_filename, scen_directory);
-	Log("Saving save: %s\n", filename.c_str());
+	Log("Saving save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
 
 	if ( (outfile = open_write_file("save/", temp_filename.c_str())) == nullptr ) // open for write
 	{
-		LogError("Failed to write team file: %s\n", filename.c_str());
+		LogError("Failed to write team file: {}\n", filename);
 		return 0;
 	}
 
@@ -558,7 +558,7 @@ bool SaveData::save(const std::string& filename)
 	SDL_RWwrite(outfile, savedgame, 40, 1);
 	
 	// Write current campaign
-	Log("Saving campaign status: %s\n", current_campaign.c_str());
+	Log("Saving campaign status: {}\n", current_campaign);
 	snprintf(temp_campaign, sizeof(temp_campaign), "%s", current_campaign.c_str());
 	SDL_RWwrite(outfile, temp_campaign, 40, 1);
 

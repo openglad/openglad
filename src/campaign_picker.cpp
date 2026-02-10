@@ -51,7 +51,7 @@ int load_campaign(const std::string& campaign, std::map<std::string, int>& curre
     {
         if(!unmount_campaign_package(old_campaign))
         {
-            Log("Failed to unmount campaign %s, which caused loading %s to fail.\n", old_campaign.c_str(), campaign.c_str());
+            Log("Failed to unmount campaign {}, which caused loading {} to fail.\n", old_campaign, campaign);
             return -3;
         }
         

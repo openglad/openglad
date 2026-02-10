@@ -97,7 +97,7 @@ video::video()
 	if(qresult.size() > 0)
 	    h = stoi(qresult);
 #endif
-        Log("Creating screen %dx%d\n", w, h);
+        Log("Creating screen {}x{}\n", w, h);
 	E_Screen = new Screen(render, w, h, fullscreen);
 	TRACE("init", "video initialized: %dx%d", w, h);
 }
@@ -1748,7 +1748,7 @@ int video::get_pixel(int x, int y, int *index)
 		}
 	}
 
-	Log("DEBUG: could not find color: %d %d %d\n",r,g,b);
+	Log("DEBUG: could not find color: {} {} {}\n", static_cast<int>(r), static_cast<int>(g), static_cast<int>(b));
 	return 0;
 }
 
@@ -1793,11 +1793,11 @@ bool video::save_screenshot()
 	SDL_RWops* rwops = open_write_file(buf.c_str());
 	if(rwops == nullptr)
     {
-        LogError("Failed to open file for screenshot: %s\n", buf.c_str());
+        LogError("Failed to open file for screenshot: {}\n", buf);
         return false;
     }
     
-    Log("Saving screenshot: %s\n", buf);
+    Log("Saving screenshot: {}\n", buf);
     
     #ifndef USE_BMP_SCREENSHOT
     // Make it safe to save (convert alpha channel)

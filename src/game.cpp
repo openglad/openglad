@@ -45,7 +45,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	if(!myscreen->level_data.load())
 	{
 	    short old_scen = myscreen->save_data.scen_num;
-	    Log("Failed to load \"%s\".  Falling back to loading scenario 1.\n", scenfile.c_str());
+	    Log("Failed to load \"{}\".  Falling back to loading scenario 1.\n", scenfile);
 	    // Failed?  Try level 1.
 		myscreen->save_data.scen_num = 1;
         myscreen->level_data.id = 1;

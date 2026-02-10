@@ -96,28 +96,19 @@ void init_logging()
 #endif
 }
 
-void Log(const char* format, ...)
+void LogImpl(const char* msg)
 {
-    va_list args;
-    va_start(args, format);
-    SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, format, args);
-    va_end(args);
+    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, "%s", msg);
 }
 
-void LogWarn(const char* format, ...)
+void LogWarnImpl(const char* msg)
 {
-    va_list args;
-    va_start(args, format);
-    SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_WARN, format, args);
-    va_end(args);
+    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_WARN, "%s", msg);
 }
 
-void LogError(const char* format, ...)
+void LogErrorImpl(const char* msg)
 {
-    va_list args;
-    va_start(args, format);
-    SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_ERROR, format, args);
-    va_end(args);
+    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_ERROR, "%s", msg);
 }
 
 void change_time(Uint32 new_count)

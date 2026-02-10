@@ -174,17 +174,17 @@ bool CampaignData::save()
             }
             else
             {
-                Log("Save failed: Could not repack campaign: %s\n", id.c_str());
+                Log("Save failed: Could not repack campaign: {}\n", id);
                 result = false;
             }
         }
-        
+
         // Remount the new campaign package
         //mount_campaign_package(ascreen->current_campaign);
     }
     else
     {
-        Log("Save failed: Could not unpack campaign: %s\n", id.c_str());
+        Log("Save failed: Could not unpack campaign: {}\n", id);
         result = false;
     }
     cleanup_unpacked_campaign();
@@ -253,14 +253,14 @@ bool CampaignData::save_as(const std::string& new_id)
             }
             else
             {
-                Log("Save failed: Could not repack campaign: %s\n", id.c_str());
+                Log("Save failed: Could not repack campaign: {}\n", id);
                 result = false;
             }
         }
     }
     else
     {
-        Log("Save failed: Could not unpack campaign: %s\n", id.c_str());
+        Log("Save failed: Could not unpack campaign: {}\n", id);
         result = false;
     }
     cleanup_unpacked_campaign();
@@ -468,7 +468,7 @@ void LevelData::resize_grid(int width, int height)
     // Size is limited to one byte in the file format
     if(width < 3 || height < 3 || width > 255 || height > 255)
     {
-        Log("Can't resize grid to these dimensions: %dx%d\n", width, height);
+        Log("Can't resize grid to these dimensions: {}x{}\n", width, height);
         return;
     }
     
@@ -545,7 +545,7 @@ void LevelData::delete_objects()
     // Since the walker destructor removes itself from the obmap, this should be empty already.
     if(myobmap->walker_to_pos.size() > 0)
     {
-        Log("obmap::walker_to_pos has %d elements left.\n", myobmap->walker_to_pos.size());
+        Log("obmap::walker_to_pos has {} elements left.\n", myobmap->walker_to_pos.size());
         
         // FIXME: Freeing them here does naughty things!
         /*
@@ -991,7 +991,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 do{ \
     if(!SDL_RWread(ctx, ptr, size, n)) \
     { \
-        Log("Read error: %s\n", SDL_GetError()); \
+        Log("Read error: {}\n", SDL_GetError()); \
         return 0; \
     } \
 } while(0)
@@ -1204,7 +1204,7 @@ short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 			result = load_version_6(infile, data, version);
 			break;
 		default:
-			Log("Scenario %d is version-level %d, and cannot be read.\n",
+			Log("Scenario {} is version-level {}, and cannot be read.\n",
 			       data->id, version);
 			break;
 	}
@@ -1225,7 +1225,7 @@ bool LevelData::load()
 	// Zardus: much much better this way
 	if ( !(infile = open_read_file("scen/", thefile.c_str())))
     {
-        LogError("Cannot open level file for reading: %s\n", thefile.c_str());
+        LogError("Cannot open level file for reading: {}\n", thefile);
         return false;
     }
 
@@ -1233,14 +1233,14 @@ bool LevelData::load()
 	SDL_RWread(infile, temptext, 1, 3);
 	if (std::string(temptext) != "FSS")
 	{
-		LogError("File %s is not a valid scenario!\n", thefile.c_str());
+		LogError("File {} is not a valid scenario!\n", thefile);
 		SDL_RWclose(infile);
 		return false;
 	}
 
 	// Check the version number
 	SDL_RWread(infile, &versionnumber, 1, 1);
-    Log("Loading version %d scenario", versionnumber);
+    Log("Loading version {} scenario", static_cast<int>(versionnumber));
     
     // Reset the loader (which holds graphics for the objects to use)
     myloader = std::make_unique<loader>();
@@ -1312,7 +1312,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 
 	if ( (outfile = open_write_file("temp/pix/", fullpath.c_str())) == nullptr )
 	{
-		Log("Failed to save map file: %s%s\n", "temp/pix/", fullpath.c_str());
+		Log("Failed to save map file: temp/pix/{}\n", fullpath);
 		return false;
 	}
 
@@ -1384,7 +1384,7 @@ bool LevelData::save()
 
 	if ( (outfile = open_write_file("temp/scen/", temp_filename.c_str())) == nullptr ) // open for write
 	{
-		Log("Could not open file for writing: %s%s\n", "temp/scen/", temp_filename.c_str());
+		Log("Could not open file for writing: temp/scen/{}\n", temp_filename);
 		return false;
 	}
 

@@ -268,7 +268,7 @@ void screen::initialize_views()
 	}
 	else
     {
-        Log("Error initializing screen views.  numviews is %d\n", numviews);
+        Log("Error initializing screen views.  numviews is {}\n", numviews);
     }
 }
 

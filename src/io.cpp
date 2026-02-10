@@ -152,31 +152,31 @@ SDL_RWops* open_read_file(const char* file, bool debug)
     SDL_RWops* rwops = nullptr;
     
     if(debug)
-	    Log((std::string("Trying via PHYSFS: ") + file).c_str());
+	    Log("Trying via PHYSFS: {}", file);
     rwops = PHYSFSRWOPS_openRead(file);
     if(rwops != nullptr) return rwops;
 
     // now try opening in the current directory
     if(debug)
-	    Log((std::string("Trying to open: ") + file).c_str());
+	    Log("Trying to open: {}", file);
     rwops = SDL_RWFromFile(file, "rb");
     if(rwops != nullptr) return rwops;
 
     // now try opening in the user directory
     if(debug)
-	    Log((std::string("Trying to open: ") + get_user_path() + file).c_str());
+	    Log("Trying to open: {}{}", get_user_path(), file);
     rwops = SDL_RWFromFile((get_user_path() + std::string("/") + file).c_str(), "rb");
     if(rwops != nullptr) return rwops;
 
     // now try opening in the asset directory
     if(debug)
-	    Log((std::string("Trying to open: ") + get_asset_path() + file).c_str());
+	    Log("Trying to open: {}{}", get_asset_path(), file);
     rwops = SDL_RWFromFile((get_asset_path() + std::string("/") + file).c_str(), "rb");
     if(rwops != nullptr) return rwops;
 
     // File not found - this may be expected (e.g., keyprefs.dat on first run)
     if(debug)
-        Log("File not found: %s (may be created on first use)\n", file);
+        Log("File not found: {} (may be created on first use)\n", file);
     return nullptr;
 }
 
@@ -229,12 +229,12 @@ bool mount_campaign_package(const std::string& id)
     if(id.size() == 0)
         return false;
 
-    Log(std::string("Mounting campaign package: " + id).c_str());
+    Log("Mounting campaign package: {}", id);
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_mount(filename.c_str(), nullptr, 0))
     {
-        LogError("Failed to mount campaign %s: %s\n", filename.c_str(), PHYSFS_getLastError());
+        LogError("Failed to mount campaign {}: {}\n", filename, PHYSFS_getLastError());
         mounted_campaign.clear();
         return false;
     }
@@ -250,7 +250,7 @@ bool unmount_campaign_package(const std::string& id)
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_removeFromSearchPath(filename.c_str()))
     {
-        LogError("Failed to unmount campaign file %s: %s\n", filename.c_str(), PHYSFS_getLastError());
+        LogError("Failed to unmount campaign file {}: {}\n", filename, PHYSFS_getLastError());
         return false;
     }
     mounted_campaign.clear();
@@ -387,11 +387,11 @@ std::list<std::string> explode(const std::string& str, char delimiter)
 
 void copy_file(const std::string& filename, const std::string& dest_filename)
 {
-    Log("Copying file: %s\n", filename.c_str());
+    Log("Copying file: {}\n", filename);
     SDL_RWops* in = SDL_RWFromFile(filename.c_str(), "rb");
     if(in == nullptr)
     {
-        LogError("Could not open file to copy: %s\n", filename.c_str());
+        LogError("Could not open file to copy: {}\n", filename);
         return;
     }
     
@@ -400,11 +400,11 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     auto data = std::make_unique<unsigned char[]>(size);
     
     // Save it to another file
-    Log("Copying to: %s\n", dest_filename.c_str());
+    Log("Copying to: {}\n", dest_filename);
     SDL_RWops* out = SDL_RWFromFile(dest_filename.c_str(), "wb");
     if(out == nullptr)
     {
-        LogError("Could not open destination file: %s\n", dest_filename.c_str());
+        LogError("Could not open destination file: {}\n", dest_filename);
         SDL_RWclose(in);
         return;
     }
@@ -420,7 +420,7 @@ void copy_file(const std::string& filename, const std::string& dest_filename)
     SDL_RWclose(in);
     SDL_RWclose(out);
     
-    Log("Copied %d bytes.\n", total);
+    Log("Copied {} bytes.\n", total);
 }
 
 void create_dataopenglad()
@@ -503,7 +503,7 @@ void io_init(int argc, char* argv[])
     if(!PHYSFS_mount(get_user_path().c_str(), nullptr, 1))
     {
         std::string msg = std::format("Fatal: Failed to mount user data path: {}", get_user_path());
-        LogError("%s\n", msg.c_str());
+        LogError("{}\n", msg);
         throw std::runtime_error(msg);
     }
 
@@ -522,7 +522,7 @@ void io_init(int argc, char* argv[])
     if (!mount_campaign_package("org.openglad.gladiator"))
     {
         std::string msg = std::format("Fatal: Failed to mount default campaign: {}", PHYSFS_getLastError());
-        LogError("%s\n", msg.c_str());
+        LogError("{}\n", msg);
         throw std::runtime_error(msg);
     }
     Log("Mounted default campaign\n");
@@ -653,7 +653,7 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
         {
             if(zip_dir_add(archive, dest_name.c_str(), ZIP_FL_ENC_GUESS) < 0)
             {
-                LogError("Error adding dir to zip: %s\n", zip_strerror(archive));
+                LogError("Error adding dir to zip: {}\n", zip_strerror(archive));
             }
         }
         else
@@ -661,14 +661,14 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
             if((s=zip_source_file(archive, src_name.c_str(), 0, -1)) == nullptr || zip_file_add(archive, dest_name.c_str(), s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
             {
                 zip_source_free(s);
-                LogError("Error adding file to zip: %s\n", zip_strerror(archive));
+                LogError("Error adding file to zip: {}\n", zip_strerror(archive));
             }
         }
     }
 
     if(zip_close(archive) < 0)
     {
-        LogError("Error flushing zip file output: %s\n", zip_strerror(archive));
+        LogError("Error flushing zip file output: {}\n", zip_strerror(archive));
         return false;
     }
     
@@ -951,7 +951,7 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 	SDL_RWops* outfile;
 	if((outfile = open_write_file(scenfile.c_str())) == nullptr)
 	{
-		LogError("Could not open file for writing: %s\n", scenfile.c_str());
+		LogError("Could not open file for writing: {}\n", scenfile);
 		return false;
 	}
 	

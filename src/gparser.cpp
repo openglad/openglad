@@ -54,7 +54,7 @@ std::string cfg_store::get_setting(const std::string& category, const std::strin
 			return a2->second;
 	}
 	
-	Log("cfg setting not found: %s/%s\n", category.c_str(), setting.c_str());
+	Log("cfg setting not found: {}/{}\n", category, setting);
 	return "";
 }
 
@@ -213,10 +213,10 @@ void cfg_store::commandline(int &argc, char **&argv)
 			switch(argv[argnum][1])
 			{
 				case 'h':
-					Log("%s", helpmsg);
+					Log(helpmsg);
 					exit (0);
 				case 'v':
-					Log("%s", versmsg);
+					Log(versmsg);
 					exit (0);
 				case 's':
 					data["sound"]["sound"] = "on";
@@ -247,7 +247,7 @@ void cfg_store::commandline(int &argc, char **&argv)
 					Log("Running in fullscreen mode.");
 					break;
 				default:
-					Log("Unknown argument %s ignored.", argv[argnum]);
+					Log("Unknown argument {} ignored.", argv[argnum]);
 			}
 		}
 	}

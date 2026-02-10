@@ -301,7 +301,7 @@ short walker::shove(walker  *target, short x, short y)
 	// this code has been moved to living, we should only shove livings
 
 	if (x || y || target)
-		Log("Shoving a non-living. ORDER: %d FAMILY: %d\n",order,family);
+		Log("Shoving a non-living. ORDER: {} FAMILY: {}\n", static_cast<int>(order), static_cast<int>(family));
 	return -1;
 
 }
@@ -1453,7 +1453,7 @@ void Map::PrintStateInfo( void* state )
     int x1 = GET_STATE_X(state);
     int y1 = GET_STATE_Y(state);
     
-    Log("(%d,%d)", x1, y1);
+    Log("({},{})", x1, y1);
 }
 
 
