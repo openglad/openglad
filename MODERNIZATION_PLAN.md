@@ -7,6 +7,25 @@
 
 ---
 
+## Audit Status (2026-02-10)
+
+Implementation was carried out across 27 code commits on the `cpp-modernization-plan` branch. An audit of the actual code verified completion status for each item.
+
+| Phase | Status | Notes |
+|-------|--------|-------|
+| Phase 0: Toolchain Requirements | IMPLICITLY SATISFIED | No formal verification step created; native build targets C++20 successfully |
+| Phase 1: Build System | MOSTLY DONE | CMakeLists.txt created; native/test scripts wrap CMake; web build NOT converted, no separate emscripten toolchain file |
+| Phase 2: Mechanical Low-Hanging Fruit | DONE | All 8 sub-items completed across ~500 replacements |
+| Phase 3: Modern Types & Type Safety | MOSTLY DONE | 3.1-3.6 completed; 3.0 (SaveFileHeader struct) skipped — existing GTL version mechanism sufficient |
+| Phase 4: Memory Management | DONE | All 10 sub-items completed; full smart pointer adoption |
+| Phase 5: Modern Idioms | DONE | 5.1, 5.4, 5.6 completed; 5.2-5.3 done implicitly; 5.5 was guidance only |
+| Phase 6: Error Handling | MOSTLY DONE | 6.1, 6.3, 6.4 completed; 6.2 (std::expected) deferred — uncertain Emscripten support |
+| Phase 7: Class Design & Encapsulation | MOSTLY DONE | 7.1-7.5 completed; 7.6 (global variable refactor) deferred — too invasive |
+| Phase 8: Containers & Algorithms | DONE | All 4 sub-items completed |
+| Phase 9: Concurrency & Threading | NOT DONE | Marked optional in plan; single-threaded design appropriate |
+
+---
+
 ## Table of Contents
 
 0. [Phase 0: Toolchain Requirements](#phase-0-toolchain-requirements)
@@ -25,7 +44,9 @@
 
 ## Phase 0: Toolchain Requirements
 
-**Risk: NONE** | **Effort: LOW** | **Priority: PREREQUISITE**
+**Risk: NONE** | **Effort: LOW** | **Priority: PREREQUISITE** | **Status: IMPLICITLY SATISFIED**
+
+> **Audit note:** No formal verification step or test file was created. However, the native build now compiles with C++20 via CMake and all C++20 features used (std::format, std::span, std::erase_if, constexpr, etc.) compile and pass tests. The web build script still targets C++11, so Emscripten C++20/23 feature verification (0.2) remains unconfirmed. The CI matrix (0.3) was updated to install cmake but was NOT expanded to include GCC 14/Clang 17/emsdk matrix entries as specified.
 
 Before any modernization work begins, verify that all target toolchains support the C++20/23 features this plan depends on.
 
@@ -67,13 +88,15 @@ Each phase should pass the existing CI pipeline before merging. Adding a C++23 C
 
 ## Phase 1: Build System Modernization
 
-**Risk: LOW** | **Effort: MEDIUM** | **Priority: DO FIRST**
+**Risk: LOW** | **Effort: MEDIUM** | **Priority: DO FIRST** | **Status: MOSTLY DONE**
 
 The project currently uses three custom bash scripts (`scripts/build_native.sh`, `scripts/build_web.sh`, `scripts/build_test.sh`) that compile directly without a proper build system. All target **C++11** (`-std=c++11`).
 
-### 1.1 Create CMakeLists.txt
+### 1.1 Create CMakeLists.txt -- DONE
 
 Replace the bash scripts with a proper CMake build system that supports both native and Emscripten targets.
+
+> **Audit note:** CMakeLists.txt created (359 lines) targeting C++20. Supports native, editor, and test build targets. C++20 used as baseline rather than C++23-with-fallback as originally specified; comment in file notes C++23 for future.
 
 **Create:** `CMakeLists.txt` (project root)
 
@@ -94,7 +117,9 @@ if(NOT HAS_CXX23)
 endif()
 ```
 
-### 1.2 Modernize Compiler Flags
+### 1.2 Modernize Compiler Flags -- PARTIAL
+
+> **Audit note:** Basic flags present in CMakeLists.txt but not the full set specified here. No sanitizer configuration for Debug builds. The comprehensive warning flags (-Wshadow, -Wconversion, etc.) were not added.
 
 **Current flags** (`scripts/build_native.sh:44-69`):
 ```
@@ -124,7 +149,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 ```
 
-### 1.3 Emscripten Toolchain File
+### 1.3 Emscripten Toolchain File -- SKIPPED
+
+> **Audit note:** No `cmake/emscripten.cmake` file was created. Emscripten-specific flags are embedded directly in CMakeLists.txt (lines 246-260, 330-358) rather than extracted to a separate toolchain file. The web build script (`scripts/build_web.sh`) was also not converted to use CMake and still compiles directly with `emcc -std=c++11`. This means the web build does NOT benefit from the C++20 modernization. The likely reason: Emscripten's SDL2 port system and `--preload-file` asset packaging have CMake integration quirks that made a direct CMake wrapper impractical without extensive testing.
 
 **Create:** `cmake/emscripten.cmake`
 
@@ -134,11 +161,13 @@ Encapsulate the Emscripten-specific flags currently in `scripts/build_web.sh:68-
 - `-sASYNCIFY -sASYNCIFY_STACK_SIZE=65536`
 - `--preload-file` directives for game assets
 
-### 1.4 Keep Build Scripts as Wrappers
+### 1.4 Keep Build Scripts as Wrappers -- PARTIAL
+
+> **Audit note:** `scripts/build_native.sh` and `scripts/build_test.sh` were successfully converted to thin CMake wrappers (~45 lines each). `scripts/build_web.sh` was NOT converted — it still compiles directly with emcc (393 lines, targeting C++11). See 1.3 note.
 
 Keep `scripts/build_native.sh` and `scripts/build_web.sh` but convert them to thin wrappers that invoke CMake, preserving backward compatibility for existing workflows.
 
-### 1.5 Test Build Target
+### 1.5 Test Build Target -- DONE
 
 The project has an existing test suite (25+ tests in `tests/`) built via `scripts/build_test.sh`. The CMake configuration must include a test target:
 
@@ -168,7 +197,9 @@ endif()
 - The test binary runs headless via `SDL_VIDEODRIVER=offscreen` and `SDL_AUDIODRIVER=dummy`
 - Keep `scripts/build_test.sh` as a wrapper (same as 1.4) for backward compatibility with existing CI (`.github/workflows/test.yml`)
 
-### 1.6 Update CI for C++23
+### 1.6 Update CI for C++23 -- PARTIAL
+
+> **Audit note:** CI was updated to install `cmake` as a dependency and the scripts now invoke CMake (which targets C++20). However, a multi-compiler matrix (GCC 14, Clang 17, emsdk) was NOT added. CI uses a single GCC configuration on ubuntu-latest.
 
 Update `.github/workflows/test.yml` to add a C++23 build matrix entry alongside the existing C++11 build. This allows incremental migration — the C++11 job continues to pass until all code is modernized, while the C++23 job validates new code.
 
@@ -176,22 +207,22 @@ Update `.github/workflows/test.yml` to add a C++23 build matrix entry alongside 
 
 | File | Action |
 |------|--------|
-| `CMakeLists.txt` | CREATE - Main build configuration (native, web, test targets) |
-| `cmake/emscripten.cmake` | CREATE - Emscripten toolchain file |
-| `scripts/build_native.sh` | MODIFY - Wrap CMake native build |
-| `scripts/build_web.sh` | MODIFY - Wrap CMake + Emscripten |
-| `scripts/build_test.sh` | MODIFY - Wrap CMake test build |
-| `.github/workflows/test.yml` | MODIFY - Add C++23 matrix entry |
+| `CMakeLists.txt` | CREATE - Main build configuration (native, web, test targets) | DONE |
+| `cmake/emscripten.cmake` | CREATE - Emscripten toolchain file | SKIPPED |
+| `scripts/build_native.sh` | MODIFY - Wrap CMake native build | DONE |
+| `scripts/build_web.sh` | MODIFY - Wrap CMake + Emscripten | NOT DONE |
+| `scripts/build_test.sh` | MODIFY - Wrap CMake test build | DONE |
+| `.github/workflows/test.yml` | MODIFY - Add C++23 matrix entry | PARTIAL (cmake added, no matrix) |
 
 ---
 
 ## Phase 2: Mechanical Low-Hanging Fruit
 
-**Risk: VERY LOW** | **Effort: LOW-MEDIUM** | **Priority: DO SECOND**
+**Risk: VERY LOW** | **Effort: LOW-MEDIUM** | **Priority: DO SECOND** | **Status: DONE**
 
 These are safe, mechanical transformations that can be automated with find-and-replace and do not change program behavior.
 
-### 2.1 Replace `NULL` with `nullptr`
+### 2.1 Replace `NULL` with `nullptr` -- DONE
 
 **Scope: 389 occurrences across 36 files**
 
@@ -234,9 +265,9 @@ owner = nullptr;
 
 **Test impact:** Also apply to test files in `tests/`. The test infrastructure (`test_interact.h`, `test_input_helpers.h`) uses NULL in some places. This is a safe mechanical change — existing tests will continue to pass after replacement.
 
-### 2.2 Replace `#ifndef`/`#define` Include Guards with `#pragma once`
+### 2.2 Replace `#ifndef`/`#define` Include Guards with `#pragma once` -- DONE
 
-**Scope: 38 header files**
+**Scope: 38 header files** (41 headers converted in practice)
 
 Every header in `src/` uses the old-style guard pattern.
 
@@ -264,7 +295,7 @@ Every header in `src/` uses the old-style guard pattern.
 `stats.h`, `text.h`, `treasure.h`, `util.h`, `version.h`, `video.h`,
 `view.h`, `view_sizes.h`, `walker.h`, `weap.h`
 
-### 2.3 Add `override` to All Virtual Method Overrides
+### 2.3 Add `override` to All Virtual Method Overrides -- DONE
 
 **Scope: 27 methods across 4 derived classes — 100% are missing `override`**
 
@@ -321,9 +352,9 @@ class living : public walker
 - **`effect`** (`effect.h:33-40`): `~effect()`, `act()`, `animate()`, `death()`, `query_order()`
 - **`screen`** (`screen.h:43`): `~screen()` (inherits from `video`)
 
-### 2.4 Convert Old-Style `enum` to `enum class`
+### 2.4 Convert Old-Style `enum` to `enum class` -- DONE
 
-**Scope: 8 enums in main source**
+**Scope: 8 enums in main source** (9 enums converted in practice)
 
 | Location | Enum | Notes |
 |----------|------|-------|
@@ -355,7 +386,7 @@ static GameState g_game_state = GameState::Intro;
 
 **Note:** The `#define` constants in `base.h` (lines 154-373) for ACT types, FAMILY types, ORDER types, COMMAND types, etc. are NOT enums but `#define` macros. Converting those to `enum class` is a Phase 7 change due to their pervasive use.
 
-### 2.5 Convert `typedef` to `using`
+### 2.5 Convert `typedef` to `using` -- DONE
 
 **Scope: 3 typedefs in main source**
 
@@ -383,7 +414,7 @@ typedef enum { NoZoom = 0x01, SAI = 0x02, EAGLE = 0x03, DOUBLE = 0x04 } RenderEn
 enum class RenderEngine { NoZoom = 0x01, SAI = 0x02, EAGLE = 0x03, DOUBLE = 0x04 };
 ```
 
-### 2.6 Remove `using namespace std`
+### 2.6 Remove `using namespace std` -- DONE
 
 **Scope: 8 files**
 
@@ -400,7 +431,7 @@ enum class RenderEngine { NoZoom = 0x01, SAI = 0x02, EAGLE = 0x03, DOUBLE = 0x04
 
 Remove each `using namespace std;` and prefix all `std::` types explicitly. Common types needing prefixing: `string`, `list`, `vector`, `map`, `set`, `pair`, `cout`, `endl`.
 
-### 2.7 Remove Deprecated `register` Keyword
+### 2.7 Remove Deprecated `register` Keyword -- DONE
 
 **Scope: 2 occurrences**
 
@@ -418,7 +449,7 @@ register int r = 0;
 int r = 0;
 ```
 
-### 2.8 Modernize C Header Includes
+### 2.8 Modernize C Header Includes -- DONE
 
 **File: `base.h:28-33`**
 
@@ -455,9 +486,11 @@ Also check `treasure.cpp:22` (`#include <math.h>`) and other files for C-style i
 
 ## Phase 3: Modern Types & Type Safety
 
-**Risk: LOW-MEDIUM** | **Effort: MEDIUM-HIGH** | **Priority: AFTER PHASE 2**
+**Risk: LOW-MEDIUM** | **Effort: MEDIUM-HIGH** | **Priority: AFTER PHASE 2** | **Status: MOSTLY DONE**
 
-### 3.0 Save File Versioning (Do Before 3.2)
+### 3.0 Save File Versioning (Do Before 3.2) -- SKIPPED
+
+> **Audit note:** A new SaveFileHeader struct was NOT created. However, this was the correct decision: the existing save format already has a robust versioning mechanism. `save_data.cpp` writes a 3-byte "GTL" magic header followed by a version byte (currently version 9), with version-gated reading for versions 1-9. The Phase 3.2 `char name[12]` → `std::string` conversion preserved binary file compatibility by continuing to read/write names as fixed 12-byte fields on disk (`snprintf` to write, fixed-size read) while using `std::string` in memory. No save file format change was needed, making a new SaveFileHeader struct redundant.
 
 **CRITICAL:** Before converting any binary-serialized types (especially `char name[12]` in `guy.h:49` and `stats.h:81`), implement a save file version header and migration path. The current save format in `save_data.cpp` reads/writes fixed-size structs directly to disk. Changing `char name[12]` to `std::string` will silently corrupt existing save files.
 
@@ -493,9 +526,9 @@ std::string read_fixed_string(SDL_RWops* infile, size_t fixed_len) {
 
 Old saves without the magic header are treated as version 0 and loaded with the legacy code path.
 
-### 3.1 Replace C-Style Casts with C++ Casts
+### 3.1 Replace C-Style Casts with C++ Casts -- DONE
 
-**Scope: ~331 C-style casts across the codebase**
+**Scope: ~331 C-style casts across the codebase** (~300 converted to static_cast/reinterpret_cast; only ~4 remain in non-external code)
 
 Most common patterns:
 
@@ -525,7 +558,7 @@ inline constexpr char SCEN_TYPE_CAN_EXIT = 1;
 
 **Priority files** (by cast count): `picker.cpp`, `walker.cpp`, `level_editor.cpp`, `view.cpp`, `button.cpp`, `effect.cpp`, `glad.cpp`, `help.cpp`
 
-### 3.2 Replace `char[]` String Buffers with `std::string`
+### 3.2 Replace `char[]` String Buffers with `std::string` -- DONE
 
 **Scope: 40+ char array declarations**
 
@@ -568,9 +601,9 @@ std::array<std::array<std::string, NUM_SPECIALS>, NUM_FAMILIES> special_name;
 std::array<std::array<std::string, NUM_SPECIALS>, NUM_FAMILIES> alternate_name;
 ```
 
-### 3.3 Replace `sprintf`/`snprintf` with `std::format` or `std::string` Operations
+### 3.3 Replace `sprintf`/`snprintf` with `std::format` or `std::string` Operations -- DONE
 
-**Scope: ~232 occurrences (75 sprintf + 157 snprintf)**
+**Scope: ~232 occurrences (75 sprintf + 157 snprintf)** (199 std::format uses across 22 files; only ~2 sprintf remain in comments)
 
 **Top files:** `level_editor.cpp` (30+), `picker.cpp` (20+), `walker.cpp` (40+), `view.cpp` (12)
 
@@ -592,7 +625,7 @@ myscreen->viewob[0]->set_display_text(message.c_str(), 30);
 std::string message = "HP: " + std::to_string(static_cast<int>(std::ceil(control->stats->hitpoints)));
 ```
 
-### 3.4 Replace C String Functions with `std::string` Methods
+### 3.4 Replace C String Functions with `std::string` Methods -- DONE
 
 **Scope: ~358 occurrences**
 
@@ -615,7 +648,7 @@ strcat(temp_filename, ".gtl");
 std::string temp_filename = current_campaign + ".gtl";
 ```
 
-### 3.5 Replace `memcpy`/`memset` with C++ Equivalents
+### 3.5 Replace `memcpy`/`memset` with C++ Equivalents -- DONE
 
 **Scope: ~33 occurrences**
 
@@ -635,7 +668,9 @@ memset(hitpoints, 0, sizeof(float) * 200);
 std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
 ```
 
-### 3.6 Type the `void*` Pointers
+### 3.6 Type the `void*` Pointers -- DONE
+
+> **Audit note:** `path_to_foe` converted to `std::vector<MicroPatherState>` where `MicroPatherState` is a type alias for `void*`. This provides semantic clarity that these are encoded grid coordinates, not real pointers. The micropather API requires void* at the interface boundary, so a full type replacement was not feasible.
 
 **Scope: 5 occurrences in main source**
 
@@ -689,11 +724,11 @@ int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *s
 
 ## Phase 4: Memory Management (Smart Pointers & RAII)
 
-**Risk: MEDIUM** | **Effort: HIGH** | **Priority: AFTER PHASE 3**
+**Risk: MEDIUM** | **Effort: HIGH** | **Priority: AFTER PHASE 3** | **Status: DONE**
 
 The codebase has **zero smart pointer usage**. All memory is managed with raw `new`/`delete` (~162 `new`, ~165 `delete`).
 
-### 4.1 Entity Ownership: `std::unique_ptr` for Walker Lists
+### 4.1 Entity Ownership: `std::unique_ptr` for Walker Lists -- DONE
 
 The central ownership pattern is `LevelData` owning walkers via `std::list<walker*>`.
 
@@ -736,7 +771,7 @@ walker* LevelData::add_ob(char order, char family, bool atstart) {
 }
 ```
 
-### 4.2 `viewscreen` Ownership in `screen`
+### 4.2 `viewscreen` Ownership in `screen` -- DONE
 
 **`screen.h:103`:**
 ```cpp
@@ -749,7 +784,7 @@ std::array<std::unique_ptr<viewscreen>, 5> viewob;
 
 **Motivation:** The `screen` destructor (`screen.cpp:235`) deletes `soundp` directly, then delegates to `cleanup()` which loops through and deletes all viewscreens. This works correctly but splits ownership cleanup across two code paths. Using `std::unique_ptr` expresses ownership semantics clearly and makes destruction automatic and self-documenting, eliminating the need for the manual `cleanup()` loop.
 
-### 4.3 `statistics` Ownership in `walker`
+### 4.3 `statistics` Ownership in `walker` -- DONE
 
 **`walker.h:126`:**
 ```cpp
@@ -767,7 +802,7 @@ stats = new statistics(this);
 stats = std::make_unique<statistics>(this);
 ```
 
-### 4.4 `guy` Ownership in `walker`
+### 4.4 `guy` Ownership in `walker` -- DONE
 
 **`walker.h:132`:**
 ```cpp
@@ -779,7 +814,7 @@ guy  *myguy;  // Non-owning — owned by SaveData::team_list
 
 `myguy` is a non-owning pointer. The `guy` objects are owned by `SaveData::team_list`. This should remain a raw pointer but be documented.
 
-### 4.5 `soundob` Ownership in `screen`
+### 4.5 `soundob` Ownership in `screen` -- DONE
 
 **`screen.h:101`:**
 ```cpp
@@ -789,7 +824,7 @@ soundob *soundp;
 std::unique_ptr<soundob> soundp;
 ```
 
-### 4.6 `loader` and `obmap` Ownership in `LevelData`
+### 4.6 `loader` and `obmap` Ownership in `LevelData` -- DONE
 
 **`level_data.h:86, 94`:**
 ```cpp
@@ -802,7 +837,7 @@ std::unique_ptr<loader> myloader;
 std::unique_ptr<obmap> myobmap;
 ```
 
-### 4.7 `pixie*` Arrays in `LevelData` and `CampaignData`
+### 4.7 `pixie*` Arrays in `LevelData` and `CampaignData` -- DONE
 
 **`level_data.h:99`:**
 ```cpp
@@ -821,7 +856,7 @@ pixie* icon;
 std::unique_ptr<pixie> icon;
 ```
 
-### 4.8 Replace `malloc`/`free` with `new`/`delete` or Smart Pointers
+### 4.8 Replace `malloc`/`free` with `new`/`delete` or Smart Pointers -- DONE
 
 **`io.cpp:399`:**
 ```cpp
@@ -845,7 +880,7 @@ free(raw_text_input);
 std::string raw_text_input = text;
 ```
 
-### 4.9 `PixieData` RAII
+### 4.9 `PixieData` RAII -- DONE
 
 **`pixie_data.h:22-37`** — Currently has a manual `free()` method:
 ```cpp
@@ -891,7 +926,7 @@ PixieData data_copy(const PixieData& d) {
 ```
 This preserves the deep-copy semantics (each treasure type gets its own pixel buffer) while using move to return the result.
 
-### 4.10 `delete[]` in `gloader.cpp`
+### 4.10 `delete[]` in `gloader.cpp` -- DONE
 
 **`gloader.cpp:778-785`:**
 ```cpp
@@ -944,11 +979,11 @@ These arrays in `loader` (`gloader.h:38+`) should become `std::vector` or `std::
 
 ## Phase 5: Modern Idioms (Loops, Algorithms, Lambdas)
 
-**Risk: LOW** | **Effort: MEDIUM** | **Priority: AFTER PHASE 2, CAN PARALLEL WITH 3-4**
+**Risk: LOW** | **Effort: MEDIUM** | **Priority: AFTER PHASE 2, CAN PARALLEL WITH 3-4** | **Status: DONE**
 
-### 5.1 Convert Iterator Loops to Range-Based For
+### 5.1 Convert Iterator Loops to Range-Based For -- DONE
 
-**Scope: ~168 iterator-based loops across 16 files**
+**Scope: ~168 iterator-based loops across 16 files** (146+ range-based for loops now in 20 files)
 
 **Before** (`effect.cpp`):
 ```cpp
@@ -1000,7 +1035,9 @@ std::erase_if(level_data.fxlist, [](const auto& ob) {
 // (with unique_ptr, delete happens automatically)
 ```
 
-### 5.2 Convert C-Style Index Loops Over Containers
+### 5.2 Convert C-Style Index Loops Over Containers -- DONE (selectively)
+
+> **Audit note:** C-style index loops were preserved where the index is semantically meaningful (e.g., `viewob[i]` where `i` is the player number). No unnecessary C-style index loops over standard containers remain. This matches the plan's own guidance: "Keep when index is semantically meaningful."
 
 **Scope: ~150 C-style index loops**
 
@@ -1019,7 +1056,7 @@ for(int i = 0; i < numviews; i++)  // Keep when index is semantically meaningful
     viewob[i]->draw();
 ```
 
-### 5.3 Use `auto` Where Appropriate
+### 5.3 Use `auto` Where Appropriate -- DONE
 
 Apply `auto` for:
 - Iterator declarations
@@ -1031,7 +1068,9 @@ Apply `auto` for:
 - Return types of functions
 - Class member declarations
 
-### 5.4 Add `constexpr` Where Possible
+### 5.4 Add `constexpr` Where Possible -- DONE
+
+> **Audit note:** ~95 `#define` constants in base.h, view.h, and stats.h converted to `inline constexpr`. PIX macro converted to `constexpr` function with Order overload.
 
 **`base.h`** — All `#define` constants that are pure values:
 ```cpp
@@ -1053,7 +1092,7 @@ inline constexpr int GRID_SIZE = 16;
   ```
 - Conditional compilation macros (`PROT_MODE`, `CHEAT_MODE`)
 
-### 5.5 Nullable Pointer Returns — Keep Current Pattern
+### 5.5 Nullable Pointer Returns — Keep Current Pattern -- N/A (guidance only)
 
 The `find_*` functions in `screen.h:61-69` return `walker*` where `nullptr` means "not found." **Do NOT wrap these in `std::optional<walker*>`** — a pointer is already nullable, and `std::optional<T*>` is an anti-pattern that adds a redundant "empty" state (both `std::nullopt` and `nullptr` would mean "absent").
 
@@ -1069,7 +1108,7 @@ walker* screen::find_near_foe(walker *ob) {
 
 **Where `std::optional` IS appropriate:** Use it for non-pointer value types where there's no natural sentinel, e.g., functions that return `int`/`float`/`short` where any value could be valid.
 
-### 5.6 Use `std::string_view` for Read-Only String Parameters
+### 5.6 Use `std::string_view` for Read-Only String Parameters -- DONE
 
 **Before** (`screen.h:71`):
 ```cpp
@@ -1110,11 +1149,13 @@ std::string_view get_scen_title(std::string_view filename, screen *master);
 
 ## Phase 6: Error Handling Modernization
 
-**Risk: MEDIUM** | **Effort: MEDIUM** | **Priority: AFTER PHASE 4**
+**Risk: MEDIUM** | **Effort: MEDIUM** | **Priority: AFTER PHASE 4** | **Status: MOSTLY DONE**
 
 The codebase uses no C++ exceptions. All error handling is via return codes and logging.
 
-### 6.1 Centralize Error Reporting
+### 6.1 Centralize Error Reporting -- DONE
+
+> **Audit note:** Log/LogWarn/LogError converted to template functions using `std::format_string<Args...>` for compile-time format checking. ~70 call sites converted from printf-style to std::format syntax. Internal LogImpl/LogWarnImpl/LogErrorImpl handle SDL_LogMessage. Also fixed UB in video.cpp where std::string was passed to printf varargs.
 
 The existing logging system (`util.h:33-35`) is well-designed:
 ```cpp
@@ -1132,7 +1173,9 @@ void Log(std::format_string<Args...> fmt, Args&&... args) {
 }
 ```
 
-### 6.2 Replace Return-Code Error Patterns with `std::expected` (C++23)
+### 6.2 Replace Return-Code Error Patterns with `std::expected` (C++23) -- SKIPPED
+
+> **Audit note:** `std::expected` was NOT implemented anywhere in the codebase. This was intentionally deferred because: (1) It is a C++23 feature and the build targets C++20 as baseline; (2) Emscripten C++23 support for `std::expected` was flagged as uncertain in Phase 0.2; (3) The plan itself noted "If C++23 not available, keep `bool` returns" — and that fallback was followed. The existing bool return + logging pattern remains in use.
 
 **Before** (`level_data.cpp`):
 ```cpp
@@ -1158,7 +1201,9 @@ std::expected<void, std::string> LevelData::load() {
 
 **If C++23 not available**, keep `bool` returns but ensure consistent patterns.
 
-### 6.3 Replace `short` Return Types with `bool`
+### 6.3 Replace `short` Return Types with `bool` -- DONE
+
+> **Audit note:** ~40 methods converted across walker, living, weap, treasure, effect, screen, and viewscreen classes.
 
 Many functions return `short` where they really mean `bool` (0 = failure, 1 = success):
 - `walker::act()`, `walker::animate()`, `walker::death()` — all return `short`
@@ -1166,7 +1211,9 @@ Many functions return `short` where they really mean `bool` (0 = failure, 1 = su
 
 **This is a LARGE change** (touches virtually every method signature) and should be done incrementally per-class.
 
-### 6.4 Consider Selective Exception Use for Fatal Errors
+### 6.4 Consider Selective Exception Use for Fatal Errors -- DONE
+
+> **Audit note:** 3 fatal initialization errors now throw `std::runtime_error` instead of calling `exit()`: SDL_CreateWindow failure (sai2x.cpp), PhysFS user data mount failure (io.cpp), and default campaign mount failure (io.cpp). A try/catch wrapper was added in main() (glad.cpp). Non-critical exit() calls (sprite loading, sound, quit, level fallback) were intentionally left unchanged to minimize disruption.
 
 For truly unrecoverable situations (SDL init failure, missing critical game files), consider throwing exceptions instead of calling `exit()` or returning error codes deep in the call stack.
 
@@ -1207,11 +1254,13 @@ if (!window) {
 
 ## Phase 7: Class Design & Encapsulation
 
-**Risk: HIGH** | **Effort: VERY HIGH** | **Priority: LAST**
+**Risk: HIGH** | **Effort: VERY HIGH** | **Priority: LAST** | **Status: MOSTLY DONE**
 
 This phase requires the most careful work and testing.
 
-### 7.1 Encapsulate `walker` Public Members
+### 7.1 Encapsulate `walker` Public Members -- DONE
+
+> **Audit note:** All 55+ public data members encapsulated across 4 group commits. Walker now has ZERO public data members. All fields are protected with trailing underscore naming convention and inline getter/setter accessors (60+ accessor methods). Internal walker/living/weap/treasure/effect methods access fields directly.
 
 **Problem:** `walker.h` has **70+ public data members** directly accessed throughout the codebase.
 
@@ -1273,7 +1322,9 @@ public:
 
 **Approach:** Do ONE group per PR, fix all compilation errors, test, merge.
 
-### 7.2 Eliminate `friend` Class Abuse
+### 7.2 Eliminate `friend` Class Abuse -- DONE
+
+> **Audit note:** All 6 major friend declarations removed. viewscreen: friend walker (used public members only), friend pixieN (dead code), friend text (dead code), friend pixie (added get_xview/get_yview accessors). walker: friend statistics (added get_enddir/set_enddir, stats.cpp uses query_order/query_family), friend command (dead code — command is a POD struct). One minor friend remains: text.h has `friend class vbutton` (retained as low-impact).
 
 **Scope: 8 friend declarations**
 
@@ -1295,7 +1346,9 @@ friend class command;
 
 `statistics` accesses `walker`'s protected members. Provide public methods or pass needed data as parameters to `statistics` methods instead.
 
-### 7.3 Rule of Five Compliance
+### 7.3 Rule of Five Compliance -- DONE
+
+> **Audit note:** All 10 classes with custom destructors now have deleted copy/move operations. Entity classes (walker, living, weap, treasure, effect) and resource-managing classes (pixie, pixieN, video, screen, loader) all have `= delete` for copy and move constructors/assignment operators.
 
 **10 classes have custom destructors but are missing copy/move operations:**
 
@@ -1336,7 +1389,9 @@ public:
 };
 ```
 
-### 7.4 Add `const`-Correctness
+### 7.4 Add `const`-Correctness -- DONE
+
+> **Audit note:** All listed query methods marked const: query_order(), query_family(), query_act_type(), query_old_act_type(), distance_to_ob(), distance_to_ob_center(), is_friendly(), is_friendly_to_team(), query_type(), query_team_color() in walker and all overrides. statistics::has_commands() and statistics::query_bit_flags() also const.
 
 **Query methods that should be `const`:**
 
@@ -1369,7 +1424,9 @@ public:
 | `screen::find_near_foe()` | `walker *ob` → `const walker *ob` | `screen.h:61` |
 | `screen::find_far_foe()` | `walker *ob` → `const walker *ob` | `screen.h:62` |
 
-### 7.5 Convert `#define` Constants to Proper Types
+### 7.5 Convert `#define` Constants to Proper Types -- PARTIAL
+
+> **Audit note:** ORDER_* constants fully converted to `enum class Order : unsigned char` in base.h with 632 call sites migrated across 31 files. walker::order field type changed from char to Order. query_order() return type changed to Order. PIX(Order, int) overload added for backward compatibility. Also fixed a pre-existing bug in gloader.cpp where order was compared against FAMILY_SMALL_SLIME instead of family. However, FAMILY_* constants (FAMILY_SOLDIER, FAMILY_ELF, etc.) were NOT converted to enum class — they remain as `inline constexpr` values from Phase 5.4. The plan noted this would be "the very last change" due to its massive scope.
 
 **`base.h` has ~200 `#define` constants** that should become:
 
@@ -1403,7 +1460,9 @@ enum class LivingFamily : char {
 
 **This is a MASSIVE change** — `order` and `family` are used as `char` values throughout the entire codebase. This should be the very last change.
 
-### 7.6 Refactor Global Variables
+### 7.6 Refactor Global Variables -- SKIPPED
+
+> **Audit note:** The `myscreen` global variable was NOT refactored. `base.h` still has `extern screen * myscreen;` and it is set in the screen constructor. No GameContext, service locator, or singleton pattern was implemented. This was the correct decision for this modernization pass: `myscreen` is used in nearly every source file, and refactoring it would require threading a context through the entire call graph — a massive, risky change orthogonal to the C++ modernization goals. The other modernization work (smart pointers, RAII, encapsulation) has reduced coupling sufficiently that this can be deferred to a future architectural refactor.
 
 **`base.h:87`:**
 ```cpp
@@ -1456,9 +1515,9 @@ struct GameContext {
 
 ## Phase 8: Containers & Algorithms
 
-**Risk: LOW-MEDIUM** | **Effort: MEDIUM** | **Priority: CAN PARALLEL WITH PHASE 5**
+**Risk: LOW-MEDIUM** | **Effort: MEDIUM** | **Priority: CAN PARALLEL WITH PHASE 5** | **Status: DONE**
 
-### 8.1 Replace C Arrays with `std::array`
+### 8.1 Replace C Arrays with `std::array` -- DONE
 
 **`video.h:143-148`** — Fixed-size palette buffers:
 ```cpp
@@ -1508,7 +1567,7 @@ constexpr std::array<signed char, 5> bit2 = {13, 17, 13, 21, -1}; // up-right
 // will need std::span or const signed char* views.
 ```
 
-### 8.2 Use `std::span` for Buffer Parameters (C++20)
+### 8.2 Use `std::span` for Buffer Parameters (C++20) -- DONE
 
 **`video.h`** — Many methods take `unsigned char*` + size:
 ```cpp
@@ -1521,7 +1580,9 @@ void putdata(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize,
              std::span<const unsigned char> sourcedata);
 ```
 
-### 8.3 Use STL Algorithms to Replace Manual Loops
+### 8.3 Use STL Algorithms to Replace Manual Loops -- DONE
+
+> **Audit note:** 5 manual erase-while-iterating loops converted to `std::erase_if` in screen.cpp and level_data.cpp. The oblist dead entity loop in screen.cpp was intentionally kept as manual iteration because it has significant side effects (moving to dead_list, clearing viewscreen controls, decrementing numobs) that don't fit the erase_if pattern.
 
 **Currently used STL algorithms:** `std::find` (7 uses), `std::sort` (1 use)
 
@@ -1558,7 +1619,7 @@ for(auto e = level_data.fxlist.begin(); e != level_data.fxlist.end();) {
 std::erase_if(level_data.fxlist, [](const auto& ob) { return ob && ob->dead; });
 ```
 
-### 8.4 Use Structured Bindings for Map/Pair Iteration
+### 8.4 Use Structured Bindings for Map/Pair Iteration -- DONE
 
 **`obmap.cpp`** map iterations:
 ```cpp
@@ -1595,7 +1656,9 @@ for(auto& [pos, walkers] : pos_to_walker)
 
 ## Phase 9: Concurrency & Threading
 
-**Risk: LOW** | **Effort: LOW** | **Priority: OPTIONAL**
+**Risk: LOW** | **Effort: LOW** | **Priority: OPTIONAL** | **Status: NOT DONE (intentionally deferred)**
+
+> **Audit note:** No concurrency changes were made. This phase was marked optional from the start. The game remains single-threaded, which is correct for its design and essential for Emscripten compatibility. No profiling data suggests a performance need for threading.
 
 The game is single-threaded by design (standard for real-time game loops). No threading code exists.
 
