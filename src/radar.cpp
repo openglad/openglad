@@ -22,6 +22,11 @@
 #include "graph.h"
 #include "colors.h"
 #include <span>
+#include "game_context.h"
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 #define RADAR_X 60  // These are the dimensions of the radar
 #define RADAR_Y 44  // viewport
@@ -231,7 +236,7 @@ short radar::draw(LevelData* data)
 					tempcolor = (ob->query_team_color());
 					if (viewscreenp && viewscreenp->control == ob)
 					{
-						tempcolor = static_cast<unsigned char>(random(256));
+						tempcolor = static_cast<unsigned char>(rng(256));
 						if (tempx >= (xloc + xview - 1) && tempy < (yloc+yview) )
 						{
 							myscreen->pointb(tempx-1,tempy,tempcolor, alpha);
@@ -292,19 +297,19 @@ short radar::draw(LevelData* data)
 					switch (obfamily)
 					{
 						case FAMILY_GOLD_BAR:
-							do_show = static_cast<short>(YELLOW + random(5));
+							do_show = static_cast<short>(YELLOW + rng(5));
 							break;
 						case FAMILY_SILVER_BAR:
-							do_show = static_cast<short>(GREY + random(5));
+							do_show = static_cast<short>(GREY + rng(5));
 							break;
 						case FAMILY_DRUMSTICK:
-							do_show = static_cast<short>(COLOR_BROWN + random(2));
+							do_show = static_cast<short>(COLOR_BROWN + rng(2));
 							break;
 						case FAMILY_MAGIC_POTION:
 						case FAMILY_INVIS_POTION:
 						case FAMILY_INVULNERABLE_POTION:
 						case FAMILY_FLIGHT_POTION:
-							do_show = static_cast<short>(COLOR_BLUE + random(5));
+							do_show = static_cast<short>(COLOR_BLUE + rng(5));
 							break;
 						default:
 							do_show = 0;
@@ -312,7 +317,7 @@ short radar::draw(LevelData* data)
 					}
 				}
 				if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
-					do_show = static_cast<short>(LIGHT_BLUE) + random(7);
+					do_show = static_cast<short>(LIGHT_BLUE) + rng(7);
 			}
 			if (!on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE),
 			                static_cast<short>((ob->ypos+1)/GRID_SIZE),
@@ -421,14 +426,14 @@ void radar::update(LevelData* data)
 				case PIX_GRASS_LIGHT_LEFT_BOTTOM:
 				case PIX_GRASS_LIGHT_LEFT:
 				case PIX_GRASS_LIGHT_LEFT_TOP:
-					temp = static_cast<short>(COLOR_GREEN + random(3) + 3);
+					temp = static_cast<short>(COLOR_GREEN + rng(3) + 3);
 					break;
 				case PIX_TREE_M1: // Trees are green
 				case PIX_TREE_ML:
 				case PIX_TREE_T1:
 				case PIX_TREE_MR:
 				case PIX_TREE_MT:
-					temp = static_cast<short>(COLOR_TREES + random(3));
+					temp = static_cast<short>(COLOR_TREES + rng(3));
 					break;
 				case PIX_TREE_B1: // Trunks are brown
 					temp = COLOR_BROWN + 6;

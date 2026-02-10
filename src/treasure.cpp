@@ -31,6 +31,11 @@
 #include <algorithm>
 #include <format>
 #include <cstring>
+#include "game_context.h"
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 // Zardus: this is the func to get events
 void get_input_events(bool);
@@ -72,7 +77,7 @@ bool treasure::eat_me(walker  * eater)
 				return 1;
 			else
 			{
-			    short amount = 10*stats_->level + random(10*stats_->level);
+			    short amount = 10*stats_->level + rng(10*stats_->level);
 				eater->stats()->hitpoints += amount;
 				if (eater->stats()->hitpoints > eater->stats()->max_hitpoints)
 					eater->stats()->hitpoints = eater->stats()->max_hitpoints;

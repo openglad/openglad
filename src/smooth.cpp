@@ -20,6 +20,11 @@
 
 #include "base.h"
 #include "graph.h"
+#include "game_context.h"
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 smoother::smoother()
     : mygrid(nullptr), maxx(0), maxy(0)
@@ -230,7 +235,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			         downleft == TYPE_WATER && right == TYPE_WATER && down == TYPE_WATER)
 				newvalue = PIX_GRASSWATER_LR;
 			else
-				switch (random(4))
+				switch (rng(4))
 				{
 					case 0:
 						newvalue = PIX_GRASS1;
@@ -249,7 +254,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 		case TYPE_GRASS_DARK:  // Shadowed grass
 			if (around == TO_AROUND ) // all around
 			{
-				switch (random(4))
+				switch (rng(4))
 				{
 					case 0:
 						newvalue = PIX_GRASS_DARK_1;
@@ -269,7 +274,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			          && (down == TYPE_TREES || down == TYPE_WALL)
 			          && (upright != TYPE_TREES && upright != TYPE_WALL) ) // act as right edge
 			{
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_GRASS_DARK_R1;
@@ -290,7 +295,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 					case TYPE_TREES:
 					case TYPE_DIRT:
 					case TYPE_COBBLE:
-						switch (random(2))
+						switch (rng(2))
 						{
 							case 0:
 								newvalue = PIX_GRASS_DARK_B1;
@@ -299,11 +304,11 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 								newvalue = PIX_GRASS_DARK_B2;
 								break;
 						}
-						if (!random(20)) // then place a bit o' rubble
+						if (!rng(20)) // then place a bit o' rubble
 							newvalue = PIX_GRASS_RUBBLE;
 						break;
 					default:
-						switch (random(4))
+						switch (rng(4))
 						{
 							case 0:
 								newvalue = PIX_GRASS_DARK_1;
@@ -328,7 +333,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			{} // do nothing
 			else if (around == (TO_UP | TO_DOWN | TO_LEFT)) // right middle
 			{
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_GRASS_DARK_R1;
@@ -347,7 +352,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == (TO_LEFT | TO_RIGHT | TO_UP)) // bottom middle
 			{
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_GRASS_DARK_B1;
@@ -356,12 +361,12 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						newvalue = PIX_GRASS_DARK_B2;
 						break;
 				}
-				if (!random(20)) // then place a bit o' rubble
+				if (!rng(20)) // then place a bit o' rubble
 					newvalue = PIX_GRASS_RUBBLE;
 			}
 			else if (around == (TO_LEFT | TO_RIGHT)) // middle, thin
 			{
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_GRASS_DARK_B1;
@@ -370,7 +375,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						newvalue = PIX_GRASS_DARK_B2;
 						break;
 				}
-				if (!random(20)) // then place a bit o' rubble
+				if (!rng(20)) // then place a bit o' rubble
 					newvalue = PIX_GRASS_RUBBLE;
 			}
 			else if (around == (TO_LEFT | TO_UP)) // bottom right
@@ -385,7 +390,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if ( (around == (TO_DOWN | TO_RIGHT | TO_UP) ) || // left middle
 			          (around == (TO_DOWN | TO_RIGHT) ) ) // top left
 			{
-				switch (random(4))
+				switch (rng(4))
 				{
 					case 0:
 						newvalue = PIX_GRASS_DARK_1;
@@ -403,7 +408,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			}
 			else if (around == (TO_DOWN | TO_UP)) // center vertical
 			{
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_GRASS_DARK_R1;
@@ -601,7 +606,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						newvalue = PIX_WALLSIDE_R;
 						break;
 					case 11: // we're the middle base of a wall
-						if (random(10) == 0)
+						if (rng(10) == 0)
 							newvalue = PIX_WALLSIDE_CRACK_C1;
 						else
 							newvalue = PIX_WALLSIDE1;
@@ -645,7 +650,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			        ||(around == (TO_UP | TO_DOWN | TO_LEFT))
 			        ||(around == (TO_UP | TO_DOWN | TO_RIGHT))
 			   )
-				switch (random(3))
+				switch (rng(3))
 				{
 					case 0:
 						newvalue = PIX_WATER1;
@@ -666,7 +671,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			else if (around == (TO_DOWN | TO_LEFT) )
 				newvalue = PIX_WATERGRASS_UR;
 			else if (around == (TO_UP) )
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_WATERGRASS_LL;
@@ -676,7 +681,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						break;
 				}
 			else if (around == (TO_DOWN) )
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_WATERGRASS_UL;
@@ -686,7 +691,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						break;
 				}
 			else if (around == (TO_LEFT) )
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_WATERGRASS_UR;
@@ -696,7 +701,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 						break;
 				}
 			else if (around == (TO_RIGHT) )
-				switch (random(2))
+				switch (rng(2))
 				{
 					case 0:
 						newvalue = PIX_WATERGRASS_UL;
@@ -717,7 +722,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				else if (downleft != TYPE_TREES || upleft  != TYPE_TREES)
 					newvalue = PIX_TREE_ML; // left edge..
 				else
-					switch (random(3))
+					switch (rng(3))
 					{
 						case 0:
 							newvalue = PIX_TREE_M1;
@@ -765,7 +770,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			break;
 		case TYPE_DIRT:
 			if (around == TO_AROUND ) // all around
-				switch (random(3))
+				switch (rng(3))
 				{
 					case 0:
 						newvalue = PIX_DIRT_1;
@@ -810,7 +815,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 			break; // end of dirt cases
 		case TYPE_DIRT_DARK:
 			if (around == TO_AROUND ) // all around
-				switch (random(3))
+				switch (rng(3))
 				{
 					case 0:
 						newvalue = PIX_DIRT_DARK_1;
@@ -854,7 +859,7 @@ Sint32 smoother::smooth(Sint32 x, Sint32 y)
 				newvalue = PIX_DIRT_DARK_1; // default case
 			break; // end of dark dirt cases
 		case TYPE_COBBLE: // cobblestone
-			switch (random(4))
+			switch (rng(4))
 			{
 				case 0:
 					newvalue = PIX_COBBLE_1;

@@ -21,7 +21,12 @@
 #include "test_trace.h"
 #include <format>
 #include <cstring>
+#include "game_context.h"
 #include <span>
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 #define VIDEO_BUFFER_WIDTH 320
 #define VIDEO_WIDTH 320
@@ -1485,10 +1490,10 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 						}
 					} // end outline
 
-					if (random(invisibility) > 8)
+					if (rng(invisibility) > 8)
 					{
 						xval++;
-						//videobuffer[buffoff++] = teamcolor+random(7);
+						//videobuffer[buffoff++] = teamcolor+rng(7);
 						continue;
 					}
 					pointb(xval++, yval, curcolor);
@@ -1582,7 +1587,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					break;
 
 				case SHIFT_RIGHT_RANDOM:
-					shift = static_cast<signed char>(random(2));
+					shift = static_cast<signed char>(rng(2));
 					break;
 
 				default:
@@ -1604,8 +1609,8 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					//buffers: this is a messy optimization. sorry.
 					if (shifttype == SHIFT_RANDOM)
 					{
-						//pointb(buffoff++,get_pixel(buffoff+random(2)));
-						tempbuf = buffoff+random(2);
+						//pointb(buffoff++,get_pixel(buffoff+rng(2)));
+						tempbuf = buffoff+rng(2);
 						ty = tempbuf/320;
 						tx = tempbuf-ty*320;
 						get_pixel(tx,ty,&r,&g,&b);

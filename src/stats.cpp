@@ -21,7 +21,12 @@
 #include "graph.h"
 #include "stats.h"      // for bit flags, etc.
 #include <cmath>
+#include "game_context.h"
 #include <format>
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 #define CHECK_STEP_SIZE 1 // (controller->stepsize) // was 1
 
@@ -165,7 +170,7 @@ bool statistics::has_commands() const
 short statistics::try_command(short whatcommand, short iterations)
 {
 	if (whatcommand == COMMAND_RANDOM_WALK)
-		return try_command(COMMAND_WALK, iterations, static_cast<short>(random(3)-1), static_cast<short>(random(3)-1));
+		return try_command(COMMAND_WALK, iterations, static_cast<short>(rng(3)-1), static_cast<short>(rng(3)-1));
 	else
 		return try_command(whatcommand, iterations, 0, 0);
 }
@@ -180,7 +185,7 @@ short statistics::try_command(short whatcommand, short iterations,
 void statistics::set_command(short whatcommand, short iterations)
 {
 	if (whatcommand == COMMAND_RANDOM_WALK)
-		set_command(COMMAND_WALK, iterations, static_cast<short>(random(3)-1), static_cast<short>(random(3)-1));
+		set_command(COMMAND_WALK, iterations, static_cast<short>(rng(3)-1), static_cast<short>(rng(3)-1));
 	else
 		set_command(whatcommand, iterations, 0, 0);
 }
@@ -384,7 +389,7 @@ short statistics::do_command()
 				controller->walkstep(deltax, deltay);
 			else // (controller->fire_check(deltax, deltay))
 			{
-				force_command(COMMAND_FIRE,static_cast<short>(random(5)),deltax,deltay);
+				force_command(COMMAND_FIRE,static_cast<short>(rng(5)),deltax,deltay);
 				controller->init_fire(deltax,deltay);
 			}
 			break;
@@ -494,7 +499,7 @@ void statistics::hit_response(walker  *who)
 				threshold = (3 * max_hitpoints)/5; // then flee at 60%
 			else                   // we're an enemy, so be braver :>
 				threshold = (3 * max_hitpoints)/8; // flee at 3/8
-			if ( (hitpoints < threshold) && possible_specials[1] && random(3) )
+			if ( (hitpoints < threshold) && possible_specials[1] && rng(3) )
 			{
 				// teleport
 				controller->current_special = 1; // teleport to safety
@@ -524,7 +529,7 @@ void statistics::hit_response(walker  *who)
 					if (possible_specials[2]) // heartburst, chain lightning, etc.
 					{
 						//if (howmany < 3) // 2 or fewer enemies, so lightning..
-						if (random(2)) // 50/50 now
+						if (rng(2)) // 50/50 now
 						{
 							controller->shifter_down = 1; // lightning
 							controller->current_special = 2;
@@ -578,7 +583,7 @@ void statistics::hit_response(walker  *who)
 			break;
 		default:  // attack our attacker
 			// Chance of doing special ..
-			if (controller->check_special() && !random(3) )
+			if (controller->check_special() && !rng(3) )
 				controller->special();
 			if (controller->myguy) // are we a player's character?
 				threshold = (5 * max_hitpoints)/10; // then flee at 50%
@@ -992,7 +997,7 @@ bool statistics::direct_walk()
 	{
 		clear_command();
 		controller->turn(controller->facing(xdelta, ydelta));
-		add_command(COMMAND_ATTACK,static_cast<short>(30+random(25)),0,0);
+		add_command(COMMAND_ATTACK,static_cast<short>(30+rng(25)),0,0);
 		return 1;
 	}
 
@@ -1071,7 +1076,7 @@ bool statistics::walk_to_foe()
 	Uint32 tempdistance = 9999999L;
 	short howmany;
 
-	if (!foe || !random(300) ) //random just to be sure this gets reset sometime
+	if (!foe || !rng(300) ) //random just to be sure this gets reset sometime
 	{
 		last_distance = current_distance = 15000L;
 		return 0;
@@ -1102,7 +1107,7 @@ bool statistics::walk_to_foe()
 			    walker* firstfoe = foelist.front();
 				clear_command();
 				controller->turn(controller->facing(xdelta, ydelta));
-				controller->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ random(25)), 1, 1);
+				controller->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
 				myscreen->find_near_foe(controller);
 				if (!controller->foe && firstfoe)
 				{

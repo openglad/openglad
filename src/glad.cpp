@@ -35,6 +35,11 @@ screen * myscreen;
 #include <stdexcept>
 #include "util.h"
 #include "results_screen.h"
+#include "game_context.h"
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 #ifdef OUYA
 #include "OuyaController.h"
@@ -756,7 +761,7 @@ short new_score_panel(screen *myscreen, short do_it)
 				if (scorecountup[control->team_num] < myscore)
 				{
 					scorecountup[control->team_num]++;
-					scorecountup[control->team_num] += static_cast<Uint32>(random( (myscore - scorecountup[control->team_num]))/12 );
+					scorecountup[control->team_num] += static_cast<Uint32>(rng( (myscore - scorecountup[control->team_num]))/12 );
 				}
 				if (scorecountup[control->team_num] > myscore)
 					scorecountup[control->team_num] = myscore;
