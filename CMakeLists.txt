@@ -15,6 +15,13 @@ option(BUILD_TESTING "Build the test suite" OFF)
 option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
 option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" OFF)
 
+# Coverage runs are only meaningful if the tests are built and executed.
+# The repo's documented coverage pipeline configures with ENABLE_COVERAGE=ON
+# and then invokes `ctest`, so ensure BUILD_TESTING is enabled in that mode.
+if(ENABLE_COVERAGE AND NOT BUILD_TESTING)
+    set(BUILD_TESTING ON CACHE BOOL "Build the test suite" FORCE)
+endif()
+
 # --------------------------------------------------------------------------
 # Source file lists
 # --------------------------------------------------------------------------
@@ -355,6 +362,9 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_text_render.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_extra.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
@@ -370,6 +380,12 @@ if(NOT EMSCRIPTEN)
         configure_openglad_target(openglad_test)
         target_compile_definitions(openglad_test PRIVATE TESTING)
         target_include_directories(openglad_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+
+        enable_testing()
+        add_test(NAME openglad_test COMMAND openglad_test)
+        set_tests_properties(openglad_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
 
         if(ENABLE_COVERAGE)
             if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
