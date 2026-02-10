@@ -1,4 +1,5 @@
 #include "combat_math.h"
+#include "game_context.h"
 
 #include <cmath>
 
@@ -30,5 +31,12 @@ float compute_post_reduction_damage(float incoming_damage, float target_armor)
     if (result < 0)
         return 0;
     return result;
+}
+
+float compute_base_damage(float base_damage, IRandom& rng)
+{
+    float d = base_damage;
+    float sqrtd = sqrtf(d);
+    return d - sqrtd / 2.0f + static_cast<float>(rng.next(static_cast<Uint32>(floorf(sqrtd))));
 }
 

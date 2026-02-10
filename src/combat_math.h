@@ -8,6 +8,8 @@
 
 #include "SDL.h"
 
+class IRandom;
+
 using RandomU32 = Uint32(*)(Uint32);
 
 // Original behavior from walker.cpp:
@@ -20,4 +22,7 @@ float compute_damage_reduction(float incoming_damage, float target_armor);
 
 // Convenience helper.
 float compute_post_reduction_damage(float incoming_damage, float target_armor);
+
+// IRandom-based overload: allows injection via GameContext's RNG
+float compute_base_damage(float base_damage, IRandom& rng);
 

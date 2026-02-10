@@ -26,6 +26,7 @@ set(EXT_DIR ${SRC_DIR}/external)
 set(GAME_SOURCES
     ${SRC_DIR}/glad.cpp
     ${SRC_DIR}/game_loop.cpp
+    ${SRC_DIR}/game_context.cpp
     ${SRC_DIR}/combat_math.cpp
     ${SRC_DIR}/button.cpp
     ${SRC_DIR}/effect.cpp
@@ -325,6 +326,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_game_context.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
