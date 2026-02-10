@@ -365,6 +365,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_video_extra.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_movement.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_zip.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
