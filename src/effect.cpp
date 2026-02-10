@@ -40,7 +40,7 @@ effect::~effect()
 	// Zardus: PORT: that parent object problem again:  walker::~walker();
 }
 
-static void orbit_offset(int drawcycle, float &xd, float &yd)
+void orbit_offset(int drawcycle, float &xd, float &yd)
 {
     static const float orbit_table[16][2] = {
         {  0, -24}, { -9, -22}, {-17, -17}, {-22,  -9},
@@ -454,7 +454,7 @@ bool effect::animate()
 	return 1;
 }
 
-static Sint32 compute_explosion_range(Sint32 level, short skip_exit)
+Sint32 compute_explosion_range(Sint32 level, short skip_exit)
 {
     Sint32 range = level * 4;
     if (skip_exit > 0)

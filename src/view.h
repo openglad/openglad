@@ -59,6 +59,10 @@ inline constexpr int MAX_MESSAGES = 5;  // max of 5 lines, currently
 
 class viewscreen;
 
+// Pure helper functions for HP/MP color thresholds
+unsigned char compute_hp_color(float hp, float maxhp);
+unsigned char compute_mp_color(float mp, float maxmp);
+
 // This is a child object of all viewscreens
 //  It is used to save and load all prefs
 //  because each player has their own

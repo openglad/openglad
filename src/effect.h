@@ -25,6 +25,10 @@
 #include "walker.h"
 #include "guy.h"
 
+// Pure helper functions extracted from effect logic
+void orbit_offset(int drawcycle, float &xd, float &yd);
+Sint32 compute_explosion_range(Sint32 level, short skip_exit);
+
 class effect : public walker
 {
 	public:

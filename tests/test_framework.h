@@ -67,4 +67,7 @@ extern int g_test_registry_count;
 
 void run_all_tests();
 
+// Optional filter: if non-null, only tests whose names contain this substring run
+extern const char* g_test_filter;
+
 #endif // _TEST_FRAMEWORK_H__

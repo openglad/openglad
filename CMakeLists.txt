@@ -324,6 +324,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined

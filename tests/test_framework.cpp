@@ -17,11 +17,28 @@ int g_tests_failed = 0;
 TestEntry g_test_registry[MAX_TESTS];
 int g_test_registry_count = 0;
 
-void run_all_tests() {
-    fprintf(stderr, "\n=== Running %d tests ===\n\n", g_test_registry_count);
+const char* g_test_filter = nullptr;
 
+void run_all_tests() {
+    int total_to_run = 0;
+    if (g_test_filter) {
+        for (int i = 0; i < g_test_registry_count; i++) {
+            if (strstr(g_test_registry[i].name, g_test_filter))
+                total_to_run++;
+        }
+        fprintf(stderr, "\n=== Running %d/%d tests (filter: \"%s\") ===\n\n",
+                total_to_run, g_test_registry_count, g_test_filter);
+    } else {
+        total_to_run = g_test_registry_count;
+        fprintf(stderr, "\n=== Running %d tests ===\n\n", g_test_registry_count);
+    }
+
+    int run_idx = 0;
     for (int i = 0; i < g_test_registry_count; i++) {
-        fprintf(stderr, "  [%d/%d] %s ... ", i + 1, g_test_registry_count, g_test_registry[i].name);
+        if (g_test_filter && !strstr(g_test_registry[i].name, g_test_filter))
+            continue;
+        run_idx++;
+        fprintf(stderr, "  [%d/%d] %s ... ", run_idx, total_to_run, g_test_registry[i].name);
         int failed_before = g_tests_failed;
         g_test_registry[i].fn();
         if (g_tests_failed == failed_before) {

@@ -35,6 +35,10 @@ int main(int argc, char* argv[]) {
     cfg.load_settings();
     cfg.save_settings();
 
+    // Optional test filter: ./openglad_test [filter_substring]
+    if (argc > 1)
+        g_test_filter = argv[1];
+
     theprefs = new options;
     myscreen = new screen(1);
     init_input();
