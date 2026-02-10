@@ -28,6 +28,11 @@
 #include <format>
 #include <span>
 
+// Shorthand for the injectable RNG
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
+
 // ************************************************************
 //  WALKER -- graphics routines
 //
@@ -703,7 +708,7 @@ walker  * walker::fire()
 
 	// Determine how much the thrown weapon can 'waver'
 	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
-	waver = static_cast<signed char>(random(waver+1) - waver/2);
+	waver = static_cast<signed char>(rng(waver+1) - waver/2);
 
 	switch(facing(lastx, lasty))
 	{
@@ -841,13 +846,13 @@ walker  * walker::fire()
 				case FAMILY_TOWER: // mages, no lifetime
 					weapon->ani_type = ANI_TELE_IN; // mages teleport
 				case FAMILY_TREEHOUSE: // elves also no lifetime
-					weapon->stats()->level = random(stats_->level)+1;
+					weapon->stats()->level = rng(stats_->level)+1;
 					weapon->set_difficulty( static_cast<Uint32>(weapon->stats()->level) );
 					weapon->owner = nullptr;
 					break;
 				default: // tents, bones, etc
 					weapon->lifetime = 800 + stats_->level*11;
-					weapon->stats()->level = random(stats_->level)+1;
+					weapon->stats()->level = rng(stats_->level)+1;
 					weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
 					break;
 			}
@@ -880,7 +885,7 @@ void walker::set_weapon_heading(walker *weapon)
 
 	// Determine how much the thrown weapon can 'waver'
 	waver = static_cast<signed char>((weapon->stepsize)/2); // Absolute amount ..
-	waver = static_cast<signed char>(random(waver+1) - waver/2);
+	waver = static_cast<signed char>(rng(waver+1) - waver/2);
 
 	switch(facing(lastx, lasty))  // these are from the 'owner'
 	{
@@ -1627,13 +1632,13 @@ bool walker::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				if (!random(4) )
+				if (!rng(4) )
 				{
-					if (!random(20))   // a 1 in 4 then 1 in 20 chance of rand walk
+					if (!rng(20))   // a 1 in 4 then 1 in 20 chance of rand walk
 					{
 						if (!special())
-							stats_->try_command(COMMAND_WALK, random(30),
-							                   random(3)-1, random(3)-1);
+							stats_->try_command(COMMAND_WALK, rng(30),
+							                   rng(3)-1, rng(3)-1);
 						return 1;
 					}
 					act_random(); //1 in 4 followed by 19 in 20 of doing this
@@ -1732,7 +1737,7 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value)
         }
     case ExpAction::Heal:
         // value == number of hitpoints healed
-        return (random(20*value)/w->stats()->level);
+        return (rng(20*value)/w->stats()->level);
     case ExpAction::TurnUndead:
         // value == number of turned undead
         return (value*3);
@@ -1999,7 +2004,7 @@ bool walker::attack(walker  *target)
 				{
 					if (target->myguy)
 						target->stats()->frozen_delay =
-						    random(FAERIE_FREEZE_TIME + (owner->stats()->level*2) -
+						    rng(FAERIE_FREEZE_TIME + (owner->stats()->level*2) -
 						           (target->myguy->constitution/21) );
 					else
 						target->stats()->frozen_delay =
@@ -2141,7 +2146,7 @@ bool walker::attack(walker  *target)
 		}
 		if (on_screen() && targetorder == Order::Living)
 		{
-			if (random(2))
+			if (rng(2))
 				myscreen->soundp->play_sound(SOUND_DIE1);
 			else
 				myscreen->soundp->play_sound(SOUND_DIE2);
@@ -2515,7 +2520,7 @@ bool walker::special()
                         {
                             if (w)
                             {
-                                if (random(stats_->level) >= random(w->stats()->level))
+                                if (rng(stats_->level) >= rng(w->stats()->level))
                                     w->busy += 6*(stats_->level -
                                                             w->stats()->level + 1);
                                 generic = 1; // disarmed at least one guy
@@ -2557,7 +2562,7 @@ bool walker::special()
 								        newob != this )
 								{
 								    // Get the cost first
-									generic = stats_->magicpoints/4 + random(stats_->magicpoints/4);
+									generic = stats_->magicpoints/4 + rng(stats_->magicpoints/4);
 									int cost = generic/2;
 									// Add bonus healing
 									generic += stats_->level*5;
@@ -2687,7 +2692,7 @@ bool walker::special()
 								if (!alive)
 									return 0;
 								alive->team_num = team_num;
-								alive->stats()->level = random(stats_->level) + 1;
+								alive->stats()->level = rng(stats_->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
 								alive->setxy(newob->xpos, newob->ypos);
 								alive->owner = this;
@@ -2746,7 +2751,7 @@ bool walker::special()
 								alive = do_summon(FAMILY_GHOST, 150 + (stats_->level*40) );
 								if (!alive)
 									return 0;
-								alive->stats()->level = random(stats_->level) + 1;
+								alive->stats()->level = rng(stats_->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
 								alive->team_num = team_num;
 								alive->setxy(newob->xpos, newob->ypos);
@@ -2799,7 +2804,7 @@ bool walker::special()
 								if (!alive)
 									return 0;
 								alive->team_num = team_num;
-								alive->stats()->level = random(stats_->level) + 1;
+								alive->stats()->level = rng(stats_->level) + 1;
 								alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
 								alive->owner = this;
 							}
@@ -3214,7 +3219,7 @@ bool walker::special()
 							person = FAMILY_ELF;
 						else if (generic < 250)
 						{
-							switch (random(3))
+							switch (rng(3))
 							{
 								case 0:
 									person = FAMILY_ELF;
@@ -3232,7 +3237,7 @@ bool walker::special()
 						}
 						else if (generic < 500)
 						{
-							switch (random(5))
+							switch (rng(5))
 							{
 								case 0:
 									person = FAMILY_ELF;
@@ -3256,7 +3261,7 @@ bool walker::special()
 						}
 						else if (generic < 1000)
 						{
-							switch (random(7))
+							switch (rng(7))
 							{
 								case 0:
 									person = FAMILY_ELF;
@@ -3286,7 +3291,7 @@ bool walker::special()
 						}
 						else // our maximum possible, insert before if needed
 						{
-							switch (random(9))
+							switch (rng(9))
 							{
 								case 0:
 									person = FAMILY_ELF;
@@ -3384,18 +3389,18 @@ bool walker::special()
                             {
                                 generic2 -= 10; // count cost for additional guy
                                 generic = stats_->level - ob->stats()->level;
-                                if (generic < 0 || (!random(20)) ) // trying to control a higher-level
+                                if (generic < 0 || (!rng(20)) ) // trying to control a higher-level
                                 {
                                     ob->real_team_num = ob->team_num;
-                                    ob->team_num = random(8);
-                                    ob->charm_left_ = 25 + random(generic*20);
+                                    ob->team_num = rng(8);
+                                    ob->charm_left_ = 25 + rng(generic*20);
                                 }
                                 else
                                 {
                                     ob->real_team_num = ob->team_num;
                                     ob->team_num = team_num;
                                     ob->foe = nullptr; // allow choice of new foe
-                                    ob->charm_left_ = 25 + random(generic*20);
+                                    ob->charm_left_ = 25 + rng(generic*20);
                                 }
                                 didheal++;
                             }
@@ -3469,7 +3474,7 @@ bool walker::special()
 			}
 			else
 			{
-				stats_->set_command(COMMAND_WALK,10,random(3)-1,random(3)-1);
+				stats_->set_command(COMMAND_WALK,10,rng(3)-1,rng(3)-1);
 				return 0;
 			}
 			break;
@@ -3509,15 +3514,15 @@ bool walker::special()
 							person = 1;
 					if (!person)
 					{
-						tempx = random(3)-1;
-						tempy = random(3)-1;
+						tempx = rng(3)-1;
+						tempy = rng(3)-1;
 						if ( (tempx==0) && (tempy==0) )
 							tempx = 1;
 						stats_->force_command(COMMAND_WALK, 20, tempx,tempy);
 					}
 					break;
 				case 2: // thief cloaking ability, Registered
-					invisibility_left += 20 + ((random(20))*stats_->level);
+					invisibility_left += 20 + ((rng(20))*stats_->level);
 					break;
 				case 3: // thief Taunt (draw enemies), Registered
 					if (!shifter_down) // normal taunt
@@ -3531,14 +3536,14 @@ bool walker::special()
                             
                             for(auto* ob : newlist)
                             {
-                                if (ob && (random(stats_->level) >=
-                                                 random(ob->stats()->level)) )
+                                if (ob && (rng(stats_->level) >=
+                                                 rng(ob->stats()->level)) )
                                 {
                                     // Set our enemy's foe to us..
                                     ob->foe = this;
                                     ob->leader = this; // a hack, yeah
                                     if (ob->query_act_type() != ACT_CONTROL)
-                                        ob->stats()->force_command(COMMAND_FOLLOW, 10+random(stats_->level), 0, 0);
+                                        ob->stats()->force_command(COMMAND_FOLLOW, 10+rng(stats_->level), 0, 0);
                                 }
                             }
                         }
@@ -3574,7 +3579,7 @@ bool walker::special()
                                    )
                                 {
                                     generic = stats_->level - ob->stats()->level;
-                                    if (generic < 0 || (!random(20)) ) // trying to control a higher-level
+                                    if (generic < 0 || (!rng(20)) ) // trying to control a higher-level
                                     {
                                         // Enemy gets free attack ..
                                         ob->foe = this;
@@ -3841,7 +3846,7 @@ bool walker::special()
                                     tempx = ob->myguy->constitution;
                                 else
                                     tempx = ob->stats()->hitpoints / 30;
-                                tempy = 10 + random(stats_->level*10) - random(tempx*10);
+                                tempy = 10 + rng(stats_->level*10) - rng(tempx*10);
                                 if (tempy < 0)
                                     tempy = 0;
                                 ob->stats()->frozen_delay += tempy;
@@ -4002,13 +4007,13 @@ bool walker::teleport()
 		}
 	} // end of checking for marker (we failed)
 
-	newx = random(myscreen->level_data.grid.w)*GRID_SIZE;
-	newy = random(myscreen->level_data.grid.h)*GRID_SIZE;
+	newx = rng(myscreen->level_data.grid.w)*GRID_SIZE;
+	newy = rng(myscreen->level_data.grid.h)*GRID_SIZE;
 
 	while(!myscreen->query_passable(newx, newy, this))
 	{
-		newx = random(myscreen->level_data.grid.w)*GRID_SIZE;
-		newy = random(myscreen->level_data.grid.h)*GRID_SIZE;
+		newx = rng(myscreen->level_data.grid.w)*GRID_SIZE;
+		newy = rng(myscreen->level_data.grid.h)*GRID_SIZE;
 	}
 	setxy(newx,newy);
 	return 1;
@@ -4019,13 +4024,13 @@ bool walker::teleport_ranged(Sint32 range)
 	short newx,newy;
 	short keep_going = 200; // maxtries
 
-	newx = random(2*range) - range + xpos;
-	newy = random(2*range) - range + ypos;
+	newx = rng(2*range) - range + xpos;
+	newy = rng(2*range) - range + ypos;
 
 	while(!myscreen->query_passable(newx, newy, this) && keep_going)
 	{
-		newx = random(2*range) - range + xpos;
-		newy = random(2*range) - range + ypos;
+		newx = rng(2*range) - range + xpos;
+		newy = rng(2*range) - range + ypos;
 		keep_going--;
 	}
 	if (keep_going)
@@ -4056,7 +4061,7 @@ Sint32 walker::turn_undead(Sint32 range, Sint32 power)
 		           )
 		   ) // end of if-check
 		{
-			if (random(range*40) > random(w->stats()->level*10) )
+			if (rng(range*40) > rng(w->stats()->level*10) )
 			{
 				w->dead = 1;
 				w->stats()->hitpoints = 0;
@@ -4197,7 +4202,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 		{
 			weapon->dead = 1;
 			//foe = nullptr;  // can't hit this guy
-			//stats_->try_command(COMMAND_RANDOM_WALK, random(8));
+			//stats_->try_command(COMMAND_RANDOM_WALK, rng(8));
 			return 0;
 		}
 	weapon->dead = 1;
@@ -4217,11 +4222,11 @@ bool
 walker::act_generate()
 {
 	if ( myscreen->level_data.numobs < MAXOBS &&
-	        (random(stats_->level*3) > (random(300+(myscreen->level_data.numobs*8)) ) )
+	        (rng(stats_->level*3) > (rng(300+(myscreen->level_data.numobs*8)) ) )
 	   )
 	{
-		lastx = 1-random(3);
-		lasty = 1-random(3);
+		lastx = 1-rng(3);
+		lasty = 1-rng(3);
 		if (!lastx && !lasty)
 			lastx = 1;
 		init_fire(lastx, lasty);
@@ -4272,7 +4277,7 @@ walker::act_guard()
 	if (foe)
 	{
 		curdir = static_cast<char>(facing(foe->xpos - xpos, foe->ypos-ypos));
-		stats_->try_command(COMMAND_FIRE,random(30));
+		stats_->try_command(COMMAND_FIRE,rng(30));
 		return 1;
 	}
 	else
@@ -4286,10 +4291,10 @@ walker::act_random()
 	short xdist, ydist;
 
 	// Specially put in to attempt to make enemy harder
-	//if (random(sizex/GRID_SIZE)) return 0;
+	//if (rng(sizex/GRID_SIZE)) return 0;
 
 	// Find our foe
-	if (!random(70) || (!foe))
+	if (!rng(70) || (!foe))
 		foe = myscreen->find_far_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
@@ -4304,7 +4309,7 @@ walker::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats_->set_command(COMMAND_FIRE, random(24), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, rng(24), xdist, ydist);
 			return 1;
 		}
 		else
@@ -4331,8 +4336,8 @@ walker::act_random()
 	{
 		while ( !newx && !newy)
 		{
-			newx = (1-random(3));   // Walk in some random direction
-			newy = (1-random(3));   // other than 0,0 :)
+			newx = (1-rng(3));   // Walk in some random direction
+			newy = (1-rng(3));   // other than 0,0 :)
 		}
 	}
 
@@ -4570,9 +4575,9 @@ bool walker::death()
 				newob->team_num = team_num;
 				newob->stats()->level = stats_->level;
 				newob->ani_type = ANI_EXPLODE;
-				newob->setxy(xpos+random(sizex-8)+4, ypos+4+random(sizey-8) );
+				newob->setxy(xpos+rng(sizex-8)+4, ypos+4+rng(sizey-8) );
 				newob->damage = stats_->level*2;
-				newob->set_frame(random(3));
+				newob->set_frame(rng(3));
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_EXPLODE);
 			}
@@ -4613,7 +4618,7 @@ void walker::generate_bloodspot()
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
-	bloodstain->set_frame(random(4));  // has no effect yet ..
+	bloodstain->set_frame(rng(4));  // has no effect yet ..
 	bloodstain->ani_type = ANI_WALK;
 	//bloodstain->bmp = (char *) (data+3); // our image
 

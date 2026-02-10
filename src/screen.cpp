@@ -25,6 +25,7 @@
 */
 
 #include "graph.h"
+#include "game_context.h"
 #include "smooth.h"
 #include "util.h"
 #include "input.h"
@@ -535,7 +536,7 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 						dist -= (GRID_SIZE/2);
 						if (dist < GRID_SIZE)
 							dist += GRID_SIZE;
-						if (random(dist/GRID_SIZE))
+						if (ctx().rng->next(dist/GRID_SIZE))
 							return 0;
 					}
 				case PIX_WATER1:      // Water
@@ -968,7 +969,7 @@ walker *screen::find_near_foe(walker  *ob)
 			for(auto* w : ls) //go through the list we received
 			{
 				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
-				        (random(w->invisibility_left/20)==0)
+				        (ctx().rng->next(w->invisibility_left/20)==0)
 				   )
 				{
 					if (w->query_order() == Order::Living ||
@@ -1024,7 +1025,7 @@ walker  *screen::find_far_foe(walker  *ob)
 			if (
 			    (foe->query_order() == Order::Living ||
 			     foe->query_order() == Order::Generator)  &&
-			    (!(random(foe->invisibility_left/20)))
+			    (!(ctx().rng->next(foe->invisibility_left/20)))
 			)
 			{
 				tempdistance = ob->distance_to_ob(foe);

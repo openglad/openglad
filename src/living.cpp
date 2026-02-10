@@ -19,12 +19,18 @@
 //
 
 #include "graph.h"
+#include "game_context.h"
 #include "smooth.h"
 #include <cstring>
 
 // From picker
 extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
 extern Sint32 current_difficulty;
+
+// Shorthand for the injectable RNG
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 living::living(const PixieData& data)
     : walker(data)
@@ -47,7 +53,7 @@ bool living::act()
 		return 0;
 
 	// Make sure everyone we're pointing to is valid
-	if (foe && (foe->dead || (random(foe->invisibility_left/20) > 0) ) )
+	if (foe && (foe->dead || (rng(foe->invisibility_left/20) > 0) ) )
 		foe = nullptr;
 	if (is_friendly(foe))
 		foe = nullptr;
@@ -339,12 +345,12 @@ bool living::act()
 			// We are randomly walking toward enemy
 		case ACT_RANDOM:
 			{
-				if (!random(5) ) //1 in 5 to do our special
+				if (!rng(5) ) //1 in 5 to do our special
 				{
 					// Should we do our special? Are we full of magic?
 					if (stats_->magicpoints >= stats_->special_cost[1])
 					{
-						current_special = static_cast<char>(random((stats_->level+2)/3) + 1);
+						current_special = static_cast<char>(rng((stats_->level+2)/3) + 1);
 						if ( (current_special > 4) ||
 						        (myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special)] == "NONE")
 						   )
@@ -358,7 +364,7 @@ bool living::act()
 						return 1;
 					}
 				}
-				else if (!random(5) ) //1 in 5 to do act_random() function
+				else if (!rng(5) ) //1 in 5 to do act_random() function
 					act_random();
 				else // 4 of 5 times
 				{
@@ -366,7 +372,7 @@ bool living::act()
 					{
 						foe = myscreen->find_near_foe(this);
 					}
-					if (foe) // && random(2) )
+					if (foe) // && rng(2) )
 					{
 						curdir = enddir = static_cast<char>((enddir/2) * 2);
 						//stats_->try_command(COMMAND_SEARCH, 40, 0, 0);
@@ -374,7 +380,7 @@ bool living::act()
 					}
 					//else if (foe)
 					//  stats_->try_command(COMMAND_RIGHT_WALK,40,0,0);
-					else if (!random(2))
+					else if (!rng(2))
 						foe = myscreen->find_far_foe(this);
 					else
 						stats_->try_command(COMMAND_RANDOM_WALK,20);
@@ -400,7 +406,7 @@ short living::shove(walker  *target, short x, short y)
 	        (is_friendly(target)) // we are allied
 	   )
 		// Make sure WE don't get shoved
-		if (random(3) && target->query_act_type() != ACT_CONTROL)
+		if (rng(3) && target->query_act_type() != ACT_CONTROL)
 		{
 			// We have to prevent a build-up of shoves which is
 			//   caused by a blocked target.  We do so for now by clearing
@@ -534,7 +540,7 @@ bool living::check_special()
 	Uint32 distance, myrange;
 	short howmany;
 
-	shifter_down = random(2); // on or off, randomly ..
+	shifter_down = rng(2); // on or off, randomly ..
 
 	// Make sure we have enough ..
 	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
@@ -836,7 +842,7 @@ bool living::act_random()
 	short xdist, ydist;
 
 	// Find our foe
-	if (!random(80) || (!foe))
+	if (!rng(80) || (!foe))
 		foe = myscreen->find_near_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,40);
@@ -851,7 +857,7 @@ bool living::act_random()
 		if (fire_check(xdist, ydist))
 		{
 			init_fire(xdist, ydist);
-			stats_->set_command(COMMAND_FIRE, static_cast<short>(random(24)), xdist, ydist);
+			stats_->set_command(COMMAND_FIRE, static_cast<short>(rng(24)), xdist, ydist);
 			return 1;
 		}
 		else

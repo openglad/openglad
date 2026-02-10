@@ -24,7 +24,12 @@
 
 //#include "graph.h"
 #include "effect.h"
+#include "game_context.h"
 #include "test_trace.h"
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
@@ -210,7 +215,7 @@ bool effect::act()
 				{
 					newob->attack(newob->collide_ob);
 					damage /= 4.0f;
-					//setxy(xpos-(2*xd)+random(xd), ypos-(2*yd)+random(yd));
+					//setxy(xpos-(2*xd)+rng(xd), ypos-(2*yd)+rng(yd));
 				}
 				newob->dead = 1;
 			}
@@ -261,10 +266,10 @@ bool effect::act()
 				xd = yd = 0;
 				while (xd == 0 && yd == 0)
 				{
-					xd = random(3)-1;
-					yd = random(3)-1;
+					xd = rng(3)-1;
+					yd = rng(3)-1;
 				}
-				stats_->add_command(COMMAND_WALK, static_cast<short>(random(20)), static_cast<short>(xd), static_cast<short>(yd));
+				stats_->add_command(COMMAND_WALK, static_cast<short>(rng(20)), static_cast<short>(xd), static_cast<short>(yd));
 			}
 			break; // end of cloud
 		case FAMILY_CHAIN: // chain lightning ..
@@ -306,7 +311,7 @@ bool effect::act()
 					                                      240+stats_->level*5, &temp, this);
 				if (temp && generic>20) // more foes to find ..
 				{
-					numfoes = random(owner->stats()->level)+1;
+					numfoes = rng(owner->stats()->level)+1;
 					for(auto* w : foelist)
 					{
 					    if (numfoes <= 0) break;
@@ -507,7 +512,7 @@ bool effect::death()
 						tempy = tempy / (abs(tempy));
 					generic = (owner->stats()->level*25);
 					if (w->myguy)
-						generic -= random(w->myguy->constitution);
+						generic -= rng(w->myguy->constitution);
 					if (generic > 0)
 						w->stats()->force_command(COMMAND_WALK,
 						                               static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));
