@@ -178,16 +178,6 @@ Sint32 guy::query_heart_value() // how much are we worth?
 
 }
 
-void guy::set_level_number(short level)
-{
-    this->level = level;
-}
-
-short guy::get_level() const
-{
-    return level;
-}
-
 Uint32 calculate_exp(Sint32 level);
 
 Sint32 costlist[NUM_FAMILIES] =

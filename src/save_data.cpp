@@ -319,7 +319,7 @@ bool SaveData::load(const std::string& filename)
 		temp_guy->intelligence = temp_short;
 		temp_guy->armor        = temp_arm;
 		if(temp_version >= 9)
-            temp_guy->set_level_number(temp_lev);
+            temp_guy->level = temp_lev;
         else
             temp_guy->upgrade_to_level(temp_lev);
 		temp_guy->exp          = temp_exp;
@@ -612,7 +612,7 @@ bool SaveData::save(const std::string& filename)
         temp_con = temp_guy->constitution;
         temp_short = temp_guy->intelligence;
         temp_arm = temp_guy->armor;
-        temp_lev = temp_guy->get_level();
+        temp_lev = temp_guy->level;
         temp_exp = temp_guy->exp;
         // Version 3+ below here
         temp_kills = temp_guy->kills;

@@ -304,7 +304,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         {
             if (save_data->team_list[i])
             {
-                army_power += 3*save_data->team_list[i]->get_level();
+                army_power += 3*save_data->team_list[i]->level;
             }
         }
     }

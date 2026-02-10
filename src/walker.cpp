@@ -4396,7 +4396,7 @@ void walker::transfer_stats(walker  *newob)
 		newguy->constitution = myguy->constitution;
 		newguy->dexterity = myguy->dexterity;
 		newguy->intelligence = myguy->intelligence;
-		newguy->set_level_number(myguy->get_level());
+		newguy->level = myguy->level;
 		newguy->armor = myguy->armor;
 		newguy->exp = myguy->exp;
 		// 'Kill-stats'

@@ -178,8 +178,8 @@ short pixie::on_screen(viewscreen  *viewp)
 {
 	short topx = viewp->topx;
 	short topy = viewp->topy;
-	short xview = viewp->get_xview();
-	short yview = viewp->get_yview();
+	short xview = viewp->xview;
+	short yview = viewp->yview;
 
 	// Return 0 if off viewscreen.
 	// These measurements are grid coords, not pixels.

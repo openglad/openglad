@@ -120,16 +120,13 @@ class viewscreen
 		signed char prefs[10]; // User preferences ..
 		radar * myradar;
 		short radarstart; //has the radar been started yet?
-
-		short get_xview() const { return xview; }
-		short get_yview() const { return yview; }
+		short xview;
+		short yview;
 
 	protected:
 		options *prefsob;
-		
+
 		short size;
-		short xview;
-		short yview;
 		unsigned char  *bmp,  *oldbmp;
 };
 

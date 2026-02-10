@@ -49,7 +49,6 @@ class screen : public video
 		void initialize_views();
 		void cleanup(short);
 		void clear();
-		video * get_video_ob();
 		bool query_passable(float x, float y, walker  *ob);
 		bool query_object_passable(float x, float y, walker  *ob);
 		bool query_grid_passable(float x, float y, walker  *ob);

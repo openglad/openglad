@@ -69,12 +69,12 @@ REGISTER_TEST(test_guy_copy);
 // Test: Guy upgrade_to_level increases stats
 void test_guy_level_up() {
     guy soldier(FAMILY_SOLDIER);
-    short initial_level = soldier.get_level();
+    short initial_level = soldier.level;
     short initial_str = soldier.strength;
 
     soldier.upgrade_to_level(5);
 
-    TEST_ASSERT_EQ(5, soldier.get_level(), "level should be 5 after upgrade");
+    TEST_ASSERT_EQ(5, soldier.level, "level should be 5 after upgrade");
     TEST_ASSERT(soldier.strength >= initial_str,
         "strength should not decrease after leveling up");
 }

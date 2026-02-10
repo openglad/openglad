@@ -33,8 +33,6 @@ class guy
 		walker* create_walker(screen* myscreen);
 		walker* create_and_add_walker(screen* myscreen);
 		void upgrade_to_level(short level, bool set_xp = true);
-		void set_level_number(short level);
-		short get_level() const;
 		
         float get_hp_bonus() const;
         float get_mp_bonus() const;
@@ -70,8 +68,7 @@ class guy
         
         // In ID for comparing old guys with their duplicated counterparts after battle
         int id;
-        
-    protected:
+
         short level;
 };
 

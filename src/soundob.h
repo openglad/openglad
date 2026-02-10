@@ -55,10 +55,8 @@ class soundob
 		void load_sound(Mix_Chunk **audio, const char * file);
 		void free_sound(Mix_Chunk **sound);
 
-		unsigned char query_volume();
 		unsigned char set_sound(bool silent);      // Toggle sound on/off
 		void load_sound(SDL_AudioSpec, char *);
-		unsigned char set_volume(unsigned char volumelevel);
 		std::string soundlist[NUMSOUNDS];            // Our list of sounds
 		Mix_Chunk *sound[NUMSOUNDS];		// AudioSpec for loading sounds
 		int baseio, irq, dma, dma16;                // Card-specific information

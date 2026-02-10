@@ -169,17 +169,6 @@ void soundob::play_sound(short whichnum)
 	Mix_PlayChannel(-1,sound[whichnum],0);
 }
 
-unsigned char soundob::query_volume()
-{
-	return volume;
-}
-
-unsigned char soundob::set_volume(unsigned char volumelevel)
-{
-	volume = volumelevel;
-	return volume;
-}
-
 // Used to turn sound on or off
 unsigned char soundob::set_sound(bool silent)
 {
