@@ -47,3 +47,26 @@ HealResult compute_heal_amount(Sint32 magicpoints, Sint32 level, IRandom& rng);
 // Returns: charm duration in ticks
 Sint32 compute_charm_duration(Sint32 level_diff, IRandom& rng);
 
+// XP from dealing damage: quintic polynomial based on level difference.
+// level_diff: attacker_level - target_level
+// damage: damage dealt
+// Returns: XP earned (clamped to >= 0)
+short compute_xp_from_attack(Sint32 level_diff, float damage);
+
+// XP from killing a target (equivalent to dealing 20 damage worth of XP).
+short compute_xp_from_kill(Sint32 level_diff);
+
+// XP action types for compute_xp_from_action.
+enum class ExpAction {
+    Attack, Kill, Heal, TurnUndead,
+    RaiseSkeleton, RaiseGhost, Resurrect, ResurrectPenalty,
+    Protection, EatCorpse
+};
+
+// Compute XP for any action type.
+// attacker_level/target_level: the relevant entity levels
+// value: action-specific value (damage for Attack, heal amount for Heal, etc.)
+// rng: needed only for Heal action
+short compute_xp_from_action(ExpAction action, Sint32 attacker_level, Sint32 target_level,
+                             short value, IRandom& rng);
+

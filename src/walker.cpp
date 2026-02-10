@@ -1701,66 +1701,11 @@ bool walker::collide(walker  *ob)
 }
 
 
-short get_xp_from_attack(walker* w, walker* target, float damage)
-{
-    float x = (w->stats()->level - target->stats()->level);
-    // Whooo-ee!  An interpolated (quintic) polynomial to fit {{0,30},{1,25},{2,15},{3,10},{4,5},{5,2.5},{6,1.25},{7,0.5},{8,0.25},{9,-10}} for 20 damage done.
-    // Being an odd order polynomial is important so it can rise to infinity leftward and fall to neg infinity rightward.
-    // The factor was adjusted to make level ups happen at a good rate.
-    float poly = -0.00246795*pow(x,5)+0.013243*pow(x,4)+0.223208*pow(x,3)-1.16091*pow(x,2)-5.54277*x+30.2923;
-    float result = 6.0f*damage*poly/20.0f;
-    if(result <= 0)
-        return 0;
-    
-    return result;
-}
-
-short get_xp_from_kill(walker* w, walker* target)
-{
-    return get_xp_from_attack(w, target, 20);
-}
-
-enum class ExpAction { Attack, Kill, Heal, TurnUndead, RaiseSkeleton, RaiseGhost, Resurrect, ResurrectPenalty, Protection, EatCorpse };
-
+// Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 {
-    switch(action)
-    {
-    case ExpAction::Attack:
-        // value == damage done
-        {
-            return get_xp_from_attack(w, target, value);
-        }
-    case ExpAction::Kill:
-        {
-            return get_xp_from_kill(w, target);
-        }
-    case ExpAction::Heal:
-        // value == number of hitpoints healed
-        return (rng(20*value)/w->stats()->level);
-    case ExpAction::TurnUndead:
-        // value == number of turned undead
-        return (value*3);
-    case ExpAction::RaiseSkeleton:
-        // target == the new skeleton
-        return 45;
-    case ExpAction::RaiseGhost:
-        // target == the new ghost
-        return 60;
-    case ExpAction::Resurrect:
-        // target == the revived guy or ghost (if it was an enemy)
-        return 90;
-    case ExpAction::ResurrectPenalty:
-        // target == the revived friend
-        return ((target->stats()->level)*(target->stats()->level)*100);
-    case ExpAction::Protection:
-        // target == the friend receiving the protection
-        return w->stats()->level;
-    case ExpAction::EatCorpse:
-        // target == the remains to be eaten
-        return target->stats()->level*5;
-    }
-    return 0;
+    return compute_xp_from_action(action, w->stats()->level, target->stats()->level,
+                                  value, *ctx().rng);
 }
 
 

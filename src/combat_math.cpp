@@ -73,3 +73,49 @@ Sint32 compute_charm_duration(Sint32 level_diff, IRandom& rng)
     return 25 + static_cast<Sint32>(rng.next(static_cast<Uint32>(generic * 20)));
 }
 
+short compute_xp_from_attack(Sint32 level_diff, float damage)
+{
+    float x = static_cast<float>(level_diff);
+    float poly = -0.00246795f*powf(x,5) + 0.013243f*powf(x,4)
+                 + 0.223208f*powf(x,3) - 1.16091f*powf(x,2)
+                 - 5.54277f*x + 30.2923f;
+    float result = 6.0f * damage * poly / 20.0f;
+    if (result <= 0)
+        return 0;
+    return static_cast<short>(result);
+}
+
+short compute_xp_from_kill(Sint32 level_diff)
+{
+    return compute_xp_from_attack(level_diff, 20.0f);
+}
+
+short compute_xp_from_action(ExpAction action, Sint32 attacker_level, Sint32 target_level,
+                             short value, IRandom& rng)
+{
+    Sint32 level_diff = attacker_level - target_level;
+    switch (action) {
+    case ExpAction::Attack:
+        return compute_xp_from_attack(level_diff, static_cast<float>(value));
+    case ExpAction::Kill:
+        return compute_xp_from_kill(level_diff);
+    case ExpAction::Heal:
+        return static_cast<short>(rng.next(static_cast<Uint32>(20 * value)) / attacker_level);
+    case ExpAction::TurnUndead:
+        return static_cast<short>(value * 3);
+    case ExpAction::RaiseSkeleton:
+        return 45;
+    case ExpAction::RaiseGhost:
+        return 60;
+    case ExpAction::Resurrect:
+        return 90;
+    case ExpAction::ResurrectPenalty:
+        return static_cast<short>(target_level * target_level * 100);
+    case ExpAction::Protection:
+        return static_cast<short>(attacker_level);
+    case ExpAction::EatCorpse:
+        return static_cast<short>(target_level * 5);
+    }
+    return 0;
+}
+

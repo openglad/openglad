@@ -161,3 +161,130 @@ void test_charm_duration_negative_diff()
     TEST_ASSERT_EQ(25, (int)result, "charm duration with negative level diff clamps to base");
 }
 REGISTER_TEST(test_charm_duration_negative_diff);
+
+// ---------------------------------------------------------------------------
+// compute_xp_from_attack tests
+// ---------------------------------------------------------------------------
+
+void test_xp_from_attack_same_level()
+{
+    // level_diff=0, damage=20 -> poly ≈ 30.2923 -> result = 6*20*30.2923/20 ≈ 181
+    short xp = compute_xp_from_attack(0, 20.0f);
+    TEST_ASSERT(xp > 170 && xp < 190, "XP at same level should be ~181");
+}
+REGISTER_TEST(test_xp_from_attack_same_level);
+
+void test_xp_from_attack_higher_level_attacker()
+{
+    // level_diff=5 (attacker is 5 levels higher) -> less XP
+    short xp = compute_xp_from_attack(5, 20.0f);
+    TEST_ASSERT(xp >= 0 && xp < 30, "XP should be very low when attacker is much higher level");
+}
+REGISTER_TEST(test_xp_from_attack_higher_level_attacker);
+
+void test_xp_from_attack_lower_level_attacker()
+{
+    // level_diff=-2 (attacker 2 levels below target) -> more XP
+    short xp_below = compute_xp_from_attack(-2, 20.0f);
+    short xp_same = compute_xp_from_attack(0, 20.0f);
+    TEST_ASSERT(xp_below > xp_same, "XP should be higher when fighting above your level");
+}
+REGISTER_TEST(test_xp_from_attack_lower_level_attacker);
+
+void test_xp_from_attack_scales_with_damage()
+{
+    short xp_low = compute_xp_from_attack(0, 5.0f);
+    short xp_high = compute_xp_from_attack(0, 20.0f);
+    TEST_ASSERT(xp_high > xp_low, "XP should scale with damage dealt");
+}
+REGISTER_TEST(test_xp_from_attack_scales_with_damage);
+
+void test_xp_from_attack_zero_damage()
+{
+    short xp = compute_xp_from_attack(0, 0.0f);
+    TEST_ASSERT_EQ(0, (int)xp, "zero damage should give zero XP");
+}
+REGISTER_TEST(test_xp_from_attack_zero_damage);
+
+void test_xp_from_kill()
+{
+    // Kill XP equals attack XP for 20 damage
+    short xp_kill = compute_xp_from_kill(0);
+    short xp_attack = compute_xp_from_attack(0, 20.0f);
+    TEST_ASSERT_EQ((int)xp_attack, (int)xp_kill, "kill XP should equal 20-damage attack XP");
+}
+REGISTER_TEST(test_xp_from_kill);
+
+// ---------------------------------------------------------------------------
+// compute_xp_from_action tests
+// ---------------------------------------------------------------------------
+
+void test_xp_from_action_attack()
+{
+    FixedRandom fixed(0);
+    short xp = compute_xp_from_action(ExpAction::Attack, 5, 5, 20, fixed);
+    short xp_direct = compute_xp_from_attack(0, 20.0f);
+    TEST_ASSERT_EQ((int)xp_direct, (int)xp, "ExpAction::Attack should match compute_xp_from_attack");
+}
+REGISTER_TEST(test_xp_from_action_attack);
+
+void test_xp_from_action_kill()
+{
+    FixedRandom fixed(0);
+    short xp = compute_xp_from_action(ExpAction::Kill, 3, 1, 0, fixed);
+    short xp_direct = compute_xp_from_kill(2);
+    TEST_ASSERT_EQ((int)xp_direct, (int)xp, "ExpAction::Kill should match compute_xp_from_kill");
+}
+REGISTER_TEST(test_xp_from_action_kill);
+
+void test_xp_from_action_heal()
+{
+    FixedRandom fixed(50);
+    // value=10 (healed 10 hp), attacker_level=5
+    // rng.next(200) = 50%200 = 50 -> 50/5 = 10
+    short xp = compute_xp_from_action(ExpAction::Heal, 5, 1, 10, fixed);
+    TEST_ASSERT_EQ(10, (int)xp, "Heal XP should be rng(20*value)/level");
+}
+REGISTER_TEST(test_xp_from_action_heal);
+
+void test_xp_from_action_turn_undead()
+{
+    FixedRandom fixed(0);
+    short xp = compute_xp_from_action(ExpAction::TurnUndead, 5, 3, 4, fixed);
+    TEST_ASSERT_EQ(12, (int)xp, "TurnUndead XP should be value*3");
+}
+REGISTER_TEST(test_xp_from_action_turn_undead);
+
+void test_xp_from_action_constants()
+{
+    FixedRandom fixed(0);
+    TEST_ASSERT_EQ(45, (int)compute_xp_from_action(ExpAction::RaiseSkeleton, 1, 1, 0, fixed), "RaiseSkeleton XP");
+    TEST_ASSERT_EQ(60, (int)compute_xp_from_action(ExpAction::RaiseGhost, 1, 1, 0, fixed), "RaiseGhost XP");
+    TEST_ASSERT_EQ(90, (int)compute_xp_from_action(ExpAction::Resurrect, 1, 1, 0, fixed), "Resurrect XP");
+}
+REGISTER_TEST(test_xp_from_action_constants);
+
+void test_xp_from_action_resurrect_penalty()
+{
+    FixedRandom fixed(0);
+    // target_level=5 -> 5*5*100 = 2500
+    short xp = compute_xp_from_action(ExpAction::ResurrectPenalty, 1, 5, 0, fixed);
+    TEST_ASSERT_EQ(2500, (int)xp, "ResurrectPenalty should be target_level^2 * 100");
+}
+REGISTER_TEST(test_xp_from_action_resurrect_penalty);
+
+void test_xp_from_action_protection()
+{
+    FixedRandom fixed(0);
+    short xp = compute_xp_from_action(ExpAction::Protection, 7, 1, 0, fixed);
+    TEST_ASSERT_EQ(7, (int)xp, "Protection XP should be attacker_level");
+}
+REGISTER_TEST(test_xp_from_action_protection);
+
+void test_xp_from_action_eat_corpse()
+{
+    FixedRandom fixed(0);
+    short xp = compute_xp_from_action(ExpAction::EatCorpse, 1, 4, 0, fixed);
+    TEST_ASSERT_EQ(20, (int)xp, "EatCorpse XP should be target_level*5");
+}
+REGISTER_TEST(test_xp_from_action_eat_corpse);
