@@ -207,3 +207,36 @@ void test_compute_base_damage_with_irandom()
                     "compute_base_damage with same seed should be deterministic");
 }
 REGISTER_TEST(test_compute_base_damage_with_irandom);
+
+void test_deterministic_rng_via_game_context()
+{
+    // Demonstrate that injecting a SeededRandom into the GameContext
+    // produces deterministic combat results across multiple runs
+    SeededRandom rng1(99999);
+    SeededRandom rng2(99999);
+
+    GameContext test_ctx;
+    test_ctx.game_screen = myscreen;
+    test_ctx.rng = &rng1;
+    set_global_context(&test_ctx);
+
+    // Run several damage calculations
+    float results1[5];
+    for (int i = 0; i < 5; i++)
+        results1[i] = compute_base_damage(20.0f, *ctx().rng);
+
+    // Reset and replay with same seed
+    test_ctx.rng = &rng2;
+    float results2[5];
+    for (int i = 0; i < 5; i++)
+        results2[i] = compute_base_damage(20.0f, *ctx().rng);
+
+    set_global_context(nullptr);
+
+    for (int i = 0; i < 5; i++) {
+        TEST_ASSERT_EQ(static_cast<int>(results1[i] * 100),
+                        static_cast<int>(results2[i] * 100),
+                        "deterministic RNG should reproduce combat results");
+    }
+}
+REGISTER_TEST(test_deterministic_rng_via_game_context);
