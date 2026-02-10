@@ -135,11 +135,19 @@ This item is explicitly optional; we should only do it if the first two refactor
 
 ## Sequencing (Small Steps, Preserve Existing Coverage)
 
-1. Implement Refactor 1 (hookable frame loop), ensuring:
-   - existing tests still compile and pass
-   - existing end-to-end tests still exercise the real game loop (via the default deps that call SDL)
-2. Implement Refactor 2 (combat math extraction) and add focused unit tests.
-3. Only if needed, implement Refactor 3 (headless screen init) and update `tests/test_main.cpp`.
+1. ✅ Implement Refactor 1 (hookable frame loop) — DONE (commit 6b6713c)
+2. ✅ Implement Refactor 2 (combat math extraction) — DONE (commit 6b6713c)
+3. ⬜ Refactor 3 (headless screen init) — optional, not yet needed.
+
+## Additional Completed Work (Beyond Original Plan)
+
+- Extracted pure functions: orbit_offset, compute_explosion_range,
+  find_next_control, compute_hp_color, compute_mp_color, compute_outline
+- Added TRACE instrumentation throughout effect, walker, view modules
+- Added #ifdef TESTING guards for blocking input/animation functions
+- Added test filter support (pass substring arg to openglad_test)
+- Introduced GameContext with IRandom, InputState (modernization-plan-2)
+- Converted all core simulation random() calls to injectable RNG
 
 ## Guardrails
 

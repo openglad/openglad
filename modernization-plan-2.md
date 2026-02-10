@@ -29,42 +29,46 @@ The goal here is not to chase “modern C++ for its own sake”, but to:
 - Large methods (especially in `walker`, `screen`, `picker`) mix pure math with side effects (FX, sounds, IO).
 - `#ifdef TESTING` blocks remove rendering paths from the test binary, which makes “whole-program” coverage hard to interpret.
 
-## Phase 1: Introduce “Context” Objects (No Behavioral Change)
+## Phase 1: Introduce "Context" Objects (No Behavioral Change) — DONE
 
-1. Add `GameContext` (or `AppContext`) containing:
-   - `screen*` (or `screen&`)
-   - `options*`
-   - `cfg` access
-   - `InputState` snapshot (see Phase 2)
-   - `IRandom` (see Phase 3)
-2. Convert internal subsystems to accept a `GameContext&` parameter instead of reaching for globals.
-3. Keep globals temporarily as thin wrappers so churn is localized:
-   - `GameContext& ctx()` returns the “current global context”
-   - existing code paths call into new overloads using `ctx()`
+1. ✅ Added `GameContext` struct in `src/game_context.h` containing:
+   - `screen*` (game_screen)
+   - `options*` (prefs)
+   - `cfg_store*` (config)
+   - `InputState` snapshot
+   - `IRandom*` (rng)
+2. ✅ `ctx()` global accessor lazily populates from existing globals.
+3. ✅ `set_global_context()` allows tests to inject custom contexts.
+4. ✅ Combat math wired through `ctx().rng` (walker.cpp `get_base_damage()`).
 
-Deliverable: no tests changed, compilation still works for all targets.
+Deliverable: compilation works for all targets, 96 tests pass.
 
-## Phase 2: Split Input Into Snapshot + Mapping
+## Phase 2: Split Input Into Snapshot + Mapping — DONE
 
-1. Create `InputState` as a plain struct that represents “what the player is doing this frame”:
-   - per-player movement direction
-   - fire/special/yell/etc pressed/held
-   - mouse state (if needed)
-2. Move SDL event processing into `InputBackendSDL` which updates an `InputState`.
-3. Make simulation consume only `InputState` (not SDL events).
+1. ✅ Created `InputState`/`PlayerInput` structs with:
+   - `held[16]` and `pressed[16]` arrays per player (edge-detected)
+   - `InputKey` enum class for type-safe key indexing
+   - `move_x()`/`move_y()` helpers for direction computation
+2. ✅ `input_state_from_sdl()` populates InputState from SDL keyboard/joystick state.
+3. ✅ Called each frame in `game_loop.cpp` before `continuous_input()`.
+4. Simulation still reads SDL state directly — gradual migration ongoing.
 
-Deliverable: unit tests can feed synthetic input without SDL threads.
+Deliverable: InputState snapshot populated each frame; tests can construct synthetic InputState.
 
-## Phase 3: Deterministic RNG And Time
+## Phase 3: Deterministic RNG And Time — DONE (RNG part)
 
-1. Introduce `IRandom` (or `RandomStream`) interface:
-   - `Uint32 next_u32(Uint32 max_exclusive)`
-2. Provide:
-   - production RNG wrapper over current `random(...)`
-   - test RNG with a fixed sequence/seed
-3. Introduce `ITimeSource` for `ticks()` / `dt`.
+1. ✅ `IRandom` interface with `next(Uint32 max_exclusive)`:
+   - `ProductionRandom`: wraps existing `random()` function
+   - `FixedRandom`: returns a fixed value (for predictable tests)
+   - `SeededRandom`: LCG-based reproducible sequences
+2. ✅ All core simulation files converted to use `ctx().rng->next()`:
+   - walker.cpp (~60 calls), living.cpp (13), effect.cpp (5), screen.cpp (3),
+     stats.cpp (9), smooth.cpp (23), radar.cpp (8), video.cpp (5),
+     treasure.cpp (1), obmap.cpp (1), glad.cpp (1)
+   - Only level_editor.cpp retains direct `random()` (not core simulation)
+3. ⬜ `ITimeSource` for `ticks()` / `dt` — deferred (lower priority).
 
-Deliverable: combat/AI behaviors become reproducible in tests.
+Deliverable: combat/AI behaviors reproducible in tests with SeededRandom.
 
 ## Phase 4: Extract A `World` / `Simulation` Layer
 
@@ -86,26 +90,31 @@ Deliverable: `game_frame` becomes a thin adapter:
 - call `Simulation::tick`
 - render from `GameState`
 
-## Phase 5: Clarify Ownership + Lifetimes
+## Phase 5: Clarify Ownership + Lifetimes — PARTIALLY DONE
 
-1. Replace remaining “raw owning pointers” in core state with:
-   - `std::unique_ptr` for ownership
-   - `std::span` for views
-2. Introduce stable IDs (`EntityId`) to refer to entities rather than raw pointers where possible.
-3. Restrict mutation to simulation code; UI reads state through accessors.
+1. ✅ Smart pointer adoption completed in MODERNIZATION_PLAN.md Phase 4:
+   - `unique_ptr` for walker lists, viewscreen, loader, obmap, pixie arrays
+   - `std::span` for buffer parameters
+2. ⬜ Introduce stable IDs (`EntityId`) to refer to entities rather than raw pointers.
+3. ⬜ Restrict mutation to simulation code; UI reads state through accessors.
 
 Deliverable: fewer use-after-free risks and simpler tests.
 
-## Phase 6: Testing Strategy For The New Architecture
+## Phase 6: Testing Strategy For The New Architecture — IN PROGRESS
 
-- Keep current integration tests:
-  - picker menu flows
-  - full game loop “fairy death / overpowered team”
-- Add fast unit tests for:
-  - combat math and damage application
-  - AI command selection and movement decisions
+- ✅ Keep current integration tests (96 tests total):
+  - picker menu flows (hire, save/load, view team, options, etc.)
+  - full game loop "fairy death / overpowered team"
+- ✅ Fast unit tests added for:
+  - combat math and damage application (with injectable RNG)
+  - orbit_offset, compute_explosion_range, compute_hp/mp_color
+  - GameContext, IRandom (ProductionRandom, FixedRandom, SeededRandom)
+  - InputState snapshot and PlayerInput direction helpers
+  - Deterministic RNG end-to-end via GameContext injection
+- ⬜ Still needed:
+  - AI command selection with deterministic RNG
   - save/load serialization of `GameState` (pure encode/decode)
-  - input mapping (SDL events -> `InputState`)
+  - input mapping (SDL events -> `InputState`) with synthetic events
 
 Coverage:
 
