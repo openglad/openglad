@@ -290,6 +290,12 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_combat_math.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_loader_and_walker.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_palette.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_util.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_game_loop.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_game_launch.cpp

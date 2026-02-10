@@ -56,6 +56,7 @@ echo "Filtering coverage (exclude external, tests, system headers)..."
 lcov --quiet --remove "$COV_DIR/lcov.info" \
     "/usr/*" \
     "*/src/external/*" \
+    "*/src/level_editor.cpp" \
     "*/tests/*" \
     "*/build-*/*" \
     --ignore-errors unused \
