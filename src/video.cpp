@@ -41,7 +41,6 @@ static cfg_store& active_config()
 #define VIDEO_SIZE 64000
 #define CX_SCREEN 320
 #define CY_SCREEN 200
-#define ASSERT(x) if (!(x)) return 0;
 
 
 unsigned char * videoptr = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
@@ -1897,34 +1896,64 @@ int video::FadeBetween(
 	if (bOldNull && bNewNull) return 0;	//nothing to do
 
 	/* Lock the screen for direct access to the pixels */
+    bool old_locked = false;
 	if ( SDL_MUSTLOCK(pOldSurface) ) {
 		if ( SDL_LockSurface(pOldSurface) < 0 ) {
 			return 0;
 		}
+        old_locked = true;
 	}
+
+    auto fail = [&](const char* reason) -> int
+    {
+        LogError("FadeBetween precondition failed: {}\n", reason);
+        if(old_locked)
+            SDL_UnlockSurface(pOldSurface);
+        if(bOldNull)
+            SDL_FreeSurface(pOldSurface);
+        if(bNewNull)
+            SDL_FreeSurface(pNewSurface);
+        return 0;
+    };
 	
 	//The new surface shouldn't need a lock unless it is somehow a screen surface.
-	ASSERT(!SDL_MUSTLOCK(pNewSurface)); 
+	if(SDL_MUSTLOCK(pNewSurface))
+        return fail("pNewSurface requires lock");
 
 	//The dimensions and format of the old and new surface must match exactly.
-	ASSERT(pOldSurface->pitch == pNewSurface->pitch);
-	ASSERT(pOldSurface->w == pNewSurface->w);
-	ASSERT(pOldSurface->h == pNewSurface->h);
-	ASSERT(pOldSurface->format->Rmask == pNewSurface->format->Rmask);
-	ASSERT(pOldSurface->format->Rshift == pNewSurface->format->Rshift);
-	ASSERT(pOldSurface->format->Rloss == pNewSurface->format->Rloss);
-	ASSERT(pOldSurface->format->Gmask == pNewSurface->format->Gmask);
-	ASSERT(pOldSurface->format->Gshift == pNewSurface->format->Gshift);
-	ASSERT(pOldSurface->format->Gloss == pNewSurface->format->Gloss);
-	ASSERT(pOldSurface->format->Bmask == pNewSurface->format->Bmask);
-	ASSERT(pOldSurface->format->Bshift == pNewSurface->format->Bshift);
-	ASSERT(pOldSurface->format->Bloss == pNewSurface->format->Bloss);
-	ASSERT(pOldSurface->format->Rshift == pNewSurface->format->Rshift);
-	ASSERT(pOldSurface->format->BytesPerPixel == pNewSurface->format->BytesPerPixel);
+	if(pOldSurface->pitch != pNewSurface->pitch)
+        return fail("pitch mismatch");
+	if(pOldSurface->w != pNewSurface->w)
+        return fail("width mismatch");
+	if(pOldSurface->h != pNewSurface->h)
+        return fail("height mismatch");
+	if(pOldSurface->format->Rmask != pNewSurface->format->Rmask)
+        return fail("Rmask mismatch");
+	if(pOldSurface->format->Rshift != pNewSurface->format->Rshift)
+        return fail("Rshift mismatch");
+	if(pOldSurface->format->Rloss != pNewSurface->format->Rloss)
+        return fail("Rloss mismatch");
+	if(pOldSurface->format->Gmask != pNewSurface->format->Gmask)
+        return fail("Gmask mismatch");
+	if(pOldSurface->format->Gshift != pNewSurface->format->Gshift)
+        return fail("Gshift mismatch");
+	if(pOldSurface->format->Gloss != pNewSurface->format->Gloss)
+        return fail("Gloss mismatch");
+	if(pOldSurface->format->Bmask != pNewSurface->format->Bmask)
+        return fail("Bmask mismatch");
+	if(pOldSurface->format->Bshift != pNewSurface->format->Bshift)
+        return fail("Bshift mismatch");
+	if(pOldSurface->format->Bloss != pNewSurface->format->Bloss)
+        return fail("Bloss mismatch");
+	if(pOldSurface->format->Rshift != pNewSurface->format->Rshift)
+        return fail("Rshift mismatch (duplicate check)");
+	if(pOldSurface->format->BytesPerPixel != pNewSurface->format->BytesPerPixel)
+        return fail("BytesPerPixel mismatch");
 
 	//Extract RGB pixel values from each image.
 	const int bpp = pNewSurface->format->BytesPerPixel;
-	ASSERT(bpp==4);	//24-bit color only supported
+	if(bpp != 4)	//24-bit color only supported
+        return fail("unsupported BytesPerPixel (expected 4)");
 
 	Uint32 size = pOldSurface->pitch * pOldSurface->h;
 	std::vector<Uint8> colorsf(size);
