@@ -81,7 +81,6 @@ walker::walker(const PixieData& data)
 	leader = nullptr;
 	owner = nullptr;
 	myguy = nullptr;
-	owns_myguy = false;
 	myself_ = this;
 	dead = 0; // we're alive
 
@@ -128,6 +127,37 @@ walker::walker(const PixieData& data)
 	hit_recoil = 0.0f;
 
 	last_hitpoints = 0.0f;
+}
+
+void walker::set_myguy_view(guy* guy_view)
+{
+	owned_myguy_.reset();
+	myguy = guy_view;
+}
+
+void walker::set_owned_myguy(std::unique_ptr<guy> owned_guy)
+{
+	owned_myguy_ = std::move(owned_guy);
+	myguy = owned_myguy_.get();
+}
+
+void walker::clear_myguy()
+{
+	owned_myguy_.reset();
+	myguy = nullptr;
+}
+
+void walker::move_myguy_to(walker* target)
+{
+	if (target == nullptr)
+		return;
+
+	if (owned_myguy_)
+		target->set_owned_myguy(std::move(owned_myguy_));
+	else
+		target->set_myguy_view(myguy);
+
+	myguy = nullptr;
 }
 
 bool
@@ -217,10 +247,7 @@ walker::~walker()
 
 	stats_.reset();
 	bmp = nullptr;
-	if (owns_myguy && myguy)
-		delete myguy;
-	myguy = nullptr;
-	owns_myguy = false;
+	clear_myguy();
 	myself_ = nullptr;
 
 
@@ -1597,9 +1624,7 @@ bool walker::animate()
 			transfer_stats(newob);
 			if (newob->myguy && newob->myguy->exp < (1000*stats_->level) )
 			{
-				delete newob->myguy;  // can't be 'sustained' if too low
-				newob->myguy = nullptr;
-				newob->owns_myguy = false;
+				newob->clear_myguy();  // can't be 'sustained' if too low
 				newob->stats()->name = "SLIME"; // generic name
 				newob->stats()->level = calculate_level(myguy->exp/2);
 			}
@@ -3740,7 +3765,6 @@ short walker::spaces_clear()
 
 void walker::transfer_stats(walker  *newob)
 {
-	guy  *newguy;
 	short i;
 
 	// First do the 'stats' stuff ..
@@ -3766,33 +3790,8 @@ void walker::transfer_stats(walker  *newob)
 	// Do we have a 'guy' ?
 	if (myguy)
 	{
-		if (newob->owns_myguy && newob->myguy)
-			delete newob->myguy;
-		newguy = new guy();
-		newguy->name = myguy->name;
-		newguy->strength = myguy->strength;
-		newguy->constitution = myguy->constitution;
-		newguy->dexterity = myguy->dexterity;
-		newguy->intelligence = myguy->intelligence;
-		newguy->level = myguy->level;
-		newguy->armor = myguy->armor;
-		newguy->exp = myguy->exp;
-		// 'Kill-stats'
-		newguy->kills = myguy->kills;
-		newguy->level_kills = myguy->level_kills;
-		newguy->total_damage = myguy->total_damage;
-		newguy->total_hits = myguy->total_hits;
-		newguy->total_shots = myguy->total_shots;
-		
-		newguy->scen_damage = myguy->scen_damage;
-		newguy->scen_kills = myguy->scen_kills;
-		newguy->scen_damage_taken = myguy->scen_damage_taken;
-		newguy->scen_min_hp = myguy->scen_min_hp;
-		newguy->scen_shots = myguy->scen_shots;
-		newguy->scen_hits = myguy->scen_hits;
-		
-		newob->myguy = newguy;
-		newob->owns_myguy = true;
+		auto newguy = std::make_unique<guy>(*myguy);
+		newob->set_owned_myguy(std::move(newguy));
 	}
 }
 
@@ -3907,10 +3906,7 @@ bool walker::death()
 						stats_->name = newob->stats()->name;
 					if (myguy)
 					{
-						newob->myguy = myguy;
-						newob->owns_myguy = owns_myguy;
-						myguy = nullptr;
-						owns_myguy = false;
+						move_myguy_to(newob);
 					}
 					newob->center_on(this);
 					stats_->hitpoints = stats_->max_hitpoints;
@@ -3928,10 +3924,7 @@ bool walker::death()
 						stats_->name = newob->stats()->name;
 					if (myguy)
 					{
-						newob->myguy = myguy;
-						newob->owns_myguy = owns_myguy;
-						myguy = nullptr;
-						owns_myguy = false;
+						move_myguy_to(newob);
 					}
 					newob->center_on(this);
 					stats_->hitpoints = stats_->max_hitpoints;

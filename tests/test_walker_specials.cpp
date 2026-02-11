@@ -775,8 +775,7 @@ void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
     mage->busy = 0;
     mage->team_num = 3;
     if (mage->myguy) {
-        delete mage->myguy;
-        mage->myguy = nullptr;
+        mage->clear_myguy();
     }
     walker* ally = make_special_guy(FAMILY_ORC, 3, 2);
     TEST_ASSERT(ally != nullptr, "ally created");
@@ -908,8 +907,7 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     arch->stats()->magicpoints = 1000;
     arch->stats()->name = "ARCH-NPC";
     if (arch->myguy) {
-        delete arch->myguy;
-        arch->myguy = nullptr;
+        arch->clear_myguy();
     }
     foe->real_team_num = 255;
 
@@ -969,8 +967,7 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
         return;
     }
     if (orc->myguy) {
-        delete orc->myguy;
-        orc->myguy = nullptr;
+        orc->clear_myguy();
     }
     orc->stats()->name = "ORC-NPC";
     orc->stats()->hitpoints = 10;
@@ -991,8 +988,7 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
     TEST_ASSERT(barb != nullptr, "barbarian created");
     if (barb) {
         if (barb->myguy) {
-            delete barb->myguy;
-            barb->myguy = nullptr;
+            barb->clear_myguy();
         }
         barb->setxy(120, 120);
         barb->lastx = barb->stepsize;

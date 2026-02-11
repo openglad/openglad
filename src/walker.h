@@ -37,6 +37,10 @@ class walker : public pixieN
 		walker& operator=(const walker&) = delete;
 		walker(walker&&) = delete;
 		walker& operator=(walker&&) = delete;
+		void set_myguy_view(guy* guy_view);
+		void set_owned_myguy(std::unique_ptr<guy> owned_guy);
+		void clear_myguy();
+		void move_myguy_to(walker* target);
 		bool reset(void);
 		short move(short x, short y);
 		void worldmove(float x, float y);
@@ -138,8 +142,7 @@ class walker : public pixieN
 		short death_called;            // if death has already been called
 		short skip_exit;               // cycles after failed exit choice
 		short invulnerable_left;
-		guy  *myguy;                   // Usually non-owning (SaveData::team_list), but may be owned for cloned/transformed walkers
-		bool owns_myguy;               // True when this walker owns and must delete myguy
+		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
 		walker *foe;
 		walker *leader;
 		walker *owner;                 // for weapons
@@ -199,6 +202,7 @@ class walker : public pixieN
 		float worldx_, worldy_;        // Floating point buffer for movement
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;
+		std::unique_ptr<guy> owned_myguy_;
 
 
 };

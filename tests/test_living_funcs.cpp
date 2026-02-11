@@ -2,6 +2,7 @@
 #include "gloader.h"
 #include "guy.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -113,7 +114,7 @@ void test_living_check_special_soldier()
 {
     walker* w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
-    w->myguy = new guy(FAMILY_SOLDIER);
+    w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w->stats()->magicpoints = 100;
     w->stats()->max_magicpoints = 100;
 
@@ -128,7 +129,7 @@ void test_living_check_special_mage()
 {
     walker* w = create_living(FAMILY_MAGE);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
-    w->myguy = new guy(FAMILY_MAGE);
+    w->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     w->stats()->magicpoints = 100;
     w->stats()->max_magicpoints = 100;
 

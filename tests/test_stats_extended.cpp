@@ -2,6 +2,7 @@
 #include "graph.h"
 #include "gloader.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -104,7 +105,7 @@ void test_statistics_do_command_fire()
 {
     walker* w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
-    w->myguy = new guy(FAMILY_SOLDIER);
+    w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
     w->stats()->commands.clear();
     w->stats()->add_command(COMMAND_FIRE, 3, 0, 0);
@@ -261,7 +262,7 @@ void test_statistics_hit_response_mage()
     TEST_ASSERT(attacker != nullptr, "create attacker should succeed");
 
     w->team_num = 0;
-    w->myguy = new guy(FAMILY_MAGE);
+    w->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     w->stats()->magicpoints = 100;
     w->stats()->max_magicpoints = 100;
     attacker->team_num = 1;

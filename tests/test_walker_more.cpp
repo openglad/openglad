@@ -1,6 +1,7 @@
 #include "graph.h"
 #include "guy.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -80,7 +81,7 @@ void test_walker_friendliness_and_attack_paths()
     TEST_ASSERT(!a->is_friendly_to_team(1), "other team should not be friendly");
 
     // Give attacker a guy to record tallies.
-    a->myguy = new guy(FAMILY_SOLDIER);
+    a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     a->myguy->teamnum = 0;
     a->myguy->exp = 0;
 
@@ -90,7 +91,7 @@ void test_walker_friendliness_and_attack_paths()
 
     (void)a->attack(b);
 
-    delete a; // deletes a->myguy
+    delete a;
     delete b;
 }
 REGISTER_TEST(test_walker_friendliness_and_attack_paths);
@@ -105,7 +106,7 @@ void test_walker_specials_and_render_paths_smoke()
     w->team_num = 0;
 
     // Give the walker a guy so specials/XP paths have something to update.
-    w->myguy = new guy(FAMILY_SOLDIER);
+    w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w->myguy->teamnum = 0;
     w->stats()->magicpoints = 999;
     w->stats()->max_magicpoints = 999;
@@ -120,6 +121,6 @@ void test_walker_specials_and_render_paths_smoke()
     (void)w->query_team_color();
     (void)w->query_old_act_type();
 
-    delete w; // deletes myguy
+    delete w;
 }
 REGISTER_TEST(test_walker_specials_and_render_paths_smoke);

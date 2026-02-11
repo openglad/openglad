@@ -3,6 +3,7 @@
 #include "guy.h"
 #include "gloader.h"
 #include "test_framework.h"
+#include <memory>
 #include <vector>
 
 extern screen* myscreen;
@@ -447,7 +448,7 @@ void test_walker_transfer_stats_with_guy()
     TEST_ASSERT(b != nullptr, "b created");
 
     // b shouldn't have a myguy from transfer yet
-    if (b->myguy) { delete b->myguy; b->myguy = nullptr; }
+    b->clear_myguy();
 
     a->transfer_stats(b);
 

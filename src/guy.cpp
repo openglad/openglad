@@ -572,15 +572,15 @@ void guy::update_derived_stats(walker* w)
 
 walker* guy::create_walker(screen* myscreen)
 {
-    guy* temp_guy = new guy(*this);
+    auto temp_guy = std::make_unique<guy>(*this);
     walker* temp_walker = myscreen->level_data.myloader->create_walker(Order::Living, temp_guy->family, nullptr);
-    temp_walker->myguy = temp_guy;
-    temp_walker->stats()->level = temp_guy->level;
+    temp_walker->set_owned_myguy(std::move(temp_guy));
+    temp_walker->stats()->level = temp_walker->myguy->level;
     
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->team_num = temp_guy->teamnum;
+    temp_walker->team_num = temp_walker->myguy->teamnum;
     temp_walker->real_team_num = 255;
     
     return temp_walker;
@@ -588,17 +588,16 @@ walker* guy::create_walker(screen* myscreen)
 
 walker* guy::create_and_add_walker(screen* myscreen)
 {
-    guy* temp_guy = new guy(*this);
+    auto temp_guy = std::make_unique<guy>(*this);
     walker* temp_walker = myscreen->level_data.add_ob(Order::Living, temp_guy->family);
-    temp_walker->myguy = temp_guy;
-    temp_walker->stats()->level = temp_guy->level;
+    temp_walker->set_owned_myguy(std::move(temp_guy));
+    temp_walker->stats()->level = temp_walker->myguy->level;
     
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->team_num = temp_guy->teamnum;
+    temp_walker->team_num = temp_walker->myguy->teamnum;
     temp_walker->real_team_num = 255;
     
     return temp_walker;
 }
-

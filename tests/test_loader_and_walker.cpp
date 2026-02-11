@@ -2,6 +2,7 @@
 #include "gloader.h"
 #include "guy.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -73,7 +74,7 @@ void test_walker_attack_deals_damage_and_awards_score()
     attacker->team_num = 0;
     target->team_num = 1;
 
-    attacker->myguy = new guy(FAMILY_SOLDIER);
+    attacker->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     attacker->myguy->teamnum = 0;
     attacker->myguy->exp = 0;
     attacker->myguy->total_hits = 0;
@@ -91,7 +92,7 @@ void test_walker_attack_deals_damage_and_awards_score()
     TEST_ASSERT(attacker->myguy->total_hits >= 1, "attack should increment attacker hits");
     TEST_ASSERT(myscreen->save_data.m_score[0] > 0, "attack should award score for team 0");
 
-    delete attacker; // deletes attacker->myguy as well
+    delete attacker;
     delete target;
 }
 REGISTER_TEST(test_walker_attack_deals_damage_and_awards_score);
