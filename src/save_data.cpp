@@ -84,6 +84,7 @@ void SaveData::reset()
 
 bool SaveData::load(const std::string& filename)
 {
+    last_io_error_ = SaveDataIoError::None;
 	TRACE("load", "SaveData::load file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *infile;
@@ -167,6 +168,7 @@ bool SaveData::load(const std::string& filename)
 	if ( (infile = open_read_file("save/", temp_filename.c_str())) == nullptr )
 	{
 		LogError("Failed to open save file: {}\n", filename);
+        last_io_error_ = SaveDataIoError::OpenReadFailed;
 		return 0;
 	}
     
@@ -185,6 +187,7 @@ bool SaveData::load(const std::string& filename)
 	{
 	    SDL_RWclose(infile);
 		LogError("Selected file is not a GTL file: {}\n", filename);
+        last_io_error_ = SaveDataIoError::InvalidHeader;
 		return 0; //not a gtl file
 	}
 
@@ -206,6 +209,7 @@ bool SaveData::load(const std::string& filename)
 		{
             SDL_RWclose(infile);
 			LogError("Save file version not supported: {}\n", filename);
+            last_io_error_ = SaveDataIoError::UnsupportedVersion;
 			return 0;
 		}
 	}
@@ -410,6 +414,7 @@ bool SaveData::load(const std::string& filename)
     SDL_RWclose(infile);
 
 	TRACE("load", "SaveData::load complete: scen=%d team_size=%d", scen_num, team_size);
+    last_io_error_ = SaveDataIoError::None;
 	return 1;
 }
 
@@ -445,6 +450,7 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 
 bool SaveData::save(const std::string& filename)
 {
+    last_io_error_ = SaveDataIoError::None;
 	TRACE("save", "SaveData::save file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
 	SDL_RWops  *outfile;
@@ -530,6 +536,7 @@ bool SaveData::save(const std::string& filename)
 	if ( (outfile = open_write_file("save/", temp_filename.c_str())) == nullptr ) // open for write
 	{
 		LogError("Failed to write team file: {}\n", filename);
+        last_io_error_ = SaveDataIoError::OpenWriteFailed;
 		return 0;
 	}
 
@@ -681,7 +688,20 @@ bool SaveData::save(const std::string& filename)
     sync_filesystem();
 
 	TRACE("save", "SaveData::save complete");
+    last_io_error_ = SaveDataIoError::None;
 	return 1;
+}
+
+SaveDataIoError SaveData::load_with_error(const std::string& filename)
+{
+    load(filename);
+    return last_io_error_;
+}
+
+SaveDataIoError SaveData::save_with_error(const std::string& filename)
+{
+    save(filename);
+    return last_io_error_;
 }
 
 

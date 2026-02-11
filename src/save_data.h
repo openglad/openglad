@@ -30,6 +30,15 @@ class walker;
 
 #define MAX_TEAM_SIZE 24 //max # of guys on a team
 
+enum class SaveDataIoError
+{
+    None = 0,
+    OpenReadFailed,
+    OpenWriteFailed,
+    InvalidHeader,
+    UnsupportedVersion
+};
+
 class SaveData
 {
 public:
@@ -60,9 +69,15 @@ public:
     void update_guys(std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist
     bool load(const std::string& filename);
     bool save(const std::string& filename);
+    SaveDataIoError load_with_error(const std::string& filename);
+    SaveDataIoError save_with_error(const std::string& filename);
+    SaveDataIoError last_io_error() const { return last_io_error_; }
     
     bool is_level_completed(int level_index) const;
     int get_num_levels_completed(const std::string& campaign) const;
     void add_level_completed(const std::string& campaign, int level_index);
     void reset_campaign(const std::string& campaign);
+
+private:
+    SaveDataIoError last_io_error_ = SaveDataIoError::None;
 };
