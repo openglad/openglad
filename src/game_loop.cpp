@@ -11,8 +11,8 @@
 
 // Declared elsewhere (glad.cpp).
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-short score_panel(screen* myscreen);
-short score_panel(screen* myscreen, short do_it);
+short score_panel(screen* scr);
+short score_panel(screen* scr, short do_it);
 
 extern bool debug_draw_paths;
 extern bool debug_draw_obmap;

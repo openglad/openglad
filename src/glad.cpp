@@ -37,6 +37,32 @@ screen * myscreen;
 #include "results_screen.h"
 #include "game_context.h"
 
+extern options *theprefs;
+
+namespace
+{
+inline screen* active_screen()
+{
+    if(ctx().game_screen != nullptr)
+        return ctx().game_screen;
+    return myscreen;
+}
+
+inline options* active_prefs()
+{
+    if(ctx().prefs != nullptr)
+        return ctx().prefs;
+    return theprefs;
+}
+
+inline cfg_store& active_config()
+{
+    if(ctx().config != nullptr)
+        return *ctx().config;
+    return cfg;
+}
+} // namespace
+
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
@@ -115,6 +141,7 @@ void picker_reinit_after_game();
 // The browser calls this at ~60 FPS via requestAnimationFrame
 // We accumulate time and only run game logic at the intended frame rate
 static void emscripten_frame_wrapper() {
+	screen* current_screen = active_screen();
 	// Calculate time since last call
 	Uint32 current_time = SDL_GetTicks();
 	Uint32 delta = current_time - g_frame_state.last_frame_time;
@@ -124,8 +151,8 @@ static void emscripten_frame_wrapper() {
 	// Calculate target frame time based on timer_wait (in ticks, 1 tick = 13.6ms)
 	// timer_wait defaults to 6, giving ~82ms per frame (~12 FPS)
 	short timer_wait = 6; // Safe default until myscreen is initialized
-	if (myscreen && myscreen->timer_wait > 0) {
-		timer_wait = myscreen->timer_wait;
+	if (current_screen && current_screen->timer_wait > 0) {
+		timer_wait = current_screen->timer_wait;
 	}
 	Uint32 target_frame_time;
 	if (g_game_speed_factor == 0.0f) {
@@ -157,18 +184,24 @@ static void emscripten_frame_wrapper() {
 					// Initialize game state
 					Log("GameState::Playing: Initializing game\n");
 					release_mouse();
-					myscreen->ready_for_battle(myscreen->save_data.numplayers);
+					if(current_screen == nullptr)
+					{
+						LogError("game_state_init_failed state=playing reason=missing_screen\n");
+						g_game_state = GameState::Quit;
+						break;
+					}
+					current_screen->ready_for_battle(current_screen->save_data.numplayers);
 					glad_init();
 					g_frame_state.done = false;
 					g_frame_state.currentcycle = 0;
 					g_frame_state.cycletime = 3;
 					g_state_initialized = true;
 				}
-				game_frame(*myscreen, g_frame_state);
+				game_frame(*current_screen, g_frame_state);
 				if (g_frame_state.done) {
 					Log("Game done, transitioning back to PICKER\n");
 					clear_keyboard();
-					myscreen->level_data.delete_objects();
+					current_screen->level_data.delete_objects();
 					g_game_state = GameState::Picker;
 					g_state_initialized = false;
 				}
@@ -200,12 +233,15 @@ int main(int argc, char *argv[])
 	init_logging();  // Set up logging output (uses JS console on web)
 	io_init(argc, argv);
 
-	cfg.load_settings();
-	cfg.save_settings();
-	cfg.commandline(argc, argv);
+	active_config().load_settings();
+	active_config().save_settings();
+	active_config().commandline(argc, argv);
 
 	theprefs = new options;
 	myscreen = new screen(1);
+	ctx().prefs = theprefs;
+	ctx().game_screen = myscreen;
+	ctx().config = &active_config();
 
     #ifdef OUYA
     OuyaControllerManager::init();
@@ -261,19 +297,25 @@ int main(int argc, char *argv[])
 // Initialize the game for playing (called before game loop starts)
 void glad_init()
 {
+	screen* current_screen = active_screen();
+	if(current_screen == nullptr)
+	{
+		LogError("glad_init_failed reason=missing_screen\n");
+		return;
+	}
 	// Zardus: PORT: fade out
 	clear_keyboard();
-	myscreen->fadeblack(0);
+	current_screen->fadeblack(0);
 
-	myscreen->clearbuffer();
+	current_screen->clearbuffer();
 
 	// Load the default saved-game ..
-	load_saved_game("save0", myscreen);
+	load_saved_game("save0", current_screen);
 
 #ifdef TESTING
 	// Remove exits so level auto-completes when all enemies die
 	if (g_test_remove_exits) {
-		for (auto& uptr : myscreen->level_data.fxlist) {
+		for (auto& uptr : current_screen->level_data.fxlist) {
 			walker* w = uptr.get();
 			if (w && w->query_order() == Order::Treasure && w->query_family() == FAMILY_EXIT)
 				w->dead = 1;
@@ -282,24 +324,24 @@ void glad_init()
 #endif
 
 	// This will update the 'control' so the screen centers on our guy
-	myscreen->continuous_input();
+	current_screen->continuous_input();
 
 	//*******************************
 	// Fade in
 	//*******************************
-	myscreen->redraw();
-	myscreen->fadeblack(1);
+	current_screen->redraw();
+	current_screen->fadeblack(1);
 
 	//
 	// This is the main program loop
 	//
 
-	myscreen->redraw();
-	myscreen->refresh();
-	read_scenario(myscreen);
-	myscreen->redrawme = 1;
-	myscreen->framecount = 0;
-	myscreen->timerstart = query_timer_control();
+	current_screen->redraw();
+	current_screen->refresh();
+	read_scenario(current_screen);
+	current_screen->redrawme = 1;
+	current_screen->framecount = 0;
+	current_screen->timerstart = query_timer_control();
 
 	// Initialize frame state
 	g_frame_state.done = false;
@@ -309,6 +351,12 @@ void glad_init()
 
 void glad_main(Sint32 playermode)
 {
+	screen* current_screen = active_screen();
+	if(current_screen == nullptr)
+	{
+		LogError("glad_main_failed mode={} reason=missing_screen\n", playermode);
+		return;
+	}
 	glad_init();
 
 #ifdef __EMSCRIPTEN__
@@ -319,11 +367,11 @@ void glad_main(Sint32 playermode)
 	// Native desktop build: use traditional while loop
 	while(!g_frame_state.done)
 	{
-		game_frame(*myscreen, g_frame_state);
+		game_frame(*current_screen, g_frame_state);
 	}
 
 	clear_keyboard();
-	myscreen->level_data.delete_objects();
+	current_screen->level_data.delete_objects();
 #endif
 
 	return; // return to picker
