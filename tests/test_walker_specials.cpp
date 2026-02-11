@@ -422,14 +422,21 @@ void test_walker_special_cleric_raise_undead()
 
     walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
     walker* ghost = make_special_guy(FAMILY_GHOST, 2, 1);
-    TEST_ASSERT(skel != nullptr && ghost != nullptr, "undead foes created");
-    if (skel && ghost) {
+    walker* orc = make_special_guy(FAMILY_ORC, 2, 1);
+    TEST_ASSERT(skel != nullptr && ghost != nullptr && orc != nullptr, "foes created");
+    if (skel && ghost && orc) {
         skel->setxy(w->xpos + 1, w->ypos + 1);
         ghost->setxy(w->xpos + 2, w->ypos + 1);
+        orc->setxy(w->xpos + 3, w->ypos + 1);
         skel->team_num = 2;
         ghost->team_num = 2;
+        orc->team_num = 2;
         skel->stats()->level = 1;
         ghost->stats()->level = 1;
+        orc->stats()->level = 1;
+        skel->dead = 0;
+        ghost->dead = 0;
+        orc->dead = 0;
 
         SequenceRandom seq_rng({39, 0, 39, 0, 39, 0});
         GameContext test_ctx;
@@ -443,6 +450,7 @@ void test_walker_special_cleric_raise_undead()
 
     delete skel;
     delete ghost;
+    delete orc;
     delete w;
 }
 REGISTER_TEST(test_walker_special_cleric_raise_undead);

@@ -163,7 +163,27 @@ void test_walker_draw_tile_basic()
 
     viewscreen* vs = myscreen->viewob[0].get();
     if (vs) {
+        walker* old_control = vs->control;
+        walker* control = make_guy(FAMILY_SOLDIER, 0);
+        if (control) {
+            control->setxy(96, 96);
+            vs->control = control;
+        }
+
         w->draw_tile(vs);
+
+        // draw_tile invisibility path (requires non-null control).
+        w->invisibility_left = 12;
+        w->draw_tile(vs);
+        w->invisibility_left = 0;
+
+        // draw_tile outline path.
+        w->invulnerable_left = 10;
+        w->draw_tile(vs);
+        w->invulnerable_left = 0;
+
+        vs->control = old_control;
+        delete control;
     }
     delete w;
 }
@@ -193,7 +213,20 @@ void test_walker_draw_with_invisibility()
 
     viewscreen* vs = myscreen->viewob[0].get();
     if (vs) {
+        walker* old_control = vs->control;
+        walker* control = make_guy(FAMILY_SOLDIER, 1);
+        if (control) {
+            control->setxy(96, 96);
+            vs->control = control;
+        }
         w->draw(vs);
+        w->compute_outline(vs->control);
+        w->flight_left = 8;
+        w->compute_outline(vs->control);
+        w->invulnerable_left = 8;
+        w->compute_outline(vs->control);
+        vs->control = old_control;
+        delete control;
     }
     delete w;
 }
