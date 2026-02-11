@@ -21,6 +21,8 @@
 //
 
 #include "input.h"
+#include "game_context.h"
+#include "gparser.h"
 #include "screen.h"
 #include "test_trace.h"
 #include <cstdio>
@@ -40,6 +42,20 @@
 #endif
 
 void quit(Sint32 arg1);
+
+static inline screen* active_screen()
+{
+    if(ctx().game_screen != nullptr)
+        return ctx().game_screen;
+    return myscreen;
+}
+
+static inline cfg_store* active_config()
+{
+    if(ctx().config != nullptr)
+        return ctx().config;
+    return &cfg;
+}
 
 int raw_key;
 std::string raw_text_input;
@@ -330,16 +346,19 @@ void handle_window_event(const SDL_Event& event)
     {
         case SDL_WINDOWEVENT_MINIMIZED:
             // Save state here on Android
-            myscreen->save_data.save("save0");
+            if(screen* s = active_screen())
+                s->save_data.save("save0");
             break;
         case SDL_WINDOWEVENT_CLOSE:
             // Save state here on Android
-            myscreen->save_data.save("save0");
+            if(screen* s = active_screen())
+                s->save_data.save("save0");
             break;
         case SDL_WINDOWEVENT_RESTORED:
             // Restore state here on Android.
             // Redraw the screen so it's not blank
-            myscreen->refresh();
+            if(screen* s = active_screen())
+                s->refresh();
             break;
         case SDL_WINDOWEVENT_RESIZED:
             window_w = event.window.data1;
@@ -369,11 +388,14 @@ void handle_key_event(const SDL_Event& event)
         key_press_event = 1;
         
         if(event.key.keysym.sym == SDLK_F10)
-            myscreen->save_screenshot();
+        {
+            if(screen* s = active_screen())
+                s->save_screenshot();
+        }
         else if(event.key.keysym.sym == SDLK_F12 && event.key.keysym.mod & KMOD_CTRL)
         {
             restore_default_settings();
-            cfg.load_settings();
+            active_config()->load_settings();
         }
         break;
     case SDL_KEYUP:
@@ -598,7 +620,11 @@ void handle_mouse_event(const SDL_Event& event)
             {
                 // Treat KEY_SHIFTER as an action instead of a modifier
                 //if(has_alternate)
-                if(myscreen->alternate_name[static_cast<int>(myscreen->viewob[0]->control->query_family())][static_cast<int>(myscreen->viewob[0]->control->current_special)] != "NONE")
+                screen* s = active_screen();
+                if(s != nullptr
+                    && s->viewob[0] != nullptr
+                    && s->viewob[0]->control != nullptr
+                    && s->alternate_name[static_cast<int>(s->viewob[0]->control->query_family())][static_cast<int>(s->viewob[0]->control->current_special)] != "NONE")
                     sendFakeKeyDownEvent(player_keys[0][KEY_SHIFTER]);
             }
             else if(!moving && x < 320/2 - BUTTON_DIM/2 && y > BUTTON_DIM*2)  // Only move with the lower left corner of the screen (and offset for other buttons)
