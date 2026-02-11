@@ -36,6 +36,32 @@
 #include <cstring>
 #include <format>
 
+namespace
+{
+const char* scenario_title_error_string(screen::ScenarioTitleError err)
+{
+    switch(err)
+    {
+        case screen::ScenarioTitleError::None:
+            return "none";
+        case screen::ScenarioTitleError::OpenReadFailed:
+            return "open_read_failed";
+        case screen::ScenarioTitleError::InvalidHeader:
+            return "invalid_header";
+        case screen::ScenarioTitleError::UnsupportedVersion:
+            return "unsupported_version";
+        case screen::ScenarioTitleError::ReadFailed:
+            return "read_failed";
+    }
+    return "unknown";
+}
+
+bool rw_read_exact(SDL_RWops* infile, void* dst, size_t size, size_t count)
+{
+    return infile != nullptr && SDL_RWread(infile, dst, size, count) == count;
+}
+} // namespace
+
 static inline cfg_store& active_config()
 {
     if(ctx().config != nullptr)
@@ -1052,44 +1078,86 @@ walker* screen::set_walker(walker *ob, Order order, char family)
     return level_data.myloader->set_walker(ob, order, family);
 }
 
+screen::ScenarioTitleError screen::get_scen_title_with_error(const char *filename, std::string& out_title)
+{
+    out_title = "none";
+    if(filename == nullptr || filename[0] == '\0')
+        return ScenarioTitleError::OpenReadFailed;
+
+    SDL_RWops  *infile = nullptr;
+    char temptext[4] = {};
+    char versionnumber = 0;
+    char gridname[8] = {};
+    char buffer[31] = {};
+
+    std::string tempfile = std::string(filename) + ".fss";
+
+    // Zardus: first get the file from scen/
+    infile = open_read_file("scen/", tempfile.c_str());
+    if(infile == nullptr)
+        return ScenarioTitleError::OpenReadFailed;
+
+    ScenarioTitleError err = ScenarioTitleError::None;
+    if(!rw_read_exact(infile, temptext, 1, 3))
+    {
+        err = ScenarioTitleError::ReadFailed;
+        goto close_and_return;
+    }
+    if (std::string(temptext, 3) != "FSS")
+    {
+        err = ScenarioTitleError::InvalidHeader;
+        goto close_and_return;
+    }
+
+    if(!rw_read_exact(infile, &versionnumber, 1, 1))
+    {
+        err = ScenarioTitleError::ReadFailed;
+        goto close_and_return;
+    }
+    if (versionnumber < 6)
+    {
+        err = ScenarioTitleError::UnsupportedVersion;
+        goto close_and_return;
+    }
+
+    // Discard the grid name ...
+    if(!rw_read_exact(infile, gridname, 1, 8))
+    {
+        err = ScenarioTitleError::ReadFailed;
+        goto close_and_return;
+    }
+
+    // Return the title, 30 bytes
+    if(!rw_read_exact(infile, buffer, 1, 30))
+    {
+        err = ScenarioTitleError::ReadFailed;
+        goto close_and_return;
+    }
+
+    out_title = std::string(buffer);
+
+close_and_return:
+    if(infile != nullptr)
+        SDL_RWclose(infile);
+
+    if(err != ScenarioTitleError::None)
+    {
+        Log("scenario_title_load failed: filename={} error={}\n",
+            filename ? filename : "(null)", scenario_title_error_string(err));
+    }
+    return err;
+}
+
 const char* screen::get_scen_title(const char *filename, screen *master)
 {
-	SDL_RWops  *infile = nullptr;
-	char temptext[10] = "XXX";
-	char versionnumber = 0;
-	static char buffer[30];
-
-	std::string tempfile = std::string(filename) + ".fss";
-
-	// Zardus: first get the file from scen/
-	if (!(infile = open_read_file("scen/", tempfile.c_str())))
-	{
-        return "none";
-	}
-
-	// Are we a scenario file?
-	SDL_RWread(infile, temptext, 3, 1);
-	if (std::string(temptext) != "FSS")
-	{
-		return "none";
-	}
-
-	// Check the version number
-	SDL_RWread(infile, &versionnumber, 1, 1);
-	if (versionnumber < 6)
-		return "none";
-
-	// Discard the grid name ...
-	SDL_RWread(infile, buffer, 8, 1);
-
-	// Return the title, 30 bytes
-	SDL_RWread(infile, buffer, 30, 1);
-
-	if (infile)
-    {
-	    SDL_RWclose(infile);
-    }
-	return buffer;
+    (void)master;
+    static char buffer[31] = {};
+    std::string out_title;
+    const ScenarioTitleError err = get_scen_title_with_error(filename, out_title);
+    if(err != ScenarioTitleError::None)
+        out_title = "none";
+    std::snprintf(buffer, sizeof(buffer), "%s", out_title.c_str());
+    return buffer;
 
 }
 

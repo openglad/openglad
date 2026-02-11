@@ -36,6 +36,15 @@
 class screen : public video
 {
 	public:
+		enum class ScenarioTitleError
+		{
+			None = 0,
+			OpenReadFailed,
+			InvalidHeader,
+			UnsupportedVersion,
+			ReadFailed
+		};
+
 		screen();  // called with '1' for numviews
 		screen(short howmany);
 
@@ -75,6 +84,7 @@ class screen : public video
 		void do_notify(std::string_view message, walker  *who);  // printing text
 		void report_mem();
 		walker *set_walker(walker *ob, Order order, char family);
+		ScenarioTitleError get_scen_title_with_error(const char *filename, std::string& out_title);
 		const char* get_scen_title(const char *filename, screen *master);
 		bool is_level_completed(int level_index) const;
 		int get_num_levels_completed(const std::string& campaign) const;
@@ -109,4 +119,3 @@ class screen : public video
 		Uint32 timerstart;
 		Uint32 framecount;
 };
-

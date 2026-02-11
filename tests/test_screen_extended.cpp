@@ -3,6 +3,9 @@
 #include "gloader.h"
 #include "test_framework.h"
 
+#include <cstring>
+#include <filesystem>
+
 extern screen* myscreen;
 
 static walker* make_walker_at(char family, short x, short y, unsigned char team)
@@ -286,3 +289,84 @@ void test_screen_get_scen_title_paths_and_null_foe_guards()
     TEST_ASSERT(myscreen->find_far_foe(nullptr) == nullptr, "find_far_foe should guard nullptr");
 }
 REGISTER_TEST(test_screen_get_scen_title_paths_and_null_foe_guards);
+
+namespace
+{
+struct ScenTitleFixture
+{
+    std::filesystem::path scen_dir;
+    std::filesystem::path valid_file;
+    std::filesystem::path invalid_header_file;
+    std::filesystem::path truncated_file;
+} g_scen_title_fixture;
+
+void write_bytes(const std::filesystem::path& file, const void* data, size_t size)
+{
+    SDL_RWops* out = SDL_RWFromFile(file.string().c_str(), "wb");
+    if(out == nullptr)
+        return;
+    SDL_RWwrite(out, data, 1, size);
+    SDL_RWclose(out);
+}
+
+void setup_scen_title_fixture()
+{
+    g_scen_title_fixture.scen_dir = std::filesystem::path("scen");
+    std::filesystem::create_directories(g_scen_title_fixture.scen_dir);
+    g_scen_title_fixture.valid_file = g_scen_title_fixture.scen_dir / "typed_title_valid.fss";
+    g_scen_title_fixture.invalid_header_file = g_scen_title_fixture.scen_dir / "typed_title_bad_header.fss";
+    g_scen_title_fixture.truncated_file = g_scen_title_fixture.scen_dir / "typed_title_truncated.fss";
+
+    // Valid minimal v6+ scenario title payload.
+    char valid_payload[42] = {};
+    std::memcpy(valid_payload, "FSS", 3);
+    valid_payload[3] = 6;
+    std::memcpy(valid_payload + 4, "gridname", 8);
+    std::memcpy(valid_payload + 12, "Typed Test Title", 16);
+    write_bytes(g_scen_title_fixture.valid_file, valid_payload, sizeof(valid_payload));
+
+    char bad_header[42] = {};
+    std::memcpy(bad_header, "BAD", 3);
+    bad_header[3] = 6;
+    write_bytes(g_scen_title_fixture.invalid_header_file, bad_header, sizeof(bad_header));
+
+    char truncated[4] = {'F', 'S', 'S', 6};
+    write_bytes(g_scen_title_fixture.truncated_file, truncated, sizeof(truncated));
+}
+
+void teardown_scen_title_fixture()
+{
+    std::error_code ec;
+    std::filesystem::remove(g_scen_title_fixture.valid_file, ec);
+    std::filesystem::remove(g_scen_title_fixture.invalid_header_file, ec);
+    std::filesystem::remove(g_scen_title_fixture.truncated_file, ec);
+}
+} // namespace
+
+void test_screen_get_scen_title_with_error_typed_paths()
+{
+    std::string title;
+    screen::ScenarioTitleError err = myscreen->get_scen_title_with_error("typed_title_valid", title);
+    TEST_ASSERT_EQ(static_cast<int>(screen::ScenarioTitleError::None), static_cast<int>(err),
+        "valid scenario file should return typed None");
+    TEST_ASSERT(title == "Typed Test Title", "valid scenario file should return title string");
+
+    title.clear();
+    err = myscreen->get_scen_title_with_error("typed_title_bad_header", title);
+    TEST_ASSERT_EQ(static_cast<int>(screen::ScenarioTitleError::InvalidHeader), static_cast<int>(err),
+        "invalid header should return InvalidHeader");
+
+    title.clear();
+    err = myscreen->get_scen_title_with_error("typed_title_truncated", title);
+    TEST_ASSERT_EQ(static_cast<int>(screen::ScenarioTitleError::ReadFailed), static_cast<int>(err),
+        "truncated file should return ReadFailed");
+
+    title.clear();
+    err = myscreen->get_scen_title_with_error("typed_title_missing_file", title);
+    TEST_ASSERT_EQ(static_cast<int>(screen::ScenarioTitleError::OpenReadFailed), static_cast<int>(err),
+        "missing file should return OpenReadFailed");
+}
+REGISTER_TEST_WITH_FIXTURE(
+    test_screen_get_scen_title_with_error_typed_paths,
+    setup_scen_title_fixture,
+    teardown_scen_title_fixture);
