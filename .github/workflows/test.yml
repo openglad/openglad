@@ -16,13 +16,18 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
 
-      - name: Build test binary
-        run: ./scripts/build_test.sh
+      - name: Configure (ci-test preset)
+        run: cmake --preset ci-test
 
-      - name: Run tests
-        run: ./openglad_test
+      - name: Build module test binaries
+        run: cmake --build --preset ci-test --target og_data_tests og_runtime_tests -j"$(nproc)"
+
+      - name: Run module test binaries
+        run: |
+          ./build/ci-test/og_data_tests
+          ./build/ci-test/og_runtime_tests
 
   build:
     name: Native Build
@@ -34,7 +39,57 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+
+      - name: Configure (dev-release preset)
+        run: cmake --preset dev-release
 
       - name: Build native binaries
-        run: ./scripts/build_native.sh
+        run: cmake --build --preset dev-release --target openglad openscen -j"$(nproc)"
+
+  asan:
+    name: ASan+UBSan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+
+      - name: Configure (ci-asan preset)
+        run: cmake --preset ci-asan
+
+      - name: Build sanitizer test binaries
+        run: cmake --build --preset ci-asan --target og_data_tests og_runtime_tests -j"$(nproc)"
+
+      - name: Run sanitizer tests
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          ./build/ci-asan/og_data_tests
+          ./build/ci-asan/og_runtime_tests
+
+  baseline-metrics:
+    name: Baseline Metrics
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+
+      - name: Collect baseline metrics
+        run: ./scripts/collect_baseline_metrics.sh
+
+      - name: Upload baseline metrics artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-metrics
+          path: build/baseline-metrics/metrics/baseline_metrics.txt
