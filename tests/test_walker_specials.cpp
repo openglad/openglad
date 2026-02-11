@@ -3,6 +3,7 @@
 #include "guy.h"
 #include "gloader.h"
 #include "test_framework.h"
+#include <vector>
 
 extern screen* myscreen;
 
@@ -56,6 +57,29 @@ static walker* find_first_alive_ob_by_family(char family)
     }
     return nullptr;
 }
+
+class SequenceRandom : public IRandom {
+public:
+    explicit SequenceRandom(std::initializer_list<Uint32> vals) : vals_(vals), idx_(0) {}
+    Uint32 next(Uint32 max_exclusive) override
+    {
+        if (max_exclusive == 0) {
+            return 0;
+        }
+        Uint32 v = 0;
+        if (!vals_.empty()) {
+            if (idx_ < vals_.size()) {
+                v = vals_[idx_++];
+            } else {
+                v = vals_.back();
+            }
+        }
+        return v % max_exclusive;
+    }
+private:
+    std::vector<Uint32> vals_;
+    size_t idx_;
+};
 
 // ---------------------------------------------------------------------------
 // special() - exercises the massive family switch (lines 2293-3909)
@@ -257,6 +281,40 @@ void test_walker_special_mage_energy_wave()
 
     set_global_context(nullptr);
     myscreen->level_data.delete_objects();
+
+    // Drive act() into ACT_RANDOM branches (including act_random()).
+    walker* actor = make_special_guy(FAMILY_ORC, 1, 4);
+    walker* enemy = make_special_guy(FAMILY_SOLDIER, 2, 4);
+    TEST_ASSERT(actor != nullptr && enemy != nullptr, "actor/enemy should be created for ACT_RANDOM");
+    if (actor && enemy) {
+        actor->setxy(100, 100);
+        enemy->setxy(108, 100);
+        actor->foe = enemy;
+        actor->ani_type = ANI_WALK;
+        actor->busy = 0;
+        actor->stats()->clear_command();
+        actor->set_act_type(ACT_RANDOM);
+
+        // rng(4)==0 and rng(20)==1 -> take the act_random() path.
+        SequenceRandom seq_rng({0, 1, 0, 1, 0, 1});
+        GameContext random_ctx;
+        random_ctx.game_screen = myscreen;
+        random_ctx.rng = &seq_rng;
+        set_global_context(&random_ctx);
+        (void)actor->act();
+        TEST_ASSERT(actor->query_act_type() == ACT_RANDOM, "ACT_RANDOM path should preserve act type");
+
+        // rng(4)==1 -> take the alternate search branch.
+        FixedRandom nonzero_rng(1);
+        random_ctx.rng = &nonzero_rng;
+        set_global_context(&random_ctx);
+        actor->stats()->clear_command();
+        (void)actor->act();
+        TEST_ASSERT(actor->query_act_type() == ACT_RANDOM, "ACT_RANDOM alternate path should preserve act type");
+        set_global_context(nullptr);
+    }
+    delete actor;
+    delete enemy;
 
 }
 REGISTER_TEST(test_walker_special_mage_energy_wave);

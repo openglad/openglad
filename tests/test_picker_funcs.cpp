@@ -19,6 +19,14 @@ Sint32 change_teamnum(Sint32 arg);
 Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+Sint32 add_guy(guy* newguy);
+Sint32 do_save(Sint32 arg1);
+Sint32 do_load(Sint32 arg1);
+Sint32 delete_all();
+void quit(Sint32 arg1);
+Sint32 return_menu(Sint32 arg);
+Sint32 name_guy(Sint32 arg);
+Sint32 edit_guy(Sint32 arg1);
 
 extern screen* myscreen;
 extern guy* current_guy;
@@ -298,6 +306,41 @@ void test_how_many_with_team()
     TEST_ASSERT_EQ(0, myscreen->save_data.allied_mode, "allied mode should toggle off");
     TEST_ASSERT(allbuttons[7]->label == "PVP: Enemy", "enemy label should update");
 
+    // Directly exercise picker helpers that were still uncovered.
+    int saved_team_size = myscreen->save_data.team_size;
+    guy* saved_team_list[MAX_TEAM_SIZE];
+    for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        saved_team_list[i] = myscreen->save_data.team_list[i];
+        myscreen->save_data.team_list[i] = nullptr;
+    }
+    myscreen->save_data.team_size = 0;
+
+    guy* recruited = new guy(FAMILY_SOLDIER);
+    Sint32 slot = add_guy(recruited);
+    TEST_ASSERT(slot >= 0, "add_guy(guy*) should place recruit in a slot");
+    TEST_ASSERT(myscreen->save_data.team_size == 1, "team size should increment after add_guy(guy*)");
+
+    TEST_ASSERT_EQ(1, (int)delete_all(), "delete_all should report number of removed members");
+    TEST_ASSERT(myscreen->save_data.team_size == 0, "delete_all should clear team size");
+
+    vbutton* old0 = allbuttons[0];
+    if (allbuttons[0] == nullptr) {
+        allbuttons[0] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b0", KEYSTATE_UNKNOWN);
+    }
+    allbuttons[0]->label = "UNIT_TEST_SAVE";
+    Sint32 save_ret = do_save(1);
+    Sint32 load_ret = do_load(1);
+    TEST_ASSERT(save_ret == load_ret, "do_save/do_load should return same menu status");
+
+    TEST_ASSERT_EQ(1234, (int)return_menu(1234), "return_menu should echo its argument");
+    quit(0); // test mode: should not exit
+    guy* tmp_current = current_guy;
+    current_guy = nullptr;
+    TEST_ASSERT_EQ(2, (int)name_guy(0), "name_guy with no current_guy should return REDRAW");
+    TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy with no current_guy should fail");
+    current_guy = tmp_current;
+
+
     delete current_guy;
     current_guy = old_current;
     current_team_num = old_team_num;
@@ -308,9 +351,18 @@ void test_how_many_with_team()
     delete allbuttons[6];
     delete allbuttons[7];
     delete allbuttons[18];
+    if (old0 == nullptr) {
+        delete allbuttons[0];
+    }
+    allbuttons[0] = old0;
     allbuttons[2] = old2;
     allbuttons[6] = old6;
     allbuttons[7] = old7;
     allbuttons[18] = old18;
+
+    for (int i = 0; i < MAX_TEAM_SIZE; i++) {
+        myscreen->save_data.team_list[i] = saved_team_list[i];
+    }
+    myscreen->save_data.team_size = saved_team_size;
 }
 REGISTER_TEST(test_how_many_with_team);

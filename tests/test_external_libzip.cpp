@@ -1,6 +1,7 @@
 #include <cstring>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #include <unistd.h>
@@ -86,6 +87,32 @@ void test_external_libzip_create_add_read_close()
     zip* z_trunc = zip_open(path.c_str(), ZIP_TRUNCATE, &err);
     TEST_ASSERT(z_trunc != nullptr, "zip_open with TRUNCATE on existing file should succeed");
     TEST_ASSERT(zip_close(z_trunc) == 0, "zip_close truncated archive");
+
+    // Existing-but-empty file should be treated as an empty archive.
+    const std::string empty_path = path + ".empty";
+    {
+        std::ofstream ofs(empty_path, std::ios::binary | std::ios::trunc);
+        TEST_ASSERT(ofs.good(), "should create empty zip candidate file");
+    }
+    zip* z_empty = zip_open(empty_path.c_str(), 0, &err);
+    TEST_ASSERT(z_empty != nullptr, "zip_open on empty file should succeed as empty archive");
+    TEST_ASSERT(zip_close(z_empty) == 0, "zip_close empty archive");
+
+    // Nonexistent file without ZIP_CREATE should fail.
+    const std::string missing_path = path + ".missing";
+    zip* z_missing = zip_open(missing_path.c_str(), 0, &err);
+    TEST_ASSERT(z_missing == nullptr, "zip_open without ZIP_CREATE on missing file should fail");
+
+    // Existing file with garbage data should fail consistency checks.
+    const std::string bad_path = path + ".bad";
+    {
+        std::ofstream ofs(bad_path, std::ios::binary | std::ios::trunc);
+        const char garbage[] = "not-a-zip-central-directory";
+        ofs.write(garbage, sizeof(garbage) - 1);
+        TEST_ASSERT(ofs.good(), "should write garbage payload");
+    }
+    zip* z_bad = zip_open(bad_path.c_str(), ZIP_CHECKCONS, &err);
+    TEST_ASSERT(z_bad == nullptr, "zip_open should reject malformed archive with CHECKCONS");
 }
 REGISTER_TEST(test_external_libzip_create_add_read_close);
 
@@ -182,6 +209,22 @@ void test_external_libzip_replace_delete_and_unchange_paths()
     TEST_ASSERT(zip_file_rename(zmeta, (zip_uint64_t)idx_meta, "one-renamed.txt", 0) == 0,
                 "zip_file_rename metadata-only");
     TEST_ASSERT(zip_close(zmeta) == 0, "zip_close metadata-only");
+
+    // No-op close path: open read/write and close without changes.
+    zip* z_nochange = zip_open(path.c_str(), 0, &err);
+    TEST_ASSERT(z_nochange != nullptr, "zip_open for no-change close");
+    TEST_ASSERT(zip_close(z_nochange) == 0, "zip_close with unchanged archive should succeed");
+
+    // survivors==0 path: close an empty newly created archive and ensure temp file is removed.
+    const std::string empty_archive = path + ".zero";
+    {
+        std::ofstream ofs(empty_archive, std::ios::binary | std::ios::trunc);
+        TEST_ASSERT(ofs.good(), "precreate empty archive file for truncate/remove path");
+    }
+    zip* z_zero = zip_open(empty_archive.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
+    TEST_ASSERT(z_zero != nullptr, "zip_open create empty archive");
+    TEST_ASSERT(zip_close(z_zero) == 0, "zip_close empty archive should succeed");
+    TEST_ASSERT(!std::filesystem::exists(empty_archive), "zip_close should remove empty created archive");
 }
 REGISTER_TEST(test_external_libzip_replace_delete_and_unchange_paths);
 
@@ -390,6 +433,72 @@ void test_external_libzip_extra_field_api_paths()
         TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
                     "_zip_dirent_read should fail when ZIP64 sizes are present without ZIP64 EF");
         _zip_dirent_finalize(&de);
+    }
+
+    // Local header path: truncated variable-length area should fail.
+    {
+        unsigned char hdr[30] = {};
+        memcpy(hdr, LOCAL_MAGIC, 4);
+        put2(hdr + 4, 20);
+        put2(hdr + 6, 0);
+        put2(hdr + 8, ZIP_CM_STORE);
+        put2(hdr + 26, 3); // filename length
+        put2(hdr + 28, 0); // extra length
+        const unsigned char* p = hdr;
+        zip_uint64_t left = sizeof(hdr);
+        zip_dirent de;
+        _zip_dirent_init(&de);
+        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 1, &zerr) < 0,
+                    "_zip_dirent_read(local) should fail on truncated filename payload");
+        _zip_dirent_finalize(&de);
+    }
+
+    // Local header success path with minimal filename and no extras.
+    {
+        unsigned char rec[31] = {};
+        memcpy(rec, LOCAL_MAGIC, 4);
+        put2(rec + 4, 20);
+        put2(rec + 6, 0);
+        put2(rec + 8, ZIP_CM_STORE);
+        put2(rec + 26, 1); // filename length
+        put2(rec + 28, 0); // extra length
+        rec[30] = 'a';
+        const unsigned char* p = rec;
+        zip_uint64_t left = sizeof(rec);
+        zip_dirent de;
+        _zip_dirent_init(&de);
+        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 1, &zerr) == 0,
+                    "_zip_dirent_read(local) should parse minimal valid header");
+        _zip_dirent_finalize(&de);
+    }
+
+    // _zip_dirent_size for local and central forms.
+    {
+        FILE* f = tmpfile();
+        TEST_ASSERT(f != nullptr, "tmpfile for _zip_dirent_size");
+        unsigned char local_hdr[30] = {};
+        memcpy(local_hdr, LOCAL_MAGIC, 4);
+        put2(local_hdr + 26, 2); // filename
+        put2(local_hdr + 28, 3); // extra
+        TEST_ASSERT(fwrite(local_hdr, 1, sizeof(local_hdr), f) == sizeof(local_hdr), "write local header");
+        rewind(f);
+        zip_int32_t local_size = _zip_dirent_size(f, ZIP_FL_LOCAL, &zerr);
+        TEST_ASSERT_EQ(35, (int)local_size, "_zip_dirent_size local should include variable fields");
+        fclose(f);
+    }
+    {
+        FILE* f = tmpfile();
+        TEST_ASSERT(f != nullptr, "tmpfile for _zip_dirent_size central");
+        unsigned char cd_hdr[46] = {};
+        memcpy(cd_hdr, CENTRAL_MAGIC, 4);
+        put2(cd_hdr + 28, 2); // filename
+        put2(cd_hdr + 30, 3); // extra
+        put2(cd_hdr + 32, 4); // comment
+        TEST_ASSERT(fwrite(cd_hdr, 1, sizeof(cd_hdr), f) == sizeof(cd_hdr), "write central header");
+        rewind(f);
+        zip_int32_t cd_size = _zip_dirent_size(f, ZIP_FL_CENTRAL, &zerr);
+        TEST_ASSERT_EQ(55, (int)cd_size, "_zip_dirent_size central should include variable fields");
+        fclose(f);
     }
 
     _zip_error_fini(&zerr);
