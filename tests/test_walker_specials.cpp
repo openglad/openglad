@@ -740,3 +740,332 @@ void test_walker_special_archmage_illusion_rng_tables()
     delete arch;
 }
 REGISTER_TEST(test_walker_special_archmage_illusion_rng_tables);
+
+void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* mage = make_special_guy(FAMILY_MAGE, 2, 6);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    if (!mage) {
+        return;
+    }
+
+    // Marker remove/replace path for mage special 1 with shifter held.
+    mage->current_special = 1;
+    mage->shifter_down = 1;
+    mage->user = 0;
+    mage->busy = 0;
+    if (mage->myguy) {
+        mage->myguy->intelligence = 120;
+    }
+
+    walker* marker = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    TEST_ASSERT(marker != nullptr, "marker created");
+    if (marker) {
+        marker->owner = mage;
+        marker->dead = 0;
+        marker->setxy(mage->xpos + 8, mage->ypos + 8);
+    }
+    (void)mage->special();
+
+    // Freeze-time enemy-team branch.
+    mage->current_special = 3;
+    mage->shifter_down = 0;
+    mage->busy = 0;
+    mage->team_num = 3;
+    if (mage->myguy) {
+        delete mage->myguy;
+        mage->myguy = nullptr;
+    }
+    walker* ally = make_special_guy(FAMILY_ORC, 3, 2);
+    TEST_ASSERT(ally != nullptr, "ally created");
+    if (ally) {
+        ally->setxy(mage->xpos + 6, mage->ypos + 6);
+    }
+    (void)mage->special();
+
+    delete ally;
+    delete mage;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_special_mage_marker_remove_and_freeze_enemy_branch);
+
+void test_walker_special_mage_wave_and_burst_with_targets()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* mage = make_special_guy(FAMILY_MAGE, 1, 7);
+    walker* foe1 = make_special_guy(FAMILY_ORC, 2, 3);
+    walker* foe2 = make_special_guy(FAMILY_SKELETON, 2, 3);
+    TEST_ASSERT(mage != nullptr && foe1 != nullptr && foe2 != nullptr, "mage and foes created");
+    if (!(mage && foe1 && foe2)) {
+        return;
+    }
+
+    mage->setxy(120, 120);
+    mage->lastx = mage->stepsize;
+    mage->lasty = 0;
+    foe1->setxy(128, 120);
+    foe2->setxy(132, 124);
+
+    mage->current_special = 4; // energy wave
+    mage->busy = 0;
+    (void)mage->special();
+
+    mage->current_special = 5; // burst enemies
+    mage->busy = 0;
+    mage->stats()->magicpoints = 1200;
+    mage->stats()->special_cost[5] = 0;
+    (void)mage->special();
+
+    delete foe1;
+    delete foe2;
+    delete mage;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_special_mage_wave_and_burst_with_targets);
+
+void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    walker* foe = make_special_guy(FAMILY_ORC, 2, 2);
+    TEST_ASSERT(arch != nullptr && foe != nullptr, "arch and foe created");
+    if (!(arch && foe)) {
+        return;
+    }
+
+    arch->setxy(140, 140);
+    foe->setxy(148, 140);
+    arch->stats()->special_cost[1] = 0;
+    arch->stats()->special_cost[2] = 0;
+    arch->stats()->special_cost[3] = 0;
+    arch->stats()->special_cost[4] = 0;
+
+    // Archmage special 1 low-int path.
+    arch->current_special = 1;
+    arch->shifter_down = 1;
+    arch->busy = 0;
+    arch->user = 0;
+    if (arch->myguy) {
+        arch->myguy->intelligence = 20;
+    }
+    (void)arch->special();
+
+    // Marker removal + replacement path.
+    if (arch->myguy) {
+        arch->myguy->intelligence = 220;
+    }
+    walker* marker = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    TEST_ASSERT(marker != nullptr, "arch marker created");
+    if (marker) {
+        marker->owner = arch;
+        marker->dead = 0;
+        marker->setxy(arch->xpos + 8, arch->ypos + 8);
+    }
+    arch->busy = 0;
+    arch->current_special = 1;
+    arch->shifter_down = 1;
+    (void)arch->special();
+
+    // Chain-lightning path.
+    arch->busy = 0;
+    arch->current_special = 2;
+    arch->shifter_down = 1;
+    (void)arch->special();
+
+    // True summon path.
+    arch->busy = 0;
+    arch->current_special = 3;
+    arch->shifter_down = 1;
+    (void)arch->special();
+
+    delete foe;
+    delete arch;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_special_archmage_low_int_marker_chain_and_summon_true);
+
+void test_walker_special_archmage_mind_control_stats_name_path()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 4, 7);
+    walker* foe = make_special_guy(FAMILY_ORC, 2, 1);
+    TEST_ASSERT(arch != nullptr && foe != nullptr, "arch and foe created");
+    if (!(arch && foe)) {
+        return;
+    }
+
+    arch->setxy(120, 120);
+    foe->setxy(126, 120);
+    arch->busy = 0;
+    arch->current_special = 4;
+    arch->shifter_down = 0;
+    arch->stats()->special_cost[4] = 0;
+    arch->stats()->magicpoints = 1000;
+    arch->stats()->name = "ARCH-NPC";
+    if (arch->myguy) {
+        delete arch->myguy;
+        arch->myguy = nullptr;
+    }
+    foe->real_team_num = 255;
+
+    SequenceRandom seq_rng({1, 3, 4, 5});
+    GameContext test_ctx;
+    test_ctx.game_screen = myscreen;
+    test_ctx.rng = &seq_rng;
+    set_global_context(&test_ctx);
+    (void)arch->special();
+    set_global_context(nullptr);
+
+    delete foe;
+    delete arch;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_special_archmage_mind_control_stats_name_path);
+
+void test_walker_special_druid_circle_existing_protection_branch()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* druid = make_special_guy(FAMILY_DRUID, 1, 6);
+    walker* ally = make_special_guy(FAMILY_SOLDIER, 1, 5);
+    TEST_ASSERT(druid != nullptr && ally != nullptr, "druid and ally created");
+    if (!(druid && ally)) {
+        return;
+    }
+
+    druid->setxy(100, 100);
+    ally->setxy(108, 100);
+    druid->busy = 0;
+    druid->current_special = 4;
+
+    walker* existing = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    TEST_ASSERT(existing != nullptr, "existing protection created");
+    if (existing) {
+        existing->owner = ally;
+        existing->team_num = ally->team_num;
+        existing->setxy(ally->xpos, ally->ypos);
+    }
+
+    (void)druid->special();
+
+    delete ally;
+    delete druid;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_special_druid_circle_existing_protection_branch);
+
+void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* orc = make_special_guy(FAMILY_ORC, 2, 4);
+    TEST_ASSERT(orc != nullptr, "orc created");
+    if (!orc) {
+        return;
+    }
+    if (orc->myguy) {
+        delete orc->myguy;
+        orc->myguy = nullptr;
+    }
+    orc->stats()->name = "ORC-NPC";
+    orc->stats()->hitpoints = 10;
+    orc->stats()->max_hitpoints = 100;
+    orc->current_special = 2;
+    orc->busy = 0;
+
+    walker* blood = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    TEST_ASSERT(blood != nullptr, "blood created");
+    if (blood) {
+        blood->team_num = 3;
+        blood->stats()->level = 3;
+        blood->setxy(orc->xpos + 1, orc->ypos + 1);
+    }
+    (void)orc->special();
+
+    walker* barb = make_special_guy(FAMILY_BARBARIAN, 2, 5);
+    TEST_ASSERT(barb != nullptr, "barbarian created");
+    if (barb) {
+        if (barb->myguy) {
+            delete barb->myguy;
+            barb->myguy = nullptr;
+        }
+        barb->setxy(120, 120);
+        barb->lastx = barb->stepsize;
+        barb->lasty = 0;
+        barb->busy = 0;
+        barb->current_special = 2; // exploding boulder
+        (void)barb->special();
+    }
+
+    delete barb;
+    delete orc;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc);
+
+void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 7);
+    walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
+    walker* ghost = make_special_guy(FAMILY_GHOST, 2, 1);
+    TEST_ASSERT(cleric != nullptr && skel != nullptr && ghost != nullptr, "cleric and undead created");
+    if (cleric && skel && ghost) {
+        cleric->setxy(100, 100);
+        skel->setxy(102, 100);
+        ghost->setxy(103, 100);
+        cleric->damage = 150.0f;
+        skel->stats()->hitpoints = 8;
+        ghost->stats()->hitpoints = 8;
+        SequenceRandom seq_rng({1000, 0, 1000, 0});
+        GameContext test_ctx;
+        test_ctx.game_screen = myscreen;
+        test_ctx.rng = &seq_rng;
+        set_global_context(&test_ctx);
+        (void)cleric->turn_undead(40, 3);
+        set_global_context(nullptr);
+    }
+
+    walker* guard = make_special_guy(FAMILY_ORC, 3, 4);
+    walker* foe = make_special_guy(FAMILY_SOLDIER, 2, 2);
+    TEST_ASSERT(guard != nullptr && foe != nullptr, "guard and foe created");
+    if (guard && foe) {
+        guard->setxy(140, 140);
+        foe->setxy(146, 140);
+        guard->set_act_type(ACT_GUARD);
+        (void)guard->act();
+    }
+
+    walker* randomer = make_special_guy(FAMILY_ORC, 5, 4);
+    TEST_ASSERT(randomer != nullptr, "randomer created");
+    if (randomer) {
+        randomer->setxy(160, 160);
+        randomer->foe = nullptr;
+        randomer->set_act_type(ACT_RANDOM);
+        randomer->stats()->clear_command();
+        // act(): rng(4)==0 and rng(20)==1 => act_random() path
+        // act_random(): rng(70)==0, find no foe => random-walk command path
+        SequenceRandom random_rng({0, 1, 0, 1, 1, 2});
+        GameContext random_ctx;
+        random_ctx.game_screen = myscreen;
+        random_ctx.rng = &random_rng;
+        set_global_context(&random_ctx);
+        (void)randomer->act();
+        set_global_context(nullptr);
+    }
+
+    delete randomer;
+    delete foe;
+    delete guard;
+    delete ghost;
+    delete skel;
+    delete cleric;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges);
