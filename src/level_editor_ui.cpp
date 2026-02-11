@@ -17,6 +17,7 @@
 
 #include "screen.h"
 #include "input.h"
+#include "game_context.h"
 
 #include <cstring>
 #include <list>
@@ -24,9 +25,17 @@
 
 extern screen* myscreen;
 
+static screen* active_screen()
+{
+    if(ctx().game_screen != nullptr)
+        return ctx().game_screen;
+    return myscreen;
+}
+
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result)
 {
-    myscreen->darken_screen();
+    screen* screen_ctx = active_screen();
+    screen_ctx->darken_screen();
     
     int max_chars = 40;
     int max_lines = 8;
@@ -36,10 +45,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
     int x = 160 - w/2;
     int y = 100 - h/2;
     
-    text& mytext = myscreen->text_normal;
+    text& mytext = screen_ctx->text_normal;
     
     // Background
-    myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
+    screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
     unsigned char forecolor = DARK_BLUE;
     
@@ -307,25 +316,25 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
         }
 		
         clear_text_input_event();
-        myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
+        screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
         mytext.write_xy(x, y - 13, message.c_str(), BLACK, 1);
-        myscreen->hor_line(x, y - 5, w, BLACK);
+        screen_ctx->hor_line(x, y - 5, w, BLACK);
         
-        myscreen->draw_button(done_button.x, done_button.y, done_button.x + done_button.w, done_button.y + done_button.h, 1);
+        screen_ctx->draw_button(done_button.x, done_button.y, done_button.x + done_button.w, done_button.y + done_button.h, 1);
         mytext.write_xy(done_button.x + done_button.w/2 - 12, done_button.y + done_button.h/2 - 3, "DONE", DARK_BLUE, 1);
-        myscreen->draw_button(cancel_button.x, cancel_button.y, cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
+        screen_ctx->draw_button(cancel_button.x, cancel_button.y, cancel_button.x + cancel_button.w, cancel_button.y + cancel_button.h, 1);
         mytext.write_xy(cancel_button.x + cancel_button.w/2 - 18, cancel_button.y + cancel_button.h/2 - 3, "CANCEL", DARK_BLUE, 1);
         
         #if defined(USE_TOUCH_INPUT) || defined(USE_CONTROLLER_INPUT)
-        myscreen->draw_button(newline_button.x, newline_button.y, newline_button.x + newline_button.w, newline_button.y + newline_button.h, 1);
+        screen_ctx->draw_button(newline_button.x, newline_button.y, newline_button.x + newline_button.w, newline_button.y + newline_button.h, 1);
         mytext.write_xy(newline_button.x + newline_button.w/2 - 18, newline_button.y + newline_button.h/2 - 3, "NEWLINE", DARK_BLUE, 1);
-        myscreen->draw_button(up_button.x, up_button.y, up_button.x + up_button.w, up_button.y + up_button.h, 1);
+        screen_ctx->draw_button(up_button.x, up_button.y, up_button.x + up_button.w, up_button.y + up_button.h, 1);
         mytext.write_xy(up_button.x + up_button.w/2 - 6, up_button.y + up_button.h/2 - 3, "UP", DARK_BLUE, 1);
-        myscreen->draw_button(left_button.x, left_button.y, left_button.x + left_button.w, left_button.y + left_button.h, 1);
+        screen_ctx->draw_button(left_button.x, left_button.y, left_button.x + left_button.w, left_button.y + left_button.h, 1);
         mytext.write_xy(left_button.x + left_button.w/2 - 6, left_button.y + left_button.h/2 - 3, "LT", DARK_BLUE, 1);
-        myscreen->draw_button(down_button.x, down_button.y, down_button.x + down_button.w, down_button.y + down_button.h, 1);
+        screen_ctx->draw_button(down_button.x, down_button.y, down_button.x + down_button.w, down_button.y + down_button.h, 1);
         mytext.write_xy(down_button.x + down_button.w/2 - 6, down_button.y + down_button.h/2 - 3, "DN", DARK_BLUE, 1);
-        myscreen->draw_button(right_button.x, right_button.y, right_button.x + right_button.w, right_button.y + right_button.h, 1);
+        screen_ctx->draw_button(right_button.x, right_button.y, right_button.x + right_button.w, right_button.y + right_button.h, 1);
         mytext.write_xy(right_button.x + right_button.w/2 - 6, right_button.y + right_button.h/2 - 3, "RT", DARK_BLUE, 1);
         #endif
         
@@ -340,8 +349,8 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
                 mytext.write_xy(x, ypos, line.c_str(), forecolor, 1);
             j++;
         }
-        myscreen->ver_line(x + cursor_pos*6, y + current_line*10 - 2 - offset, 10, RED);
-		myscreen->buffer_to_screen(0, 0, 320, 200);
+        screen_ctx->ver_line(x + cursor_pos*6, y + current_line*10 - 2 - offset, 10, RED);
+		screen_ctx->buffer_to_screen(0, 0, 320, 200);
         
         SDL_Delay(10);
 	}
@@ -355,10 +364,11 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 
 bool prompt_for_string(const std::string& message, std::string& result)
 {
+    screen* screen_ctx = active_screen();
 #ifdef TESTING
     return true;  // Accept default name without blocking on text input
 #endif
-    myscreen->darken_screen();
+    screen_ctx->darken_screen();
     
     int max_chars = 29;
     
@@ -367,9 +377,9 @@ bool prompt_for_string(const std::string& message, std::string& result)
     int w = max_chars*6;
     int h = 10;
     
-    myscreen->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
+    screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
-    char* str = myscreen->text_normal.input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
+    char* str = screen_ctx->text_normal.input_string_ex(x, y, max_chars, message.c_str(), result.c_str());
     
     if(str == nullptr)
         return false;
