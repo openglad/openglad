@@ -1,0 +1,136 @@
+#include "button.h"
+#include "input.h"
+#include "test_framework.h"
+
+#include <chrono>
+#include <thread>
+
+extern int player_keys[4][NUM_KEYS];
+
+// From picker.cpp
+extern bool menu_nav_enabled;
+extern Uint32 menu_nav_enabled_time;
+bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons);
+void draw_highlight_interior(const button& b);
+void draw_highlight(const button& b);
+
+namespace
+{
+struct KeyBindingGuard
+{
+    int player;
+    int key_enum;
+    int old_key;
+    KeyBindingGuard(int player, int key_enum, int new_key)
+        : player(player), key_enum(key_enum), old_key(player_keys[player][key_enum])
+    {
+        player_keys[player][key_enum] = new_key;
+    }
+    ~KeyBindingGuard() { player_keys[player][key_enum] = old_key; }
+};
+
+struct KeyStateGuard
+{
+    int numkeys = 0;
+    Uint8* keys = nullptr;
+    KeyStateGuard()
+    {
+        const Uint8* ro = SDL_GetKeyboardState(&numkeys);
+        keys = const_cast<Uint8*>(ro);
+    }
+    void set(SDL_Keycode key, bool pressed)
+    {
+        if (!keys) return;
+        SDL_Scancode sc = SDL_GetScancodeFromKey(key);
+        if (sc >= 0 && sc < numkeys)
+            keys[sc] = pressed ? 1 : 0;
+    }
+};
+
+static void release_key_after(KeyStateGuard* ks, SDL_Keycode key, int delay_ms)
+{
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+    ks->set(key, false);
+}
+} // namespace
+
+void test_picker_handle_menu_nav_moves_and_skips_hidden_targets()
+{
+    disablePlayerJoystick(0);
+    KeyBindingGuard b_up(0, KEY_UP, SDLK_UP);
+    KeyBindingGuard b_right(0, KEY_RIGHT, SDLK_RIGHT);
+    KeyStateGuard ks;
+
+    button buttons[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0, MenuNav::All(-1, 1, -1, 2), false),
+        button("b1", "B", KEYSTATE_UNKNOWN, 10, 30, 30, 10, 0, 0, MenuNav::All(0, -1, -1, 2), false),
+        button("b2", "C", KEYSTATE_UNKNOWN, 10, 50, 30, 10, 0, 0, MenuNav::All(-1, -1, 1, -1), true),
+    };
+
+    int highlighted = 1;
+    Sint32 retvalue = 0;
+
+    ks.set(SDLK_UP, true);
+    std::thread release_up(release_key_after, &ks, SDLK_UP, 10);
+    bool activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    release_up.join();
+
+    TEST_ASSERT(!activated, "directional nav should not activate button");
+    TEST_ASSERT_EQ(0, highlighted, "up key should move highlight to nav.up");
+    TEST_ASSERT(menu_nav_enabled, "pressing nav key should enable menu nav");
+
+    // Right key points to hidden button index 2; highlight should stay unchanged.
+    ks.set(SDLK_RIGHT, true);
+    std::thread release_right(release_key_after, &ks, SDLK_RIGHT, 10);
+    activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    release_right.join();
+    TEST_ASSERT(!activated, "moving to hidden target should not activate");
+    TEST_ASSERT_EQ(0, highlighted, "hidden nav target should be ignored");
+}
+REGISTER_TEST(test_picker_handle_menu_nav_moves_and_skips_hidden_targets);
+
+void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
+{
+    disablePlayerJoystick(0);
+    KeyBindingGuard b_fire(0, KEY_FIRE, SDLK_SPACE);
+    KeyStateGuard ks;
+
+    button buttons[] = {
+        button("b0", "A", KEYSTATE_UNKNOWN, 10, 10, 30, 10, 0, 0, MenuNav::None(), false),
+    };
+    int highlighted = 0;
+    Sint32 retvalue = 0;
+
+    // Fire while nav disabled: should only mark pressed and re-enable nav.
+    menu_nav_enabled = false;
+    ks.set(SDLK_SPACE, true);
+    std::thread release_fire1(release_key_after, &ks, SDLK_SPACE, 10);
+    bool activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    release_fire1.join();
+    TEST_ASSERT(!activated, "fire with nav disabled should not activate");
+    TEST_ASSERT(menu_nav_enabled, "fire should enable nav mode");
+
+    // Fire while nav enabled with use_global_vbuttons=false should return OK(4).
+    retvalue = 0;
+    ks.set(SDLK_SPACE, true);
+    std::thread release_fire2(release_key_after, &ks, SDLK_SPACE, 10);
+    activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    release_fire2.join();
+    TEST_ASSERT(activated, "fire with nav enabled should activate");
+    TEST_ASSERT_EQ(4, (int)retvalue, "activation without global vbuttons should return OK");
+
+    // Smoke draw highlight routines under both nav states.
+    menu_nav_enabled = false;
+    draw_highlight_interior(buttons[0]);
+    draw_highlight(buttons[0]);
+    menu_nav_enabled = true;
+    draw_highlight_interior(buttons[0]);
+    draw_highlight(buttons[0]);
+
+    // Expiry branch (no press + timeout).
+    menu_nav_enabled = true;
+    menu_nav_enabled_time = SDL_GetTicks() - 6000;
+    ks.set(SDLK_SPACE, false);
+    (void)handle_menu_nav(buttons, highlighted, retvalue, false);
+}
+REGISTER_TEST(test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke);
