@@ -1,4 +1,5 @@
 #include "graph.h"
+#include "button.h"
 #include "test_framework.h"
 #include <cstring>
 #include <string>
@@ -12,8 +13,17 @@ const char* get_random_name(unsigned char family);
 bool has_name_in_team(const char* name);
 const char* get_new_name(unsigned char family);
 Sint32 how_many(Sint32 whatfamily);
+int get_scen_num_from_filename(const char* name);
+Sint32 set_difficulty();
+Sint32 change_teamnum(Sint32 arg);
+Sint32 change_hire_teamnum(Sint32 arg);
+Sint32 change_allied();
+bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 
 extern screen* myscreen;
+extern guy* current_guy;
+extern short current_team_num;
+extern Sint32 current_difficulty;
 
 extern Sint32 costlist[NUM_FAMILIES];
 extern Sint32 statlist[NUM_FAMILIES][6];
@@ -239,5 +249,70 @@ void test_how_many_with_team()
         myscreen->save_data.team_list[i] = orig_list[i];
     }
     myscreen->save_data.team_size = orig_size;
+
+    // Additional picker utility/state coverage without registering new tests.
+    TEST_ASSERT_EQ(-1, get_scen_num_from_filename(nullptr), "null input should return -1");
+    TEST_ASSERT_EQ(-1, get_scen_num_from_filename("scen"), "no numeric suffix should return -1");
+    TEST_ASSERT_EQ(123, get_scen_num_from_filename("scen123"), "numeric suffix should parse");
+    TEST_ASSERT_EQ(42, get_scen_num_from_filename("file42"), "mixed prefix should parse trailing number");
+    TEST_ASSERT(yes_or_no_prompt("Title", "Message", true), "testing build should return default=true");
+    TEST_ASSERT(!yes_or_no_prompt("Title", "Message", false), "testing build should return default=false");
+
+    vbutton* old2 = allbuttons[2];
+    vbutton* old6 = allbuttons[6];
+    vbutton* old7 = allbuttons[7];
+    vbutton* old18 = allbuttons[18];
+    guy* old_current = current_guy;
+    short old_team_num = current_team_num;
+    Sint32 old_diff = current_difficulty;
+    int old_allied = myscreen->save_data.allied_mode;
+
+    allbuttons[2] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b2", KEYSTATE_UNKNOWN);
+    allbuttons[6] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b6", KEYSTATE_UNKNOWN);
+    allbuttons[7] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b7", KEYSTATE_UNKNOWN);
+    allbuttons[18] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b18", KEYSTATE_UNKNOWN);
+
+    current_guy = new guy(FAMILY_SOLDIER);
+    current_guy->teamnum = 1;
+    current_team_num = 0;
+    current_difficulty = DIFFICULTY_SETTINGS - 1;
+    myscreen->save_data.allied_mode = 0;
+
+    TEST_ASSERT_EQ(4, (int)set_difficulty(), "set_difficulty should return OK");
+    TEST_ASSERT(
+        std::string(allbuttons[2]->label).find("Difficulty: ") == 0 ||
+        std::string(allbuttons[6]->label).find("Difficulty: ") == 0,
+        "difficulty label should be updated");
+
+    TEST_ASSERT_EQ(4, (int)change_teamnum(1), "change_teamnum should return OK");
+    TEST_ASSERT_EQ(2, (int)current_guy->teamnum, "team should increment");
+    TEST_ASSERT(std::string(allbuttons[18]->label).find("Playing on Team ") == 0, "team label should be updated");
+
+    TEST_ASSERT_EQ(4, (int)change_hire_teamnum(1), "change_hire_teamnum should return OK");
+    TEST_ASSERT_EQ(1, (int)current_team_num, "hire team num should increment");
+    TEST_ASSERT_EQ(1, (int)current_guy->teamnum, "current guy team should mirror hire team");
+    TEST_ASSERT(std::string(allbuttons[2]->label).find("Hiring for Team ") == 0, "hire label should be updated");
+
+    TEST_ASSERT_EQ(4, (int)change_allied(), "change_allied should return OK");
+    TEST_ASSERT_EQ(1, myscreen->save_data.allied_mode, "allied mode should toggle on");
+    TEST_ASSERT(allbuttons[7]->label == "PVP: Ally", "allied label should update");
+    TEST_ASSERT_EQ(4, (int)change_allied(), "change_allied second toggle should return OK");
+    TEST_ASSERT_EQ(0, myscreen->save_data.allied_mode, "allied mode should toggle off");
+    TEST_ASSERT(allbuttons[7]->label == "PVP: Enemy", "enemy label should update");
+
+    delete current_guy;
+    current_guy = old_current;
+    current_team_num = old_team_num;
+    current_difficulty = old_diff;
+    myscreen->save_data.allied_mode = old_allied;
+
+    delete allbuttons[2];
+    delete allbuttons[6];
+    delete allbuttons[7];
+    delete allbuttons[18];
+    allbuttons[2] = old2;
+    allbuttons[6] = old6;
+    allbuttons[7] = old7;
+    allbuttons[18] = old18;
 }
 REGISTER_TEST(test_how_many_with_team);

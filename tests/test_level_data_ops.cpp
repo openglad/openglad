@@ -1,7 +1,10 @@
 #include "graph.h"
 #include "guy.h"
 #include "gloader.h"
+#include "io.h"
 #include "test_framework.h"
+
+#include <unistd.h>
 
 extern screen* myscreen;
 
@@ -263,6 +266,44 @@ void test_level_data_get_description_line()
     TEST_ASSERT(c.getDescriptionLine(0) == "Campaign 1", "campaign line 0");
     TEST_ASSERT(c.getDescriptionLine(1) == "Campaign 2", "campaign line 1");
     TEST_ASSERT(c.getDescriptionLine(10) == "", "campaign out of range");
+
+    // CampaignData load/save/save_as roundtrip on a temporary campaign.
+    const std::string src_id = "org.openglad.gladiator";
+    const std::string tmp_id =
+        std::string("org.openglad.test.coverage.") + std::to_string(::getpid());
+
+    delete_campaign(tmp_id);
+
+    CampaignData src(src_id);
+    TEST_ASSERT(src.load(), "source campaign should load");
+    src.title = "Coverage Campaign";
+    src.version = "9.9";
+    src.authors = "Test Author";
+    src.contributors = "Test Contributor";
+    src.suggested_power = 42;
+    src.first_level = 2;
+    src.description.clear();
+    src.description.push_back("line a");
+    src.description.push_back("line b");
+    TEST_ASSERT(src.save_as(tmp_id), "save_as should create target campaign");
+
+    CampaignData loaded(tmp_id);
+    TEST_ASSERT(loaded.load(), "saved-as campaign should load");
+    TEST_ASSERT(loaded.title == "Coverage Campaign", "title should persist after save_as");
+    TEST_ASSERT(loaded.getDescriptionLine(0) == "line a", "description first line should persist");
+    TEST_ASSERT(loaded.getDescriptionLine(1) == "line b", "description second line should persist");
+
+    loaded.title = "Coverage Campaign Updated";
+    loaded.description.clear();
+    loaded.description.push_back("line c");
+    TEST_ASSERT(loaded.save(), "save should update existing campaign");
+
+    CampaignData updated(tmp_id);
+    TEST_ASSERT(updated.load(), "updated campaign should load");
+    TEST_ASSERT(updated.title == "Coverage Campaign Updated", "title should persist after save");
+    TEST_ASSERT(updated.getDescriptionLine(0) == "line c", "updated description should persist");
+
+    delete_campaign(tmp_id);
 }
 REGISTER_TEST(test_level_data_get_description_line);
 
