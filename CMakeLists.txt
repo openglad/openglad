@@ -106,6 +106,9 @@ set(GAME_SOURCES
     ${SRC_DIR}/save_data.cpp
 )
 
+set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
+list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/glad.cpp)
+
 # External C++ sources
 set(EXT_CXX_SOURCES
     ${EXT_DIR}/micropather/micropather.cpp
@@ -279,14 +282,20 @@ set(COMMON_DEFINITIONS
 )
 
 # --------------------------------------------------------------------------
-# Helper function to configure a target with common settings
+# Helper functions to configure targets with common settings
 # --------------------------------------------------------------------------
 
-function(configure_openglad_target target)
+function(configure_openglad_library target)
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
+    if(NOT EMSCRIPTEN)
+        target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
+    endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
+endfunction()
 
+function(configure_openglad_runtime_target target)
+    target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
     if(EMSCRIPTEN)
         target_compile_options(${target} PRIVATE
             -sUSE_SDL=2
@@ -295,31 +304,81 @@ function(configure_openglad_target target)
             -Wno-parentheses-equality
             -Wno-pointer-bool-conversion
         )
+        target_link_options(${target} PRIVATE
+            -sUSE_SDL=2
+            -sUSE_SDL_MIXER=2
+        )
     else()
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(SDL2 REQUIRED sdl2 SDL2_mixer)
         target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
         target_link_libraries(${target} PRIVATE ${SDL2_LIBRARIES} m pthread)
     endif()
+endfunction()
 
-    # Suppress warnings for external C code
-    set_source_files_properties(${EXTERNAL_C_SOURCES} ${EXT_CXX_SOURCES}
-        PROPERTIES COMPILE_OPTIONS "-w")
+function(configure_openglad_external_target target)
+    target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
+    if(NOT EMSCRIPTEN)
+        target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
+    endif()
+    target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${target} PRIVATE -w)
+    endif()
 endfunction()
 
 # --------------------------------------------------------------------------
-# Native targets
+# External dependency targets
 # --------------------------------------------------------------------------
 
 if(NOT EMSCRIPTEN)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SDL2 REQUIRED sdl2 SDL2_mixer)
+endif()
+
+add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
+configure_openglad_external_target(og_ext_yaml)
+
+add_library(og_ext_zlib STATIC ${ZLIB_SOURCES})
+configure_openglad_external_target(og_ext_zlib)
+
+add_library(og_ext_libzip STATIC ${LIBZIP_SOURCES})
+configure_openglad_external_target(og_ext_libzip)
+target_link_libraries(og_ext_libzip PUBLIC og_ext_zlib)
+
+add_library(og_ext_physfs STATIC ${PHYSFS_SOURCES})
+configure_openglad_external_target(og_ext_physfs)
+target_link_libraries(og_ext_physfs PUBLIC og_ext_zlib og_ext_libzip)
+
+add_library(og_ext_micropather STATIC ${EXT_DIR}/micropather/micropather.cpp)
+configure_openglad_external_target(og_ext_micropather)
+
+add_library(og_ext_yam STATIC ${EXT_DIR}/yam/yam.cpp)
+configure_openglad_external_target(og_ext_yam)
+
+set(OG_EXTERNAL_LIBS
+    og_ext_micropather
+    og_ext_yam
+    og_ext_yaml
+    og_ext_physfs
+)
+
+if(NOT EMSCRIPTEN)
+    # --- shared runtime library (non-main code) ---
+    add_library(og_game STATIC ${GAME_SOURCES_NO_MAIN})
+    configure_openglad_library(og_game)
+    target_link_libraries(og_game PUBLIC ${OG_EXTERNAL_LIBS})
+
     # --- openglad (main game) ---
-    add_executable(openglad ${GAME_SOURCES} ${EXT_CXX_SOURCES} ${EXTERNAL_C_SOURCES})
-    configure_openglad_target(openglad)
+    add_executable(openglad ${SRC_DIR}/glad.cpp)
+    configure_openglad_library(openglad)
+    target_link_libraries(openglad PRIVATE og_game)
+    configure_openglad_runtime_target(openglad)
 
     # --- openscen (level editor) ---
     if(BUILD_EDITOR)
-        add_executable(openscen ${GAME_SOURCES} ${EXT_CXX_SOURCES} ${EXTERNAL_C_SOURCES})
-        configure_openglad_target(openscen)
+        add_executable(openscen ${SRC_DIR}/glad.cpp)
+        configure_openglad_library(openscen)
+        target_link_libraries(openscen PRIVATE og_game)
+        configure_openglad_runtime_target(openscen)
         target_compile_definitions(openscen PRIVATE OPENSCEN)
     endif()
 
@@ -435,19 +494,20 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
         )
 
-        # Game sources include test_trace.cpp when TESTING is defined
-        set(TEST_GAME_SOURCES ${GAME_SOURCES})
-        list(APPEND TEST_GAME_SOURCES ${SRC_DIR}/test_trace.cpp)
+        add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
+        configure_openglad_library(og_game_test)
+        target_compile_definitions(og_game_test PRIVATE TESTING)
+        target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS})
 
         add_executable(openglad_test
-            ${TEST_GAME_SOURCES}
-            ${EXT_CXX_SOURCES}
-            ${EXTERNAL_C_SOURCES}
+            ${SRC_DIR}/glad.cpp
             ${TEST_SOURCES}
         )
-        configure_openglad_target(openglad_test)
+        configure_openglad_library(openglad_test)
         target_compile_definitions(openglad_test PRIVATE TESTING)
         target_include_directories(openglad_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_link_libraries(openglad_test PRIVATE og_game_test)
+        configure_openglad_runtime_target(openglad_test)
 
         enable_testing()
         add_test(NAME openglad_test COMMAND openglad_test)
@@ -459,6 +519,7 @@ if(NOT EMSCRIPTEN)
             if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
                 # Coverage builds can be extremely slow at -O0; -O1 is usually
                 # a good compromise while still producing accurate line coverage.
+                target_compile_options(og_game_test PRIVATE -O1 -g --coverage)
                 target_compile_options(openglad_test PRIVATE -O1 -g --coverage)
                 target_link_options(openglad_test PRIVATE --coverage)
                 target_compile_definitions(openglad_test PRIVATE ENABLE_COVERAGE)
@@ -474,12 +535,16 @@ endif()
 # --------------------------------------------------------------------------
 
 if(EMSCRIPTEN)
-    add_executable(play ${GAME_SOURCES} ${EXT_CXX_SOURCES} ${EXTERNAL_C_SOURCES})
-    configure_openglad_target(play)
+    add_library(og_game_web STATIC ${GAME_SOURCES_NO_MAIN})
+    configure_openglad_library(og_game_web)
+    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS})
+
+    add_executable(play ${SRC_DIR}/glad.cpp)
+    configure_openglad_library(play)
+    target_link_libraries(play PRIVATE og_game_web)
+    configure_openglad_runtime_target(play)
 
     target_link_options(play PRIVATE
-        -sUSE_SDL=2
-        -sUSE_SDL_MIXER=2
         "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\",\"ogg\"]"
         -sALLOW_MEMORY_GROWTH=1
         -sINITIAL_MEMORY=67108864
