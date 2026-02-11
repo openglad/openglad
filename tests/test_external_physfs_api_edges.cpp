@@ -138,10 +138,57 @@ static void run_physfs_symbolic_link_toggle_and_error_string_path()
     const char* msg = PHYSFS_getLastError();
     TEST_ASSERT(msg != nullptr && msg[0] != '\0', "missing file should set a non-empty error string");
 }
+
+static void run_physfs_global_api_and_reinit_edges()
+{
+    TEST_ASSERT(PHYSFS_isInit(), "PHYSFS should be initialized");
+
+    const PHYSFS_ArchiveInfo** types = PHYSFS_supportedArchiveTypes();
+    TEST_ASSERT(types != nullptr, "supportedArchiveTypes should return a table");
+    int type_count = 0;
+    for (const PHYSFS_ArchiveInfo** i = types; i && *i; ++i)
+        type_count++;
+    TEST_ASSERT(type_count > 0, "supportedArchiveTypes should expose at least one type");
+
+    PHYSFS_Version linked{};
+    PHYSFS_getLinkedVersion(&linked);
+    TEST_ASSERT(linked.major >= 1, "linked major version should be valid");
+
+    const char* base = PHYSFS_getBaseDir();
+    const char* user = PHYSFS_getUserDir();
+    const char* sep = PHYSFS_getDirSeparator();
+    TEST_ASSERT(base != nullptr && base[0] != '\0', "getBaseDir should be non-empty");
+    TEST_ASSERT(user != nullptr && user[0] != '\0', "getUserDir should be non-empty");
+    TEST_ASSERT(sep != nullptr && sep[0] != '\0', "getDirSeparator should be non-empty");
+
+    StringCollector cds_cb;
+    PHYSFS_getCdRomDirsCallback(collect_string, &cds_cb);
+    char** cds = PHYSFS_getCdRomDirs();
+    TEST_ASSERT(cds != nullptr, "getCdRomDirs should return a list");
+    PHYSFS_freeList(cds);
+
+    namespace fs = std::filesystem;
+    fs::path base_dir = fs::temp_directory_path() / ("openglad_physfs_global_" + std::to_string(::getpid()));
+    fs::create_directories(base_dir);
+    TEST_ASSERT(PHYSFS_mount(base_dir.string().c_str(), "/global", 1), "mount for getMountPoint should succeed");
+    const char* mp = PHYSFS_getMountPoint(base_dir.string().c_str());
+    TEST_ASSERT(mp != nullptr, "getMountPoint should find mounted dir");
+    TEST_ASSERT(PHYSFS_removeFromSearchPath(base_dir.string().c_str()), "remove mounted dir should succeed");
+
+    // Exercise setSaneConfig path (may fail depending environment; still valuable for coverage).
+    (void)PHYSFS_setSaneConfig("openglad", "edgecfg", nullptr, 0, 0);
+
+    TEST_ASSERT(PHYSFS_deinit(), "PHYSFS_deinit should succeed");
+    TEST_ASSERT(!PHYSFS_isInit(), "PHYSFS should report deinitialized state");
+    TEST_ASSERT(PHYSFS_init("openglad_test"), "PHYSFS_init after deinit should succeed");
+    TEST_ASSERT(PHYSFS_isInit(), "PHYSFS should be reinitialized");
+}
+
 void test_external_physfs_api_edges()
 {
     run_physfs_searchpath_callbacks_and_mount_edges();
     run_physfs_file_seek_tell_flush_append_and_delete_edges();
     run_physfs_symbolic_link_toggle_and_error_string_path();
+    run_physfs_global_api_and_reinit_edges();
 }
 REGISTER_TEST(test_external_physfs_api_edges);

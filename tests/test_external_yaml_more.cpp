@@ -143,6 +143,36 @@ void test_external_yaml_scanner_tokens_variety()
     int tokens = 0;
     TEST_ASSERT(scan_yaml_tokens(input, &tokens), "scanner should succeed for valid yaml");
     TEST_ASSERT(tokens > 0, "scanner should produce tokens");
+
+    const std::vector<std::string> corpus = {
+        // Explicit keys, nested collections, anchors.
+        "?\n"
+        "  {k1: v1, k2: [1, 2]}\n"
+        ":\n"
+        "  - &A one\n"
+        "  - *A\n",
+
+        // Multi-doc with directives and tags.
+        "%YAML 1.1\n"
+        "%TAG !e! tag:example.com,2000:\n"
+        "---\n"
+        "obj: !e!Thing {x: 7, y: 8}\n"
+        "...\n"
+        "---\n"
+        "plain: text\n"
+        "...\n",
+
+        // Scalars that stress quoting/escaping.
+        "single: 'it''s still fine'\n"
+        "double: \"line\\nwith\\tescapes and unicode \\u03A9\"\n"
+        "plain: :starts-with-colon-is-tokenized\n"
+    };
+
+    for (const auto& doc : corpus) {
+        int n = 0;
+        TEST_ASSERT(scan_yaml_tokens(doc, &n), "scanner corpus document should succeed");
+        TEST_ASSERT(n > 0, "scanner corpus should produce tokens");
+    }
 }
 REGISTER_TEST(test_external_yaml_scanner_tokens_variety);
 
@@ -151,6 +181,17 @@ void test_external_yaml_scanner_error_unclosed_quote()
     const std::string input = "a: \"unterminated\n";
     int tokens = 0;
     TEST_ASSERT(!scan_yaml_tokens(input, &tokens), "scanner should fail on unterminated quote");
+
+    const std::vector<std::string> bad = {
+        "a:\n\t- badtab\n",          // illegal tab indentation
+        "flow: [1, 2, 3\n",          // unclosed flow sequence
+        "map: {a: 1, b: [2, 3}\n",   // mismatched delimiters
+        "alias: *\n"                 // malformed alias token
+    };
+    for (const auto& doc : bad) {
+        int n = 0;
+        (void)scan_yaml_tokens(doc, &n);
+    }
 }
 REGISTER_TEST(test_external_yaml_scanner_error_unclosed_quote);
 
@@ -166,4 +207,3 @@ void test_external_yaml_emitter_options_and_output()
     TEST_ASSERT(tokens > 0, "emitted yaml should produce tokens");
 }
 REGISTER_TEST(test_external_yaml_emitter_options_and_output);
-

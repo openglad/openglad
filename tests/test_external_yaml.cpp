@@ -187,6 +187,47 @@ void test_external_yaml_parse_scalars_sequences_mappings()
     int events = 0;
     TEST_ASSERT(parse_yaml_events(input, &events), "parser should succeed");
     TEST_ASSERT(events > 0, "parser should produce events");
+
+    const std::vector<std::string> corpus = {
+        // Explicit complex key, nested flow/block mixes.
+        "?\n"
+        "  - k1\n"
+        "  - k2\n"
+        ":\n"
+        "  nested: {a: [1, 2], b: {c: d}}\n",
+
+        // Merge keys and aliases.
+        "base: &B {x: 1, y: 2}\n"
+        "obj:\n"
+        "  <<: *B\n"
+        "  z: 3\n",
+
+        // Multiple documents with tags and folded/literal blocks.
+        "%YAML 1.1\n"
+        "---\n"
+        "s: >\n"
+        "  line1\n"
+        "  line2\n"
+        "l: |\n"
+        "  a\n"
+        "  b\n"
+        "t: !!str hello\n"
+        "...\n"
+        "---\n"
+        "arr:\n"
+        "  - {k: v}\n"
+        "  - [1, 2, 3]\n"
+        "...\n",
+
+        // Empty stream is valid and should parse.
+        ""
+    };
+
+    for (const auto& doc : corpus) {
+        int n = 0;
+        TEST_ASSERT(parse_yaml_events(doc, &n), "parser corpus document should succeed");
+        TEST_ASSERT(n > 0 || doc.empty(), "parser corpus should produce events for non-empty docs");
+    }
 }
 REGISTER_TEST(test_external_yaml_parse_scalars_sequences_mappings);
 
@@ -207,6 +248,18 @@ void test_external_yaml_parse_error_path()
     const std::string input = "a: [1, 2\n"; // missing closing bracket
     int events = 0;
     TEST_ASSERT(!parse_yaml_events(input, &events), "invalid yaml should fail parse");
+
+    const std::vector<std::string> bad = {
+        "a:\n\t- tab-indented\n",                // illegal tab indentation
+        "x: &A 1\nx2: *B\n",                     // unknown alias
+        "---\n[1, 2, 3\n",                       // broken flow sequence
+        "map: {a: 1, b: [2, 3}\n",               // mismatched delimiters
+        "%YAML 9.9\n---\na: 1\n"                 // invalid version directive
+    };
+    for (const auto& doc : bad) {
+        int n = 0;
+        (void)parse_yaml_events(doc, &n);
+    }
 }
 REGISTER_TEST(test_external_yaml_parse_error_path);
 
