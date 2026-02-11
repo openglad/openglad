@@ -100,6 +100,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/walker_combat.cpp
     ${SRC_DIR}/walker_movement.cpp
     ${SRC_DIR}/walker_pathing.cpp
+    ${SRC_DIR}/walker_specials.cpp
     ${SRC_DIR}/weap.cpp
     ${SRC_DIR}/sai2x.cpp
     ${SRC_DIR}/util.cpp
