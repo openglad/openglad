@@ -2,7 +2,9 @@
 #include "level_picker.h"
 #include "results_screen.h"
 #include "walker.h"
+#include "graph.h"
 #include "test_framework.h"
+#include "test_input_helpers.h"
 
 #include <map>
 #include <string>
@@ -16,6 +18,108 @@ bool sort_scen(const std::string& first, const std::string& second);
 int toInt(const std::string& s);
 // results_screen.cpp helper
 void show_ending_popup(int ending, int nextlevel);
+
+static int hold_q_key_for_picker(void* data)
+{
+    (void)data;
+    int numkeys = 0;
+    Uint8* keys = const_cast<Uint8*>(SDL_GetKeyboardState(&numkeys));
+    SDL_Scancode sc = SDL_GetScancodeFromKey(SDLK_q);
+    if (sc >= 0 && sc < numkeys)
+    {
+        keys[sc] = 1;
+        SDL_Delay(120);
+        keys[sc] = 0;
+    }
+    return 0;
+}
+
+struct ViewportGuard
+{
+    float ow, oh, ovw, ovh, ox, oy;
+    ViewportGuard()
+    {
+        ow = window_w;
+        oh = window_h;
+        ovw = viewport_w;
+        ovh = viewport_h;
+        ox = viewport_offset_x;
+        oy = viewport_offset_y;
+    }
+    ~ViewportGuard()
+    {
+        window_w = ow;
+        window_h = oh;
+        viewport_w = ovw;
+        viewport_h = ovh;
+        viewport_offset_x = ox;
+        viewport_offset_y = oy;
+    }
+};
+
+static int picker_choose_injector(void* data)
+{
+    (void)data;
+    SDL_Delay(120);
+    inject_click(211, 40, 20); // NEXT
+    SDL_Delay(120);
+    inject_click(109, 40, 20); // PREV
+    SDL_Delay(120);
+    inject_click(195, 190, 20); // OK
+    return 0;
+}
+
+static int picker_cancel_injector(void* data)
+{
+    (void)data;
+    SDL_Delay(120);
+    inject_click(121, 190, 20); // CANCEL
+    return 0;
+}
+
+static int campaign_delete_then_cancel_injector(void* data)
+{
+    (void)data;
+    SDL_Delay(120);
+    inject_click(280, 15, 20);  // DELETE
+    SDL_Delay(120);
+    inject_click(121, 190, 20); // CANCEL
+    return 0;
+}
+
+static int campaign_reset_then_cancel_injector(void* data)
+{
+    (void)data;
+    SDL_Delay(120);
+    inject_click(280, 15, 20);  // RESET (same location as delete)
+    SDL_Delay(120);
+    inject_click(121, 190, 20); // CANCEL
+    return 0;
+}
+
+static int level_picker_choose_injector(void* data)
+{
+    (void)data;
+    SDL_Delay(140);
+    inject_click(175, 150, 20); // NEXT
+    SDL_Delay(140);
+    inject_click(24, 23, 20);   // Select entry 1
+    SDL_Delay(140);
+    inject_click(280, 175, 20); // OK
+    return 0;
+}
+
+static int level_picker_delete_then_cancel_injector(void* data)
+{
+    (void)data;
+    SDL_Delay(140);
+    inject_click(24, 23, 20);   // Select entry 1
+    SDL_Delay(140);
+    inject_click(280, 15, 20);  // DELETE
+    SDL_Delay(140);
+    inject_click(239, 175, 20); // CANCEL
+    return 0;
+}
 
 void test_campaign_picker_cancel_esc_does_not_crash()
 {
@@ -46,6 +150,99 @@ void test_campaign_picker_cancel_esc_does_not_crash()
     TEST_ASSERT(canceled.id.empty(), "campaign picker early-exit should return empty campaign id");
 }
 REGISTER_TEST(test_campaign_picker_cancel_esc_does_not_crash);
+
+void test_campaign_picker_draw_loop_exits_on_q()
+{
+    char old_end = myscreen->end;
+    myscreen->end = 0;
+
+    SDL_Thread* thread = SDL_CreateThread(hold_q_key_for_picker, "picker_q_hold", nullptr);
+    TEST_ASSERT(thread != nullptr, "failed to create picker q-hold thread");
+
+    CampaignResult out = pick_campaign(&myscreen->save_data, false);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    myscreen->end = old_end;
+
+    TEST_ASSERT(out.id.empty(), "q exit path should not select a campaign");
+}
+REGISTER_TEST(test_campaign_picker_draw_loop_exits_on_q);
+
+void test_campaign_picker_mouse_choose_and_cancel_paths()
+{
+    ViewportGuard guard;
+    window_w = 320;
+    window_h = 200;
+    viewport_offset_x = 0;
+    viewport_offset_y = 0;
+    viewport_w = 320;
+    viewport_h = 200;
+
+    char old_end = myscreen->end;
+    myscreen->end = 0;
+
+    SDL_Thread* choose_thread = SDL_CreateThread(picker_choose_injector, "picker_choose", nullptr);
+    TEST_ASSERT(choose_thread != nullptr, "failed to create choose injector");
+    CampaignResult chosen = pick_campaign(&myscreen->save_data, false);
+    int choose_rc = 0;
+    SDL_WaitThread(choose_thread, &choose_rc);
+    TEST_ASSERT(!chosen.id.empty(), "choose path should return a selected campaign id");
+
+    SDL_Thread* cancel_thread = SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr);
+    TEST_ASSERT(cancel_thread != nullptr, "failed to create cancel injector");
+    CampaignResult canceled = pick_campaign(&myscreen->save_data, false);
+    int cancel_rc = 0;
+    SDL_WaitThread(cancel_thread, &cancel_rc);
+    TEST_ASSERT(canceled.id.empty(), "cancel path should not return a campaign id");
+
+    myscreen->end = old_end;
+}
+REGISTER_TEST(test_campaign_picker_mouse_choose_and_cancel_paths);
+
+void test_campaign_picker_delete_and_reset_prompt_paths()
+{
+    ViewportGuard guard;
+    window_w = 320;
+    window_h = 200;
+    viewport_offset_x = 0;
+    viewport_offset_y = 0;
+    viewport_w = 320;
+    viewport_h = 200;
+
+    char old_end = myscreen->end;
+    myscreen->end = 0;
+
+    SDL_Thread* delete_thread = SDL_CreateThread(campaign_delete_then_cancel_injector, "picker_delete_cancel", nullptr);
+    TEST_ASSERT(delete_thread != nullptr, "failed to create campaign delete injector");
+    CampaignResult after_delete_prompt = pick_campaign(&myscreen->save_data, true);
+    int delete_rc = 0;
+    SDL_WaitThread(delete_thread, &delete_rc);
+    TEST_ASSERT(after_delete_prompt.id.empty(), "delete+cancel path should return empty campaign id");
+
+    SDL_Thread* reset_thread = SDL_CreateThread(campaign_reset_then_cancel_injector, "picker_reset_cancel", nullptr);
+    TEST_ASSERT(reset_thread != nullptr, "failed to create campaign reset injector");
+    CampaignResult after_reset_prompt = pick_campaign(&myscreen->save_data, false);
+    int reset_rc = 0;
+    SDL_WaitThread(reset_thread, &reset_rc);
+    TEST_ASSERT(after_reset_prompt.id.empty(), "reset+cancel path should return empty campaign id");
+
+    myscreen->end = old_end;
+}
+REGISTER_TEST(test_campaign_picker_delete_and_reset_prompt_paths);
+
+void test_load_campaign_invalid_id_reports_error()
+{
+    std::map<std::string, int> current_levels;
+    const std::string old_campaign = get_mounted_campaign();
+
+    int rv = load_campaign("org.openglad.this_campaign_should_not_exist", current_levels, 1);
+    TEST_ASSERT_EQ(-2, rv, "load_campaign should return -2 when mount fails");
+
+    // Restore environment for tests that expect a mounted campaign.
+    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to remount original campaign");
+}
+REGISTER_TEST(test_load_campaign_invalid_id_reports_error);
 
 void test_level_picker_cancel_esc_returns_default()
 {
@@ -95,3 +292,34 @@ void test_level_picker_cancel_esc_returns_default()
     TEST_ASSERT_EQ(1, canceled, "level cancel should return default level");
 }
 REGISTER_TEST(test_level_picker_cancel_esc_returns_default);
+
+void test_level_picker_choose_and_delete_prompt_paths()
+{
+    ViewportGuard guard;
+    window_w = 320;
+    window_h = 200;
+    viewport_offset_x = 0;
+    viewport_offset_y = 0;
+    viewport_w = 320;
+    viewport_h = 200;
+
+    char old_end = myscreen->end;
+    myscreen->end = 0;
+
+    SDL_Thread* choose_thread = SDL_CreateThread(level_picker_choose_injector, "level_picker_choose", nullptr);
+    TEST_ASSERT(choose_thread != nullptr, "failed to create level picker choose injector");
+    int chosen = pick_level(myscreen, 1, false);
+    int choose_rc = 0;
+    SDL_WaitThread(choose_thread, &choose_rc);
+    TEST_ASSERT(chosen > 0, "choose path should return a valid level id");
+
+    SDL_Thread* delete_thread = SDL_CreateThread(level_picker_delete_then_cancel_injector, "level_picker_delete_cancel", nullptr);
+    TEST_ASSERT(delete_thread != nullptr, "failed to create level picker delete injector");
+    int canceled_after_delete_prompt = pick_level(myscreen, 1, true);
+    int delete_rc = 0;
+    SDL_WaitThread(delete_thread, &delete_rc);
+    TEST_ASSERT_EQ(1, canceled_after_delete_prompt, "delete prompt + cancel should keep default level");
+
+    myscreen->end = old_end;
+}
+REGISTER_TEST(test_level_picker_choose_and_delete_prompt_paths);

@@ -223,3 +223,66 @@ void test_screen_damage_tile_various()
     (void)r1; (void)r2; (void)r3;
 }
 REGISTER_TEST(test_screen_damage_tile_various);
+
+void test_screen_multiview_lifecycle_paths()
+{
+    myscreen->ready_for_battle(2);
+    TEST_ASSERT(myscreen->viewob[0] != nullptr && myscreen->viewob[1] != nullptr,
+                "ready_for_battle(2) should initialize two views");
+
+    myscreen->ready_for_battle(3);
+    TEST_ASSERT(myscreen->viewob[0] != nullptr && myscreen->viewob[1] != nullptr && myscreen->viewob[2] != nullptr,
+                "ready_for_battle(3) should initialize three views");
+
+    myscreen->reset(4);
+    TEST_ASSERT(myscreen->viewob[0] != nullptr && myscreen->viewob[1] != nullptr &&
+                myscreen->viewob[2] != nullptr && myscreen->viewob[3] != nullptr,
+                "reset(4) should initialize four views");
+
+    myscreen->reset(1);
+}
+REGISTER_TEST(test_screen_multiview_lifecycle_paths);
+
+void test_screen_find_nearest_player_and_draw_panels()
+{
+    walker* seeker = make_walker_at(FAMILY_SOLDIER, 20, 20, 1);
+    walker* p1 = make_walker_at(FAMILY_ARCHER, 24, 20, 0);
+    walker* p2 = make_walker_at(FAMILY_MAGE, 200, 160, 0);
+    TEST_ASSERT(seeker && p1 && p2, "test walkers should be created");
+    if (!seeker || !p1 || !p2)
+    {
+        delete seeker;
+        delete p1;
+        delete p2;
+        return;
+    }
+
+    p1->user = 0;
+    p2->user = 1;
+    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(p1));
+    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(p2));
+
+    walker* nearest = myscreen->find_nearest_player(seeker);
+    TEST_ASSERT(nearest == p1, "nearest player should be the closest user-controlled walker");
+
+    myscreen->draw_panels(1);
+
+    myscreen->level_data.oblist.pop_back();
+    myscreen->level_data.oblist.pop_back();
+    delete seeker;
+}
+REGISTER_TEST(test_screen_find_nearest_player_and_draw_panels);
+
+void test_screen_get_scen_title_paths_and_null_foe_guards()
+{
+    const char* missing = myscreen->get_scen_title("definitely_missing_scen_file", myscreen);
+    TEST_ASSERT((std::string(missing) == "ERROR" || std::string(missing) == "none"),
+                "missing scenario title should return a fallback title");
+
+    // Existing campaign levels may have varying metadata, but this path should not crash.
+    (void)myscreen->get_scen_title("level1", myscreen);
+
+    TEST_ASSERT(myscreen->find_near_foe(nullptr) == nullptr, "find_near_foe should guard nullptr");
+    TEST_ASSERT(myscreen->find_far_foe(nullptr) == nullptr, "find_far_foe should guard nullptr");
+}
+REGISTER_TEST(test_screen_get_scen_title_paths_and_null_foe_guards);
