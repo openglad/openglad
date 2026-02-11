@@ -159,3 +159,63 @@ void test_view_input_yell_and_shift_yell_team_actions()
 }
 REGISTER_TEST(test_view_input_yell_and_shift_yell_team_actions);
 
+void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
+{
+    TeamListSwap swap;
+    disablePlayerJoystick(0);
+
+    KeyBindingGuard bind_switch(0, KEY_SWITCH, SDLK_TAB);
+    KeyBindingGuard bind_cheat(0, KEY_CHEAT, SDLK_c);
+    KeyStateGuard ks;
+
+    viewscreen* v = myscreen->viewob[0].get();
+    TEST_ASSERT(v != nullptr, "view should exist");
+    v->mynum = 0;
+    v->my_team = 0;
+    myscreen->save_data.my_team = 0;
+
+    walker* control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    walker* teammate = make_living(FAMILY_ELF, 0, 40, 20);
+    walker* enemy = make_living(FAMILY_ORC, 1, 60, 20);
+    TEST_ASSERT(control && teammate && enemy, "walkers should be created");
+
+    control->user = 0;
+    control->set_act_type(ACT_CONTROL);
+    control->stats()->level = 5;
+
+    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(control));
+    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(teammate));
+    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
+    v->control = control;
+
+    // Hold cheat key so cheat branch executes.
+    ks.set(SDLK_c, true);
+
+    SDL_Event e{};
+    e.type = SDL_KEYDOWN;
+    e.key.repeat = 0;
+
+    // Cheat+switch: rotate to next team that has a living unit.
+    e.key.keysym.sym = SDLK_TAB;
+    v->input(e);
+    TEST_ASSERT(v->control != nullptr, "control should remain valid after cheat-switch");
+
+    // Cheat+F12: eliminate enemy living units.
+    enemy->stats()->hitpoints = 25;
+    e.key.keysym.sym = SDLK_F12;
+    v->input(e);
+    TEST_ASSERT(v->control != nullptr, "cheat F12 path should keep control valid");
+
+    // Cheat level tuning keys.
+    const int level_before = v->control->stats()->level;
+    e.key.keysym.sym = SDLK_RIGHTBRACKET;
+    v->input(e);
+    TEST_ASSERT(v->control->stats()->level >= level_before, "right bracket should not lower level");
+
+    e.key.keysym.sym = SDLK_LEFTBRACKET;
+    v->input(e);
+    TEST_ASSERT(v->control->stats()->level >= 1, "left bracket should keep level >= 1");
+
+    ks.set(SDLK_c, false);
+}
+REGISTER_TEST(test_view_input_cheat_mode_switch_team_kill_and_level_keys);
