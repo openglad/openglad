@@ -390,6 +390,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_zlib_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
