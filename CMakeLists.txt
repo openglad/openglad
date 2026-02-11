@@ -399,6 +399,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_input_joystick.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_zlib_api_edges.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_api_edges.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
