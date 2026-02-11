@@ -13,6 +13,9 @@ void draw_gem(short x, short y, short color, screen* myscreen);
 void draw_value_bar(short left, short top, walker* control, short mode, screen* myscreen);
 void new_draw_value_bar(short left, short top, walker* control, short mode, screen* myscreen);
 void draw_percentage_bar(short left, short top, unsigned char somecolor, short somelength, screen* myscreen);
+short score_panel(screen* myscreen);
+short score_panel(screen* myscreen, short do_it);
+short new_score_panel(screen* myscreen, short do_it);
 
 static walker* make_player(unsigned char team)
 {
@@ -128,3 +131,50 @@ void test_glad_draw_gems_and_value_bars_smoke()
     delete control;
 }
 REGISTER_TEST(test_glad_draw_gems_and_value_bars_smoke);
+
+void test_glad_score_panel_and_new_score_panel_modes()
+{
+    walker* control = make_player(0);
+    TEST_ASSERT(control != nullptr, "control should be created");
+    control->user = 0;
+    control->team_num = 0;
+    control->dead = 0;
+    control->stats()->level = 7;
+    control->stats()->hitpoints = 55;
+    control->stats()->max_hitpoints = 100;
+    control->stats()->magicpoints = 33;
+    control->stats()->max_magicpoints = 80;
+    control->stats()->special_cost[control->current_special] = 10;
+
+    viewscreen* v = myscreen->viewob[0].get();
+    TEST_ASSERT(v != nullptr, "view should exist");
+    walker* old_control = v->control;
+    v->control = control;
+
+    // Make sure these overlays execute.
+    v->prefs[PREF_OVERLAY] = PREF_OVERLAY_ON;
+    v->prefs[PREF_SCORE] = PREF_SCORE_ON;
+    v->prefs[PREF_FOES] = PREF_FOES_ON;
+
+    // Exercise all life display variants in new_score_panel.
+    v->prefs[PREF_LIFE] = PREF_LIFE_TEXT;
+    TEST_ASSERT_EQ(1, (int)new_score_panel(myscreen, 1), "new_score_panel text mode");
+    v->prefs[PREF_LIFE] = PREF_LIFE_BARS;
+    TEST_ASSERT_EQ(1, (int)new_score_panel(myscreen, 1), "new_score_panel bars mode");
+    v->prefs[PREF_LIFE] = PREF_LIFE_BOTH;
+    TEST_ASSERT_EQ(1, (int)new_score_panel(myscreen, 1), "new_score_panel both mode");
+
+    // Toggle shifter special-name branch and low-mp branch.
+    control->shifter_down = 1;
+    control->stats()->magicpoints = 0;
+    (void)new_score_panel(myscreen, 1);
+    control->shifter_down = 0;
+
+    // Wrapper functions.
+    TEST_ASSERT_EQ(1, (int)score_panel(myscreen), "score_panel wrapper");
+    TEST_ASSERT_EQ(1, (int)score_panel(myscreen, 1), "score_panel overload");
+
+    v->control = old_control;
+    delete control;
+}
+REGISTER_TEST(test_glad_score_panel_and_new_score_panel_modes);
