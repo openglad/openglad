@@ -437,7 +437,8 @@ bool SaveData::load(const std::string& filename)
     if(current_level >= 0)
     {
         if(scen_num != current_level)
-            Log("Error: Loaded scen_num {}, but found current_level {}\n", scen_num, current_level);
+            LogError("save_load_level_mismatch save={} scen_num={} current_level={}\n",
+                filename, scen_num, current_level);
         //scen_num = current_level;
     }
 

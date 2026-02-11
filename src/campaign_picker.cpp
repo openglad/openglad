@@ -53,7 +53,7 @@ CampaignLoadResult load_campaign_with_error(const std::string& campaign, std::ma
     {
         if(!unmount_campaign_package(old_campaign))
         {
-            Log("Failed to unmount campaign {}, which caused loading {} to fail.\n", old_campaign, campaign);
+            LogError("campaign_load_failed reason=unmount_failed old={} requested={}\n", old_campaign, campaign);
             result.error = CampaignLoadError::UnmountFailed;
             return result;
         }
