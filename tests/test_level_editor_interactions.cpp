@@ -6,6 +6,8 @@ extern screen* myscreen;
 
 // From level_editor.cpp
 Sint32 level_editor();
+extern Sint32 levelchanged;
+extern Sint32 campaignchanged;
 
 struct EditorThreadState {
     bool started;
@@ -20,9 +22,43 @@ static int editor_injector_thread(void* data)
     // Give the editor time to initialize and enter its main loop.
     SDL_Delay(300);
 
-    // Toggle a couple modes and click in the main window to exercise mouse paths.
-    inject_key_press(SDLK_o, 10);
-    inject_key_press(SDLK_t, 10);
+    // Open Level menu, toggle goal flags (Level > Goals > toggles).
+    inject_click(90, 10, 20);   // Level (top menu)
+    SDL_Delay(30);
+    inject_click(90, 85, 20);   // Goals >
+    SDL_Delay(30);
+    inject_click(200, 85, 20);  // Defeat enemies toggle
+    inject_click(200, 105, 20); // Beat generators toggle
+    inject_click(200, 125, 20); // Protect NPCs toggle
+
+    // Open Level > Details submenu and exercise prompt_for_string (TESTING fast path).
+    SDL_Delay(30);
+    inject_click(90, 10, 20);   // Level (top menu)
+    SDL_Delay(30);
+    inject_click(90, 65, 20);   // Details >
+    SDL_Delay(30);
+    inject_click(200, 85, 20);  // Par value...
+    inject_click(200, 105, 20); // Time limit...
+
+    // Mode toggles and a couple keypaths.
+    SDL_Delay(30);
+    inject_key_press(SDLK_o, 10); // Terrain -> Object
+    inject_key_press(SDLK_RIGHTBRACKET, 10);
+    inject_key_press(SDLK_LEFTBRACKET, 10);
+
+    inject_key_press(SDLK_o, 10); // Object -> Select
+    inject_key_press(SDLK_DELETE, 10);
+
+    // Trigger resmooth (F5) and palette load (F9) paths.
+    inject_key_press(SDLK_F5, 10);
+    inject_key_press(SDLK_F9, 10);
+
+    // Force the ESC quit prompt path (TESTING returns default without blocking).
+    levelchanged = 1;
+    campaignchanged = 1;
+    inject_key_press(SDLK_ESCAPE, 10);
+
+    // Exercise a click in the main window.
     inject_click(100, 100, 10);
 
     // Let it draw a few frames, then request exit.
@@ -55,4 +91,3 @@ void test_level_editor_runs_and_handles_basic_input()
     TEST_ASSERT(st.finished, "injector thread should have finished");
 }
 REGISTER_TEST(test_level_editor_runs_and_handles_basic_input);
-
