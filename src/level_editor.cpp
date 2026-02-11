@@ -852,6 +852,8 @@ public:
     }
 };
 
+std::string get_editor_family_label(Order order, char family, char livings[][20], const char* treasures[], const char* weapons[]);
+std::string get_editor_level_label(Order order, char family, int level);
 
 class LevelEditorData
 {
@@ -1758,36 +1760,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             if(selection.size() == 1 || !showing_name)
             {
                 // Show family name
-                message.clear();
-                if (sel.order == Order::Living)
-                    message = livings[sel.family];
-                else if (sel.order == Order::Generator)
-                    switch (sel.family)      // who are we?
-                    {
-                        case FAMILY_TENT:
-                            message = "TENT";
-                            break;
-                        case FAMILY_TOWER:
-                            message = "MAGE TOWER";
-                            break;
-                        case FAMILY_BONES:
-                            message = "BONEPILE";
-                            break;
-                        case FAMILY_TREEHOUSE:
-                            message = "TREEHOUSE";
-                            break;
-                        default:
-                            message = "GENERATOR";
-                            break;
-                    }
-                else if (sel.order == Order::Special)
-                    message = "START TILE";
-                else if (sel.order == Order::Treasure)
-                    message = treasures[sel.family];
-                else if (sel.order == Order::Weapon)
-                    message = weapons[sel.family];
-                else
-                    message = "UNKNOWN";
+                message = get_editor_family_label(sel.order, sel.family, livings, treasures, weapons);
                 scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
             }
 
@@ -1799,34 +1772,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 
             // More info for a single selection
             // Level display
-            message.clear();
-            switch(sel.order)
-            {
-                case Order::Living:
-                case Order::Generator:
-                    message = std::format("LEVEL: {}", sel.level);
-                    break;
-                case Order::Treasure:
-                    if(sel.family == FAMILY_GOLD_BAR || sel.family == FAMILY_SILVER_BAR)
-                        message = std::format("VALUE: {}", sel.level);
-                    else if(sel.family == FAMILY_KEY)
-                        message = std::format("DOOR ID: {}", sel.level);
-                    else if(sel.family == FAMILY_TELEPORTER)
-                        message = std::format("GROUP: {}", sel.level);
-                    else if(sel.family == FAMILY_EXIT)
-                        message = std::format("EXIT TO: {}", sel.level);
-                    else if(sel.family != FAMILY_STAIN)
-                        message = std::format("POWER: {}", sel.level);
-                    break;
-                case Order::Weapon:
-                    if(sel.family == FAMILY_DOOR)
-                        message = std::format("DOOR ID: {}", sel.level);
-                    else
-                        message = std::format("POWER: {}", sel.level);
-                    break;
-                default:
-                    break;
-            }
+            message = get_editor_level_label(sel.order, sel.family, sel.level);
 
             if(!message.empty())
                 scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
@@ -1840,67 +1786,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
         // Get team number ..
-        message.clear();
-        if (object_brush.order == Order::Living)
-            message = livings[object_brush.family];
-        else if (object_brush.order == Order::Generator)
-            switch (object_brush.family)      // who are we?
-            {
-                case FAMILY_TENT:
-                    message = "TENT";
-                    break;
-                case FAMILY_TOWER:
-                    message = "MAGE TOWER";
-                    break;
-                case FAMILY_BONES:
-                    message = "BONEPILE";
-                    break;
-                case FAMILY_TREEHOUSE:
-                    message = "TREEHOUSE";
-                    break;
-                default:
-                    message = "GENERATOR";
-                    break;
-            }
-        else if (object_brush.order == Order::Special)
-            message = "START TILE";
-        else if (object_brush.order == Order::Treasure)
-            message = treasures[object_brush.family];
-        else if (object_brush.order == Order::Weapon)
-            message = weapons[object_brush.family];
-        else
-            message = "UNKNOWN";
+        message = get_editor_family_label(object_brush.order, object_brush.family, livings, treasures, weapons);
         scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
         // Level display
-        message.clear();
-        switch(object_brush.order)
-        {
-            case Order::Living:
-            case Order::Generator:
-                message = std::format("LEVEL: {}", object_brush.level);
-                break;
-            case Order::Treasure:
-                if(object_brush.family == FAMILY_GOLD_BAR || object_brush.family == FAMILY_SILVER_BAR)
-                    message = std::format("VALUE: {}", object_brush.level);
-                else if(object_brush.family == FAMILY_KEY)
-                    message = std::format("DOOR ID: {}", object_brush.level);
-                else if(object_brush.family == FAMILY_TELEPORTER)
-                    message = std::format("GROUP: {}", object_brush.level);
-                else if(object_brush.family == FAMILY_EXIT)
-                    message = std::format("EXIT TO: {}", object_brush.level);
-                else if(object_brush.family != FAMILY_STAIN)
-                    message = std::format("POWER: {}", object_brush.level);
-                break;
-            case Order::Weapon:
-                if(object_brush.family == FAMILY_DOOR)
-                    message = std::format("DOOR ID: {}", object_brush.level);
-                else
-                    message = std::format("POWER: {}", object_brush.level);
-                break;
-            default:
-                break;
-        }
+        message = get_editor_level_label(object_brush.order, object_brush.family, object_brush.level);
 
         if(!message.empty())
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
@@ -3278,6 +3168,58 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 	return false;
 }
 
+std::string get_editor_family_label(Order order, char family, char livings[][20], const char* treasures[], const char* weapons[])
+{
+    if (order == Order::Living)
+        return livings[family];
+    if (order == Order::Generator)
+    {
+        switch (family)
+        {
+            case FAMILY_TENT: return "TENT";
+            case FAMILY_TOWER: return "MAGE TOWER";
+            case FAMILY_BONES: return "BONEPILE";
+            case FAMILY_TREEHOUSE: return "TREEHOUSE";
+            default: return "GENERATOR";
+        }
+    }
+    if (order == Order::Special)
+        return "START TILE";
+    if (order == Order::Treasure)
+        return treasures[family];
+    if (order == Order::Weapon)
+        return weapons[family];
+    return "UNKNOWN";
+}
+
+std::string get_editor_level_label(Order order, char family, int level)
+{
+    switch (order)
+    {
+        case Order::Living:
+        case Order::Generator:
+            return std::format("LEVEL: {}", level);
+        case Order::Treasure:
+            if (family == FAMILY_GOLD_BAR || family == FAMILY_SILVER_BAR)
+                return std::format("VALUE: {}", level);
+            if (family == FAMILY_KEY)
+                return std::format("DOOR ID: {}", level);
+            if (family == FAMILY_TELEPORTER)
+                return std::format("GROUP: {}", level);
+            if (family == FAMILY_EXIT)
+                return std::format("EXIT TO: {}", level);
+            if (family != FAMILY_STAIN)
+                return std::format("POWER: {}", level);
+            return "";
+        case Order::Weapon:
+            if (family == FAMILY_DOOR)
+                return std::format("DOOR ID: {}", level);
+            return std::format("POWER: {}", level);
+        default:
+            return "";
+    }
+}
+
 enum class EventType { Handled, Text, Scroll, MouseMotion, MouseDown, MouseUp, KeyDown };
 
 EventType handle_basic_editor_event(const SDL_Event& event)
@@ -4214,5 +4156,3 @@ walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data)
 	ob->collide_ob = nullptr;
 	return nullptr;
 }
-
-

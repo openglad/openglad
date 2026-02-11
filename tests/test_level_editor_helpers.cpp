@@ -6,6 +6,7 @@
 
 #include <string>
 #include <set>
+#include <cstdio>
 #include <unistd.h>
 
 extern screen* myscreen;
@@ -20,6 +21,8 @@ bool create_new_campaign(const std::string& campaign_id);
 bool does_campaign_exist(const std::string& campaign_id);
 bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems);
+std::string get_editor_family_label(Order order, char family, char livings[][20], const char* treasures[], const char* weapons[]);
+std::string get_editor_level_label(Order order, char family, int level);
 
 static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned char c, unsigned char d)
 {
@@ -47,6 +50,38 @@ void test_level_editor_set_screen_pos_and_tile_matching()
     // Default case should return original.
     t = (unsigned char)get_random_matching_tile(222);
     TEST_ASSERT_EQ(222, (int)t, "unknown tiles should be returned unchanged");
+
+    // Label helpers extracted from editor rendering path.
+    char test_livings[NUM_FAMILIES][20] = {};
+    const char* test_treasures[NUM_FAMILIES] = {};
+    const char* test_weapons[NUM_FAMILIES] = {};
+    for (int i = 0; i < NUM_FAMILIES; ++i) {
+        test_treasures[i] = "TREASURE";
+        test_weapons[i] = "WEAPON";
+    }
+    snprintf(test_livings[FAMILY_SOLDIER], sizeof(test_livings[FAMILY_SOLDIER]), "SOLDIER");
+
+    TEST_ASSERT(get_editor_family_label(Order::Generator, FAMILY_TENT, test_livings, test_treasures, test_weapons) == "TENT", "generator tent label");
+    TEST_ASSERT(get_editor_family_label(Order::Generator, FAMILY_TOWER, test_livings, test_treasures, test_weapons) == "MAGE TOWER", "generator tower label");
+    TEST_ASSERT(get_editor_family_label(Order::Generator, FAMILY_BONES, test_livings, test_treasures, test_weapons) == "BONEPILE", "generator bones label");
+    TEST_ASSERT(get_editor_family_label(Order::Generator, FAMILY_TREEHOUSE, test_livings, test_treasures, test_weapons) == "TREEHOUSE", "generator treehouse label");
+    TEST_ASSERT(get_editor_family_label(Order::Special, 0, test_livings, test_treasures, test_weapons) == "START TILE", "special start-tile label");
+    TEST_ASSERT(get_editor_family_label(Order::Living, FAMILY_SOLDIER, test_livings, test_treasures, test_weapons) == "SOLDIER", "living label");
+    TEST_ASSERT(get_editor_family_label(Order::Treasure, FAMILY_KEY, test_livings, test_treasures, test_weapons) == "TREASURE", "treasure family label");
+    TEST_ASSERT(get_editor_family_label(Order::Weapon, FAMILY_DOOR, test_livings, test_treasures, test_weapons) == "WEAPON", "weapon family label");
+    TEST_ASSERT(get_editor_family_label(static_cast<Order>(255), 0, test_livings, test_treasures, test_weapons) == "UNKNOWN", "unknown order label fallback");
+
+    TEST_ASSERT(get_editor_level_label(Order::Living, FAMILY_SOLDIER, 7) == "LEVEL: 7", "living level label");
+    TEST_ASSERT(get_editor_level_label(Order::Generator, FAMILY_TOWER, 3) == "LEVEL: 3", "generator level label");
+    TEST_ASSERT(get_editor_level_label(Order::Treasure, FAMILY_GOLD_BAR, 50) == "VALUE: 50", "gold value label");
+    TEST_ASSERT(get_editor_level_label(Order::Treasure, FAMILY_KEY, 4) == "DOOR ID: 4", "key door label");
+    TEST_ASSERT(get_editor_level_label(Order::Treasure, FAMILY_TELEPORTER, 2) == "GROUP: 2", "teleporter group label");
+    TEST_ASSERT(get_editor_level_label(Order::Treasure, FAMILY_EXIT, 9) == "EXIT TO: 9", "exit destination label");
+    TEST_ASSERT(get_editor_level_label(Order::Treasure, FAMILY_MAGIC_POTION, 5) == "POWER: 5", "treasure power label");
+    TEST_ASSERT(get_editor_level_label(Order::Treasure, FAMILY_STAIN, 1).empty(), "stain has no level label");
+    TEST_ASSERT(get_editor_level_label(Order::Weapon, FAMILY_DOOR, 6) == "DOOR ID: 6", "weapon door label");
+    TEST_ASSERT(get_editor_level_label(Order::Weapon, FAMILY_KNIFE, 8) == "POWER: 8", "weapon power label");
+    TEST_ASSERT(get_editor_level_label(static_cast<Order>(255), FAMILY_KNIFE, 8).empty(), "unknown order has empty level label");
 }
 REGISTER_TEST(test_level_editor_set_screen_pos_and_tile_matching);
 
