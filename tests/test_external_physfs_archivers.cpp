@@ -143,6 +143,40 @@ static std::vector<uint8_t> make_hog_one_file(const char* name13, const std::str
     return out;
 }
 
+static std::vector<uint8_t> make_grp_one_file(const char* name12, const std::string& contents)
+{
+    std::vector<uint8_t> out;
+    // Header: "KenSilverman" + num files (U32 LE)
+    out.insert(out.end(), {'K','e','n','S','i','l','v','e','r','m','a','n'});
+    append_u32le(out, 1);
+
+    // Directory entry: name[12] + size(U32 LE)
+    for (int i = 0; i < 12; i++)
+        out.push_back((uint8_t)(name12 && name12[i] ? name12[i] : 0));
+    append_u32le(out, (uint32_t)contents.size());
+
+    // File data
+    out.insert(out.end(), contents.begin(), contents.end());
+    return out;
+}
+
+static std::vector<uint8_t> make_mvl_one_file(const char* name13, const std::string& contents)
+{
+    std::vector<uint8_t> out;
+    // Header: "DMVL" + num files (U32 LE)
+    out.insert(out.end(), {'D','M','V','L'});
+    append_u32le(out, 1);
+
+    // Directory entry: name[13] + size(U32 LE)
+    for (int i = 0; i < 13; i++)
+        out.push_back((uint8_t)(name13 && name13[i] ? name13[i] : 0));
+    append_u32le(out, (uint32_t)contents.size());
+
+    // File data
+    out.insert(out.end(), contents.begin(), contents.end());
+    return out;
+}
+
 void test_external_physfs_qpak_wad_hog_mount_and_read()
 {
     TEST_ASSERT(PHYSFS_isInit(), "PHYSFS should be initialized");
@@ -186,3 +220,32 @@ void test_external_physfs_qpak_wad_hog_mount_and_read()
 }
 REGISTER_TEST(test_external_physfs_qpak_wad_hog_mount_and_read);
 
+void test_external_physfs_grp_mvl_mount_and_read()
+{
+    TEST_ASSERT(PHYSFS_isInit(), "PHYSFS should be initialized");
+
+    // --- GRP ---
+    {
+        std::vector<uint8_t> grp = make_grp_one_file("HELLO.TXT", "GRP!");
+        std::string path;
+        TEST_ASSERT(write_temp_file_bytes(grp, "_arch.grp", &path), "write grp temp file");
+        TEST_ASSERT(PHYSFS_mount(path.c_str(), nullptr, 1), "PHYSFS_mount grp");
+        std::string got;
+        TEST_ASSERT(read_physfs_file_all("HELLO.TXT", &got), "read file from grp");
+        TEST_ASSERT(got == "GRP!", "grp file contents");
+        TEST_ASSERT(PHYSFS_removeFromSearchPath(path.c_str()), "unmount grp");
+    }
+
+    // --- MVL ---
+    {
+        std::vector<uint8_t> mvl = make_mvl_one_file("INTRO.HNM", "MVL");
+        std::string path;
+        TEST_ASSERT(write_temp_file_bytes(mvl, "_arch.mvl", &path), "write mvl temp file");
+        TEST_ASSERT(PHYSFS_mount(path.c_str(), nullptr, 1), "PHYSFS_mount mvl");
+        std::string got;
+        TEST_ASSERT(read_physfs_file_all("INTRO.HNM", &got), "read file from mvl");
+        TEST_ASSERT(got == "MVL", "mvl file contents");
+        TEST_ASSERT(PHYSFS_removeFromSearchPath(path.c_str()), "unmount mvl");
+    }
+}
+REGISTER_TEST(test_external_physfs_grp_mvl_mount_and_read);
