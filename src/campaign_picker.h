@@ -31,7 +31,22 @@ struct CampaignResult
     {}
 };
 
+enum class CampaignLoadError
+{
+    None = 0,
+    UnmountFailed,
+    MountFailed
+};
+
+struct CampaignLoadResult
+{
+    CampaignLoadError error = CampaignLoadError::None;
+    int current_level = 1;
+};
+
 CampaignResult pick_campaign(SaveData* save_data, bool enable_delete = false);
 
-int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level = 1);
+CampaignLoadResult load_campaign_with_error(const std::string& campaign,
+    std::map<std::string, int>& current_levels, int first_level = 1);
 
+int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level = 1);

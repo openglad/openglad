@@ -44,26 +44,46 @@ int toInt(const std::string& s)
 }
 
 // Unmounts old campaign, mounts new one, and returns the current level (scenario) that the player is on
-int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level)
+CampaignLoadResult load_campaign_with_error(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level)
 {
+    CampaignLoadResult result;
+    result.current_level = first_level;
     std::string old_campaign = get_mounted_campaign();
     if(old_campaign != campaign)
     {
         if(!unmount_campaign_package(old_campaign))
         {
             Log("Failed to unmount campaign {}, which caused loading {} to fail.\n", old_campaign, campaign);
-            return -3;
+            result.error = CampaignLoadError::UnmountFailed;
+            return result;
         }
         
         if(!mount_campaign_package(campaign))
-            return -2;
+        {
+            result.error = CampaignLoadError::MountFailed;
+            return result;
+        }
     }
     
     std::map<std::string, int>::const_iterator g = current_levels.find(campaign);
     if(g != current_levels.end())
-        return g->second;
-    else
-        return first_level;
+        result.current_level = g->second;
+    return result;
+}
+
+int load_campaign(const std::string& campaign, std::map<std::string, int>& current_levels, int first_level)
+{
+    const CampaignLoadResult result = load_campaign_with_error(campaign, current_levels, first_level);
+    switch(result.error)
+    {
+        case CampaignLoadError::None:
+            return result.current_level;
+        case CampaignLoadError::MountFailed:
+            return -2;
+        case CampaignLoadError::UnmountFailed:
+            return -3;
+    }
+    return -1;
 }
 
 class CampaignEntry

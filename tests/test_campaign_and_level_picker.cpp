@@ -244,6 +244,26 @@ void test_load_campaign_invalid_id_reports_error()
 }
 REGISTER_TEST(test_load_campaign_invalid_id_reports_error);
 
+void test_load_campaign_with_error_typed_result_paths()
+{
+    std::map<std::string, int> current_levels;
+    current_levels["org.openglad.gladiator"] = 7;
+
+    const std::string old_campaign = get_mounted_campaign();
+    CampaignLoadResult typed = load_campaign_with_error("org.openglad.gladiator", current_levels, 1);
+    TEST_ASSERT_EQ(static_cast<int>(CampaignLoadError::None), static_cast<int>(typed.error),
+        "typed load_campaign should succeed for mounted campaign");
+    TEST_ASSERT_EQ(7, typed.current_level, "typed load_campaign should return mapped current level");
+
+    typed = load_campaign_with_error("org.openglad.this_campaign_should_not_exist", current_levels, 1);
+    TEST_ASSERT_EQ(static_cast<int>(CampaignLoadError::MountFailed), static_cast<int>(typed.error),
+        "typed load_campaign should report MountFailed for invalid campaign");
+
+    // Restore environment for tests that expect a mounted campaign.
+    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to remount original campaign");
+}
+REGISTER_TEST(test_load_campaign_with_error_typed_result_paths);
+
 void test_level_picker_cancel_esc_returns_default()
 {
     LevelData ld(1);
