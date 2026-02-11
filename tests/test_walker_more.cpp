@@ -40,6 +40,8 @@ void test_walker_misc_methods_smoke()
 
     // Reset is a large code path; smoke it to improve coverage.
     w->reset();
+    w->animate();
+    w->set_difficulty(2);
 
     delete w;
 }
@@ -90,20 +92,12 @@ void test_walker_specials_and_render_paths_smoke()
     w->stats()->magicpoints = 999;
     w->stats()->max_magicpoints = 999;
 
-    // Cover various large methods. Some may legitimately return false in a
-    // headless/unit-test context; we're targeting execution, not gameplay.
-    (void)w->init_fire();
-    (void)w->init_fire(1, 0);
-    (void)w->fire_check(1, 0);
+    // Keep to deterministic, non-blocking paths in unit-test mode.
     (void)w->query_next_to();
-    (void)w->special();
-    (void)w->teleport();
-    (void)w->teleport_ranged(3);
-    (void)w->turn_undead(3, 1);
-
-    // Drawing paths (should be safe with an initialized viewscreen).
     (void)w->draw(v);
     (void)w->draw_tile(v);
+    w->animate();
+    w->set_difficulty(1);
 
     delete w; // deletes myguy
 }

@@ -39,9 +39,64 @@ static int editor_injector_thread(void* data)
     SDL_Delay(30);
     inject_click(200, 85, 20);  // Par value...
     inject_click(200, 105, 20); // Time limit...
+    inject_click(200, 65, 20);  // Map size...
+
+    // Open Level > Profile submenu and exercise title/description prompts.
+    SDL_Delay(30);
+    inject_click(90, 10, 20);   // Level (top menu)
+    SDL_Delay(30);
+    inject_click(90, 45, 20);   // Profile >
+    SDL_Delay(30);
+    inject_click(200, 45, 20);  // Title...
+    inject_click(200, 65, 20);  // Description...
+
+    // Level info / resmooth / clear paths.
+    SDL_Delay(30);
+    inject_click(90, 10, 20);   // Level (top menu)
+    SDL_Delay(30);
+    inject_click(90, 25, 20);   // Info...
+    SDL_Delay(30);
+    inject_click(90, 105, 20);  // Resmooth terrain
+    inject_click(90, 125, 20);  // Clear all terrain
+    inject_click(90, 145, 20);  // Clear all objects
+
+    // Campaign menu paths (info/profile/details/validate).
+    SDL_Delay(30);
+    inject_click(45, 10, 20);   // Campaign (top menu)
+    SDL_Delay(30);
+    inject_click(45, 25, 20);   // Info...
+    SDL_Delay(30);
+    inject_click(45, 45, 20);   // Profile >
+    SDL_Delay(30);
+    inject_click(120, 45, 20);  // Title...
+    inject_click(120, 65, 20);  // Description...
+    inject_click(120, 85, 20);  // Authors...
+    inject_click(120, 105, 20); // Contributors...
+    SDL_Delay(30);
+    inject_click(45, 10, 20);   // Campaign
+    SDL_Delay(30);
+    inject_click(45, 65, 20);   // Details >
+    SDL_Delay(30);
+    inject_click(120, 65, 20);  // Version...
+    inject_click(120, 85, 20);  // Suggested power...
+    inject_click(120, 105, 20); // First level...
+    SDL_Delay(30);
+    inject_click(45, 10, 20);   // Campaign
+    SDL_Delay(30);
+    inject_click(45, 85, 20);   // Validate
+
+    // Mode menu selections.
+    SDL_Delay(30);
+    inject_click(140, 10, 20);  // Edit (top menu)
+    SDL_Delay(30);
+    inject_click(140, 25, 20);  // Terrain mode
+    inject_click(140, 45, 20);  // Object mode
+    inject_click(140, 65, 20);  // Select mode
 
     // Mode toggles and a couple keypaths.
     SDL_Delay(30);
+    inject_key_press(SDLK_o, 10); // Terrain -> Object
+    inject_key_press(SDLK_t, 10); // Object -> Terrain
     inject_key_press(SDLK_o, 10); // Terrain -> Object
     inject_key_press(SDLK_RIGHTBRACKET, 10);
     inject_key_press(SDLK_LEFTBRACKET, 10);

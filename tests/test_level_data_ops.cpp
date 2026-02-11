@@ -45,6 +45,14 @@ void test_level_data_create_new_grid()
     TEST_ASSERT_EQ(60, (int)myscreen->level_data.grid.h, "grid height 60");
     TEST_ASSERT(myscreen->level_data.pixmaxx > 0, "pixmaxx positive");
     TEST_ASSERT(myscreen->level_data.pixmaxy > 0, "pixmaxy positive");
+    TEST_ASSERT(myscreen->level_data.grid.data != nullptr, "grid data allocated");
+
+    // Grass tile generation should stay in expected range.
+    for (int i = 0; i < 25; i++)
+    {
+        unsigned char t = myscreen->level_data.grid.data[i];
+        TEST_ASSERT(t >= PIX_GRASS1 && t <= PIX_GRASS4, "new grid tiles should be grass variants");
+    }
 }
 REGISTER_TEST(test_level_data_create_new_grid);
 
@@ -57,10 +65,12 @@ void test_level_data_resize_grid_grow()
     myscreen->level_data.create_new_grid();
     int old_w = myscreen->level_data.grid.w;
     int old_h = myscreen->level_data.grid.h;
+    unsigned char old00 = myscreen->level_data.grid.data[0];
 
     myscreen->level_data.resize_grid(50, 70);
     TEST_ASSERT_EQ(50, (int)myscreen->level_data.grid.w, "resized width");
     TEST_ASSERT_EQ(70, (int)myscreen->level_data.grid.h, "resized height");
+    TEST_ASSERT_EQ((int)old00, (int)myscreen->level_data.grid.data[0], "existing cells should be preserved");
     (void)old_w;
     (void)old_h;
 
@@ -161,6 +171,14 @@ void test_level_data_remove_ob_from_each_list()
 
     short r3 = myscreen->level_data.remove_ob(living);
     TEST_ASSERT_EQ(1, (int)r3, "removed from oblist");
+
+    walker* non_member = myscreen->level_data.myloader->create_walker(Order::Living, FAMILY_SOLDIER, myscreen);
+    TEST_ASSERT(non_member != nullptr, "non-member walker created");
+    short r4 = myscreen->level_data.remove_ob(non_member);
+    TEST_ASSERT_EQ(0, (int)r4, "removing non-member object should fail");
+    delete non_member;
+    short r5 = myscreen->level_data.remove_ob(nullptr);
+    TEST_ASSERT_EQ(0, (int)r5, "removing null should fail");
 }
 REGISTER_TEST(test_level_data_remove_ob_from_each_list);
 
@@ -205,6 +223,10 @@ void test_level_data_add_draw_pos()
     myscreen->level_data.add_draw_pos(10, 20);
     TEST_ASSERT_EQ(110, (int)myscreen->level_data.topx, "topx added");
     TEST_ASSERT_EQ(220, (int)myscreen->level_data.topy, "topy added");
+
+    myscreen->level_data.add_draw_pos(-5, -10);
+    TEST_ASSERT_EQ(105, (int)myscreen->level_data.topx, "topx supports negative deltas");
+    TEST_ASSERT_EQ(210, (int)myscreen->level_data.topy, "topy supports negative deltas");
 
     myscreen->level_data.set_draw_pos(0, 0);
 }
