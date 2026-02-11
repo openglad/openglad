@@ -103,8 +103,8 @@ void test_view_team() {
     // Give the team strong stats so the launched game finishes quickly.
     soldier->strength = soldier->dexterity = soldier->constitution = soldier->intelligence = soldier->armor = 200;
     archer->strength = archer->dexterity = archer->constitution = archer->intelligence = archer->armor = 200;
-    myscreen->save_data.team_list[0] = soldier;
-    myscreen->save_data.team_list[1] = archer;
+    myscreen->save_data.team_list[0].reset(soldier);
+    myscreen->save_data.team_list[1].reset(archer);
     myscreen->save_data.team_size = 2;
 
     myscreen->save_data.save("save0");

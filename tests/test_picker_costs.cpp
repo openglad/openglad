@@ -53,7 +53,7 @@ void test_picker_increase_decrease_stats_and_levels()
 {
     guy* team0 = new guy(FAMILY_SOLDIER);
     team0->upgrade_to_level(1);
-    myscreen->save_data.team_list[0] = team0;
+    myscreen->save_data.team_list[0].reset(team0);
     myscreen->save_data.team_size = 1;
 
     guy* cur = new guy(FAMILY_SOLDIER);
@@ -92,8 +92,7 @@ void test_picker_increase_decrease_stats_and_levels()
 
     delete cur;
     delete old;
-    delete team0;
-    myscreen->save_data.team_list[0] = nullptr;
+    myscreen->save_data.team_list[0].reset();
     myscreen->save_data.team_size = 0;
 }
 REGISTER_TEST(test_picker_increase_decrease_stats_and_levels);

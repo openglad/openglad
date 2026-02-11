@@ -131,7 +131,7 @@ void test_save_data_reset() {
 
     // Add a team member
     guy* g = new guy(FAMILY_SOLDIER);
-    myscreen->save_data.team_list[0] = g;
+    myscreen->save_data.team_list[0].reset(g);
     myscreen->save_data.team_size = 1;
 
     myscreen->save_data.add_level_completed("org.openglad.gladiator", 1);

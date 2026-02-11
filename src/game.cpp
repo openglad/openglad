@@ -68,7 +68,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	// Cycle through the team list ..
 	for(int i = 0; i < myscreen->save_data.team_size; i++)
     {
-	    temp_guy = myscreen->save_data.team_list[i];
+	    temp_guy = myscreen->save_data.team_list[i].get();
 	    temp_walker = temp_guy->create_and_add_walker(myscreen);
 	    // Clear the new guy's battle data
 	    temp_walker->myguy->scen_damage = 0;

@@ -193,12 +193,11 @@ void test_has_name_in_team_empty()
 
     guy* g = new guy(FAMILY_SOLDIER);
     g->name = "TestName";
-    myscreen->save_data.team_list[0] = g;
+    myscreen->save_data.team_list[0].reset(g);
     myscreen->save_data.team_size = 1;
     TEST_ASSERT(has_name_in_team("TestName"), "has_name_in_team should detect existing name");
     TEST_ASSERT(!has_name_in_team("OtherName"), "has_name_in_team should reject missing name");
-    delete g;
-    myscreen->save_data.team_list[0] = nullptr;
+    myscreen->save_data.team_list[0].reset(nullptr);
 
     myscreen->save_data.team_size = orig_size;
 }
@@ -213,8 +212,8 @@ void test_how_many_empty_team()
     int orig_size = myscreen->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        orig_list[i] = myscreen->save_data.team_list[i];
-        myscreen->save_data.team_list[i] = nullptr;
+        orig_list[i] = myscreen->save_data.team_list[i].release();
+        myscreen->save_data.team_list[i].reset(nullptr);
     }
 
     Sint32 count = how_many(FAMILY_SOLDIER);
@@ -222,7 +221,7 @@ void test_how_many_empty_team()
 
     // Restore
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        myscreen->save_data.team_list[i] = orig_list[i];
+        myscreen->save_data.team_list[i].reset(orig_list[i]);
     }
     myscreen->save_data.team_size = orig_size;
 }
@@ -234,17 +233,17 @@ void test_how_many_with_team()
     int orig_size = myscreen->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        orig_list[i] = myscreen->save_data.team_list[i];
-        myscreen->save_data.team_list[i] = nullptr;
+        orig_list[i] = myscreen->save_data.team_list[i].release();
+        myscreen->save_data.team_list[i].reset(nullptr);
     }
 
     // Add some guys
     guy* g1 = new guy(FAMILY_SOLDIER);
     guy* g2 = new guy(FAMILY_SOLDIER);
     guy* g3 = new guy(FAMILY_MAGE);
-    myscreen->save_data.team_list[0] = g1;
-    myscreen->save_data.team_list[1] = g2;
-    myscreen->save_data.team_list[2] = g3;
+    myscreen->save_data.team_list[0].reset(g1);
+    myscreen->save_data.team_list[1].reset(g2);
+    myscreen->save_data.team_list[2].reset(g3);
     myscreen->save_data.team_size = 3;
 
     TEST_ASSERT_EQ(2, (int)how_many(FAMILY_SOLDIER), "should count 2 soldiers");
@@ -252,9 +251,8 @@ void test_how_many_with_team()
     TEST_ASSERT_EQ(0, (int)how_many(FAMILY_ARCHER), "should count 0 archers");
 
     // Cleanup
-    delete g1; delete g2; delete g3;
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        myscreen->save_data.team_list[i] = orig_list[i];
+        myscreen->save_data.team_list[i].reset(orig_list[i]);
     }
     myscreen->save_data.team_size = orig_size;
 
@@ -310,8 +308,8 @@ void test_how_many_with_team()
     int saved_team_size = myscreen->save_data.team_size;
     guy* saved_team_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        saved_team_list[i] = myscreen->save_data.team_list[i];
-        myscreen->save_data.team_list[i] = nullptr;
+        saved_team_list[i] = myscreen->save_data.team_list[i].release();
+        myscreen->save_data.team_list[i].reset(nullptr);
     }
     myscreen->save_data.team_size = 0;
 
@@ -361,7 +359,7 @@ void test_how_many_with_team()
     allbuttons[18] = old18;
 
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
-        myscreen->save_data.team_list[i] = saved_team_list[i];
+        myscreen->save_data.team_list[i].reset(saved_team_list[i]);
     }
     myscreen->save_data.team_size = saved_team_size;
 }

@@ -850,7 +850,7 @@ short screen::endgame(short ending, short nextlevel)
 	for(int i = 0; i < save_data.team_size; i++)
     {
         if(save_data.team_list[i] != nullptr)
-            before.insert(std::make_pair(save_data.team_list[i]->id, save_data.team_list[i]));
+            before.insert(std::make_pair(save_data.team_list[i]->id, save_data.team_list[i].get()));
     }
 	
     // Get guys from the battle

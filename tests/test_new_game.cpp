@@ -120,8 +120,8 @@ void test_begin_new_game() {
     // Make sure team_size is 0 so beginmenu doesn't prompt "restart?"
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         if (myscreen->save_data.team_list[i]) {
-            delete myscreen->save_data.team_list[i];
-            myscreen->save_data.team_list[i] = nullptr;
+            myscreen->save_data.team_list[i].reset();
+            myscreen->save_data.team_list[i].reset(nullptr);
         }
     }
     myscreen->save_data.team_size = 0;

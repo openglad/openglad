@@ -73,9 +73,9 @@ void test_save_team_then_load() {
     guy* mage = new guy(FAMILY_MAGE);
     mage->name = "TESTGUY3";
 
-    myscreen->save_data.team_list[0] = soldier;
-    myscreen->save_data.team_list[1] = archer;
-    myscreen->save_data.team_list[2] = mage;
+    myscreen->save_data.team_list[0].reset(soldier);
+    myscreen->save_data.team_list[1].reset(archer);
+    myscreen->save_data.team_list[2].reset(mage);
     myscreen->save_data.team_size = 3;
 
     // Save to a non-default slot

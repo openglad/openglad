@@ -47,18 +47,10 @@ SaveData::SaveData()
 	}
 	
 	team_size = 0;
-	for(int i = 0; i < MAX_TEAM_SIZE; i++)
-    {
-        team_list[i] = nullptr;
-    }
 }
 
 SaveData::~SaveData()
 {
-	for(int i = 0; i < MAX_TEAM_SIZE; i++)
-    {
-        delete team_list[i];
-    }
 }
 
 void SaveData::reset()
@@ -80,8 +72,7 @@ void SaveData::reset()
 	
 	for(int i = 0; i < team_size; i++)
     {
-        delete team_list[i];
-        team_list[i] = nullptr;
+        team_list[i].reset();
     }
 	team_size = 0;
 	
@@ -184,8 +175,7 @@ bool SaveData::load(const std::string& filename)
     
 	for(int i = 0; i < team_size; i++)
     {
-        delete team_list[i];
-        team_list[i] = nullptr;
+        team_list[i].reset();
     }
     team_size = 0;
 
@@ -279,8 +269,9 @@ bool SaveData::load(const std::string& filename)
 	// Okay, we've read header .. now read the team list data ..
     for(int i = 0; i < listsize; i++)
     {
-        guy* temp_guy = new guy;
-        team_list[i] = temp_guy;
+        auto temp_guy = std::make_unique<guy>();
+        guy* temp_guy_ptr = temp_guy.get();
+        team_list[i] = std::move(temp_guy);
         team_size++;
         
 		// Get temp values to be read
@@ -311,47 +302,47 @@ bool SaveData::load(const std::string& filename)
 		// And the filler
 		SDL_RWread(infile, filler, 8, 1);
 		// Now set the values ..
-		temp_guy->family       = temp_family;
-		temp_guy->name = guyname;
-		temp_guy->strength     = temp_str;
-		temp_guy->dexterity    = temp_dex;
-		temp_guy->constitution = temp_con;
-		temp_guy->intelligence = temp_short;
-		temp_guy->armor        = temp_arm;
+		temp_guy_ptr->family       = temp_family;
+		temp_guy_ptr->name = guyname;
+		temp_guy_ptr->strength     = temp_str;
+		temp_guy_ptr->dexterity    = temp_dex;
+		temp_guy_ptr->constitution = temp_con;
+		temp_guy_ptr->intelligence = temp_short;
+		temp_guy_ptr->armor        = temp_arm;
 		if(temp_version >= 9)
-            temp_guy->level = temp_lev;
+            temp_guy_ptr->level = temp_lev;
         else
-            temp_guy->upgrade_to_level(temp_lev);
-		temp_guy->exp          = temp_exp;
+            temp_guy_ptr->upgrade_to_level(temp_lev);
+		temp_guy_ptr->exp          = temp_exp;
 		if (temp_version >=3)
 		{
-			temp_guy->kills      = temp_kills;
-			temp_guy->level_kills= temp_level_kills;
+			temp_guy_ptr->kills      = temp_kills;
+			temp_guy_ptr->level_kills= temp_level_kills;
 		}
 		else // version 2 or earlier
 		{
-			temp_guy->kills      = 0;
-			temp_guy->level_kills= 0;
+			temp_guy_ptr->kills      = 0;
+			temp_guy_ptr->level_kills= 0;
 		}
 		if (temp_version >= 4)
 		{
-			temp_guy->total_damage = temp_td;
-			temp_guy->total_hits   = temp_th;
-			temp_guy->total_shots  = temp_ts;
+			temp_guy_ptr->total_damage = temp_td;
+			temp_guy_ptr->total_hits   = temp_th;
+			temp_guy_ptr->total_shots  = temp_ts;
 		}
 		else
 		{
-			temp_guy->total_damage = 0;
-			temp_guy->total_hits   = 0;
-			temp_guy->total_shots  = 0;
+			temp_guy_ptr->total_damage = 0;
+			temp_guy_ptr->total_hits   = 0;
+			temp_guy_ptr->total_shots  = 0;
 		}
 		if (temp_version >= 5)
 		{
-			temp_guy->teamnum = temp_teamnum;
+			temp_guy_ptr->teamnum = temp_teamnum;
 		}
 		else
 		{
-			temp_guy->teamnum = 0;
+			temp_guy_ptr->teamnum = 0;
 		}
 	}
 	
@@ -429,8 +420,7 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
     // Delete our old guys
 	for(int i = 0; i < team_size; i++)
     {
-        delete team_list[i];
-        team_list[i] = nullptr;
+        team_list[i].reset();
     }
     team_size = 0;
 
@@ -442,7 +432,7 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 		if (ob && !ob->dead && ob->myguy)
 		{
 		    // Take this one
-			team_list[team_size] = new guy(*ob->myguy);
+			team_list[team_size] = std::make_unique<guy>(*ob->myguy);
 			// Update his level from the experience
 			Uint32 exp = team_list[team_size]->exp;
 			team_list[team_size]->upgrade_to_level(calculate_level(team_list[team_size]->exp));
@@ -599,7 +589,7 @@ bool SaveData::save(const std::string& filename)
 	// Okay, we've written header .. now dump the data ..
 	for(int i = 0; i < team_size; i++)
 	{
-	    guy* temp_guy = team_list[i];
+	    guy* temp_guy = team_list[i].get();
 	    
         // Get temp values to be saved
         temp_order = static_cast<unsigned char>(Order::Living);
@@ -737,4 +727,3 @@ void SaveData::reset_campaign(const std::string& campaign)
     if(e != completed_levels.end())
         e->second.clear();
 }
-

@@ -118,7 +118,7 @@ static int op_injector(void* data)
     state->num_hired = myscreen->save_data.team_size;
     fprintf(stderr, "  [test] hired %d characters, cheating stats\n", state->num_hired);
     for (int i = 0; i < myscreen->save_data.team_size; i++) {
-        guy* g = myscreen->save_data.team_list[i];
+        guy* g = myscreen->save_data.team_list[i].get();
         if (g) {
             g->strength = 200;
             g->dexterity = 200;

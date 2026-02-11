@@ -102,7 +102,7 @@ void test_save_team_menu() {
     myscreen->save_data.scen_num = 1;
 
     guy* soldier = new guy(FAMILY_SOLDIER);
-    myscreen->save_data.team_list[0] = soldier;
+    myscreen->save_data.team_list[0].reset(soldier);
     myscreen->save_data.team_size = 1;
     myscreen->save_data.save("save0");
 

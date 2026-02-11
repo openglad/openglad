@@ -143,11 +143,11 @@ void test_train_team() {
     druid->level = 10;
     thief->level = 10;
     orc->level = 10;
-    myscreen->save_data.team_list[0] = archmage;
-    myscreen->save_data.team_list[1] = cleric;
-    myscreen->save_data.team_list[2] = druid;
-    myscreen->save_data.team_list[3] = thief;
-    myscreen->save_data.team_list[4] = orc;
+    myscreen->save_data.team_list[0].reset(archmage);
+    myscreen->save_data.team_list[1].reset(cleric);
+    myscreen->save_data.team_list[2].reset(druid);
+    myscreen->save_data.team_list[3].reset(thief);
+    myscreen->save_data.team_list[4].reset(orc);
     myscreen->save_data.team_size = 5;
 
     myscreen->save_data.save("save0");

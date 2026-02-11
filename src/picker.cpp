@@ -555,7 +555,7 @@ void view_team(short left, short top, short right, short bottom)
 
 	for(i=0; i < myscreen->save_data.team_size; i++)
 	{
-	    guy** ourteam = myscreen->save_data.team_list;
+	    auto& ourteam = myscreen->save_data.team_list;
 		if (ourteam[i])
 		{
 			numguys++;
@@ -1872,11 +1872,11 @@ Sint32 create_train_menu(Sint32 arg1)
 	}
 
 	
-	guy** ourteam = myscreen->save_data.team_list;
+	auto& ourteam = myscreen->save_data.team_list;
 	
 	// Set to first guy on list using global variable ..
 	cycle_team_guy(0);
-    guy* here = ourteam[editguy];
+    guy* here = ourteam[editguy].get();
     current_cost = calculate_train_cost(here);
 
 	grab_mouse();
@@ -1916,8 +1916,8 @@ Sint32 create_train_menu(Sint32 arg1)
             
             if (!current_guy)
                 cycle_team_guy(0);
-            if (here != ourteam[editguy])
-                here = ourteam[editguy];
+            if (here != ourteam[editguy].get())
+                here = ourteam[editguy].get();
             current_cost = calculate_train_cost(here);
             retvalue = 0;
         }
@@ -2956,7 +2956,7 @@ const char* get_random_name(unsigned char family)
 
 bool has_name_in_team(const char* name)
 {
-    guy** ourteam = myscreen->save_data.team_list;
+    auto& ourteam = myscreen->save_data.team_list;
     int team_size = myscreen->save_data.team_size;
     
     for(int i = 0; i < team_size; i++)
@@ -3078,7 +3078,7 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	if (myscreen->save_data.team_size < 1)
 		return -1;
     
-    guy** ourteam = myscreen->save_data.team_list;
+    auto& ourteam = myscreen->save_data.team_list;
     
 	editguy += whichway;
 	if (editguy < 0)
@@ -3104,8 +3104,8 @@ Sint32 cycle_team_guy(Sint32 whichway)
 	if (current_guy)
 		delete current_guy;
 	current_guy = new guy(ourteam[editguy]->family);
-	statscopy(current_guy, ourteam[editguy]);
-	old_guy = ourteam[editguy];
+	statscopy(current_guy, ourteam[editguy].get());
+	old_guy = ourteam[editguy].get();
 
 	show_guy(0, 0);
 
@@ -3127,7 +3127,7 @@ Sint32 add_guy(guy *newguy)
     {
 		if (!myscreen->save_data.team_list[i])
 		{
-			myscreen->save_data.team_list[i] = newguy;
+			myscreen->save_data.team_list[i].reset(newguy);
 			myscreen->save_data.team_size++;
 			return i;
 		}
@@ -3143,7 +3143,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	guy *someguy;
 
 	if (arg)
-		someguy = myscreen->save_data.team_list[editguy];
+		someguy = myscreen->save_data.team_list[editguy].get();
 	else
 		someguy = current_guy;
 
@@ -3187,13 +3187,13 @@ Sint32 add_guy(Sint32 ignoreme)
 
 	myscreen->save_data.m_totalcash[current_team_num] -= cost;
     
-    guy** ourteam = myscreen->save_data.team_list;
+    auto& ourteam = myscreen->save_data.team_list;
 	for (i=0; i < MAX_TEAM_SIZE; i++)
     {
 		if (!ourteam[i]) // found an empty slot
 		{
 			current_guy->teamnum = current_team_num;
-			ourteam[i] = current_guy;
+			ourteam[i].reset(current_guy);
 			myscreen->save_data.team_size++;
 			current_guy = nullptr;
 			release_mouse();
@@ -3213,7 +3213,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			// Grab a new, generic guy to be edited/bought
 			current_guy = new guy(newfamily);
 			type_name = current_guy->name;
-			statscopy(current_guy, ourteam[i]); // set to same stats as just bought
+			statscopy(current_guy, ourteam[i].get()); // set to same stats as just bought
 			current_guy->name = type_name;
             current_guy->name = get_new_name(newfamily);
 
@@ -3237,7 +3237,7 @@ Sint32 edit_guy(Sint32 arg1)
 	if (!current_guy)
 		return -1;
 
-	here = myscreen->save_data.team_list[editguy];
+	here = myscreen->save_data.team_list[editguy].get();
 	if (!here)
 		return -1;  // error case; should never happen
 
@@ -3385,8 +3385,7 @@ Sint32 delete_all()
 
 	for (int i = 0; i < myscreen->save_data.team_size; i++)
     {
-        delete myscreen->save_data.team_list[i];
-        myscreen->save_data.team_list[i] = nullptr;
+        myscreen->save_data.team_list[i].reset();
     }
     
     myscreen->save_data.team_size = 0;
@@ -3669,7 +3668,7 @@ Sint32 create_detail_menu(guy *arg1)
    if (arg1)
        thisguy = arg1;
    else
-       thisguy = myscreen->save_data.team_list[editguy];
+       thisguy = myscreen->save_data.team_list[editguy].get();
 
    release_mouse();
 

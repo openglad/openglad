@@ -51,8 +51,8 @@ struct TeamSlotGuard
 {
     int slot;
     guy* saved;
-    TeamSlotGuard(int slot) : slot(slot), saved(myscreen->save_data.team_list[slot]) {}
-    ~TeamSlotGuard() { myscreen->save_data.team_list[slot] = saved; }
+    TeamSlotGuard(int slot) : slot(slot), saved(myscreen->save_data.team_list[slot].release()) {}
+    ~TeamSlotGuard() { myscreen->save_data.team_list[slot].reset(saved); }
 };
 
 struct ButtonSlotGuard
@@ -88,7 +88,7 @@ void test_picker_name_guy_paths()
 
     TeamSlotGuard slot_guard(0);
     editguy = 0;
-    myscreen->save_data.team_list[0] = new guy(FAMILY_MAGE);
+    myscreen->save_data.team_list[0].reset(new guy(FAMILY_MAGE));
     myscreen->save_data.team_list[0]->name = "TEAMORIG";
 
     SDL_Thread* rename_team_thread = SDL_CreateThread(name_guy_injector, "picker_name_team", nullptr);
@@ -97,8 +97,8 @@ void test_picker_name_guy_paths()
     SDL_WaitThread(rename_team_thread, &thread_result);
     TEST_ASSERT(myscreen->save_data.team_list[0]->name == "TEAMORIG", "return without text should preserve team guy name");
 
-    delete myscreen->save_data.team_list[0];
-    myscreen->save_data.team_list[0] = nullptr;
+    myscreen->save_data.team_list[0].reset();
+    myscreen->save_data.team_list[0].reset(nullptr);
     delete current_guy;
     current_guy = original_current;
 }
@@ -119,11 +119,11 @@ void test_picker_edit_guy_paths()
     old_guy = new guy(*current_guy);
     current_guy->teamnum = 0;
     editguy = 0;
-    myscreen->save_data.team_list[0] = nullptr;
+    myscreen->save_data.team_list[0].reset(nullptr);
     TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy should fail when destination slot is empty");
 
     // Successful transfer path.
-    myscreen->save_data.team_list[0] = new guy(FAMILY_SOLDIER);
+    myscreen->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
     myscreen->save_data.team_list[0]->teamnum = 0;
     delete old_guy;
     old_guy = new guy(*myscreen->save_data.team_list[0]);
@@ -137,8 +137,8 @@ void test_picker_edit_guy_paths()
 
     delete allbuttons[18];
     allbuttons[18] = nullptr;
-    delete myscreen->save_data.team_list[0];
-    myscreen->save_data.team_list[0] = nullptr;
+    myscreen->save_data.team_list[0].reset();
+    myscreen->save_data.team_list[0].reset(nullptr);
     delete old_guy;
     old_guy = nullptr;
     delete current_guy;
