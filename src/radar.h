@@ -20,6 +20,7 @@
 
 #include "base.h"
 #include "level_data.h"
+#include <vector>
 
 class radar
 {
@@ -43,7 +44,7 @@ class radar
 
 		screen * screenp;
 		viewscreen * viewscreenp;
-		unsigned char  *bmp,  *oldbmp;
+		std::vector<unsigned char> bmp;
 		bool force_lower_position;
 		short xview;
 		short yview;
@@ -52,4 +53,3 @@ class radar
 		//         char  *buffer;
 		unsigned short size;
 };
-

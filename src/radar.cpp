@@ -49,7 +49,6 @@ radar::radar(viewscreen * myview, screen * myscreen, short whatnum)
 	screenp = myscreen;
 	viewscreenp = myview;
 	mynum = whatnum; //what number viewscreen we are, to get control's position
-	bmp = nullptr;
     force_lower_position = false;
 }
 
@@ -109,9 +108,7 @@ void radar::start(LevelData* data)
             #endif
         #endif
     }
-    if(bmp != nullptr)
-        delete[] bmp;
-    bmp = new unsigned char[size];
+    bmp.resize(size);
 	update(data);
 
 }
@@ -120,11 +117,6 @@ void radar::start(LevelData* data)
 // Destruct the radar and its variables
 radar::~radar()
 {
-	if (bmp)
-	{
-		delete[] bmp;
-		bmp = nullptr;
-	}
 }
 
 short radar::draw()
@@ -178,7 +170,7 @@ short radar::draw(LevelData* data)
         alpha = 127;
 	{
 		size_t offset = radarx + (radary * sizex);
-		auto radar_span = std::span<const unsigned char>{&bmp[offset], static_cast<size_t>(sizex * sizey) - offset};
+		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, static_cast<size_t>(sizex * sizey) - offset};
 		myscreen->putbuffer_alpha(xloc, yloc,
 		                   sizex,sizey,
 		                   xloc,yloc,xloc + xview,yloc + yview,

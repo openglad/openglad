@@ -20,6 +20,7 @@
 
 #include "base.h"
 #include "level_data.h"
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -123,7 +124,7 @@ class viewscreen
 		short xloc, yloc; // physical screen coords
 		short endx, endy; // screen coords of lower right corner
 		signed char prefs[10]; // User preferences ..
-		radar * myradar;
+		std::unique_ptr<radar> myradar;
 		short radarstart; //has the radar been started yet?
 		short xview;
 		short yview;
@@ -134,4 +135,3 @@ class viewscreen
 		short size;
 		unsigned char  *bmp,  *oldbmp;
 };
-

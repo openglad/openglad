@@ -32,6 +32,7 @@
 #include "view_sizes.h"
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include "test_trace.h"
 
 #ifdef __EMSCRIPTEN__
@@ -180,7 +181,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	//load_key_prefs(); // load key prefs, if present
 	prefsob->load(this);
 
-	myradar = new radar(this, myscreen, mynum);
+	myradar = std::make_unique<radar>(this, myscreen, mynum);
 	radarstart = 0; //the radar has not yet been started
 
 	for (i=0; i < MAX_MESSAGES; i++)
@@ -195,9 +196,6 @@ viewscreen::viewscreen(short x, short y, short width,
 // Destruct the viewscreen and its variables
 viewscreen::~viewscreen()
 {
-	if (myradar)
-		delete myradar;
-	myradar = nullptr;
 }
 
 void viewscreen::clear()
@@ -1101,7 +1099,7 @@ void viewscreen::resize(short x, short y, short length, short height)
 	endx = xloc+length;
 	endy = yloc+height;
 
-	if (myradar->bmp)
+	if (!myradar->bmp.empty())
 		myradar->start();
 	myscreen->redrawme = 1;
 }
@@ -2232,4 +2230,3 @@ int get_keypress()
 		get_input_events(WAIT);
 	return query_key();
 }
-

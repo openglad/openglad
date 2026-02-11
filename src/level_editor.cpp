@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cstring>
 #include <format>
+#include <memory>
 
 #ifdef OUYA
 #include "OuyaController.h"
@@ -858,8 +859,8 @@ std::string get_editor_level_label(Order order, char family, int level);
 class LevelEditorData
 {
 public:
-    CampaignData* campaign;
-    LevelData* level;
+    std::unique_ptr<CampaignData> campaign;
+    std::unique_ptr<LevelData> level;
     
 	Mode mode;
     EditorTerrainBrush terrain_brush;
@@ -981,7 +982,7 @@ EventType handle_basic_editor_event(const SDL_Event& event);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(new CampaignData("org.openglad.gladiator")), level(new LevelData(1)), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0].get(), myscreen, 0)
+    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelData>(1)), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0].get(), myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)
@@ -1090,8 +1091,6 @@ LevelEditorData::LevelEditorData()
 
 LevelEditorData::~LevelEditorData()
 {
-    delete campaign;
-    delete level;
 }
 
 bool LevelEditorData::loadCampaign(const std::string& id)
@@ -1311,7 +1310,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         if(selection.size() == 1 && selection.front().order == Order::Living)
         {
-            walker* obj = selection.front().get_object(level);
+            walker* obj = selection.front().get_object(level.get());
             if(obj != nullptr)
             {
                 std::string name = obj->stats()->name;
@@ -1330,7 +1329,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         {
             for(auto& sel : selection)
             {
-                walker* obj = sel.get_object(level);
+                walker* obj = sel.get_object(level.get());
                 if(obj != nullptr)
                 {
                     if(obj->team_num > 0)
@@ -1355,7 +1354,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
         {
             for(auto& sel : selection)
             {
-                walker* obj = sel.get_object(level);
+                walker* obj = sel.get_object(level.get());
                 if(obj != nullptr)
                 {
                     if(obj->team_num < MAX_TEAM)
@@ -1378,7 +1377,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level);
+            walker* obj = sel.get_object(level.get());
             if(obj != nullptr)
             {
                 if(obj->stats()->level > 1)
@@ -1394,7 +1393,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level);
+            walker* obj = sel.get_object(level.get());
             if(obj != nullptr)
             {
                 obj->stats()->level++;
@@ -1407,7 +1406,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level);
+            walker* obj = sel.get_object(level.get());
             if(obj != nullptr && obj->query_order() == Order::Living)
             {
                 if(sel.family > 0)
@@ -1429,7 +1428,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level);
+            walker* obj = sel.get_object(level.get());
             if(obj != nullptr && obj->query_order() == Order::Living)
             {
                 if(sel.family+1 < NUM_FAMILIES)
@@ -1451,7 +1450,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level);
+            walker* obj = sel.get_object(level.get());
             if(obj != nullptr)
             {
                 if(obj->curdir < FACE_UP_LEFT)
@@ -1467,7 +1466,7 @@ void LevelEditorData::activate_mode_button(SimpleButton* button)
     {
         for(auto& sel : selection)
         {
-            walker* obj = sel.get_object(level);
+            walker* obj = sel.get_object(level.get());
             if(obj != nullptr)
             {
                 level->remove_ob(obj);
@@ -1680,7 +1679,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     }
     
     // Draw minimap
-    myradar.draw(level);
+    myradar.draw(level.get());
     
     // Draw mode-specific buttons
     for(auto* btn : mode_buttons)
@@ -1968,7 +1967,7 @@ void LevelEditorData::clear_terrain()
 void LevelEditorData::resmooth_terrain()
 {
     level->mysmoother.smooth();
-    myradar.update(level);
+    myradar.update(level.get());
 }
 
 // For released button
@@ -2019,7 +2018,7 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
                 dragging = true;
                 for(auto& sel : selection)
                 {
-                    walker* w = sel.get_object(level);
+                    walker* w = sel.get_object(level.get());
                     if(w != nullptr)
                     {
                         w->setxy(w->xpos + dx, w->ypos + dy);
@@ -2244,7 +2243,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                                 {
                                     loadLevel(levels.front());
                                     // Update minimap
-                                    myradar.start(level);
+                                    myradar.start(level.get());
                                     timed_dialog("Campaign created.");
                                     campaignchanged = 0;
                                     levelchanged = 0;
@@ -2314,7 +2313,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                             if(loadLevel(result.first_level))
                             {
                                 // Update minimap
-                                myradar.start(level);
+                                myradar.start(level.get());
                                 timed_dialog("Campaign loaded.");
                                 levelchanged = 0;
                             }
@@ -2390,7 +2389,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 // New level
                 level->clear();
                 level->create_new_grid();
-                myradar.start(level);
+                myradar.start(level.get());
                 levelchanged = 1;
                 redraw = 1;
             }
@@ -2423,7 +2422,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         redraw = 1;
                     }
                     
-                    myradar.start(level);
+                    myradar.start(level.get());
                     redraw = 1;
                 }
             }
@@ -2718,14 +2717,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     else
                     {
                         if((w >= level->grid.w && h >= level->grid.h)
-                            || !are_objects_outside_area(level, 0, 0, w, h)
+                            || !are_objects_outside_area(level.get(), 0, 0, w, h)
                             || yes_or_no_prompt("Resize Map", "Delete objects outside of map?", false))
                         {
                             // Now change it
                             level->resize_grid(w, h);
                             
                             // Reset the minimap
-                            myradar.start(level);
+                            myradar.start(level.get());
                             
                             draw(myscreen);
                             myscreen->refresh();
@@ -2815,7 +2814,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(yes_or_no_prompt("Clear Terrain", "Delete all terrain?", false))
             {
                 clear_terrain();
-                myradar.update(level);
+                myradar.update(level.get());
                 levelchanged = 1;
             }
             redraw = 1;
@@ -2825,7 +2824,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(yes_or_no_prompt("Clear Objects", "Delete all objects?", false))
             {
                 level->delete_objects();
-                myradar.update(level);
+                myradar.update(level.get());
                 levelchanged = 1;
             }
             redraw = 1;
@@ -2914,14 +2913,14 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     // Select guys in the rectangle
                     if(!keystates[KEYSTATE_LCTRL] && !keystates[KEYSTATE_RCTRL])
                         selection.clear();
-                    add_contained_objects_to_selection(level, selection_rect, selection);
+                    add_contained_objects_to_selection(level.get(), selection_rect, selection);
                     reset_mode_buttons();
                 }
                 else if (keystates[KEYSTATE_r]) // (re)name the current object
                 {
                     newob = level->add_ob(Order::Living, FAMILY_ELF);
                     newob->setxy(windowx, windowy);
-                    if (some_hit(windowx, windowy, newob, level))
+                    if (some_hit(windowx, windowy, newob, level.get()))
                     {
                         std::string name = newob->collide_ob->stats()->name;
                         if(prompt_for_string("Rename", name))
@@ -2939,7 +2938,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     {
                         newob = level->add_ob(Order::Living, FAMILY_ELF);
                         newob->setxy(windowx, windowy);
-                        if (some_hit(windowx, windowy, newob, level))
+                        if (some_hit(windowx, windowy, newob, level.get()))
                         {
                             // Clicked on a guy
                             walker* w = newob->collide_ob;
@@ -3004,7 +3003,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         newob->dead = 0; // just in case
                         newob->collide_ob = nullptr;
                         // Is there already something there?
-                        if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, level))
+                        if ( object_brush.snap_to_grid && some_hit(windowx, windowy, newob, level.get()))
                         {
                             if (newob)
                             {
@@ -3130,7 +3129,7 @@ walker* LevelEditorData::get_object(int x, int y)
     walker* result = nullptr;
     walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
     newob->setxy(x, y);
-    if (some_hit(x, y, newob, level))
+    if (some_hit(x, y, newob, level.get()))
     {
         result = newob->collide_ob;
     }
@@ -3241,10 +3240,10 @@ int level_editor_test_exercise_internal_helpers()
 
             SelectionInfo sel(inside);
             sel.set(inside);
-            if (sel.get_object(data.level) == inside)
+            if (sel.get_object(data.level.get()) == inside)
                 score++;
             sel.clear();
-            if (sel.get_object(data.level) == nullptr)
+            if (sel.get_object(data.level.get()) == nullptr)
                 score++;
             sel.set(nullptr);
             if (sel.valid == false)
@@ -3255,7 +3254,7 @@ int level_editor_test_exercise_internal_helpers()
                        static_cast<float>(inside->ypos - 4),
                        static_cast<float>(inside->sizex + 8),
                        static_cast<float>(inside->sizey + 8));
-            add_contained_objects_to_selection(data.level, area, selection);
+            add_contained_objects_to_selection(data.level.get(), area, selection);
             if (is_in_selection(inside, selection))
                 score++;
 
@@ -3584,7 +3583,7 @@ Sint32 level_editor()
     object_pane.push_back(ObjectType(Order::Special, FAMILY_RESERVED_TEAM));
 	
 	// Minimap
-	myradar.start(data.level);
+		myradar.start(data.level.get());
 	
 	// GUI
 	using std::set;
@@ -4084,7 +4083,7 @@ Sint32 level_editor()
                                                 data.level->mysmoother.smooth(i, j);
                                 }
                                 
-                                myradar.update(data.level);
+                                myradar.update(data.level.get());
                             }
                         }
                     }  // end of setting grid square

@@ -23,6 +23,7 @@
 #include <cstring>
 #include "game_context.h"
 #include <span>
+#include <vector>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -1919,13 +1920,12 @@ int video::FadeBetween(
 	ASSERT(bpp==4);	//24-bit color only supported
 
 	Uint32 size = pOldSurface->pitch * pOldSurface->h;
-	Uint8 *colorsf, *colorst;
-	colorsf = new Uint8[size];
-	colorst = new Uint8[size];
+	std::vector<Uint8> colorsf(size);
+	std::vector<Uint8> colorst(size);
 
 	Uint8 *prf = (Uint8 *)pOldSurface->pixels, *prt = (Uint8 *)pNewSurface->pixels;
-	memcpy(colorsf, prf, size);
-	memcpy(colorst, prt, size);
+	memcpy(colorsf.data(), prf, size);
+	memcpy(colorst.data(), prt, size);
 
 	//Fade from old to new surface.  Effect takes constant time.
 #ifdef TESTING
@@ -1938,7 +1938,7 @@ int video::FadeBetween(
 		dwFirstPaint = SDL_GetTicks(),
 		dwNow = dwFirstPaint;
 	do {
-		FadeBetween24(DestSurface,colorsf,colorst,
+		FadeBetween24(DestSurface,colorsf.data(),colorst.data(),
 				dwNow - dwFirstPaint + 50);	//allow first frame to show some change
 		E_Screen->swap(0,0,320,200);
 		dwNow = SDL_GetTicks();
@@ -1962,9 +1962,6 @@ int video::FadeBetween(
 	E_Screen->swap(0,0,320,200);
 	
 	//Clean up.
-	delete [] colorsf;
-	delete [] colorst;
-
 	if (bOldNull)
 		SDL_FreeSurface(pOldSurface);
 	if (bNewNull)
@@ -1986,4 +1983,3 @@ int video::fadeblack(bool fade_in)
 	SDL_FreeSurface(black);
 	return i;
 }
-
