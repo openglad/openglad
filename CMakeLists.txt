@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(OpenGlad VERSION 1.0 LANGUAGES C CXX)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 # Target C++20 (C++23 when toolchains catch up)
 set(CMAKE_CXX_STANDARD 20)
@@ -14,6 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Build options
 option(BUILD_TESTING "Build the test suite" OFF)
 option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
+option(OPENGLAD_INSTALL_ASSETS "Install OpenGlad runtime asset directories" ON)
 option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" OFF)
 option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
@@ -384,6 +387,66 @@ if(NOT EMSCRIPTEN)
         configure_openglad_runtime_target(openscen)
         target_compile_definitions(openscen PRIVATE OPENSCEN)
     endif()
+
+    install(TARGETS
+        project_warnings
+        project_sanitizers
+        og_ext_micropather
+        og_ext_yam
+        og_ext_yaml
+        og_ext_zlib
+        og_ext_libzip
+        og_ext_physfs
+        og_game
+        openglad
+        EXPORT OpenGladTargets
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+
+    if(BUILD_EDITOR)
+        install(TARGETS openscen
+            EXPORT OpenGladTargets
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        )
+    endif()
+
+    if(OPENGLAD_INSTALL_ASSETS)
+        install(
+            DIRECTORY
+                ${CMAKE_SOURCE_DIR}/cfg
+                ${CMAKE_SOURCE_DIR}/pix
+                ${CMAKE_SOURCE_DIR}/sound
+                ${CMAKE_SOURCE_DIR}/builtin
+                ${CMAKE_SOURCE_DIR}/extra_campaigns
+            DESTINATION ${CMAKE_INSTALL_DATADIR}/openglad
+        )
+    endif()
+
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/OpenGladConfigVersion.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion
+    )
+
+    configure_package_config_file(
+        ${CMAKE_SOURCE_DIR}/cmake/OpenGladConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/OpenGladConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/OpenGlad
+    )
+
+    install(EXPORT OpenGladTargets
+        FILE OpenGladTargets.cmake
+        NAMESPACE OpenGlad::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/OpenGlad
+    )
+
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/OpenGladConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/OpenGladConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/OpenGlad
+    )
 
     # --- openglad_test ---
     if(BUILD_TESTING)
