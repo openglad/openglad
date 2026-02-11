@@ -119,6 +119,20 @@ void test_walker_walkstep_zero()
     if (!w) return;
     w->setxy(100, 100);
     w->walkstep(0, 0);
+
+    // Blocked movement near map edge (npc path).
+    w->setxy(0, 0);
+    w->user = -1;
+    (void)w->walkstep(-1, 0);
+    (void)w->walkstep(0, -1);
+    (void)w->walkstep(-1, -1);
+
+    // User slide path on blocked diagonal movement.
+    w->setxy(0, 10);
+    w->user = 0;
+    (void)w->walkstep(-1, -1);
+    (void)w->walkstep(-1, 1);
+
     delete w;
 }
 REGISTER_TEST(test_walker_walkstep_zero);

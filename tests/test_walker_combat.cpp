@@ -1,7 +1,9 @@
 #include "graph.h"
+#include "game_context.h"
 #include "guy.h"
 #include "gloader.h"
 #include "test_framework.h"
+#include <vector>
 
 extern screen* myscreen;
 
@@ -14,6 +16,29 @@ static walker* make_guy(char family, unsigned char team = 0)
     if (w) w->setxy(100, 100);
     return w;
 }
+
+class SequenceRandomCombat : public IRandom {
+public:
+    explicit SequenceRandomCombat(std::initializer_list<Uint32> vals) : vals_(vals), idx_(0) {}
+    Uint32 next(Uint32 max_exclusive) override
+    {
+        if (max_exclusive == 0) {
+            return 0;
+        }
+        Uint32 v = 0;
+        if (!vals_.empty()) {
+            if (idx_ < vals_.size()) {
+                v = vals_[idx_++];
+            } else {
+                v = vals_.back();
+            }
+        }
+        return v % max_exclusive;
+    }
+private:
+    std::vector<Uint32> vals_;
+    size_t idx_;
+};
 
 static int count_family_in_oblist(char family)
 {
@@ -263,7 +288,17 @@ void test_walker_act_with_commands()
         if (gen) {
             gen->setxy(120, 120);
             gen->set_act_type(ACT_GENERATE);
+            // Force act_generate() to enter spawn/regen branch.
+            gen->stats()->level = 5;
+            gen->stats()->max_hitpoints = 10;
+            gen->stats()->hitpoints = 10;
+            SequenceRandomCombat gen_rng({100, 0, 1, 1});
+            GameContext gen_ctx;
+            gen_ctx.game_screen = myscreen;
+            gen_ctx.rng = &gen_rng;
+            set_global_context(&gen_ctx);
             (void)gen->act();
+            set_global_context(nullptr);
             delete gen;
         }
 
@@ -274,9 +309,101 @@ void test_walker_act_with_commands()
             proj->set_act_type(ACT_FIRE);
             proj->lineofsight = 0;
             (void)proj->act();
+
+            // Force act_fire() collision path, both mortal and immortal.
+            walker* target = make_guy(FAMILY_ORC, 2);
+            TEST_ASSERT(target != nullptr, "act_fire target created");
+            if (target) {
+                target->setxy(proj->xpos, proj->ypos);
+                target->dead = 0;
+                proj->dead = 0;
+                proj->setxy(120, 120);
+                proj->lineofsight = 2;
+                proj->collide_ob = target;
+                proj->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
+                proj->stats()->set_bit_flags(BIT_IMMORTAL, 0);
+                (void)proj->act();
+
+                proj->dead = 0;
+                proj->setxy(120, 120);
+                proj->lineofsight = 2;
+                proj->collide_ob = target;
+                proj->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
+                proj->stats()->set_bit_flags(BIT_IMMORTAL, 1);
+                (void)proj->act();
+            }
+            delete target;
             delete proj;
         }
+
+        // Exercise base walker ACT_RANDOM path via Generator (non-living subclass).
+        walker* base_rand = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+        walker* base_foe = make_guy(FAMILY_ORC, 3);
+        TEST_ASSERT(base_rand != nullptr && base_foe != nullptr, "base ACT_RANDOM walkers created");
+        if (base_rand && base_foe) {
+            base_rand->team_num = 1;
+            base_rand->setxy(132, 132);
+            base_rand->lineofsight = 40;
+            base_rand->set_act_type(ACT_RANDOM);
+            base_rand->stats()->clear_command();
+
+            base_foe->team_num = 3;
+            base_foe->setxy(136, 132);
+            base_rand->foe = base_foe;
+
+            GameContext base_ctx;
+            base_ctx.game_screen = myscreen;
+
+            // act(): rng(4)==0, rng(20)!=0 -> act_random().
+            // act_random(): rng(70)==0 -> refresh foe and drive fire path.
+            SequenceRandomCombat base_rng1({0, 1, 0, 5, 0});
+            base_ctx.rng = &base_rng1;
+            set_global_context(&base_ctx);
+            (void)base_rand->act();
+
+            // act(): rng(4)!=0 -> SEARCH command path.
+            base_rand->foe = nullptr;
+            SequenceRandomCombat base_rng2({1, 1, 1});
+            base_ctx.rng = &base_rng2;
+            set_global_context(&base_ctx);
+            (void)base_rand->act();
+            set_global_context(nullptr);
+        }
+        delete base_foe;
+        delete base_rand;
     }
+
+    // Drive ACT_RANDOM/act_random() branches deterministically.
+    walker* randomer = make_guy(FAMILY_ORC, 1);
+    walker* random_foe = make_guy(FAMILY_SOLDIER, 2);
+    TEST_ASSERT(randomer != nullptr && random_foe != nullptr, "act_random walkers created");
+    if (randomer && random_foe) {
+        randomer->setxy(80, 80);
+        random_foe->setxy(86, 80);
+        randomer->foe = random_foe;
+        randomer->lineofsight = 40;
+        randomer->set_act_type(ACT_RANDOM);
+        randomer->stats()->clear_command();
+
+        // act(): rng(4)==0 then rng(20)==1 -> call act_random().
+        // act_random(): rng(70)==0 path then in-range fire_check branch.
+        SequenceRandomCombat random_rng({0, 1, 0, 1, 0, 0});
+        GameContext random_ctx;
+        random_ctx.game_screen = myscreen;
+        random_ctx.rng = &random_rng;
+        set_global_context(&random_ctx);
+        (void)randomer->act();
+
+        // act_random() branch where no foe is found and command is set.
+        randomer->foe = nullptr;
+        SequenceRandomCombat nofoe_rng({0, 1, 0, 1, 1, 1});
+        random_ctx.rng = &nofoe_rng;
+        set_global_context(&random_ctx);
+        (void)randomer->act();
+        set_global_context(nullptr);
+    }
+    delete randomer;
+    delete random_foe;
 
     delete foe;
     delete w;

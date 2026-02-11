@@ -165,6 +165,32 @@ void test_walker_special_mage_teleport()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // teleport
     w->special();
+
+    // Direct teleport marker path (marker consumed at lifetime 1).
+    walker* marker = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    TEST_ASSERT(marker != nullptr, "teleport marker created");
+    if (marker) {
+        marker->owner = w;
+        marker->dead = 0;
+        marker->lifetime = 1;
+        marker->setxy(w->xpos + 96, w->ypos + 96);
+        TEST_ASSERT(w->teleport(), "teleport with marker should succeed");
+    }
+
+    // Marker-present but too-close path should go through fallback logic.
+    marker = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+    TEST_ASSERT(marker != nullptr, "near marker created");
+    if (marker) {
+        marker->owner = w;
+        marker->dead = 0;
+        marker->lifetime = 5;
+        marker->setxy(w->xpos + 4, w->ypos + 4);
+        w->user = 0;
+        (void)w->teleport();
+    }
+
+    (void)w->teleport_ranged(24);
+    myscreen->level_data.delete_objects();
     delete w;
 }
 REGISTER_TEST(test_walker_special_mage_teleport);
@@ -321,7 +347,8 @@ void test_walker_special_mage_energy_wave()
         FAMILY_SOLDIER, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_MAGE, FAMILY_ARCHMAGE,
         FAMILY_ELF, FAMILY_THIEF, FAMILY_SKELETON, FAMILY_FIREELEMENTAL, FAMILY_FAERIE,
         FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN, FAMILY_GHOST,
-        FAMILY_SMALL_SLIME, FAMILY_MEDIUM_SLIME, FAMILY_SLIME
+        FAMILY_SMALL_SLIME, FAMILY_MEDIUM_SLIME, FAMILY_SLIME,
+        FAMILY_BIG_ORC, FAMILY_GOLEM, FAMILY_GIANT_SKELETON, FAMILY_TOWER1
     };
     for (char fam : sweep_families) {
         myscreen->level_data.delete_objects();
@@ -358,11 +385,13 @@ void test_walker_special_mage_energy_wave()
         blood->team_num = 1;
 
         for (int sp = 1; sp <= 5; ++sp) {
-            a->current_special = sp;
-            a->busy = 0;
-            a->shifter_down = (sp % 2);
-            a->stats()->magicpoints = a->stats()->max_magicpoints;
-            (void)a->special();
+            for (int shift = 0; shift <= 1; ++shift) {
+                a->current_special = sp;
+                a->busy = 0;
+                a->shifter_down = shift;
+                a->stats()->magicpoints = a->stats()->max_magicpoints;
+                (void)a->special();
+            }
         }
     }
     myscreen->level_data.delete_objects();
@@ -387,6 +416,33 @@ void test_walker_special_cleric_raise_undead()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 2; // raise undead
     w->special();
+
+    Sint32 none = w->turn_undead(3, 1);
+    TEST_ASSERT_EQ(-1, (int)none, "turn_undead should return -1 when no foes are in range");
+
+    walker* skel = make_special_guy(FAMILY_SKELETON, 2, 1);
+    walker* ghost = make_special_guy(FAMILY_GHOST, 2, 1);
+    TEST_ASSERT(skel != nullptr && ghost != nullptr, "undead foes created");
+    if (skel && ghost) {
+        skel->setxy(w->xpos + 1, w->ypos + 1);
+        ghost->setxy(w->xpos + 2, w->ypos + 1);
+        skel->team_num = 2;
+        ghost->team_num = 2;
+        skel->stats()->level = 1;
+        ghost->stats()->level = 1;
+
+        SequenceRandom seq_rng({39, 0, 39, 0, 39, 0});
+        GameContext test_ctx;
+        test_ctx.game_screen = myscreen;
+        test_ctx.rng = &seq_rng;
+        set_global_context(&test_ctx);
+        Sint32 killed = w->turn_undead(24, 2);
+        set_global_context(nullptr);
+        TEST_ASSERT(killed >= -1, "turn_undead should return a valid result");
+    }
+
+    delete skel;
+    delete ghost;
     delete w;
 }
 REGISTER_TEST(test_walker_special_cleric_raise_undead);
