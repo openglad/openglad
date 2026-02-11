@@ -84,6 +84,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/picker.cpp
     ${SRC_DIR}/picker_dialogs.cpp
     ${SRC_DIR}/picker_input.cpp
+    ${SRC_DIR}/picker_main_menu.cpp
     ${SRC_DIR}/picker_accessible_levels.cpp
     ${SRC_DIR}/pixie.cpp
     ${SRC_DIR}/pixien.cpp
