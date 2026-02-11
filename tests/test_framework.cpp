@@ -40,7 +40,11 @@ void run_all_tests() {
         run_idx++;
         fprintf(stderr, "  [%d/%d] %s ... ", run_idx, total_to_run, g_test_registry[i].name);
         int failed_before = g_tests_failed;
+        if (g_test_registry[i].setup)
+            g_test_registry[i].setup();
         g_test_registry[i].fn();
+        if (g_test_registry[i].teardown)
+            g_test_registry[i].teardown();
         if (g_tests_failed == failed_before) {
             g_tests_passed++;
             g_tests_run++;
