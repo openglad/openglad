@@ -66,5 +66,3 @@ public:
     void add_level_completed(const std::string& campaign, int level_index);
     void reset_campaign(const std::string& campaign);
 };
-
-#include "walker.h"

@@ -1384,7 +1384,6 @@ bool walker::draw_tile(viewscreen  *view_buf)
 
 
 #include "micropather.h"
-using namespace micropather;
 
 #define MAP_WIDTH 400
 #define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
@@ -1396,11 +1395,11 @@ using namespace micropather;
 
 walker* path_walker = nullptr;
 
-class Map : public Graph
+class Map : public micropather::Graph
 {
 public:
     virtual float LeastCostEstimate( void* stateStart, void* stateEnd );
-    virtual void AdjacentCost( void* state, std::vector< StateCost > *adjacent );
+    virtual void AdjacentCost( void* state, std::vector< micropather::StateCost > *adjacent );
     virtual void  PrintStateInfo( void* state );
 };
 
@@ -1414,7 +1413,7 @@ float Map::LeastCostEstimate( void* stateStart, void* stateEnd )
     return sqrtf((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
 }
 
-void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
+void Map::AdjacentCost( void* state, std::vector< micropather::StateCost > *adjacent )
 {
     int x1 = GET_STATE_X(state);
     int y1 = GET_STATE_Y(state);
@@ -1429,7 +1428,7 @@ void Map::AdjacentCost( void* state, std::vector< StateCost > *adjacent )
             int adj_x = x1+i*GRID_SIZE;
             int adj_y = y1+j*GRID_SIZE;
             
-            StateCost cost;
+            micropather::StateCost cost;
             cost.state = MAKE_STATE(adj_x, adj_y);
             cost.cost = 0;
             
@@ -1470,7 +1469,7 @@ void Map::PrintStateInfo( void* state )
 
 
 Map path_map;
-MicroPather pather(&path_map);
+    micropather::MicroPather pather(&path_map);
 
 void walker::find_path_to_foe()
 {
