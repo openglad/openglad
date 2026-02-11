@@ -1,0 +1,79 @@
+#include "graph.h"
+#include "gloader.h"
+#include "test_framework.h"
+
+extern screen* myscreen;
+
+static walker* create_living_on_team(unsigned char team)
+{
+    loader* l = myscreen->level_data.myloader.get();
+    if (!l)
+        return nullptr;
+    walker* w = l->create_walker(Order::Living, FAMILY_SOLDIER, myscreen);
+    if (!w)
+        return nullptr;
+    w->team_num = team;
+    w->dead = 0;
+    w->user = -1;
+    w->setxy(80, 80);
+    return w;
+}
+
+static SDL_Event make_keydown(SDL_Keycode k)
+{
+    SDL_Event e;
+    memset(&e, 0, sizeof(e));
+    e.type = SDL_KEYDOWN;
+    e.key.keysym.sym = k;
+    e.key.keysym.scancode = SDL_GetScancodeFromKey(k);
+    e.key.repeat = false;
+    return e;
+}
+
+void test_viewscreen_input_f3_f4_smoke()
+{
+    viewscreen* v = myscreen->viewob[0].get();
+    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+
+    walker* control = create_living_on_team(0);
+    TEST_ASSERT(control != nullptr, "control walker should be created");
+    v->control = control;
+    v->mynum = 0;
+    v->my_team = 0;
+
+    // Avoid divide-by-zero in the F3 FPS branch.
+    myscreen->timerstart = query_timer_control() - 200;
+    myscreen->framecount = 1234;
+
+    // Exercise a couple of key-event branches.
+    (void)v->input(make_keydown(SDLK_F3));
+    (void)v->input(make_keydown(SDLK_F4));
+
+    delete control;
+    v->control = nullptr;
+}
+REGISTER_TEST(test_viewscreen_input_f3_f4_smoke);
+
+void test_viewscreen_input_consumes_bonus_rounds()
+{
+    viewscreen* v = myscreen->viewob[0].get();
+    TEST_ASSERT(v != nullptr, "viewob[0] should exist");
+
+    walker* control = create_living_on_team(0);
+    TEST_ASSERT(control != nullptr, "control walker should be created");
+    v->control = control;
+    v->mynum = 0;
+    v->my_team = 0;
+
+    // Ensure the bonus-round walk() path runs.
+    control->bonus_rounds = 1;
+    control->lastx = 1.0f;
+    control->lasty = 0.0f;
+    (void)v->input(make_keydown(SDLK_UNKNOWN));
+    TEST_ASSERT_EQ(0, (int)control->bonus_rounds, "bonus rounds should decrement");
+
+    delete control;
+    v->control = nullptr;
+}
+REGISTER_TEST(test_viewscreen_input_consumes_bonus_rounds);
+
