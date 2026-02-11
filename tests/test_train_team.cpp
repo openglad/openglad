@@ -88,10 +88,23 @@ static int train_injector(void* data)
         interact("inc_dex");
         SDL_Delay(300);
 
-        // Cycle to next team member (if we have more than one)
-        fprintf(stderr, "  [test] clicking next\n");
-        interact("next");
-        SDL_Delay(300);
+        // Open details across several classes to exercise detail rendering branches.
+        for (int i = 0; i < 5; i++) {
+            wait_for_interactable("details", 10000);
+            fprintf(stderr, "  [test] clicking details (%d)\n", i + 1);
+            interact("details");
+            SDL_Delay(300);
+            wait_for_interactable("back", 10000);
+            fprintf(stderr, "  [test] clicking back from details (%d)\n", i + 1);
+            interact("back");
+            SDL_Delay(300);
+
+            if (i < 4) {
+                fprintf(stderr, "  [test] clicking next (%d)\n", i + 1);
+                interact("next");
+                SDL_Delay(300);
+            }
+        }
 
         // Go back
         fprintf(stderr, "  [test] clicking back from train menu\n");
@@ -119,12 +132,23 @@ void test_train_team() {
     myscreen->save_data.scen_num = 1;
     myscreen->save_data.totalcash = 50000;  // Enough cash for training
 
-    // Add two guys to the team
-    guy* soldier = new guy(FAMILY_SOLDIER);
-    guy* archer = new guy(FAMILY_ARCHER);
-    myscreen->save_data.team_list[0] = soldier;
-    myscreen->save_data.team_list[1] = archer;
-    myscreen->save_data.team_size = 2;
+    // Add multiple classes at high level to hit create_detail_menu text branches.
+    guy* archmage = new guy(FAMILY_ARCHMAGE);
+    guy* cleric = new guy(FAMILY_CLERIC);
+    guy* druid = new guy(FAMILY_DRUID);
+    guy* thief = new guy(FAMILY_THIEF);
+    guy* orc = new guy(FAMILY_ORC);
+    archmage->level = 10;
+    cleric->level = 10;
+    druid->level = 10;
+    thief->level = 10;
+    orc->level = 10;
+    myscreen->save_data.team_list[0] = archmage;
+    myscreen->save_data.team_list[1] = cleric;
+    myscreen->save_data.team_list[2] = druid;
+    myscreen->save_data.team_list[3] = thief;
+    myscreen->save_data.team_list[4] = orc;
+    myscreen->save_data.team_size = 5;
 
     myscreen->save_data.save("save0");
 

@@ -4,9 +4,58 @@
 #include "io.h"
 #include "test_framework.h"
 
+#include <cstdint>
+#include <filesystem>
 #include <unistd.h>
+#include <vector>
 
 extern screen* myscreen;
+short load_scenario_version(SDL_RWops* infile, LevelData* data, short version);
+
+namespace
+{
+static void push_u8(std::vector<uint8_t>& v, uint8_t x) { v.push_back(x); }
+static void push_i16(std::vector<uint8_t>& v, int16_t x)
+{
+    v.push_back(static_cast<uint8_t>(x & 0xff));
+    v.push_back(static_cast<uint8_t>((x >> 8) & 0xff));
+}
+static void push_bytes(std::vector<uint8_t>& v, const char* s, size_t n)
+{
+    for (size_t i = 0; i < n; ++i) v.push_back(static_cast<uint8_t>(s[i]));
+}
+
+static std::vector<uint8_t> make_scenario_blob_with_one_object(bool include_type_byte, bool include_name)
+{
+    std::vector<uint8_t> b;
+    // 8-byte grid name, read as lowercase then ".pix" is appended.
+    push_bytes(b, "16grass1", 8);
+    if (include_type_byte)
+        push_u8(b, 2); // scenario type for v5+
+
+    // listsize (short) = 1
+    push_i16(b, 1);
+
+    // Object payload.
+    push_u8(b, static_cast<uint8_t>(Order::Living)); // order
+    push_u8(b, static_cast<uint8_t>(FAMILY_SOLDIER)); // family
+    push_i16(b, 48); // x
+    push_i16(b, 64); // y
+    push_u8(b, 1); // team
+    push_u8(b, 0); // facing
+    push_u8(b, static_cast<uint8_t>(ACT_RANDOM)); // command
+    push_u8(b, 4); // level (char in v3/4, later cast to short in loader)
+    if (include_name)
+        push_bytes(b, "COVNAME\0\0\0\0\0", 12);
+    push_bytes(b, "0123456789", 10); // reserved
+
+    // numlines + one description line
+    push_u8(b, 1);
+    push_u8(b, 6);
+    push_bytes(b, "hello!", 6);
+    return b;
+}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // LevelData::clear
@@ -302,6 +351,75 @@ void test_level_data_get_description_line()
     TEST_ASSERT(updated.load(), "updated campaign should load");
     TEST_ASSERT(updated.title == "Coverage Campaign Updated", "title should persist after save");
     TEST_ASSERT(updated.getDescriptionLine(0) == "line c", "updated description should persist");
+
+    // Directly exercise load_scenario_version branches 3/4/5 and unknown version.
+    {
+        std::vector<uint8_t> blob3 = make_scenario_blob_with_one_object(false, false);
+        SDL_RWops* rw3 = SDL_RWFromConstMem(blob3.data(), static_cast<int>(blob3.size()));
+        TEST_ASSERT(rw3 != nullptr, "SDL_RWFromConstMem for version 3 should succeed");
+        myscreen->level_data.delete_objects();
+        myscreen->level_data.description.clear();
+        short r3 = load_scenario_version(rw3, &myscreen->level_data, 3);
+        SDL_RWclose(rw3);
+        TEST_ASSERT_EQ(1, (int)r3, "load_scenario_version v3 should succeed");
+        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v3 should load at least one object");
+        TEST_ASSERT(!myscreen->level_data.description.empty(), "v3 should load description lines");
+    }
+    {
+        std::vector<uint8_t> blob4 = make_scenario_blob_with_one_object(false, true);
+        SDL_RWops* rw4 = SDL_RWFromConstMem(blob4.data(), static_cast<int>(blob4.size()));
+        TEST_ASSERT(rw4 != nullptr, "SDL_RWFromConstMem for version 4 should succeed");
+        myscreen->level_data.delete_objects();
+        myscreen->level_data.description.clear();
+        short r4 = load_scenario_version(rw4, &myscreen->level_data, 4);
+        SDL_RWclose(rw4);
+        TEST_ASSERT_EQ(1, (int)r4, "load_scenario_version v4 should succeed");
+        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v4 should load at least one object");
+    }
+    {
+        std::vector<uint8_t> blob5 = make_scenario_blob_with_one_object(true, true);
+        SDL_RWops* rw5 = SDL_RWFromConstMem(blob5.data(), static_cast<int>(blob5.size()));
+        TEST_ASSERT(rw5 != nullptr, "SDL_RWFromConstMem for version 5 should succeed");
+        myscreen->level_data.delete_objects();
+        myscreen->level_data.description.clear();
+        short r5 = load_scenario_version(rw5, &myscreen->level_data, 5);
+        SDL_RWclose(rw5);
+        TEST_ASSERT_EQ(1, (int)r5, "load_scenario_version v5 should succeed");
+        TEST_ASSERT_EQ(2, (int)myscreen->level_data.type, "v5 should load scenario type");
+        TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v5 should load at least one object");
+    }
+    {
+        // Unknown version should hit default branch and report failure.
+        std::vector<uint8_t> tiny = {0};
+        SDL_RWops* rw_bad = SDL_RWFromConstMem(tiny.data(), static_cast<int>(tiny.size()));
+        TEST_ASSERT(rw_bad != nullptr, "SDL_RWFromConstMem for unknown version should succeed");
+        short bad = load_scenario_version(rw_bad, &myscreen->level_data, 42);
+        SDL_RWclose(rw_bad);
+        TEST_ASSERT_EQ(0, (int)bad, "unknown scenario version should fail");
+    }
+
+    // Save with populated ob/fx/weap/description to cover all object-list loops.
+    myscreen->level_data.id = 99;
+    myscreen->level_data.grid_file = "grid";
+    myscreen->level_data.title = "Coverage Level";
+    myscreen->level_data.type = 3;
+    myscreen->level_data.par_value = 7;
+    myscreen->level_data.time_bonus_limit = 1234;
+    myscreen->level_data.description.clear();
+    myscreen->level_data.description.push_back("desc-a");
+    myscreen->level_data.description.push_back("desc-b");
+    myscreen->level_data.delete_objects();
+    std::filesystem::create_directories("temp/scen");
+
+    walker* ob = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* wp = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(ob && fx && wp, "save-loop objects should be created");
+    if (ob) ob->stats()->name = "OB";
+    if (fx) fx->stats()->name = "FX";
+    if (wp) wp->stats()->name = "WP";
+    TEST_ASSERT(myscreen->level_data.save(), "save should succeed with populated lists");
+    myscreen->level_data.delete_objects();
 
     delete_campaign(tmp_id);
 }

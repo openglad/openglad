@@ -7,6 +7,7 @@
 
 extern screen* myscreen;
 extern const Uint8* keystates;
+extern int player_keys[4][NUM_KEYS];
 
 static walker* create_controlled_living(char family)
 {
@@ -78,8 +79,36 @@ void test_viewscreen_options_menu_exercises_key_paths()
 
     driver.join();
 
+    // Drive set_key_prefs and view_key_bindings paths directly.
+    TEST_ASSERT_EQ(1, (int)v->set_key_prefs(), "set_key_prefs should succeed in testing mode");
+
+    int saved_up = player_keys[v->mynum][KEY_UP];
+    int saved_fire = player_keys[v->mynum][KEY_FIRE];
+    int saved_special = player_keys[v->mynum][KEY_SPECIAL];
+    int saved_yell = player_keys[v->mynum][KEY_YELL];
+    int saved_shifter = player_keys[v->mynum][KEY_SHIFTER];
+
+    // Force key-display abbreviation and truncation branches.
+    player_keys[v->mynum][KEY_UP] = SDLK_BACKSPACE;      // "BkSpc"
+    player_keys[v->mynum][KEY_FIRE] = SDLK_LCTRL;        // "LCtrl"
+    player_keys[v->mynum][KEY_SPECIAL] = SDLK_RALT;      // "RAlt"
+    player_keys[v->mynum][KEY_YELL] = SDLK_CAPSLOCK;     // "Caps"
+    player_keys[v->mynum][KEY_SHIFTER] = SDLK_AUDIONEXT; // long key name -> truncation
+
+    KeystateOverride ks2;
+    std::thread esc_driver([&]() {
+        press_release_after(ks2, SDL_SCANCODE_ESCAPE, 10, 10);
+    });
+    v->view_key_bindings();
+    esc_driver.join();
+
+    player_keys[v->mynum][KEY_UP] = saved_up;
+    player_keys[v->mynum][KEY_FIRE] = saved_fire;
+    player_keys[v->mynum][KEY_SPECIAL] = saved_special;
+    player_keys[v->mynum][KEY_YELL] = saved_yell;
+    player_keys[v->mynum][KEY_SHIFTER] = saved_shifter;
+
     delete control;
     v->control = nullptr;
 }
 REGISTER_TEST(test_viewscreen_options_menu_exercises_key_paths);
-

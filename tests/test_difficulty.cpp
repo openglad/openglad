@@ -75,11 +75,26 @@ static int difficulty_injector(void* data)
     state->clicked_difficulty = true;
     SDL_Delay(300);
 
-    // Also toggle player count
+    // Exercise all multiplayer player-count redraw branches.
+    if (has_interactable("4_player")) {
+        fprintf(stderr, "  [test] clicking 4_player\n");
+        interact("4_player");
+        SDL_Delay(150);
+    }
+    if (has_interactable("3_player")) {
+        fprintf(stderr, "  [test] clicking 3_player\n");
+        interact("3_player");
+        SDL_Delay(150);
+    }
+    if (has_interactable("2_player")) {
+        fprintf(stderr, "  [test] clicking 2_player\n");
+        interact("2_player");
+        SDL_Delay(150);
+    }
     if (has_interactable("1_player")) {
         fprintf(stderr, "  [test] clicking 1_player\n");
         interact("1_player");
-        SDL_Delay(200);
+        SDL_Delay(150);
     }
 
     // Exit by going continue -> back
