@@ -113,6 +113,9 @@ set(GAME_SOURCES
     ${SRC_DIR}/level_data.cpp
     ${SRC_DIR}/level_picker.cpp
     ${SRC_DIR}/level_editor.cpp
+    ${SRC_DIR}/level_editor_ui.cpp
+    ${SRC_DIR}/level_editor_tools.cpp
+    ${SRC_DIR}/level_editor_file_ops.cpp
     ${SRC_DIR}/campaign_picker.cpp
     ${SRC_DIR}/results_screen.cpp
     ${SRC_DIR}/save_data.cpp
