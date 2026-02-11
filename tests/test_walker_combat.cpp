@@ -15,6 +15,28 @@ static walker* make_guy(char family, unsigned char team = 0)
     return w;
 }
 
+static int count_family_in_oblist(char family)
+{
+    int count = 0;
+    for (auto& uptr : myscreen->level_data.oblist) {
+        walker* w = uptr.get();
+        if (w && w->query_family() == family)
+            count++;
+    }
+    return count;
+}
+
+static int count_family_in_fxlist(char family)
+{
+    int count = 0;
+    for (auto& uptr : myscreen->level_data.fxlist) {
+        walker* w = uptr.get();
+        if (w && w->query_family() == family)
+            count++;
+    }
+    return count;
+}
+
 // ---------------------------------------------------------------------------
 // attack() - exercises the big combat function (lines 1822-2100)
 // ---------------------------------------------------------------------------
@@ -35,8 +57,27 @@ void test_walker_attack_basic()
     (void)result;
     (void)hp_before;
 
+    // Force a deterministic kill path to exercise death messaging/blood branches.
+    target->dead = 0;
+    target->stats()->hitpoints = 1;
+    target->stats()->max_hitpoints = 1;
+    attacker->damage = 500.0f;
+    int blood_before = count_family_in_oblist(FAMILY_BLOOD);
+    (void)attacker->attack(target);
+    int blood_after = count_family_in_oblist(FAMILY_BLOOD);
+    TEST_ASSERT(blood_after >= blood_before, "kill path should not reduce blood objects");
+
+    // Treasure targets are never valid attack targets.
+    walker* treasure = myscreen->level_data.add_ob(Order::Treasure, FAMILY_STAIN);
+    TEST_ASSERT(treasure != nullptr, "treasure created");
+    if (treasure) {
+        bool treasure_result = attacker->attack(treasure);
+        TEST_ASSERT(!treasure_result, "attacking treasure should fail");
+    }
+
     delete attacker;
     delete target;
+    myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_attack_basic);
 
@@ -71,9 +112,27 @@ void test_walker_attack_slime_magic_bonus()
     attacker->stats()->set_bit_flags(BIT_MAGICAL, 1);
 
     attacker->attack(slime);
+
+    // Weapon-owner combat path and FAMILY_SPRINKLE freeze special-case.
+    walker* sprinkle = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
+    TEST_ASSERT(sprinkle != nullptr, "sprinkle weapon created");
+    if (sprinkle) {
+        sprinkle->owner = attacker;
+        sprinkle->team_num = attacker->team_num;
+        sprinkle->damage = 50;
+        slime->dead = 0;
+        slime->stats()->hitpoints = 200;
+        slime->stats()->max_hitpoints = 200;
+        int frozen_before = slime->stats()->frozen_delay;
+        (void)sprinkle->attack(slime);
+        TEST_ASSERT(slime->stats()->frozen_delay >= frozen_before,
+                    "sprinkle hit should preserve/increase frozen delay");
+    }
+
     // Magic does 2x damage to slimes - just verify no crash
     delete attacker;
     delete slime;
+    myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_attack_slime_magic_bonus);
 
@@ -136,8 +195,12 @@ void test_walker_act_control()
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
     w->set_act_type(ACT_CONTROL);
+    w->attack_lunge = 1.0f;
+    w->hit_recoil = 1.0f;
     bool result = w->act();
     TEST_ASSERT(result, "ACT_CONTROL should return true");
+    TEST_ASSERT(w->attack_lunge < 1.0f, "attack_lunge should decay in act()");
+    TEST_ASSERT(w->hit_recoil < 1.0f, "hit_recoil should decay in act()");
     delete w;
 }
 REGISTER_TEST(test_walker_act_control);
@@ -174,7 +237,50 @@ void test_walker_act_with_commands()
     w->stats()->add_command(COMMAND_WALK, 3, 1, 0);
     bool result = w->act();
     TEST_ASSERT(result, "walker with commands should return 1");
+
+    // Drive additional act_type handlers.
+    w->stats()->clear_command();
+    w->set_act_type(127); // default case
+    (void)w->act(); // default act_type path
+
+    w->set_act_type(ACT_GUARD);
+    w->foe = nullptr;
+    (void)w->act();
+
+    walker* foe = make_guy(FAMILY_ORC, 2);
+    TEST_ASSERT(foe != nullptr, "foe created");
+    if (foe) {
+        foe->setxy(w->xpos + 8, w->ypos + 8);
+        w->foe = foe;
+        (void)w->act();
+    }
+
+    loader* l = myscreen->level_data.myloader.get();
+    TEST_ASSERT(l != nullptr, "loader exists");
+    if (l) {
+        walker* gen = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+        TEST_ASSERT(gen != nullptr, "generator created");
+        if (gen) {
+            gen->setxy(120, 120);
+            gen->set_act_type(ACT_GENERATE);
+            (void)gen->act();
+            delete gen;
+        }
+
+        walker* proj = l->create_walker(Order::Weapon, FAMILY_KNIFE, myscreen);
+        TEST_ASSERT(proj != nullptr, "weapon created");
+        if (proj) {
+            proj->setxy(120, 120);
+            proj->set_act_type(ACT_FIRE);
+            proj->lineofsight = 0;
+            (void)proj->act();
+            delete proj;
+        }
+    }
+
+    delete foe;
     delete w;
+    myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_act_with_commands);
 
@@ -332,6 +438,16 @@ void test_walker_set_order_family_all()
         TEST_ASSERT_EQ((int)families[i], (int)w->query_family(), "family should match");
     }
 
+    // Exercise non-living order assignments too.
+    TEST_ASSERT(w->set_order_family(Order::Weapon, FAMILY_KNIFE), "set_order_family weapon should return true");
+    TEST_ASSERT_EQ((int)FAMILY_KNIFE, (int)w->query_family(), "family should change to knife");
+    TEST_ASSERT(w->set_order_family(Order::Treasure, FAMILY_STAIN), "set_order_family treasure should return true");
+    TEST_ASSERT_EQ((int)FAMILY_STAIN, (int)w->query_family(), "family should change to stain");
+    TEST_ASSERT(w->set_order_family(Order::FX, FAMILY_EXPLOSION), "set_order_family fx should return true");
+    TEST_ASSERT_EQ((int)FAMILY_EXPLOSION, (int)w->query_family(), "family should change to explosion");
+    TEST_ASSERT(w->set_order_family(Order::Generator, FAMILY_TENT), "set_order_family generator should return true");
+    TEST_ASSERT_EQ((int)FAMILY_TENT, (int)w->query_family(), "family should change to tent");
+
     delete w;
 }
 REGISTER_TEST(test_walker_set_order_family_all);
@@ -379,6 +495,15 @@ void test_walker_set_difficulty_all_families()
             delete w;
         }
     }
+
+    walker* gen = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+    TEST_ASSERT(gen != nullptr, "generator created");
+    if (gen) {
+        float hp_before = gen->stats()->hitpoints;
+        gen->set_difficulty(7);
+        TEST_ASSERT(gen->stats()->hitpoints >= hp_before, "generator HP should be scaled");
+        delete gen;
+    }
 }
 REGISTER_TEST(test_walker_set_difficulty_all_families);
 
@@ -417,6 +542,33 @@ void test_walker_animate_smoke()
     w->setxy(100, 100);
     w->ani_type = ANI_WALK;
     w->animate();
+
+    // TELE_OUT branches: mage teleport and skeleton ranged teleport.
+    w->transform_to(Order::Living, FAMILY_MAGE);
+    w->ani_type = ANI_TELE_OUT;
+    for (int i = 0; i < 32 && w->ani_type != ANI_WALK; ++i) {
+        (void)w->animate();
+    }
+    TEST_ASSERT(w->ani_type == ANI_WALK, "mage teleport animation should settle");
+
+    w->transform_to(Order::Living, FAMILY_SKELETON);
+    w->ani_type = ANI_TELE_OUT;
+    for (int i = 0; i < 32 && w->ani_type != ANI_WALK; ++i) {
+        (void)w->animate();
+    }
+    TEST_ASSERT(w->ani_type == ANI_WALK, "skeleton teleport animation should settle");
+
+    // Slime split branch.
+    w->transform_to(Order::Living, FAMILY_SLIME);
+    w->ani_type = ANI_SLIME_SPLIT;
+    int small_slime_before = count_family_in_oblist(FAMILY_SMALL_SLIME);
+    for (int i = 0; i < 32 && w->ani_type != ANI_WALK; ++i) {
+        (void)w->animate();
+    }
+    int small_slime_after = count_family_in_oblist(FAMILY_SMALL_SLIME);
+    TEST_ASSERT(small_slime_after >= small_slime_before, "slime split should preserve/increase small slimes");
+
     delete w;
+    myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_animate_smoke);

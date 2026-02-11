@@ -539,6 +539,10 @@ void test_walker_special_dead()
     bool result = w->special();
     TEST_ASSERT(!result, "dead walker should not special");
     w->dead = 0; // so destructor works
+    w->current_special = 3;
+    w->stats()->magicpoints = w->stats()->special_cost[3];
+    w->set_order_family(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(!w->special(), "non-living special should fail early");
     delete w;
 }
 REGISTER_TEST(test_walker_special_dead);
@@ -550,6 +554,13 @@ void test_walker_special_no_magic()
     w->stats()->magicpoints = 0;
     bool result = w->special();
     TEST_ASSERT(!result, "no magic should fail special");
+
+    // Exercise specific "not enough for selected special" index path.
+    w->set_order_family(Order::Living, FAMILY_MAGE);
+    w->current_special = 4;
+    w->stats()->special_cost[4] = 50;
+    w->stats()->magicpoints = 49;
+    TEST_ASSERT(!w->special(), "insufficient MP for selected special index should fail");
 
     // Exercise base-class fallback implementations explicitly.
     TEST_ASSERT_EQ(-1, (int)w->walker::shove(nullptr, 0, 0), "base shove should return -1");
