@@ -496,6 +496,37 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
         )
 
+        # Module-level test binaries (kept in addition to the full integration suite).
+        # These allow faster targeted iteration without removing broad end-to-end coverage.
+        set(DATA_TEST_SOURCES
+            ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
+        )
+
+        set(RUNTIME_TEST_SOURCES
+            ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_game_loop.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_keybinds.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_joystick.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_combat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_pathing.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
+        )
+
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
         configure_openglad_library(og_game_test)
         target_compile_definitions(og_game_test PRIVATE TESTING)
@@ -511,6 +542,26 @@ if(NOT EMSCRIPTEN)
         target_link_libraries(openglad_test PRIVATE og_game_test)
         configure_openglad_runtime_target(openglad_test)
 
+        add_executable(og_data_tests
+            ${SRC_DIR}/glad.cpp
+            ${DATA_TEST_SOURCES}
+        )
+        configure_openglad_library(og_data_tests)
+        target_compile_definitions(og_data_tests PRIVATE TESTING)
+        target_include_directories(og_data_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_link_libraries(og_data_tests PRIVATE og_game_test)
+        configure_openglad_runtime_target(og_data_tests)
+
+        add_executable(og_runtime_tests
+            ${SRC_DIR}/glad.cpp
+            ${RUNTIME_TEST_SOURCES}
+        )
+        configure_openglad_library(og_runtime_tests)
+        target_compile_definitions(og_runtime_tests PRIVATE TESTING)
+        target_include_directories(og_runtime_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_link_libraries(og_runtime_tests PRIVATE og_game_test)
+        configure_openglad_runtime_target(og_runtime_tests)
+
         enable_testing()
         add_test(NAME openglad_test COMMAND openglad_test)
         set_tests_properties(openglad_test PROPERTIES
@@ -523,8 +574,14 @@ if(NOT EMSCRIPTEN)
                 # a good compromise while still producing accurate line coverage.
                 target_compile_options(og_game_test PRIVATE -O1 -g --coverage)
                 target_compile_options(openglad_test PRIVATE -O1 -g --coverage)
+                target_compile_options(og_data_tests PRIVATE -O1 -g --coverage)
+                target_compile_options(og_runtime_tests PRIVATE -O1 -g --coverage)
                 target_link_options(openglad_test PRIVATE --coverage)
+                target_link_options(og_data_tests PRIVATE --coverage)
+                target_link_options(og_runtime_tests PRIVATE --coverage)
                 target_compile_definitions(openglad_test PRIVATE ENABLE_COVERAGE)
+                target_compile_definitions(og_data_tests PRIVATE ENABLE_COVERAGE)
+                target_compile_definitions(og_runtime_tests PRIVATE ENABLE_COVERAGE)
             else()
                 message(WARNING "ENABLE_COVERAGE is ON but compiler is not GCC/Clang; ignoring coverage flags")
             endif()
