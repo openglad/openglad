@@ -148,3 +148,47 @@ void test_external_libzip_replace_delete_and_unchange_paths()
     TEST_ASSERT(zip_close(zm) == 0, "zip_close modify");
 }
 REGISTER_TEST(test_external_libzip_replace_delete_and_unchange_paths);
+
+void test_external_libzip_extra_field_api_paths()
+{
+    const std::string path = tmp_zip_path();
+    int err = 0;
+
+    zip* za = zip_open(path.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
+    TEST_ASSERT(za != nullptr, "zip_open create");
+
+    zip_source* src = zip_source_buffer(za, "payload", 7, 0);
+    TEST_ASSERT(src != nullptr, "zip_source_buffer");
+    zip_int64_t idx = zip_file_add(za, "extra.txt", src, ZIP_FL_OVERWRITE);
+    TEST_ASSERT(idx >= 0, "zip_file_add");
+
+    const zip_uint8_t ef_data[4] = {0xAA, 0xBB, 0xCC, 0xDD};
+    TEST_ASSERT(zip_file_extra_field_set(za, (zip_uint64_t)idx, 0xCAFE, 0,
+                                         ef_data, 4, ZIP_FL_LOCAL | ZIP_FL_CENTRAL) == 0,
+                "zip_file_extra_field_set");
+
+    zip_int16_t cnt_all = zip_file_extra_fields_count(za, (zip_uint64_t)idx, ZIP_FL_LOCAL);
+    TEST_ASSERT(cnt_all >= 1, "zip_file_extra_fields_count local should be >= 1");
+
+    zip_int16_t cnt_id = zip_file_extra_fields_count_by_id(za, (zip_uint64_t)idx, 0xCAFE, ZIP_FL_LOCAL);
+    TEST_ASSERT(cnt_id >= 1, "zip_file_extra_fields_count_by_id should find inserted id");
+
+    zip_uint16_t got_id = 0;
+    zip_uint16_t got_len = 0;
+    const zip_uint8_t* got = zip_file_extra_field_get(za, (zip_uint64_t)idx, 0, &got_id, &got_len, ZIP_FL_LOCAL);
+    TEST_ASSERT(got != nullptr, "zip_file_extra_field_get should return first field");
+    TEST_ASSERT(got_len > 0, "extra field length should be > 0");
+
+    zip_uint16_t got_len2 = 0;
+    const zip_uint8_t* got2 = zip_file_extra_field_get_by_id(za, (zip_uint64_t)idx, 0xCAFE, 0, &got_len2, ZIP_FL_LOCAL);
+    TEST_ASSERT(got2 != nullptr, "zip_file_extra_field_get_by_id should return inserted field");
+    TEST_ASSERT_EQ(4, (int)got_len2, "inserted extra field length should match");
+
+    TEST_ASSERT(zip_file_extra_field_delete_by_id(za, (zip_uint64_t)idx, 0xCAFE, 0, ZIP_FL_LOCAL) == 0,
+                "zip_file_extra_field_delete_by_id local");
+    // This may no-op if already gone in this location, but should not fail hard.
+    (void)zip_file_extra_field_delete(za, (zip_uint64_t)idx, 0, ZIP_FL_CENTRAL);
+
+    TEST_ASSERT(zip_close(za) == 0, "zip_close");
+}
+REGISTER_TEST(test_external_libzip_extra_field_api_paths);
