@@ -27,7 +27,7 @@ static void default_handle(const SDL_Event& e)
     handle_events(e);
 }
 
-bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
+GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
 {
     const auto poll_event = deps.poll_event ? deps.poll_event : default_poll;
     const auto handle_event = deps.handle_event ? deps.handle_event : default_handle;
@@ -50,7 +50,7 @@ bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
     if (s.end)
     {
         st.done = true;
-        return true;
+        return GameFrameResult::Done;
     }
 
     s.act();
@@ -59,7 +59,7 @@ bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
     if (s.end)
     {
         st.done = true;
-        return true;
+        return GameFrameResult::Done;
     }
 
 #ifndef TESTING
@@ -96,6 +96,7 @@ bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
                     {
                         st.done = true;
                         results_screen(2, -1); // Should not show an extra popup
+                        return GameFrameResult::AbortedMission;
                     }
                     else
                     {
@@ -113,7 +114,7 @@ bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
     if (s.end || st.done)
     {
         st.done = true;
-        return true;
+        return GameFrameResult::Done;
     }
 
     // Snapshot current input state for the frame
@@ -124,7 +125,7 @@ bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
     if (s.end)
     {
         st.done = true;
-        return true;
+        return GameFrameResult::Done;
     }
 
     // Now cycle palette ..
@@ -143,5 +144,10 @@ bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
     }
 #endif
 
-    return st.done;
+    return st.done ? GameFrameResult::Done : GameFrameResult::Continue;
+}
+
+bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
+{
+    return game_frame_with_result(s, st, deps) != GameFrameResult::Continue;
 }

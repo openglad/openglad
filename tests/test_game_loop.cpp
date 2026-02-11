@@ -77,3 +77,43 @@ void test_game_frame_toggles_debug_hotkeys()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_game_frame_toggles_debug_hotkeys);
+
+void test_game_frame_with_result_done_when_end_is_set()
+{
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+
+    const char old_end = myscreen->end;
+    myscreen->end = 1;
+
+    const GameFrameResult result = game_frame_with_result(*myscreen, st, deps);
+    TEST_ASSERT_EQ(static_cast<int>(GameFrameResult::Done), static_cast<int>(result),
+        "game_frame_with_result should report Done when screen end is set");
+    TEST_ASSERT(st.done, "state.done should be set when end is set");
+
+    myscreen->end = old_end;
+}
+REGISTER_TEST(test_game_frame_with_result_done_when_end_is_set);
+
+void test_game_frame_bool_wrapper_matches_typed_result()
+{
+    GameLoopFrameState st;
+    GameLoopDeps deps;
+    deps.enable_render = false;
+    deps.enable_event_poll = false;
+
+    const char old_end = myscreen->end;
+    myscreen->end = 1;
+
+    const GameFrameResult typed = game_frame_with_result(*myscreen, st, deps);
+    st.done = false;
+    const bool wrapped = game_frame(*myscreen, st, deps);
+
+    TEST_ASSERT_EQ(static_cast<int>(typed != GameFrameResult::Continue), static_cast<int>(wrapped),
+        "bool wrapper should map Continue/non-Continue exactly");
+
+    myscreen->end = old_end;
+}
+REGISTER_TEST(test_game_frame_bool_wrapper_matches_typed_result);

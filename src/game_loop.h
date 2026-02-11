@@ -38,6 +38,13 @@ struct GameLoopDeps {
     bool enable_event_poll = true;
 };
 
+enum class GameFrameResult {
+    Continue = 0,
+    Done,
+    AbortedMission
+};
+
+GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps = {});
+
 // Runs one frame of the main game loop. Returns true when the mission is done.
 bool game_frame(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps = {});
-
