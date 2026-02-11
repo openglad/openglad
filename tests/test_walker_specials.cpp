@@ -316,6 +316,54 @@ void test_walker_special_mage_energy_wave()
     delete actor;
     delete enemy;
 
+    // Broad special() branch sweep for high-ROI families/special indices.
+    const char sweep_families[] = {
+        FAMILY_CLERIC, FAMILY_MAGE, FAMILY_DRUID, FAMILY_THIEF, FAMILY_ORC, FAMILY_BARBARIAN
+    };
+    for (char fam : sweep_families) {
+        myscreen->level_data.delete_objects();
+
+        walker* a = myscreen->level_data.add_ob(Order::Living, fam);
+        walker* ally = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* foe2 = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+        walker* blood = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+        TEST_ASSERT(a != nullptr && ally != nullptr && foe2 != nullptr && blood != nullptr,
+                    "special sweep objects should be created");
+        if (!(a && ally && foe2 && blood)) {
+            continue;
+        }
+
+        a->team_num = 1;
+        ally->team_num = 1;
+        foe2->team_num = 2;
+        a->setxy(100, 100);
+        ally->setxy(104, 100);
+        foe2->setxy(112, 100);
+        blood->setxy(106, 100);
+        a->lastx = a->stepsize;
+        a->lasty = 0;
+        a->busy = 0;
+        a->stats()->magicpoints = 1500;
+        a->stats()->max_magicpoints = 1500;
+        if (a->myguy) {
+            a->myguy->intelligence = 180;
+            a->myguy->strength = 180;
+            a->myguy->constitution = 180;
+            a->myguy->teamnum = 1;
+        }
+        blood->stats()->old_family = FAMILY_SOLDIER;
+        blood->team_num = 1;
+
+        for (int sp = 1; sp <= 4; ++sp) {
+            a->current_special = sp;
+            a->busy = 0;
+            a->shifter_down = (sp % 2);
+            a->stats()->magicpoints = a->stats()->max_magicpoints;
+            (void)a->special();
+        }
+    }
+    myscreen->level_data.delete_objects();
+
 }
 REGISTER_TEST(test_walker_special_mage_energy_wave);
 
