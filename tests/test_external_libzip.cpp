@@ -1,10 +1,18 @@
 #include <cstring>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
 #include <unistd.h>
 
 #include "zip.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+#include "zipint.h"
+#ifdef __cplusplus
+}
+#endif
 
 #include "test_framework.h"
 
@@ -61,6 +69,23 @@ void test_external_libzip_create_add_read_close()
                 "hello contents");
 
     zip_close(zr);
+
+    // Additional zip_open paths.
+    zip* z_excl = zip_open(path.c_str(), ZIP_CREATE | ZIP_EXCL, &err);
+    TEST_ASSERT(z_excl == nullptr, "zip_open with EXCL on existing archive should fail");
+
+    zip* z_badflags = zip_open(path.c_str(), -1, &err);
+    TEST_ASSERT(z_badflags == nullptr, "zip_open with negative flags should fail");
+
+    namespace fs = std::filesystem;
+    fs::path dir_path = fs::temp_directory_path() / ("openglad_libzip_dir_" + std::to_string(::getpid()));
+    fs::create_directories(dir_path);
+    zip* z_dir = zip_open(dir_path.string().c_str(), 0, &err);
+    TEST_ASSERT(z_dir == nullptr, "zip_open on directory path should fail");
+
+    zip* z_trunc = zip_open(path.c_str(), ZIP_TRUNCATE, &err);
+    TEST_ASSERT(z_trunc != nullptr, "zip_open with TRUNCATE on existing file should succeed");
+    TEST_ASSERT(zip_close(z_trunc) == 0, "zip_close truncated archive");
 }
 REGISTER_TEST(test_external_libzip_create_add_read_close);
 
@@ -86,6 +111,8 @@ void test_external_libzip_rename_comments_and_stat_paths()
                 "zip_file_rename");
     TEST_ASSERT(zip_set_file_compression(za, (zip_uint64_t)idx, ZIP_CM_STORE, 0) == 0,
                 "zip_set_file_compression");
+    TEST_ASSERT(zip_archive_set_tempdir(za, "/tmp") == 0, "zip_archive_set_tempdir");
+    TEST_ASSERT(zip_set_archive_flag(za, ZIP_AFL_TORRENT, 1) == 0, "zip_set_archive_flag torrent");
 
     TEST_ASSERT(zip_close(za) == 0, "zip_close");
 
@@ -146,6 +173,15 @@ void test_external_libzip_replace_delete_and_unchange_paths()
     TEST_ASSERT(zip_unchange_all(zm) == 0, "zip_unchange_all");
 
     TEST_ASSERT(zip_close(zm) == 0, "zip_close modify");
+
+    // Reopen and do metadata-only change to drive copy_data path in zip_close().
+    zip* zmeta = zip_open(path.c_str(), 0, &err);
+    TEST_ASSERT(zmeta != nullptr, "zip_open metadata-modify");
+    zip_int64_t idx_meta = zip_name_locate(zmeta, "one.txt", 0);
+    TEST_ASSERT(idx_meta >= 0, "zip_name_locate one.txt for metadata modify");
+    TEST_ASSERT(zip_file_rename(zmeta, (zip_uint64_t)idx_meta, "one-renamed.txt", 0) == 0,
+                "zip_file_rename metadata-only");
+    TEST_ASSERT(zip_close(zmeta) == 0, "zip_close metadata-only");
 }
 REGISTER_TEST(test_external_libzip_replace_delete_and_unchange_paths);
 
@@ -190,5 +226,84 @@ void test_external_libzip_extra_field_api_paths()
     (void)zip_file_extra_field_delete(za, (zip_uint64_t)idx, 0, ZIP_FL_CENTRAL);
 
     TEST_ASSERT(zip_close(za) == 0, "zip_close");
+
+    // Internal dirent/cdir APIs to cover deep zip_dirent.c paths.
+    zip_error zerr;
+    _zip_error_init(&zerr);
+
+    zip_dirent* de = _zip_dirent_new();
+    TEST_ASSERT(de != nullptr, "_zip_dirent_new");
+    de->comp_method = ZIP_CM_STORE;
+    de->version_madeby = 45;
+    de->version_needed = 45;
+    de->comp_size = static_cast<zip_uint64_t>(UINT32_MAX) + 1234;
+    de->uncomp_size = static_cast<zip_uint64_t>(UINT32_MAX) + 5678;
+    de->offset = static_cast<zip_uint64_t>(UINT32_MAX) + 999;
+
+    const char* utf8_name = "utf8-\xCE\xA9.txt";
+    const char* utf8_comment = "comment-\xCE\xA9";
+    de->filename = _zip_string_new(reinterpret_cast<const zip_uint8_t*>(utf8_name),
+                                   static_cast<zip_uint16_t>(strlen(utf8_name)),
+                                   ZIP_FL_ENC_GUESS, &zerr);
+    de->comment = _zip_string_new(reinterpret_cast<const zip_uint8_t*>(utf8_comment),
+                                  static_cast<zip_uint16_t>(strlen(utf8_comment)),
+                                  ZIP_FL_ENC_GUESS, &zerr);
+    TEST_ASSERT(de->filename != nullptr && de->comment != nullptr, "_zip_string_new for dirent");
+
+    const zip_uint8_t raw_ef[8] = {1,2,3,4,5,6,7,8};
+    de->extra_fields = _zip_ef_new(0xBEEF, 8, raw_ef, ZIP_EF_BOTH);
+    TEST_ASSERT(de->extra_fields != nullptr, "_zip_ef_new");
+
+    TEST_ASSERT(_zip_dirent_needs_zip64(de, ZIP_FL_CENTRAL) == 1, "_zip_dirent_needs_zip64 central");
+    TEST_ASSERT(_zip_dirent_needs_zip64(de, ZIP_FL_LOCAL) == 1, "_zip_dirent_needs_zip64 local");
+
+    FILE* fp = tmpfile();
+    TEST_ASSERT(fp != nullptr, "tmpfile for dirent write");
+
+    int write_ret = _zip_dirent_write(de, fp, ZIP_FL_CENTRAL | ZIP_FL_FORCE_ZIP64, &zerr);
+    TEST_ASSERT(write_ret >= 0, "_zip_dirent_write central zip64");
+    rewind(fp);
+    zip_int32_t dsize = _zip_dirent_size(fp, ZIP_FL_CENTRAL, &zerr);
+    TEST_ASSERT(dsize > 0, "_zip_dirent_size central");
+
+    rewind(fp);
+    zip_dirent parsed;
+    _zip_dirent_init(&parsed);
+    (void)_zip_dirent_read(&parsed, fp, nullptr, nullptr, 0, &zerr);
+    _zip_dirent_finalize(&parsed);
+    fclose(fp);
+
+    _zip_dirent_torrent_normalize(de);
+    FILE* fp_local = tmpfile();
+    TEST_ASSERT(fp_local != nullptr, "tmpfile for local dirent write");
+    write_ret = _zip_dirent_write(de, fp_local, ZIP_FL_LOCAL | ZIP_FL_FORCE_ZIP64, &zerr);
+    TEST_ASSERT(write_ret >= 0, "_zip_dirent_write local zip64");
+    fclose(fp_local);
+
+    zip_dirent* cloned = _zip_dirent_clone(de);
+    TEST_ASSERT(cloned != nullptr, "_zip_dirent_clone");
+    _zip_dirent_free(cloned);
+    _zip_dirent_free(de);
+
+    zip_cdir* cd = _zip_cdir_new(1, &zerr);
+    TEST_ASSERT(cd != nullptr, "_zip_cdir_new");
+    TEST_ASSERT(_zip_cdir_grow(cd, 3, &zerr) == 0, "_zip_cdir_grow");
+    _zip_cdir_free(cd);
+
+    zip_uint8_t buf[16] = {};
+    zip_uint8_t* p = buf;
+    _zip_poke4(0xA1B2C3D4u, &p);
+    _zip_poke8(0x0102030405060708ULL, &p);
+    const zip_uint8_t* rp = buf + 4;
+    zip_uint64_t r8 = _zip_read8(&rp);
+    TEST_ASSERT(r8 == 0x0102030405060708ULL, "_zip_read8 should decode poked value");
+
+    FILE* fw = tmpfile();
+    TEST_ASSERT(fw != nullptr, "tmpfile for _zip_write8");
+    _zip_write8(0x0F0E0D0C0B0A0908ULL, fw);
+    TEST_ASSERT(ferror(fw) == 0, "_zip_write8 should not set error");
+    fclose(fw);
+
+    _zip_error_fini(&zerr);
 }
 REGISTER_TEST(test_external_libzip_extra_field_api_paths);
