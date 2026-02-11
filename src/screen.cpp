@@ -36,6 +36,13 @@
 #include <cstring>
 #include <format>
 
+static inline cfg_store& active_config()
+{
+    if(ctx().config != nullptr)
+        return *ctx().config;
+    return cfg;
+}
+
 
 // From picker.cpp
 extern Sint32 calculate_level(Uint32 temp_exp);
@@ -151,7 +158,7 @@ screen::screen(short howmany)
 
 	// Init the sound data
     soundp = std::make_unique<soundob>();
-    if(!cfg.is_on("sound", "sound"))
+    if(!active_config().is_on("sound", "sound"))
         soundp->set_sound(1);
     first_text.write_xy(left, 94, "Initializing Sound...Done", DARK_BLUE, 1);
     

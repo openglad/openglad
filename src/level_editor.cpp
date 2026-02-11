@@ -28,6 +28,7 @@
 #include "level_picker.h"
 #include <span>
 #include "campaign_picker.h"
+#include "game_context.h"
 #include "sai2x.h"
 #include <algorithm>
 #include <cstring>
@@ -52,6 +53,13 @@ void quit(Sint32 arg1);
 #include <vector>
 #include <cstdlib>
 #define MINIMUM_TIME 0
+
+static inline cfg_store& active_config()
+{
+    if(ctx().config != nullptr)
+        return *ctx().config;
+    return cfg;
+}
 
 
 #define S_LEFT 1
@@ -1702,7 +1710,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
 	Sint32 whichback;
 	
 	const char* blood_string;
-	if(cfg.is_on("effects", "gore"))
+	if(active_config().is_on("effects", "gore"))
         blood_string = "BLOOD";
     else
         blood_string = "REMAINS";

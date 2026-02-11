@@ -33,6 +33,13 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
+static inline cfg_store& active_config()
+{
+    if(ctx().config != nullptr)
+        return *ctx().config;
+    return cfg;
+}
+
 // ************************************************************
 //  WALKER -- graphics routines
 //
@@ -353,7 +360,7 @@ walker  * walker::fire()
 			{
 				myscreen->soundp->play_sound(SOUND_CLANG);
 				
-                if(cfg.is_on("effects", "attack_lunge"))
+                if(active_config().is_on("effects", "attack_lunge"))
                 {
                     if(query_order() == Order::Living)
                     {
@@ -522,7 +529,7 @@ bool float_eq(float a, float b)
 
 void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 {
-    if(!cfg.is_on("effects", "mini_hp_bar"))
+    if(!active_config().is_on("effects", "mini_hp_bar"))
         return;
     
     if(w->query_order() != Order::Living && w->query_order() != Order::Generator)
@@ -1150,7 +1157,7 @@ float get_damage_reduction(walker* w, float damage, walker* target)
 
 void walker::do_heal_effects(walker* healer, walker* target, short amount)
 {
-    if(!cfg.is_on("effects", "heal_numbers"))
+    if(!active_config().is_on("effects", "heal_numbers"))
         return;
     
     if(healer)
@@ -1160,7 +1167,7 @@ void walker::do_heal_effects(walker* healer, walker* target, short amount)
 
 void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 {
-    if(cfg.is_on("effects", "damage_numbers"))
+    if(active_config().is_on("effects", "damage_numbers"))
     {
         // Orange numbers for the attacker to see
         if(attacker)
@@ -1171,7 +1178,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 	if (target->stats()->hitpoints < 0)
 		tempdamage += target->stats()->hitpoints;
     
-    if(cfg.is_on("effects", "hit_anim"))
+    if(active_config().is_on("effects", "hit_anim"))
     {
         // Create hit effect
         if(query_order() != Order::FX || query_family() == FAMILY_KNIFE_BACK)
@@ -1201,10 +1208,10 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     
     if(tempdamage > 0)
     {
-        if(cfg.is_on("effects", "hit_flash"))
+        if(active_config().is_on("effects", "hit_flash"))
             target->hurt_flash = true;
         
-        if(cfg.is_on("effects", "hit_recoil"))
+        if(active_config().is_on("effects", "hit_recoil"))
         {
             if(target->query_order() == Order::Living)
             {
@@ -1953,7 +1960,7 @@ bool walker::special()
 								return 0; // everyone was healthy; don't charge us
 							else
 							{
-                                if(!cfg.is_on("effects", "heal_numbers"))
+                                if(!active_config().is_on("effects", "heal_numbers"))
                                 {
                                     // Inform screen/view to print a message ..
                                     if (didheal == 1)
@@ -3247,7 +3254,7 @@ bool walker::special()
 					else
 						message = "Orc ate a corpse.";
 
-                    if(!cfg.is_on("effects", "heal_numbers"))
+                    if(!active_config().is_on("effects", "heal_numbers"))
                         myscreen->do_notify(message.c_str(), this);
 					if (stats_->hitpoints > stats_->max_hitpoints)
 						stats_->hitpoints = stats_->max_hitpoints;

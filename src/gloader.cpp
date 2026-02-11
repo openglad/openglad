@@ -16,6 +16,7 @@
  */
 //#include "graph.h"
 #include "gloader.h"
+#include "game_context.h"
 #include "stats.h"
 #include "walker.h"
 #include <format>
@@ -25,6 +26,13 @@
 #include "effect.h"
 #include <algorithm>
 #include <cstring>
+
+static inline cfg_store& active_config()
+{
+    if(ctx().config != nullptr)
+        return *ctx().config;
+    return cfg;
+}
 
 void popup_dialog(const char* title, const char* message);
 
@@ -456,7 +464,7 @@ loader::loader()
 	graphics[PIX(Order::Weapon, FAMILY_METEOR)] = read_pixie_file("meteor.pix");
 	graphics[PIX(Order::Weapon, FAMILY_SPRINKLE)] = read_pixie_file("sparkle.pix");
 	
-	if(cfg.is_on("effects", "gore"))
+	if(active_config().is_on("effects", "gore"))
     {
         graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
         graphics[PIX(Order::Treasure,FAMILY_STAIN)] = read_pixie_file("stain.pix");

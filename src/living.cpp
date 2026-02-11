@@ -33,6 +33,13 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
+static inline cfg_store& active_config()
+{
+    if(ctx().config != nullptr)
+        return *ctx().config;
+    return cfg;
+}
+
 living::living(const PixieData& data)
     : walker(data)
 {
@@ -166,7 +173,7 @@ bool living::act()
 	{
 		flight_left++;
 		stats_->hitpoints--;
-		if(cfg.is_on("effects", "damage_numbers"))
+		if(active_config().is_on("effects", "damage_numbers"))
             damage_numbers.push_back(DamageNumber(xpos + sizex/2, ypos, 1, RED));
 		
 		if (stats_->hitpoints <= 0)
@@ -886,6 +893,5 @@ bool living::do_action()
 			return 0;
 	}
 }
-
 
 
