@@ -138,7 +138,8 @@ class walker : public pixieN
 		short death_called;            // if death has already been called
 		short skip_exit;               // cycles after failed exit choice
 		short invulnerable_left;
-		guy  *myguy;                   // Non-owning — owned by SaveData::team_list
+		guy  *myguy;                   // Usually non-owning (SaveData::team_list), but may be owned for cloned/transformed walkers
+		bool owns_myguy;               // True when this walker owns and must delete myguy
 		walker *foe;
 		walker *leader;
 		walker *owner;                 // for weapons
@@ -201,4 +202,3 @@ class walker : public pixieN
 
 
 };
-

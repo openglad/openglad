@@ -20,6 +20,7 @@
 
 #include "base.h"
 #include <array>
+#include <memory>
 #include <vector>
 
 class loader
@@ -31,6 +32,7 @@ class loader
 		loader& operator=(const loader&) = delete;
 		loader(loader&&) = delete;
 		loader& operator=(loader&&) = delete;
+		std::unique_ptr<walker> create_walker_owned(Order order, char family, screen* screenp, bool cache_weapons = true);
 		walker  *create_walker(Order order, char family, screen  *screenp, bool cache_weapons = true);
 		void set_derived_stats(walker* w, Order order, char family);
 		pixieN *create_pixieN(Order order, char family);
@@ -45,4 +47,3 @@ class loader
 		std::vector<float> damage;
 		std::vector<float> fire_frequency;
 };
-

@@ -74,6 +74,7 @@ walker::walker(const PixieData& data)
 	leader = nullptr;
 	owner = nullptr;
 	myguy = nullptr;
+	owns_myguy = false;
 	myself_ = this;
 	dead = 0; // we're alive
 
@@ -209,9 +210,10 @@ walker::~walker()
 
 	stats_.reset();
 	bmp = nullptr;
-	if (myguy)
+	if (owns_myguy && myguy)
 		delete myguy;
 	myguy = nullptr;
+	owns_myguy = false;
 	myself_ = nullptr;
 
 
@@ -2166,6 +2168,7 @@ bool walker::animate()
 			{
 				delete newob->myguy;  // can't be 'sustained' if too low
 				newob->myguy = nullptr;
+				newob->owns_myguy = false;
 				newob->stats()->name = "SLIME"; // generic name
 				newob->stats()->level = calculate_level(myguy->exp/2);
 			}
@@ -4332,6 +4335,8 @@ void walker::transfer_stats(walker  *newob)
 	// Do we have a 'guy' ?
 	if (myguy)
 	{
+		if (newob->owns_myguy && newob->myguy)
+			delete newob->myguy;
 		newguy = new guy();
 		newguy->name = myguy->name;
 		newguy->strength = myguy->strength;
@@ -4356,6 +4361,7 @@ void walker::transfer_stats(walker  *newob)
 		newguy->scen_hits = myguy->scen_hits;
 		
 		newob->myguy = newguy;
+		newob->owns_myguy = true;
 	}
 }
 
@@ -4471,7 +4477,9 @@ bool walker::death()
 					if (myguy)
 					{
 						newob->myguy = myguy;
+						newob->owns_myguy = owns_myguy;
 						myguy = nullptr;
+						owns_myguy = false;
 					}
 					newob->center_on(this);
 					stats_->hitpoints = stats_->max_hitpoints;
@@ -4490,7 +4498,9 @@ bool walker::death()
 					if (myguy)
 					{
 						newob->myguy = myguy;
+						newob->owns_myguy = owns_myguy;
 						myguy = nullptr;
+						owns_myguy = false;
 					}
 					newob->center_on(this);
 					stats_->hitpoints = stats_->max_hitpoints;

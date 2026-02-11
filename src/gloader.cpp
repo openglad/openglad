@@ -781,11 +781,11 @@ void loader::set_derived_stats(walker* w, Order order, char family)
 	w->fire_frequency = fire_frequency[PIX(order, family)];
 }
 
-walker  *loader::create_walker(Order order,
-                               char family,
-                               screen  *myscreen, bool cache_weapons)
+std::unique_ptr<walker> loader::create_walker_owned(Order order,
+                                                    char family,
+                                                    screen* myscreen, bool cache_weapons)
 {
-	walker  *ob;
+	std::unique_ptr<walker> ob;
 
     if(order == Order::Living && family >= NUM_FAMILIES)
         family = FAMILY_SOLDIER;
@@ -798,15 +798,15 @@ walker  *loader::create_walker(Order order,
 	}
 
 	if (order == Order::Living)
-		ob = new living(graphics[PIX(order, family)]);
+		ob = std::make_unique<living>(graphics[PIX(order, family)]);
 	else if (order == Order::Weapon)
-	    ob = new weap(graphics[PIX(order, family)]);
+	    ob = std::make_unique<weap>(graphics[PIX(order, family)]);
 	else if (order == Order::Treasure)
-		ob = new treasure(graphics[PIX(order, family)]);
+		ob = std::make_unique<treasure>(graphics[PIX(order, family)]);
 	else if (order == Order::FX)
-		ob = new effect(graphics[PIX(order, family)]);
+		ob = std::make_unique<effect>(graphics[PIX(order, family)]);
 	else
-		ob = new walker(graphics[PIX(order, family)]);
+		ob = std::make_unique<walker>(graphics[PIX(order, family)]);
 	if (!ob)
 		return nullptr;
 
@@ -815,11 +815,18 @@ walker  *loader::create_walker(Order order,
 	ob->stats()->special_cost[0] = 0; // shouldn't be used
 	ob->stats()->weapon_cost = 1; // default value
 
-	set_walker(ob, order, family);
+	set_walker(ob.get(), order, family);
 	
 	if(order == Order::Living)
         ob->set_frame(ob->ani[ob->curdir][0]);
 	return ob;
+}
+
+walker* loader::create_walker(Order order,
+                              char family,
+                              screen* myscreen, bool cache_weapons)
+{
+    return create_walker_owned(order, family, myscreen, cache_weapons).release();
 }
 
 walker  *loader::set_walker(walker *ob,
@@ -1120,5 +1127,3 @@ pixieN *loader::create_pixieN(Order order, char family)
 
 	return newpixie;
 }
-
-
