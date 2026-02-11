@@ -79,6 +79,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/obmap.cpp
     ${SRC_DIR}/pal32.cpp
     ${SRC_DIR}/picker.cpp
+    ${SRC_DIR}/picker_accessible_levels.cpp
     ${SRC_DIR}/pixie.cpp
     ${SRC_DIR}/pixien.cpp
     ${SRC_DIR}/radar.cpp

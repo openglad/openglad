@@ -1126,53 +1126,7 @@ struct LevelProgress {
     bool is_current;
 };
 
-// Get list of accessible levels (cleared levels + their exits)
-std::vector<int> get_accessible_levels()
-{
-    std::set<int> accessible;
-    std::set<int> to_process;
-
-    // Start with level 1 (always accessible) and current level
-    accessible.insert(1);
-    to_process.insert(1);
-
-    // Add current level
-    accessible.insert(myscreen->save_data.scen_num);
-
-    // Add all cleared levels
-    const std::string& campaign = myscreen->save_data.current_campaign;
-    auto it = myscreen->save_data.completed_levels.find(campaign);
-    if (it != myscreen->save_data.completed_levels.end()) {
-        for (int level : it->second) {
-            accessible.insert(level);
-            to_process.insert(level);
-        }
-    }
-
-    // For each cleared level, add its exits
-    while (!to_process.empty()) {
-        int level_id = *to_process.begin();
-        to_process.erase(to_process.begin());
-
-        if (myscreen->save_data.is_level_completed(level_id)) {
-            LevelData ld(level_id);
-            if (ld.load()) {
-                std::list<int> exits;
-                getLevelStats(ld, nullptr, nullptr, nullptr, nullptr, exits);
-                for (int exit_id : exits) {
-                    if (accessible.find(exit_id) == accessible.end()) {
-                        accessible.insert(exit_id);
-                    }
-                }
-            }
-        }
-    }
-
-    // Convert to sorted vector
-    std::vector<int> result(accessible.begin(), accessible.end());
-    std::sort(result.begin(), result.end());
-    return result;
-}
+std::vector<int> get_accessible_levels();
 
 Sint32 create_progress_menu(Sint32 arg1)
 {
