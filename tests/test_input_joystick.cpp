@@ -2,6 +2,10 @@
 #include "test_framework.h"
 
 extern JoyData player_joy[4];
+extern bool isKeyboardEvent(const SDL_Event& event);
+extern bool isJoystickEvent(const SDL_Event& event);
+extern void wait_for_key(int somekey);
+extern void resetJoystick(int player_num);
 
 namespace
 {
@@ -151,6 +155,19 @@ void test_input_joydata_press_release_helpers_and_player_queries()
     e.jhat.value = SDL_HAT_UP;
     TEST_ASSERT(!j.getPress(KEY_LEFT, e), "non-matching hat direction should not press");
 
+    j.key_type[KEY_UP] = JoyData::HAT_UP;
+    j.key_type[KEY_RIGHT] = JoyData::HAT_RIGHT;
+    j.key_type[KEY_DOWN] = JoyData::HAT_DOWN;
+    e.jhat.value = SDL_HAT_UP;
+    TEST_ASSERT(j.getPress(KEY_UP, e), "hat up should press KEY_UP");
+    TEST_ASSERT(j.getRelease(KEY_UP, e), "hat up should release KEY_UP");
+    e.jhat.value = SDL_HAT_RIGHT;
+    (void)j.getPress(KEY_RIGHT, e);
+    (void)j.getRelease(KEY_RIGHT, e);
+    e.jhat.value = SDL_HAT_DOWN;
+    (void)j.getPress(KEY_DOWN, e);
+    (void)j.getRelease(KEY_DOWN, e);
+
     j.key_type[KEY_UP_LEFT] = JoyData::HAT_UP_LEFT;
     TEST_ASSERT(!j.getPress(KEY_UP_LEFT, e), "diagonal hat mapping should be ignored for press");
     TEST_ASSERT(!j.getRelease(KEY_UP_LEFT, e), "diagonal hat mapping should be ignored for release");
@@ -168,6 +185,22 @@ void test_input_joydata_press_release_helpers_and_player_queries()
     TEST_ASSERT(playerHasJoystick(0), "playerHasJoystick should reflect bound joystick");
     disablePlayerJoystick(0);
     TEST_ASSERT(!playerHasJoystick(0), "disablePlayerJoystick should clear joystick");
+
+    // Input helper predicates and TESTING wait path.
+    SDL_Event key_event{};
+    key_event.type = SDL_KEYDOWN;
+    TEST_ASSERT(isKeyboardEvent(key_event), "keydown should be keyboard event");
+    TEST_ASSERT(!isJoystickEvent(key_event), "keydown should not be joystick event");
+
+    SDL_Event joy_event{};
+    joy_event.type = SDL_JOYHATMOTION;
+    TEST_ASSERT(!isKeyboardEvent(joy_event), "joy hat should not be keyboard event");
+    TEST_ASSERT(isJoystickEvent(joy_event), "joy hat should be joystick event");
+
+    wait_for_key(SDLK_SPACE); // TESTING build: should return immediately.
+
+    resetJoystick(0); // Should safely reinitialize joystick subsystem in tests.
+    TEST_ASSERT(!playerHasJoystick(0), "resetJoystick should leave player unbound when no joystick exists");
 }
 REGISTER_TEST(test_input_joydata_press_release_helpers_and_player_queries);
 

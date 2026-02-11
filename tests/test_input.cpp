@@ -122,5 +122,31 @@ void test_input_key_queries_and_ascii_conversion()
     TEST_ASSERT_EQ('Z', (int)convert_to_ascii(SDLK_z), "convert_to_ascii(SDLK_z) should return 'Z'");
     TEST_ASSERT_EQ('0', (int)convert_to_ascii(SDLK_0), "convert_to_ascii(SDLK_0) should return '0'");
     TEST_ASSERT_EQ(255, (int)convert_to_ascii(SDLK_UNKNOWN), "convert_to_ascii(unknown) should return 255 sentinel");
+
+    for (int i = 0; i < 26; ++i)
+    {
+        const int key = SDLK_a + i;
+        const int expected = 'A' + i;
+        TEST_ASSERT_EQ(expected, (int)convert_to_ascii(key), "alphabet key should map to uppercase ASCII");
+    }
+
+    TEST_ASSERT_EQ('1', (int)convert_to_ascii(SDLK_1), "digit key 1");
+    TEST_ASSERT_EQ('2', (int)convert_to_ascii(SDLK_2), "digit key 2");
+    TEST_ASSERT_EQ('3', (int)convert_to_ascii(SDLK_3), "digit key 3");
+    TEST_ASSERT_EQ('4', (int)convert_to_ascii(SDLK_4), "digit key 4");
+    TEST_ASSERT_EQ('5', (int)convert_to_ascii(SDLK_5), "digit key 5");
+    TEST_ASSERT_EQ('6', (int)convert_to_ascii(SDLK_6), "digit key 6");
+    TEST_ASSERT_EQ('7', (int)convert_to_ascii(SDLK_7), "digit key 7");
+    TEST_ASSERT_EQ('8', (int)convert_to_ascii(SDLK_8), "digit key 8");
+    TEST_ASSERT_EQ('9', (int)convert_to_ascii(SDLK_9), "digit key 9");
+    TEST_ASSERT_EQ('0', (int)convert_to_ascii(SDLK_0), "digit key 0");
+
+    TEST_ASSERT_EQ(32, (int)convert_to_ascii(SDLK_SPACE), "space");
+    TEST_ASSERT_EQ(13, (int)convert_to_ascii(SDLK_RETURN), "return");
+    TEST_ASSERT_EQ(27, (int)convert_to_ascii(SDLK_ESCAPE), "escape");
+    TEST_ASSERT_EQ('.', (int)convert_to_ascii(SDLK_PERIOD), "period");
+    TEST_ASSERT_EQ(',', (int)convert_to_ascii(SDLK_COMMA), "comma");
+    TEST_ASSERT_EQ('\'', (int)convert_to_ascii(SDLK_QUOTE), "quote");
+    TEST_ASSERT_EQ('`', (int)convert_to_ascii(SDLK_BACKQUOTE), "backquote");
 }
 REGISTER_TEST(test_input_key_queries_and_ascii_conversion);

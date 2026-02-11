@@ -1,7 +1,10 @@
 #include "graph.h"
+#include "game_context.h"
 #include "test_framework.h"
 
 extern screen* myscreen;
+
+static void run_smooth_branch_outputs_with_fixed_rng();
 
 // ---------------------------------------------------------------------------
 // smoother query_x_y
@@ -478,5 +481,220 @@ void test_smooth_reset()
     s.reset();
     Sint32 after = s.query_x_y(0, 0);
     TEST_ASSERT_EQ((int)PIX_GRASS1, (int)after, "after reset returns PIX_GRASS1");
+
+    run_smooth_branch_outputs_with_fixed_rng();
 }
 REGISTER_TEST(test_smooth_reset);
+
+static PixieData make_uniform_grid(int w, int h, unsigned char fill)
+{
+    PixieData pd;
+    pd.w = static_cast<unsigned char>(w);
+    pd.h = static_cast<unsigned char>(h);
+    pd.frames = 1;
+    pd.data = std::make_unique<unsigned char[]>(w * h);
+    for (int i = 0; i < w * h; ++i)
+        pd.data[i] = fill;
+    return pd;
+}
+
+static void set_tile(PixieData& pd, int x, int y, unsigned char v)
+{
+    pd.data[y * pd.w + x] = v;
+}
+
+static PixieData make_center_pattern(unsigned char fill, unsigned char center,
+                                     unsigned char up, unsigned char right,
+                                     unsigned char down, unsigned char left,
+                                     unsigned char upleft, unsigned char upright,
+                                     unsigned char downleft, unsigned char downright)
+{
+    PixieData pd = make_uniform_grid(3, 3, fill);
+    set_tile(pd, 1, 1, center);
+    set_tile(pd, 1, 0, up);
+    set_tile(pd, 2, 1, right);
+    set_tile(pd, 1, 2, down);
+    set_tile(pd, 0, 1, left);
+    set_tile(pd, 0, 0, upleft);
+    set_tile(pd, 2, 0, upright);
+    set_tile(pd, 0, 2, downleft);
+    set_tile(pd, 2, 2, downright);
+    return pd;
+}
+
+static void run_smooth_branch_outputs_with_fixed_rng()
+{
+    FixedRandom fixed0(0);
+    GameContext test_ctx;
+    test_ctx.game_screen = myscreen;
+    test_ctx.rng = &fixed0;
+    set_global_context(&test_ctx);
+
+    // Dirt corner case: around == (TO_LEFT | TO_DOWN) => PIX_DIRTGRASS_LL1
+    {
+        PixieData pd = make_uniform_grid(3, 3, PIX_GRASS1);
+        set_tile(pd, 1, 1, PIX_DIRT_1);
+        set_tile(pd, 0, 1, PIX_DIRT_1);
+        set_tile(pd, 1, 2, PIX_DIRT_1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_DIRTGRASS_LL1, (int)s.query_x_y(1, 1), "dirt top-right edge should map to LL transition");
+    }
+
+    // Dark dirt corner case: around == (TO_DOWN | TO_RIGHT) => PIX_DIRTGRASS_DARK_LR1
+    {
+        PixieData pd = make_uniform_grid(3, 3, PIX_GRASS1);
+        set_tile(pd, 1, 1, PIX_DIRT_DARK_1);
+        set_tile(pd, 2, 1, PIX_DIRT_DARK_1);
+        set_tile(pd, 1, 2, PIX_DIRT_DARK_1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_DIRTGRASS_DARK_LR1, (int)s.query_x_y(1, 1), "dark dirt top-left edge should map to LR transition");
+    }
+
+    // Cobble deterministic RNG branches.
+    {
+        PixieData pd = make_uniform_grid(3, 3, PIX_COBBLE_1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_COBBLE_1, (int)s.query_x_y(1, 1), "cobble rng=0 should choose variant 1");
+    }
+
+    FixedRandom fixed3(3);
+    test_ctx.rng = &fixed3;
+    {
+        PixieData pd = make_uniform_grid(3, 3, PIX_COBBLE_1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_COBBLE_4, (int)s.query_x_y(1, 1), "cobble rng=3 should choose variant 4");
+    }
+
+    // Wall arrow slit variants based on tile above.
+    test_ctx.rng = &fixed0;
+    {
+        PixieData pd = make_uniform_grid(3, 3, PIX_H_WALL1);
+        set_tile(pd, 1, 1, PIX_WALL_ARROW_GRASS);
+        set_tile(pd, 1, 0, PIX_PAVEMENT1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WALL4, (int)s.query_x_y(1, 1), "arrow slit over pavement should become stone arrow wall");
+    }
+    {
+        PixieData pd = make_uniform_grid(3, 3, PIX_H_WALL1);
+        set_tile(pd, 1, 1, PIX_WALL_ARROW_GRASS);
+        set_tile(pd, 1, 0, PIX_FLOOR1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WALL_ARROW_FLOOR, (int)s.query_x_y(1, 1), "arrow slit over floor should become floor arrow wall");
+    }
+
+    // Wall base crack branch (around == 11 and rng(10) == 0).
+    {
+        PixieData pd = make_uniform_grid(3, 3, PIX_GRASS1);
+        set_tile(pd, 1, 1, PIX_H_WALL1);
+        set_tile(pd, 0, 1, PIX_H_WALL1);
+        set_tile(pd, 2, 1, PIX_H_WALL1);
+        set_tile(pd, 1, 0, PIX_H_WALL1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WALLSIDE_CRACK_C1, (int)s.query_x_y(1, 1), "wall base should choose crack when rng hits 0");
+    }
+
+    // Unknown type should remain unchanged.
+    {
+        PixieData pd = make_uniform_grid(3, 3, 222);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ(222, (int)s.query_x_y(1, 1), "unknown tile type should remain unchanged");
+    }
+
+    // Grass to water corner transitions.
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_WATER1, PIX_WATER1,
+                                           PIX_WATER1, PIX_GRASS1, PIX_WATER1, PIX_WATER1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASSWATER_LL, (int)s.query_x_y(1, 1), "grass-water LL transition");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS1,
+                                           PIX_WATER1, PIX_WATER1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_WATER1, PIX_WATER1, PIX_GRASS1, PIX_WATER1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASSWATER_UR, (int)s.query_x_y(1, 1), "grass-water UR transition");
+    }
+
+    // Carpet and light-grass shape selection.
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_CARPET_M,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_CARPET_SMALL_TINY, (int)s.query_x_y(1, 1), "isolated carpet should become tiny");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_GRASS_LIGHT_1,
+                                           PIX_GRASS_LIGHT_1, PIX_GRASS_LIGHT_1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_GRASS_LIGHT_LEFT_BOTTOM, (int)s.query_x_y(1, 1), "light grass up+right mask should map to left-bottom variant");
+    }
+
+    // Water edge variants.
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_WATER1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)s.query_x_y(1, 1), "water with only up neighbor should map LL/left cap");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_WATER1, PIX_GRASS1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)s.query_x_y(1, 1), "water with only right neighbor should map UL/upper cap");
+    }
+
+    // Trees: top-middle and center-vertical variants.
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
+                                           PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_TREE_T1, (int)s.query_x_y(1, 1), "trees top-middle should map to top tile");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
+                                           PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_TREE_MT, (int)s.query_x_y(1, 1), "trees vertical should map to trunk tile");
+    }
+
+    set_global_context(nullptr);
+}
