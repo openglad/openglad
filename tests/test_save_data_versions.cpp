@@ -290,3 +290,53 @@ void test_save_data_load_v9_uses_campaign_list()
     TEST_ASSERT(tmp.completed_levels.count("org.openglad.gladiator") > 0, "v9 should populate completed_levels");
 }
 REGISTER_TEST(test_save_data_load_v9_uses_campaign_list);
+
+void test_save_data_load_with_error_truncated_file_reports_read_failed()
+{
+    SDL_RWops* out = open_write_file("save/", "truncated_read_fail.gtl");
+    TEST_ASSERT(out != nullptr, "open_write_file truncated save");
+    // Valid header + version, then truncate before required fields.
+    rw_write(out, "GTL", 3);
+    char version = 9;
+    rw_write_val(out, version);
+    SDL_RWclose(out);
+
+    SaveData tmp;
+    SaveDataIoError err = tmp.load_with_error("truncated_read_fail");
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::ReadFailed), static_cast<int>(err),
+        "truncated save should report ReadFailed");
+}
+REGISTER_TEST(test_save_data_load_with_error_truncated_file_reports_read_failed);
+
+void test_save_data_load_with_error_campaign_mount_failure()
+{
+    GuyRecord g{};
+    g.family = FAMILY_SOLDIER;
+    g.name = "BADCMP";
+
+    // current_campaign is set to an invalid package id in the save header.
+    write_save_file("ver9_bad_campaign",
+                    /*version=*/9,
+                    /*campaign_id=*/"org.openglad.this_campaign_should_not_exist",
+                    /*scen_num=*/1,
+                    /*cash=*/100,
+                    /*score=*/200,
+                    /*allied_mode=*/1,
+                    /*numplayers=*/1,
+                    &g,
+                    /*listsize=*/1,
+                    /*use_v8plus_campaigns=*/true,
+                    /*v5plus_levelstatus=*/true,
+                    /*levelstatus_500=*/nullptr,
+                    /*levelstatus_200=*/nullptr);
+
+    SaveData tmp;
+    SaveDataIoError err = tmp.load_with_error("ver9_bad_campaign");
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::CampaignLoadFailed), static_cast<int>(err),
+        "invalid current campaign should report CampaignLoadFailed");
+
+    // Restore expected mounted campaign for other tests.
+    TEST_ASSERT(mount_campaign_package("org.openglad.gladiator"),
+        "should remount default campaign after CampaignLoadFailed test");
+}
+REGISTER_TEST(test_save_data_load_with_error_campaign_mount_failure);

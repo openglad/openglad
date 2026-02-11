@@ -27,6 +27,18 @@
 #include <cstring>
 #include <string>
 
+namespace {
+bool rw_read_exact(SDL_RWops* rwops, void* dst, size_t size, size_t count)
+{
+    return rwops && SDL_RWread(rwops, dst, size, count) == count;
+}
+
+bool rw_write_exact(SDL_RWops* rwops, const void* src, size_t size, size_t count)
+{
+    return rwops && SDL_RWwrite(rwops, src, size, count) == count;
+}
+} // namespace
+
 
 #ifdef USE_TOUCH_INPUT
 #define DISABLE_MULTIPLAYER
@@ -171,6 +183,16 @@ bool SaveData::load(const std::string& filename)
         last_io_error_ = SaveDataIoError::OpenReadFailed;
 		return 0;
 	}
+
+#define READ_OR_FAIL(dst, size, count) \
+    do { \
+        if(!rw_read_exact(infile, (dst), (size), (count))) { \
+            LogError("Failed to read save file: {} ({} bytes x {})\n", filename, (int)(size), (int)(count)); \
+            SDL_RWclose(infile); \
+            last_io_error_ = SaveDataIoError::ReadFailed; \
+            return 0; \
+        } \
+    } while(0)
     
     completed_levels.clear();
     current_levels.clear();
@@ -182,7 +204,7 @@ bool SaveData::load(const std::string& filename)
     team_size = 0;
 
 	// Read id header
-	SDL_RWread(infile, temptext, 3, 1);
+	READ_OR_FAIL(temptext, 3, 1);
 	if ( std::string(temptext) != "GTL")
 	{
 	    SDL_RWclose(infile);
@@ -192,19 +214,19 @@ bool SaveData::load(const std::string& filename)
 	}
 
 	// Read version number
-	SDL_RWread(infile, &temp_version, 1, 1);
+	READ_OR_FAIL(&temp_version, 1, 1);
 
 	// Versions 7+ have a registered mark ..
 	if (temp_version >= 7)
 	{
-		SDL_RWread(infile, &temp_registered, 2, 1);
+		READ_OR_FAIL(&temp_registered, 2, 1);
 	}
 
 	// Do other stuff based on version ..
 	if (temp_version != 1)
 	{
 		if (temp_version >= 2)
-			SDL_RWread(infile, savedgame, 40, 1); // read and ignore the name
+			READ_OR_FAIL(savedgame, 40, 1); // read and ignore the name
 		else
 		{
             SDL_RWclose(infile);
@@ -218,7 +240,7 @@ bool SaveData::load(const std::string& filename)
     // Read campaign ID
 	if (temp_version >= 8)
 	{
-		SDL_RWread(infile, temp_campaign, 1, 40);
+		READ_OR_FAIL(temp_campaign, 1, 40);
 		temp_campaign[40] = '\0';
 		if(std::string(temp_campaign).size() > 3)
             current_campaign = temp_campaign;
@@ -228,14 +250,14 @@ bool SaveData::load(const std::string& filename)
 	
 	// Read scenario number
 	short temp_scenario;
-	SDL_RWread(infile, &temp_scenario, 2, 1);
+	READ_OR_FAIL(&temp_scenario, 2, 1);
 	scen_num = temp_scenario;
 
 	// Read cash
-	SDL_RWread(infile, &newcash, 4, 1);
+	READ_OR_FAIL(&newcash, 4, 1);
 	totalcash = newcash;
 	// Read score
-	SDL_RWread(infile, &newscore, 4, 1);
+	READ_OR_FAIL(&newscore, 4, 1);
 	totalscore = newscore;
 
 	// Versions 6+ have a score for each possible team, 0-3
@@ -243,9 +265,9 @@ bool SaveData::load(const std::string& filename)
 	{
 		for (i=0; i < 4; i++)
 		{
-			SDL_RWread(infile, &newcash, 4, 1);
+			READ_OR_FAIL(&newcash, 4, 1);
 			m_totalcash[i] = newcash;
-			SDL_RWread(infile, &newscore, 4, 1);
+			READ_OR_FAIL(&newscore, 4, 1);
 			m_totalscore[i] = newscore;
 		}
 	}
@@ -253,22 +275,22 @@ bool SaveData::load(const std::string& filename)
 	// Versions 7+ have the allied information ..
 	if (temp_version >= 7)
 	{
-		SDL_RWread(infile, &temp_allied, 2, 1);
+		READ_OR_FAIL(&temp_allied, 2, 1);
 		allied_mode = temp_allied;
 	}
 
 	// Get # of guys to read
-	SDL_RWread(infile, &listsize, 2, 1);
+	READ_OR_FAIL(&listsize, 2, 1);
 
 	// Read the # of players
-	SDL_RWread(infile, &temp_numplayers, 1, 1);
+	READ_OR_FAIL(&temp_numplayers, 1, 1);
 	#ifdef DISABLE_MULTIPLAYER
 	temp_numplayers = 1;
 	#endif
 	numplayers = temp_numplayers;
 
 	// Read the reserved area, 31 bytes
-	SDL_RWread(infile, filler, 31, 1);
+	READ_OR_FAIL(filler, 31, 1);
 
 	// Okay, we've read header .. now read the team list data ..
     for(int i = 0; i < listsize; i++)
@@ -284,27 +306,27 @@ bool SaveData::load(const std::string& filename)
 		std::fill_n(guyname, 12, '\0');
 		snprintf(guyname, sizeof(guyname), "%s", tempname);
 		// Now write all those values
-		SDL_RWread(infile, &temp_order, 1, 1);
-		SDL_RWread(infile, &temp_family,1, 1);
-		SDL_RWread(infile, guyname, 12, 1);
-		SDL_RWread(infile, &temp_str, 2, 1);
-		SDL_RWread(infile, &temp_dex, 2, 1);
-		SDL_RWread(infile, &temp_con, 2, 1);
-		SDL_RWread(infile, &temp_short, 2, 1);
-		SDL_RWread(infile, &temp_arm, 2, 1);
-		SDL_RWread(infile, &temp_lev, 2, 1);
-		SDL_RWread(infile, &temp_exp, 4, 1);
+		READ_OR_FAIL(&temp_order, 1, 1);
+		READ_OR_FAIL(&temp_family,1, 1);
+		READ_OR_FAIL(guyname, 12, 1);
+		READ_OR_FAIL(&temp_str, 2, 1);
+		READ_OR_FAIL(&temp_dex, 2, 1);
+		READ_OR_FAIL(&temp_con, 2, 1);
+		READ_OR_FAIL(&temp_short, 2, 1);
+		READ_OR_FAIL(&temp_arm, 2, 1);
+		READ_OR_FAIL(&temp_lev, 2, 1);
+		READ_OR_FAIL(&temp_exp, 4, 1);
 		// Below here is version 3 and up..
-		SDL_RWread(infile, &temp_kills, 2, 1); // how many kills we have
-		SDL_RWread(infile, &temp_level_kills, 4, 1); // levels of kills
+		READ_OR_FAIL(&temp_kills, 2, 1); // how many kills we have
+		READ_OR_FAIL(&temp_level_kills, 4, 1); // levels of kills
 		// Below here is version 4 and up ..
-		SDL_RWread(infile, &temp_td, 4, 1); // total damage
-		SDL_RWread(infile, &temp_th, 4, 1); // total hits
-		SDL_RWread(infile, &temp_ts, 4, 1); // total shots
-		SDL_RWread(infile, &temp_teamnum, 2, 1); // team number
+		READ_OR_FAIL(&temp_td, 4, 1); // total damage
+		READ_OR_FAIL(&temp_th, 4, 1); // total hits
+		READ_OR_FAIL(&temp_ts, 4, 1); // total shots
+		READ_OR_FAIL(&temp_teamnum, 2, 1); // team number
 
 		// And the filler
-		SDL_RWread(infile, filler, 8, 1);
+		READ_OR_FAIL(filler, 8, 1);
 		// Now set the values ..
 		temp_guy_ptr->family       = temp_family;
 		temp_guy_ptr->name = guyname;
@@ -360,9 +382,9 @@ bool SaveData::load(const std::string& filename)
         std::fill_n(levelstatus, 500, '\0');
         
         if (temp_version >= 5)
-            SDL_RWread(infile, levelstatus, 500, 1);
+            READ_OR_FAIL(levelstatus, 500, 1);
         else
-            SDL_RWread(infile, levelstatus, 200, 1);
+            READ_OR_FAIL(levelstatus, 200, 1);
         
         // Guaranteed to be the default campaign if version < 8
         for(int i = 0; i < 500; i++)
@@ -377,24 +399,24 @@ bool SaveData::load(const std::string& filename)
         char campaign[41];
         short num_levels = 0;
         // How many campaigns are stored?
-        SDL_RWread(infile, &num_campaigns, 2, 1);
+        READ_OR_FAIL(&num_campaigns, 2, 1);
         for(int i = 0; i < num_campaigns; i++)
         {
             // Get the campaign ID (40 chars)
-            SDL_RWread(infile, campaign, 1, 40);
+            READ_OR_FAIL(campaign, 1, 40);
             campaign[40] = '\0';
             
             short index = 1;
             // Get the current level for this campaign
-            SDL_RWread(infile, &index, 2, 1);
+            READ_OR_FAIL(&index, 2, 1);
             current_levels[campaign] = index;
             
             // Get the number of cleared levels
-            SDL_RWread(infile, &num_levels, 2, 1);
+            READ_OR_FAIL(&num_levels, 2, 1);
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
-                SDL_RWread(infile, &index, 2, 1);
+                READ_OR_FAIL(&index, 2, 1);
                 
                 // Add it to our list
                 add_level_completed(campaign, index);
@@ -404,6 +426,14 @@ bool SaveData::load(const std::string& filename)
     
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
+    if(current_level < 0)
+    {
+        LogError("Failed to load current campaign {} from save {} (error code {})\n",
+            current_campaign, filename, current_level);
+        SDL_RWclose(infile);
+        last_io_error_ = SaveDataIoError::CampaignLoadFailed;
+        return 0;
+    }
     if(current_level >= 0)
     {
         if(scen_num != current_level)
@@ -415,6 +445,7 @@ bool SaveData::load(const std::string& filename)
 
 	TRACE("load", "SaveData::load complete: scen=%d team_size=%d", scen_num, team_size);
     last_io_error_ = SaveDataIoError::None;
+#undef READ_OR_FAIL
 	return 1;
 }
 
@@ -540,58 +571,68 @@ bool SaveData::save(const std::string& filename)
 		return 0;
 	}
 
+#define WRITE_OR_FAIL(src, size, count) \
+    do { \
+        if(!rw_write_exact(outfile, (src), (size), (count))) { \
+            LogError("Failed to write save file: {} ({} bytes x {})\n", filename, (int)(size), (int)(count)); \
+            SDL_RWclose(outfile); \
+            last_io_error_ = SaveDataIoError::WriteFailed; \
+            return 0; \
+        } \
+    } while(0)
+
 	// Write id header
-	SDL_RWwrite(outfile, temptext, 3, 1);
+	WRITE_OR_FAIL(temptext, 3, 1);
 
 	// Write version number
-	SDL_RWwrite(outfile, &temp_version, 1, 1);
+	WRITE_OR_FAIL(&temp_version, 1, 1);
 
 	// Versions 7+ include a mark for registered or not
 	temp_registered = 1;
-	SDL_RWwrite(outfile, &temp_registered, 2, 1);
+	WRITE_OR_FAIL(&temp_registered, 2, 1);
 
 	// Write the name
 	snprintf(savedgame, sizeof(savedgame), "%s", save_name.c_str());
-	SDL_RWwrite(outfile, savedgame, 40, 1);
+	WRITE_OR_FAIL(savedgame, 40, 1);
 	
 	// Write current campaign
 	Log("Saving campaign status: {}\n", current_campaign);
 	snprintf(temp_campaign, sizeof(temp_campaign), "%s", current_campaign.c_str());
-	SDL_RWwrite(outfile, temp_campaign, 40, 1);
+	WRITE_OR_FAIL(temp_campaign, 40, 1);
 
 	// Write scenario number
 	short temp_scenario = scen_num;
-	SDL_RWwrite(outfile, &temp_scenario, 2, 1);
+	WRITE_OR_FAIL(&temp_scenario, 2, 1);
 
 	// Write cash
-	SDL_RWwrite(outfile, &newcash, 4, 1);
+	WRITE_OR_FAIL(&newcash, 4, 1);
 	// Write score
-	SDL_RWwrite(outfile, &newscore, 4, 1);
+	WRITE_OR_FAIL(&newscore, 4, 1);
 
 	// Versions 6+ have a score for each possible team
 	for (i=0; i < 4; i++)
 	{
 		newcash = m_totalcash[i];
-		SDL_RWwrite(outfile, &newcash, 4, 1);
+		WRITE_OR_FAIL(&newcash, 4, 1);
 		newscore = m_totalscore[i];
-		SDL_RWwrite(outfile, &newscore, 4, 1);
+		WRITE_OR_FAIL(&newscore, 4, 1);
 	}
 
 	// Versions 7+ include the allied mode information
 	temp_allied = allied_mode;
-	SDL_RWwrite(outfile, &temp_allied, 2, 1);
+	WRITE_OR_FAIL(&temp_allied, 2, 1);
 
 	// Determine size of team list ...
 	listsize = team_size;
 
 	//gotoxy(1, 22);
 	//Log("Team size: %d  ", listsize);
-	SDL_RWwrite(outfile, &listsize, 2, 1);
+	WRITE_OR_FAIL(&listsize, 2, 1);
 
-	SDL_RWwrite(outfile, &numplayers, 1, 1);
+	WRITE_OR_FAIL(&numplayers, 1, 1);
 
 	// Write the reserved area, 31 bytes
-	SDL_RWwrite(outfile, filler, 31, 1);
+	WRITE_OR_FAIL(filler, 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	for(int i = 0; i < team_size; i++)
@@ -623,24 +664,24 @@ bool SaveData::save(const std::string& filename)
         temp_teamnum = temp_guy->teamnum;
 
         // Now write all those values
-        SDL_RWwrite(outfile, &temp_order, 1, 1);
-        SDL_RWwrite(outfile, &temp_family,1, 1);
-        SDL_RWwrite(outfile, guyname, 12, 1);
-        SDL_RWwrite(outfile, &temp_str, 2, 1);
-        SDL_RWwrite(outfile, &temp_dex, 2, 1);
-        SDL_RWwrite(outfile, &temp_con, 2, 1);
-        SDL_RWwrite(outfile, &temp_short, 2, 1);
-        SDL_RWwrite(outfile, &temp_arm, 2, 1);
-        SDL_RWwrite(outfile, &temp_lev, 2, 1);
-        SDL_RWwrite(outfile, &temp_exp, 4, 1);
-        SDL_RWwrite(outfile, &temp_kills, 2, 1);
-        SDL_RWwrite(outfile, &temp_level_kills, 4, 1);
-        SDL_RWwrite(outfile, &temp_td, 4, 1);
-        SDL_RWwrite(outfile, &temp_th, 4, 1);
-        SDL_RWwrite(outfile, &temp_ts, 4, 1);
-        SDL_RWwrite(outfile, &temp_teamnum, 2, 1);
+        WRITE_OR_FAIL(&temp_order, 1, 1);
+        WRITE_OR_FAIL(&temp_family,1, 1);
+        WRITE_OR_FAIL(guyname, 12, 1);
+        WRITE_OR_FAIL(&temp_str, 2, 1);
+        WRITE_OR_FAIL(&temp_dex, 2, 1);
+        WRITE_OR_FAIL(&temp_con, 2, 1);
+        WRITE_OR_FAIL(&temp_short, 2, 1);
+        WRITE_OR_FAIL(&temp_arm, 2, 1);
+        WRITE_OR_FAIL(&temp_lev, 2, 1);
+        WRITE_OR_FAIL(&temp_exp, 4, 1);
+        WRITE_OR_FAIL(&temp_kills, 2, 1);
+        WRITE_OR_FAIL(&temp_level_kills, 4, 1);
+        WRITE_OR_FAIL(&temp_td, 4, 1);
+        WRITE_OR_FAIL(&temp_th, 4, 1);
+        WRITE_OR_FAIL(&temp_ts, 4, 1);
+        WRITE_OR_FAIL(&temp_teamnum, 2, 1);
         // And the filler
-        SDL_RWwrite(outfile, filler, 8, 1);
+        WRITE_OR_FAIL(filler, 8, 1);
 	}
 
 	// Write the completed levels
@@ -656,29 +697,29 @@ bool SaveData::save(const std::string& filename)
     
 	// Number of campaigns
 	short num_campaigns = completed_levels.size();
-    SDL_RWwrite(outfile, &num_campaigns, 2, 1);
+    WRITE_OR_FAIL(&num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
         // Campaign ID
         char campaign[41];
         std::fill_n(campaign, 41, '\0');
         snprintf(campaign, sizeof(campaign), "%s", e->first.c_str());
-        SDL_RWwrite(outfile, campaign, 1, 40);
+        WRITE_OR_FAIL(campaign, 1, 40);
         
         short index = 1;
         std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
         if(g != current_levels.end())
             index = g->second;
-        SDL_RWwrite(outfile, &index, 2, 1);
+        WRITE_OR_FAIL(&index, 2, 1);
         
         // Number of levels
         short num_levels = e->second.size();
-        SDL_RWwrite(outfile, &num_levels, 2, 1);
+        WRITE_OR_FAIL(&num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
         {
             // Level index
             index = *f;
-            SDL_RWwrite(outfile, &index, 2, 1);
+            WRITE_OR_FAIL(&index, 2, 1);
         }
     }
 
@@ -689,6 +730,7 @@ bool SaveData::save(const std::string& filename)
 
 	TRACE("save", "SaveData::save complete");
     last_io_error_ = SaveDataIoError::None;
+#undef WRITE_OR_FAIL
 	return 1;
 }
 

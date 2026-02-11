@@ -35,8 +35,11 @@ enum class SaveDataIoError
     None = 0,
     OpenReadFailed,
     OpenWriteFailed,
+    ReadFailed,
+    WriteFailed,
     InvalidHeader,
-    UnsupportedVersion
+    UnsupportedVersion,
+    CampaignLoadFailed
 };
 
 class SaveData
