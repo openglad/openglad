@@ -394,6 +394,34 @@ void test_walker_special_mage_energy_wave()
             }
         }
     }
+
+    // Target uncovered archmage illusion case tables (rng(3/5/7/9) branches).
+    myscreen->level_data.delete_objects();
+    walker* arch2 = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    TEST_ASSERT(arch2 != nullptr, "archmage branch sweeper created");
+    if (arch2) {
+        arch2->setxy(120, 120);
+        arch2->stats()->special_cost[3] = 0;
+        arch2->stats()->max_magicpoints = 2000;
+        GameContext arch2_ctx;
+        arch2_ctx.game_screen = myscreen;
+        const int mp_tiers[] = {120, 300, 700, 1200};
+        const int max_pick[] = {3, 5, 7, 9};
+        for (int t = 0; t < 4; ++t) {
+            for (Uint32 pick = 0; pick < static_cast<Uint32>(max_pick[t]); ++pick) {
+                SequenceRandom pick_rng({pick});
+                arch2_ctx.rng = &pick_rng;
+                set_global_context(&arch2_ctx);
+                arch2->stats()->magicpoints = mp_tiers[t];
+                arch2->current_special = 3;
+                arch2->shifter_down = 0;
+                arch2->busy = 0;
+                (void)arch2->special();
+                set_global_context(nullptr);
+            }
+        }
+    }
+
     myscreen->level_data.delete_objects();
 
 }
@@ -671,3 +699,44 @@ void test_walker_death_with_myguy()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_death_with_myguy);
+
+void test_walker_special_archmage_illusion_rng_tables()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    TEST_ASSERT(arch != nullptr, "archmage created");
+    if (!arch) {
+        return;
+    }
+
+    arch->setxy(120, 120);
+    arch->stats()->special_cost[3] = 0;
+    arch->stats()->max_magicpoints = 2000;
+    arch->current_special = 3;
+    arch->shifter_down = 0;
+
+    GameContext ctx;
+    ctx.game_screen = myscreen;
+
+    const int mp_tiers[] = {120, 300, 700, 1200};
+    const int max_pick[] = {3, 5, 7, 9};
+    for (int t = 0; t < 4; ++t) {
+        for (Uint32 pick = 0; pick < static_cast<Uint32>(max_pick[t]); ++pick) {
+            SequenceRandom rng({pick});
+            ctx.rng = &rng;
+            set_global_context(&ctx);
+            int before = static_cast<int>(myscreen->level_data.oblist.size());
+            arch->stats()->magicpoints = mp_tiers[t];
+            arch->busy = 0;
+            (void)arch->special();
+            int after = static_cast<int>(myscreen->level_data.oblist.size());
+            TEST_ASSERT(after >= before, "illusion summon case should not reduce object count");
+            set_global_context(nullptr);
+        }
+    }
+
+    myscreen->level_data.delete_objects();
+    delete arch;
+}
+REGISTER_TEST(test_walker_special_archmage_illusion_rng_tables);

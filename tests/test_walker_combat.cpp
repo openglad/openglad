@@ -699,3 +699,49 @@ void test_walker_animate_smoke()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_animate_smoke);
+
+void test_walker_act_random_generator_paths()
+{
+    loader* l = myscreen->level_data.myloader.get();
+    TEST_ASSERT(l != nullptr, "loader exists");
+
+    walker* gen = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+    walker* foe = make_guy(FAMILY_ORC, 2);
+    TEST_ASSERT(gen != nullptr && foe != nullptr, "generator and foe created");
+    if (!(gen && foe)) {
+        delete gen;
+        delete foe;
+        return;
+    }
+
+    gen->team_num = 1;
+    foe->team_num = 2;
+    gen->setxy(128, 128);
+    foe->setxy(132, 128);
+    gen->lineofsight = 40;
+    gen->set_act_type(ACT_RANDOM);
+    gen->stats()->clear_command();
+
+    GameContext ctx;
+    ctx.game_screen = myscreen;
+
+    // Trigger act_random() route and in-range logic.
+    SequenceRandomCombat rng1({0, 1, 0, 0, 0});
+    ctx.rng = &rng1;
+    set_global_context(&ctx);
+    (void)gen->act();
+
+    // Trigger 3-of-4 search branch with foe lookup.
+    gen->foe = nullptr;
+    SequenceRandomCombat rng2({1, 0, 0, 0});
+    ctx.rng = &rng2;
+    set_global_context(&ctx);
+    (void)gen->act();
+    set_global_context(nullptr);
+
+    TEST_ASSERT_EQ(ACT_RANDOM, (int)gen->query_act_type(), "generator should remain in ACT_RANDOM");
+
+    delete foe;
+    delete gen;
+}
+REGISTER_TEST(test_walker_act_random_generator_paths);

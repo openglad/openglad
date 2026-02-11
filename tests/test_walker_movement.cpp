@@ -350,3 +350,43 @@ void test_walker_on_screen()
     delete w;
 }
 REGISTER_TEST(test_walker_on_screen);
+
+void test_walker_draw_tile_phantom_and_forestwalk_paths()
+{
+    walker* w = make_guy(FAMILY_ELF, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    w->setxy(96, 96);
+
+    viewscreen* vs = myscreen->viewob[0].get();
+    TEST_ASSERT(vs != nullptr, "viewscreen exists");
+    if (vs) {
+        walker* old_control = vs->control;
+        walker* control = make_guy(FAMILY_SOLDIER, 0);
+        if (control) {
+            control->setxy(80, 80);
+            vs->control = control;
+        }
+
+        // PHANTOM draw_tile branch.
+        w->stats()->set_bit_flags(BIT_PHANTOM, 1);
+        (void)w->draw_tile(vs);
+        w->stats()->set_bit_flags(BIT_PHANTOM, 0);
+
+        // FORESTWALK draw_tile branch.
+        int tx = w->xpos / GRID_SIZE;
+        int ty = w->ypos / GRID_SIZE;
+        if (tx >= 0 && ty >= 0 && tx < myscreen->level_data.grid.w && ty < myscreen->level_data.grid.h) {
+            myscreen->level_data.grid.data[ty * myscreen->level_data.grid.w + tx] = PIX_TREE_T1;
+            myscreen->level_data.mysmoother.set_target(myscreen->level_data.grid);
+        }
+        w->flight_left = 0;
+        w->stats()->set_bit_flags(BIT_FLYING, 0);
+        (void)w->draw_tile(vs);
+
+        vs->control = old_control;
+        delete control;
+    }
+
+    delete w;
+}
+REGISTER_TEST(test_walker_draw_tile_phantom_and_forestwalk_paths);
