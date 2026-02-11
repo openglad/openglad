@@ -318,7 +318,10 @@ void test_walker_special_mage_energy_wave()
 
     // Broad special() branch sweep for high-ROI families/special indices.
     const char sweep_families[] = {
-        FAMILY_CLERIC, FAMILY_MAGE, FAMILY_DRUID, FAMILY_THIEF, FAMILY_ORC, FAMILY_BARBARIAN
+        FAMILY_SOLDIER, FAMILY_ARCHER, FAMILY_CLERIC, FAMILY_MAGE, FAMILY_ARCHMAGE,
+        FAMILY_ELF, FAMILY_THIEF, FAMILY_SKELETON, FAMILY_FIREELEMENTAL, FAMILY_FAERIE,
+        FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN, FAMILY_GHOST,
+        FAMILY_SMALL_SLIME, FAMILY_MEDIUM_SLIME, FAMILY_SLIME
     };
     for (char fam : sweep_families) {
         myscreen->level_data.delete_objects();
@@ -354,7 +357,7 @@ void test_walker_special_mage_energy_wave()
         blood->stats()->old_family = FAMILY_SOLDIER;
         blood->team_num = 1;
 
-        for (int sp = 1; sp <= 4; ++sp) {
+        for (int sp = 1; sp <= 5; ++sp) {
             a->current_special = sp;
             a->busy = 0;
             a->shifter_down = (sp % 2);
