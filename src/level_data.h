@@ -71,6 +71,17 @@ public:
 class LevelData
 {
 public:
+    enum class IoError
+    {
+        None = 0,
+        OpenReadFailed,
+        OpenWriteFailed,
+        InvalidHeader,
+        ParseFailed,
+        UnsupportedVersion,
+        SerializeFailed
+    };
+
     int id;
     std::string title;
     
@@ -107,6 +118,9 @@ public:
     
     bool load();
     bool save();
+    IoError load_with_error();
+    IoError save_with_error();
+    IoError last_io_error() const { return last_io_error_; }
     
     walker* add_ob(Order order, char family, bool atstart = false);
     walker* add_fx_ob(Order order, char family);
@@ -124,5 +138,7 @@ public:
     void draw(screen* myscreen);
     
     std::string get_description_line(int i);
-};
 
+private:
+    IoError last_io_error_ = IoError::None;
+};

@@ -1215,6 +1215,7 @@ short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 bool LevelData::load()
 {
 	TRACE("game", "LevelData::load id=%d", id);
+    last_io_error_ = IoError::None;
 	SDL_RWops  *infile = nullptr;
 	char temptext[10] = {};
 	char versionnumber = 0;
@@ -1226,6 +1227,7 @@ bool LevelData::load()
 	if ( !(infile = open_read_file("scen/", thefile.c_str())))
     {
         LogError("Cannot open level file for reading: {}\n", thefile);
+        last_io_error_ = IoError::OpenReadFailed;
         return false;
     }
 
@@ -1235,11 +1237,20 @@ bool LevelData::load()
 	{
 		LogError("File {} is not a valid scenario!\n", thefile);
 		SDL_RWclose(infile);
+        last_io_error_ = IoError::InvalidHeader;
 		return false;
 	}
 
 	// Check the version number
 	SDL_RWread(infile, &versionnumber, 1, 1);
+    if(versionnumber < 2 || versionnumber > VERSION_NUM)
+    {
+        Log("Scenario {} is version-level {}, and cannot be read.\n",
+            id, static_cast<int>(versionnumber));
+        SDL_RWclose(infile);
+        last_io_error_ = IoError::UnsupportedVersion;
+        return false;
+    }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
     
     // Reset the loader (which holds graphics for the objects to use)
@@ -1253,6 +1264,12 @@ bool LevelData::load()
     
     short tempvalue = load_scenario_version(infile, this, versionnumber);
     SDL_RWclose(infile);
+    if(tempvalue == 0)
+    {
+        if(last_io_error_ == IoError::None)
+            last_io_error_ = IoError::ParseFailed;
+        return false;
+    }
     
     // Load background tiles
     {
@@ -1290,7 +1307,8 @@ bool LevelData::load()
     }
     
 	TRACE("game", "LevelData::load complete");
-	return (tempvalue != 0);
+    last_io_error_ = IoError::None;
+	return true;
 }
 
 bool save_grid_file(const char* gridname, const PixieData& grid)
@@ -1331,6 +1349,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 
 bool LevelData::save()
 {
+    last_io_error_ = IoError::None;
 	Sint32 currentx, currenty;
 	unsigned char temporder;
 	char tempfamily;
@@ -1385,6 +1404,7 @@ bool LevelData::save()
 	if ( (outfile = open_write_file("temp/scen/", temp_filename.c_str())) == nullptr ) // open for write
 	{
 		Log("Could not open file for writing: temp/scen/{}\n", temp_filename);
+        last_io_error_ = IoError::OpenWriteFailed;
 		return false;
 	}
 
@@ -1433,6 +1453,7 @@ bool LevelData::save()
         {
             Log("Unexpected nullptr object.\n");
             SDL_RWclose(outfile);
+            last_io_error_ = IoError::SerializeFailed;
             return false;  // Something wrong! Too few objects..
         }
         temporder = static_cast<unsigned char>(w->query_order());
@@ -1465,6 +1486,7 @@ bool LevelData::save()
         {
             Log("Unexpected nullptr fx object.\n");
             SDL_RWclose(outfile);
+            last_io_error_ = IoError::SerializeFailed;
             return false;  // Something wrong! Too few objects..
         }
         temporder = static_cast<unsigned char>(ob->query_order());
@@ -1497,6 +1519,7 @@ bool LevelData::save()
         {
             Log("Unexpected nullptr weap object.\n");
             SDL_RWclose(outfile);
+            last_io_error_ = IoError::SerializeFailed;
             return false;  // Something wrong! Too few objects..
         }
         temporder = static_cast<unsigned char>(ob->query_order());
@@ -1540,7 +1563,20 @@ bool LevelData::save()
 	
 	Log("Scenario saved.\n");
 
+    last_io_error_ = IoError::None;
 	return true;
+}
+
+LevelData::IoError LevelData::load_with_error()
+{
+    load();
+    return last_io_error_;
+}
+
+LevelData::IoError LevelData::save_with_error()
+{
+    save();
+    return last_io_error_;
 }
 
 void LevelData::set_draw_pos(Sint32 topx, Sint32 topy)
