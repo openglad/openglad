@@ -58,6 +58,8 @@ void test_picker_handle_menu_nav_moves_and_skips_hidden_targets()
 {
     disablePlayerJoystick(0);
     KeyBindingGuard b_up(0, KEY_UP, SDLK_UP);
+    KeyBindingGuard b_down(0, KEY_DOWN, SDLK_DOWN);
+    KeyBindingGuard b_left(0, KEY_LEFT, SDLK_LEFT);
     KeyBindingGuard b_right(0, KEY_RIGHT, SDLK_RIGHT);
     KeyStateGuard ks;
 
@@ -86,6 +88,22 @@ void test_picker_handle_menu_nav_moves_and_skips_hidden_targets()
     release_right.join();
     TEST_ASSERT(!activated, "moving to hidden target should not activate");
     TEST_ASSERT_EQ(0, highlighted, "hidden nav target should be ignored");
+
+    // Down should move from 0 back to 1.
+    ks.set(SDLK_DOWN, true);
+    std::thread release_down(release_key_after, &ks, SDLK_DOWN, 10);
+    activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    release_down.join();
+    TEST_ASSERT(!activated, "down movement should not activate");
+    TEST_ASSERT_EQ(1, highlighted, "down key should move highlight to nav.down");
+
+    // Left for button1 is invalid (-1), so highlight should remain.
+    ks.set(SDLK_LEFT, true);
+    std::thread release_left(release_key_after, &ks, SDLK_LEFT, 10);
+    activated = handle_menu_nav(buttons, highlighted, retvalue, false);
+    release_left.join();
+    TEST_ASSERT(!activated, "invalid nav target should not activate");
+    TEST_ASSERT_EQ(1, highlighted, "invalid nav target should leave highlight unchanged");
 }
 REGISTER_TEST(test_picker_handle_menu_nav_moves_and_skips_hidden_targets);
 
@@ -118,6 +136,16 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     release_fire2.join();
     TEST_ASSERT(activated, "fire with nav enabled should activate");
     TEST_ASSERT_EQ(4, (int)retvalue, "activation without global vbuttons should return OK");
+
+    // Fire while nav enabled with global vbuttons path.
+    vbutton* localbuttons = init_buttons(buttons, 1);
+    retvalue = 0;
+    ks.set(SDLK_SPACE, true);
+    std::thread release_fire3(release_key_after, &ks, SDLK_SPACE, 10);
+    activated = handle_menu_nav(buttons, highlighted, retvalue, true);
+    release_fire3.join();
+    TEST_ASSERT(activated, "fire with global vbuttons should activate");
+    delete localbuttons;
 
     // Smoke draw highlight routines under both nav states.
     menu_nav_enabled = false;
