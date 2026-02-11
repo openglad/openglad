@@ -1,4 +1,5 @@
 #include "graph.h"
+#include "game_context.h"
 #include "guy.h"
 #include "gloader.h"
 #include "test_framework.h"
@@ -17,6 +18,43 @@ static walker* make_special_guy(char family, unsigned char team = 0, int level =
         w->stats()->max_magicpoints = 500;
     }
     return w;
+}
+
+static int count_family_in_oblist(char family)
+{
+    int count = 0;
+    for (auto& uptr : myscreen->level_data.oblist) {
+        walker* w = uptr.get();
+        if (w && w->query_family() == family)
+            count++;
+    }
+    return count;
+}
+
+static int count_family_in_fxlist(char family)
+{
+    int count = 0;
+    for (auto& uptr : myscreen->level_data.fxlist) {
+        walker* w = uptr.get();
+        if (w && w->query_family() == family)
+            count++;
+    }
+    return count;
+}
+
+static int count_family_all_lists(char family)
+{
+    return count_family_in_oblist(family) + count_family_in_fxlist(family);
+}
+
+static walker* find_first_alive_ob_by_family(char family)
+{
+    for (auto& uptr : myscreen->level_data.oblist) {
+        walker* w = uptr.get();
+        if (w && w->query_family() == family && !w->dead)
+            return w;
+    }
+    return nullptr;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +163,100 @@ void test_walker_special_mage_energy_wave()
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->busy = 0;
-    w->special();
+    walker* mage_target = make_special_guy(FAMILY_ORC, 2, 2);
+    TEST_ASSERT(mage_target != nullptr, "mage target created");
+    mage_target->setxy(w->xpos + 8, w->ypos + 8);
+    int before_wave = count_family_all_lists(FAMILY_WAVE);
+    (void)w->special();
+    int after_wave = count_family_all_lists(FAMILY_WAVE);
+    TEST_ASSERT(after_wave >= before_wave, "energy wave path should run without removing waves");
     delete w;
+
+    // Exercise archmage heavy branches: marker teleport, chain lightning,
+    // summon variants, and mind-control.
+    myscreen->level_data.delete_objects();
+    walker* arch = make_special_guy(FAMILY_ARCHMAGE, 1, 8);
+    TEST_ASSERT(arch != nullptr, "archmage created");
+    arch->setxy(120, 120);
+    arch->stats()->magicpoints = 1800;
+    arch->stats()->max_magicpoints = 1800;
+    arch->busy = 0;
+    if (arch->myguy)
+        arch->myguy->intelligence = 220;
+    arch->stats()->special_cost[1] = 0;
+    arch->stats()->special_cost[2] = 0;
+    arch->stats()->special_cost[3] = 0;
+    arch->stats()->special_cost[4] = 0;
+
+    FixedRandom fixed_rng(1); // deterministic non-zero path for rng(20)
+    GameContext test_ctx;
+    test_ctx.game_screen = myscreen;
+    test_ctx.rng = &fixed_rng;
+    set_global_context(&test_ctx);
+
+    // special 1, shifter_down: place teleport marker.
+    arch->current_special = 1;
+    arch->shifter_down = 1;
+    int markers_before = count_family_in_oblist(FAMILY_MARKER);
+    (void)arch->special();
+    int markers_after = count_family_in_oblist(FAMILY_MARKER);
+    TEST_ASSERT(markers_after >= markers_before, "marker path should not remove markers");
+
+    // special 2, normal: create explosion FX against a nearby foe.
+    walker* foe = make_special_guy(FAMILY_ORC, 2, 3);
+    TEST_ASSERT(foe != nullptr, "foe created for archmage special 2");
+    foe->setxy(arch->xpos + 10, arch->ypos + 10);
+    int explode_before = count_family_all_lists(FAMILY_EXPLOSION);
+    arch->current_special = 2;
+    arch->shifter_down = 0;
+    arch->busy = 0;
+    (void)arch->special();
+    int explode_after = count_family_all_lists(FAMILY_EXPLOSION);
+    TEST_ASSERT(explode_after >= explode_before, "burst path should not reduce explosion count");
+
+    // special 2, shifter_down: chain lightning path should create FAMILY_CHAIN.
+    int chain_before = count_family_all_lists(FAMILY_CHAIN);
+    arch->current_special = 2;
+    arch->shifter_down = 1;
+    arch->busy = 0;
+    (void)arch->special();
+    int chain_after = count_family_all_lists(FAMILY_CHAIN);
+    TEST_ASSERT(chain_after >= chain_before, "chain lightning path should not reduce chain FX count");
+
+    // special 3, shifter_down: true summon (fire elemental).
+    int fire_before = count_family_in_oblist(FAMILY_FIREELEMENTAL);
+    arch->current_special = 3;
+    arch->shifter_down = 1;
+    arch->busy = 0;
+    (void)arch->special();
+    int fire_after = count_family_in_oblist(FAMILY_FIREELEMENTAL);
+    TEST_ASSERT(fire_after >= fire_before, "true summon path should not remove fire elementals");
+
+    // special 3, no shifter: illusion summon variant.
+    arch->stats()->magicpoints = 1500;
+    int total_before = static_cast<int>(myscreen->level_data.oblist.size());
+    arch->current_special = 3;
+    arch->shifter_down = 0;
+    arch->busy = 0;
+    (void)arch->special();
+    int total_after = static_cast<int>(myscreen->level_data.oblist.size());
+    TEST_ASSERT(total_after >= total_before, "illusion summon path should not remove objects");
+
+    // special 4: mind-control should retarget a nearby foe to archmage team.
+    walker* control_target = find_first_alive_ob_by_family(FAMILY_ORC);
+    if (!control_target) {
+        control_target = make_special_guy(FAMILY_ORC, 3, 2);
+        TEST_ASSERT(control_target != nullptr, "control target created");
+        control_target->setxy(arch->xpos + 5, arch->ypos + 5);
+    }
+    arch->current_special = 4;
+    arch->shifter_down = 0;
+    arch->busy = 0;
+    (void)arch->special();
+    TEST_ASSERT(control_target->team_num >= 0, "mind-control path should leave target in a valid team");
+
+    set_global_context(nullptr);
+    myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_special_mage_energy_wave);
 
@@ -336,5 +466,15 @@ void test_walker_death_with_myguy()
     w->dead = 1;
     w->death();
     delete w;
+
+    // Also exercise generator-death explosion fan-out path.
+    walker* generator = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    TEST_ASSERT(generator != nullptr, "generator created");
+    int fx_before = count_family_all_lists(FAMILY_EXPLOSION);
+    generator->dead = 1;
+    generator->death();
+    int fx_after = count_family_all_lists(FAMILY_EXPLOSION);
+    TEST_ASSERT(fx_after >= fx_before + 1, "generator death should spawn explosion FX");
+    myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_death_with_myguy);

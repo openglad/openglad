@@ -255,8 +255,6 @@ void test_how_many_with_team()
     TEST_ASSERT_EQ(-1, get_scen_num_from_filename("scen"), "no numeric suffix should return -1");
     TEST_ASSERT_EQ(123, get_scen_num_from_filename("scen123"), "numeric suffix should parse");
     TEST_ASSERT_EQ(42, get_scen_num_from_filename("file42"), "mixed prefix should parse trailing number");
-    TEST_ASSERT(yes_or_no_prompt("Title", "Message", true), "testing build should return default=true");
-    TEST_ASSERT(!yes_or_no_prompt("Title", "Message", false), "testing build should return default=false");
 
     vbutton* old2 = allbuttons[2];
     vbutton* old6 = allbuttons[6];

@@ -172,6 +172,37 @@ void test_level_editor_create_new_campaign_and_detect_exists()
         outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
         TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
                     "all objects inside area should report false");
+
+        loader* l = myscreen->level_data.myloader.get();
+        walker* fx_inside = l ? l->create_walker(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
+        walker* fx_outside = l ? l->create_walker(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
+        TEST_ASSERT(fx_inside != nullptr && fx_outside != nullptr, "fx objects should be created");
+        if (fx_inside && fx_outside) {
+            myscreen->level_data.fxlist.push_back(std::unique_ptr<walker>(fx_inside));
+            myscreen->level_data.fxlist.push_back(std::unique_ptr<walker>(fx_outside));
+            fx_inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+            fx_outside->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
+            TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+                        "outside fx object should be detected");
+            fx_outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
+            TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+                        "inside fx objects should report false");
+        }
+
+        walker* weap_inside = l ? l->create_walker(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
+        walker* weap_outside = l ? l->create_walker(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
+        TEST_ASSERT(weap_inside != nullptr && weap_outside != nullptr, "weapon objects should be created");
+        if (weap_inside && weap_outside) {
+            myscreen->level_data.weaplist.push_back(std::unique_ptr<walker>(weap_inside));
+            myscreen->level_data.weaplist.push_back(std::unique_ptr<walker>(weap_outside));
+            weap_inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+            weap_outside->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
+            TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+                        "outside weapon object should be detected");
+            weap_outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
+            TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+                        "inside weapon objects should report false");
+        }
     }
     myscreen->level_data.delete_objects();
 

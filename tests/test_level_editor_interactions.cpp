@@ -166,6 +166,62 @@ static int editor_injector_thread(void* data)
 
     inject_key_press(SDLK_ESCAPE, 10);
 
+    // Push direct SDL event variants to cover handle_basic_editor_event branches.
+    SDL_Event event{};
+    event.type = SDL_WINDOWEVENT;
+    event.window.event = SDL_WINDOWEVENT_EXPOSED;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_TEXTINPUT;
+    SDL_strlcpy(event.text.text, "x", sizeof(event.text.text));
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_MOUSEWHEEL;
+    event.wheel.y = 1;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_FINGERDOWN;
+    event.tfinger.dx = 0.1f;
+    event.tfinger.dy = 0.1f;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_FINGERMOTION;
+    event.tfinger.dx = 0.2f;
+    event.tfinger.dy = -0.15f;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_FINGERUP;
+    event.tfinger.dx = 0.0f;
+    event.tfinger.dy = 0.0f;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_MOUSEMOTION;
+    event.motion.xrel = 2;
+    event.motion.yrel = -3;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_JOYAXISMOTION;
+    event.jaxis.axis = 0;
+    event.jaxis.value = 10000;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_JOYBUTTONDOWN;
+    event.jbutton.button = 0;
+    SDL_PushEvent(&event);
+
+    event = SDL_Event{};
+    event.type = SDL_JOYBUTTONUP;
+    event.jbutton.button = 0;
+    SDL_PushEvent(&event);
+
     // Exercise a click in the main window.
     inject_click(100, 100, 10);
 
