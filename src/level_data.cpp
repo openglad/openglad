@@ -191,7 +191,7 @@ bool CampaignData::save()
             }
             else
             {
-                Log("Save failed: Could not repack campaign: {}\n", id);
+                LogError("campaign_save_failed id={} reason=repack_failed\n", id);
                 result = false;
                 last_io_error_ = IoError::PackageRepackFailed;
             }
@@ -202,7 +202,7 @@ bool CampaignData::save()
     }
     else
     {
-        Log("Save failed: Could not unpack campaign: {}\n", id);
+        LogError("campaign_save_failed id={} reason=unpack_failed\n", id);
         result = false;
         last_io_error_ = IoError::PackageUnpackFailed;
     }
@@ -276,7 +276,7 @@ bool CampaignData::save_as(const std::string& new_id)
             }
             else
             {
-                Log("Save failed: Could not repack campaign: {}\n", id);
+                LogError("campaign_save_as_failed src_id={} dst_id={} reason=repack_failed\n", id, new_id);
                 result = false;
                 last_io_error_ = IoError::PackageRepackFailed;
             }
@@ -284,7 +284,7 @@ bool CampaignData::save_as(const std::string& new_id)
     }
     else
     {
-        Log("Save failed: Could not unpack campaign: {}\n", id);
+        LogError("campaign_save_as_failed src_id={} dst_id={} reason=unpack_failed\n", id, new_id);
         result = false;
         last_io_error_ = IoError::PackageUnpackFailed;
     }

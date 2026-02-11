@@ -52,7 +52,8 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *mysc
 	if(!myscreen->level_data.load())
 	{
 	    short old_scen = myscreen->save_data.scen_num;
-	    Log("Failed to load \"{}\".  Falling back to loading scenario 1.\n", scenfile);
+	    LogError("load_saved_game_level_load_failed file={} scen={} action=fallback_to_1\n",
+	        filename ? filename : "(null)", old_scen);
 	    // Failed?  Try level 1.
 		myscreen->save_data.scen_num = 1;
         myscreen->level_data.id = 1;

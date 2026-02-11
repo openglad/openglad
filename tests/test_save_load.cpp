@@ -45,3 +45,23 @@ void test_load_saved_game_with_error_null_screen()
         "load_saved_game_with_error should report MissingScreen on nullptr");
 }
 REGISTER_TEST(test_load_saved_game_with_error_null_screen);
+
+void test_load_saved_game_with_error_reports_fallback_level()
+{
+    const short old_scen = myscreen->save_data.scen_num;
+    const int old_level_id = myscreen->level_data.id;
+
+    // Use an invalid scenario id so loader falls back to scenario 1.
+    myscreen->save_data.scen_num = 9999;
+    myscreen->save_data.numplayers = 1;
+    myscreen->save_data.team_size = 0;
+
+    LoadSavedGameError err = load_saved_game_with_error("save0", myscreen);
+    TEST_ASSERT_EQ(static_cast<int>(LoadSavedGameError::UsedFallbackLevel), static_cast<int>(err),
+        "load_saved_game_with_error should report UsedFallbackLevel for missing scenario");
+    TEST_ASSERT_EQ(1, myscreen->save_data.scen_num, "fallback should update save_data.scen_num to 1");
+
+    myscreen->save_data.scen_num = old_scen;
+    myscreen->level_data.id = old_level_id;
+}
+REGISTER_TEST(test_load_saved_game_with_error_reports_fallback_level);

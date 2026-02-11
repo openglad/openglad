@@ -1142,7 +1142,7 @@ close_and_return:
 
     if(err != ScenarioTitleError::None)
     {
-        Log("scenario_title_load failed: filename={} error={}\n",
+        LogError("scenario_title_load_failed filename={} error={}\n",
             filename ? filename : "(null)", scenario_title_error_string(err));
     }
     return err;
