@@ -16,6 +16,7 @@
  */
 #include "button.h"
 #include "test_trace.h"
+#include "game_context.h"
 
 extern short scen_level;
 extern pixieN *backdrops[5];
@@ -538,17 +539,26 @@ Sint32 yes_or_no(Sint32 arg)
     return arg;
 }
 
+static cfg_store& active_config()
+{
+    if (ctx().config)
+        return *ctx().config;
+    return cfg;
+}
+
 void toggle_effect(const std::string& category, const std::string& setting)
 {
-    if(cfg.is_on(category, setting))
-        cfg.apply_setting(category, setting, "off");
+    cfg_store& config = active_config();
+    if(config.is_on(category, setting))
+        config.apply_setting(category, setting, "off");
     else
-        cfg.apply_setting(category, setting, "on");
+        config.apply_setting(category, setting, "on");
 }
 
 void toggle_rendering_engine()
 {
-    std::string engine = cfg.get_setting("graphics", "render");
+    cfg_store& config = active_config();
+    std::string engine = config.get_setting("graphics", "render");
     if(engine == "sai")
         engine = "eagle";
     else if(engine == "eagle")
@@ -556,7 +566,7 @@ void toggle_rendering_engine()
     else
         engine = "sai";
     
-    cfg.apply_setting("graphics", "render", engine);
+    config.apply_setting("graphics", "render", engine);
 }
 
 #define REDRAW 2 //we just exited a menu, so redraw your buttons
@@ -640,7 +650,7 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
         return REDRAW;
     case TOGGLE_FULLSCREEN:
         toggle_effect("graphics", "fullscreen");
-        myscreen->set_fullscreen(cfg.is_on("graphics", "fullscreen"));
+        myscreen->set_fullscreen(active_config().is_on("graphics", "fullscreen"));
         return REDRAW;
     case OVERSCAN_ADJUST:
         return overscan_adjust(arg);
@@ -670,7 +680,7 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
         return REDRAW;
     case RESTORE_DEFAULT_SETTINGS:
         restore_default_settings();
-        cfg.load_settings();
+        active_config().load_settings();
         return REDRAW;
     default:
         return OK;
@@ -690,4 +700,3 @@ Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 arg)
         return 4;
     }
 }
-
