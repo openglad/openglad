@@ -45,15 +45,15 @@ void quit(Sint32 arg1);
 
 static inline screen* active_screen()
 {
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
+    if(ctx().active_screen() != nullptr)
+        return ctx().active_screen();
     return myscreen;
 }
 
 static inline cfg_store* active_config()
 {
-    if(ctx().config != nullptr)
-        return ctx().config;
+    if(ctx().active_config() != nullptr)
+        return ctx().active_config();
     return &cfg;
 }
 

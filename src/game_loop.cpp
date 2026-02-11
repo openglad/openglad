@@ -118,7 +118,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     }
 
     // Snapshot current input state for the frame
-    input_state_from_sdl(ctx().input);
+    ctx().poll_input();
 
     s.continuous_input();
 

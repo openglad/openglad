@@ -25,7 +25,7 @@
 // Get list of accessible levels (cleared levels + their exits)
 std::vector<int> get_accessible_levels()
 {
-    screen* game = ctx().game_screen ? ctx().game_screen : myscreen;
+    screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
     if (!game) {
         return {1};
     }

@@ -541,8 +541,8 @@ Sint32 yes_or_no(Sint32 arg)
 
 static cfg_store& active_config()
 {
-    if (ctx().config)
-        return *ctx().config;
+    if (ctx().active_config())
+        return *ctx().active_config();
     return cfg;
 }
 

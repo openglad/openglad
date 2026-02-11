@@ -138,15 +138,15 @@ namespace
 {
 inline screen* active_screen()
 {
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
+    if(ctx().active_screen() != nullptr)
+        return ctx().active_screen();
     return myscreen;
 }
 
 inline options* active_prefs()
 {
-    if(ctx().prefs != nullptr)
-        return ctx().prefs;
+    if(ctx().active_prefs() != nullptr)
+        return ctx().active_prefs();
     return theprefs;
 }
 } // namespace
