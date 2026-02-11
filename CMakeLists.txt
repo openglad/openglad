@@ -383,6 +383,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_help_parsing.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_glad_hud.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
