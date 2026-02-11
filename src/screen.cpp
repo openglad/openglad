@@ -721,7 +721,7 @@ bool screen::act()
 						level_done = 0;
 					// Testing .. trying to FORCE foes :)
 					if (ob->foe == nullptr && ob->leader == nullptr)
-						ob->foe = myscreen->find_far_foe(ob);
+						ob->foe = find_far_foe(ob);
 				}
 			}
 		}

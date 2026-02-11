@@ -31,6 +31,16 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
+namespace
+{
+inline screen* active_screen()
+{
+    if(ctx().game_screen != nullptr)
+        return ctx().game_screen;
+    return myscreen;
+}
+} // namespace
+
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
 
@@ -96,8 +106,8 @@ bool effect::act()
 			orbit_offset(drawcycle, xd, yd);
 			center_on(owner);
 			setworldxy(worldx_+xd, worldy_+yd);
-			foelist = myscreen->find_foe_weapons_in_range(
-			              myscreen->level_data.oblist, sizex, &temp, this);
+			foelist = active_screen()->find_foe_weapons_in_range(
+			              active_screen()->level_data.oblist, sizex, &temp, this);
             
 			for(auto* w : foelist)  // first weapons
 			{
@@ -106,8 +116,8 @@ bool effect::act()
 				w->death();
 			}
 
-			foelist = myscreen->find_foes_in_range(
-			              myscreen->level_data.oblist, sizex, &temp, this);
+			foelist = active_screen()->find_foes_in_range(
+			              active_screen()->level_data.oblist, sizex, &temp, this);
 
 			for(auto* w : foelist)  // second enemies
 			{
@@ -140,8 +150,8 @@ bool effect::act()
 			yd /= 48;
 			center_on(owner);
 			setworldxy(worldx_+xd, worldy_+yd);
-			foelist = myscreen->find_foe_weapons_in_range(
-			              myscreen->level_data.oblist, sizex*2, &temp, this);
+			foelist = active_screen()->find_foe_weapons_in_range(
+			              active_screen()->level_data.oblist, sizex*2, &temp, this);
 			              
 			for(auto* w : foelist)  // first weapons
 			{
@@ -150,8 +160,8 @@ bool effect::act()
 				w->death();
 			}
 
-			foelist = myscreen->find_foes_in_range(
-			              myscreen->level_data.oblist, sizex, &temp, this);
+			foelist = active_screen()->find_foes_in_range(
+			              active_screen()->level_data.oblist, sizex, &temp, this);
 
 			for(auto* w : foelist) // second enemies
 			{
@@ -205,13 +215,13 @@ bool effect::act()
 						yd = owner->ypos - ypos;
 				}
 				setworldxy(worldx_+xd, worldy_+yd);
-				newob = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+				newob = active_screen()->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
 				newob->damage = damage;
 				newob->owner = owner;
 				newob->team_num = team_num;
 				newob->death_called = 1; // to ensure no spawning of more ..
 				newob->setworldxy(worldx_, worldy_);
-				if (!myscreen->query_object_passable(xpos+xd, ypos+yd, newob))
+				if (!active_screen()->query_object_passable(xpos+xd, ypos+yd, newob))
 				{
 					newob->attack(newob->collide_ob);
 					damage /= 4.0f;
@@ -225,7 +235,7 @@ bool effect::act()
 				//if (owner->user != -1)
 				//{
 				//  sprintf(message, "Knives now %d", owner->weapons_left);
-				//  myscreen->do_notify(message, owner);
+				//  active_screen()->do_notify(message, owner);
 				//}
 				ani_type = ANI_WALK;
 				dead = 1;
@@ -244,8 +254,8 @@ bool effect::act()
 			if (invisibility_left > 0)
 				invisibility_left--;
 			// Hit any nearby foes (not friends, for now)
-			foelist = myscreen->find_foes_in_range(
-			              myscreen->level_data.oblist, sizex, &temp, this);
+			foelist = active_screen()->find_foes_in_range(
+			              active_screen()->level_data.oblist, sizex, &temp, this);
             
 			for(auto* w : foelist) //
 			{
@@ -284,7 +294,7 @@ bool effect::act()
 			         leader->xpos, leader->ypos, leader->sizex, leader->sizey))
 			{
 				// Do things ..
-				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+				newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
 				if (!newob)
 				{
 					dead = 1;
@@ -299,15 +309,15 @@ bool effect::act()
 				newob->center_on(this);
 				leader->skip_exit = leader->skip_exit + 3; // can't hit us for 3 rounds ..
 				if (on_screen())
-					myscreen->soundp->play_sound(SOUND_EXPLODE);
+					active_screen()->soundp->play_sound(SOUND_EXPLODE);
 				// Now make new objects to seek out foes ..
 				// First, are our offspring powerful enough at 1/2 our power?
 				generic = (damage)/2;
 				if (owner->myguy)
-					foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+					foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist,
 					                                      240+(owner->myguy->intelligence/2), &temp, this);
 				else
-					foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+					foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist,
 					                                      240+stats_->level*5, &temp, this);
 				if (temp && generic>20) // more foes to find ..
 				{
@@ -317,7 +327,7 @@ bool effect::act()
 					    if (numfoes <= 0) break;
 						if (w != leader && w->skip_exit<1) // don't hit current guy, etc.
 						{
-							newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
+							newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_CHAIN);
 							if (!newob)
 								return 0; // failsafe
 
@@ -399,7 +409,7 @@ bool effect::act()
 
 			if (ani_type != ANI_WALK)
 				return animate();
-			newob = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
+			newob = active_screen()->level_data.add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
 			newob->ani_type = ANI_WALK;
@@ -495,7 +505,7 @@ bool effect::death()
 		case FAMILY_GHOST_SCARE: // the ghost's scare
 			if (!owner || owner->dead)
 				return 0;
-			foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist, 50+(10*owner->stats()->level),
+			foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist, 50+(10*owner->stats()->level),
 			                                        &howmany, owner);
 			if (howmany < 1)
 				return 0;
@@ -524,8 +534,8 @@ bool effect::death()
 			if (!owner || owner->dead)
 				owner = this;
 			if (on_screen())
-				myscreen->soundp->play_sound(SOUND_EXPLODE);
-			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+				active_screen()->soundp->play_sound(SOUND_EXPLODE);
+			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 			newob->owner = owner;
 			newob->stats()->hitpoints = 0;
 			newob->stats()->level = owner->stats()->level;
@@ -540,11 +550,11 @@ bool effect::death()
 				owner = this;
 			// Set the max distance for a bomb ..
 			generic = compute_explosion_range(owner->stats()->level, skip_exit);
-			foelist = myscreen->find_in_range(myscreen->level_data.oblist, 15+generic,
+			foelist = active_screen()->find_in_range(active_screen()->level_data.oblist, 15+generic,
 			                                 &howmany, this);
             
 			// Damage our tile location ..
-			myscreen->damage_tile( static_cast<short>(xpos+(sizex/2)), static_cast<short>(ypos+(sizey/2)) );
+			active_screen()->damage_tile( static_cast<short>(xpos+(sizex/2)), static_cast<short>(ypos+(sizey/2)) );
 			if (howmany < 1)
 				return 0;
 			// Set our team number to garbage so we can hurt everyone

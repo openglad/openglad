@@ -19,8 +19,19 @@
 //
 
 #include "graph.h"
+#include "game_context.h"
 #include "smooth.h"
 #include <format>
+
+namespace
+{
+inline screen* active_screen()
+{
+    if(ctx().game_screen != nullptr)
+        return ctx().game_screen;
+    return myscreen;
+}
+} // namespace
 
 weap::weap(const PixieData& data)
     : walker(data)
@@ -55,7 +66,7 @@ bool weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-	if (myscreen->level_data.mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
+	if (active_screen()->level_data.mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
 		if (lineofsight)
 			lineofsight--;
 
@@ -72,7 +83,7 @@ bool weap::act()
 				if (family != FAMILY_TREE && family != FAMILY_BLOOD
 				        && family != FAMILY_DOOR)
 					//Log("weapon sitting\n");
-					myscreen->do_notify("Weapon sitting", this);
+					active_screen()->do_notify("Weapon sitting", this);
 				return 1;
 			}
 
@@ -108,7 +119,7 @@ bool weap::act()
 			{
 				std::string msg = std::format("Weapon {} doing act random?", family);
 				//Log("Weapon doing act_random?\n");
-				myscreen->do_notify(msg.c_str(), this);
+				active_screen()->do_notify(msg.c_str(), this);
 				return 1;
 			}  // END RANDOM
 			//break;
@@ -116,7 +127,7 @@ bool weap::act()
 		default:
 			{
 				//Log("No act type set for weapon.\n");
-				myscreen->do_notify("No act type set for weapon", this);
+				active_screen()->do_notify("No act type set for weapon", this);
 				return 0;
 			}
 	}  // END SWITCH
@@ -143,7 +154,7 @@ bool weap::death()
 		case FAMILY_KNIFE: // for returning knife
 			if (owner && owner->query_family() != FAMILY_SOLDIER)
 				break;  // only soldiers get returning knives
-			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
+			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
 			newob->owner = owner;
 			newob->center_on(this);
 			newob->lastx = lastx;
@@ -157,26 +168,26 @@ bool weap::death()
 				break;
 			dead = 0; // first, un-dead us so we can collide ..
 			// Did we hit a barrier?
-			if (myscreen->query_grid_passable(xpos+lastx, ypos+lasty, this))
+			if (active_screen()->query_grid_passable(xpos+lastx, ypos+lasty, this))
 			{
 				dead = 1;
 				break; // if not, die like normal
 			}
-			if (myscreen->query_grid_passable(xpos-lastx, ypos+lasty, this))
+			if (active_screen()->query_grid_passable(xpos-lastx, ypos+lasty, this))
 			{
 				setxy(xpos-lastx, ypos+lasty);  // bounce 'down-left'
 				lastx = -lastx;
 				death_called = 0;
 				break;
 			}
-			if (myscreen->query_grid_passable(xpos+lastx, ypos-lasty, this))
+			if (active_screen()->query_grid_passable(xpos+lastx, ypos-lasty, this))
 			{
 				setxy(xpos+lastx, ypos-lasty); // bounce 'up-right'
 				lasty = -lasty;
 				death_called = 0;
 				break;
 			}
-			if (myscreen->query_grid_passable(xpos-lastx, ypos-lasty, this))
+			if (active_screen()->query_grid_passable(xpos-lastx, ypos-lasty, this))
 			{
 				setxy(xpos-lastx, ypos-lasty);
 				lastx = -lastx;
@@ -193,11 +204,11 @@ bool weap::death()
 				break;  // skip_exit means we're supposed to explode :)
 			if (!owner || owner->dead)
 				owner = this;
-			newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 			if (!newob)
 				break; // failsafe
 			if (on_screen())
-				myscreen->soundp->play_sound(SOUND_EXPLODE);
+				active_screen()->soundp->play_sound(SOUND_EXPLODE);
 			newob->owner = owner;
 			newob->stats()->hitpoints = 0;
 			newob->stats()->level = owner->stats()->level;
@@ -216,7 +227,7 @@ bool weap::death()
 			stats_->hitpoints = stats_->max_hitpoints;
 			break;  // end wave2 -> wave3
 		case FAMILY_DOOR: // display open picture
-			newob = myscreen->level_data.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
+			newob = active_screen()->level_data.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
 			if (!newob)
 				break;
 			newob->ani_type = ANI_DOOR_OPEN;
@@ -225,7 +236,7 @@ bool weap::death()
 			newob->team_num = team_num;
 			//      newob->ignore = 1;
 			// What way are we 'facing'?
-			if (myscreen->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
+			if (active_screen()->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
 			        == TYPE_WALL) // a wall above us?
 			{
 				newob->curdir = FACE_RIGHT;
@@ -311,4 +322,3 @@ bool weap::setxy(short x, short y)
 {
 	return walker::setxy(x, y);
 }
-

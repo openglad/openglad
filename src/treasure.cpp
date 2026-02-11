@@ -37,6 +37,16 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
+namespace
+{
+inline screen* active_screen()
+{
+    if(ctx().game_screen != nullptr)
+        return ctx().game_screen;
+    return myscreen;
+}
+} // namespace
+
 // Zardus: this is the func to get events
 void get_input_events(bool);
 
@@ -86,25 +96,25 @@ bool treasure::eat_me(walker  * eater)
                 
 				dead = 1;
 				if (on_screen())
-					myscreen->soundp->play_sound(SOUND_EAT);
+					active_screen()->soundp->play_sound(SOUND_EAT);
 				return 1;
 			}
 		case FAMILY_GOLD_BAR:
 			if (eater->team_num == 0 || eater->myguy)
 			{
-				myscreen->save_data.m_score[eater->team_num] += (200*stats_->level);
+				active_screen()->save_data.m_score[eater->team_num] += (200*stats_->level);
 				dead = 1;
 				if (on_screen())
-					myscreen->soundp->play_sound(SOUND_MONEY);
+					active_screen()->soundp->play_sound(SOUND_MONEY);
 			}
 			return 1;
 		case FAMILY_SILVER_BAR:
 			if (eater->team_num == 0 || eater->myguy)
 			{
-				myscreen->save_data.m_score[eater->team_num] += (50*stats_->level);
+				active_screen()->save_data.m_score[eater->team_num] += (50*stats_->level);
 				dead = 1;
 				if (on_screen())
-					myscreen->soundp->play_sound(SOUND_MONEY);
+					active_screen()->soundp->play_sound(SOUND_MONEY);
 			}
 			return 1;
 		case FAMILY_FLIGHT_POTION:
@@ -114,7 +124,7 @@ bool treasure::eat_me(walker  * eater)
 				if (eater->user != -1)
 				{
 					message = std::format("Potion of Flight({})!", stats_->level);
-					myscreen->do_notify(message.c_str(), eater);
+					active_screen()->do_notify(message.c_str(), eater);
 				}
 				dead = 1;
 			}
@@ -127,7 +137,7 @@ bool treasure::eat_me(walker  * eater)
 			if (eater->user != -1)
 			{
 				message = std::format("Potion of Mana({})!", stats_->level);
-				myscreen->do_notify(message.c_str(), eater);
+				active_screen()->do_notify(message.c_str(), eater);
 			}
 			return 1;
 		case FAMILY_INVULNERABLE_POTION:
@@ -138,7 +148,7 @@ bool treasure::eat_me(walker  * eater)
 				if (eater->user != -1)
 				{
 					message = std::format("Potion of Invulnerability({})!", stats_->level);
-					myscreen->do_notify(message.c_str(), eater);
+					active_screen()->do_notify(message.c_str(), eater);
 				}
 			}
 			return 1;
@@ -147,7 +157,7 @@ bool treasure::eat_me(walker  * eater)
 			if (eater->user != -1)
 			{
 				message = std::format("Potion of Invisibility({})!", stats_->level);
-				myscreen->do_notify(message.c_str(), eater);
+				active_screen()->do_notify(message.c_str(), eater);
 			}
 			dead = 1;
 			return 1;
@@ -157,7 +167,7 @@ bool treasure::eat_me(walker  * eater)
 			if (eater->user != -1)
 			{
 				message = std::format("Potion of Speed({})!", stats_->level);
-				myscreen->do_notify(message.c_str(), eater);
+				active_screen()->do_notify(message.c_str(), eater);
 			}
 			dead = 1;
 			return 1;
@@ -167,13 +177,13 @@ bool treasure::eat_me(walker  * eater)
 				return 1;
 			eater->skip_exit = 10;
 			// See if there are any enemies left ...
-			if (myscreen->level_done == 0)
+			if (active_screen()->level_done == 0)
 				guys_here = 1;
 			else
 				guys_here = 0;
 			// Get the name of our exit..
 			message = std::format("scen{}", stats_->level);
-			exitname = myscreen->get_scen_title(message.c_str(), myscreen);
+			exitname = active_screen()->get_scen_title(message.c_str(), active_screen());
 
 			//buffers: PORT: using std::string comparison instead of stricmp
 			if (exitname == "none")
@@ -187,8 +197,8 @@ bool treasure::eat_me(walker  * eater)
 			//    somewhere we've been, in which case we abort
 			//    this level, and set our current level to
 			//    that pointed to by the exit ...
-			if ( myscreen->save_data.is_level_completed(stats_->level)
-			        && !myscreen->save_data.is_level_completed(myscreen->save_data.scen_num)
+			if ( active_screen()->save_data.is_level_completed(stats_->level)
+			        && !active_screen()->save_data.is_level_completed(active_screen()->save_data.scen_num)
 			        && (guys_here != 0)
 			   ) // okay to leave
 			{
@@ -198,50 +208,50 @@ bool treasure::eat_me(walker  * eater)
                 std::string buf = std::format("Withdraw to {}?", exitname);
                 bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
 				// Redraw screen ..
-				myscreen->redrawme = 1;
+				active_screen()->redrawme = 1;
 
 				if (result) // accepted level change
 				{
 					clear_keyboard();
 					// Delete all of our current information and abort ..
-					for(auto& uptr : myscreen->level_data.oblist)
+					for(auto& uptr : active_screen()->level_data.oblist)
 					{
 					    walker* w = uptr.get();
 						if (w && w->query_order() == Order::Living)
 						{
 							w->dead = 1;
-							myscreen->level_data.myobmap->remove(w);
+							active_screen()->level_data.myobmap->remove(w);
 						}
 					}
 					
 					// Now reload the autosave to revert our changes during battle (don't use SaveData::update_guys())
-                    myscreen->save_data.load("save0");
+                    active_screen()->save_data.load("save0");
                     
                     // Go to the exit's level
-					myscreen->save_data.scen_num = stats_->level;
-					myscreen->end = 1;
+					active_screen()->save_data.scen_num = stats_->level;
+					active_screen()->end = 1;
 					
                     // Autosave because we escaped to a new level
 					// Save with the new current level
-                    myscreen->save_data.save("save0");
+                    active_screen()->save_data.save("save0");
 
-					return myscreen->endgame(1, stats_->level); // retreat
+					return active_screen()->endgame(1, stats_->level); // retreat
 				}  // end of accepted withdraw to new level ..
 				clear_keyboard();
 			} // end of checking for withdrawal to completed level
 
 			//buffers: also, allow exit if scenario_type == can exit
-			if (!guys_here || (myscreen->level_data.type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
+			if (!guys_here || (active_screen()->level_data.type == SCEN_TYPE_CAN_EXIT)) // nobody evil left, so okay to exit level ..
 			{
                 std::string buf = std::format("Exit to {}?", exitname);
                 bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
 				// Redraw screen ..
-				myscreen->redrawme = 1;
+				active_screen()->redrawme = 1;
 
 				if(result) // accepted level change
 				{
 					clear_keyboard();
-					return myscreen->endgame(0, stats_->level);
+					return active_screen()->endgame(0, stats_->level);
 				}
 				clear_keyboard();
 				return 1;
@@ -269,21 +279,21 @@ bool treasure::eat_me(walker  * eater)
 				return 1;
 			leader = target;
 			eater->center_on(target);
-			if (!myscreen->query_passable(eater->xpos, eater->ypos, eater))
+			if (!active_screen()->query_passable(eater->xpos, eater->ypos, eater))
 			{
 				eater->center_on(this);
 				return 1;
 			}
 			// Now do special effects
-			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
+			flash = active_screen()->level_data.add_ob(Order::FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			return 1;
 		case FAMILY_LIFE_GEM: // get back some of lost man's xp ..
 			if (eater->team_num != team_num) // only our team can get these
 				return 1;
-			myscreen->save_data.m_score[eater->team_num] += stats_->hitpoints;
-			flash = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
+			active_screen()->save_data.m_score[eater->team_num] += stats_->hitpoints;
+			flash = active_screen()->level_data.add_ob(Order::FX, FAMILY_FLASH);
 			flash->ani_type = ANI_EXPAND_8;
 			flash->center_on(this);
 			dead = 1;
@@ -300,9 +310,9 @@ bool treasure::eat_me(walker  * eater)
 					message = std::format("{} picks up key {}", eater->stats()->name, stats_->level);
 				if (eater->team_num == 0) // only show players picking up keys
 				{
-					myscreen->do_notify(message.c_str(), eater);
+					active_screen()->do_notify(message.c_str(), eater);
 					if (eater->on_screen())
-						myscreen->soundp->play_sound(SOUND_MONEY);
+						active_screen()->soundp->play_sound(SOUND_MONEY);
 				}
 			}
 			return 1;
@@ -315,7 +325,7 @@ void treasure::set_direct_frame(short whatframe)
 {
 	frame = whatframe;
 
-	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
+	const PixieData& data = active_screen()->level_data.myloader->graphics[PIX(order, family)];
 	bmp = data.data.get() + frame*size;
 
 }
@@ -323,7 +333,7 @@ void treasure::set_direct_frame(short whatframe)
 // Finds the next connected teleporter in the fxlist for you to warp to.
 walker  * treasure::find_teleport_target()
 {
-	auto& ls = myscreen->level_data.fxlist;
+	auto& ls = active_screen()->level_data.fxlist;
 	//Log("Teleporting from #%d ..", number);
 
 	// First find where we are in the list ...
@@ -368,4 +378,3 @@ walker  * treasure::find_teleport_target()
 
 	return nullptr;
 }
-
