@@ -3201,6 +3201,9 @@ int level_editor_test_exercise_internal_helpers()
         (void)data.reloadCampaign();
         (void)data.loadLevel(1);
         (void)data.reloadLevel();
+        (void)data.saveLevel();
+        (void)data.saveLevelAs(1);
+        (void)data.saveCampaign();
 
         data.level->create_new_grid();
         data.clear_terrain();
