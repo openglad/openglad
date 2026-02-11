@@ -27,6 +27,9 @@ void test_level_data_clear()
     TEST_ASSERT_EQ(0, (int)myscreen->level_data.topx, "topx reset");
     TEST_ASSERT_EQ(0, (int)myscreen->level_data.topy, "topy reset");
     TEST_ASSERT_EQ(0, (int)myscreen->level_data.numobs, "numobs reset");
+    TEST_ASSERT(myscreen->level_data.oblist.empty(), "oblist reset");
+    TEST_ASSERT(myscreen->level_data.fxlist.empty(), "fxlist reset");
+    TEST_ASSERT(myscreen->level_data.weaplist.empty(), "weaplist reset");
 
     // Restore grid for other tests
     myscreen->level_data.create_new_grid();
@@ -193,12 +196,14 @@ void test_level_data_delete_objects()
     myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
     myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
     myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    myscreen->level_data.dead_list.push_back(std::unique_ptr<walker>(myscreen->level_data.myloader->create_walker(Order::Living, FAMILY_ORC, myscreen)));
 
     myscreen->level_data.delete_objects();
 
     TEST_ASSERT(myscreen->level_data.oblist.empty(), "oblist empty");
     TEST_ASSERT(myscreen->level_data.fxlist.empty(), "fxlist empty");
     TEST_ASSERT(myscreen->level_data.weaplist.empty(), "weaplist empty");
+    TEST_ASSERT(myscreen->level_data.dead_list.empty(), "dead_list empty");
     TEST_ASSERT_EQ(0, myscreen->level_data.numobs, "numobs 0");
 }
 REGISTER_TEST(test_level_data_delete_objects);
@@ -247,8 +252,17 @@ void test_level_data_get_description_line()
     TEST_ASSERT(myscreen->level_data.get_description_line(1) == "Line 2", "line 1");
     TEST_ASSERT(myscreen->level_data.get_description_line(2) == "Line 3", "line 2");
     TEST_ASSERT(myscreen->level_data.get_description_line(10) == "", "out of bounds returns empty");
+    TEST_ASSERT(myscreen->level_data.get_description_line(-1) == "Line 1", "negative index returns first line");
 
     myscreen->level_data.description.clear();
+
+    CampaignData c("org.openglad.tests");
+    c.description.clear();
+    c.description.push_back("Campaign 1");
+    c.description.push_back("Campaign 2");
+    TEST_ASSERT(c.getDescriptionLine(0) == "Campaign 1", "campaign line 0");
+    TEST_ASSERT(c.getDescriptionLine(1) == "Campaign 2", "campaign line 1");
+    TEST_ASSERT(c.getDescriptionLine(10) == "", "campaign out of range");
 }
 REGISTER_TEST(test_level_data_get_description_line);
 

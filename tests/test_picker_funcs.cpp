@@ -6,6 +6,7 @@
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);
 const char* family_name_copy(short family);
+const char* get_family_string(short family);
 const char* get_training_cost_rating(unsigned char family, int stat);
 const char* get_random_name(unsigned char family);
 bool has_name_in_team(const char* name);
@@ -82,6 +83,10 @@ void test_family_name_copy_all_families()
         TEST_ASSERT(name != nullptr, "family name should not be null");
         TEST_ASSERT(strlen(name) > 0, "family name should not be empty");
     }
+
+    TEST_ASSERT(std::string(family_name_copy(FAMILY_BIG_ORC)) == "ORC CAP.", "big orc short label");
+    TEST_ASSERT(std::string(get_family_string(FAMILY_BIG_ORC)) == "ORC CAPTAIN", "big orc full label");
+    TEST_ASSERT(std::string(get_family_string(255)) == "BEAST", "unknown family full label fallback");
 }
 REGISTER_TEST(test_family_name_copy_all_families);
 
@@ -149,6 +154,9 @@ void test_get_random_name_all_families()
         TEST_ASSERT(name != nullptr, "random name should not be null for any family");
         TEST_ASSERT(strlen(name) > 0, "random name should not be empty for any family");
     }
+
+    TEST_ASSERT(get_new_name(FAMILY_SOLDIER) != nullptr, "new name should not be null");
+    TEST_ASSERT(strlen(get_new_name(FAMILY_SOLDIER)) > 0, "new name should not be empty");
 }
 REGISTER_TEST(test_get_random_name_all_families);
 
@@ -164,6 +172,15 @@ void test_has_name_in_team_empty()
 
     bool result = has_name_in_team("TestName");
     TEST_ASSERT(!result, "empty team should not have any names");
+
+    guy* g = new guy(FAMILY_SOLDIER);
+    g->name = "TestName";
+    myscreen->save_data.team_list[0] = g;
+    myscreen->save_data.team_size = 1;
+    TEST_ASSERT(has_name_in_team("TestName"), "has_name_in_team should detect existing name");
+    TEST_ASSERT(!has_name_in_team("OtherName"), "has_name_in_team should reject missing name");
+    delete g;
+    myscreen->save_data.team_list[0] = nullptr;
 
     myscreen->save_data.team_size = orig_size;
 }

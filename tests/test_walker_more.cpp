@@ -19,7 +19,10 @@ static walker* create_living(char family)
 void test_walker_misc_methods_smoke()
 {
     walker* w = create_living(FAMILY_SOLDIER);
+    walker* nearby = create_living(FAMILY_ORC);
     TEST_ASSERT(w != nullptr, "create_walker(soldier) should succeed");
+    TEST_ASSERT(nearby != nullptr, "create_walker(orc) should succeed");
+    nearby->setxy(64, 64);
 
     // Basic movement helpers (should not crash).
     w->move(1, 0);
@@ -32,11 +35,25 @@ void test_walker_misc_methods_smoke()
     // Path helpers and distance checks.
     TEST_ASSERT(w->distance_to_ob(w) == 0.0f, "distance to self should be 0");
     (void)w->distance_to_ob_center(w);
+    (void)w->get_current_angle();
+    (void)w->query_old_act_type();
+    (void)w->spaces_clear();
+    (void)w->query_team_color();
 
     // Order/family reassignment and simple state transitions.
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     w->set_act_type(0);
     (void)w->query_act_type();
+    w->set_old_act_type(1);
+    (void)w->restore_act_type();
+    (void)w->init_fire();
+    (void)w->init_fire(1, 0);
+    (void)w->fire_check(1, 0);
+    (void)w->teleport_ranged(16);
+    (void)w->turn_undead(8, 1);
+    w->center_on(nearby);
+    w->set_direct_frame(0);
+    (void)w->check_special();
 
     // Reset is a large code path; smoke it to improve coverage.
     w->reset();
@@ -44,6 +61,7 @@ void test_walker_misc_methods_smoke()
     w->set_difficulty(2);
 
     delete w;
+    delete nearby;
 }
 REGISTER_TEST(test_walker_misc_methods_smoke);
 
@@ -98,6 +116,9 @@ void test_walker_specials_and_render_paths_smoke()
     (void)w->draw_tile(v);
     w->animate();
     w->set_difficulty(1);
+    w->set_direct_frame(0);
+    (void)w->query_team_color();
+    (void)w->query_old_act_type();
 
     delete w; // deletes myguy
 }

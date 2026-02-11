@@ -107,10 +107,63 @@ static int editor_injector_thread(void* data)
     // Trigger resmooth (F5) and palette load (F9) paths.
     inject_key_press(SDLK_F5, 10);
     inject_key_press(SDLK_F9, 10);
+    inject_key_press(SDLK_g, 10);
+    inject_key_press(SDLK_0, 10);
+    inject_key_press(SDLK_1, 10);
+    inject_key_press(SDLK_2, 10);
+    inject_key_press(SDLK_3, 10);
+    inject_key_press(SDLK_4, 10);
+    inject_key_press(SDLK_5, 10);
+    inject_key_press(SDLK_6, 10);
+    inject_key_press(SDLK_7, 10);
+    inject_key_press(SDLK_w, 10);
+    inject_key_press(SDLK_a, 10);
+    inject_key_press(SDLK_s, 10);
+    inject_key_press(SDLK_d, 10);
+
+    // File menu paths.
+    SDL_Delay(30);
+    inject_click(15, 10, 20);   // File
+    SDL_Delay(30);
+    inject_click(15, 25, 20);   // Campaign >
+    SDL_Delay(30);
+    inject_click(85, 25, 20);   // New
+    inject_click(85, 45, 20);   // Import...
+    inject_click(85, 65, 20);   // Share...
+    inject_click(85, 85, 20);   // Load...
+    inject_click(85, 105, 20);  // Save
+    inject_click(85, 125, 20);  // Save As...
+    SDL_Delay(30);
+    inject_click(15, 10, 20);   // File
+    SDL_Delay(30);
+    inject_click(15, 45, 20);   // Level >
+    SDL_Delay(30);
+    inject_click(85, 45, 20);   // New
+    inject_click(85, 65, 20);   // Load...
+    inject_click(85, 85, 20);   // Save
+    inject_click(85, 105, 20);  // Save As...
 
     // Force the ESC quit prompt path (TESTING returns default without blocking).
     levelchanged = 1;
     campaignchanged = 1;
+
+    // Right-click pick path.
+    SDL_Event right_down{};
+    right_down.type = SDL_MOUSEBUTTONDOWN;
+    right_down.button.button = SDL_BUTTON_RIGHT;
+    right_down.button.state = SDL_PRESSED;
+    right_down.button.x = 120;
+    right_down.button.y = 100;
+    SDL_PushEvent(&right_down);
+    SDL_Delay(10);
+    SDL_Event right_up{};
+    right_up.type = SDL_MOUSEBUTTONUP;
+    right_up.button.button = SDL_BUTTON_RIGHT;
+    right_up.button.state = SDL_RELEASED;
+    right_up.button.x = 120;
+    right_up.button.y = 100;
+    SDL_PushEvent(&right_up);
+
     inject_key_press(SDLK_ESCAPE, 10);
 
     // Exercise a click in the main window.
