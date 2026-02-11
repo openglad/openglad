@@ -82,6 +82,36 @@ static int options_injector(void* data)
         interact("toggle_gore");
         SDL_Delay(200);
 
+        fprintf(stderr, "  [test] toggling sound/render/fullscreen\n");
+        interact("toggle_sound");
+        SDL_Delay(200);
+        interact("toggle_rendering");
+        SDL_Delay(200);
+        interact("toggle_fullscreen");
+        SDL_Delay(200);
+
+        fprintf(stderr, "  [test] adjusting overscan\n");
+        interact("overscan_plus");
+        SDL_Delay(200);
+        interact("overscan_minus");
+        SDL_Delay(200);
+
+        fprintf(stderr, "  [test] toggling additional effects\n");
+        interact("toggle_mini_hp_bar");
+        SDL_Delay(200);
+        interact("toggle_hit_recoil");
+        SDL_Delay(200);
+        interact("toggle_attack_lunge");
+        SDL_Delay(200);
+        interact("toggle_hit_sparks");
+        SDL_Delay(200);
+        interact("toggle_heal_numbers");
+        SDL_Delay(200);
+
+        fprintf(stderr, "  [test] restoring defaults\n");
+        interact("restore_defaults");
+        SDL_Delay(200);
+
         // Click BACK to return to main menu
         fprintf(stderr, "  [test] clicking options_back\n");
         interact("options_back");

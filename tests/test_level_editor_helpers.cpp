@@ -5,6 +5,7 @@
 #include "test_framework.h"
 
 #include <string>
+#include <set>
 #include <unistd.h>
 
 extern screen* myscreen;
@@ -17,6 +18,8 @@ Sint32 check_collide(Sint32 x, Sint32 y, Sint32 xsize, Sint32 ysize,
 walker* some_hit(Sint32 x, Sint32 y, walker* ob, LevelData* data);
 bool create_new_campaign(const std::string& campaign_id);
 bool does_campaign_exist(const std::string& campaign_id);
+bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
+void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems);
 
 static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned char c, unsigned char d)
 {
@@ -143,7 +146,35 @@ void test_level_editor_create_new_campaign_and_detect_exists()
     TEST_ASSERT(create_new_campaign(id), "create_new_campaign should succeed");
     TEST_ASSERT(does_campaign_exist(id), "campaign should exist after create");
 
+    // Exercise recursive graph traversal over level exits in a real campaign.
+    std::list<int> levels{1, 2, 3, 4, 5};
+    std::set<int> connected;
+    std::list<std::string> problems;
+    get_connected_level_exits(1, levels, connected, problems);
+    TEST_ASSERT(connected.find(1) != connected.end(), "connected set should include starting level");
+
+    // Error path for missing level id.
+    std::set<int> missing_connected;
+    std::list<std::string> missing_problems;
+    get_connected_level_exits(9999, levels, missing_connected, missing_problems);
+    TEST_ASSERT(!missing_problems.empty(), "missing level should report at least one problem");
+
+    // Area bounds checks for inside/outside object detection.
+    myscreen->level_data.create_new_grid();
+    walker* inside = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* outside = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(inside != nullptr && outside != nullptr, "test objects should be created");
+    if (inside && outside) {
+        inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+        outside->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
+        TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+                    "outside object should be detected");
+        outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
+        TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
+                    "all objects inside area should report false");
+    }
+    myscreen->level_data.delete_objects();
+
     delete_campaign(id);
 }
 REGISTER_TEST(test_level_editor_create_new_campaign_and_detect_exists);
-
