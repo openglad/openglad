@@ -23,6 +23,9 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h);
 void get_connected_level_exits(int current_level, const std::list<int>& levels, std::set<int>& connected, std::list<std::string>& problems);
 std::string get_editor_family_label(Order order, char family, char livings[][20], const char* treasures[], const char* weapons[]);
 std::string get_editor_level_label(Order order, char family, int level);
+void importCampaignPicker();
+void shareCampaign(screen* myscreen);
+bool prompt_for_string(const std::string& message, std::string& result);
 
 static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned char c, unsigned char d)
 {
@@ -82,6 +85,12 @@ void test_level_editor_set_screen_pos_and_tile_matching()
     TEST_ASSERT(get_editor_level_label(Order::Weapon, FAMILY_DOOR, 6) == "DOOR ID: 6", "weapon door label");
     TEST_ASSERT(get_editor_level_label(Order::Weapon, FAMILY_KNIFE, 8) == "POWER: 8", "weapon power label");
     TEST_ASSERT(get_editor_level_label(static_cast<Order>(255), FAMILY_KNIFE, 8).empty(), "unknown order has empty level label");
+
+    importCampaignPicker();
+    shareCampaign(myscreen);
+    std::string name = "Default";
+    TEST_ASSERT(prompt_for_string("Name", name), "prompt_for_string test-mode path should accept");
+
 }
 REGISTER_TEST(test_level_editor_set_screen_pos_and_tile_matching);
 

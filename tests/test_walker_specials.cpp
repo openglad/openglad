@@ -257,6 +257,7 @@ void test_walker_special_mage_energy_wave()
 
     set_global_context(nullptr);
     myscreen->level_data.delete_objects();
+
 }
 REGISTER_TEST(test_walker_special_mage_energy_wave);
 
@@ -440,6 +441,12 @@ void test_walker_special_no_magic()
     w->stats()->magicpoints = 0;
     bool result = w->special();
     TEST_ASSERT(!result, "no magic should fail special");
+
+    // Exercise default/base-class fallbacks near end of walker.cpp.
+    TEST_ASSERT(!w->eat_me(nullptr), "non-treasure walker eat_me fallback should return false");
+    (void)w->do_summon(0, 0); // May be overridden by concrete families; call for coverage.
+    (void)w->check_special(); // May be overridden by concrete families; call for coverage.
+
     delete w;
 }
 REGISTER_TEST(test_walker_special_no_magic);
