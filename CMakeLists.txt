@@ -375,6 +375,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_accessible_levels.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_timed_dialog.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_costs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_buffers.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
