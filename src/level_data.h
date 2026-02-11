@@ -40,6 +40,16 @@ class obmap;
 class CampaignData
 {
 public:
+    enum class IoError
+    {
+        None = 0,
+        PackageMountFailed,
+        OpenReadFailed,
+        OpenWriteFailed,
+        PackageUnpackFailed,
+        PackageRepackFailed,
+        ParseFailed
+    };
     
     std::string id;
     std::string title;
@@ -62,8 +72,15 @@ public:
     bool load();
     bool save();
     bool save_as(const std::string& new_id);
+    IoError load_with_error();
+    IoError save_with_error();
+    IoError save_as_with_error(const std::string& new_id);
+    IoError last_io_error() const { return last_io_error_; }
     
     std::string getDescriptionLine(int i);
+
+private:
+    IoError last_io_error_ = IoError::None;
 };
 
 

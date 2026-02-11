@@ -53,6 +53,7 @@ CampaignData::~CampaignData()
 
 bool CampaignData::load()
 {
+    last_io_error_ = IoError::None;
     std::string old_campaign = get_mounted_campaign();
     unmount_campaign_package(old_campaign);
     
@@ -60,11 +61,19 @@ bool CampaignData::load()
     if(mount_campaign_package(id))
     {
         SDL_RWops* rwops = open_read_file("campaign.yaml");
+        if(rwops == nullptr)
+        {
+            last_io_error_ = IoError::OpenReadFailed;
+            unmount_campaign_package(id);
+            mount_campaign_package(old_campaign);
+            return false;
+        }
         
         Yam yam;
         yam.set_input(rwops_read_handler, rwops);
         
-        while(yam.parse_next() == Yam::OK)
+        int parse_result = Yam::OK;
+        while((parse_result = yam.parse_next()) == Yam::OK)
         {
             switch(yam.event.type)
             {
@@ -91,6 +100,8 @@ bool CampaignData::load()
                     break;
             }
         }
+        if(parse_result == Yam::ERROR)
+            last_io_error_ = IoError::ParseFailed;
         
         yam.close_input();
         SDL_RWclose(rwops);
@@ -109,14 +120,19 @@ bool CampaignData::load()
         
         unmount_campaign_package(id);
     }
+    else
+    {
+        last_io_error_ = IoError::PackageMountFailed;
+    }
     
     mount_campaign_package(old_campaign);
     
-    return true;
+    return (last_io_error_ == IoError::None);
 }
 
 bool CampaignData::save()
 {
+    last_io_error_ = IoError::None;
     cleanup_unpacked_campaign();
     
     bool result = true;
@@ -164,6 +180,7 @@ bool CampaignData::save()
         {
             Log("Couldn't open temp/campaign.yaml for writing.\n");
             result = false;
+            last_io_error_ = IoError::OpenWriteFailed;
         }
         
         if(result)
@@ -176,6 +193,7 @@ bool CampaignData::save()
             {
                 Log("Save failed: Could not repack campaign: {}\n", id);
                 result = false;
+                last_io_error_ = IoError::PackageRepackFailed;
             }
         }
 
@@ -186,14 +204,18 @@ bool CampaignData::save()
     {
         Log("Save failed: Could not unpack campaign: {}\n", id);
         result = false;
+        last_io_error_ = IoError::PackageUnpackFailed;
     }
     cleanup_unpacked_campaign();
     
+    if(result)
+        last_io_error_ = IoError::None;
     return result;
 }
 
 bool CampaignData::save_as(const std::string& new_id)
 {
+    last_io_error_ = IoError::None;
     cleanup_unpacked_campaign();
     
     bool result = true;
@@ -240,6 +262,7 @@ bool CampaignData::save_as(const std::string& new_id)
         {
             Log("Couldn't open temp/campaign.yaml for writing.\n");
             result = false;
+            last_io_error_ = IoError::OpenWriteFailed;
         }
         
         // Repack the campaign
@@ -255,6 +278,7 @@ bool CampaignData::save_as(const std::string& new_id)
             {
                 Log("Save failed: Could not repack campaign: {}\n", id);
                 result = false;
+                last_io_error_ = IoError::PackageRepackFailed;
             }
         }
     }
@@ -262,10 +286,31 @@ bool CampaignData::save_as(const std::string& new_id)
     {
         Log("Save failed: Could not unpack campaign: {}\n", id);
         result = false;
+        last_io_error_ = IoError::PackageUnpackFailed;
     }
     cleanup_unpacked_campaign();
     
+    if(result)
+        last_io_error_ = IoError::None;
     return result;
+}
+
+CampaignData::IoError CampaignData::load_with_error()
+{
+    load();
+    return last_io_error_;
+}
+
+CampaignData::IoError CampaignData::save_with_error()
+{
+    save();
+    return last_io_error_;
+}
+
+CampaignData::IoError CampaignData::save_as_with_error(const std::string& new_id)
+{
+    save_as(new_id);
+    return last_io_error_;
 }
 
 std::string CampaignData::getDescriptionLine(int i)
