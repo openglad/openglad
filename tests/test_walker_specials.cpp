@@ -442,10 +442,12 @@ void test_walker_special_no_magic()
     bool result = w->special();
     TEST_ASSERT(!result, "no magic should fail special");
 
-    // Exercise default/base-class fallbacks near end of walker.cpp.
-    TEST_ASSERT(!w->eat_me(nullptr), "non-treasure walker eat_me fallback should return false");
-    (void)w->do_summon(0, 0); // May be overridden by concrete families; call for coverage.
-    (void)w->check_special(); // May be overridden by concrete families; call for coverage.
+    // Exercise base-class fallback implementations explicitly.
+    TEST_ASSERT_EQ(-1, (int)w->walker::shove(nullptr, 0, 0), "base shove should return -1");
+    TEST_ASSERT_EQ(-1, (int)w->walker::shove(w, 1, 0), "base shove log path should still return -1");
+    TEST_ASSERT(!w->walker::eat_me(nullptr), "base eat_me fallback should return false");
+    TEST_ASSERT(w->walker::do_summon(1, 10) == nullptr, "base do_summon fallback should return null");
+    TEST_ASSERT(!w->walker::check_special(), "base check_special fallback should return false");
 
     delete w;
 }

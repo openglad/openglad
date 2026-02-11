@@ -26,6 +26,7 @@ std::string get_editor_level_label(Order order, char family, int level);
 void importCampaignPicker();
 void shareCampaign(screen* myscreen);
 bool prompt_for_string(const std::string& message, std::string& result);
+int level_editor_test_exercise_internal_helpers();
 
 static bool in_set(unsigned char v, unsigned char a, unsigned char b, unsigned char c, unsigned char d)
 {
@@ -90,6 +91,7 @@ void test_level_editor_set_screen_pos_and_tile_matching()
     shareCampaign(myscreen);
     std::string name = "Default";
     TEST_ASSERT(prompt_for_string("Name", name), "prompt_for_string test-mode path should accept");
+    TEST_ASSERT(level_editor_test_exercise_internal_helpers() > 0, "internal helper exerciser should run");
 
 }
 REGISTER_TEST(test_level_editor_set_screen_pos_and_tile_matching);

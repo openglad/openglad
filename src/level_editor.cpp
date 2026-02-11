@@ -3168,6 +3168,78 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
 	return false;
 }
 
+#ifdef TESTING
+int level_editor_test_exercise_internal_helpers()
+{
+    int score = 0;
+
+    Rect r;
+    if (!r.contains(1, 1))
+        score++;
+
+    Rectf rf_pos(10.0f, 10.0f, 5.0f, 5.0f);
+    Rectf rf_neg(10.0f, 10.0f, -5.0f, -5.0f);
+    if (rf_pos.contains(12.0f, 12.0f))
+        score++;
+    if (rf_neg.contains(8.0f, 8.0f))
+        score++;
+
+    SimpleButton btn("X", 0, 0, 20, 10);
+    if (btn.contains(1, 1))
+        score++;
+    btn.set_colors_disabled();
+    btn.set_colors_active();
+
+    EditorObjectBrush brush;
+    brush.set(nullptr);
+    if (brush.order == Order::Living && brush.family == 0)
+        score++;
+
+    {
+        LevelEditorData data;
+        (void)data.loadCampaign("org.openglad.gladiator");
+        (void)data.reloadCampaign();
+        (void)data.loadLevel(1);
+        (void)data.reloadLevel();
+
+        data.level->create_new_grid();
+        data.clear_terrain();
+        data.resmooth_terrain();
+
+        data.set_terrain(0, 0, PIX_GRASS2);
+        if (data.get_terrain(0, 0) == PIX_GRASS2)
+            score++;
+        if (data.get_terrain(-1, -1) == 0)
+            score++;
+
+        walker* inside = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+        if (inside != nullptr)
+        {
+            inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+
+            SelectionInfo sel(inside);
+            sel.set(inside);
+            if (sel.get_object(data.level) == inside)
+                score++;
+
+            std::vector<SelectionInfo> selection;
+            Rectf area(static_cast<float>(inside->xpos - 4),
+                       static_cast<float>(inside->ypos - 4),
+                       static_cast<float>(inside->sizex + 8),
+                       static_cast<float>(inside->sizey + 8));
+            add_contained_objects_to_selection(data.level, area, selection);
+            if (is_in_selection(inside, selection))
+                score++;
+
+            if (data.get_object(inside->xpos, inside->ypos) == inside)
+                score++;
+        }
+    }
+
+    return score;
+}
+#endif
+
 std::string get_editor_family_label(Order order, char family, char livings[][20], const char* treasures[], const char* weapons[])
 {
     if (order == Order::Living)
