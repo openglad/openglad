@@ -385,6 +385,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_glad_hud.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_keybinds.cpp
         )
 
         # Game sources include test_trace.cpp when TESTING is defined
