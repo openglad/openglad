@@ -89,3 +89,39 @@ void test_io_mount_unmount_campaign_invalid_id_paths()
 }
 REGISTER_TEST(test_io_mount_unmount_campaign_invalid_id_paths);
 
+void test_io_mount_unmount_campaign_typed_errors()
+{
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId),
+        static_cast<int>(mount_campaign_package_with_error("")),
+        "mount_campaign_package_with_error(\"\") should return EmptyId");
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::MountFailed),
+        static_cast<int>(mount_campaign_package_with_error("definitely.not.a.campaign")),
+        "mount invalid campaign should return MountFailed");
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+        static_cast<int>(unmount_campaign_package_with_error("")),
+        "unmount_campaign_package_with_error(\"\") should return None");
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::EmptyId),
+        static_cast<int>(remount_campaign_package_with_error()),
+        "remount with no mounted campaign should return EmptyId");
+}
+REGISTER_TEST(test_io_mount_unmount_campaign_typed_errors);
+
+void test_io_zip_unzip_typed_errors()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_typed_" + std::to_string(::getpid()));
+    fs::path indir = base / "typed_in";
+    fs::path zipfile = base / "typed_bundle.zip";
+    fs::path missing_zip = base / "does_not_exist.zip";
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir typed_in should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "a.txt").string(), "A"), "write typed a.txt");
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "zip_contents_with_error should return None on success");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed),
+        static_cast<int>(unzip_into_with_error(missing_zip.string(), (base / "typed_out").string())),
+        "unzip_into_with_error should return OpenArchiveFailed for missing archive");
+}
+REGISTER_TEST(test_io_zip_unzip_typed_errors);

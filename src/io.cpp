@@ -224,45 +224,90 @@ std::string get_mounted_campaign()
     return mounted_campaign;
 }
 
-bool mount_campaign_package(const std::string& id)
+namespace {
+const char* campaign_io_error_string(CampaignPackageIoError err)
+{
+    switch (err) {
+        case CampaignPackageIoError::None: return "none";
+        case CampaignPackageIoError::EmptyId: return "empty_id";
+        case CampaignPackageIoError::MountFailed: return "mount_failed";
+        case CampaignPackageIoError::UnmountFailed: return "unmount_failed";
+    }
+    return "unknown";
+}
+
+const char* archive_io_error_string(ArchiveIoError err)
+{
+    switch (err) {
+        case ArchiveIoError::None: return "none";
+        case ArchiveIoError::OpenArchiveFailed: return "open_archive_failed";
+        case ArchiveIoError::AddEntryFailed: return "add_entry_failed";
+        case ArchiveIoError::OpenEntryFailed: return "open_entry_failed";
+        case ArchiveIoError::OpenOutputFailed: return "open_output_failed";
+        case ArchiveIoError::ReadEntryFailed: return "read_entry_failed";
+        case ArchiveIoError::CloseArchiveFailed: return "close_archive_failed";
+    }
+    return "unknown";
+}
+} // namespace
+
+CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
 {
     if(id.size() == 0)
-        return false;
+        return CampaignPackageIoError::EmptyId;
 
     Log("Mounting campaign package: {}", id);
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_mount(filename.c_str(), nullptr, 0))
     {
-        LogError("Failed to mount campaign {}: {}\n", filename, PHYSFS_getLastError());
+        LogError("campaign_mount_failed id={} path={} code={} physfs={}\n",
+            id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), PHYSFS_getLastError());
         mounted_campaign.clear();
-        return false;
+        return CampaignPackageIoError::MountFailed;
     }
     mounted_campaign = id;
-    return true;
+    return CampaignPackageIoError::None;
 }
 
-bool unmount_campaign_package(const std::string& id)
+CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id)
 {
     if(id.size() == 0)
-        return true;
+        return CampaignPackageIoError::None;
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
     if(!PHYSFS_removeFromSearchPath(filename.c_str()))
     {
-        LogError("Failed to unmount campaign file {}: {}\n", filename, PHYSFS_getLastError());
-        return false;
+        LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
+            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), PHYSFS_getLastError());
+        return CampaignPackageIoError::UnmountFailed;
     }
     mounted_campaign.clear();
-    return true;
+    return CampaignPackageIoError::None;
+}
+
+CampaignPackageIoError remount_campaign_package_with_error()
+{
+    std::string id = get_mounted_campaign();
+    CampaignPackageIoError unmount_error = unmount_campaign_package_with_error(id);
+    if(unmount_error != CampaignPackageIoError::None)
+        return unmount_error;
+    return mount_campaign_package_with_error(id);
+}
+
+bool mount_campaign_package(const std::string& id)
+{
+    return mount_campaign_package_with_error(id) == CampaignPackageIoError::None;
+}
+
+bool unmount_campaign_package(const std::string& id)
+{
+    return unmount_campaign_package_with_error(id) == CampaignPackageIoError::None;
 }
 
 bool remount_campaign_package()
 {
-    std::string id = get_mounted_campaign();
-    if(!unmount_campaign_package(id))
-        return false;
-    return mount_campaign_package(id);
+    return remount_campaign_package_with_error() == CampaignPackageIoError::None;
 }
 
 std::list<std::string> list_campaigns()
@@ -629,7 +674,7 @@ std::list<std::string> list_paths_recursively(const std::string& dirname)
     return ls;
 }
 
-bool zip_contents(const std::string& indirectory, const std::string& outfile)
+ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile)
 {
     std::string indir = indirectory;
     if(indir.size() > 0 && indir[indir.size()-1] != '/')
@@ -639,9 +684,10 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
     int err = 0;
     zip* archive = zip_open(outfile.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
     if(archive == nullptr)
-        return false;
+        return ArchiveIoError::OpenArchiveFailed;
     
-    struct zip_source *s;
+    struct zip_source *s = nullptr;
+    bool add_failed = false;
 
     std::list<std::string> files = list_paths_recursively(indir);
     for(auto& file : files)
@@ -653,7 +699,9 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
         {
             if(zip_dir_add(archive, dest_name.c_str(), ZIP_FL_ENC_GUESS) < 0)
             {
-                LogError("Error adding dir to zip: {}\n", zip_strerror(archive));
+                LogError("zip_add_entry_failed src={} dest={} code={} err={}\n",
+                    src_name, dest_name, archive_io_error_string(ArchiveIoError::AddEntryFailed), zip_strerror(archive));
+                add_failed = true;
             }
         }
         else
@@ -661,18 +709,23 @@ bool zip_contents(const std::string& indirectory, const std::string& outfile)
             if((s=zip_source_file(archive, src_name.c_str(), 0, -1)) == nullptr || zip_file_add(archive, dest_name.c_str(), s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
             {
                 zip_source_free(s);
-                LogError("Error adding file to zip: {}\n", zip_strerror(archive));
+                LogError("zip_add_entry_failed src={} dest={} code={} err={}\n",
+                    src_name, dest_name, archive_io_error_string(ArchiveIoError::AddEntryFailed), zip_strerror(archive));
+                add_failed = true;
             }
         }
     }
 
     if(zip_close(archive) < 0)
     {
-        LogError("Error flushing zip file output: {}\n", zip_strerror(archive));
-        return false;
+        LogError("zip_close_failed out={} code={} err={}\n",
+            outfile, archive_io_error_string(ArchiveIoError::CloseArchiveFailed), zip_strerror(archive));
+        return ArchiveIoError::CloseArchiveFailed;
     }
-    
-    return true;
+
+    if(add_failed)
+        return ArchiveIoError::AddEntryFailed;
+    return ArchiveIoError::None;
 }
 
 
@@ -727,7 +780,7 @@ bool create_dir(const std::string& dirname)
     return (mkpath(dirname.c_str(), 0755) >= 0);
 }
 
-bool unzip_into(const std::string& infile, const std::string& outdirectory)
+ArchiveIoError unzip_into_with_error(const std::string& infile, const std::string& outdirectory)
 {
     std::string outdir = outdirectory;
     if(outdir.size() > 0 && outdir[outdir.size()-1] != '/')
@@ -738,12 +791,13 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
     int err = 0;
     zip* archive = zip_open(infile.c_str(), 0, &err);
     if(archive == nullptr)
-        return false;
+        return ArchiveIoError::OpenArchiveFailed;
     
     struct zip_stat status;
     struct zip_file* file;
     int buf_size = 512;
     char buf[buf_size];
+    ArchiveIoError result = ArchiveIoError::None;
     
     for(int i = 0; i < zip_get_num_entries(archive, 0); i++)
     {
@@ -760,7 +814,9 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
                 file = zip_fopen_index(archive, i, 0);
                 if(file == nullptr)
                 {
-                    // Error
+                    LogError("unzip_open_entry_failed zip={} entry={} code={}\n",
+                        infile, status.name, archive_io_error_string(ArchiveIoError::OpenEntryFailed));
+                    result = ArchiveIoError::OpenEntryFailed;
                     continue;
                 }
 
@@ -769,7 +825,10 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
                 SDL_RWops* rwops = open_write_file(outdir.c_str(), status.name);
                 if(rwops == nullptr)
                 {
-                    // Error
+                    LogError("unzip_open_output_failed zip={} out={} code={}\n",
+                        infile, filepath, archive_io_error_string(ArchiveIoError::OpenOutputFailed));
+                    zip_fclose(file);
+                    result = ArchiveIoError::OpenOutputFailed;
                     continue;
                 }
  
@@ -779,8 +838,10 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
                     len = zip_fread(file, buf, buf_size);
                     if(len < 0)
                     {
-                        // Error
-                        
+                        LogError("unzip_read_entry_failed zip={} entry={} code={}\n",
+                            infile, status.name, archive_io_error_string(ArchiveIoError::ReadEntryFailed));
+                        result = ArchiveIoError::ReadEntryFailed;
+                        break;
                     }
                     SDL_RWwrite(rwops, buf, 1, len);
                     sum += len;
@@ -791,11 +852,28 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
         }
         else
         {
-            // Error
+            result = ArchiveIoError::OpenEntryFailed;
         }
     }
-    
-    return (zip_close(archive) >= 0);
+
+    if(zip_close(archive) < 0)
+    {
+        LogError("unzip_close_failed zip={} code={} err={}\n",
+            infile, archive_io_error_string(ArchiveIoError::CloseArchiveFailed), zip_strerror(archive));
+        return ArchiveIoError::CloseArchiveFailed;
+    }
+
+    return result;
+}
+
+bool zip_contents(const std::string& indirectory, const std::string& outfile)
+{
+    return zip_contents_with_error(indirectory, outfile) == ArchiveIoError::None;
+}
+
+bool unzip_into(const std::string& infile, const std::string& outdirectory)
+{
+    return unzip_into_with_error(infile, outdirectory) == ArchiveIoError::None;
 }
 
 bool create_new_map_pix(const std::string& filename, int w, int h)

@@ -40,6 +40,27 @@ std::list<std::string> list_files(const std::string& dirname);
 std::list<std::string> explode(const std::string& str, char delimiter = '\n');
 
 std::string get_mounted_campaign();
+
+enum class CampaignPackageIoError {
+    None = 0,
+    EmptyId,
+    MountFailed,
+    UnmountFailed,
+};
+
+enum class ArchiveIoError {
+    None = 0,
+    OpenArchiveFailed,
+    AddEntryFailed,
+    OpenEntryFailed,
+    OpenOutputFailed,
+    ReadEntryFailed,
+    CloseArchiveFailed,
+};
+
+CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);
+CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id);
+CampaignPackageIoError remount_campaign_package_with_error();
 bool mount_campaign_package(const std::string& id);
 bool unmount_campaign_package(const std::string& id);
 bool remount_campaign_package();
@@ -59,6 +80,8 @@ void delete_campaign(const std::string& id);
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);
 
+ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile);
+ArchiveIoError unzip_into_with_error(const std::string& infile, const std::string& outdirectory);
 bool zip_contents(const std::string& indirectory, const std::string& outfile);
 bool unzip_into(const std::string& infile, const std::string& outdirectory);
 
@@ -80,4 +103,3 @@ iterT list_find(iterT begin, iterT end, const T& value)
         begin++;
     return begin;
 }
-
