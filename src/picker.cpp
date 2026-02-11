@@ -27,6 +27,7 @@
 #include "gparser.h"
 #include "campaign_picker.h"
 #include "level_picker.h"
+#include "game_context.h"
 #include <cstring>
 #include <format>
 #include <string>
@@ -157,6 +158,13 @@ char difficulty_names[DIFFICULTY_SETTINGS][80] =
         "Battle",
         "Slaughter",
     };  // end of difficulty names
+
+static cfg_store& active_config()
+{
+    if (ctx().config)
+        return *ctx().config;
+    return cfg;
+}
 
 // The mainmenu loop: keeps showing the main menu after submenus return.
 // quit() calls exit(0) directly, so we only re-enter here from submenu BACK.
@@ -3536,7 +3544,7 @@ void draw_toggle_effect_button(button& b, const std::string& category, const std
     if(b.hidden || b.no_draw)
         return;
     
-    if(cfg.is_on(category, setting))
+    if(active_config().is_on(category, setting))
         myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, LIGHT_GREEN);
     else
         myscreen->draw_button_colored(b.x-1, b.y-1, b.x + b.sizex, b.y + b.sizey, 1, RED);
@@ -3581,7 +3589,7 @@ Sint32 main_options()
         
         // Reset buttons
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-        buttons[2].label = cfg.get_setting("graphics", "render");
+        buttons[2].label = active_config().get_setting("graphics", "render");
         allbuttons[2]->label = buttons[2].label;
 		
 		// Draw
@@ -3617,8 +3625,8 @@ Sint32 main_options()
         SDL_Delay(10);
 	}
 	
-	myscreen->soundp->set_sound(!cfg.is_on("sound", "sound"));
-	cfg.save_settings();
+	myscreen->soundp->set_sound(!active_config().is_on("sound", "sound"));
+	active_config().save_settings();
     
     return REDRAW;
 }
