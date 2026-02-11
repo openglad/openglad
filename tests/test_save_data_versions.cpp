@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <string>
 
 #include "graph.h"
@@ -340,3 +341,59 @@ void test_save_data_load_with_error_campaign_mount_failure()
         "should remount default campaign after CampaignLoadFailed test");
 }
 REGISTER_TEST(test_save_data_load_with_error_campaign_mount_failure);
+
+void test_save_data_save_with_error_open_write_failed_for_missing_directory()
+{
+    const std::string bad_subdir = "save/typed_save_missing_dir";
+    std::error_code ec;
+    std::filesystem::remove_all(bad_subdir, ec);
+
+    SaveData tmp;
+    tmp.current_campaign = "org.openglad.gladiator";
+    SaveDataIoError err = tmp.save_with_error("typed_save_missing_dir/slot1");
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::OpenWriteFailed), static_cast<int>(err),
+        "save_with_error should report OpenWriteFailed for missing nested directory");
+}
+REGISTER_TEST(test_save_data_save_with_error_open_write_failed_for_missing_directory);
+
+void test_save_data_v9_roundtrip_preserves_campaign_progress_maps()
+{
+    SaveData src;
+    src.current_campaign = "org.openglad.gladiator";
+    src.current_levels.clear();
+    src.completed_levels.clear();
+    src.current_levels["org.openglad.gladiator"] = 1;
+    src.current_levels["org.openglad.other"] = 2;
+    src.completed_levels["org.openglad.gladiator"].insert(1);
+    src.completed_levels["org.openglad.gladiator"].insert(3);
+    src.completed_levels["org.openglad.other"].insert(2);
+
+    SaveDataIoError save_err = src.save_with_error("typed_save_roundtrip_v9");
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(save_err),
+        "save_with_error should succeed for roundtrip save");
+
+    SaveData loaded;
+    SaveDataIoError load_err = loaded.load_with_error("typed_save_roundtrip_v9");
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None), static_cast<int>(load_err),
+        "load_with_error should succeed for roundtrip save");
+
+    TEST_ASSERT(loaded.current_levels.count("org.openglad.gladiator") > 0,
+        "current_levels should include default campaign");
+    TEST_ASSERT_EQ(1, loaded.current_levels["org.openglad.gladiator"],
+        "default campaign current level should remain valid after reload");
+    TEST_ASSERT(loaded.current_levels.count("org.openglad.other") > 0,
+        "current_levels should include secondary campaign");
+    TEST_ASSERT_EQ(2, loaded.current_levels["org.openglad.other"],
+        "secondary campaign current level should roundtrip");
+    TEST_ASSERT(loaded.completed_levels.count("org.openglad.gladiator") > 0,
+        "completed_levels should include default campaign");
+    TEST_ASSERT(loaded.completed_levels["org.openglad.gladiator"].count(1) > 0,
+        "completed level 1 should roundtrip");
+    TEST_ASSERT(loaded.completed_levels["org.openglad.gladiator"].count(3) > 0,
+        "completed level 3 should roundtrip");
+    TEST_ASSERT(loaded.completed_levels.count("org.openglad.other") > 0,
+        "completed_levels should include secondary campaign");
+    TEST_ASSERT(loaded.completed_levels["org.openglad.other"].count(2) > 0,
+        "secondary campaign completed level should roundtrip");
+}
+REGISTER_TEST(test_save_data_v9_roundtrip_preserves_campaign_progress_maps);

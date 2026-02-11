@@ -57,6 +57,30 @@ static std::vector<uint8_t> make_scenario_blob_with_one_object(bool include_type
 }
 } // namespace
 
+namespace
+{
+struct EditorCampaignFixture
+{
+    std::string tmp_id;
+    std::string old_mounted_campaign;
+} g_editor_campaign_fixture;
+
+void setup_editor_campaign_fixture()
+{
+    g_editor_campaign_fixture.tmp_id =
+        std::string("org.openglad.test.editorfixture.") + std::to_string(::getpid());
+    g_editor_campaign_fixture.old_mounted_campaign = get_mounted_campaign();
+    delete_campaign(g_editor_campaign_fixture.tmp_id);
+}
+
+void teardown_editor_campaign_fixture()
+{
+    delete_campaign(g_editor_campaign_fixture.tmp_id);
+    if(!g_editor_campaign_fixture.old_mounted_campaign.empty())
+        (void)mount_campaign_package(g_editor_campaign_fixture.old_mounted_campaign);
+}
+} // namespace
+
 // ---------------------------------------------------------------------------
 // LevelData::clear
 // ---------------------------------------------------------------------------
@@ -445,3 +469,35 @@ void test_level_data_resize_grid_removes_offmap()
     myscreen->level_data.resize_grid(40, 60);
 }
 REGISTER_TEST(test_level_data_resize_grid_removes_offmap);
+
+void test_campaign_editor_save_load_and_remount_with_fixture()
+{
+    CampaignData src("org.openglad.gladiator");
+    TEST_ASSERT_EQ(static_cast<int>(CampaignData::IoError::None), static_cast<int>(src.load_with_error()),
+        "source campaign load_with_error should succeed");
+
+    src.title = "Editor Fixture Campaign";
+    src.description.clear();
+    src.description.push_back("editor fixture line");
+    TEST_ASSERT_EQ(static_cast<int>(CampaignData::IoError::None),
+        static_cast<int>(src.save_as_with_error(g_editor_campaign_fixture.tmp_id)),
+        "save_as_with_error should create fixture campaign");
+
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+        static_cast<int>(mount_campaign_package_with_error(g_editor_campaign_fixture.tmp_id)),
+        "fixture campaign mount should succeed");
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+        static_cast<int>(remount_campaign_package_with_error()),
+        "fixture campaign remount should succeed");
+
+    CampaignData loaded(g_editor_campaign_fixture.tmp_id);
+    TEST_ASSERT_EQ(static_cast<int>(CampaignData::IoError::None), static_cast<int>(loaded.load_with_error()),
+        "fixture campaign load_with_error should succeed");
+    TEST_ASSERT(loaded.title == "Editor Fixture Campaign", "fixture campaign title should persist");
+    TEST_ASSERT(loaded.getDescriptionLine(0) == "editor fixture line",
+        "fixture campaign description should persist");
+}
+REGISTER_TEST_WITH_FIXTURE(
+    test_campaign_editor_save_load_and_remount_with_fixture,
+    setup_editor_campaign_fixture,
+    teardown_editor_campaign_fixture);
