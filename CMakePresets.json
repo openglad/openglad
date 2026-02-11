@@ -48,6 +48,24 @@
       }
     },
     {
+      "name": "dev-debug-vcpkg",
+      "displayName": "Dev Debug (vcpkg toolchain)",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/dev-debug-vcpkg",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "dev-debug-conan",
+      "displayName": "Dev Debug (Conan toolchain)",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/dev-debug-conan",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/conan/conan_toolchain.cmake"
+      }
+    },
+    {
       "name": "web-emscripten",
       "displayName": "Web Emscripten",
       "generator": "Ninja",
@@ -77,6 +95,16 @@
     {
       "name": "ci-asan",
       "configurePreset": "ci-asan",
+      "jobs": 24
+    },
+    {
+      "name": "dev-debug-vcpkg",
+      "configurePreset": "dev-debug-vcpkg",
+      "jobs": 24
+    },
+    {
+      "name": "dev-debug-conan",
+      "configurePreset": "dev-debug-conan",
       "jobs": 24
     },
     {

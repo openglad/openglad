@@ -25,6 +25,30 @@ using gcc/g++ and pkg-config for SDL2 dependency detection.
    ./openglad
 
 
+=========================
+CMAKE BUILD (MODERN FLOW)
+=========================
+
+OpenGlad also supports CMake presets for development and CI-style builds.
+
+1. Configure and build (default debug preset):
+
+   cmake --preset dev-debug
+   cmake --build --preset dev-debug
+
+2. Optional vcpkg toolchain path:
+
+   export VCPKG_ROOT=/path/to/vcpkg
+   cmake --preset dev-debug-vcpkg
+   cmake --build --preset dev-debug-vcpkg
+
+3. Optional Conan toolchain path:
+
+   conan install . --output-folder=build/conan --build=missing
+   cmake --preset dev-debug-conan
+   cmake --build --preset dev-debug-conan
+
+
 ======================
 LEGACY: PREMAKE (OLD)
 ======================
@@ -85,4 +109,3 @@ The web build uses Emscripten to compile to WebAssembly, allowing the game to ru
    python3 -m http.server 8080
 
    Then open http://localhost:8080/index.html in your browser.
-
