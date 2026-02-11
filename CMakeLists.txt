@@ -97,6 +97,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/video.cpp
     ${SRC_DIR}/view.cpp
     ${SRC_DIR}/walker.cpp
+    ${SRC_DIR}/walker_combat.cpp
     ${SRC_DIR}/walker_movement.cpp
     ${SRC_DIR}/walker_pathing.cpp
     ${SRC_DIR}/weap.cpp
