@@ -9,17 +9,49 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # C standard for external C libraries
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED OFF)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Build options
 option(BUILD_TESTING "Build the test suite" OFF)
 option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
 option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" OFF)
+option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
+set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
 # The repo's documented coverage pipeline configures with ENABLE_COVERAGE=ON
 # and then invokes `ctest`, so ensure BUILD_TESTING is enabled in that mode.
 if(ENABLE_COVERAGE AND NOT BUILD_TESTING)
     set(BUILD_TESTING ON CACHE BOOL "Build the test suite" FORCE)
+endif()
+
+# --------------------------------------------------------------------------
+# Tooling targets for warnings/sanitizers (project sources only)
+# --------------------------------------------------------------------------
+
+add_library(project_warnings INTERFACE)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(project_warnings INTERFACE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic -Wconversion -Wshadow>
+        $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic -Wconversion -Wshadow>
+    )
+elseif(MSVC)
+    target_compile_options(project_warnings INTERFACE /W4 /permissive-)
+endif()
+
+add_library(project_sanitizers INTERFACE)
+if(ENABLE_SANITIZERS)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        if(EMSCRIPTEN)
+            message(WARNING "ENABLE_SANITIZERS is ON but EMSCRIPTEN build does not enable native sanitizers")
+        else()
+            string(REPLACE ";" "," SANITIZER_LIST "${SANITIZERS}")
+            target_compile_options(project_sanitizers INTERFACE -fno-omit-frame-pointer -fsanitize=${SANITIZER_LIST})
+            target_link_options(project_sanitizers INTERFACE -fsanitize=${SANITIZER_LIST})
+        endif()
+    else()
+        message(WARNING "ENABLE_SANITIZERS is ON but compiler is not GCC/Clang; ignoring sanitizer flags")
+    endif()
 endif()
 
 # --------------------------------------------------------------------------
@@ -253,6 +285,7 @@ set(COMMON_DEFINITIONS
 function(configure_openglad_target target)
     target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
+    target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
 
     if(EMSCRIPTEN)
         target_compile_options(${target} PRIVATE
@@ -267,7 +300,6 @@ function(configure_openglad_target target)
         pkg_check_modules(SDL2 REQUIRED sdl2 SDL2_mixer)
         target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
         target_link_libraries(${target} PRIVATE ${SDL2_LIBRARIES} m pthread)
-        target_compile_options(${target} PRIVATE -Wno-parentheses)
     endif()
 
     # Suppress warnings for external C code
