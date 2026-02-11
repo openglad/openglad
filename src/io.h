@@ -90,6 +90,17 @@ bool repack_campaign(const std::string& campaign_id);
 
 void cleanup_unpacked_campaign();
 
+enum class NewFileIoError {
+    None = 0,
+    InvalidDimensions,
+    OpenWriteFailed,
+    WriteFailed,
+};
+
+NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w, int h);
+NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int h, unsigned char fill_color = 0);
+NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename);
+NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string& gridname);
 bool create_new_map_pix(const std::string& filename, int w, int h);
 bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color = 0);
 bool create_new_campaign_descriptor(const std::string& filename);

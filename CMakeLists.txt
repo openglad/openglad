@@ -548,6 +548,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_input_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help_parsing.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_glad_hud.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_help_smoke.cpp
@@ -582,6 +583,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
         )
 

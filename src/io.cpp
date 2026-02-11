@@ -876,25 +876,46 @@ bool unzip_into(const std::string& infile, const std::string& outdirectory)
     return unzip_into_with_error(infile, outdirectory) == ArchiveIoError::None;
 }
 
-bool create_new_map_pix(const std::string& filename, int w, int h)
+namespace {
+bool write_rwops_exact(SDL_RWops* rwops, const void* data, size_t size, size_t count)
+{
+    return rwops && SDL_RWwrite(rwops, data, size, count) == count;
+}
+} // namespace
+
+NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w, int h)
 {
 	// File data in form:
 	// <# of frames>      1 byte
 	// <x size>                   1 byte
 	// <y size>                   1 byte
 	// <pixie data>               <x*y*frames> bytes
+	if (w <= 0 || h <= 0 || w > 255 || h > 255)
+        return NewFileIoError::InvalidDimensions;
 	
 	unsigned char c;
 	SDL_RWops* outfile = open_write_file(filename.c_str());
 	if(outfile == nullptr)
-        return false;
+        return NewFileIoError::OpenWriteFailed;
     
     c = 1;  // Frames
-	SDL_RWwrite(outfile, &c, 1, 1);
+	if(!write_rwops_exact(outfile, &c, 1, 1))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
     c = w;  // x size
-	SDL_RWwrite(outfile, &c, 1, 1);
+	if(!write_rwops_exact(outfile, &c, 1, 1))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
     c = h;  // y size
-	SDL_RWwrite(outfile, &c, 1, 1);
+	if(!write_rwops_exact(outfile, &c, 1, 1))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
 	
 	int size = w*h;
 	for(int i = 0; i < size; i++)
@@ -915,49 +936,71 @@ bool create_new_map_pix(const std::string& filename, int w, int h)
             c = PIX_GRASS4;
             break;
         }
-        SDL_RWwrite(outfile, &c, 1, 1);
+        if(!write_rwops_exact(outfile, &c, 1, 1))
+        {
+            SDL_RWclose(outfile);
+            return NewFileIoError::WriteFailed;
+        }
     }
     
     SDL_RWclose(outfile);
-    return true;
+    return NewFileIoError::None;
 }
 
-bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color)
+NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int h, unsigned char fill_color)
 {
 	// File data in form:
 	// <# of frames>      1 byte
 	// <x size>                   1 byte
 	// <y size>                   1 byte
 	// <pixie data>               <x*y*frames> bytes
+	if (w <= 0 || h <= 0 || w > 255 || h > 255)
+        return NewFileIoError::InvalidDimensions;
 	
 	unsigned char c;
 	SDL_RWops* outfile = open_write_file(filename.c_str());
 	if(outfile == nullptr)
-        return false;
+        return NewFileIoError::OpenWriteFailed;
     
     c = 1;  // Frames
-	SDL_RWwrite(outfile, &c, 1, 1);
+	if(!write_rwops_exact(outfile, &c, 1, 1))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
     c = w;  // x size
-	SDL_RWwrite(outfile, &c, 1, 1);
+	if(!write_rwops_exact(outfile, &c, 1, 1))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
     c = h;  // y size
-	SDL_RWwrite(outfile, &c, 1, 1);
+	if(!write_rwops_exact(outfile, &c, 1, 1))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
 	
 	c = fill_color;  // Color
 	int size = w*h;
 	for(int i = 0; i < size; i++)
     {
-        SDL_RWwrite(outfile, &c, 1, 1);
+        if(!write_rwops_exact(outfile, &c, 1, 1))
+        {
+            SDL_RWclose(outfile);
+            return NewFileIoError::WriteFailed;
+        }
     }
     
     SDL_RWclose(outfile);
-    return true;
+    return NewFileIoError::None;
 }
 
-bool create_new_campaign_descriptor(const std::string& filename)
+NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename)
 {
 	SDL_RWops* outfile = open_write_file(filename.c_str());
 	if(outfile == nullptr)
-        return false;
+        return NewFileIoError::OpenWriteFailed;
     
     Yam yam;
     yam.set_output(rwops_write_handler, outfile);
@@ -973,10 +1016,10 @@ bool create_new_campaign_descriptor(const std::string& filename)
     
     yam.close_output();
     SDL_RWclose(outfile);
-    return true;
+    return NewFileIoError::None;
 }
 
-bool create_new_scen_file(const std::string& scenfile, const std::string& gridname)
+NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string& gridname)
 {
     // TODO: It would be nice to store all the level data in a class, then have saving code all in one place.
     
@@ -1030,27 +1073,49 @@ bool create_new_scen_file(const std::string& scenfile, const std::string& gridna
 	if((outfile = open_write_file(scenfile.c_str())) == nullptr)
 	{
 		LogError("Could not open file for writing: {}\n", scenfile);
-		return false;
+		return NewFileIoError::OpenWriteFailed;
 	}
 	
 	// Write it out
-	SDL_RWwrite(outfile, header, 1, 3);
-	SDL_RWwrite(outfile, &version, 1, 1);
-	SDL_RWwrite(outfile, grid_file_name, 1, 8);
-	SDL_RWwrite(outfile, scenario_title, 1, 30);
-	SDL_RWwrite(outfile, &scenario_type, 1, 1);
-	SDL_RWwrite(outfile, &par_value, 2, 1);
-
-	SDL_RWwrite(outfile, &num_objects, 2, 1);
+    if(!write_rwops_exact(outfile, header, 1, 3)
+       || !write_rwops_exact(outfile, &version, 1, 1)
+       || !write_rwops_exact(outfile, grid_file_name, 1, 8)
+       || !write_rwops_exact(outfile, scenario_title, 1, 30)
+       || !write_rwops_exact(outfile, &scenario_type, 1, 1)
+       || !write_rwops_exact(outfile, &par_value, 2, 1)
+       || !write_rwops_exact(outfile, &num_objects, 2, 1)
+       || !write_rwops_exact(outfile, &num_lines, 1, 1)
+       || !write_rwops_exact(outfile, &line_length, 1, 1)
+       || !write_rwops_exact(outfile, line_text, line_length, 1))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
     // No objects to write
-    
-	SDL_RWwrite(outfile, &num_lines, 1, 1);
-    SDL_RWwrite(outfile, &line_length, 1, 1);
-    SDL_RWwrite(outfile, line_text, line_length, 1);
 
 	SDL_RWclose(outfile);
 	
-    return true;
+    return NewFileIoError::None;
+}
+
+bool create_new_map_pix(const std::string& filename, int w, int h)
+{
+    return create_new_map_pix_with_error(filename, w, h) == NewFileIoError::None;
+}
+
+bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color)
+{
+    return create_new_pix_with_error(filename, w, h, fill_color) == NewFileIoError::None;
+}
+
+bool create_new_campaign_descriptor(const std::string& filename)
+{
+    return create_new_campaign_descriptor_with_error(filename) == NewFileIoError::None;
+}
+
+bool create_new_scen_file(const std::string& scenfile, const std::string& gridname)
+{
+    return create_new_scen_file_with_error(scenfile, gridname) == NewFileIoError::None;
 }
 
 bool unpack_campaign(const std::string& campaign_id)
