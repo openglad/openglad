@@ -347,7 +347,16 @@ void load_map_data(PixieData* whereto);
 char* get_cfg_item(char *section, char *item);
 
 // Functions in game.cpp
+enum class LoadSavedGameError
+{
+    None = 0,
+    MissingScreen,
+    UsedFallbackLevel,
+    FallbackLevelLoadFailed
+};
+
 short load_saved_game(const char *filename, screen  *myscreen);
+LoadSavedGameError load_saved_game_with_error(const char *filename, screen *myscreen);
 
 inline constexpr int NORMAL_MODE    = 0;     // for walkputbuffer mode type
 inline constexpr int INVISIBLE_MODE = 1;
@@ -389,4 +398,3 @@ using palette = rgb[256];
 void set_vga_palette(palette p);
 rgb set_rgb(char r, char g, char b);
 short read_palette(FILE  *f, palette p);
-

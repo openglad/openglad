@@ -37,3 +37,11 @@ void test_save_load_roundtrip() {
     TEST_ASSERT_EQ(67890, static_cast<int>(myscreen->save_data.totalscore), "totalscore should be restored");
 }
 REGISTER_TEST(test_save_load_roundtrip);
+
+void test_load_saved_game_with_error_null_screen()
+{
+    LoadSavedGameError err = load_saved_game_with_error("save0", nullptr);
+    TEST_ASSERT_EQ(static_cast<int>(LoadSavedGameError::MissingScreen), static_cast<int>(err),
+        "load_saved_game_with_error should report MissingScreen on nullptr");
+}
+REGISTER_TEST(test_load_saved_game_with_error_null_screen);

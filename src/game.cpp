@@ -22,8 +22,14 @@
 
 void popup_dialog(const char* title, const char* message);
 
-short load_saved_game(const char *filename, screen  *myscreen)
+LoadSavedGameError load_saved_game_with_error(const char *filename, screen *myscreen)
 {
+	if(myscreen == nullptr)
+	{
+		LogError("load_saved_game_failed file={} reason=missing_screen\n", filename ? filename : "(null)");
+		return LoadSavedGameError::MissingScreen;
+	}
+
 	TRACE("game", "load_saved_game file=%s scen=%d", filename, myscreen->save_data.scen_num);
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
@@ -31,6 +37,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	short         myfam;
 	int           multi_team = 0;
 	int           i;
+	bool used_fallback_level = false;
 
 	myscreen->numviews = myscreen->save_data.numplayers;
 
@@ -49,11 +56,12 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	    // Failed?  Try level 1.
 		myscreen->save_data.scen_num = 1;
         myscreen->level_data.id = 1;
+        used_fallback_level = true;
         if(!myscreen->level_data.load())
         {
-            std::string buf = std::format("Fallback loading failed ({}).\nCould not load \"{}\"\nPlease report this problem to the developer!\n", old_scen, scenfile);
-            popup_dialog("ERROR", buf.c_str());
-            exit(2);
+			LogError("load_saved_game_failed file={} scen={} fallback=1 reason=fallback_level_load_failed\n",
+				filename ? filename : "(null)", old_scen);
+			return LoadSavedGameError::FallbackLevelLoadFailed;
         }
 	}
 
@@ -189,5 +197,17 @@ short load_saved_game(const char *filename, screen  *myscreen)
 			myscreen->viewob[i]->my_team = 0;
 	}
 
-	return 1;
+	return used_fallback_level ? LoadSavedGameError::UsedFallbackLevel : LoadSavedGameError::None;
+}
+
+short load_saved_game(const char *filename, screen  *myscreen)
+{
+	const LoadSavedGameError err = load_saved_game_with_error(filename, myscreen);
+	if(err == LoadSavedGameError::FallbackLevelLoadFailed)
+	{
+		std::string buf = "Fallback loading failed.\nCould not load scenario.\nPlease report this problem to the developer!\n";
+		popup_dialog("ERROR", buf.c_str());
+		exit(2);
+	}
+	return (err == LoadSavedGameError::MissingScreen) ? 0 : 1;
 }
