@@ -70,6 +70,37 @@ int prompt_block_escape_injector(void* data)
     st->finished = true;
     return 0;
 }
+
+int prompt_block_editing_injector(void* data)
+{
+    PromptBlockInjectData* d = static_cast<PromptBlockInjectData*>(data);
+    PromptBlockInjectState* st = d->state;
+    st->started = true;
+
+    SDL_Delay(90);
+    inject_key_press(SDLK_LEFT, 20);
+    inject_key_press(SDLK_RIGHT, 20);
+    inject_key_press(SDLK_DOWN, 20);
+    inject_key_press(SDLK_UP, 20);
+    inject_key_press(SDLK_LEFT, 20);
+    inject_key_press(SDLK_DELETE, 20);
+
+    SDL_Event text_event{};
+    text_event.type = SDL_TEXTINPUT;
+    SDL_strlcpy(text_event.text.text, "Z", sizeof(text_event.text.text));
+    SDL_PushEvent(&text_event);
+
+    SDL_Delay(40);
+    MouseState& m = query_mouse_no_poll();
+    m.x = 290.0f; // DONE button
+    m.y = 6.0f;
+    m.left = true;
+    SDL_Delay(40);
+    m.left = false;
+
+    st->finished = true;
+    return 0;
+}
 } // namespace
 
 void test_level_editor_prompt_for_string_block_escape_cancel()
@@ -122,3 +153,25 @@ void test_level_editor_prompt_for_string_block_done_button()
     TEST_ASSERT(edited == original, "done without edits should preserve content");
 }
 REGISTER_TEST(test_level_editor_prompt_for_string_block_done_button);
+
+void test_level_editor_prompt_for_string_block_editing_keys_and_text()
+{
+    std::list<std::string> edited{"abc", "xyz"};
+
+    PromptBlockInjectState st{};
+    KeyStateGuard keyguard;
+    PromptBlockInjectData inject_data{&st, &keyguard, false, false};
+    SDL_Thread* thread = SDL_CreateThread(prompt_block_editing_injector, "prompt_block_editing_injector", &inject_data);
+    TEST_ASSERT(thread != nullptr, "failed to create editing injector thread");
+
+    bool accepted = prompt_for_string_block("Edit text", edited);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    TEST_ASSERT(st.started, "injector should have started");
+    TEST_ASSERT(st.finished, "injector should have finished");
+    TEST_ASSERT(accepted, "DONE button should accept after editing keys/text");
+    TEST_ASSERT(!edited.empty(), "edited block should remain non-empty");
+}
+REGISTER_TEST(test_level_editor_prompt_for_string_block_editing_keys_and_text);
