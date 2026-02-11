@@ -26,7 +26,6 @@
 #include "campaign_picker.h"
 #include "level_picker.h"
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <format>
@@ -61,11 +60,11 @@ extern button hiremenu_buttons[];
 extern button saveteam_buttons[];
 extern button loadteam_buttons[];
 #ifdef __EMSCRIPTEN__
-extern bool g_start_game_requested;
+void picker_request_start_game();
 #endif
 #ifdef TESTING
-extern bool g_test_in_game;
-extern std::atomic<int> g_test_game_epoch;
+void picker_testing_mark_game_start();
+void picker_testing_mark_game_end();
 #endif
 
 extern Sint32 costlist[NUM_FAMILIES];
@@ -2159,7 +2158,7 @@ Sint32 go_menu(Sint32 arg1)
         delete current_guy;
     current_guy = nullptr;
 
-    g_start_game_requested = true;
+    picker_request_start_game();
     Log("go_menu: Setting g_start_game_requested, returning EXIT\n");
     return EXIT;  // This will unwind all menu loops back to picker_main/picker_frame
 #else
@@ -2184,12 +2183,11 @@ Sint32 go_menu(Sint32 arg1)
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
 
 #ifdef TESTING
-        g_test_game_epoch.fetch_add(1, std::memory_order_release);
-        g_test_in_game = true;
+        picker_testing_mark_game_start();
 #endif
         glad_main(myscreen->save_data.numplayers);
 #ifdef TESTING
-        g_test_in_game = false;
+        picker_testing_mark_game_end();
 #endif
 
         Log("Returned from glad_main, retry={}\n", myscreen->retry);
@@ -2257,4 +2255,3 @@ void statscopy(guy *dest, guy *source)
 
 	dest->name = source->name;
 }
-

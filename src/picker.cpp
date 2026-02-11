@@ -121,6 +121,26 @@ bool g_test_in_game = false;
 std::atomic<int> g_test_game_epoch{0};
 #endif
 
+#ifdef __EMSCRIPTEN__
+void picker_request_start_game()
+{
+    g_start_game_requested = true;
+}
+#endif
+
+#ifdef TESTING
+void picker_testing_mark_game_start()
+{
+    g_test_game_epoch.fetch_add(1, std::memory_order_release);
+    g_test_in_game = true;
+}
+
+void picker_testing_mark_game_end()
+{
+    g_test_in_game = false;
+}
+#endif
+
 Sint32 allowable_guys[] =
     { FAMILY_SOLDIER,
       FAMILY_BARBARIAN,
