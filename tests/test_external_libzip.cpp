@@ -304,6 +304,94 @@ void test_external_libzip_extra_field_api_paths()
     TEST_ASSERT(ferror(fw) == 0, "_zip_write8 should not set error");
     fclose(fw);
 
+    auto put2 = [](unsigned char* p, zip_uint16_t v) {
+        p[0] = static_cast<unsigned char>(v & 0xFF);
+        p[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+    };
+    auto put4 = [](unsigned char* p, zip_uint32_t v) {
+        p[0] = static_cast<unsigned char>(v & 0xFF);
+        p[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+        p[2] = static_cast<unsigned char>((v >> 16) & 0xFF);
+        p[3] = static_cast<unsigned char>((v >> 24) & 0xFF);
+    };
+
+    // Not enough bytes for a central dirent header.
+    {
+        zip_dirent de;
+        _zip_dirent_init(&de);
+        const unsigned char tiny[4] = {0, 0, 0, 0};
+        const unsigned char* p = tiny;
+        zip_uint64_t left = sizeof(tiny);
+        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+                    "_zip_dirent_read should fail when left < header size");
+        _zip_dirent_finalize(&de);
+    }
+
+    // Wrong magic.
+    {
+        unsigned char hdr[46] = {};
+        memcpy(hdr, "NOPE", 4);
+        const unsigned char* p = hdr;
+        zip_uint64_t left = sizeof(hdr);
+        zip_dirent de;
+        _zip_dirent_init(&de);
+        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+                    "_zip_dirent_read should fail on bad magic");
+        _zip_dirent_finalize(&de);
+    }
+
+    // Header says filename is present, but left bytes are insufficient.
+    {
+        unsigned char hdr[46] = {};
+        memcpy(hdr, CENTRAL_MAGIC, 4);
+        put2(hdr + 4, 20);   // version madeby
+        put2(hdr + 6, 20);   // version needed
+        put2(hdr + 28, 5);   // filename length
+        const unsigned char* p = hdr;
+        zip_uint64_t left = sizeof(hdr);
+        zip_dirent de;
+        _zip_dirent_init(&de);
+        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+                    "_zip_dirent_read should fail on truncated variable section");
+        _zip_dirent_finalize(&de);
+    }
+
+    // UTF-8 flag set with invalid UTF-8 filename.
+    {
+        unsigned char buf[47] = {};
+        memcpy(buf, CENTRAL_MAGIC, 4);
+        put2(buf + 4, 20);
+        put2(buf + 6, 20);
+        put2(buf + 8, ZIP_GPBF_ENCODING_UTF_8);
+        put2(buf + 28, 1);   // filename length
+        buf[46] = 0xFF;      // invalid single-byte UTF-8
+        const unsigned char* p = buf;
+        zip_uint64_t left = sizeof(buf);
+        zip_dirent de;
+        _zip_dirent_init(&de);
+        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+                    "_zip_dirent_read should fail for invalid UTF-8 with UTF-8 flag");
+        _zip_dirent_finalize(&de);
+    }
+
+    // ZIP64 required but no ZIP64 extra field.
+    {
+        unsigned char hdr[46] = {};
+        memcpy(hdr, CENTRAL_MAGIC, 4);
+        put2(hdr + 4, 45);
+        put2(hdr + 6, 45);
+        put4(hdr + 20, ZIP_UINT32_MAX); // compressed size
+        put4(hdr + 24, ZIP_UINT32_MAX); // uncompressed size
+        put4(hdr + 42, ZIP_UINT32_MAX); // offset
+        const unsigned char* p = hdr;
+        zip_uint64_t left = sizeof(hdr);
+        zip_dirent de;
+        _zip_dirent_init(&de);
+        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+                    "_zip_dirent_read should fail when ZIP64 sizes are present without ZIP64 EF");
+        _zip_dirent_finalize(&de);
+    }
+
     _zip_error_fini(&zerr);
 }
 REGISTER_TEST(test_external_libzip_extra_field_api_paths);
