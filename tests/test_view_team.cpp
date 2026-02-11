@@ -6,6 +6,7 @@
 #include "test_interact.h"
 #include "save_data.h"
 #include "guy.h"
+#include "util.h"
 
 extern screen* myscreen;
 
@@ -72,18 +73,17 @@ static int view_team_injector(void* data)
     SDL_Delay(500);
     if (wait_for_interactable("go", 10000)) {
         state->saw_view_menu = true;
+        wait_for_interactable("back", 10000);
         SDL_Delay(500);
+        fprintf(stderr, "  [test] clicking back from view menu\n");
+        interact("back");
 
-        fprintf(stderr, "  [test] clicking back from view team\n");
+        // Back at the create-team menu, click BACK again to return to main menu.
+        wait_for_interactable("back", 10000);
+        SDL_Delay(500);
+        fprintf(stderr, "  [test] clicking back from team menu\n");
         interact("back");
     }
-
-    // Back in team menu
-    SDL_Delay(2000);
-    wait_for_interactable("back", 10000);
-    SDL_Delay(500);
-    fprintf(stderr, "  [test] clicking back from team menu\n");
-    interact("back");
 
     state->finished = true;
     return 0;
@@ -100,6 +100,9 @@ void test_view_team() {
 
     guy* soldier = new guy(FAMILY_SOLDIER);
     guy* archer = new guy(FAMILY_ARCHER);
+    // Give the team strong stats so the launched game finishes quickly.
+    soldier->strength = soldier->dexterity = soldier->constitution = soldier->intelligence = soldier->armor = 200;
+    archer->strength = archer->dexterity = archer->constitution = archer->intelligence = archer->armor = 200;
     myscreen->save_data.team_list[0] = soldier;
     myscreen->save_data.team_list[1] = archer;
     myscreen->save_data.team_size = 2;

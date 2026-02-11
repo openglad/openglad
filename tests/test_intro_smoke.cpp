@@ -1,5 +1,6 @@
 #include "test_framework.h"
 #include "graph.h"
+#include "input.h"
 
 #include <SDL.h>
 #include <cstring>
@@ -30,6 +31,12 @@ void test_intro_main_aborts_on_keypress()
     // intro_main's show() steps abort when query_key_press_event() is true.
     // Push a key so the intro exits quickly but still executes real code paths.
     push_any_keypress();
+    intro_main(0, nullptr);
+
+    // Run the full intro path as well to exercise all show()/cleanup branches.
+    clear_events();
+    clear_key_press_event();
+    clear_keyboard();
     intro_main(0, nullptr);
 }
 REGISTER_TEST(test_intro_main_aborts_on_keypress);

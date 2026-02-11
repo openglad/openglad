@@ -120,7 +120,8 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 bool isDir(const std::string& filename)
 {
     struct stat status;
-    stat(filename.c_str(), &status);
+    if (stat(filename.c_str(), &status) != 0)
+        return false;
 
     return (status.st_mode & S_IFDIR);
 }
