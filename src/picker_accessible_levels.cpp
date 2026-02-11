@@ -17,6 +17,7 @@
 
 #include "graph.h"
 #include "level_picker.h"
+#include "game_context.h"
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -24,6 +25,11 @@
 // Get list of accessible levels (cleared levels + their exits)
 std::vector<int> get_accessible_levels()
 {
+    screen* game = ctx().game_screen ? ctx().game_screen : myscreen;
+    if (!game) {
+        return {1};
+    }
+
     std::set<int> accessible;
     std::set<int> to_process;
 
@@ -32,12 +38,12 @@ std::vector<int> get_accessible_levels()
     to_process.insert(1);
 
     // Add current level
-    accessible.insert(myscreen->save_data.scen_num);
+    accessible.insert(game->save_data.scen_num);
 
     // Add all cleared levels
-    const std::string& campaign = myscreen->save_data.current_campaign;
-    auto it = myscreen->save_data.completed_levels.find(campaign);
-    if (it != myscreen->save_data.completed_levels.end()) {
+    const std::string& campaign = game->save_data.current_campaign;
+    auto it = game->save_data.completed_levels.find(campaign);
+    if (it != game->save_data.completed_levels.end()) {
         for (int level : it->second) {
             accessible.insert(level);
             to_process.insert(level);
@@ -49,7 +55,7 @@ std::vector<int> get_accessible_levels()
         int level_id = *to_process.begin();
         to_process.erase(to_process.begin());
 
-        if (myscreen->save_data.is_level_completed(level_id)) {
+        if (game->save_data.is_level_completed(level_id)) {
             LevelData ld(level_id);
             if (ld.load()) {
                 std::list<int> exits;

@@ -82,7 +82,6 @@ PixieData backpics[5];
 pixieN *backdrops[5];
 
 // Zardus: FIX: this is from view.cpp, so that we can delete it here
-extern options *theprefs;
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -625,7 +624,11 @@ void quit(Sint32 arg1)
 #else
 	myscreen->refresh();
 
-	delete theprefs;
+	if (ctx().prefs)
+	{
+		delete ctx().prefs;
+		ctx().prefs = nullptr;
+	}
 	picker_quit();  // deletes the screen objects
 	Log("quit({})\n", arg1);
 	exit(0);

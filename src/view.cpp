@@ -27,6 +27,7 @@
 #include "version.h"
 
 #include "util.h"
+#include "game_context.h"
 #include <string>
 #include <format>
 #include "view_sizes.h"
@@ -162,7 +163,7 @@ viewscreen::viewscreen(short x, short y, short width,
 	//buffer = (char  *)new char[xview*yview];
 	control = nullptr;
 	gamma = 0;
-	prefsob = theprefs;
+	prefsob = ctx().prefs ? ctx().prefs : theprefs;
 
 	// Key entries ..
 	mynum = whatnum;              // what viewscreen am I?

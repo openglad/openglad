@@ -18,6 +18,7 @@
 #include "graph.h"
 #include "button.h"
 #include "input.h"
+#include "game_context.h"
 
 #include "SDL.h"
 #include <format>
@@ -53,21 +54,25 @@ bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sin
 
 void redraw_mainmenu()
 {
+    screen* game = ctx().game_screen ? ctx().game_screen : myscreen;
+    if (!game)
+        return;
+
     int count = 0;
 	std::string message;
     
     main_title_logo_pix->set_frame(0);
-    main_title_logo_pix->drawMix(15,  8, myscreen->viewob[0].get());
+    main_title_logo_pix->drawMix(15,  8, game->viewob[0].get());
     main_title_logo_pix->set_frame(1);
-    main_title_logo_pix->drawMix(151,  8, myscreen->viewob[0].get());
+    main_title_logo_pix->drawMix(151,  8, game->viewob[0].get());
     main_columns_pix->set_frame(0);
-    main_columns_pix->drawMix(12,40, myscreen->viewob[0].get());
+    main_columns_pix->drawMix(12,40, game->viewob[0].get());
     main_columns_pix->set_frame(1);
-    main_columns_pix->drawMix(242,40, myscreen->viewob[0].get());
+    main_columns_pix->drawMix(242,40, game->viewob[0].get());
     //main_columns_pix->next_frame();
     
     #ifndef DISABLE_MULTIPLAYER
-    if (myscreen->save_data.numplayers==4)
+    if (game->save_data.numplayers==4)
     {
         allbuttons[2]->do_outline = 1;
         allbuttons[3]->do_outline = 0;
@@ -78,7 +83,7 @@ void redraw_mainmenu()
         allbuttons[4]->vdisplay();
         allbuttons[5]->vdisplay();
     }
-    else if (myscreen->save_data.numplayers==3)
+    else if (game->save_data.numplayers==3)
     {
         allbuttons[2]->do_outline = 0;
         allbuttons[3]->do_outline = 1;
@@ -89,7 +94,7 @@ void redraw_mainmenu()
         allbuttons[4]->vdisplay();
         allbuttons[5]->vdisplay();
     }
-    else if (myscreen->save_data.numplayers==2)
+    else if (game->save_data.numplayers==2)
     {
         allbuttons[2]->do_outline = 0;
         allbuttons[3]->do_outline = 0;
@@ -116,7 +121,7 @@ void redraw_mainmenu()
     allbuttons[6]->label = message;
 
     // Show the allied mode
-    if (myscreen->save_data.allied_mode)
+    if (game->save_data.allied_mode)
         message = "PVP: Ally";
     else
         message = "PVP: Enemy";
@@ -147,6 +152,10 @@ void redraw_mainmenu()
 
 Sint32 mainmenu(Sint32 arg1)
 {
+    screen* game = ctx().game_screen ? ctx().game_screen : myscreen;
+    if (!game)
+        return EXIT_VALUE;
+
 	Sint32 retvalue=0;
 
 	if(arg1)
@@ -169,7 +178,7 @@ Sint32 mainmenu(Sint32 arg1)
 	reset_timer();
 	while (query_timer() < 1);
 	
-	myscreen->fadeblack(1);
+	game->fadeblack(1);
 
 	grab_mouse();
 
@@ -193,11 +202,11 @@ Sint32 mainmenu(Sint32 arg1)
             break;
 
 		// Draw
-		myscreen->clearbuffer();
+		game->clearbuffer();
         draw_buttons(buttons, num_buttons);
         redraw_mainmenu();
         draw_highlight(buttons[highlighted_button]);
-        myscreen->buffer_to_screen(0,0,320,200);
+        game->buffer_to_screen(0,0,320,200);
         SDL_Delay(10);
 	}
 	
@@ -207,26 +216,30 @@ Sint32 mainmenu(Sint32 arg1)
 // Reset game data and go to create_team_menu()
 Sint32 beginmenu(Sint32 arg1)
 {
+    screen* game = ctx().game_screen ? ctx().game_screen : myscreen;
+    if (!game)
+        return REDRAW_VALUE;
+
     // Do we have a team already?  Then prompt to reset.
-    if(myscreen->save_data.team_size > 0)
+    if(game->save_data.team_size > 0)
     {
         if(!yes_or_no_prompt("NEW GAME", "There is already a game loaded.\nDo you want to restart?", false))
             return REDRAW_VALUE;
     }
     
-	myscreen->clear();
+	game->clear();
 
 	// Starting new game ..
 	release_mouse();
-	myscreen->clearbuffer();
-	myscreen->swap();
-	read_campaign_intro(myscreen);
-	myscreen->refresh();
+	game->clearbuffer();
+	game->swap();
+	read_campaign_intro(game);
+	game->refresh();
 	grab_mouse();
-	myscreen->clear();
+	game->clear();
 
     // Reset the save data so we have a fresh, new team
-	myscreen->save_data.reset();
+	game->save_data.reset();
 	current_guy = nullptr;
 	
 	// Clear the labeling counter
