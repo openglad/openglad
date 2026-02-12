@@ -4,9 +4,10 @@
 #include "test_input_helpers.h"
 
 #include <string>
+#include <memory>
 
 extern screen* myscreen;
-extern guy* current_guy;
+extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
 extern Sint32 editguy;
 
@@ -19,7 +20,7 @@ namespace
 {
 struct PickerStateGuard
 {
-    guy* saved_current = nullptr;
+    std::unique_ptr<guy> saved_current;
     guy* saved_old = nullptr;
 	Sint32 saved_editguy = 0;
 	char saved_end = 0;
@@ -28,7 +29,7 @@ struct PickerStateGuard
 
     PickerStateGuard()
     {
-        saved_current = current_guy;
+        saved_current = std::move(current_guy);
         saved_old = old_guy;
         saved_editguy = editguy;
         saved_end = myscreen->end;
@@ -38,7 +39,7 @@ struct PickerStateGuard
 
     ~PickerStateGuard()
     {
-        current_guy = saved_current;
+        current_guy = std::move(saved_current);
         old_guy = saved_old;
         editguy = saved_editguy;
         myscreen->end = saved_end;
@@ -75,8 +76,8 @@ void test_picker_name_guy_paths()
 {
     PickerStateGuard guard;
 
-    guy* original_current = current_guy;
-    current_guy = new guy(FAMILY_SOLDIER);
+    std::unique_ptr<guy> original_current = std::move(current_guy);
+    current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
     current_guy->name = "CURSORIG";
 
     SDL_Thread* rename_current_thread = SDL_CreateThread(name_guy_injector, "picker_name_current", nullptr);
@@ -99,8 +100,7 @@ void test_picker_name_guy_paths()
 
     myscreen->save_data.team_list[0].reset();
     myscreen->save_data.team_list[0].reset(nullptr);
-    delete current_guy;
-    current_guy = original_current;
+    current_guy = std::move(original_current);
 }
 REGISTER_TEST(test_picker_name_guy_paths);
 
@@ -115,8 +115,9 @@ void test_picker_edit_guy_paths()
     TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy should fail when current_guy is null");
 
     // Missing team slot path.
-    current_guy = new guy(FAMILY_SOLDIER);
-    old_guy = new guy(*current_guy);
+    current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto old_guy_owned = std::make_unique<guy>(*current_guy);
+    old_guy = old_guy_owned.get();
     current_guy->teamnum = 0;
     editguy = 0;
     myscreen->save_data.team_list[0].reset(nullptr);
@@ -125,8 +126,8 @@ void test_picker_edit_guy_paths()
     // Successful transfer path.
     myscreen->save_data.team_list[0].reset(new guy(FAMILY_SOLDIER));
     myscreen->save_data.team_list[0]->teamnum = 0;
-    delete old_guy;
-    old_guy = new guy(*myscreen->save_data.team_list[0]);
+    old_guy_owned = std::make_unique<guy>(*myscreen->save_data.team_list[0]);
+    old_guy = old_guy_owned.get();
     current_guy->strength = myscreen->save_data.team_list[0]->strength + 1;
     myscreen->save_data.m_totalcash[0] = 100000;
 
@@ -139,10 +140,8 @@ void test_picker_edit_guy_paths()
     allbuttons[18] = nullptr;
     myscreen->save_data.team_list[0].reset();
     myscreen->save_data.team_list[0].reset(nullptr);
-    delete old_guy;
     old_guy = nullptr;
-    delete current_guy;
-    current_guy = nullptr;
+    current_guy.reset();
 }
 REGISTER_TEST(test_picker_edit_guy_paths);
 

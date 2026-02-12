@@ -2,6 +2,7 @@
 #include "input/button.h"
 #include "test_framework.h"
 #include <cstring>
+#include <memory>
 #include <string>
 
 // Forward declarations from picker.cpp
@@ -29,7 +30,7 @@ Sint32 name_guy(Sint32 arg);
 Sint32 edit_guy(Sint32 arg1);
 
 extern screen* myscreen;
-extern guy* current_guy;
+extern std::unique_ptr<guy> current_guy;
 extern short current_team_num;
 extern Sint32 current_difficulty;
 
@@ -266,7 +267,7 @@ void test_how_many_with_team()
     vbutton* old6 = allbuttons[6];
     vbutton* old7 = allbuttons[7];
     vbutton* old18 = allbuttons[18];
-    guy* old_current = current_guy;
+    std::unique_ptr<guy> old_current = std::move(current_guy);
     short old_team_num = current_team_num;
     Sint32 old_diff = current_difficulty;
     const short old_allied = myscreen->save_data.allied_mode;
@@ -276,7 +277,7 @@ void test_how_many_with_team()
     allbuttons[7] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b7", KEYSTATE_UNKNOWN);
     allbuttons[18] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b18", KEYSTATE_UNKNOWN);
 
-    current_guy = new guy(FAMILY_SOLDIER);
+    current_guy = std::make_unique<guy>(FAMILY_SOLDIER);
     current_guy->teamnum = 1;
     current_team_num = 0;
     current_difficulty = DIFFICULTY_SETTINGS - 1;
@@ -332,15 +333,14 @@ void test_how_many_with_team()
 
     TEST_ASSERT_EQ(1234, (int)return_menu(1234), "return_menu should echo its argument");
     quit(0); // test mode: should not exit
-    guy* tmp_current = current_guy;
+    std::unique_ptr<guy> tmp_current = std::move(current_guy);
     current_guy = nullptr;
     TEST_ASSERT_EQ(2, (int)name_guy(0), "name_guy with no current_guy should return REDRAW");
     TEST_ASSERT_EQ(-1, (int)edit_guy(0), "edit_guy with no current_guy should fail");
-    current_guy = tmp_current;
+    current_guy = std::move(tmp_current);
 
 
-    delete current_guy;
-    current_guy = old_current;
+    current_guy = std::move(old_current);
     current_team_num = old_team_num;
     current_difficulty = old_diff;
     myscreen->save_data.allied_mode = old_allied;

@@ -435,44 +435,46 @@ walker* LevelData::add_ob(Order order, Sint32 family, [[maybe_unused]] bool atst
 	if (order == Order::Weapon)
 		return add_weap_ob(order, family);
 
-    // Create the walker
-    walker* w = myloader->create_walker(order, family, myscreen);
-    if(w == nullptr)
+    auto w = myloader->create_walker_owned(order, family, myscreen);
+    if (!w)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
     if (order == Order::Living)
         numobs++;
-    
-    oblist.push_back(std::unique_ptr<walker>(w));
-    return w;
+
+    walker* raw = w.get();
+    oblist.push_back(std::move(w));
+    return raw;
 }
 
 walker* LevelData::add_fx_ob(Order order, Sint32 family)
 {
-	walker* w = myloader->create_walker(order, family, myscreen, false);
-    if (w == nullptr)
+	auto w = myloader->create_walker_owned(order, family, myscreen, false);
+    if (!w)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
 
 	//numobs++;
 	//w->ignore = 1;
-	
-	fxlist.push_back(std::unique_ptr<walker>(w));
-	return w;
+
+	walker* raw = w.get();
+	fxlist.push_back(std::move(w));
+	return raw;
 }
 
 walker* LevelData::add_weap_ob(Order order, Sint32 family)
 {
-	walker* w = myloader->create_walker(order, family, myscreen);
-    if (w == nullptr)
+	auto w = myloader->create_walker_owned(order, family, myscreen);
+    if (!w)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
 
-    weaplist.push_back(std::unique_ptr<walker>(w));
-	return w;
+    walker* raw = w.get();
+    weaplist.push_back(std::move(w));
+	return raw;
 }
 
 short LevelData::remove_ob(walker  *ob)

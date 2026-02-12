@@ -5,7 +5,7 @@
 #include <memory>
 
 extern screen* myscreen;
-extern guy* current_guy;
+extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
 extern Sint32 editguy;
 extern short current_team_num;
@@ -14,7 +14,7 @@ Sint32 cycle_team_guy(Sint32 whichway);
 
 namespace {
 struct PickerOwnershipFixtureState {
-    guy* saved_current_guy = nullptr;
+    std::unique_ptr<guy> saved_current_guy;
     guy* saved_old_guy = nullptr;
     Sint32 saved_editguy = 0;
     short saved_current_team_num = 0;
@@ -26,7 +26,7 @@ PickerOwnershipFixtureState g_fixture;
 
 void setup_picker_ownership_fixture()
 {
-    g_fixture.saved_current_guy = current_guy;
+    g_fixture.saved_current_guy = std::move(current_guy);
     g_fixture.saved_old_guy = old_guy;
     g_fixture.saved_editguy = editguy;
     g_fixture.saved_current_team_num = current_team_num;
@@ -46,13 +46,11 @@ void setup_picker_ownership_fixture()
 
 void teardown_picker_ownership_fixture()
 {
-    if (current_guy && current_guy != g_fixture.saved_current_guy) {
-        delete current_guy;
-    }
+    current_guy.reset();
 
     myscreen->save_data.team_list[0].reset(g_fixture.saved_slot0.release());
 
-    current_guy = g_fixture.saved_current_guy;
+    current_guy = std::move(g_fixture.saved_current_guy);
     old_guy = g_fixture.saved_old_guy;
     editguy = g_fixture.saved_editguy;
     current_team_num = g_fixture.saved_current_team_num;
@@ -70,7 +68,7 @@ void test_picker_cycle_team_guy_ownership_copy_and_alias()
     TEST_ASSERT(current_guy != nullptr, "cycle_team_guy should create current_guy copy");
     TEST_ASSERT(old_guy == myscreen->save_data.team_list[0].get(),
         "old_guy should alias team_list slot");
-    TEST_ASSERT(current_guy != old_guy,
+    TEST_ASSERT(current_guy.get() != old_guy,
         "current_guy should be a distinct owned copy");
 
     current_guy->strength += 7;

@@ -1,3 +1,5 @@
+#include <memory>
+#include <array>
 #include "graph.h"
 #include "input/button.h"
 #include "entities/guy.h"
@@ -24,12 +26,13 @@ extern std::atomic<int> g_test_game_epoch;
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
-extern pixieN *main_title_logo_pix, *main_columns_pix;
-extern pixieN *backdrops[5];
+extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
 extern vbutton *localbuttons;
 // Picker globals that can leak across integration tests and affect menu start state
-extern guy *current_guy, *old_guy;
+extern std::unique_ptr<guy> current_guy;
+extern guy* old_guy;
 extern Sint32 current_type;
 extern Sint32 editguy;
 extern short current_team_num;
@@ -40,20 +43,20 @@ extern short current_team_num;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = nullptr; }
+        backdrops[i].reset();
         backpics[i].free();
     }
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = nullptr; }
     }
     localbuttons = nullptr;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = nullptr; }
+    main_columns_pix.reset();
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = nullptr; }
+    main_title_logo_pix.reset();
     main_title_logo_data.free();
 
     // Ensure the next test starts the hire menu from a clean state.
-    if (current_guy) { delete current_guy; current_guy = nullptr; }
+    current_guy.reset();
     old_guy = nullptr;      // Non-owning; may point into team_list[]
     current_type = 0;
     editguy = 0;
@@ -181,7 +184,7 @@ void test_fairy_death() {
 
     // Some integration tests leave the picker globals set, which changes the
     // starting class in the hire menu. Reset here so NEXT x12 always lands on FAERIE.
-    if (current_guy) { delete current_guy; current_guy = nullptr; }
+    current_guy.reset();
     old_guy = nullptr;
     current_type = 0;
     editguy = 0;
