@@ -35,6 +35,8 @@ int toInt(const std::string& s);
 
 static constexpr char VERSION_NUM = 9; // save scenario type info
 
+static constexpr short MAX_SCENARIO_OBJECTS = 4096;
+
 static bool rw_read_exact_or_log(SDL_RWops* rwops, void* dst, size_t size, size_t count)
 {
     const size_t got = SDL_RWread(rwops, dst, size, count);
@@ -684,6 +686,11 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 	// Determine number of objects to load ...
 	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
 		return 0;
+	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
+	{
+		Log("Invalid scenario object count: {}\n", listsize);
+		return 0;
+	}
 	
     data->delete_objects();
 
@@ -779,6 +786,11 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 	// Determine number of objects to load ...
 	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
 		return 0;
+	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
+	{
+		Log("Invalid scenario object count: {}\n", listsize);
+		return 0;
+	}
 	
     data->delete_objects();
 
@@ -913,6 +925,11 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	// Determine number of objects to load ...
 	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
 		return 0;
+	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
+	{
+		Log("Invalid scenario object count: {}\n", listsize);
+		return 0;
+	}
 	
     data->delete_objects();
 
@@ -1058,6 +1075,11 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	// Determine number of objects to load ...
 	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
 		return 0;
+	if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
+	{
+		Log("Invalid scenario object count: {}\n", listsize);
+		return 0;
+	}
 	
     data->delete_objects();
 
@@ -1241,6 +1263,11 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
     // Determine number of objects to load ...
     READ_OR_RETURN(infile, &listsize, 2, 1);
+    if (listsize < 0 || listsize > MAX_SCENARIO_OBJECTS)
+    {
+        Log("Invalid scenario object count: {}\n", listsize);
+        return 0;
+    }
 
     // Now read in the objects one at a time
     for (i=0; i < listsize; i++)
