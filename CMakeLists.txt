@@ -418,6 +418,10 @@ function(configure_openglad_external_target target)
     endif()
 endfunction()
 
+function(add_runtime_assets_dependency target)
+    add_dependencies(${target} stage_runtime_assets)
+endfunction()
+
 # graph.h include guardrail: allow transitional files, block new include spread.
 add_custom_target(check_graph_h_includes
     COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_graph_includes.sh
@@ -503,11 +507,23 @@ if(NOT EMSCRIPTEN)
     target_link_libraries(og_game PUBLIC ${OG_EXTERNAL_LIBS})
     add_dependencies(og_game check_graph_h_includes)
 
+    # Stage runtime assets into the build tree so tests and local runs do not
+    # depend on pre-existing user data.
+    add_custom_target(stage_runtime_assets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/builtin ${CMAKE_BINARY_DIR}/builtin
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/cfg ${CMAKE_BINARY_DIR}/cfg
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/pix ${CMAKE_BINARY_DIR}/pix
+        COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/sound ${CMAKE_BINARY_DIR}/sound
+        COMMENT "Staging runtime asset directories"
+        VERBATIM
+    )
+
     # --- openglad (main game) ---
     add_executable(openglad ${SRC_DIR}/glad.cpp)
     configure_openglad_library(openglad)
     target_link_libraries(openglad PRIVATE og_game)
     configure_openglad_runtime_target(openglad)
+    add_runtime_assets_dependency(openglad)
 
     # --- openscen (level editor) ---
     if(BUILD_EDITOR)
@@ -516,6 +532,7 @@ if(NOT EMSCRIPTEN)
         target_link_libraries(openscen PRIVATE og_game)
         configure_openglad_runtime_target(openscen)
         target_compile_definitions(openscen PRIVATE OPENSCEN)
+        add_runtime_assets_dependency(openscen)
     endif()
 
     install(TARGETS
@@ -739,6 +756,7 @@ if(NOT EMSCRIPTEN)
         target_include_directories(openglad_test PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_link_libraries(openglad_test PRIVATE og_game_test)
         configure_openglad_runtime_target(openglad_test)
+        add_runtime_assets_dependency(openglad_test)
 
         add_executable(og_data_tests
             ${SRC_DIR}/glad.cpp
@@ -749,6 +767,7 @@ if(NOT EMSCRIPTEN)
         target_include_directories(og_data_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_link_libraries(og_data_tests PRIVATE og_game_test)
         configure_openglad_runtime_target(og_data_tests)
+        add_runtime_assets_dependency(og_data_tests)
 
         add_executable(og_runtime_tests
             ${SRC_DIR}/glad.cpp
@@ -759,6 +778,7 @@ if(NOT EMSCRIPTEN)
         target_include_directories(og_runtime_tests PRIVATE ${CMAKE_SOURCE_DIR}/tests)
         target_link_libraries(og_runtime_tests PRIVATE og_game_test)
         configure_openglad_runtime_target(og_runtime_tests)
+        add_runtime_assets_dependency(og_runtime_tests)
 
         enable_testing()
         add_test(NAME openglad_test COMMAND openglad_test)
