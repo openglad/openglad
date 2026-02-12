@@ -48,22 +48,22 @@
   #define YIELD_SLEEP(ms) ((void)(ms))
 #endif
 
-//these are for chad's team info page
-#define VIEW_TEAM_TOP    2
-#define VIEW_TEAM_LEFT   20
-#define VIEW_TEAM_BOTTOM 198
-#define VIEW_TEAM_RIGHT  280
+// these are for chad's team info page
+inline constexpr int VIEW_TEAM_TOP = 2;
+inline constexpr int VIEW_TEAM_LEFT = 20;
+inline constexpr int VIEW_TEAM_BOTTOM = 198;
+inline constexpr int VIEW_TEAM_RIGHT = 280;
 
-#define SDLK_KP0 SDLK_KP_0
-#define SDLK_KP1 SDLK_KP_1
-#define SDLK_KP2 SDLK_KP_2
-#define SDLK_KP3 SDLK_KP_3
-#define SDLK_KP4 SDLK_KP_4
-#define SDLK_KP5 SDLK_KP_5
-#define SDLK_KP6 SDLK_KP_6
-#define SDLK_KP7 SDLK_KP_7
-#define SDLK_KP8 SDLK_KP_8
-#define SDLK_KP9 SDLK_KP_9
+inline constexpr SDL_Keycode SDLK_KP0 = SDLK_KP_0;
+inline constexpr SDL_Keycode SDLK_KP1 = SDLK_KP_1;
+inline constexpr SDL_Keycode SDLK_KP2 = SDLK_KP_2;
+inline constexpr SDL_Keycode SDLK_KP3 = SDLK_KP_3;
+inline constexpr SDL_Keycode SDLK_KP4 = SDLK_KP_4;
+inline constexpr SDL_Keycode SDLK_KP5 = SDLK_KP_5;
+inline constexpr SDL_Keycode SDLK_KP6 = SDLK_KP_6;
+inline constexpr SDL_Keycode SDLK_KP7 = SDLK_KP_7;
+inline constexpr SDL_Keycode SDLK_KP8 = SDLK_KP_8;
+inline constexpr SDL_Keycode SDLK_KP9 = SDLK_KP_9;
 
 
 // Zardus: these were originally static chars but are now ints
@@ -122,7 +122,7 @@ Sint32 save_key_prefs();
 Sint32 load_key_prefs();
 // Zardus: no longer unsigned
 int get_keypress();
-#define KEY_FILE "keyprefs.dat"
+inline constexpr const char* KEY_FILE = "keyprefs.dat";
 
 // This only exists so we can use the array constructor
 //   for our prefs object (grumble grumble)

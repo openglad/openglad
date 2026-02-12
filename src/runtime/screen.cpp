@@ -74,16 +74,14 @@ static inline cfg_store& active_config()
 extern Sint32 calculate_level(Uint32 temp_exp);
 
 // Screen window boundries
-#define MAX_VIEWS 5
-#define S_UP 0 //12 //0
-#define S_LEFT 0 //12 //0
-#define S_DOWN 200 //188 // 200
-#define S_RIGHT 320 // 228
-#define S_WIDTH (S_RIGHT - S_LEFT)
-#define S_HEIGHT (S_DOWN - S_UP)
-//#define BUF_SIZE (unsigned) ((S_DOWN-S_UP)*(S_RIGHT-S_LEFT))
-
-#define MAX_SPREAD 10 //this controls find_near_foe
+inline constexpr int MAX_VIEWS = 5;
+inline constexpr int S_UP = 0;
+inline constexpr int S_LEFT = 0;
+inline constexpr int S_DOWN = 200;
+inline constexpr int S_RIGHT = 320;
+inline constexpr int S_WIDTH = (S_RIGHT - S_LEFT);
+inline constexpr int S_HEIGHT = (S_DOWN - S_UP);
+inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
 short load_version_2(SDL_RWops  *infile, screen * master);
 short load_version_3(SDL_RWops  *infile, screen * master); // v.3 scen
@@ -172,8 +170,8 @@ screen::screen(short howmany)
 
 	// Set up the viewscreen poshorters
 	numviews = howmany; // # of viewscreens
-	for (i=0; i < MAX_VIEWS; i++)
-		viewob[i].reset();
+    for (auto& view : viewob)
+        view.reset();
     
     initialize_views();
 

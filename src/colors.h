@@ -16,18 +16,17 @@
  */
 #pragma once
 
-#define COLOR_WHITE 31
+inline constexpr int COLOR_WHITE = 31;
 
-#define COLOR_RED			40
-#define COLOR_GREEN		56
-#define COLOR_BLUE		72
-#define COLOR_YELLOW		88
-#define COLOR_PURPLE		104
-#define COLOR_CYAN		120
-#define COLOR_BROWN		136
+inline constexpr int COLOR_RED = 40;
+inline constexpr int COLOR_GREEN = 56;
+inline constexpr int COLOR_BLUE = 72;
+inline constexpr int COLOR_YELLOW = 88;
+inline constexpr int COLOR_PURPLE = 104;
+inline constexpr int COLOR_CYAN = 120;
+inline constexpr int COLOR_BROWN = 136;
 
-#define COLOR_TREES     160
+inline constexpr int COLOR_TREES = 160;
 
-#define COLOR_WATER		208  // These color-cycle
-#define COLOR_FIRE		224
-
+inline constexpr int COLOR_WATER = 208;  // These color-cycle
+inline constexpr int COLOR_FIRE = 224;

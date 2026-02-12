@@ -20,24 +20,24 @@
 #include "SDL_mixer.h"
 #include <string>
 
-#define SOUND_BOW       0
-#define SOUND_CLANG     1
-#define SOUND_DIE1      2
-#define SOUND_BLAST     3
-#define SOUND_SPARKLE   4
-#define SOUND_TELEPORT  5
-#define SOUND_YO        6
-#define SOUND_BOLT      7
-#define SOUND_HEAL      8
-#define SOUND_CHARGE    9
-#define SOUND_FWIP      10
-#define SOUND_EXPLODE   11
-#define SOUND_DIE2      12  // registered only
-#define SOUND_ROAR      13  // orc, reg
-#define SOUND_MONEY     14  // reg
-#define SOUND_EAT       15  // reg
+inline constexpr int SOUND_BOW = 0;
+inline constexpr int SOUND_CLANG = 1;
+inline constexpr int SOUND_DIE1 = 2;
+inline constexpr int SOUND_BLAST = 3;
+inline constexpr int SOUND_SPARKLE = 4;
+inline constexpr int SOUND_TELEPORT = 5;
+inline constexpr int SOUND_YO = 6;
+inline constexpr int SOUND_BOLT = 7;
+inline constexpr int SOUND_HEAL = 8;
+inline constexpr int SOUND_CHARGE = 9;
+inline constexpr int SOUND_FWIP = 10;
+inline constexpr int SOUND_EXPLODE = 11;
+inline constexpr int SOUND_DIE2 = 12;  // registered only
+inline constexpr int SOUND_ROAR = 13;  // orc, reg
+inline constexpr int SOUND_MONEY = 14; // reg
+inline constexpr int SOUND_EAT = 15;   // reg
 
-#define NUMSOUNDS 16   // For now, let's use ALL sounds, regardless
+inline constexpr int NUMSOUNDS = 16;   // For now, let's use ALL sounds, regardless
 
 //buffers: PORT: don't need this anymore: #include "detect.h"
 //buffers: PORT: don't need this anymore: #include "smix.h"
@@ -63,4 +63,3 @@ class soundob
 		int volume;                       // Volume: 0 - 255
 		unsigned char silence;                      // 0 = on, 1 = silent
 };
-

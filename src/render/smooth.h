@@ -23,24 +23,24 @@
 #include "data/pixie_data.h"
 
 // Used for deciding cases
-#define TO_UP 1
-#define TO_RIGHT 2
-#define TO_DOWN 4
-#define TO_LEFT 8
-#define TO_AROUND 15
+inline constexpr int TO_UP = 1;
+inline constexpr int TO_RIGHT = 2;
+inline constexpr int TO_DOWN = 4;
+inline constexpr int TO_LEFT = 8;
+inline constexpr int TO_AROUND = 15;
 
 // These are the 'genre' defines ..
-#define TYPE_GRASS 1
-#define TYPE_WATER 2
-#define TYPE_TREES 3
-#define TYPE_DIRT  4
-#define TYPE_COBBLE 5
-#define TYPE_GRASS_DARK 6
-#define TYPE_DIRT_DARK 7
-#define TYPE_WALL 8
-#define TYPE_CARPET 9
-#define TYPE_GRASS_LIGHT 10
-#define TYPE_UNKNOWN 50
+inline constexpr int TYPE_GRASS = 1;
+inline constexpr int TYPE_WATER = 2;
+inline constexpr int TYPE_TREES = 3;
+inline constexpr int TYPE_DIRT = 4;
+inline constexpr int TYPE_COBBLE = 5;
+inline constexpr int TYPE_GRASS_DARK = 6;
+inline constexpr int TYPE_DIRT_DARK = 7;
+inline constexpr int TYPE_WALL = 8;
+inline constexpr int TYPE_CARPET = 9;
+inline constexpr int TYPE_GRASS_LIGHT = 10;
+inline constexpr int TYPE_UNKNOWN = 50;
 
 
 class smoother
@@ -62,4 +62,3 @@ class smoother
 		unsigned char  *mygrid; // our grid to change
 		Sint32 maxx, maxy;   // dimensions of our grid ..
 };
-
