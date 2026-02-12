@@ -151,9 +151,6 @@ inline options* active_prefs()
 }
 } // namespace
 
-//#define viewscreen_X 60  // These are the dimensions of the viewscreen
-//#define viewscreen_Y 44  // viewport
-
 // ************************************************************
 //  VIEWSCREEN -- It's nothing like viewscreen, it just looks like it
 // ************************************************************
@@ -177,7 +174,6 @@ viewscreen::viewscreen(short x, short y, short width,
 	yloc = y;
 	endx = xloc+width;
 	endy = yloc+height;
-	//buffer = (char  *)new char[xview*yview];
 	control = nullptr;
 	gamma = 0;
 	prefsob = active_prefs();

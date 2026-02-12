@@ -31,10 +31,10 @@
 #define YIELD_SLEEP(ms) SDL_Delay(ms)
 #endif
 
-#define HELPTEXT_LEFT 40
-#define HELPTEXT_TOP  40
-#define DISPLAY_LINES 15
-#define TEXT_DOWN(x) ((x*7)+HELPTEXT_TOP)
+inline constexpr Sint32 HELPTEXT_LEFT = 40;
+inline constexpr Sint32 HELPTEXT_TOP = 40;
+inline constexpr Sint32 DISPLAY_LINES = 15;
+constexpr Sint32 text_down(Sint32 x) { return (x * 7) + HELPTEXT_TOP; }
 
 short end_of_file;                        // global flag ..
 char helptext[HELP_WIDTH][MAX_LINES];
@@ -167,7 +167,7 @@ short read_scenario(screen *s)
 	            {
 	                std::string line = s->level_data.get_description_line(j+templines);
 					if(line.size() > 0)
-						mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(TEXT_DOWN(j)-linesdown%8),
+						mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_down(j)-linesdown%8),
 						                 line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
 	            }
 
@@ -306,7 +306,7 @@ short read_campaign_intro(screen *s)
 				if(data.getDescriptionLine(j+templines).size() == 0)
                     continue;
                 
-                mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(TEXT_DOWN(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
+                mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(text_down(j)-linesdown%8), data.getDescriptionLine(j+templines).c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
             }
 
 			
@@ -560,8 +560,8 @@ static const char* get_content_line(const TabContent& content, int index)
 #define TAB_HEIGHT 12
 #define TAB_WIDTH 58
 #define TAB_SPACING 2
-#define TAB_START_X (HELPTEXT_LEFT + 10)
-#define CONTENT_TOP (TAB_Y + TAB_HEIGHT + 4)  // Content starts below tabs
+inline constexpr Sint32 TAB_START_X = HELPTEXT_LEFT + 10;
+inline constexpr Sint32 CONTENT_TOP = TAB_Y + TAB_HEIGHT + 4;  // Content starts below tabs
 
 Sint32 show_general_help()
 {

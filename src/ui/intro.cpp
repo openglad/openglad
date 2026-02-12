@@ -20,14 +20,13 @@
 */
 
 #include "graph.h"
-//#include "render/pixie.h"
 // Z's script: #include <process.h>
 #include <array>
 #include <cstring>
 
-#define SHOW_TIME 130
-#define FROM 1
-#define TO 0
+inline constexpr int SHOW_TIME = 130;
+inline constexpr int FADE_FROM = 1;
+inline constexpr int FADE_TO = 0;
 #include "input/input.h"
 
 int show();
@@ -57,7 +56,7 @@ void intro_main(Sint32 argc, char** argv)
 	//buffers: PORT:  for (i=0;i<256;i++)
 	//buffers: PORT:         set_palette_reg(i,0,0,0);
     
-    myscreen->fadeblack(TO);
+    myscreen->fadeblack(FADE_TO);
     
 	myscreen->clear();
 
@@ -250,7 +249,7 @@ int show() // default uses SHOW_TIME
 
 int show(int howlong)
 {
-	if (myscreen->fadeblack(FROM) == -1) return -1;
+	if (myscreen->fadeblack(FADE_FROM) == -1) return -1;
 
 	reset_timer();
 	while (query_timer() < howlong)
@@ -260,6 +259,6 @@ int show(int howlong)
 			return -1;
 	}
 
-	if (myscreen->fadeblack(TO) == -1) return -1;
+	if (myscreen->fadeblack(FADE_TO) == -1) return -1;
 	return 1;
 }
