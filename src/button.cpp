@@ -485,7 +485,10 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     SDL_LockMutex(get_allbuttons_mutex());
 #endif
 
-    for (i=1; i < MAX_BUTTONS; i++) // skip # 0!
+    // init_buttons owns the lifetime of all vbuttons in allbuttons[].
+    // Callers may keep non-owning pointers (e.g., localbuttons == allbuttons[0]),
+    // but must not delete them directly.
+    for (i=0; i < MAX_BUTTONS; i++)
     {
         if (allbuttons[i])
             delete allbuttons[i];

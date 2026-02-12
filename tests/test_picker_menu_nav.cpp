@@ -138,14 +138,19 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     TEST_ASSERT_EQ(4, (int)retvalue, "activation without global vbuttons should return OK");
 
     // Fire while nav enabled with global vbuttons path.
-    vbutton* localbuttons = init_buttons(buttons, 1);
+    vbutton* primary_button = init_buttons(buttons, 1);
+    (void)primary_button;
     retvalue = 0;
     ks.set(SDLK_SPACE, true);
     std::thread release_fire3(release_key_after, &ks, SDLK_SPACE, 10);
     activated = handle_menu_nav(buttons, highlighted, retvalue, true);
     release_fire3.join();
     TEST_ASSERT(activated, "fire with global vbuttons should activate");
-    delete localbuttons;
+    for (int i = 0; i < MAX_BUTTONS; i++)
+    {
+        delete allbuttons[i];
+        allbuttons[i] = nullptr;
+    }
 
     // Smoke draw highlight routines under both nav states.
     menu_nav_enabled = false;

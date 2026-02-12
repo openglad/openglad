@@ -6,7 +6,6 @@
 extern short end_of_file;
 
 // From help.cpp
-char* read_one_line(SDL_RWops* infile, short length);
 short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops* infile);
 
 void test_help_read_one_line_stops_on_newline_and_sets_eof()
@@ -16,19 +15,15 @@ void test_help_read_one_line_stops_on_newline_and_sets_eof()
     TEST_ASSERT(rw != nullptr, "SDL_RWFromConstMem should succeed");
 
     end_of_file = 0;
-    char* l1 = read_one_line(rw, HELP_WIDTH);
-    TEST_ASSERT(l1 != nullptr, "read_one_line should return buffer");
-    TEST_ASSERT_STR_EQ("abc", l1, "first line should be 'abc'");
-    delete[] l1;
+    std::string l1 = read_one_line(rw, HELP_WIDTH);
+    TEST_ASSERT_STR_EQ("abc", l1.c_str(), "first line should be 'abc'");
 
-    char* l2 = read_one_line(rw, HELP_WIDTH);
-    TEST_ASSERT_STR_EQ("def", l2, "second line should be 'def'");
-    delete[] l2;
+    std::string l2 = read_one_line(rw, HELP_WIDTH);
+    TEST_ASSERT_STR_EQ("def", l2.c_str(), "second line should be 'def'");
 
     // Reading again should hit EOF and set end_of_file.
-    char* l3 = read_one_line(rw, HELP_WIDTH);
+    (void)read_one_line(rw, HELP_WIDTH);
     TEST_ASSERT(end_of_file == 1, "end_of_file should be set after EOF");
-    delete[] l3;
 
     SDL_RWclose(rw);
 }

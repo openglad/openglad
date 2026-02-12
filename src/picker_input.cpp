@@ -203,7 +203,6 @@ bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sin
 {
     if(localbuttons && (retvalue == OK_VALUE || retvalue == REDRAW_VALUE))
     {
-        delete(localbuttons);
         localbuttons = init_buttons(buttons, num_buttons);
 
         retvalue = 0;

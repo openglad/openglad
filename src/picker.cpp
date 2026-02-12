@@ -106,7 +106,8 @@ Sint32 editguy = 0;        // Global for editing guys ..
 PixieData main_title_logo_data, main_columns_data;
 pixieN  *main_title_logo_pix,*main_columns_pix;
 
-vbutton * localbuttons; //global so we can delete the buttons anywhere
+// Non-owning alias to the current button set (init_buttons owns allbuttons[]).
+vbutton * localbuttons;
 short current_team_num = 0;
 
 #ifdef TESTING
@@ -669,8 +670,7 @@ Sint32 main_options()
 {
     text& mytext = myscreen->text_normal;
     
-	if(localbuttons != nullptr)
-		delete localbuttons; //we'll make a new set
+		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
     #if defined(OUYA) || defined(ANDROID)
     main_options_buttons[3].hidden = main_options_buttons[3].no_draw = true;
@@ -792,8 +792,7 @@ Sint32 create_detail_menu(guy *arg1)
 
    release_mouse();
 
-   if (localbuttons)
-       delete localbuttons;
+	   // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	button* buttons = details_buttons;
 	int num_buttons = 2;

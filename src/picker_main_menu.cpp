@@ -152,17 +152,16 @@ void redraw_mainmenu()
 
 Sint32 mainmenu(Sint32 arg1)
 {
-    screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
-    if (!game)
-        return EXIT_VALUE;
+	screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
+	if (!game)
+		return EXIT_VALUE;
 
 	Sint32 retvalue=0;
 
 	if(arg1)
 		arg1 = 1;
 
-	if(localbuttons != nullptr)
-		delete localbuttons; //we'll make a new set
+	// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	button* buttons = mainmenu_buttons;
 	int num_buttons = MAINMENU_BUTTON_COUNT;

@@ -123,8 +123,7 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
     int dumbcount;
 
-    if (localbuttons)
-        delete (localbuttons);
+    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
     button* buttons = yes_or_no_buttons;
     int num_buttons = 2;
@@ -217,8 +216,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 
     int dumbcount;
 
-    if (localbuttons)
-        delete (localbuttons);
+    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
     button* buttons = no_or_yes_buttons;
     int num_buttons = 2;
@@ -318,8 +316,7 @@ void popup_dialog(const char* title, const char* message)
     // Draw message
     int j = 0;
 
-    if (localbuttons)
-        delete (localbuttons);
+    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
     button* buttons = popup_dialog_buttons;
     int num_buttons = 1;

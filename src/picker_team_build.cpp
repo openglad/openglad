@@ -106,8 +106,7 @@ Sint32 create_team_menu(Sint32 arg1)
         retvalue = create_hire_menu(arg1);
     }
 
-	if (localbuttons)
-		delete localbuttons;
+		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
 	myscreen->fadeblack(0);
 	
@@ -179,8 +178,7 @@ Sint32 create_view_menu(Sint32 arg1)
 
 	myscreen->clearbuffer();
 
-	if (localbuttons)
-		delete (localbuttons);
+		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	button* buttons = viewteam_buttons;
 	int num_buttons = 2;
@@ -233,8 +231,7 @@ Sint32 create_progress_menu(Sint32 arg1)
 
     myscreen->clearbuffer();
 
-    if (localbuttons)
-        delete localbuttons;
+	    // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 
     // Get accessible levels
     std::vector<int> level_ids = get_accessible_levels();
@@ -668,8 +665,7 @@ Sint32 create_hire_menu(Sint32 arg1)
     
 	myscreen->clearbuffer();
 
-	if (localbuttons)
-		delete (localbuttons);
+		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	#ifdef DISABLE_MULTIPLAYER
 	hiremenu_buttons[2].hidden = true;
@@ -705,10 +701,8 @@ Sint32 create_hire_menu(Sint32 arg1)
         // Reset buttons
         if(retvalue == OK || retvalue == REDRAW)
         {
-            if (localbuttons)
-                delete (localbuttons);
-            
-            localbuttons = init_buttons(buttons, num_buttons);
+	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+	            localbuttons = init_buttons(buttons, num_buttons);
 
             // Update our team-number display ..
             change_hire_teamnum(0);
@@ -868,9 +862,8 @@ Sint32 create_hire_menu(Sint32 arg1)
             arg1 = -1;
             popup_dialog("HIRE TROOPS", "Get your team started here\nby hiring some fresh recruits.");
             
-            if(localbuttons)
-                delete (localbuttons);
-            localbuttons = init_buttons(buttons, num_buttons);
+	            // init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
+	            localbuttons = init_buttons(buttons, num_buttons);
         }
 	}
 	
@@ -908,8 +901,7 @@ Sint32 create_train_menu(Sint32 arg1)
 
 	myscreen->clearbuffer();
 
-	if (localbuttons)
-		delete localbuttons;
+		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
 	
 	#ifdef DISABLE_MULTIPLAYER
 	trainmenu_buttons[18].hidden = true;
@@ -958,8 +950,7 @@ Sint32 create_train_menu(Sint32 arg1)
         {
             if(retvalue == REDRAW)
             {
-				delete(localbuttons);
-				localbuttons = init_buttons(buttons, num_buttons);
+					localbuttons = init_buttons(buttons, num_buttons);
 				
 				for (i=2; i < 14; i++)
 				{
@@ -1191,8 +1182,7 @@ Sint32 create_load_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
-	if (localbuttons)
-		delete (localbuttons);
+		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	button* buttons = loadteam_buttons;
 	int num_buttons = 11;
@@ -1267,8 +1257,7 @@ Sint32 create_save_menu(Sint32 arg1)
 	if (arg1)
 		arg1 = 1;
 
-	if (localbuttons)
-		delete (localbuttons);
+		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
     
 	button* buttons = saveteam_buttons;
 	int num_buttons = 11;
