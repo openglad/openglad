@@ -17,6 +17,8 @@ while IFS= read -r line; do
     allowed["${line}"]=1
 done < "${ALLOWLIST}"
 
+include_pattern='^[[:space:]]*#include[[:space:]]*"graph\.h"'
+
 status=0
 while IFS= read -r file; do
     rel="${file#${PROJECT_ROOT}/}"
@@ -24,7 +26,7 @@ while IFS= read -r file; do
         echo "New disallowed graph.h include in ${rel}" >&2
         status=1
     fi
-done < <(rg -l '^\s*#include\s+"graph\.h"' "${PROJECT_ROOT}/src"/*.cpp)
+done < <(grep -lE "${include_pattern}" "${PROJECT_ROOT}"/src/*.cpp || true)
 
 for rel in "${!allowed[@]}"; do
     file="${PROJECT_ROOT}/${rel}"
@@ -33,7 +35,7 @@ for rel in "${!allowed[@]}"; do
         status=1
         continue
     fi
-    if ! rg -q '^\s*#include\s+"graph\.h"' "${file}"; then
+    if ! grep -qE "${include_pattern}" "${file}"; then
         echo "Stale graph.h allowlist entry (include removed): ${rel}" >&2
         status=1
     fi
