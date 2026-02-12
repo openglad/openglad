@@ -35,6 +35,17 @@ int toInt(const std::string& s);
 
 static constexpr char VERSION_NUM = 9; // save scenario type info
 
+static bool rw_read_exact_or_log(SDL_RWops* rwops, void* dst, size_t size, size_t count)
+{
+    const size_t got = SDL_RWread(rwops, dst, size, count);
+    if (got != count)
+    {
+        Log("Read error: expected {} items, got {} (SDL: {})\n", count, got, SDL_GetError());
+        return false;
+    }
+    return true;
+}
+
 
 
 
@@ -663,28 +674,31 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 	// 11 bytes reserved
 
 	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
+	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
+		return 0;
 	newgrid[8] = '\0';
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	data->grid_file = newgrid;
 
 	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
+	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
+		return 0;
 	
     data->delete_objects();
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, tempreserved, 11, 1);
+		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
+		    !rw_read_exact_or_log(infile, tempreserved, 11, 1))
+			return 0;
 		if (static_cast<Order>(temporder) == Order::Treasure)
 			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);  // create new object
 		else
@@ -756,28 +770,31 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 
 
 	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
+	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
+		return 0;
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	data->grid_file = newgrid;
 
 	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
+	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
+		return 0;
 	
     data->delete_objects();
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, &templevel, 1, 1);
-		SDL_RWread(infile, tempreserved, 10, 1);
+		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &templevel, 1, 1) ||
+		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
+			return 0;
 		if (static_cast<Order>(temporder) == Order::Treasure)
 			//              new_guy = master->add_fx_ob(static_cast<Order>(temporder), tempfamily);  // create new object
 			new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily, 1); // add to top of list
@@ -794,13 +811,40 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now get the lines of text to read ..
-	SDL_RWread(infile, &numlines, 1, 1);
+	if (!rw_read_exact_or_log(infile, &numlines, 1, 1))
+		return 0;
 
 	for (i=0; i < numlines; i++)
 	{
-		SDL_RWread(infile, &tempwidth, 1, 1);
-		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[static_cast<int>(tempwidth)] = 0;
+		if (!rw_read_exact_or_log(infile, &tempwidth, 1, 1))
+			return 0;
+		const int original_width = static_cast<unsigned char>(tempwidth);
+		int width = original_width;
+		if (width >= static_cast<int>(sizeof(oneline)))
+			width = sizeof(oneline) - 1;
+		if (width > 0)
+		{
+			if (!rw_read_exact_or_log(infile, oneline, width, 1))
+				return 0;
+			oneline[width] = 0;
+			// Skip any remaining bytes to keep the stream aligned
+			if (original_width > width)
+			{
+				char discard[256];
+				int remaining = original_width - width;
+				while (remaining > 0)
+				{
+					const int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
+					if (!rw_read_exact_or_log(infile, discard, chunk, 1))
+						return 0;
+					remaining -= chunk;
+				}
+			}
+		}
+		else
+		{
+			oneline[0] = 0;
+		}
 		data->description.push_back(oneline);
 	}
 
@@ -830,9 +874,9 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	short i;
 	walker * new_guy;
 	char newgrid[16] = "grid.pix";  // default grid
-	char oneline[80];
+	char oneline[80] = {};
 	char numlines, tempwidth;
-	char tempname[12];
+	char tempname[12] = {};
 
 
 	// Format of a scenario object list file version 4 is:
@@ -860,29 +904,32 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 
 
 	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
+	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
+		return 0;
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	data->grid_file = newgrid;
 
 	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
+	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
+		return 0;
 	
     data->delete_objects();
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, &templevel, 1, 1);
-		SDL_RWread(infile, tempname, 12, 1);
-		SDL_RWread(infile, tempreserved, 10, 1);
+		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &templevel, 1, 1) ||
+		    !rw_read_exact_or_log(infile, tempname, 12, 1) ||
+		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
+			return 0;
 		if (static_cast<Order>(temporder) == Order::Treasure)
 			//new_guy = data->add_ob(static_cast<Order>(temporder), tempfamily, 1); // add to top of list
 			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
@@ -903,13 +950,40 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now get the lines of text to read ..
-	SDL_RWread(infile, &numlines, 1, 1);
+	if (!rw_read_exact_or_log(infile, &numlines, 1, 1))
+		return 0;
 
 	for (i=0; i < numlines; i++)
 	{
-		SDL_RWread(infile, &tempwidth, 1, 1);
-		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[static_cast<int>(tempwidth)] = 0;
+		if (!rw_read_exact_or_log(infile, &tempwidth, 1, 1))
+			return 0;
+		const int original_width = static_cast<unsigned char>(tempwidth);
+		int width = original_width;
+		if (width >= static_cast<int>(sizeof(oneline)))
+			width = sizeof(oneline) - 1;
+		if (width > 0)
+		{
+			if (!rw_read_exact_or_log(infile, oneline, width, 1))
+				return 0;
+			oneline[width] = 0;
+			// Skip any remaining bytes to keep the stream aligned
+			if (original_width > width)
+			{
+				char discard[256];
+				int remaining = original_width - width;
+				while (remaining > 0)
+				{
+					const int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
+					if (!rw_read_exact_or_log(infile, discard, chunk, 1))
+						return 0;
+					remaining -= chunk;
+				}
+			}
+		}
+		else
+		{
+			oneline[0] = 0;
+		}
 		data->description.push_back(oneline);
 	}
 
@@ -940,9 +1014,9 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	walker * new_guy;
 	char newgrid[16] = "grid.pix";  // default grid
 	char new_scen_type; // read the scenario type
-	char oneline[80];
+	char oneline[80] = {};
 	char numlines, tempwidth;
-	char tempname[12];
+	char tempname[12] = {};
 
 	// Format of a scenario object list file version 5 is:
 	// 3-byte header: 'FSS'
@@ -970,33 +1044,37 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 
 
 	// Get grid file to load
-	SDL_RWread(infile, newgrid, 8, 1);
+	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
+		return 0;
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	data->grid_file = newgrid;
 
 	// Get the scenario type information
-	SDL_RWread(infile, &new_scen_type, 1, 1);
+	if (!rw_read_exact_or_log(infile, &new_scen_type, 1, 1))
+		return 0;
 	data->type = new_scen_type;
 
 	// Determine number of objects to load ...
-	SDL_RWread(infile, &listsize, 2, 1);
+	if (!rw_read_exact_or_log(infile, &listsize, 2, 1))
+		return 0;
 	
     data->delete_objects();
 
 	// Now read in the objects one at a time
 	for (i=0; i < listsize; i++)
 	{
-		SDL_RWread(infile, &temporder, 1, 1);
-		SDL_RWread(infile, &tempfamily, 1, 1);
-		SDL_RWread(infile, &currentx, 2, 1);
-		SDL_RWread(infile, &currenty, 2, 1);
-		SDL_RWread(infile, &tempteam, 1, 1);
-		SDL_RWread(infile, &tempfacing, 1, 1);
-		SDL_RWread(infile, &tempcommand, 1, 1);
-		SDL_RWread(infile, &templevel, 1, 1);
-		SDL_RWread(infile, tempname, 12, 1);
-		SDL_RWread(infile, tempreserved, 10, 1);
+		if (!rw_read_exact_or_log(infile, &temporder, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfamily, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &currentx, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &currenty, 2, 1) ||
+		    !rw_read_exact_or_log(infile, &tempteam, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempfacing, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &tempcommand, 1, 1) ||
+		    !rw_read_exact_or_log(infile, &templevel, 1, 1) ||
+		    !rw_read_exact_or_log(infile, tempname, 12, 1) ||
+		    !rw_read_exact_or_log(infile, tempreserved, 10, 1))
+			return 0;
 		if (static_cast<Order>(temporder) == Order::Treasure)
 			new_guy = data->add_fx_ob(static_cast<Order>(temporder), tempfamily);
 		else
@@ -1016,13 +1094,40 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now get the lines of text to read ..
-	SDL_RWread(infile, &numlines, 1, 1);
+	if (!rw_read_exact_or_log(infile, &numlines, 1, 1))
+		return 0;
 
 	for (i=0; i < numlines; i++)
 	{
-		SDL_RWread(infile, &tempwidth, 1, 1);
-		SDL_RWread(infile, oneline, tempwidth, 1);
-		oneline[static_cast<int>(tempwidth)] = 0;
+		if (!rw_read_exact_or_log(infile, &tempwidth, 1, 1))
+			return 0;
+		const int original_width = static_cast<unsigned char>(tempwidth);
+		int width = original_width;
+		if (width >= static_cast<int>(sizeof(oneline)))
+			width = sizeof(oneline) - 1;
+		if (width > 0)
+		{
+			if (!rw_read_exact_or_log(infile, oneline, width, 1))
+				return 0;
+			oneline[width] = 0;
+			// Skip any remaining bytes to keep the stream aligned
+			if (original_width > width)
+			{
+				char discard[256];
+				int remaining = original_width - width;
+				while (remaining > 0)
+				{
+					const int chunk = remaining < static_cast<int>(sizeof(discard)) ? remaining : static_cast<int>(sizeof(discard));
+					if (!rw_read_exact_or_log(infile, discard, chunk, 1))
+						return 0;
+					remaining -= chunk;
+				}
+			}
+		}
+		else
+		{
+			oneline[0] = 0;
+		}
 		data->description.push_back(oneline);
 	}
 
@@ -1053,17 +1158,6 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 
 	return 1;
 } // end load_version_5
-
-static bool rw_read_exact_or_log(SDL_RWops* rwops, void* dst, size_t size, size_t count)
-{
-    const size_t got = SDL_RWread(rwops, dst, size, count);
-    if (got != count)
-    {
-        Log("Read error: expected {} items, got {} (SDL: {})\n", count, got, SDL_GetError());
-        return false;
-    }
-    return true;
-}
 
 #define READ_OR_RETURN(ctx, ptr, size, n) \
 do{ \
