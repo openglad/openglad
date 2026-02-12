@@ -23,6 +23,7 @@
 #include "render/text.h"
 #include "runtime/screen.h"
 #include <cmath>
+#include <memory>
 #include "input/input.h"
 
 class vbutton;
@@ -134,7 +135,7 @@ class vbutton
 		char had_focus; // did we recently have focus?
 		char do_outline; // force an outline
 		char depressed;
-		pixieN *mypixie;
+		std::unique_ptr<pixieN> mypixie;
 		int hotkey;
 		unsigned char color;
 		bool hidden;

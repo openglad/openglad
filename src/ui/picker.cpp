@@ -28,6 +28,7 @@
 #include "ui/campaign_picker.h"
 #include "ui/level_picker.h"
 #include "runtime/game_context.h"
+#include <array>
 #include <cstring>
 #include <cctype>
 #include <format>
@@ -81,7 +82,7 @@ const char* family_name_copy(short family);
 
 // Zardus: PORT: put in a backpics var here so we can free the pixie files themselves
 PixieData backpics[5];
-pixieN *backdrops[5];
+std::array<std::unique_ptr<pixieN>, 5> backdrops;
 
 // Zardus: FIX: this is from view.cpp, so that we can delete it here
 
@@ -106,7 +107,8 @@ guy  *old_guy = nullptr;
 std::string  message;
 Sint32 editguy = 0;        // Global for editing guys ..
 PixieData main_title_logo_data, main_columns_data;
-pixieN  *main_title_logo_pix,*main_columns_pix;
+std::unique_ptr<pixieN> main_title_logo_pix;
+std::unique_ptr<pixieN> main_columns_pix;
 
 // Non-owning alias to the current button set (init_buttons owns allbuttons[]).
 vbutton * localbuttons;
@@ -214,21 +216,18 @@ static void picker_initialize_shared_menu_state()
         allbuttons[i] = nullptr;
 
     // Set backdrops to nullptr
-    for (Sint32 i = 0; i < 5; i++)
-        backdrops[i] = nullptr;
-
     backpics[0] = read_pixie_file("mainul.pix");
     backpics[1] = read_pixie_file("mainur.pix");
     backpics[2] = read_pixie_file("mainll.pix");
     backpics[3] = read_pixie_file("mainlr.pix");
 
-    backdrops[0] = new pixieN(backpics[0]);
+    backdrops[0] = std::make_unique<pixieN>(backpics[0]);
     backdrops[0]->setxy(0, 0);
-    backdrops[1] = new pixieN(backpics[1]);
+    backdrops[1] = std::make_unique<pixieN>(backpics[1]);
     backdrops[1]->setxy(160, 0);
-    backdrops[2] = new pixieN(backpics[2]);
+    backdrops[2] = std::make_unique<pixieN>(backpics[2]);
     backdrops[2]->setxy(0, 100);
-    backdrops[3] = new pixieN(backpics[3]);
+    backdrops[3] = std::make_unique<pixieN>(backpics[3]);
     backdrops[3]->setxy(160, 100);
 
     myscreen->viewob[0]->resize(PREF_VIEW_FULL);
@@ -236,11 +235,11 @@ static void picker_initialize_shared_menu_state()
 
     //main_title_logo_data = read_pixie_file("glad.pix");
     main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
-    main_title_logo_pix = new pixieN(main_title_logo_data);
+    main_title_logo_pix = std::make_unique<pixieN>(main_title_logo_data);
 
     //main_columns_data = read_pixie_file("mage.pix");
     main_columns_data = read_pixie_file("columns.pix");
-    main_columns_pix = new pixieN(main_columns_data);
+    main_columns_pix = std::make_unique<pixieN>(main_columns_data);
 
     // Get the mouse, timer, & keyboard ..
     grab_mouse();
@@ -276,8 +275,7 @@ void picker_quit()
 	{
 		if (backdrops[i])
 		{
-			delete backdrops[i];
-			backdrops[i] = nullptr;
+			backdrops[i].reset();
 		}
 		
         backpics[i].free();
@@ -294,11 +292,9 @@ void picker_quit()
 
 	delete myscreen;
     myscreen = nullptr;
-	delete main_columns_pix;
-    main_columns_pix = nullptr;
+	main_columns_pix.reset();
 	main_columns_data.free();
-	delete main_title_logo_pix;
-    main_title_logo_pix = nullptr;
+	main_title_logo_pix.reset();
 	main_title_logo_data.free();
 }
 

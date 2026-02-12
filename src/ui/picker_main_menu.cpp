@@ -35,8 +35,8 @@ constexpr int MAINMENU_BUTTON_COUNT = 6;
 constexpr Sint32 EXIT_VALUE = 1;
 constexpr Sint32 REDRAW_VALUE = 2;
 
-extern pixieN *main_title_logo_pix;
-extern pixieN *main_columns_pix;
+extern std::unique_ptr<pixieN> main_title_logo_pix;
+extern std::unique_ptr<pixieN> main_columns_pix;
 extern char difficulty_names[DIFFICULTY_SETTINGS][80];
 extern Sint32 current_difficulty;
 extern std::unique_ptr<guy> current_guy;

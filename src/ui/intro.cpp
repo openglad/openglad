@@ -44,14 +44,9 @@ void intro_main(Sint32 argc, char** argv)
 	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
 	//char **args = (char **)new int;
 	text& mytext = myscreen->text_normal;
-	pixie *gladiator;
-	pixie *bigfoot;
-	pixie *ul, *ur, *ll, *lr; // for full-screen displays
 	PixieData uldata, urdata, lldata, lrdata;
 	PixieData gladdata, bigdata;
 	const char* message;
-
-	ul = ur = ll = lr = nullptr;
 
 	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 	grab_timer();
@@ -66,11 +61,10 @@ void intro_main(Sint32 argc, char** argv)
 	myscreen->clear();
 
 	gladdata = read_pixie_file("3mages2.pix");
-	gladiator = new pixie(gladdata);
-	gladiator->drawMix(120,55,myscreen->viewob[0].get());
+	pixie gladiator(gladdata);
+	gladiator.drawMix(120,55,myscreen->viewob[0].get());
 	mytext.write_y(100,"FORGOTTEN SAGES PRESENTS", 230, myscreen->viewob[0].get());
 	//myscreen->refresh();
-	delete gladiator;
 	gladdata.free();
 
 	if (show() < 0)
@@ -81,18 +75,16 @@ void intro_main(Sint32 argc, char** argv)
 
 	//gladdata = read_pixie_file("glad.pix");
 	gladdata = read_pixie_file("glad2.pix");
-	gladiator = new pixie(gladdata);
 	bigdata = read_pixie_file("bigfoot.pix");
-	bigfoot = new pixie(bigdata);
+	pixie gladiator2(gladdata);
+	pixie bigfoot(bigdata);
 	myscreen->clear();
-	bigfoot->drawMix(120,50,myscreen->viewob[0].get());
+	bigfoot.drawMix(120,50,myscreen->viewob[0].get());
 	//gladiator->drawMix(110,65,myscreen->viewob[0].get());
-	gladiator->drawMix(100, 110, myscreen->viewob[0].get());
+	gladiator2.drawMix(100, 110, myscreen->viewob[0].get());
 	//myscreen->refresh();
 
 	gladdata.free();
-	delete gladiator;
-	delete bigfoot;
 	bigdata.free();
 
 	if (show() < 0)
@@ -128,36 +120,28 @@ void intro_main(Sint32 argc, char** argv)
 	// First 'interlude' snapshot
 	myscreen->clear();
 	uldata = read_pixie_file("game2ul.pix");
-	ul = new pixie(uldata);
-	ul->setxy(41, 12);
-	ul->draw(myscreen->viewob[0].get());
-	delete ul;
+	pixie ul(uldata);
+	ul.setxy(41, 12);
+	ul.draw(myscreen->viewob[0].get());
 	uldata.free();
-	ul = nullptr;
 
 	urdata = read_pixie_file("game2ur.pix");
-	ur = new pixie(urdata);
-	ur->setxy(160, 12);
-	ur->draw(myscreen->viewob[0].get());
-	delete ur;
+	pixie ur(urdata);
+	ur.setxy(160, 12);
+	ur.draw(myscreen->viewob[0].get());
 	urdata.free();
-	ur = nullptr;
 
 	lldata = read_pixie_file("game2ll.pix");
-	ll = new pixie(lldata);
-	ll->setxy(41, 103);
-	ll->draw(myscreen->viewob[0].get());
-	delete ll;
+	pixie ll(lldata);
+	ll.setxy(41, 103);
+	ll.draw(myscreen->viewob[0].get());
 	lldata.free();
-	ll = nullptr;
 
 	lrdata = read_pixie_file("game2lr.pix");
-	lr = new pixie(lrdata);
-	lr->setxy(160, 103);
-	lr->draw(myscreen->viewob[0].get());
-	delete lr;
+	pixie lr(lrdata);
+	lr.setxy(160, 103);
+	lr.draw(myscreen->viewob[0].get());
 	lrdata.free();
-	lr = nullptr;
 
 	//myscreen->refresh();
 
@@ -183,20 +167,16 @@ void intro_main(Sint32 argc, char** argv)
 	// Second 'interlude' & extra credits
 	myscreen->clear();
 	uldata = read_pixie_file("game4.pix");
-	ul = new pixie(uldata);
-	ul->setxy(0, 0);
-	ul->draw(myscreen->viewob[0].get());
-	delete ul;
+	pixie ul2(uldata);
+	ul2.setxy(0, 0);
+	ul2.draw(myscreen->viewob[0].get());
 	uldata.free();
-	ul = nullptr;
 
 	lldata = read_pixie_file("game5.pix");
-	ll = new pixie(lldata);
-	ll->setxy(160, 78);
-	ll->draw(myscreen->viewob[0].get());
-	delete ll;
+	pixie ll2(lldata);
+	ll2.setxy(160, 78);
+	ll2.draw(myscreen->viewob[0].get());
 	lldata.free();
-	ll = nullptr;
 
 	message = "Additional Artwork By:";
 	mytext.write_xy(310-mytext.query_width(message),

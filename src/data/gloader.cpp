@@ -1135,15 +1135,16 @@ walker  *loader::set_walker(walker *ob,
 // This is used for grabbing a pixieN directly, not through a walker
 pixieN *loader::create_pixieN(Order order, Sint32 family)
 {
-	pixieN *newpixie;
+	return create_pixieN_owned(order, family).release();
+}
 
+std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, Sint32 family)
+{
 	if (!graphics[PIX(order, family)].valid())
 	{
 		Log("Alert! No valid graphics for pixieN\n");
 		return nullptr;
 	}
 
-	newpixie = new pixieN(graphics[PIX(order, family)]);
-
-	return newpixie;
+	return std::make_unique<pixieN>(graphics[PIX(order, family)]);
 }

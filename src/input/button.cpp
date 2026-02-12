@@ -17,9 +17,10 @@
 #include "input/button.h"
 #include "test_trace.h"
 #include "runtime/game_context.h"
+#include <array>
 
 extern short scen_level;
-extern pixieN *backdrops[5];
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 
 vbutton * allbuttons[MAX_BUTTONS];
 short dumbcount;
@@ -186,7 +187,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     do_outline = 0;
     depressed = 0;
 
-    mypixie = myscreen->level_data.myloader->create_pixieN(Order::Button1, family);
+    mypixie = myscreen->level_data.myloader->create_pixieN_owned(Order::Button1, family);
 
     hotkey = hot;
 
@@ -211,7 +212,6 @@ vbutton::vbutton() //for pointers
 vbutton::~vbutton()
 {
     //myscreen->draw_box(xloc-4,yloc-4,xend+4,yend+4,0,1,1);
-    delete mypixie;
 
     /*
       release_mouse();
@@ -228,9 +228,7 @@ vbutton::~vbutton()
 
 void vbutton::set_graphic(char family)
 {
-    if (mypixie)
-        delete mypixie;
-    mypixie = myscreen->level_data.myloader->create_pixieN(Order::Button1, family);
+    mypixie = myscreen->level_data.myloader->create_pixieN_owned(Order::Button1, family);
     width = mypixie->sizex;
     height= mypixie->sizey;
     xend = xloc + width;

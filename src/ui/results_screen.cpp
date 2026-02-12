@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstring>
 #include <format>
+#include <memory>
 
 #ifdef OUYA
     #include "OuyaController.h"
@@ -252,7 +253,7 @@ bool TroopResult::is_new()
 
 void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // shows the current guy ..
 {
-	walker *mywalker;
+	std::unique_ptr<walker> mywalker;
 	Sint32 i;
 	Sint32 newfamily;
 
@@ -263,7 +264,7 @@ void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // show
 
 	newfamily = myguy->family;
 
-	mywalker = myscreen->level_data.myloader->create_walker(Order::Living,
+	mywalker = myscreen->level_data.myloader->create_walker_owned(Order::Living,
 	           newfamily,myscreen);
 	mywalker->stats()->bit_flags = 0;
 	mywalker->curdir = FACE_DOWN;
@@ -276,7 +277,6 @@ void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // show
     viewscreen* view_buf = myscreen->viewob[0].get();
 	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
 	mywalker->draw(view_buf);
-	delete mywalker;
 }
 
 void TroopResult::draw_guy(int cx, int cy, int frame)
