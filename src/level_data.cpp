@@ -1054,13 +1054,21 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	return 1;
 } // end load_version_5
 
+static bool rw_read_exact_or_log(SDL_RWops* rwops, void* dst, size_t size, size_t count)
+{
+    const size_t got = SDL_RWread(rwops, dst, size, count);
+    if (got != count)
+    {
+        Log("Read error: expected {} items, got {} (SDL: {})\n", count, got, SDL_GetError());
+        return false;
+    }
+    return true;
+}
+
 #define READ_OR_RETURN(ctx, ptr, size, n) \
 do{ \
-    if(!SDL_RWread(ctx, ptr, size, n)) \
-    { \
-        Log("Read error: {}\n", SDL_GetError()); \
+    if(!rw_read_exact_or_log((ctx), (ptr), (size), (n))) \
         return 0; \
-    } \
 } while(0)
 
 // Version 6 includes a 30-byte scenario title after the grid name.
