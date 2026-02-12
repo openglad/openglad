@@ -541,9 +541,20 @@ void LevelData::resize_grid(int width, int height)
         return;
     }
     
+    auto random_grass_tile = []() -> unsigned char {
+        switch(rand()%4)
+        {
+            case 0: return PIX_GRASS1;
+            case 1: return PIX_GRASS2;
+            case 2: return PIX_GRASS3;
+            case 3: return PIX_GRASS4;
+        }
+        return PIX_GRASS1;
+    };
+
     // Create new grid
 	int size = width*height;
-    unsigned char* new_grid = new unsigned char[size];
+    auto new_grid = std::make_unique<unsigned char[]>(size);
     
     // Copy the map data
 	for(int i = 0; i < width; i++)
@@ -556,28 +567,14 @@ void LevelData::resize_grid(int width, int height)
             }
             else
             {
-                switch(rand()%4)
-                {
-                    case 0:
-                    new_grid[j*width + i] = PIX_GRASS1;
-                    break;
-                    case 1:
-                    new_grid[j*width + i] = PIX_GRASS2;
-                    break;
-                    case 2:
-                    new_grid[j*width + i] = PIX_GRASS3;
-                    break;
-                    case 3:
-                    new_grid[j*width + i] = PIX_GRASS4;
-                    break;
-                }
+                new_grid[j*width + i] = random_grass_tile();
             }
         }
     }
     
     // Delete the old, use the new
     grid.free();
-    grid.data.reset(new_grid);
+    grid.data = std::move(new_grid);
     grid.frames = 1;
     grid.w = width;
     grid.h = height;
