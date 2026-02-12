@@ -24,8 +24,10 @@
 #include "guy.h"
 #include "button.h"
 
+#include <array>
 #include <format>
 #include <list>
+#include <memory>
 #include <string>
 
 #include <cstdio>
@@ -285,7 +287,7 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
 	text& loadtext = myscreen->text_normal;
     
     // Here are the browser variables
-    BrowserEntry* entries[NUM_BROWSE_RADARS];
+    std::array<std::unique_ptr<BrowserEntry>, NUM_BROWSE_RADARS> entries;
     
     std::vector<int> level_list = list_levels_v();
     int level_list_length = level_list.size();
@@ -304,9 +306,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
     for(int i = 0; i < NUM_BROWSE_RADARS; i++)
     {
         if(i < level_list_length)
-            entries[i] = new BrowserEntry(myscreen, i, level_list[current_level_index + i]);
+            entries[i] = std::make_unique<BrowserEntry>(myscreen, i, level_list[current_level_index + i]);
         else
-            entries[i] = nullptr;
+            entries[i].reset();
     }
     
     int selected_entry = -1;
@@ -410,50 +412,50 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         
         // Prev
         if(do_prev)
-           {
-                if(current_level_index > 0)
-                {
-                    selected_entry = -1;
-                    if(highlighted_button == delete_index || highlighted_button == choose_index)
-                        highlighted_button = prev_index;
-                    current_level_index--;
-                    
-                    // Delete the bottom one and shift the rest down
-                    delete entries[NUM_BROWSE_RADARS-1];
-                    for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
-                    {
-                        entries[i] = entries[i-1];
-                        if(entries[i] != nullptr)
-                            entries[i]->updateIndex(i);
-                    }
-                    // Load the new top one
-                    if(current_level_index < level_list_length)
-                        entries[0] = new BrowserEntry(myscreen, 0, level_list[current_level_index]);
-                }
-           }
+	            {
+	                if(current_level_index > 0)
+	                {
+	                    selected_entry = -1;
+	                    if(highlighted_button == delete_index || highlighted_button == choose_index)
+	                        highlighted_button = prev_index;
+	                    current_level_index--;
+	                    
+	                    // Delete the bottom one and shift the rest down
+	                    entries[NUM_BROWSE_RADARS-1].reset();
+	                    for(int i = NUM_BROWSE_RADARS-1; i > 0; i--)
+	                    {
+	                        entries[i] = std::move(entries[i-1]);
+	                        if(entries[i] != nullptr)
+	                            entries[i]->updateIndex(i);
+	                    }
+	                    // Load the new top one
+	                    if(current_level_index < level_list_length)
+	                        entries[0] = std::make_unique<BrowserEntry>(myscreen, 0, level_list[current_level_index]);
+	                }
+	           }
         // Next
         else if(do_next)
            {
                 if(current_level_index < level_list_length - NUM_BROWSE_RADARS)
-                {
-                    selected_entry = -1;
-                    if(highlighted_button == delete_index || highlighted_button == choose_index)
-                        highlighted_button = prev_index;
-                    current_level_index++;
-                    
-                    // Delete the top one and shift the rest up
-                    delete entries[0];
-                    for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
-                    {
-                        entries[i] = entries[i+1];
-                        if(entries[i] != nullptr)
-                            entries[i]->updateIndex(i);
-                    }
-                    // Load the new bottom one
-                    if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
-                        entries[NUM_BROWSE_RADARS-1] = new BrowserEntry(myscreen, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
-                }
-           }
+	                {
+	                    selected_entry = -1;
+	                    if(highlighted_button == delete_index || highlighted_button == choose_index)
+	                        highlighted_button = prev_index;
+	                    current_level_index++;
+	                    
+	                    // Delete the top one and shift the rest up
+	                    entries[0].reset();
+	                    for(int i = 0; i < NUM_BROWSE_RADARS-1; i++)
+	                    {
+	                        entries[i] = std::move(entries[i+1]);
+	                        if(entries[i] != nullptr)
+	                            entries[i]->updateIndex(i);
+	                    }
+	                    // Load the new bottom one
+	                    if(current_level_index + NUM_BROWSE_RADARS-1 < level_list_length)
+	                        entries[NUM_BROWSE_RADARS-1] = std::make_unique<BrowserEntry>(myscreen, NUM_BROWSE_RADARS-1, level_list[current_level_index + NUM_BROWSE_RADARS-1]);
+	                }
+	           }
         // Choose
         else if(do_choose)
            {
@@ -495,16 +497,14 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                             current_level_index = 0;
                     }
                     
-                    // Load the radars (minimaps)
-                    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-                    {
-                        delete entries[i];
-                        
-                        if(i < level_list_length)
-                            entries[i] = new BrowserEntry(myscreen, i, level_list[current_level_index + i]);
-                        else
-                            entries[i] = nullptr;
-                    }
+	                    // Load the radars (minimaps)
+	                    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
+	                    {
+	                        if(i < level_list_length)
+	                            entries[i] = std::make_unique<BrowserEntry>(myscreen, i, level_list[current_level_index + i]);
+	                        else
+	                            entries[i].reset();
+	                    }
                     
                     selected_entry = -1;
                     if(highlighted_button == delete_index || highlighted_button == choose_index)
@@ -629,10 +629,5 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         get_input_events(POLL);
     }
 	
-    for(int i = 0; i < NUM_BROWSE_RADARS; i++)
-    {
-        delete entries[i];
-    }
-    
-	return result;
-}
+		return result;
+	}
