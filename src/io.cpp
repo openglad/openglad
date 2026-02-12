@@ -17,6 +17,7 @@
 
 #include "io.h"
 #include "input.h"
+#include "game_context.h"
 #include "util.h"
 #include "pixdefs.h"
 
@@ -247,11 +248,9 @@ std::list<std::string> list_files(const std::string& dirname)
 	    return fileList;
 }
 
-static std::string mounted_campaign;
-
 std::string get_mounted_campaign()
 {
-    return mounted_campaign;
+    return ctx().mounted_campaign;
 }
 
 namespace {
@@ -293,10 +292,10 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     {
         LogError("campaign_mount_failed id={} path={} code={} physfs={}\n",
             id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), PHYSFS_getLastError());
-        mounted_campaign.clear();
+        ctx().mounted_campaign.clear();
         return CampaignPackageIoError::MountFailed;
     }
-    mounted_campaign = id;
+    ctx().mounted_campaign = id;
     return CampaignPackageIoError::None;
 }
 
@@ -312,7 +311,7 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
             id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), PHYSFS_getLastError());
         return CampaignPackageIoError::UnmountFailed;
     }
-    mounted_campaign.clear();
+    ctx().mounted_campaign.clear();
     return CampaignPackageIoError::None;
 }
 

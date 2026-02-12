@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 
 // Forward declarations — avoid pulling in heavy headers
 class screen;
@@ -144,6 +145,7 @@ struct GameContext {
 
     screen*     game_screen = nullptr;
     std::unique_ptr<options> prefs;
+    std::string mounted_campaign;
     cfg_store*  config      = nullptr;
     IRandom*    rng         = nullptr;
     InputState  input       = {};
