@@ -154,27 +154,27 @@ void picker_testing_mark_game_end()
 }
 #endif
 
-Sint32 allowable_guys[] =
-    { FAMILY_SOLDIER,
-      FAMILY_BARBARIAN,
-      FAMILY_ELF,
-      FAMILY_ARCHER,
-      FAMILY_MAGE,
-      FAMILY_CLERIC,
-      FAMILY_THIEF,
-      FAMILY_DRUID,
-      FAMILY_ORC,
-      FAMILY_SKELETON,
-      FAMILY_FIREELEMENTAL,
-      FAMILY_SMALL_SLIME,
-      FAMILY_FAERIE,
-      FAMILY_GHOST
-    };
+std::array<Sint32, 14> allowable_guys{
+    FAMILY_SOLDIER,
+    FAMILY_BARBARIAN,
+    FAMILY_ELF,
+    FAMILY_ARCHER,
+    FAMILY_MAGE,
+    FAMILY_CLERIC,
+    FAMILY_THIEF,
+    FAMILY_DRUID,
+    FAMILY_ORC,
+    FAMILY_SKELETON,
+    FAMILY_FIREELEMENTAL,
+    FAMILY_SMALL_SLIME,
+    FAMILY_FAERIE,
+    FAMILY_GHOST
+};
 
 Sint32 current_type = 0; // guy type we're looking at
 
 // Used to label new hires, like "SOLDIER5"
-Sint32 numbought[NUM_FAMILIES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+std::array<Sint32, NUM_FAMILIES> numbought{};
 
 // See guy.cpp
 extern Sint32 costlist[NUM_FAMILIES];

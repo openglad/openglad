@@ -21,6 +21,7 @@
 #include "runtime/game_context.h"
 
 #include "SDL.h"
+#include <array>
 #include <format>
 #include <memory>
 
@@ -40,7 +41,7 @@ extern std::unique_ptr<pixieN> main_columns_pix;
 extern char difficulty_names[DIFFICULTY_SETTINGS][80];
 extern Sint32 current_difficulty;
 extern std::unique_ptr<guy> current_guy;
-extern Sint32 numbought[NUM_FAMILIES];
+extern std::array<Sint32, NUM_FAMILIES> numbought;
 extern vbutton *localbuttons;
 extern button mainmenu_buttons[];
 

@@ -52,9 +52,9 @@ extern std::string message;
 extern Sint32 editguy;
 extern vbutton* localbuttons;
 extern short current_team_num;
-extern Sint32 allowable_guys[14];
+extern std::array<Sint32, 14> allowable_guys;
 extern Sint32 current_type;
-extern Sint32 numbought[NUM_FAMILIES];
+extern std::array<Sint32, NUM_FAMILIES> numbought;
 extern button createmenu_buttons[];
 extern button viewteam_buttons[];
 extern button details_buttons[];
@@ -1754,10 +1754,10 @@ Sint32 cycle_guy(Sint32 whichway)
 		newfamily = allowable_guys[0];
 	else
 	{
-		current_type = current_type+ whichway + (sizeof(allowable_guys)/4);
-		current_type %= (sizeof(allowable_guys)/4);
+		current_type = current_type + whichway + static_cast<Sint32>(allowable_guys.size());
+		current_type %= static_cast<Sint32>(allowable_guys.size());
 		if (current_type < 0)
-			current_type = (sizeof(allowable_guys)/4) - 1;
+			current_type = static_cast<Sint32>(allowable_guys.size()) - 1;
 		newfamily = allowable_guys[current_type];
 		//newfamily = current_guy->family + whichway;
 	}
