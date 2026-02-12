@@ -676,10 +676,6 @@ short new_score_panel(screen *myscreen, short do_it)
 	short players;
 	short tempallies = 0;
 	text& mytext = myscreen->text_normal;
-#if 0
-	static Uint32 family[5]={-1,-1,-1,-1,-1},
-	                               act[5]={-1, -1,-1,-1,-1};
-#endif
 
 	walker  *control;
 	short lm, tm; // left and top margins

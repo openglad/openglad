@@ -577,6 +577,22 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 
 }
 
+std::optional<std::string> text::input_string_value(short x, short y, short maxlength, const char* begin)
+{
+    char* value = input_string(x, y, maxlength, begin);
+    if (value == nullptr)
+        return std::nullopt;
+    return std::string(value);
+}
+
+std::optional<std::string> text::input_string_ex_value(short x, short y, short maxlength, const char* message, const char* begin)
+{
+    char* value = input_string_ex(x, y, maxlength, message, begin);
+    if (value == nullptr)
+        return std::nullopt;
+    return std::string(value);
+}
+
 
 // This version passes DARK_BLUE and a grey color as defaults ..
 char * text::input_string_ex(short x, short y, short maxlength, const char* message, const char *begin)
@@ -722,5 +738,4 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	return editstring;
 
 }
-
 

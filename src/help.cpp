@@ -43,30 +43,23 @@ char helptext[HELP_WIDTH][MAX_LINES];
 // This function reads one text line from file infile,
 // stopping at length (length), or when encountering an
 // end-of-line character ..
-char* read_one_line(SDL_RWops *infile, short length)
+std::string read_one_line(SDL_RWops *infile, short length)
 {
-	char *newline; // = new char(length);
 	char temp;
-	short readvalue;
-	short i;
+	std::string newline;
+    newline.reserve(static_cast<size_t>(length));
 
-	newline = new char[HELP_WIDTH];
-
-	// Make sure this line is blank ..
-	for (i=0; i < HELP_WIDTH; i++)
-		newline[i] = 0;
-
-	for (i=0; i < length; i++)
+	for (short i = 0; i < length; i++)
 	{
-		readvalue = static_cast<short>(SDL_RWread(infile, &temp, 1, 1));
+		short readvalue = static_cast<short>(SDL_RWread(infile, &temp, 1, 1));
 		if (readvalue != 1)
 		{
 			end_of_file = 1;
-			return &newline[0];
+			return newline;
 		}
 		if (temp == '\n' || temp == '\r')
-			return &newline[0];
-		newline[i] = temp;
+			return newline;
+		newline.push_back(temp);
 	}
 
 	return newline;
@@ -352,7 +345,6 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 //short fill_help_array(char somearray[80][80], FILE *infile)
 {
 	short i;
-	char *someline;
 
 	if (!infile)
 		return 0;
@@ -360,9 +352,8 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 	for (i=0; i < MAX_LINES; i++)
 	{
 		//somearray[i] = read_one_line(infile, HELP_WIDTH);
-		someline = read_one_line(infile, HELP_WIDTH);
-		snprintf(somearray[i], HELP_WIDTH, "%s", someline);
-		delete[] someline;
+        std::string someline = read_one_line(infile, HELP_WIDTH);
+		snprintf(somearray[i], HELP_WIDTH, "%s", someline.c_str());
 		if (end_of_file)
 			return i;
 	}
@@ -802,4 +793,3 @@ Sint32 show_general_help()
 
 	return 1;
 }
-

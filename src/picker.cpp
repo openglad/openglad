@@ -289,11 +289,6 @@ void picker_quit()
 	main_columns_data.free();
 	delete main_title_logo_pix;
 	main_title_logo_data.free();
-
-#if 0
-	if (cfgfile)
-		cfgfile = nullptr;
-#endif
 }
 
 #ifdef USE_TOUCH_INPUT

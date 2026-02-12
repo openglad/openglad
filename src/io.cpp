@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <random>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -143,7 +144,7 @@ std::string get_asset_path()
     }
     s += '/';
 
-    printf("get_asset_path: %s\n", s.c_str());
+    Log("get_asset_path: {}\n", s);
     return s;
 #endif
 }
@@ -924,10 +925,12 @@ NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w,
     }
 	
 	int size = w*h;
+    static thread_local std::mt19937 grass_rng{std::random_device{}()};
+    std::uniform_int_distribution<int> grass_dist(0, 3);
 	for(int i = 0; i < size; i++)
     {
         // Color
-        switch(rand()%4)
+        switch(grass_dist(grass_rng))
         {
             case 0:
             c = PIX_GRASS1;

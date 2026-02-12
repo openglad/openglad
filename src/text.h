@@ -20,6 +20,8 @@
 
 #include "base.h"
 #include "pixie_data.h"
+#include <optional>
+#include <string>
 #include <string_view>
 
 class screen;
@@ -61,9 +63,10 @@ class text
         char* input_string_ex(short x, short y, short maxlength, const char* message, const char *begin);
         char* input_string_ex(short x, short y, short maxlength, const char* message, const char *begin,
                           unsigned char forecolor, unsigned char backcolor);
+        std::optional<std::string> input_string_value(short x, short y, short maxlength, const char* begin);
+        std::optional<std::string> input_string_ex_value(short x, short y, short maxlength, const char* message, const char* begin);
 		~text();
 
 	    const PixieData* letters;
 	    short sizex, sizey;
 };
-
