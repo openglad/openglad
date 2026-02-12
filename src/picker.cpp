@@ -205,59 +205,60 @@ void picker_mainmenu_loop()
     }
 }
 
+static void picker_initialize_shared_menu_state()
+{
+    for (Sint32 i = 0; i < MAX_BUTTONS; i++)
+        allbuttons[i] = nullptr;
+
+    // Set backdrops to nullptr
+    for (Sint32 i = 0; i < 5; i++)
+        backdrops[i] = nullptr;
+
+    backpics[0] = read_pixie_file("mainul.pix");
+    backpics[1] = read_pixie_file("mainur.pix");
+    backpics[2] = read_pixie_file("mainll.pix");
+    backpics[3] = read_pixie_file("mainlr.pix");
+
+    backdrops[0] = new pixieN(backpics[0]);
+    backdrops[0]->setxy(0, 0);
+    backdrops[1] = new pixieN(backpics[1]);
+    backdrops[1]->setxy(160, 0);
+    backdrops[2] = new pixieN(backpics[2]);
+    backdrops[2]->setxy(0, 100);
+    backdrops[3] = new pixieN(backpics[3]);
+    backdrops[3]->setxy(160, 100);
+
+    myscreen->viewob[0]->resize(PREF_VIEW_FULL);
+    myscreen->clearbuffer();
+
+    //main_title_logo_data = read_pixie_file("glad.pix");
+    main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
+    main_title_logo_pix = new pixieN(main_title_logo_data);
+
+    //main_columns_data = read_pixie_file("mage.pix");
+    main_columns_data = read_pixie_file("columns.pix");
+    main_columns_pix = new pixieN(main_columns_data);
+
+    // Get the mouse, timer, & keyboard ..
+    grab_mouse();
+    grab_timer();
+    clear_keyboard();
+}
+
+static void picker_load_default_save_if_present()
+{
+    RwopsPtr loadgame(open_read_file("save/", "save0.gtl"));
+    if (loadgame)
+        myscreen->save_data.load("save0");
+}
+
 void picker_main(Sint32 argc, char  **argv)
 {
-	Sint32 i;
-
-	for (i=0; i < MAX_BUTTONS; i++)
-		allbuttons[i] = nullptr;
-
 	// Get main dir ..
 	//strcpy(main_dir, "");
-
-	// Set backdrops to nullptr
-	for (i=0; i < 5; i++)
-		backdrops[i] = nullptr;
-
-	backpics[0] = read_pixie_file("mainul.pix");
-	backpics[1] = read_pixie_file("mainur.pix");
-	backpics[2] = read_pixie_file("mainll.pix");
-	backpics[3] = read_pixie_file("mainlr.pix");
-
-	backdrops[0] = new pixieN(backpics[0]);
-	backdrops[0]->setxy(0, 0);
-	backdrops[1] = new pixieN(backpics[1]);
-	backdrops[1]->setxy(160, 0);
-	backdrops[2] = new pixieN(backpics[2]);
-	backdrops[2]->setxy(0, 100);
-	backdrops[3] = new pixieN(backpics[3]);
-	backdrops[3]->setxy(160, 100);
-
-	myscreen->viewob[0]->resize(PREF_VIEW_FULL);
-
-	myscreen->clearbuffer();
-
-	//main_title_logo_data = read_pixie_file("glad.pix");
-	main_title_logo_data = read_pixie_file("title.pix"); // marbled gladiator title
-	main_title_logo_pix = new pixieN(main_title_logo_data);
-
-
-	//main_columns_data = read_pixie_file("mage.pix");
-	main_columns_data = read_pixie_file("columns.pix");
-	main_columns_pix = new pixieN(main_columns_data);
-
-	// Get the mouse, timer, & keyboard ..
-	grab_mouse();
-	grab_timer();
-	clear_keyboard();
-
-	// Load the current saved game, if it exists .. (save0.gtl)
-	SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
-	if (loadgame)
-	{
-	    SDL_RWclose(loadgame);
-		myscreen->save_data.load("save0");
-	}
+    picker_initialize_shared_menu_state();
+    // Load the current saved game, if it exists .. (save0.gtl)
+    picker_load_default_save_if_present();
 
 	picker_mainmenu_loop();
 }
@@ -1430,50 +1431,9 @@ void picker_init()
 {
     Log("picker_init: Initializing picker\n");
 
-    Sint32 i;
-
-    for (i=0; i < MAX_BUTTONS; i++)
-        allbuttons[i] = nullptr;
-
-    // Set backdrops to nullptr
-    for (i=0; i < 5; i++)
-        backdrops[i] = nullptr;
-
-    backpics[0] = read_pixie_file("mainul.pix");
-    backpics[1] = read_pixie_file("mainur.pix");
-    backpics[2] = read_pixie_file("mainll.pix");
-    backpics[3] = read_pixie_file("mainlr.pix");
-
-    backdrops[0] = new pixieN(backpics[0]);
-    backdrops[0]->setxy(0, 0);
-    backdrops[1] = new pixieN(backpics[1]);
-    backdrops[1]->setxy(160, 0);
-    backdrops[2] = new pixieN(backpics[2]);
-    backdrops[2]->setxy(0, 100);
-    backdrops[3] = new pixieN(backpics[3]);
-    backdrops[3]->setxy(160, 100);
-
-    myscreen->viewob[0]->resize(PREF_VIEW_FULL);
-    myscreen->clearbuffer();
-
-    main_title_logo_data = read_pixie_file("title.pix");
-    main_title_logo_pix = new pixieN(main_title_logo_data);
-
-    main_columns_data = read_pixie_file("columns.pix");
-    main_columns_pix = new pixieN(main_columns_data);
-
-    // Get the mouse, timer, & keyboard
-    grab_mouse();
-    grab_timer();
-    clear_keyboard();
-
+    picker_initialize_shared_menu_state();
     // Load the current saved game, if it exists
-    SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
-    if (loadgame)
-    {
-        SDL_RWclose(loadgame);
-        myscreen->save_data.load("save0");
-    }
+    picker_load_default_save_if_present();
 
     g_picker_initialized = true;
     g_start_game_requested = false;
@@ -1532,12 +1492,7 @@ void picker_reinit_after_game()
     myscreen->viewob[0]->resize(PREF_VIEW_FULL);
 
     // Reload save data
-    SDL_RWops* loadgame = open_read_file("save/", "save0.gtl");
-    if (loadgame)
-    {
-        SDL_RWclose(loadgame);
-        myscreen->save_data.load("save0");
-    }
+    picker_load_default_save_if_present();
 
     g_start_game_requested = false;
 
