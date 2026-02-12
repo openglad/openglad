@@ -27,8 +27,10 @@
 #include "screen.h"
 #include "view.h"
 #include <algorithm>
+#include <cstring>
 #include <format>
 #include <string>
+#include <string_view>
 
 
 int toInt(const std::string& s);
@@ -46,6 +48,18 @@ static bool rw_read_exact_or_log(SDL_RWops* rwops, void* dst, size_t size, size_
         return false;
     }
     return true;
+}
+
+static void fill_fixed_field(char* dst, size_t fixed_len, std::string_view src, const char* field_name)
+{
+    if (dst == nullptr || fixed_len == 0)
+        return;
+
+    memset(dst, 0, fixed_len);
+    const size_t to_copy = std::min(src.size(), fixed_len);
+    memcpy(dst, src.data(), to_copy);
+    if (src.size() > fixed_len)
+        LogWarn("Truncating {} to {} bytes for scenario serialization.\n", field_name, fixed_len);
 }
 
 
@@ -1290,7 +1304,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
             new_guy->stats()->level = shortlevel;
         else
             new_guy->stats()->level = templevel;
-        new_guy->stats()->name = tempname;
+        new_guy->stats()->name = std::string(tempname, strnlen(tempname, sizeof(tempname)));
         if (new_guy->stats()->name.size() > 1)           //chad 5/25/95
             new_guy->stats()->set_bit_flags(BIT_NAMED, 1);
 
@@ -1338,7 +1352,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     data->pixmaxy = data->grid.h * GRID_SIZE;
     
     // The collected data so far
-    data->title = scentitle;
+    data->title = std::string(scentitle, strnlen(scentitle, sizeof(scentitle)));
     data->type = new_scen_type;
     data->par_value = temp_par;
     data->time_bonus_limit = temp_time_limit;
@@ -1600,11 +1614,11 @@ bool LevelData::save()
 	SDL_RWwrite(outfile, &temp_version, 1, 1);
 
 	// Write name of current grid...
-	snprintf(temp_grid, 9, "%s", this->grid_file.c_str());  // Do NOT include extension (max 8 chars)
+	fill_fixed_field(temp_grid, 8, this->grid_file, "grid_file");  // Do NOT include extension (max 8 chars)
 	SDL_RWwrite(outfile, temp_grid, 8, 1);
 
 	// Write the scenario title, if it exists
-	snprintf(scentitle, sizeof(scentitle), "%s", this->title.c_str());
+	fill_fixed_field(scentitle, 30, this->title, "title");
 	SDL_RWwrite(outfile, scentitle, 30, 1);
 
 	// Write the scenario type info
