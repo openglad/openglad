@@ -18,11 +18,12 @@
 #include "test_trace.h"
 #include "runtime/game_context.h"
 #include <array>
+#include <utility>
 
 extern short scen_level;
 extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 
-vbutton * allbuttons[MAX_BUTTONS];
+std::array<vbutton*, MAX_BUTTONS> allbuttons{};
 namespace
 {
 std::array<std::unique_ptr<vbutton>, MAX_BUTTONS> owned_buttons;
@@ -114,10 +115,10 @@ MenuNav::MenuNav(int up_idx, int down_idx, int left_idx, int right_idx)
 
 //vbutton functions, vbutton is a button class that will be self controlled
 vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
-                 Sint32 func(Sint32), Sint32 pass, const std::string& msg, int hot )
+                 std::function<Sint32(Sint32)> func, Sint32 pass, const std::string& msg, int hot )
 {
     arg = pass;
-    fun = func;
+    fun = std::move(func);
     myfunc = 0;
     xloc = xpos;
     yloc = ypos;
@@ -146,7 +147,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
                  Sint32 func_code, Sint32 pass, const std::string& msg, int hot )
 {
     arg = pass;
-    fun = nullptr; // don't use this!
+    fun = {}; // don't use this!
     myfunc = func_code;
     xloc = xpos;
     yloc = ypos;
@@ -176,7 +177,7 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
                  int hot )
 {
     arg = pass;
-    fun = nullptr; // don't use this!
+    fun = {}; // don't use this!
     myfunc = func_code;
     xloc = xpos;
     yloc = ypos;

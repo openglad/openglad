@@ -22,7 +22,9 @@
 #include "render/pixien.h"
 #include "render/text.h"
 #include "runtime/screen.h"
+#include <array>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include "input/input.h"
 
@@ -101,7 +103,7 @@ class vbutton
 {
 	public:
 		vbutton();//this should only be used for pointers!!
-		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func(Sint32),
+		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, std::function<Sint32(Sint32)> func,
 		        Sint32 pass, const std::string& msg, int hot );
 		vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high, Sint32 func_code,
 		        Sint32 pass, const std::string& msg, int hot );
@@ -127,7 +129,7 @@ class vbutton
 		Sint32 height; // the buttons height in pixels
 		Sint32 xend; //xloc+width
 		Sint32 yend; //yloc+height
-		Sint32 (*fun)(Sint32 arg1); //the function this button calls when clicked, with one arg
+		std::function<Sint32(Sint32)> fun; // optional direct callback
 		Sint32 myfunc;
 		Sint32 arg; //the arg to be passed to the function when called
 		vbutton * next; //a pointer to the next button
@@ -143,7 +145,7 @@ class vbutton
 };
 
 #define MAX_BUTTONS 50  // max buttons per screen
-extern vbutton *allbuttons[MAX_BUTTONS];
+extern std::array<vbutton*, MAX_BUTTONS> allbuttons;
 void clear_allbuttons();
 
 vbutton * init_buttons(button * buttons, Sint32 numbuttons);
