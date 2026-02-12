@@ -133,38 +133,35 @@ guy::~guy()
 
 Sint32 guy::query_heart_value() // how much are we worth?
 {
-	guy *normal = new guy(family); // for base comparisons
+	guy normal(family); // for base comparisons
 	Sint32 cost=0, temp;
 
-	if (!normal)
-		return 0;
-
 	// Get strength cost ..
-	temp = strength - normal->strength; // difference..
+	temp = strength - normal.strength; // difference..
 	temp = MAX(temp,0);
 	cost += static_cast<Sint32>(pow( temp, RAISE)
 	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][0]));
 
 	// Get dexterity cost ..
-	temp = dexterity - normal->dexterity; // difference..
+	temp = dexterity - normal.dexterity; // difference..
 	temp = MAX(temp,0);
 	cost += static_cast<Sint32>(pow( temp, RAISE)
 	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][1]));
 
 	// Get constitution cost ..
-	temp = constitution - normal->constitution; // difference..
+	temp = constitution - normal.constitution; // difference..
 	temp = MAX(temp,0);
 	cost += static_cast<Sint32>(pow( temp, RAISE)
 	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][2]));
 
 	// Get intelligence cost ..
-	temp = intelligence - normal->intelligence; // difference..
+	temp = intelligence - normal.intelligence; // difference..
 	temp = MAX(temp,0);
 	cost += static_cast<Sint32>(pow( temp, RAISE)
 	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][3]));
 
 	// Get armor cost ..
-	temp = armor - normal->armor; // difference..
+	temp = armor - normal.armor; // difference..
 	temp = MAX(temp,0);
 	cost += static_cast<Sint32>(pow( temp, RAISE)
 	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][4]));
@@ -172,8 +169,6 @@ Sint32 guy::query_heart_value() // how much are we worth?
 	// Add in the base cost value for the guy ..
 	cost += static_cast<Sint32>(costlist[static_cast<int>(family)]);
 	
-	delete normal;
-
 	return cost;
 
 }

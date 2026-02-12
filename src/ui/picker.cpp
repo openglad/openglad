@@ -31,6 +31,7 @@
 #include <cstring>
 #include <cctype>
 #include <format>
+#include <memory>
 #include <string>
 #include <set>
 #include <vector>
@@ -99,7 +100,7 @@ enum class PickerMenuState {
 static PickerMenuState g_picker_menu_state = PickerMenuState::Main;
 #endif
 
-guy  *current_guy = nullptr;
+std::unique_ptr<guy> current_guy;
 guy  *old_guy = nullptr;
 
 std::string  message;
@@ -285,13 +286,19 @@ void picker_quit()
 	for (i = 0; i < MAX_BUTTONS; i++)
 	{
 		if (allbuttons[i])
+        {
 			delete allbuttons[i];
+            allbuttons[i] = nullptr;
+        }
 	}
 
 	delete myscreen;
+    myscreen = nullptr;
 	delete main_columns_pix;
+    main_columns_pix = nullptr;
 	main_columns_data.free();
 	delete main_title_logo_pix;
+    main_title_logo_pix = nullptr;
 	main_title_logo_data.free();
 }
 

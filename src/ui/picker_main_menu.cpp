@@ -22,6 +22,7 @@
 
 #include "SDL.h"
 #include <format>
+#include <memory>
 
 #ifndef DISABLE_MULTIPLAYER
 constexpr int OPTIONS_BUTTON_INDEX = 10;
@@ -38,7 +39,7 @@ extern pixieN *main_title_logo_pix;
 extern pixieN *main_columns_pix;
 extern char difficulty_names[DIFFICULTY_SETTINGS][80];
 extern Sint32 current_difficulty;
-extern guy *current_guy;
+extern std::unique_ptr<guy> current_guy;
 extern Sint32 numbought[NUM_FAMILIES];
 extern vbutton *localbuttons;
 extern button mainmenu_buttons[];

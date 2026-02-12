@@ -29,6 +29,7 @@
 #include <cmath>
 #include <cstring>
 #include <format>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -43,7 +44,7 @@
 #define BUTTON_HEIGHT 15
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof(a[0]))
 
-extern guy* current_guy;
+extern std::unique_ptr<guy> current_guy;
 extern guy* old_guy;
 extern std::string message;
 extern Sint32 editguy;
@@ -1441,7 +1442,7 @@ Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 
 Uint32 calculate_hire_cost()
 {
-	guy  *ob = current_guy;
+	guy  *ob = current_guy.get();
 	Sint32 temp;
 	Sint32 myfamily;
 
@@ -1498,7 +1499,7 @@ Uint32 calculate_hire_cost()
 // This version compares current_guy versus the old version ..
 Uint32 calculate_train_cost(guy  *oldguy)
 {
-	guy  *ob = current_guy;
+	guy  *ob = current_guy.get();
 	Sint32 temp;
 	Sint32 myfamily;
 
@@ -1559,7 +1560,7 @@ Uint32 calculate_train_cost(guy  *oldguy)
 	if (temp < 0)
 	{
 		temp = 0;
-		statscopy(current_guy, oldguy);
+		statscopy(current_guy.get(), oldguy);
 		cycle_team_guy(0);
 
 	}
@@ -1761,15 +1762,8 @@ Sint32 cycle_guy(Sint32 whichway)
 
 	//newfamily = (newfamily + NUM_FAMILIES) % NUM_FAMILIES;
 
-	// Delete the old guy ..
-	if (current_guy)
-	{
-		delete current_guy;
-		current_guy = nullptr;
-	}
-
 	// Make the new guy
-	current_guy = new guy(newfamily);
+	current_guy = std::make_unique<guy>(newfamily);
 	current_guy->teamnum = current_team_num;
 		current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
 
@@ -1784,7 +1778,7 @@ Sint32 cycle_guy(Sint32 whichway)
 
 	void show_guy(Sint32 frames, Sint32 who, Sint32 centerx, Sint32 centery) // shows the current guy ..
 	{
-		walker *mywalker;
+		std::unique_ptr<walker> mywalker;
 		Sint32 i;
 		char newfamily;
 
@@ -1796,7 +1790,7 @@ Sint32 cycle_guy(Sint32 whichway)
 		(void)who; // always show current_guy
 		newfamily = current_guy->family;
 
-		mywalker = myscreen->level_data.myloader->create_walker(Order::Living, newfamily, myscreen);
+		mywalker = myscreen->level_data.myloader->create_walker_owned(Order::Living, newfamily, myscreen);
 		mywalker->stats()->bit_flags = 0;
 		mywalker->curdir = static_cast<signed char>(((frames/192) + FACE_DOWN)%8);
 		mywalker->ani_type = ANI_WALK;
@@ -1809,7 +1803,6 @@ Sint32 cycle_guy(Sint32 whichway)
 	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
 	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
 	mywalker->draw(myscreen->viewob[0].get());
-	delete mywalker;
 }
 // Sets current_guy to 'whichguy' in the teamlist, and
 // returns a COPY of him as the function result
@@ -1841,10 +1834,8 @@ Sint32 cycle_team_guy(Sint32 whichway)
 			editguy = 0;
 	}
 
-	if (current_guy)
-		delete current_guy;
-	current_guy = new guy(ourteam[editguy]->family);
-	statscopy(current_guy, ourteam[editguy].get());
+	current_guy = std::make_unique<guy>(ourteam[editguy]->family);
+	statscopy(current_guy.get(), ourteam[editguy].get());
 	old_guy = ourteam[editguy].get();
 
 	show_guy(0, 0);
@@ -1885,7 +1876,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	if (arg)
 		someguy = myscreen->save_data.team_list[editguy].get();
 	else
-		someguy = current_guy;
+		someguy = current_guy.get();
 
 	if (!someguy)
 		return REDRAW;
@@ -1933,9 +1924,8 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 		if (!ourteam[i]) // found an empty slot
 		{
 			current_guy->teamnum = current_team_num;
-			ourteam[i].reset(current_guy);
+			ourteam[i] = std::move(current_guy);
 			myscreen->save_data.team_size++;
-			current_guy = nullptr;
 			release_mouse();
 			
 			std::string name = ourteam[i]->name;
@@ -1951,9 +1941,9 @@ Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 			ourteam[i]->exp = calculate_exp(ourteam[i]->level);
 
 			// Grab a new, generic guy to be edited/bought
-			current_guy = new guy(newfamily);
+			current_guy = std::make_unique<guy>(newfamily);
 			type_name = current_guy->name;
-			statscopy(current_guy, ourteam[i].get()); // set to same stats as just bought
+			statscopy(current_guy.get(), ourteam[i].get()); // set to same stats as just bought
 			current_guy->name = type_name;
             current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
 
@@ -1987,7 +1977,7 @@ Sint32 edit_guy(Sint32 arg1)
 	{
 		if (here->level != current_guy->level)
 			current_guy->upgrade_to_level(current_guy->level);
-		statscopy(here, current_guy);
+		statscopy(here, current_guy.get());
 		return OK;
 	}
     
@@ -2001,7 +1991,7 @@ Sint32 edit_guy(Sint32 arg1)
     {
         current_guy->upgrade_to_level(current_guy->level);
     }
-	statscopy(here, current_guy);
+	statscopy(here, current_guy.get());
 
 	// Color our team button normally
 	allbuttons[18]->do_outline = 0;
@@ -2161,9 +2151,7 @@ Sint32 go_menu(Sint32 arg1)
     // The state machine in main() will handle starting the game
     myscreen->save_data.save("save0");
 
-    if (current_guy)
-        delete current_guy;
-    current_guy = nullptr;
+    current_guy.reset();
 
     picker_request_start_game();
     Log("go_menu: Setting g_start_game_requested, returning EXIT\n");
@@ -2182,9 +2170,7 @@ Sint32 go_menu(Sint32 arg1)
         //clear_keyboard();
         //myscreen->fadeblack(0);
 
-        if (current_guy)
-            delete current_guy;
-        current_guy = nullptr;
+        current_guy.reset();
 
         // Reset viewscreen prefs
         myscreen->ready_for_battle(myscreen->save_data.numplayers);
