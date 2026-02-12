@@ -11,6 +11,16 @@
 // and the main thread during menu transitions. Defined in test_framework.cpp.
 SDL_mutex* get_allbuttons_mutex();
 
+struct AllButtonsLock final
+{
+    AllButtonsLock() : m_(get_allbuttons_mutex()) { SDL_LockMutex(m_); }
+    ~AllButtonsLock() { SDL_UnlockMutex(m_); }
+    AllButtonsLock(const AllButtonsLock&) = delete;
+    AllButtonsLock& operator=(const AllButtonsLock&) = delete;
+private:
+    SDL_mutex* m_;
+};
+
 struct Interactable {
     std::string id;
     std::string label;
@@ -21,7 +31,7 @@ struct Interactable {
 // Get all currently active interactables from allbuttons[]
 inline std::vector<Interactable> get_interactables()
 {
-    SDL_LockMutex(get_allbuttons_mutex());
+    AllButtonsLock lock;
     std::vector<Interactable> result;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
@@ -36,14 +46,13 @@ inline std::vector<Interactable> get_interactables()
         item.hidden = allbuttons[i]->hidden;
         result.push_back(item);
     }
-    SDL_UnlockMutex(get_allbuttons_mutex());
     return result;
 }
 
 // Check if an interactable with this ID exists and is not hidden
 inline bool has_interactable(const std::string& id)
 {
-    SDL_LockMutex(get_allbuttons_mutex());
+    AllButtonsLock lock;
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
@@ -53,7 +62,6 @@ inline bool has_interactable(const std::string& id)
             break;
         }
     }
-    SDL_UnlockMutex(get_allbuttons_mutex());
     return found;
 }
 
@@ -76,7 +84,7 @@ inline bool wait_for_interactable(const std::string& id, int timeout_ms = 5000)
 // converts to window coords, injects SDL click event.
 inline void interact(const std::string& id)
 {
-    SDL_LockMutex(get_allbuttons_mutex());
+    AllButtonsLock lock;
     int win_x = -1, win_y = -1;
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
@@ -97,7 +105,6 @@ inline void interact(const std::string& id)
             break;
         }
     }
-    SDL_UnlockMutex(get_allbuttons_mutex());
     if (found)
         inject_click(win_x, win_y);
     else

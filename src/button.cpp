@@ -474,6 +474,18 @@ Sint32 vbutton::mouse_on()
 
 #ifdef TESTING
 extern SDL_mutex* get_allbuttons_mutex();
+namespace
+{
+struct SdlMutexLock final
+{
+    explicit SdlMutexLock(SDL_mutex* m) : m_(m) { SDL_LockMutex(m_); }
+    ~SdlMutexLock() { SDL_UnlockMutex(m_); }
+    SdlMutexLock(const SdlMutexLock&) = delete;
+    SdlMutexLock& operator=(const SdlMutexLock&) = delete;
+private:
+    SDL_mutex* m_;
+};
+} // namespace
 #endif
 
 vbutton * init_buttons(button * buttons, Sint32 numbuttons)
@@ -482,7 +494,7 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
     Sint32 i;
 
 #ifdef TESTING
-    SDL_LockMutex(get_allbuttons_mutex());
+    SdlMutexLock lock(get_allbuttons_mutex());
 #endif
 
     // init_buttons owns the lifetime of all vbuttons in allbuttons[].
@@ -505,10 +517,6 @@ vbutton * init_buttons(button * buttons, Sint32 numbuttons)
         allbuttons[i]->hidden = buttons[i].hidden;
         allbuttons[i]->no_draw = buttons[i].no_draw;
     }
-
-#ifdef TESTING
-    SDL_UnlockMutex(get_allbuttons_mutex());
-#endif
 
     return allbuttons[0];
 }
