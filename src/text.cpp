@@ -446,6 +446,11 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 	short current_length, i;
 	short string_done = 0;
 	static char editstring[100], firststring[100];
+	constexpr short kMaxBufferLen = static_cast<short>(sizeof(editstring) - 1);
+	if (maxlength > kMaxBufferLen)
+		maxlength = kMaxBufferLen;
+	if (maxlength < 0)
+		maxlength = 0;
 	
 	int tempchar;
 	const char* temptext;
@@ -606,6 +611,11 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	short current_length, i;
 	short string_done = 0;
 	static char editstring[100], firststring[100];
+	constexpr short kMaxBufferLen = static_cast<short>(sizeof(editstring) - 1);
+	if (maxlength > kMaxBufferLen)
+		maxlength = kMaxBufferLen;
+	if (maxlength < 0)
+		maxlength = 0;
 	
 	int tempchar;
 	const char* temptext;
@@ -738,4 +748,3 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	return editstring;
 
 }
-
