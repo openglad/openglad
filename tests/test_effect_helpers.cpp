@@ -1,5 +1,5 @@
-#include "effect.h"
-#include "view.h"
+#include "entities/effect.h"
+#include "render/view.h"
 #include "test_framework.h"
 
 // ---------------------------------------------------------------------------

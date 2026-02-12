@@ -1,6 +1,6 @@
 #include <cstring>
 
-#include "input.h"
+#include "input/input.h"
 #include "test_framework.h"
 
 extern float overscan_percentage;

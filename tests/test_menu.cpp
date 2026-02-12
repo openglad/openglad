@@ -1,9 +1,9 @@
 #include "graph.h"
 #include "test_trace.h"
 #include "test_framework.h"
-#include "button.h"
+#include "input/button.h"
 #include "test_interact.h"
-#include "input.h"
+#include "input/input.h"
 
 extern screen* myscreen;
 extern MouseState mouse_state;

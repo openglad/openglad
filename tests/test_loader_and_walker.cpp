@@ -1,6 +1,6 @@
 #include "graph.h"
-#include "gloader.h"
-#include "guy.h"
+#include "data/gloader.h"
+#include "entities/guy.h"
 #include "test_framework.h"
 #include <memory>
 

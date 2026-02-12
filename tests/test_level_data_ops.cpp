@@ -1,7 +1,7 @@
 #include "graph.h"
-#include "guy.h"
-#include "gloader.h"
-#include "io.h"
+#include "entities/guy.h"
+#include "data/gloader.h"
+#include "platform/io.h"
 #include "test_framework.h"
 
 #include <cstdint>

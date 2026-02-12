@@ -1,5 +1,5 @@
 #include "SDL.h"
-#include "sai2x.h"
+#include "render/sai2x.h"
 #include "test_framework.h"
 
 #include <cstdio>

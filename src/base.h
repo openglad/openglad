@@ -32,10 +32,10 @@
 #include <cctype>
 #include "sounds.h"
 #include "SDL.h"
-#include "input.h"
-#include "util.h"
-#include "gparser.h"
-#include "pal32.h"
+#include "input/input.h"
+#include "core/util.h"
+#include "data/gparser.h"
+#include "render/pal32.h"
 #include "pixdefs.h"
 #include "soundob.h" // sound defines
 
@@ -383,7 +383,7 @@ inline constexpr unsigned char OUTLINE_FLYING        = 208;
 
 inline constexpr char ACTION_FOLLOW = 1;
 
-#include "pixie_data.h"
+#include "data/pixie_data.h"
 
 PixieData read_pixie_file(const char  * filename);
 

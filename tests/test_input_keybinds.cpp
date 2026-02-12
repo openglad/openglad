@@ -1,4 +1,4 @@
-#include "input.h"
+#include "input/input.h"
 #include "test_framework.h"
 
 extern int player_keys[4][NUM_KEYS];

@@ -1,6 +1,6 @@
 #include "test_framework.h"
 #include "graph.h"
-#include "input.h"
+#include "input/input.h"
 
 #include <SDL.h>
 #include <cstring>

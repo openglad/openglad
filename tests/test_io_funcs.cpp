@@ -1,5 +1,5 @@
 #include "graph.h"
-#include "io.h"
+#include "platform/io.h"
 #include "test_framework.h"
 
 extern screen* myscreen;

@@ -1,7 +1,7 @@
 #include "graph.h"
-#include "game_context.h"
-#include "guy.h"
-#include "gloader.h"
+#include "runtime/game_context.h"
+#include "entities/guy.h"
+#include "data/gloader.h"
 #include "test_framework.h"
 #include <vector>
 

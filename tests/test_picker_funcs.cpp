@@ -1,5 +1,5 @@
 #include "graph.h"
-#include "button.h"
+#include "input/button.h"
 #include "test_framework.h"
 #include <cstring>
 #include <string>

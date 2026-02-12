@@ -1,5 +1,5 @@
 #include "graph.h"
-#include "gparser.h"
+#include "data/gparser.h"
 #include "test_framework.h"
 
 extern cfg_store cfg;
