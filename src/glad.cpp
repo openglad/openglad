@@ -19,6 +19,7 @@
 
 #include "graph.h"
 #include "runtime/game_loop.h"
+#include "runtime/screen_lifecycle.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -239,8 +240,7 @@ int main(int argc, char *argv[])
 
 	ctx().prefs = std::make_unique<options>();
 	theprefs = ctx().prefs.get();
-	myscreen = new screen(1);
-	ctx().game_screen = myscreen;
+	create_global_screen(1);
 	ctx().config = &active_config();
 
     #ifdef OUYA

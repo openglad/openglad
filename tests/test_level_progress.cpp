@@ -100,9 +100,7 @@ static void cleanup_picker_state()
     }
     // localbuttons == allbuttons[0] (returned by init_buttons), so just
     // delete everything via allbuttons to avoid double-free.
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = nullptr; }
-    }
+    clear_allbuttons();
     localbuttons = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();

@@ -146,11 +146,7 @@ void test_picker_handle_menu_nav_fire_paths_and_highlight_draw_smoke()
     activated = handle_menu_nav(buttons, highlighted, retvalue, true);
     release_fire3.join();
     TEST_ASSERT(activated, "fire with global vbuttons should activate");
-    for (int i = 0; i < MAX_BUTTONS; i++)
-    {
-        delete allbuttons[i];
-        allbuttons[i] = nullptr;
-    }
+    clear_allbuttons();
 
     // Smoke draw highlight routines under both nav states.
     menu_nav_enabled = false;

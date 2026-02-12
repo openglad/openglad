@@ -8,6 +8,7 @@
 #include "core/util.h"
 #include "input/input.h"
 #include "runtime/game_context.h"
+#include "runtime/screen_lifecycle.h"
 
 extern screen* myscreen;
 extern options* theprefs;
@@ -42,7 +43,7 @@ int main(int argc, char* argv[]) {
 
     ctx().prefs = std::make_unique<options>();
     theprefs = ctx().prefs.get();
-    myscreen = new screen(1);
+    create_global_screen(1);
     init_input();
 
     run_all_tests();

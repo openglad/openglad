@@ -93,6 +93,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/glad.cpp
     ${SRC_DIR}/runtime/game_loop.cpp
     ${SRC_DIR}/runtime/game_context.cpp
+    ${SRC_DIR}/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
     ${SRC_DIR}/input/button.cpp
     ${SRC_DIR}/entities/effect.cpp
@@ -182,6 +183,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/game.cpp
     ${SRC_DIR}/runtime/game_context.cpp
     ${SRC_DIR}/runtime/game_loop.cpp
+    ${SRC_DIR}/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/runtime/screen.cpp
 )
 

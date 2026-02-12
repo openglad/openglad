@@ -97,9 +97,7 @@ static void cleanup_picker_state()
         backdrops[i].reset();
         backpics[i].free();
     }
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = nullptr; }
-    }
+    clear_allbuttons();
     localbuttons = nullptr;
     main_columns_pix.reset();
     main_columns_data.free();

@@ -23,6 +23,10 @@ extern short scen_level;
 extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 
 vbutton * allbuttons[MAX_BUTTONS];
+namespace
+{
+std::array<std::unique_ptr<vbutton>, MAX_BUTTONS> owned_buttons;
+}
 short dumbcount;
 void get_input_events(bool);
 
@@ -489,34 +493,36 @@ private:
 vbutton * init_buttons(button * buttons, Sint32 numbuttons)
 {
     TRACE("menu", "init_buttons count=%d", numbuttons);
-    Sint32 i;
 
 #ifdef TESTING
     SdlMutexLock lock(get_allbuttons_mutex());
 #endif
 
-    // init_buttons owns the lifetime of all vbuttons in allbuttons[].
-    // Callers may keep non-owning pointers (e.g., localbuttons == allbuttons[0]),
-    // but must not delete them directly.
-    for (i=0; i < MAX_BUTTONS; i++)
-    {
-        if (allbuttons[i])
-            delete allbuttons[i];
-        allbuttons[i] = nullptr;
-    }
+    clear_allbuttons();
 
-    for (i=0; i < numbuttons; i++)
+    for (Sint32 i = 0; i < numbuttons; i++)
     {
-        allbuttons[i] = new vbutton(buttons[i].x,buttons[i].y,
-                                    buttons[i].sizex, buttons[i].sizey,
-                                    buttons[i].myfun, buttons[i].arg1,
-                                    buttons[i].label, buttons[i].hotkey);
+        auto owned_button = std::make_unique<vbutton>(buttons[i].x,buttons[i].y,
+                                                      buttons[i].sizex, buttons[i].sizey,
+                                                      buttons[i].myfun, buttons[i].arg1,
+                                                      buttons[i].label, buttons[i].hotkey);
+        allbuttons[i] = owned_button.get();
+        owned_buttons[static_cast<size_t>(i)] = std::move(owned_button);
         allbuttons[i]->id = buttons[i].id;
         allbuttons[i]->hidden = buttons[i].hidden;
         allbuttons[i]->no_draw = buttons[i].no_draw;
     }
 
     return allbuttons[0];
+}
+
+void clear_allbuttons()
+{
+    for (size_t i = 0; i < owned_buttons.size(); i++)
+    {
+        owned_buttons[i].reset();
+        allbuttons[i] = nullptr;
+    }
 }
 
 void draw_backdrop()

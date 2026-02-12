@@ -144,6 +144,7 @@ class vbutton
 
 #define MAX_BUTTONS 50  // max buttons per screen
 extern vbutton *allbuttons[MAX_BUTTONS];
+void clear_allbuttons();
 
 vbutton * init_buttons(button * buttons, Sint32 numbuttons);
 void draw_backdrop();
