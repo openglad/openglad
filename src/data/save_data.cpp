@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <iterator>
 #include <string>
 
 namespace {
@@ -52,7 +53,7 @@ SaveData::SaveData()
     completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
     current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
     
-	for(int i = 0; i < 4; i++)
+    for (size_t i = 0; i < std::size(m_score); i++)
 	{
 		m_score[i] = 0;
 		m_totalcash[i] = 5000;
@@ -76,7 +77,7 @@ void SaveData::reset()
 	
 
 	score = totalcash = totalscore = 0;
-	for (int i = 0; i < 4; i++)
+    for (size_t i = 0; i < std::size(m_score); i++)
 	{
 		m_score[i] = 0;
 		m_totalcash[i] = 5000;
@@ -267,7 +268,7 @@ bool SaveData::load(const std::string& filename)
 		// Versions 6+ have a score for each possible team, 0-3
 		if (temp_version >= 6)
 		{
-			for (int team_idx = 0; team_idx < 4; team_idx++)
+            for (size_t team_idx = 0; team_idx < std::size(m_totalcash); team_idx++)
 			{
 				READ_OR_FAIL(&newcash, 4, 1);
 				m_totalcash[team_idx] = newcash;
@@ -638,7 +639,7 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&newscore, 4, 1);
 
 	// Versions 6+ have a score for each possible team
-	for (int team_idx = 0; team_idx < 4; team_idx++)
+    for (size_t team_idx = 0; team_idx < std::size(m_totalcash); team_idx++)
 	{
 		newcash = m_totalcash[team_idx];
 		WRITE_OR_FAIL(&newcash, 4, 1);

@@ -21,7 +21,7 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
 bool prompt_for_string(const std::string& message, std::string& result);
 void popup_dialog(const char* title, const char* message);
 
-#define OG_OK 4
+inline constexpr Sint32 OG_OK = 4;
 void draw_highlight_interior(const button& b);
 void draw_highlight(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
@@ -79,22 +79,22 @@ public:
     guy* before;
     walker* after;
     
-    std::string get_name();
-    std::string get_class_name();
-    char get_family();
-    int get_level();
-    bool gained_level();
-    bool lost_level();
-    std::vector<std::string> get_gained_specials();
+    std::string get_name() const;
+    std::string get_class_name() const;
+    char get_family() const;
+    int get_level() const;
+    bool gained_level() const;
+    bool lost_level() const;
+    std::vector<std::string> get_gained_specials() const;
     
     // These are percentages of what you need for the next level.
-    float get_XP_base();
-    float get_XP_gain();  // could be negative, if a level is lost, it is a percentage of the XP needed for the lost level
+    float get_XP_base() const;
+    float get_XP_gain() const;  // could be negative, if a level is lost, it is a percentage of the XP needed for the lost level
     
-    int get_tallies();
-    float get_HP();  // percentage of total
-    bool is_dead();
-    bool is_new();
+    int get_tallies() const;
+    float get_HP() const;  // percentage of total
+    bool is_dead() const;
+    bool is_new() const;
     
     void draw_guy(int cx, int cy, int frame);
     
@@ -108,7 +108,7 @@ TroopResult::TroopResult(guy* before_, walker* after_)
         after = nullptr;
 }
 
-std::string TroopResult::get_name()
+std::string TroopResult::get_name() const
 {
     if(before != nullptr)
         return before->name;
@@ -117,7 +117,7 @@ std::string TroopResult::get_name()
     return std::string();
 }
 
-char TroopResult::get_family()
+char TroopResult::get_family() const
 {
     char family = FAMILY_SOLDIER;
     if(before != nullptr)
@@ -129,7 +129,7 @@ char TroopResult::get_family()
 
 const char* get_family_string(Sint32 family);
 
-std::string TroopResult::get_class_name()
+std::string TroopResult::get_class_name() const
 {
     if(before != nullptr)
         return get_family_string(before->family);
@@ -138,7 +138,7 @@ std::string TroopResult::get_class_name()
     return std::string();
 }
 
-int TroopResult::get_level()
+int TroopResult::get_level() const
 {
     if(after != nullptr)
         return calculate_level(after->myguy->exp);
@@ -148,7 +148,7 @@ int TroopResult::get_level()
     return 0;
 }
 
-bool TroopResult::gained_level()
+bool TroopResult::gained_level() const
 {
     if(after == nullptr || before == nullptr)
         return false;
@@ -156,7 +156,7 @@ bool TroopResult::gained_level()
     return calculate_level(after->myguy->exp) > before->level;
 }
 
-bool TroopResult::lost_level()
+bool TroopResult::lost_level() const
 {
     if(after == nullptr || before == nullptr)
         return false;
@@ -164,7 +164,7 @@ bool TroopResult::lost_level()
     return calculate_level(after->myguy->exp) < before->level;
 }
 
-std::vector<std::string> TroopResult::get_gained_specials()
+std::vector<std::string> TroopResult::get_gained_specials() const
 {
     std::vector<std::string> result;
     
@@ -184,7 +184,7 @@ std::vector<std::string> TroopResult::get_gained_specials()
     return result;
 }
 
-float TroopResult::get_XP_base()
+float TroopResult::get_XP_base() const
 {
     if(before == nullptr)
         return 0.0f;
@@ -197,7 +197,7 @@ float TroopResult::get_XP_base()
     return static_cast<float>(before->exp - exp_prev) / static_cast<float>(exp_next);
 }
 
-float TroopResult::get_XP_gain()
+float TroopResult::get_XP_gain() const
 {
     if(after == nullptr || before == nullptr)
         return 0.0f;
@@ -221,7 +221,7 @@ float TroopResult::get_XP_gain()
     }
 }
 
-int TroopResult::get_tallies()
+int TroopResult::get_tallies() const
 {
     if(after == nullptr)
         return 0;
@@ -229,7 +229,7 @@ int TroopResult::get_tallies()
     return after->myguy->scen_kills;
 }
 
-float TroopResult::get_HP()
+float TroopResult::get_HP() const
 {
     if(after == nullptr)
         return 0.0f;
@@ -240,12 +240,12 @@ float TroopResult::get_HP()
     return after->myguy->scen_min_hp/after->stats()->max_hitpoints;
 }
 
-bool TroopResult::is_dead()
+bool TroopResult::is_dead() const
 {
     return (get_HP() <= 0.0f);
 }
 
-bool TroopResult::is_new()
+bool TroopResult::is_new() const
 {
     return (before == nullptr && after != nullptr);
 }

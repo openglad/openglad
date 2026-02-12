@@ -18,7 +18,9 @@
 #include "render/smooth.h"
 #include "core/util.h"
 #include "ui/campaign_picker.h"
+#include <algorithm>
 #include <format>
+#include <iterator>
 
 void popup_dialog(const char* title, const char* message);
 
@@ -183,16 +185,15 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 
 	// Here we decide if all players are controlling
 	// team 0, or if they're playing competing teams ..
-	if (multi_team)
-	{
-		for (int view_idx = 0; view_idx < screenp->numviews; view_idx++)
-			screenp->viewob[view_idx]->my_team = static_cast<short>(view_idx);
-	}
-	else
-	{
-		for (int view_idx = 0; view_idx < screenp->numviews; view_idx++)
-			screenp->viewob[view_idx]->my_team = 0;
-	}
+    short view_idx = 0;
+    const short numviews = std::min<short>(screenp->numviews, static_cast<short>(std::size(screenp->viewob)));
+    for (auto& view : screenp->viewob)
+    {
+        if (!view || view_idx >= numviews)
+            break;
+        view->my_team = multi_team ? view_idx : 0;
+        ++view_idx;
+    }
 
 	return used_fallback_level ? LoadSavedGameError::UsedFallbackLevel : LoadSavedGameError::None;
 }
