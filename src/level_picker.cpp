@@ -25,6 +25,7 @@
 #include "button.h"
 
 #include <array>
+#include <cctype>
 #include <format>
 #include <list>
 #include <memory>
@@ -139,7 +140,7 @@ bool sort_scen(const std::string& first, const std::string& second)
     bool gotNum = false;
     for(std::string::const_iterator e = first.begin(); e != first.end(); e++)
     {
-        if(!gotNum && isalpha(*e))
+        if(!gotNum && std::isalpha(static_cast<unsigned char>(*e)))
             s1 += *e;
         else
             s1num += *e;
@@ -148,7 +149,7 @@ bool sort_scen(const std::string& first, const std::string& second)
     gotNum = false;
     for(std::string::const_iterator e = second.begin(); e != second.end(); e++)
     {
-        if(!gotNum && isalpha(*e))
+        if(!gotNum && std::isalpha(static_cast<unsigned char>(*e)))
             s2 += *e;
         else
             s2num += *e;

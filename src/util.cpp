@@ -25,6 +25,7 @@
 
 #include <cstdio>
 #include <ctime>
+#include <cctype>
 #include <cstring> //buffers: for strlen
 #include <string>
 #include <sys/stat.h>
@@ -147,25 +148,25 @@ void time_delay(Sint32 delay)
 void lowercase(char * str)
 {
     for (size_t i = 0, len = strlen(str); i < len; i++)
-        str[i] = tolower(str[i]);
+        str[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(str[i])));
 }
 
 //buffers: add: another extra routine.
 void uppercase(char *str)
 {
     for (size_t i = 0, len = strlen(str); i < len; i++)
-        str[i] = toupper(str[i]);
+        str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
 }
 
 // kari: yet two extra
 void lowercase(std::string &str)
 {
     for(auto& c : str)
-        c = tolower(c);
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 }
 
 void uppercase(std::string &str)
 {
     for(auto& c : str)
-        c = toupper(c);
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 }

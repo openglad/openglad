@@ -29,6 +29,7 @@
 #include "level_picker.h"
 #include "game_context.h"
 #include <cstring>
+#include <cctype>
 #include <format>
 #include <string>
 #include <set>
@@ -1261,7 +1262,7 @@ int get_scen_num_from_filename(const char* name)
     return -1;
     
    const char* n = name;
-   while(isalpha(*n))
+   while(std::isalpha(static_cast<unsigned char>(*n)))
    {
        n++;
    }
