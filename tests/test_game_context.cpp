@@ -1,5 +1,5 @@
-#include "game_context.h"
-#include "combat_math.h"
+#include "runtime/game_context.h"
+#include "core/combat_math.h"
 #include "graph.h"
 #include "test_framework.h"
 

@@ -18,7 +18,7 @@
 #include "version.h"
 
 #include "graph.h"
-#include "game_loop.h"
+#include "runtime/game_loop.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -28,14 +28,14 @@ screen * myscreen;
 
 #include "colors.h"
 #include <ctime>
-#include "gparser.h"
+#include "data/gparser.h"
 #include <string>
 #include <cstring>
 #include <format>
 #include <stdexcept>
-#include "util.h"
-#include "results_screen.h"
-#include "game_context.h"
+#include "core/util.h"
+#include "ui/results_screen.h"
+#include "runtime/game_context.h"
 
 extern options *theprefs;
 

@@ -1,12 +1,12 @@
 #include "graph.h"
-#include "button.h"
+#include "input/button.h"
 #include "test_trace.h"
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "save_data.h"
-#include "guy.h"
-#include "util.h"
+#include "data/save_data.h"
+#include "entities/guy.h"
+#include "core/util.h"
 
 extern screen* myscreen;
 

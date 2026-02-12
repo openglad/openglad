@@ -91,58 +91,58 @@ set(EXT_DIR ${SRC_DIR}/external)
 # Main game C++ sources
 set(GAME_SOURCES
     ${SRC_DIR}/glad.cpp
-    ${SRC_DIR}/game_loop.cpp
-    ${SRC_DIR}/game_context.cpp
-    ${SRC_DIR}/combat_math.cpp
-    ${SRC_DIR}/button.cpp
-    ${SRC_DIR}/effect.cpp
-    ${SRC_DIR}/game.cpp
-    ${SRC_DIR}/graphlib.cpp
-    ${SRC_DIR}/guy.cpp
-    ${SRC_DIR}/help.cpp
-    ${SRC_DIR}/input.cpp
-    ${SRC_DIR}/intro.cpp
-    ${SRC_DIR}/living.cpp
-    ${SRC_DIR}/obmap.cpp
-    ${SRC_DIR}/pal32.cpp
-    ${SRC_DIR}/picker.cpp
-    ${SRC_DIR}/picker_dialogs.cpp
-    ${SRC_DIR}/picker_input.cpp
-    ${SRC_DIR}/picker_main_menu.cpp
-    ${SRC_DIR}/picker_accessible_levels.cpp
-    ${SRC_DIR}/picker_team_build.cpp
-    ${SRC_DIR}/pixie.cpp
-    ${SRC_DIR}/pixien.cpp
-    ${SRC_DIR}/radar.cpp
-    ${SRC_DIR}/screen.cpp
-    ${SRC_DIR}/smooth.cpp
-    ${SRC_DIR}/sound.cpp
-    ${SRC_DIR}/stats.cpp
-    ${SRC_DIR}/text.cpp
-    ${SRC_DIR}/treasure.cpp
-    ${SRC_DIR}/video.cpp
-    ${SRC_DIR}/view.cpp
-    ${SRC_DIR}/walker.cpp
-    ${SRC_DIR}/walker_combat.cpp
-    ${SRC_DIR}/walker_movement.cpp
-    ${SRC_DIR}/walker_pathing.cpp
-    ${SRC_DIR}/walker_specials.cpp
-    ${SRC_DIR}/weap.cpp
-    ${SRC_DIR}/sai2x.cpp
-    ${SRC_DIR}/util.cpp
-    ${SRC_DIR}/io.cpp
-    ${SRC_DIR}/gparser.cpp
-    ${SRC_DIR}/gloader.cpp
-    ${SRC_DIR}/pixie_data.cpp
-    ${SRC_DIR}/level_data.cpp
-    ${SRC_DIR}/level_picker.cpp
-    ${SRC_DIR}/level_editor.cpp
-    ${SRC_DIR}/level_editor_ui.cpp
-    ${SRC_DIR}/level_editor_tools.cpp
-    ${SRC_DIR}/level_editor_file_ops.cpp
-    ${SRC_DIR}/campaign_picker.cpp
-    ${SRC_DIR}/results_screen.cpp
-    ${SRC_DIR}/save_data.cpp
+    ${SRC_DIR}/runtime/game_loop.cpp
+    ${SRC_DIR}/runtime/game_context.cpp
+    ${SRC_DIR}/core/combat_math.cpp
+    ${SRC_DIR}/input/button.cpp
+    ${SRC_DIR}/entities/effect.cpp
+    ${SRC_DIR}/runtime/game.cpp
+    ${SRC_DIR}/render/graphlib.cpp
+    ${SRC_DIR}/entities/guy.cpp
+    ${SRC_DIR}/ui/help.cpp
+    ${SRC_DIR}/input/input.cpp
+    ${SRC_DIR}/ui/intro.cpp
+    ${SRC_DIR}/entities/living.cpp
+    ${SRC_DIR}/entities/obmap.cpp
+    ${SRC_DIR}/render/pal32.cpp
+    ${SRC_DIR}/ui/picker.cpp
+    ${SRC_DIR}/ui/picker_dialogs.cpp
+    ${SRC_DIR}/ui/picker_input.cpp
+    ${SRC_DIR}/ui/picker_main_menu.cpp
+    ${SRC_DIR}/ui/picker_accessible_levels.cpp
+    ${SRC_DIR}/ui/picker_team_build.cpp
+    ${SRC_DIR}/render/pixie.cpp
+    ${SRC_DIR}/render/pixien.cpp
+    ${SRC_DIR}/render/radar.cpp
+    ${SRC_DIR}/runtime/screen.cpp
+    ${SRC_DIR}/render/smooth.cpp
+    ${SRC_DIR}/platform/sound.cpp
+    ${SRC_DIR}/core/stats.cpp
+    ${SRC_DIR}/render/text.cpp
+    ${SRC_DIR}/entities/treasure.cpp
+    ${SRC_DIR}/render/video.cpp
+    ${SRC_DIR}/render/view.cpp
+    ${SRC_DIR}/entities/walker.cpp
+    ${SRC_DIR}/entities/walker_combat.cpp
+    ${SRC_DIR}/entities/walker_movement.cpp
+    ${SRC_DIR}/entities/walker_pathing.cpp
+    ${SRC_DIR}/entities/walker_specials.cpp
+    ${SRC_DIR}/entities/weap.cpp
+    ${SRC_DIR}/render/sai2x.cpp
+    ${SRC_DIR}/core/util.cpp
+    ${SRC_DIR}/platform/io.cpp
+    ${SRC_DIR}/data/gparser.cpp
+    ${SRC_DIR}/data/gloader.cpp
+    ${SRC_DIR}/data/pixie_data.cpp
+    ${SRC_DIR}/data/level_data.cpp
+    ${SRC_DIR}/ui/level_picker.cpp
+    ${SRC_DIR}/ui/level_editor.cpp
+    ${SRC_DIR}/ui/level_editor_ui.cpp
+    ${SRC_DIR}/ui/level_editor_tools.cpp
+    ${SRC_DIR}/ui/level_editor_file_ops.cpp
+    ${SRC_DIR}/ui/campaign_picker.cpp
+    ${SRC_DIR}/ui/results_screen.cpp
+    ${SRC_DIR}/data/save_data.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -151,79 +151,79 @@ list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/glad.cpp)
 # Internal module decomposition (Phase 1 architecture foundations).
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
 set(OG_CORE_SOURCES
-    ${SRC_DIR}/combat_math.cpp
-    ${SRC_DIR}/stats.cpp
-    ${SRC_DIR}/util.cpp
+    ${SRC_DIR}/core/combat_math.cpp
+    ${SRC_DIR}/core/stats.cpp
+    ${SRC_DIR}/core/util.cpp
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/gloader.cpp
-    ${SRC_DIR}/gparser.cpp
-    ${SRC_DIR}/level_data.cpp
-    ${SRC_DIR}/pixie_data.cpp
-    ${SRC_DIR}/save_data.cpp
+    ${SRC_DIR}/data/gloader.cpp
+    ${SRC_DIR}/data/gparser.cpp
+    ${SRC_DIR}/data/level_data.cpp
+    ${SRC_DIR}/data/pixie_data.cpp
+    ${SRC_DIR}/data/save_data.cpp
 )
 
 set(OG_ENTITIES_SOURCES
-    ${SRC_DIR}/effect.cpp
-    ${SRC_DIR}/guy.cpp
-    ${SRC_DIR}/living.cpp
-    ${SRC_DIR}/obmap.cpp
-    ${SRC_DIR}/treasure.cpp
-    ${SRC_DIR}/walker.cpp
-    ${SRC_DIR}/walker_combat.cpp
-    ${SRC_DIR}/walker_movement.cpp
-    ${SRC_DIR}/walker_pathing.cpp
-    ${SRC_DIR}/walker_specials.cpp
-    ${SRC_DIR}/weap.cpp
+    ${SRC_DIR}/entities/effect.cpp
+    ${SRC_DIR}/entities/guy.cpp
+    ${SRC_DIR}/entities/living.cpp
+    ${SRC_DIR}/entities/obmap.cpp
+    ${SRC_DIR}/entities/treasure.cpp
+    ${SRC_DIR}/entities/walker.cpp
+    ${SRC_DIR}/entities/walker_combat.cpp
+    ${SRC_DIR}/entities/walker_movement.cpp
+    ${SRC_DIR}/entities/walker_pathing.cpp
+    ${SRC_DIR}/entities/walker_specials.cpp
+    ${SRC_DIR}/entities/weap.cpp
 )
 
 set(OG_RUNTIME_SOURCES
-    ${SRC_DIR}/game.cpp
-    ${SRC_DIR}/game_context.cpp
-    ${SRC_DIR}/game_loop.cpp
-    ${SRC_DIR}/screen.cpp
+    ${SRC_DIR}/runtime/game.cpp
+    ${SRC_DIR}/runtime/game_context.cpp
+    ${SRC_DIR}/runtime/game_loop.cpp
+    ${SRC_DIR}/runtime/screen.cpp
 )
 
 set(OG_RENDER_SOURCES
-    ${SRC_DIR}/graphlib.cpp
-    ${SRC_DIR}/pal32.cpp
-    ${SRC_DIR}/pixie.cpp
-    ${SRC_DIR}/pixien.cpp
-    ${SRC_DIR}/radar.cpp
-    ${SRC_DIR}/sai2x.cpp
-    ${SRC_DIR}/smooth.cpp
-    ${SRC_DIR}/text.cpp
-    ${SRC_DIR}/video.cpp
-    ${SRC_DIR}/view.cpp
+    ${SRC_DIR}/render/graphlib.cpp
+    ${SRC_DIR}/render/pal32.cpp
+    ${SRC_DIR}/render/pixie.cpp
+    ${SRC_DIR}/render/pixien.cpp
+    ${SRC_DIR}/render/radar.cpp
+    ${SRC_DIR}/render/sai2x.cpp
+    ${SRC_DIR}/render/smooth.cpp
+    ${SRC_DIR}/render/text.cpp
+    ${SRC_DIR}/render/video.cpp
+    ${SRC_DIR}/render/view.cpp
 )
 
 set(OG_INPUT_SOURCES
-    ${SRC_DIR}/button.cpp
-    ${SRC_DIR}/input.cpp
+    ${SRC_DIR}/input/button.cpp
+    ${SRC_DIR}/input/input.cpp
 )
 
 set(OG_UI_SOURCES
-    ${SRC_DIR}/campaign_picker.cpp
-    ${SRC_DIR}/help.cpp
-    ${SRC_DIR}/intro.cpp
-    ${SRC_DIR}/level_editor.cpp
-    ${SRC_DIR}/level_editor_file_ops.cpp
-    ${SRC_DIR}/level_editor_tools.cpp
-    ${SRC_DIR}/level_editor_ui.cpp
-    ${SRC_DIR}/level_picker.cpp
-    ${SRC_DIR}/picker.cpp
-    ${SRC_DIR}/picker_accessible_levels.cpp
-    ${SRC_DIR}/picker_dialogs.cpp
-    ${SRC_DIR}/picker_input.cpp
-    ${SRC_DIR}/picker_main_menu.cpp
-    ${SRC_DIR}/picker_team_build.cpp
-    ${SRC_DIR}/results_screen.cpp
+    ${SRC_DIR}/ui/campaign_picker.cpp
+    ${SRC_DIR}/ui/help.cpp
+    ${SRC_DIR}/ui/intro.cpp
+    ${SRC_DIR}/ui/level_editor.cpp
+    ${SRC_DIR}/ui/level_editor_file_ops.cpp
+    ${SRC_DIR}/ui/level_editor_tools.cpp
+    ${SRC_DIR}/ui/level_editor_ui.cpp
+    ${SRC_DIR}/ui/level_picker.cpp
+    ${SRC_DIR}/ui/picker.cpp
+    ${SRC_DIR}/ui/picker_accessible_levels.cpp
+    ${SRC_DIR}/ui/picker_dialogs.cpp
+    ${SRC_DIR}/ui/picker_input.cpp
+    ${SRC_DIR}/ui/picker_main_menu.cpp
+    ${SRC_DIR}/ui/picker_team_build.cpp
+    ${SRC_DIR}/ui/results_screen.cpp
 )
 
 set(OG_PLATFORM_SOURCES
-    ${SRC_DIR}/io.cpp
-    ${SRC_DIR}/sound.cpp
+    ${SRC_DIR}/platform/io.cpp
+    ${SRC_DIR}/platform/sound.cpp
 )
 
 # External C++ sources

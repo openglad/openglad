@@ -1,9 +1,9 @@
 #include "graph.h"
 #include "test_trace.h"
 #include "test_framework.h"
-#include "guy.h"
-#include "button.h"
-#include "save_data.h"
+#include "entities/guy.h"
+#include "input/button.h"
+#include "data/save_data.h"
 #include "base.h"
 
 extern screen* myscreen;

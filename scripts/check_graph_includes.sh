@@ -20,13 +20,15 @@ done < "${ALLOWLIST}"
 include_pattern='^[[:space:]]*#include[[:space:]]*"graph\.h"'
 
 status=0
-while IFS= read -r file; do
-    rel="${file#${PROJECT_ROOT}/}"
-    if [[ -z "${allowed[${rel}]:-}" ]]; then
-        echo "New disallowed graph.h include in ${rel}" >&2
-        status=1
+while IFS= read -r -d '' file; do
+    if grep -qE "${include_pattern}" "${file}"; then
+        rel="${file#${PROJECT_ROOT}/}"
+        if [[ -z "${allowed[${rel}]:-}" ]]; then
+            echo "New disallowed graph.h include in ${rel}" >&2
+            status=1
+        fi
     fi
-done < <(grep -lE "${include_pattern}" "${PROJECT_ROOT}"/src/*.cpp || true)
+done < <(find "${PROJECT_ROOT}/src" -type f -name '*.cpp' ! -path "${PROJECT_ROOT}/src/external/*" -print0)
 
 for rel in "${!allowed[@]}"; do
     file="${PROJECT_ROOT}/${rel}"

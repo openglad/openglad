@@ -3,11 +3,11 @@
 #include "graph.h"
 #include "test_trace.h"
 #include "test_framework.h"
-#include "gparser.h"
-#include "io.h"
-#include "util.h"
-#include "input.h"
-#include "game_context.h"
+#include "data/gparser.h"
+#include "platform/io.h"
+#include "core/util.h"
+#include "input/input.h"
+#include "runtime/game_context.h"
 
 extern screen* myscreen;
 extern options* theprefs;

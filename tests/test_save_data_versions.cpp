@@ -6,8 +6,8 @@
 #include <string>
 
 #include "graph.h"
-#include "io.h"
-#include "save_data.h"
+#include "platform/io.h"
+#include "data/save_data.h"
 #include "test_framework.h"
 
 extern screen* myscreen;

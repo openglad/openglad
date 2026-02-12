@@ -1,6 +1,6 @@
 #include "base.h"
 #include "graph.h"
-#include "gloader.h"
+#include "data/gloader.h"
 #include "test_framework.h"
 
 extern screen* myscreen;

@@ -1,5 +1,5 @@
 #include "graph.h"
-#include "guy.h"
+#include "entities/guy.h"
 #include "test_framework.h"
 
 extern screen* myscreen;

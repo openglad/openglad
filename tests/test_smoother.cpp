@@ -1,6 +1,6 @@
-#include "smooth.h"
+#include "render/smooth.h"
 #include "base.h"
-#include "pixie_data.h"
+#include "data/pixie_data.h"
 #include "test_framework.h"
 
 #include <memory>

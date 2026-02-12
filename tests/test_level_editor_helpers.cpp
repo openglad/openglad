@@ -1,6 +1,6 @@
 #include "graph.h"
-#include "gloader.h"
-#include "io.h"
+#include "data/gloader.h"
+#include "platform/io.h"
 #include "pixdefs.h"
 #include "test_framework.h"
 

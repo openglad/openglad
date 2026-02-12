@@ -2,7 +2,7 @@
 #include <string>
 
 #include "test_framework.h"
-#include "util.h"
+#include "core/util.h"
 
 void test_util_case_conversion_cstr()
 {

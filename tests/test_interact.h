@@ -1,8 +1,8 @@
 #ifndef _TEST_INTERACT_H__
 #define _TEST_INTERACT_H__
 
-#include "button.h"
-#include "input.h"
+#include "input/button.h"
+#include "input/input.h"
 #include "test_input_helpers.h"
 #include <string>
 #include <vector>

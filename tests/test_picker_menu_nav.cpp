@@ -1,5 +1,5 @@
-#include "button.h"
-#include "input.h"
+#include "input/button.h"
+#include "input/input.h"
 #include "test_framework.h"
 
 #include <chrono>

@@ -1,5 +1,5 @@
 #include "graph.h"
-#include "game_context.h"
+#include "runtime/game_context.h"
 #include "test_framework.h"
 
 extern screen* myscreen;

@@ -1,10 +1,10 @@
 #include <vector>
 
 #include "graph.h"
-#include "game_loop.h"
-#include "save_data.h"
+#include "runtime/game_loop.h"
+#include "data/save_data.h"
 #include "test_framework.h"
-#include "util.h"
+#include "core/util.h"
 
 extern screen* myscreen;
 

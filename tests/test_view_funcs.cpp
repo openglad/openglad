@@ -1,5 +1,5 @@
 #include "graph.h"
-#include "view.h"
+#include "render/view.h"
 #include "colors.h"
 #include "test_framework.h"
 
