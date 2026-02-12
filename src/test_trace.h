@@ -6,6 +6,7 @@
 #include <string>
 #include <cstdio>
 #include <cstdarg>
+#include <mutex>
 
 struct TraceEntry {
     std::string category;
@@ -13,6 +14,7 @@ struct TraceEntry {
 };
 
 extern std::vector<TraceEntry> g_trace_buffer;
+extern std::mutex g_trace_mutex;
 
 bool trace_contains(const char* category, const char* substring);
 int trace_count(const char* category);
@@ -25,6 +27,7 @@ inline void trace_write(const char* category, const char* format, ...) {
     va_start(args, format);
     vsnprintf(buf, sizeof(buf), format, args);
     va_end(args);
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
     g_trace_buffer.push_back({category, buf});
     fprintf(stderr, "[TRACE:%s] %s\n", category, buf);
 }
@@ -36,4 +39,3 @@ inline void trace_write(const char* category, const char* format, ...) {
 #define TRACE(cat, ...) ((void)0)
 
 #endif // TESTING
-

@@ -27,6 +27,7 @@
 #include <memory>
 #include <string>
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <stdexcept>
 #include <sys/stat.h>
@@ -496,12 +497,12 @@ void restore_default_settings()
 
 #ifdef __EMSCRIPTEN__
 // Flag to track when IDBFS sync is complete
-static volatile int idbfs_sync_done = 0;
+static std::atomic<bool> idbfs_sync_done{false};
 
 // Called from JavaScript when IDBFS sync completes
 extern "C" void EMSCRIPTEN_KEEPALIVE on_idbfs_sync_done()
 {
-    idbfs_sync_done = 1;
+    idbfs_sync_done.store(true, std::memory_order_release);
     Log("IDBFS sync complete\n");
 }
 #endif
@@ -511,6 +512,7 @@ void io_init(int argc, char* argv[])
 #ifdef __EMSCRIPTEN__
     // Mount IDBFS for persistent storage in browser
     Log("Setting up IDBFS for persistent storage...\n");
+    idbfs_sync_done.store(false, std::memory_order_release);
 
     EM_ASM({
         // Create mount point
@@ -537,7 +539,7 @@ void io_init(int argc, char* argv[])
 
     // Wait for sync to complete (ASYNCIFY allows this)
     Log("Waiting for IDBFS sync...\n");
-    while (!idbfs_sync_done) {
+    while (!idbfs_sync_done.load(std::memory_order_acquire)) {
         emscripten_sleep(10);
     }
     Log("IDBFS ready\n");

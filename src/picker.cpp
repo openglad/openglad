@@ -115,7 +115,7 @@ int g_picker_mainmenu_calls = 0;
 int g_picker_max_mainmenu_calls = 0;  // 0 = unlimited
 // Set true while glad_main is running inside go_menu, so tests can
 // wait for the game to finish before clicking menu buttons.
-bool g_test_in_game = false;
+std::atomic<bool> g_test_in_game{false};
 // Monotonic counter incremented each time go_menu starts glad_main, so
 // injector threads can't miss a fast start+finish transition.
 std::atomic<int> g_test_game_epoch{0};
@@ -132,12 +132,12 @@ void picker_request_start_game()
 void picker_testing_mark_game_start()
 {
     g_test_game_epoch.fetch_add(1, std::memory_order_release);
-    g_test_in_game = true;
+    g_test_in_game.store(true, std::memory_order_release);
 }
 
 void picker_testing_mark_game_end()
 {
-    g_test_in_game = false;
+    g_test_in_game.store(false, std::memory_order_release);
 }
 #endif
 

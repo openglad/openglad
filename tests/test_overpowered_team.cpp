@@ -26,7 +26,7 @@ extern vbutton *localbuttons;
 
 #ifdef TESTING
 extern bool g_test_remove_exits;
-extern bool g_test_in_game;
+extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
 #endif
 
@@ -156,11 +156,11 @@ static int op_injector(void* data)
             return 0;
         }
         waited_ms = 0;
-        while (g_test_in_game && waited_ms < 60000) {
+        while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 60000) {
             SDL_Delay(poll_ms);
             waited_ms += poll_ms;
         }
-        if (g_test_in_game) {
+        if (g_test_in_game.load(std::memory_order_acquire)) {
             fprintf(stderr, "  [test] ERROR: game did not finish within timeout\n");
             set_game_speed(state->original_speed);
             g_test_remove_exits = false;

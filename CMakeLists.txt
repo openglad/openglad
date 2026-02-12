@@ -806,7 +806,15 @@ if(NOT EMSCRIPTEN)
 
         enable_testing()
         add_test(NAME openglad_test COMMAND openglad_test)
+        add_test(NAME og_data_tests COMMAND og_data_tests)
+        add_test(NAME og_runtime_tests COMMAND og_runtime_tests)
         set_tests_properties(openglad_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+        set_tests_properties(og_data_tests PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+        set_tests_properties(og_runtime_tests PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
 

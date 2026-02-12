@@ -34,9 +34,9 @@ COV_DIR="$PROJECT_ROOT/coverage"
 rm -rf "$COV_DIR"
 mkdir -p "$COV_DIR"
 
-echo "Building coverage-instrumented test binary..."
+echo "Building coverage-instrumented test binaries..."
 cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DENABLE_COVERAGE=ON
-cmake --build "$BUILD_DIR" --target openglad_test -j"$(nproc)"
+cmake --build "$BUILD_DIR" --target openglad_test og_data_tests og_runtime_tests -j"$(nproc)"
 
 echo ""
 echo "Zeroing counters..."
@@ -46,6 +46,8 @@ echo ""
 echo "Running tests (writes *.gcda)..."
 # Run from project root so assets resolve as in normal test runs.
 "$BUILD_DIR/openglad_test"
+"$BUILD_DIR/og_data_tests"
+"$BUILD_DIR/og_runtime_tests"
 
 echo ""
 echo "Capturing coverage..."
@@ -56,7 +58,6 @@ echo "Filtering coverage (exclude external, tests, system headers)..."
 lcov --quiet --remove "$COV_DIR/lcov.info" \
     "/usr/*" \
     "*/src/external/*" \
-    "*/src/level_editor.cpp" \
     "*/tests/*" \
     "*/build-*/*" \
     --ignore-errors unused \
