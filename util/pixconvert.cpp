@@ -10,6 +10,7 @@
 #include <list>
 #include <string>
 #include <algorithm>
+#include <optional>
 using namespace std;
 
 char ourcolors[] = {
@@ -103,7 +104,7 @@ static inline Uint32 getPixel(SDL_Surface *Surface, int x, int y)
     Uint8* bits;
     Uint32 bpp;
 
-    if(x < 0 || x >= Surface->w)
+    if(x < 0 || x >= Surface->w || y < 0 || y >= Surface->h)
         return 0;  // Best I could do for errors
 
     bpp = Surface->format->BytesPerPixel;
@@ -132,7 +133,7 @@ static inline Uint32 getPixel(SDL_Surface *Surface, int x, int y)
         break;
     }
 
-    return 0;  // FIXME: Handle errors better
+    return 0;  // Best I could do for errors
 }
 
 Uint8 is_in_range(int value, int target, int range)
@@ -182,32 +183,58 @@ int get_color_index(Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 }
 
 // Raw data loader from any format
-unsigned char* load_pix_data(const char* filename, unsigned char* numframes, unsigned char* width, unsigned char* height)
+struct PixLoadResult
 {
+    unsigned char numframes = 0;
+    unsigned char width = 0;
+    unsigned char height = 0;
+    std::vector<unsigned char> data;
+};
+
+std::optional<PixLoadResult> load_pix_data(const char* filename)
+{
+    PixLoadResult out;
+
     // A pix file to load
     if(strcmp(get_filename_ext(filename), "pix") == 0)
     {
         printf("Reading pix file: %s\n",filename);
         
         FILE *file;
-        unsigned char *data;
         
         if(!(file=fopen(filename,"rb")))
         {
-            printf("Failed to open %s\n", filename);
-            exit(1);
+            fprintf(stderr, "Failed to open %s\n", filename);
+            return std::nullopt;
         }
 
-        fread(numframes,1,1,file);
-        fread(width,1,1,file);
-        fread(height,1,1,file);
+        if (fread(&out.numframes, 1, 1, file) != 1 ||
+            fread(&out.width, 1, 1, file) != 1 ||
+            fread(&out.height, 1, 1, file) != 1)
+        {
+            fprintf(stderr, "Failed to read pix header from %s\n", filename);
+            fclose(file);
+            return std::nullopt;
+        }
         
-        int size = (*numframes)*(*width)*(*height);
-        data = (unsigned char *)malloc(size);
-        fread(data,1,size,file);
+        const int size = (out.numframes) * (out.width) * (out.height);
+        if (size <= 0)
+        {
+            fprintf(stderr, "Invalid pix dimensions in %s\n", filename);
+            fclose(file);
+            return std::nullopt;
+        }
+
+        out.data.resize(static_cast<size_t>(size));
+        if (fread(out.data.data(), 1, static_cast<size_t>(size), file) != static_cast<size_t>(size))
+        {
+            fprintf(stderr, "Failed to read pix payload from %s\n", filename);
+            fclose(file);
+            return std::nullopt;
+        }
         
         fclose(file);
-        return data;
+        return out;
     }
     
     // A standard image type to load
@@ -217,37 +244,45 @@ unsigned char* load_pix_data(const char* filename, unsigned char* numframes, uns
     SDL_Surface* surface = IMG_Load(filename);
     if(surface == NULL)
     {
-        printf("Failed to load %s\n", filename);
-        exit(1);
+        fprintf(stderr, "Failed to load %s\n", filename);
+        return std::nullopt;
     }
     
     if(surface->w > 255)
     {
-        printf("File %s has width that is too big for a pix (>255)\n", filename);
-        exit(1);
+        fprintf(stderr, "File %s has width that is too big for a pix (>255)\n", filename);
+        SDL_FreeSurface(surface);
+        return std::nullopt;
     }
     if(surface->h > 255)
     {
-        printf("File %s has height that is too big for a pix (>255)\n", filename);
-        exit(1);
+        fprintf(stderr, "File %s has height that is too big for a pix (>255)\n", filename);
+        SDL_FreeSurface(surface);
+        return std::nullopt;
     }
     
-    *numframes = 1;
-    *width = surface->w;
-    *height = surface->h;
+    out.numframes = 1;
+    out.width = static_cast<unsigned char>(surface->w);
+    out.height = static_cast<unsigned char>(surface->h);
     
-    int size = (*numframes)*(*width)*(*height);
-	unsigned char* data = (unsigned char *)malloc(size);
+    const int size = (out.numframes) * (out.width) * (out.height);
+    if (size <= 0)
+    {
+        SDL_FreeSurface(surface);
+        return std::nullopt;
+    }
+
+    out.data.resize(static_cast<size_t>(size));
 	int frame = 1;  // Only one
-	
+		
 	// Fill with pixel data
-	int x = *width;
-	int y = *height;
+	int x = out.width;
+	int y = out.height;
 	int i;
 	int j;
-    for (i = 0; i < *height; i++)
+    for (i = 0; i < out.height; i++)
     {
-        for (j = 0; j < *width; j++)
+        for (j = 0; j < out.width; j++)
         {
             Uint8 r, g, b, a;
             Uint32 c;
@@ -255,18 +290,22 @@ unsigned char* load_pix_data(const char* filename, unsigned char* numframes, uns
             c = getPixel(surface, j, i);
             SDL_GetRGBA(c, surface->format, &r, &g, &b, &a);
             
-            data[(frame - 1) * x * y + i * x + j] = get_color_index(r, g, b, a);
+            out.data[(frame - 1) * x * y + i * x + j] = static_cast<unsigned char>(get_color_index(r, g, b, a));
         }
     }
     
     SDL_FreeSurface(surface);
-    return data;
+    return out;
 }
 
 void convert_to_pix(const char* filename)
 {
-    unsigned char numframes, x, y;
-    unsigned char* data = load_pix_data(filename, &numframes, &x, &y);
+    const auto loaded = load_pix_data(filename);
+    if (!loaded)
+        return;
+    const unsigned char numframes = loaded->numframes;
+    const unsigned char x = loaded->width;
+    const unsigned char y = loaded->height;
     
     // Save it to pix
     char outname[200];
@@ -284,19 +323,21 @@ void convert_to_pix(const char* filename)
     fwrite(&numframes, 1, 1, outfile);
     fwrite(&x, 1, 1, outfile);
     fwrite(&y, 1, 1, outfile);
-    fwrite(data, (numframes*x*y), 1, outfile);
+    fwrite(loaded->data.data(), (numframes*x*y), 1, outfile);
     fclose(outfile);
 
     printf("File saved: %s\n", outname);
-    
-    free(data);
 }
 
 
 void convert_to_png(const char* filename)
 {
-    unsigned char numframes, x, y;
-    unsigned char* data = load_pix_data(filename, &numframes, &x, &y);
+    const auto loaded = load_pix_data(filename);
+    if (!loaded)
+        return;
+    const unsigned char numframes = loaded->numframes;
+    const unsigned char x = loaded->width;
+    const unsigned char y = loaded->height;
     
 	int i, j;
 	int frame;
@@ -317,12 +358,12 @@ void convert_to_png(const char* filename)
             for (j = 0; j < x; j++)
             {
                 SDL_Rect rect;
-                int r, g, b, c, d;
+	                int r, g, b, c, d;
 
-                d = data[(frame - 1) * x * y + i * x + j];
-                r = ourcolors[d * 3] * 4;
-                g = ourcolors[d * 3 + 1] * 4;
-                b = ourcolors[d * 3 + 2] * 4;
+	                d = loaded->data[(frame - 1) * x * y + i * x + j];
+	                r = ourcolors[d * 3] * 4;
+	                g = ourcolors[d * 3 + 1] * 4;
+	                b = ourcolors[d * 3 + 2] * 4;
 
                 rect.x = j;
                 rect.y = i;
@@ -343,17 +384,17 @@ void convert_to_png(const char* filename)
         snprintf(buf, 200, "%s%d.png", filename, frame);
         SDL_SavePNG(pixie, buf);
         printf("Frame saved: %s\n", buf);
+
+        SDL_FreeSurface(pixie);
     }
 
 
-	free(data);
-}
+	}
 
 void concatenate_pix(vector<string>& files)
 {
     unsigned char total_frames = 0;
     unsigned char numframes, width, height, w, h;
-    unsigned char* data;
     
     char outname[200];
     FILE* outfile = NULL;
@@ -364,7 +405,17 @@ void concatenate_pix(vector<string>& files)
     for(i = 0; i < files.size(); i++)
     {
         const string& filename = files[i];
-        data = load_pix_data(filename.c_str(), &numframes, &w, &h);
+        const auto loaded = load_pix_data(filename.c_str());
+        if (!loaded)
+        {
+            fprintf(stderr, "Failed to load %s\n", filename.c_str());
+            if (outfile != NULL)
+                fclose(outfile);
+            return;
+        }
+        numframes = loaded->numframes;
+        w = loaded->width;
+        h = loaded->height;
         
         if(first)
         {
@@ -380,7 +431,7 @@ void concatenate_pix(vector<string>& files)
             if(outfile == NULL)
             {
                 fprintf(stderr, "Failed to open \"%s\" for writing.\n", outname);
-                exit(2);
+                return;
             }
             
             fwrite(&total_frames, 1, 1, outfile);  // This will be rewritten later
@@ -395,14 +446,13 @@ void concatenate_pix(vector<string>& files)
                 printf("File (%s) dimensions (%ux%u) do not match the output file (%ux%u).\n", filename.c_str(), w, h, width, height);
                 fclose(outfile);
                 remove(outname);
-                exit(1);
+                return;
             }
             
             total_frames += numframes;
         }
         
-        fwrite(data, (numframes*w*h), 1, outfile);
-        free(data);
+        fwrite(loaded->data.data(), (numframes*w*h), 1, outfile);
     }
     
     if(outfile == NULL)
