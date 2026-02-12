@@ -55,7 +55,7 @@ struct TrainState {
 
 static int train_injector(void* data)
 {
-    TrainState* state = (TrainState*)data;
+    TrainState* state = static_cast<TrainState*>(data);
     state->started = true;
 
     // Wait for main menu
@@ -135,21 +135,21 @@ void test_train_team() {
     myscreen->save_data.totalcash = 50000;  // Enough cash for training
 
     // Add multiple classes at high level to hit create_detail_menu text branches.
-    guy* archmage = new guy(FAMILY_ARCHMAGE);
-    guy* cleric = new guy(FAMILY_CLERIC);
-    guy* druid = new guy(FAMILY_DRUID);
-    guy* thief = new guy(FAMILY_THIEF);
-    guy* orc = new guy(FAMILY_ORC);
+    auto archmage = std::make_unique<guy>(FAMILY_ARCHMAGE);
+    auto cleric = std::make_unique<guy>(FAMILY_CLERIC);
+    auto druid = std::make_unique<guy>(FAMILY_DRUID);
+    auto thief = std::make_unique<guy>(FAMILY_THIEF);
+    auto orc = std::make_unique<guy>(FAMILY_ORC);
     archmage->level = 10;
     cleric->level = 10;
     druid->level = 10;
     thief->level = 10;
     orc->level = 10;
-    myscreen->save_data.team_list[0].reset(archmage);
-    myscreen->save_data.team_list[1].reset(cleric);
-    myscreen->save_data.team_list[2].reset(druid);
-    myscreen->save_data.team_list[3].reset(thief);
-    myscreen->save_data.team_list[4].reset(orc);
+    myscreen->save_data.team_list[0] = std::move(archmage);
+    myscreen->save_data.team_list[1] = std::move(cleric);
+    myscreen->save_data.team_list[2] = std::move(druid);
+    myscreen->save_data.team_list[3] = std::move(thief);
+    myscreen->save_data.team_list[4] = std::move(orc);
     myscreen->save_data.team_size = 5;
 
     myscreen->save_data.save("save0");

@@ -72,7 +72,7 @@ struct OpState {
 
 static int op_injector(void* data)
 {
-    OpState* state = (OpState*)data;
+    OpState* state = static_cast<OpState*>(data);
     state->started = true;
 
     // -- Main Menu --

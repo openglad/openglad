@@ -5,6 +5,7 @@
 #include "input/button.h"
 #include "data/save_data.h"
 #include "base.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -129,8 +130,7 @@ void test_save_data_reset() {
     myscreen->save_data.numplayers = 4;
 
     // Add a team member
-    guy* g = new guy(FAMILY_SOLDIER);
-    myscreen->save_data.team_list[0].reset(g);
+    myscreen->save_data.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     myscreen->save_data.team_size = 1;
 
     myscreen->save_data.add_level_completed("org.openglad.gladiator", 1);

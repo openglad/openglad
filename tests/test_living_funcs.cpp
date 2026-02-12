@@ -60,7 +60,7 @@ void test_living_set_difficulty_basic()
     walker* w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    ((living*)w)->set_difficulty(5);
+    static_cast<living*>(w)->set_difficulty(5);
     // After set_difficulty, stats should have changed
     TEST_ASSERT(w->stats()->max_hitpoints > 0, "max HP should be positive after set_difficulty");
 
@@ -74,11 +74,11 @@ void test_living_set_difficulty_level_10()
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     float hp_low, hp_high;
-    ((living*)w)->set_difficulty(1);
+    static_cast<living*>(w)->set_difficulty(1);
     hp_low = w->stats()->max_hitpoints;
 
     walker* w2 = create_living(FAMILY_SOLDIER);
-    ((living*)w2)->set_difficulty(10);
+    static_cast<living*>(w2)->set_difficulty(10);
     hp_high = w2->stats()->max_hitpoints;
 
     TEST_ASSERT(hp_high > hp_low, "higher difficulty level should give more HP");
@@ -97,7 +97,7 @@ void test_living_set_difficulty_all_families()
     for (int i = 0; i < 14; i++) {
         walker* w = create_living(families[i]);
         if (w) {
-            ((living*)w)->set_difficulty(3);
+            static_cast<living*>(w)->set_difficulty(3);
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "every family should have positive HP after set_difficulty");
             delete w;
         }
@@ -117,7 +117,7 @@ void test_living_check_special_soldier()
     w->stats()->magicpoints = 100;
     w->stats()->max_magicpoints = 100;
 
-    bool result = ((living*)w)->check_special();
+    bool result = static_cast<living*>(w)->check_special();
     (void)result; // May return true or false
 
     delete w;
@@ -132,7 +132,7 @@ void test_living_check_special_mage()
     w->stats()->magicpoints = 100;
     w->stats()->max_magicpoints = 100;
 
-    bool result = ((living*)w)->check_special();
+    bool result = static_cast<living*>(w)->check_special();
     (void)result;
 
     delete w;
@@ -148,13 +148,13 @@ void test_living_facing()
     walker* w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    short dir = ((living*)w)->facing(10, 0);
+    short dir = static_cast<living*>(w)->facing(10, 0);
     TEST_ASSERT_EQ(FACE_RIGHT, (int)dir, "facing right");
 
-    dir = ((living*)w)->facing(0, -10);
+    dir = static_cast<living*>(w)->facing(0, -10);
     TEST_ASSERT_EQ(FACE_UP, (int)dir, "facing up");
 
-    dir = ((living*)w)->facing(-10, 10);
+    dir = static_cast<living*>(w)->facing(-10, 10);
     TEST_ASSERT_EQ(FACE_DOWN_LEFT, (int)dir, "facing down-left");
 
     delete w;
@@ -177,7 +177,7 @@ void test_living_shove_smoke()
     a->setxy(100, 100);
     b->setxy(105, 100);
 
-    ((living*)a)->shove(b, 1, 0);
+    static_cast<living*>(a)->shove(b, 1, 0);
 
     delete a;
     delete b;
@@ -194,9 +194,9 @@ void test_living_walk_smoke()
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->setxy(100, 100);
 
-    ((living*)w)->walk(1, 0);
-    ((living*)w)->walk(0, 1);
-    ((living*)w)->walk(-1, -1);
+    static_cast<living*>(w)->walk(1, 0);
+    static_cast<living*>(w)->walk(0, 1);
+    static_cast<living*>(w)->walk(-1, -1);
 
     delete w;
 }

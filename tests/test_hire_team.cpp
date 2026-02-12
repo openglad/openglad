@@ -57,7 +57,7 @@ struct HireState {
 
 static int hire_injector(void* data)
 {
-    HireState* state = (HireState*)data;
+    HireState* state = static_cast<HireState*>(data);
     state->started = true;
 
     // Wait for main menu

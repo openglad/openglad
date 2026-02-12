@@ -55,7 +55,7 @@ struct SaveMenuState {
 
 static int save_menu_injector(void* data)
 {
-    SaveMenuState* state = (SaveMenuState*)data;
+    SaveMenuState* state = static_cast<SaveMenuState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -103,8 +103,7 @@ void test_save_team_menu() {
     myscreen->save_data.current_campaign = "org.openglad.gladiator";
     myscreen->save_data.scen_num = 1;
 
-    guy* soldier = new guy(FAMILY_SOLDIER);
-    myscreen->save_data.team_list[0].reset(soldier);
+    myscreen->save_data.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     myscreen->save_data.team_size = 1;
     myscreen->save_data.save("save0");
 

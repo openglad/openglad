@@ -1433,7 +1433,12 @@ bool LevelData::load()
     }
 
 	// Are we a scenario file?
-	SDL_RWread(infile, temptext, 1, 3);
+	if (!rw_read_exact_or_log(infile, temptext, 1, 3))
+	{
+		SDL_RWclose(infile);
+        last_io_error_ = IoError::ParseFailed;
+		return false;
+	}
 	if (std::string(temptext) != "FSS")
 	{
 		LogError("File {} is not a valid scenario!\n", thefile);
@@ -1443,7 +1448,12 @@ bool LevelData::load()
 	}
 
 	// Check the version number
-	SDL_RWread(infile, &versionnumber, 1, 1);
+	if (!rw_read_exact_or_log(infile, &versionnumber, 1, 1))
+	{
+		SDL_RWclose(infile);
+        last_io_error_ = IoError::ParseFailed;
+		return false;
+	}
     if(versionnumber < 2 || versionnumber > VERSION_NUM)
     {
         Log("Scenario {} is version-level {}, and cannot be read.\n",

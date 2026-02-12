@@ -31,7 +31,7 @@ void test_living_set_difficulty_levels()
             if (!l) continue;
             walker* w = l->create_walker(Order::Living, families[i], myscreen);
             if (w) {
-                ((living*)w)->set_difficulty(level);
+                static_cast<living*>(w)->set_difficulty(level);
                 TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP positive for all families at all levels");
                 delete w;
             }
@@ -56,7 +56,7 @@ void test_living_check_special_all_families()
         if (w) {
             w->stats()->magicpoints = 100;
             w->stats()->max_magicpoints = 100;
-            bool result = ((living*)w)->check_special();
+            bool result = static_cast<living*>(w)->check_special();
             (void)result; // just exercise the code path
             delete w;
         }
@@ -109,18 +109,18 @@ void test_living_facing_all_directions()
     TEST_ASSERT(w != nullptr, "walker created");
 
     // right
-    TEST_ASSERT_EQ(FACE_RIGHT, (int)((living*)w)->facing(10, 0), "right");
+    TEST_ASSERT_EQ(FACE_RIGHT, (int)static_cast<living*>(w)->facing(10, 0), "right");
     // left
-    TEST_ASSERT_EQ(FACE_LEFT, (int)((living*)w)->facing(-10, 0), "left");
+    TEST_ASSERT_EQ(FACE_LEFT, (int)static_cast<living*>(w)->facing(-10, 0), "left");
     // up
-    TEST_ASSERT_EQ(FACE_UP, (int)((living*)w)->facing(0, -10), "up");
+    TEST_ASSERT_EQ(FACE_UP, (int)static_cast<living*>(w)->facing(0, -10), "up");
     // down
-    TEST_ASSERT_EQ(FACE_DOWN, (int)((living*)w)->facing(0, 10), "down");
+    TEST_ASSERT_EQ(FACE_DOWN, (int)static_cast<living*>(w)->facing(0, 10), "down");
     // diagonals
-    ((living*)w)->facing(10, -10);
-    ((living*)w)->facing(-10, -10);
-    ((living*)w)->facing(10, 10);
-    ((living*)w)->facing(-10, 10);
+    static_cast<living*>(w)->facing(10, -10);
+    static_cast<living*>(w)->facing(-10, -10);
+    static_cast<living*>(w)->facing(10, 10);
+    static_cast<living*>(w)->facing(-10, 10);
 
     delete w;
 }
@@ -143,10 +143,10 @@ void test_living_shove_movement()
     b->setxy(105, 100);
 
     // Shove in all cardinal directions
-    ((living*)a)->shove(b, 1, 0);
-    ((living*)a)->shove(b, -1, 0);
-    ((living*)a)->shove(b, 0, 1);
-    ((living*)a)->shove(b, 0, -1);
+    static_cast<living*>(a)->shove(b, 1, 0);
+    static_cast<living*>(a)->shove(b, -1, 0);
+    static_cast<living*>(a)->shove(b, 0, 1);
+    static_cast<living*>(a)->shove(b, 0, -1);
 
     delete a;
     delete b;
@@ -166,10 +166,10 @@ void test_living_walk_all_families()
         walker* w = make_living(families[i]);
         if (w) {
             w->setxy(100, 100);
-            ((living*)w)->walk(1, 0);
-            ((living*)w)->walk(-1, 0);
-            ((living*)w)->walk(0, 1);
-            ((living*)w)->walk(0, -1);
+            static_cast<living*>(w)->walk(1, 0);
+            static_cast<living*>(w)->walk(-1, 0);
+            static_cast<living*>(w)->walk(0, 1);
+            static_cast<living*>(w)->walk(0, -1);
             delete w;
         }
     }

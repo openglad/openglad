@@ -407,14 +407,14 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
 	short has_typed = 0; // hasn't typed yet
 	bool return_null = false;
 
-	for (i=0; i < 100; i++)
+	for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
 		editstring[i] = 0; // clear the string ...
 
 	if (begin)
 	{
 		snprintf(editstring, sizeof(editstring), "%s", begin);
 	}
-	snprintf(firststring, sizeof(firststring), "%s", begin); // default case
+	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
 	current_length = static_cast<short>(strlen(editstring));
 	myscreen->draw_box(x, y, x+maxlength*(sizex+1), y+sizey, backcolor, 1, 1);
 	if (begin && begin[0] != '\0')
@@ -457,7 +457,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
                 if (!has_typed) // first char, so replace text
                 {
                     current_length = 0;
-                    for (i=0; i < 100; i++)
+                    for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                         editstring[i] = 0; // clear the string ...
                     myscreen->draw_button(x, y, x+maxlength*(sizex+1),
                                       y+sizey+1, 1);
@@ -483,7 +483,7 @@ char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin
             if (!has_typed) // first char, so replace text
             {
                 current_length = 0;
-                for (i=0; i < 100; i++)
+                for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                     editstring[i] = 0; // clear the string ...
                 myscreen->draw_button(x, y, x+maxlength*(sizex+1),
                                   y+sizey+1, 1);
@@ -573,14 +573,14 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
 	short has_typed = 0; // hasn't typed yet
 	bool return_null = false;
 
-	for (i=0; i < 100; i++)
+	for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
 		editstring[i] = 0; // clear the string ...
 
 	if (begin)
 	{
 		snprintf(editstring, sizeof(editstring), "%s", begin);
 	}
-	snprintf(firststring, sizeof(firststring), "%s", begin); // default case
+	snprintf(firststring, sizeof(firststring), "%s", begin ? begin : ""); // default case
 	current_length = static_cast<short>(strlen(editstring));
 	myscreen->draw_box(x, y, x + maxlength*(sizex+1), y + sizey, backcolor, 1, 1);
 	myscreen->draw_button(x, y, x + maxlength*(sizex+1), y + sizey, 1);
@@ -625,7 +625,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
                 if (!has_typed) // first char, so replace text
                 {
                     current_length = 0;
-                    for (i=0; i < 100; i++)
+                    for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                         editstring[i] = 0; // clear the string ...
                     myscreen->draw_button(x, y, x+maxlength*(sizex+1),
                                       y+sizey+1, 1);
@@ -651,7 +651,7 @@ char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* me
             if (!has_typed) // first char, so replace text
             {
                 current_length = 0;
-                for (i=0; i < 100; i++)
+                for (i=0; i < static_cast<short>(sizeof(editstring)); i++)
                     editstring[i] = 0; // clear the string ...
                 myscreen->draw_button(x, y, x+maxlength*(sizex+1),
                                   y+sizey+1, 1);

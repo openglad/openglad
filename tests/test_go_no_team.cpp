@@ -55,7 +55,7 @@ struct GoNoTeamState {
 
 static int go_no_team_injector(void* data)
 {
-    GoNoTeamState* state = (GoNoTeamState*)data;
+    GoNoTeamState* state = static_cast<GoNoTeamState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -131,7 +131,7 @@ struct TrainNoTeamState {
 
 static int train_no_team_injector(void* data)
 {
-    TrainNoTeamState* state = (TrainNoTeamState*)data;
+    TrainNoTeamState* state = static_cast<TrainNoTeamState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);

@@ -138,7 +138,7 @@ struct LoadMenuState {
 
 static int load_menu_injector(void* data)
 {
-    LoadMenuState* state = (LoadMenuState*)data;
+    LoadMenuState* state = static_cast<LoadMenuState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);

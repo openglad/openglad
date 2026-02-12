@@ -16,7 +16,7 @@ struct EditorThreadState {
 
 static int editor_injector_thread(void* data)
 {
-    EditorThreadState* st = (EditorThreadState*)data;
+    EditorThreadState* st = static_cast<EditorThreadState*>(data);
     st->started = true;
 
     // Give the editor time to initialize and enter its main loop.

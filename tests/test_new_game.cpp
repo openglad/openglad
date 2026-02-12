@@ -58,7 +58,7 @@ struct NewGameState {
 
 static int new_game_injector(void* data)
 {
-    NewGameState* state = (NewGameState*)data;
+    NewGameState* state = static_cast<NewGameState*>(data);
     state->started = true;
 
     // Wait for main menu

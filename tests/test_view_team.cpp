@@ -55,7 +55,7 @@ struct ViewState {
 
 static int view_team_injector(void* data)
 {
-    ViewState* state = (ViewState*)data;
+    ViewState* state = static_cast<ViewState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -100,13 +100,13 @@ void test_view_team() {
     myscreen->save_data.current_campaign = "org.openglad.gladiator";
     myscreen->save_data.scen_num = 1;
 
-    guy* soldier = new guy(FAMILY_SOLDIER);
-    guy* archer = new guy(FAMILY_ARCHER);
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
     // Give the team strong stats so the launched game finishes quickly.
     soldier->strength = soldier->dexterity = soldier->constitution = soldier->intelligence = soldier->armor = 200;
     archer->strength = archer->dexterity = archer->constitution = archer->intelligence = archer->armor = 200;
-    myscreen->save_data.team_list[0].reset(soldier);
-    myscreen->save_data.team_list[1].reset(archer);
+    myscreen->save_data.team_list[0] = std::move(soldier);
+    myscreen->save_data.team_list[1] = std::move(archer);
     myscreen->save_data.team_size = 2;
 
     myscreen->save_data.save("save0");

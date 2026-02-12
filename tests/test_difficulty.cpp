@@ -57,7 +57,7 @@ struct DifficultyState {
 
 static int difficulty_injector(void* data)
 {
-    DifficultyState* state = (DifficultyState*)data;
+    DifficultyState* state = static_cast<DifficultyState*>(data);
     state->started = true;
 
     wait_for_interactable("difficulty", 5000);

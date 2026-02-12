@@ -55,7 +55,7 @@ struct OptionsState {
 
 static int options_injector(void* data)
 {
-    OptionsState* state = (OptionsState*)data;
+    OptionsState* state = static_cast<OptionsState*>(data);
     state->started = true;
 
     // Wait for main menu

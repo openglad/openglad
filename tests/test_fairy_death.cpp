@@ -87,7 +87,7 @@ struct FairyState {
 
 static int fairy_injector(void* data)
 {
-    FairyState* state = (FairyState*)data;
+    FairyState* state = static_cast<FairyState*>(data);
     state->started = true;
 
     // -- Main Menu --

@@ -270,10 +270,14 @@ void picker_main(Sint32 argc, char  **argv)
 void picker_quit()
 {
 	for (auto& backdrop : backdrops)
+    {
         backdrop.reset();
+    }
 
     for (auto& backpic : backpics)
+    {
         backpic.free();
+    }
 
 	for (int i = 0; i < MAX_BUTTONS; i++)
 	{

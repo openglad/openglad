@@ -44,7 +44,7 @@ struct BackTestState {
 
 static int back_test_injector(void* data)
 {
-    BackTestState* state = (BackTestState*)data;
+    BackTestState* state = static_cast<BackTestState*>(data);
     state->started = true;
 
     // === Iteration 1: Click CONTINUE then BACK ===

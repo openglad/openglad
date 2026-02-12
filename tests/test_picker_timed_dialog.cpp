@@ -14,7 +14,7 @@ struct TimedDialogState {
 
 static int timed_dialog_injector(void* data)
 {
-    TimedDialogState* st = (TimedDialogState*)data;
+    TimedDialogState* st = static_cast<TimedDialogState*>(data);
     st->started = true;
     SDL_Delay(50);
 
@@ -42,4 +42,3 @@ void test_picker_timed_dialog_breaks_on_input()
     TEST_ASSERT(st.finished, "injector should have finished");
 }
 REGISTER_TEST(test_picker_timed_dialog_breaks_on_input);
-

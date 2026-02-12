@@ -86,7 +86,7 @@ The default pix and sound assets are installed with the rest of the program, pre
 
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read)
 {
-    SDL_RWops *rwops = (SDL_RWops*)data;
+    SDL_RWops *rwops = static_cast<SDL_RWops*>(data);
 
     *size_read = SDL_RWread(rwops, buffer, 1, size);
     return 1;
@@ -95,7 +95,7 @@ int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *s
 
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size)
 {
-    SDL_RWops *rwops = (SDL_RWops*)data;
+    SDL_RWops *rwops = static_cast<SDL_RWops*>(data);
 
     SDL_RWwrite(rwops, buffer, 1, size);
     return 1;

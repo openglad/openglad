@@ -41,7 +41,7 @@ struct EventSequence {
 
 static int event_injector_thread(void* data)
 {
-    EventSequence* seq = (EventSequence*)data;
+    EventSequence* seq = static_cast<EventSequence*>(data);
     seq->started = true;
 
     // Wait for mainmenu to initialize and complete fadeblack.

@@ -436,7 +436,7 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
     
     int bpp = surface->format->BytesPerPixel;
     /* Here p is the address to the pixel we want to set */
-    Uint8 *p = (Uint8 *)surface->pixels + y * surface->pitch + x * bpp;
+    Uint8 *p = static_cast<Uint8*>(surface->pixels) + y * surface->pitch + x * bpp;
 
     switch(bpp) {
     case 1:
@@ -444,7 +444,7 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
         break;
 
     case 2:
-        *(Uint16 *)p = static_cast<Uint16>(pixel);
+        *reinterpret_cast<Uint16*>(p) = static_cast<Uint16>(pixel);
         break;
 
     case 3:
@@ -460,7 +460,7 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
         break;
 
     case 4:
-        *(Uint32 *)p = pixel;
+        *reinterpret_cast<Uint32*>(p) = pixel;
         break;
     }
 }
@@ -495,7 +495,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
     {
         case 1: { /* Assuming 8-bpp */
             
-                Uint8 *pixel8 = (Uint8 *)surface->pixels + y*surface->pitch + x;
+                Uint8 *pixel8 = static_cast<Uint8*>(surface->pixels) + y*surface->pitch + x;
                 
                 Uint8 dR = surface->format->palette->colors[*pixel8].r;
                 Uint8 dG = surface->format->palette->colors[*pixel8].g;
@@ -515,7 +515,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
 
         case 2: { /* Probably 15-bpp or 16-bpp */		
             
-                Uint16 *pixel16 = (Uint16 *)surface->pixels + y*surface->pitch/2 + x;
+                Uint16 *pixel16 = static_cast<Uint16*>(surface->pixels) + y*surface->pitch/2 + x;
                 Uint32 dc = *pixel16;
             
                 R = ((dc & Rmask) + (( (color & Rmask) - (dc & Rmask) ) * alpha >> 8)) & Rmask;
@@ -530,7 +530,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
         break;
 
         case 3: { /* Slow 24-bpp mode, usually not used */
-            Uint8 *pix = (Uint8 *)surface->pixels + y * surface->pitch + x*3;
+            Uint8 *pix = static_cast<Uint8*>(surface->pixels) + y * surface->pitch + x*3;
             Uint8 rshift8=surface->format->Rshift/8;
             Uint8 gshift8=surface->format->Gshift/8;
             Uint8 bshift8=surface->format->Bshift/8;
@@ -541,7 +541,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
                 Uint8 dR, dG, dB, dA=0;
                 Uint8 sR, sG, sB, sA=0;
                 
-                pix = (Uint8 *)surface->pixels + y * surface->pitch + x*3;
+                pix = static_cast<Uint8*>(surface->pixels) + y * surface->pitch + x*3;
                 
                 dR = *((pix)+rshift8); 
                 dG = *((pix)+gshift8);
@@ -567,7 +567,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
         break;
 
         case 4: /* Probably 32-bpp */
-            pixel = (Uint32*)surface->pixels + y*surface->pitch/4 + x;
+            pixel = static_cast<Uint32*>(surface->pixels) + y*surface->pitch/4 + x;
             Uint32 dc = *pixel;
             R = color & Rmask;
             G = color & Gmask;
@@ -1877,7 +1877,7 @@ void video::FadeBetween24(
 	SDL_Surface* pSurface, const Uint8* fadeFromRGB, const Uint8* fadeToRGB,
 	const int amount)	//(in) mixing ratio (in increments of 'fadeDuration')
 {
-	Uint8 *pw = (Uint8 *)pSurface->pixels;
+	Uint8 *pw = static_cast<Uint8*>(pSurface->pixels);
 	Uint32 size = pSurface->pitch * pSurface->h;
 
 	const int nOldAmt = fadeDuration-amount;
@@ -1992,7 +1992,7 @@ int video::FadeBetween(
 	std::vector<Uint8> colorsf(size);
 	std::vector<Uint8> colorst(size);
 
-	Uint8 *prf = (Uint8 *)pOldSurface->pixels, *prt = (Uint8 *)pNewSurface->pixels;
+	Uint8 *prf = static_cast<Uint8*>(pOldSurface->pixels), *prt = static_cast<Uint8*>(pNewSurface->pixels);
 	memcpy(colorsf.data(), prf, size);
 	memcpy(colorst.data(), prt, size);
 

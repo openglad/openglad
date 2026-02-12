@@ -55,7 +55,7 @@ struct MainMenuButtonState {
 
 static int mainmenu_button_injector(void* data)
 {
-    MainMenuButtonState* state = (MainMenuButtonState*)data;
+    MainMenuButtonState* state = static_cast<MainMenuButtonState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
