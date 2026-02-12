@@ -268,11 +268,30 @@ REGISTER_TEST(test_level_data_remove_ob_from_each_list);
 void test_level_data_delete_objects()
 {
     // Add some objects
-    myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
-    myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
-    myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
-    myscreen->level_data.dead_list.push_back(std::unique_ptr<walker>(myscreen->level_data.myloader->create_walker(Order::Living, FAMILY_ORC, myscreen)));
+    walker* living1 = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* living2 = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    walker* weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+
+    TEST_ASSERT(living1 != nullptr, "living1 created");
+    TEST_ASSERT(living2 != nullptr, "living2 created");
+    TEST_ASSERT(fx != nullptr, "fx created");
+    TEST_ASSERT(weap != nullptr, "weap created");
+
+    // Populate the spatial index so delete_objects() must clean it up.
+    living1->setxy(10, 10);
+    living2->setxy(30, 30);
+    fx->setxy(50, 50);
+    weap->setxy(70, 70);
+
+    auto dead = std::unique_ptr<walker>(myscreen->level_data.myloader->create_walker(Order::Living, FAMILY_ORC, myscreen));
+    TEST_ASSERT(dead != nullptr, "dead_list walker created");
+    dead->myobmap = myscreen->level_data.myobmap.get();
+    dead->setxy(90, 90);
+    myscreen->level_data.dead_list.push_back(std::move(dead));
+
+    TEST_ASSERT(myscreen->level_data.myobmap != nullptr, "myobmap exists");
+    TEST_ASSERT(myscreen->level_data.myobmap->size() > 0, "obmap has entries before delete_objects()");
 
     myscreen->level_data.delete_objects();
 
@@ -281,6 +300,9 @@ void test_level_data_delete_objects()
     TEST_ASSERT(myscreen->level_data.weaplist.empty(), "weaplist empty");
     TEST_ASSERT(myscreen->level_data.dead_list.empty(), "dead_list empty");
     TEST_ASSERT_EQ(0, myscreen->level_data.numobs, "numobs 0");
+    TEST_ASSERT_EQ(0, (int)myscreen->level_data.myobmap->size(), "obmap has no walkers after delete_objects()");
+    TEST_ASSERT(myscreen->level_data.myobmap->pos_to_walker.empty(), "obmap pos_to_walker empty");
+    TEST_ASSERT(myscreen->level_data.myobmap->walker_to_pos.empty(), "obmap walker_to_pos empty");
 }
 REGISTER_TEST(test_level_data_delete_objects);
 

@@ -618,26 +618,18 @@ void LevelData::delete_objects()
         }
     }
 	
-    // Clear the obmap references
-    // Since the walker destructor removes itself from the obmap, this should be empty already.
-    if(myobmap->walker_to_pos.size() > 0)
-    {
-        Log("obmap::walker_to_pos has {} elements left.\n", myobmap->walker_to_pos.size());
-        
-        // FIXME: Freeing them here does naughty things!
-        /*
-        std::vector<walker*> walkers;
-        for(auto e = myobmap->walker_to_pos.begin(); e != myobmap->walker_to_pos.end(); e++)
-        {
-            Log("Order: %d, Family: %d\n", e->first->query_order(), e->first->query_family());
-            walkers.push_back(e->first);
-        }
-        
-        for(auto e = walkers.begin(); e != walkers.end(); e++)
-        {
-            delete *e;
-        }*/
-    }
+	    // Clear the obmap references
+	    // Since the walker destructor removes itself from the obmap, this should be empty already.
+	    if(myobmap->walker_to_pos.size() > 0)
+	    {
+	        Log("obmap::walker_to_pos has {} elements left.\n", myobmap->walker_to_pos.size());
+
+	        // FIXME: Freeing them here does naughty things!
+	        // obmap only indexes walkers; it doesn't own them. If we see leftovers here it usually
+	        // means something mutated the obmap out-of-order, or walkers are being kept alive
+	        // outside LevelData's owning lists. We clear the index defensively below; do not
+	        // attempt to delete walkers from the obmap to "fix" this (double-frees / UAF risk).
+	    }
     // pos_to_walker will have a bunch of 0-size lists in it
 	myobmap->pos_to_walker.clear();
 	myobmap->walker_to_pos.clear();

@@ -154,11 +154,16 @@ short obmap::remove(walker  *ob)  // This goes in walker's destructor
         {
             // Get the pile
             auto g = pos_to_walker.find(pos);
+            if (g == pos_to_walker.end())
+                continue;
             
             // Find our guy in this pile and remove him
             auto h = std::find(g->second.begin(), g->second.end(), ob);
             if(h != g->second.end())
                 g->second.erase(h);
+
+            if (g->second.empty())
+                pos_to_walker.erase(g);
         }
         
         // Erase the walker from the walker map too
@@ -369,4 +374,3 @@ short collide(short x,  short y,  short xsize,  short ysize,
 
 	return 1;
 }
-
