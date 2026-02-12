@@ -118,6 +118,9 @@ public:
 CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
     : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), num_levels_completed(num_levels_completed)
 {
+    bool saw_version = false;
+    bool saw_first_level = false;
+
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package(id))
     {
@@ -134,7 +137,10 @@ CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
                     if(std::string(yam.event.scalar) == "title")
                         title = yam.event.value;
                     else if(std::string(yam.event.scalar) == "version")
+                    {
                         version = yam.event.value;
+                        saw_version = true;
+                    }
                     else if(std::string(yam.event.scalar) == "authors")
                         authors = yam.event.value;
                     else if(std::string(yam.event.scalar) == "contributors")
@@ -144,7 +150,10 @@ CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
                     else if(std::string(yam.event.scalar) == "suggested_power")
                         suggested_power = toInt(yam.event.value);
                     else if(std::string(yam.event.scalar) == "first_level")
+                    {
                         first_level = toInt(yam.event.value);
+                        saw_first_level = true;
+                    }
                 break;
                 default:
                     break;
@@ -165,9 +174,14 @@ CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
         // Count the number of levels
         std::list<int> levels = list_levels();
         num_levels = levels.size();
-        
+
         unmount_campaign_package(id);
     }
+
+    if (!saw_version || version.empty())
+        version = "1.0";
+    if (!saw_first_level || first_level <= 0)
+        first_level = 1;
 }
 
 CampaignEntry::~CampaignEntry()
