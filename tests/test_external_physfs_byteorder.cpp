@@ -87,7 +87,7 @@ void test_external_physfs_read_write_endian_helpers()
 
     TEST_ASSERT(PHYSFS_close(rf), "PHYSFS_close(read) should succeed");
 
-    (void)PHYSFS_removeFromSearchPath(base.string().c_str());
+    (void)PHYSFS_unmount(base.string().c_str());
     if (!old_write_s.empty())
         (void)PHYSFS_setWriteDir(old_write_s.c_str());
 }

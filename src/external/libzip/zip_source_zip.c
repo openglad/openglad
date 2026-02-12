@@ -1,9 +1,9 @@
 /*
   zip_source_zip.c -- create data source from zip file
-  Copyright (C) 1999-2009 Dieter Baron and Thomas Klausner
+  Copyright (C) 1999-2023 Dieter Baron and Thomas Klausner
 
   This file is part of libzip, a library to manipulate ZIP archives.
-  The authors can be contacted at <libzip@nih.at>
+  The authors can be contacted at <info@libzip.org>
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions
@@ -17,7 +17,7 @@
   3. The names of the authors may not be used to endorse or promote
      products derived from this software without specific prior
      written permission.
- 
+
   THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS
   OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -32,30 +32,32 @@
 */
 
 
-
 #include <stdlib.h>
-#include <string.h>
 
+#define _ZIP_COMPILING_DEPRECATED
 #include "zipint.h"
 
-
-
-ZIP_EXTERN struct zip_source *
-zip_source_zip(struct zip *za, struct zip *srcza, zip_uint64_t srcidx,
-	       zip_flags_t flags, zip_uint64_t start, zip_int64_t len)
-{
+ZIP_EXTERN zip_source_t *zip_source_zip_create(zip_t *srcza, zip_uint64_t srcidx, zip_flags_t flags, zip_uint64_t start, zip_int64_t len, zip_error_t *error) {
     if (len < -1) {
-        _zip_error_set(&za->error, ZIP_ER_INVAL, 0);
+        zip_error_set(error, ZIP_ER_INVAL, 0);
         return NULL;
     }
-        
-    if (len == -1)
-	len = 0;
     
-    if (start == 0 && len == 0)
-	flags |= ZIP_FL_COMPRESSED;
-    else
-	flags &= ~ZIP_FL_COMPRESSED;
+    if (len == 0) {
+        len = -1;
+    }
+    
+    if (start == 0 && len == -1) {
+        flags |= ZIP_FL_COMPRESSED;
+    }
+    else {
+        flags &= ~ZIP_FL_COMPRESSED;
+    }
 
-    return _zip_source_zip_new(za, srcza, srcidx, flags, start, (zip_uint64_t)len, NULL);
+    return zip_source_zip_file_create(srcza, srcidx, flags, start, len, NULL, error);
+}
+
+
+ZIP_EXTERN zip_source_t *zip_source_zip(zip_t *za, zip_t *srcza, zip_uint64_t srcidx, zip_flags_t flags, zip_uint64_t start, zip_int64_t len) {
+    return zip_source_zip_create(srcza, srcidx, flags, start, len, &za->error);
 }

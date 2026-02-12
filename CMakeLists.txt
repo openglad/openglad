@@ -244,20 +244,25 @@ set(LIBYAML_SOURCES
     ${EXT_DIR}/libyaml/src/writer.c
 )
 
-# External C sources - physfs
+# External C sources - physfs (3.2.0)
 set(PHYSFS_SOURCES
     ${EXT_DIR}/physfs/physfs.c
     ${EXT_DIR}/physfs/physfs_byteorder.c
     ${EXT_DIR}/physfs/physfs_unicode.c
-    ${EXT_DIR}/physfs/archivers/dir.c
-    ${EXT_DIR}/physfs/archivers/zip.c
-    ${EXT_DIR}/physfs/archivers/grp.c
-    ${EXT_DIR}/physfs/archivers/qpak.c
-    ${EXT_DIR}/physfs/archivers/hog.c
-    ${EXT_DIR}/physfs/archivers/mvl.c
-    ${EXT_DIR}/physfs/archivers/wad.c
-    ${EXT_DIR}/physfs/platform/posix.c
-    ${EXT_DIR}/physfs/platform/unix.c
+    ${EXT_DIR}/physfs/physfs_archiver_dir.c
+    ${EXT_DIR}/physfs/physfs_archiver_unpacked.c
+    ${EXT_DIR}/physfs/physfs_archiver_grp.c
+    ${EXT_DIR}/physfs/physfs_archiver_hog.c
+    ${EXT_DIR}/physfs/physfs_archiver_mvl.c
+    ${EXT_DIR}/physfs/physfs_archiver_qpak.c
+    ${EXT_DIR}/physfs/physfs_archiver_wad.c
+    ${EXT_DIR}/physfs/physfs_archiver_zip.c
+    ${EXT_DIR}/physfs/physfs_archiver_slb.c
+    ${EXT_DIR}/physfs/physfs_archiver_vdf.c
+    ${EXT_DIR}/physfs/physfs_archiver_iso9660.c
+    ${EXT_DIR}/physfs/physfs_archiver_7z.c
+    ${EXT_DIR}/physfs/physfs_platform_posix.c
+    ${EXT_DIR}/physfs/physfs_platform_unix.c
     ${EXT_DIR}/physfs/extras/physfsrwops.c
 )
 
@@ -274,11 +279,13 @@ set(ZLIB_SOURCES
     ${EXT_DIR}/physfs/zlib123/zutil.c
 )
 
-# External C sources - libzip
+# External C sources - libzip (1.11.3)
 set(LIBZIP_SOURCES
     ${EXT_DIR}/libzip/zip_add.c
     ${EXT_DIR}/libzip/zip_add_dir.c
     ${EXT_DIR}/libzip/zip_add_entry.c
+    ${EXT_DIR}/libzip/zip_algorithm_deflate.c
+    ${EXT_DIR}/libzip/zip_buffer.c
     ${EXT_DIR}/libzip/zip_close.c
     ${EXT_DIR}/libzip/zip_delete.c
     ${EXT_DIR}/libzip/zip_dir_add.c
@@ -299,29 +306,39 @@ set(LIBZIP_SOURCES
     ${EXT_DIR}/libzip/zip_file_error_clear.c
     ${EXT_DIR}/libzip/zip_file_error_get.c
     ${EXT_DIR}/libzip/zip_file_get_comment.c
+    ${EXT_DIR}/libzip/zip_file_get_external_attributes.c
     ${EXT_DIR}/libzip/zip_file_get_offset.c
     ${EXT_DIR}/libzip/zip_file_rename.c
     ${EXT_DIR}/libzip/zip_file_replace.c
     ${EXT_DIR}/libzip/zip_file_set_comment.c
+    ${EXT_DIR}/libzip/zip_file_set_encryption.c
+    ${EXT_DIR}/libzip/zip_file_set_external_attributes.c
+    ${EXT_DIR}/libzip/zip_file_set_mtime.c
     ${EXT_DIR}/libzip/zip_file_strerror.c
-    ${EXT_DIR}/libzip/zip_filerange_crc.c
     ${EXT_DIR}/libzip/zip_fopen.c
     ${EXT_DIR}/libzip/zip_fopen_encrypted.c
     ${EXT_DIR}/libzip/zip_fopen_index.c
     ${EXT_DIR}/libzip/zip_fopen_index_encrypted.c
     ${EXT_DIR}/libzip/zip_fread.c
+    ${EXT_DIR}/libzip/zip_fseek.c
+    ${EXT_DIR}/libzip/zip_ftell.c
     ${EXT_DIR}/libzip/zip_get_archive_comment.c
     ${EXT_DIR}/libzip/zip_get_archive_flag.c
-    ${EXT_DIR}/libzip/zip_get_compression_implementation.c
     ${EXT_DIR}/libzip/zip_get_encryption_implementation.c
     ${EXT_DIR}/libzip/zip_get_file_comment.c
     ${EXT_DIR}/libzip/zip_get_name.c
     ${EXT_DIR}/libzip/zip_get_num_entries.c
     ${EXT_DIR}/libzip/zip_get_num_files.c
+    ${EXT_DIR}/libzip/zip_hash.c
+    ${EXT_DIR}/libzip/zip_io_util.c
+    ${EXT_DIR}/libzip/zip_libzip_version.c
     ${EXT_DIR}/libzip/zip_memdup.c
     ${EXT_DIR}/libzip/zip_name_locate.c
     ${EXT_DIR}/libzip/zip_new.c
     ${EXT_DIR}/libzip/zip_open.c
+    ${EXT_DIR}/libzip/zip_pkware.c
+    ${EXT_DIR}/libzip/zip_progress.c
+    ${EXT_DIR}/libzip/zip_random_unix.c
     ${EXT_DIR}/libzip/zip_rename.c
     ${EXT_DIR}/libzip/zip_replace.c
     ${EXT_DIR}/libzip/zip_set_archive_comment.c
@@ -330,22 +347,40 @@ set(LIBZIP_SOURCES
     ${EXT_DIR}/libzip/zip_set_file_comment.c
     ${EXT_DIR}/libzip/zip_set_file_compression.c
     ${EXT_DIR}/libzip/zip_set_name.c
+    ${EXT_DIR}/libzip/zip_source_accept_empty.c
+    ${EXT_DIR}/libzip/zip_source_begin_write.c
+    ${EXT_DIR}/libzip/zip_source_begin_write_cloning.c
     ${EXT_DIR}/libzip/zip_source_buffer.c
+    ${EXT_DIR}/libzip/zip_source_call.c
     ${EXT_DIR}/libzip/zip_source_close.c
+    ${EXT_DIR}/libzip/zip_source_commit_write.c
+    ${EXT_DIR}/libzip/zip_source_compress.c
     ${EXT_DIR}/libzip/zip_source_crc.c
-    ${EXT_DIR}/libzip/zip_source_deflate.c
     ${EXT_DIR}/libzip/zip_source_error.c
-    ${EXT_DIR}/libzip/zip_source_file.c
-    ${EXT_DIR}/libzip/zip_source_filep.c
+    ${EXT_DIR}/libzip/zip_source_file_common.c
+    ${EXT_DIR}/libzip/zip_source_file_stdio.c
+    ${EXT_DIR}/libzip/zip_source_file_stdio_named.c
     ${EXT_DIR}/libzip/zip_source_free.c
     ${EXT_DIR}/libzip/zip_source_function.c
+    ${EXT_DIR}/libzip/zip_source_get_dostime.c
+    ${EXT_DIR}/libzip/zip_source_get_file_attributes.c
+    ${EXT_DIR}/libzip/zip_source_is_deleted.c
     ${EXT_DIR}/libzip/zip_source_layered.c
     ${EXT_DIR}/libzip/zip_source_open.c
-    ${EXT_DIR}/libzip/zip_source_pkware.c
-    ${EXT_DIR}/libzip/zip_source_pop.c
+    ${EXT_DIR}/libzip/zip_source_pass_to_lower_layer.c
+    ${EXT_DIR}/libzip/zip_source_pkware_decode.c
+    ${EXT_DIR}/libzip/zip_source_pkware_encode.c
     ${EXT_DIR}/libzip/zip_source_read.c
+    ${EXT_DIR}/libzip/zip_source_remove.c
+    ${EXT_DIR}/libzip/zip_source_rollback_write.c
+    ${EXT_DIR}/libzip/zip_source_seek.c
+    ${EXT_DIR}/libzip/zip_source_seek_write.c
     ${EXT_DIR}/libzip/zip_source_stat.c
+    ${EXT_DIR}/libzip/zip_source_supports.c
+    ${EXT_DIR}/libzip/zip_source_tell.c
+    ${EXT_DIR}/libzip/zip_source_tell_write.c
     ${EXT_DIR}/libzip/zip_source_window.c
+    ${EXT_DIR}/libzip/zip_source_write.c
     ${EXT_DIR}/libzip/zip_source_zip.c
     ${EXT_DIR}/libzip/zip_source_zip_new.c
     ${EXT_DIR}/libzip/zip_stat.c
@@ -359,7 +394,6 @@ set(LIBZIP_SOURCES
     ${EXT_DIR}/libzip/zip_unchange_data.c
     ${EXT_DIR}/libzip/zip_utf-8.c
     ${EXT_DIR}/libzip/zip_err_str.c
-    ${EXT_DIR}/libzip/mkstemp.c
 )
 
 # All external C sources combined
@@ -389,12 +423,15 @@ set(COMMON_DEFINITIONS
     USE_BMP_SCREENSHOT=1
     PHYSFS_NO_CDROM_SUPPORT=1
     PHYSFS_SUPPORTS_ZIP=1
+    PHYSFS_SUPPORTS_7Z=0
     PHYSFS_SUPPORTS_GRP=0
     PHYSFS_SUPPORTS_WAD=0
     PHYSFS_SUPPORTS_HOG=0
     PHYSFS_SUPPORTS_MVL=0
     PHYSFS_SUPPORTS_QPAK=0
-    PHYSFS_SUPPORTS_LZMA=0
+    PHYSFS_SUPPORTS_SLB=0
+    PHYSFS_SUPPORTS_ISO9660=0
+    PHYSFS_SUPPORTS_VDF=0
     YAML_DECLARE_STATIC
 )
 
@@ -468,6 +505,7 @@ endif()
 
 add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
 configure_openglad_external_target(og_ext_yaml)
+target_compile_definitions(og_ext_yaml PRIVATE HAVE_CONFIG_H=1)
 
 add_library(og_ext_zlib STATIC ${ZLIB_SOURCES})
 configure_openglad_external_target(og_ext_zlib)
@@ -478,7 +516,7 @@ target_link_libraries(og_ext_libzip PUBLIC og_ext_zlib)
 
 add_library(og_ext_physfs STATIC ${PHYSFS_SOURCES})
 configure_openglad_external_target(og_ext_physfs)
-target_link_libraries(og_ext_physfs PUBLIC og_ext_zlib og_ext_libzip)
+# PhysFS 3.x uses built-in miniz for ZIP support; no external zlib/libzip needed
 
 add_library(og_ext_micropather STATIC ${EXT_DIR}/micropather/micropather.cpp)
 configure_openglad_external_target(og_ext_micropather)
@@ -491,6 +529,7 @@ set(OG_EXTERNAL_LIBS
     og_ext_yam
     og_ext_yaml
     og_ext_physfs
+    og_ext_libzip
 )
 
 if(NOT EMSCRIPTEN)

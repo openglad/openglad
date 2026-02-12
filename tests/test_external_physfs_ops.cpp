@@ -53,7 +53,7 @@ void test_external_physfs_write_read_stat_and_delete()
     TEST_ASSERT(PHYSFS_delete("subdir/hello.txt"), "PHYSFS_delete should succeed");
     TEST_ASSERT(!PHYSFS_exists("subdir/hello.txt"), "file should no longer exist");
 
-    (void)PHYSFS_removeFromSearchPath(base.string().c_str());
+    (void)PHYSFS_unmount(base.string().c_str());
 
     // Restore previous write dir (best-effort).
     if (!old_write_s.empty())

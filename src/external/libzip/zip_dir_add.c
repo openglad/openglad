@@ -1,9 +1,9 @@
 /*
   zip_dir_add.c -- add directory
-  Copyright (C) 1999-2012 Dieter Baron and Thomas Klausner
+  Copyright (C) 1999-2022 Dieter Baron and Thomas Klausner
 
   This file is part of libzip, a library to manipulate ZIP archives.
-  The authors can be contacted at <libzip@nih.at>
+  The authors can be contacted at <info@libzip.org>
 
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions
@@ -17,7 +17,7 @@
   3. The names of the authors may not be used to endorse or promote
      products derived from this software without specific prior
      written permission.
- 
+
   THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS
   OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
   WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -32,57 +32,61 @@
 */
 
 
-
 #include <stdlib.h>
 #include <string.h>
 
 #include "zipint.h"
 
 
-
 /* NOTE: Signed due to -1 on error.  See zip_add.c for more details. */
 
 ZIP_EXTERN zip_int64_t
-zip_dir_add(struct zip *za, const char *name, zip_flags_t flags)
-{
+zip_dir_add(zip_t *za, const char *name, zip_flags_t flags) {
     size_t len;
-    zip_int64_t ret;
+    zip_int64_t idx;
     char *s;
-    struct zip_source *source;
+    zip_source_t *source;
 
     if (ZIP_IS_RDONLY(za)) {
-	_zip_error_set(&za->error, ZIP_ER_RDONLY, 0);
-	return -1;
+        zip_error_set(&za->error, ZIP_ER_RDONLY, 0);
+        return -1;
     }
 
     if (name == NULL) {
-	_zip_error_set(&za->error, ZIP_ER_INVAL, 0);
-	return -1;
+        zip_error_set(&za->error, ZIP_ER_INVAL, 0);
+        return -1;
     }
 
     s = NULL;
     len = strlen(name);
 
-    if (name[len-1] != '/') {
-	if ((s=(char *)malloc(len+2)) == NULL) {
-	    _zip_error_set(&za->error, ZIP_ER_MEMORY, 0);
-	    return -1;
-	}
-	strcpy(s, name);
-	s[len] = '/';
-	s[len+1] = '\0';
+    if (name[len - 1] != '/') {
+        if (len > SIZE_MAX - 2 || (s = (char *)malloc(len + 2)) == NULL) {
+            zip_error_set(&za->error, ZIP_ER_MEMORY, 0);
+            return -1;
+        }
+        (void)strncpy_s(s, len + 2, name, len);
+        s[len] = '/';
+        s[len + 1] = '\0';
     }
 
-    if ((source=zip_source_buffer(za, NULL, 0, 0)) == NULL) {
-	free(s);
-	return -1;
+    if ((source = zip_source_buffer(za, NULL, 0, 0)) == NULL) {
+        free(s);
+        return -1;
     }
-	
-    ret = _zip_file_replace(za, ZIP_UINT64_MAX, s ? s : name, source, flags);
+
+    idx = _zip_file_replace(za, ZIP_UINT64_MAX, s ? s : name, source, flags);
 
     free(s);
-    if (ret < 0)
-	zip_source_free(source);
 
-    return ret;
+    if (idx < 0)
+        zip_source_free(source);
+    else {
+        if (zip_file_set_external_attributes(za, (zip_uint64_t)idx, 0, ZIP_OPSYS_DEFAULT, ZIP_EXT_ATTRIB_DEFAULT_DIR) < 0) {
+            zip_delete(za, (zip_uint64_t)idx);
+            return -1;
+        }
+    }
+
+    return idx;
 }

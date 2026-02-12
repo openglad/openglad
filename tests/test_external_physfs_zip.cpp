@@ -112,7 +112,7 @@ void test_external_physfs_mount_zip_and_read_deflated_files()
                 "read nested.txt from zip");
     TEST_ASSERT(nested == "Nested file contents.", "nested.txt contents");
 
-    TEST_ASSERT(PHYSFS_removeFromSearchPath(zip_path.c_str()),
-                "PHYSFS_removeFromSearchPath zip archive");
+    TEST_ASSERT(PHYSFS_unmount(zip_path.c_str()),
+                "PHYSFS_unmount zip archive");
 }
 REGISTER_TEST(test_external_physfs_mount_zip_and_read_deflated_files);

@@ -300,7 +300,7 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     if(!PHYSFS_mount(filename.c_str(), nullptr, 0))
     {
         LogError("campaign_mount_failed id={} path={} code={} physfs={}\n",
-            id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), PHYSFS_getLastError());
+            id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
         ctx().mounted_campaign.clear();
         return CampaignPackageIoError::MountFailed;
     }
@@ -314,10 +314,10 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
         return CampaignPackageIoError::None;
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
-    if(!PHYSFS_removeFromSearchPath(filename.c_str()))
+    if(!PHYSFS_unmount(filename.c_str()))
     {
         LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
-            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), PHYSFS_getLastError());
+            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
         return CampaignPackageIoError::UnmountFailed;
     }
     ctx().mounted_campaign.clear();
@@ -616,7 +616,7 @@ void io_init(int argc, char* argv[])
     Log("Mounting default campaign...\n");
     if (!mount_campaign_package("org.openglad.gladiator"))
     {
-        std::string msg = std::format("Fatal: Failed to mount default campaign: {}", PHYSFS_getLastError());
+        std::string msg = std::format("Fatal: Failed to mount default campaign: {}", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
         LogError("{}\n", msg);
         throw std::runtime_error(msg);
     }

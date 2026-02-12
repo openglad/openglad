@@ -66,12 +66,12 @@ static void run_physfs_searchpath_callbacks_and_mount_edges()
     PHYSFS_enumerateFilesCallback("edge", collect_enum, &ec);
     TEST_ASSERT(!ec.names.empty(), "enumerateFilesCallback should list files");
 
-    TEST_ASSERT(PHYSFS_removeFromSearchPath(base.string().c_str()), "removeFromSearchPath should succeed");
-    TEST_ASSERT(!PHYSFS_removeFromSearchPath(base.string().c_str()),
+    TEST_ASSERT(PHYSFS_unmount(base.string().c_str()), "unmount should succeed");
+    TEST_ASSERT(!PHYSFS_unmount(base.string().c_str()),
                 "removing same path twice should fail");
 
     TEST_ASSERT(PHYSFS_addToSearchPath(base.string().c_str(), 1), "addToSearchPath should succeed");
-    TEST_ASSERT(PHYSFS_removeFromSearchPath(base.string().c_str()), "removeFromSearchPath after add should succeed");
+    TEST_ASSERT(PHYSFS_unmount(base.string().c_str()), "unmount after add should succeed");
 }
 static void run_physfs_file_seek_tell_flush_append_and_delete_edges()
 {
@@ -119,7 +119,7 @@ static void run_physfs_file_seek_tell_flush_append_and_delete_edges()
     TEST_ASSERT(PHYSFS_delete("io.bin"), "delete existing file should succeed");
     TEST_ASSERT(!PHYSFS_delete("io.bin"), "delete missing file should fail");
 
-    (void)PHYSFS_removeFromSearchPath(base.string().c_str());
+    (void)PHYSFS_unmount(base.string().c_str());
     if (!old_write_s.empty())
         (void)PHYSFS_setWriteDir(old_write_s.c_str());
 }
@@ -135,7 +135,7 @@ static void run_physfs_symbolic_link_toggle_and_error_string_path()
     PHYSFS_File* missing = PHYSFS_openRead("definitely_missing_file_for_error_path.bin");
     TEST_ASSERT(missing == nullptr, "openRead on missing file should fail");
 
-    const char* msg = PHYSFS_getLastError();
+    const char* msg = PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode());
     TEST_ASSERT(msg != nullptr && msg[0] != '\0', "missing file should set a non-empty error string");
 }
 
@@ -173,7 +173,7 @@ static void run_physfs_global_api_and_reinit_edges()
     TEST_ASSERT(PHYSFS_mount(base_dir.string().c_str(), "/global", 1), "mount for getMountPoint should succeed");
     const char* mp = PHYSFS_getMountPoint(base_dir.string().c_str());
     TEST_ASSERT(mp != nullptr, "getMountPoint should find mounted dir");
-    TEST_ASSERT(PHYSFS_removeFromSearchPath(base_dir.string().c_str()), "remove mounted dir should succeed");
+    TEST_ASSERT(PHYSFS_unmount(base_dir.string().c_str()), "unmount dir should succeed");
 
     // Exercise setSaneConfig path (may fail depending environment; still valuable for coverage).
     (void)PHYSFS_setSaneConfig("openglad", "edgecfg", nullptr, 0, 0);
