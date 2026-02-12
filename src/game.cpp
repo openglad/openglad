@@ -208,7 +208,7 @@ short load_saved_game(const char *filename, screen  *myscreen)
 	{
 		std::string buf = "Fallback loading failed.\nCould not load scenario.\nPlease report this problem to the developer!\n";
 		popup_dialog("ERROR", buf.c_str());
-		exit(2);
+		return 0;
 	}
 	return (err == LoadSavedGameError::MissingScreen) ? 0 : 1;
 }

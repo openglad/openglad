@@ -78,7 +78,7 @@ bool cfg_store::load_settings()
     apply_setting("effects", "heal_numbers", "on");
     
     Log("Loading settings\n");
-    SDL_RWops* rwops = open_read_file("cfg/openglad.yaml", true);
+    RwopsPtr rwops(open_read_file("cfg/openglad.yaml", true));
     if(rwops == nullptr)
 	{
 		Log("Could not open config file. Using defaults.");
@@ -86,7 +86,7 @@ bool cfg_store::load_settings()
 	}
     
     Yam yam;
-    yam.set_input(rwops_read_handler, rwops);
+    yam.set_input(rwops_read_handler, rwops.get());
     
     std::string last_scalar;
     std::string current_category;
@@ -108,7 +108,6 @@ bool cfg_store::load_settings()
             case Yam::ALIAS:
                 break;
             case Yam::PAIR:
-		printf("applying setting: %s/%s:%s\n", current_category.c_str(), yam.event.scalar, yam.event.value);
                 apply_setting(current_category, yam.event.scalar, yam.event.value);
                 break;
             case Yam::SCALAR:
@@ -123,7 +122,6 @@ bool cfg_store::load_settings()
         LogError("Parsing error in config file.\n");
     
     yam.close_input();
-    SDL_RWclose(rwops);
     
     // Update game stuff from these settings
     overscan_percentage = toInt(get_setting("graphics", "overscan_percentage"))/100.0f;
@@ -138,13 +136,13 @@ bool cfg_store::save_settings()
     std::string buf = std::format("{:.0f}", 100*overscan_percentage);
     apply_setting("graphics", "overscan_percentage", buf);
     
-    SDL_RWops* outfile = open_write_file("cfg/openglad.yaml");
+    RwopsPtr outfile(open_write_file("cfg/openglad.yaml"));
     if(outfile != nullptr)
     {
         Log("Saving settings\n");
         
         Yam yam;
-        yam.set_output(rwops_write_handler, outfile);
+        yam.set_output(rwops_write_handler, outfile.get());
         
         // Each category is a mapping that holds setting/value pairs
         for(auto& [category, settings] : data)
@@ -167,7 +165,6 @@ bool cfg_store::save_settings()
         }
         
         yam.close_output();
-        SDL_RWclose(outfile);
 
         // Sync to persistent storage (IDBFS on web)
         sync_filesystem();
@@ -260,4 +257,3 @@ bool cfg_store::is_on(const std::string& category, const std::string& setting)
 {
     return get_setting(category, setting) == "on";
 }
-

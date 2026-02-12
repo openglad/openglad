@@ -742,7 +742,7 @@ Screen::~Screen()
 	SDL_FreeSurface(render2);
 	
 	SDL_DestroyRenderer(renderer);
-	//SDL_DestroyWindow(window);
+	SDL_DestroyWindow(window);
 }
 
 

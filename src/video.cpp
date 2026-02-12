@@ -22,6 +22,7 @@
 #include <format>
 #include <cstring>
 #include "game_context.h"
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -45,7 +46,7 @@ static cfg_store& active_config()
 
 unsigned char * videoptr = reinterpret_cast<unsigned char*>(VIDEO_LINEAR);
 
-Screen *E_Screen;
+std::unique_ptr<Screen> E_Screen;
 
 video::video()
     : text_normal(TEXT_1), text_big(TEXT_BIG)
@@ -111,13 +112,13 @@ video::video()
 	    h = stoi(qresult);
 #endif
         Log("Creating screen {}x{}\n", w, h);
-	E_Screen = new Screen(render, w, h, fullscreen);
+	E_Screen = std::make_unique<Screen>(render, w, h, fullscreen);
 	TRACE("init", "video initialized: %dx%d", w, h);
 }
 
 video::~video()
 {
-	delete E_Screen;
+	E_Screen.reset();
 	SDL_Quit();
 }
 

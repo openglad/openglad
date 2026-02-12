@@ -53,21 +53,23 @@ PixieData read_pixie_file(const char  * filename)
 	// <pixie data>               <x*y*frames> bytes
     
     PixieData result;
-	SDL_RWops  *infile = nullptr;
+    RwopsPtr infile;
 
 	// Zardus: try to find file using open_read_file
-	if (!((infile = open_read_file("pix/", filename)) || (infile = open_read_file(filename))))
-    {
-        LogError("Cannot open pixie file: pix/{}\n", filename);
-        exit(5);
-    }
+    infile.reset(open_read_file("pix/", filename));
+    if (!infile)
+        infile.reset(open_read_file(filename));
+	if (!infile)
+	    {
+	        LogError("Cannot open pixie file: pix/{}\n", filename);
+	        return result;
+	    }
 
-	if (!rw_read_exact(infile, &result.frames, 1, 1) ||
-	    !rw_read_exact(infile, &result.w, 1, 1) ||
-	    !rw_read_exact(infile, &result.h, 1, 1))
+	if (!rw_read_exact(infile.get(), &result.frames, 1, 1) ||
+	    !rw_read_exact(infile.get(), &result.w, 1, 1) ||
+	    !rw_read_exact(infile.get(), &result.h, 1, 1))
 	{
 	    LogError("Failed to read pixie header: pix/{}\n", filename);
-	    SDL_RWclose(infile);
 	    return result;
 	}
 
@@ -75,15 +77,12 @@ PixieData read_pixie_file(const char  * filename)
 	result.data = std::make_unique<unsigned char[]>(size);
 
 	// Now read the data in a big chunk
-	if (!rw_read_exact(infile, result.data.get(), 1, size))
+	if (!rw_read_exact(infile.get(), result.data.get(), 1, size))
 	{
 	    LogError("Failed to read pixie payload: pix/{} ({} bytes)\n", filename, size);
 	    result.free();
-	    SDL_RWclose(infile);
 	    return result;
 	}
-    
-    SDL_RWclose(infile);
     
 	return result;
 } // End of image-reading routine

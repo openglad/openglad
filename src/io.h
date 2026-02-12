@@ -21,6 +21,16 @@
 #include <list>
 #include <vector>
 #include <string>
+#include <memory>
+
+struct SDLRWopsCloser {
+    void operator()(SDL_RWops* rwops) const
+    {
+        if (rwops != nullptr)
+            SDL_RWclose(rwops);
+    }
+};
+using RwopsPtr = std::unique_ptr<SDL_RWops, SDLRWopsCloser>;
 
 void io_init(int argc, char* argv[]);
 void io_exit();

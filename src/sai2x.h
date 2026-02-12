@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SDL.h"
+#include <memory>
 
 enum class RenderEngine
 {
@@ -42,5 +43,4 @@ class Screen
 
 };
 
-extern Screen *E_Screen;
-
+extern std::unique_ptr<Screen> E_Screen;
