@@ -14,6 +14,7 @@
 #include "SDL.h"
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 // Forward declarations — avoid pulling in heavy headers
 class screen;
@@ -134,8 +135,15 @@ public:
 // ---------------------------------------------------------------------------
 
 struct GameContext {
+    GameContext() = default;
+    ~GameContext();
+    GameContext(const GameContext&) = delete;
+    GameContext& operator=(const GameContext&) = delete;
+    GameContext(GameContext&&) noexcept = default;
+    GameContext& operator=(GameContext&&) noexcept = default;
+
     screen*     game_screen = nullptr;
-    options*    prefs       = nullptr;
+    std::unique_ptr<options> prefs;
     cfg_store*  config      = nullptr;
     IRandom*    rng         = nullptr;
     InputState  input       = {};

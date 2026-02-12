@@ -50,8 +50,8 @@ inline screen* active_screen()
 
 inline options* active_prefs()
 {
-    if(ctx().prefs != nullptr)
-        return ctx().prefs;
+    if (ctx().prefs)
+        return ctx().prefs.get();
     return theprefs;
 }
 
@@ -237,9 +237,9 @@ int main(int argc, char *argv[])
 	active_config().save_settings();
 	active_config().commandline(argc, argv);
 
-	theprefs = new options;
+	ctx().prefs = std::make_unique<options>();
+	theprefs = ctx().prefs.get();
 	myscreen = new screen(1);
-	ctx().prefs = theprefs;
 	ctx().game_screen = myscreen;
 	ctx().config = &active_config();
 

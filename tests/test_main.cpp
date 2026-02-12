@@ -7,6 +7,7 @@
 #include "io.h"
 #include "util.h"
 #include "input.h"
+#include "game_context.h"
 
 extern screen* myscreen;
 extern options* theprefs;
@@ -39,7 +40,8 @@ int main(int argc, char* argv[]) {
     if (argc > 1)
         g_test_filter = argv[1];
 
-    theprefs = new options;
+    ctx().prefs = std::make_unique<options>();
+    theprefs = ctx().prefs.get();
     myscreen = new screen(1);
     init_input();
 

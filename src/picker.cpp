@@ -639,16 +639,12 @@ void quit(Sint32 arg1)
 #ifdef TESTING
 	TRACE("picker", "quit called (test mode - not exiting)");
 #else
-	myscreen->refresh();
+		myscreen->refresh();
 
-	if (ctx().prefs)
-	{
-		delete ctx().prefs;
-		ctx().prefs = nullptr;
-	}
-	picker_quit();  // deletes the screen objects
-	Log("quit({})\n", arg1);
-	exit(0);
+		ctx().prefs.reset();
+		picker_quit();  // deletes the screen objects
+		Log("quit({})\n", arg1);
+		exit(0);
 #endif
 }
 

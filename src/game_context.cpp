@@ -2,9 +2,12 @@
 #include "base.h"
 #include "gparser.h"
 #include "input.h"
+#include "view.h" // options definition for GameContext::~GameContext
 
 // The existing global random() function (defined in screen.cpp)
 Uint32 random(Uint32 x);
+
+GameContext::~GameContext() = default;
 
 Uint32 ProductionRandom::next(Uint32 max_exclusive)
 {
@@ -90,7 +93,7 @@ options* GameContext::active_prefs() const
         if (options* p = render_service->prefs())
             return p;
     }
-    return prefs;
+    return prefs.get();
 }
 
 cfg_store* GameContext::active_config() const
@@ -175,7 +178,6 @@ GameContext& ctx()
 
     // Lazily populate from existing globals
     s_default_context.game_screen = myscreen;
-    s_default_context.prefs = theprefs;
     s_default_context.config = &cfg;
     if (!s_default_context.rng)
         s_default_context.rng = &s_production_rng;
