@@ -69,7 +69,7 @@ void show_guy(Sint32 frames, Sint32 who, Sint32 centerx = 80, Sint32 centery = 4
 Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
 void glad_main(Sint32 playermode);
-const char* get_saved_name(const char * filename);
+std::string get_saved_name(const char * filename);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
 

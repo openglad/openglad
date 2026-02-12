@@ -26,10 +26,12 @@
 #include "ui/campaign_picker.h"
 #include "ui/level_picker.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <format>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -86,7 +88,7 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
 const char* get_family_string(Sint32 family);
-const char* get_saved_name(const char* filename);
+std::string get_saved_name(const char* filename);
 Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_hire_menu(Sint32 arg1);
 Sint32 cycle_guy(Sint32 whichway);
@@ -1888,9 +1890,9 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	myscreen->buffer_to_screen(0, 0, 320, 200);
 	
 	clear_keyboard();
-	char* new_text = nametext.input_string(176, 20, 11, someguy->name.c_str());
-	if(new_text != nullptr)
-		someguy->name = new_text;
+    std::optional<std::string> new_text = nametext.input_string_value(176, 20, 11, someguy->name.c_str());
+	if(new_text.has_value())
+		someguy->name = *new_text;
 	myscreen->draw_button(174,  8, 306, 30, 1, 1); // text box
 
 	myscreen->buffer_to_screen(0, 0, 320, 200);
@@ -2055,13 +2057,13 @@ Sint32 do_load(Sint32 arg1)
     return REDRAW;
 }
 
-const char* get_saved_name(const char * filename)
+std::string get_saved_name(const char * filename)
 {
 	SDL_RWops  *infile;
 	std::string temp_filename;
 
 	char temptext[10] = "GTL";
-	static char savedgame[40];
+    std::array<char, 40> savedgame{};
 	char temp_version = 1;
 	short temp_registered;
 
@@ -2080,7 +2082,7 @@ const char* get_saved_name(const char * filename)
 
 	if ( (infile = open_read_file("save/", temp_filename.c_str())) == nullptr ) // open for read
 	{
-		return "EMPTY SLOT";
+		return std::string("EMPTY SLOT");
 	}
 
 	// Read id header
@@ -2088,8 +2090,7 @@ const char* get_saved_name(const char * filename)
 	if ( std::string(temptext) != "GTL")
 	{
 	    SDL_RWclose(infile);
-		snprintf(savedgame, sizeof(savedgame), "EMPTY SLOT");
-		return savedgame;
+		return std::string("EMPTY SLOT");
 	}
 
 	// Read version number
@@ -2100,20 +2101,20 @@ const char* get_saved_name(const char * filename)
 		{
 			if (temp_version >= 7)
 				SDL_RWread(infile, &temp_registered, 2, 1);
-			SDL_RWread(infile, savedgame, 40, 1);
+			SDL_RWread(infile, savedgame.data(), 40, 1);
 		}
 		else
 		{
             SDL_RWclose(infile);
-			snprintf(savedgame, sizeof(savedgame), "SAVED GAME");
-			return savedgame;
+			return std::string("SAVED GAME");
 		}
 	}
 	else
-		snprintf(savedgame, sizeof(savedgame), "SAVED GAME"); // fake the game name
+		return std::string("SAVED GAME");
 
     SDL_RWclose(infile);
-	return (savedgame);
+    const size_t name_len = strnlen(savedgame.data(), savedgame.size());
+    return std::string(savedgame.data(), name_len);
 }
 
 Sint32 delete_all()
