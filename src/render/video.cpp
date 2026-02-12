@@ -143,9 +143,9 @@ void video::set_fullscreen(bool enable_fullscreen)
     update_overscan_setting();*/
 }
 
-unsigned char * video::getbuffer()
+std::span<unsigned char> video::getbuffer()
 {
-	return videobuffer.data();
+	return videobuffer;
 }
 
 void video::clearbuffer()

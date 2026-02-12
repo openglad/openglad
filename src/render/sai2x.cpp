@@ -2,6 +2,7 @@
 #include "render/sai2x.h"
 #include "core/util.h"
 #include "input/input.h"
+#include <array>
 #include <stdexcept>
 #include <string>
 //#include "os_depend.h"
@@ -16,8 +17,8 @@ static Uint32 greenMask = 0x7E0;
 static int PixelsPerMask = 2;
 static int xsai_depth = 0;
 
-static unsigned char *src_line[4];
-static unsigned char *dst_line[2];
+static std::array<unsigned char*, 4> src_line{};
+static std::array<unsigned char*, 2> dst_line{};
 
 #define GET_RESULT(A, B, C, D) ((A != C || A != D) - (B != C || B != D))
 

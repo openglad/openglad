@@ -22,6 +22,7 @@
 #include "graph.h"
 //#include "render/pixie.h"
 // Z's script: #include <process.h>
+#include <array>
 #include <cstring>
 
 #define SHOW_TIME 130
@@ -33,8 +34,8 @@ int show();
 int show(int howlong);
 int cleanup();
 
-int pal[256][3];
-unsigned char mypalette[768];
+std::array<std::array<int, 3>, 256> pal{};
+std::array<unsigned char, 768> mypalette{};
 //screen *myscreen;
 
 void intro_main(Sint32 argc, char** argv)

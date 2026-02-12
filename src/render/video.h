@@ -40,7 +40,7 @@ class video
 		
 		void clear_window();
 	
-		unsigned char * getbuffer();
+		std::span<unsigned char> getbuffer();
 		void putblack(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize);
 		void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color);
 		void fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color, unsigned char flag);
@@ -161,4 +161,3 @@ class video
 		text text_normal;
 		text text_big;
 };
-
