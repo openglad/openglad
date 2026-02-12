@@ -2,6 +2,8 @@
 *.o
 *.exe
 obj/
+/build/
+/build-cpp-modern/
 /build-native/
 /build-test/
 /build-coverage/
@@ -35,3 +37,7 @@ obj/
 # Runtime output
 stdout.txt
 stderr.txt
+io_tmp_*.txt
+core
+core.*
+/temp/
