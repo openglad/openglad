@@ -29,8 +29,10 @@ static void default_handle(const SDL_Event& e)
 
 GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const GameLoopDeps& deps)
 {
-    const auto poll_event = deps.poll_event ? deps.poll_event : default_poll;
-    const auto handle_event = deps.handle_event ? deps.handle_event : default_handle;
+    const std::function<int(SDL_Event*)> poll_event =
+        deps.poll_event ? deps.poll_event : std::function<int(SDL_Event*)>(default_poll);
+    const std::function<void(const SDL_Event&)> handle_event =
+        deps.handle_event ? deps.handle_event : std::function<void(const SDL_Event&)>(default_handle);
 
     // Reset the timer count to zero ...
     reset_timer();

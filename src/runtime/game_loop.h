@@ -13,6 +13,7 @@
 #pragma once
 
 #include "SDL.h"
+#include <functional>
 
 class screen;
 
@@ -30,8 +31,8 @@ struct GameLoopFrameState {
 
 struct GameLoopDeps {
     // If null, defaults will be used (SDL_PollEvent, handle_events).
-    int (*poll_event)(SDL_Event*) = nullptr;
-    void (*handle_event)(const SDL_Event&) = nullptr;
+    std::function<int(SDL_Event*)> poll_event;
+    std::function<void(const SDL_Event&)> handle_event;
 
     // Optional: allows tests to bypass expensive rendering even in non-TESTING builds.
     bool enable_render = true;
