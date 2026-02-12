@@ -585,6 +585,17 @@ void LevelData::delete_objects()
     dead_list.clear();
 
 	numobs = 0;
+
+    // If this is the active screen level, clear any stale control pointers
+    // that may reference walkers just deleted above.
+    if (myscreen != nullptr && &myscreen->level_data == this)
+    {
+        for (auto& view : myscreen->viewob)
+        {
+            if (view)
+                view->control = nullptr;
+        }
+    }
 	
     // Clear the obmap references
     // Since the walker destructor removes itself from the obmap, this should be empty already.

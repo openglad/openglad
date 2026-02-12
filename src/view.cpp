@@ -1899,7 +1899,8 @@ options::options()
 {
 	int i;
 	SDL_RWops *infile;
-	std::copy_n(*normalkeys, 64, allkeys[0]); // Copy our normal keys
+	for(i = 0; i < 4; i++)
+		std::copy_n(normalkeys[i], 16, allkeys[i]); // Copy default keys for each player
 
 	// Set up preference defaults
 	for(i=0; i<4; i++)

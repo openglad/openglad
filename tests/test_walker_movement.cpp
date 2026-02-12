@@ -300,7 +300,9 @@ void test_walker_create_weapon_soldier()
     w->lasty = 0;
 
     walker* weap = w->fire();
-    (void)weap;
+    if (weap) {
+        myscreen->level_data.remove_ob(weap);
+    }
 
     delete w;
 }
@@ -315,7 +317,9 @@ void test_walker_create_weapon_archer()
     w->lasty = 0;
 
     walker* weap = w->fire();
-    (void)weap;
+    if (weap) {
+        myscreen->level_data.remove_ob(weap);
+    }
 
     delete w;
 }
@@ -330,7 +334,9 @@ void test_walker_create_weapon_mage()
     w->lasty = 1;
 
     walker* weap = w->fire();
-    (void)weap;
+    if (weap) {
+        myscreen->level_data.remove_ob(weap);
+    }
 
     delete w;
 }

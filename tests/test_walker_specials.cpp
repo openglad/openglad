@@ -7,6 +7,16 @@
 
 extern screen* myscreen;
 
+static void teardown_walker_special_test()
+{
+    if (myscreen != nullptr) {
+        myscreen->level_data.delete_objects();
+    }
+}
+
+#define REGISTER_SPECIAL_TEST(func) \
+    REGISTER_TEST_WITH_FIXTURE(func, nullptr, teardown_walker_special_test)
+
 static walker* make_special_guy(char family, unsigned char team = 0, int level = 3)
 {
     guy g(family);
@@ -96,7 +106,7 @@ void test_walker_special_soldier_charge()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_soldier_charge);
+REGISTER_SPECIAL_TEST(test_walker_special_soldier_charge);
 
 void test_walker_special_soldier_boomerang()
 {
@@ -106,7 +116,7 @@ void test_walker_special_soldier_boomerang()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_soldier_boomerang);
+REGISTER_SPECIAL_TEST(test_walker_special_soldier_boomerang);
 
 void test_walker_special_soldier_whirlwind()
 {
@@ -119,7 +129,7 @@ void test_walker_special_soldier_whirlwind()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_soldier_whirlwind);
+REGISTER_SPECIAL_TEST(test_walker_special_soldier_whirlwind);
 
 void test_walker_special_archer_fire_arrows()
 {
@@ -131,7 +141,7 @@ void test_walker_special_archer_fire_arrows()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_archer_fire_arrows);
+REGISTER_SPECIAL_TEST(test_walker_special_archer_fire_arrows);
 
 void test_walker_special_archer_flurry()
 {
@@ -144,7 +154,7 @@ void test_walker_special_archer_flurry()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_archer_flurry);
+REGISTER_SPECIAL_TEST(test_walker_special_archer_flurry);
 
 void test_walker_special_archer_exploding()
 {
@@ -157,7 +167,7 @@ void test_walker_special_archer_exploding()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_archer_exploding);
+REGISTER_SPECIAL_TEST(test_walker_special_archer_exploding);
 
 void test_walker_special_mage_teleport()
 {
@@ -193,7 +203,7 @@ void test_walker_special_mage_teleport()
     myscreen->level_data.delete_objects();
     delete w;
 }
-REGISTER_TEST(test_walker_special_mage_teleport);
+REGISTER_SPECIAL_TEST(test_walker_special_mage_teleport);
 
 void test_walker_special_mage_freeze()
 {
@@ -203,7 +213,7 @@ void test_walker_special_mage_freeze()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_mage_freeze);
+REGISTER_SPECIAL_TEST(test_walker_special_mage_freeze);
 
 void test_walker_special_mage_energy_wave()
 {
@@ -425,7 +435,7 @@ void test_walker_special_mage_energy_wave()
     myscreen->level_data.delete_objects();
 
 }
-REGISTER_TEST(test_walker_special_mage_energy_wave);
+REGISTER_SPECIAL_TEST(test_walker_special_mage_energy_wave);
 
 void test_walker_special_cleric_heal()
 {
@@ -436,7 +446,7 @@ void test_walker_special_cleric_heal()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_cleric_heal);
+REGISTER_SPECIAL_TEST(test_walker_special_cleric_heal);
 
 void test_walker_special_cleric_raise_undead()
 {
@@ -481,7 +491,7 @@ void test_walker_special_cleric_raise_undead()
     delete orc;
     delete w;
 }
-REGISTER_TEST(test_walker_special_cleric_raise_undead);
+REGISTER_SPECIAL_TEST(test_walker_special_cleric_raise_undead);
 
 void test_walker_special_elf_rocks()
 {
@@ -494,7 +504,7 @@ void test_walker_special_elf_rocks()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_elf_rocks);
+REGISTER_SPECIAL_TEST(test_walker_special_elf_rocks);
 
 void test_walker_special_elf_speed()
 {
@@ -504,7 +514,7 @@ void test_walker_special_elf_speed()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_elf_speed);
+REGISTER_SPECIAL_TEST(test_walker_special_elf_speed);
 
 void test_walker_special_elf_heal()
 {
@@ -514,7 +524,7 @@ void test_walker_special_elf_heal()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_elf_heal);
+REGISTER_SPECIAL_TEST(test_walker_special_elf_heal);
 
 void test_walker_special_thief_stealth()
 {
@@ -524,7 +534,7 @@ void test_walker_special_thief_stealth()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_thief_stealth);
+REGISTER_SPECIAL_TEST(test_walker_special_thief_stealth);
 
 void test_walker_special_thief_taunt()
 {
@@ -534,7 +544,7 @@ void test_walker_special_thief_taunt()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_thief_taunt);
+REGISTER_SPECIAL_TEST(test_walker_special_thief_taunt);
 
 void test_walker_special_skeleton_tunnel()
 {
@@ -544,7 +554,7 @@ void test_walker_special_skeleton_tunnel()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_skeleton_tunnel);
+REGISTER_SPECIAL_TEST(test_walker_special_skeleton_tunnel);
 
 void test_walker_special_fireelemental_explode()
 {
@@ -554,7 +564,7 @@ void test_walker_special_fireelemental_explode()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_fireelemental_explode);
+REGISTER_SPECIAL_TEST(test_walker_special_fireelemental_explode);
 
 void test_walker_special_faerie_charm()
 {
@@ -564,7 +574,7 @@ void test_walker_special_faerie_charm()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_faerie_charm);
+REGISTER_SPECIAL_TEST(test_walker_special_faerie_charm);
 
 void test_walker_special_druid_plant_tree()
 {
@@ -574,7 +584,7 @@ void test_walker_special_druid_plant_tree()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_druid_plant_tree);
+REGISTER_SPECIAL_TEST(test_walker_special_druid_plant_tree);
 
 void test_walker_special_druid_summon()
 {
@@ -584,7 +594,7 @@ void test_walker_special_druid_summon()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_druid_summon);
+REGISTER_SPECIAL_TEST(test_walker_special_druid_summon);
 
 void test_walker_special_ghost_scare()
 {
@@ -594,7 +604,7 @@ void test_walker_special_ghost_scare()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_ghost_scare);
+REGISTER_SPECIAL_TEST(test_walker_special_ghost_scare);
 
 void test_walker_special_orc_howl()
 {
@@ -604,7 +614,7 @@ void test_walker_special_orc_howl()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_orc_howl);
+REGISTER_SPECIAL_TEST(test_walker_special_orc_howl);
 
 void test_walker_special_barbarian_hurl()
 {
@@ -617,7 +627,7 @@ void test_walker_special_barbarian_hurl()
     w->special();
     delete w;
 }
-REGISTER_TEST(test_walker_special_barbarian_hurl);
+REGISTER_SPECIAL_TEST(test_walker_special_barbarian_hurl);
 
 // ---------------------------------------------------------------------------
 // special() when dead, no stats, or not enough magic
@@ -637,7 +647,7 @@ void test_walker_special_dead()
     TEST_ASSERT(!w->special(), "non-living special should fail early");
     delete w;
 }
-REGISTER_TEST(test_walker_special_dead);
+REGISTER_SPECIAL_TEST(test_walker_special_dead);
 
 void test_walker_special_no_magic()
 {
@@ -663,7 +673,7 @@ void test_walker_special_no_magic()
 
     delete w;
 }
-REGISTER_TEST(test_walker_special_no_magic);
+REGISTER_SPECIAL_TEST(test_walker_special_no_magic);
 
 // ---------------------------------------------------------------------------
 // death() - exercises order/family switches (lines 4422-4534)
@@ -677,7 +687,7 @@ void test_walker_death_fire_elemental()
     w->death();
     delete w;
 }
-REGISTER_TEST(test_walker_death_fire_elemental);
+REGISTER_SPECIAL_TEST(test_walker_death_fire_elemental);
 
 void test_walker_death_with_myguy()
 {
@@ -698,7 +708,7 @@ void test_walker_death_with_myguy()
     TEST_ASSERT(fx_after >= fx_before + 1, "generator death should spawn explosion FX");
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_death_with_myguy);
+REGISTER_SPECIAL_TEST(test_walker_death_with_myguy);
 
 void test_walker_special_archmage_illusion_rng_tables()
 {
@@ -739,7 +749,7 @@ void test_walker_special_archmage_illusion_rng_tables()
     myscreen->level_data.delete_objects();
     delete arch;
 }
-REGISTER_TEST(test_walker_special_archmage_illusion_rng_tables);
+REGISTER_SPECIAL_TEST(test_walker_special_archmage_illusion_rng_tables);
 
 void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
 {
@@ -788,7 +798,7 @@ void test_walker_special_mage_marker_remove_and_freeze_enemy_branch()
     delete mage;
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_special_mage_marker_remove_and_freeze_enemy_branch);
+REGISTER_SPECIAL_TEST(test_walker_special_mage_marker_remove_and_freeze_enemy_branch);
 
 void test_walker_special_mage_wave_and_burst_with_targets()
 {
@@ -823,7 +833,7 @@ void test_walker_special_mage_wave_and_burst_with_targets()
     delete mage;
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_special_mage_wave_and_burst_with_targets);
+REGISTER_SPECIAL_TEST(test_walker_special_mage_wave_and_burst_with_targets);
 
 void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
 {
@@ -885,7 +895,7 @@ void test_walker_special_archmage_low_int_marker_chain_and_summon_true()
     delete arch;
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_special_archmage_low_int_marker_chain_and_summon_true);
+REGISTER_SPECIAL_TEST(test_walker_special_archmage_low_int_marker_chain_and_summon_true);
 
 void test_walker_special_archmage_mind_control_stats_name_path()
 {
@@ -923,7 +933,7 @@ void test_walker_special_archmage_mind_control_stats_name_path()
     delete arch;
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_special_archmage_mind_control_stats_name_path);
+REGISTER_SPECIAL_TEST(test_walker_special_archmage_mind_control_stats_name_path);
 
 void test_walker_special_druid_circle_existing_protection_branch()
 {
@@ -955,7 +965,7 @@ void test_walker_special_druid_circle_existing_protection_branch()
     delete druid;
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_special_druid_circle_existing_protection_branch);
+REGISTER_SPECIAL_TEST(test_walker_special_druid_circle_existing_protection_branch);
 
 void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
 {
@@ -1002,7 +1012,7 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
     delete orc;
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc);
+REGISTER_SPECIAL_TEST(test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc);
 
 void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
 {
@@ -1064,4 +1074,4 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
     delete cleric;
     myscreen->level_data.delete_objects();
 }
-REGISTER_TEST(test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges);
+REGISTER_SPECIAL_TEST(test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges);

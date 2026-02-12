@@ -18,6 +18,15 @@ static walker* make_guy(char family, unsigned char team = 0)
     return w;
 }
 
+static void remove_and_delete(walker* w)
+{
+    if (w == nullptr) {
+        return;
+    }
+    myscreen->level_data.remove_ob(w);
+    delete w;
+}
+
 class SequenceRandomCombat : public IRandom {
 public:
     explicit SequenceRandomCombat(std::initializer_list<Uint32> vals) : vals_(vals), idx_(0) {}
@@ -300,10 +309,10 @@ void test_walker_act_with_commands()
             set_global_context(&gen_ctx);
             (void)gen->act();
             set_global_context(nullptr);
-            delete gen;
+            // Kept alive until level_data.delete_objects() at test end.
         }
 
-        walker* proj = l->create_walker(Order::Weapon, FAMILY_KNIFE, myscreen);
+        walker* proj = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
         TEST_ASSERT(proj != nullptr, "weapon created");
         if (proj) {
             proj->setxy(120, 120);
@@ -333,12 +342,12 @@ void test_walker_act_with_commands()
                 proj->stats()->set_bit_flags(BIT_IMMORTAL, 1);
                 (void)proj->act();
             }
-            delete target;
-            delete proj;
+            remove_and_delete(target);
+            // Kept alive until level_data.delete_objects() at test end.
         }
 
         // Exercise base walker ACT_RANDOM path via Generator (non-living subclass).
-        walker* base_rand = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+        walker* base_rand = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
         walker* base_foe = make_guy(FAMILY_ORC, 3);
         TEST_ASSERT(base_rand != nullptr && base_foe != nullptr, "base ACT_RANDOM walkers created");
         if (base_rand && base_foe) {
@@ -370,8 +379,8 @@ void test_walker_act_with_commands()
             (void)base_rand->act();
             set_global_context(nullptr);
         }
-        delete base_foe;
-        delete base_rand;
+        remove_and_delete(base_foe);
+        // Kept alive until level_data.delete_objects() at test end.
     }
 
     // Drive ACT_RANDOM/act_random() branches deterministically.
@@ -403,11 +412,11 @@ void test_walker_act_with_commands()
         (void)randomer->act();
         set_global_context(nullptr);
     }
-    delete randomer;
-    delete random_foe;
+    remove_and_delete(randomer);
+    remove_and_delete(random_foe);
 
-    delete foe;
-    delete w;
+    remove_and_delete(foe);
+    remove_and_delete(w);
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_act_with_commands);
