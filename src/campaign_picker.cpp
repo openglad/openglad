@@ -296,7 +296,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     unmount_campaign_package(old_campaign_id);
 
     // Here are the browser variables
-    std::vector<CampaignEntry*> entries;
+    std::vector<std::unique_ptr<CampaignEntry>> entries;
     
     unsigned int current_campaign_index = 0;
     
@@ -308,7 +308,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         int num_completed = -1;
         if(save_data != nullptr)
             num_completed = save_data->get_num_levels_completed(cid);
-        entries.push_back(new CampaignEntry(cid, num_completed));
+        entries.push_back(std::make_unique<CampaignEntry>(cid, num_completed));
 
         if(cid == old_campaign_id)
             current_campaign_index = i;
@@ -452,7 +452,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         {
             if(current_campaign_index < entries.size() && entries[current_campaign_index] != nullptr)
             {
-                result = entries[current_campaign_index];
+                result = entries[current_campaign_index].get();
                 done = true;
                 break;
             }
@@ -480,11 +480,7 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                remount_campaign_package();  // Just in case we deleted the current campaign
                
                // Reload the picker
-               for(auto* entry : entries)
-               {
-                   delete entry;
-               }
-               entries.clear();
+	               entries.clear();
                
                campaign_ids = list_campaigns();
                
@@ -493,8 +489,8 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
                     int num_completed = -1;
                     if(save_data != nullptr)
                         num_completed = save_data->get_num_levels_completed(cid);
-                    entries.push_back(new CampaignEntry(cid, num_completed));
-                }
+	                    entries.push_back(std::make_unique<CampaignEntry>(cid, num_completed));
+	                }
                 
                 current_campaign_index = 0;
            }
@@ -608,11 +604,5 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         ret_value.first_level = result->first_level;
     }
     
-    for(auto* entry : entries)
-    {
-        delete entry;
-    }
-    entries.clear();
-    
-    return ret_value;
+	    return ret_value;
 }
