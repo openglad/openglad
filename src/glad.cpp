@@ -858,11 +858,13 @@ short new_score_panel(screen *myscreen, short do_it)
 
 			} // end of score/exp display
 
-			// Skip act-type for now
-			/*
-			  if (do_it || (act[0] != myscreen->viewob[0]->control->query_old_act_type()) )
-			  {
-			    act[0] = myscreen->viewob[0]->control->query_old_act_type();
+				// Skip act-type for now.
+				// Historical note: this old block used `strcpy(message, ...)` with a C string.
+				// If re-enabling, rewrite it to use the current `std::string message` flow.
+				/*
+				  if (do_it || (act[0] != myscreen->viewob[0]->control->query_old_act_type()) )
+				  {
+				    act[0] = myscreen->viewob[0]->control->query_old_act_type();
 			    myscreen->fastbox(S_RIGHT+18,S_UP+65,47,7,27);
 			    switch(myscreen->viewob[0]->control->query_old_act_type())
 			    {
