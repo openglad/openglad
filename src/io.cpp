@@ -24,6 +24,7 @@
 #include "physfs.h"
 #include "physfsrwops.h"
 #include <format>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <algorithm>
@@ -37,6 +38,25 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+
+namespace
+{
+void remove_file_or_log(const std::string& path)
+{
+    std::error_code ec;
+    const bool removed = std::filesystem::remove(path, ec);
+    if (ec)
+    {
+        LogError("Failed to delete file '{}': {}\n", path, ec.message());
+        return;
+    }
+    if (!removed)
+    {
+        // Not an error; file didn't exist.
+        Log("File not found (skip delete): {}\n", path);
+    }
+}
+} // namespace
 
 #ifdef WIN32
 #include "windows.h"
@@ -401,10 +421,10 @@ void delete_level(int id)
     unpack_campaign(campaign);
     // Delete data file
     std::string path = std::format("{}temp/scen/scen{}.fss", get_user_path(), id);
-    remove(path.c_str());
+    remove_file_or_log(path);
     // Delete terrain file
     path = std::format("{}temp/pix/scen{:04d}.pix", get_user_path(), id);
-    remove(path.c_str());
+    remove_file_or_log(path);
     repack_campaign(campaign);
     
     // Remount for consistency in PhysFS
@@ -414,7 +434,7 @@ void delete_level(int id)
 void delete_campaign(const std::string& id)
 {
     std::string path = std::format("{}campaigns/{}.glad", get_user_path(), id);
-    remove(path.c_str());
+    remove_file_or_log(path);
 }
 
 
