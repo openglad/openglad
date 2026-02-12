@@ -422,14 +422,13 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         bool do_id = (do_click && id_button.x <= mx && mx <= id_button.x + id_button.w
                && id_button.y <= my && my <= id_button.y + id_button.h) || (retvalue == OG_OK && highlighted_button == id_index);
         
-		if (mymouse.left)
-		{
-		    while(mymouse.left)
-		    {
-		        SDL_Delay(1);
-                get_input_events(POLL);
-            }
-		}
+			if (mymouse.left)
+			{
+			    while(mymouse.left)
+			    {
+	                get_input_events(WAIT);
+	            }
+			}
 
         // Prev
         if(do_prev)

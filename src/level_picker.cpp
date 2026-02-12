@@ -402,14 +402,13 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
         bool do_select = do_click || (retvalue == OK && (highlighted_button == entry1_index || highlighted_button == entry2_index || highlighted_button == entry3_index));
         
         
-		if (mymouse.left)
-		{
-		    while(mymouse.left)
-		    {
-		        SDL_Delay(1);
-                get_input_events(POLL);
-            }
-		}
+			if (mymouse.left)
+			{
+			    while(mymouse.left)
+			    {
+	                get_input_events(WAIT);
+	            }
+			}
         
         // Prev
         if(do_prev)
