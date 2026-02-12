@@ -122,8 +122,9 @@ video::~video()
 	SDL_Quit();
 }
 
-void video::set_fullscreen(bool fullscreen)
+void video::set_fullscreen(bool enable_fullscreen)
 {
+    (void)enable_fullscreen;
     // FIXME: A bug in my copy of SDL is making FULLSCREEN -> WINDOWED -> FULLSCREEN take up a partial portion of the screen and ruin the game.
     /*if(fullscreen)
     {
@@ -273,24 +274,27 @@ void video::draw_button_colored(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, bool
 	Sint32 ylength = y2 - y1 + 1;
 	Sint32 i;
 	Sint32 tobuffer = 1;
+	const unsigned char base = static_cast<unsigned char>(base_color);
+	const unsigned char high = static_cast<unsigned char>(high_color);
+	const unsigned char shadow = static_cast<unsigned char>(shadow_color);
     
     if(use_border)
     {
         // Fill
         for (i = 0; i < ylength-2; i++)
-            hor_line(x1+1, y1+1+i, xlength-2, base_color, tobuffer); // facing
+            hor_line(x1+1, y1+1+i, xlength-2, base, tobuffer); // facing
 
         // Borders
-        hor_line(x1, y1, xlength, high_color, tobuffer); // top
-        hor_line(x1, y2, xlength, shadow_color, tobuffer); // bottom
-        ver_line(x1, y1, ylength, high_color, tobuffer); // left
-        ver_line(x2, y1, ylength, shadow_color, tobuffer); // right
+        hor_line(x1, y1, xlength, high, tobuffer); // top
+        hor_line(x1, y2, xlength, shadow, tobuffer); // bottom
+        ver_line(x1, y1, ylength, high, tobuffer); // left
+        ver_line(x2, y1, ylength, shadow, tobuffer); // right
     }
     else
     {
         // Fill
         for (i = 0; i < ylength; i++)
-            hor_line(x1, y1+i, xlength, base_color, tobuffer); // facing
+            hor_line(x1, y1+i, xlength, base, tobuffer); // facing
     }
 }
 
@@ -301,7 +305,7 @@ Sint32 video::draw_dialog(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2,
 {
 	text& dialogtext = text_big; // large text
 	Sint32 centerx = x1 + ( (x2-x1) /2 ), left;
-	short textwidth;
+	Sint32 textwidth;
 
 	draw_button(x1, y1, x2, y2, 1, 1); // single-border width, to buffer
 	draw_text_bar(x1+4, y1+4, x2-4, y1+18); // header field
@@ -376,8 +380,11 @@ Uint32 get_Uint32_color(unsigned char color)
 {
     int r,g,b;
 	query_palette_reg(color,&r,&g,&b);
-	
-	return SDL_MapRGB(E_Screen->render->format, r*4, g*4, b*4);
+		
+	return SDL_MapRGB(E_Screen->render->format,
+	                  static_cast<Uint8>(r * 4),
+	                  static_cast<Uint8>(g * 4),
+	                  static_cast<Uint8>(b * 4));
 }
 
 // This is the version which writes to the buffer..
@@ -403,7 +410,10 @@ void video::fastbox(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, un
 	rect.h = ysize;
 
 	query_palette_reg(color,&r,&g,&b);
-	SDL_FillRect(E_Screen->render, &rect, SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4));
+	SDL_FillRect(E_Screen->render, &rect, SDL_MapRGB(E_Screen->render->format,
+	                                                 static_cast<Uint8>(r * 4),
+	                                                 static_cast<Uint8>(g * 4),
+	                                                 static_cast<Uint8>(b * 4)));
 }
 
 void video::fastbox_outline(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize, unsigned char color)
@@ -430,22 +440,22 @@ void putpixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
 
     switch(bpp) {
     case 1:
-        *p = pixel;
+        *p = static_cast<Uint8>(pixel);
         break;
 
     case 2:
-        *(Uint16 *)p = pixel;
+        *(Uint16 *)p = static_cast<Uint16>(pixel);
         break;
 
     case 3:
         if(SDL_BYTEORDER == SDL_BIG_ENDIAN) {
-            p[0] = (pixel >> 16) & 0xff;
-            p[1] = (pixel >> 8) & 0xff;
-            p[2] = pixel & 0xff;
+            p[0] = static_cast<Uint8>((pixel >> 16) & 0xff);
+            p[1] = static_cast<Uint8>((pixel >> 8) & 0xff);
+            p[2] = static_cast<Uint8>(pixel & 0xff);
         } else {
-            p[0] = pixel & 0xff;
-            p[1] = (pixel >> 8) & 0xff;
-            p[2] = (pixel >> 16) & 0xff;
+            p[0] = static_cast<Uint8>(pixel & 0xff);
+            p[1] = static_cast<Uint8>((pixel >> 8) & 0xff);
+            p[2] = static_cast<Uint8>((pixel >> 16) & 0xff);
         }
         break;
 
@@ -468,7 +478,10 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapRGB(E_Screen->render->format, r*4, g*4, b*4);
+	c = SDL_MapRGB(E_Screen->render->format,
+	               static_cast<Uint8>(r * 4),
+	               static_cast<Uint8>(g * 4),
+	               static_cast<Uint8>(b * 4));
 
     putpixel(E_Screen->render, x, y, c);
 }
@@ -482,28 +495,28 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
     {
         case 1: { /* Assuming 8-bpp */
             
-                Uint8 *pixel = (Uint8 *)surface->pixels + y*surface->pitch + x;
+                Uint8 *pixel8 = (Uint8 *)surface->pixels + y*surface->pitch + x;
                 
-                Uint8 dR = surface->format->palette->colors[*pixel].r;
-                Uint8 dG = surface->format->palette->colors[*pixel].g;
-                Uint8 dB = surface->format->palette->colors[*pixel].b;
+                Uint8 dR = surface->format->palette->colors[*pixel8].r;
+                Uint8 dG = surface->format->palette->colors[*pixel8].g;
+                Uint8 dB = surface->format->palette->colors[*pixel8].b;
                 Uint8 sR = surface->format->palette->colors[color].r;
                 Uint8 sG = surface->format->palette->colors[color].g;
                 Uint8 sB = surface->format->palette->colors[color].b;
                 
-                dR = dR + ((sR-dR)*alpha >> 8);
-                dG = dG + ((sG-dG)*alpha >> 8);
-                dB = dB + ((sB-dB)*alpha >> 8);
+                dR = static_cast<Uint8>(dR + (((sR - dR) * alpha) >> 8));
+                dG = static_cast<Uint8>(dG + (((sG - dG) * alpha) >> 8));
+                dB = static_cast<Uint8>(dB + (((sB - dB) * alpha) >> 8));
             
-                *pixel = SDL_MapRGB(surface->format, dR, dG, dB);
+                *pixel8 = static_cast<Uint8>(SDL_MapRGB(surface->format, dR, dG, dB));
                 
         }
         break;
 
         case 2: { /* Probably 15-bpp or 16-bpp */		
             
-                Uint16 *pixel = (Uint16 *)surface->pixels + y*surface->pitch/2 + x;
-                Uint32 dc = *pixel;
+                Uint16 *pixel16 = (Uint16 *)surface->pixels + y*surface->pitch/2 + x;
+                Uint32 dc = *pixel16;
             
                 R = ((dc & Rmask) + (( (color & Rmask) - (dc & Rmask) ) * alpha >> 8)) & Rmask;
                 G = ((dc & Gmask) + (( (color & Gmask) - (dc & Gmask) ) * alpha >> 8)) & Gmask;
@@ -511,7 +524,7 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
                 if( Amask )
                     A = ((dc & Amask) + (( (color & Amask) - (dc & Amask) ) * alpha >> 8)) & Amask;
 
-                *pixel= R | G | B | A;
+                *pixel16 = static_cast<Uint16>(R | G | B | A);
                 
         }
         break;
@@ -540,10 +553,10 @@ void blend_pixel(SDL_Surface* surface, int x, int y, Uint32 color, Uint8 alpha)
                 sB = (color>>surface->format->Bshift)&0xff;
                 sA = (color>>surface->format->Ashift)&0xff;
                 
-                dR = dR + ((sR-dR)*alpha >> 8);
-                dG = dG + ((sG-dG)*alpha >> 8);
-                dB = dB + ((sB-dB)*alpha >> 8);
-                dA = dA + ((sA-dA)*alpha >> 8);
+                dR = static_cast<Uint8>(dR + (((sR - dR) * alpha) >> 8));
+                dG = static_cast<Uint8>(dG + (((sG - dG) * alpha) >> 8));
+                dB = static_cast<Uint8>(dB + (((sB - dB) * alpha) >> 8));
+                dA = static_cast<Uint8>(dA + (((sA - dA) * alpha) >> 8));
 
                 *((pix)+rshift8) = dR; 
                 *((pix)+gshift8) = dG;
@@ -587,7 +600,10 @@ void video::pointb(Sint32 x, Sint32 y, unsigned char color, unsigned char alpha)
 
 	query_palette_reg(color,&r,&g,&b);
 
-	c = SDL_MapRGB(E_Screen->render->format, r*4, g*4, b*4);
+	c = SDL_MapRGB(E_Screen->render->format,
+	               static_cast<Uint8>(r * 4),
+	               static_cast<Uint8>(g * 4),
+	               static_cast<Uint8>(b * 4));
 	
     blend_pixel(E_Screen->render, x, y, c, alpha);
 }
@@ -597,7 +613,10 @@ void video::pointb(Sint32 x, Sint32 y, int r, int g, int b)
 {
 	SDL_Rect  rect;
 	int c;
-	c = SDL_MapRGB(E_Screen->render->format,r,g,b);
+	c = SDL_MapRGB(E_Screen->render->format,
+	               static_cast<Uint8>(r),
+	               static_cast<Uint8>(g),
+	               static_cast<Uint8>(b));
 
 	rect.x = x;
 	rect.y = y;
@@ -683,7 +702,7 @@ void video::draw_line(Sint32 x1, Sint32 y1, Sint32 x2, Sint32 y2, unsigned char 
         return;
     
     Uint32 Color = get_Uint32_color(color);
-    Sint16 dx, dy, sdx, sdy, x, y, px, py;
+    Sint32 dx, dy, sdx, sdy, x, y, px, py;
 
     dx = x2 - x1;
     dy = y2 - y1;
@@ -827,9 +846,12 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
 			curcolor = sourcedata[num++];
 			if (!curcolor)
 		        	continue;
-	        	//point(curx,cury,curcolor);//buffers: PORT: draw the poin
+			//point(curx,cury,curcolor);//buffers: PORT: draw the poin
 			query_palette_reg(curcolor,&r,&g,&b);
-			color = SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4);
+			color = SDL_MapRGB(E_Screen->render->format,
+			                   static_cast<Uint8>(r * 4),
+			                   static_cast<Uint8>(g * 4),
+			                   static_cast<Uint8>(b * 4));
 
 			rect.x = curx;
 			rect.y = cury;
@@ -881,10 +903,15 @@ void video::putdatatext(Sint32 startx, Sint32 starty, Sint32 xsize, Sint32 ysize
                         if (!curcolor)
   	                      	continue;
 				//if (curcolor>=248) curcolor = color+(curcolor-248);
-			if (curcolor>247)
-			        curcolor = color;
+	        if (curcolor>247)
+	        {
+		        curcolor = color;
+	        }
 			query_palette_reg(curcolor,&r,&g,&b);
-			scolor = SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4);
+			scolor = SDL_MapRGB(E_Screen->render->format,
+			                    static_cast<Uint8>(r * 4),
+			                    static_cast<Uint8>(g * 4),
+			                    static_cast<Uint8>(b * 4));
 
             rect.x = curx;
             rect.y = cury;
@@ -1293,10 +1320,15 @@ void video::walkputbuffertext(Sint32 walkerstartx, Sint32 walkerstarty,
                                 buffoff++;
                                 continue;
                         }
-                        if (curcolor > static_cast<unsigned char>(247))
-                                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
-			query_palette_reg(curcolor,&r,&g,&b);
-                        color = SDL_MapRGB(E_Screen->render->format,r*4,g*4,b*4);
+		        if (curcolor > static_cast<unsigned char>(247))
+		        {
+		                curcolor = static_cast<unsigned char>(teamcolor+(255-curcolor));
+		        }
+				query_palette_reg(curcolor,&r,&g,&b);
+                        color = SDL_MapRGB(E_Screen->render->format,
+                                           static_cast<Uint8>(r * 4),
+                                           static_cast<Uint8>(g * 4),
+                                           static_cast<Uint8>(b * 4));
 
                         rect.x = (curx + walkerstartx);
                         rect.y = (cury + walkerstarty);
@@ -1633,7 +1665,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					else if (shifttype == SHIFT_LIGHTER)
 					{
 						//buffers: bufcolor = videobuffer[buffoff];
-						bufcolor = get_pixel(buffoff);
+						bufcolor = static_cast<unsigned char>(get_pixel(buffoff));
 						if ((bufcolor%8)!=0 && bufcolor !=0)
 							bufcolor--;
 						//buffers: videobuffer[buffoff++] = bufcolor;
@@ -1644,7 +1676,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					else if (shifttype == SHIFT_DARKER)
 					{
 						//buffers: bufcolor = videobuffer[buffoff];
-						bufcolor = get_pixel(buffoff);
+						bufcolor = static_cast<unsigned char>(get_pixel(buffoff));
 						if ((bufcolor%7)!=0 && bufcolor<255)
 							bufcolor++;
 						//videobuffer[buffoff++] = bufcolor;
@@ -1653,10 +1685,10 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 
 					else if (shifttype == SHIFT_BLOCKY)
 					{
-						if (cury%2) //buffers:videobuffer[buffoff++] = videobuffer[buffoff-VIDEO_BUFFER_WIDTH];
-							pointb(buffoff,get_pixel(buffoff-320));
-						else if (curx%2) //videobuffer[buffoff++] = videobuffer[buffoff-1];
-							pointb(buffoff,get_pixel(buffoff-2));
+							if (cury%2) //buffers:videobuffer[buffoff++] = videobuffer[buffoff-VIDEO_BUFFER_WIDTH];
+								pointb(buffoff, static_cast<unsigned char>(get_pixel(buffoff-320)));
+							else if (curx%2) //videobuffer[buffoff++] = videobuffer[buffoff-1];
+								pointb(buffoff, static_cast<unsigned char>(get_pixel(buffoff-2)));
                         buffoff++;
 
 					}
@@ -1664,7 +1696,7 @@ void video::walkputbuffer(Sint32 walkerstartx, Sint32 walkerstarty,
 					else
 					{
 						//buffers: videobuffer[buffoff++] = videobuffer[buffoff+shift];
-						pointb(buffoff,get_pixel(buffoff+shift));
+							pointb(buffoff, static_cast<unsigned char>(get_pixel(buffoff+shift)));
 						buffoff++;
 					}
 				} //end each row
@@ -1752,13 +1784,13 @@ int video::get_pixel(int x, int y, int *index)
 	g /= 4;
 	b /= 4;
 
-	for(i=0;i<256;i++)
-	{
-		query_palette_reg(i,&tr,&tg,&tb);
-		if(r==tr && g==tg && b==tb)
+		for(i=0;i<256;i++)
 		{
-			*index = i;
-			return i;
+			query_palette_reg(static_cast<unsigned char>(i),&tr,&tg,&tb);
+			if(r==tr && g==tg && b==tb)
+			{
+				*index = i;
+				return i;
 		}
 	}
 
@@ -1857,9 +1889,9 @@ void video::FadeBetween24(
 	Uint8 *pStop = pw + size;
 	while (pw != pStop)
 	{
-		*(pw++) = (nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration;
-		*(pw++) = (nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration;
-		*(pw++) = (nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration;
+		*(pw++) = static_cast<Uint8>((nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration);
+		*(pw++) = static_cast<Uint8>((nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration);
+		*(pw++) = static_cast<Uint8>((nOldAmt * *(pFrom++) + amount * *(pTo++)) / fadeDuration);
 		pw++; pFrom++; pTo++;
 	}
     

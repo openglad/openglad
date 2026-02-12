@@ -63,7 +63,7 @@ bool prompt_for_string(const std::string& message, std::string& result);
 
 //int matherr (struct exception *);
 
-void show_guy(Sint32 frames, Sint32 who, short centerx = 80, short centery = 45); // shows the current guy ..
+void show_guy(Sint32 frames, Sint32 who, Sint32 centerx = 80, Sint32 centery = 45); // shows the current guy ..
 Sint32 name_guy(Sint32 arg); // rename (or name) the current_guy
 
 void glad_main(Sint32 playermode);
@@ -109,7 +109,7 @@ pixieN  *main_title_logo_pix,*main_columns_pix;
 
 // Non-owning alias to the current button set (init_buttons owns allbuttons[]).
 vbutton * localbuttons;
-short current_team_num = 0;
+Sint32 current_team_num = 0;
 
 #ifdef TESTING
 // Test infrastructure for picker_mainmenu_loop
@@ -256,6 +256,8 @@ static void picker_load_default_save_if_present()
 
 void picker_main(Sint32 argc, char  **argv)
 {
+	(void)argc;
+	(void)argv;
 	// Get main dir ..
 	//strcpy(main_dir, "");
     picker_initialize_shared_menu_state();
@@ -504,10 +506,11 @@ button loadteam_buttons[] =
 
 void view_team(short left, short top, short right, short bottom)
 {
-	char text_down = top+3;
+	Sint32 text_down = static_cast<Sint32>(top) + 3;
 	int i;
-	std::string message;
-	char namecolor, numguys = 0;
+	std::string row_message;
+	unsigned char namecolor;
+	char numguys = 0;
 	text& mytext = myscreen->text_normal;
 
 	myscreen->redrawme = 1;
@@ -529,17 +532,17 @@ void view_team(short left, short top, short right, short bottom)
 			numguys++;
 
 			// Pick a nice dark color based on family type
-			namecolor = ((ourteam[i]->family +1) << 4) & 255;
-			mytext.write_xy(left+5, text_down, ourteam[i]->name.c_str(), static_cast<unsigned char>(namecolor), 1);
+				namecolor = static_cast<unsigned char>(((ourteam[i]->family + 1) << 4) & 255);
+				mytext.write_xy(left+5, text_down, ourteam[i]->name.c_str(), static_cast<unsigned char>(namecolor), 1);
 
-			message = std::format("{:4d} {:4d} {:4d} {:4d} {:4d}",
-			         ourteam[i]->strength, ourteam[i]->dexterity,
-			         ourteam[i]->constitution, ourteam[i]->intelligence,
-			         ourteam[i]->armor);
-			mytext.write_xy(left+70, text_down, message.c_str(), static_cast<unsigned char>(BLACK), 1);
+				row_message = std::format("{:4d} {:4d} {:4d} {:4d} {:4d}",
+				         ourteam[i]->strength, ourteam[i]->dexterity,
+				         ourteam[i]->constitution, ourteam[i]->intelligence,
+				         ourteam[i]->armor);
+				mytext.write_xy(left+70, text_down, row_message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-			message = std::format("{:2d}", ourteam[i]->level);
-			mytext.write_xy(left+235, text_down, message.c_str(), static_cast<unsigned char>(BLACK), 1);
+				row_message = std::format("{:2d}", ourteam[i]->level);
+				mytext.write_xy(left+235, text_down, row_message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
 			mytext.write_xy(left+260, text_down, family_name_copy(ourteam[i]->family), static_cast<unsigned char>(namecolor), 1);
 
@@ -571,7 +574,7 @@ void draw_version_number()
 
 
 
-const char* get_family_string(short family)
+const char* get_family_string(Sint32 family)
 {
 	switch(family)
 	{
@@ -638,6 +641,7 @@ const char* family_name_copy(short family)
 void quit(Sint32 arg1)
 {
 #ifdef TESTING
+	(void)arg1;
 	TRACE("picker", "quit called (test mode - not exiting)");
 #else
 		myscreen->refresh();
@@ -742,7 +746,7 @@ Sint32 main_options()
 
 Sint32 overscan_adjust(Sint32 arg)
 {
-    overscan_percentage -= arg/100.0f;
+    overscan_percentage -= static_cast<float>(arg) / 100.0f;
     update_overscan_setting();
     
     return REDRAW;
@@ -751,7 +755,7 @@ Sint32 overscan_adjust(Sint32 arg)
 Sint32 set_player_mode(Sint32 howmany)
 {
 	Sint32 count = 0;
-	myscreen->save_data.numplayers = howmany;
+	myscreen->save_data.numplayers = static_cast<unsigned char>(howmany);
 
 	while (allbuttons[count])
 	{
@@ -772,6 +776,7 @@ Sint32 return_menu(Sint32 arg)
 
 Sint32 create_detail_menu(guy *arg1)
 {
+	(void)arg1;
 #define DETAIL_LM 11             // left edge margin ..
 #define DETAIL_MM 164            // center margin
 #define DETAIL_LD(x) (90+(x*6))  // vertical line for text
@@ -824,7 +829,7 @@ Sint32 create_detail_menu(guy *arg1)
                    thisguy->level >= 6)
            {
                // Become an archmage!
-               thisguy->upgrade_to_level(( (thisguy->level-6) / 2) + 1);
+	               thisguy->upgrade_to_level(static_cast<short>(((thisguy->level-6) / 2) + 1));
                thisguy->family = FAMILY_ARCHMAGE;
                myscreen->soundp->play_sound(SOUND_EXPLODE);
                myscreen->soundp->play_sound(SOUND_EXPLODE);
@@ -1280,18 +1285,20 @@ int get_scen_num_from_filename(const char* name)
 
 Sint32 do_pick_campaign(Sint32 arg1)
 {
+	(void)arg1;
    CampaignResult result = pick_campaign(&myscreen->save_data);
    if(result.id.size() > 0)
    {
         // Load new campaign
         myscreen->save_data.current_campaign = result.id;
-        myscreen->save_data.scen_num = load_campaign(result.id, myscreen->save_data.current_levels, result.first_level);
+        myscreen->save_data.scen_num = static_cast<short>(load_campaign(result.id, myscreen->save_data.current_levels, result.first_level));
    }
    return REDRAW;
 }
 
 Sint32 do_set_scen_level(Sint32 arg1)
 {
+	(void)arg1;
    Sint32 templevel = myscreen->save_data.scen_num;
    
    templevel = pick_level(myscreen, myscreen->level_data.id);
@@ -1315,7 +1322,7 @@ Sint32 do_set_scen_level(Sint32 arg1)
        }
        else  // We're good
        {
-           myscreen->save_data.scen_num = templevel;
+           myscreen->save_data.scen_num = static_cast<short>(templevel);
            Log("Set level to {}\n", templevel);
        }
    }
@@ -1383,7 +1390,7 @@ Sint32 change_hire_teamnum(Sint32 arg)
    // Change our guy, if he exists ..
    if (current_guy)
    {
-       current_guy->teamnum = current_team_num;
+       current_guy->teamnum = static_cast<short>(current_team_num);
    }
 
    // Update our button display

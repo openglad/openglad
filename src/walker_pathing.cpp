@@ -18,13 +18,14 @@
 #include "graph.h"
 #include "walker.h"
 #include "micropather.h"
+#include <cmath>
 
 #define MAP_WIDTH 400
 #define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
 
-#define MAKE_STATE(x, y) (MicroPatherState)intptr_t(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE))
-#define GET_STATE_X(state) (intptr_t(state)%MAP_WIDTH * GRID_SIZE)
-#define GET_STATE_Y(state) (intptr_t(state)/MAP_WIDTH * GRID_SIZE)
+#define MAKE_STATE(x, y) reinterpret_cast<MicroPatherState>(static_cast<intptr_t>(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE)))
+#define GET_STATE_X(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
+#define GET_STATE_Y(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
 #define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
 
 namespace {
@@ -41,12 +42,14 @@ public:
 
 float Map::LeastCostEstimate(void* stateStart, void* stateEnd)
 {
-    int x1 = GET_STATE_X(stateStart);
-    int y1 = GET_STATE_Y(stateStart);
-    int x2 = GET_STATE_X(stateEnd);
-    int y2 = GET_STATE_Y(stateEnd);
+	int x1 = GET_STATE_X(stateStart);
+	int y1 = GET_STATE_Y(stateStart);
+	int x2 = GET_STATE_X(stateEnd);
+	int y2 = GET_STATE_Y(stateEnd);
 
-    return sqrtf((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+	const float dx = static_cast<float>(x2 - x1);
+	const float dy = static_cast<float>(y2 - y1);
+	return sqrtf(dx * dx + dy * dy);
 }
 
 void Map::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacent)
@@ -71,23 +74,23 @@ void Map::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacen
             // TODO: Make doors impassable without a key.
             // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
 
-            // Any terrain in the way?  This checks boundaries too.
-            if (!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
-                continue;
-            // Any moving objects in the way?
-            else if (myscreen->level_data.myobmap->obmap_get_list(adj_x, adj_y).size() > 0)
-                cost.cost = 10;
-            else
-                // Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
-                cost.cost = sqrtf(i * i + j * j);
+			// Any terrain in the way?  This checks boundaries too.
+			if (!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
+				continue;
+			// Any moving objects in the way?
+			else if (myscreen->level_data.myobmap->obmap_get_list(static_cast<short>(adj_x), static_cast<short>(adj_y)).size() > 0)
+				cost.cost = 10;
+			else
+				// Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal
+				cost.cost = sqrtf(static_cast<float>(i * i + j * j));
 
             // Smoothing heuristic using cross-product.  This penalizes going away from a straight line to the goal.
-            int dx1 = adj_x - ALIGN_TO_GRID(path_walker->foe->xpos);
-            int dy1 = adj_y - ALIGN_TO_GRID(path_walker->foe->ypos);
-            int dx2 = path_walker->xpos - ALIGN_TO_GRID(path_walker->foe->xpos);
-            int dy2 = path_walker->ypos - ALIGN_TO_GRID(path_walker->foe->ypos);
-            float cross = dx1 * dy2 - dx2 * dy1;
-            cost.cost += fabs(cross) * 0.01f;
+			int dx1 = adj_x - ALIGN_TO_GRID(path_walker->foe->xpos);
+			int dy1 = adj_y - ALIGN_TO_GRID(path_walker->foe->ypos);
+			int dx2 = path_walker->xpos - ALIGN_TO_GRID(path_walker->foe->xpos);
+			int dy2 = path_walker->ypos - ALIGN_TO_GRID(path_walker->foe->ypos);
+			const float cross = static_cast<float>(dx1 * dy2 - dx2 * dy1);
+			cost.cost += fabsf(cross) * 0.01f;
 
             adjacent->push_back(cost);
         }
@@ -152,10 +155,10 @@ void walker::draw_path(viewscreen* view_buf)
     if (path_to_foe.size() == 0)
         return;
 
-    unsigned char mycolor = query_team_color() + intptr_t(this) % 5;  // Our pointer is a unique integer... but probably aligned to 4 bytes.
+    const unsigned char mycolor = static_cast<unsigned char>(query_team_color() + static_cast<unsigned char>(reinterpret_cast<intptr_t>(this) % 5));  // Pointer-derived offset for visibility.
 
-    short offsetx = view_buf->topx - view_buf->xloc - 8;
-    short offsety = view_buf->topy - view_buf->yloc - 8;
+    const Sint32 offsetx = view_buf->topx - view_buf->xloc - 8;
+    const Sint32 offsety = view_buf->topy - view_buf->yloc - 8;
 
     std::vector<MicroPatherState>::iterator e = path_to_foe.begin();
     int px = GET_STATE_X(*e) - offsetx;

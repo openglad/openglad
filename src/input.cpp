@@ -361,8 +361,8 @@ void handle_window_event(const SDL_Event& event)
                 s->refresh();
             break;
         case SDL_WINDOWEVENT_RESIZED:
-            window_w = event.window.data1;
-            window_h = event.window.data2;
+            window_w = static_cast<float>(event.window.data1);
+            window_h = static_cast<float>(event.window.data2);
             update_overscan_setting();
             break;
         break;
@@ -422,15 +422,15 @@ void handle_mouse_event(const SDL_Event& event)
     switch(event.type)
     {
     case SDL_MOUSEWHEEL:
-        scroll_amount = 5*event.wheel.y;
+        scroll_amount = static_cast<short>(5*event.wheel.y);
         key_press_event = 1;
         break;
 
 #ifndef USE_TOUCH_INPUT
         // Mouse event
     case SDL_MOUSEMOTION:
-        mouse_state.x = (event.motion.x - viewport_offset_x) * (320 / viewport_w);
-        mouse_state.y = (event.motion.y - viewport_offset_y) * (200 / viewport_h);
+        mouse_state.x = (static_cast<float>(event.motion.x) - viewport_offset_x) * (320.0f / viewport_w);
+        mouse_state.y = (static_cast<float>(event.motion.y) - viewport_offset_y) * (200.0f / viewport_h);
         break;
     case SDL_MOUSEBUTTONUP:
         if (event.button.button == SDL_BUTTON_LEFT)
@@ -438,8 +438,8 @@ void handle_mouse_event(const SDL_Event& event)
         if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state.right = 0;
         
-        mouse_state.x = (event.button.x - viewport_offset_x) * (320 / viewport_w);
-        mouse_state.y = (event.button.y - viewport_offset_y) * (200 / viewport_h);
+        mouse_state.x = (static_cast<float>(event.button.x) - viewport_offset_x) * (320.0f / viewport_w);
+        mouse_state.y = (static_cast<float>(event.button.y) - viewport_offset_y) * (200.0f / viewport_h);
         break;
     case SDL_MOUSEBUTTONDOWN:
         if (event.button.button == SDL_BUTTON_LEFT)
@@ -447,8 +447,8 @@ void handle_mouse_event(const SDL_Event& event)
         else if (event.button.button == SDL_BUTTON_RIGHT)
             mouse_state.right = 1;
 
-        mouse_state.x = (event.button.x - viewport_offset_x) * (320 / viewport_w);
-        mouse_state.y = (event.button.y - viewport_offset_y) * (200 / viewport_h);
+        mouse_state.x = (static_cast<float>(event.button.x) - viewport_offset_x) * (320.0f / viewport_w);
+        mouse_state.y = (static_cast<float>(event.button.y) - viewport_offset_y) * (200.0f / viewport_h);
         break;
 #else
 #ifdef FAKE_TOUCH_EVENTS
@@ -925,6 +925,7 @@ short get_and_reset_scroll_amount()
 void wait_for_key(int somekey)
 {
 #ifdef TESTING
+    (void)somekey;
     TRACE("input", "wait_for_key: skipping wait (test mode)");
     return;
 #else
@@ -942,14 +943,14 @@ JoyData::JoyData()
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {}
 
-JoyData::JoyData(int index)
+JoyData::JoyData(int joy_index)
     : index(-1), numAxes(0), numButtons(0), numHats(0)
 {
-    SDL_Joystick *js = joysticks[index];
+    SDL_Joystick *js = joysticks[joy_index];
     if(js == nullptr)
         return;
 
-    this->index = index;
+    this->index = joy_index;
     numAxes = SDL_JoystickNumAxes(js);
     numButtons = SDL_JoystickNumButtons(js);
     numHats = SDL_JoystickNumHats(js);

@@ -254,11 +254,15 @@ struct MouseState
     bool left;
     bool right;
     
-    bool in(const SDL_Rect& r) const
-    {
-        return (r.x <= x && x < r.x + r.w && r.y <= y && y < r.y + r.h);
-    }
-};
+	    bool in(const SDL_Rect& r) const
+	    {
+	        const float rx = static_cast<float>(r.x);
+	        const float ry = static_cast<float>(r.y);
+	        const float rw = static_cast<float>(r.w);
+	        const float rh = static_cast<float>(r.h);
+	        return (rx <= x && x < rx + rw && ry <= y && y < ry + rh);
+	    }
+	};
 
 MouseState& query_mouse();
 MouseState& query_mouse_no_poll();
@@ -277,4 +281,3 @@ extern float viewport_h;
 extern float overscan_percentage;
 
 void update_overscan_setting();
-

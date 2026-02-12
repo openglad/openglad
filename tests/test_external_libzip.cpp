@@ -347,40 +347,40 @@ void test_external_libzip_extra_field_api_paths()
     TEST_ASSERT(ferror(fw) == 0, "_zip_write8 should not set error");
     fclose(fw);
 
-    auto put2 = [](unsigned char* p, zip_uint16_t v) {
-        p[0] = static_cast<unsigned char>(v & 0xFF);
-        p[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+    auto put2 = [](unsigned char* dst, zip_uint16_t v) {
+        dst[0] = static_cast<unsigned char>(v & 0xFF);
+        dst[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
     };
-    auto put4 = [](unsigned char* p, zip_uint32_t v) {
-        p[0] = static_cast<unsigned char>(v & 0xFF);
-        p[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
-        p[2] = static_cast<unsigned char>((v >> 16) & 0xFF);
-        p[3] = static_cast<unsigned char>((v >> 24) & 0xFF);
+    auto put4 = [](unsigned char* dst, zip_uint32_t v) {
+        dst[0] = static_cast<unsigned char>(v & 0xFF);
+        dst[1] = static_cast<unsigned char>((v >> 8) & 0xFF);
+        dst[2] = static_cast<unsigned char>((v >> 16) & 0xFF);
+        dst[3] = static_cast<unsigned char>((v >> 24) & 0xFF);
     };
 
     // Not enough bytes for a central dirent header.
     {
-        zip_dirent de;
-        _zip_dirent_init(&de);
+        zip_dirent tmp_de;
+        _zip_dirent_init(&tmp_de);
         const unsigned char tiny[4] = {0, 0, 0, 0};
-        const unsigned char* p = tiny;
+        const unsigned char* ptr = tiny;
         zip_uint64_t left = sizeof(tiny);
-        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+        TEST_ASSERT(_zip_dirent_read(&tmp_de, nullptr, &ptr, &left, 0, &zerr) < 0,
                     "_zip_dirent_read should fail when left < header size");
-        _zip_dirent_finalize(&de);
+        _zip_dirent_finalize(&tmp_de);
     }
 
     // Wrong magic.
     {
         unsigned char hdr[46] = {};
         memcpy(hdr, "NOPE", 4);
-        const unsigned char* p = hdr;
+        const unsigned char* ptr = hdr;
         zip_uint64_t left = sizeof(hdr);
-        zip_dirent de;
-        _zip_dirent_init(&de);
-        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+        zip_dirent tmp_de;
+        _zip_dirent_init(&tmp_de);
+        TEST_ASSERT(_zip_dirent_read(&tmp_de, nullptr, &ptr, &left, 0, &zerr) < 0,
                     "_zip_dirent_read should fail on bad magic");
-        _zip_dirent_finalize(&de);
+        _zip_dirent_finalize(&tmp_de);
     }
 
     // Header says filename is present, but left bytes are insufficient.
@@ -390,31 +390,31 @@ void test_external_libzip_extra_field_api_paths()
         put2(hdr + 4, 20);   // version madeby
         put2(hdr + 6, 20);   // version needed
         put2(hdr + 28, 5);   // filename length
-        const unsigned char* p = hdr;
+        const unsigned char* ptr = hdr;
         zip_uint64_t left = sizeof(hdr);
-        zip_dirent de;
-        _zip_dirent_init(&de);
-        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+        zip_dirent tmp_de;
+        _zip_dirent_init(&tmp_de);
+        TEST_ASSERT(_zip_dirent_read(&tmp_de, nullptr, &ptr, &left, 0, &zerr) < 0,
                     "_zip_dirent_read should fail on truncated variable section");
-        _zip_dirent_finalize(&de);
+        _zip_dirent_finalize(&tmp_de);
     }
 
     // UTF-8 flag set with invalid UTF-8 filename.
     {
-        unsigned char buf[47] = {};
-        memcpy(buf, CENTRAL_MAGIC, 4);
-        put2(buf + 4, 20);
-        put2(buf + 6, 20);
-        put2(buf + 8, ZIP_GPBF_ENCODING_UTF_8);
-        put2(buf + 28, 1);   // filename length
-        buf[46] = 0xFF;      // invalid single-byte UTF-8
-        const unsigned char* p = buf;
-        zip_uint64_t left = sizeof(buf);
-        zip_dirent de;
-        _zip_dirent_init(&de);
-        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+        unsigned char utf_buf[47] = {};
+        memcpy(utf_buf, CENTRAL_MAGIC, 4);
+        put2(utf_buf + 4, 20);
+        put2(utf_buf + 6, 20);
+        put2(utf_buf + 8, ZIP_GPBF_ENCODING_UTF_8);
+        put2(utf_buf + 28, 1);   // filename length
+        utf_buf[46] = 0xFF;      // invalid single-byte UTF-8
+        const unsigned char* ptr = utf_buf;
+        zip_uint64_t left = sizeof(utf_buf);
+        zip_dirent tmp_de;
+        _zip_dirent_init(&tmp_de);
+        TEST_ASSERT(_zip_dirent_read(&tmp_de, nullptr, &ptr, &left, 0, &zerr) < 0,
                     "_zip_dirent_read should fail for invalid UTF-8 with UTF-8 flag");
-        _zip_dirent_finalize(&de);
+        _zip_dirent_finalize(&tmp_de);
     }
 
     // ZIP64 required but no ZIP64 extra field.
@@ -426,13 +426,13 @@ void test_external_libzip_extra_field_api_paths()
         put4(hdr + 20, ZIP_UINT32_MAX); // compressed size
         put4(hdr + 24, ZIP_UINT32_MAX); // uncompressed size
         put4(hdr + 42, ZIP_UINT32_MAX); // offset
-        const unsigned char* p = hdr;
+        const unsigned char* ptr = hdr;
         zip_uint64_t left = sizeof(hdr);
-        zip_dirent de;
-        _zip_dirent_init(&de);
-        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 0, &zerr) < 0,
+        zip_dirent tmp_de;
+        _zip_dirent_init(&tmp_de);
+        TEST_ASSERT(_zip_dirent_read(&tmp_de, nullptr, &ptr, &left, 0, &zerr) < 0,
                     "_zip_dirent_read should fail when ZIP64 sizes are present without ZIP64 EF");
-        _zip_dirent_finalize(&de);
+        _zip_dirent_finalize(&tmp_de);
     }
 
     // Local header path: truncated variable-length area should fail.
@@ -444,13 +444,13 @@ void test_external_libzip_extra_field_api_paths()
         put2(hdr + 8, ZIP_CM_STORE);
         put2(hdr + 26, 3); // filename length
         put2(hdr + 28, 0); // extra length
-        const unsigned char* p = hdr;
+        const unsigned char* ptr = hdr;
         zip_uint64_t left = sizeof(hdr);
-        zip_dirent de;
-        _zip_dirent_init(&de);
-        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 1, &zerr) < 0,
+        zip_dirent tmp_de;
+        _zip_dirent_init(&tmp_de);
+        TEST_ASSERT(_zip_dirent_read(&tmp_de, nullptr, &ptr, &left, 1, &zerr) < 0,
                     "_zip_dirent_read(local) should fail on truncated filename payload");
-        _zip_dirent_finalize(&de);
+        _zip_dirent_finalize(&tmp_de);
     }
 
     // Local header success path with minimal filename and no extras.
@@ -463,13 +463,13 @@ void test_external_libzip_extra_field_api_paths()
         put2(rec + 26, 1); // filename length
         put2(rec + 28, 0); // extra length
         rec[30] = 'a';
-        const unsigned char* p = rec;
+        const unsigned char* ptr = rec;
         zip_uint64_t left = sizeof(rec);
-        zip_dirent de;
-        _zip_dirent_init(&de);
-        TEST_ASSERT(_zip_dirent_read(&de, nullptr, &p, &left, 1, &zerr) == 0,
+        zip_dirent tmp_de;
+        _zip_dirent_init(&tmp_de);
+        TEST_ASSERT(_zip_dirent_read(&tmp_de, nullptr, &ptr, &left, 1, &zerr) == 0,
                     "_zip_dirent_read(local) should parse minimal valid header");
-        _zip_dirent_finalize(&de);
+        _zip_dirent_finalize(&tmp_de);
     }
 
     // _zip_dirent_size for local and central forms.

@@ -49,8 +49,8 @@ statistics::statistics(walker  * someguy)
 	armor = 0; // no default armor
 	max_heal_delay = current_heal_delay = 1000;  // default of 50 cycles / hitpoint
 	max_magic_delay = current_magic_delay = 1000;
-	magic_per_round = 0; //default to not regenerating magic
-	heal_per_round = 0; //default to not regenerating hitpoints
+	magic_per_round = 0.0f; // default to not regenerating magic
+	heal_per_round = 0.0f;  // default to not regenerating hitpoints
 
 	bit_flags = 0;           // clear all the bit flags
 	frozen_delay = 0;     // start out able to move :)
@@ -97,8 +97,8 @@ void statistics::clear_command()
 	controller->leader = nullptr;
 }
 
-void statistics::add_command(short whatcommand, short iterations,
-                             short info1, short info2)
+void statistics::add_command(Sint32 whatcommand, Sint32 iterations,
+                             Sint32 info1, Sint32 info2)
 {
 
 	if (whatcommand == COMMAND_DIE)
@@ -134,8 +134,8 @@ void statistics::add_command(short whatcommand, short iterations,
 	commands.back().commandcount = iterations;
 }
 
-void statistics::force_command(short whatcommand, short iterations,
-                               short info1, short info2)
+void statistics::force_command(Sint32 whatcommand, Sint32 iterations,
+                               Sint32 info1, Sint32 info2)
 {
 	commands.emplace_front();
 
@@ -167,31 +167,31 @@ bool statistics::has_commands() const
 // try_command will only set a command if there is
 // none in the queue
 
-short statistics::try_command(short whatcommand, short iterations)
+short statistics::try_command(Sint32 whatcommand, Sint32 iterations)
 {
 	if (whatcommand == COMMAND_RANDOM_WALK)
-		return try_command(COMMAND_WALK, iterations, static_cast<short>(rng(3)-1), static_cast<short>(rng(3)-1));
+		return try_command(COMMAND_WALK, iterations, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
 	else
 		return try_command(whatcommand, iterations, 0, 0);
 }
 
-short statistics::try_command(short whatcommand, short iterations,
-                              short info1, short info2)
+short statistics::try_command(Sint32 whatcommand, Sint32 iterations,
+                              Sint32 info1, Sint32 info2)
 {
 	add_command(whatcommand, iterations, info1, info2);
 	return 0;
 }
 
-void statistics::set_command(short whatcommand, short iterations)
+void statistics::set_command(Sint32 whatcommand, Sint32 iterations)
 {
 	if (whatcommand == COMMAND_RANDOM_WALK)
-		set_command(COMMAND_WALK, iterations, static_cast<short>(rng(3)-1), static_cast<short>(rng(3)-1));
+		set_command(COMMAND_WALK, iterations, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
 	else
 		set_command(whatcommand, iterations, 0, 0);
 }
 
-void statistics::set_command(short whatcommand, short iterations,
-                             short info1, short info2)
+void statistics::set_command(Sint32 whatcommand, Sint32 iterations,
+                             Sint32 info1, Sint32 info2)
 {
 	if (whatcommand == COMMAND_DIE)
 		Log("BLLLLLLLLLLLLLAAAAAAAAAAHHHHHHH!\n");
@@ -203,8 +203,7 @@ void statistics::set_command(short whatcommand, short iterations,
 // Do the current command
 short statistics::do_command()
 {
-	command *here;
-	short commandtype, com1, com2;
+	Sint32 commandtype, com1, com2;
 	short i;
 	
 	walker * target;
@@ -240,20 +239,20 @@ short statistics::do_command()
 		case COMMAND_WALK:
 			controller->walkstep(com1, com2);
 			break;
-		case COMMAND_FIRE:
+			case COMMAND_FIRE:
 			if (!(controller->query_order() == Order::Living))
 			{
 				Log("commanding a non-living to fire?");
 				break;
 			}
-			if (!controller->fire_check(com1,com2))
-			{
-				commands.front().commandcount = 0;
-				result = 0;
+				if (!controller->fire_check(static_cast<short>(com1), static_cast<short>(com2)))
+				{
+					commands.front().commandcount = 0;
+					result = 0;
+					break;
+				}
+				controller->init_fire(static_cast<short>(com1), static_cast<short>(com2));
 				break;
-			}
-			controller->init_fire(com1, com2);
-			break;
 		case COMMAND_DIE:  // debugging, not currently used
 			if (!controller->dead)
 				Log("Trying to make a living ob die!\n");
@@ -342,9 +341,9 @@ short statistics::do_command()
 				}
 			}
 			break;
-		case COMMAND_SET_WEAPON: // set weapon to specified type
-			controller->current_weapon = com1;
-			break;
+			case COMMAND_SET_WEAPON: // set weapon to specified type
+				controller->current_weapon = static_cast<unsigned short>(com1);
+				break;
 		case COMMAND_RESET_WEAPON: // reset weapon to default type
 			controller->current_weapon = controller->default_weapon;
 			break;
@@ -377,20 +376,20 @@ short statistics::do_command()
 			// Try to walk toward foe, and/or attack ..
 			deltax = static_cast<short>(controller->foe->xpos - controller->xpos);
 			deltay = static_cast<short>(controller->foe->ypos - controller->ypos);
-			if (abs(deltax) > abs(3*deltay))
-				deltay = 0;
-			if (abs(deltay) > abs(3*deltax))
-				deltax = 0;
-			if (deltax)
-				deltax /= abs(deltax);
-			if (deltay)
-				deltay /= abs(deltay);
-			if (!controller->fire_check(deltax,deltay))
-				controller->walkstep(deltax, deltay);
-			else // (controller->fire_check(deltax, deltay))
-			{
-				force_command(COMMAND_FIRE,static_cast<short>(rng(5)),deltax,deltay);
-				controller->init_fire(deltax,deltay);
+				if (abs(deltax) > abs(3*deltay))
+					deltay = 0;
+				if (abs(deltay) > abs(3*deltax))
+					deltax = 0;
+				if (deltax)
+					deltax = (deltax > 0) ? 1 : -1;
+				if (deltay)
+					deltay = (deltay > 0) ? 1 : -1;
+				if (!controller->fire_check(deltax,deltay))
+					controller->walkstep(deltax, deltay);
+				else // (controller->fire_check(deltax, deltay))
+				{
+					force_command(COMMAND_FIRE,static_cast<short>(rng(5)),deltax,deltay);
+					controller->init_fire(deltax,deltay);
 			}
 			break;
 		case COMMAND_UNCHARM:
@@ -438,7 +437,7 @@ void statistics::hit_response(walker  *who)
 	walker *foe; // who is attacking us?
 	Sint32 possible_specials[NUM_SPECIALS];
 	float threshold; // for hitpoint 'running away'
-	short howmany;
+	Sint32 howmany;
 
 	if (!who || !controller)
 		return;
@@ -610,7 +609,7 @@ void statistics::hit_response(walker  *who)
 
 void statistics::yell_for_help(walker *foe)
 {
-	short howmany;
+	Sint32 howmany;
 	Sint32 deltax, deltay;
 
 	controller->yo_delay = controller->yo_delay + 80;
@@ -914,7 +913,7 @@ bool statistics::right_walk()
 				ydelta = 0;
 				break;
 		}
-		add_command(COMMAND_WALK, 1, xdelta, ydelta);
+			add_command(COMMAND_WALK, 1, static_cast<Sint32>(xdelta), static_cast<Sint32>(ydelta));
 	}
 	else
 	{
@@ -993,7 +992,9 @@ bool statistics::direct_walk()
 	if (abs(ydelta) > abs(3*xdelta))
 		xdelta = 0;
 
-	if (controller->fire_check(xdelta,ydelta))
+	const short xdir = (xdelta > 0.0f) ? 1 : ((xdelta < 0.0f) ? -1 : 0);
+	const short ydir = (ydelta > 0.0f) ? 1 : ((ydelta < 0.0f) ? -1 : 0);
+	if (controller->fire_check(xdir, ydir))
 	{
 		clear_command();
 		controller->turn(controller->facing(xdelta, ydelta));
@@ -1032,7 +1033,7 @@ bool statistics::direct_walk()
 					walkrounds = 0;
 					return 0;
 				}
-				controller->walkstep(0,ydelta);
+                                controller->walkstep(0.0f, ydelta);
 				return 1;
 				//walk in the y direction
 			}
@@ -1044,7 +1045,7 @@ bool statistics::direct_walk()
 				walkrounds = 0;
 				return 0;
 			}
-			controller->walkstep(xdelta,0);
+                        controller->walkstep(xdelta, 0.0f);
 			return 1;
 			//walk in the x direction
 		}
@@ -1074,7 +1075,7 @@ bool statistics::walk_to_foe()
 	float xdest, ydest;
 	float xdelta, ydelta;
 	Uint32 tempdistance = 9999999L;
-	short howmany;
+	Sint32 howmany;
 
 	if (!foe || !rng(300) ) //random just to be sure this gets reset sometime
 	{

@@ -32,7 +32,7 @@ class guy
 		Sint32 query_heart_value(); // how much are we worth?
 		walker* create_walker(screen* myscreen);
 		walker* create_and_add_walker(screen* myscreen);
-		void upgrade_to_level(short level, bool set_xp = true);
+		void upgrade_to_level(short new_level, bool set_xp = true);
 		
         float get_hp_bonus() const;
         float get_mp_bonus() const;
@@ -71,4 +71,3 @@ class guy
 
         short level;
 };
-

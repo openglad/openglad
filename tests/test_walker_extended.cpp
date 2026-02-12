@@ -112,7 +112,7 @@ void test_walker_turn_all_targets()
 
     for (int dir = 0; dir < 8; dir++) {
         w->curdir = FACE_UP;
-        w->turn(dir);
+        w->turn(static_cast<short>(dir));
     }
 
     delete w;

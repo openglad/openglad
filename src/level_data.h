@@ -66,7 +66,7 @@ public:
     PixieData icondata;
     std::unique_ptr<pixie> icon;
     
-    CampaignData(const std::string& id);
+    CampaignData(const std::string& campaign_id);
     ~CampaignData();
     
     bool load();
@@ -131,7 +131,7 @@ public:
     std::unique_ptr<pixieN> back[PIX_MAX];
     Sint32 topx, topy;
     
-    LevelData(int id);
+    LevelData(int level_id);
     ~LevelData();
     
     bool load();
@@ -140,9 +140,9 @@ public:
     [[nodiscard]] IoError save_with_error();
     [[nodiscard]] IoError last_io_error() const { return last_io_error_; }
     
-    walker* add_ob(Order order, char family, [[maybe_unused]] bool atstart = false);
-    walker* add_fx_ob(Order order, char family);
-    walker* add_weap_ob(Order order, char family);
+    walker* add_ob(Order order, Sint32 family, [[maybe_unused]] bool atstart = false);
+    walker* add_fx_ob(Order order, Sint32 family);
+    walker* add_weap_ob(Order order, Sint32 family);
     short remove_ob(walker  *ob);
     
     void create_new_grid();
@@ -151,8 +151,8 @@ public:
     void delete_objects();
     void clear();
     
-    void set_draw_pos(Sint32 topx, Sint32 topy);
-    void add_draw_pos(Sint32 topx, Sint32 topy);
+    void set_draw_pos(Sint32 new_topx, Sint32 new_topy);
+    void add_draw_pos(Sint32 dx, Sint32 dy);
     void draw(screen* myscreen);
     
     std::string get_description_line(int i);

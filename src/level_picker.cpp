@@ -24,6 +24,7 @@
 #include "guy.h"
 #include "button.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <format>
@@ -66,12 +67,12 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
     exits.clear();
     
     // Go through objects
-	for(auto& uptr : level_data.oblist)
-	{
-	    walker* ob = uptr.get();
-        switch(ob->query_order())
-        {
-            case Order::Living:
+		for(auto& uptr : level_data.oblist)
+		{
+		    walker* ob = uptr.get();
+	        switch(ob->query_order())
+	        {
+	            case Order::Living:
                 if(ob->team_num != 0)
                 {
                     num++;
@@ -84,24 +85,28 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
                 {
                     difficulty_sum_friends += diff_per_level*ob->stats()->level;
                 }
-            break;
-        }
-	}
+	                break;
+	            default:
+	                break;
+	        }
+		}
 	
 	// Go through effects
-	for(auto& uptr : level_data.fxlist)
-	{
-	    walker* ob = uptr.get();
-        switch(ob->query_order())
-        {
-            case Order::Treasure:
-                if(ob->query_family() == FAMILY_EXIT)
-                {
-                    exits.push_back(ob->stats()->level);
-                }
-            break;
-        }
-	}
+		for(auto& uptr : level_data.fxlist)
+		{
+		    walker* ob = uptr.get();
+	        switch(ob->query_order())
+	        {
+	            case Order::Treasure:
+	                if(ob->query_family() == FAMILY_EXIT)
+	                {
+	                    exits.push_back(ob->stats()->level);
+	                }
+	                break;
+	            default:
+	                break;
+	        }
+		}
 	
 	if(num_enemies)
 	    *num_enemies = num;
@@ -109,13 +114,13 @@ void getLevelStats(LevelData& level_data, int* max_enemy_level, float* average_e
 	    *max_enemy_level = max_level;
 	if(average_enemy_level)
 	{
-	    if(num == 0)
-            *average_enemy_level = 0;
-        else
-            *average_enemy_level = level_sum/float(num);
-    }
-    if(difficulty)
-        *difficulty = difficulty_sum - difficulty_sum_friends;
+		if(num == 0)
+			*average_enemy_level = 0;
+		else
+			*average_enemy_level = static_cast<float>(level_sum) / static_cast<float>(num);
+	}
+	if(difficulty)
+		*difficulty = static_cast<float>(difficulty_sum - difficulty_sum_friends);
     
     exits.sort();
     exits.unique();
@@ -193,23 +198,24 @@ class BrowserEntry
 };
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
-    : level_data(scen_num), myradar(nullptr, myscreen, 0)
+	    : level_data(scen_num), myradar(nullptr, myscreen, 0)
 {
-    level_data.load();
+	(void)screenp;
+	    level_data.load();
     
     myradar.start(&level_data);
     
 
-    int w = myradar.xview;
-    int h = myradar.yview;
+	    const int w = myradar.xview;
+	    const int h = myradar.yview;
     
     mapAreas.w = w;
     mapAreas.h = h;
     mapAreas.x = 10;
     mapAreas.y = 5 + (53 + 12)*index;
     
-    myradar.xloc = mapAreas.x + mapAreas.w/2 - w/2;
-    myradar.yloc = mapAreas.y + 10;
+	    myradar.xloc = static_cast<short>(mapAreas.x + mapAreas.w/2 - w/2);
+	    myradar.yloc = static_cast<short>(mapAreas.y + 10);
     
     
     getLevelStats(level_data, &max_enemy_level, &average_enemy_level, &num_enemies, &difficulty, exits);
@@ -221,7 +227,7 @@ BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
         level_name = level_name.substr(0, 20) + "...";
     }
     
-    scentextlines = level_data.description.size();
+	    scentextlines = static_cast<char>(std::min<size_t>(level_data.description.size(), 80u));
     int i = 0;
     for(auto& line : level_data.description)
     {
@@ -238,17 +244,18 @@ BrowserEntry::~BrowserEntry()
 
 void BrowserEntry::updateIndex(int index)
 {
-    int w = myradar.xview;
-    mapAreas.y = 5 + (53 + 12)*index;
-    
-    myradar.xloc = mapAreas.x + mapAreas.w/2 - w/2;
-    myradar.yloc = mapAreas.y + 10;
+	    const int w = myradar.xview;
+	    mapAreas.y = 5 + (53 + 12)*index;
+	    
+	    myradar.xloc = static_cast<short>(mapAreas.x + mapAreas.w/2 - w/2);
+	    myradar.yloc = static_cast<short>(mapAreas.y + 10);
 }
 
 void BrowserEntry::draw(screen* screenp)
 {
-    int x = myradar.xloc;
-    int y = myradar.yloc;
+	(void)screenp;
+	    int x = myradar.xloc;
+	    int y = myradar.yloc;
     int w = myradar.xview;
     int h = myradar.yview;
     myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
@@ -291,15 +298,16 @@ void BrowserEntry::draw(screen* screenp)
 // Load a scenario...
 int pick_level(screen *screenp, int default_level, bool enable_delete)
 {
-    int result = default_level;
+	(void)screenp;
+	    int result = default_level;
     
 	text& loadtext = myscreen->text_normal;
     
     // Here are the browser variables
     std::array<std::unique_ptr<BrowserEntry>, NUM_BROWSE_RADARS> entries;
     
-    std::vector<int> level_list = list_levels_v();
-    int level_list_length = level_list.size();
+	    std::vector<int> level_list = list_levels_v();
+	    int level_list_length = static_cast<int>(level_list.size());
     
     // This indexes into the level_list.
     int current_level_index = 0;
@@ -390,9 +398,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
             done = true;
 		
 		// Mouse stuff ..
-		MouseState& mymouse = query_mouse();
-        int mx = mymouse.x;
-        int my = mymouse.y;
+	        MouseState& mymouse = query_mouse();
+	        int mx = static_cast<int>(mymouse.x);
+	        int my = static_cast<int>(mymouse.y);
         
         bool do_click = mymouse.left;
 		bool do_prev = (do_click && prev.x <= mx && mx <= prev.x + prev.w
@@ -492,9 +500,9 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                {
                    delete_level(level_list[current_level_index + selected_entry]);
                    
-                   // Reload the picker
-                   level_list = list_levels_v();
-                    level_list_length = level_list.size();
+	                   // Reload the picker
+	                   level_list = list_levels_v();
+	                    level_list_length = static_cast<int>(level_list.size());
                     
                     // Make sure our currently showing radars are not blank
                     if(current_level_index + NUM_BROWSE_RADARS >= level_list_length)

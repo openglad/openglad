@@ -38,21 +38,6 @@ void test_input_clear_events_drains_queue()
 }
 REGISTER_TEST(test_input_clear_events_drains_queue);
 
-struct AssignKeyThreadState {
-    bool started;
-    bool finished;
-};
-
-static int push_keydown_thread(void* data)
-{
-    AssignKeyThreadState* st = (AssignKeyThreadState*)data;
-    st->started = true;
-    SDL_Delay(50);
-    inject_key_down(SDLK_p);
-    st->finished = true;
-    return 0;
-}
-
 void test_input_assignKeyFromWaitEvent_updates_player_keys()
 {
     int old = player_keys[0][KEY_FIRE];

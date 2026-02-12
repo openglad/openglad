@@ -31,12 +31,24 @@ class pixie
 		pixie(pixie&&) = delete;
 		pixie& operator=(pixie&&) = delete;
 		short setxy(short x, short y);
+		// Overloads to avoid implicit narrowing at call sites. These forward to the short-based API.
+		short setxy(Sint32 x, Sint32 y) { return setxy(static_cast<short>(x), static_cast<short>(y)); }
+		short setxy(Uint32 x, Uint32 y) { return setxy(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
+		short setxy(float x, float y) { return setxy(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
 		virtual short move (short x, short y);
+		short move(Sint32 x, Sint32 y) { return move(static_cast<short>(x), static_cast<short>(y)); }
+		short move(float x, float y) { return move(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
 		short draw (viewscreen  *view_buf);
 		short draw (short x, short y, viewscreen  *view_buf);
+		short draw(Sint32 x, Sint32 y, viewscreen* view_buf) { return draw(static_cast<short>(x), static_cast<short>(y), view_buf); }
+		short draw(float x, float y, viewscreen* view_buf) { return draw(static_cast<Sint32>(x), static_cast<Sint32>(y), view_buf); }
 		short drawMix (viewscreen *view_buf);
 		short drawMix (short x, short y, viewscreen *view_buf);
+		short drawMix(Sint32 x, Sint32 y, viewscreen* view_buf) { return drawMix(static_cast<short>(x), static_cast<short>(y), view_buf); }
+		short drawMix(float x, float y, viewscreen* view_buf) { return drawMix(static_cast<Sint32>(x), static_cast<Sint32>(y), view_buf); }
 		short put_screen(short x, short y);
+		short put_screen(Sint32 x, Sint32 y) { return put_screen(static_cast<short>(x), static_cast<short>(y)); }
+		short put_screen(float x, float y) { return put_screen(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
 		void init_sdl_surface(void);
 		void set_accel(int a);
 		void set_data(const PixieData& data);
@@ -53,4 +65,3 @@ class pixie
 		//buffers: same data as bmp but in a convient SDL_Surface
 		SDL_Surface *bmp_surface;
 };
-

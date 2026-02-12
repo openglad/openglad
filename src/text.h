@@ -32,39 +32,39 @@ class text
 	public:
 		friend class vbutton;
 		text(const char * filename);
-		short query_width(std::string_view string); // returns width, in pixels
-		short write_xy(short x, short y, std::string_view string);
-		short write_xy(short x, short y, std::string_view string, unsigned char color);
-		short write_xy(short x, short y, unsigned char color, const char* formatted_string, ...);
-		short write_xy_shadow(short x, short y, unsigned char color, const char* formatted_string, ...);
-		short write_xy_center(short x, short y, unsigned char color, const char* formatted_string, ...);
-		short write_xy_center_alpha(short x, short y, unsigned char color, Uint8 alpha, const char* formatted_string, ...);
-		short write_xy_center_shadow(short x, short y, unsigned char color, const char* formatted_string, ...);
-		short write_xy(short x, short y, std::string_view string, short to_buffer);
-		short write_xy(short x, short y, std::string_view string, unsigned char color, short to_buffer);
-		short write_xy(short x, short y, std::string_view string, viewscreen *whereto);
-		short write_xy(short x, short y, std::string_view string, unsigned char color, viewscreen *whereto);
-		short write_y(short y, std::string_view string);
-		short write_y(short y, std::string_view string, unsigned char color);
-		short write_y(short y, std::string_view string, short to_buffer);
-		short write_y(short y, std::string_view string, unsigned char color, short to_buffer);
-		short write_y(short y, std::string_view string, viewscreen *whereto);
-		short write_y(short y, std::string_view string, unsigned char color, viewscreen *whereto);
-		short write_char_xy(short x, short y, char letter);
-		short write_char_xy(short x, short y, char letter, unsigned char color);
-		short write_char_xy_alpha(short x, short y, char letter, unsigned char color, Uint8 alpha);
-		short write_char_xy(short x, short y, char letter, short to_buffer);
-		short write_char_xy(short x, short y, char letter, unsigned char color, short to_buffer);
-		short write_char_xy(short x, short y, char letter, viewscreen *whereto);
-		short write_char_xy(short x, short y, char letter, unsigned char color, viewscreen *whereto);
-		char *input_string(short x, short y, short maxlength, const char *begin);
-		char *input_string(short x, short y, short maxlength, const char *begin,
+		Sint32 query_width(std::string_view string); // returns width, in pixels
+		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string);
+		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color);
+		Sint32 write_xy(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...);
+		Sint32 write_xy_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...);
+		Sint32 write_xy_center(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...);
+		Sint32 write_xy_center_alpha(Sint32 x, Sint32 y, unsigned char color, Uint8 alpha, const char* formatted_string, ...);
+		Sint32 write_xy_center_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...);
+		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, short to_buffer);
+		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color, short to_buffer);
+		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, viewscreen *whereto);
+		Sint32 write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color, viewscreen *whereto);
+		Sint32 write_y(Sint32 y, std::string_view string);
+		Sint32 write_y(Sint32 y, std::string_view string, unsigned char color);
+		Sint32 write_y(Sint32 y, std::string_view string, short to_buffer);
+		Sint32 write_y(Sint32 y, std::string_view string, unsigned char color, short to_buffer);
+		Sint32 write_y(Sint32 y, std::string_view string, viewscreen *whereto);
+		Sint32 write_y(Sint32 y, std::string_view string, unsigned char color, viewscreen *whereto);
+		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter);
+		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color);
+		Sint32 write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char color, Uint8 alpha);
+		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer);
+		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color, short to_buffer);
+		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, viewscreen *whereto);
+		Sint32 write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color, viewscreen *whereto);
+		char *input_string(Sint32 x, Sint32 y, short maxlength, const char *begin);
+		char *input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
 		                   unsigned char forecolor, unsigned char backcolor);
-        char* input_string_ex(short x, short y, short maxlength, const char* message, const char *begin);
-        char* input_string_ex(short x, short y, short maxlength, const char* message, const char *begin,
+        char* input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin);
+        char* input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin,
                           unsigned char forecolor, unsigned char backcolor);
-        std::optional<std::string> input_string_value(short x, short y, short maxlength, const char* begin);
-        std::optional<std::string> input_string_ex_value(short x, short y, short maxlength, const char* message, const char* begin);
+        std::optional<std::string> input_string_value(Sint32 x, Sint32 y, short maxlength, const char* begin);
+        std::optional<std::string> input_string_ex_value(Sint32 x, Sint32 y, short maxlength, const char* message, const char* begin);
 		~text();
 
 	    const PixieData* letters;

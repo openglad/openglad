@@ -70,11 +70,12 @@ void orbit_offset(int drawcycle, float &xd, float &yd)
 
 bool effect::act()
 {
-	short temp;
+	Sint32 temp = 0;
 	float xd, yd;
-	Sint32 distance, generic;
+	Sint32 distance = 0;
+	float generic = 0.0f;
 	walker *newob;
-	short numfoes;
+	Sint32 numfoes;
 	std::list<walker*> foelist;
 
 	TRACE("effect", "effect::act family=%d drawcycle=%d", family, drawcycle);
@@ -273,14 +274,14 @@ bool effect::act()
 				temp = stats_->do_command();
 			else
 			{
-				xd = yd = 0;
-				while (xd == 0 && yd == 0)
-				{
-					xd = rng(3)-1;
-					yd = rng(3)-1;
+					xd = yd = 0;
+					while (xd == 0 && yd == 0)
+					{
+						xd = static_cast<float>(static_cast<Sint32>(rng(3)) - 1);
+						yd = static_cast<float>(static_cast<Sint32>(rng(3)) - 1);
+					}
+					stats_->add_command(COMMAND_WALK, static_cast<short>(rng(20)), static_cast<short>(xd), static_cast<short>(yd));
 				}
-				stats_->add_command(COMMAND_WALK, static_cast<short>(rng(20)), static_cast<short>(xd), static_cast<short>(yd));
-			}
 			break; // end of cloud
 		case FAMILY_CHAIN: // chain lightning ..
 			if (!leader || lineofsight<1 || !owner) // lost our leader, etc.? kill us ..
@@ -312,7 +313,7 @@ bool effect::act()
 					active_screen()->soundp->play_sound(SOUND_EXPLODE);
 				// Now make new objects to seek out foes ..
 				// First, are our offspring powerful enough at 1/2 our power?
-				generic = (damage)/2;
+				generic = damage * 0.5f;
 				if (owner->myguy)
 					foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist,
 					                                      240+(owner->myguy->intelligence/2), &temp, this);
@@ -321,10 +322,10 @@ bool effect::act()
 					                                      240+stats_->level*5, &temp, this);
 				if (temp && generic>20) // more foes to find ..
 				{
-					numfoes = rng(owner->stats()->level)+1;
-					for(auto* w : foelist)
-					{
-					    if (numfoes <= 0) break;
+						numfoes = static_cast<Sint32>(rng(static_cast<Uint32>(owner->stats()->level))) + 1;
+						for(auto* w : foelist)
+						{
+						    if (numfoes <= 0) break;
 						if (w != leader && w->skip_exit<1) // don't hit current guy, etc.
 						{
 							newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_CHAIN);
@@ -350,8 +351,8 @@ bool effect::act()
 			// Move toward our leader ..
 			lineofsight--;
 			distance = distance_to_ob_center(leader);
-			if (distance > stepsize*2)
-			{
+				if (static_cast<float>(distance) > stepsize*2)
+				{
 				xd = yd = 0; // zero out distance movements
 				if (leader->xpos > xpos)
 				{
@@ -382,9 +383,9 @@ bool effect::act()
 						yd = leader->ypos - ypos;
 				}
 				// Set our facing?
-				curdir = facing(xd, yd);
-				set_frame(ani[curdir][0]);
-			} // end of big step
+					curdir = static_cast<signed char>(facing(xd, yd));
+					set_frame(ani[curdir][0]);
+				} // end of big step
 			else
 			{
 				//xd = leader->xpos;
@@ -491,7 +492,7 @@ bool effect::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 	std::list<walker*> foelist;
-	short howmany = 0;
+	Sint32 howmany = 0;
 	walker  *newob;
 	Sint32 xdelta,ydelta;
 	Sint32 tempx, tempy, generic;

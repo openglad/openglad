@@ -65,8 +65,8 @@ static void fill_fixed_field(char* dst, size_t fixed_len, std::string_view src, 
 
 
 
-CampaignData::CampaignData(const std::string& id)
-    : id(id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0)
+CampaignData::CampaignData(const std::string& campaign_id)
+    : id(campaign_id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0)
 {
     description.push_back("No description.");
 }
@@ -143,7 +143,7 @@ bool CampaignData::load()
         
         // Count the number of levels
         std::list<int> levels = list_levels();
-        num_levels = levels.size();
+        num_levels = static_cast<int>(levels.size());
         
         unmount_campaign_package(id);
     }
@@ -364,8 +364,8 @@ std::string CampaignData::get_description_line(int i)
 
 
 
-LevelData::LevelData(int id)
-    : id(id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
+LevelData::LevelData(int level_id)
+    : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
     , myloader(nullptr), numobs(0), topx(0), topy(0)
 {
 	myobmap = std::make_unique<obmap>();
@@ -430,7 +430,7 @@ void LevelData::clear()
     topy = 0;
 }
 
-walker* LevelData::add_ob(Order order, char family, [[maybe_unused]] bool atstart)
+walker* LevelData::add_ob(Order order, Sint32 family, [[maybe_unused]] bool atstart)
 {
 	if (order == Order::Weapon)
 		return add_weap_ob(order, family);
@@ -448,7 +448,7 @@ walker* LevelData::add_ob(Order order, char family, [[maybe_unused]] bool atstar
     return w;
 }
 
-walker* LevelData::add_fx_ob(Order order, char family)
+walker* LevelData::add_fx_ob(Order order, Sint32 family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen, false);
     if (w == nullptr)
@@ -463,7 +463,7 @@ walker* LevelData::add_fx_ob(Order order, char family)
 	return w;
 }
 
-walker* LevelData::add_weap_ob(Order order, char family)
+walker* LevelData::add_weap_ob(Order order, Sint32 family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen);
     if (w == nullptr)
@@ -590,8 +590,8 @@ void LevelData::resize_grid(int width, int height)
     grid.free();
     grid.data = std::move(new_grid);
     grid.frames = 1;
-    grid.w = width;
-    grid.h = height;
+    grid.w = static_cast<unsigned char>(width);
+    grid.h = static_cast<unsigned char>(height);
 	pixmaxx = grid.w * GRID_SIZE;
 	pixmaxy = grid.h * GRID_SIZE;
     
@@ -1459,7 +1459,7 @@ bool LevelData::load()
     clear();
     
     // Set default par_value
-    par_value = id;
+    par_value = static_cast<short>(id);
     
     short tempvalue = load_scenario_version(infile, this, versionnumber);
     SDL_RWclose(infile);
@@ -1559,11 +1559,11 @@ bool LevelData::save()
 	char temptext[10] = "FSS";
 	char temp_grid[20] = {};
 	char temp_scen_type = 0;
-	Sint32 listsize;
-	Sint32 i;
+	short listsize = 0;
 	char temp_version = VERSION_NUM;
 	std::string temp_filename;
-	char numlines, tempwidth;
+	Uint8 numlines = 0;
+	Uint8 tempwidth = 0;
 	char oneline[80];
 	char tempname[12] = {};
 	char scentitle[30] = {};
@@ -1634,14 +1634,10 @@ bool LevelData::save()
 	SDL_RWwrite(outfile, &temp_time_limit, 2, 1);
 
 	// Determine size of object list ...
-	listsize = oblist.size();
-
-	// Also check the fx list ..
-	listsize += fxlist.size();
-
-	// And the weapon list ..
-	listsize += weaplist.size();
-
+	{
+		const size_t listsize_st = oblist.size() + fxlist.size() + weaplist.size();
+		listsize = static_cast<short>(listsize_st);
+	}
 	SDL_RWwrite(outfile, &listsize, 2, 1);
 
 	// Okay, we've written header .. now dump the data ..
@@ -1659,11 +1655,11 @@ bool LevelData::save()
         tempfacing= w->curdir;
         tempfamily= w->query_family();
         tempteam  = w->team_num;
-        tempcommand=w->query_act_type();
+        tempcommand = static_cast<char>(w->query_act_type());
         currentx  = w->xpos;
         currenty  = w->ypos;
         //templevel = w->stats()->level;
-        shortlevel = w->stats()->level;
+        shortlevel = static_cast<short>(w->stats()->level);
         snprintf(tempname, sizeof(tempname), "%s", w->stats()->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
@@ -1692,11 +1688,11 @@ bool LevelData::save()
         tempfacing= ob->curdir;
         tempfamily= ob->query_family();
         tempteam  = ob->team_num;
-        tempcommand=ob->query_act_type();
+        tempcommand = static_cast<char>(ob->query_act_type());
         currentx  = ob->xpos;
         currenty  = ob->ypos;
         //templevel = ob->stats()->level;
-        shortlevel = ob->stats()->level;
+        shortlevel = static_cast<short>(ob->stats()->level);
         snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
@@ -1725,10 +1721,10 @@ bool LevelData::save()
         tempfacing= ob->curdir;
         tempfamily= ob->query_family();
         tempteam  = ob->team_num;
-        tempcommand=ob->query_act_type();
+        tempcommand = static_cast<char>(ob->query_act_type());
         currentx  = ob->xpos;
         currenty  = ob->ypos;
-        shortlevel = ob->stats()->level;
+        shortlevel = static_cast<short>(ob->stats()->level);
         snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
         SDL_RWwrite(outfile, &temporder, 1, 1);
         SDL_RWwrite(outfile, &tempfamily, 1, 1);
@@ -1742,14 +1738,14 @@ bool LevelData::save()
         SDL_RWwrite(outfile, filler, 10, 1);
 	}
 
-	numlines = this->description.size();
+	numlines = static_cast<Uint8>(this->description.size());
 	//printf("saving %d lines\n", numlines);
 
 	SDL_RWwrite(outfile, &numlines, 1, 1);
 	for (auto& line : this->description)
 	{
 		snprintf(oneline, sizeof(oneline), "%s", line.c_str());
-		tempwidth = static_cast<unsigned char>(line.size());
+		tempwidth = static_cast<Uint8>(line.size());
 		SDL_RWwrite(outfile, &tempwidth, 1, 1);
 		SDL_RWwrite(outfile, oneline, tempwidth, 1);
 	}
@@ -1778,24 +1774,24 @@ LevelData::IoError LevelData::save_with_error()
     return last_io_error_;
 }
 
-void LevelData::set_draw_pos(Sint32 topx, Sint32 topy)
+void LevelData::set_draw_pos(Sint32 new_topx, Sint32 new_topy)
 {
-    this->topx = topx;
-    this->topy = topy;
+    this->topx = new_topx;
+    this->topy = new_topy;
 }
 
-void LevelData::add_draw_pos(Sint32 topx, Sint32 topy)
+void LevelData::add_draw_pos(Sint32 dx, Sint32 dy)
 {
-    this->topx += topx;
-    this->topy += topy;
+    this->topx += dx;
+    this->topy += dy;
 }
 
-void LevelData::draw(screen* myscreen)
+void LevelData::draw(screen* screenp)
 {
 	short i;
-	for (i=0; i < myscreen->numviews; i++)
+	for (i=0; i < screenp->numviews; i++)
     {
-        myscreen->viewob[i]->redraw(this, false);  // Don't draw the radar here
+        screenp->viewob[i]->redraw(this, false);  // Don't draw the radar here
     }
 }
 

@@ -491,7 +491,7 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 {
 
 
-	unused=nullptr;	//for avoid warning
+	(void)unused;
 	//int j;
 	unsigned int x, y;
 	Uint32 color[16];
@@ -612,13 +612,12 @@ void Super2xSaI_ex(unsigned char *src, Uint32 src_pitch, unsigned char *unused, 
 		/* Read next line */
 		if (y + 3 >= height)
 			src_line[3] = src_line[2];
-		else
-			src_line[3] = src_line[2] + src_pitch;
-			
-		/* Then shift the color matrix up */
-		Uint32 *lbp;
-		lbp = reinterpret_cast<Uint32*>(src_line[0]);
-		color[0] = *lbp; color[1] = color[0]; color[2] = *(lbp + 1); color[3] = *(lbp + 2);
+			else
+				src_line[3] = src_line[2] + src_pitch;
+				
+			/* Then shift the color matrix up */
+			lbp = reinterpret_cast<Uint32*>(src_line[0]);
+			color[0] = *lbp; color[1] = color[0]; color[2] = *(lbp + 1); color[3] = *(lbp + 2);
 		lbp = reinterpret_cast<Uint32*>(src_line[1]);
 		color[4] = *lbp; color[5] = color[4]; color[6] = *(lbp + 1); color[7] = *(lbp + 2);
 		lbp = reinterpret_cast<Uint32*>(src_line[2]);
@@ -716,11 +715,11 @@ Screen::Screen( RenderEngine engine, int width, int height, int fullscreen)
     if(window == nullptr)
         throw std::runtime_error(std::string("Fatal: SDL_CreateWindow failed: ") + SDL_GetError());
     
-    SDL_GetWindowSize(window, &w, &h);
-    window_w = w;
-    window_h = h;
-    
-    update_overscan_setting();
+	    SDL_GetWindowSize(window, &w, &h);
+	    window_w = static_cast<float>(w);
+	    window_h = static_cast<float>(h);
+	    
+	    update_overscan_setting();
     
     #ifdef TESTING
     renderer = SDL_CreateRenderer(window, -1, 0);

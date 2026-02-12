@@ -24,6 +24,7 @@
 class weap : public walker
 {
 	public:
+		using walker::setxy; // unhide overloads (Sint32/float/Uint32) from base
 		weap(const PixieData& data);
 		~weap() override;
 		weap(const weap&) = delete;
@@ -44,4 +45,3 @@ class weap : public walker
 		Sint32 do_bounce; // do we bounce?
 
 };
-

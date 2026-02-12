@@ -780,8 +780,11 @@ loader::~loader(void)
 	// vectors clean up automatically
 }
 
-void loader::set_derived_stats(walker* w, Order order, char family)
+void loader::set_derived_stats(walker* w, Order order, Sint32 family)
 {
+	if(family < 0 || family >= NUM_FAMILIES)
+		family = 0;
+
 	w->stepsize = stepsizes[PIX(order, family)];
 	w->normal_stepsize = w->stepsize;
 	w->lineofsight = lineofsight[PIX(order, family)];
@@ -790,13 +793,17 @@ void loader::set_derived_stats(walker* w, Order order, char family)
 }
 
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
-                                                    char family,
-                                                    screen* myscreen, [[maybe_unused]] bool cache_weapons)
+                                                    Sint32 family,
+                                                    screen* screenp, [[maybe_unused]] bool cache_weapons)
 {
+	(void)screenp;
 	std::unique_ptr<walker> ob;
 
-    if(order == Order::Living && family >= NUM_FAMILIES)
-        family = FAMILY_SOLDIER;
+	if(family < 0 || family >= NUM_FAMILIES)
+	{
+		// Keep the legacy "bad living family" fallback to soldier; others clamp to 0.
+		family = (order == Order::Living) ? FAMILY_SOLDIER : 0;
+	}
 
 	if (!graphics[PIX(order, family)].valid())
 	{
@@ -831,19 +838,22 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 }
 
 walker* loader::create_walker(Order order,
-                              char family,
-                              screen* myscreen, [[maybe_unused]] bool cache_weapons)
+                              Sint32 family,
+                              screen* screenp, [[maybe_unused]] bool cache_weapons)
 {
-    return create_walker_owned(order, family, myscreen, cache_weapons).release();
+    return create_walker_owned(order, family, screenp, cache_weapons).release();
 }
 
 walker  *loader::set_walker(walker *ob,
                             Order order,
-                            char family)
+                            Sint32 family)
 {
 	short i;
 
-	ob->set_order_family(order,family);
+	if(family < 0 || family >= NUM_FAMILIES)
+		family = 0;
+
+	ob->set_order_family(order, static_cast<char>(family));
 	ob->set_act_type(act_types[PIX(order, family)]);
 	ob->ani = animations[PIX(order, family)];
 	
@@ -998,9 +1008,9 @@ walker  *loader::set_walker(walker *ob,
 			}
 			ob->current_weapon = ob->default_weapon;
 			break; // end of livings
-		case Order::Weapon:
-			switch (family)
-			{
+			case Order::Weapon:
+				switch (family)
+				{
 				case FAMILY_ROCK:
 					ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
 					break;
@@ -1044,12 +1054,13 @@ walker  *loader::set_walker(walker *ob,
 					ob->stats()->set_bit_flags(BIT_FLYING, 1);
 					ob->ani_type = 5; // anything non-zero
 					break;
-				default:
-					break;
-			}  // end of weapons
-		case Order::Treasure:
-			switch (family)
-			{
+					default:
+						break;
+				}  // end of weapons
+				break;
+			case Order::Treasure:
+				switch (family)
+				{
 				case FAMILY_STAIN:  // permanent bloodstains
 					ob->ignore = 1;
 					break;
@@ -1074,12 +1085,13 @@ walker  *loader::set_walker(walker *ob,
 				case FAMILY_SPEED_POTION:
 					ob->set_direct_frame(3);
 					break;
-				default :
-					break;
-			} // end of treasures
-		case Order::Generator:
-			switch (family)
-			{
+					default :
+						break;
+				} // end of treasures
+				break;
+			case Order::Generator:
+				switch (family)
+				{
 				case FAMILY_TOWER:
 					ob->stats()->weapon_cost = 0;
 					ob->default_weapon = FAMILY_MAGE;
@@ -1121,7 +1133,7 @@ walker  *loader::set_walker(walker *ob,
 }
 
 // This is used for grabbing a pixieN directly, not through a walker
-pixieN *loader::create_pixieN(Order order, char family)
+pixieN *loader::create_pixieN(Order order, Sint32 family)
 {
 	pixieN *newpixie;
 

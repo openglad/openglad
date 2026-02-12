@@ -7,7 +7,7 @@
 // Forward declarations from picker.cpp
 std::string get_class_description(unsigned char family);
 const char* family_name_copy(short family);
-const char* get_family_string(short family);
+const char* get_family_string(Sint32 family);
 const char* get_training_cost_rating(unsigned char family, int stat);
 const char* get_random_name(unsigned char family);
 bool has_name_in_team(const char* name);
@@ -66,7 +66,7 @@ REGISTER_TEST(test_get_class_description_mage);
 
 void test_get_class_description_all_families()
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    unsigned char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN,
@@ -139,7 +139,7 @@ void test_get_training_cost_rating_all_families()
 {
     for (int fam = 0; fam <= FAMILY_ARCHMAGE; fam++) {
         for (int stat = 0; stat < 5; stat++) {
-            const char* rating = get_training_cost_rating(fam, stat);
+            const char* rating = get_training_cost_rating(static_cast<unsigned char>(fam), stat);
             TEST_ASSERT(rating != nullptr, "rating should not be null");
             TEST_ASSERT(strlen(rating) <= 5, "rating should be at most 5 chars");
         }
@@ -163,7 +163,7 @@ REGISTER_TEST(test_get_random_name_returns_nonempty);
 void test_get_random_name_all_families()
 {
     srand(42);
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    unsigned char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
@@ -185,8 +185,8 @@ REGISTER_TEST(test_get_random_name_all_families);
 void test_has_name_in_team_empty()
 {
     // Save and clear team
-    int orig_size = myscreen->save_data.team_size;
-    myscreen->save_data.team_size = 0;
+    const unsigned char orig_size = myscreen->save_data.team_size;
+    myscreen->save_data.team_size = static_cast<unsigned char>(0);
 
     bool result = has_name_in_team("TestName");
     TEST_ASSERT(!result, "empty team should not have any names");
@@ -194,7 +194,7 @@ void test_has_name_in_team_empty()
     guy* g = new guy(FAMILY_SOLDIER);
     g->name = "TestName";
     myscreen->save_data.team_list[0].reset(g);
-    myscreen->save_data.team_size = 1;
+    myscreen->save_data.team_size = static_cast<unsigned char>(1);
     TEST_ASSERT(has_name_in_team("TestName"), "has_name_in_team should detect existing name");
     TEST_ASSERT(!has_name_in_team("OtherName"), "has_name_in_team should reject missing name");
     myscreen->save_data.team_list[0].reset(nullptr);
@@ -209,7 +209,7 @@ REGISTER_TEST(test_has_name_in_team_empty);
 
 void test_how_many_empty_team()
 {
-    int orig_size = myscreen->save_data.team_size;
+    const unsigned char orig_size = myscreen->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         orig_list[i] = myscreen->save_data.team_list[i].release();
@@ -230,7 +230,7 @@ REGISTER_TEST(test_how_many_empty_team);
 void test_how_many_with_team()
 {
     // Save originals
-    int orig_size = myscreen->save_data.team_size;
+    const unsigned char orig_size = myscreen->save_data.team_size;
     guy* orig_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         orig_list[i] = myscreen->save_data.team_list[i].release();
@@ -244,7 +244,7 @@ void test_how_many_with_team()
     myscreen->save_data.team_list[0].reset(g1);
     myscreen->save_data.team_list[1].reset(g2);
     myscreen->save_data.team_list[2].reset(g3);
-    myscreen->save_data.team_size = 3;
+    myscreen->save_data.team_size = static_cast<unsigned char>(3);
 
     TEST_ASSERT_EQ(2, (int)how_many(FAMILY_SOLDIER), "should count 2 soldiers");
     TEST_ASSERT_EQ(1, (int)how_many(FAMILY_MAGE), "should count 1 mage");
@@ -269,7 +269,7 @@ void test_how_many_with_team()
     guy* old_current = current_guy;
     short old_team_num = current_team_num;
     Sint32 old_diff = current_difficulty;
-    int old_allied = myscreen->save_data.allied_mode;
+    const short old_allied = myscreen->save_data.allied_mode;
 
     allbuttons[2] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b2", KEYSTATE_UNKNOWN);
     allbuttons[6] = new vbutton(0, 0, 10, 10, NULLMENU, 0, "b6", KEYSTATE_UNKNOWN);
@@ -280,7 +280,7 @@ void test_how_many_with_team()
     current_guy->teamnum = 1;
     current_team_num = 0;
     current_difficulty = DIFFICULTY_SETTINGS - 1;
-    myscreen->save_data.allied_mode = 0;
+    myscreen->save_data.allied_mode = static_cast<short>(0);
 
     TEST_ASSERT_EQ(4, (int)set_difficulty(), "set_difficulty should return OK");
     TEST_ASSERT(
@@ -305,21 +305,21 @@ void test_how_many_with_team()
     TEST_ASSERT(allbuttons[7]->label == "PVP: Enemy", "enemy label should update");
 
     // Directly exercise picker helpers that were still uncovered.
-    int saved_team_size = myscreen->save_data.team_size;
+    const unsigned char saved_team_size = myscreen->save_data.team_size;
     guy* saved_team_list[MAX_TEAM_SIZE];
     for (int i = 0; i < MAX_TEAM_SIZE; i++) {
         saved_team_list[i] = myscreen->save_data.team_list[i].release();
         myscreen->save_data.team_list[i].reset(nullptr);
     }
-    myscreen->save_data.team_size = 0;
+    myscreen->save_data.team_size = static_cast<unsigned char>(0);
 
     guy* recruited = new guy(FAMILY_SOLDIER);
     Sint32 slot = add_guy(recruited);
     TEST_ASSERT(slot >= 0, "add_guy(guy*) should place recruit in a slot");
-    TEST_ASSERT(myscreen->save_data.team_size == 1, "team size should increment after add_guy(guy*)");
+    TEST_ASSERT(myscreen->save_data.team_size == static_cast<unsigned char>(1), "team size should increment after add_guy(guy*)");
 
     TEST_ASSERT_EQ(1, (int)delete_all(), "delete_all should report number of removed members");
-    TEST_ASSERT(myscreen->save_data.team_size == 0, "delete_all should clear team size");
+    TEST_ASSERT(myscreen->save_data.team_size == static_cast<unsigned char>(0), "delete_all should clear team size");
 
     vbutton* old0 = allbuttons[0];
     if (allbuttons[0] == nullptr) {

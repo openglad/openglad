@@ -212,7 +212,7 @@ void test_view_resize_4p_all_players()
     myscreen->numviews = 4;
 
     for (int p = 0; p < 4; p++) {
-        vs->mynum = p;
+        vs->mynum = static_cast<short>(p);
         vs->resize(PREF_VIEW_FULL);
     }
 

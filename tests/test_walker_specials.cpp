@@ -17,7 +17,7 @@ static void teardown_walker_special_test()
 #define REGISTER_SPECIAL_TEST(func) \
     REGISTER_TEST_WITH_FIXTURE(func, nullptr, teardown_walker_special_test)
 
-static walker* make_special_guy(char family, unsigned char team = 0, int level = 3)
+static walker* make_special_guy(char family, unsigned char team = 0, short level = 3)
 {
     guy g(family);
     g.teamnum = team;
@@ -391,19 +391,19 @@ void test_walker_special_mage_energy_wave()
             a->myguy->constitution = 180;
             a->myguy->teamnum = 1;
         }
-        blood->stats()->old_family = FAMILY_SOLDIER;
-        blood->team_num = 1;
+	        blood->stats()->old_family = FAMILY_SOLDIER;
+	        blood->team_num = 1;
 
-        for (int sp = 1; sp <= 5; ++sp) {
-            for (int shift = 0; shift <= 1; ++shift) {
-                a->current_special = sp;
-                a->busy = 0;
-                a->shifter_down = shift;
-                a->stats()->magicpoints = a->stats()->max_magicpoints;
-                (void)a->special();
-            }
-        }
-    }
+	        for (int sp = 1; sp <= 5; ++sp) {
+	            for (int shift = 0; shift <= 1; ++shift) {
+	                a->current_special = static_cast<char>(sp);
+	                a->busy = 0;
+	                a->shifter_down = static_cast<short>(shift);
+	                a->stats()->magicpoints = a->stats()->max_magicpoints;
+	                (void)a->special();
+	            }
+	        }
+	    }
 
     // Target uncovered archmage illusion case tables (rng(3/5/7/9) branches).
     myscreen->level_data.delete_objects();
@@ -422,14 +422,14 @@ void test_walker_special_mage_energy_wave()
                 SequenceRandom pick_rng({pick});
                 arch2_ctx.rng = &pick_rng;
                 set_global_context(&arch2_ctx);
-                arch2->stats()->magicpoints = mp_tiers[t];
-                arch2->current_special = 3;
-                arch2->shifter_down = 0;
-                arch2->busy = 0;
-                (void)arch2->special();
-                set_global_context(nullptr);
-            }
-        }
+	                arch2->stats()->magicpoints = static_cast<float>(mp_tiers[t]);
+	                arch2->current_special = static_cast<char>(3);
+	                arch2->shifter_down = static_cast<short>(0);
+	                arch2->busy = 0;
+	                (void)arch2->special();
+	                set_global_context(nullptr);
+	            }
+	        }
     }
 
     myscreen->level_data.delete_objects();
@@ -665,8 +665,8 @@ void test_walker_special_no_magic()
     TEST_ASSERT(!w->special(), "insufficient MP for selected special index should fail");
 
     // Exercise base-class fallback implementations explicitly.
-    TEST_ASSERT_EQ(-1, (int)w->walker::shove(nullptr, 0, 0), "base shove should return -1");
-    TEST_ASSERT_EQ(-1, (int)w->walker::shove(w, 1, 0), "base shove log path should still return -1");
+    TEST_ASSERT_EQ(-1, (int)w->walker::shove(nullptr, static_cast<short>(0), static_cast<short>(0)), "base shove should return -1");
+    TEST_ASSERT_EQ(-1, (int)w->walker::shove(w, static_cast<short>(1), static_cast<short>(0)), "base shove log path should still return -1");
     TEST_ASSERT(!w->walker::eat_me(nullptr), "base eat_me fallback should return false");
     TEST_ASSERT(w->walker::do_summon(1, 10) == nullptr, "base do_summon fallback should return null");
     TEST_ASSERT(!w->walker::check_special(), "base check_special fallback should return false");
@@ -723,8 +723,8 @@ void test_walker_special_archmage_illusion_rng_tables()
     arch->setxy(120, 120);
     arch->stats()->special_cost[3] = 0;
     arch->stats()->max_magicpoints = 2000;
-    arch->current_special = 3;
-    arch->shifter_down = 0;
+    arch->current_special = static_cast<char>(3);
+    arch->shifter_down = static_cast<short>(0);
 
     GameContext ctx;
     ctx.game_screen = myscreen;
@@ -737,7 +737,7 @@ void test_walker_special_archmage_illusion_rng_tables()
             ctx.rng = &rng;
             set_global_context(&ctx);
             int before = static_cast<int>(myscreen->level_data.oblist.size());
-            arch->stats()->magicpoints = mp_tiers[t];
+            arch->stats()->magicpoints = static_cast<float>(mp_tiers[t]);
             arch->busy = 0;
             (void)arch->special();
             int after = static_cast<int>(myscreen->level_data.oblist.size());

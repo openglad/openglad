@@ -22,8 +22,8 @@ PixieData::PixieData()
     : frames(0), w(0), h(0), data(nullptr)
 {}
 
-PixieData::PixieData(unsigned char frames, unsigned char w, unsigned char h, unsigned char* data)
-    : frames(frames), w(w), h(h), data(data)
+PixieData::PixieData(unsigned char frames_, unsigned char w_, unsigned char h_, unsigned char* data_)
+    : frames(frames_), w(w_), h(h_), data(data_)
 {}
 
 PixieData::PixieData(PixieData&& other) noexcept

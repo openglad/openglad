@@ -11,8 +11,8 @@ short remaining_team(screen* myscreen, char myteam);
 void draw_radar_gems(screen* myscreen);
 void draw_gem(short x, short y, short color, screen* myscreen);
 void draw_value_bar(short left, short top, walker* control, short mode, screen* myscreen);
-void new_draw_value_bar(short left, short top, walker* control, short mode, screen* myscreen);
-void draw_percentage_bar(short left, short top, unsigned char somecolor, short somelength, screen* myscreen);
+void new_draw_value_bar(Sint32 left, Sint32 top, walker* control, short mode, screen* myscreen);
+void draw_percentage_bar(Sint32 left, Sint32 top, unsigned char somecolor, short somelength, screen* myscreen);
 short score_panel(screen* myscreen);
 short score_panel(screen* myscreen, short do_it);
 short new_score_panel(screen* myscreen, short do_it);
@@ -144,7 +144,7 @@ void test_glad_score_panel_and_new_score_panel_modes()
     control->stats()->max_hitpoints = 100;
     control->stats()->magicpoints = 33;
     control->stats()->max_magicpoints = 80;
-    control->stats()->special_cost[control->current_special] = 10;
+    control->stats()->special_cost[static_cast<unsigned char>(control->current_special)] = 10;
 
     viewscreen* v = myscreen->viewob[0].get();
     TEST_ASSERT(v != nullptr, "view should exist");

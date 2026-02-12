@@ -21,8 +21,8 @@ struct KeyBindingGuard
     int player;
     int key_enum;
     int old_key;
-    KeyBindingGuard(int player, int key_enum, int new_key)
-        : player(player), key_enum(key_enum), old_key(player_keys[player][key_enum])
+    KeyBindingGuard(int player_, int key_enum_, int new_key)
+        : player(player_), key_enum(key_enum_), old_key(player_keys[player_][key_enum_])
     {
         player_keys[player][key_enum] = new_key;
     }

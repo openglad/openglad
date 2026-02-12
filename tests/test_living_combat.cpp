@@ -5,7 +5,7 @@
 
 extern screen* myscreen;
 
-static walker* make_living(char family, int level = 3)
+static walker* make_living(char family, short level = 3)
 {
     guy g(family);
     g.upgrade_to_level(level, true);
@@ -20,7 +20,7 @@ static walker* make_living(char family, int level = 3)
 
 void test_living_set_difficulty_levels()
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
@@ -46,7 +46,7 @@ REGISTER_TEST(test_living_set_difficulty_levels);
 
 void test_living_check_special_all_families()
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
@@ -159,7 +159,7 @@ REGISTER_TEST(test_living_shove_movement);
 
 void test_living_walk_all_families()
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC };
 
     for (int i = 0; i < 6; i++) {

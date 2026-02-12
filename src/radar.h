@@ -25,7 +25,7 @@
 class radar
 {
 	public:
-		radar(viewscreen * myview, screen * myscreen, short whatnum);
+		radar(viewscreen * myview, screen * screen_ctx, short whatnum);
 		~radar();
 		short draw();
 		short draw(LevelData* data);

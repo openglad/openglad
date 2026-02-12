@@ -47,9 +47,9 @@ void test_view_resize()
 {
     viewscreen* vs = myscreen->viewob[0].get();
     if (!vs) return;
-    short oldw = vs->endx - vs->xloc;
+    Sint32 oldw = vs->endx - vs->xloc;
     vs->resize(PREF_VIEW_FULL);
-    short neww = vs->endx - vs->xloc;
+    Sint32 neww = vs->endx - vs->xloc;
     (void)oldw;
     (void)neww;
     // Restore

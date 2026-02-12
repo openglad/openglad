@@ -79,7 +79,7 @@ void test_screen_find_in_range_basic()
 
     myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(target));
 
-    short howmany = 0;
+    Sint32 howmany = 0;
     auto result = myscreen->find_in_range(myscreen->level_data.oblist, 500, &howmany, seeker);
     TEST_ASSERT(howmany > 0, "should find at least 1 in range");
 
@@ -100,7 +100,7 @@ void test_screen_find_in_range_out_of_range()
 
     myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(target));
 
-    short howmany = 0;
+    Sint32 howmany = 0;
     auto result = myscreen->find_in_range(myscreen->level_data.oblist, 5, &howmany, seeker);
     (void)result; // range semantics vary; just verify no crash
 
@@ -127,7 +127,7 @@ void test_screen_find_foes_in_range()
 
     myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
 
-    short howmany = 0;
+    Sint32 howmany = 0;
     auto result = myscreen->find_foes_in_range(myscreen->level_data.oblist, 500, &howmany, seeker);
     TEST_ASSERT(howmany > 0, "should find at least 1 foe in range");
 
@@ -154,7 +154,7 @@ void test_screen_find_friends_in_range()
 
     myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(friend_w));
 
-    short howmany = 0;
+    Sint32 howmany = 0;
     auto result = myscreen->find_friends_in_range(myscreen->level_data.oblist, 500, &howmany, seeker);
     TEST_ASSERT(howmany > 0, "should find at least 1 friend in range");
 

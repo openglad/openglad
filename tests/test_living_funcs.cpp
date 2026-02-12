@@ -36,7 +36,7 @@ REGISTER_TEST(test_walkerIsAutoAttackable_soldier);
 
 void test_walkerIsAutoAttackable_multiple_families()
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
@@ -60,7 +60,6 @@ void test_living_set_difficulty_basic()
     walker* w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    float hp_before = w->stats()->max_hitpoints;
     ((living*)w)->set_difficulty(5);
     // After set_difficulty, stats should have changed
     TEST_ASSERT(w->stats()->max_hitpoints > 0, "max HP should be positive after set_difficulty");
@@ -91,7 +90,7 @@ REGISTER_TEST(test_living_set_difficulty_level_10);
 
 void test_living_set_difficulty_all_families()
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };

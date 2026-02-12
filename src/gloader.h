@@ -32,11 +32,11 @@ class loader
 		loader& operator=(const loader&) = delete;
 		loader(loader&&) = delete;
 		loader& operator=(loader&&) = delete;
-        std::unique_ptr<walker> create_walker_owned(Order order, char family, screen* screenp, [[maybe_unused]] bool cache_weapons = true);
-        walker  *create_walker(Order order, char family, screen  *screenp, [[maybe_unused]] bool cache_weapons = true);
-		void set_derived_stats(walker* w, Order order, char family);
-		pixieN *create_pixieN(Order order, char family);
-		walker *set_walker(walker *ob, Order order, char family);
+        std::unique_ptr<walker> create_walker_owned(Order order, Sint32 family, screen* screenp, [[maybe_unused]] bool cache_weapons = true);
+        walker  *create_walker(Order order, Sint32 family, screen  *screenp, [[maybe_unused]] bool cache_weapons = true);
+		void set_derived_stats(walker* w, Order order, Sint32 family);
+		pixieN *create_pixieN(Order order, Sint32 family);
+		walker *set_walker(walker *ob, Order order, Sint32 family);
 		std::vector<PixieData> graphics;
 		std::vector<signed char**> animations;
 		std::vector<float> stepsizes;

@@ -24,6 +24,8 @@
 class living : public walker
 {
 	public:
+		using walker::facing; // unhide overloads (Sint32/float) from base
+		using walker::shove;  // unhide overloads (Sint32/float) from base
 		living(const PixieData& data);
 		~living() override;
 		living(const living&) = delete;
@@ -34,7 +36,7 @@ class living : public walker
 		bool           check_special() override;
 		bool           collide(walker  *ob) override;
 		bool           do_action(); // perform overriding action
-		walker*        do_summon(char whatfamily, unsigned short lifetime) override;
+		walker* do_summon(char whatfamily, Sint32 summon_lifetime) override;
 		short          facing(short x, short y) override;
 		void           set_difficulty(Uint32 whatlevel) override;
 		short          shove(walker  *target, short x, short y) override;
@@ -46,4 +48,3 @@ class living : public walker
 	protected:
 		bool act_random() override;
 };
-

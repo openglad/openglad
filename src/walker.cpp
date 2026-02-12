@@ -261,7 +261,7 @@ walker::~walker()
 // and checks to see if the object is too busy.
 bool walker::init_fire()
 {
-	return init_fire(lastx, lasty);
+	return init_fire(static_cast<short>(lastx), static_cast<short>(lasty));
 }
 
 bool walker::init_fire(short xdir, short ydir)
@@ -456,23 +456,24 @@ walker  * walker::fire()
 				myscreen->soundp->play_sound(SOUND_FWIP);
 		}
 		if (order == Order::Generator)
-		{
-			switch (family)
 			{
-				case FAMILY_TOWER: // mages, no lifetime
-					weapon->ani_type = ANI_TELE_IN; // mages teleport
-				case FAMILY_TREEHOUSE: // elves also no lifetime
-					weapon->stats()->level = rng(stats_->level)+1;
-					weapon->set_difficulty( static_cast<Uint32>(weapon->stats()->level) );
-					weapon->owner = nullptr;
-					break;
-				default: // tents, bones, etc
-					weapon->lifetime = 800 + stats_->level*11;
-					weapon->stats()->level = rng(stats_->level)+1;
-					weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
-					break;
+				switch (family)
+				{
+					case FAMILY_TOWER: // mages, no lifetime
+						weapon->ani_type = ANI_TELE_IN; // mages teleport
+						/* fall through */
+					case FAMILY_TREEHOUSE: // elves also no lifetime
+						weapon->stats()->level = static_cast<Sint32>(rng(static_cast<Uint32>(stats_->level))) + 1;
+						weapon->set_difficulty( static_cast<Uint32>(weapon->stats()->level) );
+						weapon->owner = nullptr;
+						break;
+					default: // tents, bones, etc
+						weapon->lifetime = 800 + stats_->level*11;
+						weapon->stats()->level = static_cast<Sint32>(rng(static_cast<Uint32>(stats_->level))) + 1;
+						weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
+						break;
+				}
 			}
-		}
 		else if (order == Order::Living)
 		{
 			switch (family)
@@ -558,27 +559,31 @@ bool float_eq(float a, float b)
 void draw_smallHealthBar(walker* w, viewscreen* view_buf)
 {
     if(!active_config().is_on("effects", "mini_hp_bar"))
+    {
         return;
-    
+    }
+
     if(w->query_order() != Order::Living && w->query_order() != Order::Generator)
+    {
         return;
-    
+    }
+
 	Sint32 xscreen = static_cast<Sint32>(w->xpos - view_buf->topx + view_buf->xloc);
 	Sint32 yscreen = static_cast<Sint32>(w->ypos - view_buf->topy + view_buf->yloc);
-    
-    
-    Sint32 walkerstartx = xscreen;
-    Sint32 walkerstarty = yscreen;
-    Sint32 portstartx = view_buf->xloc;
-    Sint32 portstarty = view_buf->yloc;
-    Sint32 portendx = view_buf->endx;
-    Sint32 portendy = view_buf->endy;
-    
-    
-    SDL_Rect r = {Sint16(walkerstartx), Sint16(walkerstarty + w->sizey + 1), Uint16(w->sizex), 1};
-    if(r.x < portstartx || r.x > portendx
-       || r.y < portstarty || r.y > portendy)
-       return;
+
+    const Sint32 walkerstartx = xscreen;
+    const Sint32 walkerstarty = yscreen;
+    const Sint32 portstartx = view_buf->xloc;
+    const Sint32 portstarty = view_buf->yloc;
+    const Sint32 portendx = view_buf->endx;
+    const Sint32 portendy = view_buf->endy;
+
+    SDL_Rect r{static_cast<int>(walkerstartx),
+               static_cast<int>(walkerstarty + w->sizey + 1),
+               static_cast<int>(w->sizex),
+               1};
+    if(r.x < portstartx || r.x > portendx || r.y < portstarty || r.y > portendy)
+        return;
     
     // Last hit's effect
     float last_points = w->last_hitpoints;
@@ -588,7 +593,7 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
     float points = w->stats()->hitpoints;
     float ratio = float(points)/w->stats()->max_hitpoints;
     
-    char whatcolor;
+    unsigned char whatcolor;
     
     if (float_eq(points, w->stats()->max_hitpoints))
         whatcolor = MAX_HP_COLOR;
@@ -605,33 +610,40 @@ void draw_smallHealthBar(walker* w, viewscreen* view_buf)
     {
         if(ratio < 0.95f)
         {
-            Uint16 max_w = r.w;
-            
+            const Sint32 max_w = r.w;
+            const float width_f = static_cast<float>(r.w);
+
             if(w->last_hitpoints > w->stats()->hitpoints && last_ratio <= 1.0f)
-                myscreen->draw_box(r.x, r.y, r.x + r.w*last_ratio, r.y + r.h, 53, 1);
-                
-            myscreen->draw_box(r.x, r.y, r.x + r.w*ratio, r.y + r.h, whatcolor, 1);
+            {
+                const Sint32 last_w = static_cast<Sint32>(width_f * last_ratio);
+                myscreen->draw_box(r.x, r.y, r.x + last_w, r.y + r.h, static_cast<unsigned char>(53), 1);
+            }
+
+            const Sint32 cur_w = static_cast<Sint32>(width_f * ratio);
+            myscreen->draw_box(r.x, r.y, r.x + cur_w, r.y + r.h, whatcolor, 1);
             myscreen->draw_box(r.x-1, r.y-1, r.x + max_w+1, r.y + r.h+1, BLACK, 0);
         }
     }
 }
 
 
-walker::DamageNumber::DamageNumber(float x, float y, float value, unsigned char color)
-    : x(x), y(y), t(1.0f), value(value), color(color)
+walker::DamageNumber::DamageNumber(float x_, float y_, float value_, unsigned char color_)
+    : x(x_), y(y_), t(1.0f), value(value_), color(color_)
 {}
 
 void walker::DamageNumber::draw(viewscreen* view_buf)
 {
-	Sint32 xscreen = static_cast<Sint32>(x - view_buf->topx + view_buf->xloc);
-	Sint32 yscreen = static_cast<Sint32>(y - view_buf->topy + view_buf->yloc);
+	const float xscreen_f = x - static_cast<float>(view_buf->topx) + static_cast<float>(view_buf->xloc);
+	const float yscreen_f = y - static_cast<float>(view_buf->topy) + static_cast<float>(view_buf->yloc);
+	const Sint32 xscreen = static_cast<Sint32>(xscreen_f);
+	const Sint32 yscreen = static_cast<Sint32>(yscreen_f);
 	
 	Uint8 alpha = 0;
-	if(t >= 255)
-        alpha = 255;
-    else if(t >= 0)
-        alpha = t*255;
-    myscreen->text_normal.write_xy_center_alpha(xscreen, yscreen, color, alpha, "%.0f", value);
+	if (t >= 1.0f)
+		alpha = 255;
+	else if (t > 0.0f)
+		alpha = static_cast<Uint8>(t * 255.0f);
+	myscreen->text_normal.write_xy_center_alpha(xscreen, yscreen, color, alpha, "%.0f", value);
 }
 
 #define ATTACK_LUNGE_SIZE 5
@@ -640,8 +652,8 @@ void walker::DamageNumber::draw(viewscreen* view_buf)
 bool walker::draw(viewscreen  *view_buf)
 {
     // Update the drawing coords from the real position
-    xpos = worldx_;
-    ypos = worldy_;
+    xpos = static_cast<short>(worldx_);
+    ypos = static_cast<short>(worldy_);
     
 	Sint32 xscreen, yscreen;
 
@@ -660,16 +672,20 @@ bool walker::draw(viewscreen  *view_buf)
 	yscreen = static_cast<Sint32>(ypos - view_buf->topy + view_buf->yloc);
 	
 	if(attack_lunge > 0.0f)
-    {
-        xscreen += attack_lunge*ATTACK_LUNGE_SIZE*cos(attack_lunge_angle);
-        yscreen += attack_lunge*ATTACK_LUNGE_SIZE*sin(attack_lunge_angle);
-    }
+	    {
+	        const float dx = attack_lunge * ATTACK_LUNGE_SIZE * cosf(attack_lunge_angle);
+	        const float dy = attack_lunge * ATTACK_LUNGE_SIZE * sinf(attack_lunge_angle);
+	        xscreen += static_cast<Sint32>(dx);
+	        yscreen += static_cast<Sint32>(dy);
+	    }
     
 	if(hit_recoil > 0.0f)
-    {
-        xscreen += hit_recoil*HIT_RECOIL_SIZE*cos(hit_recoil_angle);
-        yscreen += hit_recoil*HIT_RECOIL_SIZE*sin(hit_recoil_angle);
-    }
+	    {
+	        const float dx = hit_recoil * HIT_RECOIL_SIZE * cosf(hit_recoil_angle);
+	        const float dy = hit_recoil * HIT_RECOIL_SIZE * sinf(hit_recoil_angle);
+	        xscreen += static_cast<Sint32>(dx);
+	        yscreen += static_cast<Sint32>(dy);
+	    }
 
 	if (stats_->query_bit_flags( BIT_NAMED ) || invisibility_left || flight_left || invulnerable_left)
 	{
@@ -807,16 +823,16 @@ bool walker::draw(viewscreen  *view_buf)
         }
         else
         {
-            myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
-                                    view_buf->xloc, view_buf->yloc,
-                                    view_buf->endx, view_buf->endy,
-                                    bmp_span, query_team_color(),
-                                    fill_mode, //mode
-                                    invisibility_amount, //invisibility
-                                    outline_style, //outline
-                                    phantom_mode); //type of phantom
-        }
-    }
+	            myscreen->walkputbuffer( xscreen, yscreen, sizex, sizey,
+	                                    view_buf->xloc, view_buf->yloc,
+	                                    view_buf->endx, view_buf->endy,
+	                                    bmp_span, query_team_color(),
+	                                    static_cast<unsigned char>(fill_mode), //mode
+	                                    invisibility_amount, //invisibility
+	                                    static_cast<unsigned char>(outline_style), //outline
+	                                    static_cast<unsigned char>(phantom_mode)); //type of phantom
+	        }
+	    }
 	
 	if(should_draw_hp)
         draw_smallHealthBar(this, view_buf);
@@ -1226,7 +1242,7 @@ bool walker::animate()
 			// Transfer stats/etc. across to new guy ..
 			//stats_->magicpoints -= stats_->special_cost[0];
 			transfer_stats(newob);
-			if (newob->myguy && newob->myguy->exp < (1000*stats_->level) )
+			if (newob->myguy && newob->myguy->exp < static_cast<Uint32>(1000 * stats_->level) )
 			{
 				newob->clear_myguy();  // can't be 'sustained' if too low
 				newob->stats()->name = "SLIME"; // generic name
@@ -1236,7 +1252,7 @@ bool walker::animate()
 			{
 				Uint32 exp = myguy->exp / 2;
 				
-				short newlevel = calculate_level(exp);
+				const short newlevel = static_cast<short>(calculate_level(exp));
 				// Downgrade us and the copy
 				myguy->upgrade_to_level(newlevel);
 				myguy->update_derived_stats(this);
@@ -1278,7 +1294,7 @@ walker  *walker::create_weapon()
 		weapon = myscreen->level_data.add_ob(Order::Living, static_cast<char>(default_weapon));
 		weapon->team_num = team_num;
 		weapon->owner = this;
-		weapon->set_difficulty(stats_->level);
+		weapon->set_difficulty(static_cast<Uint32>(stats_->level));
 		return weapon;
 	}
 	// Normally, only livings fire
@@ -1287,8 +1303,8 @@ walker  *walker::create_weapon()
 	weapon = myscreen->level_data.add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	weapon->team_num = team_num;
 	weapon->owner = this;
-	weapon->set_difficulty(stats_->level);
-	weapon->damage = (weapon->damage * (stats_->level+3))/4;
+	weapon->set_difficulty(static_cast<Uint32>(stats_->level));
+	weapon->damage = (weapon->damage * (static_cast<float>(stats_->level) + 3.0f)) / 4.0f;
 	if (myguy)
 	{
 		weapon->lineofsight += (myguy->strength / 23) + (myguy->dexterity / 31);
@@ -1296,7 +1312,7 @@ walker  *walker::create_weapon()
 	}
 	else
 	{
-		weapon->damage *= stats_->level;
+		weapon->damage *= static_cast<float>(stats_->level);
 	}
 	weapon->lineofsight += (stats_->level / 3);
 	switch ( facing(lastx, lasty) ) // make 'circular' ranges
@@ -1410,11 +1426,11 @@ bool walker::fire_check(short xdelta, short ydelta)
 		return 0;
 	}
 
-	if (xdelta != 0)
-		xdir = xdelta / abs(xdelta);
+		if (xdelta != 0)
+			xdir = (xdelta > 0) ? 1 : -1;
 
-	if (ydelta != 0)
-		ydir = ydelta / abs(ydelta);
+		if (ydelta != 0)
+			ydir = (ydelta > 0) ? 1 : -1;
 
 	/* // why are we assuming walls don't matter in these two cases?
 	  if (!xdelta || !ydelta) // aligned on a major axis
@@ -1490,14 +1506,14 @@ bool
 walker::act_generate()
 {
 	if ( myscreen->level_data.numobs < MAXOBS &&
-	        (rng(stats_->level*3) > (rng(300+(myscreen->level_data.numobs*8)) ) )
+	        (rng(static_cast<Uint32>(stats_->level * 3)) > rng(static_cast<Uint32>(300 + (myscreen->level_data.numobs * 8))) )
 	   )
 	{
-		lastx = 1-rng(3);
-		lasty = 1-rng(3);
+		lastx = static_cast<float>(1 - static_cast<Sint32>(rng(3)));
+		lasty = static_cast<float>(1 - static_cast<Sint32>(rng(3)));
 		if (!lastx && !lasty)
 			lastx = 1;
-		init_fire(lastx, lasty);
+		init_fire(static_cast<short>(lastx), static_cast<short>(lasty));
 		//    lastx = 0;
 		//    lasty = 0;
 		stats_->hitpoints++;
@@ -1592,22 +1608,22 @@ walker::act_random()
 
 	if (foe)
 	{
-		newx = xdist;    // total horizontal distance..
-		if (newx)                      // If it's not 0, then get
-			newx = newx / abs(newx);       // the normal of it..
+			newx = xdist;    // total horizontal distance..
+			if (newx)                      // If it's not 0, then get
+				newx = (newx > 0) ? 1 : -1;       // the normal of it..
 
-		newy = ydist;
-		if (newy)
-			newy = newy / abs(newy);
+			newy = ydist;
+			if (newy)
+				newy = (newy > 0) ? 1 : -1;
 	}  // end of if we had a foe ..
-	else
-	{
-		while ( !newx && !newy)
+		else
 		{
-			newx = (1-rng(3));   // Walk in some random direction
-			newy = (1-rng(3));   // other than 0,0 :)
+			while ( !newx && !newy)
+			{
+				newx = static_cast<short>(1 - static_cast<Sint32>(rng(3)));   // Walk in some random direction
+				newy = static_cast<short>(1 - static_cast<Sint32>(rng(3)));   // other than 0,0 :)
+			}
 		}
-	}
 
 	// If blocked
 	collide_ob = nullptr;
@@ -1668,7 +1684,7 @@ void walker::transfer_stats(walker  *newob)
 
 // change picture, etc. but NOT stats (use transfer_stats for that)
 
-void walker::transform_to(Order whatorder, char whatfamily)
+void walker::transform_to(Order whatorder, Sint32 whatfamily)
 {
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
@@ -1706,7 +1722,7 @@ void walker::transform_to(Order whatorder, char whatfamily)
 
 	sizex = data.w;
 	sizey = data.h;
-	size = sizex*sizey;
+	size = static_cast<unsigned short>(sizex * sizey);
 
 	tempxpos = xcenter - sizex/2;
 	tempypos = ycenter - sizey/2;
@@ -1741,12 +1757,12 @@ bool walker::death()
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
-		newob = myscreen->level_data.add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
-		newob->stats()->hitpoints = myguy->query_heart_value();
-		newob->stats()->hitpoints *= 0.75 / 2;  // 75%, divided by 2, since score is doubled at end of level
-		newob->team_num = team_num;
-		newob->center_on(this);
-	}
+			newob = myscreen->level_data.add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
+			newob->stats()->hitpoints = static_cast<float>(myguy->query_heart_value());
+			newob->stats()->hitpoints *= 0.75f / 2.0f;  // 75%, divided by 2, since score is doubled at end of level
+			newob->team_num = team_num;
+			newob->center_on(this);
+		}
 
 	switch (order)
 	{
@@ -1819,8 +1835,8 @@ bool walker::death()
 				newob->stats()->level = stats_->level;
 				newob->ani_type = ANI_EXPLODE;
 				newob->setxy(xpos+rng(sizex-8)+4, ypos+4+rng(sizey-8) );
-				newob->damage = stats_->level*2;
-				newob->set_frame(rng(3));
+					newob->damage = static_cast<float>(stats_->level) * 2.0f;
+					newob->set_frame(static_cast<short>(rng(3)));
 				if (on_screen())
 					myscreen->soundp->play_sound(SOUND_EXPLODE);
 			}
@@ -1861,7 +1877,7 @@ void walker::generate_bloodspot()
 	// We can't select other 'bloodspot' frames, because set_frame
 	// appears to check the order and family and reset our picture
 	// to a living guy .. we need to find a way around this ..
-	bloodstain->set_frame(rng(4));  // has no effect yet ..
+	bloodstain->set_frame(static_cast<short>(rng(4)));  // has no effect yet ..
 	bloodstain->ani_type = ANI_WALK;
 	//bloodstain->bmp = (char *) (data+3); // our image
 
@@ -1883,9 +1899,9 @@ void walker::set_direct_frame(short whichframe)
 
 }
 
-walker * walker::do_summon(char whatfamily, unsigned short lifetime)
+walker* walker::do_summon(char whatfamily, Sint32 summon_lifetime)
 {
-	if (whatfamily || lifetime)
+	if (whatfamily || summon_lifetime)
 		Log("Should not be hitting walker::do_summon!\n");
 	return nullptr;
 }
@@ -1924,14 +1940,15 @@ void walker::set_difficulty(Uint32 whatlevel)
 		case Order::Generator:
 			temp = 100*whatlevel;
 			temp = (temp * dif1) / 100;
-			stats_->hitpoints = temp;
+			stats_->hitpoints = static_cast<float>(temp);
 			break;
 		default:  // adjust standard settings for the rest ..
 			if (team_num != 0)  // do all EXCEPT player characters
 			{
-				stats_->max_hitpoints = (stats_->max_hitpoints*dif1) / 100.0f;
-				stats_->max_magicpoints = (stats_->max_magicpoints*dif1) / 100.0f;
-				damage = (damage * dif1) / 100.0f;
+				const float dif = static_cast<float>(dif1);
+				stats_->max_hitpoints = (stats_->max_hitpoints * dif) / 100.0f;
+				stats_->max_magicpoints = (stats_->max_magicpoints * dif) / 100.0f;
+				damage = (damage * dif) / 100.0f;
 			}
 			break;
 	}

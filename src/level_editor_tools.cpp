@@ -52,9 +52,9 @@ bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)
     return false;
 }
 
-void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y)
+void set_screen_pos(screen *screenp, Sint32 x, Sint32 y)
 {
-    myscreen->level_data.topx = x;
-    myscreen->level_data.topy = y;
+    screenp->level_data.topx = x;
+    screenp->level_data.topy = y;
     redraw = 1;
 }

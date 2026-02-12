@@ -84,9 +84,16 @@ void draw_highlight_interior(const button& b)
     if(!menu_nav_enabled)
         return;
 
-    float t = (1.0f + sinf(SDL_GetTicks()/300.0f))/2.0f;
-    float size = 3;
-    myscreen->draw_box(b.x + t*size, b.y + t*size, b.x + b.sizex - t*size, b.y + b.sizey - t*size, YELLOW, 0);
+    const float ticks = static_cast<float>(SDL_GetTicks());
+    const float t = (1.0f + sinf(ticks / 300.0f)) * 0.5f;
+    const float size = 3.0f;
+    const float inset = t * size;
+    myscreen->draw_box(static_cast<Sint32>(static_cast<float>(b.x) + inset),
+                       static_cast<Sint32>(static_cast<float>(b.y) + inset),
+                       static_cast<Sint32>(static_cast<float>(b.x + b.sizex) - inset),
+                       static_cast<Sint32>(static_cast<float>(b.y + b.sizey) - inset),
+                       YELLOW,
+                       0);
 }
 
 void draw_highlight(const button& b)
@@ -94,9 +101,16 @@ void draw_highlight(const button& b)
     if(!menu_nav_enabled)
         return;
 
-    float t = (1.0f + sinf(SDL_GetTicks()/300.0f))/2.0f;
-    float size = 3;
-    myscreen->draw_box(b.x - t*size, b.y - t*size, b.x + b.sizex + t*size, b.y + b.sizey + t*size, YELLOW, 0);
+    const float ticks = static_cast<float>(SDL_GetTicks());
+    const float t = (1.0f + sinf(ticks / 300.0f)) * 0.5f;
+    const float size = 3.0f;
+    const float inset = t * size;
+    myscreen->draw_box(static_cast<Sint32>(static_cast<float>(b.x) - inset),
+                       static_cast<Sint32>(static_cast<float>(b.y) - inset),
+                       static_cast<Sint32>(static_cast<float>(b.x + b.sizex) + inset),
+                       static_cast<Sint32>(static_cast<float>(b.y + b.sizey) + inset),
+                       YELLOW,
+                       0);
 }
 
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons)

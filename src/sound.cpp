@@ -76,15 +76,15 @@ int soundob::init()
 		return 0;
     
     int sample_rate = 22050;
-    int sample_format = AUDIO_S16;
+	    int sample_format = AUDIO_S16;
     int sample_buffer_size = 1024;
     bool stereo = true;
     
-	if(Mix_OpenAudio(sample_rate, sample_format, stereo? 2 : 1 , sample_buffer_size) == -1)
-	{
-		LogError("Mix_OpenAudio failed: {}\n", Mix_GetError());
-		exit(0);
-	}
+		if(Mix_OpenAudio(sample_rate, static_cast<Uint16>(sample_format), stereo? 2 : 1 , sample_buffer_size) == -1)
+		{
+			LogError("Mix_OpenAudio failed: {}\n", Mix_GetError());
+			exit(0);
+		}
 
 	Mix_AllocateChannels(8);
 
@@ -141,9 +141,9 @@ void soundob::load_sound(Mix_Chunk **audio, const char * file)
 	Mix_VolumeChunk(*audio,MIX_MAX_VOLUME/2);
 }
 
-void soundob::free_sound(Mix_Chunk **sound)
+void soundob::free_sound(Mix_Chunk **soundp)
 {
-	Mix_FreeChunk(*sound);
+	Mix_FreeChunk(*soundp);
 }
 
 

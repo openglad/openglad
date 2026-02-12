@@ -34,7 +34,7 @@ void test_walker_misc_methods_smoke()
     w->turn(1);
 
     // Path helpers and distance checks.
-    TEST_ASSERT(w->distance_to_ob(w) == 0.0f, "distance to self should be 0");
+    TEST_ASSERT(w->distance_to_ob(w) == 0, "distance to self should be 0");
     (void)w->distance_to_ob_center(w);
     (void)w->get_current_angle();
     (void)w->query_old_act_type();

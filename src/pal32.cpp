@@ -25,17 +25,18 @@
 */
 
 #include "pal32.h"
+#include <cstddef>
 #include <cstdio>
 #include <span>
 #include "SDL_types.h"
 
-char temppal[768];    // for loading, setting, etc.
-char gammapal[768];   // for gamma-correction
+unsigned char temppal[768];    // for loading, setting, etc.
+unsigned char gammapal[768];   // for gamma-correction
 
 //buffers: PORT: we need a palette to store the current palette
-char curpal[768];
+unsigned char curpal[768];
 
-char our_pal_lookup(int index);
+unsigned char our_pal_lookup(int index);
 
 //
 // load_and_set_palette
@@ -43,9 +44,9 @@ char our_pal_lookup(int index);
 // stores palette info in NEWPALETTE, and
 // sets the current palette to this.
 //
-short load_and_set_palette(const char *filename, std::span<unsigned char> newpalette)
+short load_and_set_palette(const char * /*filename*/, std::span<unsigned char> newpalette)
 {
-	short i;
+	std::size_t i;
 
 	//buffers: don't need this file stuff since we use our_pal_lookup instead
 	/*	if ( (infile = fopen(filename, "rb")) == nullptr ) // open for read
@@ -63,9 +64,9 @@ short load_and_set_palette(const char *filename, std::span<unsigned char> newpal
 		fclose(infile);
 	*/
 	// Copy back the palette info ..
-	for (i=0; i < 768; i++)
+	for (i = 0; i < 768; i++)
 		//newpalette[i] = temppal[i];
-		newpalette[i] = our_pal_lookup(i);
+		newpalette[i] = our_pal_lookup(static_cast<int>(i));
 
 	//set_palette(temppal);
 	set_palette(newpalette);
@@ -77,7 +78,7 @@ short load_and_set_palette(const char *filename, std::span<unsigned char> newpal
 // save_palette
 // save the dos palette so we can restore it when done
 //
-short save_palette(std::span<const unsigned char> whatpalette)
+short save_palette(std::span<const unsigned char> /*whatpalette*/)
 {
 	//buffers: PORT: we don't have a palette to save :P
 	return 0;
@@ -88,9 +89,9 @@ short save_palette(std::span<const unsigned char> whatpalette)
 // load_palette
 // Loads palette from file FILENAME into NEWPALETTE
 //
-short load_palette(const char *filename, std::span<unsigned char> newpalette)
+short load_palette(const char * /*filename*/, std::span<unsigned char> newpalette)
 {
-	short i;
+	std::size_t i;
 
 	/* buffers: we don't need this since we use our_pal_lookup() now
 		if ( (infile = fopen(filename, "rb")) == nullptr ) // open for read
@@ -108,9 +109,9 @@ short load_palette(const char *filename, std::span<unsigned char> newpalette)
 		fclose(infile);
 	*/
 	// Copy back the palette info ..
-	for (i=0; i < 768; i++)
+	for (i = 0; i < 768; i++)
 		//newpalette[i] = temppal[i];
-		newpalette[i] = our_pal_lookup(i);
+		newpalette[i] = our_pal_lookup(static_cast<int>(i));
 
 	return 1;
 }
@@ -122,10 +123,10 @@ short load_palette(const char *filename, std::span<unsigned char> newpalette)
 //
 short set_palette(std::span<const unsigned char> newpalette)
 {
-	short i;
+	std::size_t i;
 
 	// Copy over the palette info ..
-	for (i=0; i < 768; i++)
+	for (i = 0; i < 768; i++)
 		curpal[i] = newpalette[i];
 
 	return 1;
@@ -137,14 +138,14 @@ short set_palette(std::span<const unsigned char> newpalette)
 //  on whichpal based on a positive or negative amount;
 //  displays new palette, but does NOT affect whichpal
 //
-void adjust_palette(std::span<const unsigned char> whichpal, short amount)
+void adjust_palette(std::span<const unsigned char> whichpal, Sint32 amount)
 {
-	short i;
+	std::size_t i;
 	short tempcol;
 	short multiple = static_cast<short>(amount * 10);
 
 	// Copy whichpal to temppal for setting ..
-	for (i=0; i < 768; i++)
+	for (i = 0; i < 768; i++)
 	{
 		tempcol = whichpal[i];
 
@@ -157,7 +158,7 @@ void adjust_palette(std::span<const unsigned char> whichpal, short amount)
 			tempcol = 63;
 
 		// Now set the current palette index to modified bit value
-		curpal[i] = static_cast<char>(tempcol);
+		curpal[i] = static_cast<unsigned char>(tempcol);
 	}
 }
 
@@ -167,13 +168,13 @@ void adjust_palette(std::span<const unsigned char> whichpal, short amount)
 //
 void cycle_palette(std::span<unsigned char> newpalette, short start, short end, short shift)
 {
-	short i;
+	std::size_t i;
 	short length = static_cast<short>(end-start);
 	short newval;
 	short colorspot;
 
 	// Copy over the palette info ..
-	for (i=0; i < 768; i+=3)
+	for (i = 0; i < 768; i += 3)
 	{
 		colorspot = static_cast<short>(i/3);
 		if ( (colorspot>= start) && (colorspot <= end) )
@@ -182,9 +183,10 @@ void cycle_palette(std::span<unsigned char> newpalette, short start, short end, 
 			if (newval<start)
 				newval += length;
 			newval *= 3;
-			temppal[i]   = newpalette[newval];
-			temppal[i+1] = newpalette[newval+1];
-			temppal[i+2] = newpalette[newval+2];
+			const auto newval_u = static_cast<std::size_t>(newval);
+			temppal[i]   = newpalette[newval_u];
+			temppal[i+1] = newpalette[newval_u+1];
+			temppal[i+2] = newpalette[newval_u+2];
 		}
 		else
 		{
@@ -195,7 +197,7 @@ void cycle_palette(std::span<unsigned char> newpalette, short start, short end, 
 	}
 
 	// Return the modified palette
-	for (i=0; i < 768; i++)
+	for (i = 0; i < 768; i++)
 	{
 		newpalette[i] = temppal[i];
 		//buffers: since this is supposed to load the pal too, we
@@ -219,18 +221,24 @@ void query_palette_reg(unsigned char index, int *red, int *green, int *blue)
 
 void set_palette_reg(unsigned char index,int red,int green,int blue)
 {
-	curpal[index*3] = red;
-	curpal[index*3+1] = green;
-	curpal[index*3+2] = blue;
+	// Palette values are expected to be in the classic 0..63 range.
+	const auto clamp63 = [](int v) -> unsigned char {
+		if (v < 0) return 0;
+		if (v > 63) return 63;
+		return static_cast<unsigned char>(v);
+	};
+	curpal[index*3] = clamp63(red);
+	curpal[index*3+1] = clamp63(green);
+	curpal[index*3+2] = clamp63(blue);
 }
 
 //buffers: this is the our.pal data in a function.
 //buffers: i thought having a seperate our.pal file was ugly so i just
 //buffers: put it all in this func
-char our_pal_lookup(int index)
+unsigned char our_pal_lookup(int index)
 {
-	char data[] = {
-	                  0,0,0,8,8,8,16,16,16,24,24,24,32,32,32,40,40,40,48,48,48,56,56,56,1,
+	static const unsigned char data[] = {
+		                  0,0,0,8,8,8,16,16,16,24,24,24,32,32,32,40,40,40,48,48,48,56,56,56,1,
 	                  1,1,9,9,9,17,17,17,25,25,25,33,33,33,41,41,41,49,49,49,57,57,57,0,
 	                  0,0,15,15,15,18,18,18,21,21,21,24,24,24,27,27,27,30,30,30,33,33,33,36,
 	                  36,36,39,39,39,42,42,42,45,45,45,48,48,48,51,51,51,54,54,54,57,57,57,57,
@@ -257,7 +265,7 @@ char our_pal_lookup(int index)
 	                  25,57,36,20,52,31,15,47,26,10,42,21,5,37,16,0,32,11,0,27,6,0,22,40,
 	                  30,50,35,25,45,30,20,40,25,15,35,20,10,30,15,5,25,10,0,20,5,0,15,25,
 	                  41,57,23,39,55,21,37,53,19,35,51,17,33,49,15,31,47,13,29,45,11,27,43,9,
-	                  25,41,7,23,39,5,21,37,3,19,35,1,17,33,0,15,31,0,13,29,0,11,27,57,
+		                  25,41,7,23,39,5,21,37,3,19,35,1,17,33,0,15,31,0,13,29,0,11,27,57,
 	                  15,0,57,21,0,57,27,0,57,33,0,57,39,0,57,45,0,57,51,0,57,57,0,57,
 	                  15,0,57,21,0,57,27,0,57,33,0,57,39,0,57,45,0,57,51,0,57,57,0,57,
 	                  37,31,51,33,27,47,28,24,43,24,20,56,35,23,52,32,24,48,30,22,44,27,19,28,

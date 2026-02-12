@@ -211,11 +211,11 @@ bool living::act()
             stats_->magicpoints--;
         }
 
-        float temp;
+		float temp;
 		if (myguy)
 			temp = (4 - myguy->dexterity/10.0f);
 		else
-			temp = (4 - stats_->level/2.0f);
+			temp = (4.0f - static_cast<float>(stats_->level)/2.0f);
 		if (temp < 0)
 			temp = 0;
 		stepsize -= temp;
@@ -516,13 +516,13 @@ bool living::collide(walker  *ob)
 	return 1;
 }
 
-walker * living::do_summon(char whatfamily, unsigned short lifetime)
+walker* living::do_summon(char whatfamily, Sint32 summon_lifetime)
 {
 	walker  *newob;
 
 	newob = myscreen->level_data.add_ob(Order::Living, whatfamily);
 	newob->owner = this;
-	newob->lifetime = lifetime;
+		newob->lifetime = summon_lifetime;
 	newob->transform_to(Order::Living, whatfamily);
 	//  Log("\n\nSummoned %d, life %d\n", whatfamily, lifetime);
 
@@ -534,9 +534,9 @@ walker * living::do_summon(char whatfamily, unsigned short lifetime)
 bool living::check_special()
 {
 	Uint32 distance, myrange;
-	short howmany;
+	Sint32 howmany;
 
-	shifter_down = rng(2); // on or off, randomly ..
+	shifter_down = static_cast<short>(rng(2)); // on or off, randomly ..
 
 	// Make sure we have enough ..
 	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
@@ -680,70 +680,72 @@ void living::set_difficulty(Uint32 whatlevel)
 {
 	//  Sint32 calcdelay,calcrate;  // apparently not used anymore
 	Uint32 dif1 = difficulty_level[current_difficulty];
-	Uint32 levmult = static_cast<Uint32>(whatlevel)*static_cast<Uint32>(whatlevel);
+	const float levmult = static_cast<float>(whatlevel) * static_cast<float>(whatlevel);
+	const float level_f = static_cast<float>(whatlevel);
 
 	switch (family)
 	{
 		case FAMILY_ARCHER:
-			stats_->max_hitpoints   += 11*levmult;
-			stats_->max_magicpoints += 12*levmult;
-			damage += 4*whatlevel;
+			stats_->max_hitpoints   += 11.0f * levmult;
+			stats_->max_magicpoints += 12.0f * levmult;
+			damage += 4.0f * level_f;
 			stats_->armor += levmult;
 			break;
 		case FAMILY_MAGE:
-			stats_->max_hitpoints   += 7*levmult;
-			stats_->max_magicpoints += 14*levmult;
-			damage += 3*whatlevel;
-			stats_->armor += levmult/2.0f;
+			stats_->max_hitpoints   += 7.0f * levmult;
+			stats_->max_magicpoints += 14.0f * levmult;
+			damage += 3.0f * level_f;
+			stats_->armor += levmult / 2.0f;
 			break;
 		case FAMILY_CLERIC:
 		case FAMILY_DRUID:
-			stats_->max_hitpoints   += 9*levmult;
-			stats_->max_magicpoints += 12*levmult;
-			damage += 4*whatlevel;
-			stats_->armor += levmult/2.0f;
+			stats_->max_hitpoints   += 9.0f * levmult;
+			stats_->max_magicpoints += 12.0f * levmult;
+			damage += 4.0f * level_f;
+			stats_->armor += levmult / 2.0f;
 			break;
 		case FAMILY_SOLDIER:  // default as soldier
-			stats_->max_hitpoints   += 13*levmult;
-			stats_->max_magicpoints += 8*levmult;
+			stats_->max_hitpoints   += 13.0f * levmult;
+			stats_->max_magicpoints += 8.0f * levmult;
 			weapons_left = static_cast<short>((whatlevel+1) / 2);
-			damage += 5*whatlevel;
-			stats_->armor += 2*levmult;
+			damage += 5.0f * level_f;
+			stats_->armor += 2.0f * levmult;
 			break;
 		case FAMILY_ORC:
-			stats_->max_hitpoints   += 14*levmult;
-			stats_->max_magicpoints += 7*levmult;
-			damage += 6*whatlevel;
-			stats_->armor += 3*levmult;
+			stats_->max_hitpoints   += 14.0f * levmult;
+			stats_->max_magicpoints += 7.0f * levmult;
+			damage += 6.0f * level_f;
+			stats_->armor += 3.0f * levmult;
 			break;
 		case FAMILY_GOLEM:
-			stats_->max_hitpoints   += 18*levmult;
-			stats_->max_magicpoints += 5*levmult;
-			damage += 7*whatlevel;
-			stats_->armor += 4*levmult;
+			stats_->max_hitpoints   += 18.0f * levmult;
+			stats_->max_magicpoints += 5.0f * levmult;
+			damage += 7.0f * level_f;
+			stats_->armor += 4.0f * levmult;
 			break;
 		default:
-			stats_->max_hitpoints   += 11*levmult;
-			stats_->max_magicpoints += 11*levmult;
-			damage += static_cast<short>(4)*whatlevel;
-			stats_->armor += 2*levmult;
+			stats_->max_hitpoints   += 11.0f * levmult;
+			stats_->max_magicpoints += 11.0f * levmult;
+			damage += 4.0f * level_f;
+			stats_->armor += 2.0f * levmult;
 			break;
 	}
 
 	// Adjust for difficulty settings now...
 	if (team_num != 0)  // do all EXCEPT player characters
 	{
-		stats_->max_hitpoints = (stats_->max_hitpoints*dif1) / 100.0f;
-		stats_->max_magicpoints = (stats_->max_magicpoints*dif1) / 100.0f;
-		damage = (damage * dif1) / 100.0f;
+		const float dif = static_cast<float>(dif1);
+		stats_->max_hitpoints = (stats_->max_hitpoints * dif) / 100.0f;
+		stats_->max_magicpoints = (stats_->max_magicpoints * dif) / 100.0f;
+		damage = (damage * dif) / 100.0f;
 	}
 
 	stats_->hitpoints = stats_->max_hitpoints;
 	stats_->magicpoints = stats_->max_magicpoints;
 
-	stats_->max_heal_delay = REGEN; //defined in graph.h
-	stats_->current_heal_delay =
-	    (levmult * 4); //for purposes of calculation only
+		stats_->max_heal_delay = REGEN; //defined in graph.h
+		stats_->current_heal_delay =
+		    static_cast<Sint32>(levmult * 4.0f); //for purposes of calculation only
 
 	while (stats_->current_heal_delay > REGEN)
 	{
@@ -893,5 +895,3 @@ bool living::do_action()
 			return 0;
 	}
 }
-
-

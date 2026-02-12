@@ -116,20 +116,20 @@ public:
     // Player-specific
     int num_levels_completed;
 
-    CampaignEntry(const std::string& id, int num_levels_completed);
+    CampaignEntry(const std::string& campaign_id, int levels_completed);
     ~CampaignEntry();
     
     void draw(const SDL_Rect& area, int team_power);
 };
 
-CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
-    : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), num_levels_completed(num_levels_completed)
+CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_completed)
+    : id(campaign_id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), num_levels_completed(levels_completed)
 {
     bool saw_version = false;
     bool saw_first_level = false;
 
     // Load the campaign data from <user_data>/scen/<id>.glad
-    if(mount_campaign_package(id))
+    if(mount_campaign_package(campaign_id))
     {
         SDL_RWops* rwops = open_read_file("campaign.yaml");
         
@@ -178,11 +178,11 @@ CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
         if(icondata.valid())
             icon = std::make_unique<pixie>(icondata);
         
-        // Count the number of levels
-        std::list<int> levels = list_levels();
-        num_levels = levels.size();
+	        // Count the number of levels
+	        std::list<int> levels = list_levels();
+	        num_levels = static_cast<int>(levels.size());
 
-        unmount_campaign_package(id);
+        unmount_campaign_package(campaign_id);
     }
 
     if (!saw_version || version.empty())
@@ -206,7 +206,7 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     text& loadtext = myscreen->text_normal;
 
     // Print title
-    loadtext.write_xy(x + w/2 - title.size()*3, y - 22, title.c_str(), WHITE, 1);
+    loadtext.write_xy(x + w/2 - static_cast<Sint32>(title.size())*3, y - 22, title.c_str(), WHITE, 1);
 
     // Rating stars
     std::string rating_text = "";
@@ -214,14 +214,14 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     {
         rating_text += '*';
     }
-    loadtext.write_xy(x + w/2 - rating_text.size()*3, y - 14, rating_text.c_str(), WHITE, 1);
+    loadtext.write_xy(x + w/2 - static_cast<Sint32>(rating_text.size())*3, y - 14, rating_text.c_str(), WHITE, 1);
 
     // Print version
     std::string buf = std::format("v{}", version);
     if(rating_text.size() > 0)
-        loadtext.write_xy(x + w/2 + rating_text.size()*3 + 6, y - 14, buf.c_str(), WHITE, 1);
+        loadtext.write_xy(x + w/2 + static_cast<Sint32>(rating_text.size())*3 + 6, y - 14, buf.c_str(), WHITE, 1);
     else
-        loadtext.write_xy(x + w/2 - static_cast<int>(buf.size())*3, y - 14, buf.c_str(), WHITE, 1);
+        loadtext.write_xy(x + w/2 - static_cast<Sint32>(buf.size())*3, y - 14, buf.c_str(), WHITE, 1);
 
     // Draw icon button
     myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
@@ -342,11 +342,11 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
     if(save_data != nullptr)
     {
         army_power = 0;
-        for(int i=0; i<MAX_TEAM_SIZE; i++)
+        for(int team_idx = 0; team_idx < MAX_TEAM_SIZE; team_idx++)
         {
-            if (save_data->team_list[i])
+            if (save_data->team_list[team_idx])
             {
-                army_power += 3*save_data->team_list[i]->level;
+                army_power += 3*save_data->team_list[team_idx]->level;
             }
         }
     }
@@ -422,10 +422,10 @@ CampaignResult pick_campaign(SaveData* save_data, bool enable_delete)
         if(keystates[KEYSTATE_q])
             done = true;
 
-        // Mouse stuff ..
+		// Mouse stuff ..
 		MouseState& mymouse = query_mouse();
-        int mx = mymouse.x;
-        int my = mymouse.y;
+        int mx = static_cast<int>(mymouse.x);
+        int my = static_cast<int>(mymouse.y);
         
         bool do_click = mymouse.left;
 		bool do_prev = !buttons[prev_index].hidden && ((do_click && prev.x <= mx && mx <= prev.x + prev.w

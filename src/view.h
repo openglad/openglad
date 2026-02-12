@@ -117,17 +117,17 @@ class viewscreen
 		char infotext[80]; // text to display
 		short mynum;     // # to id the viewscreen, 0, 1, 2 ...
 		short my_team;         // used for Player-v-Player mode
-		int* mykeys;     // holds the keyboard mapping
-		walker  *control;  // the user
-		short xpos,ypos;
-		short topx, topy;
-		short xloc, yloc; // physical screen coords
-		short endx, endy; // screen coords of lower right corner
-		signed char prefs[10]; // User preferences ..
-		std::unique_ptr<radar> myradar;
-		short radarstart; //has the radar been started yet?
-		short xview;
-		short yview;
+			int* mykeys;     // holds the keyboard mapping
+			walker  *control;  // the user
+			Sint32 xpos,ypos;
+			Sint32 topx, topy;
+			Sint32 xloc, yloc; // physical screen coords
+			Sint32 endx, endy; // screen coords of lower right corner
+			signed char prefs[10]; // User preferences ..
+			std::unique_ptr<radar> myradar;
+			short radarstart; //has the radar been started yet?
+			Sint32 xview;
+			Sint32 yview;
 
 	protected:
 		options *prefsob;

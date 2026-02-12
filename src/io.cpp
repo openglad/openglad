@@ -27,6 +27,7 @@
 #include "physfsrwops.h"
 #include <format>
 #include <filesystem>
+#include <array>
 #include <memory>
 #include <string>
 #include <algorithm>
@@ -153,11 +154,18 @@ std::string get_asset_path()
     return "";
 #else
     // Assumes UNIX with /proc
-    char path[512];
-    int maxPathSize = 512;
+    constexpr size_t maxPathSize = 512;
+    char path[maxPathSize];
     std::fill_n(path, maxPathSize, '\0');
-    readlink("/proc/self/exe", path, maxPathSize);
-    path[maxPathSize-1] = '\0';
+
+    const ssize_t read_len = readlink("/proc/self/exe", path, maxPathSize - 1);
+    if (read_len < 0)
+    {
+        LogError("get_asset_path: readlink(/proc/self/exe) failed\n");
+        return "./";
+    }
+    path[static_cast<size_t>(read_len)] = '\0';
+
     std::string s = path;
     size_t slash = s.find_last_of('/');
     if(slash != std::string::npos)
@@ -542,6 +550,9 @@ extern "C" void EMSCRIPTEN_KEEPALIVE on_idbfs_sync_done()
 
 void io_init(int argc, char* argv[])
 {
+    (void)argc;
+    (void)argv;
+
 #ifdef __EMSCRIPTEN__
     // Mount IDBFS for persistent storage in browser
     Log("Setting up IDBFS for persistent storage...\n");
@@ -835,16 +846,16 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
     
     struct zip_stat status;
     struct zip_file* file;
-    int buf_size = 512;
-    char buf[buf_size];
+    constexpr size_t buf_size = 512;
+    std::array<char, buf_size> buf{};
     ArchiveIoError result = ArchiveIoError::None;
     
     for(int i = 0; i < zip_get_num_entries(archive, 0); i++)
     {
         if(zip_stat_index(archive, i, 0, &status) == 0)
         {
-            int len = static_cast<int>(strlen(status.name));
-            if(status.name[len - 1] == '/')
+            int name_len = static_cast<int>(strlen(status.name));
+            if(status.name[name_len - 1] == '/')
             {
                 std::string dirpath = std::format("{}{}", outdir, status.name);
                 create_dir(dirpath);
@@ -871,20 +882,27 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
                     result = ArchiveIoError::OpenOutputFailed;
                     continue;
                 }
- 
-                size_t sum = 0;
+	 
+                zip_uint64_t sum = 0;
                 while(sum < status.size)
                 {
-                    len = zip_fread(file, buf, buf_size);
-                    if(len < 0)
+                    zip_int64_t read_len = zip_fread(file, buf.data(), static_cast<zip_uint64_t>(buf.size()));
+                    if(read_len < 0)
                     {
                         LogError("unzip_read_entry_failed zip={} entry={} code={}\n",
                             infile, status.name, archive_io_error_string(ArchiveIoError::ReadEntryFailed));
                         result = ArchiveIoError::ReadEntryFailed;
                         break;
                     }
-                    SDL_RWwrite(rwops, buf, 1, len);
-                    sum += len;
+                    if (read_len == 0)
+                    {
+                        // Avoid an infinite loop if the archive reports a larger size than we can read.
+                        result = ArchiveIoError::ReadEntryFailed;
+                        break;
+                    }
+
+                    SDL_RWwrite(rwops, buf.data(), 1, static_cast<size_t>(read_len));
+                    sum += static_cast<zip_uint64_t>(read_len);
                 }
                 SDL_RWclose(rwops);
                 zip_fclose(file);
@@ -930,8 +948,10 @@ NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w,
 	// <x size>                   1 byte
 	// <y size>                   1 byte
 	// <pixie data>               <x*y*frames> bytes
-	if (w <= 0 || h <= 0 || w > 255 || h > 255)
+    if (w <= 0 || h <= 0 || w > 255 || h > 255)
+    {
         return NewFileIoError::InvalidDimensions;
+    }
 	
 	unsigned char c;
 	SDL_RWops* outfile = open_write_file(filename.c_str());
@@ -944,13 +964,13 @@ NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w,
         SDL_RWclose(outfile);
         return NewFileIoError::WriteFailed;
     }
-    c = w;  // x size
+    c = static_cast<unsigned char>(w);  // x size
 	if(!write_rwops_exact(outfile, &c, 1, 1))
     {
         SDL_RWclose(outfile);
         return NewFileIoError::WriteFailed;
     }
-    c = h;  // y size
+    c = static_cast<unsigned char>(h);  // y size
 	if(!write_rwops_exact(outfile, &c, 1, 1))
     {
         SDL_RWclose(outfile);
@@ -996,8 +1016,10 @@ NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int
 	// <x size>                   1 byte
 	// <y size>                   1 byte
 	// <pixie data>               <x*y*frames> bytes
-	if (w <= 0 || h <= 0 || w > 255 || h > 255)
+    if (w <= 0 || h <= 0 || w > 255 || h > 255)
+    {
         return NewFileIoError::InvalidDimensions;
+    }
 	
 	unsigned char c;
 	SDL_RWops* outfile = open_write_file(filename.c_str());
@@ -1010,13 +1032,13 @@ NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int
         SDL_RWclose(outfile);
         return NewFileIoError::WriteFailed;
     }
-    c = w;  // x size
+    c = static_cast<unsigned char>(w);  // x size
 	if(!write_rwops_exact(outfile, &c, 1, 1))
     {
         SDL_RWclose(outfile);
         return NewFileIoError::WriteFailed;
     }
-    c = h;  // y size
+    c = static_cast<unsigned char>(h);  // y size
 	if(!write_rwops_exact(outfile, &c, 1, 1))
     {
         SDL_RWclose(outfile);

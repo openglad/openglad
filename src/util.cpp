@@ -114,7 +114,7 @@ void LogErrorImpl(const char* msg)
     SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_ERROR, "%s", msg);
 }
 
-void change_time(Uint32 new_count)
+void change_time(Uint32 /*new_count*/)
 {}
 
 void grab_timer()

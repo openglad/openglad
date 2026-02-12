@@ -112,7 +112,6 @@ bool SaveData::load(const std::string& filename)
 	Uint32 newscore = 0;
 	//  short numguys;
 	std::int16_t listsize = 0;
-	int i = 0;
 
 	char tempname[12] = "FRED";
 	char guyname[12] = "JOE";
@@ -265,17 +264,17 @@ bool SaveData::load(const std::string& filename)
 	READ_OR_FAIL(&newscore, 4, 1);
 	totalscore = newscore;
 
-	// Versions 6+ have a score for each possible team, 0-3
-	if (temp_version >= 6)
-	{
-		for (i=0; i < 4; i++)
+		// Versions 6+ have a score for each possible team, 0-3
+		if (temp_version >= 6)
 		{
-			READ_OR_FAIL(&newcash, 4, 1);
-			m_totalcash[i] = newcash;
-			READ_OR_FAIL(&newscore, 4, 1);
-			m_totalscore[i] = newscore;
+			for (int team_idx = 0; team_idx < 4; team_idx++)
+			{
+				READ_OR_FAIL(&newcash, 4, 1);
+				m_totalcash[team_idx] = newcash;
+				READ_OR_FAIL(&newscore, 4, 1);
+				m_totalscore[team_idx] = newscore;
+			}
 		}
-	}
 
 	// Versions 7+ have the allied information ..
 	if (temp_version >= 7)
@@ -497,7 +496,7 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 			team_list[team_size] = std::make_unique<guy>(*ob->myguy);
 			// Update his level from the experience
 			Uint32 exp = team_list[team_size]->exp;
-			team_list[team_size]->upgrade_to_level(calculate_level(team_list[team_size]->exp));
+			team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
 			team_list[team_size]->exp = exp;
 			team_size++;
 		}
@@ -523,7 +522,6 @@ bool SaveData::save(const std::string& filename)
 	Uint32 newscore = totalscore;
 	//  short numguys;
 	std::int16_t listsize = 0;
-	int i = 0;
 
 	char guyname[12] = "JOE";
 	std::uint8_t temp_order = 0;
@@ -534,7 +532,7 @@ bool SaveData::save(const std::string& filename)
 	std::int16_t temp_short = 0;
 	std::int16_t temp_arm = 0;
 	std::int16_t temp_lev = 0;
-	std::uint8_t numplayers = this->numplayers;
+	std::uint8_t numplayers_to_save = this->numplayers;
 	Uint32 temp_exp;
 	std::int16_t temp_kills = 0;
 	Sint32 temp_level_kills;
@@ -640,11 +638,11 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&newscore, 4, 1);
 
 	// Versions 6+ have a score for each possible team
-	for (i=0; i < 4; i++)
+	for (int team_idx = 0; team_idx < 4; team_idx++)
 	{
-		newcash = m_totalcash[i];
+		newcash = m_totalcash[team_idx];
 		WRITE_OR_FAIL(&newcash, 4, 1);
-		newscore = m_totalscore[i];
+		newscore = m_totalscore[team_idx];
 		WRITE_OR_FAIL(&newscore, 4, 1);
 	}
 
@@ -653,21 +651,21 @@ bool SaveData::save(const std::string& filename)
 	WRITE_OR_FAIL(&temp_allied, 2, 1);
 
 	// Determine size of team list ...
-	listsize = team_size;
+	listsize = static_cast<std::int16_t>(team_size);
 
 	//gotoxy(1, 22);
 	//Log("Team size: %d  ", listsize);
 	WRITE_OR_FAIL(&listsize, 2, 1);
 
-	WRITE_OR_FAIL(&numplayers, 1, 1);
+	WRITE_OR_FAIL(&numplayers_to_save, 1, 1);
 
 	// Write the reserved area, 31 bytes
 	WRITE_OR_FAIL(filler, 31, 1);
 
 	// Okay, we've written header .. now dump the data ..
-	for(int i = 0; i < team_size; i++)
+	for(int team_idx = 0; team_idx < team_size; team_idx++)
 	{
-	    guy* temp_guy = team_list[i].get();
+	    guy* temp_guy = team_list[team_idx].get();
 	    
         // Get temp values to be saved
         temp_order = static_cast<unsigned char>(Order::Living);
@@ -723,10 +721,12 @@ bool SaveData::save(const std::string& filename)
         cur->second = scen_num;
     }
     else
+    {
         current_levels.insert(std::make_pair(current_campaign, scen_num));
+    }
     
 	// Number of campaigns
-	short num_campaigns = completed_levels.size();
+	short num_campaigns = static_cast<short>(completed_levels.size());
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
 	for(std::map<std::string, std::set<int> >::const_iterator e = completed_levels.begin(); e != completed_levels.end(); e++)
     {
@@ -736,22 +736,22 @@ bool SaveData::save(const std::string& filename)
         snprintf(campaign, sizeof(campaign), "%s", e->first.c_str());
         WRITE_OR_FAIL(campaign, 1, 40);
         
-        short index = 1;
-        std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
-        if(g != current_levels.end())
-            index = g->second;
-        WRITE_OR_FAIL(&index, 2, 1);
+	        short index = 1;
+	        std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
+	        if(g != current_levels.end())
+	            index = static_cast<short>(g->second);
+	        WRITE_OR_FAIL(&index, 2, 1);
         
-        // Number of levels
-        short num_levels = e->second.size();
-        WRITE_OR_FAIL(&num_levels, 2, 1);
+	        // Number of levels
+	        short num_levels = static_cast<short>(e->second.size());
+	        WRITE_OR_FAIL(&num_levels, 2, 1);
         for(std::set<int>::const_iterator f = e->second.begin(); f != e->second.end(); f++)
-        {
-            // Level index
-            index = *f;
-            WRITE_OR_FAIL(&index, 2, 1);
-        }
-    }
+	        {
+	            // Level index
+	            index = static_cast<short>(*f);
+	            WRITE_OR_FAIL(&index, 2, 1);
+	        }
+	    }
 
     SDL_RWclose(outfile);
 
@@ -797,7 +797,7 @@ int SaveData::get_num_levels_completed(const std::string& campaign) const
     if(e == completed_levels.end())
         return 0;
     
-    return e->second.size();
+    return static_cast<int>(e->second.size());
 }
 
 void SaveData::add_level_completed(const std::string& campaign, int level_index)

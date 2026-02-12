@@ -97,11 +97,11 @@ public:
     
     void draw_guy(int cx, int cy, int frame);
     
-    TroopResult(guy* before, walker* after);
+    TroopResult(guy* before_, walker* after_);
 };
 
-TroopResult::TroopResult(guy* before, walker* after)
-    : before(before), after(after)
+TroopResult::TroopResult(guy* before_, walker* after_)
+    : before(before_), after(after_)
 {
     if(after != nullptr && after->myguy == nullptr)
         after = nullptr;
@@ -126,7 +126,7 @@ char TroopResult::get_family()
     return family;
 }
 
-const char* get_family_string(short family);
+const char* get_family_string(Sint32 family);
 
 std::string TroopResult::get_class_name()
 {
@@ -191,7 +191,9 @@ float TroopResult::get_XP_base()
     if(gained_level())
         return 0.0f;
     
-    return (before->exp - calculate_exp(before->level))/float(calculate_exp(before->level + 1));
+    const Uint32 exp_prev = calculate_exp(before->level);
+    const Uint32 exp_next = calculate_exp(before->level + 1);
+    return static_cast<float>(before->exp - exp_prev) / static_cast<float>(exp_next);
 }
 
 float TroopResult::get_XP_gain()
@@ -200,12 +202,22 @@ float TroopResult::get_XP_gain()
         return 0.0f;
         
     if(gained_level())
-        return (after->myguy->exp - calculate_exp(before->level + 1))/float(calculate_exp(before->level + 2));
+    {
+        const Uint32 exp_next = calculate_exp(before->level + 1);
+        const Uint32 exp_next_next = calculate_exp(before->level + 2);
+        return static_cast<float>(after->myguy->exp - exp_next) / static_cast<float>(exp_next_next);
+    }
     
     if(lost_level())
-        return (after->myguy->exp - before->exp)/float(calculate_exp(before->level));
+    {
+        const Sint64 delta = static_cast<Sint64>(after->myguy->exp) - static_cast<Sint64>(before->exp);
+        return static_cast<float>(delta) / static_cast<float>(calculate_exp(before->level));
+    }
     
-    return (after->myguy->exp - before->exp)/float(calculate_exp(before->level + 1));
+    {
+        const Sint64 delta = static_cast<Sint64>(after->myguy->exp) - static_cast<Sint64>(before->exp);
+        return static_cast<float>(delta) / static_cast<float>(calculate_exp(before->level + 1));
+    }
 }
 
 int TroopResult::get_tallies()
@@ -238,7 +250,7 @@ bool TroopResult::is_new()
 }
 
 
-void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows the current guy ..
+void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // shows the current guy ..
 {
 	walker *mywalker;
 	Sint32 i;
@@ -259,7 +271,7 @@ void show_guy(Sint32 frames, guy* myguy, short centerx, short centery) // shows 
 	for (i=0; i <= (frames/4)%4; i++)
 		mywalker->animate();
     
-	mywalker->team_num = myguy->teamnum;
+	mywalker->team_num = static_cast<unsigned char>(myguy->teamnum);
     
     viewscreen* view_buf = myscreen->viewob[0].get();
 	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
@@ -319,9 +331,9 @@ Uint32 get_time_bonus(int playernum)
     
     short par_value = myscreen->level_data.par_value;
     Uint32 score = myscreen->save_data.m_score[playernum];
-    float multiplier = (1 + par_value/10.0f) * float(time_limit - frames)/time_limit;
-    Log("Time bonus: {:.0f}\n", score * multiplier);
-    return score * multiplier;
+    float multiplier = (1.0f + static_cast<float>(par_value)/10.0f) * (static_cast<float>(time_limit - frames) / static_cast<float>(time_limit));
+    Log("Time bonus: {:.0f}\n", static_cast<float>(score) * multiplier);
+    return static_cast<Uint32>(static_cast<float>(score) * multiplier);
 }
 
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
@@ -485,8 +497,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         // Mouse stuff ..
         // Use no_poll version since we already called get_input_events above
 		MouseState& mymouse = query_mouse_no_poll();
-        int mx = mymouse.x;
-        int my = mymouse.y;
+        int mx = static_cast<int>(mymouse.x);
+        int my = static_cast<int>(mymouse.y);
 
         // Detect mouse click (transition from not pressed to pressed)
         // This avoids blocking while loops that cause issues with Emscripten/ASYNCIFY
@@ -503,8 +515,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
                 scroll -= -5*v;
         }
         #else
-		scroll -= get_and_reset_scroll_amount();
-		#endif
+		scroll -= static_cast<float>(get_and_reset_scroll_amount());
+			#endif
 		if(scroll < 0.0f)
             scroll = 0.0f;
 
@@ -555,12 +567,12 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         myscreen->draw_button_inverted(area_inner.x, area_inner.y, area_inner.w, area_inner.h);
         bigtext.write_xy_center(area.x + area.w/2, area.y + 4, RED, "RESULTS");
         
-        int y = 0;
+	        int y = 0;
         if(mode == 0)
         {
             // Overview
             int x = area.x + 12;
-            y = area.y + 30 - scroll;
+	            y = static_cast<int>(static_cast<float>(area.y + 30) - scroll);
             
             if(ending == 0)
             {
@@ -652,76 +664,76 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         {
             int barH = 5;
             // Troops
-            y = area.y + 30 - scroll;
-            for(size_t i = 0; i < troops.size(); i++)
-            {
-                int x = area.x + 12;
+	            y = static_cast<int>(static_cast<float>(area.y + 30) - scroll);
+	            for(size_t troop_idx = 0; troop_idx < troops.size(); troop_idx++)
+	            {
+	                int x = area.x + 12;
+	                
+	                int tallies = troops[troop_idx].get_tallies();
+	                
+	                BEGIN_IF_IN_SCROLL_AREA;
+	                int name_w = mytext.write_xy(x, y, PURE_BLACK, "%s", troops[troop_idx].get_name().c_str());
+	                name_w += mytext.write_xy(x + name_w, y, PURE_BLACK + 2, " the %s", troops[troop_idx].get_class_name().c_str());
+	                if(troops[troop_idx].gained_level())
+	                    mytext.write_xy(x + name_w, y, YELLOW, " LVL UP %d", troops[troop_idx].get_level());
+	                else if(troops[troop_idx].lost_level())
+	                    mytext.write_xy(x + name_w, y, RED, " LVL DOWN %d", troops[troop_idx].get_level());
+	                else
+	                    mytext.write_xy(x + name_w, y, DARK_GREEN, " LVL %d", troops[troop_idx].get_level());
+	                END_IF_IN_SCROLL_AREA;
                 
-                int tallies = troops[i].get_tallies();
-                
-                BEGIN_IF_IN_SCROLL_AREA;
-                int name_w = mytext.write_xy(x, y, PURE_BLACK, "%s", troops[i].get_name().c_str());
-                name_w += mytext.write_xy(x + name_w, y, PURE_BLACK + 2, " the %s", troops[i].get_class_name().c_str());
-                if(troops[i].gained_level())
-                    mytext.write_xy(x + name_w, y, YELLOW, " LVL UP %d", troops[i].get_level());
-                else if(troops[i].lost_level())
-                    mytext.write_xy(x + name_w, y, RED, " LVL DOWN %d", troops[i].get_level());
-                else
-                    mytext.write_xy(x + name_w, y, DARK_GREEN, " LVL %d", troops[i].get_level());
-                END_IF_IN_SCROLL_AREA;
-                
-                y += 10;
-                
-                BEGIN_IF_IN_SCROLL_AREA;
-                troops[i].draw_guy(x + 5, y + 2, frame*troops[i].get_HP());
-                
-                // HP
-                if(troops[i].is_dead())
-                {
-                    mytext.write_xy(x + 15, y, RED, "LOST");
-                }
-                else
-                {
-                    x += 15;
-                    mytext.write_xy(x, y, RED, "HP");
-                    x += 14;
-                    myscreen->fastbox(x, y, 60*troops[i].get_HP(), barH, RED);
-                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
-                    
-                    // XP
-                    x += 70;
-                    mytext.write_xy(x, y, DARK_GREEN, "EXP");
-                    x += 20;
-                    float base = 60*troops[i].get_XP_base();
-                    float gain = 60*troops[i].get_XP_gain();
-                    if(gain >= 0)
-                    {
-                        myscreen->fastbox(x, y, base, barH, DARK_GREEN);
-                        myscreen->fastbox(x + base, y, gain, barH, LIGHT_GREEN);
-                    }
-                    else
-                        myscreen->fastbox(x + 60 + gain, y, -gain, barH, RED);
-                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
+	                y += 10;
+	                
+	                BEGIN_IF_IN_SCROLL_AREA;
+	                troops[troop_idx].draw_guy(x + 5, y + 2, static_cast<Sint32>(static_cast<float>(frame) * troops[troop_idx].get_HP()));
+	                
+	                // HP
+	                if(troops[troop_idx].is_dead())
+	                {
+	                    mytext.write_xy(x + 15, y, RED, "LOST");
+	                }
+	                else
+	                {
+	                    x += 15;
+	                    mytext.write_xy(x, y, RED, "HP");
+	                    x += 14;
+	                    myscreen->fastbox(x, y, static_cast<Sint32>(60.0f * troops[troop_idx].get_HP()), barH, RED);
+	                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
+	                    
+	                    // XP
+	                    x += 70;
+	                    mytext.write_xy(x, y, DARK_GREEN, "EXP");
+	                    x += 20;
+	                    float base = 60.0f * troops[troop_idx].get_XP_base();
+	                    float gain = 60.0f * troops[troop_idx].get_XP_gain();
+	                    if(gain >= 0)
+	                    {
+	                        myscreen->fastbox(x, y, static_cast<Sint32>(base), barH, DARK_GREEN);
+	                        myscreen->fastbox(x + static_cast<Sint32>(base), y, static_cast<Sint32>(gain), barH, LIGHT_GREEN);
+	                    }
+	                    else
+	                        myscreen->fastbox(x + 60 + static_cast<Sint32>(gain), y, static_cast<Sint32>(-gain), barH, RED);
+	                    myscreen->fastbox_outline(x, y, 60, barH, PURE_BLACK);
                     
                     if(gain > 0.0f)
                         mytext.write_xy(x + 63, y, DARK_GREEN, "+");
                     else if(gain < 0.0f)
                         mytext.write_xy(x + 63, y, RED, "-");
                 }
-                END_IF_IN_SCROLL_AREA;
+	                END_IF_IN_SCROLL_AREA;
                 
                 
-                if(tallies > 0)
-                {
-                    y += 10;
-                    BEGIN_IF_IN_SCROLL_AREA;
-                    mytext.write_xy(area.x + 20, y, DARK_GREEN, "%d Tall%s", tallies, (tallies == 1? "y" : "ies"));
-                    END_IF_IN_SCROLL_AREA;
-                }
-                
-                if(troops[i].gained_level())
-                {
-                    std::vector<std::string> specials = troops[i].get_gained_specials();
+	                if(tallies > 0)
+	                {
+	                    y += 10;
+	                    BEGIN_IF_IN_SCROLL_AREA;
+	                    mytext.write_xy(area.x + 20, y, DARK_GREEN, "%d Tall%s", tallies, (tallies == 1? "y" : "ies"));
+	                    END_IF_IN_SCROLL_AREA;
+	                }
+	                
+	                if(troops[troop_idx].gained_level())
+	                {
+	                    std::vector<std::string> specials = troops[troop_idx].get_gained_specials();
                     if(specials.size() > 0)
                     {
                         y += 10;
@@ -748,24 +760,26 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         }
         
         // Draw scroll indicator
-        if(y + scroll > area_inner.y + area_inner.h - 30)
-        {
-            myscreen->ver_line(area_inner.x, area_inner.y + (area_inner.h) * scroll/(y + scroll - area.y), 6, PURE_BLACK);
-        }
+	        if(static_cast<float>(y) + scroll > static_cast<float>(area_inner.y + area_inner.h - 30))
+	        {
+	            const float denom = static_cast<float>(y) + scroll - static_cast<float>(area.y);
+	            const float y_off = (denom != 0.0f) ? (static_cast<float>(area_inner.h) * scroll / denom) : 0.0f;
+	            myscreen->ver_line(area_inner.x, static_cast<Sint32>(static_cast<float>(area_inner.y) + y_off), 6, PURE_BLACK);
+	        }
         
         // Limit the scrolling depending on how long 'y' is.
-        if(y < area_inner.y + 30)
-            scroll = y + scroll - (area_inner.y + 30);
+	        if(y < area_inner.y + 30)
+	            scroll = static_cast<float>(y - (area_inner.y + 30)) + scroll;
         
         
-        for(int i = 0; i < num_buttons; i++)
-        {
-            if((mode == 0 && i == overview_index) || (mode == 1 && i == troops_index))
-                myscreen->draw_button_inverted(buttons[i].x, buttons[i].y, buttons[i].sizex, buttons[i].sizey);
-            else
-                myscreen->draw_button(buttons[i].x, buttons[i].y, buttons[i].x + buttons[i].sizex - 1, buttons[i].y + buttons[i].sizey - 1, 1, 1);
-            mytext.write_xy(buttons[i].x + buttons[i].sizex/2 - 3*buttons[i].label.size(), buttons[i].y + 2, buttons[i].label.c_str(), DARK_BLUE, 1);
-        }
+	        for(int button_i = 0; button_i < num_buttons; button_i++)
+	        {
+	            if((mode == 0 && button_i == overview_index) || (mode == 1 && button_i == troops_index))
+	                myscreen->draw_button_inverted(buttons[button_i].x, buttons[button_i].y, buttons[button_i].sizex, buttons[button_i].sizey);
+	            else
+	                myscreen->draw_button(buttons[button_i].x, buttons[button_i].y, buttons[button_i].x + buttons[button_i].sizex - 1, buttons[button_i].y + buttons[button_i].sizey - 1, 1, 1);
+	            mytext.write_xy(buttons[button_i].x + buttons[button_i].sizex/2 - 3*static_cast<Sint32>(buttons[button_i].label.size()), buttons[button_i].y + 2, buttons[button_i].label.c_str(), DARK_BLUE, 1);
+	        }
         
         draw_highlight(buttons[highlighted_button]);
         myscreen->buffer_to_screen(0, 0, 320, 200);

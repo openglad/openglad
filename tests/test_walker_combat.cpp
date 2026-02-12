@@ -61,17 +61,6 @@ static int count_family_in_oblist(char family)
     return count;
 }
 
-static int count_family_in_fxlist(char family)
-{
-    int count = 0;
-    for (auto& uptr : myscreen->level_data.fxlist) {
-        walker* w = uptr.get();
-        if (w && w->query_family() == family)
-            count++;
-    }
-    return count;
-}
-
 // ---------------------------------------------------------------------------
 // attack() - exercises the big combat function (lines 1822-2100)
 // ---------------------------------------------------------------------------
@@ -566,7 +555,7 @@ void test_walker_set_order_family_all()
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     TEST_ASSERT(w != nullptr, "walker created");
 
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };

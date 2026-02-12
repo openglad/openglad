@@ -39,6 +39,8 @@ unsigned char mypalette[768];
 
 void intro_main(Sint32 argc, char** argv)
 {
+	(void)argc;
+	(void)argv;
 	// Zardus: PORT: doesn't seem to be used, and causes a memory leak
 	//char **args = (char **)new int;
 	text& mytext = myscreen->text_normal;
@@ -227,13 +229,13 @@ void intro_main(Sint32 argc, char** argv)
 
 	// cleanup
 	/*
-	  for (i = 0; i<256; i++)
-	  {
-	         red = pal[i][0];
-	         green = pal[i][1];
-	         blue = pal[i][2];
-	         set_palette_reg(i, red, green, blue);
-	  }
+		for (i = 0; i<256; i++)
+		{
+			red = pal[i][0];
+			green = pal[i][1];
+			blue = pal[i][2];
+			set_palette_reg(static_cast<unsigned char>(i), red, green, blue);
+		}
 	*/
 
 	cleanup();
@@ -249,13 +251,13 @@ int cleanup()
 	myscreen->clear();
 	myscreen->refresh();
 
-	for (i = 0; i<256; i++)
-	{
-		red = pal[i][0];
-		green = pal[i][1];
-		blue = pal[i][2];
-		set_palette_reg(i, red, green, blue);
-	}
+		for (i = 0; i<256; i++)
+		{
+			red = pal[i][0];
+			green = pal[i][1];
+			blue = pal[i][2];
+			set_palette_reg(static_cast<unsigned char>(i), red, green, blue);
+		}
 	load_and_set_palette("our.pal", mypalette);
 	return 1;
 }

@@ -22,8 +22,8 @@ struct KeyBindingGuard
     int player;
     int key_enum;
     int old_key;
-    KeyBindingGuard(int player, int key_enum, int new_key)
-        : player(player), key_enum(key_enum), old_key(player_keys[player][key_enum])
+    KeyBindingGuard(int player_, int key_enum_, int new_key)
+        : player(player_), key_enum(key_enum_), old_key(player_keys[player_][key_enum_])
     {
         player_keys[player][key_enum] = new_key;
     }
@@ -233,10 +233,10 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     TEST_ASSERT((v->control->stats()->query_bit_flags(BIT_FLYING) != 0) != flying_before,
                 "f key should toggle flying bit");
 
-    const int hp_before = v->control->stats()->hitpoints;
+    const float hp_before = v->control->stats()->hitpoints;
     e.key.keysym.sym = SDLK_h;
     v->input(e);
-    TEST_ASSERT(v->control->stats()->hitpoints >= hp_before + 100, "h key should increase hitpoints");
+    TEST_ASSERT(v->control->stats()->hitpoints >= hp_before + 100.0f, "h key should increase hitpoints");
 
     const bool inv_before = v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0;
     e.key.keysym.sym = SDLK_i;
@@ -244,10 +244,10 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     TEST_ASSERT((v->control->stats()->query_bit_flags(BIT_INVINCIBLE) != 0) != inv_before,
                 "i key should toggle invincible bit");
 
-    const int mp_before = v->control->stats()->magicpoints;
+    const float mp_before = v->control->stats()->magicpoints;
     e.key.keysym.sym = SDLK_m;
     v->input(e);
-    TEST_ASSERT(v->control->stats()->magicpoints >= mp_before + 150, "m key should increase magicpoints");
+    TEST_ASSERT(v->control->stats()->magicpoints >= mp_before + 150.0f, "m key should increase magicpoints");
 
     const int speed_bonus_before = v->control->speed_bonus_left;
     e.key.keysym.sym = SDLK_s;

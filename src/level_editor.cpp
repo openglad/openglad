@@ -95,7 +95,7 @@ enum class Mode { Terrain, Object, Select };
 
 void set_screen_pos(screen *myscreen, Sint32 x, Sint32 y);
 walker * some_hit(Sint32 x, Sint32 y, walker  *ob, LevelData* data);
-char get_random_matching_tile(Sint32 whatback);
+Sint32 get_random_matching_tile(Sint32 whatback);
 
 class EditorTerrainBrush;
 class EditorObjectBrush;
@@ -123,23 +123,23 @@ public:
     int x, y;
     unsigned int w, h;
     
-    Rect();
-    Rect(int x, int y, unsigned int w, unsigned int h);
-    
-    bool contains(int x, int y) const;
+	Rect();
+	Rect(int x_, int y_, unsigned int w_, unsigned int h_);
+	    
+	bool contains(int px, int py) const;
 };
 
 Rect::Rect()
     : x(0), y(0), w(0), h(0)
 {}
 
-Rect::Rect(int x, int y, unsigned int w, unsigned int h)
-    : x(x), y(y), w(w), h(h)
+Rect::Rect(int x_, int y_, unsigned int w_, unsigned int h_)
+    : x(x_), y(y_), w(w_), h(h_)
 {}
 
-bool Rect::contains(int x, int y) const
+bool Rect::contains(int px, int py) const
 {
-    return (this->x <= x && x < int(this->x + w) && this->y <= y && y < int(this->y + h));
+    return (this->x <= px && px < int(this->x + w) && this->y <= py && py < int(this->y + h));
 }
 
 class Rectf
@@ -149,18 +149,18 @@ public:
     float x, y;
     float w, h;
     
-    Rectf();
-    Rectf(float x, float y, float w, float h);
-    
-    bool contains(float X, float Y) const;
+	Rectf();
+	Rectf(float x_, float y_, float w_, float h_);
+	    
+	bool contains(float X, float Y) const;
 };
 
 Rectf::Rectf()
     : x(0), y(0), w(0), h(0)
 {}
 
-Rectf::Rectf(float x, float y, float w, float h)
-    : x(x), y(y), w(w), h(h)
+Rectf::Rectf(float x_, float y_, float w_, float h_)
+    : x(x_), y(y_), w(w_), h(h_)
 {}
 
 bool Rectf::contains(float X, float Y) const
@@ -242,12 +242,12 @@ public:
     Order order;
     unsigned char family;
 
-    ObjectType()
-        : order(Order::Living), family(0)
-    {}
-    ObjectType(Order order, unsigned char family)
-        : order(order), family(family)
-    {}
+	    ObjectType()
+	        : order(Order::Living), family(0)
+	    {}
+	    ObjectType(Order order_, unsigned char family_)
+	        : order(order_), family(family_)
+	    {}
 };
 
 std::vector<ObjectType> object_pane;
@@ -272,15 +272,15 @@ public:
     std::string label;
     bool remove_border;
     bool draw_top_separator;
-    int base_color;
-    int high_color;
-    int shadow_color;
-    int text_color;
+    unsigned char base_color;
+    unsigned char high_color;
+    unsigned char shadow_color;
+    unsigned char text_color;
     bool centered;
     
-    SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border = false, bool draw_top_separator = false);
-    
-    void draw(screen* myscreen);
+    SimpleButton(const std::string& label_, int x_, int y_, unsigned int w_, unsigned int h_, bool remove_border_ = false, bool draw_top_separator_ = false);
+	    
+    void draw(screen* s);
     bool contains(int x, int y) const;
     
     void set_colors_normal();
@@ -290,29 +290,29 @@ public:
 };
 
 
-SimpleButton::SimpleButton(const std::string& label, int x, int y, unsigned int w, unsigned int h, bool remove_border, bool draw_top_separator)
-    : label(label), remove_border(remove_border), draw_top_separator(draw_top_separator), centered(false)
+SimpleButton::SimpleButton(const std::string& label_, int x_, int y_, unsigned int w_, unsigned int h_, bool remove_border_, bool draw_top_separator_)
+    : label(label_), remove_border(remove_border_), draw_top_separator(draw_top_separator_), centered(false)
 {
     set_colors_normal();
-    
-    area.x = x;
-    area.y = y;
-    area.w = w;
-    area.h = h;
+	    
+    area.x = x_;
+    area.y = y_;
+    area.w = w_;
+    area.h = h_;
 }
 
-void SimpleButton::draw(screen* myscreen)
+void SimpleButton::draw(screen* s)
 {
-    myscreen->draw_button_colored(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, !remove_border, base_color, high_color, shadow_color);
+    s->draw_button_colored(area.x, area.y, area.x + area.w - 1, area.y + area.h - 1, !remove_border, base_color, high_color, shadow_color);
     if(remove_border && draw_top_separator)
-        myscreen->hor_line(area.x, area.y, area.w, shadow_color);
-    
-    text& mytext = myscreen->text_normal;
-    
+        s->hor_line(area.x, area.y, area.w, shadow_color);
+	    
+    text& mytext = s->text_normal;
+	    
     if(centered)
-        mytext.write_xy(area.x + area.w/2 - 3*label.size(), area.y + area.h/2 - 2, label.c_str(), text_color, 1);
+        mytext.write_xy(area.x + area.w/2 - 3*static_cast<Sint32>(label.size()), area.y + area.h/2 - 2, label.c_str(), static_cast<unsigned char>(text_color), 1);
     else
-        mytext.write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), text_color, 1);
+        mytext.write_xy(area.x + 2, area.y + area.h/2 - 2, label.c_str(), static_cast<unsigned char>(text_color), 1);
 }
 
 bool SimpleButton::contains(int x, int y) const
@@ -323,7 +323,7 @@ bool SimpleButton::contains(int x, int y) const
 
 void SimpleButton::set_colors_normal()
 {
-    text_color = DARK_BLUE;
+    text_color = static_cast<unsigned char>(DARK_BLUE);
     base_color = 13;
     high_color = 14;
     shadow_color = 12;
@@ -347,10 +347,10 @@ void SimpleButton::set_colors_disabled()
 
 void SimpleButton::set_colors_active()
 {
-    text_color = WHITE;
-    base_color = ORANGE_START;
-    high_color = ORANGE_START+3;
-    shadow_color = ORANGE_START+5;
+    text_color = static_cast<unsigned char>(WHITE);
+    base_color = static_cast<unsigned char>(ORANGE_START);
+    high_color = static_cast<unsigned char>(ORANGE_START + 3);
+    shadow_color = static_cast<unsigned char>(ORANGE_START + 5);
 }
 
 
@@ -380,7 +380,7 @@ public:
     Order order;
     Sint32 family;
     char team;
-    unsigned short level;
+    Sint32 level;
     bool picking;
     
     EditorObjectBrush()
@@ -414,18 +414,18 @@ public:
     short x, y;
     unsigned short w, h;
     Order order;
-    unsigned char family;
-    unsigned short level;
+    Sint32 family;
+    Sint32 level;
     walker* target;
 
 
     SelectionInfo()
         : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(Order::Living), family(FAMILY_SOLDIER), level(1), target(nullptr)
     {}
-    SelectionInfo(walker* target)
-        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(Order::Living), family(FAMILY_SOLDIER), level(1), target(target)
+    SelectionInfo(walker* target_)
+        : valid(false), x(0), y(0), w(GRID_SIZE), h(GRID_SIZE), order(Order::Living), family(FAMILY_SOLDIER), level(1), target(target_)
     {
-        set(target);
+        set(target_);
     }
     
     void clear()
@@ -440,26 +440,26 @@ public:
         family = FAMILY_SOLDIER;
         level = 1;
     }
-    void set(walker* target)
+    void set(walker* target_)
     {
-        if(target == nullptr)
+        if(target_ == nullptr)
             clear();
         else
         {
             valid = true;
-            name = target->stats()->name;
-            x = target->xpos;
-            y = target->ypos;
-            w = target->sizex;
-            h = target->sizey;
-            order = target->query_order();
-            family = target->query_family();
-            level = target->stats()->level;
-            this->target = target;
+            name = target_->stats()->name;
+            x = target_->xpos;
+            y = target_->ypos;
+            w = target_->sizex;
+            h = target_->sizey;
+            order = target_->query_order();
+            family = target_->query_family();
+            level = target_->stats()->level;
+            this->target = target_;
         }
     }
     
-    walker* get_object(LevelData* level)
+    walker* get_object(LevelData* /*level_data*/)
     {
         if(!valid)
             return nullptr;
@@ -468,8 +468,8 @@ public:
     }
 };
 
-std::string get_editor_family_label(Order order, char family, char livings[][20], const char* treasures[], const char* weapons[]);
-std::string get_editor_level_label(Order order, char family, int level);
+std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[]);
+std::string get_editor_level_label(Order order, Sint32 family, Sint32 level);
 
 class LevelEditorData
 {
@@ -563,8 +563,8 @@ public:
     bool saveLevelAs(int id);
     bool saveLevel();
     
-    void draw(screen* myscreen);
-    Sint32 display_panel(screen* myscreen);
+    void draw(screen* s);
+    Sint32 display_panel(screen* s);
     
     bool mouse_on_menus(int mx, int my);
     void update_menu_buttons();
@@ -1243,14 +1243,16 @@ bool LevelEditorData::saveLevel()
     return result;
 }
 
-void LevelEditorData::draw(screen* myscreen)
+void LevelEditorData::draw(screen* s)
 {
-    myscreen->clearbuffer();
-    level->draw(myscreen);
+    s->clearbuffer();
+    level->draw(s);
     
     if(rect_selecting)
     {
-        Rectf r(selection_rect.x - level->topx + myscreen->viewob[0]->xloc, selection_rect.y - level->topy + myscreen->viewob[0]->yloc, selection_rect.w, selection_rect.h);
+        Rectf r(selection_rect.x - static_cast<float>(level->topx) + static_cast<float>(s->viewob[0]->xloc),
+                selection_rect.y - static_cast<float>(level->topy) + static_cast<float>(s->viewob[0]->yloc),
+                selection_rect.w, selection_rect.h);
         if(r.w < 0.0f)
         {
             r.x += r.w;
@@ -1261,17 +1263,21 @@ void LevelEditorData::draw(screen* myscreen)
             r.y += r.h;
             r.h = -r.h;
         }
-        myscreen->draw_box(r.x, r.y, r.x + r.w, r.y + r.h, ORANGE_START, 0, 1);
+        const Sint32 x1 = static_cast<Sint32>(r.x);
+        const Sint32 y1 = static_cast<Sint32>(r.y);
+        const Sint32 x2 = static_cast<Sint32>(r.x + r.w);
+        const Sint32 y2 = static_cast<Sint32>(r.y + r.h);
+        s->draw_box(x1, y1, x2, y2, ORANGE_START, 0, 1);
         redraw = 1;
     }
     
-    display_panel(myscreen);
+    display_panel(s);
     
 }
 
-Sint32 LevelEditorData::display_panel(screen* myscreen)
+Sint32 LevelEditorData::display_panel(screen* s)
 {
-    text& scentext = myscreen->text_normal;
+    text& scentext = s->text_normal;
     // Draw selection indicators
     if(mode == Mode::Select && selection.size() > 0)
     {
@@ -1288,7 +1294,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 int worldy = my + level->topy;
                 int screenx = worldx - level->topx;
                 int screeny = worldy - level->topy;
-                myscreen->draw_box(screenx, screeny, screenx + sel.w, screeny + sel.h, dragging? ORANGE_START : YELLOW, 0, 1);
+                s->draw_box(screenx, screeny, screenx + sel.w, screeny + sel.h, dragging? ORANGE_START : YELLOW, 0, 1);
             }
         }
     }
@@ -1298,29 +1304,33 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     // Draw mode-specific buttons
     for(auto* btn : mode_buttons)
-        btn->draw(myscreen);
+        btn->draw(s);
         
     if(pan_buttons.size() > 0)
     {
         Rect r(panLeftButton.area.x, panUpButton.area.y, panRightButton.area.x + panRightButton.area.w - panLeftButton.area.x, panDownButton.area.y + panDownButton.area.h - panUpButton.area.y);
-        myscreen->fastbox(r.x, r.y, r.w, r.h, 13);
+        s->fastbox(r.x, r.y, r.w, r.h, 13);
         for(auto* btn : pan_buttons)
-            btn->draw(myscreen);
+            btn->draw(s);
     }
     
 	std::string message;
 	Sint32 i, j; // for loops
 	//   static Sint32 family=-1, hitpoints=-1, score=-1, act=-1;
-	Sint32 numobs = myscreen->level_data.numobs;
+	Sint32 numobs = s->level_data.numobs;
 	Sint32 lm = 245;
 	Sint32 curline = 0;
 	Sint32 whichback;
 	
 	const char* blood_string;
 	if(active_config().is_on("effects", "gore"))
+	{
         blood_string = "BLOOD";
+	}
     else
+	{
         blood_string = "REMAINS";
+	}
     
 	const char* treasures[NUM_FAMILIES] =
 	    { blood_string, "DRUMSTICK", "GOLD", "SILVER",
@@ -1348,17 +1358,17 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     if(mode == Mode::Select && selection.size() > 0)
     {
         // Draw the info box background
-        myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
+        s->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
         if(selection.size() > 1)
             scentext.write_xy(lm, L_D(curline++), "Selected:", RED, 1);
-        int i = 0;
+        int sel_index = 0;
         for(auto& sel : selection)
         {
             bool showing_name = false;
 
             // Too many names to show?
-            if(i+1 == 6 && selection.size() > 6)
+            if(sel_index+1 == 6 && selection.size() > 6)
             {
                 std::string buf = std::format("+{} more", int(selection.size()) - 5);
                 scentext.write_xy(lm, L_D(curline++), buf.c_str(), DARK_BLUE, 1);
@@ -1380,7 +1390,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
             }
 
-            i++;
+            sel_index++;
 
             // Only show extended info for a single selection
             if(selection.size() > 1)
@@ -1399,7 +1409,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     if(mode == Mode::Object)
     {
         // Draw the bounding box
-        myscreen->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
+        s->draw_button(lm-4, L_D(-1)+4, 315, L_D(7)-2, 1, 1);
         
         // Get team number ..
         message = get_editor_family_label(object_brush.order, object_brush.family, livings, treasures, weapons);
@@ -1411,7 +1421,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         if(!message.empty())
             scentext.write_xy(lm, L_D(curline++), message.c_str(), DARK_BLUE, 1);
 
-        numobs = myscreen->level_data.numobs;
+        numobs = s->level_data.numobs;
         //myscreen->fastbox(lm,L_D(curline),55,7,27, 1);
         message = std::format("OB: {}", numobs);
         scentext.write_xy(lm,L_D(curline++),message.c_str(), DARK_BLUE, 1);
@@ -1421,12 +1431,12 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     {
         // Show the current brush
         {
-            auto& pix = myscreen->level_data.pixdata[terrain_brush.terrain];
-            myscreen->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
+            auto& pix = s->level_data.pixdata[terrain_brush.terrain];
+            s->putbuffer(lm+25, PIX_TOP-16-1, GRID_SIZE, GRID_SIZE,
                                 0, 0, 320, 200, {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
         }
         // Border
-        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
+        s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
         // Show the background grid
         for (i=0; i < PIX_OVER; i++)
@@ -1435,15 +1445,15 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             {
                 whichback = (i+(j+rowsdown)*4) % (sizeof(backgrounds)/4);
                 {
-                    auto& pix = myscreen->level_data.pixdata[ backgrounds[whichback] ];
-                    myscreen->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
+                    auto& pix = s->level_data.pixdata[ backgrounds[whichback] ];
+                    s->putbuffer(S_RIGHT+i*GRID_SIZE, PIX_TOP+j*GRID_SIZE,
                                         GRID_SIZE, GRID_SIZE,
                                         0, 0, 320, 200,
                                         {pix.data.get(), static_cast<size_t>(pix.w * pix.h * pix.frames)});
                 }
             }
         }
-        myscreen->draw_box(S_RIGHT, PIX_TOP,
+        s->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, 0, 0, 1);
         
         #ifndef USE_TOUCH_INPUT
@@ -1451,11 +1461,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         // Draw cursor
         int mx, my;
         MouseState& mymouse = query_mouse_no_poll();
-        mx = mymouse.x;
-        my = mymouse.y;
-        bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
-                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
-                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
+        mx = static_cast<int>(mymouse.x);
+        my = static_cast<int>(mymouse.y);
+        bool over_radar = (mx > s->viewob[0]->endx - myradar.xview - 4
+                        && my > s->viewob[0]->endy - myradar.yview - 4
+                        && mx < s->viewob[0]->endx - 4 && my < s->viewob[0]->endy - 4);
         if(!over_radar && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my))
         {
             // Draw target tile
@@ -1465,7 +1475,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             int gridy = worldy - (worldy)%GRID_SIZE;
             int screenx = gridx - level->topx;
             int screeny = gridy - level->topy;
-            myscreen->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
+            s->draw_box(screenx, screeny, screenx + GRID_SIZE, screeny + GRID_SIZE, YELLOW, 0, 1);
         }
         #endif
     }
@@ -1473,34 +1483,36 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     {
         // Draw current brush
         // Background
-        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_BLACK, 1, 1);
+        s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, PURE_BLACK, 1, 1);
         // Guy
         walker* newob = level->add_ob(Order::Living, FAMILY_ELF);
         newob->setxy(lm+25 + level->topx, PIX_TOP-16-1 + level->topy);
         newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
         level->myloader->set_walker(newob, object_brush.order, object_brush.family);
-        newob->team_num = object_brush.team;
-        newob->draw_tile(myscreen->viewob[0].get());
+        newob->team_num = static_cast<unsigned char>(object_brush.team);
+        newob->draw_tile(s->viewob[0].get());
         // Border
-        myscreen->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
+        s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
-        myscreen->draw_box(S_RIGHT, PIX_TOP,
+        s->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, PURE_BLACK, 1, 1);
-        myscreen->draw_box(S_RIGHT, PIX_TOP,
+        s->draw_box(S_RIGHT, PIX_TOP,
                            S_RIGHT+4*GRID_SIZE, PIX_TOP+4*GRID_SIZE, WHITE, 0, 1);
         
         for (i=0; i < PIX_OVER; i++)
         {
             for (j=0; j < 4; j++)
             {
-                int index = (i + ((j+rowsdown) * PIX_OVER)) % (object_pane.size());
-                if(index < int(object_pane.size()))
+                const int pane_size = static_cast<int>(object_pane.size());
+                int index = 0;
+                if(pane_size > 0)
                 {
+                    index = (i + ((j+rowsdown) * PIX_OVER)) % pane_size;
                     newob->setxy(S_RIGHT+i*GRID_SIZE + level->topx, PIX_TOP+j*GRID_SIZE + level->topy);
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
                     level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
-                    newob->team_num = object_brush.team;
-                    newob->draw_tile(myscreen->viewob[0].get());
+                    newob->team_num = static_cast<unsigned char>(object_brush.team);
+                    newob->draw_tile(s->viewob[0].get());
                 }
             }
         }
@@ -1510,11 +1522,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
         // Draw cursor
         int mx, my;
         MouseState& mymouse = query_mouse_no_poll();
-        mx = mymouse.x;
-        my = mymouse.y;
-        bool over_radar = (mx > myscreen->viewob[0]->endx - myradar.xview - 4
-                        && my > myscreen->viewob[0]->endy - myradar.yview - 4
-                        && mx < myscreen->viewob[0]->endx - 4 && my < myscreen->viewob[0]->endy - 4);
+        mx = static_cast<int>(mymouse.x);
+        my = static_cast<int>(mymouse.y);
+        bool over_radar = (mx > s->viewob[0]->endx - myradar.xview - 4
+                        && my > s->viewob[0]->endy - myradar.yview - 4
+                        && mx < s->viewob[0]->endx - 4 && my < s->viewob[0]->endy - 4);
         bool over_info = Rect(lm-4, L_D(-1)+4, 315 - (lm-4), L_D(7)-2 - L_D(-1)).contains(mx, my);
         if(!over_radar && !over_info && !Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mx, my) && !mouse_on_menus(mx, my))
         {
@@ -1522,7 +1534,7 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
             newob->setxy(mx + level->topx, my + level->topy);
             newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
             level->myloader->set_walker(newob, object_brush.order, object_brush.family);
-            newob->team_num = object_brush.team;
+            newob->team_num = static_cast<unsigned char>(object_brush.team);
             
             // Get size rounded up to nearest GRID_SIZE
             int w = newob->sizex;
@@ -1539,11 +1551,11 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
                 int gridy = worldy - (worldy)%GRID_SIZE;
                 int screenx = gridx - level->topx;
                 int screeny = gridy - level->topy;
-                myscreen->draw_box(screenx, screeny, screenx + w, screeny + h, YELLOW, 0, 1);
+                s->draw_box(screenx, screeny, screenx + w, screeny + h, YELLOW, 0, 1);
             }
             
             // Draw current brush near cursor
-            newob->draw(myscreen->viewob[0].get());
+            newob->draw(s->viewob[0].get());
         }
         #endif
         
@@ -1554,17 +1566,17 @@ Sint32 LevelEditorData::display_panel(screen* myscreen)
     
     // Draw top menu
     for(auto* btn : menu_buttons)
-        btn->draw(myscreen);
+        btn->draw(s);
 
     // Draw submenus
     for(auto& [btn, btnSet] : current_menu)
     {
         for(auto* sub_btn : btnSet)
-            sub_btn->draw(myscreen);
+            sub_btn->draw(s);
     }
     
     
-	myscreen->buffer_to_screen(0, 0, 320, 200);
+	s->buffer_to_screen(0, 0, 320, 200);
 
 	return 1;
 }
@@ -1590,6 +1602,8 @@ int mouse_up_button = 0;
 
 void LevelEditorData::mouse_down(int mx, int my)
 {
+    (void)mx;
+    (void)my;
     dragging = false;
 }
 
@@ -1648,19 +1662,19 @@ void LevelEditorData::mouse_motion(int mx, int my, int dx, int dy)
             if(!dragging)
             {
                 // Select with a rectangle
-                float worldx = mx + level->topx - myscreen->viewob[0]->xloc;
-                float worldy = my + level->topy - myscreen->viewob[0]->yloc;
+                const float worldx_f = static_cast<float>(mx + level->topx - myscreen->viewob[0]->xloc);
+                const float worldy_f = static_cast<float>(my + level->topy - myscreen->viewob[0]->yloc);
                 if(!rect_selecting)
                 {
-                    selection_rect.x = worldx;
-                    selection_rect.y = worldy;
+                    selection_rect.x = worldx_f;
+                    selection_rect.y = worldy_f;
                     selection_rect.w = 1;
                     selection_rect.h = 1;
                     rect_selecting = true;
                 }
                 
-                selection_rect.w = worldx - selection_rect.x;
-                selection_rect.h = worldy - selection_rect.y;
+                selection_rect.w = worldx_f - selection_rect.x;
+                selection_rect.h = worldy_f - selection_rect.y;
                 
             }
         }
@@ -1830,26 +1844,26 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(!cancel)
             {
                 // Ask for campaign ID
-                std::string campaign = "com.example.new_campaign";
-                if(prompt_for_string("New Campaign", campaign))
+                std::string campaign_id = "com.example.new_campaign";
+                if(prompt_for_string("New Campaign", campaign_id))
                 {
                     // TODO: Check if campaign already exists and prompt the user to overwrite
-                    if(does_campaign_exist(campaign) && !yes_or_no_prompt("Overwrite?", "Overwrite existing campaign with that ID?", false))
+                    if(does_campaign_exist(campaign_id) && !yes_or_no_prompt("Overwrite?", "Overwrite existing campaign with that ID?", false))
                     {
                         cancel = true;
                     }
                     
                     if(!cancel)
                     {
-                        if(create_new_campaign(campaign))
+                        if(create_new_campaign(campaign_id))
                         {
                             
                             // Load campaign data for the editor
-                            if(loadCampaign(campaign))
+                            if(loadCampaign(campaign_id))
                             {
                                 // Mount new campaign
                                 unmount_campaign_package(get_mounted_campaign());
-                                mount_campaign_package(campaign);
+                                mount_campaign_package(campaign_id);
                                 
                                 // Load first scenario
                                 std::list<int> levels = list_levels();
@@ -2185,10 +2199,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
         }
         else if(activate_menu_choice(mx, my, *this, campaignDetailsFirstLevelButton))
         {
-            std::string level = std::format("{}", campaign->first_level);
-            if(prompt_for_string("First Level", level))
+            std::string level_str = std::format("{}", campaign->first_level);
+            if(prompt_for_string("First Level", level_str))
             {
-                campaign->first_level = toInt(level);
+                campaign->first_level = toInt(level_str);
                 campaignchanged = 1;
             }
         }
@@ -2221,7 +2235,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 // Only show the first 6 problems and "More problems..."
                 if(problems.size() > 6)
                 {
-                    int num_over = problems.size() - 6;
+                    int num_over = static_cast<int>(problems.size()) - 6;
                     while(problems.size() > 6)
                         problems.pop_back();
                     problems.push_back(std::format("{} more problems...", num_over));
@@ -2400,7 +2414,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 int v = toInt(par);
                 if(v > 0)
                 {
-                    level->par_value = v;
+                    level->par_value = static_cast<short>(v);
                     levelchanged = 1;
                 }
             }
@@ -2413,7 +2427,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                 int v = toInt(par);
                 if(v > 0)
                 {
-                    level->time_bonus_limit = v;
+                    level->time_bonus_limit = static_cast<short>(v);
                     levelchanged = 1;
                 }
             }
@@ -2597,9 +2611,10 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                     //windowx = (mx - PIX_LEFT) / GRID_SIZE;
                     windowx = (mx-S_RIGHT) / GRID_SIZE;
                     windowy = (my - PIX_TOP) / GRID_SIZE;
-                    int index =  (windowx + ((windowy+rowsdown) * PIX_OVER)) % (object_pane.size());
-                    if(index < int(object_pane.size()))
+                    const int pane_size = static_cast<int>(object_pane.size());
+                    if(pane_size > 0)
                     {
+                        const int index = (windowx + ((windowy+rowsdown) * PIX_OVER)) % pane_size;
                         object_brush.order = object_pane[index].order;
                         object_brush.family = object_pane[index].family;
                     }
@@ -2613,7 +2628,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         levelchanged = 1;
                         newob = level->add_ob(object_brush.order, object_brush.family);
                         newob->setxy(windowx, windowy);
-                        newob->team_num = object_brush.team;
+                        newob->team_num = static_cast<unsigned char>(object_brush.team);
                         newob->stats()->level = object_brush.level;
                         newob->dead = 0; // just in case
                         newob->collide_ob = nullptr;
@@ -2968,8 +2983,11 @@ int level_editor_test_exercise_internal_helpers()
 }
 #endif
 
-std::string get_editor_family_label(Order order, char family, char livings[][20], const char* treasures[], const char* weapons[])
+std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[])
 {
+    if(family < 0 || family >= NUM_FAMILIES)
+        return "UNKNOWN";
+
     if (order == Order::Living)
         return livings[family];
     if (order == Order::Generator)
@@ -2992,7 +3010,7 @@ std::string get_editor_family_label(Order order, char family, char livings[][20]
     return "UNKNOWN";
 }
 
-std::string get_editor_level_label(Order order, char family, int level)
+std::string get_editor_level_label(Order order, Sint32 family, Sint32 level)
 {
     switch (order)
     {
@@ -3037,8 +3055,8 @@ EventType handle_basic_editor_event(const SDL_Event& event)
         return EventType::Scroll;
     case SDL_FINGERMOTION:
         handle_mouse_event(event);
-        mouse_motion_x = event.tfinger.dx*320;
-        mouse_motion_y = event.tfinger.dy*200;
+        mouse_motion_x = static_cast<int>(event.tfinger.dx * 320.0f);
+        mouse_motion_y = static_cast<int>(event.tfinger.dy * 200.0f);
         return EventType::MouseMotion;
     case SDL_FINGERUP:
         {
@@ -3065,8 +3083,8 @@ EventType handle_basic_editor_event(const SDL_Event& event)
         return EventType::Handled;
     case SDL_MOUSEMOTION:
         handle_mouse_event(event);
-        mouse_motion_x = event.motion.xrel * (320 / viewport_w);
-        mouse_motion_y = event.motion.yrel * (200 / viewport_h);
+        mouse_motion_x = static_cast<int>(static_cast<float>(event.motion.xrel) * (320.0f / viewport_w));
+        mouse_motion_y = static_cast<int>(static_cast<float>(event.motion.yrel) * (200.0f / viewport_h));
         return EventType::MouseMotion;
     case SDL_MOUSEBUTTONUP:
         {
@@ -3150,22 +3168,24 @@ Sint32 level_editor()
             Log("Failed to load level data.\n");
     }
     else
+    {
         Log("Campaign has no valid levels!\n");
+    }
 
 	redraw = 1;  // Redraw right away
 	
 	object_pane.clear();
-	for(int i = 0; i < NUM_FAMILIES; i++)
+	for(int family_idx = 0; family_idx < NUM_FAMILIES; family_idx++)
     {
-        object_pane.push_back(ObjectType(Order::Living, i));
+        object_pane.push_back(ObjectType(Order::Living, static_cast<unsigned char>(family_idx)));
     }
-	for(int i = 0; i < MAX_TREASURE+1; i++)
+	for(int treasure_idx = 0; treasure_idx < MAX_TREASURE+1; treasure_idx++)
     {
-        object_pane.push_back(ObjectType(Order::Treasure, i));
+        object_pane.push_back(ObjectType(Order::Treasure, static_cast<unsigned char>(treasure_idx)));
     }
-	for(int i = 0; i < 4; i++)
+	for(int gen_idx = 0; gen_idx < 4; gen_idx++)
     {
-        object_pane.push_back(ObjectType(Order::Generator, i));
+        object_pane.push_back(ObjectType(Order::Generator, static_cast<unsigned char>(gen_idx)));
     }
     
     object_pane.push_back(ObjectType(Order::Weapon, FAMILY_DOOR));
@@ -3188,8 +3208,8 @@ Sint32 level_editor()
     mymouse.y = 100;
     #endif
     
-    mouse_last_x = mymouse.x;
-    mouse_last_y = mymouse.y;
+    mouse_last_x = static_cast<int>(mymouse.x);
+    mouse_last_y = static_cast<int>(mymouse.y);
     
     float cycletimer = 0.0f;
 	grab_mouse();
@@ -3243,28 +3263,28 @@ Sint32 level_editor()
             switch(handle_basic_editor_event(event))
             {
             case EventType::MouseMotion:
-                data.mouse_motion(mymouse.x, mymouse.y, mouse_motion_x, mouse_motion_y);
+                data.mouse_motion(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y), mouse_motion_x, mouse_motion_y);
                 break;
             case EventType::MouseDown:
                 if(mymouse.left)
                 {
-                    mouse_last_x = mymouse.x;
-                    mouse_last_y = mymouse.y;
+                    mouse_last_x = static_cast<int>(mymouse.x);
+                    mouse_last_y = static_cast<int>(mymouse.y);
                     
-                    data.mouse_down(mymouse.x, mymouse.y);
+                    data.mouse_down(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y));
                 }
                 break;
             case EventType::MouseUp:
                 
                 if(mouse_up_button == MOUSE_LEFT)
                 {
-                    data.mouse_up(mymouse.x, mymouse.y, mouse_last_x, mouse_last_y, done);
+                    data.mouse_up(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y), mouse_last_x, mouse_last_y, done);
                     redraw = 1;
                 }
                 else if(mouse_up_button == MOUSE_RIGHT)
                 {
                     // Picking with right mouse button
-                    data.pick_by_mouse(mymouse.x, mymouse.y);
+                    data.pick_by_mouse(static_cast<int>(mymouse.x), static_cast<int>(mymouse.y));
                     redraw = 1;
                 }
                 break;
@@ -3481,14 +3501,14 @@ Sint32 level_editor()
         
         #endif
 
-		short scroll_amount = get_and_reset_scroll_amount();
+		short scroll_delta = get_and_reset_scroll_amount();
 		#if defined(USE_TOUCH_INPUT)
 		// Only scroll the tile selector when touching it and you've already moved a bit
 		if(mymouse.left && Rect(S_RIGHT, PIX_TOP, 4*GRID_SIZE, 4*GRID_SIZE).contains(mymouse.x, mymouse.y) && fabs(mouse_last_y - mymouse.y) > 4)
         {
 		#endif
 		// Slide tile selector down ..
-		if (keystates[KEYSTATE_DOWN] || scroll_amount < 0)
+		if (keystates[KEYSTATE_DOWN] || scroll_delta < 0)
 		{
 			rowsdown++;
 			if (rowsdown >= maxrows)
@@ -3504,7 +3524,7 @@ Sint32 level_editor()
 		}
 
 		// Slide tile selector up ..
-		if (keystates[KEYSTATE_UP] || scroll_amount > 0)
+		if (keystates[KEYSTATE_UP] || scroll_delta > 0)
 		{
 			rowsdown--;
 			if (rowsdown < 0)
@@ -3557,11 +3577,11 @@ Sint32 level_editor()
 		// Mouse stuff ..
 		mymouse = query_mouse_no_poll();
 		
-		if (mymouse.left)       // put or remove the current guy
-		{
-			redraw = 1;
-			mx = mymouse.x;
-			my = mymouse.y;
+			if (mymouse.left)       // put or remove the current guy
+			{
+				redraw = 1;
+				mx = static_cast<Sint32>(mymouse.x);
+				my = static_cast<Sint32>(mymouse.y);
             
             // Holding on menu items
             bool mouse_on_menu = data.mouse_on_menus(mx, my);
@@ -3642,9 +3662,9 @@ Sint32 level_editor()
                 }
                 else  // in the main window
                 {
-                    windowx = mymouse.x + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
+                    windowx = static_cast<Sint32>(mymouse.x) + data.level->topx - myscreen->viewob[0]->xloc; // - S_LEFT
                     windowx -= (windowx%GRID_SIZE);
-                    windowy = mymouse.y + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
+                    windowy = static_cast<Sint32>(mymouse.y) + data.level->topy - myscreen->viewob[0]->yloc; // - S_UP
                     windowy -= (windowy%GRID_SIZE);
 
                     if (mode == Mode::Terrain)
@@ -3661,7 +3681,7 @@ Sint32 level_editor()
                             if(!terrain_brush.picking)
                             {
                                 // Set to our current selection (apply brush)
-                                data.set_terrain(windowx, windowy, get_random_matching_tile(terrain_brush.terrain));
+                                data.set_terrain(windowx, windowy, static_cast<unsigned char>(get_random_matching_tile(terrain_brush.terrain)));
                                 levelchanged = 1;
                                 if (terrain_brush.use_smoothing) // smooth a few squares, if not control
                                 {
@@ -3682,13 +3702,13 @@ Sint32 level_editor()
 		}      // end of left mouse button
 
 		// Now perform color cycling if selected
-		if (cyclemode)
-		{
-		    cycletimer -= (start_ticks - last_ticks)/1000.0f;
-		    if(cycletimer <= 0)
-            {
-                cycletimer = 0.5f;
-                cycle_palette(scenpalette, WATER_START, WATER_END, 1);
+			if (cyclemode)
+			{
+			    cycletimer -= static_cast<float>(start_ticks - last_ticks) / 1000.0f;
+			    if(cycletimer <= 0)
+	            {
+	                cycletimer = 0.5f;
+	                cycle_palette(scenpalette, WATER_START, WATER_END, 1);
                 cycle_palette(scenpalette, ORANGE_START, ORANGE_END, 1);
             }
 			redraw = 1;
@@ -3728,7 +3748,7 @@ Sint32 level_editor()
 }
 
 
-char get_random_matching_tile(Sint32 whatback)
+Sint32 get_random_matching_tile(Sint32 whatback)
 {
 	Sint32 i;
 
@@ -3862,10 +3882,10 @@ char get_random_matching_tile(Sint32 whatback)
 				default:
 					return PIX_JAGGED_GROUND_1;
 			}
-		default:
-			return whatback;
+			default:
+				return whatback;
+		}
 	}
-}
 
 // Copy of collide from obmap; used manually .. :(
 Sint32 check_collide(Sint32 x,  Sint32 y,  Sint32 xsize,  Sint32 ysize,

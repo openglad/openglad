@@ -101,8 +101,8 @@ MenuNav::MenuNav()
     : up(-1), down(-1), left(-1), right(-1)
 {}
 
-MenuNav::MenuNav(int up, int down, int left, int right)
-    : up(up), down(down), left(left), right(right)
+MenuNav::MenuNav(int up_idx, int down_idx, int left_idx, int right_idx)
+    : up(up_idx), down(down_idx), left(left_idx), right(right_idx)
 {}
 
 
@@ -432,14 +432,14 @@ Sint32 vbutton::rightclick(Sint32 whichbutton)
     return -1; // wasn't focused on us
 }
 
-Sint32 vbutton::mouse_on()
-{
-    if(hidden)
-        return 0;
-    Sint32 mousex,mousey;
-    MouseState& mymouse = query_mouse();
-    mousex = mymouse.x;
-    mousey = mymouse.y;
+	Sint32 vbutton::mouse_on()
+	{
+	    if(hidden)
+	        return 0;
+	    Sint32 mousex,mousey;
+	    MouseState& mymouse = query_mouse();
+	    mousex = static_cast<Sint32>(mymouse.x);
+	    mousey = static_cast<Sint32>(mymouse.y);
 
     if (mousex > xloc && mousex < xend && mousey > yloc && mousey < yend)
     {
@@ -583,41 +583,41 @@ void toggle_rendering_engine()
 #define REDRAW 2 //we just exited a menu, so redraw your buttons
 #define OK 4 //this function was successful, continue normal operation
 
-Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
-{
-    switch (button_action_from_id(whatfunc))
-    {
-    case ButtonAction::BeginMenu:
-        return beginmenu(arg);
-    case ButtonAction::CreateTeamMenu:
-        return create_team_menu(arg);
-    case ButtonAction::SetPlayerMode:
-        return set_player_mode(arg);
-    case ButtonAction::QuitMenu:
-        quit(arg);
-        return 1;
-    case ButtonAction::CreateViewMenu:
-        return create_view_menu(arg);
-    case ButtonAction::CreateTrainMenu:
-        return create_train_menu(arg);
-    case ButtonAction::CreateHireMenu:
-        return create_hire_menu(arg);
-    case ButtonAction::CreateLoadMenu:
-        return create_load_menu(arg);
-    case ButtonAction::CreateSaveMenu:
-        return create_save_menu(arg);
-    case ButtonAction::CreateProgressMenu:
-        return create_progress_menu(arg);
-    case ButtonAction::GoMenu:
-        return go_menu(arg);
-    case ButtonAction::ReturnMenu:
-        return arg;
-    case ButtonAction::CycleTeamGuy:
-        return cycle_team_guy(arg);
-    case ButtonAction::DecreaseStat:
-        return decrease_stat(arg);
-    case ButtonAction::IncreaseStat:
-        return increase_stat(arg);
+	Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 call_arg)
+	{
+	    switch (button_action_from_id(whatfunc))
+	    {
+	    case ButtonAction::BeginMenu:
+	        return beginmenu(call_arg);
+	    case ButtonAction::CreateTeamMenu:
+	        return create_team_menu(call_arg);
+	    case ButtonAction::SetPlayerMode:
+	        return set_player_mode(call_arg);
+	    case ButtonAction::QuitMenu:
+	        quit(call_arg);
+	        return 1;
+	    case ButtonAction::CreateViewMenu:
+	        return create_view_menu(call_arg);
+	    case ButtonAction::CreateTrainMenu:
+	        return create_train_menu(call_arg);
+	    case ButtonAction::CreateHireMenu:
+	        return create_hire_menu(call_arg);
+	    case ButtonAction::CreateLoadMenu:
+	        return create_load_menu(call_arg);
+	    case ButtonAction::CreateSaveMenu:
+	        return create_save_menu(call_arg);
+	    case ButtonAction::CreateProgressMenu:
+	        return create_progress_menu(call_arg);
+	    case ButtonAction::GoMenu:
+	        return go_menu(call_arg);
+	    case ButtonAction::ReturnMenu:
+	        return call_arg;
+	    case ButtonAction::CycleTeamGuy:
+	        return cycle_team_guy(call_arg);
+	    case ButtonAction::DecreaseStat:
+	        return decrease_stat(call_arg);
+	    case ButtonAction::IncreaseStat:
+	        return increase_stat(call_arg);
     case ButtonAction::EditGuy:
         return edit_guy(arg);
     case ButtonAction::CycleGuy:
@@ -699,14 +699,14 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 }
 
 // For right-button
-Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 arg)
+Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 call_arg)
 {
     switch (button_action_from_id(whatfunc))
     {
     case ButtonAction::DecreaseStat:
-        return decrease_stat(arg, 5);
+        return decrease_stat(call_arg, 5);
     case ButtonAction::IncreaseStat:
-        return increase_stat(arg, 5);
+        return increase_stat(call_arg, 5);
     default:
         return 4;
     }

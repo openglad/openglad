@@ -407,14 +407,17 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 	Sint32 ytarg; //the for loop target
 	Sint32 dist;
 	// NOTE: we're going to shrink dimensions by one in each..
+	const Sint32 x_i = static_cast<Sint32>(x);
+	const Sint32 y_i = static_cast<Sint32>(y);
 	//Sint32 xover = static_cast<Sint32>(x+ob->sizex-1), yover = static_cast<Sint32>(y+ob->sizey-1);
-	Sint32 xover = x+ob->sizex, yover = y+ob->sizey;
+	Sint32 xover = x_i + ob->sizex;
+	Sint32 yover = y_i + ob->sizey;
 
 	// Again, this is for shrinking ...
 	//x+=1;
 	//y+=1;
 
-	if (x < 0 || y < 0 || xover >= level_data.pixmaxx || yover >= level_data.pixmaxy)
+	if (x_i < 0 || y_i < 0 || xover >= level_data.pixmaxx || yover >= level_data.pixmaxy)
 		return 0;
 
 	// Are we ethereal?
@@ -437,8 +440,8 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 	xtarg = (xover/GRID_SIZE) + xtrax;
 	ytarg = (yover/GRID_SIZE) + xtray;
 
-	for (i = x/GRID_SIZE; i < xtarg; i++)
-		for (j = y/GRID_SIZE; j < ytarg; j++)
+	for (i = x_i/GRID_SIZE; i < xtarg; i++)
+		for (j = y_i/GRID_SIZE; j < ytarg; j++)
 
 		{
 			// Check if item in background grid
@@ -551,28 +554,35 @@ bool screen::query_grid_passable(float x, float y, walker  *ob)
 				case PIX_WALLTOP_H:
 					return 0;// break;
 
-				case PIX_WALL4:  // Arrow slits
-				case PIX_WALL5:
-				case PIX_WALL_ARROW_GRASS:
-				case PIX_WALL_ARROW_FLOOR:
-				case PIX_WALL_ARROW_GRASS_DARK:
-					{
-						//if (!ob->owner)
-						if (ob->query_order()==Order::Living)
-							return 0;
+					case PIX_WALL4:  // Arrow slits
+					case PIX_WALL5:
+					case PIX_WALL_ARROW_GRASS:
+					case PIX_WALL_ARROW_FLOOR:
+					case PIX_WALL_ARROW_GRASS_DARK:
+						{
+							//if (!ob->owner)
+							if (ob->query_order()==Order::Living)
+								return 0;
 
-						if (abs(ob->xpos - ob->owner->xpos)>
-						        abs(ob->ypos - ob->owner->ypos))
-							dist = abs(ob->xpos - ob->owner->xpos);
-						else
-							dist = abs(ob->ypos - ob->owner->ypos);
-						dist -= (GRID_SIZE/2);
-						if (dist < GRID_SIZE)
-							dist += GRID_SIZE;
-						if (ctx().rng->next(dist/GRID_SIZE))
-							return 0;
-					}
-				case PIX_WATER1:      // Water
+							if (abs(ob->xpos - ob->owner->xpos) >
+							        abs(ob->ypos - ob->owner->ypos))
+								dist = abs(ob->xpos - ob->owner->xpos);
+							else
+								dist = abs(ob->ypos - ob->owner->ypos);
+
+							dist -= (GRID_SIZE/2);
+							if (dist < GRID_SIZE)
+							{
+								dist += GRID_SIZE;
+							}
+
+							if (ctx().rng->next(dist/GRID_SIZE))
+							{
+								return 0;
+							}
+						}
+						[[fallthrough]];
+					case PIX_WATER1:      // Water
 				case PIX_WATER2:
 				case PIX_WATER3:
 				case PIX_WATERGRASS_LL:
@@ -618,7 +628,7 @@ bool screen::query_object_passable(float x, float y, walker  *ob)
 {
 	if (ob->dead)
 		return 1;
-	return level_data.myobmap->query_list(ob, x, y);
+	return level_data.myobmap->query_list(ob, static_cast<short>(x), static_cast<short>(y));
 }
 
 bool screen::query_passable(float x, float y, walker  *ob)
@@ -704,21 +714,21 @@ bool screen::act()
 	if (enemy_freeze == 1)
 		set_palette(ourpalette);
 
-    for(auto& uptr : level_data.oblist)
-    {
-        walker* ob = uptr.get();
-		if (!enemy_freeze) // normal functionality
-		{
+	    for(auto& uptr : level_data.oblist)
+	    {
+	        walker* ob = uptr.get();
+			if (!enemy_freeze) // normal functionality
+			{
 			if (ob && !ob->dead)
 			{
 				ob->in_act = true; // Zardus: while acting, in_act is set
 				ob->act();
 				ob->in_act = false;
-				if (ob && !ob->dead)
-				{
-					if (!ob->is_friendly_to_team(save_data.my_team) &&
-					        ob->query_order() == Order::Living)
-						level_done = 0;
+					if (ob && !ob->dead)
+					{
+						if (!ob->is_friendly_to_team(static_cast<unsigned char>(save_data.my_team)) &&
+						        ob->query_order() == Order::Living)
+							level_done = 0;
 					// Testing .. trying to FORCE foes :)
 					if (ob->foe == nullptr && ob->leader == nullptr)
 						ob->foe = find_far_foe(ob);
@@ -740,12 +750,12 @@ bool screen::act()
 			   )
 			{
 				ob->act();
-				if (ob && !ob->dead)
-				{
-					if (!ob->is_friendly_to_team(save_data.my_team) &&
-					        ob->query_order() == Order::Living)
-						level_done = 0;
-				}
+					if (ob && !ob->dead)
+					{
+						if (!ob->is_friendly_to_team(static_cast<unsigned char>(save_data.my_team)) &&
+						        ob->query_order() == Order::Living)
+							level_done = 0;
+					}
 			}
 		}
 
@@ -755,16 +765,16 @@ bool screen::act()
 	for(auto& uptr : level_data.weaplist)
 	{
 	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
-		{
-			ob->act();
 			if (ob && !ob->dead)
 			{
-				if (!ob->is_friendly_to_team(save_data.my_team) &&
-				        ob->query_order() == Order::Living)
-					level_done = 0;
+				ob->act();
+				if (ob && !ob->dead)
+				{
+					if (!ob->is_friendly_to_team(static_cast<unsigned char>(save_data.my_team)) &&
+					        ob->query_order() == Order::Living)
+						level_done = 0;
+				}
 			}
-		}
 	}  // end of weapons acting
 
 	// Quickly check the background for exits, etc.
@@ -782,11 +792,13 @@ bool screen::act()
 		}
 	}
 
-	if (level_done == 2)
-		return endgame(0, level_data.id + 1);  // No exits and no enemies: Go to next sequential level.
-    
-    if(end)
-        return 1;
+		if (level_done == 2)
+			return endgame(0, static_cast<short>(level_data.id + 1));  // No exits and no enemies: Go to next sequential level.
+	    
+	    if(end)
+	    {
+	        return 1;
+	    }
     
 	// Make sure we're all pointing to legal targets
 	for(auto& uptr : level_data.oblist)
@@ -872,8 +884,10 @@ short screen::endgame(short ending)
 
 short screen::endgame(short ending, short nextlevel)
 {
-    if(end)
-        return 1;
+	    if(end)
+	    {
+	        return 1;
+	    }
 	
 	
 	std::map<int, guy*> before;
@@ -1073,7 +1087,7 @@ walker  *screen::find_far_foe(walker  *ob)
 	return endfoe;
 }
 
-walker* screen::set_walker(walker *ob, Order order, char family)
+walker* screen::set_walker(walker *ob, Order order, Sint32 family)
 {
     return level_data.myloader->set_walker(ob, order, family);
 }
@@ -1237,7 +1251,7 @@ walker  * screen::find_nearest_blood(walker  *who)
 
 }
 
-std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
 	//short obx, oby;
     std::list<walker*> result;
@@ -1292,7 +1306,7 @@ walker* screen::find_nearest_player(walker *ob)
 	return returnob;
 }
 
-std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
     std::list<walker*> result;
     *howmany = 0;
@@ -1321,7 +1335,7 @@ std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>
 }
 
 std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
-                                      short *howmany, walker  *ob)
+                                      Sint32* howmany, walker* ob)
 {
     std::list<walker*> result;
     *howmany = 0;
@@ -1347,7 +1361,7 @@ std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walke
 	return result;
 }
 
-std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob)
+std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
     std::list<walker*> result;
     *howmany = 0;

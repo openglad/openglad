@@ -176,10 +176,10 @@ short pixie::on_screen()
 
 short pixie::on_screen(viewscreen  *viewp)
 {
-	short topx = viewp->topx;
-	short topy = viewp->topy;
-	short xview = viewp->xview;
-	short yview = viewp->yview;
+	Sint32 topx = viewp->topx;
+	Sint32 topy = viewp->topy;
+	Sint32 xview = viewp->xview;
+	Sint32 yview = viewp->yview;
 
 	// Return 0 if off viewscreen.
 	// These measurements are grid coords, not pixels.
@@ -211,12 +211,15 @@ void pixie::init_sdl_surface(void)
 	num=0;
 	for(i=0;i<sizey;i++)
 		for(j=0;j<sizex;j++)
-		{
-			query_palette_reg(bmp[num],&r,&g,&b);
-			c = SDL_MapRGB(bmp_surface->format,r*4,g*4,b*4);
-			rect.x = j;
-			rect.y = i;
-			rect.w = rect.h = 1;
+			{
+				query_palette_reg(bmp[num],&r,&g,&b);
+				c = SDL_MapRGB(bmp_surface->format,
+				               static_cast<Uint8>(r * 4),
+				               static_cast<Uint8>(g * 4),
+				               static_cast<Uint8>(b * 4));
+				rect.x = j;
+				rect.y = i;
+				rect.w = rect.h = 1;
 			SDL_FillRect(bmp_surface,&rect,c);
 			num++;
 		}

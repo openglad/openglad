@@ -283,7 +283,17 @@ ZIP_EXTERN struct zip_source *zip_source_filep(struct zip *, FILE *, zip_uint64_
 ZIP_EXTERN void zip_source_free(struct zip_source *);
 ZIP_EXTERN struct zip_source *zip_source_function(struct zip *, zip_source_callback, void *);
 ZIP_EXTERN struct zip_source *zip_source_zip(struct zip *, struct zip *, zip_uint64_t, zip_flags_t, zip_uint64_t, zip_int64_t);
+#ifdef __cplusplus
+} /* extern "C" */
+namespace libzip_c {
+extern "C" {
+#endif
 ZIP_EXTERN int zip_stat(struct zip *, const char *, zip_flags_t, struct zip_stat *);
+#ifdef __cplusplus
+} /* extern "C" */
+} /* namespace libzip_c */
+extern "C" {
+#endif
 ZIP_EXTERN int zip_stat_index(struct zip *, zip_uint64_t, zip_flags_t, struct zip_stat *);
 ZIP_EXTERN void zip_stat_init(struct zip_stat *);
 ZIP_EXTERN const char *zip_strerror(struct zip *);

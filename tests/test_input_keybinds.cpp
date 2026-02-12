@@ -11,8 +11,8 @@ struct KeyBindingGuard
     int key_enum;
     int old;
 
-    KeyBindingGuard(int player, int key_enum, int new_key)
-        : player(player), key_enum(key_enum), old(player_keys[player][key_enum])
+    KeyBindingGuard(int player_, int key_enum_, int new_key)
+        : player(player_), key_enum(key_enum_), old(player_keys[player_][key_enum_])
     {
         player_keys[player][key_enum] = new_key;
     }
@@ -30,8 +30,8 @@ struct KeyStateGuard
     int numkeys;
     Uint8* keys;
 
-    explicit KeyStateGuard(SDL_Scancode sc)
-        : sc(sc), old_value(0), numkeys(0), keys(nullptr)
+    explicit KeyStateGuard(SDL_Scancode sc_)
+        : sc(sc_), old_value(0), numkeys(0), keys(nullptr)
     {
         const Uint8* read_only = SDL_GetKeyboardState(&numkeys);
         keys = const_cast<Uint8*>(read_only);
@@ -133,4 +133,3 @@ void test_input_wait_for_key_event_returns_fake_escape_in_test_mode()
     TEST_ASSERT_EQ((int)SDLK_ESCAPE, (int)e.key.keysym.sym, "wait_for_key_event should return escape in test mode");
 }
 REGISTER_TEST(test_input_wait_for_key_event_returns_fake_escape_in_test_mode);
-

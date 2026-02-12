@@ -21,10 +21,10 @@ struct PickerStateGuard
 {
     guy* saved_current = nullptr;
     guy* saved_old = nullptr;
-    Sint32 saved_editguy = 0;
-    char saved_end = 0;
-    int saved_team_size = 0;
-    int saved_scen_num = 0;
+	Sint32 saved_editguy = 0;
+	char saved_end = 0;
+	unsigned char saved_team_size = 0;
+	short saved_scen_num = 0;
 
     PickerStateGuard()
     {
@@ -49,18 +49,18 @@ struct PickerStateGuard
 
 struct TeamSlotGuard
 {
-    int slot;
-    guy* saved;
-    TeamSlotGuard(int slot) : slot(slot), saved(myscreen->save_data.team_list[slot].release()) {}
-    ~TeamSlotGuard() { myscreen->save_data.team_list[slot].reset(saved); }
+	int slot;
+	guy* saved;
+	TeamSlotGuard(int slot_) : slot(slot_), saved(myscreen->save_data.team_list[slot_].release()) {}
+	~TeamSlotGuard() { myscreen->save_data.team_list[slot].reset(saved); }
 };
 
 struct ButtonSlotGuard
 {
-    int slot;
-    vbutton* saved;
-    ButtonSlotGuard(int slot) : slot(slot), saved(allbuttons[slot]) {}
-    ~ButtonSlotGuard() { allbuttons[slot] = saved; }
+	int slot;
+	vbutton* saved;
+	ButtonSlotGuard(int slot_) : slot(slot_), saved(allbuttons[slot_]) {}
+	~ButtonSlotGuard() { allbuttons[slot] = saved; }
 };
 
 int name_guy_injector(void*)

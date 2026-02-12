@@ -85,10 +85,10 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
 	{
         get_input_events(POLL);
         
-        if(query_key_press_event())
-        {
-            char c = query_key();
-            clear_key_press_event();
+	        if(query_key_press_event())
+	        {
+	            int c = query_key();
+	            clear_key_press_event();
             
             if (c == SDLK_RETURN)
             {
@@ -338,21 +338,23 @@ bool prompt_for_string_block(const std::string& message, std::list<std::string>&
         mytext.write_xy(right_button.x + right_button.w/2 - 6, right_button.y + right_button.h/2 - 3, "RT", DARK_BLUE, 1);
         #endif
         
-        int offset = 0;
-        if(current_line > 3)
-            offset = (current_line - 3)*10;
-        int j = 0;
-        for(auto& line : result)
-        {
-            int ypos = y + j*10 - offset;
+	        int offset = 0;
+	        if(current_line > 3)
+	            offset = static_cast<int>((current_line - 3) * 10);
+	        int j = 0;
+	        for(auto& line : result)
+	        {
+	            int ypos = y + j*10 - offset;
             if(y <= ypos && ypos <= y + h)
                 mytext.write_xy(x, ypos, line.c_str(), forecolor, 1);
             j++;
-        }
-        screen_ctx->ver_line(x + cursor_pos*6, y + current_line*10 - 2 - offset, 10, RED);
-		screen_ctx->buffer_to_screen(0, 0, 320, 200);
-        
-        SDL_Delay(10);
+	        }
+	        const Sint32 cursor_x = static_cast<Sint32>(x) + static_cast<Sint32>(cursor_pos * 6);
+	        const Sint32 cursor_y = static_cast<Sint32>(y) + static_cast<Sint32>(current_line * 10) - 2 - static_cast<Sint32>(offset);
+	        screen_ctx->ver_line(cursor_x, cursor_y, 10, RED);
+			screen_ctx->buffer_to_screen(0, 0, 320, 200);
+	        
+	        SDL_Delay(10);
 	}
 
     SDL_StopTextInput();
@@ -368,14 +370,14 @@ bool prompt_for_string(const std::string& message, std::string& result)
 #ifdef TESTING
     return true;  // Accept default name without blocking on text input
 #endif
-    screen_ctx->darken_screen();
-    
-    int max_chars = 29;
-    
-    int x = 58;
-    int y = 60;
-    int w = max_chars*6;
-    int h = 10;
+	    screen_ctx->darken_screen();
+	    
+	    const short max_chars = 29;
+	    
+	    int x = 58;
+	    int y = 60;
+	    int w = static_cast<int>(max_chars) * 6;
+	    int h = 10;
     
     screen_ctx->draw_button(x - 5, y - 20, x + w + 10, y + h + 10, 1);
     
@@ -387,7 +389,6 @@ bool prompt_for_string(const std::string& message, std::string& result)
     result = str;
     return true;
 }
-
 
 
 

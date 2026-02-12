@@ -70,7 +70,6 @@ REGISTER_TEST(test_guy_copy);
 // Test: Guy upgrade_to_level increases stats
 void test_guy_level_up() {
     guy soldier(FAMILY_SOLDIER);
-    short initial_level = soldier.level;
     short initial_str = soldier.strength;
 
     soldier.upgrade_to_level(5);

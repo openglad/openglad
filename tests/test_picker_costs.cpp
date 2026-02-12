@@ -144,7 +144,7 @@ void test_picker_calculate_train_cost_basic_and_level_upgrade_paths()
     // Now upgrade level above old_guy->level to hit the path that skips stat costs.
     cur->upgrade_to_level(4);
     Uint32 cost_level = calculate_train_cost(baseline);
-    TEST_ASSERT(cost_level >= 0, "training cost should be non-negative for level upgrade path");
+    (void)cost_level; // just exercise the level-up path
 
     delete baseline;
     delete cur;

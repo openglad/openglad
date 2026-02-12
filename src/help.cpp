@@ -67,12 +67,12 @@ std::string read_one_line(SDL_RWops *infile, short length)
 
 // Note: this code has been redone to work in 'scanlines,'
 //       so that the text scrolls by pixels rather than lines.
-short read_scenario(screen *myscreen)
+short read_scenario(screen *s)
 {
 #ifdef TESTING
 	return 1;
 #endif
-	Sint32 screenlines = myscreen->level_data.description.size() * 8;
+	Sint32 screenlines = static_cast<Sint32>(s->level_data.description.size()) * 8;
 	Sint32  numlines, j;
 	Sint32 linesdown;
 	Sint32 changed;
@@ -80,7 +80,7 @@ short read_scenario(screen *myscreen)
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
 	
-	text& mytext = myscreen->text_normal;
+	text& mytext = s->text_normal;
 	Sint32 start_time, now_time;
 	Sint32 bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
 
@@ -161,29 +161,29 @@ short read_scenario(screen *myscreen)
 		if (changed)  // did we scroll, etc.?
 		{
 			templines = linesdown/8; // which TEXT line are we at?
-			myscreen->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
-			                      HELPTEXT_LEFT+200, HELPTEXT_TOP+107, 3, 1);
-			for (j=0; j < DISPLAY_LINES; j++)
-            {
-                std::string s = myscreen->level_data.get_description_line(j+templines);
-				if(s.size() > 0)
-					mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(TEXT_DOWN(j)-linesdown%8),
-					                 s.c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
-            }
+				s->draw_button(HELPTEXT_LEFT-4, HELPTEXT_TOP-4-8,
+				                      HELPTEXT_LEFT+200, HELPTEXT_TOP+107, 3, 1);
+				for (j=0; j < DISPLAY_LINES; j++)
+	            {
+	                std::string line = s->level_data.get_description_line(j+templines);
+					if(line.size() > 0)
+						mytext.write_xy(HELPTEXT_LEFT+2, static_cast<short>(TEXT_DOWN(j)-linesdown%8),
+						                 line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1 ); // to buffer!
+	            }
 
 
 			// Draw a bounding box (top and bottom edges) ..
-			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
-			                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP-2);
-			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
-			                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP+103);
+				s->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP-8,
+				                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP-2);
+				s->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
+				                        HELPTEXT_LEFT+200-4, HELPTEXT_TOP+103);
 			mytext.write_xy(HELPTEXT_LEFT+40,
 			                 HELPTEXT_TOP-7, "SCENARIO INFORMATION", static_cast<unsigned char>(RED), 1);
 			mytext.write_xy(HELPTEXT_LEFT+30,
 			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
-			myscreen->buffer_to_screen(0, 0, 320, 200);
-			changed = 0;
-		} // end of changed drawing loop
+				s->buffer_to_screen(0, 0, 320, 200);
+				changed = 0;
+			} // end of changed drawing loop
 
 	}  // loop until ESC is pressed
 
@@ -196,11 +196,13 @@ short read_scenario(screen *myscreen)
 	return static_cast<short>(numlines);
 }
 
-short read_campaign_intro(screen * myscreen)
+short read_campaign_intro(screen *s)
 {
-    CampaignData data(myscreen->save_data.current_campaign);
+    CampaignData data(s->save_data.current_campaign);
     if(!data.load())
+    {
         return 1;
+    }
     
 	Sint32 screenlines;
 	Sint32  numlines, j;
@@ -210,7 +212,7 @@ short read_campaign_intro(screen * myscreen)
 	Sint32 text_delay = 1; // bigger = slower
 	Sint32 key_presses = 0;
 	
-	text& mytext = myscreen->text_normal;
+	text& mytext = s->text_normal;
 	Sint32 start_time, now_time;
 	Sint32 bottomrow;
 
@@ -221,7 +223,7 @@ short read_campaign_intro(screen * myscreen)
 	start_time = query_timer();
 
 	// Fill the helptext array with data ..
-	numlines = data.description.size();
+	numlines = static_cast<Sint32>(data.description.size());
 	screenlines = numlines*8;
 	numlines = screenlines;
 	bottomrow = (screenlines - ((DISPLAY_LINES-1)*8) );
@@ -313,7 +315,7 @@ short read_campaign_intro(screen * myscreen)
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP-2);
 			myscreen->draw_text_bar(HELPTEXT_LEFT, HELPTEXT_TOP+97,
 			                        HELPTEXT_LEFT+240-4, HELPTEXT_TOP+103);
-			mytext.write_xy(HELPTEXT_LEFT+240/2 - data.title.size()*3,
+			mytext.write_xy(HELPTEXT_LEFT+240/2 - static_cast<Sint32>(data.title.size())*3,
 			                 HELPTEXT_TOP-7, data.title.c_str(), static_cast<unsigned char>(RED), 1);
 			mytext.write_xy(HELPTEXT_LEFT+52,
 			                 HELPTEXT_TOP+98, CONTINUE_ACTION_STRING " TO CONTINUE", static_cast<unsigned char>(RED), 1);
@@ -611,10 +613,10 @@ Sint32 show_general_help()
 		bool mouse_clicked = mymouse.left && !prev_mouse_left;
 		prev_mouse_left = mymouse.left;
 
-		if (mouse_clicked)
-		{
-			int mx = mymouse.x;
-			int my = mymouse.y;
+			if (mouse_clicked)
+			{
+				const int mx = static_cast<int>(mymouse.x);
+				const int my = static_cast<int>(mymouse.y);
 
 			// Check if click is in tab area
 			if (my >= TAB_Y && my <= TAB_Y + TAB_HEIGHT)

@@ -79,7 +79,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
         target->damage_numbers.push_back(DamageNumber(target->xpos + target->sizex/2, target->ypos, tempdamage, RED));
     }
     if (target->stats()->hitpoints < 0)
-        tempdamage += target->stats()->hitpoints;
+        tempdamage = static_cast<short>(static_cast<float>(tempdamage) + target->stats()->hitpoints);
 
     if(active_config().is_on("effects", "hit_anim"))
     {
@@ -93,7 +93,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
                 newob->team_num = team_num;
                 newob->stats()->level = 1;
                 newob->damage = 0;
-                newob->ani_type = 1 + rand()%3;
+                newob->ani_type = static_cast<char>(1 + rand()%3);
                 if(attacker == this)
                 {
                     newob->center_on(target);
@@ -119,7 +119,11 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
             if(target->query_order() == Order::Living)
             {
                 target->hit_recoil = 1.0f;
-                target->hit_recoil_angle = atan2(target->ypos + target->sizey/2 - ypos - sizey/2, target->xpos + target->sizex/2 - xpos - sizex/2);
+                const float dy = (static_cast<float>(target->ypos) + static_cast<float>(target->sizey) * 0.5f) -
+                                 (static_cast<float>(ypos) + static_cast<float>(sizey) * 0.5f);
+                const float dx = (static_cast<float>(target->xpos) + static_cast<float>(target->sizex) * 0.5f) -
+                                 (static_cast<float>(xpos) + static_cast<float>(sizex) * 0.5f);
+                target->hit_recoil_angle = atan2f(dy, dx);
             }
         }
     }
@@ -141,7 +145,7 @@ void walker::do_combat_damage(walker* attacker, walker* target, short tempdamage
     do_hit_effects(attacker, target, tempdamage);
 
     if (target->stats()->hitpoints < 0)
-        tempdamage += target->stats()->hitpoints;
+        tempdamage = static_cast<short>(static_cast<float>(tempdamage) + target->stats()->hitpoints);
 
     // Delay HP regeneration
     if(tempdamage > 0)
@@ -237,11 +241,12 @@ bool walker::attack(walker  *target)
     if (tempdamage < 0)
         tempdamage = 0;
 
-    do_combat_damage(attacker, target, tempdamage);
-    TRACE("walker", "attack: %s deals %.0f damage", attacker->stats_->name.c_str(), tempdamage);
+    const short tempdamage_i = static_cast<short>(tempdamage);
+    do_combat_damage(attacker, target, tempdamage_i);
+    TRACE("walker", "attack: %s deals %d damage", attacker->stats_->name.c_str(), tempdamage_i);
 
     // Base exp from attack damage
-    short newexp = exp_from_action(ExpAction::Attack, this, target, tempdamage);
+    short newexp = exp_from_action(ExpAction::Attack, this, target, tempdamage_i);
 
     // Set our target to fighting our owner
     //in the case of our weapon hit something
@@ -259,17 +264,17 @@ bool walker::attack(walker  *target)
         target->stats()->hit_response(this);
         if (myguy)
         {
-            myguy->exp += newexp;
+                myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += tempdamage + target->stats()->level;
+                myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level);
             }
         }
     }
 
     if (order == Order::Weapon)
     {
-        stats_->hitpoints -= tempdamage;
+        stats_->hitpoints -= tempdamage_i;
         damage--;
         if (stats_->hitpoints <= 0)
         {
@@ -285,7 +290,7 @@ bool walker::attack(walker  *target)
                 {
                     Sint32 con = target->myguy ? target->myguy->constitution : 0;
                     target->stats()->frozen_delay =
-                        compute_freeze_duration(owner->stats()->level, con, *ctx().rng);
+                        static_cast<short>(compute_freeze_duration(owner->stats()->level, con, *ctx().rng));
                 }
                 break;
             default :
@@ -304,7 +309,7 @@ bool walker::attack(walker  *target)
         {
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += tempdamage + target->stats()->level; // / 2;
+                myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level); // / 2;
             }
             if (headguy->myguy)
                 headguy->myguy->exp += newexp;
@@ -334,7 +339,7 @@ bool walker::attack(walker  *target)
                     //}
                     if (getscore)
                     {
-                        myscreen->save_data.m_score[team_num] += tempdamage + (10 * target->stats()->level);
+                        myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(10 * target->stats()->level);
                     }
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)

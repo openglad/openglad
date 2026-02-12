@@ -228,9 +228,9 @@ void viewscreen::clear()
 
 bool viewscreen::redraw()
 {
-	short i,j;
-	short xneg = 0;
-	short yneg = 0;
+	Sint32 i,j;
+	Sint32 xneg = 0;
+	Sint32 yneg = 0;
 	walker  *controlob = control;
 	auto& backp = active_screen()->level_data.back;
 	PixieData& gridp = active_screen()->level_data.grid;
@@ -287,9 +287,9 @@ bool viewscreen::redraw()
 
 bool viewscreen::redraw(LevelData* data, bool draw_radar)
 {
-	short i,j;
-	short xneg = 0;
-	short yneg = 0;
+	Sint32 i,j;
+	Sint32 xneg = 0;
+	Sint32 yneg = 0;
 	walker  *controlob = control;
 	auto& backp = data->back;
 	PixieData& gridp = data->grid;
@@ -453,21 +453,21 @@ short viewscreen::input(const SDL_Event& event)
 	if (control && control->user == -1)
 	{
 		control->set_act_type(ACT_CONTROL);
-		control->user = static_cast<char>(mynum);
+		control->user = static_cast<signed char>(mynum);
 		control->stats()->clear_command();
 	}
 	if (!control || control->dead)
 	{
 		control = find_next_control();
 
-		if (!control)
-			return active_screen()->endgame(1);
+			if (!control)
+				return active_screen()->endgame(1);
 
-		if (control->user == -1)
-			control->user = mynum;
-		control->set_act_type(ACT_CONTROL);
-		active_screen()->control_hp = control->stats()->hitpoints;
-	}
+			if (control->user == -1)
+				control->user = static_cast<signed char>(mynum);
+			control->set_act_type(ACT_CONTROL);
+			active_screen()->control_hp = control->stats()->hitpoints;
+		}
 
 	if (control && control->bonus_rounds) // do we have extra rounds?
 	{
@@ -749,7 +749,7 @@ short viewscreen::input(const SDL_Event& event)
             if(result != nullptr)
                 control = result;
             
-			control->user = mynum;
+			control->user = static_cast<signed char>(mynum);
 			control->set_act_type(ACT_CONTROL);
 		} // end of change team
 
@@ -836,12 +836,12 @@ short viewscreen::input(const SDL_Event& event)
 			control->speed_bonus = control->normal_stepsize;
 		}
 
-		if (query_key_event(SDLK_t, event)) // transform to new shape
-		{
-			char family = (control->query_family()+1)% NUM_FAMILIES;
-			control->transform_to(control->query_order(), family);
-			//clear_key_code(SDLK_t);
-		} //end transform
+			if (query_key_event(SDLK_t, event)) // transform to new shape
+			{
+				Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->query_family())) + 1) % NUM_FAMILIES;
+				control->transform_to(control->query_order(), family);
+				//clear_key_code(SDLK_t);
+			} //end transform
 
 		if (query_key_event(SDLK_v, event)) // invisibility
 		{
@@ -903,12 +903,12 @@ short viewscreen::continuous_input()
 	//short step;
 	walker  * oldcontrol = control; // So we know if we changed guys
 
-	if (control && control->user == -1)
-	{
-		control->set_act_type(ACT_CONTROL);
-		control->user = static_cast<char>(mynum);
-		control->stats()->clear_command();
-	}
+		if (control && control->user == -1)
+		{
+			control->set_act_type(ACT_CONTROL);
+			control->user = static_cast<signed char>(mynum);
+			control->stats()->clear_command();
+		}
 
 	if (!control || control->dead)
 	{
@@ -918,7 +918,7 @@ short viewscreen::continuous_input()
 			return active_screen()->endgame(1);
 
 		if (control->user == -1)
-			control->user = mynum;
+			control->user = static_cast<signed char>(mynum);
 		control->set_act_type(ACT_CONTROL);
 		active_screen()->control_hp = control->stats()->hitpoints;
 	}
@@ -1321,15 +1321,13 @@ void viewscreen::view_team()
 
 void viewscreen::view_team(short left, short top, short right, short bottom)
 {
-	char teamnum = my_team;
-	char text_down = top+3;
+	short teamnum = my_team;
+	short text_down = static_cast<short>(top + 3);
 	std::string message;
-	char hpcolor, mpcolor, namecolor, numguys = 0;
+	unsigned char hpcolor, mpcolor, namecolor, numguys = 0;
 	float hp, mp, maxhp, maxmp;
 	text& mytext = active_screen()->text_normal;
 	
-	Sint32 currentcycle = 0, cycletime = 30000;
-
 	active_screen()->redrawme = 1;
 	active_screen()->draw_button(left, top, right, bottom, 2);
 
@@ -1402,6 +1400,8 @@ void viewscreen::view_team(short left, short top, short right, short bottom)
 	active_screen()->swap();
 
 #ifndef TESTING
+	Sint32 currentcycle = 0;
+	Sint32 cycletime = 30000;
 	while (!keystates[KEYSTATE_ESCAPE])
 	{
 		YIELD_SLEEP(10);  // Yield to browser event loop
@@ -1423,7 +1423,7 @@ void viewscreen::options_menu()
 	text& optiontext = active_screen()->text_normal;
 	Sint32 gamespeed;
 	std::string message, tempstr;
-	signed char gamma = prefs[PREF_GAMMA];
+	Sint32 gamma_val = prefs[PREF_GAMMA];
 
 #define LEFT_OPS 49
 #define TOP_OPS 44
@@ -1474,8 +1474,8 @@ void viewscreen::options_menu()
 	active_screen()->draw_box(LEFT_OPS, OPLINES(3), LEFT_OPS+static_cast<int>(message.size())*6, OPLINES(3)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(3), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
-	gamma = change_gamma(0);
-	message = std::format("Change Brightness (<,>): {} ", gamma);
+	gamma_val = change_gamma(0);
+	message = std::format("Change Brightness (<,>): {} ", gamma_val);
 	active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 	optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 
@@ -1653,10 +1653,11 @@ void viewscreen::options_menu()
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_COMMA]) // darken screen
-		{
-			prefs[PREF_GAMMA] = gamma = change_gamma(-2);
-			message = std::format("Change Brightness (<,>): {} ", gamma);
+			if (keystates[KEYSTATE_COMMA]) // darken screen
+			{
+				gamma_val = change_gamma(-2);
+				prefs[PREF_GAMMA] = static_cast<signed char>(gamma_val);
+				message = std::format("Change Brightness (<,>): {} ", gamma_val);
 			active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
@@ -1666,10 +1667,11 @@ void viewscreen::options_menu()
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_PERIOD]) // lighten screen
-		{
-			prefs[PREF_GAMMA] = gamma = change_gamma(+2);
-			message = std::format("Change Brightness (<,>): {} ", gamma);
+			if (keystates[KEYSTATE_PERIOD]) // lighten screen
+			{
+				gamma_val = change_gamma(+2);
+				prefs[PREF_GAMMA] = static_cast<signed char>(gamma_val);
+				message = std::format("Change Brightness (<,>): {} ", gamma_val);
 			active_screen()->draw_box(45, OPLINES(4), 275, OPLINES(4)+6, PANEL_COLOR, 1, 1);
 			optiontext.write_xy(LEFT_OPS, OPLINES(4), message.c_str(), static_cast<unsigned char>(BLACK), 1);
 			active_screen()->buffer_to_screen(0, 0, 320, 200);
@@ -1679,9 +1681,9 @@ void viewscreen::options_menu()
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_r]) // toggle radar display
-		{
-			prefs[PREF_RADAR] = (prefs[PREF_RADAR]+1)%2;
+			if (keystates[KEYSTATE_r]) // toggle radar display
+			{
+				prefs[PREF_RADAR] = static_cast<signed char>((prefs[PREF_RADAR] + 1) % 2);
 			if (prefs[PREF_RADAR])
 				message = "Radar Display (R)      : ON ";
 			else
@@ -1695,9 +1697,9 @@ void viewscreen::options_menu()
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_h]) // toggle HP display
-		{
-			prefs[PREF_LIFE] = (prefs[PREF_LIFE]+1) %5;
+			if (keystates[KEYSTATE_h]) // toggle HP display
+			{
+				prefs[PREF_LIFE] = static_cast<signed char>((prefs[PREF_LIFE] + 1) % 5);
 			switch (prefs[PREF_LIFE])
 			{
 				case PREF_LIFE_TEXT:
@@ -1727,9 +1729,9 @@ void viewscreen::options_menu()
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_f]) // toggle foes display
-		{
-			prefs[PREF_FOES] = (prefs[PREF_FOES]+1)%2;
+			if (keystates[KEYSTATE_f]) // toggle foes display
+			{
+				prefs[PREF_FOES] = static_cast<signed char>((prefs[PREF_FOES] + 1) % 2);
 			if (prefs[PREF_FOES])
 				message = "Foes Display (F)       : ON ";
 			else
@@ -1743,9 +1745,9 @@ void viewscreen::options_menu()
 				get_input_events(POLL);
 			}
 		}
-		if (keystates[KEYSTATE_s]) // toggle score display
-		{
-			prefs[PREF_SCORE] = (prefs[PREF_SCORE]+1)%2;
+			if (keystates[KEYSTATE_s]) // toggle score display
+			{
+				prefs[PREF_SCORE] = static_cast<signed char>((prefs[PREF_SCORE] + 1) % 2);
 			if (prefs[PREF_SCORE])
 				message = "Score Display (S)      : ON ";
 			else
@@ -1824,9 +1826,9 @@ void viewscreen::options_menu()
 			options_menu();
 			return;
 		}
-		if (keystates[KEYSTATE_b]) // toggle button display
-		{
-			prefs[PREF_OVERLAY] = (prefs[PREF_OVERLAY]+1)%2;
+			if (keystates[KEYSTATE_b]) // toggle button display
+			{
+				prefs[PREF_OVERLAY] = static_cast<signed char>((prefs[PREF_OVERLAY] + 1) % 2);
 			if (prefs[PREF_OVERLAY])
 				message = "Text-button Display (B): ON ";
 			else
@@ -1938,10 +1940,8 @@ short options::load(viewscreen *viewp)
 {
 	short prefnum = viewp->mynum;
 	// Yes, we are ACTUALLY COPYING the data
-	if(viewp->prefs != prefs[prefnum])
-        std::copy_n(prefs[prefnum], 10, viewp->prefs);
-    if(viewp->mykeys != allkeys[prefnum])
-        std::copy_n(allkeys[prefnum], 16, viewp->mykeys);
+	std::copy_n(prefs[prefnum], 10, viewp->prefs);
+	std::copy_n(allkeys[prefnum], 16, viewp->mykeys);
 	return 1;
 }
 

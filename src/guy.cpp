@@ -25,7 +25,7 @@ extern Sint32 statcosts[NUM_FAMILIES][6];
 // Zardus: PORT, exception doesn't compile (dos thing?): int matherr(struct exception *);
 
 
-const char* get_family_string(short family);
+const char* get_family_string(Sint32 family);
 
 static int guy_id_counter = 0;
 
@@ -66,7 +66,7 @@ guy::guy()
 guy::guy(int whatfamily)
 {
 
-	family = whatfamily;
+	family = static_cast<char>(whatfamily);
 	kills = 0;
 	level_kills = 0;
 	total_damage = total_hits = total_shots = 0;
@@ -83,12 +83,12 @@ guy::guy(int whatfamily)
 	// Set stats
 	if(whatfamily <= FAMILY_ARCHMAGE)
 	{
-        strength = statlist[whatfamily][0];
-        dexterity = statlist[whatfamily][1];
-        constitution = statlist[whatfamily][2];
-        intelligence = statlist[whatfamily][3];
-        armor = statlist[whatfamily][4];
-        level = statlist[whatfamily][5];  // should always be 1...
+        strength = static_cast<short>(statlist[whatfamily][0]);
+        dexterity = static_cast<short>(statlist[whatfamily][1]);
+        constitution = static_cast<short>(statlist[whatfamily][2]);
+        intelligence = static_cast<short>(statlist[whatfamily][3]);
+        armor = static_cast<short>(statlist[whatfamily][4]);
+        level = static_cast<short>(statlist[whatfamily][5]);  // should always be 1...
 	}
 	else
     {
@@ -320,150 +320,106 @@ Uint32 calculate_exp(Sint32 level)
     return 8000 + 2000*level_1 + 4000*level_2 + calculate_exp(level-1);
 }
 
-void guy::upgrade_to_level(short level, bool set_xp)
+void guy::upgrade_to_level(short new_level, bool set_xp)
 {
-    short level_diff = level - this->level;
+    Sint32 level_diff = static_cast<Sint32>(new_level) - static_cast<Sint32>(this->level);
     
-    short s = 8*level_diff, d = 6*level_diff, c = 8*level_diff, i = 8*level_diff, a = 1*level_diff;
+    Sint32 s = 8 * level_diff;
+    Sint32 d = 6 * level_diff;
+    Sint32 c = 8 * level_diff;
+    Sint32 it = 8 * level_diff;
+    Sint32 a = 1 * level_diff;
 	switch (family)
 	{
 		case FAMILY_SOLDIER:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
 			break;
 		case FAMILY_ELF:
-			s *= 0.75f;
-			d *= 1.5f;
-			c *= 0.75f;
-			i *= 1.0f;
-			a *= 1.0f;
+			s = (s * 3) / 4;
+			d = (d * 3) / 2;
+			c = (c * 3) / 4;
 			break;
 		case FAMILY_ARCHER:
-			s *= 0.5f;
-			d *= 1.5f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
+			s /= 2;
+			d = (d * 3) / 2;
 			break;
 		case FAMILY_MAGE:
-			s *= 0.5f;
-			d *= 1.0f;
-			c *= 0.5f;
-			i *= 2.0f;
-			a *= 1.0f;
+			s /= 2;
+			c /= 2;
+			it *= 2;
 			break;
 		case FAMILY_ARCHMAGE:
-			s *= 0.5f;
-			d *= 1.0f;
-			c *= 0.5f;
-			i *= 2.0f;
-			a *= 1.0f;
+			s /= 2;
+			c /= 2;
+			it *= 2;
 			break;
 		case FAMILY_SKELETON:
-			s *= 1.0f;
-			d *= 2.0f;
-			c *= 0.5f;
-			i *= 0.5f;
-			a *= 1.0f;
+			d *= 2;
+			c /= 2;
+			it /= 2;
 			break;
 		case FAMILY_CLERIC:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
 			break;
 		case FAMILY_FIREELEMENTAL:
-			s *= 1.5f;
-			d *= 1.0f;
-			c *= 0.5f;
-			i *= 1.0f;
-			a *= 1.0f;
+			s = (s * 3) / 2;
+			c /= 2;
 			break;
 		case FAMILY_FAERIE:
-			s *= 0.5f;
-			d *= 2.0f;
-			c *= 0.5f;
-			i *= 1.0f;
-			a *= 1.0f;
+			s /= 2;
+			d *= 2;
+			c /= 2;
 			break;
 		case FAMILY_SLIME:
 		case FAMILY_SMALL_SLIME:
 		case FAMILY_MEDIUM_SLIME:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
 			break;
 		case FAMILY_THIEF:
-			s *= 0.5f;
-			d *= 2.0f;
-			c *= 0.5f;
-			i *= 1.0f;
-			a *= 1.0f;
+			s /= 2;
+			d *= 2;
+			c /= 2;
 			break;
 		case FAMILY_GHOST:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
 			break;
 		case FAMILY_DRUID:
-			s *= 1.0f;
-			d *= 0.5f;
-			c *= 1.0f;
-			i *= 1.5f;
-			a *= 1.0f;
+			d /= 2;
+			it = (it * 3) / 2;
 			break;
 		case FAMILY_ORC:
 		case FAMILY_BIG_ORC:
-			s *= 1.5f;
-			d *= 0.5f;
-			c *= 1.5f;
-			i *= 0.5f;
-			a *= 1.0f;
+			s = (s * 3) / 2;
+			d /= 2;
+			c = (c * 3) / 2;
+			it /= 2;
 			break;
 		case FAMILY_BARBARIAN:
-			s *= 1.5f;
-			d *= 0.5f;
-			c *= 1.5f;
-			i *= 0.5f;
-			a *= 1.0f;
+			s = (s * 3) / 2;
+			d /= 2;
+			c = (c * 3) / 2;
+			it /= 2;
 			break;
 		default:
-			s *= 1.0f;
-			d *= 1.0f;
-			c *= 1.0f;
-			i *= 1.0f;
-			a *= 1.0f;
 			break;
 	}
     
-    strength += s;
-    dexterity += d;
-    constitution += c;
-    intelligence += i;
-    armor += a;
+    strength = static_cast<short>(static_cast<Sint32>(strength) + s);
+    dexterity = static_cast<short>(static_cast<Sint32>(dexterity) + d);
+    constitution = static_cast<short>(static_cast<Sint32>(constitution) + c);
+    intelligence = static_cast<short>(static_cast<Sint32>(intelligence) + it);
+    armor = static_cast<short>(static_cast<Sint32>(armor) + a);
     
-    this->level = level;
+    this->level = new_level;
     if(set_xp)
-        exp = calculate_exp(level);
+        exp = calculate_exp(new_level);
 }
 
 // Derived stat calculations
 float guy::get_hp_bonus() const
 {
-    return 10 + constitution*3;
+    return 10.0f + static_cast<float>(constitution) * 3.0f;
 }
 
 float guy::get_mp_bonus() const
 {
-    return 10 + intelligence*3;
+    return 10.0f + static_cast<float>(intelligence) * 3.0f;
 }
 
 float guy::get_damage_bonus() const
@@ -525,7 +481,10 @@ void guy::update_derived_stats(walker* w)
 
     // Set the heal delay ..
     w->stats()->max_heal_delay = REGEN;
-    w->stats()->current_heal_delay = temp_guy->constitution + temp_guy->strength/6.0f + 20 + 1000; //for purposes of calculation only
+    {
+        float heal_delay = static_cast<float>(temp_guy->constitution) + static_cast<float>(temp_guy->strength) / 6.0f + 20.0f + 1000.0f;
+        w->stats()->current_heal_delay = static_cast<Sint32>(heal_delay); // for purposes of calculation only
+    }
 
     while (w->stats()->current_heal_delay > REGEN)
     {
@@ -570,33 +529,33 @@ void guy::update_derived_stats(walker* w)
         w->stats()->max_magic_delay = 2;
 }
 
-walker* guy::create_walker(screen* myscreen)
+walker* guy::create_walker(screen* screen_)
 {
     auto temp_guy = std::make_unique<guy>(*this);
-    walker* temp_walker = myscreen->level_data.myloader->create_walker(Order::Living, temp_guy->family, nullptr);
+    walker* temp_walker = screen_->level_data.myloader->create_walker(Order::Living, temp_guy->family, nullptr);
     temp_walker->set_owned_myguy(std::move(temp_guy));
     temp_walker->stats()->level = temp_walker->myguy->level;
     
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->team_num = temp_walker->myguy->teamnum;
+    temp_walker->team_num = static_cast<unsigned char>(temp_walker->myguy->teamnum);
     temp_walker->real_team_num = 255;
     
     return temp_walker;
 }
 
-walker* guy::create_and_add_walker(screen* myscreen)
+walker* guy::create_and_add_walker(screen* screen_)
 {
     auto temp_guy = std::make_unique<guy>(*this);
-    walker* temp_walker = myscreen->level_data.add_ob(Order::Living, temp_guy->family);
+    walker* temp_walker = screen_->level_data.add_ob(Order::Living, temp_guy->family);
     temp_walker->set_owned_myguy(std::move(temp_guy));
     temp_walker->stats()->level = temp_walker->myguy->level;
     
     update_derived_stats(temp_walker);
 
     // Set our team number ..
-    temp_walker->team_num = temp_walker->myguy->teamnum;
+    temp_walker->team_num = static_cast<unsigned char>(temp_walker->myguy->teamnum);
     temp_walker->real_team_num = 255;
     
     return temp_walker;

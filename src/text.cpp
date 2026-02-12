@@ -54,13 +54,13 @@ void text_shutdown()
     letters1.free();
     letters_big.free();
 }
-short text::query_width(std::string_view string) // returns width, in pixels
+Sint32 text::query_width(std::string_view string) // returns width, in pixels
 {
-	unsigned short i=0;
-	short over = 0;
+	std::size_t i = 0;
+	Sint32 over = 0;
 
 	if (sizex < 9) // small, monospaced font
-		return (sizex+1)*static_cast<short>(string.size());
+		return static_cast<Sint32>(sizex + 1) * static_cast<Sint32>(string.size());
 
 	while (i < string.size())
 	{
@@ -74,19 +74,18 @@ short text::query_width(std::string_view string) // returns width, in pixels
 	return over;
 }
 
-short text::write_xy(short x, short y, std::string_view string, unsigned char color)
+Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color)
 {
-	unsigned short i = 0;
-	while(i < string.size())
+	for (std::size_t i = 0; i < string.size(); i++)
 	{
-		write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color));
-		i++;
+		const Sint32 xi = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+		write_char_xy(xi, y, string[i], color);
 	}
 	return 1;
 }
 
 static char text_buffer[255];
-short text::write_xy(short x, short y, unsigned char color, const char* formatted_string, ...)
+Sint32 text::write_xy(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
 {
     if(formatted_string == nullptr)
         return 0;
@@ -96,16 +95,17 @@ short text::write_xy(short x, short y, unsigned char color, const char* formatte
     vsnprintf(text_buffer, 255, formatted_string, lst);
     va_end(lst);
     
-	unsigned short i = 0;
-	while(text_buffer[i])
+	std::size_t i = 0;
+	while (text_buffer[i])
 	{
-		write_char_xy(static_cast<short>(x+i*(sizex+1)), y, text_buffer[i], static_cast<unsigned char>(color));
+		const Sint32 xi = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+		write_char_xy(xi, y, text_buffer[i], color);
 		i++;
 	}
-	return i*(sizex+1);
+	return static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
 }
 
-short text::write_xy_shadow(short x, short y, unsigned char color, const char* formatted_string, ...)
+Sint32 text::write_xy_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
 {
     if(formatted_string == nullptr)
         return 0;
@@ -115,18 +115,18 @@ short text::write_xy_shadow(short x, short y, unsigned char color, const char* f
     vsnprintf(text_buffer, 255, formatted_string, lst);
     va_end(lst);
     
-	unsigned short i = 0;
-	while(text_buffer[i])
+	std::size_t i = 0;
+	while (text_buffer[i])
 	{
-	    short xx = (x+i*(sizex+1));
+	    const Sint32 xx = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
 		write_char_xy(xx - 1, y + 1, text_buffer[i], static_cast<unsigned char>(PURE_BLACK + 2));
-		write_char_xy(xx, y, text_buffer[i], static_cast<unsigned char>(color));
+		write_char_xy(xx, y, text_buffer[i], color);
 		i++;
 	}
-	return i*(sizex+1);
+	return static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
 }
 
-short text::write_xy_center(short x, short y, unsigned char color, const char* formatted_string, ...)
+Sint32 text::write_xy_center(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
 {
     if(formatted_string == nullptr)
         return 0;
@@ -136,17 +136,17 @@ short text::write_xy_center(short x, short y, unsigned char color, const char* f
     vsnprintf(text_buffer, 255, formatted_string, lst);
     va_end(lst);
     
-	unsigned short i = 0;
-	size_t len = strlen(text_buffer);
-	while(text_buffer[i])
+	const std::size_t len = strlen(text_buffer);
+	const Sint32 base_x = x - (static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1)) / 2;
+	for (std::size_t i = 0; text_buffer[i]; i++)
 	{
-		write_char_xy(static_cast<short>(x+i*(sizex+1) - len*(sizex+1)/2), y, text_buffer[i], static_cast<unsigned char>(color));
-		i++;
+		const Sint32 xi = base_x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+		write_char_xy(xi, y, text_buffer[i], color);
 	}
 	return 1;
 }
 
-short text::write_xy_center_alpha(short x, short y, unsigned char color, Uint8 alpha, const char* formatted_string, ...)
+Sint32 text::write_xy_center_alpha(Sint32 x, Sint32 y, unsigned char color, Uint8 alpha, const char* formatted_string, ...)
 {
     if(formatted_string == nullptr)
         return 0;
@@ -156,17 +156,17 @@ short text::write_xy_center_alpha(short x, short y, unsigned char color, Uint8 a
     vsnprintf(text_buffer, 255, formatted_string, lst);
     va_end(lst);
     
-	unsigned short i = 0;
-	size_t len = strlen(text_buffer);
-	while(text_buffer[i])
+	const std::size_t len = strlen(text_buffer);
+	const Sint32 base_x = x - (static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1)) / 2;
+	for (std::size_t i = 0; text_buffer[i]; i++)
 	{
-		write_char_xy_alpha(static_cast<short>(x+i*(sizex+1) - len*(sizex+1)/2), y, text_buffer[i], static_cast<unsigned char>(color), alpha);
-		i++;
+		const Sint32 xi = base_x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+		write_char_xy_alpha(xi, y, text_buffer[i], color, alpha);
 	}
 	return 1;
 }
 
-short text::write_xy_center_shadow(short x, short y, unsigned char color, const char* formatted_string, ...)
+Sint32 text::write_xy_center_shadow(Sint32 x, Sint32 y, unsigned char color, const char* formatted_string, ...)
 {
     if(formatted_string == nullptr)
         return 0;
@@ -176,50 +176,42 @@ short text::write_xy_center_shadow(short x, short y, unsigned char color, const 
     vsnprintf(text_buffer, 255, formatted_string, lst);
     va_end(lst);
     
-	unsigned short i = 0;
-	size_t len = strlen(text_buffer);
-	while(text_buffer[i])
+	const std::size_t len = strlen(text_buffer);
+	const Sint32 base_x = x - (static_cast<Sint32>(len) * static_cast<Sint32>(sizex + 1)) / 2;
+	for (std::size_t i = 0; text_buffer[i]; i++)
 	{
-	    short xx = (x+i*(sizex+1) - len*(sizex+1)/2);
-		write_char_xy(xx - 1, y + 1, text_buffer[i], static_cast<unsigned char>(PURE_BLACK + 2));
-		write_char_xy(xx, y, text_buffer[i], static_cast<unsigned char>(color));
-		i++;
+	    const Sint32 xi = base_x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
+		write_char_xy(xi - 1, y + 1, text_buffer[i], static_cast<unsigned char>(PURE_BLACK + 2));
+		write_char_xy(xi, y, text_buffer[i], color);
 	}
 	return 1;
 }
 
-short text::write_xy(short x, short y, std::string_view string)
+Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string)
 {
-	unsigned short i = 0;
-	while(i < string.size())
-	{
-		write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
-		i++;
-	}
-	return 1;
+	return write_xy(x, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 }
 
-short text::write_xy(short x, short y, std::string_view string, unsigned char color,
+Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color,
                      short to_buffer)
 {
-	unsigned short i = 0;
-	unsigned short width;
-	short over = 0;
+	std::size_t i = 0;
+	Sint32 over = 0;
 
 	if (sizex < 9) // small, monospaced font
 		while(i < string.size())
 		{
 			if (!to_buffer)
-				write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color));
+				write_char_xy(x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1), y, string[i], color);
 			else
-				write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color), static_cast<short>(1));
+				write_char_xy(x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1), y, string[i], color, static_cast<short>(1));
 			i++;
-			over += sizex+1;
+			over += (sizex + 1);
 		}
 	else // larger font, help out the lowercase ..
 		while(i < string.size())
 		{
-			write_char_xy(static_cast<short>(x+over), y, string[i], static_cast<unsigned char>(color), static_cast<short>(1));
+			write_char_xy(x + over, y, string[i], color, static_cast<short>(1));
 			if (string[i] >=65 && string[i] <= 92) // uppercase
 				over += sizex;
 			else // lowercase, other things
@@ -227,205 +219,159 @@ short text::write_xy(short x, short y, std::string_view string, unsigned char co
 			i++;
 		}
 
-	if (to_buffer)
-	{
-		width = (unsigned short) ((sizex+1)*string.size());
-		width -= width%4;
-		width +=4;
-		//myscreen->buffer_to_screen(x, y, width, sizey);
-	}
-
 	return over;
 }
 
-short text::write_xy(short x, short y, std::string_view string, short to_buffer)
+Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, short to_buffer)
 {
-	unsigned short i = 0;
-	unsigned short width;
-	while(i < string.size())
-	{
-		if (!to_buffer)
-			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
-		else
-			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR), static_cast<short>(1));
-		i++;
-	}
-	if (to_buffer)
-	{
-		width = (unsigned short) ((sizex+1)*string.size());
-		width -= width%4;
-		width +=4;
-		//myscreen->buffer_to_screen(x, y, width, sizey);
-	}
-
-	return 1;
+	return write_xy(x, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR), to_buffer);
 }
 
-short text::write_xy(short x, short y, std::string_view string, unsigned char color,
+Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, unsigned char color,
                      viewscreen *whereto)
 {
-	unsigned short i = 0;
-	while(i < string.size())
+	for (std::size_t i = 0; i < string.size(); i++)
 	{
+		const Sint32 xi = x + static_cast<Sint32>(i) * static_cast<Sint32>(sizex + 1);
 		if (!whereto)
-			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color));
+			write_char_xy(xi, y, string[i], color);
 		else
-			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(color), whereto);
-		i++;
+			write_char_xy(xi, y, string[i], color, whereto);
 	}
 	return 1;
 }
 
-short text::write_xy(short x, short y, std::string_view string, viewscreen *whereto)
+Sint32 text::write_xy(Sint32 x, Sint32 y, std::string_view string, viewscreen *whereto)
 {
-	unsigned short i = 0;
-	while(i < string.size())
-	{
-		if (!whereto)
-			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
-		else
-			write_char_xy(static_cast<short>(x+i*(sizex+1)), y, string[i], static_cast<unsigned char>(DEFAULT_TEXT_COLOR), whereto);
-		i++;
-	}
-	return 1;
+	return write_xy(x, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR), whereto);
 }
 
-short text::write_y(short y, std::string_view string, unsigned char color)
+Sint32 text::write_y(Sint32 y, std::string_view string, unsigned char color)
 {
-	unsigned short len = 0;
-	unsigned short xstart;
-	len = static_cast<unsigned short>(string.size());
-	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
-	return write_xy(xstart, y, string, static_cast<unsigned char>(color));
+	const Sint32 len = static_cast<Sint32>(string.size());
+	const Sint32 xstart = (320 - len * static_cast<Sint32>(sizex + 1)) / 2;
+	return write_xy(xstart, y, string, color);
 }
 
-short text::write_y(short y, std::string_view string)
+Sint32 text::write_y(Sint32 y, std::string_view string)
 {
-	unsigned short len = 0;
-	unsigned short xstart;
-	len = static_cast<unsigned short>(string.size());
-	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
-	return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+	return write_y(y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 }
 
-short text::write_y(short y, std::string_view string, unsigned char color,
+Sint32 text::write_y(Sint32 y, std::string_view string, unsigned char color,
                     short to_buffer)
 {
-	unsigned short len = 0;
-	unsigned short xstart;
-	len = static_cast<unsigned short>(string.size());
-	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
-	if (!to_buffer)
-		return write_xy(xstart, y, string, static_cast<unsigned char>(color));
-	else
-		return write_xy(xstart, y, string, static_cast<unsigned char>(color), to_buffer);
+	const Sint32 len = static_cast<Sint32>(string.size());
+	const Sint32 xstart = (320 - len * static_cast<Sint32>(sizex + 1)) / 2;
+	return write_xy(xstart, y, string, color, to_buffer);
 }
 
-short text::write_y(short y, std::string_view string, short to_buffer)
+Sint32 text::write_y(Sint32 y, std::string_view string, short to_buffer)
 {
-	unsigned short len = 0;
-	unsigned short xstart;
-	len = static_cast<unsigned short>(string.size());
-	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
-	if (!to_buffer)
-		return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
-	else
-		return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR), to_buffer);
+	return write_y(y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR), to_buffer);
 }
 
-short text::write_y(short y, std::string_view string, unsigned char color,
+Sint32 text::write_y(Sint32 y, std::string_view string, unsigned char color,
                     viewscreen *whereto)
 {
-	unsigned short len = 0;
-	unsigned short xstart;
-	len = static_cast<unsigned short>(string.size());
-	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
+	const Sint32 len = static_cast<Sint32>(string.size());
+	const Sint32 xstart = (320 - len * static_cast<Sint32>(sizex + 1)) / 2;
 	if (!whereto)
-		return write_xy(xstart, y, string, static_cast<unsigned char>(color));
+		return write_xy(xstart, y, string, color);
 	else
-		return write_xy(xstart, y, string, static_cast<unsigned char>(color), whereto);
+		return write_xy(xstart, y, string, color, whereto);
 }
 
-short text::write_y(short y, std::string_view string, viewscreen *whereto)
+Sint32 text::write_y(Sint32 y, std::string_view string, viewscreen *whereto)
 {
-	unsigned short len = 0;
-	unsigned short xstart;
-	len = static_cast<unsigned short>(string.size());
-	xstart = (unsigned short) ((320 - len * (sizex+1))/2);
 	if (!whereto)
-		return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+		return write_y(y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	else
-		return write_xy(xstart, y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR), whereto);
+		return write_y(y, string, static_cast<unsigned char>(DEFAULT_TEXT_COLOR), whereto);
 }
 
 // This version writes to the buffer and then writes the
 // buffer to the screen .. (double buffered to eliminate flashing)
-short text::write_char_xy(short x, short y, char letter, unsigned char color,
+Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
                           short to_buffer)
 {
 	if (!to_buffer)
-		return write_char_xy(x, y, letter, static_cast<unsigned char>(color));
+		return write_char_xy(x, y, letter, color);
 
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
-	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(color));
+	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, color);
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
 
-short text::write_char_xy(short x, short y, char letter, short to_buffer)
+Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer)
 {
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
 	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
 }
 
-short text::write_char_xy(short x, short y, char letter, unsigned char color)
+Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color)
 {
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
-	myscreen->putdatatext(x, y, sizex, sizey, char_span, static_cast<unsigned char>(color));
+	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	myscreen->putdatatext(x, y, sizex, sizey, char_span, color);
 	return 1;
 }
 
-short text::write_char_xy_alpha(short x, short y, char letter, unsigned char color, Uint8 alpha)
+Sint32 text::write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char color, Uint8 alpha)
 {
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
-	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(color), alpha);
+	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, char_span, color, alpha);
 	return 1;
 }
 
-short text::write_char_xy(short x, short y, char letter)
+Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter)
 {
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
 	myscreen->putdatatext(x, y, sizex, sizey, char_span);
 	return 1;
 }
 
-short text::write_char_xy(short x, short y, char letter, unsigned char color,
+Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
 	if (!whereto)
-		myscreen->putdatatext(x, y, sizex, sizey, char_span, static_cast<unsigned char>(color));
+		myscreen->putdatatext(x, y, sizex, sizey, char_span, color);
 	else
-		myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
-		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       char_span, static_cast<unsigned char>(color));
+			myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+			                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
+			                       char_span, color);
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
 }
 
-short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
+Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, viewscreen *whereto)
 {
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[letter * sizex * sizey], static_cast<size_t>(sizex * sizey)};
+	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
+	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
+	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
 	if (!whereto)
 		myscreen->putdatatext(x, y, sizex, sizey, char_span);
 	else
-		myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+			myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
 		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
 		                       char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
@@ -434,7 +380,7 @@ short text::write_char_xy(short x, short y, char letter, viewscreen *whereto)
 }
 
 // This version passes DARK_BLUE and a grey color as defaults ..
-char * text::input_string(short x, short y, short maxlength, const char *begin)
+char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin)
 {
 	return input_string(x, y, maxlength, begin, DARK_BLUE, 13);
 }
@@ -444,7 +390,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin)
 // is maxlength, and any string in 'begin' will automatically be
 // entered at the start.  Fore- and backcolor are used for the
 // text foreground and background color
-char * text::input_string(short x, short y, short maxlength, const char *begin,
+char * text::input_string(Sint32 x, Sint32 y, short maxlength, const char *begin,
                           unsigned char forecolor, unsigned char backcolor)
 {
 	short current_length, i;
@@ -543,20 +489,21 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
                                   y+sizey+1, 1);
             }
             
-            if ( temptext != nullptr &&
-                      (current_length + short(strlen(temptext)) < maxlength) )
+            if (temptext != nullptr)
             {
-                
-                int len = strlen(temptext);
-                int i;
-                for(i = 0; i < len; i++)
+                const std::size_t len = strlen(temptext);
+                const int remaining = maxlength - current_length - 1;
+                if (remaining > 0 && len <= static_cast<std::size_t>(remaining))
                 {
-                    unsigned char c = temptext[i];
-                    if(c != 255)
+                    for (std::size_t j = 0; j < len; j++)
                     {
-                        editstring[current_length] = c;
-                        current_length++;
-                        editstring[current_length] = '\0';
+                        const unsigned char c = static_cast<unsigned char>(temptext[j]);
+                        if (c != 255)
+                        {
+                            editstring[current_length] = static_cast<char>(c);
+                            current_length++;
+                            editstring[current_length] = '\0';
+                        }
                     }
                 }
             }
@@ -586,7 +533,7 @@ char * text::input_string(short x, short y, short maxlength, const char *begin,
 
 }
 
-std::optional<std::string> text::input_string_value(short x, short y, short maxlength, const char* begin)
+std::optional<std::string> text::input_string_value(Sint32 x, Sint32 y, short maxlength, const char* begin)
 {
     char* value = input_string(x, y, maxlength, begin);
     if (value == nullptr)
@@ -594,7 +541,7 @@ std::optional<std::string> text::input_string_value(short x, short y, short maxl
     return std::string(value);
 }
 
-std::optional<std::string> text::input_string_ex_value(short x, short y, short maxlength, const char* message, const char* begin)
+std::optional<std::string> text::input_string_ex_value(Sint32 x, Sint32 y, short maxlength, const char* message, const char* begin)
 {
     char* value = input_string_ex(x, y, maxlength, message, begin);
     if (value == nullptr)
@@ -604,12 +551,12 @@ std::optional<std::string> text::input_string_ex_value(short x, short y, short m
 
 
 // This version passes DARK_BLUE and a grey color as defaults ..
-char * text::input_string_ex(short x, short y, short maxlength, const char* message, const char *begin)
+char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin)
 {
 	return input_string_ex(x, y, maxlength, message, begin, DARK_BLUE, 13);
 }
 
-char * text::input_string_ex(short x, short y, short maxlength, const char* message, const char *begin,
+char * text::input_string_ex(Sint32 x, Sint32 y, short maxlength, const char* message, const char *begin,
                           unsigned char forecolor, unsigned char backcolor)
 {
 	short current_length, i;
@@ -635,7 +582,8 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
 	}
 	snprintf(firststring, sizeof(firststring), "%s", begin); // default case
 	current_length = static_cast<short>(strlen(editstring));
-	myscreen->draw_button(x, y, x+maxlength*(sizex+1), y+sizey, 1);
+	myscreen->draw_box(x, y, x + maxlength*(sizex+1), y + sizey, backcolor, 1, 1);
+	myscreen->draw_button(x, y, x + maxlength*(sizex+1), y + sizey, 1);
 	if (begin && begin[0] != '\0')
 		myscreen->draw_box(x, y, x+query_width(begin), y+sizey-2, forecolor, 1, 1);
 	write_xy(x, y - 10, message, DARK_GREEN, 1);
@@ -709,20 +657,21 @@ char * text::input_string_ex(short x, short y, short maxlength, const char* mess
                                   y+sizey+1, 1);
             }
             
-            if ( temptext != nullptr &&
-                      (current_length + short(strlen(temptext)) < maxlength) )
+            if (temptext != nullptr)
             {
-                
-                int len = strlen(temptext);
-                int i;
-                for(i = 0; i < len; i++)
+                const std::size_t len = strlen(temptext);
+                const int remaining = maxlength - current_length - 1;
+                if (remaining > 0 && len <= static_cast<std::size_t>(remaining))
                 {
-                    unsigned char c = temptext[i];
-                    if(c != 255)
+                    for (std::size_t j = 0; j < len; j++)
                     {
-                        editstring[current_length] = c;
-                        current_length++;
-                        editstring[current_length] = '\0';
+                        const unsigned char c = static_cast<unsigned char>(temptext[j]);
+                        if (c != 255)
+                        {
+                            editstring[current_length] = static_cast<char>(c);
+                            current_length++;
+                            editstring[current_length] = '\0';
+                        }
                     }
                 }
             }

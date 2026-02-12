@@ -76,7 +76,7 @@ void test_treasure_eat_gold_bar()
     walker* gold = make_treasure(FAMILY_GOLD_BAR, 2);
     if (!gold) { delete eater; return; }
 
-    Sint32 score_before = myscreen->save_data.m_score[0];
+    Uint32 score_before = myscreen->save_data.m_score[0];
     gold->eat_me(eater);
     TEST_ASSERT(myscreen->save_data.m_score[0] > score_before, "gold bar adds score");
     TEST_ASSERT(gold->dead == 1, "gold bar consumed");
@@ -96,7 +96,7 @@ void test_treasure_eat_silver_bar()
     walker* silver = make_treasure(FAMILY_SILVER_BAR, 3);
     if (!silver) { delete eater; return; }
 
-    Sint32 score_before = myscreen->save_data.m_score[0];
+    Uint32 score_before = myscreen->save_data.m_score[0];
     silver->eat_me(eater);
     TEST_ASSERT(myscreen->save_data.m_score[0] > score_before, "silver bar adds score");
     TEST_ASSERT(silver->dead == 1, "silver bar consumed");
@@ -232,7 +232,7 @@ void test_treasure_eat_life_gem()
     gem->team_num = 0;
     gem->stats()->hitpoints = 500;
 
-    Sint32 score_before = myscreen->save_data.m_score[0];
+    Uint32 score_before = myscreen->save_data.m_score[0];
     gem->eat_me(eater);
     TEST_ASSERT(myscreen->save_data.m_score[0] > score_before, "life gem adds score");
     TEST_ASSERT(gem->dead == 1, "gem consumed");

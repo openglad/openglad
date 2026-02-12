@@ -72,7 +72,7 @@ void test_walker_turn_from_all_starts()
     if (!w) return;
 
     for (short start = 0; start < 8; start++) {
-        w->curdir = start;
+        w->curdir = static_cast<char>(start);
         w->turn(0);
     }
     delete w;
@@ -273,7 +273,7 @@ REGISTER_TEST(test_walker_animate_attack);
 
 void test_walker_animate_all_families()
 {
-    short families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+    char families[] = { FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
                         FAMILY_SKELETON, FAMILY_CLERIC, FAMILY_FIREELEMENTAL,
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };

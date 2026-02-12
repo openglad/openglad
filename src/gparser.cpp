@@ -124,7 +124,7 @@ bool cfg_store::load_settings()
     yam.close_input();
     
     // Update game stuff from these settings
-    overscan_percentage = toInt(get_setting("graphics", "overscan_percentage"))/100.0f;
+    overscan_percentage = static_cast<float>(toInt(get_setting("graphics", "overscan_percentage"))) / 100.0f;
     update_overscan_setting();
     
 	return true;

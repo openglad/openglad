@@ -46,7 +46,7 @@ void walker::setworldxy(float x, float y)
     worldy_ = y;
     
     if (!ignore)
-        myobmap->move(this, x, y);
+        myobmap->move(this, static_cast<short>(x), static_cast<short>(y));
     else // just remove us, in case :)
         myobmap->remove(this);
 
@@ -133,7 +133,7 @@ bool walker::walkstep(float x, float y)
 
     if (order==Order::Living && family==FAMILY_TOWER1)
     {
-        curdir = facing(x, y);
+        curdir = static_cast<signed char>(facing(x, y));
         enddir = curdir;
         lastx = x;
         lasty = y;
@@ -239,7 +239,8 @@ bool walker::walkstep(float x, float y)
                 
                 if(dx != 0 || dy != 0)
                 {
-                    for (i = 0; i < step; i++)
+                    const Sint32 step_i = static_cast<Sint32>(step);
+                    for (i = 0; i < step_i; i++)
                     {
                         if (myscreen->query_passable(xpos, ypos + dy, this))
                         {
@@ -267,7 +268,7 @@ bool walker::walkstep(float x, float y)
                         }
                         if (gotup || gotover) // we moved somewhere?
                         {
-                            cycle = mycycle;
+                            cycle = static_cast<signed char>(mycycle);
                             cycle++;
                             if (ani[curdir][cycle] == -1)
                                 cycle = 0;
@@ -292,7 +293,7 @@ bool walker::walk(float x, float y)
 
     if (order==Order::Living && family==FAMILY_TOWER1)
     {
-        curdir = dir;
+        curdir = static_cast<signed char>(dir);
         return 1;
     }
 
@@ -355,21 +356,21 @@ float walker::get_current_angle()
     switch (curdir)
     {
         case FACE_UP:
-            return -M_PI_2;
+            return -static_cast<float>(M_PI_2);
         case FACE_UP_RIGHT:
-            return -M_PI_4;
+            return -static_cast<float>(M_PI_4);
         case FACE_RIGHT:
             return 0.0f;
         case FACE_DOWN_RIGHT:
-            return M_PI_4;
+            return static_cast<float>(M_PI_4);
         case FACE_DOWN:
-            return M_PI_2;
+            return static_cast<float>(M_PI_2);
         case FACE_DOWN_LEFT:
-            return 3*M_PI_4;
+            return static_cast<float>(3 * M_PI_4);
         case FACE_LEFT:
-            return M_PI;
+            return static_cast<float>(M_PI);
         case FACE_UP_LEFT:
-            return 5*M_PI_4;
+            return static_cast<float>(5 * M_PI_4);
         default:
             return 0.0f;
     }

@@ -43,15 +43,15 @@ bool walker::special()
 	walker  * newob;
 	weap * fireob;
 	walker  * alive, *tempwalk;
-	short tempx, tempy;
-	short i, j;
-	short targetx, targety;
+	Sint32 tempx = 0, tempy = 0;
+	Sint32 i, j;
+	float targetx, targety;
 	Uint32 distance;
-	short howmany;
-	short didheal;
-	short generic, generic2 = 0;
+	Sint32 howmany;
+	Sint32 didheal;
+	Sint32 generic, generic2 = 0;
 	std::string message, tempstr;
-	short person;
+	char person = 0;
 
 	TRACE("walker", "special: family=%d current_special=%d", family, current_special);
 
@@ -80,18 +80,18 @@ bool walker::special()
 	switch (query_family())
 	{
 		case FAMILY_ARCHER:
-			switch(current_special)
-			{
-				case 1: // fire arrows
-					tempx = lastx;
-					tempy = lasty;
-					curdir = -1;
-					lastx = 0;
-					lasty = 0;
-					stats_->magicpoints += (8*stats_->weapon_cost);
-					stats_->add_command(COMMAND_SET_WEAPON, 1, FAMILY_FIRE_ARROW, 0);
-					stats_->add_command(COMMAND_QUICK_FIRE, 1, 0, -1);
-					stats_->add_command(COMMAND_QUICK_FIRE, 1, 1, -1);
+				switch(current_special)
+				{
+					case 1: // fire arrows
+						tempx = static_cast<Sint32>(lastx);
+						tempy = static_cast<Sint32>(lasty);
+						curdir = -1;
+						lastx = 0;
+						lasty = 0;
+						stats_->magicpoints += 8.0f * static_cast<float>(stats_->weapon_cost);
+						stats_->add_command(COMMAND_SET_WEAPON, 1, FAMILY_FIRE_ARROW, 0);
+						stats_->add_command(COMMAND_QUICK_FIRE, 1, 0, -1);
+						stats_->add_command(COMMAND_QUICK_FIRE, 1, 1, -1);
 					stats_->add_command(COMMAND_QUICK_FIRE, 1, 1, 0);
 					stats_->add_command(COMMAND_QUICK_FIRE, 1, 1, 1);
 					stats_->add_command(COMMAND_QUICK_FIRE, 1, 0, 1);
@@ -101,26 +101,26 @@ bool walker::special()
 					//                  stats_->add_command(COMMAND_WALK, 1, tempx/stepsize, tempy/stepsize);
 					stats_->add_command(COMMAND_RESET_WEAPON, 1, 0, 0);
 					break;
-				case 2:  // flurry of arrows
-					if (busy)
-						return 0;
-					stats_->magicpoints += (3*stats_->weapon_cost);
-					fire();
-					fire();
-					fire();
-					busy += (fire_frequency * 2);
-					break;
+					case 2:  // flurry of arrows
+						if (busy)
+							return 0;
+						stats_->magicpoints += 3.0f * static_cast<float>(stats_->weapon_cost);
+						fire();
+						fire();
+						fire();
+						busy += (fire_frequency * 2.0f);
+						break;
 				case 3: // exploding arrows
 				case 4:
-				default:
-					if (busy)
-						return 0;
-					generic = current_weapon;
-					current_weapon = FAMILY_FIRE_ARROW;
-					newob = fire();
-					current_weapon = generic;
-					if (!newob)
-						return 0; // failsafe
+					default:
+						if (busy)
+							return 0;
+						unsigned short old_weapon = current_weapon;
+						current_weapon = FAMILY_FIRE_ARROW;
+						newob = fire();
+						current_weapon = old_weapon;
+						if (!newob)
+							return 0; // failsafe
 					newob->skip_exit = 5000; // used as a dummy variable to
 					// signify exploding .. :(
 					newob->stats()->hitpoints = 500; // buffed arrows
@@ -131,35 +131,35 @@ bool walker::special()
 		case FAMILY_SOLDIER:
 			switch (current_special)
 			{
-				case 1: // charge enemy
-					if (!stats_->forward_blocked())
-					{
-						stats_->add_command(COMMAND_RUSH, 3, lastx/stepsize, lasty/stepsize);
-						if (on_screen())
-							myscreen->soundp->play_sound(SOUND_CHARGE);
-					}
+					case 1: // charge enemy
+						if (!stats_->forward_blocked())
+						{
+							stats_->add_command(COMMAND_RUSH, 3, static_cast<Sint32>(lastx/stepsize), static_cast<Sint32>(lasty/stepsize));
+							if (on_screen())
+								myscreen->soundp->play_sound(SOUND_CHARGE);
+						}
 					else
 						return 0;
 					break;
 				case 2: // boomerang
 					newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOOMERANG);
-					newob->owner = this;
-					newob->team_num = team_num;
-					newob->ani_type = 1; // dummy, non-zero value
-					newob->lifetime = 30 + (stats_->level)*12;
-					newob->stats()->hitpoints += stats_->level*12;
-					newob->stats()->max_hitpoints = newob->stats()->hitpoints;
-					newob->damage += stats_->level*4;
-					break;
+						newob->owner = this;
+						newob->team_num = team_num;
+						newob->ani_type = 1; // dummy, non-zero value
+						newob->lifetime = 30 + (stats_->level)*12;
+						newob->stats()->hitpoints += static_cast<float>(stats_->level) * 12.0f;
+						newob->stats()->max_hitpoints = newob->stats()->hitpoints;
+						newob->damage += static_cast<float>(stats_->level) * 4.0f;
+						break;
 				case 3: // whirlwind attack
-					if (busy)
-						return 0; // can't do while attacking, etc.
-					busy += 8;
-					tempx = lastx;
-					tempy = lasty;
-					curdir = -1;
-					lastx = 0;
-					lasty = 0;
+						if (busy)
+							return 0; // can't do while attacking, etc.
+						busy += 8;
+						tempx = static_cast<Sint32>(lastx);
+						tempy = static_cast<Sint32>(lasty);
+						curdir = -1;
+						lastx = 0;
+						lasty = 0;
 					//stats_->magicpoints += (8*stats_->weapon_cost);
 					stats_->add_command(COMMAND_WALK, 1, 0, -1);
 					stats_->add_command(COMMAND_WALK, 1, 1, -1);
@@ -207,12 +207,11 @@ bool walker::special()
                         {
                             if (w)
                             {
-                                if (rng(stats_->level) >= rng(w->stats()->level))
-                                    w->busy += 6*(stats_->level -
-                                                            w->stats()->level + 1);
-                                generic = 1; // disarmed at least one guy
-                            }
-                        }
+	                                if (rng(stats_->level) >= rng(w->stats()->level))
+	                                    w->busy += 6.0f * static_cast<float>(stats_->level - w->stats()->level + 1);
+	                                generic = 1; // disarmed at least one guy
+	                            }
+	                        }
                         
                         if (generic)
                         {
@@ -248,28 +247,28 @@ bool walker::special()
 								if (newob->stats()->hitpoints < newob->stats()->max_hitpoints &&
 								        newob != this )
 								{
-								    // Get the cost first
-									HealResult heal = compute_heal_amount(stats_->magicpoints, stats_->level, *ctx().rng);
-									generic = heal.amount;
-									int cost = heal.cost;
-									if(stats_->magicpoints < cost)
-                                    {
-                                        generic -= stats_->magicpoints;
-                                        cost -= stats_->magicpoints;
-                                    }
-                                    if(generic <= 0 || cost <= 0)  // Didn't heal any for this guy
-                                        break;
-                                    
-                                    // Do the heal
-									newob->stats()->hitpoints += generic;
-									stats_->magicpoints -= cost;
-									if (myguy)
-										myguy->exp += exp_from_action(ExpAction::Heal, this, newob, generic);
-									didheal++;
-									
-                                    do_heal_effects(this, newob, generic);
+									    // Get the cost first
+										HealResult heal = compute_heal_amount(static_cast<Sint32>(stats_->magicpoints), stats_->level, *ctx().rng);
+										generic = heal.amount;
+										Sint32 cost = heal.cost;
+										if(stats_->magicpoints < static_cast<float>(cost))
+	                                    {
+	                                        generic -= static_cast<Sint32>(stats_->magicpoints);
+	                                        cost -= static_cast<Sint32>(stats_->magicpoints);
+	                                    }
+	                                    if(generic <= 0 || cost <= 0)  // Didn't heal any for this guy
+	                                        break;
+	                                    
+	                                    // Do the heal
+										newob->stats()->hitpoints += static_cast<float>(generic);
+										stats_->magicpoints -= static_cast<float>(cost);
+										if (myguy)
+											myguy->exp += exp_from_action(ExpAction::Heal, this, newob, static_cast<short>(generic));
+										didheal++;
+										
+	                                    do_heal_effects(this, newob, static_cast<short>(generic));
+									}
 								}
-							}
 							if (!didheal)
 								return 0; // everyone was healthy; don't charge us
 							else
@@ -320,18 +319,18 @@ bool walker::special()
 						if (!newob) // safety check
 							return 0;
 						newob->owner = this;
-						newob->team_num = team_num;
-						newob->ani_type = 1; // dummy, non-zero value
-						// Specify settings based on our mana ..
-						generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
-						generic /= 2; // get half our excess magic
+							newob->team_num = team_num;
+							newob->ani_type = 1; // dummy, non-zero value
+							// Specify settings based on our mana ..
+							generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[static_cast<int>(current_special)]));
+							generic /= 2; // get half our excess magic
 
-						newob->lifetime = 100 + generic;
-						newob->stats()->hitpoints += generic / 2;
-						newob->damage += generic / 4.0f;
+							newob->lifetime = 100 + generic;
+							newob->stats()->hitpoints += static_cast<float>(generic) / 2.0f;
+							newob->damage += static_cast<float>(generic) / 4.0f;
 
-						// Remove those excess magic points :>
-						stats_->magicpoints -= generic;
+							// Remove those excess magic points :>
+							stats_->magicpoints -= static_cast<float>(generic);
 
 						busy += 5;
 						break;
@@ -352,7 +351,7 @@ bool walker::special()
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
-							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats_->level/2));
+								myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, static_cast<short>(generic)); // (stats_->level/2));
 							if (team_num == 0 || myguy)
 							{
 								message = std::format("{} turned {} undead.",
@@ -411,7 +410,7 @@ bool walker::special()
 							return 0; // failed to turn undead
 						if (myguy && generic)
 						{
-							myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, generic); // (stats_->level/2));
+								myguy->exp += exp_from_action(ExpAction::TurnUndead, this, nullptr, static_cast<short>(generic)); // (stats_->level/2));
 							if (team_num == 0 || myguy)
 							{
 								message = std::format("{} turned {} undead.",
@@ -466,17 +465,17 @@ bool walker::special()
 						if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
 						{
 							if ( is_friendly(newob) ) // normal resurrection
-							{
-								alive = myscreen->level_data.add_ob(Order::Living, newob->stats()->old_family);
-								if(!alive)
-									return 0; // failsafe
-								newob->transfer_stats(alive);  // restore our old values ..
-								alive->stats()->hitpoints = (alive->stats()->max_hitpoints)/2;
-								do_heal_effects(this, alive, (alive->stats()->max_hitpoints)/2);
-								alive->team_num = newob->team_num;
-								
-								if(myguy) // take some EXP away as penalty if we're a player
 								{
+									alive = myscreen->level_data.add_ob(Order::Living, newob->stats()->old_family);
+									if(!alive)
+										return 0; // failsafe
+									newob->transfer_stats(alive);  // restore our old values ..
+									alive->stats()->hitpoints = (alive->stats()->max_hitpoints)/2;
+									do_heal_effects(this, alive, static_cast<short>(alive->stats()->max_hitpoints / 2.0f));
+									alive->team_num = newob->team_num;
+									
+									if(myguy) // take some EXP away as penalty if we're a player
+									{
 								    unsigned short exp_loss = exp_from_action(ExpAction::ResurrectPenalty, this, newob, 0);
 									if(myguy->exp >= exp_loss)
 										myguy->exp -= exp_loss;
@@ -564,12 +563,12 @@ bool walker::special()
 								message = std::format("({} Uses)", newob->lifetime);
 								myscreen->do_notify(message.c_str(), this);
 							}
-							busy +=8;
-							// Take an extra cost for placing a marker
-							generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
-							generic /= 2; // reduce our 'extra' by half
-							stats_->magicpoints -= generic;
-						}
+								busy +=8;
+								// Take an extra cost for placing a marker
+								generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[static_cast<int>(current_special)]));
+								generic /= 2; // reduce our 'extra' by half
+								stats_->magicpoints -= static_cast<float>(generic);
+							}
 					} // end of put a marker
 					else
 					{
@@ -579,31 +578,31 @@ bool walker::special()
 						cycle = 0;
 					}
 					break;
-				case 2:
-					tempx = lastx; // store our facing
-					tempy = lasty;
-					// Do we have extra magic points to spend?
-					generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
-					if (generic > 0)
-					{
-						generic = generic / 15;        // take 7% of remaining magic...
-						stats_->magicpoints -= generic; // and subtract this cost ...
-					}
-					else
-						generic = 0;
-					// Now face each direction and fire ..
-					stats_->magicpoints += (8*stats_->weapon_cost);
-					for (i=-1;i<2;i++)
-						for (j=-1;j<2;j++)
+					case 2:
+						tempx = static_cast<Sint32>(lastx); // store our facing
+						tempy = static_cast<Sint32>(lasty);
+						// Do we have extra magic points to spend?
+						generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[static_cast<int>(current_special)]));
+						if (generic > 0)
+						{
+							generic = generic / 15;        // take 7% of remaining magic...
+							stats_->magicpoints -= static_cast<float>(generic); // and subtract this cost ...
+						}
+						else
+							generic = 0;
+						// Now face each direction and fire ..
+						stats_->magicpoints += 8.0f * static_cast<float>(stats_->weapon_cost);
+						for (i=-1;i<2;i++)
+							for (j=-1;j<2;j++)
 						{
 							if (i || j)
 							{
-								lastx = i;
-								lasty = j;
+								lastx = static_cast<float>(i);
+								lasty = static_cast<float>(j);
 								newob = fire();
 								if (newob)
 								{
-									newob->damage += generic; // bonus for extra mp
+										newob->damage += static_cast<float>(generic); // bonus for extra mp
 									newob->lineofsight += (generic/3);
 									if (newob->lastx != 0.0f)
 										newob->lastx /= fabs(newob->lastx);
@@ -612,11 +611,11 @@ bool walker::special()
 								}  // end got a valid weapon
 							}  // end checked for not center
 						} // end did all 8 directions
-
-					// Restore old facing
-					lastx = tempx;
-					lasty = tempy;
-					break;
+	
+						// Restore old facing
+						lastx = static_cast<float>(tempx);
+						lasty = static_cast<float>(tempy);
+						break;
 				case 3:  // Freeze time
 					if (team_num == 0 || myguy) // the player's team
 					{
@@ -639,7 +638,7 @@ bool walker::special()
 						for(auto* w : newlist)
 						{
 							if (w)
-								w->bonus_rounds = w->bonus_rounds + generic;
+									w->bonus_rounds = static_cast<short>(w->bonus_rounds + generic);
 						}
 					}
 					break;
@@ -660,38 +659,37 @@ bool walker::special()
 				{
 					std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
 					                                      80+2*stats_->level, &howmany, this);
-					if (!howmany)
-						return 0; // didn't find any enemies..
-                    
-					generic = stats_->magicpoints - stats_->special_cost[5];
-					generic /= 2;
-					generic /= howmany; // so do half magic, div enemies
+						if (!howmany)
+							return 0; // didn't find any enemies..
+	                    
+						generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[5]));
+						generic /= 2;
+						generic /= howmany; // so do half magic, div enemies
 					if (myguy)
                     {
-						myguy->total_shots += howmany;
-						myguy->scen_shots += howmany;
-                    }
+							myguy->total_shots += howmany;
+							myguy->scen_shots = static_cast<short>(myguy->scen_shots + howmany);
+	                    }
 					busy += 5;
 					
 					// Create explosions on top of the target objects
 					for(auto* ob : newlist)
 					{
-						newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
-						if (!newob)
-							return 0; // failsafe
-
-						newob->owner = this;
-						newob->team_num = team_num;
-						newob->stats()->level = stats_->level;
-						newob->damage = generic;
-						newob->center_on(ob);
-						if (on_screen())
-							myscreen->soundp->play_sound(SOUND_EXPLODE);
+							newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+							if (!newob)
+								return 0; // failsafe
+							newob->owner = this;
+							newob->team_num = team_num;
+							newob->stats()->level = stats_->level;
+							newob->damage = static_cast<float>(generic);
+							newob->center_on(ob);
+							if (on_screen())
+								myscreen->soundp->play_sound(SOUND_EXPLODE);
 						newob->ani_type = ANI_EXPLODE;
 						newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
 						newob->skip_exit = 100; // don't hurt caster
-						stats_->magicpoints -= generic;
-					}
+							stats_->magicpoints -= static_cast<float>(generic);
+						}
 					break; // end of burst enemies
 				}
 			}
@@ -749,12 +747,12 @@ bool walker::special()
 							message = std::format("({} Uses)", newob->lifetime);
 							myscreen->do_notify(message.c_str(), this);
 						}
-						busy +=8;
-						// Take an extra cost for placing a marker
-						generic = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
-						generic /= 2; // reduce our 'extra' by half
-						stats_->magicpoints -= generic;
-					} // end of put a marker (shifter_down)
+							busy +=8;
+							// Take an extra cost for placing a marker
+							generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[static_cast<int>(current_special)]));
+							generic /= 2; // reduce our 'extra' by half
+							stats_->magicpoints -= static_cast<float>(generic);
+						} // end of put a marker (shifter_down)
 					else
 					{
 						if (on_screen())
@@ -782,16 +780,16 @@ bool walker::special()
                         if (!howmany)
                             return 0; // didn't find any enemies..
                         
-                        if (!shifter_down) // normal usage
-                        {
-                            generic = stats_->magicpoints - stats_->special_cost[2];
-                            generic /= 2;
-                            generic /= howmany; // so do half magic, div enemies
-                            if (myguy)
-                            {
-                                myguy->total_shots += howmany;
-                                myguy->scen_shots += howmany;
-                            }
+	                        if (!shifter_down) // normal usage
+	                        {
+	                            generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[2]));
+	                            generic /= 2;
+	                            generic /= howmany; // so do half magic, div enemies
+	                            if (myguy)
+	                            {
+	                                myguy->total_shots += howmany;
+	                                myguy->scen_shots = static_cast<short>(myguy->scen_shots + howmany);
+	                            }
                             busy += 5;
                             
                             // Create explosions on the target objects
@@ -805,16 +803,16 @@ bool walker::special()
                                 newob->team_num = team_num;
                                 newob->stats()->level = stats_->level;
                                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-                                newob->damage = generic;
-                                newob->center_on(ob);
+	                                newob->damage = static_cast<float>(generic);
+	                                newob->center_on(ob);
                                 if (on_screen())
                                     myscreen->soundp->play_sound(SOUND_EXPLODE);
                                 newob->ani_type = ANI_EXPLODE;
                                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                                 newob->skip_exit = 100; // don't hurt caster
-                                stats_->magicpoints -= generic;
-                            }
-                        } // end of heartburst, standard case
+	                                stats_->magicpoints -= static_cast<float>(generic);
+	                            }
+	                        } // end of heartburst, standard case
                         else // do chain-lightning
                         {
                             busy += 5;
@@ -826,23 +824,23 @@ bool walker::special()
                             newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
                             newob->center_on(this);
                             newob->owner = this;
-                            newob->stats()->level = stats_->level;
-                            newob->team_num = team_num;
-                            // Use half our remaining magic ..
-                            generic = stats_->magicpoints - stats_->special_cost[2];
-                            generic /= 2;
-                            stats_->magicpoints -= generic;
-                            newob->damage = generic;
-                            
-                            // find closest of our foes in range
-                            generic = 30000;
-                            for(auto* w : newlist)
-                            {
-                                short dist = distance_to_ob_center(w);
-                                if (generic > dist)
-                                {
-                                    generic = dist;
-                                    newob->leader = w;
+	                            newob->stats()->level = stats_->level;
+	                            newob->team_num = team_num;
+	                            // Use half our remaining magic ..
+	                            generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[2]));
+	                            generic /= 2;
+	                            stats_->magicpoints -= static_cast<float>(generic);
+	                            newob->damage = static_cast<float>(generic);
+	                            
+	                            // find closest of our foes in range
+	                            generic = 30000;
+	                            for(auto* w : newlist)
+	                            {
+	                                Sint32 dist = distance_to_ob_center(w);
+	                                if (generic > dist)
+	                                {
+	                                    generic = dist;
+	                                    newob->leader = w;
                                 }
                             }
                             //newob->ani_type = ANI_ATTACK;
@@ -853,7 +851,7 @@ bool walker::special()
 					if (busy > 0)
 						return 0;
 					if (shifter_down) // then we do true summoning ..
-					{
+	                        {
 						// Do we have the int?
 						if (myguy && myguy->intelligence < 150) // need 150+
 						{
@@ -861,12 +859,12 @@ bool walker::special()
 								myscreen->do_notify("150 Int required to Summon!", this);
 							return 0;
 						}
-						// Take an extra 50% mana-cost
-						generic = stats_->magicpoints - stats_->special_cost[3];
-						generic /= 2;
-						stats_->magicpoints -= generic;
-						// First make the guy we'd summon, at least physically
-						newob = myscreen->level_data.add_ob(Order::Living, FAMILY_FIREELEMENTAL);
+							// Take an extra 50% mana-cost
+							generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[3]));
+							generic /= 2;
+							stats_->magicpoints -= static_cast<float>(generic);
+							// First make the guy we'd summon, at least physically
+							newob = myscreen->level_data.add_ob(Order::Living, FAMILY_FIREELEMENTAL);
 						if (!newob)
 							return 0; // failsafe
 						// We need to check for a space around the archmage...
@@ -874,20 +872,20 @@ bool walker::special()
 						for (i=-1; i <= 1; i++)
 							for (j=-1; j <= 1; j++)
 							{
-								if ( (i==0 && j==0) || (generic) )
-									continue;
-								if (myscreen->query_passable(xpos+((newob->sizex+1)*i),
-								                            ypos+((newob->sizey+1)*j), newob))
-								{
-									// We've found a legal spot ..
-									generic = 1;
-									newob->setxy(xpos+((newob->sizex+1)*i),
-									             ypos+((newob->sizey+1)*j));
-									newob->stats()->level = (stats_->level+1)/2;
-									newob->set_difficulty(newob->stats()->level);
-									newob->team_num = team_num; // set to our team
-									newob->owner = this; // we're owned!
-									newob->lifetime = 200 + 60*stats_->level;
+									if ( (i==0 && j==0) || (generic) )
+										continue;
+									float testx = static_cast<float>(xpos + ((newob->sizex + 1) * i));
+									float testy = static_cast<float>(ypos + ((newob->sizey + 1) * j));
+									if (myscreen->query_passable(testx, testy, newob))
+									{
+										// We've found a legal spot ..
+										generic = 1;
+										newob->setxy(testx, testy);
+										newob->stats()->level = (stats_->level+1)/2;
+										newob->set_difficulty(static_cast<Uint32>(newob->stats()->level));
+										newob->team_num = team_num; // set to our team
+										newob->owner = this; // we're owned!
+										newob->lifetime = 200 + 60*stats_->level;
 								} // end of successfully put summoned creature
 							} // end of I and J loops
 						if (!generic) // we never found a legal spot
@@ -897,12 +895,12 @@ bool walker::special()
 						}
 						busy += 15; // takes lots of time :)
 					}  // end of shifter_down true summoning
-					else // standard, illusion-only
-					{
-						// Determine what type of thing to summon image of
-						generic = stats_->magicpoints - stats_->special_cost[3];
-						if (generic < 100) // lowest type
-							person = FAMILY_ELF;
+						else // standard, illusion-only
+						{
+							// Determine what type of thing to summon image of
+							generic = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[3]));
+							if (generic < 100) // lowest type
+								person = FAMILY_ELF;
 						else if (generic < 250)
 						{
 							switch (rng(3))
@@ -1021,18 +1019,18 @@ bool walker::special()
 						for (i=-1; i <= 1; i++)
 							for (j=-1; j <= 1; j++)
 							{
-								if ( (i==0 && j==0) || (generic) )
-									continue;
-								if (myscreen->query_passable(xpos+((newob->sizex+1)*i),
-								                            ypos+((newob->sizey+1)*j), newob))
-								{
-									// We've found a legal spot ..
-									generic = 1;
-									newob->setxy(xpos+((newob->sizex+1)*i),
-									             ypos+((newob->sizey+1)*j));
-									newob->stats()->level = (stats_->level+2)/3;
-									newob->set_difficulty(newob->stats()->level);
-									newob->team_num = team_num; // set to our team
+									if ( (i==0 && j==0) || (generic) )
+										continue;
+									float testx = static_cast<float>(xpos + ((newob->sizex + 1) * i));
+									float testy = static_cast<float>(ypos + ((newob->sizey + 1) * j));
+									if (myscreen->query_passable(testx, testy, newob))
+									{
+										// We've found a legal spot ..
+										generic = 1;
+										newob->setxy(testx, testy);
+										newob->stats()->level = (stats_->level+2)/3;
+										newob->set_difficulty(static_cast<Uint32>(newob->stats()->level));
+										newob->team_num = team_num; // set to our team
 									newob->owner = this; // we're owned!
 									newob->lifetime = 100 + 20*stats_->level;
 									//newob->stats()->armor = -(newob->stats()->max_hitpoints*10);
@@ -1062,8 +1060,8 @@ bool walker::special()
                         if (howmany < 1)
                             return 0; // noone to influence
                         
-                        didheal = 0; // howmany actually done yet?
-                        generic2 = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)] + 10;
+	                        didheal = 0; // howmany actually done yet?
+	                        generic2 = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[static_cast<int>(current_special)])) + 10;
                         
                         for(auto* ob : newlist)
                         {
@@ -1075,19 +1073,19 @@ bool walker::special()
                             {
                                 generic2 -= 10; // count cost for additional guy
                                 generic = stats_->level - ob->stats()->level;
-                                if (generic < 0 || (!rng(20)) ) // trying to control a higher-level
-                                {
-                                    ob->real_team_num = ob->team_num;
-                                    ob->team_num = rng(8);
-                                    ob->charm_left_ = 25 + rng(generic*20);
-                                }
-                                else
-                                {
-                                    ob->real_team_num = ob->team_num;
-                                    ob->team_num = team_num;
-                                    ob->foe = nullptr; // allow choice of new foe
-                                    ob->charm_left_ = 25 + rng(generic*20);
-                                }
+	                                if (generic < 0 || (!rng(20)) ) // trying to control a higher-level
+	                                {
+	                                    ob->real_team_num = ob->team_num;
+	                                    ob->team_num = static_cast<unsigned char>(rng(8));
+	                                    ob->charm_left_ = static_cast<short>(compute_charm_duration(generic, *ctx().rng));
+	                                }
+	                                else
+	                                {
+	                                    ob->real_team_num = ob->team_num;
+	                                    ob->team_num = team_num;
+	                                    ob->foe = nullptr; // allow choice of new foe
+	                                    ob->charm_left_ = static_cast<short>(compute_charm_duration(generic, *ctx().rng));
+	                                }
                                 didheal++;
                             }
                         }
@@ -1104,7 +1102,7 @@ bool walker::special()
 					tempstr = std::format("{} has controlled {} men", message, didheal);
 					myscreen->do_notify(tempstr.c_str(), this);
 
-					generic2 = stats_->magicpoints - stats_->special_cost[static_cast<int>(current_special)];
+						generic2 = static_cast<Sint32>(stats_->magicpoints - static_cast<float>(stats_->special_cost[static_cast<int>(current_special)]));
 					if (generic2 > 0) // sap our extra based on how many guys
 					{
 						while ( (didheal > 0) && (generic2 >= 10) )
@@ -1127,27 +1125,27 @@ bool walker::special()
 				case 2:
 				case 3:
 				case 4:
-				default:
-					tempx = lastx; // store our facing
-					tempy = lasty;
-					// Now face each direction and fire ..
-					stats_->magicpoints += (8*stats_->weapon_cost);
-					for (i=-1;i<2;i++)
-						for (j=-1;j<2;j++)
-						{
+					default:
+						tempx = static_cast<Sint32>(lastx); // store our facing
+						tempy = static_cast<Sint32>(lasty);
+						// Now face each direction and fire ..
+						stats_->magicpoints += 8.0f * static_cast<float>(stats_->weapon_cost);
+						for (i=-1;i<2;i++)
+							for (j=-1;j<2;j++)
+							{
 							if (i || j)
 							{
-								lastx = i;
-								lasty = j;
+								lastx = static_cast<float>(i);
+								lasty = static_cast<float>(j);
 								fire();
 							}
 						}
 
-					// Restore old facing
-					lastx = tempx;
-					lasty = tempy;
-					break;
-			}
+						// Restore old facing
+						lastx = static_cast<float>(tempx);
+						lasty = static_cast<float>(tempy);
+						break;
+				}
 			break; // end of fire elemental
 		case FAMILY_SMALL_SLIME: // grow ..
 		case FAMILY_MEDIUM_SLIME:
@@ -1160,8 +1158,8 @@ bool walker::special()
 			}
 			else
 			{
-				stats_->set_command(COMMAND_WALK,10,rng(3)-1,rng(3)-1);
-				return 0;
+					stats_->set_command(COMMAND_WALK, 10, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+					return 0;
 			}
 			break;
 		case FAMILY_SLIME:  // Big slime splits to two small slimes
@@ -1189,7 +1187,7 @@ bool walker::special()
 						myguy->total_shots++;
 						myguy->scen_shots++;
                     }
-					newob->damage = (stats_->level+1)*15;
+						newob->damage = static_cast<float>(stats_->level + 1) * 15.0f;
 					newob->setxy(xpos+sizex/2 - newob->sizex/2,
 					             ypos+sizey/2 - newob->sizey/2);
 					newob->owner = this;
@@ -1200,16 +1198,16 @@ bool walker::special()
 							person = 1;
 					if (!person)
 					{
-						tempx = rng(3)-1;
-						tempy = rng(3)-1;
+							tempx = static_cast<Sint32>(rng(3)) - 1;
+							tempy = static_cast<Sint32>(rng(3)) - 1;
 						if ( (tempx==0) && (tempy==0) )
 							tempx = 1;
 						stats_->force_command(COMMAND_WALK, 20, tempx,tempy);
 					}
 					break;
-				case 2: // thief cloaking ability, Registered
-					invisibility_left += 20 + ((rng(20))*stats_->level);
-					break;
+					case 2: // thief cloaking ability, Registered
+						invisibility_left = static_cast<short>(invisibility_left + 20 + static_cast<Sint32>(rng(20)) * stats_->level);
+						break;
 				case 3: // thief Taunt (draw enemies), Registered
 					if (!shifter_down) // normal taunt
 					{
@@ -1280,8 +1278,8 @@ bool walker::special()
                                             ob->foe = nullptr;
                                         else
                                             ob->foe = foe;
-                                        ob->charm_left_ = 75 + generic*25;
-                                        generic2 = 0;
+	                                        ob->charm_left_ = static_cast<short>(75 + generic * 25);
+	                                        generic2 = 0;
                                     }
                                     didheal++;
                                 } // end of if-valid-target
@@ -1319,7 +1317,7 @@ bool walker::special()
 					newob->ani_type = ANI_SPIN; // non-walking
 					newob->team_num = team_num;
 					newob->stats()->level = stats_->level;
-					newob->damage = stats_->level;
+						newob->damage = static_cast<float>(stats_->level);
 					newob->owner = this;
 					break;
 			}
@@ -1328,20 +1326,20 @@ bool walker::special()
 			switch(current_special)
 			{
 				case 1:  // some rocks (normal)
-					stats_->magicpoints += (2*stats_->weapon_cost);
+					stats_->magicpoints += 2.0f * static_cast<float>(stats_->weapon_cost);
 					fireob = static_cast<weap*>(fire());
                     if (!fireob) // failsafe
                         return 0;
-					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
-					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+					fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
 					fireob = static_cast<weap*>(fire());
                     if (!fireob) // failsafe
                         return 0;
-					fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
-					fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
+					fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+					fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
 					break;
 				case 2:  // more rocks, and bouncing
-					stats_->magicpoints += (3*stats_->weapon_cost);
+					stats_->magicpoints += 3.0f * static_cast<float>(stats_->weapon_cost);
 					for (i=0; i < 2; i++)
 					{
 						fireob = static_cast<weap*>(fire());
@@ -1350,12 +1348,12 @@ bool walker::special()
 						fireob->lineofsight *= 3;  // we get 50% longer, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
-                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
-                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                        fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
 					}
 					break;
 				case 3:
-					stats_->magicpoints += (4*stats_->weapon_cost);
+					stats_->magicpoints += 4.0f * static_cast<float>(stats_->weapon_cost);
 					for (i=0; i < 3; i++)
 					{
 						fireob = static_cast<weap*>(fire());
@@ -1363,13 +1361,13 @@ bool walker::special()
 							return 0;
 						fireob->lineofsight *= 2;  // get double distance
 						fireob->do_bounce = 1;
-                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
-                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                        fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
 					}
 					break;
 				case 4:
 				default:
-					stats_->magicpoints += (5*stats_->weapon_cost);
+					stats_->magicpoints += 5.0f * static_cast<float>(stats_->weapon_cost);
 					for (i=0; i < 4; i++)
 					{
 						fireob = static_cast<weap*>(fire());
@@ -1378,8 +1376,8 @@ bool walker::special()
 						fireob->lineofsight *= 5;  // we get 150% longer, too!
 						fireob->lineofsight /= 2;
 						fireob->do_bounce = 1;
-                        fireob->lastx *= 0.8f + 0.4f*(rand()%101)/100.0f;
-                        fireob->lasty *= 0.8f + 0.4f*(rand()%101)/100.0f;
+                        fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                        fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
 					}
 					break;
 			}
@@ -1422,12 +1420,12 @@ bool walker::special()
 					}
 					busy += (fire_frequency * 3);
 					break;
-				case 3: // reveal items
-					if (busy > 0)
-						return 0;
-					view_all += stats_->level*10;
-					busy += (fire_frequency * 4);
-					break;
+					case 3: // reveal items
+						if (busy > 0)
+							return 0;
+						view_all = static_cast<short>(view_all + stats_->level * 10);
+						busy += (fire_frequency * 4);
+						break;
 				case 4:  // circle of protection
 				default:
 					if (busy > 0)
@@ -1527,36 +1525,45 @@ bool walker::special()
                         for(auto* ob : newlist)
                         {
                             if (ob)
-                            {
-                                if (ob->myguy)
-                                    tempx = ob->myguy->constitution;
-                                else
-                                    tempx = ob->stats()->hitpoints / 30;
-                                tempy = 10 + rng(stats_->level*10) - rng(tempx*10);
-                                if (tempy < 0)
-                                    tempy = 0;
-                                ob->stats()->frozen_delay += tempy;
-                            }
-                        }
+	                            {
+	                                if (ob->myguy)
+	                                    tempx = ob->myguy->constitution;
+	                                else
+	                                    tempx = static_cast<Sint32>(ob->stats()->hitpoints / 30.0f);
+	                                Sint32 tempx_clamped = (tempx > 0) ? tempx : 0;
+	                                tempy = 10
+	                                      + static_cast<Sint32>(rng(static_cast<Uint32>(stats_->level * 10)))
+	                                      - static_cast<Sint32>(rng(static_cast<Uint32>(tempx_clamped * 10)));
+	                                if (tempy < 0)
+	                                    tempy = 0;
+	                                ob->stats()->frozen_delay = static_cast<short>(ob->stats()->frozen_delay + tempy);
+	                            }
+	                        }
                         
                         if (on_screen())
                             myscreen->soundp->play_sound(SOUND_ROAR);
 					}
 					break;
-				case 2: // eat corpse for health
-				case 3:
-				case 4:
-				default:
-					if (stats_->hitpoints >= stats_->max_hitpoints)
-						return 0; // can't eat if we're 'full'
-					newob = myscreen->find_nearest_blood(this);
-					if (!newob) // no blood, so do nothing
-						return 0;
-					distance = static_cast<Uint32>(distance_to_ob_center(newob));
-					if (distance > 24) // must be close enough
-						return 0;
-					stats_->hitpoints += newob->stats()->level*5;
-					do_heal_effects(nullptr, this, newob->stats()->level*5);
+					case 2: // eat corpse for health
+					case 3:
+					case 4:
+					default:
+						if (stats_->hitpoints >= stats_->max_hitpoints)
+						{
+							return 0; // can't eat if we're 'full'
+						}
+						newob = myscreen->find_nearest_blood(this);
+						if (!newob) // no blood, so do nothing
+						{
+							return 0;
+						}
+						distance = static_cast<Uint32>(distance_to_ob_center(newob));
+						if (distance > 24) // must be close enough
+						{
+							return 0;
+						}
+						stats_->hitpoints += static_cast<float>(newob->stats()->level) * 5.0f;
+						do_heal_effects(nullptr, this, static_cast<short>(newob->stats()->level * 5));
 					// Print the eating notice
 					if (myguy)
 					{
@@ -1617,11 +1624,11 @@ bool walker::special()
 						alive->stepsize = 1.0f + myguy->strength / 7;
 						alive->damage += myguy->strength / 5.0f;
 					}
-					else
-					{
-						alive->stepsize = stats_->level * 2;
-						alive->damage += stats_->level;
-					}
+						else
+						{
+							alive->stepsize = static_cast<float>(stats_->level) * 2.0f;
+							alive->damage += static_cast<float>(stats_->level);
+						}
 					if (alive->stepsize < 1)
 						alive->stepsize = 1;
 					if (alive->stepsize > 15)
@@ -1644,8 +1651,8 @@ bool walker::special()
 					else
 						alive->skip_exit = 0;
 					newob->dead = 1;
-					busy += 1 + current_special * 5;
-					break; // end of hurl boulder
+						busy += 1.0f + static_cast<float>(current_special) * 5.0f;
+						break; // end of hurl boulder
 			} // end of Barbarian
 			break;
 
@@ -1657,8 +1664,8 @@ bool walker::special()
 
 bool walker::teleport()
 {
-	short newx,newy;
-	Sint32 distance;
+	Sint32 newx = 0, newy = 0;
+	Sint32 distance = 0;
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
@@ -1673,11 +1680,11 @@ bool walker::teleport()
 		   )
 		{
 			// Found our marker!
-			if (myscreen->query_passable(ob->xpos, ob->ypos, this)
-			        && (distance = distance_to_ob(ob) > 64) )
-			{
-				center_on(ob);
-				ob->lifetime--;
+				distance = distance_to_ob(ob);
+				if (myscreen->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
+				{
+					center_on(ob);
+					ob->lifetime--;
 				if (ob->lifetime < 1)
 				{
 					ob->dead = 1;
@@ -1690,38 +1697,38 @@ bool walker::teleport()
 				if (user != -1 && (distance > 64) ) // only tell players
 					myscreen->do_notify("Marker is Blocked!", this);
 			}
+			}
+		} // end of checking for marker (we failed)
+	
+		newx = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.w))) * GRID_SIZE;
+		newy = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.h))) * GRID_SIZE;
+	
+		while(!myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this))
+		{
+			newx = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.w))) * GRID_SIZE;
+			newy = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.h))) * GRID_SIZE;
 		}
-	} // end of checking for marker (we failed)
-
-	newx = rng(myscreen->level_data.grid.w)*GRID_SIZE;
-	newy = rng(myscreen->level_data.grid.h)*GRID_SIZE;
-
-	while(!myscreen->query_passable(newx, newy, this))
-	{
-		newx = rng(myscreen->level_data.grid.w)*GRID_SIZE;
-		newy = rng(myscreen->level_data.grid.h)*GRID_SIZE;
-	}
-	setxy(newx,newy);
-	return 1;
+		setxy(newx, newy);
+		return 1;
 }
 
 bool walker::teleport_ranged(Sint32 range)
 {
-	short newx,newy;
-	short keep_going = 200; // maxtries
+	Sint32 newx = 0, newy = 0;
+	Sint32 keep_going = 200; // maxtries
 
-	newx = rng(2*range) - range + xpos;
-	newy = rng(2*range) - range + ypos;
+	newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
+	newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
 
-	while(!myscreen->query_passable(newx, newy, this) && keep_going)
+	while(!myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
 	{
-		newx = rng(2*range) - range + xpos;
-		newy = rng(2*range) - range + ypos;
+		newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
+		newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
 		keep_going--;
 	}
 	if (keep_going)
 	{
-		setxy(newx,newy);
+		setxy(newx, newy);
 		return 1;
 	}
 	return 0; // failed to find safe spot
@@ -1729,10 +1736,10 @@ bool walker::teleport_ranged(Sint32 range)
 
 // Turns undead; ie, skeleton or ghost, within range
 // Returns the number of dead destroyed
-Sint32 walker::turn_undead(Sint32 range, Sint32 power)
+Sint32 walker::turn_undead(Sint32 range, [[maybe_unused]] Sint32 power)
 {
 	Sint32 killed = 0;
-	short targets;
+	Sint32 targets = 0;
 
 	std::list<walker*> deadlist = myscreen->find_foes_in_range(myscreen->level_data.oblist, range,
 	                                       &targets, this);

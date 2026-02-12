@@ -44,9 +44,9 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 // Radar -- this initializes the graphics data for the radar,
 // as well as its graphics x and y size.  In addition, it informs
 // the radar of the screen object it is linked to.
-radar::radar(viewscreen * myview, screen * myscreen, short whatnum)
+radar::radar(viewscreen * myview, screen * screen_ctx, short whatnum)
 {
-	screenp = myscreen;
+	screenp = screen_ctx;
 	viewscreenp = myview;
 	mynum = whatnum; //what number viewscreen we are, to get control's position
     force_lower_position = false;
@@ -167,7 +167,9 @@ short radar::draw(LevelData* data)
     
     unsigned char alpha = 255;
     if(myscreen->numviews > 2 && !(myscreen->numviews == 3 && mynum == 0))
+    {
         alpha = 127;
+    }
 	{
 		size_t offset = radarx + (radary * sizex);
 		auto radar_span = std::span<const unsigned char>{bmp.data() + offset, static_cast<size_t>(sizex * sizey) - offset};
@@ -307,13 +309,13 @@ short radar::draw(LevelData* data)
 							do_show = 0;
 							break;
 					}
+					}
+					if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
+						do_show = static_cast<short>(static_cast<Uint32>(LIGHT_BLUE) + rng(7));
 				}
-				if (obfamily == FAMILY_EXIT || obfamily == FAMILY_TELEPORTER)
-					do_show = static_cast<short>(LIGHT_BLUE) + rng(7);
-			}
-			if (!on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE),
-			                static_cast<short>((ob->ypos+1)/GRID_SIZE),
-			                radarx, radary) )
+				if (!on_screen( static_cast<short>((ob->xpos+1)/GRID_SIZE),
+				                static_cast<short>((ob->ypos+1)/GRID_SIZE),
+				                radarx, radary) )
 				do_show = 0;
 			if (do_show)
 			{

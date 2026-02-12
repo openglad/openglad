@@ -63,7 +63,8 @@ void importCampaignPicker()
     // TODO: Browse campaigns online and download some
 }
 
-void shareCampaign(screen* myscreen)
+void shareCampaign(screen* screenp)
 {
+    (void)screenp;
     // TODO: Send current campaign to the internets!
 }

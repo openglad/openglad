@@ -149,7 +149,7 @@ REGISTER_TEST(test_screen_first_of_treasure);
 
 void test_screen_save_data_score()
 {
-    Sint32 old_score = myscreen->save_data.m_score[0];
+    Uint32 old_score = myscreen->save_data.m_score[0];
     myscreen->save_data.m_score[0] += 100;
     TEST_ASSERT(myscreen->save_data.m_score[0] > old_score, "score should increase");
     myscreen->save_data.m_score[0] = old_score; // restore

@@ -22,52 +22,48 @@
 
 void popup_dialog(const char* title, const char* message);
 
-LoadSavedGameError load_saved_game_with_error(const char *filename, screen *myscreen)
+LoadSavedGameError load_saved_game_with_error(const char *filename, screen *screenp)
 {
-	if(myscreen == nullptr)
+	if(screenp == nullptr)
 	{
 		LogError("load_saved_game_failed file={} reason=missing_screen\n", filename ? filename : "(null)");
 		return LoadSavedGameError::MissingScreen;
 	}
 
-	TRACE("game", "load_saved_game file=%s scen=%d", filename, myscreen->save_data.scen_num);
+	TRACE("game", "load_saved_game file=%s scen=%d", filename, screenp->save_data.scen_num);
 	guy           *temp_guy;
 	walker        *temp_walker,  *replace_walker;
 	Order         myord{};
 	short         myfam;
 	int           multi_team = 0;
-	int           i;
 	bool used_fallback_level = false;
 
-	myscreen->numviews = myscreen->save_data.numplayers;
+	screenp->numviews = screenp->save_data.numplayers;
 
-	myscreen->cleanup(myscreen->numviews);
-	myscreen->initialize_views();
+	screenp->cleanup(screenp->numviews);
+	screenp->initialize_views();
 
-	// Determine the scenario name to load
-	std::string scenfile = std::format("scen{}", myscreen->save_data.scen_num);
-	
 	// And load the scenario ..
-	myscreen->level_data.id = myscreen->save_data.scen_num;
-	if(!myscreen->level_data.load())
+	screenp->level_data.id = screenp->save_data.scen_num;
+	if(!screenp->level_data.load())
 	{
-	    short old_scen = myscreen->save_data.scen_num;
+	    short old_scen = screenp->save_data.scen_num;
 	    LogError("load_saved_game_level_load_failed file={} scen={} action=fallback_to_1\n",
 	        filename ? filename : "(null)", old_scen);
 	    // Failed?  Try level 1.
-		myscreen->save_data.scen_num = 1;
-        myscreen->level_data.id = 1;
+		screenp->save_data.scen_num = 1;
+        screenp->level_data.id = 1;
         used_fallback_level = true;
-        if(!myscreen->level_data.load())
+        if(!screenp->level_data.load())
         {
-			LogError("load_saved_game_failed file={} scen={} fallback=1 reason=fallback_level_load_failed\n",
-				filename ? filename : "(null)", old_scen);
-			return LoadSavedGameError::FallbackLevelLoadFailed;
+				LogError("load_saved_game_failed file={} scen={} fallback=1 reason=fallback_level_load_failed\n",
+					filename ? filename : "(null)", old_scen);
+				return LoadSavedGameError::FallbackLevelLoadFailed;
         }
 	}
 
-	TRACE("game", "level loaded: scen%d", myscreen->level_data.id);
-	for(auto& uptr : myscreen->level_data.oblist)
+	TRACE("game", "level loaded: scen%d", screenp->level_data.id);
+	for(auto& uptr : screenp->level_data.oblist)
 	{
 	    walker* w = uptr.get();
 		if (w)
@@ -75,10 +71,10 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *mysc
 	}
 
 	// Cycle through the team list ..
-	for(int i = 0; i < myscreen->save_data.team_size; i++)
+	for(int guy_idx = 0; guy_idx < screenp->save_data.team_size; guy_idx++)
     {
-	    temp_guy = myscreen->save_data.team_list[i].get();
-	    temp_walker = temp_guy->create_and_add_walker(myscreen);
+	    temp_guy = screenp->save_data.team_list[guy_idx].get();
+	    temp_walker = temp_guy->create_and_add_walker(screenp);
 	    // Clear the new guy's battle data
 	    temp_walker->myguy->scen_damage = 0;
 	    temp_walker->myguy->scen_kills = 0;
@@ -94,12 +90,12 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *mysc
 			multi_team = 1;
 
 		// First, try to find a marker that's the correct team number ..
-		replace_walker = myscreen->first_of(Order::Special,
-		                                    FAMILY_RESERVED_TEAM,
-		                                    static_cast<int>(temp_guy->teamnum));
+			replace_walker = screenp->first_of(Order::Special,
+			                                    FAMILY_RESERVED_TEAM,
+			                                    static_cast<int>(temp_guy->teamnum));
 		// If that doesn't work, though, grab any marker we can ..
-		if (!replace_walker)
-			replace_walker = myscreen->first_of(Order::Special, FAMILY_RESERVED_TEAM);
+			if (!replace_walker)
+				replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 		if (replace_walker)
 		{
 			temp_walker->setxy(replace_walker->xpos, replace_walker->ypos);
@@ -112,12 +108,12 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *mysc
 		}
 	}
     
-    // Destroy all player markers (by setting them to dead)
-	replace_walker = myscreen->first_of(Order::Special, FAMILY_RESERVED_TEAM);
+	    // Destroy all player markers (by setting them to dead)
+	replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	while (replace_walker)
 	{
 		replace_walker->dead = 1;
-		replace_walker = myscreen->first_of(Order::Special, FAMILY_RESERVED_TEAM);
+		replace_walker = screenp->first_of(Order::Special, FAMILY_RESERVED_TEAM);
 	}
 
 	// Have we already done this scenario?
@@ -144,9 +140,9 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *mysc
 			}
 		}
 
-		for(auto& uptr : myscreen->level_data.weaplist)
-		{
-		    walker* w = uptr.get();
+			for(auto& uptr : screenp->level_data.weaplist)
+			{
+			    walker* w = uptr.get();
 			if (w)
 			{
 				myfam = w->query_family();
@@ -164,9 +160,9 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *mysc
 			}
 		}
 
-		for(auto& uptr : myscreen->level_data.fxlist)
-		{
-		    walker* w = uptr.get();
+			for(auto& uptr : screenp->level_data.fxlist)
+			{
+			    walker* w = uptr.get();
 			if (w)
 			{
 				myfam = w->query_family();
@@ -189,21 +185,21 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *mysc
 	// team 0, or if they're playing competing teams ..
 	if (multi_team)
 	{
-		for (i=0; i < myscreen->numviews; i++)
-			myscreen->viewob[i]->my_team = i;
+		for (int view_idx = 0; view_idx < screenp->numviews; view_idx++)
+			screenp->viewob[view_idx]->my_team = static_cast<short>(view_idx);
 	}
 	else
 	{
-		for (i=0; i < myscreen->numviews; i++)
-			myscreen->viewob[i]->my_team = 0;
+		for (int view_idx = 0; view_idx < screenp->numviews; view_idx++)
+			screenp->viewob[view_idx]->my_team = 0;
 	}
 
 	return used_fallback_level ? LoadSavedGameError::UsedFallbackLevel : LoadSavedGameError::None;
 }
 
-short load_saved_game(const char *filename, screen  *myscreen)
+short load_saved_game(const char *filename, screen  *screenp)
 {
-	const LoadSavedGameError err = load_saved_game_with_error(filename, myscreen);
+	const LoadSavedGameError err = load_saved_game_with_error(filename, screenp);
 	if(err == LoadSavedGameError::FallbackLevelLoadFailed)
 	{
 		std::string buf = "Fallback loading failed.\nCould not load scenario.\nPlease report this problem to the developer!\n";

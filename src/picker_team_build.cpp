@@ -33,8 +33,8 @@
 #include <string>
 #include <vector>
 
-#define DOWN(x) (72+x*15)
-#define VIEW_DOWN(x) (10+x*20)
+#define DOWN(x) (72 + static_cast<Sint32>((x) * 15))
+#define VIEW_DOWN(x) (10 + static_cast<Sint32>((x) * 20))
 #define RAISE 1.85  // please also change in guy.cpp
 
 #define EXIT 1
@@ -75,7 +75,7 @@ bool prompt_for_string(const std::string& message, std::string& result);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
 void popup_dialog(const char* title, const char* message);
 void timed_dialog(const char* message, float delay_seconds = 3.0f);
-void show_guy(Sint32 frames, Sint32 who, short centerx = 80, short centery = 45);
+void show_guy(Sint32 frames, Sint32 who, Sint32 centerx = 80, Sint32 centery = 45);
 void view_team(short left, short top, short right, short bottom);
 void draw_backdrop();
 Sint32 leftmouse(button* buttons);
@@ -84,7 +84,7 @@ void draw_highlight_interior(const button& b);
 bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue, bool use_global_vbuttons = true);
 bool reset_buttons(vbutton*& localbuttons, button* buttons, int num_buttons, Sint32& retvalue);
 const char* family_name_copy(short family);
-const char* get_family_string(short family);
+const char* get_family_string(Sint32 family);
 const char* get_saved_name(const char* filename);
 Sint32 create_view_menu(Sint32 arg1);
 Sint32 create_hire_menu(Sint32 arg1);
@@ -301,6 +301,8 @@ Sint32 create_progress_menu(Sint32 arg1)
         // Handle scroll buttons
         MouseState& mymouse = query_mouse();
         bool clicked = mymouse.left;
+        const int mx = static_cast<int>(mymouse.x);
+        const int my = static_cast<int>(mymouse.y);
         if (clicked) {
             while (mymouse.left) {
                 SDL_Delay(1);
@@ -311,11 +313,11 @@ Sint32 create_progress_menu(Sint32 arg1)
         bool prev_enabled = (scroll_offset > 0);
         bool next_enabled = (scroll_offset + visible_rows < static_cast<int>(levels.size()));
 
-        bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mymouse.x && mymouse.x <= prev_btn.x + prev_btn.w
-                       && prev_btn.y <= mymouse.y && mymouse.y <= prev_btn.y + prev_btn.h)
+        bool do_prev = prev_enabled && ((clicked && prev_btn.x <= mx && mx <= prev_btn.x + prev_btn.w
+                       && prev_btn.y <= my && my <= prev_btn.y + prev_btn.h)
                        || (retvalue == OK && highlighted_button == 0));
-        bool do_next = next_enabled && ((clicked && next_btn.x <= mymouse.x && mymouse.x <= next_btn.x + next_btn.w
-                       && next_btn.y <= mymouse.y && mymouse.y <= next_btn.y + next_btn.h)
+        bool do_next = next_enabled && ((clicked && next_btn.x <= mx && mx <= next_btn.x + next_btn.w
+                       && next_btn.y <= my && my <= next_btn.y + next_btn.h)
                        || (retvalue == OK && highlighted_button == 1));
 
         if (do_prev) {
@@ -337,10 +339,10 @@ Sint32 create_progress_menu(Sint32 arg1)
                 LevelProgress& lp = levels[i];
                 if (!lp.is_cleared) {
                     // Check if click is on this row's GO button
-                    if (mymouse.x >= go_btn_x && mymouse.x <= go_btn_x + go_btn_w &&
-                        mymouse.y >= row_y && mymouse.y <= row_y + row_height) {
+                    if (mx >= go_btn_x && mx <= go_btn_x + go_btn_w &&
+                        my >= row_y && my <= row_y + row_height) {
                         // Set current level and exit
-                        myscreen->save_data.scen_num = lp.id;
+                        myscreen->save_data.scen_num = static_cast<short>(lp.id);
                         myscreen->clearbuffer();
                         return REDRAW;
                     }
@@ -602,12 +604,12 @@ std::string get_class_description(unsigned char family)
 }
 
 // stat: str 0, dex 1, con 2, int 3, armor 4
-const char* get_training_cost_rating(unsigned char family, int stat)
-{
-    int value = 55/(statcosts[family][stat]);
-    int rating = float(value)/11 * 5;
-    switch(rating)
-    {
+	const char* get_training_cost_rating(unsigned char family, int stat)
+	{
+	    int value = 55/(statcosts[family][stat]);
+	    int rating = (value * 5) / 11;
+	    switch(rating)
+	    {
     case 0:
         return "";
     case 1:
@@ -724,7 +726,7 @@ Sint32 create_hire_menu(Sint32 arg1)
         myscreen->draw_button_inverted(name_box_inner);
         
         text& mytext = myscreen->text_normal;
-        mytext.write_xy(name_box.x + name_box.w/2 - 3*strlen(family_name), name_box.y + 6, family_name, static_cast<unsigned char>(DARK_BLUE), 1);
+        mytext.write_xy(name_box.x + name_box.w/2 - 3*static_cast<Sint32>(strlen(family_name)), name_box.y + 6, family_name, static_cast<unsigned char>(DARK_BLUE), 1);
         
 		show_guy(query_timer()-start_time, 0, description_box.x + description_box.w/2, name_box.y + name_box.h + (description_box.y - (name_box.y + name_box.h))/2); // 0 means current_guy
         change_hire_teamnum(0);
@@ -1081,81 +1083,84 @@ Sint32 create_train_menu(Sint32 arg1)
         myscreen->draw_button(174, 32, 306, 114+22, 1, 1); // info box
         myscreen->draw_text_bar(176, 34, 304, 112+22); // main text box
         
-        showcolor = DARK_BLUE;
-        linesdown = 0;
-        int line_height = 10;
+	        showcolor = DARK_BLUE;
+	        linesdown = 0.0f;
+	        int line_height = 10;
+	        auto info_y = [&](float line) -> Sint32 {
+	            return info_box_content.y + static_cast<Sint32>(line * static_cast<float>(line_height));
+	        };
 		
 		int derived_offset = 3*STAT_NUM_OFFSET/4;
 		
         message = std::format("Total Kills: {}", current_guy->kills);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), DARK_BLUE, 1);
+	        mytext.write_xy(180, info_y(linesdown), message.c_str(), DARK_BLUE, 1);
 
         linesdown++;
         if (current_guy->total_hits && current_guy->total_shots) // have we at least hit something? :)
         {
             message = std::format("   Accuracy: {}% ",
                     (current_guy->total_hits*100)/current_guy->total_shots);
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), DARK_BLUE, 1);
+	            mytext.write_xy(180, info_y(linesdown), message.c_str(), DARK_BLUE, 1);
         }
         else // haven't ever hit anyone
         {
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, "   Accuracy: N/A ", DARK_BLUE, 1);
+	            mytext.write_xy(180, info_y(linesdown), "   Accuracy: N/A ", DARK_BLUE, 1);
         }
 
         linesdown++;
         message = std::format(" EXPERIENCE: {}", current_guy->exp);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+	        mytext.write_xy(180, info_y(linesdown), message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
         
         
         linesdown++;
 		// Separator bar
-		SDL_Rect r = {info_box_content.x + 10, info_box_content.y + Sint32(linesdown*line_height) - 2, info_box_content.w - 20, 2};
-		myscreen->draw_button_inverted(r);
+			SDL_Rect r = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
+			myscreen->draw_button_inverted(r);
         
         linesdown += 0.4f;
         
-        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "HP:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + derived_offset - 9, info_box_content.y + linesdown*line_height, HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(Order::Living, current_guy->family)] + current_guy->get_hp_bonus()));
+	        mytext.write_xy(info_box_content.x, info_y(linesdown), "HP:", STAT_DERIVED, 1);
+	        mytext.write_xy(info_box_content.x + derived_offset - 9, info_y(linesdown), HIGH_HP_COLOR, "%.0f", ceilf(myscreen->level_data.myloader->hitpoints[PIX(Order::Living, current_guy->family)] + current_guy->get_hp_bonus()));
         
-        mytext.write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "MP:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_box_content.y + linesdown*line_height, MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
+	        mytext.write_xy(info_box_content.x + derived_offset + 18, info_y(linesdown), "MP:", STAT_DERIVED, 1);
+	        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 9, info_y(linesdown), MAX_MP_COLOR, "%.0f", ceilf(current_guy->get_mp_bonus()));
 		
 		linesdown++;
-        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + derived_offset - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(Order::Living, current_guy->family)] + current_guy->get_damage_bonus());
+	        mytext.write_xy(info_box_content.x, info_y(linesdown), "ATK:", STAT_DERIVED, 1);
+	        mytext.write_xy(info_box_content.x + derived_offset - 3, info_y(linesdown), showcolor, "%.0f", myscreen->level_data.myloader->damage[PIX(Order::Living, current_guy->family)] + current_guy->get_damage_bonus());
         
-        mytext.write_xy(info_box_content.x + derived_offset + 18, info_box_content.y + linesdown*line_height, "DEF:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_box_content.y + linesdown*line_height, showcolor, "%.0f", current_guy->get_armor_bonus());
+	        mytext.write_xy(info_box_content.x + derived_offset + 18, info_y(linesdown), "DEF:", STAT_DERIVED, 1);
+	        mytext.write_xy(info_box_content.x + 2*derived_offset + 18 - 3, info_y(linesdown), showcolor, "%.0f", current_guy->get_armor_bonus());
 		
 		linesdown++;
-        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "SPD:", STAT_DERIVED, 1);
-        mytext.write_xy(info_box_content.x + derived_offset, info_box_content.y + linesdown*line_height, showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(Order::Living, current_guy->family)] + current_guy->get_speed_bonus());
+	        mytext.write_xy(info_box_content.x, info_y(linesdown), "SPD:", STAT_DERIVED, 1);
+	        mytext.write_xy(info_box_content.x + derived_offset, info_y(linesdown), showcolor, "%.1f", myscreen->level_data.myloader->stepsizes[PIX(Order::Living, current_guy->family)] + current_guy->get_speed_bonus());
         
 		linesdown++;
-        mytext.write_xy(info_box_content.x, info_box_content.y + linesdown*line_height, "ATK SPD:", STAT_DERIVED, 1);
+	        mytext.write_xy(info_box_content.x, info_y(linesdown), "ATK SPD:", STAT_DERIVED, 1);
         float fire_freq = myscreen->level_data.myloader->fire_frequency[PIX(Order::Living, current_guy->family)] - current_guy->get_fire_frequency_bonus();
         if(fire_freq < 1)
             fire_freq = 1;
         // The 10.0f/fire_frequency is somewhat arbitrary, but it makes for good comparison info.
-        mytext.write_xy(info_box_content.x + derived_offset + 21, info_box_content.y + linesdown*line_height, showcolor, "%.1f", 10.0f/fire_freq);
+	        mytext.write_xy(info_box_content.x + derived_offset + 21, info_y(linesdown), showcolor, "%.1f", 10.0f/fire_freq);
         
         
         linesdown++;
 		// Separator bar
-		SDL_Rect r2 = {info_box_content.x + 10, info_box_content.y + Sint32(linesdown*line_height) - 2, info_box_content.w - 20, 2};
-		myscreen->draw_button_inverted(r2);
+			SDL_Rect r2 = {info_box_content.x + 10, info_y(linesdown) - 2, info_box_content.w - 20, 2};
+			myscreen->draw_button_inverted(r2);
         
         linesdown += 0.4f;
         message = std::format("CASH: {}", myscreen->save_data.m_totalcash[current_guy->teamnum]);
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
+	        mytext.write_xy(180, info_y(linesdown), message.c_str(),static_cast<unsigned char>(DARK_BLUE), 1);
 
         linesdown++;
-        mytext.write_xy(180, info_box_content.y + linesdown*line_height, "COST: ", DARK_BLUE, 1);
+	        mytext.write_xy(180, info_y(linesdown), "COST: ", DARK_BLUE, 1);
         message = std::format("      {}", current_cost );
         if (current_cost > myscreen->save_data.m_totalcash[current_guy->teamnum])
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), STAT_CHANGED, 1);
-        else
-            mytext.write_xy(180, info_box_content.y + linesdown*line_height, message.c_str(), STAT_COLOR, 1);
+	            mytext.write_xy(180, info_y(linesdown), message.c_str(), STAT_CHANGED, 1);
+	        else
+	            mytext.write_xy(180, info_y(linesdown), message.c_str(), STAT_COLOR, 1);
 
         // Display our team setting ..
         message = std::format("Playing on Team {}", current_guy->teamnum+1);
@@ -1177,7 +1182,7 @@ Sint32 create_load_menu(Sint32 arg1)
 	Sint32 i;
 	std::string temp_filename;
 	text& loadtext = myscreen->text_normal;
-	std::string message;
+	std::string menu_message;
 
 	if (arg1)
 		arg1 = 1;
@@ -1217,8 +1222,8 @@ Sint32 create_load_menu(Sint32 arg1)
         
         myscreen->draw_button(15,  9, 255, 199, 1, 1);
         myscreen->draw_text_bar(19, 13, 251, 21);
-        message = "Gladiator: Load Game";
-        loadtext.write_xy(135-(static_cast<int>(message.size())*3), 15, message.c_str(), RED, 1);
+        menu_message = "Gladiator: Load Game";
+        loadtext.write_xy(135-(static_cast<int>(menu_message.size())*3), 15, menu_message.c_str(), RED, 1);
         for (i=0; i < 10; i++)
         {
             temp_filename = std::format("save{}", i+1);
@@ -1252,7 +1257,7 @@ Sint32 create_save_menu(Sint32 arg1)
 	Sint32 i;
 	std::string temp_filename;
 	text& savetext = myscreen->text_normal;
-	std::string message;
+	std::string menu_message;
 
 	if (arg1)
 		arg1 = 1;
@@ -1293,8 +1298,8 @@ Sint32 create_save_menu(Sint32 arg1)
         
         myscreen->draw_button(15,  9, 255, 199, 1, 1);
         myscreen->draw_text_bar(19, 13, 251, 21);
-        message = "Gladiator: Save Game";
-        savetext.write_xy(135-(static_cast<int>(message.size())*3), 15, message.c_str(), RED, 1);
+        menu_message = "Gladiator: Save Game";
+        savetext.write_xy(135-(static_cast<int>(menu_message.size())*3), 15, menu_message.c_str(), RED, 1);
         for (i=0; i < 10; i++)
         {
             temp_filename = std::format("save{}", i+1);
@@ -1325,45 +1330,50 @@ Sint32 increase_stat(Sint32 whatstat, Sint32 howmuch)
 {
     bool level_increased = (old_guy->level < current_guy->level);
     bool stat_increased;
+    const short delta = static_cast<short>(howmuch);
     if(level_increased)
+    {
         stat_increased = false;
+    }
     else
+    {
         stat_increased = (old_guy->strength < current_guy->strength
                || old_guy->dexterity < current_guy->dexterity
                || old_guy->constitution < current_guy->constitution
                || old_guy->intelligence < current_guy->intelligence
                || old_guy->armor < current_guy->armor);
+    }
     
 	switch(whatstat)
-	{
-		case BUT_STR:
-			if(!level_increased)
-                current_guy->strength+=howmuch;
-			break;
-		case BUT_DEX:
-			if(!level_increased)
-                current_guy->dexterity+=howmuch;
-			break;
-		case BUT_CON:
-			if(!level_increased)
-                current_guy->constitution+=howmuch;
-			break;
-		case BUT_INT:
-			if(!level_increased)
-                current_guy->intelligence+=howmuch;
-			break;
-		case BUT_ARMOR:
-			if(!level_increased)
-                current_guy->armor+=howmuch;
-			break;
-		case BUT_LEVEL:
-		    if(!stat_increased)
-		    {
-                short newlevel = current_guy->level + howmuch;
-                current_guy->upgrade_to_level(newlevel);
-		    }
-			break;
-		default:
+		{
+			case BUT_STR:
+				if(!level_increased)
+	                current_guy->strength = static_cast<short>(static_cast<Sint32>(current_guy->strength) + delta);
+				break;
+			case BUT_DEX:
+				if(!level_increased)
+	                current_guy->dexterity = static_cast<short>(static_cast<Sint32>(current_guy->dexterity) + delta);
+				break;
+			case BUT_CON:
+				if(!level_increased)
+	                current_guy->constitution = static_cast<short>(static_cast<Sint32>(current_guy->constitution) + delta);
+				break;
+			case BUT_INT:
+				if(!level_increased)
+	                current_guy->intelligence = static_cast<short>(static_cast<Sint32>(current_guy->intelligence) + delta);
+				break;
+			case BUT_ARMOR:
+				if(!level_increased)
+	                current_guy->armor = static_cast<short>(static_cast<Sint32>(current_guy->armor) + delta);
+				break;
+			case BUT_LEVEL:
+			    if(!stat_increased)
+			    {
+	                short newlevel = static_cast<short>(static_cast<Sint32>(current_guy->level) + delta);
+	                current_guy->upgrade_to_level(newlevel);
+			    }
+				break;
+			default:
 			break;
 	}
 	
@@ -1374,45 +1384,50 @@ Sint32 decrease_stat(Sint32 whatstat, Sint32 howmuch)
 {
     bool level_increased = (old_guy->level < current_guy->level);
     bool stat_increased;
+    const short delta = static_cast<short>(howmuch);
     if(level_increased)
+    {
         stat_increased = false;
+    }
     else
+    {
         stat_increased = (old_guy->strength < current_guy->strength
                || old_guy->dexterity < current_guy->dexterity
                || old_guy->constitution < current_guy->constitution
                || old_guy->intelligence < current_guy->intelligence
                || old_guy->armor < current_guy->armor);
+    }
     
 	switch(whatstat)
-	{
-		case BUT_STR:
-		    if(!level_increased)
-                current_guy->strength-=howmuch;
-			break;
-		case BUT_DEX:
-			if(!level_increased)
-                current_guy->dexterity-=howmuch;
-			break;
-		case BUT_CON:
-			if(!level_increased)
-                current_guy->constitution-=howmuch;
-			break;
-		case BUT_INT:
-			if(!level_increased)
-                current_guy->intelligence-=howmuch;
-			break;
-		case BUT_ARMOR:
-			if(!level_increased)
-                current_guy->armor-=howmuch;
-			break;
-		case BUT_LEVEL:
-			if(!stat_increased)
-            {
-			    short newlevel = current_guy->level - howmuch;
-			    if(newlevel > 0 && newlevel >= myscreen->save_data.team_list[editguy]->level)
-                {
-                    current_guy->upgrade_to_level(newlevel);
-                    if(current_guy->level == myscreen->save_data.team_list[editguy]->level)
+		{
+			case BUT_STR:
+			    if(!level_increased)
+	                current_guy->strength = static_cast<short>(static_cast<Sint32>(current_guy->strength) - delta);
+				break;
+			case BUT_DEX:
+				if(!level_increased)
+	                current_guy->dexterity = static_cast<short>(static_cast<Sint32>(current_guy->dexterity) - delta);
+				break;
+			case BUT_CON:
+				if(!level_increased)
+	                current_guy->constitution = static_cast<short>(static_cast<Sint32>(current_guy->constitution) - delta);
+				break;
+			case BUT_INT:
+				if(!level_increased)
+	                current_guy->intelligence = static_cast<short>(static_cast<Sint32>(current_guy->intelligence) - delta);
+				break;
+			case BUT_ARMOR:
+				if(!level_increased)
+	                current_guy->armor = static_cast<short>(static_cast<Sint32>(current_guy->armor) - delta);
+				break;
+			case BUT_LEVEL:
+				if(!stat_increased)
+	            {
+				    short newlevel = static_cast<short>(static_cast<Sint32>(current_guy->level) - delta);
+				    if(newlevel > 0 && newlevel >= myscreen->save_data.team_list[editguy]->level)
+	                {
+	                    current_guy->upgrade_to_level(newlevel);
+	                    if(current_guy->level == myscreen->save_data.team_list[editguy]->level)
                         current_guy->exp = myscreen->save_data.team_list[editguy]->exp;
                 }
 			}
@@ -1436,17 +1451,17 @@ Uint32 calculate_hire_cost()
 	myfamily = ob->family;
 	temp = costlist[myfamily];
 
-	// Long check of various things ..
-	if (ob->strength < statlist[myfamily][BUT_STR])
-		ob->strength = statlist[myfamily][BUT_STR];
-	if (ob->dexterity < statlist[myfamily][BUT_DEX])
-		ob->dexterity = statlist[myfamily][BUT_DEX];
-	if (ob->constitution < statlist[myfamily][BUT_CON])
-		ob->constitution = statlist[myfamily][BUT_CON];
-	if (ob->intelligence < statlist[myfamily][BUT_INT])
-		ob->intelligence = statlist[myfamily][BUT_INT];
-	if (ob->armor < statlist[myfamily][BUT_ARMOR])
-		ob->armor = statlist[myfamily][BUT_ARMOR];
+		// Long check of various things ..
+		if (ob->strength < statlist[myfamily][BUT_STR])
+			ob->strength = static_cast<short>(statlist[myfamily][BUT_STR]);
+		if (ob->dexterity < statlist[myfamily][BUT_DEX])
+			ob->dexterity = static_cast<short>(statlist[myfamily][BUT_DEX]);
+		if (ob->constitution < statlist[myfamily][BUT_CON])
+			ob->constitution = static_cast<short>(statlist[myfamily][BUT_CON]);
+		if (ob->intelligence < statlist[myfamily][BUT_INT])
+			ob->intelligence = static_cast<short>(statlist[myfamily][BUT_INT]);
+		if (ob->armor < statlist[myfamily][BUT_ARMOR])
+			ob->armor = static_cast<short>(statlist[myfamily][BUT_ARMOR]);
 
 	// Now figure out costs ..
 	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->strength - statlist[myfamily][BUT_STR]), RAISE))
@@ -1460,8 +1475,8 @@ Uint32 calculate_hire_cost()
 	temp += static_cast<Sint32>((pow( static_cast<Sint32>(ob->armor - statlist[myfamily][BUT_ARMOR]), RAISE))
 	               * static_cast<Sint32>(statcosts[myfamily][BUT_ARMOR]));
     
-	if (ob->level < statlist[myfamily][BUT_LEVEL])
-		ob->upgrade_to_level(statlist[myfamily][BUT_LEVEL]);
+		if (ob->level < statlist[myfamily][BUT_LEVEL])
+			ob->upgrade_to_level(static_cast<short>(statlist[myfamily][BUT_LEVEL]));
 		
 	if (static_cast<Sint32>(calculate_exp(ob->level)) < 0) // overflow
 		ob->upgrade_to_level(1);
@@ -1756,7 +1771,7 @@ Sint32 cycle_guy(Sint32 whichway)
 	// Make the new guy
 	current_guy = new guy(newfamily);
 	current_guy->teamnum = current_team_num;
-	current_guy->name = get_new_name(newfamily);
+		current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
 
 	show_guy(0, 0);
 
@@ -1767,32 +1782,28 @@ Sint32 cycle_guy(Sint32 whichway)
 	return OK;
 }
 
-void show_guy(Sint32 frames, Sint32 who, short centerx, short centery) // shows the current guy ..
-{
-	walker *mywalker;
-	Sint32 i;
-	Sint32 newfamily;
+	void show_guy(Sint32 frames, Sint32 who, Sint32 centerx, Sint32 centery) // shows the current guy ..
+	{
+		walker *mywalker;
+		Sint32 i;
+		char newfamily;
 
 	if (!current_guy)
 		return;
 
 	frames = abs(frames);
 
-	if (who == 0) // use current_type of guy
-		newfamily = allowable_guys[current_type];
-	else
-		newfamily = myscreen->save_data.team_list[editguy]->family;
-	newfamily = current_guy->family;
+		(void)who; // always show current_guy
+		newfamily = current_guy->family;
 
-	mywalker = myscreen->level_data.myloader->create_walker(Order::Living,
-	           newfamily,myscreen);
-	mywalker->stats()->bit_flags = 0;
-	mywalker->curdir = ((frames/192) + FACE_DOWN)%8;
-	mywalker->ani_type = ANI_WALK;
-	for (i=0; i <= (frames/12)%4; i++)
-		mywalker->animate();
-	//mywalker->team_num = ourteam[editguy]->teamnum;
-	mywalker->team_num = current_guy->teamnum;
+		mywalker = myscreen->level_data.myloader->create_walker(Order::Living, newfamily, myscreen);
+		mywalker->stats()->bit_flags = 0;
+		mywalker->curdir = static_cast<signed char>(((frames/192) + FACE_DOWN)%8);
+		mywalker->ani_type = ANI_WALK;
+		for (i=0; i <= (frames/12)%4; i++)
+			mywalker->animate();
+		//mywalker->team_num = ourteam[editguy]->teamnum;
+		mywalker->team_num = static_cast<unsigned char>(current_guy->teamnum);
 
 	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
 	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
@@ -1897,7 +1908,7 @@ Sint32 name_guy(Sint32 arg)  // 0 == current_guy, 1 == ourteam[editguy]
 	return REDRAW;
 }
 
-Sint32 add_guy(Sint32 ignoreme)
+Sint32 add_guy([[maybe_unused]] Sint32 ignoreme)
 {
 	Sint32 newfamily = current_guy->family;
 	//buffers: changed typename to type_name due to some compile error
@@ -1944,7 +1955,7 @@ Sint32 add_guy(Sint32 ignoreme)
 			type_name = current_guy->name;
 			statscopy(current_guy, ourteam[i].get()); // set to same stats as just bought
 			current_guy->name = type_name;
-            current_guy->name = get_new_name(newfamily);
+            current_guy->name = get_new_name(static_cast<unsigned char>(newfamily));
 
 			// Return okay status
 			return OK;
@@ -1981,14 +1992,15 @@ Sint32 edit_guy(Sint32 arg1)
 	}
     
     Uint32 cost = calculate_train_cost(here);
-	if ( (cost > myscreen->save_data.m_totalcash[current_guy->teamnum]) ||  // compare cost of here to current_guy
-	        (cost < 0) )
+	if (cost > myscreen->save_data.m_totalcash[current_guy->teamnum])  // compare cost of here to current_guy
 		return OK;
 
 	myscreen->save_data.m_totalcash[current_guy->teamnum] -= cost;  // cost of new - old (current_guy - here)
 
     if (here->level != current_guy->level)
+    {
         current_guy->upgrade_to_level(current_guy->level);
+    }
 	statscopy(here, current_guy);
 
 	// Color our team button normally
@@ -2028,9 +2040,11 @@ Sint32 do_save(Sint32 arg1)
             timed_dialog("SAVE FAILED");
     }
     else
+    {
         timed_dialog("SAVE CANCELED");
-    
-	grab_mouse();
+    }
+
+    grab_mouse();
 
 	return REDRAW;
 }
@@ -2040,11 +2054,15 @@ Sint32 do_load(Sint32 arg1)
 	std::string newname = std::format("save{}", arg1);
 
 	if(myscreen->save_data.load(newname))
+    {
         timed_dialog("GAME LOADED");
+    }
     else
+    {
         timed_dialog("LOAD FAILED");
-    
-	return REDRAW;
+    }
+
+    return REDRAW;
 }
 
 const char* get_saved_name(const char * filename)

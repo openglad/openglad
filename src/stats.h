@@ -54,12 +54,12 @@ class statistics
 	public:
 		statistics(walker  *);
 		~statistics();
-		short  try_command(short whatcommand, short iterations, short info1, short info2);
-		short  try_command(short whatcommand, short iterations);
-		void set_command(short whatcommand, short iterations);
-		void set_command(short whatcommand, short iterations, short info1, short info2);
-		void add_command(short whatcommand, short iterations, short info1, short info2);
-		void force_command(short whatcommand, short iterations, short info1, short info2);
+		short  try_command(Sint32 whatcommand, Sint32 iterations, Sint32 info1, Sint32 info2);
+		short  try_command(Sint32 whatcommand, Sint32 iterations);
+		void set_command(Sint32 whatcommand, Sint32 iterations);
+		void set_command(Sint32 whatcommand, Sint32 iterations, Sint32 info1, Sint32 info2);
+		void add_command(Sint32 whatcommand, Sint32 iterations, Sint32 info1, Sint32 info2);
+		void force_command(Sint32 whatcommand, Sint32 iterations, Sint32 info1, Sint32 info2);
 		bool has_commands() const;
 		void clear_command();
 		short do_command();
@@ -94,11 +94,11 @@ class statistics
 		Sint32 current_heal_delay;
 		Sint32 max_magic_delay;
 		Sint32 current_magic_delay;
-		Sint32 magic_per_round; //magic we regain each round
-		Sint32 heal_per_round; //hp we regain each round
+		float magic_per_round; // magic we regain each round
+		float heal_per_round;  // hp we regain each round
 		float armor; // reduces damage against us
 		
-		unsigned short level;
+		Sint32 level;
 		short frozen_delay;              // use for paralyzing..
 		unsigned short special_cost[NUM_SPECIALS];  // cost of our special ability
 		short weapon_cost;                          // cost of our weapon
@@ -114,9 +114,8 @@ class command
 {
 	public:
 		command();
-		short commandtype;
-		short commandcount;
-		short com1;
-		short com2;
+		Sint32 commandtype;
+		Sint32 commandcount;
+		Sint32 com1;
+		Sint32 com2;
 };
-

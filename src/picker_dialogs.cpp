@@ -64,7 +64,7 @@ void timed_dialog(const char* message, float delay_seconds)
     text& gladtext = myscreen->text_normal;
 
     int pix_per_char = 6;
-    int len = strlen(message);
+    int len = static_cast<int>(strlen(message));
     int width = len * pix_per_char;
     int leftside  = 160 - width/2 - 12;
     int rightside = 160 + width/2 + 12;
@@ -80,7 +80,7 @@ void timed_dialog(const char* message, float delay_seconds)
     clear_key_press_event();
 
     Uint32 start_time = SDL_GetTicks();
-    while ((SDL_GetTicks() - start_time)/1000.0f < delay_seconds)
+    while (static_cast<float>(SDL_GetTicks() - start_time)/1000.0f < delay_seconds)
     {
         get_input_events(POLL);
 
@@ -108,12 +108,13 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
     std::list<std::string> ls = explode(message, '\n');
 
     // Get the max dimensions needed to display it
-    int w = strlen(title)*9;
-    int h = 30 + 10*ls.size();
+    int w = static_cast<int>(strlen(title))*9;
+    int h = 30 + 10*static_cast<int>(ls.size());
     for(auto& line : ls)
     {
-        if(int(line.size()*pix_per_char) > w)
-            w = line.size()*pix_per_char;
+        const int line_width = static_cast<int>(line.size()) * pix_per_char;
+        if(line_width > w)
+            w = line_width;
     }
 
     // Centered bounds
@@ -201,12 +202,13 @@ bool no_or_yes_prompt(const char* title, const char* message, bool default_value
     std::list<std::string> ls = explode(message, '\n');
 
     // Get the max dimensions needed to display it
-    int w = strlen(title)*9;
-    int h = 30 + 10*ls.size();
+    int w = static_cast<int>(strlen(title))*9;
+    int h = 30 + 10*static_cast<int>(ls.size());
     for(auto& line : ls)
     {
-        if(int(line.size()*pix_per_char) > w)
-            w = line.size()*pix_per_char;
+        const int line_width = static_cast<int>(line.size()) * pix_per_char;
+        if(line_width > w)
+            w = line_width;
     }
 
     // Centered bounds
@@ -298,12 +300,13 @@ void popup_dialog(const char* title, const char* message)
     std::list<std::string> ls = explode(message, '\n');
 
     // Get the max dimensions needed to display it
-    int w = strlen(title)*9;
-    int h = 30 + 10*ls.size();
+    int w = static_cast<int>(strlen(title))*9;
+    int h = 30 + 10*static_cast<int>(ls.size());
     for(auto& line : ls)
     {
-        if(int(line.size()*pix_per_char) > w)
-            w = line.size()*pix_per_char;
+        const int line_width = static_cast<int>(line.size()) * pix_per_char;
+        if(line_width > w)
+            w = line_width;
     }
 
     // Centered bounds
@@ -352,7 +355,7 @@ void popup_dialog(const char* title, const char* message)
         j = 0;
         for(auto& line : ls)
         {
-            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - line.size()*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
+            gladtext.write_xy(dumbcount + 3*pix_per_char/2 + w/2 - static_cast<Sint32>(line.size())*pix_per_char/2, 104 - h/2 + 10*j, line.c_str(), static_cast<unsigned char>(DARK_BLUE), 1);
             j++;
         }
 

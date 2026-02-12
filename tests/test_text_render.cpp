@@ -9,31 +9,31 @@ extern screen* myscreen;
 
 void test_text_query_width_empty()
 {
-    short w = myscreen->text_normal.query_width("");
+    Sint32 w = myscreen->text_normal.query_width("");
     TEST_ASSERT_EQ(0, (int)w, "empty string width is 0");
 }
 REGISTER_TEST(test_text_query_width_empty);
 
 void test_text_query_width_single()
 {
-    short w = myscreen->text_normal.query_width("A");
+    Sint32 w = myscreen->text_normal.query_width("A");
     TEST_ASSERT(w > 0, "single char has width > 0");
 }
 REGISTER_TEST(test_text_query_width_single);
 
 void test_text_query_width_long()
 {
-    short w = myscreen->text_normal.query_width("Hello World");
+    Sint32 w = myscreen->text_normal.query_width("Hello World");
     TEST_ASSERT(w > 0, "long string has positive width");
 
-    short w2 = myscreen->text_normal.query_width("Hi");
+    Sint32 w2 = myscreen->text_normal.query_width("Hi");
     TEST_ASSERT(w > w2, "longer string is wider");
 }
 REGISTER_TEST(test_text_query_width_long);
 
 void test_text_query_width_big()
 {
-    short w = myscreen->text_big.query_width("Test");
+    Sint32 w = myscreen->text_big.query_width("Test");
     TEST_ASSERT(w > 0, "big font width > 0");
 }
 REGISTER_TEST(test_text_query_width_big);

@@ -58,6 +58,10 @@ class screen : public video
 		bool query_passable(float x, float y, walker  *ob);
 		bool query_object_passable(float x, float y, walker  *ob);
 		bool query_grid_passable(float x, float y, walker  *ob);
+		// Overloads to avoid implicit int->float conversions at call sites.
+		bool query_passable(Sint32 x, Sint32 y, walker* ob) { return query_passable(static_cast<float>(x), static_cast<float>(y), ob); }
+		bool query_object_passable(Sint32 x, Sint32 y, walker* ob) { return query_object_passable(static_cast<float>(x), static_cast<float>(y), ob); }
+		bool query_grid_passable(Sint32 x, Sint32 y, walker* ob) { return query_grid_passable(static_cast<float>(x), static_cast<float>(y), ob); }
 		bool redraw();
 		void refresh();
 		walker  * first_of(Order whatorder, unsigned char whatfamily,
@@ -73,14 +77,14 @@ class screen : public video
 		void draw_panels(short howmany);
 		walker* find_nearest_blood(walker *who);
 		walker* find_nearest_player(walker *ob);
-		std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
-		std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
-		std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
-		std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, short *howmany, walker  *ob);
+			std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
+			std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
+			std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
+			std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
 		char damage_tile(short xloc, short yloc); // damage the specified tile
 		void do_notify(std::string_view message, walker  *who);  // printing text
 		void report_mem();
-		walker *set_walker(walker *ob, Order order, char family);
+		walker *set_walker(walker *ob, Order order, Sint32 family);
 		ScenarioTitleError get_scen_title_with_error(const char *filename, std::string& out_title);
 		const char* get_scen_title(const char *filename, screen *master);
 		bool is_level_completed(int level_index) const;
@@ -108,7 +112,7 @@ class screen : public video
 
 		std::string special_name[NUM_FAMILIES][NUM_SPECIALS];
 		std::string alternate_name[NUM_FAMILIES][NUM_SPECIALS];
-		unsigned short enemy_freeze; // stops enemies from acting
+		Sint32 enemy_freeze; // stops enemies from acting
 		std::unique_ptr<soundob> soundp;
 		short redrawme;
 		std::unique_ptr<viewscreen> viewob[5];

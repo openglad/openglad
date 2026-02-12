@@ -50,13 +50,13 @@ obmap::~obmap()
 void obmap::draw()
 {
     text& t = myscreen->text_normal;
-    short offsetx = myscreen->viewob[0]->topx;
-    short offsety = myscreen->viewob[0]->topy;
+    const Sint32 offsetx = myscreen->viewob[0]->topx;
+    const Sint32 offsety = myscreen->viewob[0]->topy;
     // Draw the number of obs in each pile
     for(auto& [pos, walkers] : pos_to_walker)
     {
-        short cx = unhash(pos.first) - offsetx + OBRES/2;
-        short cy = unhash(pos.second) - offsety + OBRES/2;
+        const Sint32 cx = static_cast<Sint32>(unhash(pos.first)) - offsetx + OBRES/2;
+        const Sint32 cy = static_cast<Sint32>(unhash(pos.second)) - offsety + OBRES/2;
         myscreen->draw_box(cx - OBRES/2, cy - OBRES/2, cx + OBRES/2, cy + OBRES/2, YELLOW, false);
         t.write_xy_center(cx, cy, YELLOW, "%d", walkers.size());
     }
@@ -99,10 +99,10 @@ void obmap::draw()
         if(!unset)
         {
             // Draw the rect
-            short x = unhash(r.x) - offsetx;
-            short y = unhash(r.y) - offsety;
-            short bw = unhash(r.w);
-            short bh = unhash(r.h);
+            const Sint32 x = static_cast<Sint32>(unhash(static_cast<short>(r.x))) - offsetx;
+            const Sint32 y = static_cast<Sint32>(unhash(static_cast<short>(r.y))) - offsety;
+            const Sint32 bw = static_cast<Sint32>(unhash(static_cast<short>(r.w)));
+            const Sint32 bh = static_cast<Sint32>(unhash(static_cast<short>(r.h)));
             myscreen->draw_box(x, y, x + bw, y + bh, w->query_team_color(), false);
         }
     }

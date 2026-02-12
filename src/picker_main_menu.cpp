@@ -215,6 +215,7 @@ Sint32 mainmenu(Sint32 arg1)
 // Reset game data and go to create_team_menu()
 Sint32 beginmenu(Sint32 arg1)
 {
+	(void)arg1;
     screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
     if (!game)
         return REDRAW_VALUE;
