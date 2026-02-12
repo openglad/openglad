@@ -23,6 +23,7 @@
 
 #include "SDL.h"
 #include <cctype>
+#include <optional>
 #include <format>
 #include <string>
 #include <string_view>
@@ -88,3 +89,8 @@ void uppercase(std::string &);
 // Zardus: add: set_mult func
 void set_mult(int);
 
+// Safe integer parsing helpers (preferred over atoi()).
+// - parse_int_prefix(): trims leading whitespace, parses a leading integer, allows trailing junk.
+// - parse_int_strict(): trims leading/trailing whitespace, requires full consumption.
+std::optional<int> parse_int_prefix(std::string_view s);
+std::optional<int> parse_int_strict(std::string_view s);

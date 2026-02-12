@@ -23,6 +23,7 @@
 #include "guy.h"
 #include "screen.h"
 #include "button.h"
+#include "util.h"
 #include <format>
 #include <memory>
 #include <vector>
@@ -41,7 +42,13 @@ bool handle_menu_nav(button* buttons, int& highlighted_button, Sint32& retvalue,
 
 int toInt(const std::string& s)
 {
-    return atoi(s.c_str());
+    const auto parsed = parse_int_strict(s);
+    if (!parsed)
+    {
+        LogWarn("Invalid integer string: '{}'\n", s);
+        return 0;
+    }
+    return *parsed;
 }
 
 // Unmounts old campaign, mounts new one, and returns the current level (scenario) that the player is on

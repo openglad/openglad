@@ -23,10 +23,12 @@
 
 #include "version.h"
 
+#include <charconv>
 #include <cstdio>
 #include <ctime>
 #include <cctype>
 #include <cstring> //buffers: for strlen
+#include <optional>
 #include <string>
 #include <sys/stat.h>
 #include "base.h"
@@ -169,4 +171,54 @@ void uppercase(std::string &str)
 {
     for(auto& c : str)
         c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+}
+
+static std::string_view trim_left_ascii_ws(std::string_view s)
+{
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
+        s.remove_prefix(1);
+    return s;
+}
+
+static std::string_view trim_right_ascii_ws(std::string_view s)
+{
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+        s.remove_suffix(1);
+    return s;
+}
+
+std::optional<int> parse_int_prefix(std::string_view s)
+{
+    s = trim_left_ascii_ws(s);
+    if (s.empty())
+        return std::nullopt;
+
+    int value = 0;
+    const char* begin = s.data();
+    const char* end = s.data() + s.size();
+    const auto result = std::from_chars(begin, end, value);
+    if (result.ec != std::errc{} || result.ptr == begin)
+        return std::nullopt;
+    return value;
+}
+
+std::optional<int> parse_int_strict(std::string_view s)
+{
+    s = trim_right_ascii_ws(trim_left_ascii_ws(s));
+    if (s.empty())
+        return std::nullopt;
+
+    int value = 0;
+    const char* begin = s.data();
+    const char* end = s.data() + s.size();
+    const auto result = std::from_chars(begin, end, value);
+    if (result.ec != std::errc{} || result.ptr == begin)
+        return std::nullopt;
+
+    std::string_view rest(result.ptr, static_cast<size_t>(end - result.ptr));
+    rest = trim_right_ascii_ws(rest);
+    if (!rest.empty())
+        return std::nullopt;
+
+    return value;
 }

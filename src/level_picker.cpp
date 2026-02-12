@@ -45,6 +45,8 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 
 bool prompt_for_string(const std::string& message, std::string& result);
 
+void popup_dialog(const char* title, const char* message);
+
 
 #define OK 4
 void draw_highlight_interior(const button& b);
@@ -156,7 +158,13 @@ bool sort_scen(const std::string& first, const std::string& second)
     }
     
     if(s1 == s2)
-        return (atoi(s1num.c_str()) < atoi(s2num.c_str()));
+    {
+        const auto n1 = parse_int_strict(s1num);
+        const auto n2 = parse_int_strict(s2num);
+        if (n1 && n2)
+            return *n1 < *n2;
+        return first < second;
+    }
     return (first < second);
 }
 
@@ -517,9 +525,14 @@ int pick_level(screen *screenp, int default_level, bool enable_delete)
                 std::string level;
                 if(prompt_for_string("Enter Level ID (num)", level) && level.size() > 0)
                 {
-                    result = atoi(level.c_str());
-                    done = true;
-                    break;
+                    const auto parsed = parse_int_strict(level);
+                    if (parsed && *parsed > 0)
+                    {
+                        result = *parsed;
+                        done = true;
+                        break;
+                    }
+                    popup_dialog("Invalid input", "Please enter a positive integer Level ID.");
                 }
            }
         else if(do_select)

@@ -378,7 +378,9 @@ std::list<int> list_levels()
                 continue;
             }
             *e = e->substr(4, std::string::npos);
-            result.push_back(atoi(e->c_str()));
+            const auto id = parse_int_strict(*e);
+            if (id && *id > 0)
+                result.push_back(*id);
         }
         e++;
     }
@@ -408,7 +410,9 @@ std::vector<int> list_levels_v()
                 continue;
             }
             *e = e->substr(4, std::string::npos);
-            result.push_back(atoi(e->c_str()));
+            const auto id = parse_int_strict(*e);
+            if (id && *id > 0)
+                result.push_back(*id);
         }
         e++;
     }

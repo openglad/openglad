@@ -1269,7 +1269,12 @@ int get_scen_num_from_filename(const char* name)
    if(*n == '\0')
     return -1;
    else
-    return atoi(n);
+   {
+       const auto parsed = parse_int_prefix(n);
+       if (!parsed)
+           return -1;
+       return *parsed;
+   }
 }
 
 
