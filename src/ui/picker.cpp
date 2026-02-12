@@ -269,19 +269,13 @@ void picker_main(Sint32 argc, char  **argv)
 
 void picker_quit()
 {
-	int i;
+	for (auto& backdrop : backdrops)
+        backdrop.reset();
 
-	for (i = 0; i < 5; i ++)
-	{
-		if (backdrops[i])
-		{
-			backdrops[i].reset();
-		}
-		
-        backpics[i].free();
-	}
+    for (auto& backpic : backpics)
+        backpic.free();
 
-	for (i = 0; i < MAX_BUTTONS; i++)
+	for (int i = 0; i < MAX_BUTTONS; i++)
 	{
 		if (allbuttons[i])
         {

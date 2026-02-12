@@ -32,9 +32,9 @@ class loader
 		loader& operator=(const loader&) = delete;
 		loader(loader&&) = delete;
 		loader& operator=(loader&&) = delete;
-		std::unique_ptr<walker> create_walker_owned(Order order, Sint32 family, screen* screenp, [[maybe_unused]] bool cache_weapons = true);
+		[[nodiscard]] std::unique_ptr<walker> create_walker_owned(Order order, Sint32 family, screen* screenp, [[maybe_unused]] bool cache_weapons = true);
         walker  *create_walker(Order order, Sint32 family, screen  *screenp, [[maybe_unused]] bool cache_weapons = true);
-		std::unique_ptr<pixieN> create_pixieN_owned(Order order, Sint32 family);
+		[[nodiscard]] std::unique_ptr<pixieN> create_pixieN_owned(Order order, Sint32 family);
 		void set_derived_stats(walker* w, Order order, Sint32 family);
 		pixieN *create_pixieN(Order order, Sint32 family);
 		walker *set_walker(walker *ob, Order order, Sint32 family);
