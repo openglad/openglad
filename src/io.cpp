@@ -20,6 +20,7 @@
 #include "game_context.h"
 #include "util.h"
 #include "pixdefs.h"
+#include "text.h"
 
 #include "yam.h"
 #include "physfs.h"
@@ -631,6 +632,7 @@ void io_exit()
     // Final sync before exit
     sync_filesystem();
 #endif
+    text_shutdown();
     PHYSFS_deinit();
 }
 

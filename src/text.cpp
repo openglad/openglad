@@ -46,9 +46,13 @@ text::text(const char * filename)
 
 text::~text()
 {
-    // TODO: Free letters somewhere better (it's a global leak for now, so no hurry)
-	//free(letters-3);  // letters is offset by 3 bytes on load
-	//letters = nullptr;
+    // Shared font pixies are freed via text_shutdown().
+}
+
+void text_shutdown()
+{
+    letters1.free();
+    letters_big.free();
 }
 short text::query_width(std::string_view string) // returns width, in pixels
 {

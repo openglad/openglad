@@ -70,3 +70,7 @@ class text
 	    const PixieData* letters;
 	    short sizex, sizey;
 };
+
+// Free shared font pixie data loaded by text constructors.
+// Safe to call multiple times.
+void text_shutdown();
