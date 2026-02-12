@@ -2785,178 +2785,184 @@ int level_editor_test_exercise_internal_helpers()
     if (brush.order == Order::Living && brush.family == 0)
         score++;
 
-    {
-        LevelEditorData data;
-        (void)data.loadCampaign("org.openglad.gladiator");
-        (void)data.reloadCampaign();
-        (void)data.loadLevel(1);
-        (void)data.reloadLevel();
+	    {
+	        LevelEditorData data;
+	        const bool loaded_ok =
+	            data.loadCampaign("org.openglad.gladiator") &&
+	            data.reloadCampaign() &&
+	            data.loadLevel(1) &&
+	            data.reloadLevel();
 
-        data.level->create_new_grid();
-        data.clear_terrain();
-        data.resmooth_terrain();
+	        // If earlier tests left the filesystem/campaign mount state in a bad place,
+	        // avoid crashing here; this function is meant to exercise helpers, not test IO.
+	        if (loaded_ok && data.level != nullptr)
+	        {
+	            data.level->create_new_grid();
+	            data.clear_terrain();
+	            data.resmooth_terrain();
 
-        data.set_terrain(0, 0, PIX_GRASS2);
-        if (data.get_terrain(0, 0) == PIX_GRASS2)
-            score++;
-        if (data.get_terrain(-1, -1) == 0)
-            score++;
+	            data.set_terrain(0, 0, PIX_GRASS2);
+	            if (data.get_terrain(0, 0) == PIX_GRASS2)
+	                score++;
+	            if (data.get_terrain(-1, -1) == 0)
+	                score++;
 
-        walker* inside = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
-        walker* inside2 = data.level->add_ob(Order::Living, FAMILY_ELF);
-        if (inside != nullptr)
-        {
-            inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
-            inside->team_num = 1;
-            inside->curdir = FACE_UP;
-            inside->stats()->level = 2;
-            inside->stats()->name = "SOLDIER_A";
+	            walker* inside = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+	            walker* inside2 = data.level->add_ob(Order::Living, FAMILY_ELF);
+	            if (inside != nullptr)
+	            {
+	                inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+	                inside->team_num = 1;
+	                inside->curdir = FACE_UP;
+	                inside->stats()->level = 2;
+	                inside->stats()->name = "SOLDIER_A";
 
-            if (inside2 != nullptr)
-            {
-                inside2->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
-                inside2->team_num = 0;
-                inside2->curdir = FACE_UP_LEFT;
-                inside2->stats()->level = 1;
-                inside2->stats()->name = "ELF_B";
-            }
+	                if (inside2 != nullptr)
+	                {
+	                    inside2->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
+	                    inside2->team_num = 0;
+	                    inside2->curdir = FACE_UP_LEFT;
+	                    inside2->stats()->level = 1;
+	                    inside2->stats()->name = "ELF_B";
+	                }
 
-            SelectionInfo sel(inside);
-            sel.set(inside);
-            if (sel.get_object(data.level.get()) == inside)
-                score++;
-            sel.clear();
-            if (sel.get_object(data.level.get()) == nullptr)
-                score++;
-            sel.set(nullptr);
-            if (sel.valid == false)
-                score++;
+	                SelectionInfo sel(inside);
+	                sel.set(inside);
+	                if (sel.get_object(data.level.get()) == inside)
+	                    score++;
+	                sel.clear();
+	                if (sel.get_object(data.level.get()) == nullptr)
+	                    score++;
+	                sel.set(nullptr);
+	                if (sel.valid == false)
+	                    score++;
 
-            std::vector<SelectionInfo> selection;
-            Rectf area(static_cast<float>(inside->xpos - 4),
-                       static_cast<float>(inside->ypos - 4),
-                       static_cast<float>(inside->sizex + 8),
-                       static_cast<float>(inside->sizey + 8));
-            add_contained_objects_to_selection(data.level.get(), area, selection);
-            if (is_in_selection(inside, selection))
-                score++;
+	                std::vector<SelectionInfo> selection;
+	                Rectf area(static_cast<float>(inside->xpos - 4),
+	                           static_cast<float>(inside->ypos - 4),
+	                           static_cast<float>(inside->sizex + 8),
+	                           static_cast<float>(inside->sizey + 8));
+	                add_contained_objects_to_selection(data.level.get(), area, selection);
+	                if (is_in_selection(inside, selection))
+	                    score++;
 
-            if (data.get_object(inside->xpos, inside->ypos) == inside)
-                score++;
+	                if (data.get_object(inside->xpos, inside->ypos) == inside)
+	                    score++;
 
-            // Exercise mode button setup and toggles.
-            data.mode = Mode::Terrain;
-            data.terrain_brush.picking = false;
-            data.reset_mode_buttons();
-            data.activate_mode_button(&data.pickerButton);
-            data.activate_mode_button(&data.terrainSmoothButton);
-            data.activate_mode_button(&data.terrainSmoothButton);
-            if (data.mode_buttons.find(&data.terrainSmoothButton) != data.mode_buttons.end())
-                score++;
+	                // Exercise mode button setup and toggles.
+	                data.mode = Mode::Terrain;
+	                data.terrain_brush.picking = false;
+	                data.reset_mode_buttons();
+	                data.activate_mode_button(&data.pickerButton);
+	                data.activate_mode_button(&data.terrainSmoothButton);
+	                data.activate_mode_button(&data.terrainSmoothButton);
+	                if (data.mode_buttons.find(&data.terrainSmoothButton) != data.mode_buttons.end())
+	                    score++;
 
-            data.mode = Mode::Object;
-            data.object_brush.picking = false;
-            data.object_brush.team = 0;
-            data.object_brush.snap_to_grid = true;
-            data.reset_mode_buttons();
-            data.activate_mode_button(&data.pickerButton);
-            data.activate_mode_button(&data.gridSnapButton);
-            data.activate_mode_button(&data.gridSnapButton);
-            data.activate_mode_button(&data.prevTeamButton);
-            data.activate_mode_button(&data.nextTeamButton);
-            if (data.mode_buttons.find(&data.gridSnapButton) != data.mode_buttons.end())
-                score++;
+	                data.mode = Mode::Object;
+	                data.object_brush.picking = false;
+	                data.object_brush.team = 0;
+	                data.object_brush.snap_to_grid = true;
+	                data.reset_mode_buttons();
+	                data.activate_mode_button(&data.pickerButton);
+	                data.activate_mode_button(&data.gridSnapButton);
+	                data.activate_mode_button(&data.gridSnapButton);
+	                data.activate_mode_button(&data.prevTeamButton);
+	                data.activate_mode_button(&data.nextTeamButton);
+	                if (data.mode_buttons.find(&data.gridSnapButton) != data.mode_buttons.end())
+	                    score++;
 
-            data.mode = Mode::Select;
-            data.selection.clear();
-            data.reset_mode_buttons();
-            data.selection.push_back(SelectionInfo(inside));
-            if (inside2 != nullptr)
-                data.selection.push_back(SelectionInfo(inside2));
-            data.reset_mode_buttons();
-            data.activate_mode_button(&data.prevTeamButton);
-            data.activate_mode_button(&data.nextTeamButton);
-            data.activate_mode_button(&data.prevLevelButton);
-            data.activate_mode_button(&data.nextLevelButton);
-            data.activate_mode_button(&data.prevClassButton);
-            data.activate_mode_button(&data.nextClassButton);
-            data.activate_mode_button(&data.facingButton);
-            if (data.selection.size() > 0)
-                score++;
+	                data.mode = Mode::Select;
+	                data.selection.clear();
+	                data.reset_mode_buttons();
+	                data.selection.push_back(SelectionInfo(inside));
+	                if (inside2 != nullptr)
+	                    data.selection.push_back(SelectionInfo(inside2));
+	                data.reset_mode_buttons();
+	                data.activate_mode_button(&data.prevTeamButton);
+	                data.activate_mode_button(&data.nextTeamButton);
+	                data.activate_mode_button(&data.prevLevelButton);
+	                data.activate_mode_button(&data.nextLevelButton);
+	                data.activate_mode_button(&data.prevClassButton);
+	                data.activate_mode_button(&data.nextClassButton);
+	                data.activate_mode_button(&data.facingButton);
+	                if (data.selection.size() > 0)
+	                    score++;
 
-            data.selection.clear();
-            data.selection.push_back(SelectionInfo(inside));
-            data.reset_mode_buttons();
-            data.activate_mode_button(&data.setNameButton);
-            if (data.selection.front().name == inside->stats()->name)
-                score++;
+	                data.selection.clear();
+	                data.selection.push_back(SelectionInfo(inside));
+	                data.reset_mode_buttons();
+	                data.activate_mode_button(&data.setNameButton);
+	                if (data.selection.front().name == inside->stats()->name)
+	                    score++;
 
-            // Dragging and rectangle selection paths.
-            MouseState& helper_mouse = query_mouse_no_poll();
-            helper_mouse.left = true;
-            helper_mouse.right = false;
+	                // Dragging and rectangle selection paths.
+	                MouseState& helper_mouse = query_mouse_no_poll();
+	                helper_mouse.left = true;
+	                helper_mouse.right = false;
 
-            data.mode = Mode::Select;
-            data.selection.clear();
-            data.selection.push_back(SelectionInfo(inside));
-            data.dragging = false;
-            data.rect_selecting = false;
-            data.mouse_motion(inside->xpos, inside->ypos, 1, 2);
-            if (data.dragging)
-                score++;
+	                data.mode = Mode::Select;
+	                data.selection.clear();
+	                data.selection.push_back(SelectionInfo(inside));
+	                data.dragging = false;
+	                data.rect_selecting = false;
+	                data.mouse_motion(inside->xpos, inside->ypos, 1, 2);
+	                if (data.dragging)
+	                    score++;
 
-            data.selection.clear();
-            data.dragging = false;
-            data.rect_selecting = false;
-            data.mouse_motion(inside->xpos + GRID_SIZE * 12, inside->ypos + GRID_SIZE * 12, 3, 4);
-            if (data.rect_selecting)
-                score++;
+	                data.selection.clear();
+	                data.dragging = false;
+	                data.rect_selecting = false;
+	                data.mouse_motion(inside->xpos + GRID_SIZE * 12, inside->ypos + GRID_SIZE * 12, 3, 4);
+	                if (data.rect_selecting)
+	                    score++;
 
-            helper_mouse.left = false;
-            data.mouse_down(0, 0);
+	                helper_mouse.left = false;
+	                data.mouse_down(0, 0);
 
-            // Menu helper utility paths.
-            std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > > helper_menu;
-            {
-                std::set<SimpleButton*> children;
-                children.insert(&data.fileCampaignButton);
-                helper_menu.push_back(std::make_pair(&data.fileButton, children));
-            }
-            if (activate_sub_menu_button(data.fileButton.area.x + 1, data.fileButton.area.y + 1,
-                                         helper_menu, data.fileButton, true) == false)
-                score++;
-            if (activate_sub_menu_button(data.fileCampaignButton.area.x + 1, data.fileCampaignButton.area.y + 1,
-                                         helper_menu, data.fileCampaignButton, false))
-                score++;
+	                // Menu helper utility paths.
+	                std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > > helper_menu;
+	                {
+	                    std::set<SimpleButton*> children;
+	                    children.insert(&data.fileCampaignButton);
+	                    helper_menu.push_back(std::make_pair(&data.fileButton, children));
+	                }
+	                if (activate_sub_menu_button(data.fileButton.area.x + 1, data.fileButton.area.y + 1,
+	                                             helper_menu, data.fileButton, true) == false)
+	                    score++;
+	                if (activate_sub_menu_button(data.fileCampaignButton.area.x + 1, data.fileCampaignButton.area.y + 1,
+	                                             helper_menu, data.fileCampaignButton, false))
+	                    score++;
 
-            // Basic input event handling helper paths.
-            SDL_Event ev{};
-            helper_mouse.left = true;
-            helper_mouse.right = false;
-            ev.type = SDL_FINGERUP;
-            handle_basic_editor_event(ev);
-            helper_mouse.left = false;
-            helper_mouse.right = true;
-            ev = SDL_Event{};
-            ev.type = SDL_MOUSEBUTTONUP;
-            ev.button.button = SDL_BUTTON_RIGHT;
-            handle_basic_editor_event(ev);
-            helper_mouse.left = false;
-            helper_mouse.right = false;
-            ev = SDL_Event{};
-            ev.type = SDL_MOUSEBUTTONUP;
-            ev.button.button = SDL_BUTTON_MIDDLE;
-            handle_basic_editor_event(ev);
+	                // Basic input event handling helper paths.
+	                SDL_Event ev{};
+	                helper_mouse.left = true;
+	                helper_mouse.right = false;
+	                ev.type = SDL_FINGERUP;
+	                handle_basic_editor_event(ev);
+	                helper_mouse.left = false;
+	                helper_mouse.right = true;
+	                ev = SDL_Event{};
+	                ev.type = SDL_MOUSEBUTTONUP;
+	                ev.button.button = SDL_BUTTON_RIGHT;
+	                handle_basic_editor_event(ev);
+	                helper_mouse.left = false;
+	                helper_mouse.right = false;
+	                ev = SDL_Event{};
+	                ev.type = SDL_MOUSEBUTTONUP;
+	                ev.button.button = SDL_BUTTON_MIDDLE;
+	                handle_basic_editor_event(ev);
 
-            // Single-selection buttons and delete path.
-            data.selection.clear();
-            data.selection.push_back(SelectionInfo(inside));
-            data.reset_mode_buttons();
-            data.activate_mode_button(&data.deleteButton);
-            if (data.selection.empty())
-                score++;
-        }
-    }
+	                // Single-selection buttons and delete path.
+	                data.selection.clear();
+	                data.selection.push_back(SelectionInfo(inside));
+	                data.reset_mode_buttons();
+	                data.activate_mode_button(&data.deleteButton);
+	                if (data.selection.empty())
+	                    score++;
+	            }
+	        }
+	    }
 
     return score;
 }

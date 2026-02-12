@@ -60,22 +60,22 @@ void test_save_team_then_load() {
     myscreen->save_data.totalcash = 77777;
     myscreen->save_data.totalscore = 42000;
 
-    guy* soldier = new guy(FAMILY_SOLDIER);
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
     soldier->name = "TESTGUY1";
     soldier->strength = 25;
     soldier->dexterity = 15;
 
-    guy* archer = new guy(FAMILY_ARCHER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
     archer->name = "TESTGUY2";
     archer->strength = 10;
     archer->intelligence = 20;
 
-    guy* mage = new guy(FAMILY_MAGE);
+    auto mage = std::make_unique<guy>(FAMILY_MAGE);
     mage->name = "TESTGUY3";
 
-    myscreen->save_data.team_list[0].reset(soldier);
-    myscreen->save_data.team_list[1].reset(archer);
-    myscreen->save_data.team_list[2].reset(mage);
+    myscreen->save_data.team_list[0] = std::move(soldier);
+    myscreen->save_data.team_list[1] = std::move(archer);
+    myscreen->save_data.team_list[2] = std::move(mage);
     myscreen->save_data.team_size = 3;
 
     // Save to a non-default slot

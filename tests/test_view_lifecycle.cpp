@@ -2,6 +2,7 @@
 #include "guy.h"
 #include "gloader.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -38,7 +39,7 @@ static walker* make_npc_walker(char family, unsigned char team)
 void test_viewscreen_construct_destruct_and_clear()
 {
     // Constructing a standalone viewscreen should allocate/destroy radar cleanly.
-    viewscreen* vs = new viewscreen(0, 0, 320, 200, 0);
+    auto vs = std::make_unique<viewscreen>(0, 0, 320, 200, 0);
     TEST_ASSERT(vs->myradar != nullptr, "viewscreen should create a radar");
 
     // Exercise viewscreen::clear() which writes into myscreen->videobuffer.
@@ -47,8 +48,6 @@ void test_viewscreen_construct_destruct_and_clear()
     vs->clear();
     TEST_ASSERT_EQ(0, (int)myscreen->videobuffer[0], "clear should zero videobuffer[0]");
     TEST_ASSERT_EQ(0, (int)myscreen->videobuffer[63999], "clear should zero videobuffer[63999]");
-
-    delete vs;
 }
 REGISTER_TEST(test_viewscreen_construct_destruct_and_clear);
 
