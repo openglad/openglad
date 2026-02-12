@@ -791,7 +791,7 @@ void loader::set_derived_stats(walker* w, Order order, char family)
 
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
                                                     char family,
-                                                    screen* myscreen, bool cache_weapons)
+                                                    screen* myscreen, [[maybe_unused]] bool cache_weapons)
 {
 	std::unique_ptr<walker> ob;
 
@@ -832,7 +832,7 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 
 walker* loader::create_walker(Order order,
                               char family,
-                              screen* myscreen, bool cache_weapons)
+                              screen* myscreen, [[maybe_unused]] bool cache_weapons)
 {
     return create_walker_owned(order, family, myscreen, cache_weapons).release();
 }

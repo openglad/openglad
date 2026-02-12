@@ -315,6 +315,11 @@ CampaignData::IoError CampaignData::save_as_with_error(const std::string& new_id
 
 std::string CampaignData::getDescriptionLine(int i)
 {
+    return get_description_line(i);
+}
+
+std::string CampaignData::get_description_line(int i)
+{
     if(i < 0 || i >= int(description.size()))
         return "";
     
@@ -398,7 +403,7 @@ void LevelData::clear()
     topy = 0;
 }
 
-walker* LevelData::add_ob(Order order, char family, bool atstart)
+walker* LevelData::add_ob(Order order, char family, [[maybe_unused]] bool atstart)
 {
 	if (order == Order::Weapon)
 		return add_weap_ob(order, family);

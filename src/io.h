@@ -68,9 +68,9 @@ enum class ArchiveIoError {
     CloseArchiveFailed,
 };
 
-CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);
-CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id);
-CampaignPackageIoError remount_campaign_package_with_error();
+[[nodiscard]] CampaignPackageIoError mount_campaign_package_with_error(const std::string& id);
+[[nodiscard]] CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id);
+[[nodiscard]] CampaignPackageIoError remount_campaign_package_with_error();
 bool mount_campaign_package(const std::string& id);
 bool unmount_campaign_package(const std::string& id);
 bool remount_campaign_package();
@@ -90,8 +90,8 @@ void delete_campaign(const std::string& id);
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);
 
-ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile);
-ArchiveIoError unzip_into_with_error(const std::string& infile, const std::string& outdirectory);
+[[nodiscard]] ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile);
+[[nodiscard]] ArchiveIoError unzip_into_with_error(const std::string& infile, const std::string& outdirectory);
 bool zip_contents(const std::string& indirectory, const std::string& outfile);
 bool unzip_into(const std::string& infile, const std::string& outdirectory);
 
@@ -107,10 +107,10 @@ enum class NewFileIoError {
     WriteFailed,
 };
 
-NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w, int h);
-NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int h, unsigned char fill_color = 0);
-NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename);
-NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string& gridname);
+[[nodiscard]] NewFileIoError create_new_map_pix_with_error(const std::string& filename, int w, int h);
+[[nodiscard]] NewFileIoError create_new_pix_with_error(const std::string& filename, int w, int h, unsigned char fill_color = 0);
+[[nodiscard]] NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename);
+[[nodiscard]] NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string& gridname);
 bool create_new_map_pix(const std::string& filename, int w, int h);
 bool create_new_pix(const std::string& filename, int w, int h, unsigned char fill_color = 0);
 bool create_new_campaign_descriptor(const std::string& filename);

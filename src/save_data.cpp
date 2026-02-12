@@ -24,6 +24,7 @@
 #include "campaign_picker.h"
 #include "io.h"
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <string>
 
@@ -106,27 +107,31 @@ bool SaveData::load(const std::string& filename)
 	char temp_campaign[41];
 	snprintf(temp_campaign, sizeof(temp_campaign), "org.openglad.gladiator");
 	temp_campaign[40] = '\0';
-	char temp_version = 9;
+	std::uint8_t temp_version = 9;
 	Uint32 newcash;
 	Uint32 newscore = 0;
 	//  short numguys;
-	short listsize;
-	short i;
+	std::int16_t listsize = 0;
+	int i = 0;
 
 	char tempname[12] = "FRED";
 	char guyname[12] = "JOE";
-	unsigned char temp_order;
+	std::uint8_t temp_order = 0;
 	char temp_family;
-	short temp_str, temp_dex, temp_con;
-	short temp_short, temp_arm, temp_lev;
-	unsigned char temp_numplayers;
+	std::int16_t temp_str = 0;
+	std::int16_t temp_dex = 0;
+	std::int16_t temp_con = 0;
+	std::int16_t temp_short = 0;
+	std::int16_t temp_arm = 0;
+	std::int16_t temp_lev = 0;
+	std::uint8_t temp_numplayers = 0;
 	Uint32 temp_exp;
-	short temp_kills;
+	std::int16_t temp_kills = 0;
 	Sint32 temp_level_kills;
 	Sint32 temp_td, temp_th, temp_ts;
-	short temp_teamnum; // version 5+
-	short temp_allied;            // v.7+
-	short temp_registered;        // v.7+
+	std::int16_t temp_teamnum = 0; // version 5+
+	std::int16_t temp_allied = 0;            // v.7+
+	std::int16_t temp_registered = 0;        // v.7+
 
 	// Format of a team list file is:
 	// 3-byte header: 'GTL'
@@ -249,7 +254,7 @@ bool SaveData::load(const std::string& filename)
 	}
 	
 	// Read scenario number
-	short temp_scenario;
+	std::int16_t temp_scenario = 0;
 	READ_OR_FAIL(&temp_scenario, 2, 1);
 	scen_num = temp_scenario;
 
@@ -512,27 +517,31 @@ bool SaveData::save(const std::string& filename)
 	std::fill_n(temp_campaign, 41, '\0');
 
 	char temptext[10] = "GTL";
-	char temp_version = 9;
+	std::uint8_t temp_version = 9;
 	
 	Uint32 newcash = totalcash;
 	Uint32 newscore = totalscore;
 	//  short numguys;
-	short listsize;
-	short i;
+	std::int16_t listsize = 0;
+	int i = 0;
 
 	char guyname[12] = "JOE";
-	unsigned char temp_order;
+	std::uint8_t temp_order = 0;
 	char temp_family;
-	short temp_str, temp_dex, temp_con;
-	short temp_short, temp_arm, temp_lev;
-	unsigned char numplayers = this->numplayers;
+	std::int16_t temp_str = 0;
+	std::int16_t temp_dex = 0;
+	std::int16_t temp_con = 0;
+	std::int16_t temp_short = 0;
+	std::int16_t temp_arm = 0;
+	std::int16_t temp_lev = 0;
+	std::uint8_t numplayers = this->numplayers;
 	Uint32 temp_exp;
-	short temp_kills;
+	std::int16_t temp_kills = 0;
 	Sint32 temp_level_kills;
 	Sint32 temp_td, temp_th, temp_ts;
-	short temp_teamnum;
-	short temp_allied;
-	short temp_registered;
+	std::int16_t temp_teamnum = 0;
+	std::int16_t temp_allied = 0;
+	std::int16_t temp_registered = 0;
 
 
 	// Format of a team list file is:

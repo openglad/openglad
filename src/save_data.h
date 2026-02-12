@@ -72,9 +72,9 @@ public:
     void update_guys(std::list<std::unique_ptr<walker>>& oblist);  // Copy team from the guys in an oblist
     bool load(const std::string& filename);
     bool save(const std::string& filename);
-    SaveDataIoError load_with_error(const std::string& filename);
-    SaveDataIoError save_with_error(const std::string& filename);
-    SaveDataIoError last_io_error() const { return last_io_error_; }
+    [[nodiscard]] SaveDataIoError load_with_error(const std::string& filename);
+    [[nodiscard]] SaveDataIoError save_with_error(const std::string& filename);
+    [[nodiscard]] SaveDataIoError last_io_error() const { return last_io_error_; }
     
     bool is_level_completed(int level_index) const;
     int get_num_levels_completed(const std::string& campaign) const;

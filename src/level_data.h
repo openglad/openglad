@@ -72,11 +72,12 @@ public:
     bool load();
     bool save();
     bool save_as(const std::string& new_id);
-    IoError load_with_error();
-    IoError save_with_error();
-    IoError save_as_with_error(const std::string& new_id);
-    IoError last_io_error() const { return last_io_error_; }
+    [[nodiscard]] IoError load_with_error();
+    [[nodiscard]] IoError save_with_error();
+    [[nodiscard]] IoError save_as_with_error(const std::string& new_id);
+    [[nodiscard]] IoError last_io_error() const { return last_io_error_; }
     
+    std::string get_description_line(int i);
     std::string getDescriptionLine(int i);
 
 private:
@@ -135,11 +136,11 @@ public:
     
     bool load();
     bool save();
-    IoError load_with_error();
-    IoError save_with_error();
-    IoError last_io_error() const { return last_io_error_; }
+    [[nodiscard]] IoError load_with_error();
+    [[nodiscard]] IoError save_with_error();
+    [[nodiscard]] IoError last_io_error() const { return last_io_error_; }
     
-    walker* add_ob(Order order, char family, bool atstart = false);
+    walker* add_ob(Order order, char family, [[maybe_unused]] bool atstart = false);
     walker* add_fx_ob(Order order, char family);
     walker* add_weap_ob(Order order, char family);
     short remove_ob(walker  *ob);

@@ -195,50 +195,161 @@ Sint32 main_options();
 Sint32 overscan_adjust(Sint32 arg);
 Sint32 show_general_help();
 
-// Function definitions ..
-#define BEGINMENU               1
-#define CREATE_TEAM_MENU        2
-#define SET_PLAYER_MODE         3
-#define QUIT_MENU               4
-#define CREATE_VIEW_MENU        5
-#define CREATE_TRAIN_MENU        6
-#define CREATE_HIRE_MENU         7
-#define CREATE_LOAD_MENU        8
-#define CREATE_SAVE_MENU        9
-#define GO_MENU                 10
-#define RETURN_MENU             11
-#define CYCLE_TEAM_GUY          12
-#define DECREASE_STAT           13
-#define INCREASE_STAT           14
-#define EDIT_GUY                15
-#define CYCLE_GUY               16
-#define ADD_GUY                 17
-#define DO_SAVE                 18
-#define DO_LOAD                 19
-#define NAME_GUY                20
-#define CREATE_DETAIL_MENU      21
-#define NULLMENU                22
-#define DO_SET_SCEN_LEVEL       23
-#define SET_DIFFICULTY          24
-#define CHANGE_TEAM             25
-#define ALLIED_MODE             26
-#define CHANGE_HIRE_TEAM        27
-#define YES_OR_NO               28
-#define DO_PICK_CAMPAIGN        29
-#define DO_LEVEL_EDIT           30
-#define MAIN_OPTIONS            31
-#define TOGGLE_SOUND            32
-#define TOGGLE_RENDERING_ENGINE 33
-#define TOGGLE_FULLSCREEN       34
-#define OVERSCAN_ADJUST         35
-#define TOGGLE_MINI_HP_BAR      36
-#define TOGGLE_HIT_FLASH        37
-#define TOGGLE_HIT_RECOIL       38
-#define TOGGLE_ATTACK_LUNGE     39
-#define TOGGLE_HIT_ANIM         40
-#define TOGGLE_DAMAGE_NUMBERS   41
-#define TOGGLE_HEAL_NUMBERS     42
-#define TOGGLE_GORE             43
-#define RESTORE_DEFAULT_SETTINGS 44
-#define SHOW_HELP               45
-#define CREATE_PROGRESS_MENU    46
+enum class ButtonAction : Sint32
+{
+    Invalid = 0,
+    BeginMenu = 1,
+    CreateTeamMenu = 2,
+    SetPlayerMode = 3,
+    QuitMenu = 4,
+    CreateViewMenu = 5,
+    CreateTrainMenu = 6,
+    CreateHireMenu = 7,
+    CreateLoadMenu = 8,
+    CreateSaveMenu = 9,
+    GoMenu = 10,
+    ReturnMenu = 11,
+    CycleTeamGuy = 12,
+    DecreaseStat = 13,
+    IncreaseStat = 14,
+    EditGuy = 15,
+    CycleGuy = 16,
+    AddGuy = 17,
+    DoSave = 18,
+    DoLoad = 19,
+    NameGuy = 20,
+    CreateDetailMenu = 21,
+    NullMenu = 22,
+    DoSetScenLevel = 23,
+    SetDifficulty = 24,
+    ChangeTeam = 25,
+    AlliedMode = 26,
+    ChangeHireTeam = 27,
+    YesOrNo = 28,
+    DoPickCampaign = 29,
+    DoLevelEdit = 30,
+    MainOptions = 31,
+    ToggleSound = 32,
+    ToggleRenderingEngine = 33,
+    ToggleFullscreen = 34,
+    OverscanAdjust = 35,
+    ToggleMiniHpBar = 36,
+    ToggleHitFlash = 37,
+    ToggleHitRecoil = 38,
+    ToggleAttackLunge = 39,
+    ToggleHitAnim = 40,
+    ToggleDamageNumbers = 41,
+    ToggleHealNumbers = 42,
+    ToggleGore = 43,
+    RestoreDefaultSettings = 44,
+    ShowHelp = 45,
+    CreateProgressMenu = 46,
+};
+
+inline constexpr Sint32 button_action_id(ButtonAction action)
+{
+    return static_cast<Sint32>(action);
+}
+
+inline constexpr ButtonAction button_action_from_id(Sint32 action)
+{
+    switch (action)
+    {
+    case button_action_id(ButtonAction::BeginMenu): return ButtonAction::BeginMenu;
+    case button_action_id(ButtonAction::CreateTeamMenu): return ButtonAction::CreateTeamMenu;
+    case button_action_id(ButtonAction::SetPlayerMode): return ButtonAction::SetPlayerMode;
+    case button_action_id(ButtonAction::QuitMenu): return ButtonAction::QuitMenu;
+    case button_action_id(ButtonAction::CreateViewMenu): return ButtonAction::CreateViewMenu;
+    case button_action_id(ButtonAction::CreateTrainMenu): return ButtonAction::CreateTrainMenu;
+    case button_action_id(ButtonAction::CreateHireMenu): return ButtonAction::CreateHireMenu;
+    case button_action_id(ButtonAction::CreateLoadMenu): return ButtonAction::CreateLoadMenu;
+    case button_action_id(ButtonAction::CreateSaveMenu): return ButtonAction::CreateSaveMenu;
+    case button_action_id(ButtonAction::GoMenu): return ButtonAction::GoMenu;
+    case button_action_id(ButtonAction::ReturnMenu): return ButtonAction::ReturnMenu;
+    case button_action_id(ButtonAction::CycleTeamGuy): return ButtonAction::CycleTeamGuy;
+    case button_action_id(ButtonAction::DecreaseStat): return ButtonAction::DecreaseStat;
+    case button_action_id(ButtonAction::IncreaseStat): return ButtonAction::IncreaseStat;
+    case button_action_id(ButtonAction::EditGuy): return ButtonAction::EditGuy;
+    case button_action_id(ButtonAction::CycleGuy): return ButtonAction::CycleGuy;
+    case button_action_id(ButtonAction::AddGuy): return ButtonAction::AddGuy;
+    case button_action_id(ButtonAction::DoSave): return ButtonAction::DoSave;
+    case button_action_id(ButtonAction::DoLoad): return ButtonAction::DoLoad;
+    case button_action_id(ButtonAction::NameGuy): return ButtonAction::NameGuy;
+    case button_action_id(ButtonAction::CreateDetailMenu): return ButtonAction::CreateDetailMenu;
+    case button_action_id(ButtonAction::NullMenu): return ButtonAction::NullMenu;
+    case button_action_id(ButtonAction::DoSetScenLevel): return ButtonAction::DoSetScenLevel;
+    case button_action_id(ButtonAction::SetDifficulty): return ButtonAction::SetDifficulty;
+    case button_action_id(ButtonAction::ChangeTeam): return ButtonAction::ChangeTeam;
+    case button_action_id(ButtonAction::AlliedMode): return ButtonAction::AlliedMode;
+    case button_action_id(ButtonAction::ChangeHireTeam): return ButtonAction::ChangeHireTeam;
+    case button_action_id(ButtonAction::YesOrNo): return ButtonAction::YesOrNo;
+    case button_action_id(ButtonAction::DoPickCampaign): return ButtonAction::DoPickCampaign;
+    case button_action_id(ButtonAction::DoLevelEdit): return ButtonAction::DoLevelEdit;
+    case button_action_id(ButtonAction::MainOptions): return ButtonAction::MainOptions;
+    case button_action_id(ButtonAction::ToggleSound): return ButtonAction::ToggleSound;
+    case button_action_id(ButtonAction::ToggleRenderingEngine): return ButtonAction::ToggleRenderingEngine;
+    case button_action_id(ButtonAction::ToggleFullscreen): return ButtonAction::ToggleFullscreen;
+    case button_action_id(ButtonAction::OverscanAdjust): return ButtonAction::OverscanAdjust;
+    case button_action_id(ButtonAction::ToggleMiniHpBar): return ButtonAction::ToggleMiniHpBar;
+    case button_action_id(ButtonAction::ToggleHitFlash): return ButtonAction::ToggleHitFlash;
+    case button_action_id(ButtonAction::ToggleHitRecoil): return ButtonAction::ToggleHitRecoil;
+    case button_action_id(ButtonAction::ToggleAttackLunge): return ButtonAction::ToggleAttackLunge;
+    case button_action_id(ButtonAction::ToggleHitAnim): return ButtonAction::ToggleHitAnim;
+    case button_action_id(ButtonAction::ToggleDamageNumbers): return ButtonAction::ToggleDamageNumbers;
+    case button_action_id(ButtonAction::ToggleHealNumbers): return ButtonAction::ToggleHealNumbers;
+    case button_action_id(ButtonAction::ToggleGore): return ButtonAction::ToggleGore;
+    case button_action_id(ButtonAction::RestoreDefaultSettings): return ButtonAction::RestoreDefaultSettings;
+    case button_action_id(ButtonAction::ShowHelp): return ButtonAction::ShowHelp;
+    case button_action_id(ButtonAction::CreateProgressMenu): return ButtonAction::CreateProgressMenu;
+    default:
+        return ButtonAction::Invalid;
+    }
+}
+
+// Legacy integer aliases kept while callers migrate to ButtonAction.
+#define BEGINMENU                button_action_id(ButtonAction::BeginMenu)
+#define CREATE_TEAM_MENU         button_action_id(ButtonAction::CreateTeamMenu)
+#define SET_PLAYER_MODE          button_action_id(ButtonAction::SetPlayerMode)
+#define QUIT_MENU                button_action_id(ButtonAction::QuitMenu)
+#define CREATE_VIEW_MENU         button_action_id(ButtonAction::CreateViewMenu)
+#define CREATE_TRAIN_MENU        button_action_id(ButtonAction::CreateTrainMenu)
+#define CREATE_HIRE_MENU         button_action_id(ButtonAction::CreateHireMenu)
+#define CREATE_LOAD_MENU         button_action_id(ButtonAction::CreateLoadMenu)
+#define CREATE_SAVE_MENU         button_action_id(ButtonAction::CreateSaveMenu)
+#define GO_MENU                  button_action_id(ButtonAction::GoMenu)
+#define RETURN_MENU              button_action_id(ButtonAction::ReturnMenu)
+#define CYCLE_TEAM_GUY           button_action_id(ButtonAction::CycleTeamGuy)
+#define DECREASE_STAT            button_action_id(ButtonAction::DecreaseStat)
+#define INCREASE_STAT            button_action_id(ButtonAction::IncreaseStat)
+#define EDIT_GUY                 button_action_id(ButtonAction::EditGuy)
+#define CYCLE_GUY                button_action_id(ButtonAction::CycleGuy)
+#define ADD_GUY                  button_action_id(ButtonAction::AddGuy)
+#define DO_SAVE                  button_action_id(ButtonAction::DoSave)
+#define DO_LOAD                  button_action_id(ButtonAction::DoLoad)
+#define NAME_GUY                 button_action_id(ButtonAction::NameGuy)
+#define CREATE_DETAIL_MENU       button_action_id(ButtonAction::CreateDetailMenu)
+#define NULLMENU                 button_action_id(ButtonAction::NullMenu)
+#define DO_SET_SCEN_LEVEL        button_action_id(ButtonAction::DoSetScenLevel)
+#define SET_DIFFICULTY           button_action_id(ButtonAction::SetDifficulty)
+#define CHANGE_TEAM              button_action_id(ButtonAction::ChangeTeam)
+#define ALLIED_MODE              button_action_id(ButtonAction::AlliedMode)
+#define CHANGE_HIRE_TEAM         button_action_id(ButtonAction::ChangeHireTeam)
+#define YES_OR_NO                button_action_id(ButtonAction::YesOrNo)
+#define DO_PICK_CAMPAIGN         button_action_id(ButtonAction::DoPickCampaign)
+#define DO_LEVEL_EDIT            button_action_id(ButtonAction::DoLevelEdit)
+#define MAIN_OPTIONS             button_action_id(ButtonAction::MainOptions)
+#define TOGGLE_SOUND             button_action_id(ButtonAction::ToggleSound)
+#define TOGGLE_RENDERING_ENGINE  button_action_id(ButtonAction::ToggleRenderingEngine)
+#define TOGGLE_FULLSCREEN        button_action_id(ButtonAction::ToggleFullscreen)
+#define OVERSCAN_ADJUST          button_action_id(ButtonAction::OverscanAdjust)
+#define TOGGLE_MINI_HP_BAR       button_action_id(ButtonAction::ToggleMiniHpBar)
+#define TOGGLE_HIT_FLASH         button_action_id(ButtonAction::ToggleHitFlash)
+#define TOGGLE_HIT_RECOIL        button_action_id(ButtonAction::ToggleHitRecoil)
+#define TOGGLE_ATTACK_LUNGE      button_action_id(ButtonAction::ToggleAttackLunge)
+#define TOGGLE_HIT_ANIM          button_action_id(ButtonAction::ToggleHitAnim)
+#define TOGGLE_DAMAGE_NUMBERS    button_action_id(ButtonAction::ToggleDamageNumbers)
+#define TOGGLE_HEAL_NUMBERS      button_action_id(ButtonAction::ToggleHealNumbers)
+#define TOGGLE_GORE              button_action_id(ButtonAction::ToggleGore)
+#define RESTORE_DEFAULT_SETTINGS button_action_id(ButtonAction::RestoreDefaultSettings)
+#define SHOW_HELP                button_action_id(ButtonAction::ShowHelp)
+#define CREATE_PROGRESS_MENU     button_action_id(ButtonAction::CreateProgressMenu)

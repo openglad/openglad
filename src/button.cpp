@@ -574,111 +574,111 @@ void toggle_rendering_engine()
 
 Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 {
-    switch (whatfunc)
+    switch (button_action_from_id(whatfunc))
     {
-    case BEGINMENU:
+    case ButtonAction::BeginMenu:
         return beginmenu(arg);
-    case CREATE_TEAM_MENU:
+    case ButtonAction::CreateTeamMenu:
         return create_team_menu(arg);
-    case SET_PLAYER_MODE:
+    case ButtonAction::SetPlayerMode:
         return set_player_mode(arg);
-    case QUIT_MENU:
+    case ButtonAction::QuitMenu:
         quit(arg);
         return 1;
-    case CREATE_VIEW_MENU:
+    case ButtonAction::CreateViewMenu:
         return create_view_menu(arg);
-    case CREATE_TRAIN_MENU:
+    case ButtonAction::CreateTrainMenu:
         return create_train_menu(arg);
-    case CREATE_HIRE_MENU:
+    case ButtonAction::CreateHireMenu:
         return create_hire_menu(arg);
-    case CREATE_LOAD_MENU:
+    case ButtonAction::CreateLoadMenu:
         return create_load_menu(arg);
-    case CREATE_SAVE_MENU:
+    case ButtonAction::CreateSaveMenu:
         return create_save_menu(arg);
-    case CREATE_PROGRESS_MENU:
+    case ButtonAction::CreateProgressMenu:
         return create_progress_menu(arg);
-    case GO_MENU:
+    case ButtonAction::GoMenu:
         return go_menu(arg);
-    case RETURN_MENU:
+    case ButtonAction::ReturnMenu:
         return arg;
-    case CYCLE_TEAM_GUY:
+    case ButtonAction::CycleTeamGuy:
         return cycle_team_guy(arg);
-    case DECREASE_STAT:
+    case ButtonAction::DecreaseStat:
         return decrease_stat(arg);
-    case INCREASE_STAT:
+    case ButtonAction::IncreaseStat:
         return increase_stat(arg);
-    case EDIT_GUY:
+    case ButtonAction::EditGuy:
         return edit_guy(arg);
-    case CYCLE_GUY:
+    case ButtonAction::CycleGuy:
         return cycle_guy(arg);
-    case ADD_GUY:
+    case ButtonAction::AddGuy:
         return add_guy(arg);
-    case DO_SAVE:
+    case ButtonAction::DoSave:
         return do_save(arg);
-    case DO_LOAD:
+    case ButtonAction::DoLoad:
         return do_load(arg);
-    case NAME_GUY: // name some guy
+    case ButtonAction::NameGuy: // name some guy
         return name_guy(arg);
-    case CREATE_DETAIL_MENU:
+    case ButtonAction::CreateDetailMenu:
         return create_detail_menu(nullptr);
-    case DO_SET_SCEN_LEVEL:
+    case ButtonAction::DoSetScenLevel:
         return do_set_scen_level(arg);
-    case DO_PICK_CAMPAIGN:
+    case ButtonAction::DoPickCampaign:
         return do_pick_campaign(arg);
-    case SET_DIFFICULTY:
+    case ButtonAction::SetDifficulty:
         return set_difficulty();
-    case CHANGE_TEAM:
+    case ButtonAction::ChangeTeam:
         return change_teamnum(arg);
-    case CHANGE_HIRE_TEAM:
+    case ButtonAction::ChangeHireTeam:
         return change_hire_teamnum(arg);
-    case ALLIED_MODE:
+    case ButtonAction::AlliedMode:
         return change_allied();
-    case DO_LEVEL_EDIT:
+    case ButtonAction::DoLevelEdit:
         return level_editor();
-    case YES_OR_NO:
+    case ButtonAction::YesOrNo:
         return yes_or_no(arg);
-    case MAIN_OPTIONS:
+    case ButtonAction::MainOptions:
         return main_options();
-    case SHOW_HELP:
+    case ButtonAction::ShowHelp:
         show_general_help();
         return REDRAW;
-    case TOGGLE_SOUND:
+    case ButtonAction::ToggleSound:
         toggle_effect("sound", "sound");
         return REDRAW;
-    case TOGGLE_RENDERING_ENGINE:
+    case ButtonAction::ToggleRenderingEngine:
         toggle_rendering_engine();
         return REDRAW;
-    case TOGGLE_FULLSCREEN:
+    case ButtonAction::ToggleFullscreen:
         toggle_effect("graphics", "fullscreen");
         myscreen->set_fullscreen(active_config().is_on("graphics", "fullscreen"));
         return REDRAW;
-    case OVERSCAN_ADJUST:
+    case ButtonAction::OverscanAdjust:
         return overscan_adjust(arg);
-    case TOGGLE_MINI_HP_BAR:
+    case ButtonAction::ToggleMiniHpBar:
         toggle_effect("effects", "mini_hp_bar");
         return REDRAW;
-    case TOGGLE_HIT_FLASH:
+    case ButtonAction::ToggleHitFlash:
         toggle_effect("effects", "hit_flash");
         return REDRAW;
-    case TOGGLE_HIT_RECOIL:
+    case ButtonAction::ToggleHitRecoil:
         toggle_effect("effects", "hit_recoil");
         return REDRAW;
-    case TOGGLE_ATTACK_LUNGE:
+    case ButtonAction::ToggleAttackLunge:
         toggle_effect("effects", "attack_lunge");
         return REDRAW;
-    case TOGGLE_HIT_ANIM:
+    case ButtonAction::ToggleHitAnim:
         toggle_effect("effects", "hit_anim");
         return REDRAW;
-    case TOGGLE_DAMAGE_NUMBERS:
+    case ButtonAction::ToggleDamageNumbers:
         toggle_effect("effects", "damage_numbers");
         return REDRAW;
-    case TOGGLE_HEAL_NUMBERS:
+    case ButtonAction::ToggleHealNumbers:
         toggle_effect("effects", "heal_numbers");
         return REDRAW;
-    case TOGGLE_GORE:
+    case ButtonAction::ToggleGore:
         toggle_effect("effects", "gore");
         return REDRAW;
-    case RESTORE_DEFAULT_SETTINGS:
+    case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         active_config().load_settings();
         return REDRAW;
@@ -690,11 +690,11 @@ Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 arg)
 // For right-button
 Sint32 vbutton::do_call_right(Sint32 whatfunc, Sint32 arg)
 {
-    switch (whatfunc)
+    switch (button_action_from_id(whatfunc))
     {
-    case DECREASE_STAT:
+    case ButtonAction::DecreaseStat:
         return decrease_stat(arg, 5);
-    case INCREASE_STAT:
+    case ButtonAction::IncreaseStat:
         return increase_stat(arg, 5);
     default:
         return 4;
