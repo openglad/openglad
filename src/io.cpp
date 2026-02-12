@@ -224,19 +224,27 @@ SDL_RWops* open_write_file(const char* path, const char* file)
 
 std::list<std::string> list_files(const std::string& dirname)
 {
-    std::list<std::string> fileList;
-    char** files = PHYSFS_enumerateFiles(dirname.c_str());
-    char** p = files;
-    while(p != nullptr && *p != nullptr)
+    struct PhysfsFileListDeleter
     {
-        fileList.push_back(*p);
-        p++;
-    }
-    PHYSFS_freeList(files);
-    
-    fileList.sort();
-    
-    return fileList;
+        void operator()(char** list) const
+        {
+            if (list)
+                PHYSFS_freeList(list);
+        }
+    };
+
+	    std::list<std::string> fileList;
+	    std::unique_ptr<char*, PhysfsFileListDeleter> files(PHYSFS_enumerateFiles(dirname.c_str()));
+	    char** p = files.get();
+	    while(p != nullptr && *p != nullptr)
+	    {
+	        fileList.push_back(*p);
+	        p++;
+	    }
+	    
+	    fileList.sort();
+	    
+	    return fileList;
 }
 
 static std::string mounted_campaign;
