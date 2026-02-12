@@ -313,13 +313,17 @@ bool remount_campaign_package()
 std::list<std::string> list_campaigns()
 {
     std::list<std::string> ls = list_files("campaigns/");
-    for(std::list<std::string>::iterator e = ls.begin(); e != ls.end(); e++)
+    for (auto e = ls.begin(); e != ls.end(); )
     {
         size_t pos = e->rfind(".glad");
         if(pos == std::string::npos)
+        {
             e = ls.erase(e);  // Not a campaign package
+            continue;
+        }
         else
             *e = e->substr(0, pos);  // Remove the extension
+        ++e;
     }
     return ls;
 }

@@ -41,6 +41,10 @@
 
 PixieData read_pixie_file(const char  * filename)
 {
+	auto rw_read_exact = [](SDL_RWops* rwops, void* dst, size_t size, size_t count) {
+		return rwops && SDL_RWread(rwops, dst, size, count) == count;
+	};
+
 	// Create a file stream, and read the image
 	// File data in form:
 	// <# of frames>      1 byte
@@ -58,15 +62,26 @@ PixieData read_pixie_file(const char  * filename)
         exit(5);
     }
 
-	SDL_RWread(infile, &result.frames, 1, 1);
-	SDL_RWread(infile, &result.w, 1, 1);
-	SDL_RWread(infile, &result.h, 1, 1);
+	if (!rw_read_exact(infile, &result.frames, 1, 1) ||
+	    !rw_read_exact(infile, &result.w, 1, 1) ||
+	    !rw_read_exact(infile, &result.h, 1, 1))
+	{
+	    LogError("Failed to read pixie header: pix/{}\n", filename);
+	    SDL_RWclose(infile);
+	    return result;
+	}
 
     size_t size = result.w * result.h * result.frames;
 	result.data = std::make_unique<unsigned char[]>(size);
 
 	// Now read the data in a big chunk
-	SDL_RWread(infile, result.data.get(), 1, size);
+	if (!rw_read_exact(infile, result.data.get(), 1, size))
+	{
+	    LogError("Failed to read pixie payload: pix/{} ({} bytes)\n", filename, size);
+	    result.free();
+	    SDL_RWclose(infile);
+	    return result;
+	}
     
     SDL_RWclose(infile);
     
@@ -248,4 +263,3 @@ void load_map_data(PixieData* whereto)
 	whereto[PIX_JAGGED_GROUND_4] = read_pixie_file("16jwg1.pix");
 
 }
-

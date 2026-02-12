@@ -281,6 +281,12 @@ bool SaveData::load(const std::string& filename)
 
 	// Get # of guys to read
 	READ_OR_FAIL(&listsize, 2, 1);
+    const bool invalid_team_size = listsize > MAX_TEAM_SIZE;
+    if (invalid_team_size)
+    {
+        LogError("save_load_team_size_invalid file={} listsize={} max={}\n",
+            filename, listsize, MAX_TEAM_SIZE);
+    }
 
 	// Read the # of players
 	READ_OR_FAIL(&temp_numplayers, 1, 1);
@@ -295,10 +301,14 @@ bool SaveData::load(const std::string& filename)
 	// Okay, we've read header .. now read the team list data ..
     for(int i = 0; i < listsize; i++)
     {
-        auto temp_guy = std::make_unique<guy>();
-        guy* temp_guy_ptr = temp_guy.get();
-        team_list[i] = std::move(temp_guy);
-        team_size++;
+        guy* temp_guy_ptr = nullptr;
+        if (i < MAX_TEAM_SIZE)
+        {
+            auto temp_guy = std::make_unique<guy>();
+            temp_guy_ptr = temp_guy.get();
+            team_list[i] = std::move(temp_guy);
+            team_size++;
+        }
         
 		// Get temp values to be read
 		temp_order = static_cast<unsigned char>(Order::Living); // may be changed later
@@ -327,50 +337,60 @@ bool SaveData::load(const std::string& filename)
 
 		// And the filler
 		READ_OR_FAIL(filler, 8, 1);
-		// Now set the values ..
-		temp_guy_ptr->family       = temp_family;
-		temp_guy_ptr->name = guyname;
-		temp_guy_ptr->strength     = temp_str;
-		temp_guy_ptr->dexterity    = temp_dex;
-		temp_guy_ptr->constitution = temp_con;
-		temp_guy_ptr->intelligence = temp_short;
-		temp_guy_ptr->armor        = temp_arm;
-		if(temp_version >= 9)
-            temp_guy_ptr->level = temp_lev;
-        else
-            temp_guy_ptr->upgrade_to_level(temp_lev);
-		temp_guy_ptr->exp          = temp_exp;
-		if (temp_version >=3)
-		{
-			temp_guy_ptr->kills      = temp_kills;
-			temp_guy_ptr->level_kills= temp_level_kills;
+			// Now set the values ..
+            if (temp_guy_ptr != nullptr)
+            {
+			    temp_guy_ptr->family       = temp_family;
+			    temp_guy_ptr->name = guyname;
+			    temp_guy_ptr->strength     = temp_str;
+			    temp_guy_ptr->dexterity    = temp_dex;
+			    temp_guy_ptr->constitution = temp_con;
+			    temp_guy_ptr->intelligence = temp_short;
+			    temp_guy_ptr->armor        = temp_arm;
+			    if(temp_version >= 9)
+	                temp_guy_ptr->level = temp_lev;
+	            else
+	                temp_guy_ptr->upgrade_to_level(temp_lev);
+			    temp_guy_ptr->exp          = temp_exp;
+			    if (temp_version >=3)
+			    {
+				    temp_guy_ptr->kills      = temp_kills;
+				    temp_guy_ptr->level_kills= temp_level_kills;
+			    }
+			    else // version 2 or earlier
+			    {
+				    temp_guy_ptr->kills      = 0;
+				    temp_guy_ptr->level_kills= 0;
+			    }
+			    if (temp_version >= 4)
+			    {
+				    temp_guy_ptr->total_damage = temp_td;
+				    temp_guy_ptr->total_hits   = temp_th;
+				    temp_guy_ptr->total_shots  = temp_ts;
+			    }
+			    else
+			    {
+				    temp_guy_ptr->total_damage = 0;
+				    temp_guy_ptr->total_hits   = 0;
+				    temp_guy_ptr->total_shots  = 0;
+			    }
+			    if (temp_version >= 5)
+			    {
+				    temp_guy_ptr->teamnum = temp_teamnum;
+			    }
+			    else
+			    {
+				    temp_guy_ptr->teamnum = 0;
+			    }
+            }
 		}
-		else // version 2 or earlier
-		{
-			temp_guy_ptr->kills      = 0;
-			temp_guy_ptr->level_kills= 0;
-		}
-		if (temp_version >= 4)
-		{
-			temp_guy_ptr->total_damage = temp_td;
-			temp_guy_ptr->total_hits   = temp_th;
-			temp_guy_ptr->total_shots  = temp_ts;
-		}
-		else
-		{
-			temp_guy_ptr->total_damage = 0;
-			temp_guy_ptr->total_hits   = 0;
-			temp_guy_ptr->total_shots  = 0;
-		}
-		if (temp_version >= 5)
-		{
-			temp_guy_ptr->teamnum = temp_teamnum;
-		}
-		else
-		{
-			temp_guy_ptr->teamnum = 0;
-		}
-	}
+
+    if (invalid_team_size)
+    {
+        last_io_error_ = SaveDataIoError::ReadFailed;
+        SDL_RWclose(infile);
+        return false;
+    }
 	
     // Make sure the default campaign is included
 	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));

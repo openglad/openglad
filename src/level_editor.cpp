@@ -1963,7 +1963,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(result.id.size() > 0)
             {
                 std::list<std::string> campaigns = list_campaigns();
-                if(list_find(campaigns.begin(), campaigns.end(), result.id) == campaigns.end()
+                if(std::find(campaigns.begin(), campaigns.end(), result.id) == campaigns.end()
                     || yes_or_no_prompt("Overwrite", "Overwrite existing campaign?", false))
                 {
                     if(saveCampaignAs(result.id))
@@ -2063,7 +2063,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
             if(id >= 0 && id != level->id)
             {
                 std::list<int> levels = list_levels();
-                if(list_find(levels.begin(), levels.end(), id) == levels.end()
+                if(std::find(levels.begin(), levels.end(), id) == levels.end()
                     || yes_or_no_prompt("Overwrite", "Overwrite existing level?", false))
                 {
                     if(saveLevelAs(id))

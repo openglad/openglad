@@ -419,6 +419,9 @@ walker* LevelData::add_ob(Order order, char family, bool atstart)
 walker* LevelData::add_fx_ob(Order order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen, false);
+    if (w == nullptr)
+        return nullptr;
+
     w->myobmap = this->myobmap.get();
 
 	//numobs++;
@@ -431,6 +434,9 @@ walker* LevelData::add_fx_ob(Order order, char family)
 walker* LevelData::add_weap_ob(Order order, char family)
 {
 	walker* w = myloader->create_walker(order, family, myscreen);
+    if (w == nullptr)
+        return nullptr;
+
     w->myobmap = this->myobmap.get();
 
     weaplist.push_back(std::unique_ptr<walker>(w));
