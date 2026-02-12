@@ -2042,6 +2042,9 @@ int video::FadeBetween(
 int video::fadeblack(bool fade_in)
 {
 	SDL_Surface* black = SDL_CreateRGBSurface(SDL_SWSURFACE, 320, 200, 32, 0, 0, 0, 0);
+    if (!black)
+        return -1;
+    SDL_FillRect(black, nullptr, SDL_MapRGB(black->format, 0, 0, 0));
 	int i;
 
 	if(fade_in)

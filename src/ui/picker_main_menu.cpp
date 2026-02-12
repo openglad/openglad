@@ -171,21 +171,18 @@ Sint32 mainmenu(Sint32 arg1)
 	
 	allbuttons[0]->set_graphic(FAMILY_NORMAL1);
     allbuttons[OPTIONS_BUTTON_INDEX]->set_graphic(FAMILY_WRENCH);
-	
-	redraw_mainmenu();
-
-    // Ensure the fade-in target is the main menu, not the previous submenu frame.
-    game->clearbuffer();
-    draw_buttons(buttons, num_buttons);
-    redraw_mainmenu();
-    draw_highlight(buttons[highlighted_button]);
-    game->buffer_to_screen(0, 0, 320, 200);
 
 	clear_keyboard();
 	reset_timer();
 	while (query_timer() < 1);
-	
-	game->fadeblack(1);
+
+    // Match other menu transitions: fade out previous menu first, then fade in this one.
+    game->fadeblack(0);
+    game->clearbuffer();
+    draw_buttons(buttons, num_buttons);
+    redraw_mainmenu();
+    draw_highlight(buttons[highlighted_button]);
+    game->fadeblack(1);
 
 	grab_mouse();
 
