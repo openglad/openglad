@@ -18,20 +18,17 @@
 
 // Definition of SCREEN class
 
-#include "base.h"
 #include "video.h"
 #include "gloader.h"
-#include "obmap.h"
-#include "smooth.h"
-#include <map>
-#include <memory>
-#include <string>
-#include <string_view>
-#include <set>
 #include "level_data.h"
 #include "save_data.h"
-
-#include "text.h"
+#include <array>
+#include <list>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <string_view>
 
 class screen : public video
 {

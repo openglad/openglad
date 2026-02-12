@@ -19,6 +19,8 @@ option(BUILD_EDITOR "Build the scenario editor (openscen)" ON)
 option(OPENGLAD_INSTALL_ASSETS "Install OpenGlad runtime asset directories" ON)
 option(ENABLE_COVERAGE "Enable gcov/lcov coverage instrumentation (tests only)" OFF)
 option(ENABLE_SANITIZERS "Enable compiler sanitizers for project targets" OFF)
+option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis during C/C++ compilation (if found)" OFF)
+option(ENABLE_CPPCHECK "Enable cppcheck analysis during C/C++ compilation (if found)" OFF)
 set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABLE_SANITIZERS is ON")
 
 # Coverage runs are only meaningful if the tests are built and executed.
@@ -26,6 +28,28 @@ set(SANITIZERS "address;undefined" CACHE STRING "Sanitizers to enable when ENABL
 # and then invokes `ctest`, so ensure BUILD_TESTING is enabled in that mode.
 if(ENABLE_COVERAGE AND NOT BUILD_TESTING)
     set(BUILD_TESTING ON CACHE BOOL "Build the test suite" FORCE)
+endif()
+
+if(ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+    if(CLANG_TIDY_EXE)
+        set(CMAKE_C_CLANG_TIDY "${CLANG_TIDY_EXE}")
+        set(CMAKE_CXX_CLANG_TIDY "${CLANG_TIDY_EXE}")
+        message(STATUS "clang-tidy enabled: ${CLANG_TIDY_EXE}")
+    else()
+        message(WARNING "ENABLE_CLANG_TIDY is ON, but clang-tidy was not found")
+    endif()
+endif()
+
+if(ENABLE_CPPCHECK)
+    find_program(CPPCHECK_EXE NAMES cppcheck)
+    if(CPPCHECK_EXE)
+        set(CMAKE_C_CPPCHECK "${CPPCHECK_EXE};--std=c11")
+        set(CMAKE_CXX_CPPCHECK "${CPPCHECK_EXE};--std=c++20")
+        message(STATUS "cppcheck enabled: ${CPPCHECK_EXE}")
+    else()
+        message(WARNING "ENABLE_CPPCHECK is ON, but cppcheck was not found")
+    endif()
 endif()
 
 # --------------------------------------------------------------------------
