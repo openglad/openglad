@@ -24,6 +24,7 @@
 #include "screen.h"
 #include "button.h"
 #include <format>
+#include <memory>
 #include <vector>
 #include <string>
 
@@ -103,7 +104,7 @@ public:
     int num_levels;
     
     PixieData icondata;
-    pixie* icon;
+    std::unique_ptr<pixie> icon;
     
     // Player-specific
     int num_levels_completed;
@@ -115,7 +116,7 @@ public:
 };
 
 CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
-    : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), icon(nullptr), num_levels_completed(num_levels_completed)
+    : id(id), title("Untitled"), rating(0.0f), version("1.0"), description("No description."), suggested_power(0), first_level(1), num_levels(0), num_levels_completed(num_levels_completed)
 {
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package(id))
@@ -159,7 +160,7 @@ CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
         std::string icon_file = "icon.pix";
         icondata = read_pixie_file(icon_file.c_str());
         if(icondata.valid())
-            icon = new pixie(icondata);
+            icon = std::make_unique<pixie>(icondata);
         
         // Count the number of levels
         std::list<int> levels = list_levels();
@@ -171,8 +172,7 @@ CampaignEntry::CampaignEntry(const std::string& id, int num_levels_completed)
 
 CampaignEntry::~CampaignEntry()
 {
-	delete icon;
-	icondata.free();
+    icondata.free();
 }
 
 void CampaignEntry::draw(const SDL_Rect& area, int team_power)
@@ -205,7 +205,8 @@ void CampaignEntry::draw(const SDL_Rect& area, int team_power)
     // Draw icon button
     myscreen->draw_button(x - 2, y - 2, x + w + 2, y + h + 2, 1, 1);
     // Draw icon
-	icon->drawMix(x, y, myscreen->viewob[0].get());
+	if (icon)
+	    icon->drawMix(x, y, myscreen->viewob[0].get());
 	y += h + 4;
 
 	// Print suggested power
