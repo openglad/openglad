@@ -438,6 +438,9 @@ function(configure_openglad_external_target target)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # Vendored third-party code: keep warnings actionable in OpenGlad code by silencing
+        # warnings from upstream C/C++ sources. Track upstream versions in
+        # src/external/VENDORED_LIBS.md and prefer upgrades over refactors-in-place.
         target_compile_options(${target} PRIVATE -w)
     endif()
 endfunction()
