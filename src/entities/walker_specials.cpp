@@ -16,7 +16,7 @@
  */
 
 #include "graph.h"
-#include "core/combat_math.h"
+#include <openglad/core/combat_math.h>
 #include "runtime/game_context.h"
 #include "test_trace.h"
 
@@ -1698,18 +1698,31 @@ bool walker::teleport()
 					myscreen->do_notify("Marker is Blocked!", this);
 			}
 			}
-		} // end of checking for marker (we failed)
-	
+			} // end of checking for marker (we failed)
+
+	// No marker: pick a random passable grid cell. Historically this was an
+	// unbounded loop, which can hang tests (and gameplay) if level/grid state
+	// isn't initialized or nothing is passable.
+	if (!myscreen || !myscreen->level_data.grid.valid() ||
+	    myscreen->level_data.grid.w <= 0 || myscreen->level_data.grid.h <= 0 ||
+	    myscreen->level_data.pixmaxx <= 0 || myscreen->level_data.pixmaxy <= 0)
+		return 0;
+
+	Sint32 keep_going = 200; // maxtries
+	do
+	{
 		newx = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.w))) * GRID_SIZE;
 		newy = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.h))) * GRID_SIZE;
-	
-		while(!myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this))
-		{
-			newx = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.w))) * GRID_SIZE;
-			newy = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.h))) * GRID_SIZE;
-		}
+		keep_going--;
+	} while (keep_going > 0 &&
+	         !myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
+
+	if (keep_going > 0)
+	{
 		setxy(newx, newy);
 		return 1;
+	}
+	return 0;
 }
 
 bool walker::teleport_ranged(Sint32 range)

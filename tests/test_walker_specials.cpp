@@ -7,6 +7,17 @@
 
 extern screen* myscreen;
 
+static void ensure_level_loaded()
+{
+    if (myscreen == nullptr)
+        return;
+    if (myscreen->level_data.grid.valid() && myscreen->level_data.pixmaxx > 0 && myscreen->level_data.pixmaxy > 0)
+        return;
+
+    myscreen->level_data.id = 1;
+    (void)myscreen->level_data.load();
+}
+
 static void teardown_walker_special_test()
 {
     if (myscreen != nullptr) {
@@ -19,6 +30,10 @@ static void teardown_walker_special_test()
 
 static walker* make_special_guy(char family, unsigned char team = 0, short level = 3)
 {
+    // Many specials/teleports rely on grid passability; make tests self-contained
+    // by ensuring a level is loaded when running filtered subsets.
+    ensure_level_loaded();
+
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(level, true);
@@ -177,7 +192,32 @@ void test_walker_special_mage_teleport()
         marker->owner = w;
         marker->dead = 0;
         marker->lifetime = 1;
-        marker->setxy(w->xpos + 96, w->ypos + 96);
+        // Place marker somewhere passable and sufficiently far away; do not
+        // assume (x+96,y+96) is in-bounds or passable for every level.
+        Sint32 mx = std::min<Sint32>(w->xpos + 96, myscreen->level_data.pixmaxx - w->sizex - 2);
+        Sint32 my = std::min<Sint32>(w->ypos + 96, myscreen->level_data.pixmaxy - w->sizey - 2);
+        if (!myscreen->query_passable(static_cast<float>(mx), static_cast<float>(my), w))
+        {
+            bool found = false;
+            for (Sint32 x = 0; x < myscreen->level_data.pixmaxx - w->sizex - 2 && !found; x += GRID_SIZE)
+            {
+                for (Sint32 y = 0; y < myscreen->level_data.pixmaxy - w->sizey - 2; y += GRID_SIZE)
+                {
+                    const Sint32 dx = x - w->xpos;
+                    const Sint32 dy = y - w->ypos;
+                    if (dx * dx + dy * dy <= 64 * 64)
+                        continue;
+                    if (myscreen->query_passable(static_cast<float>(x), static_cast<float>(y), w))
+                    {
+                        mx = x;
+                        my = y;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+        }
+        marker->setxy(mx, my);
         TEST_ASSERT(w->teleport(), "teleport with marker should succeed");
     }
 
