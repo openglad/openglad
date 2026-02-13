@@ -32,10 +32,13 @@ bool walker::setxy(short x, short y)
     worldx_ = x;
     worldy_ = y;
     
-    if (!ignore)
-        myobmap->move(this, x, y);
-    else // just remove us, in case :)
-        myobmap->remove(this);
+    if (myobmap != nullptr)
+    {
+        if (!ignore)
+            myobmap->move(this, x, y);
+        else // just remove us, in case :)
+            myobmap->remove(this);
+    }
 
     return pixie::setxy(x, y);
 }
@@ -45,10 +48,13 @@ void walker::setworldxy(float x, float y)
     worldx_ = x;
     worldy_ = y;
     
-    if (!ignore)
-        myobmap->move(this, static_cast<short>(x), static_cast<short>(y));
-    else // just remove us, in case :)
-        myobmap->remove(this);
+    if (myobmap != nullptr)
+    {
+        if (!ignore)
+            myobmap->move(this, static_cast<short>(x), static_cast<short>(y));
+        else // just remove us, in case :)
+            myobmap->remove(this);
+    }
 
     pixie::setxy(x, y);
 }
