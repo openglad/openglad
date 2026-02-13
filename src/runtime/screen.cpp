@@ -27,7 +27,7 @@
 #include "graph.h"
 #include "runtime/game_context.h"
 #include "render/smooth.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "input/input.h"
 #include "view_sizes.h"
 #include "ui/results_screen.h"

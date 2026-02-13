@@ -31,7 +31,7 @@
 #include "entities/treasure.h"
 #include "entities/effect.h"
 #include "render/text.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "entities/guy.h"
 #include "render/radar.h"
 #include "test_trace.h"

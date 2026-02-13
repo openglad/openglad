@@ -1,4 +1,4 @@
-#include "combat_math.h"
+#include <openglad/core/combat_math.h>
 #include "runtime/game_context.h"
 
 #include <cmath>

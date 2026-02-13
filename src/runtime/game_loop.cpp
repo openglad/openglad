@@ -7,7 +7,7 @@
 #include "render/pal32.h"
 #include "ui/results_screen.h"
 #include "runtime/screen.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 
 // Declared elsewhere (glad.cpp).
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);

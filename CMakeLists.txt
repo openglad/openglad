@@ -411,6 +411,7 @@ set(EXTERNAL_C_SOURCES
 # --------------------------------------------------------------------------
 
 set(COMMON_INCLUDE_DIRS
+    ${CMAKE_SOURCE_DIR}/include
     ${SRC_DIR}
     ${EXT_DIR}/micropather
     ${EXT_DIR}/yam

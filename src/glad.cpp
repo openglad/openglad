@@ -34,7 +34,7 @@ screen * myscreen;
 #include <cstring>
 #include <format>
 #include <stdexcept>
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "ui/results_screen.h"
 #include "runtime/game_context.h"
 

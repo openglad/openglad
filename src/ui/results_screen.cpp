@@ -4,7 +4,7 @@
 #include "render/text.h"
 #include "entities/walker.h"
 #include "entities/guy.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "render/view.h"
 #include <algorithm>
 #include <cstring>

@@ -1,4 +1,4 @@
-#include "core/combat_math.h"
+#include <openglad/core/combat_math.h>
 #include "runtime/game_context.h"
 #include "test_framework.h"
 

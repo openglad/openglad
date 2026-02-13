@@ -18,7 +18,7 @@
 #include "graph.h"
 #include "input/button.h"
 #include "input/input.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 
 #include "SDL.h"
 

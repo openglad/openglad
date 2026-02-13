@@ -17,7 +17,7 @@
 #pragma once
 
 #include "base.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include <memory>
 
 // Holds attributes for characters.

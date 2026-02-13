@@ -8,7 +8,7 @@
 #include "test_interact.h"
 #include "data/save_data.h"
 #include "entities/guy.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 
 extern screen* myscreen;
 

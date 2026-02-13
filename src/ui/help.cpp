@@ -20,7 +20,7 @@
 #include <string>
 #include <format>
 #include "graph.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "version.h"
 #include "platform/io.h"
 

@@ -17,7 +17,7 @@
 //#include "graph.h"
 #include "data/gloader.h"
 #include "runtime/game_context.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "entities/walker.h"
 #include <format>
 #include "entities/living.h"

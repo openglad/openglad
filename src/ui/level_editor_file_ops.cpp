@@ -17,7 +17,7 @@
 
 #include "graph.h"
 #include "ui/campaign_picker.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 
 #include <list>
 #include <string>

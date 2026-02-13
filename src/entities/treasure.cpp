@@ -26,7 +26,7 @@
 #include "runtime/screen.h"
 #include "entities/treasure.h"
 #include "render/text.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "entities/guy.h"
 #include <algorithm>
 #include <format>

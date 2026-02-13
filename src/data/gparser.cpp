@@ -28,7 +28,7 @@
 #include <cstring>
 #include <format>
 #include "data/gparser.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "platform/io.h"
 #include "yam.h"
 

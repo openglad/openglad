@@ -8,7 +8,7 @@
 #include "test_input_helpers.h"
 #include "test_interact.h"
 #include "data/save_data.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 
 #include <atomic>
 

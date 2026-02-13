@@ -19,7 +19,7 @@
 #include "data/level_data.h"
 #include "render/radar.h"
 #include "entities/walker.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "render/text.h"
 #include "entities/guy.h"
 #include "input/button.h"

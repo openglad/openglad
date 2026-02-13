@@ -20,7 +20,7 @@
 #include "input/button.h"
 #include "render/pal32.h"
 #include "input/input.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 
 #include "SDL.h"
 #include "ui/campaign_picker.h"

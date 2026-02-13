@@ -4,7 +4,7 @@
 #include "runtime/game_loop.h"
 #include "data/save_data.h"
 #include "test_framework.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 
 extern screen* myscreen;
 

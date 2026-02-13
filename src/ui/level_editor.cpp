@@ -21,9 +21,9 @@
 #include "entities/walker.h"
 #include "render/smooth.h"
 #include "input/input.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "render/text.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "data/level_data.h"
 #include "ui/level_picker.h"
 #include <span>

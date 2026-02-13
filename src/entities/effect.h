@@ -21,7 +21,7 @@
 #include "base.h"
 #include "entities/obmap.h"
 #include "runtime/screen.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "entities/walker.h"
 #include "entities/guy.h"
 

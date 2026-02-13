@@ -19,7 +19,7 @@
 //
 // random helper functions
 //
-#include "util.h"
+#include <openglad/core/util.h>
 
 #include "version.h"
 

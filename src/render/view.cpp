@@ -26,7 +26,7 @@
 
 #include "version.h"
 
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "runtime/game_context.h"
 #include <string>
 #include <format>

@@ -9,7 +9,7 @@
 #include "test_framework.h"
 #include "data/gparser.h"
 #include "platform/io.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "input/input.h"
 #include "runtime/game_context.h"
 #include "runtime/screen_lifecycle.h"

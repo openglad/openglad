@@ -19,7 +19,7 @@
 //
 
 #include "graph.h"
-#include "stats.h"      // for bit flags, etc.
+#include <openglad/core/stats.h>      // for bit flags, etc.
 #include <cmath>
 #include "runtime/game_context.h"
 #include <format>

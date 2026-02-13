@@ -18,7 +18,7 @@
 #include "platform/io.h"
 #include "input/input.h"
 #include "runtime/game_context.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "pixdefs.h"
 #include "render/text.h"
 

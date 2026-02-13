@@ -278,7 +278,7 @@ void get_input_events(bool type)
 #include "entities/obmap.h"
 #include "runtime/screen.h"
 #include "render/view.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "entities/walker.h"
 
 void draw_touch_controls(screen* vob)

@@ -23,7 +23,7 @@
 #include "entities/guy.h"
 #include "runtime/screen.h"
 #include "input/button.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include <format>
 #include <memory>
 #include <vector>

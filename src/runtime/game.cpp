@@ -16,7 +16,7 @@
  */
 #include "graph.h"
 #include "render/smooth.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "ui/campaign_picker.h"
 #include <algorithm>
 #include <format>

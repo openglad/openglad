@@ -20,7 +20,7 @@
 
 #include "graph.h"
 #include "runtime/game_context.h"
-#include "core/combat_math.h"
+#include <openglad/core/combat_math.h>
 #include "render/smooth.h"
 #include <cstring>
 

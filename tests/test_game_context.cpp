@@ -1,5 +1,5 @@
 #include "runtime/game_context.h"
-#include "core/combat_math.h"
+#include <openglad/core/combat_math.h>
 #include "graph.h"
 #include "test_framework.h"
 

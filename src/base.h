@@ -33,7 +33,7 @@
 #include "sounds.h"
 #include "SDL.h"
 #include "input/input.h"
-#include "core/util.h"
+#include <openglad/core/util.h>
 #include "data/gparser.h"
 #include "render/pal32.h"
 #include "pixdefs.h"
