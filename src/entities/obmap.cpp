@@ -27,7 +27,7 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 
 bool debug_draw_obmap = false;
 
-short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile);
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map);
 short collide(short x,  short y,  short xsize,  short ysize,
               short x2, short y2, short xsize2, short ysize2);
 
@@ -132,8 +132,12 @@ short obmap::query_list(walker  *ob, short x, short y)
 	{
 		for (numy = startnumy; numy <= endnumy; numy++)
 		{
-			// We should be finding the same item over and over
-			if (!ob_pass_check(x, y, ob, pos_to_walker[std::make_pair(numx, numy)] )) //&& ob->collide_ob??
+			// We should be finding the same item over and over. Avoid
+			// default-constructing empty piles during queries.
+			auto it = pos_to_walker.find(std::make_pair(numx, numy));
+			if (it == pos_to_walker.end())
+				continue;
+			if (!ob_pass_check(x, y, ob, it->second, this)) //&& ob->collide_ob??
 				return 0;
 		}
 	}
@@ -143,35 +147,61 @@ short obmap::query_list(walker  *ob, short x, short y)
 
 short obmap::remove(walker  *ob)  // This goes in walker's destructor
 {
-    // Find all of the instances of the object and remove them from the map
-    
-    // Get the list of positions that the walker occupies
-    auto e = walker_to_pos.find(ob);
-    if(e != walker_to_pos.end())
-    {
-        // For each position...
-        for(auto& pos : e->second)
-        {
-            // Get the pile
-            auto g = pos_to_walker.find(pos);
-            if (g == pos_to_walker.end())
-                continue;
-            
-            // Find our guy in this pile and remove him
-            auto h = std::find(g->second.begin(), g->second.end(), ob);
-            if(h != g->second.end())
-                g->second.erase(h);
+    if (!ob)
+        return 0;
 
-            if (g->second.empty())
-                pos_to_walker.erase(g);
+    // Fast path only: removal is driven by walker_to_pos bookkeeping.
+    // Do not scan the entire pos_to_walker map in production; that can turn
+    // legitimate gameplay/test loops into O(N^2) behavior.
+    auto e = walker_to_pos.find(ob);
+    if (e == walker_to_pos.end())
+    {
+        // Bookkeeping mismatch: attempt a bounded removal based on the
+        // walker's current bounding box. This avoids global scans while still
+        // preventing stale pointers in pos_to_walker (ASan/UAF).
+        if (ob->xpos < 0 || ob->ypos < 0)
+            return 0;
+
+        short numx, startnumx, endnumx;
+        short numy, startnumy, endnumy;
+        startnumx = hash(ob->xpos);
+        endnumx = hash(static_cast<short>(ob->xpos + ob->sizex));
+        startnumy = hash(ob->ypos);
+        endnumy = hash(static_cast<short>(ob->ypos + ob->sizey));
+
+        bool removed_any = false;
+        for (numx = startnumx; numx <= endnumx; numx++)
+        {
+            for (numy = startnumy; numy <= endnumy; numy++)
+            {
+                auto g = pos_to_walker.find(std::make_pair(numx, numy));
+                if (g == pos_to_walker.end())
+                    continue;
+                const size_t before = g->second.size();
+                g->second.remove(ob);
+                if (g->second.size() != before)
+                    removed_any = true;
+                if (g->second.empty())
+                    pos_to_walker.erase(g);
+            }
         }
-        
-        // Erase the walker from the walker map too
-        walker_to_pos.erase(e);
-        return true;
+        return removed_any ? 1 : 0;
     }
-    
-    return false;
+
+    // For each occupied cell, remove all occurrences (defensive against
+    // accidental duplicates) and drop empty piles.
+    for (auto& pos : e->second)
+    {
+        auto g = pos_to_walker.find(pos);
+        if (g == pos_to_walker.end())
+            continue;
+        g->second.remove(ob);
+        if (g->second.empty())
+            pos_to_walker.erase(g);
+    }
+
+    walker_to_pos.erase(e);
+    return 1;
 }
 
 short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constructor
@@ -179,8 +209,16 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 	short numx, startnumx, endnumx;
 	short numy, startnumy, endnumy;
 
+	if (!ob)
+		return 0;
+
 	if (x < 0 || y < 0)
 		return 0;
+
+	// Tighten invariants: a walker may only be present once. If callers try to
+	// add it again, remove via O(1) bookkeeping first.
+	if (walker_to_pos.find(ob) != walker_to_pos.end())
+		(void)remove(ob);
 
 	startnumx = hash(x);
 	endnumx   = hash( static_cast<short>(x + ob->sizex) );
@@ -196,14 +234,16 @@ short obmap::add(walker  *ob, short x, short y)  // This goes in walker's constr
 		    // Store this position
 		    pos.push_back(std::make_pair(numx, numy));
 		    
-		    // Put the walker here too
-		    pos_to_walker[std::make_pair(numx, numy)].push_back(ob);
-		}
-	}
-	
-	// Now record where he is
-	walker_to_pos.insert(std::make_pair(ob, pos));
+			// Put the walker here too (no duplicates).
+			auto& pile = pos_to_walker[std::make_pair(numx, numy)];
+			if (std::find(pile.begin(), pile.end(), ob) == pile.end())
+				pile.push_back(ob);
+				}
+			}
 		
+	// Now record where he is
+	walker_to_pos[ob] = std::move(pos);
+			
 	return 1;
 }
 
@@ -246,29 +286,42 @@ std::list<walker*>& obmap::obmap_get_list(short x, short y)
 /***********************************************
 **  All pass checking from here down.
 ***********************************************/
-
-short ob_pass_check(short x, short y, walker  *ob, const std::list<walker*>& pile)
+short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile, const obmap* map)
 {
 	short oxsize, oysize;
-	short x2,y2,xsize2,ysize2;
+	short x2, y2, xsize2, ysize2;
 	Order targetorder;//, targetteam, targetfamily;
 	Order myorder;
-	//short myteam;
+
+	if (!ob)
+		return 1;
 
 	oxsize = ob->sizex;
 	oysize = ob->sizey;
 
 	myorder = ob->query_order();
-	//myteam  = ob->team_num;
-	
-	if(!ob)
-        return 1;
 
 	// Check each object to see if sizes collide.
-	for(auto* w : pile)
+	for (auto it = pile.begin(); it != pile.end(); )
 	{
-	    if (w != ob && !w->dead)
+		// Advance the iterator up-front: collision handlers may remove elements
+		// from the obmap piles (including the current element), and std::list
+		// iterator invalidation would otherwise cause a UAF when the loop
+		// increments.
+		walker* w = *it;
+		++it;
+
+	    if (w != ob)
         {
+            // If bookkeeping is consistent, any live walker in a pile must also
+            // be present in walker_to_pos. If not, treat it as stale and skip
+            // without dereferencing (ASan UAF hardening).
+            if (map != nullptr && map->walker_to_pos.find(w) == map->walker_to_pos.end())
+                continue;
+
+            if (w->dead)
+                continue;
+
             targetorder = w->query_order();
             
             // Let our own team's weapons pass over us
