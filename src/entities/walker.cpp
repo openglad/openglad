@@ -21,7 +21,7 @@
 */
 
 #include "graph.h"
-#include "core/combat_math.h"
+#include <openglad/core/combat_math.h>
 #include "runtime/game_context.h"
 #include "render/smooth.h"
 #include "test_trace.h"
@@ -117,10 +117,11 @@ walker::walker(const PixieData& data)
 	worldx_ = worldy_ = -1;
 
 	weapons_left = 1; // default, used for fighters
-
+	// Do not implicitly bind to the global screen obmap here. Only walkers that
+	// are registered into a LevelData list should participate in obmap collision
+	// bookkeeping. (Unregistered test-only walkers otherwise leave stale pointers
+	// behind across tests under ASan.)
 	myobmap = nullptr;
-	if(myscreen != nullptr)
-        myobmap = myscreen->level_data.myobmap.get();  // default obmap (spatial partitioning optimization?) changed when added to a list
 
 	path_check_counter = 5 + rand()%10;
 	hurt_flash = false;
@@ -243,8 +244,14 @@ walker::~walker()
 	collide_ob = nullptr;
 	dead = 1;
 
-	if(myobmap != nullptr)
-        myobmap->remove(this); // remove ourselves from obmap lists
+	// Walkers can outlive a particular LevelData::myobmap instance in tests
+	// (screen cleanup replaces the obmap). Ensure we remove from the current
+	// active obmap as well as the one we were last bound to.
+	obmap* active = (myscreen != nullptr) ? myscreen->level_data.myobmap.get() : nullptr;
+	if (active != nullptr)
+		active->remove(this);
+	if (myobmap != nullptr && myobmap != active)
+		myobmap->remove(this); // remove ourselves from obmap lists
 
 	stats_.reset();
 	bmp = nullptr;
@@ -1183,9 +1190,40 @@ bool walker::animate()
 {
 	walker  * newob;
 
-	set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-	cycle++;
-	if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
+	const int ani_index = curdir + ani_type * NUM_FACINGS;
+	const signed char* seq = ani[ani_index];
+	if (!seq)
+	{
+		ani_type = ANI_WALK;
+		cycle = 0;
+		return 0;
+	}
+
+	// Animation sequences are sentinel-terminated with -1, but `cycle` is a signed
+	// char and can wrap/retain stale values. Compute a safe sequence length and
+	// clamp `cycle` to avoid reading past the sentinel. (ASan found an OOB read
+	// here during test-driven menu/game loops.)
+	int seq_len = 0;
+	while (seq_len < 128 && seq[seq_len] != -1)
+		seq_len++;
+	if (seq_len <= 0 || seq_len >= 128)
+	{
+		ani_type = ANI_WALK;
+		cycle = 0;
+		return 0;
+	}
+
+	int c = static_cast<int>(cycle);
+	if (c < 0 || c >= seq_len)
+		c = 0;
+
+	set_frame(seq[c]);
+	c++;
+
+	const bool at_end = (c >= seq_len);
+	cycle = static_cast<signed char>(c);
+
+	if (at_end)
 	{
 		//          if (ani_type == ANI_ATTACK &&
 		//                        query_order() == Order::Living)
@@ -1692,7 +1730,8 @@ void walker::transform_to(Order whatorder, Sint32 whatfamily)
 	short tempact = query_act_type();;
 
 	// First remove us from the collision table..
-	myobmap->remove(this);
+	if (myobmap != nullptr)
+		myobmap->remove(this);
 
 	if (order == whatorder) // same object type
 	{
@@ -1754,6 +1793,15 @@ bool walker::death()
 		return 0;
 
 	death_called = 1;
+
+	// Ensure we are removed from collision bookkeeping as soon as we "die".
+	// This prevents stale pointers in the obmap when callers manage walker
+	// lifetimes outside LevelData's owning lists (common in tests).
+	obmap* active = (myscreen != nullptr) ? myscreen->level_data.myobmap.get() : nullptr;
+	if (active != nullptr)
+		active->remove(this);
+	if (myobmap != nullptr && myobmap != active)
+		myobmap->remove(this);
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
