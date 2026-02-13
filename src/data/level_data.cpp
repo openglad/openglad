@@ -22,7 +22,7 @@
 #include "render/pixie.h"
 #include "data/gloader.h"
 #include "entities/walker.h"
-#include "core/stats.h"
+#include <openglad/core/stats.h>
 #include "render/smooth.h"
 #include "runtime/screen.h"
 #include "render/view.h"
@@ -60,6 +60,16 @@ static void fill_fixed_field(char* dst, size_t fixed_len, std::string_view src, 
     memcpy(dst, src.data(), to_copy);
     if (src.size() > fixed_len)
         LogWarn("Truncating {} to {} bytes for scenario serialization.\n", field_name, fixed_len);
+}
+
+static std::string ensure_pix_extension(std::string_view name)
+{
+    // Scenario files store an 8-byte "grid name" field; some content uses "foo",
+    // others may include "foo.pix". Be tolerant and avoid ".pix.pix".
+    std::string s(name);
+    if (s.size() >= 4 && s.compare(s.size() - 4, 4, ".pix") == 0)
+        return s;
+    return s + ".pix";
 }
 
 
@@ -513,6 +523,8 @@ void LevelData::delete_grid()
     grid.free();
     pixmaxx = 0;
     pixmaxy = 0;
+    // mysmoother stores a raw pointer to grid data; keep it in sync.
+    mysmoother.reset();
 }
 
 void LevelData::create_new_grid()
@@ -526,7 +538,7 @@ void LevelData::create_new_grid()
 	pixmaxy = grid.h * GRID_SIZE;
 	
 	int size = grid.w*grid.h;
-    grid.data = std::make_unique<unsigned char[]>(size);
+	    grid.data = std::make_unique<unsigned char[]>(size);
 	for(int i = 0; i < size; i++)
     {
         // Color
@@ -546,6 +558,9 @@ void LevelData::create_new_grid()
             break;
         }
     }
+
+    // mysmoother stores a raw pointer to grid data; keep it in sync.
+    mysmoother.set_target(grid);
 }
 
 void LevelData::resize_grid(int width, int height)
@@ -596,6 +611,9 @@ void LevelData::resize_grid(int width, int height)
     grid.h = static_cast<unsigned char>(height);
 	pixmaxx = grid.w * GRID_SIZE;
 	pixmaxy = grid.h * GRID_SIZE;
+
+    // mysmoother stores a raw pointer to grid data; keep it in sync.
+    mysmoother.set_target(grid);
     
     
     // Delete objects that fell off the map
@@ -661,7 +679,7 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[16] = "grid.pix";  // default grid
+	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
 
 	// Format of a scenario object list file version 2 is:
 	// 3-byte header: 'FSS'
@@ -726,7 +744,7 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now read the grid file to our master screen ..
-	std::string gridpix = std::string(newgrid) + ".pix";
+	std::string gridpix = ensure_pix_extension(newgrid);
 
     data->delete_grid();
 
@@ -753,7 +771,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[16] = "grid.pix";  // default grid
+	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
 	char oneline[80];
 	char numlines, tempwidth;
 
@@ -784,6 +802,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 	// Get grid file to load
 	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
 		return 0;
+	newgrid[8] = '\0';
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	data->grid_file = newgrid;
@@ -867,7 +886,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 
 
 	// Now read the grid file to our master screen ..
-	std::string gridpix2 = std::string(newgrid) + ".pix";
+	std::string gridpix2 = ensure_pix_extension(newgrid);
 
     data->delete_grid();
 
@@ -890,7 +909,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[16] = "grid.pix";  // default grid
+	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
 	char oneline[80] = {};
 	char numlines, tempwidth;
 	char tempname[12] = {};
@@ -923,6 +942,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	// Get grid file to load
 	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
 		return 0;
+	newgrid[8] = '\0';
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	data->grid_file = newgrid;
@@ -1010,7 +1030,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now read the grid file...
-	std::string gridpix3 = std::string(newgrid) + ".pix";
+	std::string gridpix3 = ensure_pix_extension(newgrid);
 
     data->delete_grid();
 
@@ -1034,7 +1054,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	short listsize;
 	short i;
 	walker * new_guy;
-	char newgrid[16] = "grid.pix";  // default grid
+	char newgrid[9] = "grid";  // default grid (8-byte field, no implicit NUL)
 	char new_scen_type; // read the scenario type
 	char oneline[80] = {};
 	char numlines, tempwidth;
@@ -1068,6 +1088,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	// Get grid file to load
 	if (!rw_read_exact_or_log(infile, newgrid, 8, 1))
 		return 0;
+	newgrid[8] = '\0';
 	//buffers: PORT: make sure grid name is lowercase
 	lowercase(newgrid);
 	data->grid_file = newgrid;
@@ -1159,7 +1180,7 @@ short load_version_5(SDL_RWops  *infile, LevelData* data)
 	}
 
 	// Now read the grid file to our master screen ..
-	std::string gridpix4 = std::string(newgrid) + ".pix";
+	std::string gridpix4 = ensure_pix_extension(newgrid);
 
     data->delete_grid();
 
@@ -1206,7 +1227,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     short listsize;
     short i;
     walker * new_guy;
-    char newgrid[16] = {}; // 8-byte grid name + ".pix" + null
+    char newgrid[9] = "grid"; // 8-byte grid name + NUL
     char new_scen_type; // read the scenario type
     char oneline[80] = {};
     char numlines = 0, tempwidth;
@@ -1245,6 +1266,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
     // Get grid file to load
     READ_OR_RETURN(infile, newgrid, 8, 1);
+    newgrid[8] = '\0';
     // Zardus: FIX: make sure they're lowercased
     lowercase(newgrid);
 	data->grid_file = newgrid;
@@ -1347,7 +1369,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
 
     
     // Now read the grid file to our master screen ..
-    std::string gridpix5 = std::string(newgrid) + ".pix";
+    std::string gridpix5 = ensure_pix_extension(newgrid);
 
     data->grid = read_pixie_file(gridpix5.c_str());
     data->pixmaxx = data->grid.w * GRID_SIZE;
