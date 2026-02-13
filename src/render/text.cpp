@@ -25,6 +25,32 @@ void get_input_events(bool);
 static PixieData letters1;
 static PixieData letters_big;
 
+static std::span<const unsigned char> safe_glyph_span(const PixieData* font, unsigned char letter)
+{
+    if (font == nullptr || !font->valid() || font->frames == 0 || font->w == 0 || font->h == 0 || !font->data)
+        return {};
+
+    const std::size_t stride = static_cast<std::size_t>(font->w) * static_cast<std::size_t>(font->h);
+    const std::size_t total = stride * static_cast<std::size_t>(font->frames);
+    if (stride == 0 || total == 0)
+        return {};
+
+    auto idx = static_cast<std::size_t>(letter);
+    if ((idx + 1) * stride > total)
+    {
+        // Font pixies don't necessarily contain all 256 ASCII glyphs.
+        // Fall back to '?' if present; otherwise fall back to glyph 0.
+        const unsigned char fallback = '?';
+        idx = (fallback < font->frames) ? static_cast<std::size_t>(fallback) : 0u;
+    }
+
+    const std::size_t off = idx * stride;
+    if (off + stride > total)
+        return {};
+
+    return {font->data.get() + off, stride};
+}
+
 
 text::text(const char * filename)
     : letters(nullptr), sizex(0), sizey(0)
@@ -298,9 +324,9 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, color);
 
-	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
-	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
+	if (char_span.empty())
+		return 0;
 	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, color);
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
@@ -311,9 +337,9 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer)
 	if (!to_buffer)
 		return write_char_xy(x, y, letter, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 
-	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
-	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
+	if (char_span.empty())
+		return 0;
 	myscreen->walkputbuffertext(x, y, sizex, sizey, 0, 0, 319,199, char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//myscreen->buffer_to_screen(x, y, sizex + 4 - (sizex%4), sizey + 4 - (sizey%4) );
 	return 1;
@@ -321,27 +347,27 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, short to_buffer)
 
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color)
 {
-	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
-	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
+	if (char_span.empty())
+		return 0;
 	myscreen->putdatatext(x, y, sizex, sizey, char_span, color);
 	return 1;
 }
 
 Sint32 text::write_char_xy_alpha(Sint32 x, Sint32 y, char letter, unsigned char color, Uint8 alpha)
 {
-	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
-	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
+	if (char_span.empty())
+		return 0;
 	myscreen->walkputbuffertext_alpha(x, y, sizex, sizey, 0, 0, 319,199, char_span, color, alpha);
 	return 1;
 }
 
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter)
 {
-	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
-	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
+	if (char_span.empty())
+		return 0;
 	myscreen->putdatatext(x, y, sizex, sizey, char_span);
 	return 1;
 }
@@ -349,15 +375,15 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter)
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
                           viewscreen *whereto)
 {
-	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
-	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
+	if (char_span.empty())
+		return 0;
 	if (!whereto)
 		myscreen->putdatatext(x, y, sizex, sizey, char_span, color);
 	else
-			myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
-			                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-			                       char_span, color);
+				myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+				                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
+				                       char_span, color);
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
@@ -365,15 +391,15 @@ Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, unsigned char color,
 
 Sint32 text::write_char_xy(Sint32 x, Sint32 y, char letter, viewscreen *whereto)
 {
-	const std::size_t glyph_stride = static_cast<std::size_t>(sizex) * static_cast<std::size_t>(sizey);
-	const std::size_t glyph_offset = static_cast<std::size_t>(static_cast<unsigned char>(letter)) * glyph_stride;
-	auto char_span = std::span<const unsigned char>{&letters->data.get()[glyph_offset], glyph_stride};
+	auto char_span = safe_glyph_span(letters, static_cast<unsigned char>(letter));
+	if (char_span.empty())
+		return 0;
 	if (!whereto)
 		myscreen->putdatatext(x, y, sizex, sizey, char_span);
 	else
-			myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
-		                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
-		                       char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
+				myscreen->walkputbuffertext(x+whereto->xloc, y+whereto->yloc, sizex, sizey,
+			                       whereto->xloc,whereto->yloc,whereto->endx, whereto->endy,
+			                       char_span, static_cast<unsigned char>(DEFAULT_TEXT_COLOR));
 	//         myscreen->buffer_to_screen(x+whereto->xloc, y+whereto->yloc,
 	//           (sizex + 4 - (sizex%4)), (sizey + 4 - (sizey%4)) );
 	return 1;
