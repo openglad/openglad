@@ -22,6 +22,7 @@
 #include <cstring>
 #include <list>
 #include <string>
+#include <vector>
 
 extern screen* myscreen;
 
@@ -31,6 +32,12 @@ static screen* active_screen()
         return ctx().game_screen;
     return myscreen;
 }
+
+#ifdef TESTING
+std::vector<std::string>& level_editor_testing_prompt_queue_ref();
+void level_editor_testing_prompt_queue_clear();
+void level_editor_testing_prompt_queue_push(const char* s);
+#endif
 
 bool prompt_for_string_block(const std::string& message, std::list<std::string>& result)
 {
@@ -368,7 +375,15 @@ bool prompt_for_string(const std::string& message, std::string& result)
 {
     screen* screen_ctx = active_screen();
 #ifdef TESTING
-    return true;  // Accept default name without blocking on text input
+    // Tests can optionally queue deterministic inputs for prompt_for_string().
+    // If the queue is empty, accept the existing value without blocking.
+    (void)message;
+    auto& q = level_editor_testing_prompt_queue_ref();
+    if (!q.empty()) {
+        result = q.front();
+        q.erase(q.begin());
+    }
+    return true;
 #endif
 	    screen_ctx->darken_screen();
 	    
@@ -390,7 +405,24 @@ bool prompt_for_string(const std::string& message, std::string& result)
     return true;
 }
 
+#ifdef TESTING
+// Test helper API (used by deterministic coverage-driving tests).
+void level_editor_testing_prompt_queue_clear()
+{
+    level_editor_testing_prompt_queue_ref().clear();
+}
 
+void level_editor_testing_prompt_queue_push(const char* s)
+{
+    level_editor_testing_prompt_queue_ref().push_back(s ? std::string(s) : std::string());
+}
 
+// Provide access to the prompt queue without exposing it globally in non-test builds.
+std::vector<std::string>& level_editor_testing_prompt_queue_ref()
+{
+    static std::vector<std::string> s_prompt_queue;
+    return s_prompt_queue;
+}
+#endif
 
 

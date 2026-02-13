@@ -1,6 +1,8 @@
 #include "render/smooth.h"
+#include "graph.h"
 #include "base.h"
 #include "data/pixie_data.h"
+#include "runtime/game_context.h"
 #include "test_framework.h"
 
 #include <memory>
@@ -18,6 +20,44 @@ class TestSmoother : public smoother
 public:
     using smoother::surrounds;
 };
+
+namespace
+{
+struct GlobalContextGuard
+{
+    explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
+    ~GlobalContextGuard() { set_global_context(nullptr); }
+    GlobalContextGuard(const GlobalContextGuard&) = delete;
+    GlobalContextGuard& operator=(const GlobalContextGuard&) = delete;
+};
+
+class SequenceRandom : public IRandom {
+public:
+    explicit SequenceRandom(std::initializer_list<Uint32> vals) : vals_(vals), idx_(0) {}
+    Uint32 next(Uint32 max_exclusive) override {
+        if (vals_.empty())
+            return 0;
+        Uint32 v = vals_[idx_++ % vals_.size()];
+        return max_exclusive ? (v % max_exclusive) : 0;
+    }
+private:
+    std::vector<Uint32> vals_;
+    std::size_t idx_;
+};
+
+static void set_neighbors(unsigned char* g, int w, unsigned char center, unsigned char same, unsigned char other, int mask)
+{
+    // Layout:
+    // (0,0) (1,0) (2,0)
+    // (0,1) (1,1) (2,1)
+    // (0,2) (1,2) (2,2)
+    g[1 + 1 * w] = center;
+    g[1 + 0 * w] = (mask & 1) ? same : other; // up
+    g[2 + 1 * w] = (mask & 2) ? same : other; // right
+    g[1 + 2 * w] = (mask & 4) ? same : other; // down
+    g[0 + 1 * w] = (mask & 8) ? same : other; // left
+}
+} // namespace
 
 void test_smoother_query_genre_maps_known_tiles()
 {
@@ -69,3 +109,127 @@ void test_smoother_surrounds_bitmask_counts_neighbors()
     TEST_ASSERT_EQ(1 + 8, mask, "surrounds should return bitmask of matching neighbors");
 }
 REGISTER_TEST(test_smoother_surrounds_bitmask_counts_neighbors);
+
+void test_smoother_smooth_covers_multiple_genres_and_around_masks()
+{
+    // smooth() depends on ctx().rng; provide deterministic sequencing.
+    SequenceRandom seq_rng({0, 1, 2, 3, 0, 1, 2, 3, 5, 0, 19, 0});
+    GameContext c;
+    c.rng = &seq_rng;
+    GlobalContextGuard guard(&c);
+
+    // Carpet and light grass: cover all 'around' mask cases 0..15.
+    for (int mask = 0; mask < 16; mask++)
+    {
+        PixieData grid = make_grid(3, 3, PIX_GRASS1);
+        unsigned char* g = grid.data.get();
+
+        // Carpet
+        set_neighbors(g, 3, PIX_CARPET_M, PIX_CARPET_M, PIX_GRASS1, mask);
+        smoother s;
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+
+        // Light grass
+        set_neighbors(g, 3, PIX_GRASS_LIGHT_1, PIX_GRASS_LIGHT_1, PIX_GRASS1, mask);
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+    }
+
+    // Cobble: exercise rng(4) switch.
+    {
+        PixieData grid = make_grid(3, 3, PIX_GRASS1);
+        unsigned char* g = grid.data.get();
+        g[1 + 1 * 3] = PIX_COBBLE_1;
+        smoother s;
+        s.set_target(grid);
+        for (int i = 0; i < 4; i++)
+            (void)s.smooth(1, 1);
+    }
+
+    // Grass: diagonal water edge variants.
+    {
+        PixieData grid = make_grid(3, 3, PIX_GRASS1);
+        unsigned char* g = grid.data.get();
+        g[1 + 1 * 3] = PIX_GRASS1; // center grass
+        // Water cluster lower-left for PIX_GRASSWATER_LL.
+        g[0 + 0 * 3] = PIX_WATER1; // upleft
+        g[0 + 1 * 3] = PIX_WATER1; // left
+        g[0 + 2 * 3] = PIX_WATER1; // downleft
+        g[1 + 2 * 3] = PIX_WATER1; // down
+        g[2 + 2 * 3] = PIX_WATER1; // downright
+        smoother s;
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+    }
+
+    // Trees and dirt/dark dirt: exercise additional genre-specific branches.
+    {
+        PixieData grid = make_grid(3, 3, PIX_GRASS1);
+        unsigned char* g = grid.data.get();
+        smoother s;
+
+        // Trees: top-middle and surrounded-ish cases.
+        set_neighbors(g, 3, PIX_TREE_M1, PIX_TREE_M1, PIX_GRASS1, TO_LEFT | TO_RIGHT | TO_DOWN);
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+
+        set_neighbors(g, 3, PIX_TREE_M1, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+
+        // Dirt: corner variants.
+        set_neighbors(g, 3, PIX_DIRT_1, PIX_DIRT_1, PIX_GRASS1, TO_LEFT | TO_DOWN);
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+
+        // Dark dirt: corner variants.
+        set_neighbors(g, 3, PIX_DIRT_DARK_1, PIX_DIRT_DARK_1, PIX_GRASS1, TO_RIGHT | TO_UP);
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+    }
+
+    // Water: exercise edge tile selection.
+    {
+        PixieData grid = make_grid(3, 3, PIX_GRASS1);
+        unsigned char* g = grid.data.get();
+        smoother s;
+        // Center water, only up is water => around == TO_UP
+        set_neighbors(g, 3, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_UP);
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+
+        // Only right is water => around == TO_RIGHT
+        set_neighbors(g, 3, PIX_WATER1, PIX_WATER1, PIX_GRASS1, TO_RIGHT);
+        s.set_target(grid);
+        (void)s.smooth(1, 1);
+    }
+
+    // Wall: arrow-slit selection based on what is above (grass/dark/stone/wood).
+    {
+        // 3x4 so y-1 and y+2 are in-bounds for some wall cases.
+        PixieData grid = make_grid(3, 4, PIX_GRASS1);
+        unsigned char* g = grid.data.get();
+        smoother s;
+        s.set_target(grid);
+
+        g[1 + 2 * 3] = PIX_WALL_ARROW_GRASS;
+
+        // Above is grass
+        g[1 + 1 * 3] = PIX_GRASS1;
+        (void)s.smooth(1, 2);
+
+        // Above is dark grass
+        g[1 + 1 * 3] = PIX_GRASS_DARK_1;
+        (void)s.smooth(1, 2);
+
+        // Above is stone pavement
+        g[1 + 1 * 3] = PIX_PAVEMENT1;
+        (void)s.smooth(1, 2);
+
+        // Above is wood floor
+        g[1 + 1 * 3] = PIX_FLOOR1;
+        (void)s.smooth(1, 2);
+    }
+}
+REGISTER_TEST(test_smoother_smooth_covers_multiple_genres_and_around_masks);

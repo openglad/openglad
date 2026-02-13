@@ -11,6 +11,11 @@
 #include <format>
 #include <memory>
 
+// For deterministic helper-only test coverage.
+#ifdef TESTING
+#include "ui/results_screen.h"
+#endif
+
 #ifdef OUYA
     #include "OuyaController.h"
 #endif
@@ -63,7 +68,9 @@ void show_ending_popup(int ending, int nextlevel)
 bool results_screen(int ending, int nextlevel)
 {
 #ifdef TESTING
-    Log("results_screen: ending={} nextlevel={}\n", ending, nextlevel);
+    // In test mode we still want to exercise the "ending" branching logic,
+    // but must avoid modal UI loops that would hang CI.
+    show_ending_popup(ending, nextlevel);
     return false;
 #endif
     // Popup the ending dialog
@@ -339,7 +346,10 @@ Uint32 get_time_bonus(int playernum)
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
 #ifdef TESTING
-    Log("results_screen: ending={} nextlevel={}\n", ending, nextlevel);
+    // Same rationale as the 2-arg overload: cover branching without UI loops.
+    show_ending_popup(ending, nextlevel);
+    (void)before;
+    (void)after;
     return false;
 #endif
     // Popup the ending dialog
@@ -359,8 +369,8 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
         LevelData original_level(level_data.id);
         original_level.load();
         num_foes_total = get_num_foes(original_level);
-    }
-    
+}
+
 	text& mytext = myscreen->text_normal;
 	text& bigtext = myscreen->text_big;
 	Uint32 bonuscash[4] = {0, 0, 0, 0};
@@ -792,3 +802,102 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
     
     return retry;
 }
+
+#ifdef TESTING
+int results_screen_test_exercise_internal()
+{
+    // Exercise the core computation helpers in this TU without entering any
+    // interactive UI loops (safe for CI).
+    int score = 0;
+
+    // walker/pixie store raw pointers to PixieData buffers; keep the data alive
+    // for the duration of this helper.
+    PixieData one_px(1, 1, 1, new unsigned char[1]{0});
+
+    // Ending popup branches.
+    myscreen->save_data.scen_num = 1;
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.current_levels.clear();
+    show_ending_popup(1, -1); // generic defeat
+    show_ending_popup(1, 2);  // retreat
+    show_ending_popup(SCEN_TYPE_SAVE_ALL, -1);
+    show_ending_popup(0, 2);  // victory not completed
+    myscreen->save_data.current_levels[myscreen->save_data.current_campaign] = myscreen->save_data.scen_num;
+    show_ending_popup(0, 2);  // victory completed
+    score++;
+
+    // TroopResult logic paths.
+    guy before{};
+    before.name = "Before";
+    before.family = FAMILY_MAGE;
+    before.level = 3;
+    before.exp = calculate_exp(before.level) + 10;
+
+    // after with null myguy should be ignored by ctor.
+    walker after_null(one_px);
+    after_null.clear_myguy();
+    TroopResult t0(&before, &after_null);
+    if (t0.get_name() == "Before")
+        score++;
+    if (!t0.get_class_name().empty())
+        score++;
+    (void)t0.get_XP_base();
+    (void)t0.get_XP_gain();
+    (void)t0.get_gained_specials();
+    (void)t0.is_new();
+
+    // after with owned myguy to cover gained/lost/no-change XP branches and HP paths.
+    walker after_owned(one_px);
+    auto owned = std::make_unique<guy>(FAMILY_MAGE);
+    owned->name = "After";
+    owned->family = FAMILY_MAGE;
+    owned->level = 4;
+    owned->exp = calculate_exp(owned->level) + 5; // gained level vs before.level=3
+    owned->scen_min_hp = 1;
+    after_owned.set_owned_myguy(std::move(owned));
+    after_owned.stats()->max_hitpoints = 10;
+    after_owned.stats()->hitpoints = 5;
+
+    TroopResult t1(&before, &after_owned);
+    if (t1.gained_level())
+        score++;
+    (void)t1.get_XP_gain();
+    (void)t1.get_HP();
+    (void)t1.get_tallies();
+    (void)t1.get_gained_specials();
+
+    // lost level branch
+    before.level = 6;
+    before.exp = calculate_exp(before.level);
+    after_owned.myguy->exp = calculate_exp(3); // lost
+    TroopResult t2(&before, &after_owned);
+    if (t2.lost_level())
+        score++;
+    (void)t2.get_XP_gain();
+
+    // unchanged level branch
+    before.level = 3;
+    before.exp = calculate_exp(before.level) + 20;
+    after_owned.myguy->exp = calculate_exp(before.level) + 25;
+    TroopResult t3(&before, &after_owned);
+    (void)t3.get_XP_gain();
+
+    // HP edge: scen_min_hp > current hitpoints returns 1.0
+    after_owned.myguy->scen_min_hp = 1000;
+    after_owned.stats()->hitpoints = 1;
+    TroopResult t4(nullptr, &after_owned);
+    if (t4.get_HP() >= 0.99f)
+        score++;
+    t4.draw_guy(160, 100, 0);
+
+    // Draw helper should no-op when dead.
+    after_owned.myguy->scen_min_hp = 0;
+    after_owned.stats()->hitpoints = 0;
+    TroopResult t5(nullptr, &after_owned);
+    if (t5.is_dead())
+        score++;
+    t5.draw_guy(160, 100, 0);
+
+    return score;
+}
+#endif

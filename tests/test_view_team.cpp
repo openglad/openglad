@@ -56,33 +56,52 @@ static int view_team_injector(void* data)
     ViewState* state = static_cast<ViewState*>(data);
     state->started = true;
 
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
-
+    // Wait for main menu and enter the create-team menu.
+    if (!wait_for_interactable("continue_game", 5000)) {
+        // Don't hang the whole suite if the menu didn't initialize.
+        state->finished = true;
+        return 0;
+    }
     fprintf(stderr, "  [test] clicking continue_game\n");
     interact("continue_game");
 
-    SDL_Delay(500);
-    wait_for_interactable("view_team", 10000);
-    SDL_Delay(1500);
+    // The picker menus are stateful; if our click didn't register (rare under load),
+    // re-click continue_game. If we do reach the create-team menu, view_team will be present.
+    const int kMenuTimeoutMs = 8000;
+    int elapsed = 0;
+    while (elapsed < kMenuTimeoutMs && !has_interactable("view_team")) {
+        if (has_interactable("continue_game")) {
+            fprintf(stderr, "  [test] retry clicking continue_game\n");
+            interact("continue_game");
+        } else if (has_interactable("begin_new_game")) {
+            // Still on main menu but continue_game missing? Give it a moment.
+        }
+        SDL_Delay(50);
+        elapsed += 50;
+    }
 
     fprintf(stderr, "  [test] clicking view_team\n");
     interact("view_team");
 
-    // View team menu has "go" and "back" buttons
-    SDL_Delay(500);
-    if (wait_for_interactable("go", 10000)) {
+    // View team menu has "go" and "back" buttons.
+    if (wait_for_interactable("go", 5000) && wait_for_interactable("back", 5000)) {
         state->saw_view_menu = true;
-        wait_for_interactable("back", 10000);
-        SDL_Delay(500);
         fprintf(stderr, "  [test] clicking back from view menu\n");
         interact("back");
+    }
 
-        // Back at the create-team menu, click BACK again to return to main menu.
-        wait_for_interactable("back", 10000);
-        SDL_Delay(500);
-        fprintf(stderr, "  [test] clicking back from team menu\n");
-        interact("back");
+    // Ensure we return to main menu even if the view menu wasn't reached.
+    // Prefer the BACK button when present; otherwise, fall back to Escape.
+    for (int i = 0; i < 4; i++) {
+        if (has_interactable("continue_game"))
+            break; // main menu
+        if (has_interactable("back")) {
+            fprintf(stderr, "  [test] clicking back\n");
+            interact("back");
+        } else {
+            inject_key_press(SDLK_ESCAPE, 10);
+        }
+        SDL_Delay(200);
     }
 
     state->finished = true;

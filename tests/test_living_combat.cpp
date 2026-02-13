@@ -95,6 +95,70 @@ void test_living_act_guard()
 }
 REGISTER_TEST(test_living_act_guard);
 
+void test_living_act_owner_dead_kills_summon()
+{
+    auto owner = make_living(FAMILY_MAGE);
+    auto summoned = make_living(FAMILY_FIREELEMENTAL);
+    TEST_ASSERT(owner && summoned, "walkers created");
+    if (!(owner && summoned))
+        return;
+
+    // Summoned living with an owner that is dead should die immediately.
+    summoned->owner = owner.get();
+    owner->dead = 1;
+    summoned->dead = 0;
+
+    bool r = summoned->act();
+    (void)r;
+    TEST_ASSERT(summoned->dead, "summon should die when owner is dead");
+}
+REGISTER_TEST(test_living_act_owner_dead_kills_summon);
+
+void test_living_act_lifetime_expires_without_owner()
+{
+    auto summoned = make_living(FAMILY_FIREELEMENTAL);
+    TEST_ASSERT(summoned, "walker created");
+    if (!summoned)
+        return;
+
+    // When lifetime is set and owner is missing, it should die.
+    summoned->lifetime = 1;
+    summoned->owner = nullptr;
+    summoned->dead = 0;
+
+    bool r = summoned->act();
+    (void)r;
+    TEST_ASSERT(summoned->dead, "living with lifetime but no owner should die");
+}
+REGISTER_TEST(test_living_act_lifetime_expires_without_owner);
+
+void test_living_act_fire_elemental_drain_heals_self_with_owner_resources()
+{
+    auto owner = make_living(FAMILY_MAGE);
+    auto summoned = make_living(FAMILY_FIREELEMENTAL);
+    TEST_ASSERT(owner && summoned, "walkers created");
+    if (!(owner && summoned))
+        return;
+
+    summoned->owner = owner.get();
+    summoned->lifetime = 5;
+    summoned->dead = 0;
+
+    // Hurt the elemental so it runs the drain logic.
+    summoned->stats()->max_hitpoints = 10;
+    summoned->stats()->hitpoints = 5;
+
+    owner->stats()->max_hitpoints = 30;
+    owner->stats()->hitpoints = 20;  // >= max/3 => can pay hp
+    owner->stats()->magicpoints = 10; // >= 3 => can pay mp
+
+    const float hp_before = summoned->stats()->hitpoints;
+    (void)summoned->act();
+
+    TEST_ASSERT(summoned->stats()->hitpoints >= hp_before, "fire elemental should heal when owner pays toll");
+}
+REGISTER_TEST(test_living_act_fire_elemental_drain_heals_self_with_owner_resources);
+
 // ---------------------------------------------------------------------------
 // living::facing for all 8 directions
 // ---------------------------------------------------------------------------

@@ -2789,19 +2789,124 @@ int level_editor_test_exercise_internal_helpers()
     if (rf_neg_h.contains(12.0f, 8.0f))
         score++;
 
-    SimpleButton btn("X", 0, 0, 20, 10);
-    if (btn.contains(1, 1))
-        score++;
-    btn.set_colors_disabled();
-    btn.set_colors_active();
+	    SimpleButton btn("X", 0, 0, 20, 10);
+	    if (btn.contains(1, 1))
+	        score++;
+	    // Draw path is mostly UI plumbing; just smoke it to cover the function.
+	    btn.draw(myscreen);
+	    btn.set_colors_disabled();
+	    btn.set_colors_active();
 
-    EditorObjectBrush brush;
-    brush.set(nullptr);
-    if (brush.order == Order::Living && brush.family == 0)
-        score++;
+	    EditorObjectBrush brush;
+	    brush.set(nullptr);
+	    if (brush.order == Order::Living && brush.family == 0)
+	        score++;
+
+	    // Exercise menu helper logic in a deterministic, non-interactive way.
+	    {
+	        LevelEditorData data_for_menus;
+	        data_for_menus.level->create_new_grid();
+
+	        // button_showing: empty and non-empty cases.
+	        {
+	            std::list<std::pair<SimpleButton*, std::set<SimpleButton*> > > cm;
+	            if (!button_showing(cm, &data_for_menus.fileButton))
+	                score++;
+	            cm.emplace_back(&data_for_menus.fileButton, std::set<SimpleButton*>{&data_for_menus.fileCampaignButton});
+	            if (button_showing(cm, &data_for_menus.fileCampaignButton))
+	                score++;
+	        }
+
+	        // update_menu_buttons: toggle each flag and ensure label changes.
+	        data_for_menus.level->type = 0;
+	        data_for_menus.update_menu_buttons();
+	        if (data_for_menus.levelGoalsEnemiesButton.label.find("On") != std::string::npos)
+	            score++;
+	        data_for_menus.level->type |= LevelData::TYPE_CAN_EXIT_WHENEVER;
+	        data_for_menus.level->type |= LevelData::TYPE_MUST_DESTROY_GENERATORS;
+	        data_for_menus.level->type |= LevelData::TYPE_MUST_PROTECT_NAMED_NPCS;
+	        data_for_menus.update_menu_buttons();
+	        if (data_for_menus.levelGoalsEnemiesButton.label.find("Off") != std::string::npos)
+	            score++;
+	        if (data_for_menus.levelGoalsGeneratorsButton.label.find("On") != std::string::npos)
+	            score++;
+	        if (data_for_menus.levelGoalsNPCsButton.label.find("On") != std::string::npos)
+	            score++;
+
+	        // reset_mode_buttons: terrain/object/select branches.
+	        data_for_menus.mode = Mode::Terrain;
+	        data_for_menus.terrain_brush.picking = false;
+	        data_for_menus.reset_mode_buttons();
+	        if (data_for_menus.mode_buttons.find(&data_for_menus.terrainSmoothButton) != data_for_menus.mode_buttons.end())
+	            score++;
+	        data_for_menus.activate_mode_button(&data_for_menus.pickerButton);
+	        if (data_for_menus.terrain_brush.picking)
+	            score++;
+
+	        data_for_menus.mode = Mode::Object;
+	        data_for_menus.object_brush.picking = false;
+	        data_for_menus.object_brush.snap_to_grid = true;
+	        data_for_menus.reset_mode_buttons();
+	        data_for_menus.activate_mode_button(&data_for_menus.pickerButton);
+	        if (data_for_menus.object_brush.picking)
+	            score++;
+	        data_for_menus.activate_mode_button(&data_for_menus.gridSnapButton);
+	        if (!data_for_menus.object_brush.snap_to_grid)
+	            score++;
+
+	        data_for_menus.mode = Mode::Select;
+	        data_for_menus.selection.clear();
+	        data_for_menus.reset_mode_buttons();
+	        // With no selection, only snap should be present.
+	        if (data_for_menus.mode_buttons.find(&data_for_menus.gridSnapButton) != data_for_menus.mode_buttons.end())
+	            score++;
+	        // One selection with a living order should add setNameButton.
+	        walker* one = data_for_menus.level->add_ob(Order::Living, FAMILY_SOLDIER);
+	        if (one)
+	        {
+	            SelectionInfo sel(one);
+	            data_for_menus.selection.push_back(sel);
+	            data_for_menus.reset_mode_buttons();
+	            if (data_for_menus.mode_buttons.find(&data_for_menus.setNameButton) != data_for_menus.mode_buttons.end())
+	                score++;
+	        }
+
+	        // mouse_on_menus: hit top menu, mode buttons, pan area, and submenu buttons.
+	        data_for_menus.mode = Mode::Terrain;
+	        data_for_menus.reset_mode_buttons();
+	        if (data_for_menus.mouse_on_menus(data_for_menus.fileButton.area.x + 1, data_for_menus.fileButton.area.y + 1))
+	            score++;
+	        if (!data_for_menus.mode_buttons.empty())
+	        {
+	            auto* mb = *data_for_menus.mode_buttons.begin();
+	            if (mb && data_for_menus.mouse_on_menus(mb->area.x + 1, mb->area.y + 1))
+	                score++;
+	        }
+	        // Force-enable pan buttons in tests to cover the "pan area" branch.
+	        data_for_menus.pan_buttons.insert(&data_for_menus.panUpButton);
+	        data_for_menus.pan_buttons.insert(&data_for_menus.panDownButton);
+	        data_for_menus.pan_buttons.insert(&data_for_menus.panLeftButton);
+	        data_for_menus.pan_buttons.insert(&data_for_menus.panRightButton);
+	        if (data_for_menus.mouse_on_menus(data_for_menus.panUpButton.area.x + 1, data_for_menus.panUpButton.area.y + 1))
+	            score++;
+	        // Simulate a submenu being open so the list iteration checks a button.
+	        data_for_menus.current_menu.clear();
+	        data_for_menus.current_menu.emplace_back(&data_for_menus.fileButton, std::set<SimpleButton*>{&data_for_menus.fileCampaignButton});
+	        if (data_for_menus.mouse_on_menus(data_for_menus.fileCampaignButton.area.x + 1, data_for_menus.fileCampaignButton.area.y + 1))
+	            score++;
+	    }
 
 	    {
 	        LevelEditorData data;
+	        // Make the helper deterministic across test order by ensuring the
+	        // campaign package we want is mounted before loading.
+	        {
+	            std::string old_campaign = get_mounted_campaign();
+	            if (!old_campaign.empty())
+	                unmount_campaign_package(old_campaign);
+	            mount_campaign_package("org.openglad.gladiator");
+	        }
+
 	        const bool loaded_ok =
 	            data.loadCampaign("org.openglad.gladiator") &&
 	            data.reloadCampaign() &&
@@ -2975,13 +3080,246 @@ int level_editor_test_exercise_internal_helpers()
 	                data.activate_mode_button(&data.deleteButton);
 	                if (data.selection.empty())
 	                    score++;
-	            }
-	        }
-	    }
 
-    return score;
-}
-#endif
+                    // Panel rendering paths (mode-specific UI drawing). These are pure
+                    // draw calls and should be deterministic in test mode.
+                    {
+                        // NOTE: deleteButton above removes selected objects from the level.
+                        // Re-create stable objects for the panel rendering paths.
+                        walker* panel_inside = data.level->add_ob(Order::Living, FAMILY_SOLDIER);
+                        walker* panel_inside2 = data.level->add_ob(Order::Living, FAMILY_ELF);
+                        if (panel_inside != nullptr)
+                        {
+                            panel_inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+                            panel_inside->team_num = 1;
+                            panel_inside->curdir = FACE_UP;
+                            panel_inside->stats()->level = 2;
+                            panel_inside->stats()->name = "PANEL_A";
+                        }
+                        if (panel_inside2 != nullptr)
+                        {
+                            panel_inside2->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
+                            panel_inside2->team_num = 0;
+                            panel_inside2->curdir = FACE_UP_LEFT;
+                            panel_inside2->stats()->level = 1;
+                            panel_inside2->stats()->name = "PANEL_B";
+                        }
+
+                        // Ensure the object pane is populated (normally done by level_editor()).
+                        object_pane.clear();
+                        for (int family_idx = 0; family_idx < NUM_FAMILIES; family_idx++)
+                            object_pane.push_back(ObjectType(Order::Living, static_cast<unsigned char>(family_idx)));
+                        for (int treasure_idx = 0; treasure_idx < MAX_TREASURE + 1; treasure_idx++)
+                            object_pane.push_back(ObjectType(Order::Treasure, static_cast<unsigned char>(treasure_idx)));
+                        for (int gen_idx = 0; gen_idx < 4; gen_idx++)
+                            object_pane.push_back(ObjectType(Order::Generator, static_cast<unsigned char>(gen_idx)));
+                        object_pane.push_back(ObjectType(Order::Weapon, FAMILY_DOOR));
+                        object_pane.push_back(ObjectType(Order::Special, FAMILY_RESERVED_TEAM));
+                        rowsdown = 0;
+
+                        // Force-enable pan button drawing even when not compiled for touch/controller.
+                        data.pan_buttons.insert(&data.panUpButton);
+                        data.pan_buttons.insert(&data.panDownButton);
+                        data.pan_buttons.insert(&data.panLeftButton);
+                        data.pan_buttons.insert(&data.panRightButton);
+                        data.pan_buttons.insert(&data.panUpRightButton);
+                        data.pan_buttons.insert(&data.panUpLeftButton);
+                        data.pan_buttons.insert(&data.panDownRightButton);
+                        data.pan_buttons.insert(&data.panDownLeftButton);
+
+                        MouseState& ms = query_mouse_no_poll();
+                        ms.x = 50;
+                        ms.y = 50;
+                        ms.left = false;
+                        ms.right = false;
+
+                        // Terrain mode panel (background tile grid + cursor box).
+                        data.mode = Mode::Terrain;
+                        data.terrain_brush.terrain = PIX_GRASS1;
+                        data.reset_mode_buttons();
+                        data.draw(myscreen);
+
+                        // Object mode panel (object pane sprites + cursor brush draw).
+                        data.mode = Mode::Object;
+                        data.object_brush.order = Order::Living;
+                        data.object_brush.family = FAMILY_SOLDIER;
+                        data.object_brush.team = 2;
+                        data.object_brush.snap_to_grid = true;
+                        data.reset_mode_buttons();
+                        data.draw(myscreen);
+
+                        // Select mode panel with selection indicators and info box.
+                        data.mode = Mode::Select;
+                        data.selection.clear();
+                        if (panel_inside != nullptr)
+                            data.selection.push_back(SelectionInfo(panel_inside));
+                        if (panel_inside2 != nullptr)
+                            data.selection.push_back(SelectionInfo(panel_inside2));
+                        data.reset_mode_buttons();
+                        data.draw(myscreen);
+
+                        // Exercise rect selection draw with negative sizes (normalization paths).
+                        data.rect_selecting = true;
+                        data.selection_rect = Rectf(100.0f, 100.0f, -15.0f, -10.0f);
+                        data.draw(myscreen);
+                        data.rect_selecting = false;
+
+	                        // Exercise "+N more" display path by providing > 6 selections.
+	                        data.selection.clear();
+	                        for (int k = 0; k < 7; k++)
+	                            data.selection.push_back(SelectionInfo(panel_inside));
+	                        data.reset_mode_buttons();
+	                        data.draw(myscreen);
+	                        data.selection.clear();
+
+                            // Exercise deterministic mouse_up paths directly (avoid full editor loop).
+                            bool done = false;
+
+                            // Select mode: click selects object under cursor.
+                            data.mode = Mode::Select;
+                            data.selection.clear();
+                            data.rect_selecting = false;
+                            data.dragging = false;
+                            data.reset_mode_buttons();
+                            data.mouse_up(100, 150, 100, 150, done);
+
+                            // Select mode: rectangle select adds contained objects (w/h large enough).
+                            data.mode = Mode::Select;
+                            data.selection.clear();
+                            data.rect_selecting = true;
+                            data.selection_rect = Rectf(static_cast<float>(GRID_SIZE), static_cast<float>(GRID_SIZE),
+                                                        static_cast<float>(GRID_SIZE * 5), static_cast<float>(GRID_SIZE * 5));
+                            data.mouse_up(120, 160, 120, 160, done);
+                            data.rect_selecting = false;
+
+                            // Terrain mode: click terrain palette to change brush.
+                            data.mode = Mode::Terrain;
+                            data.reset_mode_buttons();
+                            data.mouse_up(S_RIGHT + 1, PIX_TOP + 1, S_RIGHT + 1, PIX_TOP + 1, done);
+
+                            // Terrain mode: pick-by-mouse path.
+                            data.mode = Mode::Terrain;
+                            data.terrain_brush.picking = true;
+                            data.reset_mode_buttons();
+                            data.mouse_up(100, 150, 100, 150, done);
+                            if (!data.terrain_brush.picking)
+                                score++;
+
+                            // Object mode: click object palette to change family.
+                            data.mode = Mode::Object;
+                            data.object_brush.picking = false;
+                            data.reset_mode_buttons();
+                            data.mouse_up(S_RIGHT + 1, PIX_TOP + 1, S_RIGHT + 1, PIX_TOP + 1, done);
+
+                            // Object mode: place object with snap_to_grid off (draw-and-release path without blocking).
+                            data.mode = Mode::Object;
+                            data.object_brush.order = Order::Living;
+                            data.object_brush.family = FAMILY_ORC;
+                            data.object_brush.team = 1;
+                            data.object_brush.level = 2;
+                            data.object_brush.snap_to_grid = false;
+                            data.object_brush.picking = false;
+                            data.reset_mode_buttons();
+                            data.mouse_up(120, 160, 120, 160, done);
+
+                            // Object mode: picking path uses pick_by_mouse.
+                            data.mode = Mode::Object;
+                            data.object_brush.picking = true;
+		                        data.reset_mode_buttons();
+                            data.mouse_up(120, 160, 120, 160, done);
+                            if (!data.object_brush.picking)
+                                score++;
+		
+                            // -----------------------------------------------------------------
+                            // Menu choice branches (non-interactive under TESTING)
+                            // -----------------------------------------------------------------
+                            // Drive menu handlers directly by configuring current_menu to show
+                            // the target items, then calling mouse_up() at button coords.
+                            {
+                                MouseState& menu_mouse = query_mouse_no_poll();
+                                menu_mouse.left = false;
+                                menu_mouse.right = false;
+		
+                                auto show_menu_items = [&data](SimpleButton& parent, std::initializer_list<SimpleButton*> items)
+                                {
+                                    data.current_menu.clear();
+                                    std::set<SimpleButton*> s;
+                                    for (auto* b : items)
+                                        s.insert(b);
+                                    data.current_menu.push_back(std::make_pair(&parent, s));
+                                };
+		
+                                auto click_menu_item = [&data](SimpleButton& item)
+                                {
+                                    bool done2 = false;
+                                    mouse_up_button = MOUSE_LEFT;
+                                    const int mx = item.area.x + 1;
+                                    const int my = item.area.y + 1;
+                                    data.mouse_up(mx, my, mx, my, done2);
+                                };
+		
+                                // Campaign info (popup under TESTING).
+                                show_menu_items(data.campaignButton, {&data.campaignInfoButton});
+                                click_menu_item(data.campaignInfoButton);
+		
+                                // Campaign profile edits (prompt_for_string under TESTING returns quickly).
+                                show_menu_items(data.campaignProfileButton, {&data.campaignProfileTitleButton, &data.campaignProfileAuthorsButton, &data.campaignProfileContributorsButton});
+                                click_menu_item(data.campaignProfileTitleButton);
+                                click_menu_item(data.campaignProfileAuthorsButton);
+                                click_menu_item(data.campaignProfileContributorsButton);
+		
+                                // Campaign details edits.
+                                show_menu_items(data.campaignDetailsButton, {&data.campaignDetailsVersionButton, &data.campaignDetailsSuggestedPowerButton, &data.campaignDetailsFirstLevelButton});
+                                click_menu_item(data.campaignDetailsVersionButton);
+                                click_menu_item(data.campaignDetailsSuggestedPowerButton);
+                                click_menu_item(data.campaignDetailsFirstLevelButton);
+		
+                                // Level info + profile title.
+                                show_menu_items(data.levelButton, {&data.levelInfoButton, &data.levelProfileTitleButton});
+                                click_menu_item(data.levelInfoButton);
+                                click_menu_item(data.levelProfileTitleButton);
+		
+                                // Level details numeric prompts.
+                                show_menu_items(data.levelDetailsButton, {&data.levelDetailsParValueButton, &data.levelDetailsTimeLimitButton});
+                                click_menu_item(data.levelDetailsParValueButton);
+                                click_menu_item(data.levelDetailsTimeLimitButton);
+		
+                                // Level goals toggles.
+                                show_menu_items(data.levelGoalsButton, {&data.levelGoalsEnemiesButton, &data.levelGoalsGeneratorsButton, &data.levelGoalsNPCsButton});
+                                click_menu_item(data.levelGoalsEnemiesButton);
+                                click_menu_item(data.levelGoalsGeneratorsButton);
+                                click_menu_item(data.levelGoalsNPCsButton);
+		
+                                // Force yes_or_no_prompt() to return true for the next prompts so we
+                                // exercise the "do it" branches deterministically.
+                                extern void picker_testing_yes_or_no_queue_clear();
+                                extern void picker_testing_yes_or_no_queue_push(bool value);
+                                picker_testing_yes_or_no_queue_clear();
+                                picker_testing_yes_or_no_queue_push(true); // Clear terrain
+                                picker_testing_yes_or_no_queue_push(true); // Clear objects
+		
+                                // Clear all terrain/objects branches.
+                                show_menu_items(data.levelButton, {&data.levelDeleteTerrainButton, &data.levelDeleteObjectsButton});
+                                click_menu_item(data.levelDeleteTerrainButton);
+                                click_menu_item(data.levelDeleteObjectsButton);
+		
+                                // Map resize validation error branch (popup dialog; avoids timed_dialog).
+                                extern void level_editor_testing_prompt_queue_clear();
+                                extern void level_editor_testing_prompt_queue_push(const char* s);
+                                level_editor_testing_prompt_queue_clear();
+                                level_editor_testing_prompt_queue_push("2"); // width < 3
+                                level_editor_testing_prompt_queue_push("2"); // height < 3
+                                show_menu_items(data.levelDetailsButton, {&data.levelDetailsMapSizeButton});
+                                click_menu_item(data.levelDetailsMapSizeButton);
+                            }
+		                    }
+			            }
+			        }
+			    }
+		
+	    return score;
+	}
+	#endif
 
 std::string get_editor_family_label(Order order, Sint32 family, char livings[][20], const char* treasures[], const char* weapons[])
 {

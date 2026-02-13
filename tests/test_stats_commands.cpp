@@ -130,6 +130,18 @@ void test_stats_do_command_right_walk()
 }
 REGISTER_TEST(test_stats_do_command_right_walk);
 
+void test_stats_do_command_die_sets_delete_me()
+{
+    auto w = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    w->dead = 1; // avoid log spam; COMMAND_DIE expects a dead controller
+    w->stats()->delete_me = 0;
+    w->stats()->force_command(COMMAND_DIE, 1, 0, 0);
+    (void)w->stats()->do_command();
+    TEST_ASSERT(w->stats()->delete_me == 1, "COMMAND_DIE should set delete_me when count < 2");
+}
+REGISTER_TEST(test_stats_do_command_die_sets_delete_me);
+
 // COMMAND_SPECIAL doesn't exist as a constant - specials are called directly
 
 // ---------------------------------------------------------------------------

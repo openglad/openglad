@@ -255,3 +255,98 @@ void test_level_editor_runs_and_handles_basic_input()
     TEST_ASSERT(st.finished, "injector thread should have finished");
 }
 REGISTER_TEST(test_level_editor_runs_and_handles_basic_input);
+
+namespace
+{
+static void push_mouse_motion(int x, int y, int xrel = 0, int yrel = 0)
+{
+    SDL_Event e{};
+    e.type = SDL_MOUSEMOTION;
+    e.motion.x = x;
+    e.motion.y = y;
+    e.motion.xrel = xrel;
+    e.motion.yrel = yrel;
+    SDL_PushEvent(&e);
+}
+
+static void push_mouse_drag(int x0, int y0, int x1, int y1)
+{
+    SDL_Event down{};
+    down.type = SDL_MOUSEBUTTONDOWN;
+    down.button.button = SDL_BUTTON_LEFT;
+    down.button.state = SDL_PRESSED;
+    down.button.x = x0;
+    down.button.y = y0;
+    SDL_PushEvent(&down);
+
+    SDL_Delay(10);
+    push_mouse_motion(x1, y1, x1 - x0, y1 - y0);
+    SDL_Delay(10);
+
+    SDL_Event up{};
+    up.type = SDL_MOUSEBUTTONUP;
+    up.button.button = SDL_BUTTON_LEFT;
+    up.button.state = SDL_RELEASED;
+    up.button.x = x1;
+    up.button.y = y1;
+    SDL_PushEvent(&up);
+}
+
+static int editor_edit_smoke_injector(void* data)
+{
+    EditorThreadState* st = static_cast<EditorThreadState*>(data);
+    st->started = true;
+
+    SDL_Delay(300);
+
+    // Enter terrain mode and paint a couple of tiles.
+    inject_key_press(SDLK_t, 10);
+    inject_key_press(SDLK_g, 10);  // toggle grid alignment
+    inject_key_press(SDLK_1, 10);
+    inject_click(160, 120, 10);
+    inject_key_press(SDLK_2, 10);
+    push_mouse_drag(170, 120, 190, 120);
+
+    // Smooth current map path (F5), then toggle grid again.
+    inject_key_press(SDLK_F5, 10);
+    inject_key_press(SDLK_g, 10);
+
+    // Switch to object mode, cycle brush, and place an object.
+    inject_key_press(SDLK_o, 10);
+    inject_key_press(SDLK_RIGHTBRACKET, 10);
+    inject_key_press(SDLK_LEFTBRACKET, 10);
+    inject_click(200, 130, 10);
+
+    // Select mode: click/drag selection area and delete selection/object.
+    inject_key_press(SDLK_o, 10);  // object -> select
+    push_mouse_drag(190, 120, 210, 140);
+    inject_key_press(SDLK_DELETE, 10);
+
+    // Exit editor.
+    SDL_Delay(200);
+    myscreen->end = 1;
+
+    st->finished = true;
+    return 0;
+}
+} // namespace
+
+void test_level_editor_edits_terrain_and_places_objects_smoke()
+{
+    myscreen->end = 0;
+
+    EditorThreadState st{false, false};
+    SDL_Thread* thread = SDL_CreateThread(editor_edit_smoke_injector, "editor_edit_smoke", &st);
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+
+    (void)level_editor();
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    myscreen->end = 0;
+
+    TEST_ASSERT(st.started, "injector thread should have started");
+    TEST_ASSERT(st.finished, "injector thread should have finished");
+}
+REGISTER_TEST(test_level_editor_edits_terrain_and_places_objects_smoke);

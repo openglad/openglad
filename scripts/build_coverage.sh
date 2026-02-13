@@ -34,20 +34,30 @@ COV_DIR="$PROJECT_ROOT/coverage"
 rm -rf "$COV_DIR"
 mkdir -p "$COV_DIR"
 
+echo "Cleaning up leftover test campaigns (prevents hangs on malformed fixtures)..."
+# Some tests create campaigns under ~/.openglad/campaigns (e.g. org.openglad.test.*).
+# If a prior run was interrupted, malformed fixture campaigns can persist and cause
+# picker flows to hang. Remove them before running the suite under coverage.
+rm -f "$HOME/.openglad/campaigns/org.openglad.test."*.glad 2>/dev/null || true
+
 echo "Building coverage-instrumented test binaries..."
 cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DENABLE_COVERAGE=ON
 cmake --build "$BUILD_DIR" --target openglad_test og_data_tests og_runtime_tests -j"$(nproc)"
 
 echo ""
 echo "Zeroing counters..."
+# When code changes, stale *.gcda files from previous builds can cause
+# libgcov checksum mismatches. Remove them to keep coverage runs reproducible.
+find "$BUILD_DIR" -name "*.gcda" -delete 2>/dev/null || true
+find "$BUILD_DIR" -name "*.gcov" -delete 2>/dev/null || true
 lcov --quiet --directory "$BUILD_DIR" --zerocounters || true
 
 echo ""
 echo "Running tests (writes *.gcda)..."
 # Run from project root so assets resolve as in normal test runs.
-"$BUILD_DIR/openglad_test"
-"$BUILD_DIR/og_data_tests"
-"$BUILD_DIR/og_runtime_tests"
+timeout 300 "$BUILD_DIR/openglad_test"
+timeout 300 "$BUILD_DIR/og_data_tests"
+timeout 300 "$BUILD_DIR/og_runtime_tests"
 
 echo ""
 echo "Capturing coverage..."

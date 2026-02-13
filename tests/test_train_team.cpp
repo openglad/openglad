@@ -118,6 +118,28 @@ static int train_injector(void* data)
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
 
+    // Occasionally the final BACK click can be missed (menu-loop timing). Keep
+    // nudging Escape/BACK until we see main menu again so the test can't hang.
+    const Uint32 deadline = SDL_GetTicks() + 8000;
+    while (SDL_GetTicks() < deadline)
+    {
+        // If the main menu is back, we are done.
+        if (wait_for_interactable("continue_game", 150))
+            break;
+
+        // Prefer Escape since BACK has KEYSTATE_ESCAPE in most picker menus.
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
+
+        // If we're still in a submenu with a BACK button, click it again.
+        if (wait_for_interactable("back", 150))
+        {
+            fprintf(stderr, "  [test] retry clicking back\n");
+            interact("back");
+            SDL_Delay(150);
+        }
+    }
+
     state->finished = true;
     return 0;
 }

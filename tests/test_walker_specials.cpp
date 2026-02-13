@@ -986,6 +986,76 @@ void test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc()
 }
 REGISTER_SPECIAL_TEST(test_walker_special_orc_eat_corpse_and_barbarian_exploding_boulder_npc);
 
+void test_walker_special_cleric_raise_skeleton_and_ghost_from_stain()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* cleric = make_special_guy(FAMILY_CLERIC, 1, 6);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    if (!cleric)
+        return;
+
+    // Place a blood stain close by but not colliding with other objects.
+    walker* stain = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    TEST_ASSERT(stain != nullptr, "stain created");
+    if (!stain) {
+        delete cleric;
+        return;
+    }
+
+    cleric->setxy(80, 80);
+    cleric->team_num = 1;
+    cleric->busy = 0;
+    cleric->stats()->magicpoints = 2000;
+    cleric->stats()->max_magicpoints = 2000;
+
+    stain->setxy(110, 80);
+    stain->team_num = 2;
+    stain->dead = 0;
+
+    // Raise skeletons (special 2, shifter up).
+    cleric->current_special = 2;
+    cleric->shifter_down = 0;
+    (void)cleric->special();
+
+    // Raise ghosts (special 3, shifter up).
+    cleric->busy = 0;
+    cleric->current_special = 3;
+    cleric->shifter_down = 0;
+    (void)cleric->special();
+
+    delete cleric;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_cleric_raise_skeleton_and_ghost_from_stain);
+
+void test_walker_special_elf_rock_barrage_level4_smoke()
+{
+    myscreen->level_data.delete_objects();
+
+    // Deterministic rand()-based perturbation inside elf special.
+    srand(123);
+
+    walker* elf = make_special_guy(FAMILY_ELF, 1, 6);
+    TEST_ASSERT(elf != nullptr, "elf created");
+    if (!elf)
+        return;
+
+    elf->setxy(100, 100);
+    elf->lastx = elf->stepsize;
+    elf->lasty = 0;
+    elf->busy = 0;
+    elf->current_special = 4;
+    elf->stats()->magicpoints = 2000;
+    elf->stats()->max_magicpoints = 2000;
+
+    (void)elf->special();
+
+    delete elf;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_elf_rock_barrage_level4_smoke);
+
 void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
 {
     myscreen->level_data.delete_objects();

@@ -25,6 +25,7 @@
 #include <cstring>
 #include <list>
 #include <string>
+#include <vector>
 
 namespace {
 constexpr int YES_VALUE = 5;
@@ -91,10 +92,35 @@ void timed_dialog(const char* message, float delay_seconds)
     }
 }
 
+#ifdef TESTING
+namespace
+{
+// Optional test-only override for yes_or_no_prompt(). When empty, the function
+// falls back to returning the provided default_value.
+std::vector<bool> s_yes_or_no_overrides;
+}
+
+void picker_testing_yes_or_no_queue_clear()
+{
+    s_yes_or_no_overrides.clear();
+}
+
+void picker_testing_yes_or_no_queue_push(bool value)
+{
+    s_yes_or_no_overrides.push_back(value);
+}
+#endif
+
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
 {
     Log("{}, {}: \n", title, message);
 #ifdef TESTING
+    if (!s_yes_or_no_overrides.empty())
+    {
+        bool v = s_yes_or_no_overrides.front();
+        s_yes_or_no_overrides.erase(s_yes_or_no_overrides.begin());
+        return v;
+    }
     return default_value;
 #endif
 

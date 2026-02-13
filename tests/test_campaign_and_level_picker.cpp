@@ -19,6 +19,26 @@ int toInt(const std::string& s);
 // results_screen.cpp helper
 void show_ending_popup(int ending, int nextlevel);
 
+namespace
+{
+void cleanup_leftover_test_campaigns()
+{
+    // Prior failed/aborted runs can leave behind test campaign packages in
+    // ~/.openglad/campaigns. Some of those are intentionally malformed and can
+    // cause picker flows to hang while enumerating/loading campaigns.
+    //
+    // Keep this narrow: only delete known-hazard prefixes created by tests.
+    for (const auto& id : list_campaigns())
+    {
+        if (id.rfind("org.openglad.test.invalid_yaml.", 0) == 0 ||
+            id.rfind("org.openglad.test.missing_yaml.", 0) == 0)
+        {
+            delete_campaign(id);
+        }
+    }
+}
+} // namespace
+
 static int hold_q_key_for_picker(void* data)
 {
     (void)data;
@@ -123,6 +143,8 @@ static int level_picker_delete_then_cancel_injector(void* data)
 
 void test_campaign_picker_cancel_esc_does_not_crash()
 {
+    cleanup_leftover_test_campaigns();
+
     TEST_ASSERT(isDir("."), "isDir should report current directory as directory");
     TEST_ASSERT(!isDir("./definitely_missing_openglad_path"), "isDir should report missing path as not directory");
 
@@ -153,6 +175,8 @@ REGISTER_TEST(test_campaign_picker_cancel_esc_does_not_crash);
 
 void test_campaign_picker_draw_loop_exits_on_q()
 {
+    cleanup_leftover_test_campaigns();
+
     char old_end = myscreen->end;
     myscreen->end = 0;
 
@@ -171,6 +195,8 @@ REGISTER_TEST(test_campaign_picker_draw_loop_exits_on_q);
 
 void test_campaign_picker_mouse_choose_and_cancel_paths()
 {
+    cleanup_leftover_test_campaigns();
+
     ViewportGuard guard;
     window_w = 320;
     window_h = 200;
@@ -202,6 +228,8 @@ REGISTER_TEST(test_campaign_picker_mouse_choose_and_cancel_paths);
 
 void test_campaign_picker_delete_and_reset_prompt_paths()
 {
+    cleanup_leftover_test_campaigns();
+
     ViewportGuard guard;
     window_w = 320;
     window_h = 200;

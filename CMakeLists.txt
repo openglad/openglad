@@ -703,37 +703,49 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_intro_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sai2x_scaler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_menu_driven.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_options_menu_driven.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_game_context.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_effect_chain_and_door.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_effect_weapon_interactions.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_game_context.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy_calcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_funcs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_screen_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_video_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_living_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_guy_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_combat.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_video_draw.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
+		            ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
+		            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
+		            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
+		            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_video_draw.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gloader_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_screen_extended.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_resize.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_view_resize.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_more_branches.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_radar_more.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_text_render.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_text_input_and_width.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_video_fade.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_video_extra.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_movement.cpp
@@ -748,11 +760,13 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_timed_dialog.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_costs.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_video_buffers.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_archivers.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_input_more.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_help_parsing.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_video_buffers.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_video_pixel_ops.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_video_modes_more.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_archivers.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_input_more.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_help_parsing.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_glad_hud.cpp
@@ -763,10 +777,12 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_zlib_more.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_menu_nav.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_document.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_api_builder.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
+		            ${CMAKE_SOURCE_DIR}/tests/test_view_get_keypress_and_edge_cases.cpp
+		            ${CMAKE_SOURCE_DIR}/tests/test_view_input_prefs_and_redraw.cpp
+		            ${CMAKE_SOURCE_DIR}/tests/test_picker_menu_nav.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_document.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_external_yaml_api_builder.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_unicode.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_byteorder.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_input_joystick.cpp
@@ -775,6 +791,18 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_ownership_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_text_input_ex_value.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_detail_menu_driven.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_team_list.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_death_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_input_event_dispatch.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
         )
 
         # Module-level test binaries (kept in addition to the full integration suite).
@@ -791,6 +819,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
         )
 
         set(RUNTIME_TEST_SOURCES
@@ -807,6 +836,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_pathing.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
