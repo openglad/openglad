@@ -83,7 +83,8 @@ struct meminfo
 	unsigned Reserved[3];
 };
 
-extern screen * myscreen; // global, availible to anyone
+// Observer pointer. Owned by `runtime/screen_lifecycle` (`global_screen_owner()`).
+extern screen * myscreen; // global, available to anyone
 
 inline constexpr int MAX_LEVELS = 500; // Maximum number of scenarios allowed ..
 

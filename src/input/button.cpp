@@ -127,8 +127,6 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     xend = xloc + width;
     yend = yloc + height;
     label = msg;
-    next = nullptr;
-    //  prev = nullptr;
     had_focus = 0;
     do_outline = 0;
     depressed = 0;
@@ -156,8 +154,6 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     xend = xloc + width;
     yend = yloc + height;
     label = msg;
-    next = nullptr;
-    //  prev = nullptr;
     had_focus = 0;
     do_outline = 0;
     depressed = 0;
@@ -186,8 +182,6 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
     xend = xloc + width;
     yend = yloc + height;
     label = msg;
-    next = nullptr;
-    //  prev = nullptr;
     had_focus = 0;
     do_outline = 0;
     depressed = 0;
@@ -208,27 +202,13 @@ vbutton::vbutton(Sint32 xpos, Sint32 ypos, Sint32 wide, Sint32 high,
 
 vbutton::vbutton() //for pointers
 {
-    next = nullptr;
-    //  prev = nullptr;
     had_focus = do_outline = depressed = 0;
     mypixie = nullptr;
 }
 
 vbutton::~vbutton()
 {
-    //myscreen->draw_box(xloc-4,yloc-4,xend+4,yend+4,0,1,1);
-
-    /*
-      release_mouse();
-      myscreen->buffer_to_screen(xloc-4,yloc-4,xend + 4, yend+4);
-      grab_mouse();
-
-      if (next != nullptr)
-      {
-        delete next;
-        next = nullptr;
-      }
-    */
+    // No manual ownership; menu buttons are owned by `owned_buttons` in this TU.
 }
 
 void vbutton::set_graphic(char family)

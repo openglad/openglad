@@ -46,6 +46,7 @@ inline constexpr char BUTTON_BOTTOM = 11; //10
 inline constexpr char BUTTON_LEFT   = 14; //13
 inline constexpr char BUTTON_RIGHT  = 12; //11
 
+// Observer pointer. Owned by `runtime/screen_lifecycle` (`global_screen_owner()`).
 extern screen *myscreen;
 
 // Holds array indices for navigating menu buttons
@@ -132,8 +133,6 @@ class vbutton
 		std::function<Sint32(Sint32)> fun; // optional direct callback
 		Sint32 myfunc;
 		Sint32 arg; //the arg to be passed to the function when called
-		vbutton * next; //a pointer to the next button
-		vbutton * prev; //a pointer to the previous button
 		char had_focus; // did we recently have focus?
 		char do_outline; // force an outline
 		char depressed;

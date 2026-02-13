@@ -115,10 +115,6 @@ void init_input();
 void draw_radar_gems(screen  *myscreen);
 void draw_gem(short x, short y, short color, screen * myscreen);
 
-unsigned char *radarpic;
-pixie *radarpix;
-
-
 void glad_main(screen *myscreen, Sint32 playermode);
 
 // Zardus: FIX: from view.cpp. We need this here so that it doesn't
