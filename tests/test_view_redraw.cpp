@@ -10,9 +10,9 @@ static walker* make_guy(char family, unsigned char team = 0)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) w->setxy(100, 100);
-    return w;
+    return w.release();
 }
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,6 @@ void test_view_redraw_with_control()
     TEST_ASSERT(result, "redraw with control should succeed");
     vs->control = nullptr;
 
-    delete w;
 }
 REGISTER_TEST(test_view_redraw_with_control);
 
@@ -89,7 +88,6 @@ void test_view_redraw_negative_pos()
     vs->redraw(&myscreen->level_data, false);
     vs->control = nullptr;
 
-    delete w;
 }
 REGISTER_TEST(test_view_redraw_negative_pos);
 

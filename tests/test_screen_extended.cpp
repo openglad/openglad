@@ -5,15 +5,16 @@
 
 #include <cstring>
 #include <filesystem>
+#include <memory>
 
 extern screen* myscreen;
 
-static walker* make_walker_at(char family, short x, short y, unsigned char team)
+static std::unique_ptr<walker> make_walker_at(char family, short x, short y, unsigned char team)
 {
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(2, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) w->setxy(x, y);
     return w;
 }
@@ -73,21 +74,20 @@ void test_screen_query_grid_passable_walking()
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return;
-    walker* w = l->create_walker(Order::Living, FAMILY_SOLDIER, myscreen);
+    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER, myscreen);
     if (!w) return;
     w->setxy(100, 100);
 
     // Test various grid positions
-    short result = myscreen->query_grid_passable(100, 100, w);
+    short result = myscreen->query_grid_passable(100, 100, w.get());
     (void)result;
 
-    result = myscreen->query_grid_passable(50, 50, w);
+    result = myscreen->query_grid_passable(50, 50, w.get());
     (void)result;
 
-    result = myscreen->query_grid_passable(200, 150, w);
+    result = myscreen->query_grid_passable(200, 150, w.get());
     (void)result;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_query_grid_passable_walking);
 
@@ -95,14 +95,13 @@ void test_screen_query_grid_passable_weapon()
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return;
-    walker* w = l->create_walker(Order::Weapon, FAMILY_KNIFE, myscreen);
+    auto w = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE, myscreen);
     if (!w) return;
     w->setxy(100, 100);
 
-    short result = myscreen->query_grid_passable(100, 100, w);
+    short result = myscreen->query_grid_passable(100, 100, w.get());
     (void)result;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_query_grid_passable_weapon);
 
@@ -112,16 +111,15 @@ REGISTER_TEST(test_screen_query_grid_passable_weapon);
 
 void test_screen_query_passable_living()
 {
-    walker* w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
+    auto w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
     if (!w) return;
 
-    short result = myscreen->query_passable(100, 100, w);
+    short result = myscreen->query_passable(100, 100, w.get());
     (void)result;
 
-    result = myscreen->query_passable(50, 50, w);
+    result = myscreen->query_passable(50, 50, w.get());
     (void)result;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_query_passable_living);
 
@@ -162,10 +160,9 @@ REGISTER_TEST(test_screen_save_data_score);
 
 void test_screen_do_notify_with_walker()
 {
-    walker* w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
+    auto w = make_walker_at(FAMILY_SOLDIER, 100, 100, 0);
     if (!w) return;
-    myscreen->do_notify("Test notification", w);
-    delete w;
+    myscreen->do_notify("Test notification", w.get());
 }
 REGISTER_TEST(test_screen_do_notify_with_walker);
 
@@ -175,41 +172,35 @@ REGISTER_TEST(test_screen_do_notify_with_walker);
 
 void test_screen_find_near_foe_with_enemies()
 {
-    walker* seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
-    walker* enemy = make_walker_at(FAMILY_ORC, 70, 50, 1);
+    auto seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
+    auto enemy = make_walker_at(FAMILY_ORC, 70, 50, 1);
     if (!seeker || !enemy) {
-        delete seeker;
-        delete enemy;
         return;
     }
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
+    myscreen->level_data.oblist.push_back(std::move(enemy));
 
-    walker* found = myscreen->find_near_foe(seeker);
+    walker* found = myscreen->find_near_foe(seeker.get());
     (void)found;
 
     myscreen->level_data.oblist.pop_back();
-    delete seeker;
 }
 REGISTER_TEST(test_screen_find_near_foe_with_enemies);
 
 void test_screen_find_far_foe_with_enemies()
 {
-    walker* seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
-    walker* enemy = make_walker_at(FAMILY_ORC, 200, 150, 1);
+    auto seeker = make_walker_at(FAMILY_SOLDIER, 50, 50, 0);
+    auto enemy = make_walker_at(FAMILY_ORC, 200, 150, 1);
     if (!seeker || !enemy) {
-        delete seeker;
-        delete enemy;
         return;
     }
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
+    myscreen->level_data.oblist.push_back(std::move(enemy));
 
-    walker* found = myscreen->find_far_foe(seeker);
+    walker* found = myscreen->find_far_foe(seeker.get());
     (void)found;
 
     myscreen->level_data.oblist.pop_back();
-    delete seeker;
 }
 REGISTER_TEST(test_screen_find_far_foe_with_enemies);
 
@@ -248,31 +239,29 @@ REGISTER_TEST(test_screen_multiview_lifecycle_paths);
 
 void test_screen_find_nearest_player_and_draw_panels()
 {
-    walker* seeker = make_walker_at(FAMILY_SOLDIER, 20, 20, 1);
-    walker* p1 = make_walker_at(FAMILY_ARCHER, 24, 20, 0);
-    walker* p2 = make_walker_at(FAMILY_MAGE, 200, 160, 0);
+    auto seeker = make_walker_at(FAMILY_SOLDIER, 20, 20, 1);
+    auto p1 = make_walker_at(FAMILY_ARCHER, 24, 20, 0);
+    auto p2 = make_walker_at(FAMILY_MAGE, 200, 160, 0);
     TEST_ASSERT(seeker && p1 && p2, "test walkers should be created");
     if (!seeker || !p1 || !p2)
     {
-        delete seeker;
-        delete p1;
-        delete p2;
         return;
     }
 
-    p1->user = 0;
-    p2->user = 1;
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(p1));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(p2));
+    walker* p1p = p1.get();
 
-    walker* nearest = myscreen->find_nearest_player(seeker);
-    TEST_ASSERT(nearest == p1, "nearest player should be the closest user-controlled walker");
+    p1p->user = 0;
+    p2->user = 1;
+    myscreen->level_data.oblist.push_back(std::move(p1));
+    myscreen->level_data.oblist.push_back(std::move(p2));
+
+    walker* nearest = myscreen->find_nearest_player(seeker.get());
+    TEST_ASSERT(nearest == p1p, "nearest player should be the closest user-controlled walker");
 
     myscreen->draw_panels(1);
 
     myscreen->level_data.oblist.pop_back();
     myscreen->level_data.oblist.pop_back();
-    delete seeker;
 }
 REGISTER_TEST(test_screen_find_nearest_player_and_draw_panels);
 

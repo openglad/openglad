@@ -48,12 +48,12 @@ struct KeyStateGuard
     }
 };
 
-static walker* make_living(unsigned char family, unsigned char team, int x, int y)
+static std::unique_ptr<walker> make_living(unsigned char family, unsigned char team, int x, int y)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (!w)
         return nullptr;
     w->team_num = team;
@@ -81,22 +81,26 @@ void test_view_input_switch_control_forward_and_reverse()
     v->mynum = 0;
     v->my_team = 0;
 
-    walker* w1 = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    walker* w2 = make_living(FAMILY_ELF, 0, 40, 20);
-    walker* w3 = make_living(FAMILY_ARCHER, 0, 60, 20);
+    auto w1 = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    auto w2 = make_living(FAMILY_ELF, 0, 40, 20);
+    auto w3 = make_living(FAMILY_ARCHER, 0, 60, 20);
     TEST_ASSERT(w1 && w2 && w3, "walkers should be created");
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(w1));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(w2));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(w3));
-    v->control = w1;
+    walker* w1p = w1.get();
+    walker* w2p = w2.get();
+    walker* w3p = w3.get();
+
+    myscreen->level_data.oblist.push_back(std::move(w1));
+    myscreen->level_data.oblist.push_back(std::move(w2));
+    myscreen->level_data.oblist.push_back(std::move(w3));
+    v->control = w1p;
 
     SDL_Event e{};
     e.type = SDL_KEYDOWN;
     e.key.repeat = 0;
     e.key.keysym.sym = SDLK_TAB;
     v->input(e);
-    TEST_ASSERT(v->control == w2, "switch key should move to next team member");
+    TEST_ASSERT(v->control == w2p, "switch key should move to next team member");
 
     // Reset debounce (changedchar) by sending a non-switch key event.
     e.key.keysym.sym = SDLK_F1;
@@ -106,7 +110,7 @@ void test_view_input_switch_control_forward_and_reverse()
     e.key.keysym.sym = SDLK_TAB;
     v->input(e);
     ks.set(SDLK_LSHIFT, false);
-    TEST_ASSERT(v->control == w1, "shift+switch should move to previous team member");
+    TEST_ASSERT(v->control == w1p, "shift+switch should move to previous team member");
 }
 REGISTER_TEST(test_view_input_switch_control_forward_and_reverse);
 
@@ -125,16 +129,19 @@ void test_view_input_yell_and_shift_yell_team_actions()
     v->mynum = 0;
     v->my_team = 0;
 
-    walker* control = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    walker* ally = make_living(FAMILY_ELF, 0, 40, 20);
+    auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    auto ally = make_living(FAMILY_ELF, 0, 40, 20);
     TEST_ASSERT(control && ally, "walkers should be created");
-    control->set_act_type(ACT_CONTROL);
-    control->user = 0;
-    ally->leader = nullptr;
+    walker* controlp = control.get();
+    walker* allyp = ally.get();
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(control));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(ally));
-    v->control = control;
+    controlp->set_act_type(ACT_CONTROL);
+    controlp->user = 0;
+    allyp->leader = nullptr;
+
+    myscreen->level_data.oblist.push_back(std::move(control));
+    myscreen->level_data.oblist.push_back(std::move(ally));
+    v->control = controlp;
 
     SDL_Event e{};
     e.type = SDL_KEYDOWN;
@@ -143,19 +150,19 @@ void test_view_input_yell_and_shift_yell_team_actions()
 
     // Plain YELL: followers should get leader+follow command, and yo_delay set.
     v->input(e);
-    TEST_ASSERT(ally->leader == control, "plain yell should assign control as leader");
-    TEST_ASSERT(control->yo_delay == 30, "plain yell should set yo_delay");
+    TEST_ASSERT(allyp->leader == controlp, "plain yell should assign control as leader");
+    TEST_ASSERT(controlp->yo_delay == 30, "plain yell should set yo_delay");
 
     // Shift+YELL toggles team defense mode.
     ks.set(SDLK_LSHIFT, true);
     v->input(e);
-    TEST_ASSERT(control->action == ACTION_FOLLOW, "shift+yell should enter follow/defense mode");
-    TEST_ASSERT(ally->action == ACTION_FOLLOW, "ally should enter follow action");
+    TEST_ASSERT(controlp->action == ACTION_FOLLOW, "shift+yell should enter follow/defense mode");
+    TEST_ASSERT(allyp->action == ACTION_FOLLOW, "ally should enter follow action");
 
     // Repeat shift+yell should release defense mode.
     v->input(e);
     ks.set(SDLK_LSHIFT, false);
-    TEST_ASSERT(control->action == 0, "second shift+yell should clear defense mode");
+    TEST_ASSERT(controlp->action == 0, "second shift+yell should clear defense mode");
 }
 REGISTER_TEST(test_view_input_yell_and_shift_yell_team_actions);
 
@@ -174,19 +181,22 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     v->my_team = 0;
     myscreen->save_data.my_team = 0;
 
-    walker* control = make_living(FAMILY_SOLDIER, 0, 20, 20);
-    walker* teammate = make_living(FAMILY_ELF, 0, 40, 20);
-    walker* enemy = make_living(FAMILY_ORC, 1, 60, 20);
+    auto control = make_living(FAMILY_SOLDIER, 0, 20, 20);
+    auto teammate = make_living(FAMILY_ELF, 0, 40, 20);
+    auto enemy = make_living(FAMILY_ORC, 1, 60, 20);
     TEST_ASSERT(control && teammate && enemy, "walkers should be created");
 
-    control->user = 0;
-    control->set_act_type(ACT_CONTROL);
-    control->stats()->level = 5;
+    walker* controlp = control.get();
+    walker* enemyp = enemy.get();
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(control));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(teammate));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
-    v->control = control;
+    controlp->user = 0;
+    controlp->set_act_type(ACT_CONTROL);
+    controlp->stats()->level = 5;
+
+    myscreen->level_data.oblist.push_back(std::move(control));
+    myscreen->level_data.oblist.push_back(std::move(teammate));
+    myscreen->level_data.oblist.push_back(std::move(enemy));
+    v->control = controlp;
 
     // Hold cheat key so cheat branch executes.
     ks.set(SDLK_c, true);
@@ -201,7 +211,7 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     TEST_ASSERT(v->control != nullptr, "control should remain valid after cheat-switch");
 
     // Cheat+F12: eliminate enemy living units.
-    enemy->stats()->hitpoints = 25;
+    enemyp->stats()->hitpoints = 25;
     e.key.keysym.sym = SDLK_F12;
     v->input(e);
     TEST_ASSERT(v->control != nullptr, "cheat F12 path should keep control valid");

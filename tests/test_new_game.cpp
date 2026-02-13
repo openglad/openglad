@@ -72,15 +72,7 @@ static int new_game_injector(void* data)
     fprintf(stderr, "  [test] dismissing campaign intro with Escape\n");
     inject_key_press(SDLK_ESCAPE);
 
-    // After campaign intro, beginmenu resets save data and calls
-    // create_hire_menu(1). create_hire_menu(1) shows a popup_dialog
-    // first ("HIRE TROOPS", ...). The popup has an "ok" button.
-    SDL_Delay(500);
-    if (wait_for_interactable("ok", 10000)) {
-        SDL_Delay(500);
-        fprintf(stderr, "  [test] dismissing hire troops popup\n");
-        interact("ok");
-    }
+    // In TESTING builds, popup_dialog() is a no-op, so no "ok" button exists.
 
     // Now we should be in the hire menu with hire_me, prev, next, back buttons
     SDL_Delay(500);

@@ -70,13 +70,7 @@ static int hire_injector(void* data)
     fprintf(stderr, "  [test] dismissing campaign intro with Escape\n");
     inject_key_press(SDLK_ESCAPE);
 
-    // Dismiss the hire troops popup
-    SDL_Delay(500);
-    if (wait_for_interactable("ok", 10000)) {
-        SDL_Delay(500);
-        fprintf(stderr, "  [test] dismissing popup\n");
-        interact("ok");
-    }
+    // In TESTING builds, popup_dialog() is a no-op, so no "ok" button exists.
 
     // Now in hire menu - cycle through characters
     SDL_Delay(500);

@@ -6,11 +6,11 @@
 
 extern screen* myscreen;
 
-static walker* create_living(char family)
+static std::unique_ptr<walker> create_living(char family)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (!w) return nullptr;
     w->setxy(50, 50);
     return w;
@@ -22,7 +22,7 @@ static walker* create_living(char family)
 
 void test_statistics_force_command_prepends()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
@@ -32,13 +32,12 @@ void test_statistics_force_command_prepends()
     TEST_ASSERT(w->stats()->commands.size() >= 2, "should have at least 2 commands");
     TEST_ASSERT_EQ(COMMAND_FIRE, w->stats()->commands.front().commandtype, "force_command should prepend");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_force_command_prepends);
 
 void test_statistics_force_command_walk_clamps()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
@@ -49,7 +48,6 @@ void test_statistics_force_command_walk_clamps()
     TEST_ASSERT_EQ(1, c.com1, "com1 should be clamped to 1");
     TEST_ASSERT_EQ(-1, c.com2, "com2 should be clamped to -1");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_force_command_walk_clamps);
 
@@ -59,26 +57,24 @@ REGISTER_TEST(test_statistics_force_command_walk_clamps);
 
 void test_statistics_has_commands_empty()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
     TEST_ASSERT(!w->stats()->has_commands(), "empty queue should have no commands");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_has_commands_empty);
 
 void test_statistics_has_commands_nonempty()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
     w->stats()->add_command(COMMAND_WALK, 5, 1, 0);
     TEST_ASSERT(w->stats()->has_commands(), "non-empty queue should have commands");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_has_commands_nonempty);
 
@@ -88,7 +84,7 @@ REGISTER_TEST(test_statistics_has_commands_nonempty);
 
 void test_statistics_do_command_walk()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
@@ -97,13 +93,12 @@ void test_statistics_do_command_walk()
     // Execute the command - should not crash
     w->stats()->do_command();
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_do_command_walk);
 
 void test_statistics_do_command_fire()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
 
@@ -112,20 +107,19 @@ void test_statistics_do_command_fire()
 
     w->stats()->do_command();
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_do_command_fire);
 
 void test_statistics_do_command_attack()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    walker* foe = create_living(FAMILY_SMALL_SLIME);
+    auto foe = create_living(FAMILY_SMALL_SLIME);
     TEST_ASSERT(foe != nullptr, "create foe should succeed");
     foe->team_num = 1;
     foe->setxy(60, 50);
-    w->foe = foe;
+    w->foe = foe.get();
     w->team_num = 0;
 
     w->stats()->commands.clear();
@@ -133,14 +127,12 @@ void test_statistics_do_command_attack()
 
     w->stats()->do_command();
 
-    delete w;
-    delete foe;
 }
 REGISTER_TEST(test_statistics_do_command_attack);
 
 void test_statistics_do_command_random_walk()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
@@ -148,7 +140,6 @@ void test_statistics_do_command_random_walk()
 
     w->stats()->do_command();
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_do_command_random_walk);
 
@@ -158,7 +149,7 @@ REGISTER_TEST(test_statistics_do_command_random_walk);
 
 void test_statistics_forward_blocked_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->setxy(100, 100);
@@ -179,13 +170,12 @@ void test_statistics_forward_blocked_smoke()
     result = w->stats()->forward_blocked();
     (void)result;
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_forward_blocked_smoke);
 
 void test_statistics_right_blocked_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->setxy(100, 100);
@@ -195,13 +185,12 @@ void test_statistics_right_blocked_smoke()
         (void)result;
     }
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_right_blocked_smoke);
 
 void test_statistics_right_forward_blocked_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->setxy(100, 100);
@@ -211,13 +200,12 @@ void test_statistics_right_forward_blocked_smoke()
         (void)result;
     }
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_right_forward_blocked_smoke);
 
 void test_statistics_right_back_blocked_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->setxy(100, 100);
@@ -227,7 +215,6 @@ void test_statistics_right_back_blocked_smoke()
         (void)result;
     }
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_right_back_blocked_smoke);
 
@@ -237,8 +224,8 @@ REGISTER_TEST(test_statistics_right_back_blocked_smoke);
 
 void test_statistics_hit_response_soldier()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
-    walker* attacker = create_living(FAMILY_SMALL_SLIME);
+    auto w = create_living(FAMILY_SOLDIER);
+    auto attacker = create_living(FAMILY_SMALL_SLIME);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     TEST_ASSERT(attacker != nullptr, "create attacker should succeed");
 
@@ -247,17 +234,15 @@ void test_statistics_hit_response_soldier()
     w->setxy(100, 100);
     attacker->setxy(110, 100);
 
-    w->stats()->hit_response(attacker);
+    w->stats()->hit_response(attacker.get());
 
-    delete w;
-    delete attacker;
 }
 REGISTER_TEST(test_statistics_hit_response_soldier);
 
 void test_statistics_hit_response_mage()
 {
-    walker* w = create_living(FAMILY_MAGE);
-    walker* attacker = create_living(FAMILY_SMALL_SLIME);
+    auto w = create_living(FAMILY_MAGE);
+    auto attacker = create_living(FAMILY_SMALL_SLIME);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     TEST_ASSERT(attacker != nullptr, "create attacker should succeed");
 
@@ -269,17 +254,15 @@ void test_statistics_hit_response_mage()
     w->setxy(100, 100);
     attacker->setxy(110, 100);
 
-    w->stats()->hit_response(attacker);
+    w->stats()->hit_response(attacker.get());
 
-    delete w;
-    delete attacker;
 }
 REGISTER_TEST(test_statistics_hit_response_mage);
 
 void test_statistics_hit_response_archer()
 {
-    walker* w = create_living(FAMILY_ARCHER);
-    walker* attacker = create_living(FAMILY_SMALL_SLIME);
+    auto w = create_living(FAMILY_ARCHER);
+    auto attacker = create_living(FAMILY_SMALL_SLIME);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     TEST_ASSERT(attacker != nullptr, "create attacker should succeed");
 
@@ -288,10 +271,8 @@ void test_statistics_hit_response_archer()
     w->setxy(100, 100);
     attacker->setxy(110, 100);
 
-    w->stats()->hit_response(attacker);
+    w->stats()->hit_response(attacker.get());
 
-    delete w;
-    delete attacker;
 }
 REGISTER_TEST(test_statistics_hit_response_archer);
 
@@ -301,7 +282,7 @@ REGISTER_TEST(test_statistics_hit_response_archer);
 
 void test_statistics_set_command_basic()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
@@ -310,13 +291,12 @@ void test_statistics_set_command_basic()
     TEST_ASSERT(!w->stats()->commands.empty(), "set_command should add a command");
     TEST_ASSERT_EQ(COMMAND_WALK, w->stats()->commands.front().commandtype, "should be walk");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_set_command_basic);
 
 void test_statistics_try_command_basic()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->stats()->commands.clear();
@@ -324,7 +304,6 @@ void test_statistics_try_command_basic()
 
     TEST_ASSERT(!w->stats()->commands.empty(), "try_command should add a command");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_try_command_basic);
 

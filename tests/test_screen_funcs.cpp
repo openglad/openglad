@@ -2,14 +2,15 @@
 #include "data/gloader.h"
 #include "entities/guy.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
-static walker* create_living(char family)
+static std::unique_ptr<walker> create_living(char family)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (!w) return nullptr;
     w->setxy(50, 50);
     return w;
@@ -21,11 +22,11 @@ static walker* create_living(char family)
 
 void test_screen_first_of_found()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "create_walker should succeed");
+    auto w = create_living(FAMILY_SOLDIER);
+	    TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    // Add to oblist
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(w));
+	    // Add to oblist
+	    myscreen->level_data.oblist.push_back(std::move(w));
 
     walker* found = myscreen->first_of(Order::Living, FAMILY_SOLDIER);
     TEST_ASSERT(found != nullptr, "first_of should find the soldier");
@@ -46,11 +47,11 @@ REGISTER_TEST(test_screen_first_of_not_found);
 
 void test_screen_first_of_with_team()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
-    TEST_ASSERT(w != nullptr, "create_walker should succeed");
-    w->team_num = 7;
+    auto w = create_living(FAMILY_SOLDIER);
+	    TEST_ASSERT(w != nullptr, "create_walker should succeed");
+	    w->team_num = 7;
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(w));
+	    myscreen->level_data.oblist.push_back(std::move(w));
 
     walker* found = myscreen->first_of(Order::Living, FAMILY_SOLDIER, 7);
     TEST_ASSERT(found != nullptr, "first_of with matching team should find it");
@@ -69,43 +70,41 @@ REGISTER_TEST(test_screen_first_of_with_team);
 
 void test_screen_find_in_range_basic()
 {
-    walker* seeker = create_living(FAMILY_SOLDIER);
-    walker* target = create_living(FAMILY_MAGE);
+    auto seeker = create_living(FAMILY_SOLDIER);
+    auto target = create_living(FAMILY_MAGE);
     TEST_ASSERT(seeker != nullptr, "create seeker should succeed");
     TEST_ASSERT(target != nullptr, "create target should succeed");
 
-    seeker->setxy(100, 100);
-    target->setxy(110, 100);
+	    seeker->setxy(100, 100);
+	    target->setxy(110, 100);
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(target));
+	    myscreen->level_data.oblist.push_back(std::move(target));
 
-    Sint32 howmany = 0;
-    auto result = myscreen->find_in_range(myscreen->level_data.oblist, 500, &howmany, seeker);
-    TEST_ASSERT(howmany > 0, "should find at least 1 in range");
+	    Sint32 howmany = 0;
+	    auto result = myscreen->find_in_range(myscreen->level_data.oblist, 500, &howmany, seeker.get());
+	    TEST_ASSERT(howmany > 0, "should find at least 1 in range");
 
     myscreen->level_data.oblist.pop_back();
-    delete seeker;
 }
 REGISTER_TEST(test_screen_find_in_range_basic);
 
 void test_screen_find_in_range_out_of_range()
 {
-    walker* seeker = create_living(FAMILY_SOLDIER);
-    walker* target = create_living(FAMILY_MAGE);
+    auto seeker = create_living(FAMILY_SOLDIER);
+    auto target = create_living(FAMILY_MAGE);
     TEST_ASSERT(seeker != nullptr, "create seeker should succeed");
     TEST_ASSERT(target != nullptr, "create target should succeed");
 
-    seeker->setxy(50, 50);
-    target->setxy(250, 250);
+	    seeker->setxy(50, 50);
+	    target->setxy(250, 250);
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(target));
+	    myscreen->level_data.oblist.push_back(std::move(target));
 
-    Sint32 howmany = 0;
-    auto result = myscreen->find_in_range(myscreen->level_data.oblist, 5, &howmany, seeker);
-    (void)result; // range semantics vary; just verify no crash
+	    Sint32 howmany = 0;
+	    auto result = myscreen->find_in_range(myscreen->level_data.oblist, 5, &howmany, seeker.get());
+	    (void)result; // range semantics vary; just verify no crash
 
     myscreen->level_data.oblist.pop_back();
-    delete seeker;
 }
 REGISTER_TEST(test_screen_find_in_range_out_of_range);
 
@@ -115,24 +114,23 @@ REGISTER_TEST(test_screen_find_in_range_out_of_range);
 
 void test_screen_find_foes_in_range()
 {
-    walker* seeker = create_living(FAMILY_SOLDIER);
-    walker* enemy = create_living(FAMILY_SMALL_SLIME);
+    auto seeker = create_living(FAMILY_SOLDIER);
+    auto enemy = create_living(FAMILY_SMALL_SLIME);
     TEST_ASSERT(seeker != nullptr, "create seeker should succeed");
     TEST_ASSERT(enemy != nullptr, "create enemy should succeed");
 
     seeker->team_num = 0;
     seeker->setxy(100, 100);
-    enemy->team_num = 1;
-    enemy->setxy(110, 100);
+	    enemy->team_num = 1;
+	    enemy->setxy(110, 100);
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(enemy));
+	    myscreen->level_data.oblist.push_back(std::move(enemy));
 
-    Sint32 howmany = 0;
-    auto result = myscreen->find_foes_in_range(myscreen->level_data.oblist, 500, &howmany, seeker);
-    TEST_ASSERT(howmany > 0, "should find at least 1 foe in range");
+	    Sint32 howmany = 0;
+	    auto result = myscreen->find_foes_in_range(myscreen->level_data.oblist, 500, &howmany, seeker.get());
+	    TEST_ASSERT(howmany > 0, "should find at least 1 foe in range");
 
     myscreen->level_data.oblist.pop_back();
-    delete seeker;
 }
 REGISTER_TEST(test_screen_find_foes_in_range);
 
@@ -142,24 +140,23 @@ REGISTER_TEST(test_screen_find_foes_in_range);
 
 void test_screen_find_friends_in_range()
 {
-    walker* seeker = create_living(FAMILY_SOLDIER);
-    walker* friend_w = create_living(FAMILY_ARCHER);
+    auto seeker = create_living(FAMILY_SOLDIER);
+    auto friend_w = create_living(FAMILY_ARCHER);
     TEST_ASSERT(seeker != nullptr, "create seeker should succeed");
     TEST_ASSERT(friend_w != nullptr, "create friend should succeed");
 
     seeker->team_num = 0;
     seeker->setxy(100, 100);
-    friend_w->team_num = 0;
-    friend_w->setxy(110, 100);
+	    friend_w->team_num = 0;
+	    friend_w->setxy(110, 100);
 
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(friend_w));
+	    myscreen->level_data.oblist.push_back(std::move(friend_w));
 
-    Sint32 howmany = 0;
-    auto result = myscreen->find_friends_in_range(myscreen->level_data.oblist, 500, &howmany, seeker);
-    TEST_ASSERT(howmany > 0, "should find at least 1 friend in range");
+	    Sint32 howmany = 0;
+	    auto result = myscreen->find_friends_in_range(myscreen->level_data.oblist, 500, &howmany, seeker.get());
+	    TEST_ASSERT(howmany > 0, "should find at least 1 friend in range");
 
     myscreen->level_data.oblist.pop_back();
-    delete seeker;
 }
 REGISTER_TEST(test_screen_find_friends_in_range);
 
@@ -188,41 +185,38 @@ REGISTER_TEST(test_screen_damage_tile_smoke);
 
 void test_screen_query_grid_passable_center()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->setxy(100, 100);
-    bool passable = myscreen->query_grid_passable(100, 100, w);
+    bool passable = myscreen->query_grid_passable(100, 100, w.get());
     // Just check it doesn't crash
     (void)passable;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_query_grid_passable_center);
 
 void test_screen_query_grid_passable_flying()
 {
-    walker* w = create_living(FAMILY_FAERIE);
+    auto w = create_living(FAMILY_FAERIE);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     w->setxy(100, 100);
     // Flying entities should pass over more terrain
-    bool passable = myscreen->query_grid_passable(100, 100, w);
+    bool passable = myscreen->query_grid_passable(100, 100, w.get());
     (void)passable;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_query_grid_passable_flying);
 
 void test_screen_query_grid_passable_out_of_bounds()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    bool passable = myscreen->query_grid_passable(-10, -10, w);
+    bool passable = myscreen->query_grid_passable(-10, -10, w.get());
     TEST_ASSERT(!passable, "out-of-bounds should not be passable");
 
-    delete w;
 }
 REGISTER_TEST(test_screen_query_grid_passable_out_of_bounds);
 
@@ -232,15 +226,14 @@ REGISTER_TEST(test_screen_query_grid_passable_out_of_bounds);
 
 void test_screen_find_far_foe_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->team_num = 0;
 
-    walker* result = myscreen->find_far_foe(w);
+    walker* result = myscreen->find_far_foe(w.get());
     // May or may not find one, but should not crash
     (void)result;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_find_far_foe_smoke);
 
@@ -250,15 +243,14 @@ REGISTER_TEST(test_screen_find_far_foe_smoke);
 
 void test_screen_find_near_foe_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->team_num = 0;
     w->setxy(100, 100);
 
-    walker* result = myscreen->find_near_foe(w);
+    walker* result = myscreen->find_near_foe(w.get());
     (void)result;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_find_near_foe_smoke);
 
@@ -268,13 +260,12 @@ REGISTER_TEST(test_screen_find_near_foe_smoke);
 
 void test_screen_do_notify_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    myscreen->do_notify("Test notification", w);
+    myscreen->do_notify("Test notification", w.get());
     myscreen->do_notify("Broadcast", nullptr);
 
-    delete w;
 }
 REGISTER_TEST(test_screen_do_notify_smoke);
 
@@ -284,13 +275,12 @@ REGISTER_TEST(test_screen_do_notify_smoke);
 
 void test_screen_query_passable_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->setxy(100, 100);
 
-    bool p = myscreen->query_passable(100, 100, w);
+    bool p = myscreen->query_passable(100, 100, w.get());
     (void)p;
 
-    delete w;
 }
 REGISTER_TEST(test_screen_query_passable_smoke);

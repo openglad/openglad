@@ -122,12 +122,12 @@ struct ListsSwap {
     }
 };
 
-static walker* make_living(unsigned char family)
+static std::unique_ptr<walker> make_living(unsigned char family)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (w) {
         w->dead = 0;
         w->user = -1;
@@ -139,46 +139,48 @@ void test_level_editor_some_hit_checks_all_lists()
 {
     ListsSwap swap;
 
-    walker* probe = make_living(FAMILY_SOLDIER);
+    auto probe = make_living(FAMILY_SOLDIER);
     TEST_ASSERT(probe != nullptr, "probe should be created");
-    probe->setxy(10, 10);
+    walker* probep = probe.get();
+    probep->setxy(10, 10);
 
     // oblist hit
-    walker* target1 = make_living(FAMILY_ORC);
+    auto target1 = make_living(FAMILY_ORC);
     TEST_ASSERT(target1 != nullptr, "target1 should be created");
-    target1->setxy(10, 10);
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(target1));
+    walker* target1p = target1.get();
+    target1p->setxy(10, 10);
+    myscreen->level_data.oblist.push_back(std::move(target1));
 
-    walker* hit = some_hit(10, 10, probe, &myscreen->level_data);
-    TEST_ASSERT(hit == target1, "some_hit should find hit in oblist");
-    TEST_ASSERT(probe->collide_ob == target1, "collide_ob should be set");
+    walker* hit = some_hit(10, 10, probep, &myscreen->level_data);
+    TEST_ASSERT(hit == target1p, "some_hit should find hit in oblist");
+    TEST_ASSERT(probep->collide_ob == target1p, "collide_ob should be set");
 
     myscreen->level_data.oblist.clear();
 
     // fxlist hit
-    walker* target2 = make_living(FAMILY_ORC);
-    target2->setxy(10, 10);
-    myscreen->level_data.fxlist.push_back(std::unique_ptr<walker>(target2));
-    hit = some_hit(10, 10, probe, &myscreen->level_data);
-    TEST_ASSERT(hit == target2, "some_hit should find hit in fxlist");
+    auto target2 = make_living(FAMILY_ORC);
+    walker* target2p = target2.get();
+    target2p->setxy(10, 10);
+    myscreen->level_data.fxlist.push_back(std::move(target2));
+    hit = some_hit(10, 10, probep, &myscreen->level_data);
+    TEST_ASSERT(hit == target2p, "some_hit should find hit in fxlist");
 
     myscreen->level_data.fxlist.clear();
 
     // weaplist hit
-    walker* target3 = make_living(FAMILY_ORC);
-    target3->setxy(10, 10);
-    myscreen->level_data.weaplist.push_back(std::unique_ptr<walker>(target3));
-    hit = some_hit(10, 10, probe, &myscreen->level_data);
-    TEST_ASSERT(hit == target3, "some_hit should find hit in weaplist");
+    auto target3 = make_living(FAMILY_ORC);
+    walker* target3p = target3.get();
+    target3p->setxy(10, 10);
+    myscreen->level_data.weaplist.push_back(std::move(target3));
+    hit = some_hit(10, 10, probep, &myscreen->level_data);
+    TEST_ASSERT(hit == target3p, "some_hit should find hit in weaplist");
 
     myscreen->level_data.weaplist.clear();
 
     // no hit
-    hit = some_hit(1000, 1000, probe, &myscreen->level_data);
+    hit = some_hit(1000, 1000, probep, &myscreen->level_data);
     TEST_ASSERT(hit == nullptr, "some_hit should return null when no overlap");
-    TEST_ASSERT(probe->collide_ob == nullptr, "collide_ob should be cleared on miss");
-
-    delete probe;
+    TEST_ASSERT(probep->collide_ob == nullptr, "collide_ob should be cleared on miss");
 }
 REGISTER_TEST(test_level_editor_some_hit_checks_all_lists);
 
@@ -220,32 +222,36 @@ void test_level_editor_create_new_campaign_and_detect_exists()
                     "all objects inside area should report false");
 
         loader* l = myscreen->level_data.myloader.get();
-        walker* fx_inside = l ? l->create_walker(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
-        walker* fx_outside = l ? l->create_walker(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
+        auto fx_inside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
+        auto fx_outside = l ? l->create_walker_owned(Order::FX, FAMILY_FLASH, myscreen) : nullptr;
         TEST_ASSERT(fx_inside != nullptr && fx_outside != nullptr, "fx objects should be created");
         if (fx_inside && fx_outside) {
-            myscreen->level_data.fxlist.push_back(std::unique_ptr<walker>(fx_inside));
-            myscreen->level_data.fxlist.push_back(std::unique_ptr<walker>(fx_outside));
-            fx_inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
-            fx_outside->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
+            walker* fx_inside_p = fx_inside.get();
+            walker* fx_outside_p = fx_outside.get();
+            myscreen->level_data.fxlist.push_back(std::move(fx_inside));
+            myscreen->level_data.fxlist.push_back(std::move(fx_outside));
+            fx_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+            fx_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
             TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
                         "outside fx object should be detected");
-            fx_outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
+            fx_outside_p->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
             TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
                         "inside fx objects should report false");
         }
 
-        walker* weap_inside = l ? l->create_walker(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
-        walker* weap_outside = l ? l->create_walker(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
+        auto weap_inside = l ? l->create_walker_owned(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
+        auto weap_outside = l ? l->create_walker_owned(Order::Weapon, FAMILY_BOMB, myscreen) : nullptr;
         TEST_ASSERT(weap_inside != nullptr && weap_outside != nullptr, "weapon objects should be created");
         if (weap_inside && weap_outside) {
-            myscreen->level_data.weaplist.push_back(std::unique_ptr<walker>(weap_inside));
-            myscreen->level_data.weaplist.push_back(std::unique_ptr<walker>(weap_outside));
-            weap_inside->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
-            weap_outside->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
+            walker* weap_inside_p = weap_inside.get();
+            walker* weap_outside_p = weap_outside.get();
+            myscreen->level_data.weaplist.push_back(std::move(weap_inside));
+            myscreen->level_data.weaplist.push_back(std::move(weap_outside));
+            weap_inside_p->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+            weap_outside_p->setxy(GRID_SIZE * 20, GRID_SIZE * 20);
             TEST_ASSERT(are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
                         "outside weapon object should be detected");
-            weap_outside->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
+            weap_outside_p->setxy(GRID_SIZE * 3, GRID_SIZE * 3);
             TEST_ASSERT(!are_objects_outside_area(&myscreen->level_data, 0, 0, 10, 10),
                         "inside weapon objects should report false");
         }

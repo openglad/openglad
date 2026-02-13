@@ -2,6 +2,7 @@
 #include "entities/guy.h"
 #include "data/gloader.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -11,13 +12,14 @@ Sint32 compute_explosion_range(Sint32 level, short skip_exit);
 bool hits(short x1, short y1, short w1, short h1,
           short x2, short y2, short w2, short h2);
 
-static walker* make_living_guy(char family, unsigned char team = 0)
+static std::unique_ptr<walker> make_living_guy(char family, unsigned char team = 0)
 {
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
-    if (w) w->setxy(100, 100);
+    auto w = g.create_walker_owned(myscreen);
+    if (w)
+        w->setxy(100, 100);
     return w;
 }
 
@@ -126,19 +128,18 @@ REGISTER_TEST(test_effect_act_explosion);
 
 void test_effect_act_magic_shield()
 {
-    walker* owner = make_living_guy(FAMILY_MAGE, 0);
+    auto owner = make_living_guy(FAMILY_MAGE, 0);
     if (!owner) return;
 
     walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-    if (!fx) { delete owner; return; }
+    if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner;
+    fx->owner = owner.get();
     fx->lifetime = 100;
     fx->stats()->hitpoints = 100;
     fx->act();
 
     myscreen->level_data.remove_ob(fx);
-    delete owner;
 }
 REGISTER_TEST(test_effect_act_magic_shield);
 
@@ -157,20 +158,19 @@ REGISTER_TEST(test_effect_act_magic_shield_no_owner);
 
 void test_effect_act_boomerang()
 {
-    walker* owner = make_living_guy(FAMILY_SOLDIER, 0);
+    auto owner = make_living_guy(FAMILY_SOLDIER, 0);
     if (!owner) return;
 
     walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
-    if (!fx) { delete owner; return; }
+    if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner;
+    fx->owner = owner.get();
     fx->lifetime = 100;
     fx->stats()->hitpoints = 100;
     fx->drawcycle = 10;
     fx->act();
 
     myscreen->level_data.remove_ob(fx);
-    delete owner;
 }
 REGISTER_TEST(test_effect_act_boomerang);
 
@@ -189,20 +189,19 @@ REGISTER_TEST(test_effect_act_boomerang_expired);
 
 void test_effect_act_cloud()
 {
-    walker* owner = make_living_guy(FAMILY_DRUID, 0);
+    auto owner = make_living_guy(FAMILY_DRUID, 0);
     if (!owner) return;
 
     walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CLOUD);
-    if (!fx) { delete owner; return; }
+    if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner;
+    fx->owner = owner.get();
     fx->team_num = 0;
     fx->lifetime = 50;
     fx->stats()->hitpoints = 50;
     fx->act();
 
     myscreen->level_data.remove_ob(fx);
-    delete owner;
 }
 REGISTER_TEST(test_effect_act_cloud);
 
@@ -221,17 +220,16 @@ REGISTER_TEST(test_effect_act_cloud_expired);
 
 void test_effect_act_ghost_scare()
 {
-    walker* owner = make_living_guy(FAMILY_GHOST, 0);
+    auto owner = make_living_guy(FAMILY_GHOST, 0);
     if (!owner) return;
 
     walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
-    if (!fx) { delete owner; return; }
+    if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner;
+    fx->owner = owner.get();
     fx->act();
 
     myscreen->level_data.remove_ob(fx);
-    delete owner;
 }
 REGISTER_TEST(test_effect_act_ghost_scare);
 
@@ -266,36 +264,34 @@ REGISTER_TEST(test_effect_animate_magic_shield);
 
 void test_effect_death_explosion()
 {
-    walker* owner = make_living_guy(FAMILY_MAGE, 0);
+    auto owner = make_living_guy(FAMILY_MAGE, 0);
     if (!owner) return;
 
     walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
-    if (!fx) { delete owner; return; }
+    if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner;
+    fx->owner = owner.get();
     fx->team_num = 0;
     fx->stats()->level = 5;
     fx->dead = 1;
     fx->death();
 
     myscreen->level_data.remove_ob(fx);
-    delete owner;
 }
 REGISTER_TEST(test_effect_death_explosion);
 
 void test_effect_death_ghost_scare()
 {
-    walker* owner = make_living_guy(FAMILY_GHOST, 0);
+    auto owner = make_living_guy(FAMILY_GHOST, 0);
     if (!owner) return;
 
     walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_GHOST_SCARE);
-    if (!fx) { delete owner; return; }
+    if (!fx) return;
     fx->setxy(100, 100);
-    fx->owner = owner;
+    fx->owner = owner.get();
     fx->dead = 1;
     fx->death();
 
     myscreen->level_data.remove_ob(fx);
-    delete owner;
 }
 REGISTER_TEST(test_effect_death_ghost_scare);

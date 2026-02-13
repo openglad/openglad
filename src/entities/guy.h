@@ -18,6 +18,7 @@
 
 #include "base.h"
 #include "core/stats.h"
+#include <memory>
 
 // Holds attributes for characters.
 // Used to store character data in SaveData's team_list.
@@ -26,13 +27,13 @@ class guy
 {
 	public:
 		guy ();
-		guy (int whatfamily);
-		guy (const guy& copy);
-		~guy();
-		Sint32 query_heart_value(); // how much are we worth?
-		walker* create_walker(screen* myscreen);
-		walker* create_and_add_walker(screen* myscreen);
-		void upgrade_to_level(short new_level, bool set_xp = true);
+			guy (int whatfamily);
+			guy (const guy& copy);
+			~guy();
+			Sint32 query_heart_value(); // how much are we worth?
+			[[nodiscard]] std::unique_ptr<walker> create_walker_owned(screen* myscreen);
+			walker* create_and_add_walker(screen* myscreen);
+			void upgrade_to_level(short new_level, bool set_xp = true);
 		
         float get_hp_bonus() const;
         float get_mp_bonus() const;

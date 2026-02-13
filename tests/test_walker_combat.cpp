@@ -13,9 +13,9 @@ static walker* make_guy(char family, unsigned char team = 0)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) w->setxy(100, 100);
-    return w;
+    return w.release();
 }
 
 static void remove_and_delete(walker* w)
@@ -24,7 +24,6 @@ static void remove_and_delete(walker* w)
         return;
     }
     myscreen->level_data.remove_ob(w);
-    delete w;
 }
 
 class SequenceRandomCombat : public IRandom {
@@ -225,7 +224,6 @@ void test_walker_act_control()
     TEST_ASSERT(result, "ACT_CONTROL should return true");
     TEST_ASSERT(w->attack_lunge < 1.0f, "attack_lunge should decay in act()");
     TEST_ASSERT(w->hit_recoil < 1.0f, "hit_recoil should decay in act()");
-    delete w;
 }
 REGISTER_TEST(test_walker_act_control);
 
@@ -236,7 +234,6 @@ void test_walker_act_die()
     w->set_act_type(ACT_DIE);
     w->act();
     TEST_ASSERT(w->dead == 1, "ACT_DIE should set dead");
-    delete w;
 }
 REGISTER_TEST(test_walker_act_die);
 
@@ -249,7 +246,6 @@ void test_walker_act_frozen()
     bool result = w->act();
     TEST_ASSERT(result, "frozen walker should return 1");
     TEST_ASSERT_EQ(4, (int)w->stats()->frozen_delay, "frozen_delay should decrement");
-    delete w;
 }
 REGISTER_TEST(test_walker_act_frozen);
 
@@ -282,23 +278,23 @@ void test_walker_act_with_commands()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
     if (l) {
-        walker* gen = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+        auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
         TEST_ASSERT(gen != nullptr, "generator created");
         if (gen) {
-            gen->setxy(120, 120);
-            gen->set_act_type(ACT_GENERATE);
+            walker* genp = gen.get();
+            genp->setxy(120, 120);
+            genp->set_act_type(ACT_GENERATE);
             // Force act_generate() to enter spawn/regen branch.
-            gen->stats()->level = 5;
-            gen->stats()->max_hitpoints = 10;
-            gen->stats()->hitpoints = 10;
+            genp->stats()->level = 5;
+            genp->stats()->max_hitpoints = 10;
+            genp->stats()->hitpoints = 10;
             SequenceRandomCombat gen_rng({100, 0, 1, 1});
             GameContext gen_ctx;
             gen_ctx.game_screen = myscreen;
             gen_ctx.rng = &gen_rng;
             set_global_context(&gen_ctx);
-            (void)gen->act();
+            (void)genp->act();
             set_global_context(nullptr);
-            // Kept alive until level_data.delete_objects() at test end.
         }
 
         walker* proj = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
@@ -469,7 +465,6 @@ void test_walker_transform_to()
     w->transform_to(Order::Living, FAMILY_ARCHER);
     TEST_ASSERT_EQ((int)FAMILY_ARCHER, (int)w->query_family(), "should be archer after transform");
 
-    delete w;
 }
 REGISTER_TEST(test_walker_transform_to);
 
@@ -483,7 +478,6 @@ void test_walker_transform_to_same_order()
     TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)w->query_family(), "should be mage");
     TEST_ASSERT_EQ(ACT_CONTROL, (int)w->query_act_type(), "should preserve act type for same order");
 
-    delete w;
 }
 REGISTER_TEST(test_walker_transform_to_same_order);
 
@@ -500,7 +494,6 @@ void test_walker_spaces_clear()
     short count = w->spaces_clear();
     TEST_ASSERT(count >= 0 && count <= 8, "spaces_clear should be 0-8");
 
-    delete w;
 }
 REGISTER_TEST(test_walker_spaces_clear);
 
@@ -524,7 +517,6 @@ void test_walker_fire_check_all_dirs()
     w->fire_check(1, -1);
     w->fire_check(-1, -1);
 
-    delete w;
 }
 REGISTER_TEST(test_walker_fire_check_all_dirs);
 
@@ -542,7 +534,6 @@ void test_walker_init_fire_when_busy()
     bool result = w->init_fire(1, 0);
     (void)result; // busy behavior may vary
 
-    delete w;
 }
 REGISTER_TEST(test_walker_init_fire_when_busy);
 
@@ -574,7 +565,6 @@ void test_walker_set_order_family_all()
     TEST_ASSERT(w->set_order_family(Order::Generator, FAMILY_TENT), "set_order_family generator should return true");
     TEST_ASSERT_EQ((int)FAMILY_TENT, (int)w->query_family(), "family should change to tent");
 
-    delete w;
 }
 REGISTER_TEST(test_walker_set_order_family_all);
 
@@ -614,21 +604,19 @@ void test_walker_set_difficulty_all_families()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        walker* w = l->create_walker(Order::Living, families[i], myscreen);
+        auto w = l->create_walker_owned(Order::Living, families[i], myscreen);
         if (w) {
             w->set_difficulty(5);
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP positive after set_difficulty");
-            delete w;
         }
     }
 
-    walker* gen = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (gen) {
         float hp_before = gen->stats()->hitpoints;
         gen->set_difficulty(7);
         TEST_ASSERT(gen->stats()->hitpoints >= hp_before, "generator HP should be scaled");
-        delete gen;
     }
 }
 REGISTER_TEST(test_walker_set_difficulty_all_families);
@@ -653,7 +641,6 @@ void test_walker_get_current_angle_all_dirs()
         prev_angle = angle;
     }
 
-    delete w;
 }
 REGISTER_TEST(test_walker_get_current_angle_all_dirs);
 
@@ -694,7 +681,6 @@ void test_walker_animate_smoke()
     int small_slime_after = count_family_in_oblist(FAMILY_SMALL_SLIME);
     TEST_ASSERT(small_slime_after >= small_slime_before, "slime split should preserve/increase small slimes");
 
-    delete w;
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_animate_smoke);
@@ -704,22 +690,22 @@ void test_walker_act_random_generator_paths()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
-    walker* gen = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
     walker* foe = make_guy(FAMILY_ORC, 2);
     TEST_ASSERT(gen != nullptr && foe != nullptr, "generator and foe created");
     if (!(gen && foe)) {
-        delete gen;
         delete foe;
         return;
     }
 
-    gen->team_num = 1;
+    walker* genp = gen.get();
+    genp->team_num = 1;
     foe->team_num = 2;
-    gen->setxy(128, 128);
+    genp->setxy(128, 128);
     foe->setxy(132, 128);
-    gen->lineofsight = 40;
-    gen->set_act_type(ACT_RANDOM);
-    gen->stats()->clear_command();
+    genp->lineofsight = 40;
+    genp->set_act_type(ACT_RANDOM);
+    genp->stats()->clear_command();
 
     GameContext ctx;
     ctx.game_screen = myscreen;
@@ -728,19 +714,18 @@ void test_walker_act_random_generator_paths()
     SequenceRandomCombat rng1({0, 1, 0, 0, 0});
     ctx.rng = &rng1;
     set_global_context(&ctx);
-    (void)gen->act();
+    (void)genp->act();
 
     // Trigger 3-of-4 search branch with foe lookup.
-    gen->foe = nullptr;
+    genp->foe = nullptr;
     SequenceRandomCombat rng2({1, 0, 0, 0});
     ctx.rng = &rng2;
     set_global_context(&ctx);
-    (void)gen->act();
+    (void)genp->act();
     set_global_context(nullptr);
 
-    TEST_ASSERT_EQ(ACT_RANDOM, (int)gen->query_act_type(), "generator should remain in ACT_RANDOM");
+    TEST_ASSERT_EQ(ACT_RANDOM, (int)genp->query_act_type(), "generator should remain in ACT_RANDOM");
 
     delete foe;
-    delete gen;
 }
 REGISTER_TEST(test_walker_act_random_generator_paths);

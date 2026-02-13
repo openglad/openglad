@@ -2,15 +2,16 @@
 #include "graph.h"
 #include "data/gloader.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
-static walker* create_living(char family)
+static std::unique_ptr<walker> create_living(char family)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (!w)
         return nullptr;
     w->setxy(50, 50);
@@ -19,7 +20,7 @@ static walker* create_living(char family)
 
 void test_statistics_bit_flags_set_clear()
 {
-    walker* w = create_living(FAMILY_FAERIE);
+    auto w = create_living(FAMILY_FAERIE);
     TEST_ASSERT(w != nullptr, "create_walker(faerie) should succeed");
 
     // Start clean.
@@ -32,13 +33,12 @@ void test_statistics_bit_flags_set_clear()
     w->stats()->set_bit_flags(BIT_FLYING, 0);
     TEST_ASSERT(!w->stats()->query_bit_flags(BIT_FLYING), "BIT_FLYING should be cleared after setting to 0");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_bit_flags_set_clear);
 
 void test_statistics_add_command_walk_clamps_direction()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker(soldier) should succeed");
 
     w->stats()->commands.clear();
@@ -50,13 +50,12 @@ void test_statistics_add_command_walk_clamps_direction()
     TEST_ASSERT_EQ(1, c.com1, "walk com1 should be clamped to [-1,1]");
     TEST_ASSERT_EQ(-1, c.com2, "walk com2 should be clamped to [-1,1]");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_add_command_walk_clamps_direction);
 
 void test_statistics_clear_command_restores_weapon_and_team()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker(soldier) should succeed");
 
     // Simulate being charmed / weapon-swapped.
@@ -73,7 +72,5 @@ void test_statistics_clear_command_restores_weapon_and_team()
     TEST_ASSERT_EQ(255, (int)w->real_team_num, "clear_command should reset real_team_num to 255");
     TEST_ASSERT(w->leader == nullptr, "clear_command should clear leader");
 
-    delete w;
 }
 REGISTER_TEST(test_statistics_clear_command_restores_weapon_and_team);
-

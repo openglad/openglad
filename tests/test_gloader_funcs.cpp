@@ -20,12 +20,11 @@ void test_gloader_create_living_all()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        walker* w = l->create_walker(Order::Living, families[i], myscreen);
+        auto w = l->create_walker_owned(Order::Living, families[i], myscreen);
         TEST_ASSERT(w != nullptr, "create_walker should succeed for all living families");
         TEST_ASSERT(w->stats() != nullptr, "stats should exist");
         TEST_ASSERT(w->query_order() == Order::Living, "order should be Living");
         TEST_ASSERT_EQ((int)families[i], (int)w->query_family(), "family should match");
-        delete w;
     }
 }
 REGISTER_TEST(test_gloader_create_living_all);
@@ -38,20 +37,18 @@ void test_gloader_create_weapon_families()
     short weap_families[] = { FAMILY_KNIFE, FAMILY_ROCK, FAMILY_ARROW,
                               FAMILY_FIREBALL, FAMILY_LIGHTNING, FAMILY_METEOR };
     for (int i = 0; i < 6; i++) {
-        walker* w = l->create_walker(Order::Weapon, weap_families[i], myscreen);
+        auto w = l->create_walker_owned(Order::Weapon, weap_families[i], myscreen);
         if (w) {
             TEST_ASSERT(w->query_order() == Order::Weapon, "order should be Weapon");
-            delete w;
         }
     }
 
     int total_created = 0;
     for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        walker* ww = l->create_walker(Order::Weapon, static_cast<char>(fam), myscreen);
+        auto ww = l->create_walker_owned(Order::Weapon, static_cast<char>(fam), myscreen);
         if (ww) {
             total_created++;
             TEST_ASSERT(ww->query_order() == Order::Weapon, "sweep: order should be Weapon");
-            delete ww;
         }
     }
     TEST_ASSERT(total_created > 0, "weapon sweep should create at least one object");
@@ -63,19 +60,17 @@ void test_gloader_create_treasure()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
-    walker* w = l->create_walker(Order::Treasure, FAMILY_STAIN, myscreen);
+    auto w = l->create_walker_owned(Order::Treasure, FAMILY_STAIN, myscreen);
     if (w) {
         TEST_ASSERT(w->query_order() == Order::Treasure, "order should be Treasure");
-        delete w;
     }
 
     int total_created = 0;
     for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        walker* wt = l->create_walker(Order::Treasure, static_cast<char>(fam), myscreen);
+        auto wt = l->create_walker_owned(Order::Treasure, static_cast<char>(fam), myscreen);
         if (wt) {
             total_created++;
             TEST_ASSERT(wt->query_order() == Order::Treasure, "sweep: order should be Treasure");
-            delete wt;
         }
     }
     TEST_ASSERT(total_created > 0, "treasure sweep should create at least one object");
@@ -87,19 +82,17 @@ void test_gloader_create_effect()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
-    walker* w = l->create_walker(Order::FX, FAMILY_EXPLOSION, myscreen);
+    auto w = l->create_walker_owned(Order::FX, FAMILY_EXPLOSION, myscreen);
     if (w) {
         TEST_ASSERT(w->query_order() == Order::FX, "order should be FX");
-        delete w;
     }
 
     int total_created = 0;
     for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        walker* wf = l->create_walker(Order::FX, static_cast<char>(fam), myscreen);
+        auto wf = l->create_walker_owned(Order::FX, static_cast<char>(fam), myscreen);
         if (wf) {
             total_created++;
             TEST_ASSERT(wf->query_order() == Order::FX, "sweep: order should be FX");
-            delete wf;
         }
     }
     TEST_ASSERT(total_created > 0, "fx sweep should create at least one object");
@@ -111,19 +104,17 @@ void test_gloader_create_generator()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
-    walker* w = l->create_walker(Order::Generator, FAMILY_TENT, myscreen);
+    auto w = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
     if (w) {
         TEST_ASSERT(w->query_order() == Order::Generator, "order should be Generator");
-        delete w;
     }
 
     int total_created = 0;
     for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-        walker* wg = l->create_walker(Order::Generator, static_cast<char>(fam), myscreen);
+        auto wg = l->create_walker_owned(Order::Generator, static_cast<char>(fam), myscreen);
         if (wg) {
             total_created++;
             TEST_ASSERT(wg->query_order() == Order::Generator, "sweep: order should be Generator");
-            delete wg;
         }
     }
     TEST_ASSERT(total_created > 0, "generator sweep should create at least one object");
@@ -144,11 +135,10 @@ void test_gloader_set_derived_stats_all()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        walker* w = l->create_walker(Order::Living, families[i], myscreen);
+        auto w = l->create_walker_owned(Order::Living, families[i], myscreen);
         if (w) {
-            l->set_derived_stats(w, Order::Living, families[i]);
+            l->set_derived_stats(w.get(), Order::Living, families[i]);
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be set");
-            delete w;
         }
     }
 }
@@ -163,11 +153,12 @@ void test_gloader_set_walker()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
-    walker* w = l->create_walker(Order::Living, FAMILY_SOLDIER, myscreen);
+    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER, myscreen);
     TEST_ASSERT(w != nullptr, "walker created");
+    walker* wp = w.get();
 
-    myscreen->set_walker(w, Order::Living, FAMILY_MAGE);
-    TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)w->query_family(), "family should change to mage");
+    myscreen->set_walker(wp, Order::Living, FAMILY_MAGE);
+    TEST_ASSERT_EQ((int)FAMILY_MAGE, (int)wp->query_family(), "family should change to mage");
 
     const Order orders[] = {Order::Living, Order::Weapon, Order::Treasure, Order::FX, Order::Generator, Order::Special};
     for (Order o : orders) {
@@ -175,7 +166,7 @@ void test_gloader_set_walker()
             if (!l->graphics[PIX(o, fam)].valid()) {
                 continue;
             }
-            walker* changed = l->set_walker(w, o, static_cast<char>(fam));
+            walker* changed = l->set_walker(wp, o, static_cast<char>(fam));
             TEST_ASSERT(changed != nullptr, "set_walker should return object");
             TEST_ASSERT(changed->stats() != nullptr, "set_walker should leave stats valid");
         }
@@ -184,15 +175,12 @@ void test_gloader_set_walker()
     int pixie_created = 0;
     for (Order o : orders) {
         for (int fam = 0; fam < NUM_FAMILIES; fam++) {
-            pixieN* p = l->create_pixieN(o, static_cast<char>(fam));
+            auto p = l->create_pixieN_owned(o, static_cast<char>(fam));
             if (p) {
                 pixie_created++;
-                delete p;
             }
         }
     }
     TEST_ASSERT(pixie_created > 0, "create_pixieN sweep should create objects");
-
-    delete w;
 }
 REGISTER_TEST(test_gloader_set_walker);

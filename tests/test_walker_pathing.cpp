@@ -9,10 +9,10 @@ static walker* make_guy(char family, unsigned char team)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w)
         w->setxy(32, 32);
-    return w;
+    return w.release();
 }
 
 void test_walker_pathfinding_follow_and_draw_path_smoke()
@@ -67,7 +67,5 @@ void test_walker_damage_numbers_and_compute_outline_smoke()
 
     // Restore view control.
     v->control = nullptr;
-    delete w;
 }
 REGISTER_TEST(test_walker_damage_numbers_and_compute_outline_smoke);
-

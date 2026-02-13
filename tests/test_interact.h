@@ -35,7 +35,7 @@ inline std::vector<Interactable> get_interactables()
     std::vector<Interactable> result;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
-            break;
+            continue; // allbuttons[] can contain holes during transitions
         Interactable item;
         item.id = allbuttons[i]->id;
         item.label = allbuttons[i]->label;
@@ -56,7 +56,7 @@ inline bool has_interactable(const std::string& id)
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
-            break;
+            continue;
         if (allbuttons[i]->id == id && !allbuttons[i]->hidden) {
             found = true;
             break;
@@ -89,7 +89,7 @@ inline void interact(const std::string& id)
     bool found = false;
     for (int i = 0; i < MAX_BUTTONS; i++) {
         if (!allbuttons[i])
-            break;
+            continue;
         if (allbuttons[i]->id == id && !allbuttons[i]->hidden) {
             // Compute center in game coords (320x200 space)
             int game_x = allbuttons[i]->xloc + allbuttons[i]->width / 2;

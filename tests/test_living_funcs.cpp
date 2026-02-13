@@ -8,11 +8,11 @@ extern screen* myscreen;
 
 bool walkerIsAutoAttackable(walker* ob);
 
-static walker* create_living(char family)
+static std::unique_ptr<walker> create_living(char family)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (!w) return nullptr;
     w->setxy(50, 50);
     return w;
@@ -24,13 +24,12 @@ static walker* create_living(char family)
 
 void test_walkerIsAutoAttackable_soldier()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    bool result = walkerIsAutoAttackable(w);
+    bool result = walkerIsAutoAttackable(w.get());
     TEST_ASSERT(result, "soldier should be auto-attackable");
 
-    delete w;
 }
 REGISTER_TEST(test_walkerIsAutoAttackable_soldier);
 
@@ -41,11 +40,10 @@ void test_walkerIsAutoAttackable_multiple_families()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        walker* w = create_living(families[i]);
+        auto w = create_living(families[i]);
         if (w) {
-            bool result = walkerIsAutoAttackable(w);
+            bool result = walkerIsAutoAttackable(w.get());
             (void)result; // Just verify no crash
-            delete w;
         }
     }
 }
@@ -57,34 +55,31 @@ REGISTER_TEST(test_walkerIsAutoAttackable_multiple_families);
 
 void test_living_set_difficulty_basic()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    static_cast<living*>(w)->set_difficulty(5);
+    static_cast<living*>(w.get())->set_difficulty(5);
     // After set_difficulty, stats should have changed
     TEST_ASSERT(w->stats()->max_hitpoints > 0, "max HP should be positive after set_difficulty");
 
-    delete w;
 }
 REGISTER_TEST(test_living_set_difficulty_basic);
 
 void test_living_set_difficulty_level_10()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
     float hp_low, hp_high;
-    static_cast<living*>(w)->set_difficulty(1);
+    static_cast<living*>(w.get())->set_difficulty(1);
     hp_low = w->stats()->max_hitpoints;
 
-    walker* w2 = create_living(FAMILY_SOLDIER);
-    static_cast<living*>(w2)->set_difficulty(10);
+    auto w2 = create_living(FAMILY_SOLDIER);
+    static_cast<living*>(w2.get())->set_difficulty(10);
     hp_high = w2->stats()->max_hitpoints;
 
     TEST_ASSERT(hp_high > hp_low, "higher difficulty level should give more HP");
 
-    delete w;
-    delete w2;
 }
 REGISTER_TEST(test_living_set_difficulty_level_10);
 
@@ -95,11 +90,10 @@ void test_living_set_difficulty_all_families()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        walker* w = create_living(families[i]);
+        auto w = create_living(families[i]);
         if (w) {
-            static_cast<living*>(w)->set_difficulty(3);
+            static_cast<living*>(w.get())->set_difficulty(3);
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "every family should have positive HP after set_difficulty");
-            delete w;
         }
     }
 }
@@ -111,31 +105,29 @@ REGISTER_TEST(test_living_set_difficulty_all_families);
 
 void test_living_check_special_soldier()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
     w->stats()->magicpoints = 100;
     w->stats()->max_magicpoints = 100;
 
-    bool result = static_cast<living*>(w)->check_special();
+    bool result = static_cast<living*>(w.get())->check_special();
     (void)result; // May return true or false
 
-    delete w;
 }
 REGISTER_TEST(test_living_check_special_soldier);
 
 void test_living_check_special_mage()
 {
-    walker* w = create_living(FAMILY_MAGE);
+    auto w = create_living(FAMILY_MAGE);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
     w->stats()->magicpoints = 100;
     w->stats()->max_magicpoints = 100;
 
-    bool result = static_cast<living*>(w)->check_special();
+    bool result = static_cast<living*>(w.get())->check_special();
     (void)result;
 
-    delete w;
 }
 REGISTER_TEST(test_living_check_special_mage);
 
@@ -145,19 +137,18 @@ REGISTER_TEST(test_living_check_special_mage);
 
 void test_living_facing()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
 
-    short dir = static_cast<living*>(w)->facing(10, 0);
+    short dir = static_cast<living*>(w.get())->facing(10, 0);
     TEST_ASSERT_EQ(FACE_RIGHT, (int)dir, "facing right");
 
-    dir = static_cast<living*>(w)->facing(0, -10);
+    dir = static_cast<living*>(w.get())->facing(0, -10);
     TEST_ASSERT_EQ(FACE_UP, (int)dir, "facing up");
 
-    dir = static_cast<living*>(w)->facing(-10, 10);
+    dir = static_cast<living*>(w.get())->facing(-10, 10);
     TEST_ASSERT_EQ(FACE_DOWN_LEFT, (int)dir, "facing down-left");
 
-    delete w;
 }
 REGISTER_TEST(test_living_facing);
 
@@ -167,8 +158,8 @@ REGISTER_TEST(test_living_facing);
 
 void test_living_shove_smoke()
 {
-    walker* a = create_living(FAMILY_SOLDIER);
-    walker* b = create_living(FAMILY_SOLDIER);
+    auto a = create_living(FAMILY_SOLDIER);
+    auto b = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(a != nullptr, "create a should succeed");
     TEST_ASSERT(b != nullptr, "create b should succeed");
 
@@ -177,10 +168,8 @@ void test_living_shove_smoke()
     a->setxy(100, 100);
     b->setxy(105, 100);
 
-    static_cast<living*>(a)->shove(b, 1, 0);
+    static_cast<living*>(a.get())->shove(b.get(), 1, 0);
 
-    delete a;
-    delete b;
 }
 REGISTER_TEST(test_living_shove_smoke);
 
@@ -190,14 +179,13 @@ REGISTER_TEST(test_living_shove_smoke);
 
 void test_living_walk_smoke()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     w->setxy(100, 100);
 
-    static_cast<living*>(w)->walk(1, 0);
-    static_cast<living*>(w)->walk(0, 1);
-    static_cast<living*>(w)->walk(-1, -1);
+    static_cast<living*>(w.get())->walk(1, 0);
+    static_cast<living*>(w.get())->walk(0, 1);
+    static_cast<living*>(w.get())->walk(-1, -1);
 
-    delete w;
 }
 REGISTER_TEST(test_living_walk_smoke);

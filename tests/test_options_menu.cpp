@@ -117,16 +117,13 @@ static int options_injector(void* data)
         interact("options_back");
     }
 
-    // Main menu reappears -- let the mainmenu_loop iteration limit exit
-    SDL_Delay(500);
-    wait_for_interactable("continue_game", 5000);
-    SDL_Delay(1500);
-    // Need to do something so mainmenu returns. Click continue then back.
-    interact("continue_game");
-    SDL_Delay(500);
-    wait_for_interactable("back", 10000);
-    SDL_Delay(1500);
-    interact("back");
+    // Ensure mainmenu() returns so picker_main() can complete.
+    // In test mode, QUIT does not exit the process; it just returns EXIT_VALUE.
+    if (wait_for_interactable("quit", 10000)) {
+        SDL_Delay(200);
+        fprintf(stderr, "  [test] clicking quit\n");
+        interact("quit");
+    }
 
     state->finished = true;
     return 0;

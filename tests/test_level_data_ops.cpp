@@ -251,11 +251,10 @@ void test_level_data_remove_ob_from_each_list()
     short r3 = myscreen->level_data.remove_ob(living);
     TEST_ASSERT_EQ(1, (int)r3, "removed from oblist");
 
-    walker* non_member = myscreen->level_data.myloader->create_walker(Order::Living, FAMILY_SOLDIER, myscreen);
+    auto non_member = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_SOLDIER, myscreen);
     TEST_ASSERT(non_member != nullptr, "non-member walker created");
-    short r4 = myscreen->level_data.remove_ob(non_member);
+    short r4 = myscreen->level_data.remove_ob(non_member.get());
     TEST_ASSERT_EQ(0, (int)r4, "removing non-member object should fail");
-    delete non_member;
     short r5 = myscreen->level_data.remove_ob(nullptr);
     TEST_ASSERT_EQ(0, (int)r5, "removing null should fail");
 }
@@ -284,7 +283,7 @@ void test_level_data_delete_objects()
     fx->setxy(50, 50);
     weap->setxy(70, 70);
 
-    auto dead = std::unique_ptr<walker>(myscreen->level_data.myloader->create_walker(Order::Living, FAMILY_ORC, myscreen));
+    auto dead = myscreen->level_data.myloader->create_walker_owned(Order::Living, FAMILY_ORC, myscreen);
     TEST_ASSERT(dead != nullptr, "dead_list walker created");
     dead->myobmap = myscreen->level_data.myobmap.get();
     dead->setxy(90, 90);

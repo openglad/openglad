@@ -10,9 +10,9 @@ static walker* make_guy(char family, unsigned char team = 0)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) w->setxy(100, 100);
-    return w;
+    return w.release();
 }
 
 // ---------------------------------------------------------------------------
@@ -35,7 +35,6 @@ void test_walker_facing_all_16_vectors()
         short dir = w->facing(d.x, d.y);
         TEST_ASSERT(dir >= 0 && dir < 8, "facing should be 0-7");
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_facing_all_16_vectors);
 
@@ -45,7 +44,6 @@ void test_walker_facing_zero()
     if (!w) return;
     short dir = w->facing(0, 0);
     (void)dir; // behavior for (0,0) may vary
-    delete w;
 }
 REGISTER_TEST(test_walker_facing_zero);
 
@@ -62,7 +60,6 @@ void test_walker_turn_to_all_targets()
         w->curdir = 0;
         w->turn(target);
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_turn_to_all_targets);
 
@@ -75,7 +72,6 @@ void test_walker_turn_from_all_starts()
         w->curdir = static_cast<char>(start);
         w->turn(0);
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_turn_from_all_starts);
 
@@ -94,7 +90,6 @@ void test_walker_walkstep_cardinals()
     w->walkstep(0, 1);
     w->walkstep(0, -1);
 
-    delete w;
 }
 REGISTER_TEST(test_walker_walkstep_cardinals);
 
@@ -109,7 +104,6 @@ void test_walker_walkstep_diagonals()
     w->walkstep(1, -1);
     w->walkstep(-1, -1);
 
-    delete w;
 }
 REGISTER_TEST(test_walker_walkstep_diagonals);
 
@@ -133,7 +127,6 @@ void test_walker_walkstep_zero()
     (void)w->walkstep(-1, -1);
     (void)w->walkstep(-1, 1);
 
-    delete w;
 }
 REGISTER_TEST(test_walker_walkstep_zero);
 
@@ -151,7 +144,6 @@ void test_walker_draw_basic()
     if (vs) {
         w->draw(vs);
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_draw_basic);
 
@@ -185,7 +177,6 @@ void test_walker_draw_tile_basic()
         vs->control = old_control;
         delete control;
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_draw_tile_basic);
 
@@ -200,7 +191,6 @@ void test_walker_draw_with_flight()
     if (vs) {
         w->draw(vs);
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_draw_with_flight);
 
@@ -228,7 +218,6 @@ void test_walker_draw_with_invisibility()
         vs->control = old_control;
         delete control;
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_draw_with_invisibility);
 
@@ -243,7 +232,6 @@ void test_walker_draw_with_invulnerability()
     if (vs) {
         w->draw(vs);
     }
-    delete w;
 }
 REGISTER_TEST(test_walker_draw_with_invulnerability);
 
@@ -257,7 +245,6 @@ void test_walker_animate_walk()
     if (!w) return;
     w->ani_type = ANI_WALK;
     w->animate();
-    delete w;
 }
 REGISTER_TEST(test_walker_animate_walk);
 
@@ -267,7 +254,6 @@ void test_walker_animate_attack()
     if (!w) return;
     w->ani_type = ANI_ATTACK;
     w->animate();
-    delete w;
 }
 REGISTER_TEST(test_walker_animate_attack);
 
@@ -282,7 +268,6 @@ void test_walker_animate_all_families()
         if (!w) continue;
         w->ani_type = ANI_WALK;
         w->animate();
-        delete w;
     }
 }
 REGISTER_TEST(test_walker_animate_all_families);
@@ -304,7 +289,6 @@ void test_walker_create_weapon_soldier()
         myscreen->level_data.remove_ob(weap);
     }
 
-    delete w;
 }
 REGISTER_TEST(test_walker_create_weapon_soldier);
 
@@ -321,7 +305,6 @@ void test_walker_create_weapon_archer()
         myscreen->level_data.remove_ob(weap);
     }
 
-    delete w;
 }
 REGISTER_TEST(test_walker_create_weapon_archer);
 
@@ -338,7 +321,6 @@ void test_walker_create_weapon_mage()
         myscreen->level_data.remove_ob(weap);
     }
 
-    delete w;
 }
 REGISTER_TEST(test_walker_create_weapon_mage);
 
@@ -353,7 +335,6 @@ void test_walker_on_screen()
     w->setxy(100, 100);
     bool result = w->on_screen();
     (void)result;
-    delete w;
 }
 REGISTER_TEST(test_walker_on_screen);
 
@@ -393,6 +374,5 @@ void test_walker_draw_tile_phantom_and_forestwalk_paths()
         delete control;
     }
 
-    delete w;
 }
 REGISTER_TEST(test_walker_draw_tile_phantom_and_forestwalk_paths);

@@ -524,20 +524,22 @@ void guy::update_derived_stats(walker* w)
         w->stats()->max_magic_delay = 2;
 }
 
-walker* guy::create_walker(screen* screen_)
+std::unique_ptr<walker> guy::create_walker_owned(screen* screen_)
 {
-    auto temp_guy = std::make_unique<guy>(*this);
-    walker* temp_walker = screen_->level_data.myloader->create_walker(Order::Living, temp_guy->family, nullptr);
-    temp_walker->set_owned_myguy(std::move(temp_guy));
-    temp_walker->stats()->level = temp_walker->myguy->level;
-    
-    update_derived_stats(temp_walker);
+	    auto temp_guy = std::make_unique<guy>(*this);
+	    auto temp_walker = screen_->level_data.myloader->create_walker_owned(Order::Living, temp_guy->family, nullptr);
+	    if (!temp_walker)
+	        return nullptr;
+	    temp_walker->set_owned_myguy(std::move(temp_guy));
+	    temp_walker->stats()->level = temp_walker->myguy->level;
+	    
+	    update_derived_stats(temp_walker.get());
 
     // Set our team number ..
     temp_walker->team_num = static_cast<unsigned char>(temp_walker->myguy->teamnum);
     temp_walker->real_team_num = 255;
     
-    return temp_walker;
+	    return temp_walker;
 }
 
 walker* guy::create_and_add_walker(screen* screen_)

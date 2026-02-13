@@ -2,14 +2,15 @@
 #include "entities/guy.h"
 #include "data/gloader.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
-static walker* make_walker(char family)
+static std::unique_ptr<walker> make_walker(char family)
 {
     guy g(family);
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) w->setxy(100, 100);
     return w;
 }
@@ -66,14 +67,14 @@ void test_view_with_control()
     viewscreen* vs = myscreen->viewob[0].get();
     if (!vs) return;
 
-    walker* w = make_walker(FAMILY_SOLDIER);
+    auto w = make_walker(FAMILY_SOLDIER);
     if (!w) return;
 
-    vs->control = w;
+    walker* wp = w.get();
+    vs->control = wp;
     vs->redraw();
     vs->control = nullptr;
 
-    delete w;
 }
 REGISTER_TEST(test_view_with_control);
 
@@ -82,13 +83,14 @@ void test_view_draw_with_entities()
     viewscreen* vs = myscreen->viewob[0].get();
     if (!vs) return;
 
-    walker* w = make_walker(FAMILY_SOLDIER);
+    auto w = make_walker(FAMILY_SOLDIER);
     if (!w) return;
+    walker* wp = w.get();
 
     // Add walker to the level's oblist
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(w));
+    myscreen->level_data.oblist.push_back(std::move(w));
 
-    vs->control = w;
+    vs->control = wp;
     vs->redraw();
     vs->control = nullptr;
 

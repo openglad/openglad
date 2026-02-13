@@ -1,4 +1,8 @@
 #include <unistd.h>
+#include <signal.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
 #include "graph.h"
 #include "test_trace.h"
@@ -18,7 +22,24 @@ extern options* theprefs;
 extern "C" void __gcov_dump();
 #endif
 
+static void handle_test_signal(int sig)
+{
+    // Async-signal-safe termination to avoid leaving orphaned UI test processes
+    // (e.g. when CTest is interrupted).
+    _exit(128 + sig);
+}
+
 int main(int argc, char* argv[]) {
+    // Ensure the test process is terminated when its parent (usually CTest)
+    // exits, and exit promptly on interrupt/terminate signals.
+#ifdef __linux__
+    (void)prctl(PR_SET_PDEATHSIG, SIGTERM);
+    if (getppid() == 1)
+        _exit(1);
+#endif
+    signal(SIGINT, handle_test_signal);
+    signal(SIGTERM, handle_test_signal);
+
     // Force offscreen rendering - no display needed
     SDL_setenv("SDL_VIDEODRIVER", "offscreen", 1);
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);

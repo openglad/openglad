@@ -837,13 +837,6 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	return ob;
 }
 
-walker* loader::create_walker(Order order,
-                              Sint32 family,
-                              screen* screenp, [[maybe_unused]] bool cache_weapons)
-{
-    return create_walker_owned(order, family, screenp, cache_weapons).release();
-}
-
 walker  *loader::set_walker(walker *ob,
                             Order order,
                             Sint32 family)
@@ -1130,12 +1123,6 @@ walker  *loader::set_walker(walker *ob,
 	}
 
 	return ob;
-}
-
-// This is used for grabbing a pixieN directly, not through a walker
-pixieN *loader::create_pixieN(Order order, Sint32 family)
-{
-	return create_pixieN_owned(order, family).release();
 }
 
 std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, Sint32 family)

@@ -6,12 +6,12 @@
 
 extern screen* myscreen;
 
-static walker* create_living(char family)
+static std::unique_ptr<walker> create_living(char family)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (!w)
         return nullptr;
     // Place at a valid position so obmap operations are safe.
@@ -21,7 +21,7 @@ static walker* create_living(char family)
 
 void test_loader_sets_soldier_defaults()
 {
-    walker* w = create_living(FAMILY_SOLDIER);
+    auto w = create_living(FAMILY_SOLDIER);
     TEST_ASSERT(w != nullptr, "create_walker(soldier) should succeed");
 
     TEST_ASSERT_EQ((int)FAMILY_KNIFE, (int)w->default_weapon, "soldier default weapon should be knife");
@@ -31,13 +31,12 @@ void test_loader_sets_soldier_defaults()
     TEST_ASSERT_EQ(120, (int)w->stats()->special_cost[3], "soldier whirlwind cost");
     TEST_ASSERT_EQ(150, (int)w->stats()->special_cost[4], "soldier disarm cost");
 
-    delete w;
 }
 REGISTER_TEST(test_loader_sets_soldier_defaults);
 
 void test_loader_sets_faerie_flags()
 {
-    walker* w = create_living(FAMILY_FAERIE);
+    auto w = create_living(FAMILY_FAERIE);
     TEST_ASSERT(w != nullptr, "create_walker(faerie) should succeed");
 
     TEST_ASSERT(w->stats()->query_bit_flags(BIT_ANIMATE), "faerie should have BIT_ANIMATE");
@@ -45,13 +44,12 @@ void test_loader_sets_faerie_flags()
     TEST_ASSERT_EQ((int)FAMILY_SPRINKLE, (int)w->default_weapon, "faerie default weapon should be sprinkle");
     TEST_ASSERT_EQ(2, (int)w->stats()->weapon_cost, "faerie weapon_cost should be set");
 
-    delete w;
 }
 REGISTER_TEST(test_loader_sets_faerie_flags);
 
 void test_loader_sets_ghost_flags()
 {
-    walker* w = create_living(FAMILY_GHOST);
+    auto w = create_living(FAMILY_GHOST);
     TEST_ASSERT(w != nullptr, "create_walker(ghost) should succeed");
 
     TEST_ASSERT(w->stats()->query_bit_flags(BIT_ANIMATE), "ghost should have BIT_ANIMATE");
@@ -60,14 +58,13 @@ void test_loader_sets_ghost_flags()
     TEST_ASSERT(w->stats()->query_bit_flags(BIT_NO_RANGED), "ghost should have BIT_NO_RANGED");
     TEST_ASSERT_EQ(0, (int)w->stats()->weapon_cost, "ghost melee should be free");
 
-    delete w;
 }
 REGISTER_TEST(test_loader_sets_ghost_flags);
 
 void test_walker_attack_deals_damage_and_awards_score()
 {
-    walker* attacker = create_living(FAMILY_SOLDIER);
-    walker* target = create_living(FAMILY_SMALL_SLIME);
+    auto attacker = create_living(FAMILY_SOLDIER);
+    auto target = create_living(FAMILY_SMALL_SLIME);
     TEST_ASSERT(attacker != nullptr, "create_walker(attacker) should succeed");
     TEST_ASSERT(target != nullptr, "create_walker(target) should succeed");
 
@@ -86,13 +83,11 @@ void test_walker_attack_deals_damage_and_awards_score()
 
     myscreen->save_data.m_score[0] = 0;
 
-    bool ok = attacker->attack(target);
+    bool ok = attacker->attack(target.get());
     TEST_ASSERT(ok, "attack should succeed against enemy living target");
     TEST_ASSERT(target->stats()->hitpoints < 100, "attack should reduce target HP");
     TEST_ASSERT(attacker->myguy->total_hits >= 1, "attack should increment attacker hits");
     TEST_ASSERT(myscreen->save_data.m_score[0] > 0, "attack should award score for team 0");
 
-    delete attacker;
-    delete target;
 }
 REGISTER_TEST(test_walker_attack_deals_damage_and_awards_score);

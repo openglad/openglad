@@ -2,6 +2,7 @@
 #include "entities/guy.h"
 #include "data/gloader.h"
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -15,13 +16,14 @@ static walker* make_weapon(char family)
     return w;
 }
 
-static walker* make_living(char family, unsigned char team = 0)
+static std::unique_ptr<walker> make_living(char family, unsigned char team = 0)
 {
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
-    if (w) w->setxy(100, 100);
+    auto w = g.create_walker_owned(myscreen);
+    if (w)
+        w->setxy(100, 100);
     return w;
 }
 
@@ -101,51 +103,48 @@ REGISTER_TEST(test_weap_act_random);
 
 void test_weap_death_knife_soldier_owner()
 {
-    walker* owner = make_living(FAMILY_SOLDIER, 0);
+    auto owner = make_living(FAMILY_SOLDIER, 0);
     if (!owner) return;
 
     walker* knife = make_weapon(FAMILY_KNIFE);
-    if (!knife) { delete owner; return; }
-    knife->owner = owner;
+    if (!knife) return;
+    knife->owner = owner.get();
     knife->dead = 1;
     knife->death();
     // Should create a KNIFE_BACK effect
 
-    delete owner;
     myscreen->level_data.remove_ob(knife);
 }
 REGISTER_TEST(test_weap_death_knife_soldier_owner);
 
 void test_weap_death_knife_non_soldier()
 {
-    walker* owner = make_living(FAMILY_ARCHER, 0);
+    auto owner = make_living(FAMILY_ARCHER, 0);
     if (!owner) return;
 
     walker* knife = make_weapon(FAMILY_KNIFE);
-    if (!knife) { delete owner; return; }
-    knife->owner = owner;
+    if (!knife) return;
+    knife->owner = owner.get();
     knife->dead = 1;
     knife->death();
     // Should NOT create a KNIFE_BACK since owner is not soldier
 
-    delete owner;
     myscreen->level_data.remove_ob(knife);
 }
 REGISTER_TEST(test_weap_death_knife_non_soldier);
 
 void test_weap_death_fire_arrow_exploding()
 {
-    walker* owner = make_living(FAMILY_ARCHER, 0);
-    if (!owner) return;
+    auto owner = make_living(FAMILY_ARCHER, 0);
+	    if (!owner) return;
+	    
+	    walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
+	    if (!arrow) return;
+	    arrow->owner = owner.get();
+	    arrow->skip_exit = 1; // means it's supposed to explode
+	    arrow->dead = 1;
+	    arrow->death();
 
-    walker* arrow = make_weapon(FAMILY_FIRE_ARROW);
-    if (!arrow) { delete owner; return; }
-    arrow->owner = owner;
-    arrow->skip_exit = 1; // means it's supposed to explode
-    arrow->dead = 1;
-    arrow->death();
-
-    delete owner;
     myscreen->level_data.remove_ob(arrow);
 }
 REGISTER_TEST(test_weap_death_fire_arrow_exploding);

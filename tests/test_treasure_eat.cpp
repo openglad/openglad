@@ -10,9 +10,9 @@ static walker* make_eater(char family, unsigned char team = 0)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) w->setxy(100, 100);
-    return w;
+    return w.release();
 }
 
 static walker* make_treasure(char family, short level = 1)

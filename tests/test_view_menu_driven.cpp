@@ -3,18 +3,19 @@
 
 #include <array>
 #include <chrono>
+#include <memory>
 #include <thread>
 
 extern screen* myscreen;
 extern const Uint8* keystates;
 extern int player_keys[4][NUM_KEYS];
 
-static walker* create_controlled_living(char family)
+static std::unique_ptr<walker> create_controlled_living(char family)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (!w)
         return nullptr;
     w->team_num = 0;
@@ -53,9 +54,10 @@ void test_viewscreen_options_menu_exercises_key_paths()
     viewscreen* v = myscreen->viewob[0].get();
     TEST_ASSERT(v != nullptr, "viewob[0] should exist");
 
-    walker* control = create_controlled_living(FAMILY_SOLDIER);
+    auto control = create_controlled_living(FAMILY_SOLDIER);
     TEST_ASSERT(control != nullptr, "create_controlled_living should succeed");
-    v->control = control;
+    walker* controlp = control.get();
+    v->control = controlp;
 
     KeystateOverride ks;
 
@@ -108,7 +110,6 @@ void test_viewscreen_options_menu_exercises_key_paths()
     player_keys[v->mynum][KEY_YELL] = saved_yell;
     player_keys[v->mynum][KEY_SHIFTER] = saved_shifter;
 
-    delete control;
     v->control = nullptr;
 }
 REGISTER_TEST(test_viewscreen_options_menu_exercises_key_paths);

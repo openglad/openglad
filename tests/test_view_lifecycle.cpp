@@ -6,12 +6,12 @@
 
 extern screen* myscreen;
 
-static walker* make_player_walker(char family, unsigned char team)
+static std::unique_ptr<walker> make_player_walker(char family, unsigned char team)
 {
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) {
         w->team_num = team;
         w->user = -1;
@@ -21,12 +21,12 @@ static walker* make_player_walker(char family, unsigned char team)
     return w;
 }
 
-static walker* make_npc_walker(char family, unsigned char team)
+static std::unique_ptr<walker> make_npc_walker(char family, unsigned char team)
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    walker* w = l->create_walker(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family, myscreen);
     if (w) {
         w->team_num = team;
         w->user = -1;
@@ -70,32 +70,36 @@ void test_viewscreen_find_next_control_priorities()
         }
     } swap;
 
-    walker* npc_same_team = make_npc_walker(FAMILY_ORC, 0);
-    walker* player_same_team = make_player_walker(FAMILY_SOLDIER, 0);
-    walker* player_other_team = make_player_walker(FAMILY_ARCHER, 1);
+    auto npc_same_team = make_npc_walker(FAMILY_ORC, 0);
+    auto player_same_team = make_player_walker(FAMILY_SOLDIER, 0);
+    auto player_other_team = make_player_walker(FAMILY_ARCHER, 1);
     TEST_ASSERT(npc_same_team != nullptr, "npc walker should be created");
     TEST_ASSERT(player_same_team != nullptr, "player walker should be created");
     TEST_ASSERT(player_other_team != nullptr, "other-team player walker should be created");
 
+    walker* npc_same_teamp = npc_same_team.get();
+    walker* player_same_teamp = player_same_team.get();
+    walker* player_other_teamp = player_other_team.get();
+
     // Insert in an order that would pick the player walker only if the priority
     // logic is working (player character loop runs first).
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(npc_same_team));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(player_same_team));
-    myscreen->level_data.oblist.push_back(std::unique_ptr<walker>(player_other_team));
+    myscreen->level_data.oblist.push_back(std::move(npc_same_team));
+    myscreen->level_data.oblist.push_back(std::move(player_same_team));
+    myscreen->level_data.oblist.push_back(std::move(player_other_team));
 
     walker* found1 = v.find_next_control();
-    TEST_ASSERT(found1 == player_same_team, "should prefer un-controlled player character on team");
+    TEST_ASSERT(found1 == player_same_teamp, "should prefer un-controlled player character on team");
 
     // Mark player_same_team as already controlled; should fall back to any team member.
-    player_same_team->user = 0;
+    player_same_teamp->user = 0;
     walker* found2 = v.find_next_control();
-    TEST_ASSERT(found2 == npc_same_team, "should fall back to any un-controlled living team member");
+    TEST_ASSERT(found2 == npc_same_teamp, "should fall back to any un-controlled living team member");
 
     // Now eliminate team 0 options; should fall back to any remaining player character.
-    npc_same_team->dead = 1;
-    player_same_team->dead = 1;
+    npc_same_teamp->dead = 1;
+    player_same_teamp->dead = 1;
     walker* found3 = v.find_next_control();
-    TEST_ASSERT(found3 == player_other_team, "should fall back to any living player character");
+    TEST_ASSERT(found3 == player_other_teamp, "should fall back to any living player character");
 
     // Cleanup - remove just our inserted walkers.
     myscreen->level_data.oblist.clear();

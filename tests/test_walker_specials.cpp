@@ -22,13 +22,13 @@ static walker* make_special_guy(char family, unsigned char team = 0, short level
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(level, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     if (w) {
         w->setxy(100, 100);
         w->stats()->magicpoints = 500; // lots of magic for specials
         w->stats()->max_magicpoints = 500;
     }
-    return w;
+    return w.release();
 }
 
 static int count_family_in_oblist(char family)
@@ -104,7 +104,6 @@ void test_walker_special_soldier_charge()
     w->lasty = 0;
     w->current_special = 1; // charge
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_soldier_charge);
 
@@ -114,7 +113,6 @@ void test_walker_special_soldier_boomerang()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 2; // boomerang
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_soldier_boomerang);
 
@@ -127,7 +125,6 @@ void test_walker_special_soldier_whirlwind()
     w->lastx = w->stepsize;
     w->lasty = 0;
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_soldier_whirlwind);
 
@@ -139,7 +136,6 @@ void test_walker_special_archer_fire_arrows()
     w->lasty = 0;
     w->current_special = 1; // fire arrows
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_archer_fire_arrows);
 
@@ -152,7 +148,6 @@ void test_walker_special_archer_flurry()
     w->busy = 0;
     w->current_special = 2; // flurry
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_archer_flurry);
 
@@ -165,7 +160,6 @@ void test_walker_special_archer_exploding()
     w->busy = 0;
     w->current_special = 3; // exploding arrows
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_archer_exploding);
 
@@ -201,7 +195,6 @@ void test_walker_special_mage_teleport()
 
     (void)w->teleport_ranged(24);
     myscreen->level_data.delete_objects();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_mage_teleport);
 
@@ -211,7 +204,6 @@ void test_walker_special_mage_freeze()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 2; // freeze time
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_mage_freeze);
 
@@ -230,7 +222,6 @@ void test_walker_special_mage_energy_wave()
     (void)w->special();
     int after_wave = count_family_all_lists(FAMILY_WAVE);
     TEST_ASSERT(after_wave >= before_wave, "energy wave path should run without removing waves");
-    delete w;
 
     // Exercise archmage heavy branches: marker teleport, chain lightning,
     // summon variants, and mind-control.
@@ -444,7 +435,6 @@ void test_walker_special_cleric_heal()
     w->current_special = 1; // heal
     w->shifter_down = 0;
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_cleric_heal);
 
@@ -489,7 +479,6 @@ void test_walker_special_cleric_raise_undead()
     delete skel;
     delete ghost;
     delete orc;
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_cleric_raise_undead);
 
@@ -502,7 +491,6 @@ void test_walker_special_elf_rocks()
     w->lasty = 0;
     w->busy = 0;
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_elf_rocks);
 
@@ -512,7 +500,6 @@ void test_walker_special_elf_speed()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 2; // speed
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_elf_speed);
 
@@ -522,7 +509,6 @@ void test_walker_special_elf_heal()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 3; // nature heal
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_elf_heal);
 
@@ -532,7 +518,6 @@ void test_walker_special_thief_stealth()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // stealth
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_thief_stealth);
 
@@ -542,7 +527,6 @@ void test_walker_special_thief_taunt()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 2; // taunt
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_thief_taunt);
 
@@ -552,7 +536,6 @@ void test_walker_special_skeleton_tunnel()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // tunnel
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_skeleton_tunnel);
 
@@ -562,7 +545,6 @@ void test_walker_special_fireelemental_explode()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // explode
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_fireelemental_explode);
 
@@ -572,7 +554,6 @@ void test_walker_special_faerie_charm()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // charm
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_faerie_charm);
 
@@ -582,7 +563,6 @@ void test_walker_special_druid_plant_tree()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // plant tree
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_druid_plant_tree);
 
@@ -592,7 +572,6 @@ void test_walker_special_druid_summon()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 2; // summon animal
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_druid_summon);
 
@@ -602,7 +581,6 @@ void test_walker_special_ghost_scare()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // scare
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_ghost_scare);
 
@@ -612,7 +590,6 @@ void test_walker_special_orc_howl()
     TEST_ASSERT(w != nullptr, "walker created");
     w->current_special = 1; // howl
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_orc_howl);
 
@@ -625,7 +602,6 @@ void test_walker_special_barbarian_hurl()
     w->busy = 0;
     w->current_special = 1; // hurl boulder
     w->special();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_barbarian_hurl);
 
@@ -645,7 +621,6 @@ void test_walker_special_dead()
     w->stats()->magicpoints = w->stats()->special_cost[3];
     w->set_order_family(Order::Weapon, FAMILY_KNIFE);
     TEST_ASSERT(!w->special(), "non-living special should fail early");
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_dead);
 
@@ -671,7 +646,6 @@ void test_walker_special_no_magic()
     TEST_ASSERT(w->walker::do_summon(1, 10) == nullptr, "base do_summon fallback should return null");
     TEST_ASSERT(!w->walker::check_special(), "base check_special fallback should return false");
 
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_special_no_magic);
 
@@ -685,7 +659,6 @@ void test_walker_death_fire_elemental()
     TEST_ASSERT(w != nullptr, "walker created");
     w->dead = 1;
     w->death();
-    delete w;
 }
 REGISTER_SPECIAL_TEST(test_walker_death_fire_elemental);
 
@@ -696,7 +669,6 @@ void test_walker_death_with_myguy()
     TEST_ASSERT(w->myguy != nullptr, "should have myguy");
     w->dead = 1;
     w->death();
-    delete w;
 
     // Also exercise generator-death explosion fan-out path.
     walker* generator = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);

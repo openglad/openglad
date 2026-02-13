@@ -143,13 +143,12 @@ void test_guy_update_derived_stats_soldier()
 {
     guy g(FAMILY_SOLDIER);
     g.upgrade_to_level(3, true);
-    walker* w = g.create_walker(myscreen);
+    auto w = g.create_walker_owned(myscreen);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive");
     TEST_ASSERT(w->stats()->max_magicpoints >= 0, "MP should be non-negative");
     TEST_ASSERT(w->stats()->heal_per_round >= 0, "heal_per_round should be non-negative");
     TEST_ASSERT(w->stats()->magic_per_round >= 0, "magic_per_round should be non-negative");
-    delete w;
 }
 REGISTER_TEST(test_guy_update_derived_stats_soldier);
 
@@ -162,10 +161,9 @@ void test_guy_update_derived_stats_all_families()
     for (int i = 0; i < 14; i++) {
         guy g(families[i]);
         g.upgrade_to_level(3, true);
-        walker* w = g.create_walker(myscreen);
+        auto w = g.create_walker_owned(myscreen);
         if (w) {
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive for all families");
-            delete w;
         }
     }
 }
@@ -210,11 +208,10 @@ void test_guy_create_walker_various()
     for (int i = 0; i < 6; i++) {
         guy g(families[i]);
         g.upgrade_to_level(2, true);
-        walker* w = g.create_walker(myscreen);
+        auto w = g.create_walker_owned(myscreen);
         TEST_ASSERT(w != nullptr, "create_walker should succeed");
         TEST_ASSERT(w->myguy != nullptr, "walker should have myguy set");
         TEST_ASSERT(w->stats()->level == 2, "walker level should match guy level");
-        delete w;
     }
 }
 REGISTER_TEST(test_guy_create_walker_various);
