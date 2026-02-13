@@ -131,8 +131,10 @@ int *normalkeys[] = {key1,key2,key3,key4};
 // Zardus: keys is a sys var (apparently) so we'll use allkeys
 int allkeys[4][16];
 
-// ** OUR prefs object! **
-options *theprefs;
+// Legacy global observer alias for prefs.
+// Ownership lives in `GameContext::prefs` (std::unique_ptr<options>); code that still
+// reads `theprefs` should treat it as borrowed and nullable.
+options *theprefs = nullptr;
 
 namespace
 {
