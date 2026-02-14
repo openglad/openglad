@@ -1,5 +1,5 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/legacy/test_trace.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 #include <openglad/data/save_data.h>
 extern screen* myscreen;
