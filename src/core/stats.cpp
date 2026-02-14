@@ -18,8 +18,12 @@
 // Stats.cpp
 //
 
-#include <openglad/legacy/graph.h>
 #include <openglad/core/stats.h>      // for bit flags, etc.
+#include <openglad/core/util.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
 #include <cmath>
 #include <openglad/runtime/game_context.h>
 #include <format>
