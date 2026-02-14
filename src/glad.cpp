@@ -16,7 +16,10 @@
  */
 
 #include <openglad/core/version.h>
-#include <openglad/legacy/graph.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/walker.h>
+#include <openglad/render/view.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_loop.h>
 #include <openglad/runtime/screen_lifecycle.h>
 #ifdef __EMSCRIPTEN__
