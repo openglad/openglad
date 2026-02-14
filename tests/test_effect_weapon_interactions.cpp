@@ -1,5 +1,8 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/stats.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <unordered_set>
@@ -118,4 +121,3 @@ void test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enem
     remove_new_objects(level, ob_before, fx_before, weap_before);
 }
 REGISTER_TEST(test_effect_magic_shield_and_boomerang_absorb_friendly_weapons_and_hit_enemies);
-

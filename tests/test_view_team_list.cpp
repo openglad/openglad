@@ -1,4 +1,8 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/stats.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
@@ -47,4 +51,3 @@ void test_viewscreen_view_team_renders_entries_for_my_team()
     vs->control = nullptr;
 }
 REGISTER_TEST(test_viewscreen_view_team_renders_entries_for_my_team);
-
