@@ -16,4 +16,3 @@ src/entities/walker_combat.cpp
 src/entities/walker_movement.cpp
 src/entities/walker_pathing.cpp
 src/entities/walker_specials.cpp
-src/entities/weap.cpp

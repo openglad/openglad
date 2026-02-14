@@ -18,9 +18,12 @@
 // weap; a derived class of walker
 //
 
-#include <openglad/legacy/graph.h>
+#include <openglad/entities/weap.h>
+#include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/render/smooth.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/legacy/soundob.h>
 #include <format>
 
 namespace
