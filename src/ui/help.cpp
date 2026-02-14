@@ -19,10 +19,14 @@
 #include <vector>
 #include <string>
 #include <format>
-#include <openglad/legacy/graph.h>
+#include "SDL.h"
 #include <openglad/core/util.h>
 #include <openglad/core/version.h>
 #include <openglad/platform/io.h>
+#include <openglad/input/input.h>
+#include <openglad/legacy/base.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #define YIELD_SLEEP(ms) emscripten_sleep(ms)
