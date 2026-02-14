@@ -45,7 +45,7 @@ inline constexpr char BUTTON_BOTTOM = 11; //10
 inline constexpr char BUTTON_LEFT   = 14; //13
 inline constexpr char BUTTON_RIGHT  = 12; //11
 
-// Observer pointer. Owned by `runtime/screen_lifecycle` (`global_screen_owner()`).
+// Observer pointer (non-owning). Owned by og::runtime::GameSession.
 extern screen *myscreen;
 
 // Holds array indices for navigating menu buttons

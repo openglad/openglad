@@ -83,8 +83,9 @@ struct meminfo
 	unsigned Reserved[3];
 };
 
-// Observer pointer. Owned by `runtime/screen_lifecycle` (`global_screen_owner()`).
-extern screen * myscreen; // global, available to anyone
+// Observer pointer (non-owning). Owned by og::runtime::GameSession.
+// Transitional: prefer ctx().active_screen() for new code.
+extern screen * myscreen;
 
 inline constexpr int MAX_LEVELS = 500; // Maximum number of scenarios allowed ..
 
