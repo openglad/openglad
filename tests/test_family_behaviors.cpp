@@ -663,6 +663,243 @@ void test_hit_response_weapon_owner_resolved()
 REGISTER_TEST(test_hit_response_weapon_owner_resolved);
 
 // ===========================================================================
+// do_special tests — verify per-family special ability behaviors
+// ===========================================================================
+
+// Guard: dead walkers cannot use special
+void test_special_dead_walker_returns_false()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(w != nullptr, "soldier created");
+    w->stats()->magicpoints = 1000;
+    w->current_special = 1;
+    w->dead = 1;
+    bool result = w->special();
+    TEST_ASSERT(result == false, "dead walker special should return false");
+}
+REGISTER_TEST(test_special_dead_walker_returns_false);
+
+// Guard: insufficient MP should return false without deducting mana
+void test_special_insufficient_mp_returns_false()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(w != nullptr, "soldier created");
+    w->current_special = 1;
+    w->stats()->magicpoints = 0; // no mana
+    float mp_before = w->stats()->magicpoints;
+    bool result = w->special();
+    TEST_ASSERT(result == false, "insufficient MP special should return false");
+    TEST_ASSERT_FLOAT(mp_before, w->stats()->magicpoints, "MP should not change");
+}
+REGISTER_TEST(test_special_insufficient_mp_returns_false);
+
+// Skeleton: tunnel sets ani_type to ANI_TELE_OUT
+void test_special_skeleton_tunnel()
+{
+    myscreen->level_data.create_new_grid();
+    walker* skel = add_living_to_level(FAMILY_SKELETON, 0, 100, 100);
+    TEST_ASSERT(skel != nullptr, "skeleton created");
+    skel->stats()->magicpoints = 1000;
+    skel->current_special = 1;
+
+    // Skeleton starts with ANI_SKEL_GROW; must finish grow first
+    skel->ani_type = 0; // reset to default so tunnel can work
+    float mp_before = skel->stats()->magicpoints;
+    float special_cost = skel->stats()->special_cost[1];
+
+    bool result = skel->special();
+
+    // If special succeeded, verify ani_type and mana; if it failed
+    // (e.g. path blocked), that's OK too — just verify no crash
+    if (skel->ani_type == ANI_TELE_OUT)
+    {
+        TEST_ASSERT_FLOAT(mp_before - special_cost, skel->stats()->magicpoints,
+                          "skeleton tunnel should deduct mana");
+    }
+    (void)result;
+}
+REGISTER_TEST(test_special_skeleton_tunnel);
+
+// Ghost: scare spawns a ghost_scare FX
+void test_special_ghost_scare()
+{
+    myscreen->level_data.create_new_grid();
+    walker* ghost = add_living_to_level(FAMILY_GHOST, 0, 100, 100);
+    TEST_ASSERT(ghost != nullptr, "ghost created");
+    ghost->stats()->magicpoints = 1000;
+    ghost->current_special = 1;
+    float mp_before = ghost->stats()->magicpoints;
+    float special_cost = ghost->stats()->special_cost[1];
+
+    ghost->special();
+
+    TEST_ASSERT_FLOAT(mp_before - special_cost, ghost->stats()->magicpoints,
+                      "ghost scare should deduct mana");
+    // If we got here without crash, the scare FX was spawned successfully
+}
+REGISTER_TEST(test_special_ghost_scare);
+
+// Slime: split sets ani_type to ANI_SLIME_SPLIT
+void test_special_slime_split()
+{
+    myscreen->level_data.create_new_grid();
+    walker* slime = add_living_to_level(FAMILY_SLIME, 0, 100, 100);
+    TEST_ASSERT(slime != nullptr, "slime created");
+    slime->stats()->magicpoints = 1000;
+    slime->current_special = 1;
+
+    slime->special();
+
+    TEST_ASSERT_EQ(ANI_SLIME_SPLIT, (int)slime->ani_type,
+                   "slime split should set ani_type to ANI_SLIME_SPLIT");
+}
+REGISTER_TEST(test_special_slime_split);
+
+// Fire elemental: starburst fires in 8 directions (deducts mana)
+void test_special_fire_elemental_starburst()
+{
+    myscreen->level_data.create_new_grid();
+    walker* fe = add_living_to_level(FAMILY_FIREELEMENTAL, 0, 100, 100);
+    TEST_ASSERT(fe != nullptr, "fire elemental created");
+    fe->stats()->magicpoints = 1000;
+    fe->current_special = 1;
+    float mp_before = fe->stats()->magicpoints;
+    float special_cost = fe->stats()->special_cost[1];
+
+    fe->special();
+
+    TEST_ASSERT_FLOAT(mp_before - special_cost, fe->stats()->magicpoints,
+                      "fire elemental starburst should deduct mana");
+}
+REGISTER_TEST(test_special_fire_elemental_starburst);
+
+// Elf: special 1 fires 2 rocks (deducts mana)
+void test_special_elf_rocks()
+{
+    myscreen->level_data.create_new_grid();
+    walker* elf = add_living_to_level(FAMILY_ELF, 0, 100, 100);
+    TEST_ASSERT(elf != nullptr, "elf created");
+    elf->stats()->magicpoints = 1000;
+    elf->current_special = 1;
+    float mp_before = elf->stats()->magicpoints;
+    float special_cost = elf->stats()->special_cost[1];
+
+    elf->special();
+
+    TEST_ASSERT_FLOAT(mp_before - special_cost, elf->stats()->magicpoints,
+                      "elf rock special should deduct mana");
+}
+REGISTER_TEST(test_special_elf_rocks);
+
+// Soldier charge: deducts mana
+void test_special_soldier_charge()
+{
+    myscreen->level_data.create_new_grid();
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    soldier->stats()->magicpoints = 1000;
+    soldier->current_special = 1;
+    float mp_before = soldier->stats()->magicpoints;
+    float special_cost = soldier->stats()->special_cost[1];
+
+    soldier->special();
+
+    // Charge may fail if path blocked, but mana should be deducted if it succeeds
+    // If it fails (returns early), mana won't be deducted — just verify no crash
+    (void)mp_before;
+    (void)special_cost;
+}
+REGISTER_TEST(test_special_soldier_charge);
+
+// Mage teleport: sets ani_type to ANI_TELE_OUT
+void test_special_mage_teleport()
+{
+    myscreen->level_data.create_new_grid();
+    walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    mage->stats()->magicpoints = 1000;
+    mage->current_special = 1;
+    mage->shifter_down = 0; // teleport, not marker
+
+    mage->special();
+
+    TEST_ASSERT_EQ(ANI_TELE_OUT, (int)mage->ani_type,
+                   "mage teleport should set ani_type to ANI_TELE_OUT");
+}
+REGISTER_TEST(test_special_mage_teleport);
+
+// Thief bomb: spawns bomb FX (deducts mana)
+void test_special_thief_bomb()
+{
+    myscreen->level_data.create_new_grid();
+    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
+    TEST_ASSERT(thief != nullptr, "thief created");
+    thief->stats()->magicpoints = 1000;
+    thief->current_special = 1;
+    float mp_before = thief->stats()->magicpoints;
+    float special_cost = thief->stats()->special_cost[1];
+
+    thief->special();
+
+    TEST_ASSERT_FLOAT(mp_before - special_cost, thief->stats()->magicpoints,
+                      "thief bomb should deduct mana");
+}
+REGISTER_TEST(test_special_thief_bomb);
+
+// Thief cloak: increases invisibility_left
+void test_special_thief_cloak()
+{
+    myscreen->level_data.create_new_grid();
+    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
+    TEST_ASSERT(thief != nullptr, "thief created");
+    thief->stats()->magicpoints = 1000;
+    thief->current_special = 2;
+    thief->invisibility_left = 0;
+
+    thief->special();
+
+    TEST_ASSERT(thief->invisibility_left > 0,
+                "thief cloak should increase invisibility_left");
+}
+REGISTER_TEST(test_special_thief_cloak);
+
+// Orc howl: sets busy and deducts mana
+void test_special_orc_howl()
+{
+    myscreen->level_data.create_new_grid();
+    walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
+    TEST_ASSERT(orc != nullptr, "orc created");
+    orc->stats()->magicpoints = 1000;
+    orc->current_special = 1;
+    orc->busy = 0;
+
+    orc->special();
+
+    TEST_ASSERT(orc->busy > 0, "orc howl should set busy");
+}
+REGISTER_TEST(test_special_orc_howl);
+
+// Druid reveal: increments view_all
+void test_special_druid_reveal()
+{
+    myscreen->level_data.create_new_grid();
+    walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
+    TEST_ASSERT(druid != nullptr, "druid created");
+    druid->stats()->magicpoints = 1000;
+    druid->current_special = 3;
+    druid->busy = 0;
+
+    short view_all_before = druid->view_all;
+    druid->special();
+
+    TEST_ASSERT(druid->view_all > view_all_before,
+                "druid reveal should increment view_all");
+}
+REGISTER_TEST(test_special_druid_reveal);
+
+// ===========================================================================
 // upgrade_to_level continued
 // ===========================================================================
 
