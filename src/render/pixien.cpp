@@ -19,7 +19,7 @@
 /* ChangeLog
 	buffers: 7/31/02: *include cleanup
 */
-#include <openglad/legacy/graph.h>
+#include <openglad/render/pixien.h>
 // ************************************************************
 //  PixieN -- N-Frame pixie
 //  It is identical to the PIXIE class except it handles
