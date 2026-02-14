@@ -18,9 +18,11 @@
 
 // Definition of OBMAP class
 
-#include <openglad/legacy/base.h>
+#include <cstddef>
 #include <map>
 #include <list>
+
+class walker;
 
 class obmap
 {
@@ -43,4 +45,3 @@ class obmap
 		short hash(short y);
 		short unhash(short y);
 };
-
