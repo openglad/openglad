@@ -1,5 +1,4 @@
 src/runtime/game.cpp
-src/runtime/game_loop.cpp
 src/glad.cpp
 src/ui/level_editor_file_ops.cpp
 src/ui/picker.cpp

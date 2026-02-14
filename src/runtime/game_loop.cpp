@@ -1,11 +1,12 @@
 #include <openglad/runtime/game_loop.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/runtime/game_context.h>
-#include <openglad/legacy/graph.h>
 #include <openglad/input/input.h>
 #include <openglad/render/pal32.h>
 #include <openglad/ui/results_screen.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/core/util.h>
 
 // Declared elsewhere (glad.cpp).
