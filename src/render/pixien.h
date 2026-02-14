@@ -1,42 +1,4 @@
-/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- */
 #pragma once
 
-// Definition of PIXIEN class
-
-#include "base.h"
-#include "render/pixie.h"
-
-class pixieN : public pixie
-{
-	public:
-		pixieN(const PixieData& data);
-		pixieN(const PixieData& data, int doaccel);
-		~pixieN() override;
-		pixieN(const pixieN&) = delete;
-		pixieN& operator=(const pixieN&) = delete;
-		pixieN(pixieN&&) = delete;
-		pixieN& operator=(pixieN&&) = delete;
-		short set_frame(short framenum);
-		short query_frame();
-		short next_frame();
-	protected:
-		short frames; // total frames
-		short frame; // current frame
-		unsigned char * facings;
-};
-
+// Transitional shim: prefer including <openglad/render/pixien.h>.
+#include <openglad/render/pixien.h>
