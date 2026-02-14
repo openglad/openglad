@@ -102,6 +102,10 @@ set(GAME_SOURCES
     ${SRC_DIR}/input/button.cpp
     ${SRC_DIR}/entities/effect.cpp
     ${SRC_DIR}/entities/family_registry.cpp
+    ${SRC_DIR}/entities/families/family_big_orc.cpp
+    ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
+    ${SRC_DIR}/entities/families/family_golem.cpp
+    ${SRC_DIR}/entities/families/family_tower1.cpp
     ${SRC_DIR}/runtime/game.cpp
     ${SRC_DIR}/render/graphlib.cpp
     ${SRC_DIR}/entities/guy.cpp
@@ -181,6 +185,10 @@ set(OG_DATA_SOURCES
 set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/entities/effect.cpp
     ${SRC_DIR}/entities/family_registry.cpp
+    ${SRC_DIR}/entities/families/family_big_orc.cpp
+    ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
+    ${SRC_DIR}/entities/families/family_golem.cpp
+    ${SRC_DIR}/entities/families/family_tower1.cpp
     ${SRC_DIR}/entities/guy.cpp
     ${SRC_DIR}/entities/living.cpp
     ${SRC_DIR}/entities/obmap.cpp

@@ -19,6 +19,12 @@
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
+// Forward declarations of family descriptor providers
+const FamilyDescriptor& describe_family_golem();
+const FamilyDescriptor& describe_family_giant_skeleton();
+const FamilyDescriptor& describe_family_tower1();
+const FamilyDescriptor& describe_family_big_orc();
+
 static bool s_registry_initialized = false;
 static FamilyDescriptor s_registry[NUM_FAMILIES];
 
@@ -399,22 +405,8 @@ void init_family_registry()
         d.special_names[2] = "EAT CORPSE";
     }
 
-    // === FAMILY_BIG_ORC (15) ===
-    {
-        auto& d = s_registry[FAMILY_BIG_ORC];
-        d.name = "ORC CAPTAIN";
-        d.base_stats[0] = 18; d.base_stats[1] = 8; d.base_stats[2] = 16;
-        d.base_stats[3] = 5; d.base_stats[4] = 11; d.base_stats[5] = 1;
-        d.hiring_cost = 1000;
-        d.derived_bonuses[0] = BASE_GUY_HP+150; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 28; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 3; d.derived_bonuses[7] = 6;
-        d.stat_costs[0] = 6; d.stat_costs[1] = 15; d.stat_costs[2] = 5;
-        d.stat_costs[3] = 40; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_KNIFE;
-    }
+    // === FAMILY_BIG_ORC (15) — defined in families/family_big_orc.cpp ===
+    s_registry[FAMILY_BIG_ORC] = describe_family_big_orc();
 
     // === FAMILY_BARBARIAN (16) ===
     {
@@ -465,55 +457,14 @@ void init_family_registry()
         d.alternate_names[3] = "SUMMON ELEMENTAL";
     }
 
-    // === FAMILY_GOLEM (18) ===
-    {
-        auto& d = s_registry[FAMILY_GOLEM];
-        d.name = "BEAST";  // golem uses default "BEAST" name
-        // Golem/giant skeleton/tower use fallback stats in guy constructor
-        // (not in statlist[] which only goes up to FAMILY_ARCHMAGE)
-        d.base_stats[0] = 12; d.base_stats[1] = 6; d.base_stats[2] = 12;
-        d.base_stats[3] = 8; d.base_stats[4] = 6; d.base_stats[5] = 1;
-        d.hiring_cost = 0;  // not in costlist (only 18 entries)
-        d.derived_bonuses[0] = BASE_GUY_HP+270; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 60; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 8; d.derived_bonuses[7] = 9;
-        // No stat_costs for golem (not in statcosts array)
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_BOULDER;
-    }
+    // === FAMILY_GOLEM (18) — defined in families/family_golem.cpp ===
+    s_registry[FAMILY_GOLEM] = describe_family_golem();
 
-    // === FAMILY_GIANT_SKELETON (19) ===
-    {
-        auto& d = s_registry[FAMILY_GIANT_SKELETON];
-        d.name = "BEAST";
-        d.base_stats[0] = 12; d.base_stats[1] = 6; d.base_stats[2] = 12;
-        d.base_stats[3] = 8; d.base_stats[4] = 6; d.base_stats[5] = 1;
-        d.hiring_cost = 0;
-        d.derived_bonuses[0] = BASE_GUY_HP+270; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 60; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 8; d.derived_bonuses[7] = 7;
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_BOULDER;
-        d.leaves_bloodspot = false;
-    }
+    // === FAMILY_GIANT_SKELETON (19) — defined in families/family_giant_skeleton.cpp ===
+    s_registry[FAMILY_GIANT_SKELETON] = describe_family_giant_skeleton();
 
-    // === FAMILY_TOWER1 (20) ===
-    {
-        auto& d = s_registry[FAMILY_TOWER1];
-        d.name = "BEAST";
-        d.base_stats[0] = 12; d.base_stats[1] = 6; d.base_stats[2] = 12;
-        d.base_stats[3] = 8; d.base_stats[4] = 6; d.base_stats[5] = 1;
-        d.hiring_cost = 0;
-        d.derived_bonuses[0] = BASE_GUY_HP+100; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 0; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 0; d.derived_bonuses[7] = 5;
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_ARROW;
-        d.leaves_bloodspot = false;
-    }
+    // === FAMILY_TOWER1 (20) — defined in families/family_tower1.cpp ===
+    s_registry[FAMILY_TOWER1] = describe_family_tower1();
 
     s_registry_initialized = true;
 }
