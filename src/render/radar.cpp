@@ -13,14 +13,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- */
+*/
 //radar.cpp
 
 /* ChangeLog
 	buffers: 7/31/02: *include cleanup
 */
-#include <openglad/legacy/graph.h>
 #include <openglad/legacy/colors.h>
+#include <openglad/entities/walker.h>
+#include <openglad/render/radar.h>
+#include <openglad/render/view.h>
+#include <openglad/runtime/screen.h>
 #include <span>
 #include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {

@@ -15,7 +15,6 @@ src/ui/picker_main_menu.cpp
 src/ui/picker_team_build.cpp
 src/render/pixie.cpp
 src/render/pixien.cpp
-src/render/radar.cpp
 src/runtime/screen.cpp
 src/render/smooth.cpp
 src/core/stats.cpp
