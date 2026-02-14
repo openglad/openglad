@@ -1,6 +1,10 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/data/gloader.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/util.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
 #include "test_framework.h"
+#include <cstring>
 #include <memory>
 
 extern screen* myscreen;
