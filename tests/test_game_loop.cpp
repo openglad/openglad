@@ -1,8 +1,9 @@
 #include <vector>
 
-#include <openglad/legacy/graph.h>
 #include <openglad/runtime/game_loop.h>
 #include <openglad/data/save_data.h>
+#include <openglad/runtime/screen.h>
+#include "SDL.h"
 #include "test_framework.h"
 #include <openglad/core/util.h>
 
