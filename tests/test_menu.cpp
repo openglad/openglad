@@ -1,10 +1,10 @@
-#include <openglad/legacy/graph.h>
+#include "SDL.h"
+#include <openglad/data/gparser.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include <openglad/input/button.h>
 #include "test_interact.h"
 #include <openglad/input/input.h>
-extern screen* myscreen;
 extern MouseState mouse_state;
 
 Sint32 yes_or_no(Sint32 arg);
