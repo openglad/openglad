@@ -22,7 +22,9 @@
 	buffers: 8/8/02:
 		*changed the SDL surfaces to 24bit
 */
-#include <openglad/legacy/graph.h>
+#include <openglad/render/pixie.h>
+#include <openglad/render/view.h>
+#include <openglad/runtime/screen.h>
 // ************************************************************
 //  Pixie -- Base graphic object. It holds pixel by pixel data
 //  of what should appear on screen. When told to, it handles
