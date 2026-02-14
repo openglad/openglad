@@ -27,6 +27,8 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/render/smooth.h>
@@ -194,81 +196,17 @@ screen::screen(short howmany)
     
 	buffer_to_screen(0, 0, 320, 200);
 
-	// Let's set the special names for all walkers ..
+	// Set the special names for all walkers from the family registry
+	init_family_registry();
 	for (i=0; i < NUM_FAMILIES; i++)
+	{
+		auto* fd = get_family_descriptor(i);
 		for (j=0; j < NUM_SPECIALS; j++)
 		{
-			special_name[i][j] = "NONE";
-			alternate_name[i][j] = "NONE";
+			special_name[i][j] = fd ? fd->special_names[j] : "NONE";
+			alternate_name[i][j] = fd ? fd->alternate_names[j] : "NONE";
 		}
-
-	special_name[FAMILY_SOLDIER][1] = "CHARGE";
-	special_name[FAMILY_SOLDIER][2] = "BOOMERANG";
-	special_name[FAMILY_SOLDIER][3] = "WHIRLWIND";
-	special_name[FAMILY_SOLDIER][4] = "DISARM";
-
-	special_name[FAMILY_BARBARIAN][1] = "HURL BOULDER";
-	special_name[FAMILY_BARBARIAN][2] = "EXPLODING BOULDER";
-
-	special_name[FAMILY_ELF][1] = "ROCKS";
-	special_name[FAMILY_ELF][2] = "BOUNCING ROCKS";
-	special_name[FAMILY_ELF][3] = "LOTS OF ROCKS";
-	special_name[FAMILY_ELF][4] = "MEGA ROCKS";
-
-	special_name[FAMILY_ARCHER][1] = "FIRE ARROWS";
-	special_name[FAMILY_ARCHER][2] = "BARRAGE";
-	special_name[FAMILY_ARCHER][3] = "EXPLODING BOLT";
-
-	special_name[FAMILY_MAGE][1] = "TELEPORT";
-	alternate_name[FAMILY_MAGE][1] = "TELEPORT MARKER";
-	special_name[FAMILY_MAGE][2] = "WARP SPACE";
-	special_name[FAMILY_MAGE][3] = "FREEZE TIME";
-	special_name[FAMILY_MAGE][4] = "ENERGY WAVE";
-	special_name[FAMILY_MAGE][5] = "HEARTBURST";
-
-	special_name[FAMILY_ARCHMAGE][1] = "TELEPORT";
-	alternate_name[FAMILY_ARCHMAGE][1] = "TELEPORT MARKER";
-	special_name[FAMILY_ARCHMAGE][2] = "HEARTBURST";
-	alternate_name[FAMILY_ARCHMAGE][2] = "CHAIN LIGHTNING";
-	special_name[FAMILY_ARCHMAGE][3] = "SUMMON IMAGE";
-	alternate_name[FAMILY_ARCHMAGE][3] = "SUMMON ELEMENTAL";
-	special_name[FAMILY_ARCHMAGE][4] = "MIND CONTROL";
-	//alternate_name[FAMILY_ARCHMAGE][4] = "SUMMON ELEMENTAL";
-
-
-	special_name[FAMILY_CLERIC][1] = "HEAL";
-	alternate_name[FAMILY_CLERIC][1] = "MYSTIC MACE";
-	special_name[FAMILY_CLERIC][2] = "RAISE UNDEAD";
-	alternate_name[FAMILY_CLERIC][2] = "TURN UNDEAD";
-	special_name[FAMILY_CLERIC][3] = "RAISE GHOST";
-	alternate_name[FAMILY_CLERIC][3] = "TURN UNDEAD";
-	special_name[FAMILY_CLERIC][4] = "RESURRECT";
-
-	special_name[FAMILY_DRUID][1] = "GROW TREE";
-	special_name[FAMILY_DRUID][2] = "SUMMON FAERIE";
-	special_name[FAMILY_DRUID][3] = "REVEAL";
-	special_name[FAMILY_DRUID][4] = "PROTECTION";
-
-	special_name[FAMILY_THIEF][1] = "DROP BOMB";
-	special_name[FAMILY_THIEF][2] = "CLOAK";
-	special_name[FAMILY_THIEF][3] = "TAUNT ENEMY";
-	alternate_name[FAMILY_THIEF][3] = "CHARM OPPONENT";
-	special_name[FAMILY_THIEF][4] = "POISON CLOUD";
-
-	special_name[FAMILY_GHOST][1] = "SCARE";
-
-	special_name[FAMILY_FIREELEMENTAL][1] = "STARBURST";
-
-	special_name[FAMILY_ORC][1] = "HOWL";
-	special_name[FAMILY_ORC][2] = "EAT CORPSE";
-
-	special_name[FAMILY_SMALL_SLIME][1] = "GROW";
-
-	special_name[FAMILY_MEDIUM_SLIME][1] = "GROW";
-
-	special_name[FAMILY_SLIME][1] = "SPLIT";
-
-	special_name[FAMILY_SKELETON][1] = "TUNNEL";
+	}
 
 }
 

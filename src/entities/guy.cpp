@@ -19,6 +19,8 @@
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <cmath>
 #include <cstring>
 #define RAISE 1.85  // please also change in picker.cpp
@@ -84,15 +86,17 @@ guy::guy(int whatfamily)
     scen_shots = 0;
     scen_hits = 0;
 	
-	// Set stats
-	if(whatfamily <= FAMILY_ARCHMAGE)
+	// Set stats from family registry
+	auto* fd = get_family_descriptor(whatfamily);
+	if (fd)
 	{
-        strength = static_cast<short>(statlist[whatfamily][0]);
-        dexterity = static_cast<short>(statlist[whatfamily][1]);
-        constitution = static_cast<short>(statlist[whatfamily][2]);
-        intelligence = static_cast<short>(statlist[whatfamily][3]);
-        armor = static_cast<short>(statlist[whatfamily][4]);
-        level = static_cast<short>(statlist[whatfamily][5]);  // should always be 1...
+        strength = static_cast<short>(fd->base_stats[0]);
+        dexterity = static_cast<short>(fd->base_stats[1]);
+        constitution = static_cast<short>(fd->base_stats[2]);
+        intelligence = static_cast<short>(fd->base_stats[3]);
+        armor = static_cast<short>(fd->base_stats[4]);
+        level = static_cast<short>(fd->base_stats[5]);
+        name = fd->name;
 	}
 	else
     {
@@ -102,10 +106,8 @@ guy::guy(int whatfamily)
         intelligence = 8;
         armor = 6;
         level = 1;
+        name = "BEAST";
     }
-    
-    // Set name
-    name = get_family_string(whatfamily);
 	
 	id = guy_id_counter++;
 }
@@ -140,39 +142,38 @@ Sint32 guy::query_heart_value() // how much are we worth?
 	guy normal(family); // for base comparisons
 	Sint32 cost=0, temp;
 
+	auto* fd = get_family_descriptor(static_cast<int>(family));
+	if (!fd)
+		return 0;
+
 	// Get strength cost ..
-	temp = strength - normal.strength; // difference..
+	temp = strength - normal.strength;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE)
-	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][0]));
+	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[0]));
 
 	// Get dexterity cost ..
-	temp = dexterity - normal.dexterity; // difference..
+	temp = dexterity - normal.dexterity;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE)
-	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][1]));
+	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[1]));
 
 	// Get constitution cost ..
-	temp = constitution - normal.constitution; // difference..
+	temp = constitution - normal.constitution;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE)
-	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][2]));
+	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[2]));
 
 	// Get intelligence cost ..
-	temp = intelligence - normal.intelligence; // difference..
+	temp = intelligence - normal.intelligence;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE)
-	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][3]));
+	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[3]));
 
 	// Get armor cost ..
-	temp = armor - normal.armor; // difference..
+	temp = armor - normal.armor;
 	temp = MAX(temp,0);
-	cost += static_cast<Sint32>(pow( temp, RAISE)
-	                * static_cast<Sint32>(statcosts[static_cast<int>(family)][4]));
+	cost += static_cast<Sint32>(pow( temp, RAISE) * static_cast<Sint32>(fd->stat_costs[4]));
 
 	// Add in the base cost value for the guy ..
-	cost += static_cast<Sint32>(costlist[static_cast<int>(family)]);
-	
+	cost += fd->hiring_cost;
+
 	return cost;
 
 }

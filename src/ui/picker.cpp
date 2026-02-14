@@ -19,6 +19,8 @@
 #include <openglad/data/pixie_data.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/input/button.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/render/pal32.h>
@@ -590,45 +592,10 @@ void draw_version_number()
 
 const char* get_family_string(Sint32 family)
 {
-	switch(family)
-	{
-		case FAMILY_ARCHER:
-			return "ARCHER";
-		case FAMILY_CLERIC:
-			return "CLERIC";
-		case FAMILY_DRUID:
-			return "DRUID";
-		case FAMILY_ELF:
-			return "ELF";
-		case FAMILY_MAGE:
-			return "MAGE";
-		case FAMILY_SOLDIER:
-			return "SOLDIER";
-		case FAMILY_THIEF:
-			return "THIEF";
-		case FAMILY_ARCHMAGE:
-			return "ARCHMAGE";
-		case FAMILY_ORC:
-			return "ORC";
-		case FAMILY_BIG_ORC:
-			return "ORC CAPTAIN";
-		case FAMILY_BARBARIAN:
-			return "BARBARIAN";
-		case FAMILY_FIREELEMENTAL:
-			return "ELEMENTAL";
-		case FAMILY_SKELETON:
-			return "SKELETON";
-		case FAMILY_SLIME:
-		case FAMILY_MEDIUM_SLIME:
-		case FAMILY_SMALL_SLIME:
-			return "SLIME";
-		case FAMILY_FAERIE:
-			return "FAERIE";
-		case FAMILY_GHOST:
-			return "GHOST";
-		default:
-			return "BEAST";
-	}
+	auto* fd = get_family_descriptor(family);
+	if (fd)
+		return fd->name;
+	return "BEAST";
 }
 
 
