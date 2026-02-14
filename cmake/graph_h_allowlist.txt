@@ -1,4 +1,3 @@
-src/ui/picker.cpp
 src/runtime/screen.cpp
 src/render/view.cpp
 src/entities/walker.cpp

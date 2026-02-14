@@ -15,13 +15,20 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/core/version.h>
-#include <openglad/legacy/graph.h>
+#include <openglad/core/stats.h>
+#include <openglad/data/pixie_data.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
 #include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
 #include <openglad/render/pal32.h>
+#include <openglad/render/pixien.h>
+#include <openglad/render/view.h>
 //buffers:  using input.h instead #include "int32.h"
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
+#include <openglad/runtime/screen.h>
 
 #include "SDL.h"
 #include <openglad/data/gparser.h>
