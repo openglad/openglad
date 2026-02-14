@@ -18,7 +18,6 @@ src/render/pixien.cpp
 src/runtime/screen.cpp
 src/render/smooth.cpp
 src/core/stats.cpp
-src/render/video.cpp
 src/render/view.cpp
 src/entities/walker.cpp
 src/entities/walker_combat.cpp

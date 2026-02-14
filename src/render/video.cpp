@@ -16,8 +16,12 @@
  */
 // Video object code
 
-#include <openglad/legacy/graph.h>
+#include <openglad/render/video.h>
+#include <openglad/render/pal32.h>
 #include <openglad/render/sai2x.h>
+#include <openglad/data/gparser.h>
+#include <openglad/core/util.h>
+#include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/platform/io.h>
 #include <format>
