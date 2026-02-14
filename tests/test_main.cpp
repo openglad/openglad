@@ -4,13 +4,13 @@
 #include <sys/prctl.h>
 #endif
 
-#include <openglad/legacy/graph.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include <openglad/data/gparser.h>
 #include <openglad/platform/io.h>
 #include <openglad/core/util.h>
 #include <openglad/input/input.h>
+#include <openglad/render/view.h> // options
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen_lifecycle.h>
 extern screen* myscreen;
