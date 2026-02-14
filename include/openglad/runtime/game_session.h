@@ -21,6 +21,9 @@ class GameSession final {
 public:
     struct Config {
         short numviews = 1;
+        // Headless sessions can skip screen allocation to avoid SDL/video init.
+        // Note: legacy shims (myscreen) will point at nullptr in this mode.
+        bool allocate_screen = true;
         bool install_legacy_globals = true;
         bool install_global_context = true;
         bool allocate_prefs = true;

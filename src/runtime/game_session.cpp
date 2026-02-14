@@ -28,8 +28,12 @@ GameSession::GameSession(const Config& session_cfg)
         ctx_.rng = &production_rng_;
     }
 
-    screen_owner_ = std::make_unique<::screen>(cfg_.numviews);
-    ctx_.game_screen = screen_owner_.get();
+    if (cfg_.allocate_screen) {
+        screen_owner_ = std::make_unique<::screen>(cfg_.numviews);
+        ctx_.game_screen = screen_owner_.get();
+    } else {
+        ctx_.game_screen = nullptr;
+    }
 
     if (cfg_.install_global_context) {
         // Note: GameContext only supports overriding the active pointer, not querying

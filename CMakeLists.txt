@@ -715,6 +715,16 @@ if(NOT EMSCRIPTEN)
 
     # --- openglad_test ---
     if(BUILD_TESTING)
+        # --- Headless unit tests (no SDL/video init) ---
+        add_executable(og_unit_tests
+            ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
+        )
+        configure_openglad_library(og_unit_tests)
+        target_link_libraries(og_unit_tests PRIVATE og_game)
+        configure_openglad_runtime_target(og_unit_tests)
+        add_test(NAME og_unit_tests COMMAND og_unit_tests)
+
         set(TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
