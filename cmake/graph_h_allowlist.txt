@@ -19,7 +19,6 @@ src/render/radar.cpp
 src/runtime/screen.cpp
 src/render/smooth.cpp
 src/core/stats.cpp
-src/render/text.cpp
 src/render/video.cpp
 src/render/view.cpp
 src/entities/walker.cpp
