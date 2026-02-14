@@ -37,13 +37,9 @@ GameSession::GameSession(const Config& session_cfg)
         ctx_.rng = &production_rng_;
     }
 
-    if (cfg_.allocate_screen) {
-        screen_owner_ = std::make_unique<::screen>(cfg_.numviews);
-        ctx_.game_screen = screen_owner_.get();
-    } else {
-        ctx_.game_screen = nullptr;
-    }
-
+    // Install context and legacy globals BEFORE creating the screen, because
+    // the screen constructor creates viewscreens whose constructors call
+    // active_prefs() which needs theprefs / ctx_ to be reachable.
     if (cfg_.install_global_context) {
         // Note: GameContext only supports overriding the active pointer, not querying
         // the previous one. Nested sessions should be avoided until that is added.
@@ -51,8 +47,18 @@ GameSession::GameSession(const Config& session_cfg)
     }
 
     if (cfg_.install_legacy_globals) {
-        myscreen = ctx_.game_screen;
         theprefs = ctx_.prefs.get();
+    }
+
+    if (cfg_.allocate_screen) {
+        screen_owner_ = std::make_unique<::screen>(cfg_.numviews);
+        ctx_.game_screen = screen_owner_.get();
+    } else {
+        ctx_.game_screen = nullptr;
+    }
+
+    if (cfg_.install_legacy_globals) {
+        myscreen = ctx_.game_screen;
     }
 }
 
