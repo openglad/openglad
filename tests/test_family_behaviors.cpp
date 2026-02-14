@@ -387,6 +387,282 @@ void test_on_death_skeleton_no_bloodspot()
 REGISTER_TEST(test_on_death_skeleton_no_bloodspot);
 
 // ===========================================================================
+// check_special tests — verify per-family AI decision logic
+// distance_to_ob uses Manhattan: abs(dx)+abs(dy)
+// ===========================================================================
+
+// Helper: create a living walker via loader, add to oblist, return raw ptr
+static walker* add_living_to_level(int family, int team, short x, short y)
+{
+    walker* ob = myscreen->level_data.add_ob(Order::Living, static_cast<Sint32>(family));
+    if (!ob) return nullptr;
+    ob->team_num = static_cast<unsigned char>(team);
+    ob->setxy(x, y);
+    return ob;
+}
+
+// Soldier: foe within 20-75 → true; outside → false
+void test_check_special_soldier_range()
+{
+    myscreen->level_data.create_new_grid();
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    // Enemy at distance 50 (within 20-75)
+    walker* enemy = add_living_to_level(FAMILY_ORC, 1, 150, 100);
+    TEST_ASSERT(enemy != nullptr, "enemy created");
+    soldier->foe = enemy;
+    soldier->stats()->magicpoints = 1000; // ensure enough MP
+    soldier->current_special = 1;
+    bool result = soldier->check_special();
+    TEST_ASSERT(result == true, "soldier check_special: foe at dist 50 should be true");
+
+    // Move enemy to distance 100 (outside 75)
+    enemy->setxy(200, 100);
+    result = soldier->check_special();
+    TEST_ASSERT(result == false, "soldier check_special: foe at dist 100 should be false");
+
+    // Move enemy to distance 10 (inside 20)
+    enemy->setxy(110, 100);
+    result = soldier->check_special();
+    TEST_ASSERT(result == false, "soldier check_special: foe at dist 10 should be false");
+}
+REGISTER_TEST(test_check_special_soldier_range);
+
+// Archer/FireElemental/Ghost/Orc: foe within 130 → true
+void test_check_special_ranged_families()
+{
+    myscreen->level_data.create_new_grid();
+    int families[] = {FAMILY_ARCHER, FAMILY_FIREELEMENTAL, FAMILY_GHOST, FAMILY_ORC};
+    for (int fam : families)
+    {
+        walker* w = add_living_to_level(fam, 0, 100, 100);
+        TEST_ASSERT(w != nullptr, "walker created");
+        walker* enemy = add_living_to_level(FAMILY_SOLDIER, 1, 200, 100);
+        TEST_ASSERT(enemy != nullptr, "enemy created");
+        w->foe = enemy;
+        w->stats()->magicpoints = 1000;
+        w->current_special = 1;
+
+        // Distance 100, within 130
+        bool result = w->check_special();
+        TEST_ASSERT(result == true, "ranged family: foe at dist 100 should be true");
+
+        // Distance 150, outside 130
+        enemy->setxy(250, 100);
+        result = w->check_special();
+        TEST_ASSERT(result == false, "ranged family: foe at dist 150 should be false");
+    }
+}
+REGISTER_TEST(test_check_special_ranged_families);
+
+// Mage: 0 foes → true (teleport away), 2 foes → false (fight), 4+ foes → true (flee)
+void test_check_special_mage_foe_count()
+{
+    myscreen->level_data.create_new_grid();
+    walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    mage->stats()->magicpoints = 1000;
+    mage->current_special = 1;
+
+    // No foes nearby → should want to teleport
+    bool result = mage->check_special();
+    TEST_ASSERT(result == true, "mage check_special: no foes nearby should be true");
+
+    // Add 2 enemies within range 110 → should fight (false)
+    add_living_to_level(FAMILY_ORC, 1, 150, 100);
+    add_living_to_level(FAMILY_ORC, 1, 160, 100);
+    result = mage->check_special();
+    TEST_ASSERT(result == false, "mage check_special: 2 foes nearby should be false");
+
+    // Add more enemies (total 5) → too many, flee (true)
+    add_living_to_level(FAMILY_ORC, 1, 140, 100);
+    add_living_to_level(FAMILY_ORC, 1, 130, 100);
+    add_living_to_level(FAMILY_ORC, 1, 120, 100);
+    result = mage->check_special();
+    TEST_ASSERT(result == true, "mage check_special: 5 foes nearby should be true");
+}
+REGISTER_TEST(test_check_special_mage_foe_count);
+
+// Skeleton: no foes within 5*GRID_SIZE → true (tunnel), foes nearby → false
+void test_check_special_skeleton_tunnel()
+{
+    myscreen->level_data.create_new_grid();
+    walker* skel = add_living_to_level(FAMILY_SKELETON, 0, 100, 100);
+    TEST_ASSERT(skel != nullptr, "skeleton created");
+    skel->stats()->magicpoints = 1000;
+    skel->current_special = 1;
+
+    // No foes nearby
+    bool result = skel->check_special();
+    TEST_ASSERT(result == true, "skeleton: no foes should tunnel (true)");
+
+    // Add foe very close
+    add_living_to_level(FAMILY_SOLDIER, 1, 120, 100);
+    result = skel->check_special();
+    TEST_ASSERT(result == false, "skeleton: foe nearby should not tunnel (false)");
+}
+REGISTER_TEST(test_check_special_skeleton_tunnel);
+
+// Default families (druid, barbarian, etc.) always return true
+void test_check_special_default_families()
+{
+    myscreen->level_data.create_new_grid();
+    int families[] = {FAMILY_DRUID, FAMILY_BARBARIAN, FAMILY_FAERIE,
+                      FAMILY_BIG_ORC, FAMILY_GOLEM};
+    for (int fam : families)
+    {
+        walker* w = add_living_to_level(fam, 0, 100, 100);
+        TEST_ASSERT(w != nullptr, "walker created for default family");
+        w->stats()->magicpoints = 1000;
+        w->current_special = 1;
+        bool result = w->check_special();
+        TEST_ASSERT(result == true, "default family check_special should be true");
+    }
+}
+REGISTER_TEST(test_check_special_default_families);
+
+// Slime: should return true when numobs < MAXOBS
+void test_check_special_slime_capacity()
+{
+    myscreen->level_data.create_new_grid();
+    walker* slime = add_living_to_level(FAMILY_SLIME, 0, 100, 100);
+    TEST_ASSERT(slime != nullptr, "slime created");
+    slime->stats()->magicpoints = 1000;
+    slime->current_special = 1;
+
+    // Far below MAXOBS limit
+    bool result = slime->check_special();
+    TEST_ASSERT(result == true, "slime: numobs < MAXOBS should allow special");
+}
+REGISTER_TEST(test_check_special_slime_capacity);
+
+// check_special: if insufficient MP, current_special resets to 1
+void test_check_special_insufficient_mp()
+{
+    myscreen->level_data.create_new_grid();
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    walker* enemy = add_living_to_level(FAMILY_ORC, 1, 140, 100);
+    TEST_ASSERT(enemy != nullptr, "enemy created");
+    soldier->foe = enemy;
+
+    // Set high special with insufficient MP
+    soldier->current_special = 3;
+    soldier->stats()->magicpoints = 0;
+    soldier->check_special();
+    TEST_ASSERT_EQ(1, (int)soldier->current_special,
+                   "insufficient MP should reset current_special to 1");
+}
+REGISTER_TEST(test_check_special_insufficient_mp);
+
+// ===========================================================================
+// hit_response tests — verify per-family response to being attacked
+// ===========================================================================
+
+// hit_response: default families acquire attacker as foe
+void test_hit_response_acquires_foe()
+{
+    myscreen->level_data.create_new_grid();
+    walker* defender = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(defender != nullptr, "defender created");
+    defender->set_act_type(0); // not ACT_CONTROL (player)
+    walker* attacker = add_living_to_level(FAMILY_ORC, 1, 120, 100);
+    TEST_ASSERT(attacker != nullptr, "attacker created");
+
+    defender->foe = nullptr;
+    defender->stats()->hitpoints = defender->stats()->max_hitpoints;
+    defender->stats()->hit_response(attacker);
+
+    TEST_ASSERT(defender->foe == attacker, "default hit_response should set foe to attacker");
+}
+REGISTER_TEST(test_hit_response_acquires_foe);
+
+// hit_response: archer runs when too close (distance < 64)
+void test_hit_response_archer_flees()
+{
+    myscreen->level_data.create_new_grid();
+    walker* archer = add_living_to_level(FAMILY_ARCHER, 0, 100, 100);
+    TEST_ASSERT(archer != nullptr, "archer created");
+    archer->set_act_type(0); // AI-controlled
+    walker* attacker = add_living_to_level(FAMILY_ORC, 1, 120, 100);
+    TEST_ASSERT(attacker != nullptr, "attacker created");
+
+    archer->foe = nullptr;
+    archer->stats()->hitpoints = archer->stats()->max_hitpoints;
+    archer->stats()->hit_response(attacker);
+
+    // Archer should set foe and potentially force a walk command
+    TEST_ASSERT(archer->foe == attacker, "archer hit_response should set foe to attacker");
+}
+REGISTER_TEST(test_hit_response_archer_flees);
+
+// hit_response: player-controlled walkers are skipped (ACT_CONTROL)
+void test_hit_response_skip_player_control()
+{
+    myscreen->level_data.create_new_grid();
+    walker* player = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(player != nullptr, "player created");
+    player->set_act_type(ACT_CONTROL); // player-controlled
+    walker* attacker = add_living_to_level(FAMILY_ORC, 1, 120, 100);
+    TEST_ASSERT(attacker != nullptr, "attacker created");
+
+    player->foe = nullptr;
+    player->stats()->hit_response(attacker);
+
+    // Should be skipped entirely — foe unchanged
+    TEST_ASSERT(player->foe == nullptr,
+                "hit_response should not modify player-controlled walker");
+}
+REGISTER_TEST(test_hit_response_skip_player_control);
+
+// hit_response: mage at full HP does NOT teleport
+void test_hit_response_mage_full_hp_no_teleport()
+{
+    myscreen->level_data.create_new_grid();
+    walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    mage->set_act_type(0);
+    walker* attacker = add_living_to_level(FAMILY_ORC, 1, 120, 100);
+    TEST_ASSERT(attacker != nullptr, "attacker created");
+
+    mage->stats()->hitpoints = mage->stats()->max_hitpoints; // full HP
+    mage->stats()->magicpoints = 1000;
+    mage->foe = nullptr;
+    mage->stats()->hit_response(attacker);
+
+    // At full HP, mage should just acquire foe (not teleport)
+    TEST_ASSERT(mage->foe == attacker, "mage at full HP should acquire foe");
+}
+REGISTER_TEST(test_hit_response_mage_full_hp_no_teleport);
+
+// hit_response: weapon owner is traced to get real foe
+void test_hit_response_weapon_owner_resolved()
+{
+    myscreen->level_data.create_new_grid();
+    walker* defender = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(defender != nullptr, "defender created");
+    defender->set_act_type(0);
+    walker* shooter = add_living_to_level(FAMILY_ARCHER, 1, 200, 100);
+    TEST_ASSERT(shooter != nullptr, "shooter created");
+
+    // Create a weapon and set its owner
+    walker* arrow = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(arrow != nullptr, "arrow created");
+    arrow->owner = shooter;
+    arrow->team_num = 1;
+    arrow->setxy(110, 100);
+
+    defender->foe = nullptr;
+    defender->stats()->hitpoints = defender->stats()->max_hitpoints;
+    defender->stats()->hit_response(arrow);
+
+    // Foe should be the shooter (weapon owner), not the arrow
+    TEST_ASSERT(defender->foe == shooter,
+                "hit_response should resolve weapon owner as foe");
+}
+REGISTER_TEST(test_hit_response_weapon_owner_resolved);
+
+// ===========================================================================
 // upgrade_to_level continued
 // ===========================================================================
 
