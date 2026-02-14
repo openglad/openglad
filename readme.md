@@ -16,9 +16,14 @@ all the work that was saved.
 
 *Thank you, FSGames.*
 
+## For Developers
+
+* **[Architecture](ARCHITECTURE.md)** — Module structure, dependency rules, data flow, and build system
+* **[Install / Build](INSTALL.md)** — How to build from source (CMake, native, web)
+
 ## Table of Contents
 
-* [Install](INSTALL)
+* [Install / Build](INSTALL.md)
 * [Playing](#Playing)
 * [Editing with Openscen](scen.txt)
 * [Cheats](cheats.txt)
