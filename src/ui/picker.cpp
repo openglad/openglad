@@ -281,7 +281,9 @@ void picker_main(Sint32 argc, char  **argv)
 	picker_mainmenu_loop();
 }
 
-void picker_quit()
+// Centralized picker resource cleanup (no screen destruction).
+// Tests and PickerSession use this instead of duplicating cleanup logic.
+void picker_cleanup_resources()
 {
 	for (auto& backdrop : backdrops)
     {
@@ -295,11 +297,16 @@ void picker_quit()
 
     clear_allbuttons();
 
-    destroy_global_screen();
 	main_columns_pix.reset();
 	main_columns_data.free();
 	main_title_logo_pix.reset();
 	main_title_logo_data.free();
+}
+
+void picker_quit()
+{
+	picker_cleanup_resources();
+    destroy_global_screen();
 }
 
 #ifdef USE_TOUCH_INPUT

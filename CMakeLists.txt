@@ -749,6 +749,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_determinism.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
         )
         configure_openglad_library(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
