@@ -1,11 +1,9 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/render/text.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <optional>
 #include <string>
-
-extern screen* myscreen;
 
 namespace
 {
@@ -86,4 +84,3 @@ void test_text_input_string_ex_value_escape_returns_nullopt()
     TEST_ASSERT(!v.has_value(), "escape should cancel and return nullopt");
 }
 REGISTER_TEST(test_text_input_string_ex_value_escape_returns_nullopt);
-
