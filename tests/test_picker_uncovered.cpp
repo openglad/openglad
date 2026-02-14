@@ -1,5 +1,5 @@
 #include <openglad/input/button.h>
-#include <openglad/legacy/graph.h>
+#include <openglad/entities/guy.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 

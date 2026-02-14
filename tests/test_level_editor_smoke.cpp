@@ -1,4 +1,4 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
@@ -18,4 +18,3 @@ void test_level_editor_smoke_end_flag_exits_quickly()
     myscreen->end = old_end;
 }
 REGISTER_TEST(test_level_editor_smoke_end_flag_exits_quickly);
-

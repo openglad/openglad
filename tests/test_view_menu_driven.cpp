@@ -1,4 +1,10 @@
-#include <openglad/legacy/graph.h>
+#include "SDL.h"
+#include <openglad/input/input.h>
+#include <openglad/data/gloader.h>
+#include <openglad/entities/walker.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <array>
