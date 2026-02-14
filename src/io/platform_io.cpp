@@ -16,12 +16,10 @@
  */
 
 #include <openglad/platform/io.h>
-#include <openglad/input/input.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/util.h>
 #include <openglad/io/yaml_stream.h>
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/render/text.h>
 #include "physfs.h"
 #include "physfsrwops.h"
 #include <format>
@@ -292,6 +290,20 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
 {
     if(id.size() == 0)
         return CampaignPackageIoError::EmptyId;
+
+    // Campaigns are mounted at the root. If multiple campaigns are mounted at
+    // once they can mask each other's asset directories (e.g. "scen/"), which
+    // makes picker flows order-dependent and can hang tests waiting on missing
+    // entries. Enforce one mounted campaign at a time.
+    const std::string prev = get_mounted_campaign();
+    if (!prev.empty() && prev == id)
+        return CampaignPackageIoError::None;
+    if (!prev.empty() && prev != id)
+    {
+        CampaignPackageIoError unmount_error = unmount_campaign_package_with_error(prev);
+        if (unmount_error != CampaignPackageIoError::None)
+            return unmount_error;
+    }
 
     Log("Mounting campaign package: {}", id);
     
@@ -642,7 +654,6 @@ void io_exit()
     // Final sync before exit
     sync_filesystem();
 #endif
-    text_shutdown();
     PHYSFS_deinit();
 }
 

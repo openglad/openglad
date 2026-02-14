@@ -4,6 +4,7 @@
 #include <openglad/data/gparser.h> // cfg legacy global
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h> // options + theprefs legacy global
+#include <openglad/runtime/game_context.h>
 
 extern options* theprefs;
 
@@ -12,6 +13,13 @@ namespace og::runtime {
 GameSession::GameSession(const Config& session_cfg)
     : cfg_(session_cfg)
 {
+    // Preserve any existing global-context state that lives outside the legacy
+    // globals (e.g. IO mounts tracked on the context). The project currently
+    // uses ctx().mounted_campaign as a source of truth for the "active" campaign.
+    // This is populated before sessions are created (io_init) and must not be
+    // lost when we install a session-specific context.
+    GameContext& prev_ctx = ::ctx();
+
     prev_myscreen_ = myscreen;
     prev_theprefs_ = theprefs;
 
@@ -19,6 +27,7 @@ GameSession::GameSession(const Config& session_cfg)
         ctx_.prefs = std::make_unique<options>();
     }
     ctx_.config = &::cfg;
+    ctx_.mounted_campaign = prev_ctx.mounted_campaign;
 
     if (cfg_.allocate_seeded_rng) {
         seeded_rng_ = std::make_unique<SeededRandom>(cfg_.rng_seed);

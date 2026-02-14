@@ -31,6 +31,8 @@
 #include <format>
 #include <stdexcept>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
+#include <openglad/render/text.h>
 #include <openglad/ui/results_screen.h>
 #include <openglad/runtime/game_context.h>
 extern options *theprefs;
@@ -223,29 +225,29 @@ int main(int argc, char *argv[])
 {
 	try
 	{
-	init_logging();  // Set up logging output (uses JS console on web)
-	io_init(argc, argv);
+		init_logging();  // Set up logging output (uses JS console on web)
+		io_init(argc, argv);
 
-	active_config().load_settings();
-	active_config().save_settings();
-	active_config().commandline(argc, argv);
+		active_config().load_settings();
+		active_config().save_settings();
+		active_config().commandline(argc, argv);
 
-	ctx().prefs = std::make_unique<options>();
-	theprefs = ctx().prefs.get();
-	create_global_screen(1);
-	ctx().config = &active_config();
+		ctx().prefs = std::make_unique<options>();
+		theprefs = ctx().prefs.get();
+		create_global_screen(1);
+		ctx().config = &active_config();
 
     #ifdef OUYA
     OuyaControllerManager::init();
     #endif
 
-	//buffers: setting the seed
+		//buffers: setting the seed
 		srand(static_cast<unsigned int>(time(nullptr)));
 
-	init_input();
-	intro_main(argc, argv);
+		init_input();
+		intro_main(argc, argv);
 
-#ifdef __EMSCRIPTEN__
+	#ifdef __EMSCRIPTEN__
 	// For Emscripten, initialize picker and start the unified main loop
 	picker_init();
 	Log("main: After picker_init, about to check if game should start\n");
@@ -266,14 +268,14 @@ int main(int argc, char *argv[])
 	g_frame_state.last_frame_time = SDL_GetTicks();
 	g_frame_state.accumulated_time = 0;
 
-	// Start the unified main loop - handles all game states
-	emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);
-#else
-	// Native build: use traditional blocking calls
-	picker_main(argc, argv);
-#endif
-
-	io_exit();
+		// Start the unified main loop - handles all game states
+		emscripten_set_main_loop(emscripten_frame_wrapper, 0, 1);
+	#else
+		// Native build: use traditional blocking calls
+		picker_main(argc, argv);
+		text_shutdown();
+		io_exit();
+	#endif
 
 	}
 	catch (const std::runtime_error& e)

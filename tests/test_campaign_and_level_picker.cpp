@@ -3,6 +3,7 @@
 #include <openglad/ui/results_screen.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/graph.h>
+#include <openglad/platform/io.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 
@@ -197,6 +198,8 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
 {
     cleanup_leftover_test_campaigns();
 
+    const std::string old_campaign = get_mounted_campaign();
+
     ViewportGuard guard;
     window_w = 320;
     window_h = 200;
@@ -214,6 +217,8 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
     int choose_rc = 0;
     SDL_WaitThread(choose_thread, &choose_rc);
     TEST_ASSERT(!chosen.id.empty(), "choose path should return a selected campaign id");
+    // Ensure later tests run against the baseline default campaign that has scenarios.
+    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to restore mounted campaign after choose path");
 
     SDL_Thread* cancel_thread = SDL_CreateThread(picker_cancel_injector, "picker_cancel", nullptr);
     TEST_ASSERT(cancel_thread != nullptr, "failed to create cancel injector");
@@ -221,6 +226,7 @@ void test_campaign_picker_mouse_choose_and_cancel_paths()
     int cancel_rc = 0;
     SDL_WaitThread(cancel_thread, &cancel_rc);
     TEST_ASSERT(canceled.id.empty(), "cancel path should not return a campaign id");
+    TEST_ASSERT(mount_campaign_package(old_campaign), "failed to restore mounted campaign after cancel path");
 
     myscreen->end = old_end;
 }
