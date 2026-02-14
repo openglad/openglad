@@ -6,10 +6,26 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/living.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
+
+static bool ghost_check_special_ai(living* self)
+{
+    if (self->foe)
+    {
+        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        return (distance < 130);
+    }
+    self->foe = myscreen->find_near_foe(self);
+    if (!self->foe)
+        return false;
+    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    return (distance < 130);
+}
 
 const FamilyDescriptor& describe_family_ghost()
 {
@@ -30,7 +46,7 @@ const FamilyDescriptor& describe_family_ghost()
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = false,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
+        .check_special_ai = ghost_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = nullptr,

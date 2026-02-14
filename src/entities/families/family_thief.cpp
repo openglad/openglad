@@ -6,10 +6,52 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
+
+static bool thief_check_special_ai(living* self)
+{
+    if (self->current_special == 1) // drop bomb
+    {
+        if (self->foe)
+        {
+            Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+            if (distance < 130 && distance > 35)
+                return false;
+        }
+        else
+        {
+            Sint32 howmany = 0;
+            myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                                         110, &howmany, self);
+            if (howmany < 3)
+                return false;
+            return true;
+        }
+        return true; // fallthrough for foe case when distance is acceptable
+    }
+    else if (self->current_special == 3)
+    {
+        Uint32 myrange;
+        if (!self->shifter_down)
+            myrange = 80 + 4 * self->stats()->level;
+        else
+            myrange = 16 + 4 * self->stats()->level;
+
+        Sint32 howmany = 0;
+        myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                                     myrange, &howmany, self);
+        if (howmany < 1)
+            return false;
+        return true;
+    }
+    return true; // default: go for it
+}
 
 static void thief_level_up(guy* self, Sint32 level_diff)
 {
@@ -47,7 +89,7 @@ const FamilyDescriptor& describe_family_thief()
         .alternate_names = {"NONE", "NONE", "NONE", "CHARM OPPONENT", "NONE", "NONE"},
         .leaves_bloodspot = true,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
+        .check_special_ai = thief_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = thief_level_up,

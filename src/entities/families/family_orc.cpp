@@ -11,7 +11,23 @@
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
+#include <openglad/runtime/screen.h>
+
 #define BASE_GUY_HP 30
+
+static bool orc_check_special_ai(living* self)
+{
+    if (self->foe)
+    {
+        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        return (distance < 130);
+    }
+    self->foe = myscreen->find_near_foe(self);
+    if (!self->foe)
+        return false;
+    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    return (distance < 130);
+}
 
 static void orc_set_difficulty(living* self, Uint32 level)
 {
@@ -60,7 +76,7 @@ const FamilyDescriptor& describe_family_orc()
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
+        .check_special_ai = orc_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = orc_set_difficulty,
         .level_up = orc_level_up,

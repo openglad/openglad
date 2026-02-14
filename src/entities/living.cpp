@@ -538,147 +538,18 @@ walker* living::do_summon(char whatfamily, Sint32 summon_lifetime)
 // the special or not ..
 bool living::check_special()
 {
-	Uint32 distance, myrange;
-	Sint32 howmany;
-
 	shifter_down = static_cast<short>(rng(2)); // on or off, randomly ..
 
 	// Make sure we have enough ..
 	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
 		current_special = 1; // make us do default ..
 
-	switch (family)
-	{
-		case FAMILY_SOLDIER:   // Check for foe in range x
-			if (foe) // already have a foe ..
-			{
-				distance = static_cast<Uint32>(distance_to_ob(foe));//Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
-				if (distance < 75 && distance > 20) // about 3 squares max, 1 square min
-					return 1;
-				return 0;
-			}
-			else // get a new foe ..
-			{
-				foe = myscreen->find_near_foe(this);
-				if (!foe)
-					return 0;
-				distance = static_cast<Uint32>(distance_to_ob(foe)); // (deltax*deltax) + Sint32 (deltay*deltay);
-				if (distance < 75 && distance > 20) // about 3 squares max, 1 min
-					return 1;
-				return 0;
-			}
-			//break; // end of fighter case
-		case FAMILY_FIREELEMENTAL:     // Check for foe in range x
-		case FAMILY_ARCHER:
-		case FAMILY_GHOST:
-		case FAMILY_ORC:
-			if (foe) // already have a foe ..
-			{
-				distance = static_cast<Uint32>(distance_to_ob(foe)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
-				if (distance < 130) // about 6 squares
-					return 1;
-				return 0;
-			}
-			else // get a new foe ..
-			{
-				foe = myscreen->find_near_foe(this);
-				if (!foe)
-					return 0;
-				distance = static_cast<Uint32>(distance_to_ob(foe)); //Sint32 (deltax*deltax) + Sint32 (deltay*deltay);
-				if (distance < 130) // about 6 squares
-					return 1;
-				return 0;
-			}
-			//break; // end of fighter case
-		case FAMILY_THIEF:
-			if (current_special == 1) // drop bomb
-			{
-				if (foe) // already have a foe ..
-				{
-					distance = static_cast<Uint32>(distance_to_ob(foe)); // (deltax*deltax) + Sint32 (deltay*deltay);
-					if (distance < 130 && distance > 35) // about 6 squares max, 2 min
-						return 0;
-				}
-				else // get a new foe ..
-				{
-					myscreen->find_foes_in_range(myscreen->level_data.oblist,
-					                                        110, &howmany, this);
+	auto* fd = get_family_descriptor(family);
+	if (fd && fd->check_special_ai)
+		return fd->check_special_ai(this);
 
-					if (howmany < 3)
-						return 0;
-					return 1;
-				}
-				break; // end of thief case
-			} // end of bomb
-			else if (current_special == 3)
-			{
-				if (!shifter_down) // taunt
-					myrange = 80 + 4*stats_->level;
-				else               // charm
-					myrange = 16 + 4*stats_->level;
-
-				myscreen->find_foes_in_range(myscreen->level_data.oblist,
-				                                        myrange, &howmany, this);
-				if (howmany < 1)
-					return 0;
-				else
-					return 1;
-			}
-			else
-				return 1;  // default is go for it
-		case FAMILY_MAGE:  // TP if  away from guys ..
-			howmany = 0;
-			myscreen->find_foes_in_range(myscreen->level_data.oblist,
-			                                        110, &howmany, this);
-
-			if (howmany < 1) //  away from anybody ..
-				return 1;
-			if (howmany > 3) // too many enemies!
-				return 1;
-			return 0;
-			//break; // end of fighter case
-		case FAMILY_SLIME:
-			if (myscreen->level_data.numobs < MAXOBS)
-				return 1;
-			else
-				return 0;
-		case FAMILY_CLERIC: // any friends?
-			if (current_special == 1) // healing
-			{
-				myscreen->find_friends_in_range(myscreen->level_data.oblist,
-				            60, &howmany, this);
-
-				if (howmany > 1) // other than ourselves?
-				{
-					shifter_down = 0; // we're HEALING
-					return 1;
-				}
-				else if (stats_->magicpoints >= (stats_->max_magicpoints/2) )
-				{
-					// Do mace ...
-					shifter_down = 1;
-					return 1;
-				}
-				else
-					return 0;
-			}  // end of healing/mace
-			else
-				return 1;
-			//break;
-		case FAMILY_SKELETON:  // Tunnel if no foes near ..
-			howmany = 0;
-			myscreen->find_foes_in_range(myscreen->level_data.oblist,
-			                                        5*GRID_SIZE, &howmany, this);
-
-			if (howmany < 1) //  away from anybody ..
-				return 1;      //  so tunnel
-			return 0;
-			//break; // end of skeleton case
-		default :
-			return 1;
-	}
-
-	return 1; //unreachable?
+	// Default: always allow
+	return true;
 }
 
 void living::set_difficulty(Uint32 whatlevel)

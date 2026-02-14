@@ -10,7 +10,31 @@
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 
+#include <openglad/runtime/screen.h>
+
 #define BASE_GUY_HP 30
+
+static bool cleric_check_special_ai(living* self)
+{
+    if (self->current_special == 1) // healing
+    {
+        Sint32 howmany = 0;
+        myscreen->find_friends_in_range(myscreen->level_data.oblist,
+                                        60, &howmany, self);
+        if (howmany > 1)
+        {
+            self->shifter_down = 0; // we're HEALING
+            return true;
+        }
+        else if (self->stats()->magicpoints >= (self->stats()->max_magicpoints / 2))
+        {
+            self->shifter_down = 1; // do mace
+            return true;
+        }
+        return false;
+    }
+    return true;
+}
 
 static void cleric_set_difficulty(living* self, Uint32 level)
 {
@@ -41,7 +65,7 @@ const FamilyDescriptor& describe_family_cleric()
         .alternate_names = {"NONE", "MYSTIC MACE", "TURN UNDEAD", "TURN UNDEAD", "NONE", "NONE"},
         .leaves_bloodspot = true,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
+        .check_special_ai = cleric_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = cleric_set_difficulty,
         .level_up = nullptr,

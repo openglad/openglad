@@ -11,7 +11,45 @@
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 
+#include <openglad/runtime/screen.h>
+
 #define BASE_GUY_HP 30
+
+static bool archer_check_special_ai(living* self)
+{
+    if (self->foe)
+    {
+        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        return (distance < 130);
+    }
+    self->foe = myscreen->find_near_foe(self);
+    if (!self->foe)
+        return false;
+    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    return (distance < 130);
+}
+
+static void archer_hit_response(statistics* stats, walker* foe)
+{
+    walker* controller = stats->controller;
+    if (!controller->foe || controller->foe != foe)
+    {
+        controller->foe = foe;
+        stats->clear_command();
+        stats->last_distance = stats->current_distance = 15000;
+    }
+    Sint32 distance = controller->distance_to_ob(foe);
+    if (distance < 64)
+    {
+        Sint32 deltax = static_cast<short>(controller->xpos - foe->xpos);
+        if (deltax)
+            deltax = static_cast<short>(deltax / abs(deltax));
+        Sint32 deltay = static_cast<short>(controller->ypos - foe->ypos);
+        if (deltay)
+            deltay = static_cast<short>(deltay / abs(deltay));
+        stats->force_command(COMMAND_WALK, 8, deltax, deltay);
+    }
+}
 
 static void archer_set_difficulty(living* self, Uint32 level)
 {
@@ -58,8 +96,8 @@ const FamilyDescriptor& describe_family_archer()
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
-        .hit_response = nullptr,
+        .check_special_ai = archer_check_special_ai,
+        .hit_response = archer_hit_response,
         .set_difficulty = archer_set_difficulty,
         .level_up = archer_level_up,
         .on_death = nullptr,

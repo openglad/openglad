@@ -11,7 +11,17 @@
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
+#include <openglad/entities/living.h>
+
 #define BASE_GUY_HP 30
+
+static bool slime_check_special_ai(living* self)
+{
+    (void)self;
+    if (myscreen->level_data.numobs < MAXOBS)
+        return true;
+    return false;
+}
 
 static bool slime_on_death(walker* self)
 {
@@ -72,7 +82,7 @@ const FamilyDescriptor& describe_family_slime()
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
+        .check_special_ai = slime_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = nullptr,

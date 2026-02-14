@@ -6,10 +6,23 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
+
+static bool skeleton_check_special_ai(living* self)
+{
+    Sint32 howmany = 0;
+    myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                                 5 * GRID_SIZE, &howmany, self);
+    if (howmany < 1)
+        return true;
+    return false;
+}
 
 static void skeleton_level_up(guy* self, Sint32 level_diff)
 {
@@ -47,7 +60,7 @@ const FamilyDescriptor& describe_family_skeleton()
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = false,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
+        .check_special_ai = skeleton_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = skeleton_level_up,

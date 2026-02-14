@@ -140,11 +140,32 @@ OG_UNIT_TEST(test_registry_callbacks_state)
     for (int i = 0; i < NUM_FAMILIES; i++)
     {
         auto* d = get_family_descriptor(i);
-        // These callbacks are not yet extracted
+        // do_special not yet extracted
         OG_ASSERT(d->do_special == nullptr);
-        OG_ASSERT(d->check_special_ai == nullptr);
-        OG_ASSERT(d->hit_response == nullptr);
     }
+
+    // check_special_ai: non-null for families with custom AI
+    OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ARCHER)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_FIREELEMENTAL)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_GHOST)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ORC)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_THIEF)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_MAGE)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SLIME)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_CLERIC)->check_special_ai != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SKELETON)->check_special_ai != nullptr);
+    // Default-AI families have nullptr
+    OG_ASSERT(get_family_descriptor(FAMILY_DRUID)->check_special_ai == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_BARBARIAN)->check_special_ai == nullptr);
+
+    // hit_response: non-null for families with custom hit behavior
+    OG_ASSERT(get_family_descriptor(FAMILY_MAGE)->hit_response != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ARCHMAGE)->hit_response != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ARCHER)->hit_response != nullptr);
+    // Default families have nullptr
+    OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->hit_response == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_CLERIC)->hit_response == nullptr);
 
     // on_death: non-null for families with custom death behavior
     OG_ASSERT(get_family_descriptor(FAMILY_FIREELEMENTAL)->on_death != nullptr);

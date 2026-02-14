@@ -11,7 +11,55 @@
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 
+#include <openglad/runtime/screen.h>
+
 #define BASE_GUY_HP 30
+
+static bool mage_check_special_ai(living* self)
+{
+    Sint32 howmany = 0;
+    myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                                 110, &howmany, self);
+    if (howmany < 1)
+        return true;
+    if (howmany > 3)
+        return true;
+    return false;
+}
+
+static void mage_hit_response(statistics* stats, walker* foe)
+{
+    walker* controller = stats->controller;
+    float threshold;
+    if (controller->myguy)
+        threshold = (3.0f * stats->max_hitpoints) / 5.0f;
+    else
+        threshold = (3.0f * stats->max_hitpoints) / 8.0f;
+
+    Sint32 possible_specials[NUM_SPECIALS];
+    for (int i = 0; i < NUM_SPECIALS; i++)
+        possible_specials[i] = 0;
+    for (int i = 0; i <= (stats->level + 2) / 3; i++)
+        if (i < NUM_SPECIALS && stats->magicpoints >= stats->special_cost[i])
+            possible_specials[i] = 1;
+
+    if (stats->hitpoints < threshold && possible_specials[1])
+    {
+        controller->current_special = 1;
+        controller->shifter_down = 0;
+        controller->busy = 0;
+        controller->special();
+    }
+    else
+    {
+        if (controller->foe != foe)
+        {
+            controller->foe = foe;
+            foe->foe = controller;
+            stats->last_distance = stats->current_distance = 15000;
+        }
+    }
+}
 
 static void mage_set_difficulty(living* self, Uint32 level)
 {
@@ -59,8 +107,8 @@ const FamilyDescriptor& describe_family_mage()
         .alternate_names = {"NONE", "TELEPORT MARKER", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
         .do_special = nullptr,
-        .check_special_ai = nullptr,
-        .hit_response = nullptr,
+        .check_special_ai = mage_check_special_ai,
+        .hit_response = mage_hit_response,
         .set_difficulty = mage_set_difficulty,
         .level_up = mage_level_up,
         .on_death = nullptr,

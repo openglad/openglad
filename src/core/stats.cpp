@@ -20,6 +20,8 @@
 
 #include <openglad/core/stats.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
@@ -435,13 +437,9 @@ short statistics::do_command()
 // 'controller' is our parent walker object
 void statistics::hit_response(walker  *who)
 {
-	Sint32 distance, i;
 	short myfamily;
-	Sint32 deltax, deltay;
 	walker *foe; // who is attacking us?
-	Sint32 possible_specials[NUM_SPECIALS];
 	float threshold; // for hitpoint 'running away'
-	Sint32 howmany;
 
 	if (!who || !controller)
 		return;
@@ -461,152 +459,33 @@ void statistics::hit_response(walker  *who)
 	else
 		foe = who;
 
-	// Determine which specials we can do (by level and sp) ..
-	for (i=0; i < NUM_SPECIALS; i++) // first initialize to CAN'T
-		possible_specials[i] = 0;
-	for (i=0; i <= (level+2)/3; i++) // for all our 'possibles' by level
-		if ( (i < NUM_SPECIALS) &&
-		        (magicpoints >= special_cost[i]) )
-			possible_specials[i] = 1;    // then we can do it.
-
-	switch (myfamily)
+	auto* fd = get_family_descriptor(myfamily);
+	if (fd && fd->hit_response)
 	{
-		case FAMILY_MAGE:
-			if (controller->myguy) // are we a player's character?
-				threshold = (3 * max_hitpoints)/5; // then flee at 60%
-			else                   // we're an enemy, so be braver :>
-				threshold = (3 * max_hitpoints)/8; // flee at 3/8
-			if ( (hitpoints < threshold) && possible_specials[1] )
-			{
-				// Clear old command ..
-				// clear_command();
-				// teleport
-				controller->current_special = 1; // teleport to safety
-				controller->shifter_down = 0;    // TELEPORT, not other
-				controller->busy = 0; // force-allow us to special
-				controller->special();
-			}
-			else
-			{
-				if (controller->foe != foe) // we're hit by a new enemy
-				{
-					controller->foe = foe;
-					foe->foe = controller;
-					last_distance = current_distance = 15000;
-				}
-			}
-			break;
-		case FAMILY_ARCHMAGE:
-			controller->busy = 0; // yes, this is a cheat..
-			if (controller->myguy) // are we a player's character?
-				threshold = (3 * max_hitpoints)/5; // then flee at 60%
-			else                   // we're an enemy, so be braver :>
-				threshold = (3 * max_hitpoints)/8; // flee at 3/8
-			if ( (hitpoints < threshold) && possible_specials[1] && rng(3) )
-			{
-				// teleport
-				controller->current_special = 1; // teleport to safety
-				controller->shifter_down = 0;
-				controller->busy = 0; // force-allow us to special
-				controller->special();
-			}
-			else  // find out how many foes are around us, etc...
-			{
-				if (controller->foe != foe) // we're hit by a new enemy
-				{
-					controller->foe = foe;
-					foe->foe = controller;
-					last_distance = current_distance = 15000;
-				}
-				myscreen->find_foes_in_range(myscreen->level_data.oblist,
-				                                       200, &howmany, controller);
-                
-				if (howmany) // foes within range?
-				{
-					if (possible_specials[3]) // can we summon illusion?
-					{
-						controller->current_special = 3;
-						if (controller->special())
-							return;
-					} // end of do 3rd special
-					if (possible_specials[2]) // heartburst, chain lightning, etc.
-					{
-						//if (howmany < 3) // 2 or fewer enemies, so lightning..
-						if (rng(2)) // 50/50 now
-						{
-							controller->shifter_down = 1; // lightning
-							controller->current_special = 2;
-							if (controller->special())
-							{
-								controller->shifter_down = 0;
-								if (magicpoints >= special_cost[1])  // then leave! :)
-								{
-									controller->busy = 0;
-									controller->special();
-								}
-								return;
-							}
-						} // end of lightning
-						controller->shifter_down = 0;
-						controller->current_special = 2;
-						if (controller->special())
-						{
-							if (magicpoints >= special_cost[1])  // then leave! :)
-							{
-								controller->busy = 0;
-								controller->special();
-							}
-							return;
-						}
-					} // end of burst or lightning
-				} // end of some foes in range for special attack
-			}
-			break;
-		case FAMILY_ARCHER: // stay at range ..
-			{
-				if (!controller->foe || controller->foe != foe)
-				{
-					controller->foe = foe;
-					clear_command();
-					last_distance = current_distance = 15000;
-				}
-				distance = controller->distance_to_ob(foe);
-				if (distance < 64) // too close!
-				{
-					deltax = static_cast<short>(controller->xpos - foe->xpos);
-					if (deltax)
-						deltax = static_cast<short>(deltax / abs(deltax));
-					deltay = static_cast<short>(controller->ypos - foe->ypos);
-					if (deltay)
-						deltay = static_cast<short>(deltay / abs(deltay));
-					// Run away
-					force_command(COMMAND_WALK, 8, deltax, deltay);
-				}  // end of too-close check
-			} // end of archer case
-			break;
-		default:  // attack our attacker
-			// Chance of doing special ..
-			if (controller->check_special() && !rng(3) )
-				controller->special();
-			if (controller->myguy) // are we a player's character?
-				threshold = (5 * max_hitpoints)/10; // then flee at 50%
-			else                   // we're an enemy, so be braver :>
-				threshold = (5 * max_hitpoints)/16; // flee at 5/16%
-			if ( (hitpoints < threshold)
-			        && !controller->yo_delay) // then yell for help & run ..
-			{
-				yell_for_help(foe);
-			} // end of yell for help
-			if (controller->foe != foe) // we're attacked by a new enemy
-			{
-				// Clear old commands ..
-				clear_command();
-				// Attack our attacker
-				controller->foe = foe;
-				foe->foe = controller;
-				last_distance = current_distance = 32000;
-			}
-			break;
+		fd->hit_response(this, foe);
+		return;
+	}
+
+	// Default: attack our attacker
+	if (controller->check_special() && !rng(3) )
+		controller->special();
+	if (controller->myguy) // are we a player's character?
+		threshold = (5 * max_hitpoints)/10; // then flee at 50%
+	else                   // we're an enemy, so be braver :>
+		threshold = (5 * max_hitpoints)/16; // flee at 5/16%
+	if ( (hitpoints < threshold)
+	        && !controller->yo_delay) // then yell for help & run ..
+	{
+		yell_for_help(foe);
+	} // end of yell for help
+	if (controller->foe != foe) // we're attacked by a new enemy
+	{
+		// Clear old commands ..
+		clear_command();
+		// Attack our attacker
+		controller->foe = foe;
+		foe->foe = controller;
+		last_distance = current_distance = 32000;
 	}
 
 }
