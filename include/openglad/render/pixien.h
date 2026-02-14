@@ -18,7 +18,6 @@
 
 // Definition of PIXIEN class
 
-#include <openglad/legacy/base.h>
 #include <openglad/render/pixie.h>
 class pixieN : public pixie
 {
@@ -38,4 +37,3 @@ class pixieN : public pixie
 		short frame; // current frame
 		unsigned char * facings;
 };
-

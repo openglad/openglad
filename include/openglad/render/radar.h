@@ -18,9 +18,11 @@
 
 // Definition of RADAR class
 
-#include <openglad/legacy/base.h>
 #include <openglad/data/level_data.h>
 #include <vector>
+
+class screen;
+class viewscreen;
 
 class radar
 {

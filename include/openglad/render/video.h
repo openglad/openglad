@@ -18,7 +18,7 @@
 
 // The definition of the VIDEO class
 
-#include <openglad/legacy/base.h>
+#include "SDL.h"
 #include <openglad/render/text.h>
 #include <array>
 #include <span>
