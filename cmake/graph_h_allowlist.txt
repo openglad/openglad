@@ -1,5 +1,4 @@
 src/ui/picker.cpp
-src/ui/picker_main_menu.cpp
 src/ui/picker_team_build.cpp
 src/runtime/screen.cpp
 src/render/view.cpp
