@@ -18,7 +18,7 @@
 
 // Definition of VIEWSCREEN class
 
-#include <openglad/legacy/base.h>
+#include "SDL.h"
 #include <openglad/data/level_data.h>
 #include <memory>
 #include <string>
@@ -59,6 +59,8 @@ inline constexpr int PREF_MAX = 8;  // == 1 + highest pref ..
 inline constexpr int MAX_MESSAGES = 5;  // max of 5 lines, currently
 
 class viewscreen;
+class walker;
+class radar;
 
 // Pure helper functions for HP/MP color thresholds
 unsigned char compute_hp_color(float hp, float maxhp);
