@@ -1,6 +1,6 @@
-#include "graph.h"
-#include "entities/effect.h"
-#include "data/gloader.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/entities/effect.h>
+#include <openglad/data/gloader.h>
 #include "test_framework.h"
 
 extern screen* myscreen;

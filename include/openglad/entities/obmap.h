@@ -18,7 +18,7 @@
 
 // Definition of OBMAP class
 
-#include "base.h"
+#include <openglad/legacy/base.h>
 #include <map>
 #include <list>
 

@@ -1,6 +1,5 @@
 #include <openglad/core/combat_math.h>
-#include "runtime/game_context.h"
-
+#include <openglad/runtime/game_context.h>
 #include <cmath>
 
 float compute_base_damage(float base_damage, RandomU32 rng)

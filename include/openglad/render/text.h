@@ -18,8 +18,8 @@
 
 // Definition of TEXT class
 
-#include "base.h"
-#include "data/pixie_data.h"
+#include <openglad/legacy/base.h>
+#include <openglad/data/pixie_data.h>
 #include <optional>
 #include <string>
 #include <string_view>

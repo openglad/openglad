@@ -24,7 +24,7 @@
 	Zardus: 8/20/02: added return 0 for save_pallete so VC++ is happy
 */
 
-#include "render/pal32.h"
+#include <openglad/render/pal32.h>
 #include <cstddef>
 #include <cstdio>
 #include <span>

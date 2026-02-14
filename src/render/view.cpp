@@ -20,22 +20,19 @@
 	buffers: 7/31/02: *include cleanup
 */
 
-#include "input/input.h"
-#include "graph.h"
-#include "colors.h"
-
-#include "version.h"
-
+#include <openglad/input/input.h>
+#include <openglad/legacy/graph.h>
+#include <openglad/legacy/colors.h>
+#include <openglad/core/version.h>
 #include <openglad/core/util.h>
-#include "runtime/game_context.h"
+#include <openglad/runtime/game_context.h>
 #include <string>
 #include <format>
-#include "view_sizes.h"
+#include <openglad/legacy/view_sizes.h>
 #include <algorithm>
 #include <cstring>
 #include <memory>
-#include "test_trace.h"
-
+#include <openglad/legacy/test_trace.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
   #ifdef __ASYNCIFY__

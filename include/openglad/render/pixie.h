@@ -18,8 +18,7 @@
 
 // Definition of PIXIE class
 
-#include "base.h"
-
+#include <openglad/legacy/base.h>
 class pixie
 {
 	public:

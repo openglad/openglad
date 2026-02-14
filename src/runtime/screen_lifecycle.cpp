@@ -1,11 +1,9 @@
-#include "runtime/screen_lifecycle.h"
-
+#include <openglad/runtime/screen_lifecycle.h>
 #include <openglad/runtime/game_session.h>
 #include <openglad/runtime/game_context.h>
 
-#include "base.h" // myscreen legacy global
-#include "runtime/screen.h"
-
+#include <openglad/legacy/base.h> // myscreen legacy global
+#include <openglad/runtime/screen.h>
 namespace
 {
 std::unique_ptr<og::runtime::GameSession> g_session_owner;

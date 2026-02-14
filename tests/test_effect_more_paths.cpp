@@ -1,7 +1,7 @@
-#include "graph.h"
-#include "runtime/game_context.h"
-#include "data/gloader.h"
-#include "entities/guy.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/data/gloader.h>
+#include <openglad/entities/guy.h>
 #include "test_framework.h"
 
 #include <memory>

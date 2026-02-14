@@ -18,9 +18,9 @@
 
 // Definition of WALKER class
 
-#include "base.h"
-#include "render/pixien.h"
-#include "entities/obmap.h"
+#include <openglad/legacy/base.h>
+#include <openglad/render/pixien.h>
+#include <openglad/entities/obmap.h>
 #include <memory>
 
 // Opaque state type used by MicroPather for pathfinding nodes.

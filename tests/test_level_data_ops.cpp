@@ -1,7 +1,7 @@
-#include "graph.h"
-#include "entities/guy.h"
-#include "data/gloader.h"
-#include "platform/io.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/entities/guy.h>
+#include <openglad/data/gloader.h>
+#include <openglad/platform/io.h>
 #include "test_framework.h"
 
 #include <cstdint>

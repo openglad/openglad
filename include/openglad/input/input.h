@@ -25,8 +25,7 @@
 #include "SDL.h"
 #include <cctype>
 #include <string>
-#include "render/video.h"
-
+#include <openglad/render/video.h>
 
 
 #define SDLKey SDL_Keycode

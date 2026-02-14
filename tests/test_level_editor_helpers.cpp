@@ -1,7 +1,7 @@
-#include "graph.h"
-#include "data/gloader.h"
-#include "platform/io.h"
-#include "pixdefs.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/data/gloader.h>
+#include <openglad/platform/io.h>
+#include <openglad/legacy/pixdefs.h>
 #include "test_framework.h"
 
 #include <string>

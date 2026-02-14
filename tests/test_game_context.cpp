@@ -1,6 +1,6 @@
-#include "runtime/game_context.h"
+#include <openglad/runtime/game_context.h>
 #include <openglad/core/combat_math.h>
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include "test_framework.h"
 
 extern screen* myscreen;

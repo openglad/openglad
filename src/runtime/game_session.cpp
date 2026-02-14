@@ -1,9 +1,9 @@
 #include <openglad/runtime/game_session.h>
 
-#include "base.h" // legacy globals: myscreen
-#include "data/gparser.h" // cfg legacy global
-#include "runtime/screen.h"
-#include "render/view.h" // options + theprefs legacy global
+#include <openglad/legacy/base.h> // legacy globals: myscreen
+#include <openglad/data/gparser.h> // cfg legacy global
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h> // options + theprefs legacy global
 
 extern options* theprefs;
 

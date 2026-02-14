@@ -18,13 +18,12 @@
 
 // Definition of EFFECT class
 
-#include "base.h"
-#include "entities/obmap.h"
-#include "runtime/screen.h"
+#include <openglad/legacy/base.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
-#include "entities/walker.h"
-#include "entities/guy.h"
-
+#include <openglad/entities/walker.h>
+#include <openglad/entities/guy.h>
 // Pure helper functions extracted from effect logic
 void orbit_offset(int drawcycle, float &xd, float &yd);
 Sint32 compute_explosion_range(Sint32 level, short skip_exit);

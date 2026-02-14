@@ -1,11 +1,11 @@
-#include "ui/results_screen.h"
-#include "base.h"
-#include "input/button.h"
-#include "render/text.h"
-#include "entities/walker.h"
-#include "entities/guy.h"
+#include <openglad/ui/results_screen.h>
+#include <openglad/legacy/base.h>
+#include <openglad/input/button.h>
+#include <openglad/render/text.h>
+#include <openglad/entities/walker.h>
+#include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
-#include "render/view.h"
+#include <openglad/render/view.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -13,11 +13,11 @@
 
 // For deterministic helper-only test coverage.
 #ifdef TESTING
-#include "ui/results_screen.h"
+#include <openglad/ui/results_screen.h>
 #endif
 
 #ifdef OUYA
-    #include "OuyaController.h"
+#include <openglad/legacy/OuyaController.h>
 #endif
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);

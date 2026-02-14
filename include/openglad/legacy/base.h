@@ -30,14 +30,14 @@
 #include <fstream>
 #include <cmath>
 #include <cctype>
-#include "sounds.h"
+#include <openglad/legacy/sounds.h>
 #include "SDL.h"
-#include "input/input.h"
+#include <openglad/input/input.h>
 #include <openglad/core/util.h>
-#include "data/gparser.h"
-#include "render/pal32.h"
-#include "pixdefs.h"
-#include "soundob.h" // sound defines
+#include <openglad/data/gparser.h>
+#include <openglad/render/pal32.h>
+#include <openglad/legacy/pixdefs.h>
+#include <openglad/legacy/soundob.h> // sound defines
 
 class video;
 class screen;
@@ -384,8 +384,7 @@ inline constexpr unsigned char OUTLINE_FLYING        = 208;
 
 inline constexpr char ACTION_FOLLOW = 1;
 
-#include "data/pixie_data.h"
-
+#include <openglad/data/pixie_data.h>
 PixieData read_pixie_file(const char  * filename);
 
 // Some stuff for palette

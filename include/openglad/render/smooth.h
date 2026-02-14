@@ -20,8 +20,7 @@
 #pragma once
 
 #include "SDL.h"
-#include "data/pixie_data.h"
-
+#include <openglad/data/pixie_data.h>
 // Used for deciding cases
 inline constexpr int TO_UP = 1;
 inline constexpr int TO_RIGHT = 2;

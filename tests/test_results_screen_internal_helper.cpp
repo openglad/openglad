@@ -1,4 +1,4 @@
-#include "ui/results_screen.h"
+#include <openglad/ui/results_screen.h>
 #include "test_framework.h"
 
 void test_results_screen_internal_helper_exercises_core_paths()

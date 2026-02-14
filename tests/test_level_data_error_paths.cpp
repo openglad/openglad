@@ -1,6 +1,6 @@
-#include "graph.h"
-#include "data/level_data.h"
-#include "platform/io.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/data/level_data.h>
+#include <openglad/platform/io.h>
 #include "test_framework.h"
 
 #include <filesystem>

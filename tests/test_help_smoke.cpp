@@ -1,5 +1,5 @@
-#include "graph.h"
-#include "input/input.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/input/input.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 

@@ -18,10 +18,10 @@
 // Living; derived class of walker
 //
 
-#include "graph.h"
-#include "runtime/game_context.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/core/combat_math.h>
-#include "render/smooth.h"
+#include <openglad/render/smooth.h>
 #include <cstring>
 
 // From picker

@@ -1,4 +1,4 @@
-#include "OuyaController.h"
+#include <openglad/legacy/OuyaController.h>
 #include <cmath>
 
 // Init for OuyaControllerManager

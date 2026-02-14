@@ -15,14 +15,14 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "data/save_data.h"
-#include "test_trace.h"
+#include <openglad/data/save_data.h>
+#include <openglad/legacy/test_trace.h>
 #include <format>
 
-#include "entities/walker.h"
-#include "entities/guy.h"
-#include "ui/campaign_picker.h"
-#include "platform/io.h"
+#include <openglad/entities/walker.h>
+#include <openglad/entities/guy.h>
+#include <openglad/ui/campaign_picker.h>
+#include <openglad/platform/io.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>

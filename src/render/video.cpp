@@ -16,12 +16,12 @@
  */
 // Video object code
 
-#include "graph.h"
-#include "render/sai2x.h"
-#include "test_trace.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/render/sai2x.h>
+#include <openglad/legacy/test_trace.h>
 #include <format>
 #include <cstring>
-#include "runtime/game_context.h"
+#include <openglad/runtime/game_context.h>
 #include <memory>
 #include <span>
 #include <vector>

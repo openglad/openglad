@@ -18,7 +18,7 @@
 
 // Definition of STATS class
 
-#include "base.h"
+#include <openglad/legacy/base.h>
 #include <list>
 
 //

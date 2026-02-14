@@ -15,13 +15,12 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "platform/io.h"
-#include "input/input.h"
-#include "runtime/game_context.h"
+#include <openglad/platform/io.h>
+#include <openglad/input/input.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/core/util.h>
-#include "pixdefs.h"
-#include "render/text.h"
-
+#include <openglad/legacy/pixdefs.h>
+#include <openglad/render/text.h>
 #include "yam.h"
 #include "physfs.h"
 #include "physfsrwops.h"

@@ -1,7 +1,6 @@
 #include "test_framework.h"
 #include "SDL.h"
-#include "graph.h"
-
+#include <openglad/legacy/graph.h>
 extern screen* myscreen;
 
 static SDL_mutex* s_allbuttons_mutex = nullptr;

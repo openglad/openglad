@@ -1,5 +1,5 @@
-#include "graph.h"
-#include "render/text.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/render/text.h>
 #include "test_framework.h"
 
 #include <optional>

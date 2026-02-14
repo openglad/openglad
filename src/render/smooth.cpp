@@ -16,12 +16,10 @@
  */
 // Map smoother, for use in the scenario editor ..
 
-#include "render/smooth.h"
-
-#include "base.h"
-#include "graph.h"
-#include "runtime/game_context.h"
-
+#include <openglad/render/smooth.h>
+#include <openglad/legacy/base.h>
+#include <openglad/legacy/graph.h>
+#include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }

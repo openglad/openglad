@@ -1,8 +1,8 @@
-#include "runtime/game_context.h"
-#include "base.h"
-#include "data/gparser.h"
-#include "input/input.h"
-#include "render/view.h" // options definition for GameContext::~GameContext
+#include <openglad/runtime/game_context.h>
+#include <openglad/legacy/base.h>
+#include <openglad/data/gparser.h>
+#include <openglad/input/input.h>
+#include <openglad/render/view.h> // options definition for GameContext::~GameContext
 
 // The existing global random() function (defined in screen.cpp)
 Uint32 random(Uint32 x);

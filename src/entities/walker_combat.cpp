@@ -15,11 +15,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include <openglad/core/combat_math.h>
-#include "runtime/game_context.h"
-#include "test_trace.h"
-
+#include <openglad/runtime/game_context.h>
+#include <openglad/legacy/test_trace.h>
 #include <cmath>
 #include <format>
 

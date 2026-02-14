@@ -18,10 +18,10 @@
 // Stats.cpp
 //
 
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include <openglad/core/stats.h>      // for bit flags, etc.
 #include <cmath>
-#include "runtime/game_context.h"
+#include <openglad/runtime/game_context.h>
 #include <format>
 
 static inline Uint32 rng(Uint32 max_exclusive) {

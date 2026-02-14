@@ -1,4 +1,4 @@
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include "test_framework.h"
 
 extern screen* myscreen;

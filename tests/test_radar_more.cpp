@@ -1,6 +1,6 @@
-#include "graph.h"
-#include "render/radar.h"
-#include "runtime/game_context.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/render/radar.h>
+#include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 
 #include <vector>

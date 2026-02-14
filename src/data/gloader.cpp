@@ -15,15 +15,15 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 //#include "graph.h"
-#include "data/gloader.h"
-#include "runtime/game_context.h"
+#include <openglad/data/gloader.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/core/stats.h>
-#include "entities/walker.h"
+#include <openglad/entities/walker.h>
 #include <format>
-#include "entities/living.h"
-#include "entities/treasure.h"
-#include "entities/weap.h"
-#include "entities/effect.h"
+#include <openglad/entities/living.h>
+#include <openglad/entities/treasure.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/effect.h>
 #include <algorithm>
 #include <cstring>
 

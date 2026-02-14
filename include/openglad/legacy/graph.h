@@ -16,23 +16,21 @@
  */
 #pragma once
 
-#include "base.h"
-
-#include "render/video.h"
-#include "data/gloader.h"
-#include "entities/obmap.h"
-#include "runtime/screen.h"
-#include "render/view.h"
-#include "render/pixie.h"
-#include "render/pixien.h"
-#include "entities/walker.h"
-#include "entities/living.h"
-#include "entities/weap.h"
-#include "entities/treasure.h"
-#include "entities/effect.h"
-#include "render/text.h"
+#include <openglad/legacy/base.h>
+#include <openglad/render/video.h>
+#include <openglad/data/gloader.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/render/pixie.h>
+#include <openglad/render/pixien.h>
+#include <openglad/entities/walker.h>
+#include <openglad/entities/living.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/treasure.h>
+#include <openglad/entities/effect.h>
+#include <openglad/render/text.h>
 #include <openglad/core/stats.h>
-#include "entities/guy.h"
-#include "render/radar.h"
-#include "test_trace.h"
-
+#include <openglad/entities/guy.h>
+#include <openglad/render/radar.h>
+#include <openglad/legacy/test_trace.h>

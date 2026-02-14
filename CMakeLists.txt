@@ -414,7 +414,6 @@ set(EXTERNAL_C_SOURCES
 
 set(COMMON_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/include
-    ${SRC_DIR}
     ${THIRD_PARTY_DIR}/micropather
     ${THIRD_PARTY_DIR}/yam
     ${THIRD_PARTY_DIR}/libyaml/include

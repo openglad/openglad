@@ -1,7 +1,6 @@
 #include "test_framework.h"
-#include "graph.h"
-#include "input/input.h"
-
+#include <openglad/legacy/graph.h>
+#include <openglad/input/input.h>
 #include <SDL.h>
 #include <cstring>
 

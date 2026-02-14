@@ -1,7 +1,7 @@
 #include "SDL.h"
-#include "render/sai2x.h"
+#include <openglad/render/sai2x.h>
 #include <openglad/core/util.h>
-#include "input/input.h"
+#include <openglad/input/input.h>
 #include <array>
 #include <stdexcept>
 #include <string>

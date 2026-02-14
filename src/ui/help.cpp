@@ -19,11 +19,10 @@
 #include <vector>
 #include <string>
 #include <format>
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include <openglad/core/util.h>
-#include "version.h"
-#include "platform/io.h"
-
+#include <openglad/core/version.h>
+#include <openglad/platform/io.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #define YIELD_SLEEP(ms) emscripten_sleep(ms)

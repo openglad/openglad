@@ -15,15 +15,14 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "ui/level_picker.h"
-#include "data/level_data.h"
-#include "render/radar.h"
-#include "entities/walker.h"
+#include <openglad/ui/level_picker.h>
+#include <openglad/data/level_data.h>
+#include <openglad/render/radar.h>
+#include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
-#include "render/text.h"
-#include "entities/guy.h"
-#include "input/button.h"
-
+#include <openglad/render/text.h>
+#include <openglad/entities/guy.h>
+#include <openglad/input/button.h>
 #include <algorithm>
 #include <array>
 #include <cctype>

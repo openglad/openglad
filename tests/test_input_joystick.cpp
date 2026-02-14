@@ -1,4 +1,4 @@
-#include "input/input.h"
+#include <openglad/input/input.h>
 #include "test_framework.h"
 
 extern JoyData player_joy[4];

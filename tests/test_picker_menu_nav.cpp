@@ -1,5 +1,5 @@
-#include "input/button.h"
-#include "input/input.h"
+#include <openglad/input/button.h>
+#include <openglad/input/input.h>
 #include "test_framework.h"
 
 #include <chrono>

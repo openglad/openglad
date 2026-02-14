@@ -16,18 +16,17 @@
  */
 #pragma once
 
-#include "base.h"
-#include "entities/obmap.h"
-#include "data/gloader.h"
-#include "render/pixien.h"
-#include "render/text.h"
-#include "runtime/screen.h"
+#include <openglad/legacy/base.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/data/gloader.h>
+#include <openglad/render/pixien.h>
+#include <openglad/render/text.h>
+#include <openglad/runtime/screen.h>
 #include <array>
 #include <cmath>
 #include <functional>
 #include <memory>
-#include "input/input.h"
-
+#include <openglad/input/input.h>
 class vbutton;
 
 // Definition of a button

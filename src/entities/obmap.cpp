@@ -15,12 +15,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 // OBMAP -- an object to handle locations of pixies on a hash table.
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include <cmath>
 #include <algorithm>
 #include <format>
-#include "runtime/game_context.h"
-
+#include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }

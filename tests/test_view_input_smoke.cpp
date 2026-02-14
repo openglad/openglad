@@ -1,5 +1,5 @@
-#include "graph.h"
-#include "data/gloader.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/data/gloader.h>
 #include "test_framework.h"
 #include <memory>
 

@@ -18,9 +18,8 @@
 
 // Definition of TREASURE class
 
-#include "base.h"
-#include "entities/walker.h"
-
+#include <openglad/legacy/base.h>
+#include <openglad/entities/walker.h>
 class treasure : public walker
 {
 	public:

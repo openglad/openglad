@@ -15,10 +15,9 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "runtime/screen.h"
-#include "input/input.h"
-#include "runtime/game_context.h"
-
+#include <openglad/runtime/screen.h>
+#include <openglad/input/input.h>
+#include <openglad/runtime/game_context.h>
 #include <cstring>
 #include <list>
 #include <string>

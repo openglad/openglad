@@ -21,18 +21,17 @@
 //#include "graph.h"
 #include <cmath>
 #include <string>
-#include "entities/obmap.h"
-#include "data/gloader.h"
-#include "runtime/screen.h"
-#include "entities/treasure.h"
-#include "render/text.h"
+#include <openglad/entities/obmap.h>
+#include <openglad/data/gloader.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/entities/treasure.h>
+#include <openglad/render/text.h>
 #include <openglad/core/stats.h>
-#include "entities/guy.h"
+#include <openglad/entities/guy.h>
 #include <algorithm>
 #include <format>
 #include <cstring>
-#include "runtime/game_context.h"
-
+#include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }

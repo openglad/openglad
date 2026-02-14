@@ -17,11 +17,12 @@ while IFS= read -r line; do
     allowed["${line}"]=1
 done < "${ALLOWLIST}"
 
-include_pattern='^[[:space:]]*#include[[:space:]]*"graph\.h"'
+include_pattern_legacy_quoted='^[[:space:]]*#include[[:space:]]*"graph\.h"'
+include_pattern_public_angle='^[[:space:]]*#include[[:space:]]*<openglad/legacy/graph\.h>'
 
 status=0
 while IFS= read -r -d '' file; do
-    if grep -qE "${include_pattern}" "${file}"; then
+    if grep -qE "${include_pattern_legacy_quoted}|${include_pattern_public_angle}" "${file}"; then
         rel="${file#${PROJECT_ROOT}/}"
         if [[ -z "${allowed[${rel}]:-}" ]]; then
             echo "New disallowed graph.h include in ${rel}" >&2
@@ -37,7 +38,7 @@ for rel in "${!allowed[@]}"; do
         status=1
         continue
     fi
-    if ! grep -qE "${include_pattern}" "${file}"; then
+    if ! grep -qE "${include_pattern_legacy_quoted}|${include_pattern_public_angle}" "${file}"; then
         echo "Stale graph.h allowlist entry (include removed): ${rel}" >&2
         status=1
     fi

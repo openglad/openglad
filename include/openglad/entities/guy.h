@@ -16,7 +16,7 @@
  */
 #pragma once
 
-#include "base.h"
+#include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 #include <memory>
 

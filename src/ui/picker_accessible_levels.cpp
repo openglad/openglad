@@ -15,9 +15,9 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "graph.h"
-#include "ui/level_picker.h"
-#include "runtime/game_context.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/ui/level_picker.h>
+#include <openglad/runtime/game_context.h>
 #include <algorithm>
 #include <set>
 #include <vector>

@@ -1,5 +1,5 @@
-#include "graph.h"
-#include "data/gparser.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/data/gparser.h>
 #include "test_framework.h"
 
 extern cfg_store cfg;

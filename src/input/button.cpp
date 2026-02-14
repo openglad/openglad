@@ -14,9 +14,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#include "input/button.h"
-#include "test_trace.h"
-#include "runtime/game_context.h"
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
+#include <openglad/runtime/game_context.h>
 #include <array>
 #include <utility>
 

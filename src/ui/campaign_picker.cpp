@@ -15,14 +15,14 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "ui/campaign_picker.h"
-#include "platform/io.h"
+#include <openglad/ui/campaign_picker.h>
+#include <openglad/platform/io.h>
 #include "yam.h"
-#include "render/pixie.h"
-#include "render/text.h"
-#include "entities/guy.h"
-#include "runtime/screen.h"
-#include "input/button.h"
+#include <openglad/render/pixie.h>
+#include <openglad/render/text.h>
+#include <openglad/entities/guy.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/input/button.h>
 #include <openglad/core/util.h>
 #include <format>
 #include <memory>

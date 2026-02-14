@@ -19,21 +19,21 @@
 	#pragma warning(disable : 4786)
 #endif
 
-#include "version.h"
-
+#include <openglad/core/version.h>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <cstdlib>
 #include <cstring>
 #include <format>
-#include "data/gparser.h"
+#include <openglad/data/gparser.h>
 #include <openglad/core/util.h>
-#include "platform/io.h"
+#include <openglad/platform/io.h>
 #include "yam.h"
 
 // TODO: Move overscan setting and toInt() to this file.
-#include "input/input.h"
+#include <openglad/input/input.h>
+
 int toInt(const std::string& s);
 
 

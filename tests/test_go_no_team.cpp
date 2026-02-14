@@ -1,13 +1,12 @@
 #include <memory>
 #include <array>
-#include "graph.h"
-#include "input/button.h"
-#include "test_trace.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "data/save_data.h"
-
+#include <openglad/data/save_data.h>
 extern screen* myscreen;
 
 // Forward declarations from picker.cpp

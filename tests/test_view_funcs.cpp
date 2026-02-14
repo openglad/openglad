@@ -1,6 +1,6 @@
-#include "graph.h"
-#include "render/view.h"
-#include "colors.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/render/view.h>
+#include <openglad/legacy/colors.h>
 #include "test_framework.h"
 
 extern screen* myscreen;

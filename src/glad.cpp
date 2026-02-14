@@ -15,29 +15,26 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "version.h"
-
-#include "graph.h"
-#include "runtime/game_loop.h"
-#include "runtime/screen_lifecycle.h"
-
+#include <openglad/core/version.h>
+#include <openglad/legacy/graph.h>
+#include <openglad/runtime/game_loop.h>
+#include <openglad/runtime/screen_lifecycle.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
 
 screen * myscreen;
 
-#include "colors.h"
+#include <openglad/legacy/colors.h>
 #include <ctime>
-#include "data/gparser.h"
+#include <openglad/data/gparser.h>
 #include <string>
 #include <cstring>
 #include <format>
 #include <stdexcept>
 #include <openglad/core/util.h>
-#include "ui/results_screen.h"
-#include "runtime/game_context.h"
-
+#include <openglad/ui/results_screen.h>
+#include <openglad/runtime/game_context.h>
 extern options *theprefs;
 
 namespace
@@ -69,7 +66,7 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 }
 
 #ifdef OUYA
-#include "OuyaController.h"
+#include <openglad/legacy/OuyaController.h>
 #endif
 
 

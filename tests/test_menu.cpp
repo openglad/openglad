@@ -1,10 +1,9 @@
-#include "graph.h"
-#include "test_trace.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include "input/button.h"
+#include <openglad/input/button.h>
 #include "test_interact.h"
-#include "input/input.h"
-
+#include <openglad/input/input.h>
 extern screen* myscreen;
 extern MouseState mouse_state;
 

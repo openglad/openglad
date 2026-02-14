@@ -18,8 +18,8 @@
 
 // Definition of RADAR class
 
-#include "base.h"
-#include "data/level_data.h"
+#include <openglad/legacy/base.h>
+#include <openglad/data/level_data.h>
 #include <vector>
 
 class radar

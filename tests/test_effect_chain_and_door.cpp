@@ -1,7 +1,6 @@
-#include "graph.h"
-
-#include "runtime/game_context.h"
-#include "entities/guy.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/entities/guy.h>
 #include "test_framework.h"
 
 #include <unordered_set>

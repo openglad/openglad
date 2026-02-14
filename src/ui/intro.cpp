@@ -19,16 +19,14 @@
 	buffers: 8/9/02: *added return 0 to finish func
 */
 
-#include "graph.h"
-// Z's script: #include <process.h>
+#include <openglad/legacy/graph.h>// Z's script: #include <process.h>
 #include <array>
 #include <cstring>
 
 inline constexpr int SHOW_TIME = 130;
 inline constexpr int FADE_FROM = 1;
 inline constexpr int FADE_TO = 0;
-#include "input/input.h"
-
+#include <openglad/input/input.h>
 int show();
 int show(int howlong);
 int cleanup();

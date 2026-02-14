@@ -1,8 +1,8 @@
-#include "ui/campaign_picker.h"
-#include "ui/level_picker.h"
-#include "ui/results_screen.h"
-#include "entities/walker.h"
-#include "graph.h"
+#include <openglad/ui/campaign_picker.h>
+#include <openglad/ui/level_picker.h>
+#include <openglad/ui/results_screen.h>
+#include <openglad/entities/walker.h>
+#include <openglad/legacy/graph.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 

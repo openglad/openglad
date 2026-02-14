@@ -19,11 +19,10 @@
 /* ChangeLog
 	buffers: 7/31/02: *include cleanup
 */
-#include "graph.h"
-#include "colors.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/legacy/colors.h>
 #include <span>
-#include "runtime/game_context.h"
-
+#include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }

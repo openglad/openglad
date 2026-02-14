@@ -18,9 +18,9 @@
 // weap; a derived class of walker
 //
 
-#include "graph.h"
-#include "runtime/game_context.h"
-#include "render/smooth.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/render/smooth.h>
 #include <format>
 
 namespace

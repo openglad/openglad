@@ -25,7 +25,7 @@
 #include <cstring>
 #include <cstdlib>
 #include <cstdio>
-#include "soundob.h"
+#include <openglad/legacy/soundob.h>
 #include "SDL_mixer.h"
 #include <string>
 #include <openglad/core/util.h>

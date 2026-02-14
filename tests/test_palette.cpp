@@ -1,6 +1,6 @@
 #include <array>
 
-#include "render/pal32.h"
+#include <openglad/render/pal32.h>
 #include "test_framework.h"
 
 void test_palette_set_and_query_reg()

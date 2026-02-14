@@ -20,7 +20,7 @@
 	buffers: 7/31/02: *include cleanup
 	buffers: 8/15/02: *rewrote the file finding/loading code in read_pixie_file
 */
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include <string>
 #include <openglad/core/util.h>
 

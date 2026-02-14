@@ -23,10 +23,9 @@
 //
 
 //#include "graph.h"
-#include "entities/effect.h"
-#include "runtime/game_context.h"
-#include "test_trace.h"
-
+#include <openglad/entities/effect.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/legacy/test_trace.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }

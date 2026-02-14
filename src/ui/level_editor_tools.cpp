@@ -15,10 +15,9 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "runtime/screen.h"
-#include "data/level_data.h"
-#include "entities/walker.h"
-
+#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
+#include <openglad/entities/walker.h>
 extern Sint32 redraw;
 
 bool are_objects_outside_area(LevelData* level, int x, int y, int w, int h)

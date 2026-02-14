@@ -1,7 +1,6 @@
-#include "graph.h"
+#include <openglad/legacy/graph.h>
 #include "test_framework.h"
-#include "runtime/game_context.h"
-
+#include <openglad/runtime/game_context.h>
 #include <array>
 #include <filesystem>
 #include <memory>

@@ -18,9 +18,8 @@
 
 // Definition of PIXIEN class
 
-#include "base.h"
-#include "render/pixie.h"
-
+#include <openglad/legacy/base.h>
+#include <openglad/render/pixie.h>
 class pixieN : public pixie
 {
 	public:

@@ -1,10 +1,9 @@
-#include "graph.h"
-#include "input/button.h"
-#include "test_trace.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include "data/save_data.h"
-#include "data/level_data.h"
-
+#include <openglad/data/save_data.h>
+#include <openglad/data/level_data.h>
 extern screen* myscreen;
 
 short load_saved_game(const char *filename, screen *myscreen);

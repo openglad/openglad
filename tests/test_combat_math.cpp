@@ -1,5 +1,5 @@
 #include <openglad/core/combat_math.h>
-#include "runtime/game_context.h"
+#include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 
 static Uint32 rng_return(Uint32 x)

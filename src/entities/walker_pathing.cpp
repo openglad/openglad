@@ -15,8 +15,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "graph.h"
-#include "entities/walker.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/entities/walker.h>
 #include "micropather.h"
 #include <cmath>
 

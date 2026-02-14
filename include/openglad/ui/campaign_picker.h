@@ -17,7 +17,7 @@
  
 #pragma once
 
-#include "runtime/screen.h"
+#include <openglad/runtime/screen.h>
 #include <map>
 #include <string>
 

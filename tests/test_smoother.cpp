@@ -1,8 +1,8 @@
-#include "render/smooth.h"
-#include "graph.h"
-#include "base.h"
-#include "data/pixie_data.h"
-#include "runtime/game_context.h"
+#include <openglad/render/smooth.h>
+#include <openglad/legacy/graph.h>
+#include <openglad/legacy/base.h>
+#include <openglad/data/pixie_data.h>
+#include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 
 #include <memory>

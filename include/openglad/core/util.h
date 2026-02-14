@@ -29,8 +29,7 @@
 #include <string_view>
 #include <utility>
 
-#include "platform/io.h"
-
+#include <openglad/platform/io.h>
 void init_logging();  // Set up logging output (call early in main)
 
 // Implementation functions - use the Log/LogWarn/LogError wrappers instead

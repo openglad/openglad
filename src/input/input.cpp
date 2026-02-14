@@ -20,11 +20,11 @@
 // input code
 //
 
-#include "input/input.h"
-#include "runtime/game_context.h"
-#include "data/gparser.h"
-#include "runtime/screen.h"
-#include "test_trace.h"
+#include <openglad/input/input.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/legacy/test_trace.h>
 #include <cstdio>
 #include <ctime>
 #include <cstring> //buffers: for strlen
@@ -38,7 +38,7 @@
 #endif
 
 #ifdef OUYA
-#include "OuyaController.h"
+#include <openglad/legacy/OuyaController.h>
 #endif
 
 void quit(Sint32 arg1);
@@ -275,12 +275,11 @@ void get_input_events(bool type)
 #define ALTERNATE_SPECIAL_BUTTON_Y 125
 #define BUTTON_DIM 30
 
-#include "entities/obmap.h"
-#include "runtime/screen.h"
-#include "render/view.h"
+#include <openglad/entities/obmap.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
 #include <openglad/core/stats.h>
-#include "entities/walker.h"
-
+#include <openglad/entities/walker.h>
 void draw_touch_controls(screen* vob)
 {
     walker* control = vob->viewob[0]->control;

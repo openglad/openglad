@@ -4,16 +4,15 @@
 #include <sys/prctl.h>
 #endif
 
-#include "graph.h"
-#include "test_trace.h"
+#include <openglad/legacy/graph.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include "data/gparser.h"
-#include "platform/io.h"
+#include <openglad/data/gparser.h>
+#include <openglad/platform/io.h>
 #include <openglad/core/util.h>
-#include "input/input.h"
-#include "runtime/game_context.h"
-#include "runtime/screen_lifecycle.h"
-
+#include <openglad/input/input.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen_lifecycle.h>
 extern screen* myscreen;
 extern options* theprefs;
 

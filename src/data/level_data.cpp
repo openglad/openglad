@@ -15,17 +15,17 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "data/level_data.h"
-#include "test_trace.h"
+#include <openglad/data/level_data.h>
+#include <openglad/legacy/test_trace.h>
 #include "yam.h"
 
-#include "render/pixie.h"
-#include "data/gloader.h"
-#include "entities/walker.h"
+#include <openglad/render/pixie.h>
+#include <openglad/data/gloader.h>
+#include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
-#include "render/smooth.h"
-#include "runtime/screen.h"
-#include "render/view.h"
+#include <openglad/render/smooth.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
 #include <algorithm>
 #include <cstring>
 #include <format>

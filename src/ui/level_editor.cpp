@@ -15,28 +15,28 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "runtime/screen.h"
-#include "render/view.h"
-#include "render/radar.h"
-#include "entities/walker.h"
-#include "render/smooth.h"
-#include "input/input.h"
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/render/radar.h>
+#include <openglad/entities/walker.h>
+#include <openglad/render/smooth.h>
+#include <openglad/input/input.h>
 #include <openglad/core/util.h>
-#include "render/text.h"
+#include <openglad/render/text.h>
 #include <openglad/core/stats.h>
-#include "data/level_data.h"
-#include "ui/level_picker.h"
+#include <openglad/data/level_data.h>
+#include <openglad/ui/level_picker.h>
 #include <span>
-#include "ui/campaign_picker.h"
-#include "runtime/game_context.h"
-#include "render/sai2x.h"
+#include <openglad/ui/campaign_picker.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/render/sai2x.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
 #include <memory>
 
 #ifdef OUYA
-#include "OuyaController.h"
+#include <openglad/legacy/OuyaController.h>
 #endif
 extern short scroll_amount;  // for scrolling up and down text popups
 

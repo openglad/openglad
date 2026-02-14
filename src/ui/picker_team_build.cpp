@@ -15,16 +15,16 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include "version.h"
-#include "graph.h"
-#include "input/button.h"
-#include "render/pal32.h"
-#include "input/input.h"
+#include <openglad/core/version.h>
+#include <openglad/legacy/graph.h>
+#include <openglad/input/button.h>
+#include <openglad/render/pal32.h>
+#include <openglad/input/input.h>
 #include <openglad/core/util.h>
 
 #include "SDL.h"
-#include "ui/campaign_picker.h"
-#include "ui/level_picker.h"
+#include <openglad/ui/campaign_picker.h>
+#include <openglad/ui/level_picker.h>
 #include <algorithm>
 #include <array>
 #include <cmath>

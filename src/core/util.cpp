@@ -21,8 +21,7 @@
 //
 #include <openglad/core/util.h>
 
-#include "version.h"
-
+#include <openglad/core/version.h>
 #include <charconv>
 #include <cstdio>
 #include <ctime>
@@ -31,8 +30,7 @@
 #include <optional>
 #include <string>
 #include <sys/stat.h>
-#include "base.h"
-
+#include <openglad/legacy/base.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
