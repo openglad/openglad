@@ -979,9 +979,10 @@ if(NOT EMSCRIPTEN)
         set_tests_properties(openglad_test_menu PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
-        set_tests_properties(openglad_test_picker PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        )
+	        set_tests_properties(openglad_test_picker PROPERTIES
+	            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+	            TIMEOUT 20
+	        )
         set_tests_properties(og_data_tests PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         )
