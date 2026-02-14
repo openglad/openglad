@@ -24,6 +24,10 @@ const FamilyDescriptor& describe_family_golem();
 const FamilyDescriptor& describe_family_giant_skeleton();
 const FamilyDescriptor& describe_family_tower1();
 const FamilyDescriptor& describe_family_big_orc();
+const FamilyDescriptor& describe_family_ghost();
+const FamilyDescriptor& describe_family_skeleton();
+const FamilyDescriptor& describe_family_fire_elemental();
+const FamilyDescriptor& describe_family_faerie();
 
 static bool s_registry_initialized = false;
 static FamilyDescriptor s_registry[NUM_FAMILIES];
@@ -162,26 +166,8 @@ void init_family_registry()
         d.alternate_names[1] = "TELEPORT MARKER";
     }
 
-    // === FAMILY_SKELETON (4) ===
-    {
-        auto& d = s_registry[FAMILY_SKELETON];
-        d.name = "SKELETON";
-        d.base_stats[0] = 9; d.base_stats[1] = 14; d.base_stats[2] = 9;
-        d.base_stats[3] = 6; d.base_stats[4] = 6; d.base_stats[5] = 1;
-        d.hiring_cost = 300;
-        d.derived_bonuses[0] = BASE_GUY_HP+30; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 4; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 6; d.derived_bonuses[7] = 4.5f;
-        d.stat_costs[0] = 15; d.stat_costs[1] = 6; d.stat_costs[2] = 16;
-        d.stat_costs[3] = 25; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 10;  // tunnel
-        d.default_weapon = FAMILY_BONE;
-        d.weapon_cost = 0;
-        d.init_ani_type = ANI_SKEL_GROW;
-        d.leaves_bloodspot = false;
-        d.special_names[1] = "TUNNEL";
-    }
+    // === FAMILY_SKELETON (4) — defined in families/family_skeleton.cpp ===
+    s_registry[FAMILY_SKELETON] = describe_family_skeleton();
 
     // === FAMILY_CLERIC (5) ===
     {
@@ -211,43 +197,11 @@ void init_family_registry()
         d.alternate_names[3] = "TURN UNDEAD";
     }
 
-    // === FAMILY_FIREELEMENTAL (6) ===
-    {
-        auto& d = s_registry[FAMILY_FIREELEMENTAL];
-        d.name = "ELEMENTAL";
-        d.base_stats[0] = 14; d.base_stats[1] = 10; d.base_stats[2] = 14;
-        d.base_stats[3] = 14; d.base_stats[4] = 9; d.base_stats[5] = 1;
-        d.hiring_cost = 600;
-        d.derived_bonuses[0] = BASE_GUY_HP+70; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 28; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 4; d.derived_bonuses[7] = 5;
-        d.stat_costs[0] = 7; d.stat_costs[1] = 10; d.stat_costs[2] = 14;
-        d.stat_costs[3] = 12; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 50;  // starburst
-        d.default_weapon = FAMILY_METEOR;
-        d.init_bit_flags = BIT_ANIMATE;
-        d.init_max_magicpoints = 150;
-        d.special_names[1] = "STARBURST";
-    }
+    // === FAMILY_FIREELEMENTAL (6) — defined in families/family_fire_elemental.cpp ===
+    s_registry[FAMILY_FIREELEMENTAL] = describe_family_fire_elemental();
 
-    // === FAMILY_FAERIE (7) ===
-    {
-        auto& d = s_registry[FAMILY_FAERIE];
-        d.name = "FAERIE";
-        d.base_stats[0] = 3; d.base_stats[1] = 8; d.base_stats[2] = 3;
-        d.base_stats[3] = 14; d.base_stats[4] = 2; d.base_stats[5] = 1;
-        d.hiring_cost = 450;
-        d.derived_bonuses[0] = BASE_GUY_HP+45; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 5; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 4; d.derived_bonuses[7] = 9;
-        d.stat_costs[0] = 25; d.stat_costs[1] = 6; d.stat_costs[2] = 12;
-        d.stat_costs[3] = 8; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_SPRINKLE;
-        d.init_bit_flags = BIT_ANIMATE | BIT_FLYING;
-    }
+    // === FAMILY_FAERIE (7) — defined in families/family_faerie.cpp ===
+    s_registry[FAMILY_FAERIE] = describe_family_faerie();
 
     // === FAMILY_SLIME (8) ===
     {
@@ -337,26 +291,8 @@ void init_family_registry()
         d.alternate_names[3] = "CHARM OPPONENT";
     }
 
-    // === FAMILY_GHOST (12) ===
-    {
-        auto& d = s_registry[FAMILY_GHOST];
-        d.name = "GHOST";
-        d.base_stats[0] = 6; d.base_stats[1] = 12; d.base_stats[2] = 18;
-        d.base_stats[3] = 10; d.base_stats[4] = 15; d.base_stats[5] = 1;
-        d.hiring_cost = 600;
-        d.derived_bonuses[0] = BASE_GUY_HP+20; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 12; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 4; d.derived_bonuses[7] = 7;
-        d.stat_costs[0] = 16; d.stat_costs[1] = 16; d.stat_costs[2] = 16;
-        d.stat_costs[3] = 16; d.stat_costs[4] = 45; d.stat_costs[5] = 200;
-        d.special_cost[1] = 30;  // scare
-        d.default_weapon = FAMILY_KNIFE;
-        d.weapon_cost = 0;
-        d.init_bit_flags = BIT_ANIMATE | BIT_FLYING | BIT_ETHEREAL | BIT_NO_RANGED;
-        d.leaves_bloodspot = false;
-        d.special_names[1] = "SCARE";
-    }
+    // === FAMILY_GHOST (12) — defined in families/family_ghost.cpp ===
+    s_registry[FAMILY_GHOST] = describe_family_ghost();
 
     // === FAMILY_DRUID (13) ===
     {
