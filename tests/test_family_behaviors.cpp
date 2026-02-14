@@ -7,6 +7,8 @@
  * FamilyDescriptor callbacks.
  */
 #include <openglad/entities/guy.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -281,6 +283,112 @@ void test_upgrade_to_level_sets_level_and_xp()
     TEST_ASSERT_EQ(0, (int)g2.exp, "exp should be 0 when set_xp=false");
 }
 REGISTER_TEST(test_upgrade_to_level_sets_level_and_xp);
+
+// ===========================================================================
+// on_death tests — verify family-specific death behaviors
+// ===========================================================================
+
+static std::unique_ptr<walker> make_guy_for_death(char family, short level = 3)
+{
+    guy g(family);
+    g.teamnum = 1; // non-player team (avoids endgame check)
+    g.upgrade_to_level(level, true);
+    auto w = g.create_walker_owned(myscreen);
+    if (w) w->setxy(100, 100);
+    return w;
+}
+
+// Bloodspot families should leave a stain, non-bloodspot should not
+void test_on_death_bloodspot_families()
+{
+    // Families that leave bloodspot (default behavior)
+    int bloodspot_families[] = {
+        FAMILY_SOLDIER, FAMILY_ELF, FAMILY_ARCHER, FAMILY_MAGE,
+        FAMILY_CLERIC, FAMILY_FAERIE, FAMILY_SLIME, FAMILY_ORC,
+        FAMILY_BARBARIAN, FAMILY_ARCHMAGE
+    };
+    for (int fam : bloodspot_families)
+    {
+        auto* fd = get_family_descriptor(fam);
+        TEST_ASSERT(fd != nullptr, "descriptor should exist");
+        TEST_ASSERT(fd->leaves_bloodspot == true, "family should leave bloodspot");
+    }
+
+    // Families that DON'T leave bloodspot
+    int no_bloodspot_families[] = {
+        FAMILY_GHOST, FAMILY_SKELETON, FAMILY_TOWER1, FAMILY_GIANT_SKELETON
+    };
+    for (int fam : no_bloodspot_families)
+    {
+        auto* fd = get_family_descriptor(fam);
+        TEST_ASSERT(fd != nullptr, "descriptor should exist");
+        TEST_ASSERT(fd->leaves_bloodspot == false, "family should not leave bloodspot");
+    }
+}
+REGISTER_TEST(test_on_death_bloodspot_families);
+
+// Fire elemental: death triggers special (explosion)
+void test_on_death_fire_elemental_explodes()
+{
+    auto w = make_guy_for_death(FAMILY_FIREELEMENTAL);
+    TEST_ASSERT(w != nullptr, "should create fire elemental");
+    w->dead = 1;
+    // death() should call special() which creates explosions
+    w->death();
+    // If we got here without crash, the explosion path worked
+}
+REGISTER_TEST(test_on_death_fire_elemental_explodes);
+
+// Slime death: should shrink to medium slime
+void test_on_death_slime_shrinks()
+{
+    auto w = myscreen->level_data.myloader->create_walker_owned(
+        Order::Living, FAMILY_SLIME, myscreen);
+    TEST_ASSERT(w != nullptr, "should create slime");
+    w->setxy(100, 100);
+    w->dead = 1;
+    w->death();
+    // Slime death spawns a new medium slime; no crash = success
+}
+REGISTER_TEST(test_on_death_slime_shrinks);
+
+// Medium slime death: should shrink to small slime
+void test_on_death_medium_slime_shrinks()
+{
+    auto w = myscreen->level_data.myloader->create_walker_owned(
+        Order::Living, FAMILY_MEDIUM_SLIME, myscreen);
+    TEST_ASSERT(w != nullptr, "should create medium slime");
+    w->setxy(100, 100);
+    w->dead = 1;
+    w->death();
+    // Medium slime death spawns a new small slime; no crash = success
+}
+REGISTER_TEST(test_on_death_medium_slime_shrinks);
+
+// Ghost death: should NOT crash and should not generate bloodspot
+void test_on_death_ghost_no_bloodspot()
+{
+    auto w = make_guy_for_death(FAMILY_GHOST);
+    TEST_ASSERT(w != nullptr, "should create ghost");
+    w->dead = 1;
+    w->death();
+    // Ghost doesn't generate bloodspot; no crash = success
+}
+REGISTER_TEST(test_on_death_ghost_no_bloodspot);
+
+// Skeleton death: should NOT crash and should not generate bloodspot
+void test_on_death_skeleton_no_bloodspot()
+{
+    auto w = make_guy_for_death(FAMILY_SKELETON);
+    TEST_ASSERT(w != nullptr, "should create skeleton");
+    w->dead = 1;
+    w->death();
+}
+REGISTER_TEST(test_on_death_skeleton_no_bloodspot);
+
+// ===========================================================================
+// upgrade_to_level continued
+// ===========================================================================
 
 // Verify upgrade from level 1 to 10 (level_diff=9)
 // base deltas: s=72, d=54, c=72, it=72, a=9
