@@ -6,7 +6,6 @@ src/ui/help.cpp
 src/ui/intro.cpp
 src/ui/level_editor_file_ops.cpp
 src/entities/living.cpp
-src/entities/obmap.cpp
 src/ui/picker.cpp
 src/ui/picker_accessible_levels.cpp
 src/ui/picker_dialogs.cpp

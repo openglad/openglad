@@ -15,7 +15,14 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 // OBMAP -- an object to handle locations of pixies on a hash table.
-#include <openglad/legacy/graph.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/stats.h>
+#include <openglad/core/util.h>
+#include <openglad/legacy/colors.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/legacy/base.h>
 #include <cmath>
 #include <algorithm>
 #include <format>
