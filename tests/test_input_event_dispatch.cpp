@@ -1,4 +1,3 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/input/input.h>
 #include "test_framework.h"
 
@@ -58,4 +57,3 @@ void test_input_handle_events_dispatches_various_event_types()
     handle_events(e);
 }
 REGISTER_TEST(test_input_handle_events_dispatches_various_event_types);
-

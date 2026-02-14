@@ -1,5 +1,4 @@
 #include "test_framework.h"
-#include <openglad/legacy/graph.h>
 #include <openglad/input/input.h>
 #include <SDL.h>
 #include <cstring>
