@@ -1,7 +1,6 @@
 src/runtime/game.cpp
 src/runtime/game_loop.cpp
 src/glad.cpp
-src/render/graphlib.cpp
 src/entities/guy.cpp
 src/ui/help.cpp
 src/ui/intro.cpp
