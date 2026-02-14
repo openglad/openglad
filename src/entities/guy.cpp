@@ -412,10 +412,12 @@ void guy::update_derived_stats(walker* w)
     if (w->fire_frequency < 1)
         w->fire_frequency = 1;
 
-    // Fighters: limited weapons
-    if (w->query_family() == FAMILY_SOLDIER)
-        w->weapons_left = static_cast<short>((w->stats()->level+1) / 2);
-        
+    // Per-family walker creation hooks (e.g. soldier weapons_left)
+    {
+        const auto* fd = get_family_descriptor(w->query_family());
+        if (fd && fd->on_create)
+            fd->on_create(w);
+    }
 
     // Set the heal delay ..
     w->stats()->max_heal_delay = REGEN;
