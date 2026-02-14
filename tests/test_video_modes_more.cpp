@@ -1,9 +1,12 @@
-#include <openglad/legacy/graph.h>
 #include "test_framework.h"
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
 #include <array>
 #include <filesystem>
 #include <memory>
+#include <span>
+
+#include "SDL.h"
 
 extern screen* myscreen;
 

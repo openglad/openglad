@@ -1,5 +1,9 @@
-#include <openglad/legacy/graph.h>
 #include "test_framework.h"
+
+#include <openglad/runtime/screen.h>
+
+#include <cstring>
+#include <span>
 
 extern screen* myscreen;
 

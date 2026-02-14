@@ -1,8 +1,11 @@
-#include <openglad/legacy/graph.h>
 #include "test_framework.h"
+
+#include <openglad/runtime/screen.h>
 
 #include <array>
 #include <memory>
+
+#include "SDL.h"
 
 extern screen* myscreen;
 
@@ -109,4 +112,3 @@ void test_video_darken_and_fastbox_negative_inputs_smoke()
     myscreen->fastbox(0, 0, 10, -10, 1, 1);
 }
 REGISTER_TEST(test_video_darken_and_fastbox_negative_inputs_smoke);
-
