@@ -151,6 +151,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/ui/campaign_picker.cpp
     ${SRC_DIR}/ui/results_screen.cpp
     ${SRC_DIR}/data/save_data.cpp
+    ${SRC_DIR}/sim/simulator.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})

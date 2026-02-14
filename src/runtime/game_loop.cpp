@@ -8,6 +8,7 @@
 #include <openglad/render/view.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/core/util.h>
+#include <openglad/sim/simulator.h>
 
 // Declared elsewhere (glad.cpp).
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
@@ -121,6 +122,25 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
 
     // Snapshot current input state for the frame
     ctx().poll_input();
+
+    // Shadow sim step: feed the deterministic simulator alongside the legacy
+    // game loop. This establishes the runtime→sim pipeline without changing
+    // gameplay behavior. The sim events are currently discarded; as sim logic
+    // matures, game rules will migrate from screen::act() to Simulator::step().
+    if (ctx().rng) {
+        static og::sim::Simulator shadow_sim(0);
+        og::sim::InputSnapshot snap;
+        const InputState* input = ctx().active_input();
+        if (input) {
+            for (int p = 0; p < og::sim::InputSnapshot::MAX_PLAYERS && p < MAX_PLAYERS; ++p) {
+                snap.players[p].cmd = input->players[p].held[static_cast<int>(InputKey::Fire)] ? 1u : 0u;
+                snap.players[p].value = static_cast<std::uint32_t>(input->players[p].move_x() + 1)
+                                      | (static_cast<std::uint32_t>(input->players[p].move_y() + 1) << 8);
+            }
+        }
+        shadow_sim.step(snap, 1.0f / 60.0f);
+        shadow_sim.clear_events(); // discard for now
+    }
 
     s.continuous_input();
 
