@@ -179,6 +179,7 @@ set(OG_DATA_SOURCES
 
 set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/entities/effect.cpp
+    ${SRC_DIR}/entities/family_registry.cpp
     ${SRC_DIR}/entities/guy.cpp
     ${SRC_DIR}/entities/living.cpp
     ${SRC_DIR}/entities/obmap.cpp
@@ -752,6 +753,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_emscripten_logic.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_web_sim_portability.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
         )
         configure_openglad_library(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
