@@ -15,13 +15,14 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/legacy/graph.h>
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
 
 #include <list>
 #include <string>
+
+class screen;
 
 bool does_campaign_exist(const std::string& campaign_id)
 {
