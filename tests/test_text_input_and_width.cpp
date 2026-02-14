@@ -1,11 +1,11 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/legacy/base.h>
 #include <openglad/render/text.h>
 #include "test_framework.h"
 
 #include <optional>
 #include <string>
 
-extern screen* myscreen;
+#include "SDL.h"
 
 static int injector_thread_return(void* data)
 {
@@ -94,4 +94,3 @@ void test_text_input_string_value_escape_returns_nullopt()
     TEST_ASSERT(!v.has_value(), "escape should cancel and return nullopt");
 }
 REGISTER_TEST(test_text_input_string_value_escape_returns_nullopt);
-
