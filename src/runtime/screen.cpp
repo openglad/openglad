@@ -24,13 +24,18 @@
 			   scen/ in case lowercase check fails
 */
 
-#include <openglad/legacy/graph.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/entities/walker.h>
 #include <openglad/render/smooth.h>
+#include <openglad/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
 #include <openglad/input/input.h>
 #include <openglad/legacy/view_sizes.h>
+#include <openglad/legacy/test_trace.h>
 #include <openglad/ui/results_screen.h>
 #include <algorithm>
 #include <string>
