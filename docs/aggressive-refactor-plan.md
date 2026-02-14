@@ -6,11 +6,11 @@ Scope: C++ architecture + build/test structure. This is a plan only (no refactor
 
 This plan is intentionally aggressive in end-state design, but structured to land as incremental PRs with clear completion criteria and low regression risk.
 
-Related docs (already in repo):
-- `MODERNIZATION_PLAN.md` (execution-ready modernization plan with concrete file references)
-- `modernization-plan-2.md` (design-level push toward deterministic simulation)
+Related docs:
+- `docs/architecture-rules.md` (enforced module boundaries and coding conventions)
 - `docs/modernization-audit-v2.md` (audit findings, priorities)
 - `docs/pointer-modernization-plan.md` / `docs/raw-pointer-audit.md` (ownership/RAII modernization)
+- `ARCHITECTURE.md` (comprehensive codebase architecture documentation)
 
 ---
 
