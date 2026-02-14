@@ -1,5 +1,7 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
@@ -42,4 +44,3 @@ void test_statistics_hit_response_archer_runs_away_and_queues_walk()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_statistics_hit_response_archer_runs_away_and_queues_walk);
-

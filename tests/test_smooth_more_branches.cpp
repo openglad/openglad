@@ -1,4 +1,5 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/data/pixie_data.h>
+#include <openglad/legacy/pixdefs.h>
 #include <openglad/render/smooth.h>
 #include <openglad/runtime/game_context.h>
 #include "test_framework.h"
@@ -152,4 +153,3 @@ void test_smooth_dirt_and_dark_dirt_to_around_rng_switch_cases()
     }
 }
 REGISTER_TEST(test_smooth_dirt_and_dark_dirt_to_around_rng_switch_cases);
-
