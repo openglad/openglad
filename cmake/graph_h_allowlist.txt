@@ -3,7 +3,6 @@ src/runtime/game_loop.cpp
 src/glad.cpp
 src/ui/help.cpp
 src/ui/level_editor_file_ops.cpp
-src/entities/living.cpp
 src/ui/picker.cpp
 src/ui/picker_accessible_levels.cpp
 src/ui/picker_dialogs.cpp
