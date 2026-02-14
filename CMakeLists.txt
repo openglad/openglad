@@ -750,6 +750,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_determinism.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_emscripten_logic.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_web_sim_portability.cpp
         )
         configure_openglad_library(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
@@ -998,6 +1000,27 @@ if(NOT EMSCRIPTEN)
         )
         set_tests_properties(og_runtime_tests PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+
+        # Emscripten/WASM tests (run via Node.js, skip if emsdk not available)
+        add_test(NAME wasm_sim_test
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_wasm.sh
+        )
+        set_tests_properties(wasm_sim_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "emscripten;wasm"
+            TIMEOUT 120
+            SKIP_RETURN_CODE 77
+        )
+
+        add_test(NAME emscripten_build_test
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_emscripten_build.sh
+        )
+        set_tests_properties(emscripten_build_test PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            LABELS "emscripten;build"
+            TIMEOUT 300
+            SKIP_RETURN_CODE 77
         )
 
         if(ENABLE_COVERAGE)
