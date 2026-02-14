@@ -136,7 +136,7 @@ public:
 // ---------------------------------------------------------------------------
 
 struct GameContext {
-    GameContext() = default;
+    GameContext();
     ~GameContext();
     GameContext(const GameContext&) = delete;
     GameContext& operator=(const GameContext&) = delete;

@@ -7,6 +7,8 @@
 // The existing global random() function (defined in screen.cpp)
 Uint32 random(Uint32 x);
 
+GameContext::GameContext() = default;
+
 GameContext::~GameContext() = default;
 
 Uint32 ProductionRandom::next(Uint32 max_exclusive)
