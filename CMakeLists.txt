@@ -94,6 +94,9 @@ set(GAME_SOURCES
     ${SRC_DIR}/runtime/game_loop.cpp
     ${SRC_DIR}/runtime/game_context.cpp
     ${SRC_DIR}/runtime/game_session.cpp
+    ${SRC_DIR}/runtime/glad_gameplay.cpp
+    ${SRC_DIR}/runtime/legacy_globals.cpp
+    ${SRC_DIR}/runtime/score_panel.cpp
     ${SRC_DIR}/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
     ${SRC_DIR}/input/button.cpp
@@ -185,6 +188,9 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/game_context.cpp
     ${SRC_DIR}/runtime/game_loop.cpp
     ${SRC_DIR}/runtime/game_session.cpp
+    ${SRC_DIR}/runtime/glad_gameplay.cpp
+    ${SRC_DIR}/runtime/legacy_globals.cpp
+    ${SRC_DIR}/runtime/score_panel.cpp
     ${SRC_DIR}/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/runtime/screen.cpp
 )

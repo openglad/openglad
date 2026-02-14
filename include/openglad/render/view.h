@@ -135,3 +135,7 @@ class viewscreen
 		short size;
 		unsigned char  *bmp,  *oldbmp;
 };
+
+// Legacy global (transitional): installed by og::runtime::GameSession.
+// Treat as borrowed and nullable.
+extern options* theprefs;
