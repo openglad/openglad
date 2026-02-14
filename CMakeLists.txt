@@ -472,8 +472,9 @@ function(configure_openglad_runtime_target target)
             -sUSE_SDL_MIXER=2
         )
     else()
-        target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
-        target_link_libraries(${target} PRIVATE ${SDL2_LIBRARIES} m pthread)
+        # Native builds link SDL/system deps via og_runtime_deps, typically pulled
+        # in transitively by og_game / og_game_test. Keep this function a no-op
+        # on native platforms to avoid brittle link-order issues with static libs.
     endif()
 endfunction()
 
@@ -510,6 +511,10 @@ add_custom_target(check_graph_h_includes
 if(NOT EMSCRIPTEN)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SDL2 REQUIRED sdl2 SDL2_mixer)
+
+    # System/runtime link deps (kept as a target so we can control ordering).
+    add_library(og_runtime_deps INTERFACE)
+    target_link_libraries(og_runtime_deps INTERFACE ${SDL2_LIBRARIES} m pthread)
 endif()
 
 add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
@@ -548,7 +553,10 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_data STATIC ${OG_DATA_SOURCES})
     configure_openglad_library(og_data)
-    target_include_directories(og_data PRIVATE ${THIRD_PARTY_DIR}/yam)
+    target_include_directories(og_data PRIVATE
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
+    )
 
     add_library(og_entities STATIC ${OG_ENTITIES_SOURCES})
     configure_openglad_library(og_entities)
@@ -565,12 +573,16 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_ui STATIC ${OG_UI_SOURCES})
     configure_openglad_library(og_ui)
-    target_include_directories(og_ui PRIVATE ${THIRD_PARTY_DIR}/yam)
+    target_include_directories(og_ui PRIVATE
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
+    )
 
     add_library(og_platform STATIC ${OG_PLATFORM_SOURCES})
     configure_openglad_library(og_platform)
     target_include_directories(og_platform PRIVATE
         ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
         ${THIRD_PARTY_DIR}/physfs
         ${THIRD_PARTY_DIR}/physfs/extras
         ${THIRD_PARTY_DIR}/libzip
@@ -578,6 +590,11 @@ if(NOT EMSCRIPTEN)
 
     # --- aggregate target (non-main code) ---
     add_library(og_game INTERFACE)
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        # Static libs have cyclic references today; group-rescan avoids link-order
+        # dependence while we untangle module direction rules.
+        target_link_libraries(og_game INTERFACE "-Wl,--start-group")
+    endif()
     target_link_libraries(og_game INTERFACE
         og_core
         og_data
@@ -589,6 +606,10 @@ if(NOT EMSCRIPTEN)
         og_platform
         ${OG_EXTERNAL_LIBS}
     )
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_link_libraries(og_game INTERFACE "-Wl,--end-group")
+    endif()
+    target_link_libraries(og_game INTERFACE og_runtime_deps)
     add_dependencies(og_game check_graph_h_includes)
 
     # Stage runtime assets into the build tree so tests and local runs do not
@@ -867,7 +888,7 @@ if(NOT EMSCRIPTEN)
         configure_openglad_library(og_game_test)
         target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
-        target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS})
+        target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} og_runtime_deps)
         add_dependencies(og_game_test check_graph_h_includes)
 
         add_executable(openglad_test
