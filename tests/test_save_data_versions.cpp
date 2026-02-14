@@ -5,12 +5,10 @@
 #include <filesystem>
 #include <string>
 
-#include <openglad/legacy/graph.h>
+#include <openglad/legacy/base.h> // Order + family constants used for test data
 #include <openglad/platform/io.h>
 #include <openglad/data/save_data.h>
 #include "test_framework.h"
-
-extern screen* myscreen;
 
 static void rw_write(SDL_RWops* out, const void* data, size_t len)
 {
