@@ -1,6 +1,10 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/render/radar.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/stats.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <vector>

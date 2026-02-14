@@ -1,5 +1,6 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/ui/results_screen.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <map>

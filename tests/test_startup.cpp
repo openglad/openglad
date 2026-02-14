@@ -1,4 +1,5 @@
-#include <openglad/legacy/graph.h>
+#include "SDL.h"
+#include <openglad/runtime/screen.h>
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 
