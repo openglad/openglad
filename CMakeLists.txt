@@ -161,6 +161,10 @@ set(OG_CORE_SOURCES
     ${SRC_DIR}/core/util.cpp
 )
 
+set(OG_SIM_SOURCES
+    ${SRC_DIR}/sim/simulator.cpp
+)
+
 set(OG_DATA_SOURCES
     ${SRC_DIR}/data/gloader.cpp
     ${SRC_DIR}/data/gparser.cpp
@@ -557,6 +561,9 @@ if(NOT EMSCRIPTEN)
     add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_openglad_library(og_core)
 
+    add_library(og_sim STATIC ${OG_SIM_SOURCES})
+    configure_openglad_library(og_sim)
+
     add_library(og_data STATIC ${OG_DATA_SOURCES})
     configure_openglad_library(og_data)
     target_include_directories(og_data PRIVATE
@@ -603,6 +610,7 @@ if(NOT EMSCRIPTEN)
     endif()
     target_link_libraries(og_game INTERFACE
         og_core
+        og_sim
         og_data
         og_entities
         og_runtime
@@ -650,6 +658,7 @@ if(NOT EMSCRIPTEN)
         project_warnings
         project_sanitizers
         og_core
+        og_sim
         og_data
         og_entities
         og_runtime
@@ -719,6 +728,7 @@ if(NOT EMSCRIPTEN)
         add_executable(og_unit_tests
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_determinism.cpp
         )
         configure_openglad_library(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
