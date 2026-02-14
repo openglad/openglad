@@ -19,6 +19,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/util.h>
 #include <openglad/io/physfs_api.h>
+#include <openglad/io/zip_api.h>
 #include <openglad/io/yaml_stream.h>
 #include <openglad/legacy/pixdefs.h>
 #include <format>
@@ -250,19 +251,6 @@ const char* campaign_io_error_string(CampaignPackageIoError err)
     return "unknown";
 }
 
-const char* archive_io_error_string(ArchiveIoError err)
-{
-    switch (err) {
-        case ArchiveIoError::None: return "none";
-        case ArchiveIoError::OpenArchiveFailed: return "open_archive_failed";
-        case ArchiveIoError::AddEntryFailed: return "add_entry_failed";
-        case ArchiveIoError::OpenEntryFailed: return "open_entry_failed";
-        case ArchiveIoError::OpenOutputFailed: return "open_output_failed";
-        case ArchiveIoError::ReadEntryFailed: return "read_entry_failed";
-        case ArchiveIoError::CloseArchiveFailed: return "close_archive_failed";
-    }
-    return "unknown";
-}
 } // namespace
 
 CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
@@ -659,258 +647,24 @@ void sync_filesystem()
 
 // Zip utils
 
-#include "zip.h"
-#include <sys/stat.h>
-#include <dirent.h>
-
 // Need to implement for real
 // PhysFS would work, but the paths would have to be in the search path
 //   and the RWops would have to be gotten from PhysFS and I would have to rewire the zip input (could the archive be opened through PhysFS too?)
 // Doing it with goodio would be nice.
-std::list<std::string> list_paths_recursively(const std::string& dirname)
-{
-    std::string _dirname = dirname;
-    if(_dirname.size() > 0 && _dirname[_dirname.size()-1] != '/')
-        _dirname += '/';
-    
-    std::list<std::string> ls;
-
-    DIR* dir = opendir(_dirname.c_str());
-    dirent* entry;
-    
-    if(dir == nullptr)
-        return ls;
-    
-    while ((entry = readdir(dir)) != nullptr)
-    {
-        if(std::string(entry->d_name) == "." || std::string(entry->d_name) == "..")
-            continue;
-        
-        
-        #ifdef WIN32
-        struct stat status;
-        stat((_dirname + entry->d_name).c_str(), &status);
-        if(status.st_mode & S_IFDIR)
-        #else
-        if(entry->d_type == DT_DIR)
-        #endif
-        {
-            std::list<std::string> sublist = list_paths_recursively(_dirname + entry->d_name);
-            std::string subdir = entry->d_name;
-            if(subdir.size() > 0 && subdir[subdir.size()-1] != '/')
-                subdir += '/';
-            ls.push_back(subdir);
-            for(auto& sub : sublist)
-            {
-                ls.push_back(subdir + sub);
-            }
-        }
-        else
-            ls.push_back(entry->d_name);
-    }
-
-    closedir(dir);
-
-    return ls;
-}
-
 ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile)
 {
-    std::string indir = indirectory;
-    if(indir.size() > 0 && indir[indir.size()-1] != '/')
-        indir += '/';
-    //Log("Zipping %s as %s\n", indir.c_str(), outfile.c_str());
-    
-    int err = 0;
-    zip* archive = zip_open(outfile.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
-    if(archive == nullptr)
-        return ArchiveIoError::OpenArchiveFailed;
-    
-    struct zip_source *s = nullptr;
-    bool add_failed = false;
-
-    std::list<std::string> files = list_paths_recursively(indir);
-    for(auto& file : files)
-    {
-        std::string src_name = std::format("{}{}", indir, file);
-        const std::string& dest_name = file;
-
-        if(src_name.back() == '/')
-        {
-            if(zip_dir_add(archive, dest_name.c_str(), ZIP_FL_ENC_GUESS) < 0)
-            {
-                LogError("zip_add_entry_failed src={} dest={} code={} err={}\n",
-                    src_name, dest_name, archive_io_error_string(ArchiveIoError::AddEntryFailed), zip_strerror(archive));
-                add_failed = true;
-            }
-        }
-        else
-        {
-            if((s=zip_source_file(archive, src_name.c_str(), 0, -1)) == nullptr || zip_file_add(archive, dest_name.c_str(), s, ZIP_FL_OVERWRITE | ZIP_FL_ENC_GUESS) < 0)
-            {
-                zip_source_free(s);
-                LogError("zip_add_entry_failed src={} dest={} code={} err={}\n",
-                    src_name, dest_name, archive_io_error_string(ArchiveIoError::AddEntryFailed), zip_strerror(archive));
-                add_failed = true;
-            }
-        }
-    }
-
-    if(zip_close(archive) < 0)
-    {
-        LogError("zip_close_failed out={} code={} err={}\n",
-            outfile, archive_io_error_string(ArchiveIoError::CloseArchiveFailed), zip_strerror(archive));
-        return ArchiveIoError::CloseArchiveFailed;
-    }
-
-    if(add_failed)
-        return ArchiveIoError::AddEntryFailed;
-    return ArchiveIoError::None;
+    return og::io::zip_contents_with_error(indirectory, outfile);
 }
-
-
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <errno.h>
-#include <libgen.h>
-#include <cstring>
-
-// From http://niallohiggins.com/2009/01/08/mkpath-mkdir-p-alike-in-c-for-unix/
-/* Function with behaviour like `mkdir -p'  */
-int mkpath(const char *s, mode_t mode)
-{
-    std::string s_str(s);
-    if (s_str == "." || s_str == "/" || (s_str.size() == 3 && s[2] == '/'))
-        return 0;
-
-    std::string path_str(s);
-    std::string q_str(s);
-
-    char* parent = dirname(q_str.data());
-    if (parent == nullptr)
-        return -1;
-
-    std::string up_str(parent);
-
-    if ((mkpath(up_str.c_str(), mode) == -1) && (errno != EEXIST))
-        return -1;
-
-    if ((mkdir(path_str.c_str(), mode) == -1) && (errno != EEXIST))
-        return -1;
-
-    return 0;
-}
-
-bool create_path_to_file(const char* filename)
-{
-    const char* c = strrchr(filename, '/');
-    if(c == nullptr)
-        c = strrchr(filename, '\\');
-    if(c == nullptr)
-        return true;
-    
-    std::string buf(filename, c - filename);
-
-    return (mkpath(buf.c_str(), 0755) >= 0);
-}
-
 bool create_dir(const std::string& dirname)
 {
-    return (mkpath(dirname.c_str(), 0755) >= 0);
+    std::error_code ec;
+    std::filesystem::create_directories(dirname, ec);
+    return !ec;
 }
 
 ArchiveIoError unzip_into_with_error(const std::string& infile, const std::string& outdirectory)
 {
-    std::string outdir = outdirectory;
-    if(outdir.size() > 0 && outdir[outdir.size()-1] != '/')
-        outdir += '/';
-    
-    //Log("Unzipping %s\n", infile.c_str());
-    
-    int err = 0;
-    zip* archive = zip_open(infile.c_str(), 0, &err);
-    if(archive == nullptr)
-        return ArchiveIoError::OpenArchiveFailed;
-    
-    struct zip_stat status;
-    struct zip_file* file;
-    constexpr size_t buf_size = 512;
-    std::array<char, buf_size> buf{};
-    ArchiveIoError result = ArchiveIoError::None;
-    
-    for(int i = 0; i < zip_get_num_entries(archive, 0); i++)
-    {
-        if(zip_stat_index(archive, i, 0, &status) == 0)
-        {
-            int name_len = static_cast<int>(strlen(status.name));
-            if(status.name[name_len - 1] == '/')
-            {
-                std::string dirpath = std::format("{}{}", outdir, status.name);
-                create_dir(dirpath);
-            }
-            else
-            {
-                file = zip_fopen_index(archive, i, 0);
-                if(file == nullptr)
-                {
-                    LogError("unzip_open_entry_failed zip={} entry={} code={}\n",
-                        infile, status.name, archive_io_error_string(ArchiveIoError::OpenEntryFailed));
-                    result = ArchiveIoError::OpenEntryFailed;
-                    continue;
-                }
-
-                std::string filepath = std::format("{}{}", outdir, status.name);
-                create_path_to_file(filepath.c_str());
-                SDL_RWops* rwops = open_write_file(outdir.c_str(), status.name);
-                if(rwops == nullptr)
-                {
-                    LogError("unzip_open_output_failed zip={} out={} code={}\n",
-                        infile, filepath, archive_io_error_string(ArchiveIoError::OpenOutputFailed));
-                    zip_fclose(file);
-                    result = ArchiveIoError::OpenOutputFailed;
-                    continue;
-                }
-	 
-                zip_uint64_t sum = 0;
-                while(sum < status.size)
-                {
-                    zip_int64_t read_len = zip_fread(file, buf.data(), static_cast<zip_uint64_t>(buf.size()));
-                    if(read_len < 0)
-                    {
-                        LogError("unzip_read_entry_failed zip={} entry={} code={}\n",
-                            infile, status.name, archive_io_error_string(ArchiveIoError::ReadEntryFailed));
-                        result = ArchiveIoError::ReadEntryFailed;
-                        break;
-                    }
-                    if (read_len == 0)
-                    {
-                        // Avoid an infinite loop if the archive reports a larger size than we can read.
-                        result = ArchiveIoError::ReadEntryFailed;
-                        break;
-                    }
-
-                    SDL_RWwrite(rwops, buf.data(), 1, static_cast<size_t>(read_len));
-                    sum += static_cast<zip_uint64_t>(read_len);
-                }
-                SDL_RWclose(rwops);
-                zip_fclose(file);
-            }
-        }
-        else
-        {
-            result = ArchiveIoError::OpenEntryFailed;
-        }
-    }
-
-    if(zip_close(archive) < 0)
-    {
-        LogError("unzip_close_failed zip={} code={} err={}\n",
-            infile, archive_io_error_string(ArchiveIoError::CloseArchiveFailed), zip_strerror(archive));
-        return ArchiveIoError::CloseArchiveFailed;
-    }
-
-    return result;
+    return og::io::unzip_into_with_error(infile, outdirectory);
 }
 
 bool zip_contents(const std::string& indirectory, const std::string& outfile)
@@ -1189,14 +943,6 @@ bool repack_campaign(const std::string& campaign_id)
 
 void cleanup_unpacked_campaign()
 {
-    // Recursive delete
-    std::list<std::string> ls = list_paths_recursively(get_user_path() + "temp");
-    for(std::list<std::string>::reverse_iterator e = ls.rbegin(); e != ls.rend(); e++)
-    {
-        std::string path = get_user_path() + "temp/" + *e;
-        remove(path.c_str());
-        rmdir(path.c_str());
-    }
-    
-    rmdir((get_user_path() + "temp").c_str());
+    std::error_code ec;
+    std::filesystem::remove_all(get_user_path() + "temp", ec);
 }
