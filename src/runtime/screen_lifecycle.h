@@ -1,9 +1,5 @@
 #pragma once
 
-#include <memory>
+// Transitional shim: prefer including <openglad/runtime/screen_lifecycle.h>.
+#include <openglad/runtime/screen_lifecycle.h>
 
-class screen;
-
-[[nodiscard]] std::unique_ptr<screen>& global_screen_owner();
-screen* create_global_screen(short numviews = 1);
-void destroy_global_screen();
