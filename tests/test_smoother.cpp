@@ -1,5 +1,4 @@
 #include <openglad/render/smooth.h>
-#include <openglad/legacy/graph.h>
 #include <openglad/legacy/base.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/runtime/game_context.h>
