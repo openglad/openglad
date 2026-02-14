@@ -6,8 +6,11 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
+#include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
 
@@ -29,6 +32,50 @@ static void barbarian_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static bool barbarian_do_special(walker* self)
+{
+    if (self->busy > 0)
+        return false;
+    walker* newob = self->fire();
+    if (!newob)
+        return false;
+    walker* alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BOULDER);
+    alive->center_on(newob);
+    alive->owner = self;
+    alive->stats()->level = self->stats()->level;
+    alive->lastx = newob->lastx;
+    alive->lasty = newob->lasty;
+    if (self->myguy)
+    {
+        alive->stepsize = 1.0f + self->myguy->strength / 7;
+        alive->damage += self->myguy->strength / 5.0f;
+    }
+    else
+    {
+        alive->stepsize = static_cast<float>(self->stats()->level) * 2.0f;
+        alive->damage += static_cast<float>(self->stats()->level);
+    }
+    if (alive->stepsize < 1)
+        alive->stepsize = 1;
+    if (alive->stepsize > 15)
+        alive->stepsize = 15;
+    if (alive->lasty > 0)
+        alive->lasty = alive->stepsize;
+    else if (alive->lasty < 0)
+        alive->lasty = -(alive->stepsize);
+    if (alive->lastx > 0)
+        alive->lastx = alive->stepsize;
+    else if (alive->lastx < 0)
+        alive->lastx = -(alive->stepsize);
+    if (self->current_special == 2)
+        alive->skip_exit = 5000;
+    else
+        alive->skip_exit = 0;
+    newob->dead = 1;
+    self->busy += 1.0f + static_cast<float>(self->current_special) * 5.0f;
+    return true;
+}
+
 const FamilyDescriptor& describe_family_barbarian()
 {
     static const FamilyDescriptor desc = {
@@ -47,7 +94,7 @@ const FamilyDescriptor& describe_family_barbarian()
         .special_names = {"NONE", "HURL BOULDER", "EXPLODING BOULDER", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = barbarian_do_special,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,

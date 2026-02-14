@@ -203,6 +203,10 @@ class walker : public pixieN
 		std::list<DamageNumber> damage_numbers;
 		char enddir;                   // Proposed direction facing
 
+		// Accessors for protected fields used by family callbacks
+		void set_charm_left(short value) { charm_left_ = value; }
+		short charm_left() const { return charm_left_; }
+
 	protected:
 		bool act_generate();
 		bool act_fire();

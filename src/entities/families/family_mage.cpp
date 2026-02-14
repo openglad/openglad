@@ -10,8 +10,22 @@
 #include <openglad/entities/living.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
+#include <openglad/legacy/soundob.h>
 
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/render/view.h>
+#include <openglad/render/pal32.h>
+#include <openglad/render/video.h>
+
+#include <format>
+#include <string>
+#include <list>
+#include <cmath>
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 #define BASE_GUY_HP 30
 
@@ -88,6 +102,193 @@ static void mage_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static bool mage_do_special(walker* self)
+{
+    walker* newob;
+    walker* alive;
+    Sint32 tempx, tempy;
+    Sint32 generic;
+    Sint32 howmany;
+    std::string message;
+
+    switch (self->current_special)
+    {
+        case 1: // teleport
+            if (self->ani_type == ANI_TELE_OUT || self->ani_type == ANI_TELE_IN)
+                return false;
+            if (self->shifter_down) // leave/remove a marker
+            {
+                if (self->busy > 0)
+                    return false;
+                if (self->myguy && (self->myguy->intelligence < 75))
+                {
+                    if (self->user != -1)
+                        myscreen->do_notify("Need 75 Int for Marker!", self);
+                    return false;
+                }
+                // Remove a marker, if present
+                generic = 0;
+                for (auto& uptr : myscreen->level_data.oblist)
+                {
+                    walker* ob = uptr.get();
+                    if (ob &&
+                            ob->query_order() == Order::FX &&
+                            ob->query_family() == FAMILY_MARKER &&
+                            ob->owner == self &&
+                            !ob->dead)
+                    {
+                        ob->dead = 1;
+                        ob->death();
+                        if ((self->team_num == 0 || self->myguy) && self->user != -1)
+                            myscreen->do_notify("(Old Marker Removed)", self);
+                        self->busy += 8;
+                        break;
+                    }
+                }
+                generic = 0; // force new placement, for now
+                if (!generic) // didn't remove a marker, so place one
+                {
+                    newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+                    if (!newob)
+                        return false;
+                    newob->owner = self;
+                    newob->center_on(self);
+                    if (self->myguy)
+                        newob->lifetime = self->myguy->intelligence / 33;
+                    else
+                        newob->lifetime = (self->stats()->level / 4) + 1;
+                    newob->ani_type = ANI_SPIN;
+                    if ((self->team_num == 0 || self->myguy) && self->user != -1)
+                    {
+                        myscreen->do_notify("Teleport Marker Placed", self);
+                        message = std::format("({} Uses)", newob->lifetime);
+                        myscreen->do_notify(message.c_str(), self);
+                    }
+                    self->busy += 8;
+                    generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+                    generic /= 2;
+                    self->stats()->magicpoints -= static_cast<float>(generic);
+                }
+            }
+            else
+            {
+                if (self->on_screen())
+                    myscreen->soundp->play_sound(SOUND_TELEPORT);
+                self->ani_type = ANI_TELE_OUT;
+                self->cycle = 0;
+            }
+            break;
+        case 2: // starburst
+        {
+            tempx = static_cast<Sint32>(self->lastx);
+            tempy = static_cast<Sint32>(self->lasty);
+            generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+            if (generic > 0)
+            {
+                generic = generic / 15;
+                self->stats()->magicpoints -= static_cast<float>(generic);
+            }
+            else
+                generic = 0;
+            self->stats()->magicpoints += 8.0f * static_cast<float>(self->stats()->weapon_cost);
+            for (Sint32 i = -1; i < 2; i++)
+                for (Sint32 j = -1; j < 2; j++)
+                {
+                    if (i || j)
+                    {
+                        self->lastx = static_cast<float>(i);
+                        self->lasty = static_cast<float>(j);
+                        newob = self->fire();
+                        if (newob)
+                        {
+                            newob->damage += static_cast<float>(generic);
+                            newob->lineofsight += (generic / 3);
+                            if (newob->lastx != 0.0f)
+                                newob->lastx /= fabs(newob->lastx);
+                            if (newob->lasty != 0.0f)
+                                newob->lasty /= fabs(newob->lasty);
+                        }
+                    }
+                }
+            self->lastx = static_cast<float>(tempx);
+            self->lasty = static_cast<float>(tempy);
+            break;
+        }
+        case 3: // freeze time
+            if (self->team_num == 0 || self->myguy)
+            {
+                myscreen->enemy_freeze += 20 + 11 * self->stats()->level;
+                set_palette(myscreen->bluepalette);
+            }
+            else
+            {
+                generic = 5 + 2 * self->stats()->level;
+                if (generic > 50)
+                    generic = 50;
+                message = std::format("TIME IS FROZEN! ({} rounds)", generic);
+                myscreen->viewob[0]->set_display_text(message.c_str(), 2);
+                myscreen->viewob[0]->redraw();
+                myscreen->viewob[0]->refresh();
+                std::list<walker*> newlist = myscreen->find_friends_in_range(
+                              myscreen->level_data.oblist, 30000, &howmany, self);
+                for (auto* w : newlist)
+                {
+                    if (w)
+                        w->bonus_rounds = static_cast<short>(w->bonus_rounds + generic);
+                }
+            }
+            break;
+        case 4: // energy wave
+            newob = self->fire();
+            if (!newob)
+                return false;
+            alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_WAVE);
+            alive->center_on(newob);
+            alive->owner = self;
+            alive->stats()->level = self->stats()->level;
+            alive->lastx = newob->lastx;
+            alive->lasty = newob->lasty;
+            newob->dead = 1;
+            break;
+        case 5:
+        default: // heartburst
+        {
+            std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                                                  80 + 2 * self->stats()->level, &howmany, self);
+            if (!howmany)
+                return false;
+            generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[5]));
+            generic /= 2;
+            generic /= howmany;
+            if (self->myguy)
+            {
+                self->myguy->total_shots += howmany;
+                self->myguy->scen_shots = static_cast<short>(self->myguy->scen_shots + howmany);
+            }
+            self->busy += 5;
+            for (auto* ob : newlist)
+            {
+                newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+                if (!newob)
+                    return false;
+                newob->owner = self;
+                newob->team_num = self->team_num;
+                newob->stats()->level = self->stats()->level;
+                newob->damage = static_cast<float>(generic);
+                newob->center_on(ob);
+                if (self->on_screen())
+                    myscreen->soundp->play_sound(SOUND_EXPLODE);
+                newob->ani_type = ANI_EXPLODE;
+                newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
+                newob->skip_exit = 100;
+                self->stats()->magicpoints -= static_cast<float>(generic);
+            }
+            break;
+        }
+    }
+    return true;
+}
+
 const FamilyDescriptor& describe_family_mage()
 {
     static const FamilyDescriptor desc = {
@@ -106,7 +307,7 @@ const FamilyDescriptor& describe_family_mage()
         .special_names = {"NONE", "TELEPORT", "WARP SPACE", "FREEZE TIME", "ENERGY WAVE", "HEARTBURST"},
         .alternate_names = {"NONE", "TELEPORT MARKER", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = mage_do_special,
         .check_special_ai = mage_check_special_ai,
         .hit_response = mage_hit_response,
         .set_difficulty = mage_set_difficulty,

@@ -8,8 +8,19 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
+#include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
+#include <openglad/legacy/soundob.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
+
+#include <format>
+#include <string>
+#include <list>
+
+short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
 #define BASE_GUY_HP 30
 
@@ -39,6 +50,131 @@ static void druid_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static bool druid_do_special(walker* self)
+{
+    walker* newob;
+    walker* alive;
+    walker* tempwalk;
+    Sint32 didheal;
+    std::string message;
+
+    switch (self->current_special)
+    {
+        case 1: // plant tree
+            if (self->busy > 0)
+                return false;
+            self->stats()->magicpoints += self->stats()->weapon_cost;
+            newob = self->fire();
+            if (!newob)
+                return false;
+            self->busy += (self->fire_frequency * 2);
+            alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_TREE);
+            alive->setxy(newob->xpos, newob->ypos);
+            alive->team_num = self->team_num;
+            alive->ani_type = ANI_GROW;
+            alive->owner = self;
+            newob->dead = 1;
+            break;
+        case 2: // summon faerie
+            if (self->busy > 0)
+                return false;
+            self->stats()->magicpoints += self->stats()->weapon_cost;
+            newob = self->fire();
+            if (!newob)
+                return false;
+            alive = myscreen->level_data.add_ob(Order::Living, FAMILY_FAERIE);
+            alive->setxy(newob->xpos, newob->ypos);
+            alive->team_num = self->team_num;
+            alive->owner = self;
+            alive->lifetime = 50 + self->stats()->level * 40;
+            newob->dead = 1;
+            if (!myscreen->query_passable(alive->xpos, alive->ypos, alive))
+            {
+                alive->dead = 1;
+                return false;
+            }
+            self->busy += (self->fire_frequency * 3);
+            break;
+        case 3: // reveal items
+            if (self->busy > 0)
+                return false;
+            self->view_all = static_cast<short>(self->view_all + self->stats()->level * 10);
+            self->busy += (self->fire_frequency * 4);
+            break;
+        case 4: // circle of protection
+        default:
+            if (self->busy > 0)
+                return false;
+            {
+                Sint32 howmany;
+                std::list<walker*> newlist = myscreen->find_friends_in_range(myscreen->level_data.oblist,
+                          60, &howmany, self);
+                didheal = 0;
+                if (howmany > 1)
+                {
+                    for (auto* w : newlist)
+                    {
+                        newob = w;
+                        if (newob != self)
+                        {
+                            tempwalk = nullptr;
+                            for (auto& uptr : myscreen->level_data.oblist)
+                            {
+                                walker* ob = uptr.get();
+                                if (ob && ob->owner == newob
+                                        && ob->query_order() == Order::Weapon
+                                        && ob->query_family() == FAMILY_CIRCLE_PROTECTION)
+                                {
+                                    tempwalk = ob;
+                                    break;
+                                }
+                            }
+                            if (!tempwalk)
+                            {
+                                alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+                                if (!alive)
+                                    return false;
+                                alive->owner = newob;
+                                alive->center_on(newob);
+                                alive->team_num = newob->team_num;
+                                alive->stats()->level = newob->stats()->level;
+                                didheal++;
+                            }
+                            else
+                            {
+                                alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+                                if (!alive)
+                                    return false;
+                                tempwalk->stats()->hitpoints += alive->stats()->hitpoints;
+                                alive->dead = 1;
+                                didheal++;
+                            }
+                            if (self->myguy)
+                                self->myguy->exp += exp_from_action(ExpAction::Protection, self, newob, 0);
+                        }
+                    }
+                    if (!didheal)
+                        return false;
+                    else
+                    {
+                        if (didheal == 1)
+                            message = "Druid protected 1 man!";
+                        else
+                            message = std::format("Druid protected {} men!", didheal);
+                        if (self->team_num == 0 || self->myguy)
+                            myscreen->do_notify(message.c_str(), self);
+                        if (self->on_screen())
+                            myscreen->soundp->play_sound(SOUND_HEAL);
+                    }
+                }
+                else
+                    return false;
+            }
+            break;
+    }
+    return true;
+}
+
 const FamilyDescriptor& describe_family_druid()
 {
     static const FamilyDescriptor desc = {
@@ -57,7 +193,7 @@ const FamilyDescriptor& describe_family_druid()
         .special_names = {"NONE", "GROW TREE", "SUMMON FAERIE", "REVEAL", "PROTECTION", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = druid_do_special,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = druid_set_difficulty,

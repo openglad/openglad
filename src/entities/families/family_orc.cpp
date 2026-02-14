@@ -8,12 +8,112 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
-
+#include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 
+#include <format>
+#include <list>
+#include <string>
+
 #define BASE_GUY_HP 30
+
+short exp_from_action(ExpAction action, walker* w, walker* target, short value);
+
+namespace {
+static inline Uint32 rng(Uint32 max_exclusive)
+{
+    return ctx().rng->next(max_exclusive);
+}
+
+static inline cfg_store& active_config()
+{
+    if (ctx().config != nullptr)
+        return *ctx().config;
+    return cfg;
+}
+} // namespace
+
+static bool orc_do_special(walker* self)
+{
+    walker* newob;
+    Sint32 tempx, tempy;
+    Sint32 howmany;
+    Uint32 distance;
+    std::string message;
+
+    switch (self->current_special)
+    {
+        case 1: // yell and 'freeze' foes
+            if (self->busy > 0)
+                return false;
+            self->busy += 2;
+
+            {
+                std::list<walker*> newlist = myscreen->find_foes_in_range(
+                    myscreen->level_data.oblist,
+                    160 + (20 * self->stats()->level), &howmany, self);
+
+                for (auto* ob : newlist)
+                {
+                    if (ob)
+                    {
+                        if (ob->myguy)
+                            tempx = ob->myguy->constitution;
+                        else
+                            tempx = static_cast<Sint32>(ob->stats()->hitpoints / 30.0f);
+                        Sint32 tempx_clamped = (tempx > 0) ? tempx : 0;
+                        tempy = 10
+                            + static_cast<Sint32>(rng(static_cast<Uint32>(self->stats()->level * 10)))
+                            - static_cast<Sint32>(rng(static_cast<Uint32>(tempx_clamped * 10)));
+                        if (tempy < 0)
+                            tempy = 0;
+                        ob->stats()->frozen_delay = static_cast<short>(ob->stats()->frozen_delay + tempy);
+                    }
+                }
+
+                if (self->on_screen())
+                    myscreen->soundp->play_sound(SOUND_ROAR);
+            }
+            break;
+        case 2: // eat corpse for health
+        case 3:
+        case 4:
+        default:
+            if (self->stats()->hitpoints >= self->stats()->max_hitpoints)
+                return false;
+            newob = myscreen->find_nearest_blood(self);
+            if (!newob)
+                return false;
+            distance = static_cast<Uint32>(self->distance_to_ob_center(newob));
+            if (distance > 24)
+                return false;
+            self->stats()->hitpoints += static_cast<float>(newob->stats()->level) * 5.0f;
+            self->do_heal_effects(nullptr, self, static_cast<short>(newob->stats()->level * 5));
+            // Print the eating notice
+            if (self->myguy)
+            {
+                self->myguy->exp += exp_from_action(ExpAction::EatCorpse, self, newob, 0);
+                message = std::format("{} ate a corpse.", self->myguy->name);
+            }
+            else if (self->stats()->name.size())
+                message = std::format("{} ate a corpse.", self->stats()->name);
+            else
+                message = "Orc ate a corpse.";
+
+            if (!active_config().is_on("effects", "heal_numbers"))
+                myscreen->do_notify(message.c_str(), self);
+            if (self->stats()->hitpoints > self->stats()->max_hitpoints)
+                self->stats()->hitpoints = self->stats()->max_hitpoints;
+            newob->dead = 1;
+            newob->death();
+            break;
+    }
+    return true;
+}
 
 static bool orc_check_special_ai(living* self)
 {
@@ -75,7 +175,7 @@ const FamilyDescriptor& describe_family_orc()
         .special_names = {"NONE", "HOWL", "EAT CORPSE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = orc_do_special,
         .check_special_ai = orc_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = orc_set_difficulty,

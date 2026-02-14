@@ -41,6 +41,15 @@ static void skeleton_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static bool skeleton_do_special(walker* self)
+{
+    if (self->ani_type == ANI_TELE_OUT || self->ani_type == ANI_TELE_IN)
+        return false;
+    self->ani_type = ANI_TELE_OUT;
+    self->cycle = 0;
+    return true;
+}
+
 const FamilyDescriptor& describe_family_skeleton()
 {
     static const FamilyDescriptor desc = {
@@ -59,7 +68,7 @@ const FamilyDescriptor& describe_family_skeleton()
         .special_names = {"NONE", "TUNNEL", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = false,
-        .do_special = nullptr,
+        .do_special = skeleton_do_special,
         .check_special_ai = skeleton_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,

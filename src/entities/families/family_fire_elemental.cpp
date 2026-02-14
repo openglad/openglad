@@ -54,6 +54,26 @@ static void fire_elemental_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static bool fire_elemental_do_special(walker* self)
+{
+    Sint32 tempx = static_cast<Sint32>(self->lastx);
+    Sint32 tempy = static_cast<Sint32>(self->lasty);
+    self->stats()->magicpoints += 8.0f * static_cast<float>(self->stats()->weapon_cost);
+    for (Sint32 i = -1; i < 2; i++)
+        for (Sint32 j = -1; j < 2; j++)
+        {
+            if (i || j)
+            {
+                self->lastx = static_cast<float>(i);
+                self->lasty = static_cast<float>(j);
+                self->fire();
+            }
+        }
+    self->lastx = static_cast<float>(tempx);
+    self->lasty = static_cast<float>(tempy);
+    return true;
+}
+
 const FamilyDescriptor& describe_family_fire_elemental()
 {
     static const FamilyDescriptor desc = {
@@ -72,7 +92,7 @@ const FamilyDescriptor& describe_family_fire_elemental()
         .special_names = {"NONE", "STARBURST", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = fire_elemental_do_special,
         .check_special_ai = fire_elemental_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,

@@ -137,12 +137,29 @@ OG_UNIT_TEST(test_registry_bloodspot_flags)
 OG_UNIT_TEST(test_registry_callbacks_state)
 {
     init_family_registry();
-    for (int i = 0; i < NUM_FAMILIES; i++)
-    {
-        auto* d = get_family_descriptor(i);
-        // do_special not yet extracted
-        OG_ASSERT(d->do_special == nullptr);
-    }
+    // do_special: non-null for families with extracted specials
+    OG_ASSERT(get_family_descriptor(FAMILY_SKELETON)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_GHOST)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_FIREELEMENTAL)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SLIME)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SMALL_SLIME)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_MEDIUM_SLIME)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_BARBARIAN)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ARCHMAGE)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_CLERIC)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_DRUID)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_MAGE)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_THIEF)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ELF)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ARCHER)->do_special != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ORC)->do_special != nullptr);
+    // Data-only families have nullptr
+    OG_ASSERT(get_family_descriptor(FAMILY_GOLEM)->do_special == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_GIANT_SKELETON)->do_special == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_TOWER1)->do_special == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_FAERIE)->do_special == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_BIG_ORC)->do_special == nullptr);
 
     // check_special_ai: non-null for families with custom AI
     OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->check_special_ai != nullptr);

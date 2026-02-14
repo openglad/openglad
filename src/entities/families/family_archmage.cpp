@@ -11,7 +11,15 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/base.h>
+#include <openglad/legacy/soundob.h>
 #include <openglad/core/stats.h>
+#include <openglad/core/combat_math.h>
+#include <openglad/render/view.h>
+
+#include <format>
+#include <string>
+#include <list>
+#include <cmath>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -113,6 +121,355 @@ static void archmage_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static bool archmage_do_special(walker* self)
+{
+    walker* newob;
+    Sint32 i, j;
+    Sint32 generic, generic2;
+    Sint32 howmany;
+    Sint32 didheal;
+    char person;
+    std::string message, tempstr;
+
+    switch (self->current_special)
+    {
+        case 1: // teleport
+            if (self->ani_type == ANI_TELE_OUT || self->ani_type == ANI_TELE_IN)
+                return false;
+            if (self->shifter_down) // leave/remove a marker
+            {
+                if (self->busy > 0)
+                    return false;
+                if (self->myguy && (self->myguy->intelligence < 75))
+                {
+                    myscreen->do_notify("Need 75 Int for Marker!", self);
+                    return false;
+                }
+                generic = 0;
+                for (auto& uptr : myscreen->level_data.oblist)
+                {
+                    walker* ob = uptr.get();
+                    if (ob &&
+                            ob->query_order() == Order::FX &&
+                            ob->query_family() == FAMILY_MARKER &&
+                            ob->owner == self &&
+                            !ob->dead)
+                    {
+                        ob->dead = 1;
+                        ob->death();
+                        if (self->team_num == 0 || self->myguy)
+                            myscreen->do_notify("(Old Marker Removed)", self);
+                        self->busy += 8;
+                        generic = 1;
+                        break;
+                    }
+                }
+                newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+                if (!newob)
+                    return false;
+                newob->owner = self;
+                newob->center_on(self);
+                if (self->myguy)
+                    newob->lifetime = self->myguy->intelligence / 33;
+                else
+                    newob->lifetime = (self->stats()->level / 4) + 1;
+                newob->ani_type = 2;
+                if (self->team_num == 0 || self->myguy)
+                {
+                    myscreen->do_notify("Teleport Marker Placed", self);
+                    message = std::format("({} Uses)", newob->lifetime);
+                    myscreen->do_notify(message.c_str(), self);
+                }
+                self->busy += 8;
+                generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+                generic /= 2;
+                self->stats()->magicpoints -= static_cast<float>(generic);
+            }
+            else
+            {
+                if (self->on_screen())
+                    myscreen->soundp->play_sound(SOUND_TELEPORT);
+                self->ani_type = ANI_TELE_OUT;
+                self->cycle = 0;
+            }
+            break;
+        case 2: // heartburst / chain lightning
+            if (self->busy > 0)
+                return false;
+            if (self->shifter_down)
+            {
+                if (self->myguy)
+                    generic = 200 + self->myguy->intelligence / 2;
+                else
+                    generic = 200 + self->stats()->level * 5;
+            }
+            else
+                generic = 80;
+            {
+                std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                                                      generic + 2 * self->stats()->level, &howmany, self);
+                if (!howmany)
+                    return false;
+                if (!self->shifter_down) // normal heartburst
+                {
+                    generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
+                    generic /= 2;
+                    generic /= howmany;
+                    if (self->myguy)
+                    {
+                        self->myguy->total_shots += howmany;
+                        self->myguy->scen_shots = static_cast<short>(self->myguy->scen_shots + howmany);
+                    }
+                    self->busy += 5;
+                    for (auto* ob : newlist)
+                    {
+                        newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+                        if (!newob)
+                            return false;
+                        newob->owner = self;
+                        newob->team_num = self->team_num;
+                        newob->stats()->level = self->stats()->level;
+                        newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
+                        newob->damage = static_cast<float>(generic);
+                        newob->center_on(ob);
+                        if (self->on_screen())
+                            myscreen->soundp->play_sound(SOUND_EXPLODE);
+                        newob->ani_type = ANI_EXPLODE;
+                        newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
+                        newob->skip_exit = 100;
+                        self->stats()->magicpoints -= static_cast<float>(generic);
+                    }
+                }
+                else // chain lightning
+                {
+                    self->busy += 5;
+                    if (self->myguy)
+                    {
+                        self->myguy->total_shots++;
+                        self->myguy->scen_shots++;
+                    }
+                    newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
+                    newob->center_on(self);
+                    newob->owner = self;
+                    newob->stats()->level = self->stats()->level;
+                    newob->team_num = self->team_num;
+                    generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
+                    generic /= 2;
+                    self->stats()->magicpoints -= static_cast<float>(generic);
+                    newob->damage = static_cast<float>(generic);
+                    generic = 30000;
+                    for (auto* w : newlist)
+                    {
+                        Sint32 dist = self->distance_to_ob_center(w);
+                        if (generic > dist)
+                        {
+                            generic = dist;
+                            newob->leader = w;
+                        }
+                    }
+                }
+            }
+            break;
+        case 3: // summon image / elemental
+            if (self->busy > 0)
+                return false;
+            if (self->shifter_down) // true summoning
+            {
+                if (self->myguy && self->myguy->intelligence < 150)
+                {
+                    if (self->user != -1)
+                        myscreen->do_notify("150 Int required to Summon!", self);
+                    return false;
+                }
+                generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
+                generic /= 2;
+                self->stats()->magicpoints -= static_cast<float>(generic);
+                newob = myscreen->level_data.add_ob(Order::Living, FAMILY_FIREELEMENTAL);
+                if (!newob)
+                    return false;
+                generic = 0;
+                for (i = -1; i <= 1; i++)
+                    for (j = -1; j <= 1; j++)
+                    {
+                        if ((i == 0 && j == 0) || (generic))
+                            continue;
+                        float testx = static_cast<float>(self->xpos + ((newob->sizex + 1) * i));
+                        float testy = static_cast<float>(self->ypos + ((newob->sizey + 1) * j));
+                        if (myscreen->query_passable(testx, testy, newob))
+                        {
+                            generic = 1;
+                            newob->setxy(testx, testy);
+                            newob->stats()->level = (self->stats()->level + 1) / 2;
+                            newob->set_difficulty(static_cast<Uint32>(newob->stats()->level));
+                            newob->team_num = self->team_num;
+                            newob->owner = self;
+                            newob->lifetime = 200 + 60 * self->stats()->level;
+                        }
+                    }
+                if (!generic)
+                {
+                    newob->dead = 1;
+                    return false;
+                }
+                self->busy += 15;
+            }
+            else // illusion summoning
+            {
+                generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
+                if (generic < 100)
+                    person = FAMILY_ELF;
+                else if (generic < 250)
+                {
+                    switch (rng(3))
+                    {
+                        case 0: person = FAMILY_ELF; break;
+                        case 1: person = FAMILY_SOLDIER; break;
+                        case 2: person = FAMILY_ARCHER; break;
+                        default: person = FAMILY_SOLDIER; break;
+                    }
+                }
+                else if (generic < 500)
+                {
+                    switch (rng(5))
+                    {
+                        case 0: person = FAMILY_ELF; break;
+                        case 1: person = FAMILY_SOLDIER; break;
+                        case 2: person = FAMILY_ARCHER; break;
+                        case 3: person = FAMILY_ORC; break;
+                        case 4: person = FAMILY_SKELETON; break;
+                        default: person = FAMILY_ARCHER; break;
+                    }
+                }
+                else if (generic < 1000)
+                {
+                    switch (rng(7))
+                    {
+                        case 0: person = FAMILY_ELF; break;
+                        case 1: person = FAMILY_SOLDIER; break;
+                        case 2: person = FAMILY_ARCHER; break;
+                        case 3: person = FAMILY_ORC; break;
+                        case 4: person = FAMILY_SKELETON; break;
+                        case 5: person = FAMILY_DRUID; break;
+                        case 6: person = FAMILY_CLERIC; break;
+                        default: person = FAMILY_ARCHER; break;
+                    }
+                }
+                else
+                {
+                    switch (rng(9))
+                    {
+                        case 0: person = FAMILY_ELF; break;
+                        case 1: person = FAMILY_SOLDIER; break;
+                        case 2: person = FAMILY_ARCHER; break;
+                        case 3: person = FAMILY_ORC; break;
+                        case 4: person = FAMILY_SKELETON; break;
+                        case 5: person = FAMILY_DRUID; break;
+                        case 6: person = FAMILY_CLERIC; break;
+                        case 7: person = FAMILY_FIREELEMENTAL; break;
+                        case 8: person = FAMILY_BIG_ORC; break;
+                        default: person = FAMILY_ARCHER; break;
+                    }
+                }
+                newob = myscreen->level_data.add_ob(Order::Living, person);
+                if (!newob)
+                    return false;
+                generic = 0;
+                for (i = -1; i <= 1; i++)
+                    for (j = -1; j <= 1; j++)
+                    {
+                        if ((i == 0 && j == 0) || (generic))
+                            continue;
+                        float testx = static_cast<float>(self->xpos + ((newob->sizex + 1) * i));
+                        float testy = static_cast<float>(self->ypos + ((newob->sizey + 1) * j));
+                        if (myscreen->query_passable(testx, testy, newob))
+                        {
+                            generic = 1;
+                            newob->setxy(testx, testy);
+                            newob->stats()->level = (self->stats()->level + 2) / 3;
+                            newob->set_difficulty(static_cast<Uint32>(newob->stats()->level));
+                            newob->team_num = self->team_num;
+                            newob->owner = self;
+                            newob->lifetime = 100 + 20 * self->stats()->level;
+                            newob->stats()->max_hitpoints = 1;
+                            newob->stats()->hitpoints = 0;
+                            newob->stats()->armor = 0;
+                            newob->foe = self->foe;
+                            newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
+                            newob->stats()->name = "Phantom";
+                        }
+                    }
+                if (!generic)
+                {
+                    newob->dead = 1;
+                    return false;
+                }
+                self->busy += 15;
+            }
+            break;
+        case 4: // mind control
+            if (self->busy > 0)
+                return false;
+            {
+                std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                                                      80 + 4 * self->stats()->level, &howmany, self);
+                if (howmany < 1)
+                    return false;
+                didheal = 0;
+                generic2 = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)])) + 10;
+                for (auto* ob : newlist)
+                {
+                    if (generic2 < 10) break;
+                    if ((ob->real_team_num == 255) &&
+                        (ob->query_order() == Order::Living) &&
+                        (ob->charm_left() <= 10))
+                    {
+                        generic2 -= 10;
+                        generic = self->stats()->level - ob->stats()->level;
+                        if (generic < 0 || (!rng(20)))
+                        {
+                            ob->real_team_num = ob->team_num;
+                            ob->team_num = static_cast<unsigned char>(rng(8));
+                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *ctx().rng)));
+                        }
+                        else
+                        {
+                            ob->real_team_num = ob->team_num;
+                            ob->team_num = self->team_num;
+                            ob->foe = nullptr;
+                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *ctx().rng)));
+                        }
+                        didheal++;
+                    }
+                }
+            }
+            if (!didheal)
+                return false;
+            if (self->stats()->name.size())
+                message = self->stats()->name;
+            else if (self->myguy && self->myguy->name.size())
+                message = self->myguy->name;
+            else
+                message = "ArchMage";
+            tempstr = std::format("{} has controlled {} men", message, didheal);
+            myscreen->do_notify(tempstr.c_str(), self);
+            generic2 = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+            if (generic2 > 0)
+            {
+                while ((didheal > 0) && (generic2 >= 10))
+                {
+                    if (generic2 > 10)
+                        generic2 -= 10;
+                    didheal--;
+                }
+            }
+            self->busy += 10;
+            break;
+        default:
+            break;
+    }
+    return true;
+}
+
 const FamilyDescriptor& describe_family_archmage()
 {
     static const FamilyDescriptor desc = {
@@ -131,7 +488,7 @@ const FamilyDescriptor& describe_family_archmage()
         .special_names = {"NONE", "TELEPORT", "HEARTBURST", "SUMMON IMAGE", "MIND CONTROL", "NONE"},
         .alternate_names = {"NONE", "TELEPORT MARKER", "CHAIN LIGHTNING", "SUMMON ELEMENTAL", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = archmage_do_special,
         .check_special_ai = nullptr,
         .hit_response = archmage_hit_response,
         .set_difficulty = nullptr,

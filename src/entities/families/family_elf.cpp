@@ -7,10 +7,80 @@
  */
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
+#include <openglad/entities/weap.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
+#include <cstdlib>
+
 #define BASE_GUY_HP 30
+
+static bool elf_do_special(walker* self)
+{
+    weap* fireob;
+    Sint32 i;
+
+    switch (self->current_special)
+    {
+        case 1: // some rocks (normal)
+            self->stats()->magicpoints += 2.0f * static_cast<float>(self->stats()->weapon_cost);
+            fireob = static_cast<weap*>(self->fire());
+            if (!fireob)
+                return false;
+            fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            fireob = static_cast<weap*>(self->fire());
+            if (!fireob)
+                return false;
+            fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            break;
+        case 2: // more rocks, and bouncing
+            self->stats()->magicpoints += 3.0f * static_cast<float>(self->stats()->weapon_cost);
+            for (i = 0; i < 2; i++)
+            {
+                fireob = static_cast<weap*>(self->fire());
+                if (!fireob)
+                    return false;
+                fireob->lineofsight *= 3;
+                fireob->lineofsight /= 2;
+                fireob->do_bounce = 1;
+                fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            }
+            break;
+        case 3:
+            self->stats()->magicpoints += 4.0f * static_cast<float>(self->stats()->weapon_cost);
+            for (i = 0; i < 3; i++)
+            {
+                fireob = static_cast<weap*>(self->fire());
+                if (!fireob)
+                    return false;
+                fireob->lineofsight *= 2;
+                fireob->do_bounce = 1;
+                fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            }
+            break;
+        case 4:
+        default:
+            self->stats()->magicpoints += 5.0f * static_cast<float>(self->stats()->weapon_cost);
+            for (i = 0; i < 4; i++)
+            {
+                fireob = static_cast<weap*>(self->fire());
+                if (!fireob)
+                    return false;
+                fireob->lineofsight *= 5;
+                fireob->lineofsight /= 2;
+                fireob->do_bounce = 1;
+                fireob->lastx *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+                fireob->lasty *= 0.8f + 0.4f * static_cast<float>(rand() % 101) / 100.0f;
+            }
+            break;
+    }
+    return true;
+}
 
 static void elf_level_up(guy* self, Sint32 level_diff)
 {
@@ -47,7 +117,7 @@ const FamilyDescriptor& describe_family_elf()
         .special_names = {"NONE", "ROCKS", "BOUNCING ROCKS", "LOTS OF ROCKS", "MEGA ROCKS", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = elf_do_special,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,

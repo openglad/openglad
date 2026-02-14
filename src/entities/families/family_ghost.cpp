@@ -27,6 +27,18 @@ static bool ghost_check_special_ai(living* self)
     return (distance < 130);
 }
 
+static bool ghost_do_special(walker* self)
+{
+    walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_GHOST_SCARE);
+    newob->ani_type = ANI_SCARE;
+    newob->setxy(self->xpos + self->sizex/2 - newob->sizex/2,
+                 self->ypos + self->sizey/2 - newob->sizey/2);
+    newob->owner = self;
+    newob->stats()->level = self->stats()->level;
+    newob->team_num = self->team_num;
+    return true;
+}
+
 const FamilyDescriptor& describe_family_ghost()
 {
     static const FamilyDescriptor desc = {
@@ -45,7 +57,7 @@ const FamilyDescriptor& describe_family_ghost()
         .special_names = {"NONE", "SCARE", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = false,
-        .do_special = nullptr,
+        .do_special = ghost_do_special,
         .check_special_ai = ghost_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,

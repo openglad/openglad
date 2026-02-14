@@ -8,12 +8,67 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 
 #include <openglad/runtime/screen.h>
 
 #define BASE_GUY_HP 30
+
+static bool archer_do_special(walker* self)
+{
+    walker* newob;
+
+    switch (self->current_special)
+    {
+        case 1: // fire arrows
+        {
+            self->curdir = -1;
+            self->lastx = 0;
+            self->lasty = 0;
+            self->stats()->magicpoints += 8.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->stats()->add_command(COMMAND_SET_WEAPON, 1, FAMILY_FIRE_ARROW, 0);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 0, -1);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 1, -1);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 1, 0);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 1, 1);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, 0, 1);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, -1, 1);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, -1, 0);
+            self->stats()->add_command(COMMAND_QUICK_FIRE, 1, -1, -1);
+            self->stats()->add_command(COMMAND_RESET_WEAPON, 1, 0, 0);
+            break;
+        }
+        case 2: // flurry of arrows
+            if (self->busy)
+                return false;
+            self->stats()->magicpoints += 3.0f * static_cast<float>(self->stats()->weapon_cost);
+            self->fire();
+            self->fire();
+            self->fire();
+            self->busy += (self->fire_frequency * 2.0f);
+            break;
+        case 3: // exploding arrows
+        case 4:
+        default:
+        {
+            if (self->busy)
+                return false;
+            unsigned short old_weapon = self->current_weapon;
+            self->current_weapon = FAMILY_FIRE_ARROW;
+            newob = self->fire();
+            self->current_weapon = old_weapon;
+            if (!newob)
+                return false;
+            newob->skip_exit = 5000;
+            newob->stats()->hitpoints = 500;
+            newob->damage *= 2;
+            break;
+        }
+    }
+    return true;
+}
 
 static bool archer_check_special_ai(living* self)
 {
@@ -95,7 +150,7 @@ const FamilyDescriptor& describe_family_archer()
         .special_names = {"NONE", "FIRE ARROWS", "BARRAGE", "EXPLODING BOLT", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = archer_do_special,
         .check_special_ai = archer_check_special_ai,
         .hit_response = archer_hit_response,
         .set_difficulty = archer_set_difficulty,

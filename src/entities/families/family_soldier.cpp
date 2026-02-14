@@ -7,12 +7,133 @@
  */
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
+#include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
-
+#include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 
+#include <cmath>
+#include <list>
+
 #define BASE_GUY_HP 30
+
+namespace {
+static inline Uint32 rng(Uint32 max_exclusive)
+{
+    return ctx().rng->next(max_exclusive);
+}
+} // namespace
+
+static bool soldier_do_special(walker* self)
+{
+    walker* newob;
+    Sint32 tempx, tempy;
+    Sint32 howmany;
+    Sint32 generic;
+
+    switch (self->current_special)
+    {
+        case 1: // charge enemy
+            if (!self->stats()->forward_blocked())
+            {
+                self->stats()->add_command(COMMAND_RUSH, 3,
+                    static_cast<Sint32>(self->lastx / self->stepsize),
+                    static_cast<Sint32>(self->lasty / self->stepsize));
+                if (self->on_screen())
+                    myscreen->soundp->play_sound(SOUND_CHARGE);
+            }
+            else
+                return false;
+            break;
+        case 2: // boomerang
+            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOOMERANG);
+            newob->owner = self;
+            newob->team_num = self->team_num;
+            newob->ani_type = 1;
+            newob->lifetime = 30 + self->stats()->level * 12;
+            newob->stats()->hitpoints += static_cast<float>(self->stats()->level) * 12.0f;
+            newob->stats()->max_hitpoints = newob->stats()->hitpoints;
+            newob->damage += static_cast<float>(self->stats()->level) * 4.0f;
+            break;
+        case 3: // whirlwind attack
+            if (self->busy)
+                return false;
+            self->busy += 8;
+            tempx = static_cast<Sint32>(self->lastx);
+            tempy = static_cast<Sint32>(self->lasty);
+            self->curdir = -1;
+            self->lastx = 0;
+            self->lasty = 0;
+            self->stats()->add_command(COMMAND_WALK, 1, 0, -1);
+            self->stats()->add_command(COMMAND_WALK, 1, 1, -1);
+            self->stats()->add_command(COMMAND_WALK, 1, 1, 0);
+            self->stats()->add_command(COMMAND_WALK, 1, 1, 1);
+            self->stats()->add_command(COMMAND_WALK, 1, 0, 1);
+            self->stats()->add_command(COMMAND_WALK, 1, -1, 1);
+            self->stats()->add_command(COMMAND_WALK, 1, -1, 0);
+            self->stats()->add_command(COMMAND_WALK, 1, -1, -1);
+
+            {
+                std::list<walker*> newlist = myscreen->find_foes_in_range(
+                    myscreen->level_data.oblist,
+                    32 + self->stats()->level * 2, &howmany, self);
+
+                for (auto* w : newlist)
+                {
+                    if (w)
+                    {
+                        tempx = w->xpos - self->xpos;
+                        if (tempx)
+                            tempx = tempx / (abs(tempx));
+                        tempy = w->ypos - self->ypos;
+                        if (tempy)
+                            tempy = tempy / (abs(tempy));
+                        self->attack(w);
+                        w->stats()->force_command(COMMAND_WALK, 8, tempx, tempy);
+                    }
+                }
+            }
+            break;
+        case 4: // Disarm opponent
+            if (self->busy)
+                return false;
+            if (!self->stats()->forward_blocked())
+                return false;
+
+            {
+                std::list<walker*> newlist = myscreen->find_foes_in_range(
+                    myscreen->level_data.oblist, 28, &howmany, self);
+
+                generic = 0;
+
+                for (auto* w : newlist)
+                {
+                    if (w)
+                    {
+                        if (rng(self->stats()->level) >= rng(w->stats()->level))
+                            w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
+                        generic = 1;
+                    }
+                }
+
+                if (generic)
+                {
+                    if (self->on_screen())
+                        myscreen->soundp->play_sound(SOUND_CHARGE);
+                    if (self->team_num == 0 || self->myguy)
+                        myscreen->do_notify("Fighter Disarmed Enemy!", self);
+                    self->busy += 5;
+                }
+                else
+                    return false;
+            }
+            break;
+        default:
+            break;
+    }
+    return true;
+}
 
 static bool soldier_check_special_ai(living* self)
 {
@@ -61,7 +182,7 @@ const FamilyDescriptor& describe_family_soldier()
         .special_names = {"NONE", "CHARGE", "BOOMERANG", "WHIRLWIND", "DISARM", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = soldier_do_special,
         .check_special_ai = soldier_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = soldier_set_difficulty,

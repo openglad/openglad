@@ -12,8 +12,13 @@
 #include <openglad/core/stats.h>
 
 #include <openglad/entities/living.h>
+#include <openglad/runtime/game_context.h>
 
 #define BASE_GUY_HP 30
+
+static inline Uint32 rng(Uint32 max_exclusive) {
+    return ctx().rng->next(max_exclusive);
+}
 
 static bool slime_check_special_ai(living* self)
 {
@@ -63,6 +68,41 @@ static bool medium_slime_on_death(walker* self)
     return true;
 }
 
+static bool slime_do_special(walker* self)
+{
+    self->ani_type = ANI_SLIME_SPLIT;
+    self->cycle = 0;
+    return true;
+}
+
+static bool small_slime_do_special(walker* self)
+{
+    if (self->spaces_clear() > 7)
+    {
+        self->transform_to(Order::Living, FAMILY_MEDIUM_SLIME);
+    }
+    else
+    {
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+        return false;
+    }
+    return true;
+}
+
+static bool medium_slime_do_special(walker* self)
+{
+    if (self->spaces_clear() > 7)
+    {
+        self->transform_to(Order::Living, FAMILY_SLIME);
+    }
+    else
+    {
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+        return false;
+    }
+    return true;
+}
+
 const FamilyDescriptor& describe_family_slime()
 {
     static const FamilyDescriptor desc = {
@@ -81,7 +121,7 @@ const FamilyDescriptor& describe_family_slime()
         .special_names = {"NONE", "SPLIT", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = slime_do_special,
         .check_special_ai = slime_check_special_ai,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
@@ -109,7 +149,7 @@ const FamilyDescriptor& describe_family_small_slime()
         .special_names = {"NONE", "GROW", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = small_slime_do_special,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
@@ -137,7 +177,7 @@ const FamilyDescriptor& describe_family_medium_slime()
         .special_names = {"NONE", "GROW", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
-        .do_special = nullptr,
+        .do_special = medium_slime_do_special,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
