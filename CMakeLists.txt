@@ -102,13 +102,24 @@ set(GAME_SOURCES
     ${SRC_DIR}/input/button.cpp
     ${SRC_DIR}/entities/effect.cpp
     ${SRC_DIR}/entities/family_registry.cpp
+    ${SRC_DIR}/entities/families/family_archer.cpp
+    ${SRC_DIR}/entities/families/family_archmage.cpp
+    ${SRC_DIR}/entities/families/family_barbarian.cpp
     ${SRC_DIR}/entities/families/family_big_orc.cpp
+    ${SRC_DIR}/entities/families/family_cleric.cpp
+    ${SRC_DIR}/entities/families/family_druid.cpp
+    ${SRC_DIR}/entities/families/family_elf.cpp
     ${SRC_DIR}/entities/families/family_faerie.cpp
     ${SRC_DIR}/entities/families/family_fire_elemental.cpp
     ${SRC_DIR}/entities/families/family_ghost.cpp
     ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
     ${SRC_DIR}/entities/families/family_golem.cpp
+    ${SRC_DIR}/entities/families/family_mage.cpp
+    ${SRC_DIR}/entities/families/family_orc.cpp
     ${SRC_DIR}/entities/families/family_skeleton.cpp
+    ${SRC_DIR}/entities/families/family_slime.cpp
+    ${SRC_DIR}/entities/families/family_soldier.cpp
+    ${SRC_DIR}/entities/families/family_thief.cpp
     ${SRC_DIR}/entities/families/family_tower1.cpp
     ${SRC_DIR}/runtime/game.cpp
     ${SRC_DIR}/render/graphlib.cpp
@@ -189,13 +200,24 @@ set(OG_DATA_SOURCES
 set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/entities/effect.cpp
     ${SRC_DIR}/entities/family_registry.cpp
+    ${SRC_DIR}/entities/families/family_archer.cpp
+    ${SRC_DIR}/entities/families/family_archmage.cpp
+    ${SRC_DIR}/entities/families/family_barbarian.cpp
     ${SRC_DIR}/entities/families/family_big_orc.cpp
+    ${SRC_DIR}/entities/families/family_cleric.cpp
+    ${SRC_DIR}/entities/families/family_druid.cpp
+    ${SRC_DIR}/entities/families/family_elf.cpp
     ${SRC_DIR}/entities/families/family_faerie.cpp
     ${SRC_DIR}/entities/families/family_fire_elemental.cpp
     ${SRC_DIR}/entities/families/family_ghost.cpp
     ${SRC_DIR}/entities/families/family_giant_skeleton.cpp
     ${SRC_DIR}/entities/families/family_golem.cpp
+    ${SRC_DIR}/entities/families/family_mage.cpp
+    ${SRC_DIR}/entities/families/family_orc.cpp
     ${SRC_DIR}/entities/families/family_skeleton.cpp
+    ${SRC_DIR}/entities/families/family_slime.cpp
+    ${SRC_DIR}/entities/families/family_soldier.cpp
+    ${SRC_DIR}/entities/families/family_thief.cpp
     ${SRC_DIR}/entities/families/family_tower1.cpp
     ${SRC_DIR}/entities/guy.cpp
     ${SRC_DIR}/entities/living.cpp

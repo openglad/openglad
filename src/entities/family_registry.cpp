@@ -17,7 +17,6 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/legacy/base.h>
-#include <openglad/core/stats.h>
 
 // Forward declarations of family descriptor providers
 const FamilyDescriptor& describe_family_golem();
@@ -28,11 +27,22 @@ const FamilyDescriptor& describe_family_ghost();
 const FamilyDescriptor& describe_family_skeleton();
 const FamilyDescriptor& describe_family_fire_elemental();
 const FamilyDescriptor& describe_family_faerie();
+const FamilyDescriptor& describe_family_soldier();
+const FamilyDescriptor& describe_family_elf();
+const FamilyDescriptor& describe_family_archer();
+const FamilyDescriptor& describe_family_mage();
+const FamilyDescriptor& describe_family_cleric();
+const FamilyDescriptor& describe_family_slime();
+const FamilyDescriptor& describe_family_small_slime();
+const FamilyDescriptor& describe_family_medium_slime();
+const FamilyDescriptor& describe_family_thief();
+const FamilyDescriptor& describe_family_druid();
+const FamilyDescriptor& describe_family_orc();
+const FamilyDescriptor& describe_family_barbarian();
+const FamilyDescriptor& describe_family_archmage();
 
 static bool s_registry_initialized = false;
 static FamilyDescriptor s_registry[NUM_FAMILIES];
-
-#define BASE_GUY_HP 30
 
 void init_family_registry()
 {
@@ -66,136 +76,23 @@ void init_family_registry()
         d.on_death = nullptr;
     }
 
-    // === FAMILY_SOLDIER (0) ===
-    {
-        auto& d = s_registry[FAMILY_SOLDIER];
-        d.name = "SOLDIER";
-        d.base_stats[0] = 12; d.base_stats[1] = 6; d.base_stats[2] = 12;
-        d.base_stats[3] = 8; d.base_stats[4] = 9; d.base_stats[5] = 1;
-        d.hiring_cost = 250;
-        d.derived_bonuses[0] = BASE_GUY_HP+90; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 20; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 4; d.derived_bonuses[7] = 6;
-        d.stat_costs[0] = 6; d.stat_costs[1] = 10; d.stat_costs[2] = 6;
-        d.stat_costs[3] = 25; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 25;  // charge
-        d.special_cost[2] = 100; // boomerang
-        d.special_cost[3] = 120; // whirlwind
-        d.special_cost[4] = 150; // disarm
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_KNIFE;
-        d.special_names[1] = "CHARGE";
-        d.special_names[2] = "BOOMERANG";
-        d.special_names[3] = "WHIRLWIND";
-        d.special_names[4] = "DISARM";
-    }
+    // === FAMILY_SOLDIER (0) — defined in families/family_soldier.cpp ===
+    s_registry[FAMILY_SOLDIER] = describe_family_soldier();
 
-    // === FAMILY_ELF (1) ===
-    {
-        auto& d = s_registry[FAMILY_ELF];
-        d.name = "ELF";
-        d.base_stats[0] = 5; d.base_stats[1] = 14; d.base_stats[2] = 5;
-        d.base_stats[3] = 12; d.base_stats[4] = 8; d.base_stats[5] = 1;
-        d.hiring_cost = 150;
-        d.derived_bonuses[0] = BASE_GUY_HP+45; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 12; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 4; d.derived_bonuses[7] = 5;
-        d.stat_costs[0] = 25; d.stat_costs[1] = 6; d.stat_costs[2] = 12;
-        d.stat_costs[3] = 8; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 10;
-        d.special_cost[2] = 20;
-        d.special_cost[3] = 30;
-        d.special_cost[4] = 40;
-        d.default_weapon = FAMILY_ROCK;
-        d.init_bit_flags = BIT_FORESTWALK;
-        d.special_names[1] = "ROCKS";
-        d.special_names[2] = "BOUNCING ROCKS";
-        d.special_names[3] = "LOTS OF ROCKS";
-        d.special_names[4] = "MEGA ROCKS";
-    }
+    // === FAMILY_ELF (1) — defined in families/family_elf.cpp ===
+    s_registry[FAMILY_ELF] = describe_family_elf();
 
-    // === FAMILY_ARCHER (2) ===
-    {
-        auto& d = s_registry[FAMILY_ARCHER];
-        d.name = "ARCHER";
-        d.base_stats[0] = 6; d.base_stats[1] = 12; d.base_stats[2] = 6;
-        d.base_stats[3] = 10; d.base_stats[4] = 5; d.base_stats[5] = 1;
-        d.hiring_cost = 350;
-        d.derived_bonuses[0] = BASE_GUY_HP+60; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 8; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 4; d.derived_bonuses[7] = 5;
-        d.stat_costs[0] = 15; d.stat_costs[1] = 6; d.stat_costs[2] = 9;
-        d.stat_costs[3] = 10; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 20;  // fire arrows
-        d.special_cost[2] = 60;  // barrage
-        d.special_cost[3] = 70;  // exploding bolt
-        d.default_weapon = FAMILY_ARROW;
-        d.special_names[1] = "FIRE ARROWS";
-        d.special_names[2] = "BARRAGE";
-        d.special_names[3] = "EXPLODING BOLT";
-    }
+    // === FAMILY_ARCHER (2) — defined in families/family_archer.cpp ===
+    s_registry[FAMILY_ARCHER] = describe_family_archer();
 
-    // === FAMILY_MAGE (3) ===
-    {
-        auto& d = s_registry[FAMILY_MAGE];
-        d.name = "MAGE";
-        d.base_stats[0] = 4; d.base_stats[1] = 6; d.base_stats[2] = 4;
-        d.base_stats[3] = 16; d.base_stats[4] = 5; d.base_stats[5] = 1;
-        d.hiring_cost = 450;
-        d.derived_bonuses[0] = BASE_GUY_HP+60; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 4; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 2; d.derived_bonuses[7] = 4;
-        d.stat_costs[0] = 20; d.stat_costs[1] = 15; d.stat_costs[2] = 16;
-        d.stat_costs[3] = 6; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 15;  // teleport
-        d.special_cost[2] = 60;  // warp space
-        d.special_cost[3] = 500; // freeze time
-        d.special_cost[4] = 70;  // energy wave
-        d.special_cost[5] = 100; // heartburst
-        d.weapon_cost = 5;
-        d.default_weapon = FAMILY_FIREBALL;
-        d.special_names[1] = "TELEPORT";
-        d.special_names[2] = "WARP SPACE";
-        d.special_names[3] = "FREEZE TIME";
-        d.special_names[4] = "ENERGY WAVE";
-        d.special_names[5] = "HEARTBURST";
-        d.alternate_names[1] = "TELEPORT MARKER";
-    }
+    // === FAMILY_MAGE (3) — defined in families/family_mage.cpp ===
+    s_registry[FAMILY_MAGE] = describe_family_mage();
 
     // === FAMILY_SKELETON (4) — defined in families/family_skeleton.cpp ===
     s_registry[FAMILY_SKELETON] = describe_family_skeleton();
 
-    // === FAMILY_CLERIC (5) ===
-    {
-        auto& d = s_registry[FAMILY_CLERIC];
-        d.name = "CLERIC";
-        d.base_stats[0] = 6; d.base_stats[1] = 7; d.base_stats[2] = 6;
-        d.base_stats[3] = 14; d.base_stats[4] = 7; d.base_stats[5] = 1;
-        d.hiring_cost = 400;
-        d.derived_bonuses[0] = BASE_GUY_HP+90; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 12; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 2; d.derived_bonuses[7] = 7.5f;
-        d.stat_costs[0] = 15; d.stat_costs[1] = 15; d.stat_costs[2] = 9;
-        d.stat_costs[3] = 6; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 2;   // heal / mystic mace
-        d.special_cost[2] = 20;  // raise skeleton
-        d.special_cost[3] = 50;  // raise ghost
-        d.special_cost[4] = 150; // resurrect
-        d.weapon_cost = 8;
-        d.default_weapon = FAMILY_GLOW;
-        d.special_names[1] = "HEAL";
-        d.special_names[2] = "RAISE UNDEAD";
-        d.special_names[3] = "RAISE GHOST";
-        d.special_names[4] = "RESURRECT";
-        d.alternate_names[1] = "MYSTIC MACE";
-        d.alternate_names[2] = "TURN UNDEAD";
-        d.alternate_names[3] = "TURN UNDEAD";
-    }
+    // === FAMILY_CLERIC (5) — defined in families/family_cleric.cpp ===
+    s_registry[FAMILY_CLERIC] = describe_family_cleric();
 
     // === FAMILY_FIREELEMENTAL (6) — defined in families/family_fire_elemental.cpp ===
     s_registry[FAMILY_FIREELEMENTAL] = describe_family_fire_elemental();
@@ -203,195 +100,35 @@ void init_family_registry()
     // === FAMILY_FAERIE (7) — defined in families/family_faerie.cpp ===
     s_registry[FAMILY_FAERIE] = describe_family_faerie();
 
-    // === FAMILY_SLIME (8) ===
-    {
-        auto& d = s_registry[FAMILY_SLIME];
-        d.name = "SLIME";
-        d.base_stats[0] = 18; d.base_stats[1] = 2; d.base_stats[2] = 18;
-        d.base_stats[3] = 7; d.base_stats[4] = 6; d.base_stats[5] = 1;
-        d.hiring_cost = 700;
-        d.derived_bonuses[0] = BASE_GUY_HP+120; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 28; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 3; d.derived_bonuses[7] = 11;
-        d.stat_costs[0] = 20; d.stat_costs[1] = 20; d.stat_costs[2] = 8;
-        d.stat_costs[3] = 14; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 30;  // split
-        d.default_weapon = FAMILY_BLOB;
-        d.weapon_cost = 0;
-        d.init_bit_flags = BIT_ANIMATE;
-        d.init_max_magicpoints = 50;
-        d.special_names[1] = "SPLIT";
-    }
+    // === FAMILY_SLIME (8) — defined in families/family_slime.cpp ===
+    s_registry[FAMILY_SLIME] = describe_family_slime();
 
-    // === FAMILY_SMALL_SLIME (9) ===
-    {
-        auto& d = s_registry[FAMILY_SMALL_SLIME];
-        d.name = "SLIME";
-        d.base_stats[0] = 18; d.base_stats[1] = 2; d.base_stats[2] = 18;
-        d.base_stats[3] = 7; d.base_stats[4] = 6; d.base_stats[5] = 1;
-        d.hiring_cost = 700;
-        d.derived_bonuses[0] = BASE_GUY_HP+50; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 12; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 2; d.derived_bonuses[7] = 12;
-        d.stat_costs[0] = 20; d.stat_costs[1] = 20; d.stat_costs[2] = 8;
-        d.stat_costs[3] = 14; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 30;  // grow
-        d.default_weapon = FAMILY_BLOB;
-        d.weapon_cost = 0;
-        d.init_bit_flags = BIT_ANIMATE | BIT_NO_RANGED;
-        d.init_max_magicpoints = 50;
-        d.special_names[1] = "GROW";
-    }
+    // === FAMILY_SMALL_SLIME (9) — defined in families/family_slime.cpp ===
+    s_registry[FAMILY_SMALL_SLIME] = describe_family_small_slime();
 
-    // === FAMILY_MEDIUM_SLIME (10) ===
-    {
-        auto& d = s_registry[FAMILY_MEDIUM_SLIME];
-        d.name = "SLIME";
-        d.base_stats[0] = 18; d.base_stats[1] = 2; d.base_stats[2] = 18;
-        d.base_stats[3] = 7; d.base_stats[4] = 6; d.base_stats[5] = 1;
-        d.hiring_cost = 700;
-        d.derived_bonuses[0] = BASE_GUY_HP+80; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 20; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 2; d.derived_bonuses[7] = 10;
-        d.stat_costs[0] = 20; d.stat_costs[1] = 20; d.stat_costs[2] = 8;
-        d.stat_costs[3] = 14; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 30;  // grow
-        d.default_weapon = FAMILY_BLOB;
-        d.weapon_cost = 0;
-        d.init_bit_flags = BIT_ANIMATE;
-        d.init_max_magicpoints = 50;
-        d.special_names[1] = "GROW";
-    }
+    // === FAMILY_MEDIUM_SLIME (10) — defined in families/family_slime.cpp ===
+    s_registry[FAMILY_MEDIUM_SLIME] = describe_family_medium_slime();
 
-    // === FAMILY_THIEF (11) ===
-    {
-        auto& d = s_registry[FAMILY_THIEF];
-        d.name = "THIEF";
-        d.base_stats[0] = 9; d.base_stats[1] = 12; d.base_stats[2] = 12;
-        d.base_stats[3] = 10; d.base_stats[4] = 5; d.base_stats[5] = 1;
-        d.hiring_cost = 400;
-        d.derived_bonuses[0] = BASE_GUY_HP+45; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 12; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 5; d.derived_bonuses[7] = 5;
-        d.stat_costs[0] = 15; d.stat_costs[1] = 6; d.stat_costs[2] = 9;
-        d.stat_costs[3] = 10; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 35;  // bomb
-        d.special_cost[2] = 125; // cloak
-        d.special_cost[3] = 100; // taunt
-        d.special_cost[4] = 150; // poison cloud
-        d.default_weapon = FAMILY_KNIFE;
-        d.special_names[1] = "DROP BOMB";
-        d.special_names[2] = "CLOAK";
-        d.special_names[3] = "TAUNT ENEMY";
-        d.special_names[4] = "POISON CLOUD";
-        d.alternate_names[3] = "CHARM OPPONENT";
-    }
+    // === FAMILY_THIEF (11) — defined in families/family_thief.cpp ===
+    s_registry[FAMILY_THIEF] = describe_family_thief();
 
     // === FAMILY_GHOST (12) — defined in families/family_ghost.cpp ===
     s_registry[FAMILY_GHOST] = describe_family_ghost();
 
-    // === FAMILY_DRUID (13) ===
-    {
-        auto& d = s_registry[FAMILY_DRUID];
-        d.name = "DRUID";
-        d.base_stats[0] = 7; d.base_stats[1] = 8; d.base_stats[2] = 14;
-        d.base_stats[3] = 12; d.base_stats[4] = 7; d.base_stats[5] = 1;
-        d.hiring_cost = 350;
-        d.derived_bonuses[0] = BASE_GUY_HP+80; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 10; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 3; d.derived_bonuses[7] = 9;
-        d.stat_costs[0] = 15; d.stat_costs[1] = 15; d.stat_costs[2] = 7;
-        d.stat_costs[3] = 6; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 15;  // grow tree
-        d.special_cost[2] = 80;  // summon faerie
-        d.special_cost[3] = 150; // reveal
-        d.special_cost[4] = 200; // protection
-        d.weapon_cost = 4;
-        d.default_weapon = FAMILY_LIGHTNING;
-        d.special_names[1] = "GROW TREE";
-        d.special_names[2] = "SUMMON FAERIE";
-        d.special_names[3] = "REVEAL";
-        d.special_names[4] = "PROTECTION";
-    }
+    // === FAMILY_DRUID (13) — defined in families/family_druid.cpp ===
+    s_registry[FAMILY_DRUID] = describe_family_druid();
 
-    // === FAMILY_ORC (14) ===
-    {
-        auto& d = s_registry[FAMILY_ORC];
-        d.name = "ORC";
-        d.base_stats[0] = 18; d.base_stats[1] = 8; d.base_stats[2] = 16;
-        d.base_stats[3] = 5; d.base_stats[4] = 11; d.base_stats[5] = 1;
-        d.hiring_cost = 300;
-        d.derived_bonuses[0] = BASE_GUY_HP+110; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 23; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 3; d.derived_bonuses[7] = 7;
-        d.stat_costs[0] = 6; d.stat_costs[1] = 15; d.stat_costs[2] = 5;
-        d.stat_costs[3] = 40; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 25;  // howl
-        d.special_cost[2] = 20;  // eat corpse
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_ROCK;
-        d.init_bit_flags = BIT_NO_RANGED;
-        d.special_names[1] = "HOWL";
-        d.special_names[2] = "EAT CORPSE";
-    }
+    // === FAMILY_ORC (14) — defined in families/family_orc.cpp ===
+    s_registry[FAMILY_ORC] = describe_family_orc();
 
     // === FAMILY_BIG_ORC (15) — defined in families/family_big_orc.cpp ===
     s_registry[FAMILY_BIG_ORC] = describe_family_big_orc();
 
-    // === FAMILY_BARBARIAN (16) ===
-    {
-        auto& d = s_registry[FAMILY_BARBARIAN];
-        d.name = "BARBARIAN";
-        d.base_stats[0] = 14; d.base_stats[1] = 5; d.base_stats[2] = 14;
-        d.base_stats[3] = 8; d.base_stats[4] = 8; d.base_stats[5] = 1;
-        d.hiring_cost = 350;
-        d.derived_bonuses[0] = BASE_GUY_HP+120; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 25; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 3; d.derived_bonuses[7] = 5.5f;
-        d.stat_costs[0] = 5; d.stat_costs[1] = 35; d.stat_costs[2] = 5;
-        d.stat_costs[3] = 35; d.stat_costs[4] = 50; d.stat_costs[5] = 200;
-        d.special_cost[1] = 20;  // hurl boulder
-        d.special_cost[2] = 30;  // exploding boulder
-        d.weapon_cost = 2;
-        d.default_weapon = FAMILY_HAMMER;
-        d.special_names[1] = "HURL BOULDER";
-        d.special_names[2] = "EXPLODING BOULDER";
-    }
+    // === FAMILY_BARBARIAN (16) — defined in families/family_barbarian.cpp ===
+    s_registry[FAMILY_BARBARIAN] = describe_family_barbarian();
 
-    // === FAMILY_ARCHMAGE (17) ===
-    {
-        auto& d = s_registry[FAMILY_ARCHMAGE];
-        d.name = "ARCHMAGE";
-        d.base_stats[0] = 4; d.base_stats[1] = 6; d.base_stats[2] = 4;
-        d.base_stats[3] = 16; d.base_stats[4] = 5; d.base_stats[5] = 1;
-        d.hiring_cost = 450;
-        d.derived_bonuses[0] = BASE_GUY_HP+120; d.derived_bonuses[1] = 0;
-        d.derived_bonuses[2] = 8; d.derived_bonuses[3] = 0;
-        d.derived_bonuses[4] = 0; d.derived_bonuses[5] = 0;
-        d.derived_bonuses[6] = 3; d.derived_bonuses[7] = 1;
-        d.stat_costs[0] = 30; d.stat_costs[1] = 20; d.stat_costs[2] = 25;
-        d.stat_costs[3] = 7; d.stat_costs[4] = 55; d.stat_costs[5] = 200;
-        d.special_cost[1] = 10;  // teleport
-        d.special_cost[2] = 80;  // heartburst
-        d.special_cost[3] = 500; // summon elemental
-        d.special_cost[4] = 150; // mind control
-        d.weapon_cost = 12;
-        d.default_weapon = FAMILY_FIREBALL;
-        d.special_names[1] = "TELEPORT";
-        d.special_names[2] = "HEARTBURST";
-        d.special_names[3] = "SUMMON IMAGE";
-        d.special_names[4] = "MIND CONTROL";
-        d.alternate_names[1] = "TELEPORT MARKER";
-        d.alternate_names[2] = "CHAIN LIGHTNING";
-        d.alternate_names[3] = "SUMMON ELEMENTAL";
-    }
+    // === FAMILY_ARCHMAGE (17) — defined in families/family_archmage.cpp ===
+    s_registry[FAMILY_ARCHMAGE] = describe_family_archmage();
 
     // === FAMILY_GOLEM (18) — defined in families/family_golem.cpp ===
     s_registry[FAMILY_GOLEM] = describe_family_golem();
