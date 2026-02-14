@@ -1175,8 +1175,6 @@ bool walker::collide(walker  *ob)
 
 bool walker::animate()
 {
-	walker  * newob;
-
 	const int ani_index = curdir + ani_type * NUM_FACINGS;
 	const signed char* seq = ani[ani_index];
 	if (!seq)
@@ -1221,13 +1219,15 @@ bool walker::animate()
 			cycle = 0;
 			return 1;
 		}
-		// finished teleport out sequence
-		//          if (ani_type == ANI_SKEL_GROW && family == FAMILY_SKELETON)
-		if (ani_type == ANI_SKEL_GROW && query_type(Order::Living, FAMILY_SKELETON))
+		if (ani_type == ANI_SKEL_GROW && order == Order::Living)
 		{
-			ani_type = ANI_WALK;
-			cycle = 0;
-			return 1;
+			const auto* fd = get_family_descriptor(family);
+			if (fd && fd->init_ani_type == ANI_SKEL_GROW)
+			{
+				ani_type = ANI_WALK;
+				cycle = 0;
+				return 1;
+			}
 		}
 		if (ani_type == ANI_TELE_OUT && order == Order::Living)
 		{
@@ -1239,46 +1239,11 @@ bool walker::animate()
 			cycle = 0;
 			return 0;
 		}
-		// Were we a slime who just split?
-		if (ani_type == ANI_SLIME_SPLIT && order == Order::Living)
+		if (order == Order::Living)
 		{
-			ani_type = ANI_WALK;
-			cycle = 0;
-			// First, shrink (and move) normal guy ..
-			transform_to(Order::Living, FAMILY_SMALL_SLIME);
-			setxy(xpos-10, ypos+10); // diagonal 'down left' of normal
-
-			// Create a new small slime ..
-			newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
-			newob->setxy(xpos+12, ypos-12);
-			// Transfer stats/etc. across to new guy ..
-			//stats_->magicpoints -= stats_->special_cost[0];
-			transfer_stats(newob);
-			if (newob->myguy && newob->myguy->exp < static_cast<Uint32>(1000 * stats_->level) )
-			{
-				newob->clear_myguy();  // can't be 'sustained' if too low
-				newob->stats()->name = "SLIME"; // generic name
-				newob->stats()->level = calculate_level(myguy->exp/2);
-			}
-			else if (newob->myguy) // split our experience
-			{
-				Uint32 exp = myguy->exp / 2;
-				
-				const short newlevel = static_cast<short>(calculate_level(exp));
-				// Downgrade us and the copy
-				myguy->upgrade_to_level(newlevel);
-				myguy->update_derived_stats(this);
-				myguy->exp = exp;
-				
-				newob->myguy->upgrade_to_level(newlevel);
-				newob->myguy->update_derived_stats(newob);
-				newob->myguy->exp = exp;
-			}
-
-			newob->team_num = team_num;
-			newob->foe = foe;
-			newob->leader = leader;
-			return 1;
+			const auto* fd2 = get_family_descriptor(family);
+			if (fd2 && fd2->on_ani_complete && fd2->on_ani_complete(this))
+				return 1;
 		}
 
 		ani_type = ANI_WALK;
@@ -1344,14 +1309,12 @@ walker  *walker::create_weapon()
 			break;
 	}
 
-	if (query_family() == FAMILY_CLERIC)
+	if (order == Order::Living)
 	{
-		weapon->ani_type = ANI_GLOWGROW;
-		weapon->lifetime += (stats_->level * 110);
+		const auto* fd = get_family_descriptor(family);
+		if (fd && fd->customize_weapon)
+			fd->customize_weapon(this, weapon);
 	}
-	//  if (query_family() == FAMILY_DRUID)
-	//       weapon->ani_type = ANI_GROW;
-	//duhhhh he's not using this as his normal weapon
 	return weapon;
 }
 

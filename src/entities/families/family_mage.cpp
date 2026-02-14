@@ -315,6 +315,10 @@ const FamilyDescriptor& describe_family_mage()
         .special_names = {"NONE", "TELEPORT", "WARP SPACE", "FREEZE TIME", "ENERGY WAVE", "HEARTBURST"},
         .alternate_names = {"NONE", "TELEPORT MARKER", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "MAGE DIED",
         .do_special = mage_do_special,
         .check_special_ai = mage_check_special_ai,
         .hit_response = mage_hit_response,
@@ -326,6 +330,8 @@ const FamilyDescriptor& describe_family_mage()
         .on_fire_weapon = nullptr,
         .handle_teleport = mage_handle_teleport,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

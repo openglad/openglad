@@ -175,6 +175,10 @@ const FamilyDescriptor& describe_family_orc()
         .special_names = {"NONE", "HOWL", "EAT CORPSE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "ORC DIED",
         .do_special = orc_do_special,
         .check_special_ai = orc_check_special_ai,
         .hit_response = nullptr,
@@ -186,6 +190,8 @@ const FamilyDescriptor& describe_family_orc()
         .on_fire_weapon = nullptr,
         .handle_teleport = nullptr,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

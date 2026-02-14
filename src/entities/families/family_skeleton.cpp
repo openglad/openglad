@@ -76,6 +76,10 @@ const FamilyDescriptor& describe_family_skeleton()
         .special_names = {"NONE", "TUNNEL", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = false,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "SKELETON CRUMBLED",
         .do_special = skeleton_do_special,
         .check_special_ai = skeleton_check_special_ai,
         .hit_response = nullptr,
@@ -87,6 +91,8 @@ const FamilyDescriptor& describe_family_skeleton()
         .on_fire_weapon = nullptr,
         .handle_teleport = skeleton_handle_teleport,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

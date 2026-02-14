@@ -150,6 +150,10 @@ const FamilyDescriptor& describe_family_archer()
         .special_names = {"NONE", "FIRE ARROWS", "BARRAGE", "EXPLODING BOLT", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "ARCHER DIED",
         .do_special = archer_do_special,
         .check_special_ai = archer_check_special_ai,
         .hit_response = archer_hit_response,
@@ -161,6 +165,8 @@ const FamilyDescriptor& describe_family_archer()
         .on_fire_weapon = nullptr,
         .handle_teleport = nullptr,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

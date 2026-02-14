@@ -68,6 +68,10 @@ void init_family_registry()
         for (int j = 0; j < FD_NUM_SPECIALS; j++) d.special_names[j] = "NONE";
         for (int j = 0; j < FD_NUM_SPECIALS; j++) d.alternate_names[j] = "NONE";
         d.leaves_bloodspot = true;
+        d.magic_damage_modifier = 1.0f;
+        d.is_stationary = false;
+        d.has_returning_weapon = false;
+        d.death_message = "SOMEONE DIED";
         d.do_special = nullptr;
         d.check_special_ai = nullptr;
         d.hit_response = nullptr;
@@ -79,6 +83,8 @@ void init_family_registry()
         d.on_fire_weapon = nullptr;
         d.handle_teleport = nullptr;
         d.on_create = nullptr;
+        d.customize_weapon = nullptr;
+        d.on_ani_complete = nullptr;
     }
 
     // === FAMILY_SOLDIER (0) — defined in families/family_soldier.cpp ===

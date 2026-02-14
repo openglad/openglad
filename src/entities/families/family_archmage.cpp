@@ -517,6 +517,10 @@ const FamilyDescriptor& describe_family_archmage()
         .special_names = {"NONE", "TELEPORT", "HEARTBURST", "SUMMON IMAGE", "MIND CONTROL", "NONE"},
         .alternate_names = {"NONE", "TELEPORT MARKER", "CHAIN LIGHTNING", "SUMMON ELEMENTAL", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "SOMEONE DIED",
         .do_special = archmage_do_special,
         .check_special_ai = nullptr,
         .hit_response = archmage_hit_response,
@@ -528,6 +532,8 @@ const FamilyDescriptor& describe_family_archmage()
         .on_fire_weapon = archmage_on_fire_weapon,
         .handle_teleport = archmage_handle_teleport,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

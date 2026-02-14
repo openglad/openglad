@@ -201,6 +201,10 @@ const FamilyDescriptor& describe_family_soldier()
         .special_names = {"NONE", "CHARGE", "BOOMERANG", "WHIRLWIND", "DISARM", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = true,
+        .death_message = "SOLDIER SLAIN",
         .do_special = soldier_do_special,
         .check_special_ai = soldier_check_special_ai,
         .hit_response = nullptr,
@@ -212,6 +216,8 @@ const FamilyDescriptor& describe_family_soldier()
         .on_fire_weapon = soldier_on_fire_weapon,
         .handle_teleport = nullptr,
         .on_create = soldier_on_create,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

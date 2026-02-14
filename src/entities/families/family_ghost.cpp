@@ -57,6 +57,10 @@ const FamilyDescriptor& describe_family_ghost()
         .special_names = {"NONE", "SCARE", "NONE", "NONE", "NONE", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = false,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "GHOST VANISHED",
         .do_special = ghost_do_special,
         .check_special_ai = ghost_check_special_ai,
         .hit_response = nullptr,
@@ -68,6 +72,8 @@ const FamilyDescriptor& describe_family_ghost()
         .on_fire_weapon = nullptr,
         .handle_teleport = nullptr,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

@@ -55,6 +55,10 @@ struct FamilyDescriptor {
 
     // Flags
     bool leaves_bloodspot;                     // false for ghost/skeleton/tower
+    float magic_damage_modifier;               // multiplier for incoming magical damage (1.0 = normal)
+    bool is_stationary;                        // true for TOWER1: can face but not move
+    bool has_returning_weapon;                  // true for SOLDIER: knife returns on death
+    const char* death_message;                 // "SOLDIER SLAIN", etc. (fallback: "SOMEONE DIED")
 
     // Behavioral callbacks (nullptr = use legacy switch / default behavior)
     bool (*do_special)(walker* self);
@@ -70,4 +74,6 @@ struct FamilyDescriptor {
     bool (*on_fire_weapon)(walker* self, walker* weapon); // before firing; false = block
     bool (*handle_teleport)(walker* self);          // teleport-out complete; true = handled
     void (*on_create)(walker* self);                // called when walker created from guy
+    void (*customize_weapon)(walker* self, walker* weapon); // tweak weapon after creation
+    bool (*on_ani_complete)(walker* self);    // animation end; true = handled
 };

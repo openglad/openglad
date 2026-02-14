@@ -16,6 +16,8 @@
  */
 
 #include <openglad/core/stats.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
 
@@ -139,13 +141,17 @@ bool walker::walkstep(float x, float y)
     lastx = x*stepsize;
     lasty = y*stepsize;
 
-    if (order==Order::Living && family==FAMILY_TOWER1)
+    if (order == Order::Living)
     {
-        curdir = static_cast<signed char>(facing(x, y));
-        enddir = curdir;
-        lastx = x;
-        lasty = y;
-        return 1;
+        const auto* fd = get_family_descriptor(family);
+        if (fd && fd->is_stationary)
+        {
+            curdir = static_cast<signed char>(facing(x, y));
+            enddir = curdir;
+            lastx = x;
+            lasty = y;
+            return 1;
+        }
     }
     returnvalue = walk(x*stepsize, y*stepsize);
     halfstep = 1;
@@ -299,10 +305,14 @@ bool walker::walk(float x, float y)
 
     dir = facing(x, y);
 
-    if (order==Order::Living && family==FAMILY_TOWER1)
+    if (order == Order::Living)
     {
-        curdir = static_cast<signed char>(dir);
-        return 1;
+        const auto* fd = get_family_descriptor(family);
+        if (fd && fd->is_stationary)
+        {
+            curdir = static_cast<signed char>(dir);
+            return 1;
+        }
     }
 
     if ( !x && !y)
@@ -403,7 +413,11 @@ bool walker::turn(short targetdir)
         curdir = static_cast<char>((curdir+7) %8);
 
     // Now set our lastx and lasty (facing) variables correctly
-    if ( (order!=Order::Living) || (family!=FAMILY_TOWER1) )
+    const bool stationary = (order == Order::Living) && [&]{
+        const auto* fd = get_family_descriptor(family);
+        return fd && fd->is_stationary;
+    }();
+    if (!stationary)
     {
         switch (curdir)
         {

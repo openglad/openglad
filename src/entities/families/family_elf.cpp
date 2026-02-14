@@ -117,6 +117,10 @@ const FamilyDescriptor& describe_family_elf()
         .special_names = {"NONE", "ROCKS", "BOUNCING ROCKS", "LOTS OF ROCKS", "MEGA ROCKS", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "ELF KILLED",
         .do_special = elf_do_special,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
@@ -128,6 +132,8 @@ const FamilyDescriptor& describe_family_elf()
         .on_fire_weapon = nullptr,
         .handle_teleport = nullptr,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

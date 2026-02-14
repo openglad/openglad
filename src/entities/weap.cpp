@@ -19,6 +19,8 @@
 //
 
 #include <openglad/entities/weap.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/render/smooth.h>
@@ -155,8 +157,11 @@ bool weap::death()
 	switch (family)
 	{
 		case FAMILY_KNIFE: // for returning knife
-			if (owner && owner->query_family() != FAMILY_SOLDIER)
-				break;  // only soldiers get returning knives
+		{
+			const auto* owner_fd = owner ? get_family_descriptor(owner->query_family()) : nullptr;
+			if (!owner_fd || !owner_fd->has_returning_weapon)
+				break;
+		}
 			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
 			newob->owner = owner;
 			newob->center_on(this);

@@ -17,6 +17,8 @@
 
 #include <openglad/core/combat_math.h>
 #include <openglad/core/stats.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
@@ -213,21 +215,12 @@ bool walker::attack(walker  *target)
                 attacker->myguy->scen_hits++;
             }
 
-            switch (targetfamily)
+            if (stats_->query_bit_flags(BIT_MAGICAL))
             {
-                case FAMILY_SLIME:        // Slimes are hurt MORE by
-                case FAMILY_SMALL_SLIME:  // magical or fire weapons
-                case FAMILY_MEDIUM_SLIME:
-                    if (stats_->query_bit_flags(BIT_MAGICAL))
-                        tempdamage *= 2; // twice as susceptible to magic..
-                    break;  // end of slimes
-                case FAMILY_BARBARIAN:              // Barbarians get LESS damaged
-                    if (stats_->query_bit_flags(BIT_MAGICAL)) // by magical attacks
-                        tempdamage /= 2;
-                    break;
-                default:
-                    break; // do nothing in default living case
-            } // end of living target case
+                const auto* fd = get_family_descriptor(targetfamily);
+                if (fd)
+                    tempdamage *= fd->magic_damage_modifier;
+            }
             break; // end of living
         default:
             // We hit something, but it wasn't living, so don't count
@@ -368,53 +361,10 @@ bool walker::attack(walker  *target)
                     else if (target->myguy && target->myguy->name.size() )
                         message = std::format("{} Died!", target->myguy->name);
                     else
-                        switch (target->query_family())
-                        {
-                            case FAMILY_SOLDIER:
-                                message = "SOLDIER SLAIN";
-                                break;
-                            case FAMILY_ARCHER:
-                                message = "ARCHER DIED";
-                                break;
-                            case FAMILY_THIEF:
-                                message = "THIEF KILLED";
-                                break;
-                            case FAMILY_ELF:
-                                message = "ELF KILLED";
-                                break;
-                            case FAMILY_MAGE:
-                                message = "MAGE DIED";
-                                break;
-                            case FAMILY_SKELETON:
-                                message = "SKELETON CRUMBLED";
-                                break;
-                            case FAMILY_CLERIC:
-                                message = "CLERIC DIED";
-                                break;
-                            case FAMILY_FIREELEMENTAL:
-                                message = "FIRE ELEMENTAL EXTINGUISHED";
-                                break;
-                            case FAMILY_FAERIE:
-                                message = "FAERIE POPPED";
-                                break;
-                            case FAMILY_SMALL_SLIME:
-                            case FAMILY_MEDIUM_SLIME:
-                            case FAMILY_SLIME:
-                                message = "SLIME DESTROYED";
-                                break;
-                            case FAMILY_GHOST:
-                                message = "GHOST VANISHED";
-                                break;
-                            case FAMILY_DRUID:
-                                message = "DRUID VANQUISHED";
-                                break;
-                            case FAMILY_ORC:
-                                message = "ORC DIED";
-                                break;
-                            default :
-                                message = "SOMEONE DIED";
-                                break;
-                        }
+                    {
+                        const auto* fd = get_family_descriptor(target->query_family());
+                        message = fd ? fd->death_message : "SOMEONE DIED";
+                    }
                     myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
                 }
             }

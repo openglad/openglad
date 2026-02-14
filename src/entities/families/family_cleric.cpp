@@ -35,6 +35,12 @@ static inline cfg_store& active_config()
     return cfg;
 }
 
+static void cleric_customize_weapon(walker* self, walker* weapon)
+{
+    weapon->ani_type = ANI_GLOWGROW;
+    weapon->lifetime += (self->stats()->level * 110);
+}
+
 static void cleric_on_shoved(walker* self)
 {
     self->current_special = 1; // healing
@@ -352,6 +358,10 @@ const FamilyDescriptor& describe_family_cleric()
         .special_names = {"NONE", "HEAL", "RAISE UNDEAD", "RAISE GHOST", "RESURRECT", "NONE"},
         .alternate_names = {"NONE", "MYSTIC MACE", "TURN UNDEAD", "TURN UNDEAD", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "CLERIC DIED",
         .do_special = cleric_do_special,
         .check_special_ai = cleric_check_special_ai,
         .hit_response = nullptr,
@@ -363,6 +373,8 @@ const FamilyDescriptor& describe_family_cleric()
         .on_fire_weapon = nullptr,
         .handle_teleport = nullptr,
         .on_create = nullptr,
+        .customize_weapon = cleric_customize_weapon,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

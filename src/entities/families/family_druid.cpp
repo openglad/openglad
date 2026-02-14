@@ -193,6 +193,10 @@ const FamilyDescriptor& describe_family_druid()
         .special_names = {"NONE", "GROW TREE", "SUMMON FAERIE", "REVEAL", "PROTECTION", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "NONE", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "DRUID VANQUISHED",
         .do_special = druid_do_special,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
@@ -204,6 +208,8 @@ const FamilyDescriptor& describe_family_druid()
         .on_fire_weapon = nullptr,
         .handle_teleport = nullptr,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }

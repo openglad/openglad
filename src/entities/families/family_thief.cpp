@@ -248,6 +248,10 @@ const FamilyDescriptor& describe_family_thief()
         .special_names = {"NONE", "DROP BOMB", "CLOAK", "TAUNT ENEMY", "POISON CLOUD", "NONE"},
         .alternate_names = {"NONE", "NONE", "NONE", "CHARM OPPONENT", "NONE", "NONE"},
         .leaves_bloodspot = true,
+        .magic_damage_modifier = 1.0f,
+        .is_stationary = false,
+        .has_returning_weapon = false,
+        .death_message = "THIEF KILLED",
         .do_special = thief_do_special,
         .check_special_ai = thief_check_special_ai,
         .hit_response = nullptr,
@@ -259,6 +263,8 @@ const FamilyDescriptor& describe_family_thief()
         .on_fire_weapon = nullptr,
         .handle_teleport = nullptr,
         .on_create = nullptr,
+        .customize_weapon = nullptr,
+        .on_ani_complete = nullptr,
     };
     return desc;
 }
