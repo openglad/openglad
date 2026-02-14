@@ -15,11 +15,12 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/legacy/graph.h>
 #include <openglad/input/button.h>
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
+#include <openglad/legacy/test_trace.h>
+#include <openglad/runtime/screen.h>
 
 #include "SDL.h"
 
