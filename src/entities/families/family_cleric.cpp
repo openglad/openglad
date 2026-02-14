@@ -35,6 +35,12 @@ static inline cfg_store& active_config()
     return cfg;
 }
 
+static void cleric_on_shoved(walker* self)
+{
+    self->current_special = 1; // healing
+    self->special();
+}
+
 #define BASE_GUY_HP 30
 
 static bool cleric_check_special_ai(living* self)
@@ -352,6 +358,11 @@ const FamilyDescriptor& describe_family_cleric()
         .set_difficulty = cleric_set_difficulty,
         .level_up = nullptr,
         .on_death = nullptr,
+        .on_act_living = nullptr,
+        .on_shoved = cleric_on_shoved,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }

@@ -74,6 +74,11 @@ const FamilyDescriptor& describe_family_skeleton()
         .set_difficulty = nullptr,
         .level_up = skeleton_level_up,
         .on_death = nullptr,
+        .on_act_living = nullptr,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }

@@ -34,6 +34,11 @@ const FamilyDescriptor& describe_family_tower1()
         .set_difficulty = nullptr,
         .level_up = nullptr,
         .on_death = nullptr,
+        .on_act_living = nullptr,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }

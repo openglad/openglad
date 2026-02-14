@@ -94,33 +94,6 @@ bool living::act()
 			dead = 1;
 			return death();
 		}
-		// Do other things based on our type ..
-		switch (family)
-		{
-			case FAMILY_FIREELEMENTAL: // we take a toll from our mage ..
-				if (stats_->hitpoints < stats_->max_hitpoints) // we're hurt
-				{
-					// Take a 'toll' of one health and 3 mp of mage, if there
-					Sint32 temp = 0;
-					if (owner->stats()->hitpoints >= (owner->stats()->max_hitpoints/3) )
-					{
-						temp = 1;
-						owner->stats()->hitpoints--;
-					}
-					if (temp && (owner->stats()->magicpoints >= 3) )
-					{
-						temp += 1;
-						owner->stats()->magicpoints -= 3;
-					}
-					if (temp == 2) // had both MP and HP, so heal 1 unit
-						stats_->hitpoints++;
-					else // else go down one more unit of lifetime
-						lifetime--;
-				} // end of hurt elemental
-				break;  // end of elemental drain
-			default:
-				break;
-		} // end of special stuff for summoned guys
 	}  // end of summoned monster stuff
 
 
@@ -252,23 +225,12 @@ bool living::act()
             hit_recoil = 0.0f;
     }
 
-	// Special things for various different living types
-	switch (family)
+	// Per-family periodic auto-powers (e.g. archmage view_all bonus)
 	{
-		case FAMILY_ARCHMAGE:  // gets bonus viewing, at times
-		    {
-		        Sint32 temp;
-                if (stats_->level >= 40)
-                    temp = 1;
-                else
-                    temp = 40 - stats_->level;
-                if (!(drawcycle%temp)) // then we get to see..
-                    view_all += 1;
-		    }
-			break;
-		default:
-			break;
-	}  // end of special family auto-powers
+		const auto* fd = get_family_descriptor(family);
+		if (fd && fd->on_act_living)
+			fd->on_act_living(this);
+	}
 
 	// Complete previous animations (like firing)
 	if (ani_type != ANI_WALK)
@@ -413,10 +375,10 @@ short living::shove(walker  *target, short x, short y)
 			//   caused by a blocked target.  We do so for now by clearing
 			//   all commands
 			target->stats()->clear_command();
-			if (target->query_family()==FAMILY_CLERIC)
 			{
-				target->current_special = 1; // healing
-				target->special();
+				const auto* fd = get_family_descriptor(target->query_family());
+				if (fd && fd->on_shoved)
+					fd->on_shoved(target);
 			}
 			target->stats()->set_command(COMMAND_WALK,4,x ,y );
 			return 1;

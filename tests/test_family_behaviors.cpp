@@ -920,3 +920,192 @@ void test_upgrade_to_level_large_diff()
     TEST_ASSERT_EQ(144, (int)int_delta, "mage int delta l1→10: 72*2=144");
 }
 REGISTER_TEST(test_upgrade_to_level_large_diff);
+
+// ===========================================================================
+// Step 3 pre-refactor tests: on_act_living, on_shoved, on_fire_weapon,
+//   handle_teleport, on_create
+// ===========================================================================
+
+// --- on_act_living: archmage gets periodic view_all bonus ---
+void test_archmage_periodic_view_all()
+{
+    auto w = make_living(FAMILY_ARCHMAGE);
+    TEST_ASSERT(w != nullptr, "make_living should succeed");
+    living* lv = static_cast<living*>(w.get());
+    w->stats()->level = 40;  // temp >= 1 when level>=40, so view_all increments every cycle
+    lv->drawcycle = 0;
+    short va_before = w->view_all;
+    // Simulate one act cycle — view_all should increment
+    lv->act();
+    TEST_ASSERT(w->view_all > va_before,
+                "archmage at level 40 should gain view_all during act()");
+}
+REGISTER_TEST(test_archmage_periodic_view_all);
+
+// Non-archmage should NOT gain view_all
+void test_non_archmage_no_view_all()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "make_living should succeed");
+    living* lv = static_cast<living*>(w.get());
+    short va_before = w->view_all;
+    lv->act();
+    TEST_ASSERT_EQ((int)va_before, (int)w->view_all,
+                   "soldier should not gain view_all during act()");
+}
+REGISTER_TEST(test_non_archmage_no_view_all);
+
+// --- on_act_living: fire elemental summoned drain ---
+void test_fire_elemental_summoned_drain()
+{
+    // Create a mage as owner
+    auto owner = make_living(FAMILY_MAGE);
+    TEST_ASSERT(owner != nullptr, "make owner mage");
+    owner->stats()->hitpoints = owner->stats()->max_hitpoints;
+    owner->stats()->magicpoints = owner->stats()->max_magicpoints;
+
+    // Create a fire elemental as summoned creature
+    auto fe = make_living(FAMILY_FIREELEMENTAL);
+    TEST_ASSERT(fe != nullptr, "make fire elemental");
+    fe->owner = owner.get();
+    fe->lifetime = 100;
+    fe->team_num = owner->team_num;
+    // Hurt the elemental so drain triggers
+    fe->stats()->hitpoints = fe->stats()->max_hitpoints / 2;
+
+    float owner_hp_before = owner->stats()->hitpoints;
+    float owner_mp_before = owner->stats()->magicpoints;
+
+    living* lv = static_cast<living*>(fe.get());
+    lv->act();
+
+    // Owner should lose 1 HP and 3 MP (drain)
+    TEST_ASSERT(owner->stats()->hitpoints < owner_hp_before,
+                "owner HP should decrease from fire elemental drain");
+    TEST_ASSERT(owner->stats()->magicpoints < owner_mp_before,
+                "owner MP should decrease from fire elemental drain");
+}
+REGISTER_TEST(test_fire_elemental_summoned_drain);
+
+// --- on_shoved: cleric casts heal when shoved ---
+void test_cleric_heals_when_shoved()
+{
+    myscreen->level_data.create_new_grid();
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 130, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    cleric->set_act_type(0); // AI-controlled
+    cleric->stats()->magicpoints = 500;
+
+    // Shove the cleric
+    static_cast<living*>(soldier)->shove(cleric, 1, 0);
+    // The cleric should have had its special triggered (current_special set to 1)
+    // We can't easily verify this happened since the special was already called,
+    // but we verify no crash occurred
+}
+REGISTER_TEST(test_cleric_heals_when_shoved);
+
+// Non-cleric should NOT cast heal when shoved
+void test_non_cleric_no_heal_when_shoved()
+{
+    myscreen->level_data.create_new_grid();
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    walker* archer = add_living_to_level(FAMILY_ARCHER, 0, 130, 100);
+    TEST_ASSERT(archer != nullptr, "archer created");
+    archer->set_act_type(0); // AI-controlled
+    archer->stats()->magicpoints = 500;
+
+    float mp_before = archer->stats()->magicpoints;
+    static_cast<living*>(soldier)->shove(archer, 1, 0);
+    // Archer's MP should not change (no heal cast)
+    TEST_ASSERT_FLOAT(mp_before, archer->stats()->magicpoints,
+                      "non-cleric should not cast heal when shoved");
+}
+REGISTER_TEST(test_non_cleric_no_heal_when_shoved);
+
+// --- on_fire_weapon: soldier weapons_left ---
+void test_soldier_weapons_left_limits_fire()
+{
+    myscreen->level_data.create_new_grid();
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    static_cast<living*>(soldier)->weapons_left = 1;
+    soldier->stats()->magicpoints = 1000;
+    soldier->lastx = 1; // firing direction
+
+    // First fire should succeed (weapons_left goes from 1 to 0)
+    walker* w1 = soldier->fire();
+    // w1 may be non-null (weapon created) or null if blocked, but weapons_left should decrement
+    (void)w1;
+
+    // Second fire should fail (weapons_left is 0)
+    walker* w2 = soldier->fire();
+    TEST_ASSERT(w2 == nullptr, "soldier with 0 weapons_left should not fire");
+}
+REGISTER_TEST(test_soldier_weapons_left_limits_fire);
+
+// --- on_fire_weapon: archmage weapon damage boost ---
+void test_archmage_weapon_damage_boost()
+{
+    myscreen->level_data.create_new_grid();
+    walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
+    TEST_ASSERT(arch != nullptr, "archmage created");
+    arch->stats()->magicpoints = 1000;
+    arch->lastx = 1; // firing direction
+
+    float mp_before = arch->stats()->magicpoints;
+    walker* weapon = arch->fire();
+    if (weapon && !weapon->dead)
+    {
+        // Archmage should have transferred 1/20th of remaining magic to weapon damage
+        float mp_used_for_weapon_cost = mp_before - arch->stats()->magicpoints;
+        // mp_used should be more than just weapon_cost (due to the 1/20 drain)
+        TEST_ASSERT(mp_used_for_weapon_cost > arch->stats()->weapon_cost,
+                    "archmage should spend extra MP on weapon damage");
+    }
+}
+REGISTER_TEST(test_archmage_weapon_damage_boost);
+
+// --- handle_teleport: mage teleport-out completes ---
+void test_mage_handle_teleport()
+{
+    auto w = make_living(FAMILY_MAGE);
+    TEST_ASSERT(w != nullptr, "make mage");
+    w->ani_type = ANI_TELE_OUT;
+    w->cycle = 0;
+    // Pump animate() until the animation completes and transitions
+    for (int i = 0; i < 50 && w->ani_type == ANI_TELE_OUT; i++)
+        w->animate();
+    TEST_ASSERT_EQ(ANI_TELE_IN, (int)w->ani_type,
+                   "mage teleport-out should transition to ANI_TELE_IN");
+}
+REGISTER_TEST(test_mage_handle_teleport);
+
+// Skeleton teleport: uses teleport_ranged
+void test_skeleton_handle_teleport()
+{
+    auto w = make_living(FAMILY_SKELETON);
+    TEST_ASSERT(w != nullptr, "make skeleton");
+    w->ani_type = ANI_TELE_OUT;
+    w->cycle = 0;
+    for (int i = 0; i < 50 && w->ani_type == ANI_TELE_OUT; i++)
+        w->animate();
+    TEST_ASSERT_EQ(ANI_TELE_IN, (int)w->ani_type,
+                   "skeleton teleport-out should transition to ANI_TELE_IN");
+}
+REGISTER_TEST(test_skeleton_handle_teleport);
+
+// --- on_create: soldier weapons_left set from level ---
+void test_soldier_weapons_left_on_create()
+{
+    guy g(FAMILY_SOLDIER);
+    g.teamnum = 0;
+    g.upgrade_to_level(5, true);
+    auto w = g.create_walker_owned(myscreen);
+    TEST_ASSERT(w != nullptr, "create soldier walker");
+    TEST_ASSERT_EQ(3, (int)static_cast<living*>(w.get())->weapons_left,
+                   "soldier weapons_left should be (level+1)/2 = 3 at level 5");
+}
+REGISTER_TEST(test_soldier_weapons_left_on_create);

@@ -127,6 +127,11 @@ const FamilyDescriptor& describe_family_slime()
         .set_difficulty = nullptr,
         .level_up = nullptr,
         .on_death = slime_on_death,
+        .on_act_living = nullptr,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }
@@ -155,6 +160,11 @@ const FamilyDescriptor& describe_family_small_slime()
         .set_difficulty = nullptr,
         .level_up = nullptr,
         .on_death = nullptr,
+        .on_act_living = nullptr,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }
@@ -183,6 +193,11 @@ const FamilyDescriptor& describe_family_medium_slime()
         .set_difficulty = nullptr,
         .level_up = nullptr,
         .on_death = medium_slime_on_death,
+        .on_act_living = nullptr,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }

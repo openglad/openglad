@@ -181,6 +181,11 @@ const FamilyDescriptor& describe_family_orc()
         .set_difficulty = orc_set_difficulty,
         .level_up = orc_level_up,
         .on_death = nullptr,
+        .on_act_living = nullptr,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }

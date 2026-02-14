@@ -27,6 +27,18 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 
 #define BASE_GUY_HP 30
 
+static void archmage_on_act_living(living* self)
+{
+    // Archmage gets bonus viewing periodically based on level
+    Sint32 temp;
+    if (self->stats()->level >= 40)
+        temp = 1;
+    else
+        temp = 40 - self->stats()->level;
+    if (!(self->drawcycle % temp))
+        self->view_all += 1;
+}
+
 static void archmage_hit_response(statistics* stats, walker* foe)
 {
     walker* controller = stats->controller;
@@ -494,6 +506,11 @@ const FamilyDescriptor& describe_family_archmage()
         .set_difficulty = nullptr,
         .level_up = archmage_level_up,
         .on_death = nullptr,
+        .on_act_living = archmage_on_act_living,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }

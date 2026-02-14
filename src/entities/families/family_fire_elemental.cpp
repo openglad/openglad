@@ -54,6 +54,32 @@ static void fire_elemental_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static void fire_elemental_on_act_living(living* self)
+{
+    // Summoned fire elemental drains owner HP/MP to heal itself
+    if (self->lifetime && self->owner && !self->owner->dead)
+    {
+        if (self->stats()->hitpoints < self->stats()->max_hitpoints)
+        {
+            Sint32 temp = 0;
+            if (self->owner->stats()->hitpoints >= (self->owner->stats()->max_hitpoints / 3))
+            {
+                temp = 1;
+                self->owner->stats()->hitpoints--;
+            }
+            if (temp && (self->owner->stats()->magicpoints >= 3))
+            {
+                temp += 1;
+                self->owner->stats()->magicpoints -= 3;
+            }
+            if (temp == 2)
+                self->stats()->hitpoints++;
+            else
+                self->lifetime--;
+        }
+    }
+}
+
 static bool fire_elemental_do_special(walker* self)
 {
     Sint32 tempx = static_cast<Sint32>(self->lastx);
@@ -98,6 +124,11 @@ const FamilyDescriptor& describe_family_fire_elemental()
         .set_difficulty = nullptr,
         .level_up = fire_elemental_level_up,
         .on_death = fire_elemental_on_death,
+        .on_act_living = fire_elemental_on_act_living,
+        .on_shoved = nullptr,
+        .on_fire_weapon = nullptr,
+        .handle_teleport = nullptr,
+        .on_create = nullptr,
     };
     return desc;
 }

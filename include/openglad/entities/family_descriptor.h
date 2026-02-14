@@ -56,11 +56,18 @@ struct FamilyDescriptor {
     // Flags
     bool leaves_bloodspot;                     // false for ghost/skeleton/tower
 
-    // Behavioral callbacks (nullptr = use legacy switch)
+    // Behavioral callbacks (nullptr = use legacy switch / default behavior)
     bool (*do_special)(walker* self);
     bool (*check_special_ai)(living* self);
     void (*hit_response)(statistics* stats, walker* who);
     void (*set_difficulty)(living* self, Uint32 level);
     void (*level_up)(guy* self, Sint32 level_diff);
     bool (*on_death)(walker* self);            // return true = handled
+
+    // Step 3 callbacks: remaining per-family behavioral dispatch
+    void (*on_act_living)(living* self);            // periodic effects during act()
+    void (*on_shoved)(walker* self);                // called when shoved by an ally
+    bool (*on_fire_weapon)(walker* self, walker* weapon); // before firing; false = block
+    bool (*handle_teleport)(walker* self);          // teleport-out complete; true = handled
+    void (*on_create)(walker* self);                // called when walker created from guy
 };

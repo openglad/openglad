@@ -74,6 +74,11 @@ void init_family_registry()
         d.set_difficulty = nullptr;
         d.level_up = nullptr;
         d.on_death = nullptr;
+        d.on_act_living = nullptr;
+        d.on_shoved = nullptr;
+        d.on_fire_weapon = nullptr;
+        d.handle_teleport = nullptr;
+        d.on_create = nullptr;
     }
 
     // === FAMILY_SOLDIER (0) — defined in families/family_soldier.cpp ===
