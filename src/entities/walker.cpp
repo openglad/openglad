@@ -426,18 +426,15 @@ walker  * walker::fire()
 	}
 	else
 	{
-		if (order==Order::Living && family==FAMILY_SOLDIER)
-        {
-            if(weapons_left <= 0)
-            {
-                // Give back the magic it cost, since we didn't throw it
-                stats_->magicpoints += stats_->weapon_cost;
-                weapon->dead = 1;
-                return nullptr;
-            }
-            else
-                weapons_left--;
-        }
+		if (order == Order::Living)
+		{
+			const auto* fd = get_family_descriptor(family);
+			if (fd && fd->on_fire_weapon)
+			{
+				if (!fd->on_fire_weapon(this, weapon))
+					return nullptr;
+			}
+		}
         
 		// Record our shot ..
 		if (myguy)
@@ -487,23 +484,7 @@ walker  * walker::fire()
 						break;
 				}
 			}
-		else if (order == Order::Living)
-		{
-			switch (family)
-			{
-				case FAMILY_ARCHMAGE:
-				    {
-				        // ArchMage gets 1/20th of 'extra'
-                        // magic for more damage ...
-                        float extra = stats_->magicpoints / 20;
-                        stats_->magicpoints -= extra;
-                        weapon->damage += extra; // get this in damage
-				    }
-					break;
-				default: // do nothing
-					break;
-			}  // end of switch for living family
-		} // end of switch for living
+		// Living-family weapon modifications handled by on_fire_weapon above
 		return weapon;
 	}
 
@@ -1250,26 +1231,13 @@ bool walker::animate()
 		}
 		if (ani_type == ANI_TELE_OUT && order == Order::Living)
 		{
-			if (family == FAMILY_MAGE || family==FAMILY_ARCHMAGE)
-			{
-				ani_type = ANI_TELE_IN;
-				cycle = 0;
-				teleport();
+			const auto* fd = get_family_descriptor(family);
+			if (fd && fd->handle_teleport && fd->handle_teleport(this))
 				return 1;
-			}
-			else if (family == FAMILY_SKELETON)
-			{
-				ani_type = ANI_TELE_IN;
-				cycle = 0;
-				teleport_ranged(stats_->level*18);
-				return 1;
-			}
-			else
-			{
-				ani_type = ANI_WALK;
-				cycle = 0;
-				return 0;
-			}
+			// Default: no teleport handler, just stop
+			ani_type = ANI_WALK;
+			cycle = 0;
+			return 0;
 		}
 		// Were we a slime who just split?
 		if (ani_type == ANI_SLIME_SPLIT && order == Order::Living)

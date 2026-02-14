@@ -12,6 +12,14 @@
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
+static bool skeleton_handle_teleport(walker* self)
+{
+    self->ani_type = ANI_TELE_IN;
+    self->cycle = 0;
+    self->teleport_ranged(self->stats()->level * 18);
+    return true;
+}
+
 #define BASE_GUY_HP 30
 
 static bool skeleton_check_special_ai(living* self)
@@ -77,7 +85,7 @@ const FamilyDescriptor& describe_family_skeleton()
         .on_act_living = nullptr,
         .on_shoved = nullptr,
         .on_fire_weapon = nullptr,
-        .handle_teleport = nullptr,
+        .handle_teleport = skeleton_handle_teleport,
         .on_create = nullptr,
     };
     return desc;

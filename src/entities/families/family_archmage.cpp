@@ -27,6 +27,23 @@ static inline Uint32 rng(Uint32 max_exclusive) {
 
 #define BASE_GUY_HP 30
 
+static bool archmage_handle_teleport(walker* self)
+{
+    self->ani_type = ANI_TELE_IN;
+    self->cycle = 0;
+    self->teleport();
+    return true;
+}
+
+static bool archmage_on_fire_weapon(walker* self, walker* weapon)
+{
+    // ArchMage gets 1/20th of 'extra' magic for more damage
+    float extra = self->stats()->magicpoints / 20;
+    self->stats()->magicpoints -= extra;
+    weapon->damage += extra;
+    return true;
+}
+
 static void archmage_on_act_living(living* self)
 {
     // Archmage gets bonus viewing periodically based on level
@@ -508,8 +525,8 @@ const FamilyDescriptor& describe_family_archmage()
         .on_death = nullptr,
         .on_act_living = archmage_on_act_living,
         .on_shoved = nullptr,
-        .on_fire_weapon = nullptr,
-        .handle_teleport = nullptr,
+        .on_fire_weapon = archmage_on_fire_weapon,
+        .handle_teleport = archmage_handle_teleport,
         .on_create = nullptr,
     };
     return desc;

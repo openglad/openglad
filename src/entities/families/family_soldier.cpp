@@ -153,6 +153,25 @@ static bool soldier_check_special_ai(living* self)
     return false;
 }
 
+static bool soldier_on_fire_weapon(walker* self, walker* weapon)
+{
+    living* lv = static_cast<living*>(self);
+    if (lv->weapons_left <= 0)
+    {
+        self->stats()->magicpoints += self->stats()->weapon_cost;
+        weapon->dead = 1;
+        return false;
+    }
+    lv->weapons_left--;
+    return true;
+}
+
+static void soldier_on_create(walker* self)
+{
+    static_cast<living*>(self)->weapons_left =
+        static_cast<short>((self->stats()->level + 1) / 2);
+}
+
 static void soldier_set_difficulty(living* self, Uint32 level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
@@ -190,9 +209,9 @@ const FamilyDescriptor& describe_family_soldier()
         .on_death = nullptr,
         .on_act_living = nullptr,
         .on_shoved = nullptr,
-        .on_fire_weapon = nullptr,
+        .on_fire_weapon = soldier_on_fire_weapon,
         .handle_teleport = nullptr,
-        .on_create = nullptr,
+        .on_create = soldier_on_create,
     };
     return desc;
 }

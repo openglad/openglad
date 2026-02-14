@@ -27,6 +27,14 @@ static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
 
+static bool mage_handle_teleport(walker* self)
+{
+    self->ani_type = ANI_TELE_IN;
+    self->cycle = 0;
+    self->teleport();
+    return true;
+}
+
 #define BASE_GUY_HP 30
 
 static bool mage_check_special_ai(living* self)
@@ -316,7 +324,7 @@ const FamilyDescriptor& describe_family_mage()
         .on_act_living = nullptr,
         .on_shoved = nullptr,
         .on_fire_weapon = nullptr,
-        .handle_teleport = nullptr,
+        .handle_teleport = mage_handle_teleport,
         .on_create = nullptr,
     };
     return desc;
