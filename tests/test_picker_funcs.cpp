@@ -1,6 +1,9 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/entities/guy.h>
 #include <openglad/input/button.h>
+#include <openglad/legacy/base.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>

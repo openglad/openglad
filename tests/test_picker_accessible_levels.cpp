@@ -1,4 +1,4 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 #include <algorithm>
@@ -62,4 +62,3 @@ void test_picker_get_accessible_levels_handles_missing_leveldata()
     TEST_ASSERT(contains(levels, 9999), "bogus completed level id should still be included as accessible");
 }
 REGISTER_TEST(test_picker_get_accessible_levels_handles_missing_leveldata);
-
