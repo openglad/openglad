@@ -523,6 +523,14 @@ add_custom_target(check_graph_h_includes
     VERBATIM
 )
 
+# Vendor header leak check: no third-party headers in public or internal code.
+add_custom_target(check_vendor_leaks
+    COMMAND ${CMAKE_SOURCE_DIR}/scripts/check_vendor_leaks.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Checking vendor header isolation"
+    VERBATIM
+)
+
 # --------------------------------------------------------------------------
 # External dependency targets
 # --------------------------------------------------------------------------
@@ -634,7 +642,7 @@ if(NOT EMSCRIPTEN)
         target_link_libraries(og_game INTERFACE "-Wl,--end-group")
     endif()
     target_link_libraries(og_game INTERFACE og_runtime_deps)
-    add_dependencies(og_game check_graph_h_includes)
+    add_dependencies(og_game check_graph_h_includes check_vendor_leaks)
 
     # Stage runtime assets into the build tree so tests and local runs do not
     # depend on pre-existing user data.
@@ -926,7 +934,7 @@ if(NOT EMSCRIPTEN)
         target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
-        add_dependencies(og_game_test check_graph_h_includes)
+        add_dependencies(og_game_test check_graph_h_includes check_vendor_leaks)
 
         add_executable(openglad_test
             ${SRC_DIR}/glad.cpp
