@@ -31,12 +31,12 @@ class vbutton;
 
 // Definition of a button
 
-#define BUT_STR 0
-#define BUT_DEX 1
-#define BUT_CON 2
-#define BUT_INT 3
-#define BUT_ARMOR 4
-#define BUT_LEVEL 5
+inline constexpr int BUT_STR   = 0;
+inline constexpr int BUT_DEX   = 1;
+inline constexpr int BUT_CON   = 2;
+inline constexpr int BUT_INT   = 3;
+inline constexpr int BUT_ARMOR = 4;
+inline constexpr int BUT_LEVEL = 5;
 
 // Button edge-colors
 inline constexpr char BUTTON_FACING = 13; //12
@@ -142,7 +142,7 @@ class vbutton
         bool no_draw;  // Does not draw but still accepts clicks
 };
 
-#define MAX_BUTTONS 50  // max buttons per screen
+inline constexpr int MAX_BUTTONS = 50;  // max buttons per screen
 extern std::array<vbutton*, MAX_BUTTONS> allbuttons;
 void clear_allbuttons();
 

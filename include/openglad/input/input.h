@@ -105,40 +105,40 @@
 #define KEYSTATE_F10 SDL_SCANCODE_F10
 
 
-// Zardus: defines for event getting method
-#define POLL 0
-#define WAIT 1
+// Event getting method
+inline constexpr int POLL = 0;
+inline constexpr int WAIT = 1;
 
-//Keyboard defines
-#define MAXKEYS 320
+// Keyboard defines
+inline constexpr int MAXKEYS = 320;
 
-//Mouse Defines
-#define MOUSE_RESET 0
-#define MOUSE_STATE 3
-#define MSTATE 4
-#define MOUSE_X 0
-#define MOUSE_Y 1
-#define MOUSE_LEFT 2
-#define MOUSE_RIGHT 3
+// Mouse defines
+inline constexpr int MOUSE_RESET = 0;
+inline constexpr int MOUSE_STATE = 3;
+inline constexpr int MSTATE = 4;
+inline constexpr int MOUSE_X = 0;
+inline constexpr int MOUSE_Y = 1;
+inline constexpr int MOUSE_LEFT = 2;
+inline constexpr int MOUSE_RIGHT = 3;
 
-// These are keyboard defines .. high-level
-#define KEY_UP                  0
-#define KEY_UP_RIGHT            1
-#define KEY_RIGHT               2
-#define KEY_DOWN_RIGHT          3
-#define KEY_DOWN                4
-#define KEY_DOWN_LEFT           5
-#define KEY_LEFT                6
-#define KEY_UP_LEFT             7
-#define KEY_FIRE                8
-#define KEY_SPECIAL             9
-#define KEY_SWITCH              10
-#define KEY_SPECIAL_SWITCH      11
-#define KEY_YELL                12
-#define KEY_SHIFTER             13
-#define KEY_PREFS               14
-#define KEY_CHEAT               15
-#define NUM_KEYS               16
+// High-level key action indices (used as array indices into key maps).
+inline constexpr int KEY_UP                  = 0;
+inline constexpr int KEY_UP_RIGHT            = 1;
+inline constexpr int KEY_RIGHT               = 2;
+inline constexpr int KEY_DOWN_RIGHT          = 3;
+inline constexpr int KEY_DOWN                = 4;
+inline constexpr int KEY_DOWN_LEFT           = 5;
+inline constexpr int KEY_LEFT                = 6;
+inline constexpr int KEY_UP_LEFT             = 7;
+inline constexpr int KEY_FIRE                = 8;
+inline constexpr int KEY_SPECIAL             = 9;
+inline constexpr int KEY_SWITCH              = 10;
+inline constexpr int KEY_SPECIAL_SWITCH      = 11;
+inline constexpr int KEY_YELL                = 12;
+inline constexpr int KEY_SHIFTER             = 13;
+inline constexpr int KEY_PREFS               = 14;
+inline constexpr int KEY_CHEAT               = 15;
+inline constexpr int NUM_KEYS                = 16;
 
 
 class JoyData

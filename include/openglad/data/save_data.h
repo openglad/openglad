@@ -28,7 +28,7 @@
 class guy;
 class walker;
 
-#define MAX_TEAM_SIZE 24 //max # of guys on a team
+inline constexpr int MAX_TEAM_SIZE = 24; // max # of guys on a team
 
 enum class SaveDataIoError
 {
