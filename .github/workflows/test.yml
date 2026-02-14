@@ -22,10 +22,11 @@ jobs:
         run: cmake --preset ci-test
 
       - name: Build module test binaries
-        run: cmake --build --preset ci-test --target og_data_tests og_runtime_tests -j"$(nproc)"
+        run: cmake --build --preset ci-test --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
 
       - name: Run module test binaries
         run: |
+          ./build/ci-test/og_unit_tests
           ./build/ci-test/og_data_tests
           ./build/ci-test/og_runtime_tests
 
@@ -63,13 +64,14 @@ jobs:
         run: cmake --preset ci-asan
 
       - name: Build sanitizer test binaries
-        run: cmake --build --preset ci-asan --target og_data_tests og_runtime_tests -j"$(nproc)"
+        run: cmake --build --preset ci-asan --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
 
       - name: Run sanitizer tests
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
+          ./build/ci-asan/og_unit_tests
           ./build/ci-asan/og_data_tests
           ./build/ci-asan/og_runtime_tests
 
