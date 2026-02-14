@@ -18,10 +18,16 @@
 
 // Definition of LOADER class
 
-#include <openglad/legacy/base.h>
+#include "SDL.h"
+#include <openglad/data/level_data.h> // Order forward-decl
+#include <openglad/data/pixie_data.h>
 #include <array>
 #include <memory>
 #include <vector>
+
+class screen;
+class walker;
+class pixieN;
 
 class loader
 {

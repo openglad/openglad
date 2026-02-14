@@ -16,9 +16,12 @@
  */
 #pragma once
 
-#include <openglad/legacy/base.h>
-#include <openglad/core/stats.h>
+#include "SDL.h"
 #include <memory>
+#include <string>
+
+class screen;
+class walker;
 
 // Holds attributes for characters.
 // Used to store character data in SaveData's team_list.
