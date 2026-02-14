@@ -14,7 +14,6 @@ src/ui/picker_dialogs.cpp
 src/ui/picker_main_menu.cpp
 src/ui/picker_team_build.cpp
 src/runtime/screen.cpp
-src/render/smooth.cpp
 src/core/stats.cpp
 src/render/view.cpp
 src/entities/walker.cpp

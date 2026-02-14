@@ -18,7 +18,6 @@
 
 #include <openglad/render/smooth.h>
 #include <openglad/legacy/base.h>
-#include <openglad/legacy/graph.h>
 #include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -905,4 +904,3 @@ void smoother::set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue)
 
 	mygrid[x+y*maxx] = static_cast<char>(whatvalue);
 }
-
