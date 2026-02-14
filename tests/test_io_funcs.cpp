@@ -1,8 +1,5 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/platform/io.h>
 #include "test_framework.h"
-
-extern screen* myscreen;
 
 // ---------------------------------------------------------------------------
 // explode() - string splitting utility
