@@ -781,7 +781,10 @@ Sint32 create_detail_menu(guy *arg1)
 	int num_buttons = 2;
 	int highlighted_button = 0;
 	
-	buttons[1].hidden = !(thisguy->family == FAMILY_MAGE && thisguy->level >= 6) && !(thisguy->family == FAMILY_ORC && thisguy->level >= 5);
+	{
+	    const auto* fd = get_family_descriptor(thisguy->family);
+	    buttons[1].hidden = !(fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req);
+	}
 	localbuttons = init_buttons(buttons, num_buttons);
 
    //leftmouse(buttons);
@@ -806,28 +809,17 @@ Sint32 create_detail_menu(guy *arg1)
                    detailmouse.y <= 66) || (pressed && highlighted_button == 1));
        if(do_promote)
        {
-           if (thisguy->family == FAMILY_MAGE &&
-                   thisguy->level >= 6)
+           const auto* fd = get_family_descriptor(thisguy->family);
+           if (fd && fd->promotes_to >= 0 && thisguy->level >= fd->promotion_level_req)
            {
-               // Become an archmage!
-	               thisguy->upgrade_to_level(static_cast<short>(((thisguy->level-6) / 2) + 1));
-               thisguy->family = FAMILY_ARCHMAGE;
+               short new_level = fd->promotion_new_level ? fd->promotion_new_level(thisguy->level) : 1;
+               thisguy->upgrade_to_level(new_level);
+               thisguy->family = static_cast<unsigned char>(fd->promotes_to);
                myscreen->soundp->play_sound(SOUND_EXPLODE);
                myscreen->soundp->play_sound(SOUND_EXPLODE);
                myscreen->soundp->play_sound(SOUND_EXPLODE);
                return menu_result_id(MenuResult::Redraw);
-           }  // end of mage->archmage
-           else if (thisguy->family == FAMILY_ORC &&
-                    thisguy->level >= 5)
-           {
-               // Become an Orcish Captain!
-               thisguy->upgrade_to_level(1);
-               thisguy->family = FAMILY_BIG_ORC; // fake for now
-               myscreen->soundp->play_sound(SOUND_DIE1);
-               myscreen->soundp->play_sound(SOUND_DIE2);
-               myscreen->soundp->play_sound(SOUND_DIE1);
-               return menu_result_id(MenuResult::Redraw);
-           } // end of orc->orc-captain
+           }
        }
         
         if(do_click)

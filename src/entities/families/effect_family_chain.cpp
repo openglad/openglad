@@ -146,6 +146,7 @@ const EffectFamilyDescriptor& describe_effect_chain()
         .family_id = FAMILY_CHAIN,
         .name = "CHAIN",
         .loops_animation = false,
+        .creates_hit_effect = false,
         .init_bit_flags = 0,
         .on_act = chain_on_act,
         .on_death = nullptr,

@@ -157,6 +157,11 @@ static void orc_level_up(guy* self, Sint32 level_diff)
     self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
 }
 
+static short orc_promotion_level([[maybe_unused]] int old_level)
+{
+    return 1;
+}
+
 const FamilyDescriptor& describe_family_orc()
 {
     static const FamilyDescriptor desc = {
@@ -178,6 +183,10 @@ const FamilyDescriptor& describe_family_orc()
         .magic_damage_modifier = 1.0f,
         .is_stationary = false,
         .has_returning_weapon = false,
+        .is_undead = false,
+        .promotes_to = FAMILY_BIG_ORC,
+        .promotion_level_req = 5,
+        .promotion_new_level = orc_promotion_level,
         .death_message = "ORC DIED",
         .do_special = orc_do_special,
         .check_special_ai = orc_check_special_ai,

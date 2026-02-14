@@ -70,6 +70,7 @@ const EffectFamilyDescriptor& describe_effect_ghost_scare()
         .family_id = FAMILY_GHOST_SCARE,
         .name = "GHOST_SCARE",
         .loops_animation = false,
+        .creates_hit_effect = false,
         .init_bit_flags = 0,
         .on_act = ghost_scare_on_act,
         .on_death = ghost_scare_on_death,

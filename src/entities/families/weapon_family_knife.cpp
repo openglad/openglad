@@ -47,6 +47,7 @@ const WeaponFamilyDescriptor& describe_weapon_knife()
         .name = "KNIFE",
         .fire_sound = SOUND_FWIP,
         .skip_sit_notify = false,
+        .is_auto_attackable = false,
         .init_bit_flags = 0,
         .init_lifetime = 0,
         .init_ani_type = 0,

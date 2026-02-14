@@ -297,6 +297,11 @@ static bool mage_do_special(walker* self)
     return true;
 }
 
+static short mage_promotion_level(int old_level)
+{
+    return static_cast<short>((old_level - 6) / 2 + 1);
+}
+
 const FamilyDescriptor& describe_family_mage()
 {
     static const FamilyDescriptor desc = {
@@ -318,6 +323,10 @@ const FamilyDescriptor& describe_family_mage()
         .magic_damage_modifier = 1.0f,
         .is_stationary = false,
         .has_returning_weapon = false,
+        .is_undead = false,
+        .promotes_to = FAMILY_ARCHMAGE,
+        .promotion_level_req = 6,
+        .promotion_new_level = mage_promotion_level,
         .death_message = "MAGE DIED",
         .do_special = mage_do_special,
         .check_special_ai = mage_check_special_ai,

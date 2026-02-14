@@ -16,6 +16,7 @@ struct EffectFamilyDescriptor {
     int family_id;
     const char* name;
     bool loops_animation;     // true = loop cycle; false = one-shot
+    bool creates_hit_effect;  // true = creates hit animation on damage (like weapons do)
     Sint32 init_bit_flags;    // BIT_ flags set on creation in gloader
 
     bool (*on_act)(effect* self);

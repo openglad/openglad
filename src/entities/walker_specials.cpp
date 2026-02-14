@@ -164,11 +164,8 @@ Sint32 walker::turn_undead(Sint32 range, [[maybe_unused]] Sint32 power)
 
     for(auto* w : deadlist)
 	{
-		if (w
-		        && ( (w->query_family() == FAMILY_SKELETON) ||
-		             (w->query_family() == FAMILY_GHOST)
-		           )
-		   ) // end of if-check
+		const auto* target_fd = w ? get_family_descriptor(w->query_family()) : nullptr;
+		if (w && target_fd && target_fd->is_undead)
 		{
 			if (rng(range*40) > rng(w->stats()->level*10) )
 			{

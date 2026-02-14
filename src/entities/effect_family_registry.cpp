@@ -38,6 +38,7 @@ void init_effect_family_registry()
         d.family_id = i;
         d.name = "EFFECT";
         d.loops_animation = false;
+        d.creates_hit_effect = false;
         d.init_bit_flags = 0;
         d.on_act = nullptr;
         d.on_death = nullptr;

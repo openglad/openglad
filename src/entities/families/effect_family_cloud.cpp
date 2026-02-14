@@ -80,6 +80,7 @@ const EffectFamilyDescriptor& describe_effect_cloud()
         .family_id = FAMILY_CLOUD,
         .name = "CLOUD",
         .loops_animation = true,
+        .creates_hit_effect = false,
         .init_bit_flags = BIT_NO_COLLIDE | BIT_FLYING,
         .on_act = cloud_on_act,
         .on_death = nullptr,

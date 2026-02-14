@@ -89,6 +89,7 @@ const EffectFamilyDescriptor& describe_effect_knife_back()
         .family_id = FAMILY_KNIFE_BACK,
         .name = "KNIFE_BACK",
         .loops_animation = true,
+        .creates_hit_effect = true,
         .init_bit_flags = 0,
         .on_act = knife_back_on_act,
         .on_death = nullptr,

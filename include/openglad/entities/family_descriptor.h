@@ -58,6 +58,13 @@ struct FamilyDescriptor {
     float magic_damage_modifier;               // multiplier for incoming magical damage (1.0 = normal)
     bool is_stationary;                        // true for TOWER1: can face but not move
     bool has_returning_weapon;                  // true for SOLDIER: knife returns on death
+    bool is_undead;                            // true for SKELETON, GHOST: affected by turn_undead
+
+    // Class promotion (picker)
+    int promotes_to;                           // family to promote to (-1 = no promotion)
+    int promotion_level_req;                   // minimum level required for promotion
+    short (*promotion_new_level)(int old_level); // calculate new level after promotion (nullptr = level 1)
+
     const char* death_message;                 // "SOLDIER SLAIN", etc. (fallback: "SOMEONE DIED")
 
     // Behavioral callbacks (nullptr = use legacy switch / default behavior)

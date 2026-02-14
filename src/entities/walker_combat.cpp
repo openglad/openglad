@@ -21,6 +21,8 @@
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/effect_family_descriptor.h>
+#include <openglad/entities/effect_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
@@ -91,7 +93,8 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     if(active_config().is_on("effects", "hit_anim"))
     {
         // Create hit effect
-        if(query_order() != Order::FX || query_family() == FAMILY_KNIFE_BACK)
+        const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(query_family()) : nullptr;
+        if(query_order() != Order::FX || (efd && efd->creates_hit_effect))
         {
            walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_HIT);
             if (newob)

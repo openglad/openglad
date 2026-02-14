@@ -52,6 +52,7 @@ const WeaponFamilyDescriptor& describe_weapon_door()
         .name = "DOOR",
         .fire_sound = SOUND_FWIP,
         .skip_sit_notify = true,
+        .is_auto_attackable = true,
         .init_bit_flags = 0,
         .init_lifetime = 0,
         .init_ani_type = 0,

@@ -43,6 +43,7 @@ void init_weapon_family_registry()
         d.name = "WEAPON";
         d.fire_sound = SOUND_FWIP;
         d.skip_sit_notify = false;
+        d.is_auto_attackable = false;
         d.init_bit_flags = 0;
         d.init_lifetime = 0;
         d.init_ani_type = 0;

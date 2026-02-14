@@ -23,6 +23,8 @@
 #include <openglad/render/smooth.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
+#include <openglad/entities/weapon_family_descriptor.h>
+#include <openglad/entities/weapon_family_registry.h>
 #include <openglad/entities/living.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
@@ -462,15 +464,15 @@ bool living::walk(float x, float y)
 
 bool walkerIsAutoAttackable(walker* ob)
 {
-    return (ob->query_order() == Order::Living
-             || ob->query_family() == FAMILY_TENT
-             || ob->query_family() == FAMILY_TOWER
-             || ob->query_family() == FAMILY_TOWER1
-             || ob->query_family() == FAMILY_TREEHOUSE
-             || ob->query_family() == FAMILY_BONES
-             || ob->query_family() == FAMILY_GLOW
-             || ob->query_family() == FAMILY_TREE
-             || ob->query_family() == FAMILY_DOOR);
+    Order order = ob->query_order();
+    if (order == Order::Living || order == Order::Generator)
+        return true;
+    if (order == Order::Weapon)
+    {
+        const auto* wfd = get_weapon_family_descriptor(ob->query_family());
+        return wfd && wfd->is_auto_attackable;
+    }
+    return false;
 }
 
 bool living::collide(walker  *ob)

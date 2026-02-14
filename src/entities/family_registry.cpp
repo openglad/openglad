@@ -71,6 +71,10 @@ void init_family_registry()
         d.magic_damage_modifier = 1.0f;
         d.is_stationary = false;
         d.has_returning_weapon = false;
+        d.is_undead = false;
+        d.promotes_to = -1;
+        d.promotion_level_req = 0;
+        d.promotion_new_level = nullptr;
         d.death_message = "SOMEONE DIED";
         d.do_special = nullptr;
         d.check_special_ai = nullptr;

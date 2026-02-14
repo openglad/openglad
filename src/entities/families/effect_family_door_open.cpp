@@ -48,6 +48,7 @@ const EffectFamilyDescriptor& describe_effect_door_open()
         .family_id = FAMILY_DOOR_OPEN,
         .name = "DOOR_OPEN",
         .loops_animation = false,
+        .creates_hit_effect = false,
         .init_bit_flags = 0,
         .on_act = door_open_on_act,
         .on_death = nullptr,
