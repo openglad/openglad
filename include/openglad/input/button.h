@@ -16,7 +16,6 @@
  */
 #pragma once
 
-#include <openglad/legacy/base.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/data/gloader.h>
 #include <openglad/render/pixien.h>
@@ -26,6 +25,7 @@
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <string>
 #include <openglad/input/input.h>
 class vbutton;
 
