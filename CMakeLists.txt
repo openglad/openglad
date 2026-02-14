@@ -938,6 +938,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
         )
 
         # Module-level test binaries (kept in addition to the full integration suite).
