@@ -1,4 +1,7 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/stats.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
@@ -60,4 +63,3 @@ void test_effect_death_bomb_spawns_explosion_with_owner_and_damage()
     (void)bomb->death();
 }
 REGISTER_TEST(test_effect_death_bomb_spawns_explosion_with_owner_and_damage);
-
