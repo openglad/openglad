@@ -15,7 +15,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/legacy/graph.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/walker.h>
+#include <openglad/runtime/screen.h>
+
 short walker::move(short x, short y)
 {
     return setxy(static_cast<short>(xpos+x), static_cast<short>(ypos+y));
