@@ -15,11 +15,21 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/legacy/graph.h>
 #include <openglad/core/combat_math.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/walker.h>
+#include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
 #include <openglad/legacy/test_trace.h>
+
+#include <cstdlib>
 #include <format>
+#include <list>
+#include <string>
 
 namespace {
 static inline Uint32 rng(Uint32 max_exclusive)

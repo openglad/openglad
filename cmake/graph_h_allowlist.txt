@@ -1,3 +1,2 @@
 src/runtime/screen.cpp
 src/render/view.cpp
-src/entities/walker_specials.cpp
