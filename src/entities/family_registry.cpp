@@ -40,7 +40,7 @@ void init_family_registry()
         for (int j = 0; j < 8; j++) d.derived_bonuses[j] = 0;
         for (int j = 0; j < 6; j++) d.stat_costs[j] = 0;
         for (int j = 0; j < FD_NUM_SPECIALS; j++) d.special_cost[j] = 5000;
-        d.weapon_cost = 0;
+        d.weapon_cost = 1;  // default from gloader create_walker_owned
         d.default_weapon = FAMILY_KNIFE;
         d.init_bit_flags = 0;
         d.init_ani_type = 0;

@@ -101,6 +101,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/core/combat_math.cpp
     ${SRC_DIR}/input/button.cpp
     ${SRC_DIR}/entities/effect.cpp
+    ${SRC_DIR}/entities/family_registry.cpp
     ${SRC_DIR}/runtime/game.cpp
     ${SRC_DIR}/render/graphlib.cpp
     ${SRC_DIR}/entities/guy.cpp
@@ -898,6 +899,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_input_event_dispatch.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
         )
 
         # Module-level test binaries (kept in addition to the full integration suite).
