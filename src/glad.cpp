@@ -21,6 +21,7 @@
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_loop.h>
+#include <openglad/runtime/game_session.h>
 #include <openglad/runtime/screen_lifecycle.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -231,14 +232,19 @@ int main(int argc, char *argv[])
 		init_logging();  // Set up logging output (uses JS console on web)
 		io_init(argc, argv);
 
-		active_config().load_settings();
-		active_config().save_settings();
-		active_config().commandline(argc, argv);
+		cfg.load_settings();
+		cfg.save_settings();
+		cfg.commandline(argc, argv);
 
-		ctx().prefs = std::make_unique<options>();
-		theprefs = ctx().prefs.get();
-		create_global_screen(1);
-		ctx().config = &active_config();
+		// GameSession is the RAII root for all runtime state.
+		// It owns the screen, prefs, and installs legacy global shims.
+		og::runtime::GameSession::Config session_cfg;
+		session_cfg.numviews = 1;
+		session_cfg.allocate_screen = true;
+		session_cfg.allocate_prefs = true;
+		session_cfg.install_legacy_globals = true;
+		session_cfg.install_global_context = true;
+		og::runtime::GameSession session(session_cfg);
 
     #ifdef OUYA
     OuyaControllerManager::init();
@@ -280,6 +286,7 @@ int main(int argc, char *argv[])
 		io_exit();
 	#endif
 
+	// Session destructor restores previous globals and frees owned resources.
 	}
 	catch (const std::runtime_error& e)
 	{

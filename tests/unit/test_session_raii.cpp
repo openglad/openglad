@@ -51,3 +51,46 @@ OG_UNIT_TEST(test_game_session_seeded_rng_is_deterministic)
     OG_ASSERT(a1 == b1);
     OG_ASSERT(a2 == b2);
 }
+
+OG_UNIT_TEST(test_game_session_repeated_create_destroy)
+{
+    // Verify sessions can be created and destroyed repeatedly without leaking
+    // or corrupting global state. (Headless: skip screen/prefs which need SDL/PhysFS.)
+    screen* baseline_screen = myscreen;
+    options* baseline_prefs = theprefs;
+
+    for (int i = 0; i < 5; ++i) {
+        og::runtime::GameSession::Config session_cfg;
+        session_cfg.allocate_screen = false;
+        session_cfg.allocate_prefs = false;
+        session_cfg.install_legacy_globals = true;
+        session_cfg.install_global_context = true;
+        session_cfg.allocate_seeded_rng = true;
+        session_cfg.rng_seed = static_cast<Uint32>(i);
+        og::runtime::GameSession session(session_cfg);
+
+        OG_ASSERT(myscreen == nullptr);
+        OG_ASSERT(theprefs == nullptr);
+        OG_ASSERT(session.context().rng != nullptr);
+        // Verify RNG works within session
+        session.context().rng->next(100);
+    }
+
+    // After all sessions destroyed, globals should be restored
+    OG_ASSERT(myscreen == baseline_screen);
+    OG_ASSERT(theprefs == baseline_prefs);
+}
+
+OG_UNIT_TEST(test_game_session_cfg_accessible)
+{
+    // Verify the session's GameContext provides access to the global cfg_store.
+    og::runtime::GameSession::Config session_cfg;
+    session_cfg.allocate_screen = false;
+    session_cfg.allocate_prefs = false;
+    session_cfg.install_legacy_globals = false;
+    session_cfg.install_global_context = true;
+    og::runtime::GameSession session(session_cfg);
+
+    OG_ASSERT(session.config() != nullptr);
+    OG_ASSERT(session.config() == &cfg);
+}
