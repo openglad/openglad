@@ -29,7 +29,7 @@
 #include <openglad/data/gparser.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
-#include "yam.h"
+#include <openglad/io/yaml_stream.h>
 
 // TODO: Move overscan setting and toInt() to this file.
 #include <openglad/input/input.h>
@@ -85,43 +85,44 @@ bool cfg_store::load_settings()
 		return false;
 	}
     
-    Yam yam;
-    yam.set_input(rwops_read_handler, rwops.get());
+    og::io::YamlParser yaml;
+    yaml.set_input(rwops_read_handler, rwops.get());
     
     std::string last_scalar;
     std::string current_category;
     
-    Yam::ParseResultEnum parse_result;
-    while((parse_result = yam.parse_next()) == Yam::OK)
+    og::io::YamlParseResult parse_result;
+    while((parse_result = yaml.parse_next()) == og::io::YamlParseResult::Ok)
     {
-        switch(yam.event.type)
+        const og::io::YamlEvent& ev = yaml.event();
+        switch(ev.type)
         {
-            case Yam::BEGIN_SEQUENCE:
+            case og::io::YamlEventType::BeginSequence:
                 break;
-            case Yam::END_SEQUENCE:
+            case og::io::YamlEventType::EndSequence:
                 break;
-            case Yam::BEGIN_MAPPING:
+            case og::io::YamlEventType::BeginMapping:
                 current_category = last_scalar;
                 break;
-            case Yam::END_MAPPING:
+            case og::io::YamlEventType::EndMapping:
                 break;
-            case Yam::ALIAS:
+            case og::io::YamlEventType::Alias:
                 break;
-            case Yam::PAIR:
-                apply_setting(current_category, yam.event.scalar, yam.event.value);
+            case og::io::YamlEventType::Pair:
+                apply_setting(current_category, ev.scalar, ev.value);
                 break;
-            case Yam::SCALAR:
-                last_scalar = yam.event.scalar;
+            case og::io::YamlEventType::Scalar:
+                last_scalar = ev.scalar;
                 break;
             default:
                 break;
         }
     }
     
-    if(parse_result == Yam::ERROR)
+    if(parse_result == og::io::YamlParseResult::Error)
         LogError("Parsing error in config file.\n");
     
-    yam.close_input();
+    yaml.close_input();
     
     // Update game stuff from these settings
     overscan_percentage = static_cast<float>(toInt(get_setting("graphics", "overscan_percentage"))) / 100.0f;
@@ -141,30 +142,34 @@ bool cfg_store::save_settings()
     {
         Log("Saving settings\n");
         
-        Yam yam;
-        yam.set_output(rwops_write_handler, outfile.get());
+        og::io::YamlEmitter yaml;
+        if (!yaml.set_output(rwops_write_handler, outfile.get()))
+        {
+            LogError("Couldn't initialize YAML emitter for cfg/openglad.yaml.\n");
+            return false;
+        }
         
         // Each category is a mapping that holds setting/value pairs
         for(auto& [category, settings] : data)
         {
             if(category.size() > 0)
             {
-                yam.emit_scalar(category.c_str());
-                yam.emit_begin_mapping();
+                yaml.emit_scalar(category.c_str());
+                yaml.emit_begin_mapping();
             }
 
             for(auto& [key, value] : settings)
             {
-                yam.emit_pair(key.c_str(), value.c_str());
+                yaml.emit_pair(key.c_str(), value.c_str());
             }
 
             if(category.size() > 0)
             {
-                yam.emit_end_mapping();
+                yaml.emit_end_mapping();
             }
         }
         
-        yam.close_output();
+        yaml.close_output();
 
         // Sync to persistent storage (IDBFS on web)
         sync_filesystem();

@@ -17,7 +17,7 @@
 
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/platform/io.h>
-#include "yam.h"
+#include <openglad/io/yaml_stream.h>
 #include <openglad/render/pixie.h>
 #include <openglad/render/text.h>
 #include <openglad/entities/guy.h>
@@ -133,32 +133,33 @@ CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_complete
     {
         SDL_RWops* rwops = open_read_file("campaign.yaml");
         
-        Yam yam;
-        yam.set_input(rwops_read_handler, rwops);
+        og::io::YamlParser yaml;
+        yaml.set_input(rwops_read_handler, rwops);
         
-        while(yam.parse_next() == Yam::OK)
+        while(yaml.parse_next() == og::io::YamlParseResult::Ok)
         {
-            switch(yam.event.type)
+            const og::io::YamlEvent& ev = yaml.event();
+            switch(ev.type)
             {
-                case Yam::PAIR:
-                    if(std::string(yam.event.scalar) == "title")
-                        title = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "version")
+                case og::io::YamlEventType::Pair:
+                    if(ev.scalar == "title")
+                        title = ev.value;
+                    else if(ev.scalar == "version")
                     {
-                        version = yam.event.value;
+                        version = ev.value;
                         saw_version = true;
                     }
-                    else if(std::string(yam.event.scalar) == "authors")
-                        authors = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "contributors")
-                        contributors = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "description")
-                        description = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "suggested_power")
-                        suggested_power = toInt(yam.event.value);
-                    else if(std::string(yam.event.scalar) == "first_level")
+                    else if(ev.scalar == "authors")
+                        authors = ev.value;
+                    else if(ev.scalar == "contributors")
+                        contributors = ev.value;
+                    else if(ev.scalar == "description")
+                        description = ev.value;
+                    else if(ev.scalar == "suggested_power")
+                        suggested_power = toInt(ev.value);
+                    else if(ev.scalar == "first_level")
                     {
-                        first_level = toInt(yam.event.value);
+                        first_level = toInt(ev.value);
                         saw_first_level = true;
                     }
                 break;
@@ -167,7 +168,7 @@ CampaignEntry::CampaignEntry(const std::string& campaign_id, int levels_complete
             }
         }
         
-        yam.close_input();
+        yaml.close_input();
         SDL_RWclose(rwops);
         
         // TODO: Get rating from website

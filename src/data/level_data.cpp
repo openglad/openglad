@@ -17,7 +17,7 @@
 
 #include <openglad/data/level_data.h>
 #include <openglad/legacy/test_trace.h>
-#include "yam.h"
+#include <openglad/io/yaml_stream.h>
 
 #include <openglad/render/pixie.h>
 #include <openglad/data/gloader.h>
@@ -106,41 +106,42 @@ bool CampaignData::load()
             return false;
         }
         
-        Yam yam;
-        yam.set_input(rwops_read_handler, rwops);
+        og::io::YamlParser yaml;
+        yaml.set_input(rwops_read_handler, rwops);
         
-        int parse_result = Yam::OK;
-        while((parse_result = yam.parse_next()) == Yam::OK)
+        auto parse_result = og::io::YamlParseResult::Ok;
+        while((parse_result = yaml.parse_next()) == og::io::YamlParseResult::Ok)
         {
-            switch(yam.event.type)
+            const og::io::YamlEvent& ev = yaml.event();
+            switch(ev.type)
             {
-                case Yam::PAIR:
-                    if(std::string(yam.event.scalar) == "title")
-                        title = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "version")
-                        version = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "authors")
-                        authors = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "contributors")
-                        contributors = yam.event.value;
-                    else if(std::string(yam.event.scalar) == "description")
+                case og::io::YamlEventType::Pair:
+                    if(ev.scalar == "title")
+                        title = ev.value;
+                    else if(ev.scalar == "version")
+                        version = ev.value;
+                    else if(ev.scalar == "authors")
+                        authors = ev.value;
+                    else if(ev.scalar == "contributors")
+                        contributors = ev.value;
+                    else if(ev.scalar == "description")
                     {
-                        std::string desc = yam.event.value;
+                        std::string desc = ev.value;
                         description = explode(desc, '\n');
                     }
-                    else if(std::string(yam.event.scalar) == "suggested_power")
-                        suggested_power = toInt(yam.event.value);
-                    else if(std::string(yam.event.scalar) == "first_level")
-                        first_level = toInt(yam.event.value);
+                    else if(ev.scalar == "suggested_power")
+                        suggested_power = toInt(ev.value);
+                    else if(ev.scalar == "first_level")
+                        first_level = toInt(ev.value);
                 break;
                 default:
                     break;
             }
         }
-        if(parse_result == Yam::ERROR)
+        if(parse_result == og::io::YamlParseResult::Error)
             last_io_error_ = IoError::ParseFailed;
         
-        yam.close_input();
+        yaml.close_input();
         SDL_RWclose(rwops);
         
         // TODO: Get rating from website
@@ -181,21 +182,28 @@ bool CampaignData::save()
         SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
         if(outfile != nullptr)
         {
-            Yam yam;
-            yam.set_output(rwops_write_handler, outfile);
+            og::io::YamlEmitter yaml;
+            if (!yaml.set_output(rwops_write_handler, outfile))
+            {
+                LogError("Couldn't initialize YAML emitter for temp/campaign.yaml.\n");
+                SDL_RWclose(outfile);
+                last_io_error_ = IoError::OpenWriteFailed;
+                cleanup_unpacked_campaign();
+                return false;
+            }
 
-            yam.emit_pair("format_version", "1");
-            yam.emit_pair("title", title.c_str());
-            yam.emit_pair("version", version.c_str());
+            yaml.emit_pair("format_version", "1");
+            yaml.emit_pair("title", title.c_str());
+            yaml.emit_pair("version", version.c_str());
 
             std::string buf = std::format("{}", first_level);
-            yam.emit_pair("first_level", buf.c_str());
+            yaml.emit_pair("first_level", buf.c_str());
 
             buf = std::format("{}", suggested_power);
-            yam.emit_pair("suggested_power", buf.c_str());
+            yaml.emit_pair("suggested_power", buf.c_str());
             
-            yam.emit_pair("authors", authors.c_str());
-            yam.emit_pair("contributors", contributors.c_str());
+            yaml.emit_pair("authors", authors.c_str());
+            yaml.emit_pair("contributors", contributors.c_str());
             
             std::string desc;
             for(std::list<std::string>::const_iterator e = description.begin(); e != description.end();)
@@ -207,9 +215,9 @@ bool CampaignData::save()
                     desc += '\n';
             }
             
-            yam.emit_pair("description", desc.c_str());
+            yaml.emit_pair("description", desc.c_str());
             
-            yam.close_output();
+            yaml.close_output();
             SDL_RWclose(outfile);
             
         }
@@ -263,36 +271,45 @@ bool CampaignData::save_as(const std::string& new_id)
         SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
         if(outfile != nullptr)
         {
-            Yam yam;
-            yam.set_output(rwops_write_handler, outfile);
-
-            yam.emit_pair("format_version", "1");
-            yam.emit_pair("title", title.c_str());
-            yam.emit_pair("version", version.c_str());
-
-            std::string buf = std::format("{}", first_level);
-            yam.emit_pair("first_level", buf.c_str());
-
-            buf = std::format("{}", suggested_power);
-            yam.emit_pair("suggested_power", buf.c_str());
-            
-            yam.emit_pair("authors", authors.c_str());
-            yam.emit_pair("contributors", contributors.c_str());
-            
-            std::string desc;
-            for(std::list<std::string>::const_iterator e = description.begin(); e != description.end();)
+            og::io::YamlEmitter yaml;
+            if (!yaml.set_output(rwops_write_handler, outfile))
             {
-                desc += *e;
-                
-                e++;
-                if(e != description.end())
-                    desc += '\n';
+                LogError("Couldn't initialize YAML emitter for temp/campaign.yaml.\n");
+                SDL_RWclose(outfile);
+                result = false;
+                last_io_error_ = IoError::OpenWriteFailed;
             }
+
+            if (result)
+            {
+                yaml.emit_pair("format_version", "1");
+                yaml.emit_pair("title", title.c_str());
+                yaml.emit_pair("version", version.c_str());
+
+                std::string buf = std::format("{}", first_level);
+                yaml.emit_pair("first_level", buf.c_str());
+
+                buf = std::format("{}", suggested_power);
+                yaml.emit_pair("suggested_power", buf.c_str());
             
-            yam.emit_pair("description", desc.c_str());
+                yaml.emit_pair("authors", authors.c_str());
+                yaml.emit_pair("contributors", contributors.c_str());
             
-            yam.close_output();
-            SDL_RWclose(outfile);
+                std::string desc;
+                for(std::list<std::string>::const_iterator e = description.begin(); e != description.end();)
+                {
+                    desc += *e;
+                    
+                    e++;
+                    if(e != description.end())
+                        desc += '\n';
+                }
+            
+                yaml.emit_pair("description", desc.c_str());
+            
+                yaml.close_output();
+                SDL_RWclose(outfile);
+            }
             
         }
         else

@@ -19,9 +19,9 @@
 #include <openglad/input/input.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/util.h>
+#include <openglad/io/yaml_stream.h>
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/render/text.h>
-#include "yam.h"
 #include "physfs.h"
 #include "physfsrwops.h"
 #include <format>
@@ -1065,19 +1065,23 @@ NewFileIoError create_new_campaign_descriptor_with_error(const std::string& file
 	if(outfile == nullptr)
         return NewFileIoError::OpenWriteFailed;
     
-    Yam yam;
-    yam.set_output(rwops_write_handler, outfile);
+    og::io::YamlEmitter yaml;
+    if (!yaml.set_output(rwops_write_handler, outfile))
+    {
+        SDL_RWclose(outfile);
+        return NewFileIoError::WriteFailed;
+    }
     
-    yam.emit_pair("format_version", "1");
-    yam.emit_pair("title", "New Campaign");
-    yam.emit_pair("version", "1");
-    yam.emit_pair("first_level", "1");
-    yam.emit_pair("suggested_power", "0");
-    yam.emit_pair("authors", "");
-    yam.emit_pair("contributors", "");
-    yam.emit_pair("description", "A new campaign.");
+    yaml.emit_pair("format_version", "1");
+    yaml.emit_pair("title", "New Campaign");
+    yaml.emit_pair("version", "1");
+    yaml.emit_pair("first_level", "1");
+    yaml.emit_pair("suggested_power", "0");
+    yaml.emit_pair("authors", "");
+    yaml.emit_pair("contributors", "");
+    yaml.emit_pair("description", "A new campaign.");
     
-    yam.close_output();
+    yaml.close_output();
     SDL_RWclose(outfile);
     return NewFileIoError::None;
 }

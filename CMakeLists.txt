@@ -134,10 +134,11 @@ set(GAME_SOURCES
     ${SRC_DIR}/entities/walker_specials.cpp
     ${SRC_DIR}/entities/weap.cpp
     ${SRC_DIR}/render/sai2x.cpp
-    ${SRC_DIR}/core/util.cpp
-    ${SRC_DIR}/platform/io.cpp
-    ${SRC_DIR}/data/gparser.cpp
-    ${SRC_DIR}/data/gloader.cpp
+	    ${SRC_DIR}/core/util.cpp
+	    ${SRC_DIR}/io/platform_io.cpp
+	    ${SRC_DIR}/io/yaml_stream.cpp
+	    ${SRC_DIR}/data/gparser.cpp
+	    ${SRC_DIR}/data/gloader.cpp
     ${SRC_DIR}/data/pixie_data.cpp
     ${SRC_DIR}/data/level_data.cpp
     ${SRC_DIR}/ui/level_picker.cpp
@@ -235,8 +236,12 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/ui/results_screen.cpp
 )
 
+set(OG_IO_SOURCES
+    ${SRC_DIR}/io/platform_io.cpp
+    ${SRC_DIR}/io/yaml_stream.cpp
+)
+
 set(OG_PLATFORM_SOURCES
-    ${SRC_DIR}/platform/io.cpp
     ${SRC_DIR}/platform/sound.cpp
 )
 
@@ -548,12 +553,15 @@ configure_openglad_external_target(og_ext_micropather)
 add_library(og_ext_yam STATIC ${THIRD_PARTY_DIR}/yam/yam.cpp)
 configure_openglad_external_target(og_ext_yam)
 
-set(OG_EXTERNAL_LIBS
-    og_ext_micropather
+set(OG_IO_EXTERNAL_LIBS
     og_ext_yam
     og_ext_yaml
     og_ext_physfs
     og_ext_libzip
+)
+
+set(OG_EXTERNAL_LIBS
+    og_ext_micropather
 )
 
 if(NOT EMSCRIPTEN)
@@ -566,14 +574,22 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_data STATIC ${OG_DATA_SOURCES})
     configure_openglad_library(og_data)
-    target_include_directories(og_data PRIVATE
-        ${THIRD_PARTY_DIR}/yam
-        ${THIRD_PARTY_DIR}/libyaml/include
-    )
 
     add_library(og_entities STATIC ${OG_ENTITIES_SOURCES})
     configure_openglad_library(og_entities)
     target_include_directories(og_entities PRIVATE ${THIRD_PARTY_DIR}/micropather)
+
+    add_library(og_io STATIC ${OG_IO_SOURCES})
+    configure_openglad_library(og_io)
+    target_include_directories(og_io PRIVATE
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
+        ${THIRD_PARTY_DIR}/physfs
+        ${THIRD_PARTY_DIR}/physfs/extras
+        ${THIRD_PARTY_DIR}/libzip
+    )
+    # og_io is the only OpenGlad module that links PhysFS/libzip/libyaml.
+    target_link_libraries(og_io PUBLIC ${OG_IO_EXTERNAL_LIBS})
 
     add_library(og_runtime STATIC ${OG_RUNTIME_SOURCES})
     configure_openglad_library(og_runtime)
@@ -586,20 +602,9 @@ if(NOT EMSCRIPTEN)
 
     add_library(og_ui STATIC ${OG_UI_SOURCES})
     configure_openglad_library(og_ui)
-    target_include_directories(og_ui PRIVATE
-        ${THIRD_PARTY_DIR}/yam
-        ${THIRD_PARTY_DIR}/libyaml/include
-    )
 
     add_library(og_platform STATIC ${OG_PLATFORM_SOURCES})
     configure_openglad_library(og_platform)
-    target_include_directories(og_platform PRIVATE
-        ${THIRD_PARTY_DIR}/yam
-        ${THIRD_PARTY_DIR}/libyaml/include
-        ${THIRD_PARTY_DIR}/physfs
-        ${THIRD_PARTY_DIR}/physfs/extras
-        ${THIRD_PARTY_DIR}/libzip
-    )
 
     # --- aggregate target (non-main code) ---
     add_library(og_game INTERFACE)
@@ -613,6 +618,7 @@ if(NOT EMSCRIPTEN)
         og_sim
         og_data
         og_entities
+        og_io
         og_runtime
         og_render
         og_input
@@ -659,9 +665,10 @@ if(NOT EMSCRIPTEN)
         project_sanitizers
         og_core
         og_sim
-        og_data
-        og_entities
-        og_runtime
+	        og_data
+	        og_entities
+	        og_io
+	        og_runtime
         og_render
         og_input
         og_ui
@@ -910,12 +917,12 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
         )
 
-        add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
-        configure_openglad_library(og_game_test)
-        target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
-        target_compile_definitions(og_game_test PRIVATE TESTING)
-        target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} og_runtime_deps)
-        add_dependencies(og_game_test check_graph_h_includes)
+	        add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
+	        configure_openglad_library(og_game_test)
+	        target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
+	        target_compile_definitions(og_game_test PRIVATE TESTING)
+	        target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS} og_runtime_deps)
+	        add_dependencies(og_game_test check_graph_h_includes)
 
         add_executable(openglad_test
             ${SRC_DIR}/glad.cpp
@@ -999,11 +1006,11 @@ endif()
 # Emscripten target
 # --------------------------------------------------------------------------
 
-if(EMSCRIPTEN)
-    add_library(og_game_web STATIC ${GAME_SOURCES_NO_MAIN})
-    configure_openglad_library(og_game_web)
-    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS})
-    add_dependencies(og_game_web check_graph_h_includes)
+	if(EMSCRIPTEN)
+	    add_library(og_game_web STATIC ${GAME_SOURCES_NO_MAIN})
+	    configure_openglad_library(og_game_web)
+	    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS})
+	    add_dependencies(og_game_web check_graph_h_includes)
 
     add_executable(play ${SRC_DIR}/glad.cpp)
     configure_openglad_library(play)
