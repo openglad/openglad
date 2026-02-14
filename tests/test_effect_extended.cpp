@@ -1,4 +1,3 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/entities/effect.h>
 #include <openglad/data/gloader.h>
 #include "test_framework.h"

@@ -1,6 +1,8 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
+#include <openglad/legacy/base.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 #include <unordered_set>
@@ -121,4 +123,3 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
 }
 REGISTER_TEST(test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx);
-
