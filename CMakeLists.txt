@@ -412,8 +412,8 @@ set(EXTERNAL_C_SOURCES
 # Common include directories and compile definitions
 # --------------------------------------------------------------------------
 
-set(COMMON_INCLUDE_DIRS
-    ${CMAKE_SOURCE_DIR}/include
+set(OG_PUBLIC_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+set(OG_THIRD_PARTY_INCLUDE_DIRS
     ${THIRD_PARTY_DIR}/micropather
     ${THIRD_PARTY_DIR}/yam
     ${THIRD_PARTY_DIR}/libyaml/include
@@ -444,9 +444,14 @@ set(COMMON_DEFINITIONS
 # --------------------------------------------------------------------------
 
 function(configure_openglad_library target)
-    target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
+    target_include_directories(${target} PUBLIC
+        $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
+        $<INSTALL_INTERFACE:include>
+    )
     if(NOT EMSCRIPTEN)
-        target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
+        # Many legacy public headers still include SDL types; keep SDL includes
+        # visible to downstream targets until those headers are disentangled.
+        target_include_directories(${target} SYSTEM PUBLIC $<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
@@ -473,7 +478,7 @@ function(configure_openglad_runtime_target target)
 endfunction()
 
 function(configure_openglad_external_target target)
-    target_include_directories(${target} PRIVATE ${COMMON_INCLUDE_DIRS})
+    target_include_directories(${target} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
     if(NOT EMSCRIPTEN)
         target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
     endif()
@@ -538,43 +543,52 @@ set(OG_EXTERNAL_LIBS
 
 if(NOT EMSCRIPTEN)
     # --- internal module targets (target-based architecture) ---
-    add_library(og_core OBJECT ${OG_CORE_SOURCES})
+    add_library(og_core STATIC ${OG_CORE_SOURCES})
     configure_openglad_library(og_core)
 
-    add_library(og_data OBJECT ${OG_DATA_SOURCES})
+    add_library(og_data STATIC ${OG_DATA_SOURCES})
     configure_openglad_library(og_data)
+    target_include_directories(og_data PRIVATE ${THIRD_PARTY_DIR}/yam)
 
-    add_library(og_entities OBJECT ${OG_ENTITIES_SOURCES})
+    add_library(og_entities STATIC ${OG_ENTITIES_SOURCES})
     configure_openglad_library(og_entities)
+    target_include_directories(og_entities PRIVATE ${THIRD_PARTY_DIR}/micropather)
 
-    add_library(og_runtime OBJECT ${OG_RUNTIME_SOURCES})
+    add_library(og_runtime STATIC ${OG_RUNTIME_SOURCES})
     configure_openglad_library(og_runtime)
 
-    add_library(og_render OBJECT ${OG_RENDER_SOURCES})
+    add_library(og_render STATIC ${OG_RENDER_SOURCES})
     configure_openglad_library(og_render)
 
-    add_library(og_input OBJECT ${OG_INPUT_SOURCES})
+    add_library(og_input STATIC ${OG_INPUT_SOURCES})
     configure_openglad_library(og_input)
 
-    add_library(og_ui OBJECT ${OG_UI_SOURCES})
+    add_library(og_ui STATIC ${OG_UI_SOURCES})
     configure_openglad_library(og_ui)
+    target_include_directories(og_ui PRIVATE ${THIRD_PARTY_DIR}/yam)
 
-    add_library(og_platform OBJECT ${OG_PLATFORM_SOURCES})
+    add_library(og_platform STATIC ${OG_PLATFORM_SOURCES})
     configure_openglad_library(og_platform)
-
-    # --- shared runtime library (non-main code) ---
-    add_library(og_game STATIC
-        $<TARGET_OBJECTS:og_core>
-        $<TARGET_OBJECTS:og_data>
-        $<TARGET_OBJECTS:og_entities>
-        $<TARGET_OBJECTS:og_runtime>
-        $<TARGET_OBJECTS:og_render>
-        $<TARGET_OBJECTS:og_input>
-        $<TARGET_OBJECTS:og_ui>
-        $<TARGET_OBJECTS:og_platform>
+    target_include_directories(og_platform PRIVATE
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/physfs
+        ${THIRD_PARTY_DIR}/physfs/extras
+        ${THIRD_PARTY_DIR}/libzip
     )
-    configure_openglad_library(og_game)
-    target_link_libraries(og_game PUBLIC ${OG_EXTERNAL_LIBS})
+
+    # --- aggregate target (non-main code) ---
+    add_library(og_game INTERFACE)
+    target_link_libraries(og_game INTERFACE
+        og_core
+        og_data
+        og_entities
+        og_runtime
+        og_render
+        og_input
+        og_ui
+        og_platform
+        ${OG_EXTERNAL_LIBS}
+    )
     add_dependencies(og_game check_graph_h_includes)
 
     # Stage runtime assets into the build tree so tests and local runs do not
@@ -608,13 +622,20 @@ if(NOT EMSCRIPTEN)
     install(TARGETS
         project_warnings
         project_sanitizers
+        og_core
+        og_data
+        og_entities
+        og_runtime
+        og_render
+        og_input
+        og_ui
+        og_platform
         og_ext_micropather
         og_ext_yam
         og_ext_yaml
         og_ext_zlib
         og_ext_libzip
         og_ext_physfs
-        og_game
         openglad
         EXPORT OpenGladTargets
         ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -844,6 +865,7 @@ if(NOT EMSCRIPTEN)
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
         configure_openglad_library(og_game_test)
+        target_include_directories(og_game_test PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
         target_compile_definitions(og_game_test PRIVATE TESTING)
         target_link_libraries(og_game_test PUBLIC ${OG_EXTERNAL_LIBS})
         add_dependencies(og_game_test check_graph_h_includes)
