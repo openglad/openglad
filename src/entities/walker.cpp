@@ -20,9 +20,13 @@
 	buffers: 7/31/02: *deleted some redundant headers
 */
 
-#include <openglad/legacy/graph.h>
 #include <openglad/core/combat_math.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
 #include <openglad/render/smooth.h>
 #include <openglad/legacy/test_trace.h>
 #include <format>
