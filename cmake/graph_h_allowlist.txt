@@ -2,7 +2,6 @@ src/runtime/game.cpp
 src/runtime/game_loop.cpp
 src/glad.cpp
 src/ui/help.cpp
-src/ui/intro.cpp
 src/ui/level_editor_file_ops.cpp
 src/entities/living.cpp
 src/ui/picker.cpp
