@@ -1,7 +1,13 @@
-#include <openglad/legacy/graph.h>
+#include <openglad/entities/walker.h>
+#include <openglad/input/input.h>
+#include <openglad/legacy/base.h>
+#include <openglad/render/view.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 #include <array>
+
+#include "SDL.h"
 
 extern screen* myscreen;
 extern const Uint8* keystates;
@@ -125,4 +131,3 @@ void test_viewscreen_input_switch_yell_and_special_switch_paths()
     (void)vs->input(keydown(static_cast<SDL_Keycode>(player_keys[0][KEY_SPECIAL_SWITCH])));
 }
 REGISTER_TEST(test_viewscreen_input_switch_yell_and_special_switch_paths);
-

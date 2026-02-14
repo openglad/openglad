@@ -1,6 +1,7 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/data/level_data.h>
+#include <openglad/entities/walker.h>
 #include <openglad/platform/io.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 #include <filesystem>
