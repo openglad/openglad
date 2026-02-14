@@ -132,13 +132,14 @@ set(GAME_SOURCES
     ${SRC_DIR}/entities/walker_movement.cpp
     ${SRC_DIR}/entities/walker_pathing.cpp
     ${SRC_DIR}/entities/walker_specials.cpp
-    ${SRC_DIR}/entities/weap.cpp
-    ${SRC_DIR}/render/sai2x.cpp
-	    ${SRC_DIR}/core/util.cpp
-	    ${SRC_DIR}/io/platform_io.cpp
-	    ${SRC_DIR}/io/yaml_stream.cpp
-	    ${SRC_DIR}/data/gparser.cpp
-	    ${SRC_DIR}/data/gloader.cpp
+	    ${SRC_DIR}/entities/weap.cpp
+	    ${SRC_DIR}/render/sai2x.cpp
+		    ${SRC_DIR}/core/util.cpp
+		    ${SRC_DIR}/io/platform_io.cpp
+		    ${SRC_DIR}/io/physfs_api.cpp
+		    ${SRC_DIR}/io/yaml_stream.cpp
+		    ${SRC_DIR}/data/gparser.cpp
+		    ${SRC_DIR}/data/gloader.cpp
     ${SRC_DIR}/data/pixie_data.cpp
     ${SRC_DIR}/data/level_data.cpp
     ${SRC_DIR}/ui/level_picker.cpp
@@ -238,6 +239,7 @@ set(OG_UI_SOURCES
 
 set(OG_IO_SOURCES
     ${SRC_DIR}/io/platform_io.cpp
+    ${SRC_DIR}/io/physfs_api.cpp
     ${SRC_DIR}/io/yaml_stream.cpp
 )
 

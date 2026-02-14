@@ -18,10 +18,9 @@
 #include <openglad/platform/io.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/util.h>
+#include <openglad/io/physfs_api.h>
 #include <openglad/io/yaml_stream.h>
 #include <openglad/legacy/pixdefs.h>
-#include "physfs.h"
-#include "physfsrwops.h"
 #include <format>
 #include <filesystem>
 #include <array>
@@ -176,14 +175,14 @@ std::string get_asset_path()
 #endif
 }
 
-SDL_RWops* open_read_file(const char* file, bool debug)
-{
-    SDL_RWops* rwops = nullptr;
-    
-    if(debug)
-	    Log("Trying via PHYSFS: {}", file);
-    rwops = PHYSFSRWOPS_openRead(file);
-    if(rwops != nullptr) return rwops;
+	SDL_RWops* open_read_file(const char* file, bool debug)
+	{
+	    SDL_RWops* rwops = nullptr;
+	    
+	    if(debug)
+		    Log("Trying via PHYSFS: {}", file);
+	    rwops = og::io::physfsrw_open_read(file);
+	    if(rwops != nullptr) return rwops;
 
     // now try opening in the current directory
     if(debug)
@@ -214,13 +213,13 @@ SDL_RWops* open_read_file(const char* path, const char* file)
     return open_read_file((std::string(path) + file).c_str());
 }
 
-SDL_RWops* open_write_file(const char* file)
-{
-    SDL_RWops* rwops = PHYSFSRWOPS_openWrite(file);
-    if(rwops != nullptr)
-        return rwops;
-    return SDL_RWFromFile(file, "wb");
-}
+	SDL_RWops* open_write_file(const char* file)
+	{
+	    SDL_RWops* rwops = og::io::physfsrw_open_write(file);
+	    if(rwops != nullptr)
+	        return rwops;
+	    return SDL_RWFromFile(file, "wb");
+	}
 
 SDL_RWops* open_write_file(const char* path, const char* file)
 {
@@ -231,27 +230,7 @@ SDL_RWops* open_write_file(const char* path, const char* file)
 
 std::list<std::string> list_files(const std::string& dirname)
 {
-    struct PhysfsFileListDeleter
-    {
-        void operator()(char** list) const
-        {
-            if (list)
-                PHYSFS_freeList(list);
-        }
-    };
-
-	    std::list<std::string> fileList;
-	    std::unique_ptr<char*, PhysfsFileListDeleter> files(PHYSFS_enumerateFiles(dirname.c_str()));
-	    char** p = files.get();
-	    while(p != nullptr && *p != nullptr)
-	    {
-	        fileList.push_back(*p);
-	        p++;
-	    }
-	    
-	    fileList.sort();
-	    
-	    return fileList;
+    return og::io::physfs_enumerate_files_sorted(dirname);
 }
 
 std::string get_mounted_campaign()
@@ -308,10 +287,10 @@ CampaignPackageIoError mount_campaign_package_with_error(const std::string& id)
     Log("Mounting campaign package: {}", id);
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
-    if(!PHYSFS_mount(filename.c_str(), nullptr, 0))
+    if(!og::io::physfs_mount(filename, nullptr, 0))
     {
         LogError("campaign_mount_failed id={} path={} code={} physfs={}\n",
-            id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+            id, filename, campaign_io_error_string(CampaignPackageIoError::MountFailed), og::io::physfs_last_error());
         ctx().mounted_campaign.clear();
         return CampaignPackageIoError::MountFailed;
     }
@@ -325,10 +304,10 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
         return CampaignPackageIoError::None;
     
     std::string filename = get_user_path() + "campaigns/" + id + ".glad";
-    if(!PHYSFS_unmount(filename.c_str()))
+    if(!og::io::physfs_unmount(filename))
     {
         LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
-            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), og::io::physfs_last_error());
         return CampaignPackageIoError::UnmountFailed;
     }
     ctx().mounted_campaign.clear();
@@ -537,7 +516,7 @@ void create_dataopenglad()
 void restore_default_campaigns()
 {
     #ifndef FORCE_RESTORE_DEFAULT_CAMPAIGNS
-    if(!PHYSFS_exists("campaigns/org.openglad.gladiator.glad"))
+    if(!og::io::physfs_exists("campaigns/org.openglad.gladiator.glad"))
     #endif
         copy_file(get_asset_path() + "builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
 }
@@ -603,10 +582,10 @@ void io_init(int argc, char* argv[])
     // Make sure our directory tree exists and is set up
     create_dataopenglad();
 
-    PHYSFS_init(argv[0]);
-    PHYSFS_setWriteDir(get_user_path().c_str());
+    og::io::physfs_init(argv[0]);
+    og::io::physfs_set_write_dir(get_user_path());
 
-    if(!PHYSFS_mount(get_user_path().c_str(), nullptr, 1))
+    if(!og::io::physfs_mount(get_user_path(), nullptr, 1))
     {
         std::string msg = std::format("Fatal: Failed to mount user data path: {}", get_user_path());
         LogError("{}\n", msg);
@@ -627,22 +606,22 @@ void io_init(int argc, char* argv[])
     Log("Mounting default campaign...\n");
     if (!mount_campaign_package("org.openglad.gladiator"))
     {
-        std::string msg = std::format("Fatal: Failed to mount default campaign: {}", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+        std::string msg = std::format("Fatal: Failed to mount default campaign: {}", og::io::physfs_last_error());
         LogError("{}\n", msg);
         throw std::runtime_error(msg);
     }
     Log("Mounted default campaign\n");
     
     // Set up paths for default assets
-    if(!PHYSFS_mount((get_asset_path() + "pix/").c_str(), "pix/", 1))
+    if(!og::io::physfs_mount(get_asset_path() + "pix/", "pix/", 1))
     {
         LogWarn("Failed to mount default pix path (may be bundled in campaign)\n");
     }
-    if(!PHYSFS_mount((get_asset_path() + "sound/").c_str(), "sound/", 1))
+    if(!og::io::physfs_mount(get_asset_path() + "sound/", "sound/", 1))
     {
         LogWarn("Failed to mount default sound path (may be bundled in campaign)\n");
     }
-    if(!PHYSFS_mount((get_asset_path() + "cfg/").c_str(), "cfg/", 1))
+    if(!og::io::physfs_mount(get_asset_path() + "cfg/", "cfg/", 1))
     {
         LogWarn("Failed to mount default cfg path (may be bundled in campaign)\n");
     }
@@ -654,7 +633,7 @@ void io_exit()
     // Final sync before exit
     sync_filesystem();
 #endif
-    PHYSFS_deinit();
+    og::io::physfs_deinit();
 }
 
 void sync_filesystem()
