@@ -38,6 +38,6 @@ obj/
 stdout.txt
 stderr.txt
 io_tmp_*.txt
-core
+/core
 core.*
 /temp/
