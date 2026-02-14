@@ -1,5 +1,8 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
+#include <openglad/legacy/base.h>
+#include <openglad/render/view.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
