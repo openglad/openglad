@@ -14,10 +14,16 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
-#include <openglad/legacy/graph.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
+#include <openglad/legacy/base.h>
+#include <openglad/legacy/test_trace.h>
 #include <openglad/render/smooth.h>
 #include <openglad/core/util.h>
 #include <openglad/ui/campaign_picker.h>
+#include <openglad/render/view.h>
+#include <openglad/runtime/screen.h>
 #include <algorithm>
 #include <format>
 #include <iterator>
