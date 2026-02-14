@@ -15,12 +15,14 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
-#include <openglad/legacy/graph.h>
 #include <openglad/ui/level_picker.h>
 #include <openglad/runtime/game_context.h>
 #include <algorithm>
+#include <list>
 #include <set>
 #include <vector>
+
+#include <openglad/runtime/screen.h>
 
 // Get list of accessible levels (cleared levels + their exits)
 std::vector<int> get_accessible_levels()
