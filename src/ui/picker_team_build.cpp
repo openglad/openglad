@@ -16,12 +16,16 @@
  */
 
 #include <openglad/core/version.h>
-#include <openglad/legacy/graph.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
 #include <openglad/input/button.h>
 #include <openglad/render/pal32.h>
 #include <openglad/input/input.h>
+#include <openglad/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
+#include <openglad/runtime/screen.h>
 
 #include "SDL.h"
 #include <openglad/ui/campaign_picker.h>
