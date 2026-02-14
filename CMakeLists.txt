@@ -86,7 +86,7 @@ endif()
 # --------------------------------------------------------------------------
 
 set(SRC_DIR ${CMAKE_SOURCE_DIR}/src)
-set(EXT_DIR ${SRC_DIR}/external)
+set(THIRD_PARTY_DIR ${CMAKE_SOURCE_DIR}/third_party)
 
 # Main game C++ sources
 set(GAME_SOURCES
@@ -230,172 +230,172 @@ set(OG_PLATFORM_SOURCES
 
 # External C++ sources
 set(EXT_CXX_SOURCES
-    ${EXT_DIR}/micropather/micropather.cpp
-    ${EXT_DIR}/yam/yam.cpp
+    ${THIRD_PARTY_DIR}/micropather/micropather.cpp
+    ${THIRD_PARTY_DIR}/yam/yam.cpp
 )
 
 # External C sources - libyaml
 set(LIBYAML_SOURCES
-    ${EXT_DIR}/libyaml/src/api.c
-    ${EXT_DIR}/libyaml/src/loader.c
-    ${EXT_DIR}/libyaml/src/parser.c
-    ${EXT_DIR}/libyaml/src/reader.c
-    ${EXT_DIR}/libyaml/src/scanner.c
-    ${EXT_DIR}/libyaml/src/emitter.c
-    ${EXT_DIR}/libyaml/src/dumper.c
-    ${EXT_DIR}/libyaml/src/writer.c
+    ${THIRD_PARTY_DIR}/libyaml/src/api.c
+    ${THIRD_PARTY_DIR}/libyaml/src/loader.c
+    ${THIRD_PARTY_DIR}/libyaml/src/parser.c
+    ${THIRD_PARTY_DIR}/libyaml/src/reader.c
+    ${THIRD_PARTY_DIR}/libyaml/src/scanner.c
+    ${THIRD_PARTY_DIR}/libyaml/src/emitter.c
+    ${THIRD_PARTY_DIR}/libyaml/src/dumper.c
+    ${THIRD_PARTY_DIR}/libyaml/src/writer.c
 )
 
 # External C sources - physfs (3.2.0)
 set(PHYSFS_SOURCES
-    ${EXT_DIR}/physfs/physfs.c
-    ${EXT_DIR}/physfs/physfs_byteorder.c
-    ${EXT_DIR}/physfs/physfs_unicode.c
-    ${EXT_DIR}/physfs/physfs_archiver_dir.c
-    ${EXT_DIR}/physfs/physfs_archiver_unpacked.c
-    ${EXT_DIR}/physfs/physfs_archiver_grp.c
-    ${EXT_DIR}/physfs/physfs_archiver_hog.c
-    ${EXT_DIR}/physfs/physfs_archiver_mvl.c
-    ${EXT_DIR}/physfs/physfs_archiver_qpak.c
-    ${EXT_DIR}/physfs/physfs_archiver_wad.c
-    ${EXT_DIR}/physfs/physfs_archiver_zip.c
-    ${EXT_DIR}/physfs/physfs_archiver_slb.c
-    ${EXT_DIR}/physfs/physfs_archiver_vdf.c
-    ${EXT_DIR}/physfs/physfs_archiver_iso9660.c
-    ${EXT_DIR}/physfs/physfs_archiver_7z.c
-    ${EXT_DIR}/physfs/physfs_platform_posix.c
-    ${EXT_DIR}/physfs/physfs_platform_unix.c
-    ${EXT_DIR}/physfs/extras/physfsrwops.c
+    ${THIRD_PARTY_DIR}/physfs/physfs.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_byteorder.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_unicode.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_dir.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_unpacked.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_grp.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_hog.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_mvl.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_qpak.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_wad.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_zip.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_slb.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_vdf.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_iso9660.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_archiver_7z.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_platform_posix.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_platform_unix.c
+    ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
 )
 
 # External C sources - zlib
 set(ZLIB_SOURCES
-    ${EXT_DIR}/physfs/zlib123/adler32.c
-    ${EXT_DIR}/physfs/zlib123/compress.c
-    ${EXT_DIR}/physfs/zlib123/crc32.c
-    ${EXT_DIR}/physfs/zlib123/deflate.c
-    ${EXT_DIR}/physfs/zlib123/inffast.c
-    ${EXT_DIR}/physfs/zlib123/inflate.c
-    ${EXT_DIR}/physfs/zlib123/inftrees.c
-    ${EXT_DIR}/physfs/zlib123/trees.c
-    ${EXT_DIR}/physfs/zlib123/zutil.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/adler32.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/compress.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/crc32.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/deflate.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/inffast.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/inflate.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/inftrees.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/trees.c
+    ${THIRD_PARTY_DIR}/physfs/zlib123/zutil.c
 )
 
 # External C sources - libzip (1.11.3)
 set(LIBZIP_SOURCES
-    ${EXT_DIR}/libzip/zip_add.c
-    ${EXT_DIR}/libzip/zip_add_dir.c
-    ${EXT_DIR}/libzip/zip_add_entry.c
-    ${EXT_DIR}/libzip/zip_algorithm_deflate.c
-    ${EXT_DIR}/libzip/zip_buffer.c
-    ${EXT_DIR}/libzip/zip_close.c
-    ${EXT_DIR}/libzip/zip_delete.c
-    ${EXT_DIR}/libzip/zip_dir_add.c
-    ${EXT_DIR}/libzip/zip_dirent.c
-    ${EXT_DIR}/libzip/zip_discard.c
-    ${EXT_DIR}/libzip/zip_entry.c
-    ${EXT_DIR}/libzip/zip_error.c
-    ${EXT_DIR}/libzip/zip_error_clear.c
-    ${EXT_DIR}/libzip/zip_error_get.c
-    ${EXT_DIR}/libzip/zip_error_get_sys_type.c
-    ${EXT_DIR}/libzip/zip_error_strerror.c
-    ${EXT_DIR}/libzip/zip_error_to_str.c
-    ${EXT_DIR}/libzip/zip_extra_field.c
-    ${EXT_DIR}/libzip/zip_extra_field_api.c
-    ${EXT_DIR}/libzip/zip_fclose.c
-    ${EXT_DIR}/libzip/zip_fdopen.c
-    ${EXT_DIR}/libzip/zip_file_add.c
-    ${EXT_DIR}/libzip/zip_file_error_clear.c
-    ${EXT_DIR}/libzip/zip_file_error_get.c
-    ${EXT_DIR}/libzip/zip_file_get_comment.c
-    ${EXT_DIR}/libzip/zip_file_get_external_attributes.c
-    ${EXT_DIR}/libzip/zip_file_get_offset.c
-    ${EXT_DIR}/libzip/zip_file_rename.c
-    ${EXT_DIR}/libzip/zip_file_replace.c
-    ${EXT_DIR}/libzip/zip_file_set_comment.c
-    ${EXT_DIR}/libzip/zip_file_set_encryption.c
-    ${EXT_DIR}/libzip/zip_file_set_external_attributes.c
-    ${EXT_DIR}/libzip/zip_file_set_mtime.c
-    ${EXT_DIR}/libzip/zip_file_strerror.c
-    ${EXT_DIR}/libzip/zip_fopen.c
-    ${EXT_DIR}/libzip/zip_fopen_encrypted.c
-    ${EXT_DIR}/libzip/zip_fopen_index.c
-    ${EXT_DIR}/libzip/zip_fopen_index_encrypted.c
-    ${EXT_DIR}/libzip/zip_fread.c
-    ${EXT_DIR}/libzip/zip_fseek.c
-    ${EXT_DIR}/libzip/zip_ftell.c
-    ${EXT_DIR}/libzip/zip_get_archive_comment.c
-    ${EXT_DIR}/libzip/zip_get_archive_flag.c
-    ${EXT_DIR}/libzip/zip_get_encryption_implementation.c
-    ${EXT_DIR}/libzip/zip_get_file_comment.c
-    ${EXT_DIR}/libzip/zip_get_name.c
-    ${EXT_DIR}/libzip/zip_get_num_entries.c
-    ${EXT_DIR}/libzip/zip_get_num_files.c
-    ${EXT_DIR}/libzip/zip_hash.c
-    ${EXT_DIR}/libzip/zip_io_util.c
-    ${EXT_DIR}/libzip/zip_libzip_version.c
-    ${EXT_DIR}/libzip/zip_memdup.c
-    ${EXT_DIR}/libzip/zip_name_locate.c
-    ${EXT_DIR}/libzip/zip_new.c
-    ${EXT_DIR}/libzip/zip_open.c
-    ${EXT_DIR}/libzip/zip_pkware.c
-    ${EXT_DIR}/libzip/zip_progress.c
-    ${EXT_DIR}/libzip/zip_random_unix.c
-    ${EXT_DIR}/libzip/zip_rename.c
-    ${EXT_DIR}/libzip/zip_replace.c
-    ${EXT_DIR}/libzip/zip_set_archive_comment.c
-    ${EXT_DIR}/libzip/zip_set_archive_flag.c
-    ${EXT_DIR}/libzip/zip_set_default_password.c
-    ${EXT_DIR}/libzip/zip_set_file_comment.c
-    ${EXT_DIR}/libzip/zip_set_file_compression.c
-    ${EXT_DIR}/libzip/zip_set_name.c
-    ${EXT_DIR}/libzip/zip_source_accept_empty.c
-    ${EXT_DIR}/libzip/zip_source_begin_write.c
-    ${EXT_DIR}/libzip/zip_source_begin_write_cloning.c
-    ${EXT_DIR}/libzip/zip_source_buffer.c
-    ${EXT_DIR}/libzip/zip_source_call.c
-    ${EXT_DIR}/libzip/zip_source_close.c
-    ${EXT_DIR}/libzip/zip_source_commit_write.c
-    ${EXT_DIR}/libzip/zip_source_compress.c
-    ${EXT_DIR}/libzip/zip_source_crc.c
-    ${EXT_DIR}/libzip/zip_source_error.c
-    ${EXT_DIR}/libzip/zip_source_file_common.c
-    ${EXT_DIR}/libzip/zip_source_file_stdio.c
-    ${EXT_DIR}/libzip/zip_source_file_stdio_named.c
-    ${EXT_DIR}/libzip/zip_source_free.c
-    ${EXT_DIR}/libzip/zip_source_function.c
-    ${EXT_DIR}/libzip/zip_source_get_dostime.c
-    ${EXT_DIR}/libzip/zip_source_get_file_attributes.c
-    ${EXT_DIR}/libzip/zip_source_is_deleted.c
-    ${EXT_DIR}/libzip/zip_source_layered.c
-    ${EXT_DIR}/libzip/zip_source_open.c
-    ${EXT_DIR}/libzip/zip_source_pass_to_lower_layer.c
-    ${EXT_DIR}/libzip/zip_source_pkware_decode.c
-    ${EXT_DIR}/libzip/zip_source_pkware_encode.c
-    ${EXT_DIR}/libzip/zip_source_read.c
-    ${EXT_DIR}/libzip/zip_source_remove.c
-    ${EXT_DIR}/libzip/zip_source_rollback_write.c
-    ${EXT_DIR}/libzip/zip_source_seek.c
-    ${EXT_DIR}/libzip/zip_source_seek_write.c
-    ${EXT_DIR}/libzip/zip_source_stat.c
-    ${EXT_DIR}/libzip/zip_source_supports.c
-    ${EXT_DIR}/libzip/zip_source_tell.c
-    ${EXT_DIR}/libzip/zip_source_tell_write.c
-    ${EXT_DIR}/libzip/zip_source_window.c
-    ${EXT_DIR}/libzip/zip_source_write.c
-    ${EXT_DIR}/libzip/zip_source_zip.c
-    ${EXT_DIR}/libzip/zip_source_zip_new.c
-    ${EXT_DIR}/libzip/zip_stat.c
-    ${EXT_DIR}/libzip/zip_stat_index.c
-    ${EXT_DIR}/libzip/zip_stat_init.c
-    ${EXT_DIR}/libzip/zip_strerror.c
-    ${EXT_DIR}/libzip/zip_string.c
-    ${EXT_DIR}/libzip/zip_unchange.c
-    ${EXT_DIR}/libzip/zip_unchange_all.c
-    ${EXT_DIR}/libzip/zip_unchange_archive.c
-    ${EXT_DIR}/libzip/zip_unchange_data.c
-    ${EXT_DIR}/libzip/zip_utf-8.c
-    ${EXT_DIR}/libzip/zip_err_str.c
+    ${THIRD_PARTY_DIR}/libzip/zip_add.c
+    ${THIRD_PARTY_DIR}/libzip/zip_add_dir.c
+    ${THIRD_PARTY_DIR}/libzip/zip_add_entry.c
+    ${THIRD_PARTY_DIR}/libzip/zip_algorithm_deflate.c
+    ${THIRD_PARTY_DIR}/libzip/zip_buffer.c
+    ${THIRD_PARTY_DIR}/libzip/zip_close.c
+    ${THIRD_PARTY_DIR}/libzip/zip_delete.c
+    ${THIRD_PARTY_DIR}/libzip/zip_dir_add.c
+    ${THIRD_PARTY_DIR}/libzip/zip_dirent.c
+    ${THIRD_PARTY_DIR}/libzip/zip_discard.c
+    ${THIRD_PARTY_DIR}/libzip/zip_entry.c
+    ${THIRD_PARTY_DIR}/libzip/zip_error.c
+    ${THIRD_PARTY_DIR}/libzip/zip_error_clear.c
+    ${THIRD_PARTY_DIR}/libzip/zip_error_get.c
+    ${THIRD_PARTY_DIR}/libzip/zip_error_get_sys_type.c
+    ${THIRD_PARTY_DIR}/libzip/zip_error_strerror.c
+    ${THIRD_PARTY_DIR}/libzip/zip_error_to_str.c
+    ${THIRD_PARTY_DIR}/libzip/zip_extra_field.c
+    ${THIRD_PARTY_DIR}/libzip/zip_extra_field_api.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fclose.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fdopen.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_add.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_error_clear.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_error_get.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_get_comment.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_get_external_attributes.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_get_offset.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_rename.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_replace.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_set_comment.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_set_encryption.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_set_external_attributes.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_set_mtime.c
+    ${THIRD_PARTY_DIR}/libzip/zip_file_strerror.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fopen.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fopen_encrypted.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fopen_index.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fopen_index_encrypted.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fread.c
+    ${THIRD_PARTY_DIR}/libzip/zip_fseek.c
+    ${THIRD_PARTY_DIR}/libzip/zip_ftell.c
+    ${THIRD_PARTY_DIR}/libzip/zip_get_archive_comment.c
+    ${THIRD_PARTY_DIR}/libzip/zip_get_archive_flag.c
+    ${THIRD_PARTY_DIR}/libzip/zip_get_encryption_implementation.c
+    ${THIRD_PARTY_DIR}/libzip/zip_get_file_comment.c
+    ${THIRD_PARTY_DIR}/libzip/zip_get_name.c
+    ${THIRD_PARTY_DIR}/libzip/zip_get_num_entries.c
+    ${THIRD_PARTY_DIR}/libzip/zip_get_num_files.c
+    ${THIRD_PARTY_DIR}/libzip/zip_hash.c
+    ${THIRD_PARTY_DIR}/libzip/zip_io_util.c
+    ${THIRD_PARTY_DIR}/libzip/zip_libzip_version.c
+    ${THIRD_PARTY_DIR}/libzip/zip_memdup.c
+    ${THIRD_PARTY_DIR}/libzip/zip_name_locate.c
+    ${THIRD_PARTY_DIR}/libzip/zip_new.c
+    ${THIRD_PARTY_DIR}/libzip/zip_open.c
+    ${THIRD_PARTY_DIR}/libzip/zip_pkware.c
+    ${THIRD_PARTY_DIR}/libzip/zip_progress.c
+    ${THIRD_PARTY_DIR}/libzip/zip_random_unix.c
+    ${THIRD_PARTY_DIR}/libzip/zip_rename.c
+    ${THIRD_PARTY_DIR}/libzip/zip_replace.c
+    ${THIRD_PARTY_DIR}/libzip/zip_set_archive_comment.c
+    ${THIRD_PARTY_DIR}/libzip/zip_set_archive_flag.c
+    ${THIRD_PARTY_DIR}/libzip/zip_set_default_password.c
+    ${THIRD_PARTY_DIR}/libzip/zip_set_file_comment.c
+    ${THIRD_PARTY_DIR}/libzip/zip_set_file_compression.c
+    ${THIRD_PARTY_DIR}/libzip/zip_set_name.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_accept_empty.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_begin_write.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_begin_write_cloning.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_buffer.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_call.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_close.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_commit_write.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_compress.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_crc.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_error.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_file_common.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_file_stdio.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_file_stdio_named.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_free.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_function.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_get_dostime.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_get_file_attributes.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_is_deleted.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_layered.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_open.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_pass_to_lower_layer.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_pkware_decode.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_pkware_encode.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_read.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_remove.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_rollback_write.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_seek.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_seek_write.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_stat.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_supports.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_tell.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_tell_write.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_window.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_write.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_zip.c
+    ${THIRD_PARTY_DIR}/libzip/zip_source_zip_new.c
+    ${THIRD_PARTY_DIR}/libzip/zip_stat.c
+    ${THIRD_PARTY_DIR}/libzip/zip_stat_index.c
+    ${THIRD_PARTY_DIR}/libzip/zip_stat_init.c
+    ${THIRD_PARTY_DIR}/libzip/zip_strerror.c
+    ${THIRD_PARTY_DIR}/libzip/zip_string.c
+    ${THIRD_PARTY_DIR}/libzip/zip_unchange.c
+    ${THIRD_PARTY_DIR}/libzip/zip_unchange_all.c
+    ${THIRD_PARTY_DIR}/libzip/zip_unchange_archive.c
+    ${THIRD_PARTY_DIR}/libzip/zip_unchange_data.c
+    ${THIRD_PARTY_DIR}/libzip/zip_utf-8.c
+    ${THIRD_PARTY_DIR}/libzip/zip_err_str.c
 )
 
 # All external C sources combined
@@ -413,13 +413,13 @@ set(EXTERNAL_C_SOURCES
 set(COMMON_INCLUDE_DIRS
     ${CMAKE_SOURCE_DIR}/include
     ${SRC_DIR}
-    ${EXT_DIR}/micropather
-    ${EXT_DIR}/yam
-    ${EXT_DIR}/libyaml/include
-    ${EXT_DIR}/physfs
-    ${EXT_DIR}/physfs/extras
-    ${EXT_DIR}/physfs/zlib123
-    ${EXT_DIR}/libzip
+    ${THIRD_PARTY_DIR}/micropather
+    ${THIRD_PARTY_DIR}/yam
+    ${THIRD_PARTY_DIR}/libyaml/include
+    ${THIRD_PARTY_DIR}/physfs
+    ${THIRD_PARTY_DIR}/physfs/extras
+    ${THIRD_PARTY_DIR}/physfs/zlib123
+    ${THIRD_PARTY_DIR}/libzip
 )
 
 set(COMMON_DEFINITIONS
@@ -480,7 +480,7 @@ function(configure_openglad_external_target target)
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         # Vendored third-party code: keep warnings actionable in OpenGlad code by silencing
         # warnings from upstream C/C++ sources. Track upstream versions in
-        # src/external/VENDORED_LIBS.md and prefer upgrades over refactors-in-place.
+        # third_party/VENDORED_LIBS.md and prefer upgrades over refactors-in-place.
         target_compile_options(${target} PRIVATE -w)
     endif()
 endfunction()
@@ -521,10 +521,10 @@ add_library(og_ext_physfs STATIC ${PHYSFS_SOURCES})
 configure_openglad_external_target(og_ext_physfs)
 # PhysFS 3.x uses built-in miniz for ZIP support; no external zlib/libzip needed
 
-add_library(og_ext_micropather STATIC ${EXT_DIR}/micropather/micropather.cpp)
+add_library(og_ext_micropather STATIC ${THIRD_PARTY_DIR}/micropather/micropather.cpp)
 configure_openglad_external_target(og_ext_micropather)
 
-add_library(og_ext_yam STATIC ${EXT_DIR}/yam/yam.cpp)
+add_library(og_ext_yam STATIC ${THIRD_PARTY_DIR}/yam/yam.cpp)
 configure_openglad_external_target(og_ext_yam)
 
 set(OG_EXTERNAL_LIBS

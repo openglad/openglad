@@ -28,7 +28,7 @@ while IFS= read -r -d '' file; do
             status=1
         fi
     fi
-done < <(find "${PROJECT_ROOT}/src" -type f -name '*.cpp' ! -path "${PROJECT_ROOT}/src/external/*" -print0)
+done < <(find "${PROJECT_ROOT}/src" -type f -name '*.cpp' ! -path "${PROJECT_ROOT}/third_party/*" -print0)
 
 for rel in "${!allowed[@]}"; do
     file="${PROJECT_ROOT}/${rel}"
