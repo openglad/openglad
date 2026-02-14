@@ -1,6 +1,9 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/entities/guy.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/stats.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <unordered_set>
@@ -108,4 +111,3 @@ void test_stats_hit_response_mage_and_archmage_teleport_branches()
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
 }
 REGISTER_TEST(test_stats_hit_response_mage_and_archmage_teleport_branches);
-

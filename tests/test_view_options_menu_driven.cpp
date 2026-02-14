@@ -1,6 +1,9 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/input/input.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/entities/walker.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <array>
@@ -109,4 +112,3 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
         SDL_WaitThread(th, &code);
 }
 REGISTER_TEST(test_viewscreen_options_menu_driven_exercises_hotkeys);
-
