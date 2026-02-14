@@ -18,6 +18,7 @@
 #include <openglad/data/level_data.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/io/yaml_stream.h>
+#include <openglad/platform/io.h>
 
 #include <openglad/render/pixie.h>
 #include <openglad/data/gloader.h>

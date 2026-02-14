@@ -21,6 +21,7 @@
 //buffers:  using input.h instead #include "int32.h"
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 
 #include "SDL.h"
 #include <openglad/data/gparser.h>

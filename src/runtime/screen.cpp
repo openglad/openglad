@@ -28,6 +28,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/render/smooth.h>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 #include <openglad/input/input.h>
 #include <openglad/legacy/view_sizes.h>
 #include <openglad/ui/results_screen.h>

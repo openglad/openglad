@@ -19,6 +19,7 @@
 #include <openglad/input/button.h>
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 
 #include "SDL.h"
 

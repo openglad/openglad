@@ -23,6 +23,7 @@
 #include <openglad/render/text.h>
 #include <openglad/entities/guy.h>
 #include <openglad/input/button.h>
+#include <openglad/platform/io.h>
 #include <algorithm>
 #include <array>
 #include <cctype>

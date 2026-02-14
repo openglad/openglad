@@ -22,6 +22,7 @@
 #include <openglad/render/smooth.h>
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 #include <openglad/render/text.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>

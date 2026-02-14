@@ -22,6 +22,7 @@
 #include <openglad/render/pixien.h>
 #include <openglad/entities/obmap.h>
 #include <memory>
+#include <vector>
 
 // Opaque state type used by MicroPather for pathfinding nodes.
 // States are encoded grid coordinates (not real pointers), but the

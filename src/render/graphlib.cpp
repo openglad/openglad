@@ -23,6 +23,7 @@
 #include <openglad/legacy/graph.h>
 #include <string>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 
 // Use this for globally setting the graphics dir, etc..
 //char pix_directory[80];

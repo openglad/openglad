@@ -25,6 +25,7 @@
 #include <openglad/legacy/colors.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 #include <openglad/runtime/game_context.h>
 #include <string>
 #include <format>

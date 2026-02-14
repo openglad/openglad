@@ -18,6 +18,7 @@
 #include <openglad/legacy/graph.h>
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 
 #include <list>
 #include <string>

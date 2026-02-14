@@ -29,6 +29,7 @@
 #include "SDL_mixer.h"
 #include <string>
 #include <openglad/core/util.h>
+#include <openglad/platform/io.h>
 
 //#define SOUND_DB   0 // define for debugging messages
 
