@@ -21,12 +21,18 @@
 */
 
 #include <openglad/input/input.h>
-#include <openglad/legacy/graph.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/walker.h>
+#include <openglad/legacy/base.h>
 #include <openglad/platform/io.h>
+#include <openglad/render/radar.h>
+#include <openglad/render/view.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
 #include <string>
 #include <format>
 #include <openglad/legacy/view_sizes.h>
