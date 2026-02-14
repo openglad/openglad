@@ -1,4 +1,3 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/data/gparser.h>
 #include "test_framework.h"
 
