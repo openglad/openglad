@@ -1,5 +1,6 @@
-#include <openglad/legacy/graph.h>
+#include "SDL.h"
 #include <openglad/data/level_data.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <array>

@@ -1,7 +1,9 @@
-#include <openglad/legacy/graph.h>
 #include <openglad/data/gloader.h>
+#include <openglad/entities/walker.h>
 #include <openglad/platform/io.h>
 #include <openglad/legacy/pixdefs.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <string>
