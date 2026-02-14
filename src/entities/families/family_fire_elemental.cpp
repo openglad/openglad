@@ -6,11 +6,21 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
+
+static bool fire_elemental_on_death(walker* self)
+{
+    self->dead = 0;
+    self->stats()->magicpoints += self->stats()->special_cost[1];
+    self->special();
+    self->dead = 1;
+    return true;
+}
 
 static void fire_elemental_level_up(guy* self, Sint32 level_diff)
 {
@@ -51,7 +61,7 @@ const FamilyDescriptor& describe_family_fire_elemental()
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = fire_elemental_level_up,
-        .on_death = nullptr,
+        .on_death = fire_elemental_on_death,
     };
     return desc;
 }

@@ -6,10 +6,52 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/walker.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
+
+static bool slime_on_death(walker* self)
+{
+    self->dead = 1;
+    walker* newob = myscreen->level_data.add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
+    newob->team_num = self->team_num;
+    newob->stats()->level = self->stats()->level;
+    newob->set_difficulty(self->stats()->level);
+    newob->foe = self->foe;
+    newob->leader = self->leader;
+    if (self->stats()->name.size())
+        self->stats()->name = newob->stats()->name;
+    if (self->myguy)
+    {
+        self->move_myguy_to(newob);
+    }
+    newob->center_on(self);
+    self->stats()->hitpoints = self->stats()->max_hitpoints;
+    return true;
+}
+
+static bool medium_slime_on_death(walker* self)
+{
+    self->dead = 1;
+    walker* newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
+    newob->team_num = self->team_num;
+    newob->stats()->level = self->stats()->level;
+    newob->set_difficulty(self->stats()->level);
+    newob->foe = self->foe;
+    newob->leader = self->leader;
+    if (self->stats()->name.size())
+        self->stats()->name = newob->stats()->name;
+    if (self->myguy)
+    {
+        self->move_myguy_to(newob);
+    }
+    newob->center_on(self);
+    self->stats()->hitpoints = self->stats()->max_hitpoints;
+    return true;
+}
 
 const FamilyDescriptor& describe_family_slime()
 {
@@ -34,7 +76,7 @@ const FamilyDescriptor& describe_family_slime()
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = nullptr,
-        .on_death = nullptr,
+        .on_death = slime_on_death,
     };
     return desc;
 }
@@ -90,7 +132,7 @@ const FamilyDescriptor& describe_family_medium_slime()
         .hit_response = nullptr,
         .set_difficulty = nullptr,
         .level_up = nullptr,
-        .on_death = nullptr,
+        .on_death = medium_slime_on_death,
     };
     return desc;
 }

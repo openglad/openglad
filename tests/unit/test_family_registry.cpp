@@ -144,8 +144,16 @@ OG_UNIT_TEST(test_registry_callbacks_state)
         OG_ASSERT(d->do_special == nullptr);
         OG_ASSERT(d->check_special_ai == nullptr);
         OG_ASSERT(d->hit_response == nullptr);
-        OG_ASSERT(d->on_death == nullptr);
     }
+
+    // on_death: non-null for families with custom death behavior
+    OG_ASSERT(get_family_descriptor(FAMILY_FIREELEMENTAL)->on_death != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SLIME)->on_death != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_MEDIUM_SLIME)->on_death != nullptr);
+    // Default families have nullptr
+    OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->on_death == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_GHOST)->on_death == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SMALL_SLIME)->on_death == nullptr);
 
     // set_difficulty: non-null for families with custom formulas
     OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->set_difficulty != nullptr);

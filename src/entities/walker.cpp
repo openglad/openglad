@@ -22,6 +22,8 @@
 
 #include <openglad/core/combat_math.h>
 #include <openglad/core/stats.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
@@ -1824,58 +1826,21 @@ bool walker::death()
 			        && (stats_->name.size()) // we were named
 			   )
 				return myscreen->endgame(SCEN_TYPE_SAVE_ALL); // failed
-			switch (family)
 			{
-				case FAMILY_FIREELEMENTAL:  // make us explode
-					dead = 0;
-					stats_->magicpoints += stats_->special_cost[1];
-					special();
-					dead = 1;
-					break;
-				case FAMILY_SLIME: // shrink to medium ..
-					dead = 1;
-					//transform_to(Order::Living, FAMILY_MEDIUM_SLIME);
-					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_MEDIUM_SLIME);
-					newob->team_num = team_num;
-					newob->stats()->level = stats_->level;
-					newob->set_difficulty(stats_->level);
-					newob->foe = foe;
-					newob->leader = leader;
-					if (stats_->name.size())
-						stats_->name = newob->stats()->name;
-					if (myguy)
-					{
-						move_myguy_to(newob);
-					}
-					newob->center_on(this);
-					stats_->hitpoints = stats_->max_hitpoints;
-					break;
-				case FAMILY_MEDIUM_SLIME: // shrink to small ..
-					dead = 1;
-					//transform_to(Order::Living, FAMILY_SMALL_SLIME);
-					newob = myscreen->level_data.add_ob(Order::Living, FAMILY_SMALL_SLIME);
-					newob->team_num = team_num;
-					newob->stats()->level = stats_->level;
-					newob->set_difficulty(stats_->level);
-					newob->foe = foe;
-					newob->leader = leader;
-					if (stats_->name.size())
-						stats_->name = newob->stats()->name;
-					if (myguy)
-					{
-						move_myguy_to(newob);
-					}
-					newob->center_on(this);
-					stats_->hitpoints = stats_->max_hitpoints;
-					break;
-				case FAMILY_GHOST:     // Undead don't leave bloodspots ..
-				case FAMILY_SKELETON:
-				case FAMILY_TOWER1:    // neither do towers
-					break;
-				default:
+				auto* fd = get_family_descriptor(family);
+				if (fd && fd->on_death)
+				{
+					fd->on_death(this);
+				}
+				else if (fd && !fd->leaves_bloodspot)
+				{
+					// Ghost, skeleton, tower etc. -- no bloodspot
+				}
+				else
+				{
 					generate_bloodspot();
-					break;
-			}  // end of family switch
+				}
+			}  // end of family dispatch
 			break;  // end of order livings case
 		case Order::Generator:  // go up in flames :>
 			for (i=0; i < 4; i++)
