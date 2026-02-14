@@ -6,9 +6,22 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/living.h>
+#include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 
 #define BASE_GUY_HP 30
+
+static void soldier_set_difficulty(living* self, Uint32 level)
+{
+    const float levmult = static_cast<float>(level) * static_cast<float>(level);
+    const float level_f = static_cast<float>(level);
+    self->stats()->max_hitpoints   += 13.0f * levmult;
+    self->stats()->max_magicpoints += 8.0f * levmult;
+    self->weapons_left = static_cast<short>((level + 1) / 2);
+    self->damage += 5.0f * level_f;
+    self->stats()->armor += 2.0f * levmult;
+}
 
 const FamilyDescriptor& describe_family_soldier()
 {
@@ -31,7 +44,7 @@ const FamilyDescriptor& describe_family_soldier()
         .do_special = nullptr,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
-        .set_difficulty = nullptr,
+        .set_difficulty = soldier_set_difficulty,
         .level_up = nullptr,
         .on_death = nullptr,
     };

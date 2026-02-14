@@ -6,9 +6,38 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/guy.h>
+#include <openglad/entities/living.h>
+#include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 
 #define BASE_GUY_HP 30
+
+static void archer_set_difficulty(living* self, Uint32 level)
+{
+    const float levmult = static_cast<float>(level) * static_cast<float>(level);
+    const float level_f = static_cast<float>(level);
+    self->stats()->max_hitpoints   += 11.0f * levmult;
+    self->stats()->max_magicpoints += 12.0f * levmult;
+    self->damage += 4.0f * level_f;
+    self->stats()->armor += levmult;
+}
+
+static void archer_level_up(guy* self, Sint32 level_diff)
+{
+    Sint32 s = 8 * level_diff;
+    Sint32 d = 6 * level_diff;
+    Sint32 c = 8 * level_diff;
+    Sint32 it = 8 * level_diff;
+    Sint32 a = 1 * level_diff;
+    s /= 2;
+    d = (d * 3) / 2;
+    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+}
 
 const FamilyDescriptor& describe_family_archer()
 {
@@ -31,8 +60,8 @@ const FamilyDescriptor& describe_family_archer()
         .do_special = nullptr,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
-        .set_difficulty = nullptr,
-        .level_up = nullptr,
+        .set_difficulty = archer_set_difficulty,
+        .level_up = archer_level_up,
         .on_death = nullptr,
     };
     return desc;

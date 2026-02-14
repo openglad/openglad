@@ -324,87 +324,25 @@ void guy::upgrade_to_level(short new_level, bool set_xp)
 {
     Sint32 level_diff = static_cast<Sint32>(new_level) - static_cast<Sint32>(this->level);
     
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
-	switch (family)
-	{
-		case FAMILY_SOLDIER:
-			break;
-		case FAMILY_ELF:
-			s = (s * 3) / 4;
-			d = (d * 3) / 2;
-			c = (c * 3) / 4;
-			break;
-		case FAMILY_ARCHER:
-			s /= 2;
-			d = (d * 3) / 2;
-			break;
-		case FAMILY_MAGE:
-			s /= 2;
-			c /= 2;
-			it *= 2;
-			break;
-		case FAMILY_ARCHMAGE:
-			s /= 2;
-			c /= 2;
-			it *= 2;
-			break;
-		case FAMILY_SKELETON:
-			d *= 2;
-			c /= 2;
-			it /= 2;
-			break;
-		case FAMILY_CLERIC:
-			break;
-		case FAMILY_FIREELEMENTAL:
-			s = (s * 3) / 2;
-			c /= 2;
-			break;
-		case FAMILY_FAERIE:
-			s /= 2;
-			d *= 2;
-			c /= 2;
-			break;
-		case FAMILY_SLIME:
-		case FAMILY_SMALL_SLIME:
-		case FAMILY_MEDIUM_SLIME:
-			break;
-		case FAMILY_THIEF:
-			s /= 2;
-			d *= 2;
-			c /= 2;
-			break;
-		case FAMILY_GHOST:
-			break;
-		case FAMILY_DRUID:
-			d /= 2;
-			it = (it * 3) / 2;
-			break;
-		case FAMILY_ORC:
-		case FAMILY_BIG_ORC:
-			s = (s * 3) / 2;
-			d /= 2;
-			c = (c * 3) / 2;
-			it /= 2;
-			break;
-		case FAMILY_BARBARIAN:
-			s = (s * 3) / 2;
-			d /= 2;
-			c = (c * 3) / 2;
-			it /= 2;
-			break;
-		default:
-			break;
-	}
-    
-    strength = static_cast<short>(static_cast<Sint32>(strength) + s);
-    dexterity = static_cast<short>(static_cast<Sint32>(dexterity) + d);
-    constitution = static_cast<short>(static_cast<Sint32>(constitution) + c);
-    intelligence = static_cast<short>(static_cast<Sint32>(intelligence) + it);
-    armor = static_cast<short>(static_cast<Sint32>(armor) + a);
+    auto* fd = get_family_descriptor(family);
+    if (fd && fd->level_up)
+    {
+        fd->level_up(this, level_diff);
+    }
+    else
+    {
+        // Default: base deltas with no modifier
+        Sint32 s = 8 * level_diff;
+        Sint32 d = 6 * level_diff;
+        Sint32 c = 8 * level_diff;
+        Sint32 it = 8 * level_diff;
+        Sint32 a = 1 * level_diff;
+        strength = static_cast<short>(static_cast<Sint32>(strength) + s);
+        dexterity = static_cast<short>(static_cast<Sint32>(dexterity) + d);
+        constitution = static_cast<short>(static_cast<Sint32>(constitution) + c);
+        intelligence = static_cast<short>(static_cast<Sint32>(intelligence) + it);
+        armor = static_cast<short>(static_cast<Sint32>(armor) + a);
+    }
     
     this->level = new_level;
     if(set_xp)

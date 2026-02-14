@@ -21,6 +21,8 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/render/smooth.h>
+#include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/family_registry.h>
 #include <openglad/entities/living.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
@@ -686,52 +688,18 @@ void living::set_difficulty(Uint32 whatlevel)
 	const float levmult = static_cast<float>(whatlevel) * static_cast<float>(whatlevel);
 	const float level_f = static_cast<float>(whatlevel);
 
-	switch (family)
+	auto* fd = get_family_descriptor(family);
+	if (fd && fd->set_difficulty)
 	{
-		case FAMILY_ARCHER:
-			stats_->max_hitpoints   += 11.0f * levmult;
-			stats_->max_magicpoints += 12.0f * levmult;
-			damage += 4.0f * level_f;
-			stats_->armor += levmult;
-			break;
-		case FAMILY_MAGE:
-			stats_->max_hitpoints   += 7.0f * levmult;
-			stats_->max_magicpoints += 14.0f * levmult;
-			damage += 3.0f * level_f;
-			stats_->armor += levmult / 2.0f;
-			break;
-		case FAMILY_CLERIC:
-		case FAMILY_DRUID:
-			stats_->max_hitpoints   += 9.0f * levmult;
-			stats_->max_magicpoints += 12.0f * levmult;
-			damage += 4.0f * level_f;
-			stats_->armor += levmult / 2.0f;
-			break;
-		case FAMILY_SOLDIER:  // default as soldier
-			stats_->max_hitpoints   += 13.0f * levmult;
-			stats_->max_magicpoints += 8.0f * levmult;
-			weapons_left = static_cast<short>((whatlevel+1) / 2);
-			damage += 5.0f * level_f;
-			stats_->armor += 2.0f * levmult;
-			break;
-		case FAMILY_ORC:
-			stats_->max_hitpoints   += 14.0f * levmult;
-			stats_->max_magicpoints += 7.0f * levmult;
-			damage += 6.0f * level_f;
-			stats_->armor += 3.0f * levmult;
-			break;
-		case FAMILY_GOLEM:
-			stats_->max_hitpoints   += 18.0f * levmult;
-			stats_->max_magicpoints += 5.0f * levmult;
-			damage += 7.0f * level_f;
-			stats_->armor += 4.0f * levmult;
-			break;
-		default:
-			stats_->max_hitpoints   += 11.0f * levmult;
-			stats_->max_magicpoints += 11.0f * levmult;
-			damage += 4.0f * level_f;
-			stats_->armor += 2.0f * levmult;
-			break;
+		fd->set_difficulty(this, whatlevel);
+	}
+	else
+	{
+		// Default formula
+		stats_->max_hitpoints   += 11.0f * levmult;
+		stats_->max_magicpoints += 11.0f * levmult;
+		damage += 4.0f * level_f;
+		stats_->armor += 2.0f * levmult;
 	}
 
 	// Adjust for difficulty settings now...

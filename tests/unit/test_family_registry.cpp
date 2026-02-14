@@ -134,17 +134,38 @@ OG_UNIT_TEST(test_registry_bloodspot_flags)
     OG_ASSERT(get_family_descriptor(FAMILY_GIANT_SKELETON)->leaves_bloodspot == false);
 }
 
-OG_UNIT_TEST(test_registry_callbacks_null_initially)
+OG_UNIT_TEST(test_registry_callbacks_state)
 {
     init_family_registry();
     for (int i = 0; i < NUM_FAMILIES; i++)
     {
         auto* d = get_family_descriptor(i);
+        // These callbacks are not yet extracted
         OG_ASSERT(d->do_special == nullptr);
         OG_ASSERT(d->check_special_ai == nullptr);
         OG_ASSERT(d->hit_response == nullptr);
-        OG_ASSERT(d->set_difficulty == nullptr);
-        OG_ASSERT(d->level_up == nullptr);
         OG_ASSERT(d->on_death == nullptr);
     }
+
+    // set_difficulty: non-null for families with custom formulas
+    OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->set_difficulty != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ARCHER)->set_difficulty != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_MAGE)->set_difficulty != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_CLERIC)->set_difficulty != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_DRUID)->set_difficulty != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ORC)->set_difficulty != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_GOLEM)->set_difficulty != nullptr);
+    // Default-formula families have nullptr
+    OG_ASSERT(get_family_descriptor(FAMILY_ELF)->set_difficulty == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_GHOST)->set_difficulty == nullptr);
+
+    // level_up: non-null for families with custom modifiers
+    OG_ASSERT(get_family_descriptor(FAMILY_ELF)->level_up != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ARCHER)->level_up != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_MAGE)->level_up != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_SKELETON)->level_up != nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_ORC)->level_up != nullptr);
+    // Default-modifier families have nullptr
+    OG_ASSERT(get_family_descriptor(FAMILY_SOLDIER)->level_up == nullptr);
+    OG_ASSERT(get_family_descriptor(FAMILY_CLERIC)->level_up == nullptr);
 }

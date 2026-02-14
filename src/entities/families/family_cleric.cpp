@@ -6,9 +6,21 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/living.h>
+#include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 
 #define BASE_GUY_HP 30
+
+static void cleric_set_difficulty(living* self, Uint32 level)
+{
+    const float levmult = static_cast<float>(level) * static_cast<float>(level);
+    const float level_f = static_cast<float>(level);
+    self->stats()->max_hitpoints   += 9.0f * levmult;
+    self->stats()->max_magicpoints += 12.0f * levmult;
+    self->damage += 4.0f * level_f;
+    self->stats()->armor += levmult / 2.0f;
+}
 
 const FamilyDescriptor& describe_family_cleric()
 {
@@ -31,7 +43,7 @@ const FamilyDescriptor& describe_family_cleric()
         .do_special = nullptr,
         .check_special_ai = nullptr,
         .hit_response = nullptr,
-        .set_difficulty = nullptr,
+        .set_difficulty = cleric_set_difficulty,
         .level_up = nullptr,
         .on_death = nullptr,
     };

@@ -6,9 +6,27 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
+#include <openglad/entities/guy.h>
 #include <openglad/legacy/base.h>
 
 #define BASE_GUY_HP 30
+
+static void skeleton_level_up(guy* self, Sint32 level_diff)
+{
+    Sint32 s = 8 * level_diff;
+    Sint32 d = 6 * level_diff;
+    Sint32 c = 8 * level_diff;
+    Sint32 it = 8 * level_diff;
+    Sint32 a = 1 * level_diff;
+    d *= 2;
+    c /= 2;
+    it /= 2;
+    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+}
 
 const FamilyDescriptor& describe_family_skeleton()
 {
@@ -32,7 +50,7 @@ const FamilyDescriptor& describe_family_skeleton()
         .check_special_ai = nullptr,
         .hit_response = nullptr,
         .set_difficulty = nullptr,
-        .level_up = nullptr,
+        .level_up = skeleton_level_up,
         .on_death = nullptr,
     };
     return desc;
