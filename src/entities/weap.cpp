@@ -21,6 +21,8 @@
 #include <openglad/entities/weap.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
+#include <openglad/entities/weapon_family_descriptor.h>
+#include <openglad/entities/weapon_family_registry.h>
 #include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/render/smooth.h>
@@ -85,9 +87,8 @@ bool weap::act()
 			}
 		case ACT_SIT: // for things like trees
 			{
-				if (family != FAMILY_TREE && family != FAMILY_BLOOD
-				        && family != FAMILY_DOOR)
-					//Log("weapon sitting\n");
+				const auto* wfd = get_weapon_family_descriptor(family);
+				if (!wfd || !wfd->skip_sit_notify)
 					active_screen()->do_notify("Weapon sitting", this);
 				return 1;
 			}
@@ -147,117 +148,14 @@ bool weap::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 
-	walker  *newob = nullptr;
-
 	if (death_called)  // Make sure we don't get multiple deaths
 		return 0;
 
 	death_called = 1;
 
-	switch (family)
-	{
-		case FAMILY_KNIFE: // for returning knife
-		{
-			const auto* owner_fd = owner ? get_family_descriptor(owner->query_family()) : nullptr;
-			if (!owner_fd || !owner_fd->has_returning_weapon)
-				break;
-		}
-			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
-			newob->owner = owner;
-			newob->center_on(this);
-			newob->lastx = lastx;
-			newob->lasty = lasty;
-			newob->stepsize = stepsize;
-			newob->ani_type = ANI_ATTACK;
-			newob->damage = damage;
-			break;  // end of soldier returning knife
-		case FAMILY_ROCK: // used for the elf's bouncing rock, etc.
-			if (!do_bounce || !lineofsight || collide_ob) // died of natural causes
-				break;
-			dead = 0; // first, un-dead us so we can collide ..
-			// Did we hit a barrier?
-			if (active_screen()->query_grid_passable(xpos+lastx, ypos+lasty, this))
-			{
-				dead = 1;
-				break; // if not, die like normal
-			}
-			if (active_screen()->query_grid_passable(xpos-lastx, ypos+lasty, this))
-			{
-				setxy(xpos-lastx, ypos+lasty);  // bounce 'down-left'
-				lastx = -lastx;
-				death_called = 0;
-				break;
-			}
-			if (active_screen()->query_grid_passable(xpos+lastx, ypos-lasty, this))
-			{
-				setxy(xpos+lastx, ypos-lasty); // bounce 'up-right'
-				lasty = -lasty;
-				death_called = 0;
-				break;
-			}
-			if (active_screen()->query_grid_passable(xpos-lastx, ypos-lasty, this))
-			{
-				setxy(xpos-lastx, ypos-lasty);
-				lastx = -lastx;
-				lasty = -lasty;
-				death_called = 0;
-				break;
-			}
-			// Else we're really stuck, so die :)
-			dead = 1;
-			break;
-		case FAMILY_FIRE_ARROW: // only for exploding, really
-		case FAMILY_BOULDER:
-			if (!skip_exit)
-				break;  // skip_exit means we're supposed to explode :)
-			if (!owner || owner->dead)
-				owner = this;
-			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
-			if (!newob)
-				break; // failsafe
-			if (on_screen())
-				active_screen()->soundp->play_sound(SOUND_EXPLODE);
-			newob->owner = owner;
-			newob->stats()->hitpoints = 0;
-			newob->stats()->level = owner->stats()->level;
-			newob->ani_type = ANI_EXPLODE;
-			newob->center_on(this);
-			newob->damage = damage*2;
-			break;  // end fire (exploding) arrows
-		case FAMILY_WAVE: // grow to wave2
-			dead = 0;
-			transform_to(Order::Weapon, FAMILY_WAVE2);
-			stats_->hitpoints = stats_->max_hitpoints;
-			break;  // end wave -> wave2
-		case FAMILY_WAVE2: // grow to wave3
-			dead = 0;
-			transform_to(Order::Weapon, FAMILY_WAVE3);
-			stats_->hitpoints = stats_->max_hitpoints;
-			break;  // end wave2 -> wave3
-		case FAMILY_DOOR: // display open picture
-			newob = active_screen()->level_data.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
-			if (!newob)
-				break;
-			newob->ani_type = ANI_DOOR_OPEN;
-			newob->setxy(xpos, ypos);
-			newob->stats()->level = stats_->level;
-			newob->team_num = team_num;
-			//      newob->ignore = 1;
-			// What way are we 'facing'?
-			if (active_screen()->level_data.mysmoother.query_genre_x_y((xpos/GRID_SIZE),(ypos/GRID_SIZE)-1)
-			        == TYPE_WALL) // a wall above us?
-			{
-				newob->curdir = FACE_RIGHT;
-				//        newob->setxy(xpos, ypos-12); // and move us 'up'
-			}
-			else
-			{
-				curdir = FACE_UP;
-			}
-			break; // end open the door ..
-		default:
-			break;
-	}
+	const auto* wfd = get_weapon_family_descriptor(family);
+	if (wfd && wfd->on_death)
+		wfd->on_death(this);
 
 	return 1;
 
@@ -274,54 +172,23 @@ bool weap::animate()
 	//       ani_type = 0;
 	//  }
 
-	switch (family)
+	const auto* wfd = get_weapon_family_descriptor(family);
+	if (wfd && wfd->on_animate)
 	{
-		case FAMILY_TREE:
-		case FAMILY_BLOOD:
-			if (ani_type > 1)
-				ani_type = 0;
-			set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-			cycle++;
-			if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
-			{
-				ani_type = 0; //ANI_WALK;
-				cycle = 0;
-			}
-			break;
-		case FAMILY_CIRCLE_PROTECTION:
-			if (!owner || owner->dead || stats_->hitpoints <= 0)
-			{
-				dead = 1;
-				return death();
-			}
-			center_on(owner);
-			break;
-		case FAMILY_GLOW:
-			if (ani_type > 2) // illegal case
-				ani_type = 2; // pulse case
-			set_frame(ani[curdir+ani_type*NUM_FACINGS][cycle]);
-			cycle++;
-			if (ani[curdir+ani_type*NUM_FACINGS][cycle] == -1)
-			{
-				ani_type = 2; // pulse
-				cycle = 0;
-			}
-			if (lifetime-- < 1)
-			{
-				dead = 1;
-				death();
-			}
-			break;
-		default:
-			ani_type = 0;
-			set_frame(ani[curdir][cycle]);
-			cycle++;
-			if (ani[curdir][cycle] == -1)
-			{
-				cycle = 0;
-			}
-			break;
-	} // end of family switch
+		if (!wfd->on_animate(this))
+			return death();
+	}
+	else
+	{
+		// Default animation
+		ani_type = 0;
+		set_frame(ani[curdir][cycle]);
+		cycle++;
+		if (ani[curdir][cycle] == -1)
+		{
+			cycle = 0;
+		}
+	}
 
 	return 1;
 }

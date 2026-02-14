@@ -121,6 +121,26 @@ set(GAME_SOURCES
     ${SRC_DIR}/entities/families/family_soldier.cpp
     ${SRC_DIR}/entities/families/family_thief.cpp
     ${SRC_DIR}/entities/families/family_tower1.cpp
+    ${SRC_DIR}/entities/weapon_family_registry.cpp
+    ${SRC_DIR}/entities/families/weapon_family_knife.cpp
+    ${SRC_DIR}/entities/families/weapon_family_rock.cpp
+    ${SRC_DIR}/entities/families/weapon_family_projectiles.cpp
+    ${SRC_DIR}/entities/families/weapon_family_wave.cpp
+    ${SRC_DIR}/entities/families/weapon_family_door.cpp
+    ${SRC_DIR}/entities/families/weapon_family_animate.cpp
+    ${SRC_DIR}/entities/effect_family_registry.cpp
+    ${SRC_DIR}/entities/families/effect_family_ghost_scare.cpp
+    ${SRC_DIR}/entities/families/effect_family_shield.cpp
+    ${SRC_DIR}/entities/families/effect_family_knife_back.cpp
+    ${SRC_DIR}/entities/families/effect_family_cloud.cpp
+    ${SRC_DIR}/entities/families/effect_family_chain.cpp
+    ${SRC_DIR}/entities/families/effect_family_door_open.cpp
+    ${SRC_DIR}/entities/families/effect_family_bomb.cpp
+    ${SRC_DIR}/entities/treasure_family_registry.cpp
+    ${SRC_DIR}/entities/families/treasure_family_consumables.cpp
+    ${SRC_DIR}/entities/families/treasure_family_valuables.cpp
+    ${SRC_DIR}/entities/families/treasure_family_navigation.cpp
+    ${SRC_DIR}/entities/generator_family_registry.cpp
     ${SRC_DIR}/runtime/game.cpp
     ${SRC_DIR}/render/graphlib.cpp
     ${SRC_DIR}/entities/guy.cpp
@@ -219,6 +239,26 @@ set(OG_ENTITIES_SOURCES
     ${SRC_DIR}/entities/families/family_soldier.cpp
     ${SRC_DIR}/entities/families/family_thief.cpp
     ${SRC_DIR}/entities/families/family_tower1.cpp
+    ${SRC_DIR}/entities/weapon_family_registry.cpp
+    ${SRC_DIR}/entities/families/weapon_family_knife.cpp
+    ${SRC_DIR}/entities/families/weapon_family_rock.cpp
+    ${SRC_DIR}/entities/families/weapon_family_projectiles.cpp
+    ${SRC_DIR}/entities/families/weapon_family_wave.cpp
+    ${SRC_DIR}/entities/families/weapon_family_door.cpp
+    ${SRC_DIR}/entities/families/weapon_family_animate.cpp
+    ${SRC_DIR}/entities/effect_family_registry.cpp
+    ${SRC_DIR}/entities/families/effect_family_ghost_scare.cpp
+    ${SRC_DIR}/entities/families/effect_family_shield.cpp
+    ${SRC_DIR}/entities/families/effect_family_knife_back.cpp
+    ${SRC_DIR}/entities/families/effect_family_cloud.cpp
+    ${SRC_DIR}/entities/families/effect_family_chain.cpp
+    ${SRC_DIR}/entities/families/effect_family_door_open.cpp
+    ${SRC_DIR}/entities/families/effect_family_bomb.cpp
+    ${SRC_DIR}/entities/treasure_family_registry.cpp
+    ${SRC_DIR}/entities/families/treasure_family_consumables.cpp
+    ${SRC_DIR}/entities/families/treasure_family_valuables.cpp
+    ${SRC_DIR}/entities/families/treasure_family_navigation.cpp
+    ${SRC_DIR}/entities/generator_family_registry.cpp
     ${SRC_DIR}/entities/guy.cpp
     ${SRC_DIR}/entities/living.cpp
     ${SRC_DIR}/entities/obmap.cpp

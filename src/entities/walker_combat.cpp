@@ -19,6 +19,8 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
+#include <openglad/entities/weapon_family_descriptor.h>
+#include <openglad/entities/weapon_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
@@ -279,19 +281,9 @@ bool walker::attack(walker  *target)
             death();
         }
         //special effects
-        switch (query_family())
-        {
-            case FAMILY_SPRINKLE:   // Faerie's fire freezes foes :)
-                if (targetorder == Order::Living)
-                {
-                    Sint32 con = target->myguy ? target->myguy->constitution : 0;
-                    target->stats()->frozen_delay =
-                        static_cast<short>(compute_freeze_duration(owner->stats()->level, con, *ctx().rng));
-                }
-                break;
-            default :
-                break;
-        }
+        const auto* wfd = get_weapon_family_descriptor(query_family());
+        if (wfd && wfd->on_hit_target)
+            wfd->on_hit_target(this, target, owner);
 
     }
 

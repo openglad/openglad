@@ -51,6 +51,8 @@ class walker : public pixieN
 			bool setxy(Uint32 x, Uint32 y) { return setxy(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
 			bool setxy(float x, float y) { return setxy(static_cast<Sint32>(x), static_cast<Sint32>(y)); }
 			void setworldxy(float x, float y);
+			float worldx() const { return worldx_; }
+			float worldy() const { return worldy_; }
 			bool walk();
 			bool walkstep(float x, float y);
 			// Convenience overloads to avoid implicit int->float conversions at call sites.

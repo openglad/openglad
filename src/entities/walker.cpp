@@ -24,6 +24,10 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
+#include <openglad/entities/weapon_family_descriptor.h>
+#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/generator_family_descriptor.h>
+#include <openglad/entities/generator_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
@@ -446,44 +450,24 @@ walker  * walker::fire()
 		// *** Ranged combat ***
 		if (on_screen())
 		{
-			if (weapon->query_family() == FAMILY_FIREBALL)
-				myscreen->soundp->play_sound(SOUND_BLAST);
-			else if (weapon->query_family() == FAMILY_METEOR)
-				//play_sound(SOUND_FIREBALL);
-				myscreen->soundp->play_sound(SOUND_BLAST);
-			else if (weapon->query_family() == FAMILY_SPRINKLE)
-				//play_sound(SOUND_SPARKLE);
-				myscreen->soundp->play_sound(SOUND_SPARKLE);
-			else if (weapon->query_family() == FAMILY_ARROW)
-				//play_sound(SOUND_FIRE);
-				myscreen->soundp->play_sound(SOUND_BOW);
-			else if (weapon->query_family() == FAMILY_FIRE_ARROW)
-				//play_sound(SOUND_FIRE);
-				myscreen->soundp->play_sound(SOUND_BOW);
-			else if (weapon->query_family() == FAMILY_LIGHTNING)
-				myscreen->soundp->play_sound(SOUND_BOLT);
-			else //play_sound(SOUND_FWIP);
-				myscreen->soundp->play_sound(SOUND_FWIP);
+			const auto* wfd = get_weapon_family_descriptor(weapon->query_family());
+			myscreen->soundp->play_sound(static_cast<short>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
 		if (order == Order::Generator)
+		{
+			const auto* gfd = get_generator_family_descriptor(family);
+			if (gfd)
 			{
-				switch (family)
-				{
-					case FAMILY_TOWER: // mages, no lifetime
-						weapon->ani_type = ANI_TELE_IN; // mages teleport
-						/* fall through */
-					case FAMILY_TREEHOUSE: // elves also no lifetime
-						weapon->stats()->level = static_cast<Sint32>(rng(static_cast<Uint32>(stats_->level))) + 1;
-						weapon->set_difficulty( static_cast<Uint32>(weapon->stats()->level) );
-						weapon->owner = nullptr;
-						break;
-					default: // tents, bones, etc
-						weapon->lifetime = 800 + stats_->level*11;
-						weapon->stats()->level = static_cast<Sint32>(rng(static_cast<Uint32>(stats_->level))) + 1;
-						weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
-						break;
-				}
+				if (gfd->spawn_ani_type != 0)
+					weapon->ani_type = gfd->spawn_ani_type;
+				if (gfd->has_lifetime)
+					weapon->lifetime = 800 + stats_->level*11;
+				weapon->stats()->level = static_cast<Sint32>(rng(static_cast<Uint32>(stats_->level))) + 1;
+				weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
+				if (gfd->clear_owner)
+					weapon->owner = nullptr;
 			}
+		}
 		// Living-family weapon modifications handled by on_fire_weapon above
 		return weapon;
 	}

@@ -1,0 +1,97 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
+#include <openglad/entities/effect_family_descriptor.h>
+#include <openglad/entities/effect.h>
+#include <openglad/core/stats.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
+
+namespace
+{
+inline screen* active_screen()
+{
+    if(ctx().game_screen != nullptr)
+        return ctx().game_screen;
+    return myscreen;
+}
+} // namespace
+
+static bool knife_back_on_act(effect* self)
+{
+    if (!self->owner || self->owner->dead)
+    {
+        self->dead = 1;
+        return true;
+    }
+    Sint32 distance = self->distance_to_ob(self->owner);
+    if (distance > 10)
+    {
+        float xd = 0, yd = 0;
+        if (self->owner->xpos > self->xpos)
+        {
+            if ( (self->owner->xpos - self->xpos) > self->stepsize )
+                xd = self->stepsize;
+            else
+                xd = self->owner->xpos - self->xpos;
+        }
+        else if (self->owner->xpos < self->xpos)
+        {
+            if ( (self->xpos - self->owner->xpos) > self->stepsize )
+                xd = -self->stepsize;
+            else
+                xd = self->owner->xpos - self->xpos;
+        }
+        if (self->owner->ypos > self->ypos)
+        {
+            if ( (self->owner->ypos - self->ypos) > self->stepsize )
+                yd = self->stepsize;
+            else
+                yd = self->owner->ypos - self->ypos;
+        }
+        else if (self->owner->ypos < self->ypos)
+        {
+            if ( (self->ypos - self->owner->ypos) > self->stepsize )
+                yd = -self->stepsize;
+            else
+                yd = self->owner->ypos - self->ypos;
+        }
+        self->setworldxy(self->worldx()+xd, self->worldy()+yd);
+        walker* newob = active_screen()->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+        newob->damage = self->damage;
+        newob->owner = self->owner;
+        newob->team_num = self->team_num;
+        newob->death_called = 1; // to ensure no spawning of more ..
+        newob->setworldxy(self->worldx(), self->worldy());
+        if (!active_screen()->query_object_passable(self->xpos+xd, self->ypos+yd, newob))
+        {
+            newob->attack(newob->collide_ob);
+            self->damage /= 4.0f;
+        }
+        newob->dead = 1;
+    }
+    else
+    {
+        self->owner->weapons_left = self->owner->weapons_left + 1;
+        self->ani_type = ANI_WALK;
+        self->dead = 1;
+    }
+    return true;
+}
+
+const EffectFamilyDescriptor& describe_effect_knife_back()
+{
+    static const EffectFamilyDescriptor desc = {
+        .family_id = FAMILY_KNIFE_BACK,
+        .name = "KNIFE_BACK",
+        .loops_animation = true,
+        .init_bit_flags = 0,
+        .on_act = knife_back_on_act,
+        .on_death = nullptr,
+    };
+    return desc;
+}

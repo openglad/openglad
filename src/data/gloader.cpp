@@ -21,6 +21,14 @@
 #include <openglad/entities/walker.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
+#include <openglad/entities/weapon_family_descriptor.h>
+#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/effect_family_descriptor.h>
+#include <openglad/entities/effect_family_registry.h>
+#include <openglad/entities/treasure_family_descriptor.h>
+#include <openglad/entities/treasure_family_registry.h>
+#include <openglad/entities/generator_family_descriptor.h>
+#include <openglad/entities/generator_family_registry.h>
 #include <format>
 #include <openglad/entities/living.h>
 #include <openglad/entities/treasure.h>
@@ -894,120 +902,61 @@ walker  *loader::set_walker(walker *ob,
 			break; // end of livings
 		}
 			case Order::Weapon:
-				switch (family)
+			{
+				const auto* wfd = get_weapon_family_descriptor(family);
+				if (wfd)
 				{
-				case FAMILY_ROCK:
-					ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
-					break;
-				case FAMILY_FIREBALL:
-					ob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-					break;
-				case FAMILY_METEOR:
-					ob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-					break;
-				case FAMILY_SPRINKLE:
-					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					break;
-				case FAMILY_GLOW: // cleric's shield glad
-					ob->lifetime = 350;
-					break;
-				case FAMILY_WAVE:
-					ob->stats()->set_bit_flags(BIT_IMMORTAL, 1);
-					ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
-					ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
-					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					ob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-					break;
-				case FAMILY_WAVE2:
-					ob->stats()->set_bit_flags(BIT_IMMORTAL, 1);
-					ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
-					ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
-					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					ob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-					break;
-				case FAMILY_WAVE3:
-					ob->stats()->set_bit_flags(BIT_IMMORTAL, 1);
-					ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
-					ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
-					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					ob->stats()->set_bit_flags(BIT_MAGICAL, 1);
-					break;
-				case FAMILY_CIRCLE_PROTECTION:
-					ob->stats()->set_bit_flags(BIT_IMMORTAL, 1);
-					ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
-					ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
-					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					ob->ani_type = 5; // anything non-zero
-					break;
-					default:
-						break;
-				}  // end of weapons
-				break;
+					if (wfd->init_bit_flags & BIT_FORESTWALK)
+						ob->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+					if (wfd->init_bit_flags & BIT_MAGICAL)
+						ob->stats()->set_bit_flags(BIT_MAGICAL, 1);
+					if (wfd->init_bit_flags & BIT_FLYING)
+						ob->stats()->set_bit_flags(BIT_FLYING, 1);
+					if (wfd->init_bit_flags & BIT_IMMORTAL)
+						ob->stats()->set_bit_flags(BIT_IMMORTAL, 1);
+					if (wfd->init_bit_flags & BIT_NO_COLLIDE)
+						ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
+					if (wfd->init_bit_flags & BIT_PHANTOM)
+						ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
+					if (wfd->init_lifetime != 0)
+						ob->lifetime = wfd->init_lifetime;
+					if (wfd->init_ani_type != 0)
+						ob->ani_type = wfd->init_ani_type;
+				}
+			}  // end of weapons
+			break;
 			case Order::Treasure:
-				switch (family)
+			{
+				const auto* tfd = get_treasure_family_descriptor(family);
+				if (tfd)
 				{
-				case FAMILY_STAIN:  // permanent bloodstains
-					ob->ignore = 1;
-					break;
-				case FAMILY_GOLD_BAR:
-					ob->set_direct_frame(0);
-					break;
-				case FAMILY_SILVER_BAR:
-					ob->set_direct_frame(1);
-					break;
-				case FAMILY_MAGIC_POTION:
-					ob->set_direct_frame(0);
-					break;
-				case FAMILY_INVIS_POTION:
-					ob->set_direct_frame(1);
-					break;
-				case FAMILY_INVULNERABLE_POTION:
-					ob->set_direct_frame(2);
-					break;
-				case FAMILY_FLIGHT_POTION:
-					ob->set_direct_frame(11);
-					break;
-				case FAMILY_SPEED_POTION:
-					ob->set_direct_frame(3);
-					break;
-					default :
-						break;
-				} // end of treasures
-				break;
+					if (tfd->init_ignore)
+						ob->ignore = 1;
+					if (tfd->init_frame >= 0)
+						ob->set_direct_frame(tfd->init_frame);
+				}
+			}
+			break;
 			case Order::Generator:
-				switch (family)
-				{
-				case FAMILY_TOWER:
-					ob->stats()->weapon_cost = 0;
-					ob->default_weapon = FAMILY_MAGE;
-					break;
-				case FAMILY_BONES: // ghost bone pile
-					ob->stats()->weapon_cost = 0;
-					ob->default_weapon = FAMILY_GHOST;
-					break;
-				case FAMILY_TREEHOUSE: // elf tree-house
-					ob->stats()->weapon_cost = 0;
-					ob->default_weapon = FAMILY_ELF;
-					break;
-				default:
-					ob->default_weapon = FAMILY_SKELETON;
-					ob->stats()->weapon_cost = 0;
-					break;
+			{
+				const auto* gfd = get_generator_family_descriptor(family);
+				ob->stats()->weapon_cost = 0;
+				ob->default_weapon = static_cast<unsigned short>(gfd ? gfd->default_weapon : FAMILY_SKELETON);
 			}
 			break;
 		case Order::FX:
 			ob->ani_type = 0;
-			switch (family)
 			{
-				case FAMILY_MAGIC_SHIELD:
-					ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
-					break;
-				case FAMILY_CLOUD: // poison cloud
-					ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
-					ob->stats()->set_bit_flags(BIT_FLYING, 1);
-					break;
-				default:
-					break;
+				const auto* efd = get_effect_family_descriptor(family);
+				if (efd && efd->init_bit_flags)
+				{
+					if (efd->init_bit_flags & BIT_PHANTOM)
+						ob->stats()->set_bit_flags(BIT_PHANTOM, 1);
+					if (efd->init_bit_flags & BIT_NO_COLLIDE)
+						ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
+					if (efd->init_bit_flags & BIT_FLYING)
+						ob->stats()->set_bit_flags(BIT_FLYING, 1);
+				}
 			}
 
 		default :
