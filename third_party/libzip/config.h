@@ -28,7 +28,9 @@
 /* #undef HAVE_CRYPTO */
 /* #undef HAVE_FICLONERANGE */
 #define HAVE_FILENO
+#ifndef _WIN32
 #define HAVE_FCHMOD
+#endif
 #define HAVE_FSEEKO
 #define HAVE_FTELLO
 /* #undef HAVE_GETPROGNAME */

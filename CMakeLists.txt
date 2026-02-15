@@ -367,6 +367,7 @@ set(PHYSFS_SOURCES
     ${THIRD_PARTY_DIR}/physfs/physfs_archiver_7z.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_posix.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_unix.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_platform_windows.c
     ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
 )
 
@@ -643,6 +644,10 @@ configure_openglad_external_target(og_ext_physfs)
 if(EMSCRIPTEN)
     # physfsrwops.c needs SDL headers
     target_compile_options(og_ext_physfs PRIVATE -sUSE_SDL=2)
+endif()
+if(WIN32)
+    # physfs_platform_windows.c needs shell32 for SHGetFolderPathW
+    target_link_libraries(og_ext_physfs PRIVATE shell32)
 endif()
 # PhysFS 3.x uses built-in miniz for ZIP support; no external zlib/libzip needed
 
