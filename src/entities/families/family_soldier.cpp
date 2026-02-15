@@ -12,6 +12,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <cmath>
 #include <list>
@@ -41,7 +42,7 @@ static bool soldier_do_special(walker* self)
                     static_cast<Sint32>(self->lastx / self->stepsize),
                     static_cast<Sint32>(self->lasty / self->stepsize));
                 if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_CHARGE);
+                    og::sim::emit_sound(SOUND_CHARGE);
             }
             else
                 return false;
@@ -120,7 +121,7 @@ static bool soldier_do_special(walker* self)
                 if (generic)
                 {
                     if (self->on_screen())
-                        myscreen->soundp->play_sound(SOUND_CHARGE);
+                        og::sim::emit_sound(SOUND_CHARGE);
                     if (self->team_num == 0 || self->myguy)
                         myscreen->do_notify("Fighter Disarmed Enemy!", self);
                     self->busy += 5;

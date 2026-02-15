@@ -11,6 +11,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 
 namespace
 {
@@ -29,7 +30,7 @@ static bool bomb_on_death(effect* self)
     if (!self->owner || self->owner->dead)
         self->owner = self;
     if (self->on_screen())
-        active_screen()->soundp->play_sound(SOUND_EXPLODE);
+        og::sim::emit_sound(SOUND_EXPLODE);
     walker* newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     newob->owner = self->owner;
     newob->stats()->hitpoints = 0;

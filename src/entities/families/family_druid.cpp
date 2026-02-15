@@ -13,6 +13,7 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 
@@ -164,7 +165,7 @@ static bool druid_do_special(walker* self)
                         if (self->team_num == 0 || self->myguy)
                             myscreen->do_notify(message.c_str(), self);
                         if (self->on_screen())
-                            myscreen->soundp->play_sound(SOUND_HEAL);
+                            og::sim::emit_sound(SOUND_HEAL);
                     }
                 }
                 else

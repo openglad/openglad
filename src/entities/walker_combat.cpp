@@ -26,6 +26,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
@@ -337,12 +338,12 @@ bool walker::attack(walker  *target)
                             && (!target->owner) ) // do we have an NPC name?
                     {
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
-                        myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
+                        og::sim::emit_notification(message);
                     }
                     if(remaining_foes(myscreen, this) == 1)  // This is the last foe
                     {
                         message = "All foes defeated!";
-                        myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
+                        og::sim::emit_notification(message);
                     }
                 }
                 else
@@ -360,7 +361,7 @@ bool walker::attack(walker  *target)
                         const auto* fd = get_family_descriptor(target->query_family());
                         message = fd ? fd->death_message : "SOMEONE DIED";
                     }
-                    myscreen->viewob[0]->set_display_text(message.c_str(), STANDARD_TEXT_TIME);
+                    og::sim::emit_notification(message);
                 }
             }
 
@@ -375,9 +376,9 @@ bool walker::attack(walker  *target)
         if (on_screen() && targetorder == Order::Living)
         {
             if (rng(2))
-                myscreen->soundp->play_sound(SOUND_DIE1);
+                og::sim::emit_sound(SOUND_DIE1);
             else
-                myscreen->soundp->play_sound(SOUND_DIE2);
+                og::sim::emit_sound(SOUND_DIE2);
         }
 
         target->dead = 1;

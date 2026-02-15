@@ -11,6 +11,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 
 namespace
 {
@@ -32,7 +33,7 @@ static bool projectile_explode_on_death(weap* self)
     if (!newob)
         return false; // failsafe
     if (self->on_screen())
-        active_screen()->soundp->play_sound(SOUND_EXPLODE);
+        og::sim::emit_sound(SOUND_EXPLODE);
     newob->owner = self->owner;
     newob->stats()->hitpoints = 0;
     newob->stats()->level = self->owner->stats()->level;

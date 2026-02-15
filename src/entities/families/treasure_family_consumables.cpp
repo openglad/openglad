@@ -12,6 +12,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 #include <format>
 #include <string>
 
@@ -41,7 +42,7 @@ static bool drumstick_on_eat(treasure* self, walker* eater)
     self->do_heal_effects(nullptr, eater, amount);
     self->dead = 1;
     if (self->on_screen())
-        active_screen()->soundp->play_sound(SOUND_EAT);
+        og::sim::emit_sound(SOUND_EAT);
     return true;
 }
 

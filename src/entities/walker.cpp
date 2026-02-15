@@ -34,6 +34,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
 #include <openglad/render/smooth.h>
+#include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <format>
 #include <span>
@@ -403,7 +404,7 @@ walker  * walker::fire()
 		{
 			if (attack(weapon->collide_ob) && on_screen() )
 			{
-				myscreen->soundp->play_sound(SOUND_CLANG);
+				og::sim::emit_sound(SOUND_CLANG);
 				
                 if(active_config().is_on("effects", "attack_lunge"))
                 {
@@ -451,7 +452,7 @@ walker  * walker::fire()
 		if (on_screen())
 		{
 			const auto* wfd = get_weapon_family_descriptor(weapon->query_family());
-			myscreen->soundp->play_sound(static_cast<short>(wfd ? wfd->fire_sound : SOUND_FWIP));
+			og::sim::emit_sound(static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
 		if (order == Order::Generator)
 		{
@@ -1782,7 +1783,7 @@ bool walker::death()
 					newob->damage = static_cast<float>(stats_->level) * 2.0f;
 					newob->set_frame(static_cast<short>(rng(3)));
 				if (on_screen())
-					myscreen->soundp->play_sound(SOUND_EXPLODE);
+					og::sim::emit_sound(SOUND_EXPLODE);
 			}
 			break;
 		case Order::FX:

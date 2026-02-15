@@ -12,6 +12,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
@@ -57,7 +58,7 @@ static bool chain_on_act(effect* self)
         newob->center_on(self);
         self->leader->skip_exit = self->leader->skip_exit + 3;
         if (self->on_screen())
-            active_screen()->soundp->play_sound(SOUND_EXPLODE);
+            og::sim::emit_sound(SOUND_EXPLODE);
         // Now make new objects to seek out foes ..
         float generic = self->damage * 0.5f;
         Sint32 temp = 0;

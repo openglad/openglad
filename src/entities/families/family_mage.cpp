@@ -11,6 +11,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
@@ -181,7 +182,7 @@ static bool mage_do_special(walker* self)
             else
             {
                 if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_TELEPORT);
+                    og::sim::emit_sound(SOUND_TELEPORT);
                 self->ani_type = ANI_TELE_OUT;
                 self->cycle = 0;
             }
@@ -234,7 +235,7 @@ static bool mage_do_special(walker* self)
                 if (generic > 50)
                     generic = 50;
                 message = std::format("TIME IS FROZEN! ({} rounds)", generic);
-                myscreen->viewob[0]->set_display_text(message.c_str(), 2);
+                og::sim::emit_notification(message);
                 myscreen->viewob[0]->redraw();
                 myscreen->viewob[0]->refresh();
                 std::list<walker*> newlist = myscreen->find_friends_in_range(
@@ -285,7 +286,7 @@ static bool mage_do_special(walker* self)
                 newob->damage = static_cast<float>(generic);
                 newob->center_on(ob);
                 if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_EXPLODE);
+                    og::sim::emit_sound(SOUND_EXPLODE);
                 newob->ani_type = ANI_EXPLODE;
                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                 newob->skip_exit = 100;

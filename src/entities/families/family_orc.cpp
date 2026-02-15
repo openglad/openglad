@@ -14,6 +14,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <format>
 #include <list>
@@ -76,7 +77,7 @@ static bool orc_do_special(walker* self)
                 }
 
                 if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_ROAR);
+                    og::sim::emit_sound(SOUND_ROAR);
             }
             break;
         case 2: // eat corpse for health

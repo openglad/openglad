@@ -12,6 +12,7 @@
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 #include <format>
 #include <string>
 #include <cmath>
@@ -34,7 +35,7 @@ static bool gold_bar_on_eat(treasure* self, walker* eater)
         active_screen()->save_data.m_score[eater->team_num] += (200 * self->stats()->level);
         self->dead = 1;
         if (self->on_screen())
-            active_screen()->soundp->play_sound(SOUND_MONEY);
+            og::sim::emit_sound(SOUND_MONEY);
     }
     return true;
 }
@@ -46,7 +47,7 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
         active_screen()->save_data.m_score[eater->team_num] += (50 * self->stats()->level);
         self->dead = 1;
         if (self->on_screen())
-            active_screen()->soundp->play_sound(SOUND_MONEY);
+            og::sim::emit_sound(SOUND_MONEY);
     }
     return true;
 }
@@ -79,7 +80,7 @@ static bool key_on_eat(treasure* self, walker* eater)
         {
             active_screen()->do_notify(message.c_str(), eater);
             if (eater->on_screen())
-                active_screen()->soundp->play_sound(SOUND_MONEY);
+                og::sim::emit_sound(SOUND_MONEY);
         }
     }
     return true;

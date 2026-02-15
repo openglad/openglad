@@ -23,6 +23,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
+#include <openglad/sim/sim_world.h>
 #include <array>
 #include <list>
 #include <map>
@@ -120,4 +121,9 @@ class screen : public video
 		short numviews;
 		Uint32 timerstart;
 		Uint32 framecount;
+
+	private:
+		// Simulation world: owns the deterministic tick logic
+		// extracted from the former screen::act() implementation.
+		og::sim::SimWorld sim_world_;
 };

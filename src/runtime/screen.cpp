@@ -39,6 +39,8 @@
 #include <openglad/legacy/view_sizes.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/ui/results_screen.h>
+#include <openglad/sim/sim_world.h>
+#include <openglad/sim/sim_event_log.h>
 #include <algorithm>
 #include <string>
 #include <cstring>
@@ -646,173 +648,44 @@ short screen::continuous_input()
 
 bool screen::act()
 {
-	Sint32 printed_time = 0; // have we printed message yet?
-	//  static short debug = 0;
+	// Delegate simulation tick to SimWorld.
+	// SimWorld encapsulates the deterministic entity update logic that
+	// was previously embedded directly in this method.
+	og::sim::SimEventLog& events = *ctx().sim_events;
+	og::sim::TickResult result = sim_world_.tick(*this, events);
 
-	level_done = 2; // unless we find valid foes while looping
-
-	if (enemy_freeze)
-		enemy_freeze--;
-	if (enemy_freeze == 1)
-		set_palette(ourpalette);
-
-	    for(auto& uptr : level_data.oblist)
-	    {
-	        walker* ob = uptr.get();
-			if (!enemy_freeze) // normal functionality
-			{
-			if (ob && !ob->dead)
-			{
-				ob->in_act = true; // Zardus: while acting, in_act is set
-				ob->act();
-				ob->in_act = false;
-					if (ob && !ob->dead)
-					{
-						if (!ob->is_friendly_to_team(static_cast<unsigned char>(save_data.my_team)) &&
-						        ob->query_order() == Order::Living)
-							level_done = 0;
-					// Testing .. trying to FORCE foes :)
-					if (ob->foe == nullptr && ob->leader == nullptr)
-						ob->foe = find_far_foe(ob);
-				}
-			}
-		}
-		else // enemy livings are frozen
+	// Process simulation events: dispatch sounds, notifications, etc.
+	// This is the key sim/render boundary — simulation emits events,
+	// the runtime layer dispatches them to platform subsystems.
+	for (const auto& ev : events.events())
+	{
+		switch (ev.kind)
 		{
-			if (!(enemy_freeze%10) && !printed_time)
-			{
-				std::string obmessage = std::format("TIME LEFT: {}", enemy_freeze);
-				viewob[0]->set_display_text(obmessage.c_str(), 10);
-				printed_time = 1;
-			}
-			if (ob && !ob->dead &&
-			        ( (    (ob->query_order() != Order::Living)
-			               && (ob->query_order() != Order::Generator)
-			          ) || (ob->team_num == 0) )
-			   )
-			{
-				ob->act();
-					if (ob && !ob->dead)
-					{
-						if (!ob->is_friendly_to_team(static_cast<unsigned char>(save_data.my_team)) &&
-						        ob->query_order() == Order::Living)
-							level_done = 0;
-					}
-			}
-		}
-
-	}
-
-	// Let the weapons act ...
-	for(auto& uptr : level_data.weaplist)
-	{
-	    walker* ob = uptr.get();
-			if (ob && !ob->dead)
-			{
-				ob->act();
-				if (ob && !ob->dead)
-				{
-					if (!ob->is_friendly_to_team(static_cast<unsigned char>(save_data.my_team)) &&
-					        ob->query_order() == Order::Living)
-						level_done = 0;
-				}
-			}
-	}  // end of weapons acting
-
-	// Quickly check the background for exits, etc.
-	for(auto& uptr : level_data.fxlist)
-	{
-	    walker* ob = uptr.get();
-		if (ob && !ob->dead)
-		{
-			if (ob->query_order() == Order::Treasure &&
-			        ob->query_family() == FAMILY_EXIT &&
-			        level_done != 0)
-			{
-				level_done = 1; // 0 => foes, 1 => no foes but exit, 2 => no foes or exit
-			}
+			case og::sim::EventKind::PlaySound:
+				if (soundp)
+					soundp->play_sound(static_cast<short>(ev.a));
+				break;
+			case og::sim::EventKind::Notification:
+				if (!ev.text.empty())
+					do_notify(ev.text, nullptr);
+				break;
+			default:
+				break;
 		}
 	}
+	events.clear();
 
-		if (level_done == 2)
-			return endgame(0, static_cast<short>(level_data.id + 1));  // No exits and no enemies: Go to next sequential level.
-	    
-	    if(end)
-	    {
-	        return 1;
-	    }
-    
-	// Make sure we're all pointing to legal targets
-	for(auto& uptr : level_data.oblist)
+	// Handle level completion / game ending
+	level_done = result.level_done;
+
+	if (result.game_ended && !end)
 	{
-	    walker* ob = uptr.get();
-        if (ob->foe && ob->foe->dead)
-            ob->foe = nullptr;
-        if (ob->leader && ob->leader->dead)
-            ob->leader = nullptr;
-        if (ob->owner && ob->owner->dead)
-            ob->owner = nullptr;
-        if (ob->collide_ob && ob->collide_ob->dead)
-            ob->collide_ob = nullptr;
+		if (result.level_done == 2)
+			return endgame(result.ending, result.next_level);
 	}
 
-	for(auto& uptr : level_data.weaplist)
-	{
-	    walker* ob = uptr.get();
-        if (ob->foe && ob->foe->dead)
-            ob->foe = nullptr;
-        if (ob->leader && ob->leader->dead)
-            ob->leader = nullptr;
-        if (ob->owner && ob->owner->dead)
-            ob->owner = nullptr;
-        if (ob->collide_ob && ob->collide_ob->dead)
-            ob->collide_ob = nullptr;
-	}
-
-
-	// Remove dead objects
-	for(auto e = level_data.oblist.begin(); e != level_data.oblist.end();)
-	{
-	    walker* ob = e->get();
-		if (ob && ob->dead && ob->myguy == nullptr)
-		{
-		    // Delete the dead thing safely
-
-			// Is it a player?
-			if(ob->user != -1)
-			{
-			    // Remove it from its viewscreen
-			    for(int i = 0; i < numviews; i++)
-			    {
-			        if(ob == viewob[i]->control)
-                        viewob[i]->control = nullptr;
-			    }
-			}
-
-			// Save dead guys to be deleted later.  Delete everything else right now.  This is so the "owner" of weapons remains valid.
-            level_data.dead_list.push_back(std::move(*e));
-
-            //level_data.remove_ob(ob);
-            // Remove from the list directly here so we can preserve our iterator
-			if(ob->query_order() == Order::Living)
-                level_data.numobs--;
-
-            e = level_data.oblist.erase(e);
-            continue;
-		}
-
-		e++;
-	}
-
-	std::erase_if(level_data.fxlist, [](const auto& uptr) {
-		walker* ob = uptr.get();
-		return ob && ob->dead;
-	});
-
-	std::erase_if(level_data.weaplist, [](const auto& uptr) {
-		walker* ob = uptr.get();
-		return ob && ob->dead;
-	});
+	if (end)
+		return 1;
 
 	return 1;
 }

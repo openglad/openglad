@@ -12,6 +12,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/render/view.h>
@@ -217,7 +218,7 @@ static bool archmage_do_special(walker* self)
             else
             {
                 if (self->on_screen())
-                    myscreen->soundp->play_sound(SOUND_TELEPORT);
+                    og::sim::emit_sound(SOUND_TELEPORT);
                 self->ani_type = ANI_TELE_OUT;
                 self->cycle = 0;
             }
@@ -262,7 +263,7 @@ static bool archmage_do_special(walker* self)
                         newob->damage = static_cast<float>(generic);
                         newob->center_on(ob);
                         if (self->on_screen())
-                            myscreen->soundp->play_sound(SOUND_EXPLODE);
+                            og::sim::emit_sound(SOUND_EXPLODE);
                         newob->ani_type = ANI_EXPLODE;
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                         newob->skip_exit = 100;
