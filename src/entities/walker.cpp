@@ -1183,14 +1183,26 @@ bool walker::animate()
 	}
 
 	int c = static_cast<int>(cycle);
-	if (c < 0 || c >= seq_len)
+	if (c < 0)
 		c = 0;
 
-	set_frame(seq[c]);
-	c++;
-
-	const bool at_end = (c >= seq_len);
-	cycle = static_cast<signed char>(c);
+	// If cycle is already past the end (e.g. walk() advanced it beyond the
+	// current animation's bounds), treat as end-of-animation rather than
+	// restarting from frame 0.  Resetting to 0 loops forever when walk()
+	// keeps pushing cycle forward each frame (attack-while-running bug).
+	bool at_end;
+	if (c >= seq_len)
+	{
+		at_end = true;
+		cycle = 0;
+	}
+	else
+	{
+		set_frame(seq[c]);
+		c++;
+		at_end = (c >= seq_len);
+		cycle = static_cast<signed char>(c);
+	}
 
 	if (at_end)
 	{
