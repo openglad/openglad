@@ -638,6 +638,10 @@ target_link_libraries(og_ext_libzip PUBLIC og_ext_zlib)
 
 add_library(og_ext_physfs STATIC ${PHYSFS_SOURCES})
 configure_openglad_external_target(og_ext_physfs)
+if(EMSCRIPTEN)
+    # physfsrwops.c needs SDL headers
+    target_compile_options(og_ext_physfs PRIVATE -sUSE_SDL=2)
+endif()
 # PhysFS 3.x uses built-in miniz for ZIP support; no external zlib/libzip needed
 
 add_library(og_ext_micropather STATIC ${THIRD_PARTY_DIR}/micropather/micropather.cpp)
@@ -1134,6 +1138,8 @@ endif()
 	if(EMSCRIPTEN)
 	    add_library(og_game_web STATIC ${GAME_SOURCES_NO_MAIN})
 	    configure_openglad_library(og_game_web)
+	    configure_openglad_runtime_target(og_game_web)
+	    target_include_directories(og_game_web PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
 	    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS})
 	    add_dependencies(og_game_web check_graph_h_includes)
 
