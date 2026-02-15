@@ -372,7 +372,7 @@ bool walker::attack(walker  *target)
             blood->ignore = 1; // so that we can be walked over .. ?
             blood->setxy(target->xpos,target->ypos);
         }
-        if (on_screen() && targetorder == Order::Living)
+        if (targetorder == Order::Living)
         {
             if (rng(2))
                 og::sim::emit_sound(SOUND_DIE1);

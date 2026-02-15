@@ -140,8 +140,7 @@ static bool cleric_do_special(walker* self)
                             if (self->team_num == 0 || self->myguy)
                                 og::sim::emit_notification(message);
                         }
-                        if (self->on_screen())
-                            og::sim::emit_sound(SOUND_HEAL);
+                        og::sim::emit_sound(SOUND_HEAL);
                     }
                 }
                 else
@@ -185,7 +184,7 @@ static bool cleric_do_special(walker* self)
                     return false;
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
-                    if ((self->team_num == 0 || self->myguy) && self->on_screen())
+                    if (self->team_num == 0 || self->myguy)
                         og::sim::emit_notification("You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
@@ -201,8 +200,7 @@ static bool cleric_do_special(walker* self)
                         og::sim::emit_notification(message);
                     }
                 }
-                if (self->on_screen())
-                    og::sim::emit_sound(SOUND_HEAL);
+                og::sim::emit_sound(SOUND_HEAL);
             }
             else
             {
@@ -240,7 +238,7 @@ static bool cleric_do_special(walker* self)
                     return false;
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
-                    if ((self->team_num == 0 || self->myguy) && self->on_screen())
+                    if (self->team_num == 0 || self->myguy)
                         og::sim::emit_notification("You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
@@ -256,8 +254,7 @@ static bool cleric_do_special(walker* self)
                         og::sim::emit_notification(message);
                     }
                 }
-                if (self->on_screen())
-                    og::sim::emit_sound(SOUND_HEAL);
+                og::sim::emit_sound(SOUND_HEAL);
             }
             else
             {

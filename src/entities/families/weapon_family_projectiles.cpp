@@ -32,8 +32,7 @@ static bool projectile_explode_on_death(weap* self)
     walker* newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     if (!newob)
         return false; // failsafe
-    if (self->on_screen())
-        og::sim::emit_sound(SOUND_EXPLODE);
+    og::sim::emit_sound(SOUND_EXPLODE);
     newob->owner = self->owner;
     newob->stats()->hitpoints = 0;
     newob->stats()->level = self->owner->stats()->level;

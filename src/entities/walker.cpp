@@ -402,7 +402,7 @@ walker  * walker::fire()
 		// *** Melee combat ***
 		if (weapon->collide_ob && !weapon->collide_ob->dead)
 		{
-			if (attack(weapon->collide_ob) && on_screen() )
+			if (attack(weapon->collide_ob))
 			{
 				og::sim::emit_sound(SOUND_CLANG);
 				
@@ -449,7 +449,6 @@ walker  * walker::fire()
         }
 
 		// *** Ranged combat ***
-		if (on_screen())
 		{
 			const auto* wfd = get_weapon_family_descriptor(weapon->query_family());
 			og::sim::emit_sound(static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
@@ -1782,8 +1781,7 @@ bool walker::death()
 				newob->setxy(xpos+rng(sizex-8)+4, ypos+4+rng(sizey-8) );
 					newob->damage = static_cast<float>(stats_->level) * 2.0f;
 					newob->set_frame(static_cast<short>(rng(3)));
-				if (on_screen())
-					og::sim::emit_sound(SOUND_EXPLODE);
+				og::sim::emit_sound(SOUND_EXPLODE);
 			}
 			break;
 		case Order::FX:

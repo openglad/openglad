@@ -41,8 +41,7 @@ static bool drumstick_on_eat(treasure* self, walker* eater)
         eater->stats()->hitpoints = eater->stats()->max_hitpoints;
     self->do_heal_effects(nullptr, eater, amount);
     self->dead = 1;
-    if (self->on_screen())
-        og::sim::emit_sound(SOUND_EAT);
+    og::sim::emit_sound(SOUND_EAT);
     return true;
 }
 

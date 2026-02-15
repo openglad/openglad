@@ -76,8 +76,7 @@ static bool orc_do_special(walker* self)
                     }
                 }
 
-                if (self->on_screen())
-                    og::sim::emit_sound(SOUND_ROAR);
+                og::sim::emit_sound(SOUND_ROAR);
             }
             break;
         case 2: // eat corpse for health

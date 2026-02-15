@@ -41,8 +41,7 @@ static bool soldier_do_special(walker* self)
                 self->stats()->add_command(COMMAND_RUSH, 3,
                     static_cast<Sint32>(self->lastx / self->stepsize),
                     static_cast<Sint32>(self->lasty / self->stepsize));
-                if (self->on_screen())
-                    og::sim::emit_sound(SOUND_CHARGE);
+                og::sim::emit_sound(SOUND_CHARGE);
             }
             else
                 return false;
@@ -120,8 +119,7 @@ static bool soldier_do_special(walker* self)
 
                 if (generic)
                 {
-                    if (self->on_screen())
-                        og::sim::emit_sound(SOUND_CHARGE);
+                    og::sim::emit_sound(SOUND_CHARGE);
                     if (self->team_num == 0 || self->myguy)
                         og::sim::emit_notification("Fighter Disarmed Enemy!");
                     self->busy += 5;
