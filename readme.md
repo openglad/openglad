@@ -18,12 +18,12 @@ all the work that was saved.
 
 ## For Developers
 
-* **[Architecture](ARCHITECTURE.md)** — Module structure, dependency rules, data flow, and build system
-* **[Install / Build](INSTALL.md)** — How to build from source (CMake, native, web)
+* **[Architecture](docs/ARCHITECTURE.md)** — Module structure, dependency rules, data flow, and build system
+* **[Install / Build](docs/INSTALL.md)** — How to build from source (CMake, native, web)
 
 ## Table of Contents
 
-* [Install / Build](INSTALL.md)
+* [Install / Build](docs/INSTALL.md)
 * [Playing](#Playing)
 * [Editing with Openscen](scen.txt)
 * [Cheats](cheats.txt)

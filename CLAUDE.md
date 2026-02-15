@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 OpenGlad is a cross-platform C++ port of the DOS game "Gladiator" — a top-down gauntlet-style action RPG with up to 4-player split-screen multiplayer and a built-in scenario editor. Licensed under GPL v2.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for full codebase documentation.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for full codebase documentation.
 
 ## Build Commands
 

@@ -65,7 +65,7 @@ openglad/
 ├── cmake/                  CMake support files
 ├── scripts/                Build, test, and CI scripts
 ├── web/                    Emscripten HTML shell and landing page
-├── docs/                   Architecture plans and audit documents
+├── docs/                   Architecture documentation
 │
 ├── cfg/                    Runtime configuration (openglad.yaml)
 ├── pix/                    Sprite and tileset assets (.pix format)
@@ -678,6 +678,5 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `CMakeLists.txt` | Build system — module targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
 | `docs/architecture-rules.md` | Enforced module dependency rules |
-| `docs/aggressive-refactor-plan.md` | Modernization roadmap and target architecture |
 | `tests/test_main.cpp` | Integration test runner entry point |
 | `tests/unit/unit_main.cpp` | Unit test runner entry point |
