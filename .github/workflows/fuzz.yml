@@ -13,9 +13,19 @@ env:
 
 jobs:
   fuzz:
-    name: Fuzz (${{ github.event_name == 'schedule' && 'nightly' || 'pr' }})
+    name: Fuzz ${{ matrix.target }} (${{ github.event_name == 'schedule' && 'nightly' || 'pr' }})
     runs-on: ubuntu-latest
     timeout-minutes: ${{ github.event_name == 'schedule' && 90 || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: fuzz_pixie
+            corpus: fuzz/corpus/pixie
+          - target: fuzz_scenario
+            corpus: fuzz/corpus/scenario
+          - target: fuzz_savefile
+            corpus: fuzz/corpus/savefile
     steps:
       - uses: actions/checkout@v4
 
@@ -27,43 +37,25 @@ jobs:
       - name: Configure (ci-fuzz preset)
         run: cmake --preset ci-fuzz
 
-      - name: Build fuzz targets
-        run: cmake --build --preset ci-fuzz -j"$(nproc)"
+      - name: Build ${{ matrix.target }}
+        run: cmake --build --preset ci-fuzz --target ${{ matrix.target }} -j"$(nproc)"
 
       - name: Create crash artifact directory
         run: mkdir -p fuzz/crashes
 
-      - name: Run fuzz_pixie
+      - name: Run ${{ matrix.target }}
         run: |
           DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
-          ./build/ci-fuzz/fuzz_pixie \
-            fuzz/corpus/pixie \
+          ./build/ci-fuzz/${{ matrix.target }} \
+            ${{ matrix.corpus }} \
             -max_total_time=$DURATION \
-            -artifact_prefix=fuzz/crashes/pixie_ \
-            -print_final_stats=1
-
-      - name: Run fuzz_scenario
-        run: |
-          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
-          ./build/ci-fuzz/fuzz_scenario \
-            fuzz/corpus/scenario \
-            -max_total_time=$DURATION \
-            -artifact_prefix=fuzz/crashes/scenario_ \
-            -print_final_stats=1
-
-      - name: Run fuzz_savefile
-        run: |
-          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
-          ./build/ci-fuzz/fuzz_savefile \
-            fuzz/corpus/savefile \
-            -max_total_time=$DURATION \
-            -artifact_prefix=fuzz/crashes/savefile_ \
+            -artifact_prefix=fuzz/crashes/${{ matrix.target }}_ \
             -print_final_stats=1
 
       - name: Upload crash artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: fuzz-crashes-${{ github.event_name }}
+          name: fuzz-crashes-${{ matrix.target }}-${{ github.event_name }}
           path: fuzz/crashes/
           if-no-files-found: ignore
