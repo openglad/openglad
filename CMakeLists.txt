@@ -707,9 +707,10 @@ if(NOT EMSCRIPTEN)
 
     # --- aggregate target (non-main code) ---
     add_library(og_game INTERFACE)
-    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if((CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") AND NOT APPLE)
         # Static libs have cyclic references today; group-rescan avoids link-order
         # dependence while we untangle module direction rules.
+        # Apple ld64 does not support --start-group/--end-group (and rescans by default).
         target_link_libraries(og_game INTERFACE "-Wl,--start-group")
     endif()
     target_link_libraries(og_game INTERFACE
@@ -725,7 +726,7 @@ if(NOT EMSCRIPTEN)
         og_platform
         ${OG_EXTERNAL_LIBS}
     )
-    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if((CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") AND NOT APPLE)
         target_link_libraries(og_game INTERFACE "-Wl,--end-group")
     endif()
     target_link_libraries(og_game INTERFACE og_runtime_deps)

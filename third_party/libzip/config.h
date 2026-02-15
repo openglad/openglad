@@ -37,8 +37,14 @@
 /* #undef HAVE_LIBBZ2 */
 /* #undef HAVE_LIBLZMA */
 /* #undef HAVE_LIBZSTD */
+#ifdef _WIN32
+/* Windows does not provide localtime_r; use localtime_s via compat.h */
+/* #undef HAVE_LOCALTIME_R */
+#define HAVE_LOCALTIME_S
+#else
 #define HAVE_LOCALTIME_R
 /* #undef HAVE_LOCALTIME_S */
+#endif
 /* #undef HAVE_MEMCPY_S */
 /* #undef HAVE_MBEDTLS */
 #define HAVE_MKSTEMP
