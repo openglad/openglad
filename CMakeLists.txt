@@ -367,6 +367,7 @@ set(PHYSFS_SOURCES
     ${THIRD_PARTY_DIR}/physfs/physfs_archiver_7z.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_posix.c
     ${THIRD_PARTY_DIR}/physfs/physfs_platform_unix.c
+    ${THIRD_PARTY_DIR}/physfs/physfs_platform_windows.c
     ${THIRD_PARTY_DIR}/physfs/extras/physfsrwops.c
 )
 
@@ -525,6 +526,7 @@ set(OG_THIRD_PARTY_INCLUDE_DIRS
 
 set(COMMON_DEFINITIONS
     USE_BMP_SCREENSHOT=1
+    _USE_MATH_DEFINES
     PHYSFS_NO_CDROM_SUPPORT=1
     PHYSFS_SUPPORTS_ZIP=1
     PHYSFS_SUPPORTS_7Z=0
@@ -551,7 +553,9 @@ function(configure_openglad_library target)
     if(NOT EMSCRIPTEN)
         # Many legacy public headers still include SDL types; keep SDL includes
         # visible to downstream targets until those headers are disentangled.
-        target_include_directories(${target} SYSTEM PUBLIC $<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>)
+        # Use the IMPORTED_TARGET from pkg_check_modules for reliable cross-platform
+        # include/flag propagation (especially macOS Homebrew framework paths).
+        target_link_libraries(${target} PUBLIC PkgConfig::SDL2)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
@@ -581,7 +585,7 @@ endfunction()
 function(configure_openglad_external_target target)
     target_include_directories(${target} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
     if(NOT EMSCRIPTEN)
-        target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -618,11 +622,11 @@ add_custom_target(check_vendor_leaks
 
 if(NOT EMSCRIPTEN)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED sdl2 SDL2_mixer)
+    pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2 SDL2_mixer)
 
     # System/runtime link deps (kept as a target so we can control ordering).
     add_library(og_runtime_deps INTERFACE)
-    target_link_libraries(og_runtime_deps INTERFACE ${SDL2_LIBRARIES} m pthread)
+    target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
 endif()
 
 add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
@@ -641,6 +645,10 @@ configure_openglad_external_target(og_ext_physfs)
 if(EMSCRIPTEN)
     # physfsrwops.c needs SDL headers
     target_compile_options(og_ext_physfs PRIVATE -sUSE_SDL=2)
+endif()
+if(WIN32)
+    # physfs_platform_windows.c needs shell32 for SHGetFolderPathW
+    target_link_libraries(og_ext_physfs PRIVATE shell32)
 endif()
 # PhysFS 3.x uses built-in miniz for ZIP support; no external zlib/libzip needed
 
@@ -705,9 +713,10 @@ if(NOT EMSCRIPTEN)
 
     # --- aggregate target (non-main code) ---
     add_library(og_game INTERFACE)
-    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if((CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") AND NOT APPLE)
         # Static libs have cyclic references today; group-rescan avoids link-order
         # dependence while we untangle module direction rules.
+        # Apple ld64 does not support --start-group/--end-group (and rescans by default).
         target_link_libraries(og_game INTERFACE "-Wl,--start-group")
     endif()
     target_link_libraries(og_game INTERFACE
@@ -723,7 +732,7 @@ if(NOT EMSCRIPTEN)
         og_platform
         ${OG_EXTERNAL_LIBS}
     )
-    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if((CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") AND NOT APPLE)
         target_link_libraries(og_game INTERFACE "-Wl,--end-group")
     endif()
     target_link_libraries(og_game INTERFACE og_runtime_deps)

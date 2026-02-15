@@ -58,7 +58,7 @@ void remove_file_or_log(const std::string& path)
 }
 } // namespace
 
-#ifdef WIN32
+#ifdef _WIN32
 #include "windows.h"
 #include <shlobj.h>
 #include <ctime>
@@ -108,7 +108,7 @@ std::string get_user_path()
     return path + "/";
 #elif defined(__IPHONEOS__)
     return "../";
-#elif defined(WIN32)
+#elif defined(_WIN32)
     char path[MAX_PATH];
     HRESULT hr = SHGetFolderPath(
                      0,                   // hwndOwner
@@ -146,7 +146,7 @@ std::string get_asset_path()
 #elif defined(__IPHONEOS__)
     // Assuming the cwd is set to the program's installation directory
     return "";
-#elif defined(WIN32)
+#elif defined(_WIN32)
     // Assuming the cwd is set to the program's installation directory
     return "";
 #else
