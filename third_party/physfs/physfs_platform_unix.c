@@ -9,7 +9,7 @@
 #define __PHYSICSFS_INTERNAL__
 #include "physfs_platforms.h"
 
-#if defined(PHYSFS_PLATFORM_UNIX) || defined(PHYSFS_PLATFORM_APPLE)
+#ifdef PHYSFS_PLATFORM_UNIX
 
 #include <ctype.h>
 #include <unistd.h>
@@ -31,8 +31,6 @@
 #elif PHYSFS_PLATFORM_SOLARIS
 #  define PHYSFS_HAVE_SYS_MNTTAB_H 1
 #elif PHYSFS_PLATFORM_BSD
-#  define PHYSFS_HAVE_SYS_UCRED_H 1
-#elif defined(PHYSFS_PLATFORM_APPLE)
 #  define PHYSFS_HAVE_SYS_UCRED_H 1
 #else
 #  warning No CD-ROM support included. Either define your platform here,
@@ -363,7 +361,7 @@ char *__PHYSFS_platformCalcPrefDir(const char *org, const char *app)
     return retval;
 } /* __PHYSFS_platformCalcPrefDir */
 
-#endif /* PHYSFS_PLATFORM_UNIX || PHYSFS_PLATFORM_APPLE */
+#endif /* PHYSFS_PLATFORM_UNIX */
 
 /* end of physfs_platform_unix.c ... */
 

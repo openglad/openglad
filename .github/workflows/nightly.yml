@@ -73,6 +73,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
+
       # ── Install dependencies ──
 
       - name: Install dependencies (Linux)
@@ -179,6 +182,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14

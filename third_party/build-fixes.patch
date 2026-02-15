@@ -1,0 +1,73 @@
+diff --git a/third_party/libzip/compat.h b/third_party/libzip/compat.h
+index 49d3aa3..7e5a4d8 100644
+--- a/third_party/libzip/compat.h
++++ b/third_party/libzip/compat.h
+@@ -100,7 +100,7 @@ typedef char bool;
+ #if !defined(HAVE_SNPRINTF) && defined(HAVE__SNPRINTF)
+ #define snprintf _snprintf
+ #endif
+-#if !defined(HAVE__SNWPRINTF_S)
++#if !defined(HAVE__SNWPRINTF_S) && !defined(__MINGW32__)
+ #define _snwprintf_s(buf, bufsz, len, fmt, ...) (_snwprintf((buf), (len), (fmt), __VA_ARGS__))
+ #endif
+ #if defined(HAVE__STRDUP)
+diff --git a/third_party/libzip/config.h b/third_party/libzip/config.h
+index 27cacf9..8fb820a 100644
+--- a/third_party/libzip/config.h
++++ b/third_party/libzip/config.h
+@@ -28,7 +28,9 @@
+ /* #undef HAVE_CRYPTO */
+ /* #undef HAVE_FICLONERANGE */
+ #define HAVE_FILENO
++#ifndef _WIN32
+ #define HAVE_FCHMOD
++#endif
+ #define HAVE_FSEEKO
+ #define HAVE_FTELLO
+ /* #undef HAVE_GETPROGNAME */
+@@ -37,8 +39,14 @@
+ /* #undef HAVE_LIBBZ2 */
+ /* #undef HAVE_LIBLZMA */
+ /* #undef HAVE_LIBZSTD */
++#ifdef _WIN32
++/* Windows does not provide localtime_r; use localtime_s via compat.h */
++/* #undef HAVE_LOCALTIME_R */
++#define HAVE_LOCALTIME_S
++#else
+ #define HAVE_LOCALTIME_R
+ /* #undef HAVE_LOCALTIME_S */
++#endif
+ /* #undef HAVE_MEMCPY_S */
+ /* #undef HAVE_MBEDTLS */
+ #define HAVE_MKSTEMP
+diff --git a/third_party/physfs/physfs_platform_unix.c b/third_party/physfs/physfs_platform_unix.c
+index 10d93a7..5aa0569 100644
+--- a/third_party/physfs/physfs_platform_unix.c
++++ b/third_party/physfs/physfs_platform_unix.c
+@@ -9,7 +9,7 @@
+ #define __PHYSICSFS_INTERNAL__
+ #include "physfs_platforms.h"
+ 
+-#ifdef PHYSFS_PLATFORM_UNIX
++#if defined(PHYSFS_PLATFORM_UNIX) || defined(PHYSFS_PLATFORM_APPLE)
+ 
+ #include <ctype.h>
+ #include <unistd.h>
+@@ -32,6 +32,8 @@
+ #  define PHYSFS_HAVE_SYS_MNTTAB_H 1
+ #elif PHYSFS_PLATFORM_BSD
+ #  define PHYSFS_HAVE_SYS_UCRED_H 1
++#elif defined(PHYSFS_PLATFORM_APPLE)
++#  define PHYSFS_HAVE_SYS_UCRED_H 1
+ #else
+ #  warning No CD-ROM support included. Either define your platform here,
+ #  warning  or define PHYSFS_NO_CDROM_SUPPORT=1 to confirm this is intentional.
+@@ -361,7 +363,7 @@ char *__PHYSFS_platformCalcPrefDir(const char *org, const char *app)
+     return retval;
+ } /* __PHYSFS_platformCalcPrefDir */
+ 
+-#endif /* PHYSFS_PLATFORM_UNIX */
++#endif /* PHYSFS_PLATFORM_UNIX || PHYSFS_PLATFORM_APPLE */
+ 
+ /* end of physfs_platform_unix.c ... */
+ 

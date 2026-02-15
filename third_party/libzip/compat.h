@@ -100,7 +100,7 @@ typedef char bool;
 #if !defined(HAVE_SNPRINTF) && defined(HAVE__SNPRINTF)
 #define snprintf _snprintf
 #endif
-#if !defined(HAVE__SNWPRINTF_S) && !defined(__MINGW32__)
+#if !defined(HAVE__SNWPRINTF_S)
 #define _snwprintf_s(buf, bufsz, len, fmt, ...) (_snwprintf((buf), (len), (fmt), __VA_ARGS__))
 #endif
 #if defined(HAVE__STRDUP)
