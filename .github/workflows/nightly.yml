@@ -99,6 +99,7 @@ jobs:
             mingw-w64-x86_64-SDL2
             mingw-w64-x86_64-SDL2_mixer
             mingw-w64-x86_64-pkg-config
+            p7zip
 
       # ── Configure & Build ──
 
