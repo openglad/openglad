@@ -551,7 +551,9 @@ function(configure_openglad_library target)
     if(NOT EMSCRIPTEN)
         # Many legacy public headers still include SDL types; keep SDL includes
         # visible to downstream targets until those headers are disentangled.
-        target_include_directories(${target} SYSTEM PUBLIC $<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>)
+        # Use the IMPORTED_TARGET from pkg_check_modules for reliable cross-platform
+        # include/flag propagation (especially macOS Homebrew framework paths).
+        target_link_libraries(${target} PUBLIC PkgConfig::SDL2)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     target_link_libraries(${target} PRIVATE project_warnings project_sanitizers)
@@ -581,7 +583,7 @@ endfunction()
 function(configure_openglad_external_target target)
     target_include_directories(${target} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
     if(NOT EMSCRIPTEN)
-        target_include_directories(${target} PRIVATE ${SDL2_INCLUDE_DIRS})
+        target_link_libraries(${target} PRIVATE PkgConfig::SDL2)
     endif()
     target_compile_definitions(${target} PRIVATE ${COMMON_DEFINITIONS})
     if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang" OR CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -618,11 +620,11 @@ add_custom_target(check_vendor_leaks
 
 if(NOT EMSCRIPTEN)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED sdl2 SDL2_mixer)
+    pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2 SDL2_mixer)
 
     # System/runtime link deps (kept as a target so we can control ordering).
     add_library(og_runtime_deps INTERFACE)
-    target_link_libraries(og_runtime_deps INTERFACE ${SDL2_LIBRARIES} m pthread)
+    target_link_libraries(og_runtime_deps INTERFACE PkgConfig::SDL2 m pthread)
 endif()
 
 add_library(og_ext_yaml STATIC ${LIBYAML_SOURCES})
