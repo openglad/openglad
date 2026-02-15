@@ -7,8 +7,8 @@ on:
     - cron: '0 3 * * *'
 
 env:
-  # Disable leak detection: vendored libraries (libyaml) have known
-  # benign leaks that would cause false positives in fuzz runs.
+  # Disable leak detection: SDL2 has known benign leaks that would
+  # cause false positives in fuzz runs.
   ASAN_OPTIONS: detect_leaks=0
 
 jobs:
@@ -58,15 +58,6 @@ jobs:
             fuzz/corpus/savefile \
             -max_total_time=$DURATION \
             -artifact_prefix=fuzz/crashes/savefile_ \
-            -print_final_stats=1
-
-      - name: Run fuzz_yaml
-        run: |
-          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
-          ./build/ci-fuzz/fuzz_yaml \
-            fuzz/corpus/yaml \
-            -max_total_time=$DURATION \
-            -artifact_prefix=fuzz/crashes/yaml_ \
             -print_final_stats=1
 
       - name: Upload crash artifacts

@@ -13,8 +13,8 @@
 
 set -euo pipefail
 
-# Disable leak detection: vendored libraries (libyaml) have known
-# benign leaks that would cause false positives in fuzz runs.
+# Disable leak detection: SDL2 has known benign leaks that would
+# cause false positives in fuzz runs.
 export ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -23,12 +23,11 @@ BUILD_DIR="$PROJECT_DIR/build/ci-fuzz"
 CORPUS_DIR="$PROJECT_DIR/fuzz/corpus"
 CRASH_DIR="$PROJECT_DIR/fuzz/crashes"
 
-TARGETS=(fuzz_pixie fuzz_scenario fuzz_savefile fuzz_yaml)
+TARGETS=(fuzz_pixie fuzz_scenario fuzz_savefile)
 CORPUS_MAP=(
     "fuzz_pixie:pixie"
     "fuzz_scenario:scenario"
     "fuzz_savefile:savefile"
-    "fuzz_yaml:yaml"
 )
 
 TARGET="${1:-}"

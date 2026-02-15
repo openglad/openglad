@@ -1176,10 +1176,6 @@ if(ENABLE_FUZZING)
     add_fuzz_target(fuzz_savefile ${SRC_DIR}/fuzz/fuzz_savefile.cpp)
     target_link_libraries(fuzz_savefile PRIVATE ${SDL2_LIBRARIES})
 
-    # fuzz_yaml: exercises YAML config parsing (libyaml via og_io wrapper)
-    add_fuzz_target(fuzz_yaml ${SRC_DIR}/fuzz/fuzz_yaml.cpp)
-    target_sources(fuzz_yaml PRIVATE ${SRC_DIR}/io/yaml_stream.cpp)
-    target_link_libraries(fuzz_yaml PRIVATE og_ext_yam og_ext_yaml ${SDL2_LIBRARIES})
 endif()
 
 # --------------------------------------------------------------------------
