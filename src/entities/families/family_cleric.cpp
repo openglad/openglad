@@ -138,7 +138,7 @@ static bool cleric_do_special(walker* self)
                             else
                                 message = std::format("Cleric healed {} men!", didheal);
                             if (self->team_num == 0 || self->myguy)
-                                myscreen->do_notify(message.c_str(), self);
+                                og::sim::emit_notification(message);
                         }
                         if (self->on_screen())
                             og::sim::emit_sound(SOUND_HEAL);
@@ -155,7 +155,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 50)
                 {
                     if (self->user != -1)
-                        myscreen->do_notify("50 Int required for Mystic Mace!", self);
+                        og::sim::emit_notification("50 Int required for Mystic Mace!");
                     return false;
                 }
                 if (self->myguy)
@@ -186,7 +186,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
                     if ((self->team_num == 0 || self->myguy) && self->on_screen())
-                        myscreen->do_notify("You need 60 Int to Turn Undead", self);
+                        og::sim::emit_notification("You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
                 }
@@ -198,7 +198,7 @@ static bool cleric_do_special(walker* self)
                     if (self->team_num == 0 || self->myguy)
                     {
                         message = std::format("{} turned {} undead.", self->myguy->name, generic);
-                        myscreen->do_notify(message.c_str(), self);
+                        og::sim::emit_notification(message);
                     }
                 }
                 if (self->on_screen())
@@ -241,7 +241,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
                     if ((self->team_num == 0 || self->myguy) && self->on_screen())
-                        myscreen->do_notify("You need 60 Int to Turn Undead", self);
+                        og::sim::emit_notification("You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
                 }
@@ -253,7 +253,7 @@ static bool cleric_do_special(walker* self)
                     if (self->team_num == 0 || self->myguy)
                     {
                         message = std::format("{} turned {} undead.", self->myguy->name, generic);
-                        myscreen->do_notify(message.c_str(), self);
+                        og::sim::emit_notification(message);
                     }
                 }
                 if (self->on_screen())

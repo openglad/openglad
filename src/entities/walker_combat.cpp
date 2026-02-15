@@ -29,7 +29,6 @@
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
 #include <cmath>
 #include <format>
 

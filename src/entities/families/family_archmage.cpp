@@ -15,7 +15,6 @@
 #include <openglad/sim/sim_emit.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/combat_math.h>
-#include <openglad/render/view.h>
 
 #include <format>
 #include <string>
@@ -172,7 +171,7 @@ static bool archmage_do_special(walker* self)
                     return false;
                 if (self->myguy && (self->myguy->intelligence < 75))
                 {
-                    myscreen->do_notify("Need 75 Int for Marker!", self);
+                    og::sim::emit_notification("Need 75 Int for Marker!");
                     return false;
                 }
                 generic = 0;
@@ -188,7 +187,7 @@ static bool archmage_do_special(walker* self)
                         ob->dead = 1;
                         ob->death();
                         if (self->team_num == 0 || self->myguy)
-                            myscreen->do_notify("(Old Marker Removed)", self);
+                            og::sim::emit_notification("(Old Marker Removed)");
                         self->busy += 8;
                         generic = 1;
                         break;
@@ -206,9 +205,9 @@ static bool archmage_do_special(walker* self)
                 newob->ani_type = 2;
                 if (self->team_num == 0 || self->myguy)
                 {
-                    myscreen->do_notify("Teleport Marker Placed", self);
+                    og::sim::emit_notification("Teleport Marker Placed");
                     message = std::format("({} Uses)", newob->lifetime);
-                    myscreen->do_notify(message.c_str(), self);
+                    og::sim::emit_notification(message);
                 }
                 self->busy += 8;
                 generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
@@ -308,7 +307,7 @@ static bool archmage_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 150)
                 {
                     if (self->user != -1)
-                        myscreen->do_notify("150 Int required to Summon!", self);
+                        og::sim::emit_notification("150 Int required to Summon!");
                     return false;
                 }
                 generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
@@ -481,7 +480,7 @@ static bool archmage_do_special(walker* self)
             else
                 message = "ArchMage";
             tempstr = std::format("{} has controlled {} men", message, didheal);
-            myscreen->do_notify(tempstr.c_str(), self);
+            og::sim::emit_notification(tempstr);
             generic2 = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
             if (generic2 > 0)
             {

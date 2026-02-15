@@ -41,6 +41,7 @@
 #include <openglad/ui/results_screen.h>
 #include <openglad/sim/sim_world.h>
 #include <openglad/sim/sim_event_log.h>
+#include <openglad/render/pal32.h>
 #include <algorithm>
 #include <string>
 #include <cstring>
@@ -652,7 +653,16 @@ bool screen::act()
 	// SimWorld encapsulates the deterministic entity update logic that
 	// was previously embedded directly in this method.
 	og::sim::SimEventLog& events = *ctx().sim_events;
-	og::sim::TickResult result = sim_world_.tick(*this, events);
+	og::sim::TickResult result = sim_world_.tick(level_data, save_data,
+	                                             enemy_freeze, end, events);
+
+	// Post-tick: clean up viewscreen control pointers for dead player entities.
+	// This is a rendering concern that doesn't belong in the simulation layer.
+	for (int i = 0; i < numviews; i++)
+	{
+		if (viewob[i]->control && viewob[i]->control->dead)
+			viewob[i]->control = nullptr;
+	}
 
 	// Process simulation events: dispatch sounds, notifications, etc.
 	// This is the key sim/render boundary — simulation emits events,
@@ -668,6 +678,15 @@ bool screen::act()
 			case og::sim::EventKind::Notification:
 				if (!ev.text.empty())
 					do_notify(ev.text, nullptr);
+				break;
+			case og::sim::EventKind::SetPalette:
+				if (ev.a == 0)
+					set_palette(ourpalette);
+				else
+					set_palette(bluepalette);
+				break;
+			case og::sim::EventKind::RequestRedraw:
+				redrawme = 1;
 				break;
 			default:
 				break;

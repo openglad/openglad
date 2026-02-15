@@ -28,7 +28,7 @@ public:
         bool install_global_context = true;
         bool allocate_prefs = true;
         bool allocate_seeded_rng = false;
-        Uint32 rng_seed = 0;
+        std::uint32_t rng_seed = 0;
     };
 
     explicit GameSession(const Config& cfg);

@@ -55,7 +55,7 @@ static bool magic_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Mana({})!", self->stats()->level);
-        active_screen()->do_notify(message.c_str(), eater);
+        og::sim::emit_notification(message);
     }
     return true;
 }
@@ -68,7 +68,7 @@ static bool flight_potion_on_eat(treasure* self, walker* eater)
         if (eater->user != -1)
         {
             std::string message = std::format("Potion of Flight({})!", self->stats()->level);
-            active_screen()->do_notify(message.c_str(), eater);
+            og::sim::emit_notification(message);
         }
         self->dead = 1;
     }
@@ -84,7 +84,7 @@ static bool invulnerable_potion_on_eat(treasure* self, walker* eater)
         if (eater->user != -1)
         {
             std::string message = std::format("Potion of Invulnerability({})!", self->stats()->level);
-            active_screen()->do_notify(message.c_str(), eater);
+            og::sim::emit_notification(message);
         }
     }
     return true;
@@ -96,7 +96,7 @@ static bool invis_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Invisibility({})!", self->stats()->level);
-        active_screen()->do_notify(message.c_str(), eater);
+        og::sim::emit_notification(message);
     }
     self->dead = 1;
     return true;
@@ -109,7 +109,7 @@ static bool speed_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Speed({})!", self->stats()->level);
-        active_screen()->do_notify(message.c_str(), eater);
+        og::sim::emit_notification(message);
     }
     self->dead = 1;
     return true;

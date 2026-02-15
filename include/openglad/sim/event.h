@@ -19,6 +19,8 @@ enum class EventKind : std::uint32_t {
     Notification = 8,  // Text notification: message in text field
     LevelLost = 9,     // Level failed: a=reason
     EntityHeal = 10,   // Entity healed: a=target_id, b=amount
+    SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
+    RequestRedraw = 12,// Force full screen redraw
 };
 
 // Minimal deterministic event format for headless simulation tests.

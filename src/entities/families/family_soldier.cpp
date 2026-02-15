@@ -123,7 +123,7 @@ static bool soldier_do_special(walker* self)
                     if (self->on_screen())
                         og::sim::emit_sound(SOUND_CHARGE);
                     if (self->team_num == 0 || self->myguy)
-                        myscreen->do_notify("Fighter Disarmed Enemy!", self);
+                        og::sim::emit_notification("Fighter Disarmed Enemy!");
                     self->busy += 5;
                 }
                 else

@@ -848,6 +848,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_determinism.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_commands.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_emscripten_logic.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_web_sim_portability.cpp

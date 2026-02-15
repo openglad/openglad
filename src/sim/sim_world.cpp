@@ -7,17 +7,53 @@
  */
 #include <openglad/sim/sim_world.h>
 #include <openglad/sim/sim_event_log.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/entities/walker.h>
-#include <openglad/render/view.h>
+#include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
-#include <openglad/legacy/base.h>
 #include <format>
 
 namespace og::sim {
 
-TickResult SimWorld::tick(screen& scr, SimEventLog& events)
+// File-local helper: find the nearest hostile entity for AI targeting.
+// Mirrors screen::find_far_foe() but operates on LevelData directly.
+static walker* find_far_foe(LevelData& level, walker* ob)
+{
+    if (!ob)
+        return nullptr;
+
+    walker* endfoe = nullptr;
+    Sint32 distance = 10000;
+    ob->stats()->last_distance = 10000;
+
+    for (auto& uptr : level.oblist)
+    {
+        walker* foe = uptr.get();
+        if (foe == nullptr || foe->dead)
+            continue;
+
+        if (ob->is_friendly(foe) == 0)
+        {
+            if ((foe->query_order() == Order::Living ||
+                 foe->query_order() == Order::Generator) &&
+                (!(ctx().rng->next(foe->invisibility_left / 20))))
+            {
+                Sint32 tempdistance = ob->distance_to_ob(foe);
+                if (tempdistance < distance)
+                {
+                    distance = tempdistance;
+                    endfoe = foe;
+                }
+            }
+        }
+    }
+    return endfoe;
+}
+
+TickResult SimWorld::tick(LevelData& level, SaveData& save,
+                          std::int32_t& enemy_freeze, char end,
+                          SimEventLog& events)
 {
     TickResult result;
     tick_count_++;
@@ -25,16 +61,16 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
 
     result.level_done = 2; // unless we find valid foes while looping
 
-    if (scr.enemy_freeze)
-        scr.enemy_freeze--;
-    if (scr.enemy_freeze == 1)
-        set_palette(scr.ourpalette);
+    if (enemy_freeze)
+        enemy_freeze--;
+    if (enemy_freeze == 1)
+        events.push(EventKind::SetPalette, 0, 0);
 
     // --- Entity act phase ---
-    for (auto& uptr : scr.level_data.oblist)
+    for (auto& uptr : level.oblist)
     {
         walker* ob = uptr.get();
-        if (!scr.enemy_freeze) // normal functionality
+        if (!enemy_freeze) // normal functionality
         {
             if (ob && !ob->dead)
             {
@@ -43,19 +79,19 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
                 ob->in_act = false;
                 if (ob && !ob->dead)
                 {
-                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(scr.save_data.my_team)) &&
+                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
                         ob->query_order() == Order::Living)
                         result.level_done = 0;
                     if (ob->foe == nullptr && ob->leader == nullptr)
-                        ob->foe = scr.find_far_foe(ob);
+                        ob->foe = find_far_foe(level, ob);
                 }
             }
         }
         else // enemy livings are frozen
         {
-            if (!(scr.enemy_freeze % 10) && result.level_done == 2)
+            if (!(enemy_freeze % 10) && result.level_done == 2)
             {
-                std::string obmessage = std::format("TIME LEFT: {}", scr.enemy_freeze);
+                std::string obmessage = std::format("TIME LEFT: {}", enemy_freeze);
                 events.push_notification(obmessage);
             }
             if (ob && !ob->dead &&
@@ -66,7 +102,7 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
                 ob->act();
                 if (ob && !ob->dead)
                 {
-                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(scr.save_data.my_team)) &&
+                    if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
                         ob->query_order() == Order::Living)
                         result.level_done = 0;
                 }
@@ -75,7 +111,7 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
     }
 
     // --- Weapon act phase ---
-    for (auto& uptr : scr.level_data.weaplist)
+    for (auto& uptr : level.weaplist)
     {
         walker* ob = uptr.get();
         if (ob && !ob->dead)
@@ -83,7 +119,7 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
             ob->act();
             if (ob && !ob->dead)
             {
-                if (!ob->is_friendly_to_team(static_cast<unsigned char>(scr.save_data.my_team)) &&
+                if (!ob->is_friendly_to_team(static_cast<unsigned char>(save.my_team)) &&
                     ob->query_order() == Order::Living)
                     result.level_done = 0;
             }
@@ -91,7 +127,7 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
     }
 
     // --- Check background for exits ---
-    for (auto& uptr : scr.level_data.fxlist)
+    for (auto& uptr : level.fxlist)
     {
         walker* ob = uptr.get();
         if (ob && !ob->dead)
@@ -110,18 +146,18 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
     {
         result.game_ended = true;
         result.ending = 0;
-        result.next_level = static_cast<short>(scr.level_data.id + 1);
+        result.next_level = static_cast<short>(level.id + 1);
         return result;
     }
 
-    if (scr.end)
+    if (end)
     {
         result.game_ended = true;
         return result;
     }
 
     // --- Cleanup stale pointers ---
-    for (auto& uptr : scr.level_data.oblist)
+    for (auto& uptr : level.oblist)
     {
         walker* ob = uptr.get();
         if (ob->foe && ob->foe->dead)
@@ -134,7 +170,7 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
             ob->collide_ob = nullptr;
     }
 
-    for (auto& uptr : scr.level_data.weaplist)
+    for (auto& uptr : level.weaplist)
     {
         walker* ob = uptr.get();
         if (ob->foe && ob->foe->dead)
@@ -148,38 +184,30 @@ TickResult SimWorld::tick(screen& scr, SimEventLog& events)
     }
 
     // --- Remove dead entities ---
-    for (auto e = scr.level_data.oblist.begin(); e != scr.level_data.oblist.end();)
+    // Note: viewscreen control pointer cleanup is handled by the caller
+    // (screen::act) since viewscreens are a rendering concern.
+    for (auto e = level.oblist.begin(); e != level.oblist.end();)
     {
         walker* ob = e->get();
         if (ob && ob->dead && ob->myguy == nullptr)
         {
-            // Is it a player?
-            if (ob->user != -1)
-            {
-                for (int i = 0; i < scr.numviews; i++)
-                {
-                    if (ob == scr.viewob[i]->control)
-                        scr.viewob[i]->control = nullptr;
-                }
-            }
-
-            scr.level_data.dead_list.push_back(std::move(*e));
+            level.dead_list.push_back(std::move(*e));
 
             if (ob->query_order() == Order::Living)
-                scr.level_data.numobs--;
+                level.numobs--;
 
-            e = scr.level_data.oblist.erase(e);
+            e = level.oblist.erase(e);
             continue;
         }
         e++;
     }
 
-    std::erase_if(scr.level_data.fxlist, [](const auto& uptr) {
+    std::erase_if(level.fxlist, [](const auto& uptr) {
         walker* ob = uptr.get();
         return ob && ob->dead;
     });
 
-    std::erase_if(scr.level_data.weaplist, [](const auto& uptr) {
+    std::erase_if(level.weaplist, [](const auto& uptr) {
         walker* ob = uptr.get();
         return ob && ob->dead;
     });

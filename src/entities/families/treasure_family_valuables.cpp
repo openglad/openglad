@@ -78,7 +78,7 @@ static bool key_on_eat(treasure* self, walker* eater)
             message = std::format("{} picks up key {}", eater->stats()->name, self->stats()->level);
         if (eater->team_num == 0) // only show players picking up keys
         {
-            active_screen()->do_notify(message.c_str(), eater);
+            og::sim::emit_notification(message);
             if (eater->on_screen())
                 og::sim::emit_sound(SOUND_MONEY);
         }

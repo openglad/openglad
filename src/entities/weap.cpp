@@ -28,6 +28,7 @@
 #include <openglad/render/smooth.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/sim/sim_emit.h>
 #include <format>
 
 namespace
@@ -89,7 +90,7 @@ bool weap::act()
 			{
 				const auto* wfd = get_weapon_family_descriptor(family);
 				if (!wfd || !wfd->skip_sit_notify)
-					active_screen()->do_notify("Weapon sitting", this);
+					og::sim::emit_notification("Weapon sitting");
 				return 1;
 			}
 
@@ -125,7 +126,7 @@ bool weap::act()
 			{
 				std::string msg = std::format("Weapon {} doing act random?", family);
 				//Log("Weapon doing act_random?\n");
-				active_screen()->do_notify(msg.c_str(), this);
+				og::sim::emit_notification(msg);
 				return 1;
 			}  // END RANDOM
 			//break;
@@ -133,7 +134,7 @@ bool weap::act()
 		default:
 			{
 				//Log("No act type set for weapon.\n");
-				active_screen()->do_notify("No act type set for weapon", this);
+				og::sim::emit_notification("No act type set for weapon");
 				return 0;
 			}
 	}  // END SWITCH

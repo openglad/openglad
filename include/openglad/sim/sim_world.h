@@ -7,7 +7,6 @@
 #include <vector>
 
 // Forward declarations — SimWorld works with these types but doesn't own them
-class screen;
 struct LevelData;
 struct SaveData;
 namespace og::sim { class SimEventLog; }
@@ -57,11 +56,16 @@ public:
     // previously embedded in screen::act().
     //
     // Parameters:
-    //   scr       - The game screen (provides entity lists, passability queries)
-    //   events    - Event log to push simulation events into
+    //   level        - Level data (entity lists, grid, etc.)
+    //   save         - Save data (team info)
+    //   enemy_freeze - Freeze counter (decremented each tick)
+    //   end          - Game-end flag
+    //   events       - Event log to push simulation events into
     //
     // Returns a TickResult describing what happened during this tick.
-    TickResult tick(screen& scr, SimEventLog& events);
+    TickResult tick(LevelData& level, SaveData& save,
+                    std::int32_t& enemy_freeze, char end,
+                    SimEventLog& events);
 
     // Accumulated tick counter.
     std::uint32_t tick_count() const { return tick_count_; }

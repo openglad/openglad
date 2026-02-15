@@ -15,9 +15,6 @@
 
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
-#include <openglad/render/view.h>
-#include <openglad/render/pal32.h>
-#include <openglad/render/video.h>
 
 #include <format>
 #include <string>
@@ -132,7 +129,7 @@ static bool mage_do_special(walker* self)
                 if (self->myguy && (self->myguy->intelligence < 75))
                 {
                     if (self->user != -1)
-                        myscreen->do_notify("Need 75 Int for Marker!", self);
+                        og::sim::emit_notification("Need 75 Int for Marker!");
                     return false;
                 }
                 // Remove a marker, if present
@@ -149,7 +146,7 @@ static bool mage_do_special(walker* self)
                         ob->dead = 1;
                         ob->death();
                         if ((self->team_num == 0 || self->myguy) && self->user != -1)
-                            myscreen->do_notify("(Old Marker Removed)", self);
+                            og::sim::emit_notification("(Old Marker Removed)");
                         self->busy += 8;
                         break;
                     }
@@ -169,9 +166,9 @@ static bool mage_do_special(walker* self)
                     newob->ani_type = ANI_SPIN;
                     if ((self->team_num == 0 || self->myguy) && self->user != -1)
                     {
-                        myscreen->do_notify("Teleport Marker Placed", self);
+                        og::sim::emit_notification("Teleport Marker Placed");
                         message = std::format("({} Uses)", newob->lifetime);
-                        myscreen->do_notify(message.c_str(), self);
+                        og::sim::emit_notification(message);
                     }
                     self->busy += 8;
                     generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
@@ -227,7 +224,7 @@ static bool mage_do_special(walker* self)
             if (self->team_num == 0 || self->myguy)
             {
                 myscreen->enemy_freeze += 20 + 11 * self->stats()->level;
-                set_palette(myscreen->bluepalette);
+                og::sim::emit_event(og::sim::EventKind::SetPalette, 1);
             }
             else
             {
@@ -236,8 +233,7 @@ static bool mage_do_special(walker* self)
                     generic = 50;
                 message = std::format("TIME IS FROZEN! ({} rounds)", generic);
                 og::sim::emit_notification(message);
-                myscreen->viewob[0]->redraw();
-                myscreen->viewob[0]->refresh();
+                og::sim::emit_event(og::sim::EventKind::RequestRedraw);
                 std::list<walker*> newlist = myscreen->find_friends_in_range(
                               myscreen->level_data.oblist, 30000, &howmany, self);
                 for (auto* w : newlist)

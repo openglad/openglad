@@ -23,6 +23,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/legacy/test_trace.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <list>
 
@@ -98,7 +99,7 @@ bool walker::teleport()
 			else  // blocked somehow?
 			{
 				if (user != -1 && (distance > 64) ) // only tell players
-					myscreen->do_notify("Marker is Blocked!", this);
+					og::sim::emit_notification("Marker is Blocked!");
 			}
 			}
 			} // end of checking for marker (we failed)

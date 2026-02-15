@@ -14,7 +14,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/core/stats.h>
-#include <openglad/render/view.h>
+#include <openglad/sim/sim_emit.h>
 
 #include <format>
 #include <string>
@@ -85,7 +85,6 @@ static void thief_level_up(guy* self, Sint32 level_diff)
 static bool thief_do_special(walker* self)
 {
     walker* newob;
-    Sint32 i;
     std::string message, tempstr;
 
     switch (self->current_special)
@@ -104,11 +103,7 @@ static bool thief_do_special(walker* self)
             newob->owner = self;
             // Run away if we're AI
             {
-                char person = 0;
-                for (i = 0; i < myscreen->numviews; i++)
-                    if (myscreen->viewob[i]->control == self)
-                        person = 1;
-                if (!person)
+                if (self->user == -1)
                 {
                     Sint32 tempx = static_cast<Sint32>(rng(3)) - 1;
                     Sint32 tempy = static_cast<Sint32>(rng(3)) - 1;
@@ -147,7 +142,7 @@ static bool thief_do_special(walker* self)
                     message = std::format("{}: 'Nyah Nyah!'", self->stats()->name);
                 else
                     message = "THIEF: 'Nyah Nyah!'";
-                myscreen->do_notify(message.c_str(), self);
+                og::sim::emit_notification(message);
                 self->busy += 2;
                 break;
             }
@@ -203,7 +198,7 @@ static bool thief_do_special(walker* self)
                         tempstr = std::format("{} failed to charm!", message);
                     else
                         tempstr = std::format("{} charmed an opponent!", message);
-                    myscreen->do_notify(tempstr.c_str(), self);
+                    og::sim::emit_notification(tempstr);
                     self->busy += 10;
                 }
                 break;

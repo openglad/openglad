@@ -106,7 +106,7 @@ static bool orc_do_special(walker* self)
                 message = "Orc ate a corpse.";
 
             if (!active_config().is_on("effects", "heal_numbers"))
-                myscreen->do_notify(message.c_str(), self);
+                og::sim::emit_notification(message);
             if (self->stats()->hitpoints > self->stats()->max_hitpoints)
                 self->stats()->hitpoints = self->stats()->max_hitpoints;
             newob->dead = 1;

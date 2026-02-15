@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <format>
 #include <openglad/runtime/game_context.h>
+#include <openglad/sim/sim_emit.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
@@ -372,7 +373,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                             {
                                 std::string message = std::format("Key {} needed!",
                                         w->stats()->level);
-                                myscreen->do_notify(message.c_str(), ob);
+                                og::sim::emit_notification(message);
                                 ob->skip_exit = 10;
                             } // end of failed open door notification
                             ob->collide(w);

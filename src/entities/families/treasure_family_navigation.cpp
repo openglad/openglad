@@ -10,6 +10,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/sim/sim_emit.h>
 #include <format>
 #include <string>
 
@@ -64,7 +65,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
         std::string buf = std::format("Withdraw to {}?", exitname);
         bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
         // Redraw screen ..
-        active_screen()->redrawme = 1;
+        og::sim::emit_event(og::sim::EventKind::RequestRedraw);
 
         if (result) // accepted level change
         {
@@ -102,7 +103,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
         std::string buf = std::format("Exit to {}?", exitname);
         bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
         // Redraw screen ..
-        active_screen()->redrawme = 1;
+        og::sim::emit_event(og::sim::EventKind::RequestRedraw);
 
         if(result) // accepted level change
         {
