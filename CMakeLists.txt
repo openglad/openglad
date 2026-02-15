@@ -1142,11 +1142,16 @@ endif()
 	    target_include_directories(og_game_web PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
 	    target_link_libraries(og_game_web PUBLIC ${OG_EXTERNAL_LIBS} ${OG_IO_EXTERNAL_LIBS})
 	    add_dependencies(og_game_web check_graph_h_includes)
+	    # Define __ASYNCIFY__ so that YIELD_SLEEP expands to emscripten_sleep()
+	    # instead of a no-op.  The -sASYNCIFY linker flag below enables the
+	    # Binaryen transform, but does not define the preprocessor macro.
+	    target_compile_definitions(og_game_web PRIVATE __ASYNCIFY__)
 
     add_executable(play ${SRC_DIR}/glad.cpp)
     configure_openglad_library(play)
     target_link_libraries(play PRIVATE og_game_web)
     configure_openglad_runtime_target(play)
+    target_compile_definitions(play PRIVATE __ASYNCIFY__)
 
     target_link_options(play PRIVATE
         "SHELL:-sSDL2_MIXER_FORMATS=[\"wav\",\"ogg\"]"
