@@ -21,6 +21,7 @@
 class screen;
 class options;
 class cfg_store;
+namespace og::sim { class SimEventLog; }
 
 // ---------------------------------------------------------------------------
 // IRandom — injectable RNG interface
@@ -152,6 +153,11 @@ struct GameContext {
     IConfigContextService* config_service = nullptr;
     IRenderContextService* render_service = nullptr;
     IInputContextService* input_service   = nullptr;
+
+    // Simulation event log: accumulates events during a simulation tick.
+    // Owned by GameContext. Simulation code pushes events here; the runtime
+    // layer drains and dispatches them after each tick.
+    std::unique_ptr<og::sim::SimEventLog> sim_events;
 
     // Convenience: is this a valid, initialized context?
     bool valid() const { return game_screen != nullptr; }

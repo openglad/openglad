@@ -10,11 +10,14 @@
 #include <openglad/data/gparser.h>
 #include <openglad/input/input.h>
 #include <openglad/render/view.h> // options definition for GameContext::~GameContext
+#include <openglad/sim/sim_event_log.h>
 
 // The existing global random() function (defined in screen.cpp)
 Uint32 random(Uint32 x);
 
-GameContext::GameContext() = default;
+GameContext::GameContext()
+    : sim_events(std::make_unique<og::sim::SimEventLog>())
+{}
 
 GameContext::~GameContext() = default;
 
