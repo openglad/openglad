@@ -1132,6 +1132,57 @@ if(NOT EMSCRIPTEN)
 endif()
 
 # --------------------------------------------------------------------------
+# Fuzz targets (libFuzzer / clang)
+# --------------------------------------------------------------------------
+
+option(ENABLE_FUZZING "Build fuzz testing harnesses (requires clang with libFuzzer)" OFF)
+
+if(ENABLE_FUZZING)
+    if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "ENABLE_FUZZING requires Clang (for libFuzzer support)")
+    endif()
+
+    set(FUZZ_SANITIZER_FLAGS -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
+    set(FUZZ_LINK_FLAGS -fsanitize=fuzzer,address,undefined)
+
+    # Each fuzz target is a standalone executable that links only what it needs.
+    # The harnesses use SDL_RWFromConstMem to feed data, so they need SDL2 but
+    # not the full game engine.
+
+    function(add_fuzz_target name source)
+        add_executable(${name} ${source})
+        target_include_directories(${name} PRIVATE
+            $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
+        )
+        if(NOT EMSCRIPTEN)
+            target_include_directories(${name} SYSTEM PRIVATE ${SDL2_INCLUDE_DIRS})
+        endif()
+        target_include_directories(${name} PRIVATE ${OG_THIRD_PARTY_INCLUDE_DIRS})
+        target_compile_definitions(${name} PRIVATE ${COMMON_DEFINITIONS})
+        target_compile_options(${name} PRIVATE ${FUZZ_SANITIZER_FLAGS})
+        target_link_options(${name} PRIVATE ${FUZZ_LINK_FLAGS})
+    endfunction()
+
+    # fuzz_pixie: exercises .pix sprite data parsing (header + payload)
+    add_fuzz_target(fuzz_pixie ${SRC_DIR}/fuzz/fuzz_pixie.cpp)
+    target_sources(fuzz_pixie PRIVATE ${SRC_DIR}/data/pixie_data.cpp)
+    target_link_libraries(fuzz_pixie PRIVATE ${SDL2_LIBRARIES})
+
+    # fuzz_scenario: exercises .fss scenario binary parsing
+    add_fuzz_target(fuzz_scenario ${SRC_DIR}/fuzz/fuzz_scenario.cpp)
+    target_link_libraries(fuzz_scenario PRIVATE ${SDL2_LIBRARIES})
+
+    # fuzz_savefile: exercises .gtl save file binary parsing
+    add_fuzz_target(fuzz_savefile ${SRC_DIR}/fuzz/fuzz_savefile.cpp)
+    target_link_libraries(fuzz_savefile PRIVATE ${SDL2_LIBRARIES})
+
+    # fuzz_yaml: exercises YAML config parsing (libyaml via og_io wrapper)
+    add_fuzz_target(fuzz_yaml ${SRC_DIR}/fuzz/fuzz_yaml.cpp)
+    target_sources(fuzz_yaml PRIVATE ${SRC_DIR}/io/yaml_stream.cpp)
+    target_link_libraries(fuzz_yaml PRIVATE og_ext_yam og_ext_yaml ${SDL2_LIBRARIES})
+endif()
+
+# --------------------------------------------------------------------------
 # Emscripten target
 # --------------------------------------------------------------------------
 

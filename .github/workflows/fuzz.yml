@@ -1,0 +1,78 @@
+name: Fuzz Testing
+
+on:
+  pull_request:
+  schedule:
+    # Nightly at 03:00 UTC
+    - cron: '0 3 * * *'
+
+env:
+  # Disable leak detection: vendored libraries (libyaml) have known
+  # benign leaks that would cause false positives in fuzz runs.
+  ASAN_OPTIONS: detect_leaks=0
+
+jobs:
+  fuzz:
+    name: Fuzz (${{ github.event_name == 'schedule' && 'nightly' || 'pr' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'schedule' && 90 || 20 }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build clang
+
+      - name: Configure (ci-fuzz preset)
+        run: cmake --preset ci-fuzz
+
+      - name: Build fuzz targets
+        run: cmake --build --preset ci-fuzz -j"$(nproc)"
+
+      - name: Create crash artifact directory
+        run: mkdir -p fuzz/crashes
+
+      - name: Run fuzz_pixie
+        run: |
+          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
+          ./build/ci-fuzz/fuzz_pixie \
+            fuzz/corpus/pixie \
+            -max_total_time=$DURATION \
+            -artifact_prefix=fuzz/crashes/pixie_ \
+            -print_final_stats=1
+
+      - name: Run fuzz_scenario
+        run: |
+          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
+          ./build/ci-fuzz/fuzz_scenario \
+            fuzz/corpus/scenario \
+            -max_total_time=$DURATION \
+            -artifact_prefix=fuzz/crashes/scenario_ \
+            -print_final_stats=1
+
+      - name: Run fuzz_savefile
+        run: |
+          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
+          ./build/ci-fuzz/fuzz_savefile \
+            fuzz/corpus/savefile \
+            -max_total_time=$DURATION \
+            -artifact_prefix=fuzz/crashes/savefile_ \
+            -print_final_stats=1
+
+      - name: Run fuzz_yaml
+        run: |
+          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
+          ./build/ci-fuzz/fuzz_yaml \
+            fuzz/corpus/yaml \
+            -max_total_time=$DURATION \
+            -artifact_prefix=fuzz/crashes/yaml_ \
+            -print_final_stats=1
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ github.event_name }}
+          path: fuzz/crashes/
+          if-no-files-found: ignore
