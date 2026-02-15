@@ -25,8 +25,8 @@ all the work that was saved.
 
 * [Install / Build](docs/INSTALL.md)
 * [Playing](#Playing)
-* [Editing with Openscen](scen.txt)
-* [Cheats](cheats.txt)
+* [Editing with Openscen](docs/scen.txt)
+* [Cheats](docs/cheats.txt)
 * [Gladiator ver. 3.8 Readme](#gladiator-version-38-readme) (written by FSGames)
     * [[0] Installation information](#0-installation-information)
     * [[1] Keyboard Controls](#1-keyboard-controls)
@@ -41,7 +41,7 @@ all the work that was saved.
 
 ## Playing
 
-Read the in-game help for help on how to play (press f1 in a level or read [glad.hlp](glad.hlp)).
+Read the in-game help for help on how to play (press f1 in a level or read [glad.hlp](docs/glad.hlp)).
 
 ## Gladiator version 3.8 Readme.
 
@@ -84,7 +84,7 @@ will abort your current mission and return you to the 'picker'
 screen, and the 'F1' key, which will bring up a brief help
 display during the game.
 
-See [glad.hlp](glad.hlp) for detailed controls.
+See [glad.hlp](docs/glad.hlp) for detailed controls.
 
 #### [2] Overview
 
@@ -127,7 +127,7 @@ level 1, but he must have at least 75 Intelligence before it becomes
 usable.
 
 A brief sample of basic troop types follows; for more detailed   
-information, including special abilities, consult the [classes.txt](classes.txt) file.
+information, including special abilities, consult the [classes.txt](docs/classes.txt) file.
 
 * **Soldier**:  Your basic grunt, can absorb and deal damage and moves
   moderately fast.  A good all-around fighter.
