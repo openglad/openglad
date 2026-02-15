@@ -1,0 +1,251 @@
+name: Nightly Release
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # Daily at 2am UTC
+  workflow_dispatch:        # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Check whether there are new commits since last successful nightly ──
+  check-new-commits:
+    runs-on: ubuntu-latest
+    outputs:
+      has_new_commits: ${{ steps.check.outputs.has_new_commits }}
+      sha_short: ${{ steps.check.outputs.sha_short }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get current HEAD SHA
+        id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore last successful nightly SHA
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .nightly-last-sha
+          key: nightly-last-sha-${{ steps.sha.outputs.sha }}
+          restore-keys: nightly-last-sha-
+
+      - name: Compare commits
+        id: check
+        run: |
+          sha_short="$(git rev-parse --short HEAD)"
+          echo "sha_short=$sha_short" >> "$GITHUB_OUTPUT"
+          if [ -f .nightly-last-sha ] && [ "$(cat .nightly-last-sha)" = "${{ steps.sha.outputs.sha }}" ]; then
+            echo "No new commits since last nightly – skipping."
+            echo "has_new_commits=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "New commits detected – proceeding with nightly build."
+            echo "has_new_commits=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Multi-platform native builds ──────────────────────────────────────
+  build:
+    needs: check-new-commits
+    if: needs.check-new-commits.outputs.has_new_commits == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact_name: openglad-linux-x86_64
+            archive_ext: tar.gz
+          - os: windows-latest
+            platform: windows
+            artifact_name: openglad-windows-x86_64
+            archive_ext: zip
+          - os: macos-latest
+            platform: macos
+            artifact_name: openglad-macos-arm64
+            archive_ext: zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Install dependencies ──
+
+      - name: Install dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev cmake ninja-build
+
+      - name: Install dependencies (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          brew install sdl2 sdl2_mixer ninja pkg-config
+
+      - name: Setup MSYS2 (Windows)
+        if: matrix.platform == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-SDL2
+            mingw-w64-x86_64-SDL2_mixer
+            mingw-w64-x86_64-pkg-config
+
+      # ── Configure & Build ──
+
+      - name: Configure & Build (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_EDITOR=ON
+          cmake --build build --target openglad openscen -j"$(nproc)"
+
+      - name: Configure & Build (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_EDITOR=ON
+          cmake --build build --target openglad openscen -j"$(sysctl -n hw.logicalcpu)"
+
+      - name: Configure & Build (Windows)
+        if: matrix.platform == 'windows'
+        shell: msys2 {0}
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_EDITOR=ON
+          cmake --build build --target openglad openscen -j"$(nproc)"
+
+      # ── Package ──
+
+      - name: Package (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p staging/openglad
+          cp build/openglad build/openscen staging/openglad/
+          cp -r pix cfg sound builtin extra_campaigns staging/openglad/
+          tar czf "${{ matrix.artifact_name }}.tar.gz" -C staging openglad
+
+      - name: Package (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          mkdir -p staging/openglad
+          cp build/openglad build/openscen staging/openglad/
+          cp -r pix cfg sound builtin extra_campaigns staging/openglad/
+          cd staging && zip -r "../${{ matrix.artifact_name }}.zip" openglad
+
+      - name: Package (Windows)
+        if: matrix.platform == 'windows'
+        shell: msys2 {0}
+        run: |
+          mkdir -p staging/openglad
+          cp build/openglad.exe build/openscen.exe staging/openglad/
+          # Bundle MinGW runtime DLLs
+          MINGW_BIN="/mingw64/bin"
+          for dll in SDL2.dll SDL2_mixer.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            [ -f "$MINGW_BIN/$dll" ] && cp "$MINGW_BIN/$dll" staging/openglad/
+          done
+          cp -r pix cfg sound builtin extra_campaigns staging/openglad/
+          cd staging && 7z a "../${{ matrix.artifact_name }}.zip" openglad
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}.${{ matrix.archive_ext }}
+
+  # ── Web build + Cloudflare Pages deploy ───────────────────────────────
+  web-deploy:
+    needs: check-new-commits
+    if: needs.check-new-commits.outputs.has_new_commits == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.51
+
+      - name: Build web target
+        run: |
+          cmake --preset web-emscripten
+          cmake --build --preset web-emscripten --target play -j"$(nproc)"
+
+      - name: Prepare deploy directory
+        run: |
+          cp web/index.html web/hero.png web/help.html dist/
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist --project-name=openglad
+
+  # ── Create / update the nightly GitHub Release ────────────────────────
+  release:
+    needs: [build, web-deploy, check-new-commits]
+    if: needs.check-new-commits.outputs.has_new_commits == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Delete previous nightly release
+        run: gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create nightly release
+        run: |
+          DATE="$(date -u '+%Y-%m-%d')"
+          SHA_SHORT="${{ needs.check-new-commits.outputs.sha_short }}"
+          gh release create nightly \
+            artifacts/**/* \
+            --prerelease \
+            --title "Nightly Build (${DATE} @ ${SHA_SHORT})" \
+            --notes "$(cat <<EOF
+          Automated nightly build from \`master\` at \`${{ github.sha }}\`.
+
+          **Download for your platform:**
+          | Platform | File |
+          |----------|------|
+          | Linux x86_64 | \`openglad-linux-x86_64.tar.gz\` |
+          | Windows x86_64 | \`openglad-windows-x86_64.zip\` |
+          | macOS ARM64 | \`openglad-macos-arm64.zip\` |
+
+          **Play in your browser:** https://openglad.pages.dev
+          EOF
+          )"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Record successful SHA so we can skip no-change runs ───────────────
+  save-sha:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Save successful nightly SHA
+        run: echo "${{ github.sha }}" > .nightly-last-sha
+
+      - uses: actions/cache/save@v4
+        with:
+          path: .nightly-last-sha
+          key: nightly-last-sha-${{ github.sha }}
