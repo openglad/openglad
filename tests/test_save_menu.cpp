@@ -1,12 +1,12 @@
-#include "graph.h"
-#include "button.h"
-#include "test_trace.h"
+#include <memory>
+#include <array>
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "save_data.h"
-#include "guy.h"
-
+#include <openglad/data/save_data.h>
+#include <openglad/entities/guy.h>
 extern screen* myscreen;
 
 // Forward declarations from picker.cpp
@@ -16,24 +16,22 @@ extern int g_picker_max_mainmenu_calls;
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
-extern pixieN *main_title_logo_pix, *main_columns_pix;
-extern pixieN *backdrops[5];
+extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
 extern vbutton *localbuttons;
 
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        backdrops[i].reset();
         backpics[i].free();
     }
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
-    }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    clear_allbuttons();
+    localbuttons = nullptr;
+    main_columns_pix.reset();
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    main_title_logo_pix.reset();
     main_title_logo_data.free();
 }
 
@@ -53,7 +51,7 @@ struct SaveMenuState {
 
 static int save_menu_injector(void* data)
 {
-    SaveMenuState* state = (SaveMenuState*)data;
+    SaveMenuState* state = static_cast<SaveMenuState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -101,19 +99,18 @@ void test_save_team_menu() {
     myscreen->save_data.current_campaign = "org.openglad.gladiator";
     myscreen->save_data.scen_num = 1;
 
-    guy* soldier = new guy(FAMILY_SOLDIER);
-    myscreen->save_data.team_list[0] = soldier;
+    myscreen->save_data.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
     myscreen->save_data.team_size = 1;
     myscreen->save_data.save("save0");
 
     SaveMenuState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(save_menu_injector, "save_menu_test", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

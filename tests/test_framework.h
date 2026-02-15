@@ -10,13 +10,16 @@ extern int g_tests_passed;
 extern int g_tests_failed;
 
 typedef void (*test_func_t)();
+typedef void (*test_hook_t)();
 
 struct TestEntry {
     const char* name;
     test_func_t fn;
+    test_hook_t setup;
+    test_hook_t teardown;
 };
 
-#define MAX_TESTS 256
+#define MAX_TESTS 4096
 extern TestEntry g_test_registry[MAX_TESTS];
 extern int g_test_registry_count;
 
@@ -29,9 +32,26 @@ extern int g_test_registry_count;
             } \
             g_test_registry[g_test_registry_count].name = #func; \
             g_test_registry[g_test_registry_count].fn = func; \
+            g_test_registry[g_test_registry_count].setup = nullptr; \
+            g_test_registry[g_test_registry_count].teardown = nullptr; \
             g_test_registry_count++; \
         } \
     } _reg_instance_##func
+
+#define REGISTER_TEST_WITH_FIXTURE(func, setup_fn, teardown_fn) \
+    static struct _reg_##func { \
+        _reg_##func() { \
+            if (g_test_registry_count >= MAX_TESTS) { \
+                fprintf(stderr, "FATAL: too many tests registered (max %d)\n", MAX_TESTS); \
+                abort(); \
+            } \
+            g_test_registry[g_test_registry_count].name = #func; \
+            g_test_registry[g_test_registry_count].fn = func; \
+            g_test_registry[g_test_registry_count].setup = setup_fn; \
+            g_test_registry[g_test_registry_count].teardown = teardown_fn; \
+            g_test_registry_count++; \
+        } \
+    } _reg_fixture_instance_##func
 
 #define TEST_ASSERT(cond, msg) \
     do { \
@@ -47,7 +67,7 @@ extern int g_test_registry_count;
     do { \
         if ((expected) != (actual)) { \
             fprintf(stderr, "  FAIL: %s (expected %d, got %d) (%s:%d)\n", \
-                    msg, (int)(expected), (int)(actual), __FILE__, __LINE__); \
+                    msg, static_cast<int>(expected), static_cast<int>(actual), __FILE__, __LINE__); \
             g_tests_failed++; \
             g_tests_run++; \
             return; \
@@ -66,5 +86,8 @@ extern int g_test_registry_count;
     } while(0)
 
 void run_all_tests();
+
+// Optional filter: if non-null, only tests whose names contain this substring run
+extern const char* g_test_filter;
 
 #endif // _TEST_FRAMEWORK_H__

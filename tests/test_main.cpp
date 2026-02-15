@@ -1,17 +1,44 @@
 #include <unistd.h>
+#include <signal.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
 
-#include "graph.h"
-#include "test_trace.h"
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include "gparser.h"
-#include "io.h"
-#include "util.h"
-#include "input.h"
-
+#include <openglad/data/gparser.h>
+#include <openglad/platform/io.h>
+#include <openglad/core/util.h>
+#include <openglad/input/input.h>
+#include <openglad/render/view.h> // options
+#include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen_lifecycle.h>
 extern screen* myscreen;
 extern options* theprefs;
 
+#ifdef ENABLE_COVERAGE
+// Ensure coverage data is flushed even though we terminate via _exit().
+extern "C" void __gcov_dump();
+#endif
+
+static void handle_test_signal(int sig)
+{
+    // Async-signal-safe termination to avoid leaving orphaned UI test processes
+    // (e.g. when CTest is interrupted).
+    _exit(128 + sig);
+}
+
 int main(int argc, char* argv[]) {
+    // Ensure the test process is terminated when its parent (usually CTest)
+    // exits, and exit promptly on interrupt/terminate signals.
+#ifdef __linux__
+    (void)prctl(PR_SET_PDEATHSIG, SIGTERM);
+    if (getppid() == 1)
+        _exit(1);
+#endif
+    signal(SIGINT, handle_test_signal);
+    signal(SIGTERM, handle_test_signal);
+
     // Force offscreen rendering - no display needed
     SDL_setenv("SDL_VIDEODRIVER", "offscreen", 1);
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
@@ -30,8 +57,13 @@ int main(int argc, char* argv[]) {
     cfg.load_settings();
     cfg.save_settings();
 
-    theprefs = new options;
-    myscreen = new screen(1);
+    // Optional test filter: ./openglad_test [filter_substring]
+    if (argc > 1)
+        g_test_filter = argv[1];
+
+    ctx().prefs = std::make_unique<options>();
+    theprefs = ctx().prefs.get();
+    create_global_screen(1);
     init_input();
 
     run_all_tests();
@@ -40,6 +72,9 @@ int main(int argc, char* argv[]) {
     // destructor during normal cleanup) hangs on some drivers/configurations.
     // This is a test binary so we don't need graceful teardown — the OS
     // reclaims all resources on process exit.
-    fflush(NULL); // _exit() doesn't flush stdio — do it explicitly
+    fflush(nullptr); // _exit() doesn't flush stdio — do it explicitly
+#ifdef ENABLE_COVERAGE
+    __gcov_dump();
+#endif
     _exit(g_tests_failed > 0 ? 1 : 0);
 }

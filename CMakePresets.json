@@ -1,0 +1,160 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "dev-debug",
+      "displayName": "Dev Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/dev-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_EDITOR": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "dev-release",
+      "displayName": "Dev Release",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/dev-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_TESTING": "OFF"
+      }
+    },
+    {
+      "name": "ci-test",
+      "displayName": "CI Test",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/ci-test",
+      "cacheVariables": {
+        "ENABLE_COVERAGE": "OFF",
+        "ENABLE_SANITIZERS": "OFF"
+      }
+    },
+    {
+      "name": "ci-asan",
+      "displayName": "CI ASan+UBSan",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/ci-asan",
+      "cacheVariables": {
+        "ENABLE_SANITIZERS": "ON",
+        "SANITIZERS": "address;undefined"
+      }
+    },
+    {
+      "name": "dev-debug-vcpkg",
+      "displayName": "Dev Debug (vcpkg toolchain)",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/dev-debug-vcpkg",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    {
+      "name": "dev-debug-conan",
+      "displayName": "Dev Debug (Conan toolchain)",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/dev-debug-conan",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/conan/conan_toolchain.cmake"
+      }
+    },
+    {
+      "name": "ci-coverage",
+      "displayName": "CI Coverage",
+      "inherits": "dev-debug",
+      "binaryDir": "${sourceDir}/build/ci-coverage",
+      "cacheVariables": {
+        "ENABLE_COVERAGE": "ON"
+      }
+    },
+    {
+      "name": "web-emscripten",
+      "displayName": "Web Emscripten",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/web-emscripten",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev-debug",
+      "configurePreset": "dev-debug",
+      "jobs": 24
+    },
+    {
+      "name": "dev-release",
+      "configurePreset": "dev-release",
+      "jobs": 24
+    },
+    {
+      "name": "ci-test",
+      "configurePreset": "ci-test",
+      "jobs": 24
+    },
+    {
+      "name": "ci-asan",
+      "configurePreset": "ci-asan",
+      "jobs": 24
+    },
+    {
+      "name": "dev-debug-vcpkg",
+      "configurePreset": "dev-debug-vcpkg",
+      "jobs": 24
+    },
+    {
+      "name": "dev-debug-conan",
+      "configurePreset": "dev-debug-conan",
+      "jobs": 24
+    },
+    {
+      "name": "ci-coverage",
+      "configurePreset": "ci-coverage",
+      "jobs": 24
+    },
+    {
+      "name": "web-emscripten",
+      "configurePreset": "web-emscripten",
+      "jobs": 24
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev-debug",
+      "configurePreset": "dev-debug",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-test",
+      "configurePreset": "ci-test",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-asan",
+      "configurePreset": "ci-asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "ci-coverage",
+      "configurePreset": "ci-coverage",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

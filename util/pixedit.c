@@ -88,12 +88,12 @@ int main(int argc, char **argv)
 			redowindow = 0;
 		}
 
-		if (redopicture)
-		{
-			char buffer[60];
-			sprintf(buffer, "Frame %i at %ix", frame, mult);
+			if (redopicture)
+			{
+				char buffer[60];
+				snprintf(buffer, sizeof(buffer), "Frame %i at %ix", frame, mult);
 
-			SDL_WM_SetCaption(buffer, NULL);
+				SDL_WM_SetCaption(buffer, NULL);
 			
 			SDL_FillRect(pixie, NULL, SDL_MapRGB(pixie->format, bg_color.r, bg_color.g, bg_color.b));
             

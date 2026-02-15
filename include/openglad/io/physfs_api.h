@@ -1,0 +1,32 @@
+#pragma once
+
+#include "SDL.h"
+
+#include <list>
+#include <string>
+
+// PhysFS wrapper for OpenGlad.
+// Vendor headers (physfs.h/physfsrwops.h) must remain in .cpp files.
+namespace og::io {
+
+// Returns a human-readable PhysFS error message for the last PhysFS error.
+// Empty if no error is available.
+std::string physfs_last_error();
+
+bool physfs_init(const char* argv0);
+bool physfs_deinit();
+bool physfs_set_write_dir(const std::string& path);
+
+bool physfs_mount(const std::string& path, const char* mount_point, int append_to_path);
+bool physfs_unmount(const std::string& path);
+bool physfs_exists(const std::string& path);
+
+// Enumerate files in a directory. Returned list is sorted.
+std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname);
+
+// RWops bridges for PhysFS paths.
+SDL_RWops* physfsrw_open_read(const char* path);
+SDL_RWops* physfsrw_open_write(const char* path);
+
+} // namespace og::io
+

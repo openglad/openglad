@@ -1,10 +1,8 @@
-#include "graph.h"
-#include "button.h"
-#include "test_trace.h"
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
-#include "save_data.h"
-#include "level_data.h"
-
+#include <openglad/data/save_data.h>
+#include <openglad/data/level_data.h>
 extern screen* myscreen;
 
 short load_saved_game(const char *filename, screen *myscreen);
@@ -19,11 +17,12 @@ void test_load_multiple_levels() {
     for (int level = 1; level <= 10; level++) {
         trace_clear();
 
-        myscreen->save_data.scen_num = level;
+        myscreen->save_data.scen_num = static_cast<short>(level);
         myscreen->save_data.numplayers = 1;
         myscreen->save_data.save("test_level_multi");
 
         short result = load_saved_game("test_level_multi", myscreen);
+        (void)result;
 
         char msg[80];
         snprintf(msg, 80, "level %d should load successfully", level);
@@ -40,7 +39,7 @@ REGISTER_TEST(test_load_multiple_levels);
 void test_level_data_integrity() {
     trace_clear();
 
-    myscreen->save_data.scen_num = 1;
+    myscreen->save_data.scen_num = static_cast<short>(1);
     myscreen->save_data.numplayers = 1;
     myscreen->save_data.save("test_level_integrity");
 

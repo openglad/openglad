@@ -1,12 +1,12 @@
-#include "graph.h"
-#include "button.h"
-#include "test_trace.h"
+#include <memory>
+#include <array>
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "save_data.h"
-#include "guy.h"
-
+#include <openglad/data/save_data.h>
+#include <openglad/entities/guy.h>
 extern screen* myscreen;
 
 // Forward declarations from picker.cpp
@@ -16,24 +16,22 @@ extern int g_picker_max_mainmenu_calls;
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
-extern pixieN *main_title_logo_pix, *main_columns_pix;
-extern pixieN *backdrops[5];
+extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
 extern vbutton *localbuttons;
 
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        backdrops[i].reset();
         backpics[i].free();
     }
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
-    }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    clear_allbuttons();
+    localbuttons = nullptr;
+    main_columns_pix.reset();
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    main_title_logo_pix.reset();
     main_title_logo_data.free();
 }
 
@@ -60,22 +58,22 @@ void test_save_team_then_load() {
     myscreen->save_data.totalcash = 77777;
     myscreen->save_data.totalscore = 42000;
 
-    guy* soldier = new guy(FAMILY_SOLDIER);
-    strcpy(soldier->name, "TESTGUY1");
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    soldier->name = "TESTGUY1";
     soldier->strength = 25;
     soldier->dexterity = 15;
 
-    guy* archer = new guy(FAMILY_ARCHER);
-    strcpy(archer->name, "TESTGUY2");
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    archer->name = "TESTGUY2";
     archer->strength = 10;
     archer->intelligence = 20;
 
-    guy* mage = new guy(FAMILY_MAGE);
-    strcpy(mage->name, "TESTGUY3");
+    auto mage = std::make_unique<guy>(FAMILY_MAGE);
+    mage->name = "TESTGUY3";
 
-    myscreen->save_data.team_list[0] = soldier;
-    myscreen->save_data.team_list[1] = archer;
-    myscreen->save_data.team_list[2] = mage;
+    myscreen->save_data.team_list[0] = std::move(soldier);
+    myscreen->save_data.team_list[1] = std::move(archer);
+    myscreen->save_data.team_list[2] = std::move(mage);
     myscreen->save_data.team_size = 3;
 
     // Save to a non-default slot
@@ -85,7 +83,7 @@ void test_save_team_then_load() {
     // Now reset everything -- simulating starting a new game
     myscreen->save_data.reset();
     TEST_ASSERT_EQ(0, myscreen->save_data.team_size, "team_size should be 0 after reset");
-    TEST_ASSERT_EQ(0, (int)myscreen->save_data.totalcash, "totalcash should be 0 after reset");
+    TEST_ASSERT_EQ(0, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be 0 after reset");
 
     // Load the saved team back
     trace_clear();
@@ -95,28 +93,28 @@ void test_save_team_then_load() {
     // Verify team data was restored
     TEST_ASSERT_EQ(3, myscreen->save_data.team_size, "team should have 3 members");
     TEST_ASSERT_EQ(3, myscreen->save_data.scen_num, "scen_num should be restored");
-    TEST_ASSERT_EQ(77777, (int)myscreen->save_data.totalcash, "totalcash should be restored");
-    TEST_ASSERT_EQ(42000, (int)myscreen->save_data.totalscore, "totalscore should be restored");
+    TEST_ASSERT_EQ(77777, static_cast<int>(myscreen->save_data.totalcash), "totalcash should be restored");
+    TEST_ASSERT_EQ(42000, static_cast<int>(myscreen->save_data.totalscore), "totalscore should be restored");
 
     // Verify individual guy data was restored
-    TEST_ASSERT(myscreen->save_data.team_list[0] != NULL, "first guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY1", myscreen->save_data.team_list[0]->name,
+    TEST_ASSERT(myscreen->save_data.team_list[0] != nullptr, "first guy should exist");
+    TEST_ASSERT_STR_EQ("TESTGUY1", myscreen->save_data.team_list[0]->name.c_str(),
         "first guy name should be restored");
     TEST_ASSERT_EQ(25, myscreen->save_data.team_list[0]->strength,
         "first guy strength should be restored");
     TEST_ASSERT_EQ(15, myscreen->save_data.team_list[0]->dexterity,
         "first guy dexterity should be restored");
 
-    TEST_ASSERT(myscreen->save_data.team_list[1] != NULL, "second guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY2", myscreen->save_data.team_list[1]->name,
+    TEST_ASSERT(myscreen->save_data.team_list[1] != nullptr, "second guy should exist");
+    TEST_ASSERT_STR_EQ("TESTGUY2", myscreen->save_data.team_list[1]->name.c_str(),
         "second guy name should be restored");
     TEST_ASSERT_EQ(FAMILY_ARCHER, myscreen->save_data.team_list[1]->family,
         "second guy should be an archer");
     TEST_ASSERT_EQ(20, myscreen->save_data.team_list[1]->intelligence,
         "second guy intelligence should be restored");
 
-    TEST_ASSERT(myscreen->save_data.team_list[2] != NULL, "third guy should exist");
-    TEST_ASSERT_STR_EQ("TESTGUY3", myscreen->save_data.team_list[2]->name,
+    TEST_ASSERT(myscreen->save_data.team_list[2] != nullptr, "third guy should exist");
+    TEST_ASSERT_STR_EQ("TESTGUY3", myscreen->save_data.team_list[2]->name.c_str(),
         "third guy name should be restored");
     TEST_ASSERT_EQ(FAMILY_MAGE, myscreen->save_data.team_list[2]->family,
         "third guy should be a mage");
@@ -136,7 +134,7 @@ struct LoadMenuState {
 
 static int load_menu_injector(void* data)
 {
-    LoadMenuState* state = (LoadMenuState*)data;
+    LoadMenuState* state = static_cast<LoadMenuState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -184,12 +182,12 @@ void test_load_team_menu() {
 
     LoadMenuState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(load_menu_injector, "load_menu_test", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

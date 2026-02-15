@@ -1,0 +1,222 @@
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
+//
+// util.cpp
+//
+// random helper functions
+//
+#include <openglad/core/util.h>
+
+#include <openglad/core/version.h>
+#include <charconv>
+#include <cstdio>
+#include <ctime>
+#include <cctype>
+#include <cstring> //buffers: for strlen
+#include <optional>
+#include <string>
+#include <sys/stat.h>
+#include <openglad/legacy/base.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+#ifdef WINDOWS
+#include "windows.h"
+#include <shlobj.h>
+#include <direct.h>
+
+#ifndef mkdir
+#define mkdir(path, perms) _mkdir(path)
+#endif
+
+#endif
+
+
+Uint32 start_time=0;
+Uint32 reset_value=0;
+
+float g_game_speed_factor = 1.0f;
+
+void set_game_speed(float factor)
+{
+    g_game_speed_factor = (factor < 0.0f) ? 0.0f : factor;
+}
+
+#ifdef __EMSCRIPTEN__
+// Custom SDL log output function for web builds
+// Routes messages to the appropriate JavaScript console method
+static void emscripten_log_output(void* userdata, int category, SDL_LogPriority priority, const char* message)
+{
+    (void)userdata;
+    (void)category;
+
+    switch(priority)
+    {
+        case SDL_LOG_PRIORITY_VERBOSE:
+        case SDL_LOG_PRIORITY_DEBUG:
+        case SDL_LOG_PRIORITY_INFO:
+            EM_ASM({
+                console.log(UTF8ToString($0));
+            }, message);
+            break;
+        case SDL_LOG_PRIORITY_WARN:
+            EM_ASM({
+                console.warn(UTF8ToString($0));
+            }, message);
+            break;
+        case SDL_LOG_PRIORITY_ERROR:
+        case SDL_LOG_PRIORITY_CRITICAL:
+        default:
+            EM_ASM({
+                console.error(UTF8ToString($0));
+            }, message);
+            break;
+    }
+}
+#endif
+
+void init_logging()
+{
+#ifdef __EMSCRIPTEN__
+    SDL_LogSetOutputFunction(emscripten_log_output, nullptr);
+#endif
+}
+
+void LogImpl(const char* msg)
+{
+    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO, "%s", msg);
+}
+
+void LogWarnImpl(const char* msg)
+{
+    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_WARN, "%s", msg);
+}
+
+void LogErrorImpl(const char* msg)
+{
+    SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_ERROR, "%s", msg);
+}
+
+void change_time(Uint32 /*new_count*/)
+{}
+
+void grab_timer()
+{}
+
+void release_timer()
+{}
+
+void reset_timer()
+{
+    reset_value = SDL_GetTicks();
+}
+
+Sint32 query_timer()
+{
+    // Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
+    // that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
+    // or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
+    return static_cast<Sint32>((SDL_GetTicks() - reset_value) / 13.6);
+}
+
+Sint32 query_timer_control()
+{
+    return static_cast<Sint32>(SDL_GetTicks() / 13.6);
+}
+
+void time_delay(Sint32 delay)
+{
+    if (delay < 0) return;
+    SDL_Delay(static_cast<Uint32>(delay * 13.6));
+}
+
+void lowercase(char * str)
+{
+    for (size_t i = 0, len = strlen(str); i < len; i++)
+        str[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(str[i])));
+}
+
+//buffers: add: another extra routine.
+void uppercase(char *str)
+{
+    for (size_t i = 0, len = strlen(str); i < len; i++)
+        str[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(str[i])));
+}
+
+// kari: yet two extra
+void lowercase(std::string &str)
+{
+    for(auto& c : str)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+}
+
+void uppercase(std::string &str)
+{
+    for(auto& c : str)
+        c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+}
+
+static std::string_view trim_left_ascii_ws(std::string_view s)
+{
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front())))
+        s.remove_prefix(1);
+    return s;
+}
+
+static std::string_view trim_right_ascii_ws(std::string_view s)
+{
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back())))
+        s.remove_suffix(1);
+    return s;
+}
+
+std::optional<int> parse_int_prefix(std::string_view s)
+{
+    s = trim_left_ascii_ws(s);
+    if (s.empty())
+        return std::nullopt;
+
+    int value = 0;
+    const char* begin = s.data();
+    const char* end = s.data() + s.size();
+    const auto result = std::from_chars(begin, end, value);
+    if (result.ec != std::errc{} || result.ptr == begin)
+        return std::nullopt;
+    return value;
+}
+
+std::optional<int> parse_int_strict(std::string_view s)
+{
+    s = trim_right_ascii_ws(trim_left_ascii_ws(s));
+    if (s.empty())
+        return std::nullopt;
+
+    int value = 0;
+    const char* begin = s.data();
+    const char* end = s.data() + s.size();
+    const auto result = std::from_chars(begin, end, value);
+    if (result.ec != std::errc{} || result.ptr == begin)
+        return std::nullopt;
+
+    std::string_view rest(result.ptr, static_cast<size_t>(end - result.ptr));
+    rest = trim_right_ascii_ws(rest);
+    if (!rest.empty())
+        return std::nullopt;
+
+    return value;
+}

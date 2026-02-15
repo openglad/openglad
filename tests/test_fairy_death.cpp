@@ -1,12 +1,15 @@
-#include "graph.h"
-#include "button.h"
-#include "guy.h"
-#include "test_trace.h"
+#include <memory>
+#include <array>
+#include <openglad/input/button.h>
+#include <openglad/entities/guy.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "save_data.h"
-#include "util.h"
+#include <openglad/data/save_data.h>
+#include <openglad/core/util.h>
+
+#include <atomic>
 
 extern screen* myscreen;
 
@@ -16,15 +19,22 @@ extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
 
 #ifdef TESTING
-extern bool g_test_in_game;
+extern std::atomic<bool> g_test_in_game;
+extern std::atomic<int> g_test_game_epoch;
 #endif
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
-extern pixieN *main_title_logo_pix, *main_columns_pix;
-extern pixieN *backdrops[5];
+extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
 extern vbutton *localbuttons;
+// Picker globals that can leak across integration tests and affect menu start state
+extern std::unique_ptr<guy> current_guy;
+extern guy* old_guy;
+extern Sint32 current_type;
+extern Sint32 editguy;
+extern short current_team_num;
 
 // FAERIE is at index 12 in allowable_guys[]
 #define FAERIE_INDEX 12
@@ -32,17 +42,22 @@ extern vbutton *localbuttons;
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        backdrops[i].reset();
         backpics[i].free();
     }
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
-    }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    clear_allbuttons();
+    localbuttons = nullptr;
+    main_columns_pix.reset();
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    main_title_logo_pix.reset();
     main_title_logo_data.free();
+
+    // Ensure the next test starts the hire menu from a clean state.
+    current_guy.reset();
+    old_guy = nullptr;      // Non-owning; may point into team_list[]
+    current_type = 0;
+    editguy = 0;
+    current_team_num = 0;
 }
 
 // Test: hire a lone fairy via the UI, start level 4 at max speed, stand there,
@@ -69,7 +84,7 @@ struct FairyState {
 
 static int fairy_injector(void* data)
 {
-    FairyState* state = (FairyState*)data;
+    FairyState* state = static_cast<FairyState*>(data);
     state->started = true;
 
     // -- Main Menu --
@@ -113,15 +128,38 @@ static int fairy_injector(void* data)
     set_game_speed(0.0f);
 
     fprintf(stderr, "  [test] clicking go\n");
+    int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
     interact("go");
 
     // -- Wait for glad_main to finish --
     // Old buttons from create_team_menu persist through glad_main, so
     // wait_for_interactable("back") would return immediately (stale buttons).
-    // Instead, poll g_test_in_game which is set/cleared around glad_main.
+    // Instead, wait for a monotonic epoch increment and then poll g_test_in_game
+    // which is set/cleared around glad_main.
     fprintf(stderr, "  [test] waiting for game to finish...\n");
-    while (!g_test_in_game) SDL_Delay(50);   // wait for game to start
-    while (g_test_in_game) SDL_Delay(50);     // wait for game to end
+    {
+        int waited_ms = 0;
+        const int poll_ms = 50;
+        while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+            SDL_Delay(poll_ms);
+            waited_ms += poll_ms;
+        }
+        if (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before) {
+            fprintf(stderr, "  [test] ERROR: game never started (epoch unchanged)\n");
+            set_game_speed(state->original_speed);
+            return 0;
+        }
+        waited_ms = 0;
+        while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 60000) {
+            SDL_Delay(poll_ms);
+            waited_ms += poll_ms;
+        }
+        if (g_test_in_game.load(std::memory_order_acquire)) {
+            fprintf(stderr, "  [test] ERROR: game did not finish within timeout\n");
+            set_game_speed(state->original_speed);
+            return 0;
+        }
+    }
 
     // Restore test settings
     set_game_speed(state->original_speed);
@@ -141,6 +179,14 @@ static int fairy_injector(void* data)
 void test_fairy_death() {
     trace_clear();
 
+    // Some integration tests leave the picker globals set, which changes the
+    // starting class in the hire menu. Reset here so NEXT x12 always lands on FAERIE.
+    current_guy.reset();
+    old_guy = nullptr;
+    current_type = 0;
+    editguy = 0;
+    current_team_num = 0;
+
     // Start with empty team
     myscreen->save_data.reset();
     myscreen->save_data.numplayers = 1;
@@ -149,13 +195,13 @@ void test_fairy_death() {
 
     FairyState state = { false, false, g_game_speed_factor };
     SDL_Thread* thread = SDL_CreateThread(fairy_injector, "fairy_injector", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
     // picker_main blocks — the injector thread drives all navigation
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

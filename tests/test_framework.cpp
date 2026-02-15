@@ -1,7 +1,9 @@
 #include "test_framework.h"
 #include "SDL.h"
+#include <openglad/runtime/screen.h>
+extern screen* myscreen;
 
-static SDL_mutex* s_allbuttons_mutex = NULL;
+static SDL_mutex* s_allbuttons_mutex = nullptr;
 
 SDL_mutex* get_allbuttons_mutex()
 {
@@ -17,13 +19,87 @@ int g_tests_failed = 0;
 TestEntry g_test_registry[MAX_TESTS];
 int g_test_registry_count = 0;
 
-void run_all_tests() {
-    fprintf(stderr, "\n=== Running %d tests ===\n\n", g_test_registry_count);
+const char* g_test_filter = nullptr;
 
+static bool test_matches_filter(const char* test_name, const char* filter)
+{
+    if (!filter || !*filter)
+        return true;
+    if (!test_name)
+        return false;
+
+    // Support comma-separated substrings: "foo,bar" runs tests whose names
+    // contain "foo" OR "bar". Backwards compatible with the previous single
+    // substring behavior.
+    const char* p = filter;
+    while (*p)
+    {
+        // Skip leading commas/spaces.
+        while (*p == ',' || *p == ' ')
+            ++p;
+        if (!*p)
+            break;
+
+        const char* start = p;
+        while (*p && *p != ',')
+            ++p;
+        const size_t len = static_cast<size_t>(p - start);
+        if (len > 0)
+        {
+            // Copy token into a small buffer for strstr (avoids non-terminated slices).
+            char tok[256];
+            if (len < sizeof(tok))
+            {
+                memcpy(tok, start, len);
+                tok[len] = '\0';
+                if (strstr(test_name, tok))
+                    return true;
+            }
+            else
+            {
+                // Token too long; fall back to previous behavior.
+                if (strstr(test_name, filter))
+                    return true;
+                return false;
+            }
+        }
+    }
+    return false;
+}
+
+void run_all_tests() {
+    int total_to_run = 0;
+    if (g_test_filter) {
+        for (int i = 0; i < g_test_registry_count; i++) {
+            if (test_matches_filter(g_test_registry[i].name, g_test_filter))
+                total_to_run++;
+        }
+        fprintf(stderr, "\n=== Running %d/%d tests (filter: \"%s\") ===\n\n",
+                total_to_run, g_test_registry_count, g_test_filter);
+    } else {
+        total_to_run = g_test_registry_count;
+        fprintf(stderr, "\n=== Running %d tests ===\n\n", g_test_registry_count);
+    }
+
+    int run_idx = 0;
     for (int i = 0; i < g_test_registry_count; i++) {
-        fprintf(stderr, "  [%d/%d] %s ... ", i + 1, g_test_registry_count, g_test_registry[i].name);
+        if (g_test_filter && !test_matches_filter(g_test_registry[i].name, g_test_filter))
+            continue;
+        run_idx++;
+        fprintf(stderr, "  [%d/%d] %s ... ", run_idx, total_to_run, g_test_registry[i].name);
         int failed_before = g_tests_failed;
+        if (g_test_registry[i].setup)
+            g_test_registry[i].setup();
         g_test_registry[i].fn();
+        if (g_test_registry[i].teardown)
+            g_test_registry[i].teardown();
+
+        // Test isolation: the test process is long-lived and uses global state.
+        // Clear spawned objects and spatial index after each test so no test can
+        // leak walkers into later tests (ASan/UAF + order-dependent failures).
+        if (myscreen != nullptr)
+            myscreen->level_data.delete_objects();
+
         if (g_tests_failed == failed_before) {
             g_tests_passed++;
             g_tests_run++;

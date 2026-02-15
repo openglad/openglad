@@ -1,12 +1,15 @@
-#include "graph.h"
-#include "button.h"
-#include "test_trace.h"
+#include <memory>
+#include <array>
+#include <openglad/data/pixie_data.h>
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
+#include <openglad/render/pixien.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "save_data.h"
-#include "guy.h"
-
+#include <openglad/data/save_data.h>
+#include <openglad/entities/guy.h>
 extern screen* myscreen;
 
 // Forward declarations from picker.cpp
@@ -16,24 +19,22 @@ extern int g_picker_max_mainmenu_calls;
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
-extern pixieN *main_title_logo_pix, *main_columns_pix;
-extern pixieN *backdrops[5];
+extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
 extern vbutton *localbuttons;
 
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        backdrops[i].reset();
         backpics[i].free();
     }
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
-    }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    clear_allbuttons();
+    localbuttons = nullptr;
+    main_columns_pix.reset();
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    main_title_logo_pix.reset();
     main_title_logo_data.free();
 }
 
@@ -53,7 +54,7 @@ struct TrainState {
 
 static int train_injector(void* data)
 {
-    TrainState* state = (TrainState*)data;
+    TrainState* state = static_cast<TrainState*>(data);
     state->started = true;
 
     // Wait for main menu
@@ -88,10 +89,23 @@ static int train_injector(void* data)
         interact("inc_dex");
         SDL_Delay(300);
 
-        // Cycle to next team member (if we have more than one)
-        fprintf(stderr, "  [test] clicking next\n");
-        interact("next");
-        SDL_Delay(300);
+        // Open details across several classes to exercise detail rendering branches.
+        for (int i = 0; i < 5; i++) {
+            wait_for_interactable("details", 10000);
+            fprintf(stderr, "  [test] clicking details (%d)\n", i + 1);
+            interact("details");
+            SDL_Delay(300);
+            wait_for_interactable("back", 10000);
+            fprintf(stderr, "  [test] clicking back from details (%d)\n", i + 1);
+            interact("back");
+            SDL_Delay(300);
+
+            if (i < 4) {
+                fprintf(stderr, "  [test] clicking next (%d)\n", i + 1);
+                interact("next");
+                SDL_Delay(300);
+            }
+        }
 
         // Go back
         fprintf(stderr, "  [test] clicking back from train menu\n");
@@ -104,6 +118,28 @@ static int train_injector(void* data)
     SDL_Delay(1500);
     fprintf(stderr, "  [test] clicking back from team menu\n");
     interact("back");
+
+    // Occasionally the final BACK click can be missed (menu-loop timing). Keep
+    // nudging Escape/BACK until we see main menu again so the test can't hang.
+    const Uint32 deadline = SDL_GetTicks() + 8000;
+    while (SDL_GetTicks() < deadline)
+    {
+        // If the main menu is back, we are done.
+        if (wait_for_interactable("continue_game", 150))
+            break;
+
+        // Prefer Escape since BACK has KEYSTATE_ESCAPE in most picker menus.
+        inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(50);
+
+        // If we're still in a submenu with a BACK button, click it again.
+        if (wait_for_interactable("back", 150))
+        {
+            fprintf(stderr, "  [test] retry clicking back\n");
+            interact("back");
+            SDL_Delay(150);
+        }
+    }
 
     state->finished = true;
     return 0;
@@ -119,23 +155,34 @@ void test_train_team() {
     myscreen->save_data.scen_num = 1;
     myscreen->save_data.totalcash = 50000;  // Enough cash for training
 
-    // Add two guys to the team
-    guy* soldier = new guy(FAMILY_SOLDIER);
-    guy* archer = new guy(FAMILY_ARCHER);
-    myscreen->save_data.team_list[0] = soldier;
-    myscreen->save_data.team_list[1] = archer;
-    myscreen->save_data.team_size = 2;
+    // Add multiple classes at high level to hit create_detail_menu text branches.
+    auto archmage = std::make_unique<guy>(FAMILY_ARCHMAGE);
+    auto cleric = std::make_unique<guy>(FAMILY_CLERIC);
+    auto druid = std::make_unique<guy>(FAMILY_DRUID);
+    auto thief = std::make_unique<guy>(FAMILY_THIEF);
+    auto orc = std::make_unique<guy>(FAMILY_ORC);
+    archmage->level = 10;
+    cleric->level = 10;
+    druid->level = 10;
+    thief->level = 10;
+    orc->level = 10;
+    myscreen->save_data.team_list[0] = std::move(archmage);
+    myscreen->save_data.team_list[1] = std::move(cleric);
+    myscreen->save_data.team_list[2] = std::move(druid);
+    myscreen->save_data.team_list[3] = std::move(thief);
+    myscreen->save_data.team_list[4] = std::move(orc);
+    myscreen->save_data.team_size = 5;
 
     myscreen->save_data.save("save0");
 
     TrainState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_injector, "train_test", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

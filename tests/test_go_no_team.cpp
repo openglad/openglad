@@ -1,11 +1,14 @@
-#include "graph.h"
-#include "button.h"
-#include "test_trace.h"
+#include <memory>
+#include <array>
+#include <openglad/data/pixie_data.h>
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
+#include <openglad/render/pixien.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "save_data.h"
-
+#include <openglad/data/save_data.h>
 extern screen* myscreen;
 
 // Forward declarations from picker.cpp
@@ -15,24 +18,22 @@ extern int g_picker_max_mainmenu_calls;
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
-extern pixieN *main_title_logo_pix, *main_columns_pix;
-extern pixieN *backdrops[5];
+extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
 extern vbutton *localbuttons;
 
 static void cleanup_picker_state()
 {
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        backdrops[i].reset();
         backpics[i].free();
     }
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
-    }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    clear_allbuttons();
+    localbuttons = nullptr;
+    main_columns_pix.reset();
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    main_title_logo_pix.reset();
     main_title_logo_data.free();
 }
 
@@ -53,7 +54,7 @@ struct GoNoTeamState {
 
 static int go_no_team_injector(void* data)
 {
-    GoNoTeamState* state = (GoNoTeamState*)data;
+    GoNoTeamState* state = static_cast<GoNoTeamState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -98,12 +99,12 @@ void test_go_without_team() {
 
     GoNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(go_no_team_injector, "go_no_team", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);
@@ -129,7 +130,7 @@ struct TrainNoTeamState {
 
 static int train_no_team_injector(void* data)
 {
-    TrainNoTeamState* state = (TrainNoTeamState*)data;
+    TrainNoTeamState* state = static_cast<TrainNoTeamState*>(data);
     state->started = true;
 
     wait_for_interactable("continue_game", 5000);
@@ -173,12 +174,12 @@ void test_train_without_team() {
 
     TrainNoTeamState state = { false, false, false };
     SDL_Thread* thread = SDL_CreateThread(train_no_team_injector, "train_no_team", &state);
-    TEST_ASSERT(thread != NULL, "failed to create injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
 
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     int thread_result;
     SDL_WaitThread(thread, &thread_result);

@@ -1,11 +1,11 @@
-#include "graph.h"
-#include "button.h"
-#include "test_trace.h"
+#include <memory>
+#include <array>
+#include <openglad/input/button.h>
+#include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include "test_input_helpers.h"
 #include "test_interact.h"
-#include "save_data.h"
-
+#include <openglad/data/save_data.h>
 extern screen* myscreen;
 
 // Forward declarations from picker.cpp
@@ -15,8 +15,8 @@ extern int g_picker_max_mainmenu_calls;
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
-extern pixieN *main_title_logo_pix, *main_columns_pix;
-extern pixieN *backdrops[5];
+extern std::unique_ptr<pixieN> main_title_logo_pix, main_columns_pix;
+extern std::array<std::unique_ptr<pixieN>, 5> backdrops;
 extern PixieData backpics[5];
 extern vbutton *localbuttons;
 
@@ -39,7 +39,7 @@ struct EventSequence {
 
 static int event_injector_thread(void* data)
 {
-    EventSequence* seq = (EventSequence*)data;
+    EventSequence* seq = static_cast<EventSequence*>(data);
     seq->started = true;
 
     // Wait for mainmenu to initialize and complete fadeblack.
@@ -93,18 +93,16 @@ static void cleanup_picker_state()
     // Clean up picker globals without deleting myscreen
     // (picker_quit() deletes myscreen which other tests still need)
     for (int i = 0; i < 5; i++) {
-        if (backdrops[i]) { delete backdrops[i]; backdrops[i] = NULL; }
+        backdrops[i].reset();
         backpics[i].free();
     }
     // localbuttons == allbuttons[0] (returned by init_buttons), so just
     // delete everything via allbuttons to avoid double-free.
-    for (int i = 0; i < MAX_BUTTONS; i++) {
-        if (allbuttons[i]) { delete allbuttons[i]; allbuttons[i] = NULL; }
-    }
-    localbuttons = NULL;
-    if (main_columns_pix) { delete main_columns_pix; main_columns_pix = NULL; }
+    clear_allbuttons();
+    localbuttons = nullptr;
+    main_columns_pix.reset();
     main_columns_data.free();
-    if (main_title_logo_pix) { delete main_title_logo_pix; main_title_logo_pix = NULL; }
+    main_title_logo_pix.reset();
     main_title_logo_data.free();
 }
 
@@ -120,14 +118,14 @@ void test_level_progress_menu() {
     // Start the event injector thread
     EventSequence seq = { false, false };
     SDL_Thread* thread = SDL_CreateThread(event_injector_thread, "test_injector", &seq);
-    TEST_ASSERT(thread != NULL, "failed to create event injector thread");
+    TEST_ASSERT(thread != nullptr, "failed to create event injector thread");
 
     // Limit picker_mainmenu_loop to 1 iteration (this test only needs one pass)
     g_picker_mainmenu_calls = 0;
     g_picker_max_mainmenu_calls = 1;
 
     // This blocks until menus unwind -- the injector thread drives navigation
-    picker_main(0, NULL);
+    picker_main(0, nullptr);
 
     // Wait for thread to finish
     int thread_result;

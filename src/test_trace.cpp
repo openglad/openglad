@@ -1,13 +1,22 @@
-#include "test_trace.h"
-
+/* Copyright (C) 1995-2002  FSGames. Ported by Sean Ford and Yan Shosh
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
+#include <openglad/legacy/test_trace.h>
 #ifdef TESTING
 
 #include <cstring>
 #include <cstdio>
+#include <mutex>
 
 std::vector<TraceEntry> g_trace_buffer;
+std::mutex g_trace_mutex;
 
 bool trace_contains(const char* category, const char* substring) {
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
     for (const auto& entry : g_trace_buffer) {
         if (entry.category == category && entry.message.find(substring) != std::string::npos) {
             return true;
@@ -17,6 +26,7 @@ bool trace_contains(const char* category, const char* substring) {
 }
 
 int trace_count(const char* category) {
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
     int count = 0;
     for (const auto& entry : g_trace_buffer) {
         if (entry.category == category) {
@@ -27,10 +37,12 @@ int trace_count(const char* category) {
 }
 
 void trace_clear() {
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
     g_trace_buffer.clear();
 }
 
 void trace_dump() {
+    std::lock_guard<std::mutex> lock(g_trace_mutex);
     fprintf(stderr, "=== Trace Dump (%zu entries) ===\n", g_trace_buffer.size());
     for (const auto& entry : g_trace_buffer) {
         fprintf(stderr, "  [%s] %s\n", entry.category.c_str(), entry.message.c_str());
