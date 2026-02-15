@@ -1,9 +1,10 @@
 #!/bin/bash
 #
-# Build script for test binary (headless testing)
-# Outputs openglad_test binary to the project root
+# Build script for test binary.
+# Thin wrapper around CMake's ci-test preset.
 #
-# Uses CMake with -DBUILD_TESTING=ON.
+# Outputs openglad_test binary to the project root
+# for backward compatibility.
 #
 
 set -e
@@ -26,12 +27,12 @@ echo "Building test binary..."
 echo "Using SDL2: $(pkg-config --modversion sdl2)"
 
 # ----------------------------------------------------------------------------
-# Build with CMake
+# Build with CMake preset
 # ----------------------------------------------------------------------------
-BUILD_DIR="$PROJECT_ROOT/build-test"
+cmake --preset ci-test
+cmake --build --preset ci-test --target openglad_test
 
-cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-cmake --build "$BUILD_DIR" --target openglad_test -j$(nproc)
+BUILD_DIR="$PROJECT_ROOT/build/ci-test"
 
 # Copy binary to project root for backward compatibility
 cp "$BUILD_DIR/openglad_test" "$PROJECT_ROOT/openglad_test"

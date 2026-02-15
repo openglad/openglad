@@ -1,10 +1,10 @@
 #!/bin/bash
 #
-# Build script for native (Linux) target
-# Outputs openglad and openscen binaries to the project root
+# Build script for native (Linux) target.
+# Thin wrapper around CMake's dev-release preset.
 #
-# Uses CMake for the build. Falls back to direct compilation if cmake is
-# not available.
+# Outputs openglad and openscen binaries to the project root
+# for backward compatibility.
 #
 
 set -e
@@ -27,12 +27,12 @@ echo "Using SDL2: $(pkg-config --modversion sdl2)"
 echo "Using SDL2_mixer: $(pkg-config --modversion SDL2_mixer)"
 
 # ----------------------------------------------------------------------------
-# Build with CMake
+# Build with CMake preset
 # ----------------------------------------------------------------------------
-BUILD_DIR="$PROJECT_ROOT/build-native"
+cmake --preset dev-release
+cmake --build --preset dev-release
 
-cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR=ON
-cmake --build "$BUILD_DIR" -j$(nproc)
+BUILD_DIR="$PROJECT_ROOT/build/dev-release"
 
 # Copy binaries to project root for backward compatibility
 cp "$BUILD_DIR/openglad" "$PROJECT_ROOT/openglad"

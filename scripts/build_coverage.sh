@@ -1,9 +1,10 @@
 #!/bin/bash
 #
-# Coverage build + report generation (gcov/lcov)
+# Coverage build + report generation (gcov/lcov).
+# Thin wrapper around CMake's ci-coverage preset.
 #
 # Produces:
-#   build-coverage/              (instrumented build)
+#   build/ci-coverage/           (instrumented build)
 #   coverage/lcov.info           (raw capture)
 #   coverage/lcov.info.cleaned   (filtered)
 #   coverage/html/index.html     (HTML report)
@@ -28,7 +29,7 @@ if ! pkg-config --exists sdl2 SDL2_mixer; then
     exit 1
 fi
 
-BUILD_DIR="$PROJECT_ROOT/build-coverage"
+BUILD_DIR="$PROJECT_ROOT/build/ci-coverage"
 COV_DIR="$PROJECT_ROOT/coverage"
 
 rm -rf "$COV_DIR"
@@ -41,8 +42,8 @@ echo "Cleaning up leftover test campaigns (prevents hangs on malformed fixtures)
 rm -f "$HOME/.openglad/campaigns/org.openglad.test."*.glad 2>/dev/null || true
 
 echo "Building coverage-instrumented test binaries..."
-cmake -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DENABLE_COVERAGE=ON
-cmake --build "$BUILD_DIR" --target openglad_test og_data_tests og_runtime_tests -j"$(nproc)"
+cmake --preset ci-coverage
+cmake --build --preset ci-coverage --target openglad_test og_data_tests og_runtime_tests
 
 echo ""
 echo "Zeroing counters..."
@@ -69,7 +70,7 @@ lcov --quiet --remove "$COV_DIR/lcov.info" \
     "/usr/*" \
     "*/third_party/*" \
     "*/tests/*" \
-    "*/build-*/*" \
+    "*/build/*" \
     --ignore-errors unused \
     --output-file "$COV_DIR/lcov.info.cleaned"
 
