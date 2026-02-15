@@ -4,16 +4,17 @@
 #include <vector>
 
 #include <openglad/sim/event.h>
+#include <openglad/sim/sim_commands.h>
 
 namespace og::sim {
 
-// Per-entity input for a single simulation step.
+// Per-entity input for a single simulation step (legacy).
 struct Input final {
     std::uint32_t cmd = 0;
     std::uint32_t value = 0;
 };
 
-// Snapshot of all player inputs for a single simulation step.
+// Snapshot of all player inputs for a single simulation step (legacy).
 struct InputSnapshot final {
     static constexpr int MAX_PLAYERS = 4;
     Input players[MAX_PLAYERS] = {};
@@ -33,9 +34,15 @@ struct State final {
 // - emits Events into an internal event stream
 // - produces a stable State
 //
-// This is the foundational abstraction for separating game logic
-// from SDL/rendering. Currently a skeleton; real game logic in
-// screen::act() will be migrated here incrementally.
+// The Simulator is the public API for deterministic game simulation.
+// Internally it uses SimWorld for the actual entity tick logic when
+// a game screen is available. For headless testing (no screen),
+// it maintains its own deterministic accumulator.
+//
+// Architecture:
+//   Input layer → CommandSnapshot → Simulator::step()
+//   Simulator → SimWorld::tick() → TickResult + Events
+//   Events → Runtime dispatcher → Sound, UI, Visual FX
 class Simulator final {
 public:
     explicit Simulator(std::uint32_t seed);
@@ -47,8 +54,14 @@ public:
     // Legacy single-input step (kept for existing tests).
     void step(const Input& in);
 
-    // Full snapshot step with delta time.
+    // Full snapshot step with delta time (legacy input types).
     void step(const InputSnapshot& snapshot, float dt);
+
+    // Abstract command-based step (new API).
+    // This is the preferred interface for feeding player input to the
+    // simulation. The CommandSnapshot uses abstract PlayerCommand values
+    // that are independent of SDL key mappings.
+    void step(const CommandSnapshot& commands, float dt);
 
 private:
     std::uint32_t rng_state_ = 0;

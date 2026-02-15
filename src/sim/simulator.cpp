@@ -67,4 +67,23 @@ void Simulator::step(const InputSnapshot& snapshot, float /*dt*/)
     emit(EventKind::None, st_.tick, r);
 }
 
+void Simulator::step(const CommandSnapshot& commands, float /*dt*/)
+{
+    st_.tick++;
+
+    const std::uint32_t r = next_u32();
+
+    // Accumulate all player command bits deterministically.
+    std::uint32_t input_hash = 0;
+    for (int p = 0; p < CommandSnapshot::MAX_PLAYERS; ++p) {
+        input_hash += static_cast<std::uint32_t>(commands.players[p].commands) *
+                      (3u + static_cast<std::uint32_t>(p));
+    }
+
+    st_.acc = st_.acc + input_hash + (r >> 16);
+
+    // Emit a tick event.
+    emit(EventKind::None, st_.tick, r);
+}
+
 } // namespace og::sim

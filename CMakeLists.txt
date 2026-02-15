@@ -192,6 +192,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/ui/results_screen.cpp
     ${SRC_DIR}/data/save_data.cpp
     ${SRC_DIR}/sim/simulator.cpp
+    ${SRC_DIR}/sim/sim_event_log.cpp
+    ${SRC_DIR}/sim/sim_world.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -207,6 +209,8 @@ set(OG_CORE_SOURCES
 
 set(OG_SIM_SOURCES
     ${SRC_DIR}/sim/simulator.cpp
+    ${SRC_DIR}/sim/sim_event_log.cpp
+    ${SRC_DIR}/sim/sim_world.cpp
 )
 
 set(OG_DATA_SOURCES
@@ -842,6 +846,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_determinism.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_commands.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_emscripten_logic.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_web_sim_portability.cpp

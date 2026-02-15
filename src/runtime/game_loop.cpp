@@ -131,21 +131,36 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     ctx().poll_input();
 
     // Shadow sim step: feed the deterministic simulator alongside the legacy
-    // game loop. This establishes the runtime→sim pipeline without changing
-    // gameplay behavior. The sim events are currently discarded; as sim logic
-    // matures, game rules will migrate from screen::act() to Simulator::step().
+    // game loop. This builds up the CommandSnapshot from polled input and
+    // runs a parallel sim tick. As sim logic matures, game rules will migrate
+    // from screen::act() to Simulator::step().
     if (ctx().rng) {
         static og::sim::Simulator shadow_sim(0);
-        og::sim::InputSnapshot snap;
+        og::sim::CommandSnapshot cmd_snap;
         const InputState* input = ctx().active_input();
         if (input) {
-            for (int p = 0; p < og::sim::InputSnapshot::MAX_PLAYERS && p < MAX_PLAYERS; ++p) {
-                snap.players[p].cmd = input->players[p].held[static_cast<int>(InputKey::Fire)] ? 1u : 0u;
-                snap.players[p].value = static_cast<std::uint32_t>(input->players[p].move_x() + 1)
-                                      | (static_cast<std::uint32_t>(input->players[p].move_y() + 1) << 8);
+            for (int p = 0; p < og::sim::CommandSnapshot::MAX_PLAYERS && p < MAX_PLAYERS; ++p) {
+                og::sim::PlayerCommand cmds = og::sim::PlayerCommand::None;
+                const auto& pi = input->players[p];
+                if (pi.held[static_cast<int>(InputKey::Up)])      cmds = cmds | og::sim::PlayerCommand::MoveUp;
+                if (pi.held[static_cast<int>(InputKey::Down)])    cmds = cmds | og::sim::PlayerCommand::MoveDown;
+                if (pi.held[static_cast<int>(InputKey::Left)])    cmds = cmds | og::sim::PlayerCommand::MoveLeft;
+                if (pi.held[static_cast<int>(InputKey::Right)])   cmds = cmds | og::sim::PlayerCommand::MoveRight;
+                if (pi.held[static_cast<int>(InputKey::UpLeft)])    cmds = cmds | og::sim::PlayerCommand::MoveUp | og::sim::PlayerCommand::MoveLeft;
+                if (pi.held[static_cast<int>(InputKey::UpRight)])   cmds = cmds | og::sim::PlayerCommand::MoveUp | og::sim::PlayerCommand::MoveRight;
+                if (pi.held[static_cast<int>(InputKey::DownLeft)])  cmds = cmds | og::sim::PlayerCommand::MoveDown | og::sim::PlayerCommand::MoveLeft;
+                if (pi.held[static_cast<int>(InputKey::DownRight)]) cmds = cmds | og::sim::PlayerCommand::MoveDown | og::sim::PlayerCommand::MoveRight;
+                if (pi.held[static_cast<int>(InputKey::Fire)])    cmds = cmds | og::sim::PlayerCommand::Fire;
+                if (pi.held[static_cast<int>(InputKey::Special)]) cmds = cmds | og::sim::PlayerCommand::Special;
+                if (pi.held[static_cast<int>(InputKey::Shifter)]) cmds = cmds | og::sim::PlayerCommand::Shifter;
+                if (pi.held[static_cast<int>(InputKey::Yell)])    cmds = cmds | og::sim::PlayerCommand::Yell;
+                if (pi.held[static_cast<int>(InputKey::Switch)])         cmds = cmds | og::sim::PlayerCommand::SwitchWeap;
+                if (pi.held[static_cast<int>(InputKey::SpecialSwitch)])  cmds = cmds | og::sim::PlayerCommand::SwitchSpec;
+                cmd_snap.players[p].commands = cmds;
             }
+            cmd_snap.quit_requested = input->quit_requested;
         }
-        shadow_sim.step(snap, 1.0f / 60.0f);
+        shadow_sim.step(cmd_snap, 1.0f / 60.0f);
         shadow_sim.clear_events(); // discard for now
     }
 
