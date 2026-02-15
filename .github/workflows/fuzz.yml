@@ -1,0 +1,61 @@
+name: Fuzz Testing
+
+on:
+  pull_request:
+  schedule:
+    # Nightly at 03:00 UTC
+    - cron: '0 3 * * *'
+
+env:
+  # Disable leak detection: SDL2 has known benign leaks that would
+  # cause false positives in fuzz runs.
+  ASAN_OPTIONS: detect_leaks=0
+
+jobs:
+  fuzz:
+    name: Fuzz ${{ matrix.target }} (${{ github.event_name == 'schedule' && 'nightly' || 'pr' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event_name == 'schedule' && 90 || 20 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: fuzz_pixie
+            corpus: fuzz/corpus/pixie
+          - target: fuzz_scenario
+            corpus: fuzz/corpus/scenario
+          - target: fuzz_savefile
+            corpus: fuzz/corpus/savefile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build clang
+
+      - name: Configure (ci-fuzz preset)
+        run: cmake --preset ci-fuzz
+
+      - name: Build ${{ matrix.target }}
+        run: cmake --build --preset ci-fuzz --target ${{ matrix.target }} -j"$(nproc)"
+
+      - name: Create crash artifact directory
+        run: mkdir -p fuzz/crashes
+
+      - name: Run ${{ matrix.target }}
+        run: |
+          DURATION=${{ github.event_name == 'schedule' && '3600' || '600' }}
+          ./build/ci-fuzz/${{ matrix.target }} \
+            ${{ matrix.corpus }} \
+            -max_total_time=$DURATION \
+            -artifact_prefix=fuzz/crashes/${{ matrix.target }}_ \
+            -print_final_stats=1
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes-${{ matrix.target }}-${{ github.event_name }}
+          path: fuzz/crashes/
+          if-no-files-found: ignore

@@ -75,6 +75,20 @@
       }
     },
     {
+      "name": "ci-fuzz",
+      "displayName": "CI Fuzz (libFuzzer+ASan)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/ci-fuzz",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "BUILD_TESTING": "OFF",
+        "BUILD_EDITOR": "OFF",
+        "ENABLE_FUZZING": "ON"
+      }
+    },
+    {
       "name": "web-emscripten",
       "displayName": "Web Emscripten",
       "generator": "Ninja",
@@ -119,6 +133,11 @@
     {
       "name": "ci-coverage",
       "configurePreset": "ci-coverage",
+      "jobs": 24
+    },
+    {
+      "name": "ci-fuzz",
+      "configurePreset": "ci-fuzz",
       "jobs": 24
     },
     {
