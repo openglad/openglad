@@ -138,9 +138,9 @@ static bool cleric_do_special(walker* self)
                             else
                                 message = std::format("Cleric healed {} men!", didheal);
                             if (self->team_num == 0 || self->myguy)
-                                og::sim::emit_notification(message);
+                                og::sim::emit_notification(self->sim_events, message);
                         }
-                        og::sim::emit_sound(SOUND_HEAL);
+                        og::sim::emit_sound(self->sim_events, SOUND_HEAL);
                     }
                 }
                 else
@@ -154,7 +154,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 50)
                 {
                     if (self->user != -1)
-                        og::sim::emit_notification("50 Int required for Mystic Mace!");
+                        og::sim::emit_notification(self->sim_events, "50 Int required for Mystic Mace!");
                     return false;
                 }
                 if (self->myguy)
@@ -185,7 +185,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
                     if (self->team_num == 0 || self->myguy)
-                        og::sim::emit_notification("You need 60 Int to Turn Undead");
+                        og::sim::emit_notification(self->sim_events, "You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
                 }
@@ -197,10 +197,10 @@ static bool cleric_do_special(walker* self)
                     if (self->team_num == 0 || self->myguy)
                     {
                         message = std::format("{} turned {} undead.", self->myguy->name, generic);
-                        og::sim::emit_notification(message);
+                        og::sim::emit_notification(self->sim_events, message);
                     }
                 }
-                og::sim::emit_sound(SOUND_HEAL);
+                og::sim::emit_sound(self->sim_events, SOUND_HEAL);
             }
             else
             {
@@ -239,7 +239,7 @@ static bool cleric_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 60)
                 {
                     if (self->team_num == 0 || self->myguy)
-                        og::sim::emit_notification("You need 60 Int to Turn Undead");
+                        og::sim::emit_notification(self->sim_events, "You need 60 Int to Turn Undead");
                     self->busy += 5;
                     return false;
                 }
@@ -251,10 +251,10 @@ static bool cleric_do_special(walker* self)
                     if (self->team_num == 0 || self->myguy)
                     {
                         message = std::format("{} turned {} undead.", self->myguy->name, generic);
-                        og::sim::emit_notification(message);
+                        og::sim::emit_notification(self->sim_events, message);
                     }
                 }
-                og::sim::emit_sound(SOUND_HEAL);
+                og::sim::emit_sound(self->sim_events, SOUND_HEAL);
             }
             else
             {

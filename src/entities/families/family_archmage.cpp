@@ -171,7 +171,7 @@ static bool archmage_do_special(walker* self)
                     return false;
                 if (self->myguy && (self->myguy->intelligence < 75))
                 {
-                    og::sim::emit_notification("Need 75 Int for Marker!");
+                    og::sim::emit_notification(self->sim_events, "Need 75 Int for Marker!");
                     return false;
                 }
                 generic = 0;
@@ -187,7 +187,7 @@ static bool archmage_do_special(walker* self)
                         ob->dead = 1;
                         ob->death();
                         if (self->team_num == 0 || self->myguy)
-                            og::sim::emit_notification("(Old Marker Removed)");
+                            og::sim::emit_notification(self->sim_events, "(Old Marker Removed)");
                         self->busy += 8;
                         generic = 1;
                         break;
@@ -205,9 +205,9 @@ static bool archmage_do_special(walker* self)
                 newob->ani_type = 2;
                 if (self->team_num == 0 || self->myguy)
                 {
-                    og::sim::emit_notification("Teleport Marker Placed");
+                    og::sim::emit_notification(self->sim_events, "Teleport Marker Placed");
                     message = std::format("({} Uses)", newob->lifetime);
-                    og::sim::emit_notification(message);
+                    og::sim::emit_notification(self->sim_events, message);
                 }
                 self->busy += 8;
                 generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
@@ -216,7 +216,7 @@ static bool archmage_do_special(walker* self)
             }
             else
             {
-                og::sim::emit_sound(SOUND_TELEPORT);
+                og::sim::emit_sound(self->sim_events, SOUND_TELEPORT);
                 self->ani_type = ANI_TELE_OUT;
                 self->cycle = 0;
             }
@@ -260,7 +260,7 @@ static bool archmage_do_special(walker* self)
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                         newob->damage = static_cast<float>(generic);
                         newob->center_on(ob);
-                        og::sim::emit_sound(SOUND_EXPLODE);
+                        og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
                         newob->ani_type = ANI_EXPLODE;
                         newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                         newob->skip_exit = 100;
@@ -305,7 +305,7 @@ static bool archmage_do_special(walker* self)
                 if (self->myguy && self->myguy->intelligence < 150)
                 {
                     if (self->user != -1)
-                        og::sim::emit_notification("150 Int required to Summon!");
+                        og::sim::emit_notification(self->sim_events, "150 Int required to Summon!");
                     return false;
                 }
                 generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
@@ -478,7 +478,7 @@ static bool archmage_do_special(walker* self)
             else
                 message = "ArchMage";
             tempstr = std::format("{} has controlled {} men", message, didheal);
-            og::sim::emit_notification(tempstr);
+            og::sim::emit_notification(self->sim_events, tempstr);
             generic2 = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
             if (generic2 > 0)
             {

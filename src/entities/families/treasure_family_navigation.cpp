@@ -65,7 +65,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
         std::string buf = std::format("Withdraw to {}?", exitname);
         bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
         // Redraw screen ..
-        og::sim::emit_event(og::sim::EventKind::RequestRedraw);
+        og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
 
         if (result) // accepted level change
         {
@@ -103,7 +103,7 @@ static bool exit_on_eat(treasure* self, walker* eater)
         std::string buf = std::format("Exit to {}?", exitname);
         bool result = yes_or_no_prompt("Exit Field", buf.c_str(), false);
         // Redraw screen ..
-        og::sim::emit_event(og::sim::EventKind::RequestRedraw);
+        og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
 
         if(result) // accepted level change
         {

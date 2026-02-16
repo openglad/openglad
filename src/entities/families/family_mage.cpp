@@ -129,7 +129,7 @@ static bool mage_do_special(walker* self)
                 if (self->myguy && (self->myguy->intelligence < 75))
                 {
                     if (self->user != -1)
-                        og::sim::emit_notification("Need 75 Int for Marker!");
+                        og::sim::emit_notification(self->sim_events, "Need 75 Int for Marker!");
                     return false;
                 }
                 // Remove a marker, if present
@@ -146,7 +146,7 @@ static bool mage_do_special(walker* self)
                         ob->dead = 1;
                         ob->death();
                         if ((self->team_num == 0 || self->myguy) && self->user != -1)
-                            og::sim::emit_notification("(Old Marker Removed)");
+                            og::sim::emit_notification(self->sim_events, "(Old Marker Removed)");
                         self->busy += 8;
                         break;
                     }
@@ -166,9 +166,9 @@ static bool mage_do_special(walker* self)
                     newob->ani_type = ANI_SPIN;
                     if ((self->team_num == 0 || self->myguy) && self->user != -1)
                     {
-                        og::sim::emit_notification("Teleport Marker Placed");
+                        og::sim::emit_notification(self->sim_events, "Teleport Marker Placed");
                         message = std::format("({} Uses)", newob->lifetime);
-                        og::sim::emit_notification(message);
+                        og::sim::emit_notification(self->sim_events, message);
                     }
                     self->busy += 8;
                     generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
@@ -178,7 +178,7 @@ static bool mage_do_special(walker* self)
             }
             else
             {
-                og::sim::emit_sound(SOUND_TELEPORT);
+                og::sim::emit_sound(self->sim_events, SOUND_TELEPORT);
                 self->ani_type = ANI_TELE_OUT;
                 self->cycle = 0;
             }
@@ -223,7 +223,7 @@ static bool mage_do_special(walker* self)
             if (self->team_num == 0 || self->myguy)
             {
                 *self->sim_enemy_freeze += 20 + 11 * self->stats()->level;
-                og::sim::emit_event(og::sim::EventKind::SetPalette, 1);
+                og::sim::emit_event(self->sim_events, og::sim::EventKind::SetPalette, 1);
             }
             else
             {
@@ -231,8 +231,8 @@ static bool mage_do_special(walker* self)
                 if (generic > 50)
                     generic = 50;
                 message = std::format("TIME IS FROZEN! ({} rounds)", generic);
-                og::sim::emit_notification(message, 2);
-                og::sim::emit_event(og::sim::EventKind::RequestRedraw);
+                og::sim::emit_notification(self->sim_events, message, 2);
+                og::sim::emit_event(self->sim_events, og::sim::EventKind::RequestRedraw);
                 std::list<walker*> newlist = self->sim_level->find_friends_in_range(
                               self->sim_level->oblist, 30000, &howmany, self);
                 for (auto* w : newlist)
@@ -280,7 +280,7 @@ static bool mage_do_special(walker* self)
                 newob->stats()->level = self->stats()->level;
                 newob->damage = static_cast<float>(generic);
                 newob->center_on(ob);
-                og::sim::emit_sound(SOUND_EXPLODE);
+                og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
                 newob->ani_type = ANI_EXPLODE;
                 newob->stats()->set_bit_flags(BIT_MAGICAL, 1);
                 newob->skip_exit = 100;

@@ -99,7 +99,7 @@ bool walker::teleport()
 			else  // blocked somehow?
 			{
 				if (user != -1 && (distance > 64) ) // only tell players
-					og::sim::emit_notification("Marker is Blocked!");
+					og::sim::emit_notification(sim_events, "Marker is Blocked!");
 			}
 			}
 			} // end of checking for marker (we failed)

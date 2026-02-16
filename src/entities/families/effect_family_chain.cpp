@@ -47,7 +47,7 @@ static bool chain_on_act(effect* self)
         newob->ani_type = ANI_EXPLODE;
         newob->center_on(self);
         self->leader->skip_exit = self->leader->skip_exit + 3;
-        og::sim::emit_sound(SOUND_EXPLODE);
+        og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
         // Now make new objects to seek out foes ..
         float generic = self->damage * 0.5f;
         Sint32 temp = 0;

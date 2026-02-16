@@ -12,6 +12,27 @@ namespace og::sim { class SimEventLog; }
 
 namespace og::sim {
 
+// Simple LCG random number generator owned by SimWorld.
+// Given the same seed, produces the same sequence — making the
+// simulation fully deterministic and reproducible.
+class SimRandom final {
+public:
+    explicit SimRandom(std::uint32_t seed = 0) : state_(seed) {}
+
+    std::uint32_t next(std::uint32_t max_exclusive) {
+        if (max_exclusive == 0) return 0;
+        // LCG: same constants as glibc
+        state_ = state_ * 1103515245u + 12345u;
+        return (state_ >> 16) % max_exclusive;
+    }
+
+    void reset(std::uint32_t seed) { state_ = seed; }
+    std::uint32_t state() const { return state_; }
+
+private:
+    std::uint32_t state_;
+};
+
 // Result of a single simulation tick.
 struct TickResult {
     // Level completion status after this tick:
@@ -44,9 +65,13 @@ struct TickResult {
 // on the existing screen/LevelData/SaveData structures via references.
 // This allows incremental migration: screen::act() delegates to
 // SimWorld::tick() while keeping the same data structures.
+//
+// SimWorld owns its own deterministic PRNG (SimRandom). The game seed
+// is passed at construction time. This makes the simulation layer fully
+// reproducible given the same seed — no runtime dependencies needed.
 class SimWorld final {
 public:
-    SimWorld() = default;
+    explicit SimWorld(std::uint32_t seed = 0) : rng_(seed) {}
 
     // Run one simulation tick.
     //
@@ -69,8 +94,13 @@ public:
     // Accumulated tick counter.
     std::uint32_t tick_count() const { return tick_count_; }
 
+    // Access the sim-layer RNG (for testing / seeding).
+    SimRandom& rng() { return rng_; }
+    const SimRandom& rng() const { return rng_; }
+
 private:
     std::uint32_t tick_count_ = 0;
+    SimRandom rng_;
 };
 
 } // namespace og::sim

@@ -76,7 +76,7 @@ static bool orc_do_special(walker* self)
                     }
                 }
 
-                og::sim::emit_sound(SOUND_ROAR);
+                og::sim::emit_sound(self->sim_events, SOUND_ROAR);
             }
             break;
         case 2: // eat corpse for health
@@ -105,7 +105,7 @@ static bool orc_do_special(walker* self)
                 message = "Orc ate a corpse.";
 
             if (!active_config().is_on("effects", "heal_numbers"))
-                og::sim::emit_notification(message);
+                og::sim::emit_notification(self->sim_events, message);
             if (self->stats()->hitpoints > self->stats()->max_hitpoints)
                 self->stats()->hitpoints = self->stats()->max_hitpoints;
             newob->dead = 1;

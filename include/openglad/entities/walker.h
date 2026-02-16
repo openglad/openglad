@@ -29,6 +29,7 @@
 // micropather library API requires void*.
 class LevelData;
 struct SaveData;
+namespace og::sim { class SimEventLog; }
 
 using MicroPatherState = void*;
 
@@ -208,6 +209,7 @@ class walker : public pixieN
 		LevelData* sim_level = nullptr;
 		SaveData* sim_save = nullptr;
 		std::int32_t* sim_enemy_freeze = nullptr;
+		og::sim::SimEventLog* sim_events = nullptr;
 
 		// Accessors for protected fields used by family callbacks
 		void set_charm_left(short value) { charm_left_ = value; }

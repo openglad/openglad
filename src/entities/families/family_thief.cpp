@@ -142,7 +142,7 @@ static bool thief_do_special(walker* self)
                     message = std::format("{}: 'Nyah Nyah!'", self->stats()->name);
                 else
                     message = "THIEF: 'Nyah Nyah!'";
-                og::sim::emit_notification(message);
+                og::sim::emit_notification(self->sim_events, message);
                 self->busy += 2;
                 break;
             }
@@ -198,7 +198,7 @@ static bool thief_do_special(walker* self)
                         tempstr = std::format("{} failed to charm!", message);
                     else
                         tempstr = std::format("{} charmed an opponent!", message);
-                    og::sim::emit_notification(tempstr);
+                    og::sim::emit_notification(self->sim_events, tempstr);
                     self->busy += 10;
                 }
                 break;

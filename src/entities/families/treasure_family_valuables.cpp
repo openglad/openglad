@@ -24,7 +24,7 @@ static bool gold_bar_on_eat(treasure* self, walker* eater)
     {
         eater->sim_save->m_score[eater->team_num] += (200 * self->stats()->level);
         self->dead = 1;
-        og::sim::emit_sound(SOUND_MONEY);
+        og::sim::emit_sound(self->sim_events, SOUND_MONEY);
     }
     return true;
 }
@@ -35,7 +35,7 @@ static bool silver_bar_on_eat(treasure* self, walker* eater)
     {
         eater->sim_save->m_score[eater->team_num] += (50 * self->stats()->level);
         self->dead = 1;
-        og::sim::emit_sound(SOUND_MONEY);
+        og::sim::emit_sound(self->sim_events, SOUND_MONEY);
     }
     return true;
 }
@@ -66,8 +66,8 @@ static bool key_on_eat(treasure* self, walker* eater)
             message = std::format("{} picks up key {}", eater->stats()->name, self->stats()->level);
         if (eater->team_num == 0) // only show players picking up keys
         {
-            og::sim::emit_notification(message);
-            og::sim::emit_sound(SOUND_MONEY);
+            og::sim::emit_notification(self->sim_events, message);
+            og::sim::emit_sound(self->sim_events, SOUND_MONEY);
         }
     }
     return true;

@@ -845,6 +845,8 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 		ob->sim_save = &screenp->save_data;
 		ob->sim_enemy_freeze = &screenp->enemy_freeze;
 	}
+	if (ctx().sim_events)
+		ob->sim_events = ctx().sim_events.get();
 
 	set_walker(ob.get(), order, family);
 

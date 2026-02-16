@@ -163,8 +163,8 @@ static bool druid_do_special(walker* self)
                         else
                             message = std::format("Druid protected {} men!", didheal);
                         if (self->team_num == 0 || self->myguy)
-                            og::sim::emit_notification(message);
-                        og::sim::emit_sound(SOUND_HEAL);
+                            og::sim::emit_notification(self->sim_events, message);
+                        og::sim::emit_sound(self->sim_events, SOUND_HEAL);
                     }
                 }
                 else

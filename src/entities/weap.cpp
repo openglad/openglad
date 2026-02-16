@@ -79,7 +79,7 @@ bool weap::act()
 			{
 				const auto* wfd = get_weapon_family_descriptor(family);
 				if (!wfd || !wfd->skip_sit_notify)
-					og::sim::emit_notification("Weapon sitting");
+					og::sim::emit_notification(sim_events, "Weapon sitting");
 				return 1;
 			}
 
@@ -115,7 +115,7 @@ bool weap::act()
 			{
 				std::string msg = std::format("Weapon {} doing act random?", family);
 				//Log("Weapon doing act_random?\n");
-				og::sim::emit_notification(msg);
+				og::sim::emit_notification(sim_events, msg);
 				return 1;
 			}  // END RANDOM
 			//break;
@@ -123,7 +123,7 @@ bool weap::act()
 		default:
 			{
 				//Log("No act type set for weapon.\n");
-				og::sim::emit_notification("No act type set for weapon");
+				og::sim::emit_notification(sim_events, "No act type set for weapon");
 				return 0;
 			}
 	}  // END SWITCH

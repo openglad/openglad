@@ -7,7 +7,6 @@
  */
 #include <openglad/sim/sim_world.h>
 #include <openglad/sim/sim_event_log.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
@@ -18,7 +17,8 @@ namespace og::sim {
 
 // File-local helper: find the nearest hostile entity for AI targeting.
 // Mirrors screen::find_far_foe() but operates on LevelData directly.
-static walker* find_far_foe(LevelData& level, walker* ob)
+// Uses the sim-layer's own deterministic RNG for invisibility checks.
+static walker* find_far_foe(LevelData& level, walker* ob, SimRandom& rng)
 {
     if (!ob)
         return nullptr;
@@ -37,7 +37,7 @@ static walker* find_far_foe(LevelData& level, walker* ob)
         {
             if ((foe->query_order() == Order::Living ||
                  foe->query_order() == Order::Generator) &&
-                (!(ctx().rng->next(foe->invisibility_left / 20))))
+                (!(rng.next(foe->invisibility_left / 20))))
             {
                 Sint32 tempdistance = ob->distance_to_ob(foe);
                 if (tempdistance < distance)
@@ -84,7 +84,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
                         ob->query_order() == Order::Living)
                         result.level_done = 0;
                     if (ob->foe == nullptr && ob->leader == nullptr)
-                        ob->foe = find_far_foe(level, ob);
+                        ob->foe = find_far_foe(level, ob, rng_);
                 }
             }
         }

@@ -475,6 +475,8 @@ walker* LevelData::add_ob(Order order, Sint32 family, [[maybe_unused]] bool atst
         w->sim_save = &myscreen->save_data;
         w->sim_enemy_freeze = &myscreen->enemy_freeze;
     }
+    if (ctx().sim_events)
+        w->sim_events = ctx().sim_events.get();
     if (order == Order::Living)
         numobs++;
 
@@ -495,6 +497,8 @@ walker* LevelData::add_fx_ob(Order order, Sint32 family)
         w->sim_save = &myscreen->save_data;
         w->sim_enemy_freeze = &myscreen->enemy_freeze;
     }
+    if (ctx().sim_events)
+        w->sim_events = ctx().sim_events.get();
 
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
@@ -513,6 +517,8 @@ walker* LevelData::add_weap_ob(Order order, Sint32 family)
         w->sim_save = &myscreen->save_data;
         w->sim_enemy_freeze = &myscreen->enemy_freeze;
     }
+    if (ctx().sim_events)
+        w->sim_events = ctx().sim_events.get();
 
     walker* raw = w.get();
     weaplist.push_back(std::move(w));

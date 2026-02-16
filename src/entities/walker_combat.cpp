@@ -337,12 +337,12 @@ bool walker::attack(walker  *target)
                             && (!target->owner) ) // do we have an NPC name?
                     {
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
-                        og::sim::emit_notification(message);
+                        og::sim::emit_notification(sim_events, message);
                     }
                     if(remaining_foes(myscreen, this) == 1)  // This is the last foe
                     {
                         message = "All foes defeated!";
-                        og::sim::emit_notification(message);
+                        og::sim::emit_notification(sim_events, message);
                     }
                 }
                 else
@@ -360,7 +360,7 @@ bool walker::attack(walker  *target)
                         const auto* fd = get_family_descriptor(target->query_family());
                         message = fd ? fd->death_message : "SOMEONE DIED";
                     }
-                    og::sim::emit_notification(message);
+                    og::sim::emit_notification(sim_events, message);
                 }
             }
 
@@ -375,9 +375,9 @@ bool walker::attack(walker  *target)
         if (targetorder == Order::Living)
         {
             if (rng(2))
-                og::sim::emit_sound(SOUND_DIE1);
+                og::sim::emit_sound(sim_events, SOUND_DIE1);
             else
-                og::sim::emit_sound(SOUND_DIE2);
+                og::sim::emit_sound(sim_events, SOUND_DIE2);
         }
 
         target->dead = 1;

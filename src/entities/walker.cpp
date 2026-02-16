@@ -404,7 +404,7 @@ walker  * walker::fire()
 		{
 			if (attack(weapon->collide_ob))
 			{
-				og::sim::emit_sound(SOUND_CLANG);
+				og::sim::emit_sound(sim_events, SOUND_CLANG);
 				
                 if(active_config().is_on("effects", "attack_lunge"))
                 {
@@ -451,7 +451,7 @@ walker  * walker::fire()
 		// *** Ranged combat ***
 		{
 			const auto* wfd = get_weapon_family_descriptor(weapon->query_family());
-			og::sim::emit_sound(static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
+			og::sim::emit_sound(sim_events, static_cast<std::uint32_t>(wfd ? wfd->fire_sound : SOUND_FWIP));
 		}
 		if (order == Order::Generator)
 		{
@@ -1399,7 +1399,7 @@ bool walker::death()
 				newob->setxy(xpos+rng(sizex-8)+4, ypos+4+rng(sizey-8) );
 					newob->damage = static_cast<float>(stats_->level) * 2.0f;
 					newob->set_frame(static_cast<short>(rng(3)));
-				og::sim::emit_sound(SOUND_EXPLODE);
+				og::sim::emit_sound(sim_events, SOUND_EXPLODE);
 			}
 			break;
 		case Order::FX:

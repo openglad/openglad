@@ -30,7 +30,7 @@ static bool drumstick_on_eat(treasure* self, walker* eater)
         eater->stats()->hitpoints = eater->stats()->max_hitpoints;
     self->do_heal_effects(nullptr, eater, amount);
     self->dead = 1;
-    og::sim::emit_sound(SOUND_EAT);
+    og::sim::emit_sound(self->sim_events, SOUND_EAT);
     return true;
 }
 
@@ -43,7 +43,7 @@ static bool magic_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Mana({})!", self->stats()->level);
-        og::sim::emit_notification(message);
+        og::sim::emit_notification(self->sim_events, message);
     }
     return true;
 }
@@ -56,7 +56,7 @@ static bool flight_potion_on_eat(treasure* self, walker* eater)
         if (eater->user != -1)
         {
             std::string message = std::format("Potion of Flight({})!", self->stats()->level);
-            og::sim::emit_notification(message);
+            og::sim::emit_notification(self->sim_events, message);
         }
         self->dead = 1;
     }
@@ -72,7 +72,7 @@ static bool invulnerable_potion_on_eat(treasure* self, walker* eater)
         if (eater->user != -1)
         {
             std::string message = std::format("Potion of Invulnerability({})!", self->stats()->level);
-            og::sim::emit_notification(message);
+            og::sim::emit_notification(self->sim_events, message);
         }
     }
     return true;
@@ -84,7 +84,7 @@ static bool invis_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Invisibility({})!", self->stats()->level);
-        og::sim::emit_notification(message);
+        og::sim::emit_notification(self->sim_events, message);
     }
     self->dead = 1;
     return true;
@@ -97,7 +97,7 @@ static bool speed_potion_on_eat(treasure* self, walker* eater)
     if (eater->user != -1)
     {
         std::string message = std::format("Potion of Speed({})!", self->stats()->level);
-        og::sim::emit_notification(message);
+        og::sim::emit_notification(self->sim_events, message);
     }
     self->dead = 1;
     return true;
