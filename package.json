@@ -1,0 +1,19 @@
+{
+  "name": "openglad-wasm-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for OpenGlad WASM build using Playwright",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "playwright test",
+    "test:e2e": "playwright test"
+  },
+  "keywords": [],
+  "license": "GPL-2.0",
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "http-server": "^14.1.1"
+  }
+}

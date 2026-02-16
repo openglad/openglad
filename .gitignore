@@ -24,6 +24,11 @@ obj/
 *.swp
 *~
 
+# Node / Playwright
+node_modules/
+test-results/
+playwright-report/
+
 # Runtime output
 stdout.txt
 stderr.txt
