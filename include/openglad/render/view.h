@@ -58,6 +58,7 @@ inline constexpr int PREF_MAX = 8;  // == 1 + highest pref ..
 
 inline constexpr int MAX_MESSAGES = 5;  // max of 5 lines, currently
 
+struct InputState;
 class viewscreen;
 class walker;
 class radar;
@@ -94,6 +95,7 @@ class viewscreen
 		bool refresh();
 		short input(const SDL_Event& event);
 		short continuous_input();
+		void process_input(const InputState& input_state);
 		void set_display_text(std::string_view newtext, short numcycles);
 		void display_text(); // put the text to the buffer, if there
 		void shift_text(Sint32 row); // cycle text upward

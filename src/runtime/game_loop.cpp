@@ -130,6 +130,9 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
     // Snapshot current input state for the frame
     ctx().poll_input();
 
+    // Process input through semantic InputState (SDL-independent path)
+    s.process_input(ctx().input);
+
     s.continuous_input();
 
     if (s.end)

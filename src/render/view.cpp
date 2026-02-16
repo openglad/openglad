@@ -442,17 +442,189 @@ walker* viewscreen::find_next_control()
 
 short viewscreen::input(const SDL_Event& event)
 {
+	// Gameplay input (movement, fire, special, switch, yell, etc.) is now
+	// handled by process_input() via the SDL-independent InputState snapshot.
+	// This method only handles raw SDL events that cannot go through InputState:
+	// debug/cheat keys that use specific SDL keycodes (F-keys, letter keys, etc.).
 
-	//short i;
-	//short step;
-	static short changedchar[6] = {0, 0, 0, 0, 0, 0};   // for switching guys
-	static short changedspec[6]= {0, 0, 0, 0, 0, 0};  // for switching special
-	static short changedteam[6] = {0, 0, 0, 0, 0, 0};  // for switching team
-	//buffers: PORT: this doesn't compile: union REGS inregs,outregs;
+	static short changedteam[6] = {0, 0, 0, 0, 0, 0};
 	Uint32 totaltime, totalframes, framespersec;
-	walker *newob; // for general-purpose use
-	walker  * oldcontrol = control; // So we know if we changed guys
+	walker *newob;
 
+	if (!control || control->dead)
+		return 1;
+
+	const PlayerInput& pi = ctx().input.players[mynum];
+
+	// --- Debug keys (require raw SDL keycode checks) ---
+	if (!pi.is_held(InputAction::Cheat))
+	{
+		if (query_key_event(SDLK_F3, event))
+		{
+			totaltime = (query_timer_control() - active_screen()->timerstart)/72;
+			totalframes = (active_screen()->framecount);
+			framespersec = totalframes / totaltime;
+			std::string somemessage = std::format("{} FRAMES PER SEC", framespersec);
+			active_screen()->viewob[0]->set_display_text(somemessage.c_str(), STANDARD_TEXT_TIME);
+		}
+
+		if (query_key_event(SDLK_F4, event))
+			active_screen()->report_mem();
+	}
+
+	// Redisplay scenario text (Shift+/ = "?") — needs raw SDL for SDLK_SLASH
+	if (query_key_event(SDLK_SLASH, event) && pi.is_held(InputAction::Shift) && !pi.is_held(InputAction::Cheat))
+	{
+		read_scenario(active_screen());
+		active_screen()->redrawme = 1;
+		clear_keyboard();
+	}
+
+	// --- Cheat keys (require raw SDL keycode checks) ---
+	if (pi.is_held(InputAction::Cheat) && CHEAT_MODE)
+	{
+		// Change team (Cheat+Switch)
+		if (changedteam[mynum] && !pi.was_pressed(InputAction::SwitchChar))
+			changedteam[mynum] = 0;
+		if (pi.was_pressed(InputAction::SwitchChar) && !changedteam[mynum])
+		{
+			changedteam[mynum] = 1;
+
+			walker* result = nullptr;
+			control->user = -1;
+			control->set_act_type(ACT_RANDOM);
+
+			short oldteam = active_screen()->save_data.my_team;
+
+			do
+			{
+				active_screen()->save_data.my_team++;
+				active_screen()->save_data.my_team %= MAX_TEAM;
+
+				for (auto& uptr : active_screen()->level_data.oblist)
+				{
+					walker* w = uptr.get();
+					if ((w->team_num == active_screen()->save_data.my_team) &&
+							(w->query_order() == Order::Living))
+					{
+						result = w;
+						break;
+					}
+				}
+			}
+			while (result == nullptr && active_screen()->save_data.my_team != oldteam);
+
+			if (result != nullptr)
+				control = result;
+
+			control->user = static_cast<signed char>(mynum);
+			control->set_act_type(ACT_CONTROL);
+		}
+
+		if (query_key_event(SDLK_F12, event))
+		{
+			for (auto& uptr : active_screen()->level_data.oblist)
+			{
+				walker* w = uptr.get();
+				if (w && w->query_order() == Order::Living && !control->is_friendly(w))
+				{
+					w->stats()->hitpoints = -1;
+					control->attack(w);
+					w->death();
+				}
+			}
+		}
+
+		if (query_key_event(SDLK_RIGHTBRACKET, event))
+			control->stats()->level++;
+
+		if (query_key_event(SDLK_LEFTBRACKET, event))
+		{
+			if (control->stats()->level > 1)
+				control->stats()->level--;
+		}
+
+		if (query_key_event(SDLK_F1, event))
+		{
+			active_screen()->enemy_freeze += 50;
+			set_palette(active_screen()->bluepalette);
+		}
+
+		if (query_key_event(SDLK_F2, event))
+		{
+			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+			newob->owner = control;
+			newob->team_num = control->team_num;
+			newob->ani_type = 1;
+			newob->lifetime = 200;
+		}
+
+		if (query_key_event(SDLK_f, event))
+		{
+			if (control->stats()->query_bit_flags(BIT_FLYING))
+				control->stats()->set_bit_flags(BIT_FLYING, 0);
+			else
+				control->stats()->set_bit_flags(BIT_FLYING, 1);
+		}
+
+		if (query_key_event(SDLK_h, event))
+		{
+			control->stats()->hitpoints += 100;
+			active_screen()->control_hp += 100;
+		}
+
+		if (query_key_event(SDLK_i, event))
+		{
+			if (control->stats()->query_bit_flags(BIT_INVINCIBLE))
+				control->stats()->set_bit_flags(BIT_INVINCIBLE, 0);
+			else
+				control->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+		}
+
+		if (query_key_event(SDLK_m, event))
+			control->stats()->magicpoints += 150;
+
+		if (query_key_event(SDLK_s, event))
+		{
+			control->speed_bonus_left = control->speed_bonus_left + 20;
+			control->speed_bonus = control->normal_stepsize;
+		}
+
+		if (query_key_event(SDLK_t, event))
+		{
+			Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->query_family())) + 1) % NUM_FAMILIES;
+			control->transform_to(control->query_order(), family);
+		}
+
+		if (query_key_event(SDLK_v, event))
+		{
+			if (control->invisibility_left < 3000)
+				control->invisibility_left = control->invisibility_left + 100;
+		}
+	}
+
+	return 1;
+}
+
+short viewscreen::continuous_input()
+{
+	// Movement, fire, special, shift, and other gameplay input is now
+	// handled by process_input(const InputState&), which reads from the
+	// SDL-independent InputState snapshot.  This method is retained only
+	// as a legacy entry-point; it is a no-op because process_input()
+	// runs first in the game loop.
+	return 1;
+}
+
+void viewscreen::process_input(const InputState& input_state)
+{
+	static short changedchar_pi[6] = {0, 0, 0, 0, 0, 0};
+	static short changedspec_pi[6] = {0, 0, 0, 0, 0, 0};
+
+	const PlayerInput& pi = input_state.players[mynum];
+	walker* oldcontrol = control;
+
+	// --- Control setup (same as input()/continuous_input()) ---
 	if (control && control->user == -1)
 	{
 		control->set_act_type(ACT_CONTROL);
@@ -462,222 +634,188 @@ short viewscreen::input(const SDL_Event& event)
 	if (!control || control->dead)
 	{
 		control = find_next_control();
-
-			if (!control)
-				return active_screen()->endgame(1);
-
-			if (control->user == -1)
-				control->user = static_cast<signed char>(mynum);
-			control->set_act_type(ACT_CONTROL);
-			active_screen()->control_hp = control->stats()->hitpoints;
+		if (!control)
+		{
+			active_screen()->endgame(1);
+			return;
 		}
+		if (control->user == -1)
+			control->user = static_cast<signed char>(mynum);
+		control->set_act_type(ACT_CONTROL);
+		active_screen()->control_hp = control->stats()->hitpoints;
+	}
 
-	if (control && control->bonus_rounds) // do we have extra rounds?
+	if (control && control->bonus_rounds)
 	{
 		control->bonus_rounds = control->bonus_rounds - 1;
-		
 		if (control->lastx != 0.0f || control->lasty != 0.0f)
 			control->walk();
 	}
 
-    if(!isPlayerHoldingKey(mynum, KEY_CHEAT))
-    {
-        if (query_key_event(SDLK_F3, event))
-        {
-            totaltime = (query_timer_control() - active_screen()->timerstart)/72;
-            totalframes = (active_screen()->framecount);
-            framespersec = totalframes / totaltime;
-            std::string somemessage = std::format("{} FRAMES PER SEC", framespersec);
-            active_screen()->viewob[0]->set_display_text(somemessage.c_str(), STANDARD_TEXT_TIME);
-        }
-
-        if (query_key_event(SDLK_F4, event)) // Memory report
-            active_screen()->report_mem();
-
-        if (didPlayerPressKey(mynum, KEY_PREFS, event))
-        {
-            options_menu();
-            return 1;
-        }
-    }
-
-
-	// TAB (ALONE) WILL SWITCH CONTROL TO THE NEXT GUY ON MY TEAM
-	if(!didPlayerPressKey(mynum, KEY_SWITCH, event))
-		changedchar[mynum] = 0;
-    else if(!changedchar[mynum] && !isPlayerHoldingKey(mynum, KEY_CHEAT))
+	// --- Prefs key (event-driven) ---
+	if (!pi.is_held(InputAction::Cheat))
 	{
-	    // KEY_SHIFTER will go backward
-		bool reverse = isPlayerHoldingKey(mynum, KEY_SHIFTER);
-		
-        // Unset our control
-		changedchar[mynum] = 1;
+		if (pi.was_pressed(InputAction::OpenPrefs))
+		{
+			options_menu();
+			return;
+		}
+	}
+
+	// --- Switch character (event-driven) ---
+	if (!pi.was_pressed(InputAction::SwitchChar))
+		changedchar_pi[mynum] = 0;
+	else if (!changedchar_pi[mynum] && !pi.is_held(InputAction::Cheat))
+	{
+		bool reverse = pi.is_held(InputAction::Shift);
+
+		changedchar_pi[mynum] = 1;
 		if (control->user == mynum)
 		{
 			control->restore_act_type();
 			control->user = -1;
 		}
 		control = nullptr;
-		
+
 		auto& oblist = active_screen()->level_data.oblist;
 		auto pred = [oldcontrol](const std::unique_ptr<walker>& p) { return p.get() == oldcontrol; };
 
-		if(!reverse)
+		if (!reverse)
 		{
-            // Get where we are in the list
-            auto mine = std::find_if(oblist.begin(), oblist.end(), pred);
-            if(mine == oblist.end())
-            {
-                LogError("view_control_switch_failed reason=control_not_in_oblist view={} reverse=0\n", mynum);
-                return 1;
-            }
-
-            // Look past our current spot
-            auto e = mine;
-            e++;
-            for(; e != oblist.end(); e++)
-            {
-                walker* w = e->get();
-                if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                        w->real_team_num == 255 && w->user == -1)
-                {
-                    control = w;
-                    break;
-                }
-            }
-
-            if(!control)
-            {
-                // Look before our current spot
-                for(e = oblist.begin(); e != mine; e++)
-                {
-                    walker* w = e->get();
-                    if (w->query_order() == Order::Living &&
-                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                            w->real_team_num == 255 && w->user == -1)
-                    {
-                        control = w;
-                        break;
-                    }
-                }
-            }
+			auto mine = std::find_if(oblist.begin(), oblist.end(), pred);
+			if (mine == oblist.end())
+			{
+				control = oldcontrol;
+				active_screen()->control_hp = control->stats()->hitpoints;
+				return;
+			}
+			auto e = mine;
+			e++;
+			for (; e != oblist.end(); e++)
+			{
+				walker* w = e->get();
+				if (w->query_order() == Order::Living &&
+						w->is_friendly(oldcontrol) && w->team_num == my_team &&
+						w->real_team_num == 255 && w->user == -1)
+				{
+					control = w;
+					break;
+				}
+			}
+			if (!control)
+			{
+				for (e = oblist.begin(); e != mine; e++)
+				{
+					walker* w = e->get();
+					if (w->query_order() == Order::Living &&
+							w->is_friendly(oldcontrol) && w->team_num == my_team &&
+							w->real_team_num == 255 && w->user == -1)
+					{
+						control = w;
+						break;
+					}
+				}
+			}
 		}
 		else
 		{
-            // Get where we are in the list
-            auto mine = std::find_if(oblist.rbegin(), oblist.rend(), pred);
-            if(mine == oblist.rend())
-            {
-                LogError("view_control_switch_failed reason=control_not_in_oblist view={} reverse=1\n", mynum);
-                return 1;
-            }
-
-            // Look past our current spot
-            auto e = mine;
-            e++;
-            for(; e != oblist.rend(); e++)
-            {
-                walker* w = e->get();
-                if (w->query_order() == Order::Living &&
-                        w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                        w->real_team_num == 255 && w->user == -1)
-                {
-                    control = w;
-                    break;
-                }
-            }
-
-            if(!control)
-            {
-                // Look before our current spot
-                for(e = oblist.rbegin(); e != mine; e++)
-                {
-                    walker* w = e->get();
-                    if (w->query_order() == Order::Living &&
-                            w->is_friendly(oldcontrol) && w->team_num == my_team &&
-                            w->real_team_num == 255 && w->user == -1)
-                    {
-                        control = w;
-                        break;
-                    }
-                }
-            }
+			auto mine = std::find_if(oblist.rbegin(), oblist.rend(), pred);
+			if (mine == oblist.rend())
+			{
+				control = oldcontrol;
+				active_screen()->control_hp = control->stats()->hitpoints;
+				return;
+			}
+			auto e = mine;
+			e++;
+			for (; e != oblist.rend(); e++)
+			{
+				walker* w = e->get();
+				if (w->query_order() == Order::Living &&
+						w->is_friendly(oldcontrol) && w->team_num == my_team &&
+						w->real_team_num == 255 && w->user == -1)
+				{
+					control = w;
+					break;
+				}
+			}
+			if (!control)
+			{
+				for (e = oblist.rbegin(); e != mine; e++)
+				{
+					walker* w = e->get();
+					if (w->query_order() == Order::Living &&
+							w->is_friendly(oldcontrol) && w->team_num == my_team &&
+							w->real_team_num == 255 && w->user == -1)
+					{
+						control = w;
+						break;
+					}
+				}
+			}
 		}
-		
-		if(!control)
-            control = oldcontrol;
-        
+
+		if (!control)
+			control = oldcontrol;
+
 		active_screen()->control_hp = control->stats()->hitpoints;
-		//control->set_act_type(ACT_CONTROL);
-	}  // end of switch guys
-
-
-	// Redisplay the scenario text (Shift+/ = "?")
-	if (query_key_event(SDLK_SLASH, event) && isPlayerHoldingKey(mynum, KEY_SHIFTER) && !isPlayerHoldingKey(mynum, KEY_CHEAT))
-	{
-		read_scenario(active_screen());
-		active_screen()->redrawme = 1;
-		clear_keyboard();
 	}
 
-	// Change our currently selected special
-	if (!didPlayerPressKey(mynum, KEY_SPECIAL_SWITCH, event))
-		changedspec[mynum] = 0;
+	// --- Switch special (event-driven) ---
+	if (!pi.was_pressed(InputAction::SwitchSpecial))
+		changedspec_pi[mynum] = 0;
 
-	if (didPlayerPressKey(mynum, KEY_SPECIAL_SWITCH, event) && !changedspec[mynum])
+	if (pi.was_pressed(InputAction::SwitchSpecial) && !changedspec_pi[mynum])
 	{
-		changedspec[mynum] = 1;
-		
+		changedspec_pi[mynum] = 1;
 		control->current_special = control->current_special + 1;
 		if (control->current_special > (NUM_SPECIALS-1)
-		        || (active_screen()->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] == "NONE")
-		        || (((control->current_special-1)*3+1) > control->stats()->level) )
+				|| (active_screen()->special_name[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] == "NONE")
+				|| (((control->current_special-1)*3+1) > control->stats()->level) )
 			control->current_special = 1;
-	} //end of switch our special
+	}
 
+	// --- yo_delay tick (runs once per frame, before yell check) ---
+	// Tick first so that a yell this frame sets yo_delay=30 and it
+	// won't be decremented until the next frame.
+	if (control->yo_delay > 0)
+		control->yo_delay = control->yo_delay - 1;
 
-
-	if (didPlayerPressKey(mynum, KEY_YELL, event) && !control->yo_delay
-	        && !isPlayerHoldingKey(mynum, KEY_SHIFTER)
-	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // yell for help
+	// --- Yell for help (event-driven) ---
+	if (pi.was_pressed(InputAction::Yell) && !control->yo_delay
+			&& !pi.is_held(InputAction::Shift)
+			&& !pi.is_held(InputAction::Cheat))
 	{
-		for(auto& uptr : active_screen()->level_data.oblist)
+		for (auto& uptr : active_screen()->level_data.oblist)
 		{
-		    walker* w = uptr.get();
+			walker* w = uptr.get();
 			if (w && (w->query_order() == Order::Living) &&
-			        (w->query_act_type() != ACT_CONTROL) &&
-			        (w->team_num == control->team_num) &&
-			        (!w->leader) )
+					(w->query_act_type() != ACT_CONTROL) &&
+					(w->team_num == control->team_num) &&
+					(!w->leader))
 			{
-				// Remove any current foe ..
 				w->leader = control;
 				w->foe = nullptr;
 				w->stats()->force_command(COMMAND_FOLLOW, 100, 0, 0);
-				//w->action = ACTION_FOLLOW;
 			}
 		}
-		
 		control->yo_delay = 30;
 		active_screen()->soundp->play_sound(SOUND_YO);
 		active_screen()->do_notify("Yo!", control);
-	} //end of yo for friends
+	}
 
-	//summon team defense
-	if (isPlayerHoldingKey(mynum, KEY_SHIFTER) && didPlayerPressKey(mynum, KEY_YELL, event)
-	        && !isPlayerHoldingKey(mynum, KEY_CHEAT) ) // change guys' behavior
+	// --- Shift+Yell: summon team defense (event-driven) ---
+	if (pi.is_held(InputAction::Shift) && pi.was_pressed(InputAction::Yell)
+			&& !pi.is_held(InputAction::Cheat))
 	{
 		switch (control->action)
 		{
-			case 0:   // not set ..
-				for(auto& uptr : active_screen()->level_data.oblist)
+			case 0:
+				for (auto& uptr : active_screen()->level_data.oblist)
 				{
-				    walker* w = uptr.get();
-					if (w &&
-					        (w->team_num == control->team_num) && w->is_friendly(control)
-					   )
+					walker* w = uptr.get();
+					if (w && (w->team_num == control->team_num) && w->is_friendly(control))
 					{
-						// Remove any current foe ..
 						w->leader = control;
 						w->foe = nullptr;
 						w->action = ACTION_FOLLOW;
@@ -685,330 +823,82 @@ short viewscreen::input(const SDL_Event& event)
 				}
 				active_screen()->do_notify("SUMMONING DEFENSE!", control);
 				break;
-			case ACTION_FOLLOW:  // turn back to normal mode..
-				for(auto& uptr : active_screen()->level_data.oblist)
+			case ACTION_FOLLOW:
+				for (auto& uptr : active_screen()->level_data.oblist)
 				{
-				    walker* w = uptr.get();
+					walker* w = uptr.get();
 					if (w && (w->query_order() == Order::Living) &&
-					        (w->query_act_type() != ACT_CONTROL) &&
-					        (w->team_num == control->team_num)
-					   )
+							(w->query_act_type() != ACT_CONTROL) &&
+							(w->team_num == control->team_num))
 					{
-						// Set to normal operation
 						w->action = 0;
 					}
 				}
-				control->action = 0; // for our reference
+				control->action = 0;
 				active_screen()->do_notify("RELEASING MEN!", control);
 				break;
 			default:
 				control->action = 0;
 				break;
-		} // end of switch for action mode
-		
-	} // end of summon team defense
-
-
-
-
-	// Before here, all keys should check for !KEY_CHEAT
-
-	// Cheat keys .. using control
-	if (isPlayerHoldingKey(mynum, KEY_CHEAT) && CHEAT_MODE)
-	{
-		// Change our team :)
-		if (changedteam[mynum] && !didPlayerPressKey(mynum, KEY_SWITCH, event))
-			changedteam[mynum] = 0;
-		if (didPlayerPressKey(mynum, KEY_SWITCH, event) && !changedteam[mynum] )
-		{
-			changedteam[mynum] = 1;  // to debounce keys
-			
-			walker* result = nullptr;
-			//              control = nullptr;
-			control->user = -1;
-			control->set_act_type(ACT_RANDOM); // hope this works
-            
-            short oldteam = active_screen()->save_data.my_team;
-            
-            do
-            {
-                active_screen()->save_data.my_team++;
-                active_screen()->save_data.my_team %= MAX_TEAM;
-                
-                for(auto& uptr : active_screen()->level_data.oblist)
-                {
-                    walker* w = uptr.get();
-                    if ( (w->team_num == active_screen()->save_data.my_team) &&
-                            (w->query_order() == Order::Living)
-                       )
-                    {
-                        result = w;
-                        break;  // out of loop; we found someone
-                    }
-                }
-            }
-            while(result == nullptr && active_screen()->save_data.my_team != oldteam);
-            
-            if(result != nullptr)
-                control = result;
-            
-			control->user = static_cast<signed char>(mynum);
-			control->set_act_type(ACT_CONTROL);
-		} // end of change team
-
-		if (query_key_event(SDLK_F12, event)) // kill living bad guys
-		{
-			for(auto& uptr : active_screen()->level_data.oblist)
-			{
-			    walker* w = uptr.get();
-				if (w && w->query_order() == Order::Living &&
-					        !control->is_friendly(w) )
-						//w->team_num != control->team_num)
-                {
-                    w->stats()->hitpoints = -1;
-                    control->attack(w);
-                    w->death();
-                    //w->dead = 1;
-                }
-			}
 		}
+	}
 
+	// --- Cheat: change team (event-driven) ---
+	// Note: cheat keys that use raw SDL keycodes (F12, bracket keys, etc.)
+	// remain in viewscreen::input() because they need query_key_event().
 
-		if (query_key_event(SDLK_RIGHTBRACKET, event)) // up level
-		{
-			control->stats()->level++;
-			//clear_key_code(SDLK_RIGHTBRACKET);
-		}//end up level
-
-		if (query_key_event(SDLK_LEFTBRACKET, event)) // down level
-		{
-			if (control->stats()->level > 1)
-				control->stats()->level--;
-			//clear_key_code(SDLK_LEFTBRACKET);
-		}//end down level
-
-		if (query_key_event(SDLK_F1, event)) // freeze time
-		{
-			active_screen()->enemy_freeze += 50;
-			set_palette(active_screen()->bluepalette);
-			//clear_key_code(SDLK_F1);
-		}//end freeze time
-
-		if (query_key_event(SDLK_F2, event)) // generate magic shield
-		{
-			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-			newob->owner = control;
-			newob->team_num = control->team_num;
-			newob->ani_type = 1; // dummy, non-zero value
-			newob->lifetime = 200;
-			//clear_key_code(SDLK_F2);
-		}//end generate magic shield
-
-		if (query_key_event(SDLK_f, event))  // ability to fly
-		{
-			if (control->stats()->query_bit_flags(BIT_FLYING))
-				control->stats()->set_bit_flags(BIT_FLYING,0);
-			else
-				control->stats()->set_bit_flags(BIT_FLYING,1);
-			//clear_key_code(SDLK_f);
-		} //end flying
-
-		if (query_key_event(SDLK_h, event)) // give controller lots of hitpoints
-		{
-			control->stats()->hitpoints += 100;
-			active_screen()->control_hp += 100;  // Why not just reset from the above for sanity's sake?
-		} //end hitpoints
-
-		if (query_key_event(SDLK_i, event))  // give invincibility
-		{
-			if (control->stats()->query_bit_flags(BIT_INVINCIBLE))
-				control->stats()->set_bit_flags(BIT_INVINCIBLE,0);
-			else
-				control->stats()->set_bit_flags(BIT_INVINCIBLE,1);
-			//clear_key_code(SDLK_i);
-		} // end invincibility
-
-		if (query_key_event(SDLK_m, event)) // give controller lots of magicpoints
-		{
-			control->stats()->magicpoints += 150;
-		} // end magic points
-
-		if (query_key_event(SDLK_s, event)) // give us faster speed ..
-		{
-			control->speed_bonus_left = control->speed_bonus_left + 20;
-			control->speed_bonus = control->normal_stepsize;
-		}
-
-			if (query_key_event(SDLK_t, event)) // transform to new shape
-			{
-				Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->query_family())) + 1) % NUM_FAMILIES;
-				control->transform_to(control->query_order(), family);
-				//clear_key_code(SDLK_t);
-			} //end transform
-
-		if (query_key_event(SDLK_v, event)) // invisibility
-		{
-			if (control->invisibility_left < 3000)
-				control->invisibility_left = control->invisibility_left + 100;
-		}
-
-	} //end of cheat keys
-
-
-	// Make sure we're not in use by another player
+	// --- Ensure correct user assignment ---
 	if (control->user != mynum)
-		return 1;
-
-	// if we changed control characters
-	if (control != oldcontrol)
-		control->stats()->clear_command();
-
-	// If we're frozen ..
-	if (control->dead || control->stats()->frozen_delay)
-	{
-		return 1;
-	}
-
-	// Movement, etc.
-	// Make sure we're not performing some queued action ..
-	if (control->stats()->commands.empty())
-	{
-	    #ifdef USE_TOUCH_INPUT
-	    // Treat this as an action, not a modifier
-		if (didPlayerPressKey(mynum, KEY_SHIFTER, event))
-        {
-            control->shifter_down = 1;
-			control->special();
-			control->shifter_down = 0;
-        }
-	    #else
-	    control->shifter_down = isPlayerHoldingKey(mynum, KEY_SHIFTER);
-        #endif
-
-		if (didPlayerPressKey(mynum, KEY_SPECIAL, event))
-		{
-			control->special();
-		}
-
-		// Standard fire
-		if (didPlayerPressKey(mynum, KEY_FIRE, event))
-		{
-			control->init_fire();
-		}
-	} // end of check for queued actions...
-
-	return 1;
-}
-
-short viewscreen::continuous_input()
-{
-	//short i;
-	//short step;
-	walker  * oldcontrol = control; // So we know if we changed guys
-
-		if (control && control->user == -1)
-		{
-			control->set_act_type(ACT_CONTROL);
-			control->user = static_cast<signed char>(mynum);
-			control->stats()->clear_command();
-		}
-
-	if (!control || control->dead)
-	{
-		control = find_next_control();
-
-		if (!control)
-			return active_screen()->endgame(1);
-
-		if (control->user == -1)
-			control->user = static_cast<signed char>(mynum);
-		control->set_act_type(ACT_CONTROL);
-		active_screen()->control_hp = control->stats()->hitpoints;
-	}
-
-	if (control && control->bonus_rounds) // do we have extra rounds?
-	{
-		control->bonus_rounds = control->bonus_rounds - 1;
-		
-		if (control->lastx || control->lasty)
-			control->walk();
-	}
-
-	
-
-
-	// Make sure we haven't yelled recently (this is here because it is guaranteed to run exactly once each frame)
-	if (control->yo_delay > 0)
-		control->yo_delay = control->yo_delay - 1;
-
-	// Before here, all keys should check for !KEY_CHEAT
-
-
-	// Make sure we're not in use by another player
-	if (control->user != mynum)
-		return 1;
-
+		return;
 
 	if (control->ani_type != ANI_WALK)
-	{
 		control->animate();
-	}
 
-	// if we changed control characters
 	if (control != oldcontrol)
 		control->stats()->clear_command();
 
-	// If we're frozen ..
-	if (control->stats()->frozen_delay)
+	if (control->dead || control->stats()->frozen_delay)
 	{
-		control->stats()->frozen_delay--;
-		return 1;
+		if (control->stats()->frozen_delay)
+			control->stats()->frozen_delay--;
+		return;
 	}
 
-	// Movement, etc.
-	// Make sure we're not performing some queued action ..
+	// --- Movement and actions (held/pressed state) ---
 	if (control->stats()->commands.empty())
 	{
-        #ifndef USE_TOUCH_INPUT
-        // We will handle this as an action in input() instead.
-		if (isPlayerHoldingKey(mynum, KEY_SHIFTER))
-			control->shifter_down = 1;
-		else
-			control->shifter_down = 0;
-        #endif
-
-		/* Danged testing code confused the hell out of me!! (Zardus) Who's idea was to put this in?
-		 * // Testing ..
-		 	if (inputkeyboard[SDLK_r])
-			{
-			  control->stats()->right_walk();
-			}
-		*/
-
-        // Holding Special key for rapid use (MP cost naturally rate-limits)
-		if (isPlayerHoldingKey(mynum, KEY_SPECIAL))
+		#ifndef USE_TOUCH_INPUT
+		control->shifter_down = pi.is_held(InputAction::Shift) ? 1 : 0;
+		#else
+		if (pi.was_pressed(InputAction::Shift))
 		{
+			control->shifter_down = 1;
 			control->special();
+			control->shifter_down = 0;
 		}
-		
-		int walkx = 0;
-		int walky = 0;
-		
-		if (isPlayerHoldingKey(mynum, KEY_UP) || isPlayerHoldingKey(mynum, KEY_UP_LEFT) || isPlayerHoldingKey(mynum, KEY_UP_RIGHT))
-            walky = -1;
-		else if (isPlayerHoldingKey(mynum, KEY_DOWN) || isPlayerHoldingKey(mynum, KEY_DOWN_LEFT) || isPlayerHoldingKey(mynum, KEY_DOWN_RIGHT))
-            walky = 1;
-        
-		if (isPlayerHoldingKey(mynum, KEY_LEFT) || isPlayerHoldingKey(mynum, KEY_UP_LEFT) || isPlayerHoldingKey(mynum, KEY_DOWN_LEFT))
-            walkx = -1;
-		else if (isPlayerHoldingKey(mynum, KEY_RIGHT) || isPlayerHoldingKey(mynum, KEY_DOWN_RIGHT) || isPlayerHoldingKey(mynum, KEY_UP_RIGHT))
-            walkx = 1;
-		
-		if(walkx != 0 || walky != 0)
+		#endif
+
+		// Special (pressed = one-shot)
+		if (pi.was_pressed(InputAction::Special))
+			control->special();
+
+		// Fire (pressed = one-shot)
+		if (pi.was_pressed(InputAction::Fire))
+			control->init_fire();
+
+		// Special held for rapid use
+		if (pi.is_held(InputAction::Special))
+			control->special();
+
+		// Movement from held directional keys
+		int walkx = pi.move_x();
+		int walky = pi.move_y();
+
+		if (walkx != 0 || walky != 0)
 		{
 			control->walkstep(walkx, walky);
 		}
-		else if (control->stats()->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
+		else if (control->stats()->query_bit_flags(BIT_ANIMATE))
 		{
 			control->cycle = control->cycle + 1;
 			if (control->ani[control->curdir][control->cycle] == -1)
@@ -1016,34 +906,10 @@ short viewscreen::continuous_input()
 			control->set_frame(control->ani[control->curdir][control->cycle]);
 		}
 
-		// Standard fire
-		if (isPlayerHoldingKey(mynum, KEY_FIRE))
-		{
+		// Fire held for continuous firing
+		if (pi.is_held(InputAction::Fire))
 			control->init_fire();
-		}
-	} // end of check for queued actions...
-
-    // Visual feedback when hit
-	// Were we hurt?
-	/*
-	  if (control && (active_screen()->control_hp > control->stats()->hitpoints) ) // we were hurt
-	  {
-	         active_screen()->control_hp = control->stats()->hitpoints;
-	//       draw_box(S_LEFT, S_UP, S_RIGHT-1, S_DOWN-1, 44, 1);  // red flash
-	         // Make temporary stain:
-	         blood = active_screen()->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
-	         blood->team_num = control->team_num;
-	         blood->ani_type = ANI_GROW;
-	         blood->setxy(control->xpos,control->ypos);
-	         blood->owner = control;
-	         //blood->draw(this);
-	//       redraw();
-	         //refresh();
-	         //active_screen()->remove_ob(blood);
-	 
-	  }
-	*/
-	return 1;
+	}
 }
 
 void viewscreen::set_display_text(std::string_view newtext, short numcycles)
