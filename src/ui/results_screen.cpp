@@ -13,6 +13,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/render/view.h>
+#include <openglad/render/walker_draw.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -290,7 +291,7 @@ void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // show
     
     viewscreen* view_buf = myscreen->viewob[0].get();
 	mywalker->setxy(centerx - (mywalker->sizex/2) + view_buf->topx - view_buf->xloc, centery - (mywalker->sizey/2) + view_buf->topy - view_buf->yloc);
-	mywalker->draw(view_buf);
+	draw_walker(*mywalker, view_buf);
 }
 
 void TroopResult::draw_guy(int cx, int cy, int frame)

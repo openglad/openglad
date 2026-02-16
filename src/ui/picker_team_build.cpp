@@ -26,6 +26,7 @@
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/render/walker_draw.h>
 
 #include "SDL.h"
 #include <openglad/ui/campaign_picker.h>
@@ -1809,7 +1810,7 @@ Sint32 cycle_guy(Sint32 whichway)
 	mywalker->setxy(centerx - (mywalker->sizex/2), centery - (mywalker->sizey/2));
 	myscreen->draw_button(centerx - 80 + 54, centery - 45 + 26, centerx - 80 + 106, centery - 45 + 64, 1, 1);
 	myscreen->draw_text_bar(centerx - 80 + 56, centery - 45 + 28, centerx - 80 + 104, centery - 45 + 62);
-	mywalker->draw(myscreen->viewob[0].get());
+	draw_walker(*mywalker, myscreen->viewob[0].get());
 }
 // Sets current_guy to 'whichguy' in the teamlist, and
 // returns a COPY of him as the function result

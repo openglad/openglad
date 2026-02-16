@@ -1557,7 +1557,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
             }
             
             // Draw current brush near cursor
-            newob->draw(s->viewob[0].get());
+            draw_walker(*newob, s->viewob[0].get());
         }
         #endif
         
@@ -2645,7 +2645,7 @@ void LevelEditorData::mouse_up(int mx, int my, int old_mx, int old_my, bool& don
                         }  // end of failure to put guy
                         else if(!object_brush.snap_to_grid)
                         {
-                            newob->draw(myscreen->viewob[0].get());
+                            draw_walker(*newob, myscreen->viewob[0].get());
                             myscreen->buffer_to_screen(0, 0, 320, 200);
                             start_time_s = query_timer();
                             MouseState& mymouse = query_mouse_no_poll();
