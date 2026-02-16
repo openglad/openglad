@@ -25,10 +25,11 @@
 #include <openglad/entities/effect_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
+#include <openglad/data/save_data.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/runtime/screen.h>
 #include <cmath>
 #include <format>
 
@@ -46,8 +47,8 @@ static inline cfg_store& active_config()
 }
 } // namespace
 
-// from glad.cpp
-short remaining_foes(screen *myscreen, walker* myguy);
+// from level_data.cpp (LevelData overload for sim/render split)
+short remaining_foes(LevelData& level, walker* myguy);
 
 // Thin adapter: delegates to combat_math pure functions
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
@@ -339,7 +340,7 @@ bool walker::attack(walker  *target)
                         message = std::format("ENEMY DEATH: {} DIED!", target->stats()->name);
                         og::sim::emit_notification(sim_events, message);
                     }
-                    if(remaining_foes(myscreen, this) == 1)  // This is the last foe
+                    if(remaining_foes(*sim_level, this) == 1)  // This is the last foe
                     {
                         message = "All foes defeated!";
                         og::sim::emit_notification(sim_events, message);

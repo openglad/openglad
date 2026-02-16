@@ -108,22 +108,13 @@ void glad_main(Sint32 playermode)
 #endif
 }
 
-// remaining_foes returns # of livings left not on control's team.
+// remaining_foes (LevelData overload) is in level_data.cpp.
+// This screen* overload delegates to it for backward compatibility.
+short remaining_foes(LevelData& level, walker* myguy);
+
 short remaining_foes(screen* s, walker* myguy)
 {
-    short myfoes = 0;
-
-    const auto& foelist = s->level_data.oblist;
-    for (auto& uptr : foelist)
-    {
-        walker* w = uptr.get();
-        if (w && !w->dead &&
-            (w->query_order() == Order::Living) &&
-            !myguy->is_friendly(w))
-            myfoes++;
-    }
-
-    return myfoes;
+    return remaining_foes(s->level_data, myguy);
 }
 
 // remaining_team returns # of livings left on team myteam.

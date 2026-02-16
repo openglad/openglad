@@ -112,6 +112,7 @@ public:
     short time_bonus_limit;  // frames until you get no time bonus
     PixieData grid;
     Sint32 pixmaxx, pixmaxy;
+    short level_done = 0;  // Set by sim tick: 0=foes remain, 1=all foes dead+exit, 2=no foes
     
     smoother mysmoother;
     std::unique_ptr<loader> myloader;
@@ -159,6 +160,7 @@ public:
     walker* find_nearest_player(walker* ob);
     std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
     std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
+    std::list<walker*> find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
     std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
 
     void create_new_grid();
@@ -176,3 +178,9 @@ public:
 private:
     IoError last_io_error_ = IoError::None;
 };
+
+// Read a scenario title from a .fss file. Returns "none" on failure.
+std::string get_scenario_title(const char* filename);
+
+// Count living foes not friendly to the given walker.
+short remaining_foes(LevelData& level, walker* myguy);

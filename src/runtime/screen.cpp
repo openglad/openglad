@@ -475,6 +475,16 @@ bool screen::act()
 			case og::sim::EventKind::RequestRedraw:
 				redrawme = 1;
 				break;
+			case og::sim::EventKind::EndGame:
+				events.clear();
+				return endgame(static_cast<short>(ev.a),
+				               static_cast<short>(static_cast<std::int32_t>(ev.b)));
+			case og::sim::EventKind::DamageTile:
+				damage_tile(static_cast<short>(ev.a), static_cast<short>(ev.b));
+				break;
+			case og::sim::EventKind::SetEnd:
+				end = 1;
+				break;
 			default:
 				break;
 		}
@@ -483,6 +493,7 @@ bool screen::act()
 
 	// Handle level completion / game ending
 	level_done = result.level_done;
+	level_data.level_done = result.level_done;
 
 	if (result.game_ended && !end)
 	{

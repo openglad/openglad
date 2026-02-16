@@ -20,7 +20,6 @@
 
 #include <openglad/legacy/base.h>
 #include <openglad/entities/obmap.h>
-#include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>

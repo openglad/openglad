@@ -67,8 +67,6 @@ extern Sint32 calculate_level(Uint32 temp_exp);
 extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
 extern Sint32 current_difficulty;
 
-// from glad.cpp
-short remaining_foes(screen *myscreen, walker* myguy);
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
 walker::walker(const PixieData& data)
@@ -1370,7 +1368,13 @@ bool walker::death()
 			        && (sim_level->type & SCEN_TYPE_SAVE_ALL)
 			        && (stats_->name.size()) // we were named
 			   )
-				return myscreen->endgame(SCEN_TYPE_SAVE_ALL); // failed
+			{
+				// Emit EndGame event instead of calling screen directly.
+				// The runtime layer handles this after the sim tick.
+				og::sim::emit_event(sim_events, og::sim::EventKind::EndGame,
+				                    SCEN_TYPE_SAVE_ALL, static_cast<std::uint32_t>(-1));
+				return true;
+			}
 			{
 				auto* fd = get_family_descriptor(family);
 				if (fd && fd->on_death)

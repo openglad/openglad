@@ -1881,6 +1881,66 @@ std::string LevelData::get_description_line(int i)
     return *e;
 }
 
+// ---- Scenario title reader (moved from screen for sim/render split) ----
+
+std::string get_scenario_title(const char* filename)
+{
+    if (filename == nullptr || filename[0] == '\0')
+        return "none";
+
+    std::string tempfile = std::string(filename) + ".fss";
+    SDL_RWops* infile = open_read_file("scen/", tempfile.c_str());
+    if (infile == nullptr)
+        return "none";
+
+    char temptext[4] = {};
+    char versionnumber = 0;
+    char gridname[8] = {};
+    char buffer[31] = {};
+    std::string result = "none";
+
+    if (!rw_read_exact_or_log(infile, temptext, 1, 3) ||
+        std::string(temptext, 3) != "FSS")
+    {
+        SDL_RWclose(infile);
+        return result;
+    }
+    if (!rw_read_exact_or_log(infile, &versionnumber, 1, 1) || versionnumber < 6)
+    {
+        SDL_RWclose(infile);
+        return result;
+    }
+    if (!rw_read_exact_or_log(infile, gridname, 1, 8))
+    {
+        SDL_RWclose(infile);
+        return result;
+    }
+    if (!rw_read_exact_or_log(infile, buffer, 1, 30))
+    {
+        SDL_RWclose(infile);
+        return result;
+    }
+    result = std::string(buffer);
+    SDL_RWclose(infile);
+    return result;
+}
+
+// ---- remaining_foes (moved from glad_gameplay for sim/render split) ----
+
+short remaining_foes(LevelData& level, walker* myguy)
+{
+    short myfoes = 0;
+    for (auto& uptr : level.oblist)
+    {
+        walker* w = uptr.get();
+        if (w && !w->dead &&
+            (w->query_order() == Order::Living) &&
+            !myguy->is_friendly(w))
+            myfoes++;
+    }
+    return myfoes;
+}
+
 // ---- Collision / passability queries ----
 
 static constexpr short MAX_SPREAD = 10;
@@ -2305,6 +2365,34 @@ std::list<walker*> LevelData::find_foes_in_range(std::list<std::unique_ptr<walke
 		        (w->query_order() == Order::Living ||
 		         w->query_order() == Order::Generator)
 		        && (ob->is_friendly(w) == 0)
+		   )
+		{
+			if (ob->distance_to_ob(w) <= range)
+			{
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
+
+	return result;
+}
+
+std::list<walker*> LevelData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
+                                      Sint32* howmany, walker* ob)
+{
+    std::list<walker*> result;
+    *howmany = 0;
+
+	if(!ob)
+		return result;
+
+	for(auto& uptr : somelist)
+	{
+	    walker* w = uptr.get();
+		if (w && !w->dead &&
+		        (w->query_order() == Order::Weapon)
+		        && ( ob->is_friendly(w) )
 		   )
 		{
 			if (ob->distance_to_ob(w) <= range)

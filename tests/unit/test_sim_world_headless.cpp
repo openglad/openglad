@@ -165,6 +165,100 @@ OG_UNIT_TEST(test_sim_world_owns_rng)
     OG_ASSERT(world1.rng().state() != world2.rng().state());
 }
 
+// --- EndGame, DamageTile, SetEnd event kinds (Phase 2: G5, G6) ---
+
+OG_UNIT_TEST(test_event_kind_endgame_value)
+{
+    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::EndGame) == 13);
+}
+
+OG_UNIT_TEST(test_event_kind_damage_tile_value)
+{
+    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::DamageTile) == 14);
+}
+
+OG_UNIT_TEST(test_event_kind_set_end_value)
+{
+    OG_ASSERT(static_cast<std::uint32_t>(og::sim::EventKind::SetEnd) == 15);
+}
+
+OG_UNIT_TEST(test_emit_endgame_event)
+{
+    og::sim::SimEventLog log;
+    log.set_tick(10);
+    og::sim::emit_event(&log, og::sim::EventKind::EndGame, 0, 5);
+
+    OG_ASSERT(log.size() == 1);
+    const auto& ev = log.events()[0];
+    OG_ASSERT(ev.kind == og::sim::EventKind::EndGame);
+    OG_ASSERT(ev.a == 0);  // ending type: normal
+    OG_ASSERT(ev.b == 5);  // next_level
+    OG_ASSERT(ev.tick == 10);
+}
+
+OG_UNIT_TEST(test_emit_endgame_save_all_failure)
+{
+    // Simulates walker::death() emitting EndGame with SCEN_TYPE_SAVE_ALL
+    og::sim::SimEventLog log;
+    log.set_tick(20);
+    og::sim::emit_event(&log, og::sim::EventKind::EndGame,
+                        4, static_cast<std::uint32_t>(-1));
+
+    OG_ASSERT(log.size() == 1);
+    const auto& ev = log.events()[0];
+    OG_ASSERT(ev.kind == og::sim::EventKind::EndGame);
+    OG_ASSERT(ev.a == 4);  // SCEN_TYPE_SAVE_ALL
+    OG_ASSERT(ev.b == static_cast<std::uint32_t>(-1));  // no next level
+}
+
+OG_UNIT_TEST(test_emit_damage_tile_event)
+{
+    og::sim::SimEventLog log;
+    log.set_tick(15);
+    og::sim::emit_event(&log, og::sim::EventKind::DamageTile, 120, 240);
+
+    OG_ASSERT(log.size() == 1);
+    const auto& ev = log.events()[0];
+    OG_ASSERT(ev.kind == og::sim::EventKind::DamageTile);
+    OG_ASSERT(ev.a == 120);  // x_pixel
+    OG_ASSERT(ev.b == 240);  // y_pixel
+}
+
+OG_UNIT_TEST(test_emit_set_end_event)
+{
+    og::sim::SimEventLog log;
+    log.set_tick(25);
+    og::sim::emit_event(&log, og::sim::EventKind::SetEnd);
+
+    OG_ASSERT(log.size() == 1);
+    const auto& ev = log.events()[0];
+    OG_ASSERT(ev.kind == og::sim::EventKind::SetEnd);
+    OG_ASSERT(ev.a == 0);
+    OG_ASSERT(ev.b == 0);
+}
+
+OG_UNIT_TEST(test_mixed_stream_with_phase2_events)
+{
+    og::sim::SimEventLog log;
+    log.set_tick(1);
+
+    log.push_sound(10);
+    log.push(og::sim::EventKind::DamageTile, 50, 60);
+    log.push_notification("level complete!");
+    log.push(og::sim::EventKind::SetEnd, 0, 0);
+    log.push(og::sim::EventKind::EndGame, 0, 3);
+
+    OG_ASSERT(log.size() == 5);
+    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::PlaySound);
+    OG_ASSERT(log.events()[1].kind == og::sim::EventKind::DamageTile);
+    OG_ASSERT(log.events()[1].a == 50);
+    OG_ASSERT(log.events()[1].b == 60);
+    OG_ASSERT(log.events()[2].kind == og::sim::EventKind::Notification);
+    OG_ASSERT(log.events()[3].kind == og::sim::EventKind::SetEnd);
+    OG_ASSERT(log.events()[4].kind == og::sim::EventKind::EndGame);
+    OG_ASSERT(log.events()[4].b == 3);
+}
+
 // --- emit_* with null log is a no-op ---
 
 OG_UNIT_TEST(test_emit_sound_null_log_is_noop)

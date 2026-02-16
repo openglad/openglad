@@ -8,20 +8,9 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 Sint32 compute_explosion_range(Sint32 level, short skip_exit);
 
@@ -49,9 +38,10 @@ static bool explosion_on_death(effect* self)
     auto foelist = self->sim_level->find_in_range(self->sim_level->oblist, 15+generic,
         &howmany, self);
 
-    // Damage our tile location ..
-    active_screen()->damage_tile( static_cast<short>(self->xpos+(self->sizex/2)),
-        static_cast<short>(self->ypos+(self->sizey/2)) );
+    // Emit DamageTile event instead of calling screen directly
+    og::sim::emit_event(self->sim_events, og::sim::EventKind::DamageTile,
+        static_cast<std::uint32_t>(self->xpos+(self->sizex/2)),
+        static_cast<std::uint32_t>(self->ypos+(self->sizey/2)));
     if (howmany < 1)
         return false;
 

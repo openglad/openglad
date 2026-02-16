@@ -13,6 +13,9 @@ enum class EventKind : std::uint32_t {
     Notification = 8,  // Text notification: message in text field
     SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
     RequestRedraw = 12,// Force full screen redraw
+    EndGame = 13,      // End game: a=ending type, b=next_level (-1 if unset)
+    DamageTile = 14,   // Damage tile at grid position: a=x_pixel, b=y_pixel
+    SetEnd = 15,       // Signal level end: screen sets end=1
 };
 
 // Simulation event record, pushed into SimEventLog during a tick.
