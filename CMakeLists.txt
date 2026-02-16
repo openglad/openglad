@@ -195,6 +195,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/data/save_data.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/sim/sim_world.cpp
+    ${SRC_DIR}/sim/sim_input_handler.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -211,6 +212,7 @@ set(OG_CORE_SOURCES
 set(OG_SIM_SOURCES
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/sim/sim_world.cpp
+    ${SRC_DIR}/sim/sim_input_handler.cpp
 )
 
 set(OG_DATA_SOURCES
@@ -851,6 +853,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
         )
         configure_openglad_library(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
@@ -1032,6 +1035,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
