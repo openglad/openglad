@@ -94,12 +94,9 @@ The simulation emits semantic events. Runtime/render layers consume them:
 
 ## UI Architecture
 
-### State Machine Pattern
+### Picker Cleanup
 
-- UI controllers use `og::ui::PickerState` to track menu state.
-- UI produces `og::ui::Command` values and `og::ui::MenuViewModel` data.
-- Renderer consumes view models; UI does not own renderer resources directly.
-- `picker_cleanup_resources()` centralizes picker resource cleanup (no screen destruction).
+- `picker_cleanup_resources()` in `picker.cpp` centralizes picker resource cleanup (no screen destruction).
 
 ## Constants and Types
 

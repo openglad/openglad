@@ -1,7 +1,6 @@
 #pragma once
 
 #include <openglad/sim/event.h>
-#include <openglad/sim/sim_commands.h>
 
 #include <cstdint>
 #include <vector>

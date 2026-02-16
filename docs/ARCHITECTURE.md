@@ -107,9 +107,8 @@ Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notific
 |------|---------|
 | `sim/sim_world.cpp` | `SimWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
 | `sim/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
-| `sim/sim_commands.h` | `PlayerCommand` flags, `PlayerInput`, `CommandSnapshot` — abstract input types |
 | `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
-| `sim/event.h` | `EventKind` enum: Damage, Death, Spawn, PlaySound, SpawnFx, TextPopup, LevelComplete, Notification, LevelLost, EntityHeal, SetPalette, RequestRedraw |
+| `sim/event.h` | `EventKind` enum: PlaySound, Notification, SetPalette, RequestRedraw |
 
 ### og_data — Serialization and Persistence
 
@@ -228,7 +227,7 @@ Translates SDL keyboard, mouse, and joystick events into game actions. Manages p
 
 ### og_ui — User Interface
 
-Menu controllers, the team picker, level editor, intro screen, help, and results display. Uses a state machine pattern (`PickerState` enum) and produces `Command` values and `MenuViewModel` data for the renderer.
+Menu controllers, the team picker, level editor, intro screen, help, and results display.
 
 | File | Purpose |
 |------|---------|
@@ -413,24 +412,6 @@ Runtime layer (after SimWorld::tick() returns)
 ```
 
 **`SimEventLog`** is owned by `GameContext` (`ctx().sim_events`), making it globally accessible to entity code without passing extra parameters through the call chain.
-
-### UI State Machine
-
-The picker (team selection) uses an explicit state machine:
-
-```cpp
-enum class PickerState : uint32_t {
-    MainMenu, TeamMenu, HireMenu, TrainMenu, ViewMenu,
-    DetailMenu, LoadMenu, SaveMenu, ProgressMenu,
-    CampaignPicker, LevelPicker, OptionsMenu, HelpScreen,
-    LevelEditor, Playing, Quitting
-};
-
-enum class Command : uint32_t {
-    None, StartGame, QuitApp, NavigateToMenu, NavigateBack,
-    SaveTeam, LoadTeam, HireUnit, DismissUnit, ...
-};
-```
 
 ---
 

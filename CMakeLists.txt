@@ -845,11 +845,8 @@ if(NOT EMSCRIPTEN)
         add_executable(og_unit_tests
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_commands.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_emscripten_logic.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
         )
         configure_openglad_library(og_unit_tests)

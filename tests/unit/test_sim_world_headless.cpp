@@ -101,12 +101,10 @@ OG_UNIT_TEST(test_mixed_event_stream_with_new_types)
     log.push_notification("freeze!");
     log.push(og::sim::EventKind::SetPalette, 1, 0);
     log.push(og::sim::EventKind::RequestRedraw, 0, 0);
-    log.push(og::sim::EventKind::Damage, 5, 15);
 
-    OG_ASSERT(log.size() == 5);
+    OG_ASSERT(log.size() == 4);
     OG_ASSERT(log.events()[0].kind == og::sim::EventKind::PlaySound);
     OG_ASSERT(log.events()[1].kind == og::sim::EventKind::Notification);
     OG_ASSERT(log.events()[2].kind == og::sim::EventKind::SetPalette);
     OG_ASSERT(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
-    OG_ASSERT(log.events()[4].kind == og::sim::EventKind::Damage);
 }
