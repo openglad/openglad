@@ -19,6 +19,13 @@ static void ensure_level_loaded()
 
     myscreen->level_data.id = 1;
     (void)myscreen->level_data.load();
+
+    // The grid .pix file may not be reachable through PhysFS in the test
+    // environment (the campaign archive's pix/ directory can be shadowed by
+    // the filesystem pix/ mount).  Fall back to a synthetic grid so that
+    // passability checks work for teleport and other grid-dependent tests.
+    if (!myscreen->level_data.grid.valid() || myscreen->level_data.pixmaxx <= 0)
+        myscreen->level_data.create_new_grid();
 }
 
 static void teardown_walker_special_test()
