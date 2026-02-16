@@ -164,7 +164,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/runtime/screen.cpp
     ${SRC_DIR}/render/smooth.cpp
     ${SRC_DIR}/platform/sound.cpp
-    ${SRC_DIR}/core/stats.cpp
+    ${SRC_DIR}/runtime/stats.cpp
     ${SRC_DIR}/render/text.cpp
     ${SRC_DIR}/entities/treasure.cpp
     ${SRC_DIR}/render/video.cpp
@@ -208,7 +208,6 @@ list(REMOVE_ITEM GAME_SOURCES_NO_MAIN ${SRC_DIR}/glad.cpp)
 # Keep these lists in sync with GAME_SOURCES_NO_MAIN so targets remain behaviorally equivalent.
 set(OG_CORE_SOURCES
     ${SRC_DIR}/core/combat_math.cpp
-    ${SRC_DIR}/core/stats.cpp
     ${SRC_DIR}/core/util.cpp
 )
 
@@ -292,6 +291,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/runtime/screen.cpp
     ${SRC_DIR}/runtime/guy_create.cpp
+    ${SRC_DIR}/runtime/stats.cpp
 )
 
 set(OG_RENDER_SOURCES

@@ -20,6 +20,7 @@
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
+#include <openglad/legacy/base.h>
 
 short walker::move(short x, short y)
 {

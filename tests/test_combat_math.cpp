@@ -1,8 +1,9 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/runtime/game_context.h>
 #include "test_framework.h"
+#include <cstdint>
 
-static Uint32 rng_return(Uint32 x)
+static std::uint32_t rng_return(std::uint32_t x)
 {
     // Deterministic stub: pretend random(x) returned (x ? x-1 : 0).
     return (x == 0) ? 0u : (x - 1);
@@ -51,7 +52,7 @@ void test_freeze_duration_basic()
 {
     FixedRandom fixed(10);
     // level=5, constitution=0 -> max_time = 40 + 10 = 50 -> rng.next(50) = 10
-    Sint32 result = compute_freeze_duration(5, 0, fixed);
+    std::int32_t result = compute_freeze_duration(5, 0, fixed);
     TEST_ASSERT_EQ(10, (int)result, "freeze duration with no constitution");
 }
 REGISTER_TEST(test_freeze_duration_basic);
@@ -60,7 +61,7 @@ void test_freeze_duration_with_constitution()
 {
     FixedRandom fixed(10);
     // level=5, constitution=42 -> max_time = 40 + 10 - 2 = 48 -> rng.next(48) = 10
-    Sint32 result = compute_freeze_duration(5, 42, fixed);
+    std::int32_t result = compute_freeze_duration(5, 42, fixed);
     TEST_ASSERT_EQ(10, (int)result, "freeze duration with constitution");
 }
 REGISTER_TEST(test_freeze_duration_with_constitution);
@@ -69,7 +70,7 @@ void test_freeze_duration_high_constitution_clamps()
 {
     FixedRandom fixed(999);
     // level=1, constitution=2100 -> max_time = 40 + 2 - 100 = -58 -> clamps to 0
-    Sint32 result = compute_freeze_duration(1, 2100, fixed);
+    std::int32_t result = compute_freeze_duration(1, 2100, fixed);
     TEST_ASSERT_EQ(0, (int)result, "freeze duration clamps to 0 when constitution overwhelms");
 }
 REGISTER_TEST(test_freeze_duration_high_constitution_clamps);
@@ -78,7 +79,7 @@ void test_freeze_duration_zero_level()
 {
     FixedRandom fixed(5);
     // level=0, constitution=0 -> max_time = 40 -> rng.next(40) = 5
-    Sint32 result = compute_freeze_duration(0, 0, fixed);
+    std::int32_t result = compute_freeze_duration(0, 0, fixed);
     TEST_ASSERT_EQ(5, (int)result, "freeze duration at level 0");
 }
 REGISTER_TEST(test_freeze_duration_zero_level);
@@ -139,7 +140,7 @@ void test_charm_duration_positive_diff()
 {
     FixedRandom fixed(10);
     // level_diff=3 -> generic = 3 -> rng(60) = 10 -> result = 25 + 10 = 35
-    Sint32 result = compute_charm_duration(3, fixed);
+    std::int32_t result = compute_charm_duration(3, fixed);
     TEST_ASSERT_EQ(35, (int)result, "charm duration with positive level diff");
 }
 REGISTER_TEST(test_charm_duration_positive_diff);
@@ -148,7 +149,7 @@ void test_charm_duration_zero_diff()
 {
     FixedRandom fixed(99);
     // level_diff=0 -> generic = 0 -> rng(0) = 0 -> result = 25
-    Sint32 result = compute_charm_duration(0, fixed);
+    std::int32_t result = compute_charm_duration(0, fixed);
     TEST_ASSERT_EQ(25, (int)result, "charm duration with zero level diff");
 }
 REGISTER_TEST(test_charm_duration_zero_diff);
@@ -157,7 +158,7 @@ void test_charm_duration_negative_diff()
 {
     FixedRandom fixed(99);
     // level_diff=-5 -> generic = 0 (clamped) -> rng(0) = 0 -> result = 25
-    Sint32 result = compute_charm_duration(-5, fixed);
+    std::int32_t result = compute_charm_duration(-5, fixed);
     TEST_ASSERT_EQ(25, (int)result, "charm duration with negative level diff clamps to base");
 }
 REGISTER_TEST(test_charm_duration_negative_diff);

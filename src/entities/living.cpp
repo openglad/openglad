@@ -29,6 +29,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/gparser.h>
+#include <openglad/legacy/base.h>
 #include <cstring>
 
 // From picker

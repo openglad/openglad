@@ -21,7 +21,7 @@
 //
 #pragma once
 
-#include "SDL.h"
+#include <cstdint>
 #include <cctype>
 #include <optional>
 #include <format>
@@ -59,14 +59,14 @@ void LogError(std::format_string<Args...> fmt, Args&&... args) {
     LogErrorImpl(std::format(fmt, std::forward<Args>(args)...).c_str());
 }
 
-void change_time(Uint32 new_count);
+void change_time(std::uint32_t new_count);
 
 void grab_timer();
 void release_timer();
 void reset_timer();
-Sint32 query_timer();
-Sint32 query_timer_control();
-void time_delay(Sint32);
+std::int32_t query_timer();
+std::int32_t query_timer_control();
+void time_delay(std::int32_t);
 
 // Game speed factor: 1.0 = normal, 2.0 = 2x speed, 0.0 = max speed (no delays)
 extern float g_game_speed_factor;

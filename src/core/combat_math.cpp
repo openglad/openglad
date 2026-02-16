@@ -6,18 +6,18 @@
  * (at your option) any later version.
  */
 #include <openglad/core/combat_math.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/sim/irandom.h>
 #include <cmath>
 
 float compute_base_damage(float base_damage, RandomU32 rng)
 {
     if (!rng)
-        rng = [](Uint32 x) -> Uint32 { return (x == 0) ? 0u : 0u; };
+        rng = [](std::uint32_t x) -> std::uint32_t { return (x == 0) ? 0u : 0u; };
 
     float d = base_damage;
     float sqrtd = sqrtf(d);
     // floor(sqrtd) from original implementation; random(0) should produce 0.
-    return d - sqrtd / 2.0f + static_cast<float>(rng(static_cast<Uint32>(floorf(sqrtd))));
+    return d - sqrtd / 2.0f + static_cast<float>(rng(static_cast<std::uint32_t>(floorf(sqrtd))));
 }
 
 float compute_damage_reduction(float incoming_damage, float target_armor)
@@ -43,15 +43,15 @@ float compute_base_damage(float base_damage, IRandom& rng)
 {
     float d = base_damage;
     float sqrtd = sqrtf(d);
-    return d - sqrtd / 2.0f + static_cast<float>(rng.next(static_cast<Uint32>(floorf(sqrtd))));
+    return d - sqrtd / 2.0f + static_cast<float>(rng.next(static_cast<std::uint32_t>(floorf(sqrtd))));
 }
 
 // FAERIE_FREEZE_TIME is 40 (from stats.h)
-static constexpr Sint32 FREEZE_BASE_TIME = 40;
+static constexpr std::int32_t FREEZE_BASE_TIME = 40;
 
-Sint32 compute_freeze_duration(Sint32 level, Sint32 constitution, IRandom& rng)
+std::int32_t compute_freeze_duration(std::int32_t level, std::int32_t constitution, IRandom& rng)
 {
-    Sint32 max_time;
+    std::int32_t max_time;
     if (constitution > 0)
         max_time = FREEZE_BASE_TIME + (level * 2) - (constitution / 21);
     else
@@ -60,33 +60,33 @@ Sint32 compute_freeze_duration(Sint32 level, Sint32 constitution, IRandom& rng)
     if (max_time <= 0)
         return 0;
 
-    Sint32 result = static_cast<Sint32>(rng.next(static_cast<Uint32>(max_time)));
+    std::int32_t result = static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(max_time)));
     return (result < 0) ? 0 : result;
 }
 
-HealResult compute_heal_amount(Sint32 magicpoints, Sint32 level, IRandom& rng)
+HealResult compute_heal_amount(std::int32_t magicpoints, std::int32_t level, IRandom& rng)
 {
-    Sint32 base = magicpoints / 4 + static_cast<Sint32>(rng.next(static_cast<Uint32>(magicpoints / 4)));
-    Sint32 cost = base / 2;
+    std::int32_t base = magicpoints / 4 + static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(magicpoints / 4)));
+    std::int32_t cost = base / 2;
     // Add bonus healing from level
-    Sint32 amount = base + level * 5;
+    std::int32_t amount = base + level * 5;
     return {amount, cost};
 }
 
-Sint32 compute_charm_duration(Sint32 level_diff, IRandom& rng)
+std::int32_t compute_charm_duration(std::int32_t level_diff, IRandom& rng)
 {
-    Sint32 generic = (level_diff > 0) ? level_diff : 0;
-    return 25 + static_cast<Sint32>(rng.next(static_cast<Uint32>(generic * 20)));
+    std::int32_t generic = (level_diff > 0) ? level_diff : 0;
+    return 25 + static_cast<std::int32_t>(rng.next(static_cast<std::uint32_t>(generic * 20)));
 }
 
 RegenTickResult compute_regen_tick(float current, float max_val, float per_round,
-                                   Sint32 current_delay, Sint32 max_delay, bool frozen)
+                                   std::int32_t current_delay, std::int32_t max_delay, bool frozen)
 {
     if (frozen || current >= max_val)
         return {current, current_delay};
 
     float val = current + per_round;
-    Sint32 delay = current_delay + 1;
+    std::int32_t delay = current_delay + 1;
     if (delay >= max_delay) {
         val += 1.0f;
         delay = 0;
@@ -97,8 +97,8 @@ RegenTickResult compute_regen_tick(float current, float max_val, float per_round
 }
 
 HpRegenResult compute_hp_regen_tick(float current_hp, float max_hp, float heal_per_round,
-                                     Sint32 current_heal_delay, Sint32 max_heal_delay,
-                                     Sint32 regen_delay, bool frozen)
+                                     std::int32_t current_heal_delay, std::int32_t max_heal_delay,
+                                     std::int32_t regen_delay, bool frozen)
 {
     if (regen_delay > 0)
         return {current_hp, current_heal_delay, regen_delay - 1};
@@ -108,7 +108,7 @@ HpRegenResult compute_hp_regen_tick(float current_hp, float max_hp, float heal_p
     return {r.new_value, r.new_delay, 0};
 }
 
-short compute_xp_from_attack(Sint32 level_diff, float damage)
+short compute_xp_from_attack(std::int32_t level_diff, float damage)
 {
     float x = static_cast<float>(level_diff);
     float poly = -0.00246795f*powf(x,5) + 0.013243f*powf(x,4)
@@ -120,22 +120,22 @@ short compute_xp_from_attack(Sint32 level_diff, float damage)
     return static_cast<short>(result);
 }
 
-short compute_xp_from_kill(Sint32 level_diff)
+short compute_xp_from_kill(std::int32_t level_diff)
 {
     return compute_xp_from_attack(level_diff, 20.0f);
 }
 
-short compute_xp_from_action(ExpAction action, Sint32 attacker_level, Sint32 target_level,
+short compute_xp_from_action(ExpAction action, std::int32_t attacker_level, std::int32_t target_level,
                              short value, IRandom& rng)
 {
-    Sint32 level_diff = attacker_level - target_level;
+    std::int32_t level_diff = attacker_level - target_level;
     switch (action) {
     case ExpAction::Attack:
         return compute_xp_from_attack(level_diff, static_cast<float>(value));
     case ExpAction::Kill:
         return compute_xp_from_kill(level_diff);
     case ExpAction::Heal:
-        return static_cast<short>(rng.next(static_cast<Uint32>(20 * value)) / attacker_level);
+        return static_cast<short>(rng.next(static_cast<std::uint32_t>(20 * value)) / attacker_level);
     case ExpAction::TurnUndead:
         return static_cast<short>(value * 3);
     case ExpAction::RaiseSkeleton:

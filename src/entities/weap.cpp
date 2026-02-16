@@ -28,6 +28,7 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
+#include <openglad/legacy/base.h>
 #include <format>
 
 weap::weap(const PixieData& data)

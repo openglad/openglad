@@ -20,6 +20,7 @@
 
 #include <openglad/core/stats.h>      // for bit flags, etc.
 #include <openglad/core/util.h>
+#include <openglad/legacy/base.h>     // COMMAND_*, FACE_*, FAMILY_*, ACT_*, myscreen, etc.
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>

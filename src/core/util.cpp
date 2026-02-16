@@ -30,25 +30,13 @@
 #include <optional>
 #include <string>
 #include <sys/stat.h>
-#include <openglad/legacy/base.h>
+#include <SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
 
-#ifdef WINDOWS
-#include "windows.h"
-#include <shlobj.h>
-#include <direct.h>
-
-#ifndef mkdir
-#define mkdir(path, perms) _mkdir(path)
-#endif
-
-#endif
-
-
-Uint32 start_time=0;
-Uint32 reset_value=0;
+std::uint32_t start_time=0;
+std::uint32_t reset_value=0;
 
 float g_game_speed_factor = 1.0f;
 
@@ -112,7 +100,7 @@ void LogErrorImpl(const char* msg)
     SDL_LogMessage(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_ERROR, "%s", msg);
 }
 
-void change_time(Uint32 /*new_count*/)
+void change_time(std::uint32_t /*new_count*/)
 {}
 
 void grab_timer()
@@ -126,23 +114,23 @@ void reset_timer()
     reset_value = SDL_GetTicks();
 }
 
-Sint32 query_timer()
+std::int32_t query_timer()
 {
     // Zardus: why 13.6? With DOS timing, you had to divide 1,193,180 by the desired frequency and
     // that would return ticks / second. Gladiator used to use a frequency of 65536/4 ticks per hour,
     // or 1193180/16383 = 72.3 ticks per second. This translates into 13.6 milliseconds / tick
-    return static_cast<Sint32>((SDL_GetTicks() - reset_value) / 13.6);
+    return static_cast<std::int32_t>((SDL_GetTicks() - reset_value) / 13.6);
 }
 
-Sint32 query_timer_control()
+std::int32_t query_timer_control()
 {
-    return static_cast<Sint32>(SDL_GetTicks() / 13.6);
+    return static_cast<std::int32_t>(SDL_GetTicks() / 13.6);
 }
 
-void time_delay(Sint32 delay)
+void time_delay(std::int32_t delay)
 {
     if (delay < 0) return;
-    SDL_Delay(static_cast<Uint32>(delay * 13.6));
+    SDL_Delay(static_cast<std::uint32_t>(delay * 13.6));
 }
 
 void lowercase(char * str)

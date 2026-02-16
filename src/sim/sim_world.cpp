@@ -9,6 +9,7 @@
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
+#include <openglad/legacy/base.h>     // FAMILY_EXIT, etc.
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <format>
