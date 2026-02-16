@@ -7,7 +7,7 @@
  */
 #pragma once
 
-#include "SDL.h"
+#include <cstdint>
 
 class walker;
 class weap;
@@ -18,7 +18,7 @@ struct WeaponFamilyDescriptor {
     int fire_sound;           // sound to play when fired (SOUND_FWIP default)
     bool skip_sit_notify;     // true = don't notify when sitting (TREE, BLOOD, DOOR)
     bool is_auto_attackable;  // true = AI auto-attacks this on collision (TREE, GLOW, DOOR)
-    Sint32 init_bit_flags;    // BIT_ flags set on creation in gloader
+    std::int32_t init_bit_flags;    // BIT_ flags set on creation in gloader
     short init_lifetime;      // 0 = no override; GLOW = 350
     char init_ani_type;       // 0 = default; CIRCLE_PROTECTION = 5
 
