@@ -109,6 +109,12 @@ void test_stats_direct_walk_grid_passability_branches()
     walker w(px);
     walker foe(px);
 
+    // The branch refactored walker methods to use the per-instance sim_level
+    // pointer instead of the global myscreen->level_data.  Wire it up so
+    // fire_check -> create_weapon -> sim_level->add_ob() doesn't segfault.
+    w.sim_level = &myscreen->level_data;
+    foe.sim_level = &myscreen->level_data;
+
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.foe = &foe;
