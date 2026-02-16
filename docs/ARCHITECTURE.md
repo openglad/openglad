@@ -39,12 +39,12 @@ openglad/
 │
 ├── src/                    Private implementation
 │   ├── core/               combat_math.cpp, stats.cpp, util.cpp
-│   ├── sim/                simulator.cpp
+│   ├── sim/                simulator, sim_world, sim_event_log
 │   ├── data/               gloader, gparser, level_data, pixie_data, save_data
 │   ├── entities/           walker, living, weap, treasure, effect, guy, obmap
 │   ├── io/                 physfs_api, platform_io, yaml_stream, zip_api
 │   ├── runtime/            screen, game_loop, game_session, game_context, ...
-│   ├── render/             video, view, pixie, pixien, text, radar, pal32, ...
+│   ├── render/             video, view, pixie, pixien, text, radar, pal32, walker_draw, ...
 │   ├── input/              input.cpp, button.cpp
 │   ├── ui/                 picker, level_editor, campaign_picker, intro, help, ...
 │   ├── platform/           sound.cpp
@@ -99,10 +99,20 @@ Pure math, logging, time helpers, and compile-time constants. No SDL, no filesys
 
 Headless, SDL-free simulation layer. Given a seed + input sequence, produces identical state and typed events. This is the foundation for separating game logic from rendering.
 
+The simulation layer has two main entry points:
+- **`SimWorld`** — Used by the live game. `screen::act()` delegates to `SimWorld::tick()`, which executes all entity logic, handles dead entity cleanup, checks level completion, and emits events into a `SimEventLog`. The runtime layer then drains events and dispatches them to sound, HUD, and visual effects.
+- **`Simulator`** — Used for deterministic headless testing. Maintains its own RNG and accumulator, independent of the full game loop. Accepts `CommandSnapshot` (abstract player commands) and produces a stable `State` for cross-run comparison.
+
+Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notification()`, `emit_event()`) instead of making direct rendering/audio calls, completing the decoupling of simulation from presentation.
+
 | File | Purpose |
 |------|---------|
-| `sim/simulator.cpp` | `Simulator::step(InputSnapshot, dt)` — deterministic tick |
-| `sim/event.h` | `EventKind` enum: Damage, Death, Spawn, PlaySound, SpawnFx, TextPopup, LevelComplete |
+| `sim/sim_world.cpp` | `SimWorld::tick()` — live game simulation tick (extracted from `screen::act()`) |
+| `sim/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
+| `sim/sim_commands.h` | `PlayerCommand` flags, `PlayerInput`, `CommandSnapshot` — abstract input types |
+| `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
+| `sim/simulator.cpp` | `Simulator::step(CommandSnapshot, dt)` — deterministic headless tick |
+| `sim/event.h` | `EventKind` enum: Damage, Death, Spawn, PlaySound, SpawnFx, TextPopup, LevelComplete, Notification, LevelLost, EntityHeal, SetPalette, RequestRedraw |
 
 ### og_data — Serialization and Persistence
 
@@ -118,7 +128,7 @@ File format parsing for campaigns, levels, saves, and configuration. Knows file 
 
 ### og_entities — Game Object Hierarchy
 
-All game objects (players, enemies, projectiles, items, effects) derive from `walker`. This module contains entity behavior, AI, combat, movement, and pathfinding.
+All game objects (players, enemies, projectiles, items, effects) derive from `walker`. This module contains entity behavior, AI, combat, movement, and pathfinding. Drawing methods have been extracted to the render layer (`render/walker_draw.cpp`) to enforce the sim/rendering split — entity code no longer depends on viewscreen or video types.
 
 | File | Purpose |
 |------|---------|
@@ -164,7 +174,7 @@ Owns the game session lifecycle, wires services together, manages the game loop 
 
 | File | Purpose |
 |------|---------|
-| `runtime/screen.cpp` | Main game world: entity management, act/redraw cycle |
+| `runtime/screen.cpp` | Game world: delegates to `SimWorld::tick()` for logic, owns redraw/event dispatch |
 | `runtime/game_loop.cpp` | Per-frame loop: `game_frame()` → input → act → render |
 | `runtime/game_session.cpp` | `GameSession` — RAII root owning screen, prefs, RNG |
 | `runtime/game_context.cpp` | `GameContext` — dependency injection container (`ctx()`) |
@@ -178,7 +188,7 @@ Owns the game session lifecycle, wires services together, manages the game loop 
 
 - **`GameSession`** — RAII root for all runtime state. Owns the `screen`, `options`, and RNG. Installs legacy global shims (`myscreen`, `theprefs`). Production `main()` constructs one; tests construct one per test.
 - **`GameContext`** — Dependency injection container. Holds references to screen, prefs, config, RNG, input state, and service interfaces (`IConfigContextService`, `IRenderContextService`, `IInputContextService`). Accessed globally via `ctx()`.
-- **`screen`** — The game world container. Extends `video` (graphics layer). Contains entity lists, `level_data`, `save_data`, and up to 4 `viewscreen` objects for split-screen.
+- **`screen`** — The game world container. Extends `video` (graphics layer). Contains `level_data`, `save_data`, and up to 4 `viewscreen` objects for split-screen. The `act()` method delegates to `SimWorld::tick()` for game logic; `redraw()` handles rendering and event dispatch.
 
 ### og_render — Graphics and Display
 
@@ -195,6 +205,7 @@ SDL2 rendering: pixel buffers, viewports, sprites, text, radar, palette manageme
 | `render/pal32.cpp` | 8-bit to 32-bit palette conversion |
 | `render/smooth.cpp` | Tile edge smoothing algorithm |
 | `render/sai2x.cpp` | SAI2x pixel-art upscaling |
+| `render/walker_draw.cpp` | Entity rendering: `draw_walker()`, `draw_walker_tile()`, `draw_walker_path()`, health bars |
 | `render/graphlib.cpp` | Graphics utility functions |
 
 **Rendering pipeline:**
@@ -202,9 +213,10 @@ SDL2 rendering: pixel buffers, viewports, sprites, text, radar, palette manageme
 screen::redraw()
   → video::clearbuffer()
   → draw tile grid (level_data)
-  → walker::draw() for each visible entity
+  → draw_walker(w, view_buf) for each visible entity  (render layer, not entity layer)
   → score_panel() — HUD overlay (HP, MP, score, specials)
   → radar::draw() — minimap
+  → dispatch_sim_events() — play sounds, show notifications from tick
   → video::buffer_to_screen() — present to SDL window
 ```
 
@@ -290,7 +302,7 @@ Dependencies flow **inward toward purity**. Outer layers depend on inner layers;
 | `og_sim` | `og_core` |
 | `og_data` | `og_core` |
 | `og_io` | `og_core`, vendored I/O libs (physfs, libzip, libyaml) |
-| `og_entities` | `og_core`, `og_render` (for pixieN base), micropather |
+| `og_entities` | `og_core`, `og_sim` (event emission), `og_render` (for pixieN base), micropather |
 | `og_runtime` | `og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`, `og_render`, `og_input` |
 | `og_render` | `og_core`, SDL2 |
 | `og_input` | `og_core`, SDL2 |
@@ -302,6 +314,7 @@ Dependencies flow **inward toward purity**. Outer layers depend on inner layers;
 - `og_sim` must NOT include SDL, render, ui, or platform headers
 - `og_data` must NOT depend on screen, UI globals, or rendering types
 - `og_core` must NOT depend on any other module
+- `og_entities` must NOT call rendering/audio/UI directly — use `og::sim::emit_*()` helpers instead
 - `og_ui` must NOT directly mutate deep sim internals — it issues commands to runtime
 
 ### Enforcement
@@ -329,6 +342,7 @@ walker
 ├── obmap* myobmap  — spatial hash for collision queries
 ├── commands[]      — AI command queue
 └── virtual methods: act(), animate(), collide(), walk(), fire(), ...
+    (draw methods live in render layer: draw_walker(), draw_walker_tile())
 ```
 
 **`guy`** is the persistent player character record, tracking name, family (class), stats, experience, and level. Stored in `save_data.team_list[]` as `unique_ptr<guy>`.
@@ -365,25 +379,43 @@ GameSession
 │   ├── prefs      — unique_ptr<options>
 │   ├── config     — cfg_store*
 │   ├── rng        — IRandom* (injectable: ProductionRandom, SeededRandom, FixedRandom)
-│   └── input      — InputState (per-frame snapshot)
+│   ├── input      — InputState (per-frame snapshot)
+│   └── sim_events — unique_ptr<SimEventLog> (event accumulator for sim/render decoupling)
 └── legacy shims   — installs myscreen, theprefs globals
 ```
 
-### Simulation Events
+### Simulation Events and Event Log
 
-The `og::sim` module defines typed events for decoupling game logic from rendering/audio:
+The `og::sim` module defines typed events for decoupling game logic from rendering/audio. Entity code emits events during simulation ticks via `SimEventLog`; the runtime layer drains and dispatches them after each tick.
 
 ```cpp
 enum class EventKind : uint32_t {
-    None, Damage, Death, Spawn, PlaySound, SpawnFx, TextPopup, LevelComplete
+    None, Damage, Death, Spawn, PlaySound, SpawnFx, TextPopup,
+    LevelComplete, Notification, LevelLost, EntityHeal, SetPalette, RequestRedraw
 };
 
 struct Event {
     uint32_t tick;
     EventKind kind;
-    uint32_t a, b;  // event-specific payload
+    uint32_t a, b;       // event-specific payload
+    std::string text;    // optional text (for Notification events)
 };
 ```
+
+**Event flow:**
+```
+Entity code (walker::act, combat, specials, treasure pickup, ...)
+  → og::sim::emit_sound(id)           // instead of myscreen->soundp->play_sound()
+  → og::sim::emit_notification(msg)   // instead of viewob->set_display_text()
+  → og::sim::emit_event(kind, a, b)   // generic structured event
+  → SimEventLog accumulates events
+       ↓
+Runtime layer (after SimWorld::tick() returns)
+  → drain SimEventLog
+  → dispatch: play sounds, show HUD text, trigger visual FX
+```
+
+**`SimEventLog`** is owned by `GameContext` (`ctx().sim_events`), making it globally accessible to entity code without passing extra parameters through the call chain.
 
 ### UI State Machine
 
@@ -432,15 +464,18 @@ game_frame(screen& s, GameLoopFrameState& st)
   ├── SDL_PollEvent → screen::input()    Handle input events
   ├── screen::continuous_input()         Process held keys
   ├── screen::act()                      Game logic tick
-  │   ├── for each entity in oblist:
-  │   │   └── walker::act()              AI, movement, combat, specials
-  │   ├── collision resolution (obmap)
-  │   ├── treasure/effect lifecycle
-  │   └── check level completion
+  │   └── SimWorld::tick(level, save, ...)  Deterministic simulation
+  │       ├── for each entity in oblist:
+  │       │   └── walker::act()            AI, movement, combat, specials
+  │       ├── dead entity cleanup
+  │       ├── treasure/effect lifecycle
+  │       ├── check level completion
+  │       └── emit events → SimEventLog
+  ├── dispatch_sim_events()              Play sounds, show notifications
   └── screen::redraw()                   Render frame
       ├── Clear buffer
       ├── Draw tile grid
-      ├── Draw entities (sorted by layer)
+      ├── draw_walker() for each visible entity (render layer)
       ├── Score panel / HUD
       ├── Radar minimap
       └── Present to display
@@ -661,7 +696,7 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | File | Purpose |
 |------|---------|
 | `src/glad.cpp` | **Entry point.** `main()`, Emscripten frame wrapper, game state machine |
-| `src/runtime/screen.cpp` | Game world: entity lifecycle, `act()` game logic, `redraw()` |
+| `src/runtime/screen.cpp` | Game world: `act()` delegates to `SimWorld::tick()`, `redraw()` renders + dispatches events |
 | `src/runtime/game_loop.cpp` | Per-frame loop: `game_frame()` and `game_frame_with_result()` |
 | `src/runtime/game_session.cpp` | RAII root: creates screen, prefs, installs legacy globals |
 | `src/runtime/game_context.cpp` | `GameContext` and `ctx()` global accessor |
@@ -674,7 +709,10 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/data/level_data.cpp` | Level file loading and saving |
 | `src/data/save_data.cpp` | Save game serialization |
 | `src/input/input.cpp` | Keyboard/controller event handling |
+| `src/sim/sim_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
+| `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
 | `src/sim/simulator.cpp` | Deterministic headless simulation |
+| `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
 | `CMakeLists.txt` | Build system — module targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |
 | `docs/architecture-rules.md` | Enforced module dependency rules |
