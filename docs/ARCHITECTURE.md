@@ -386,15 +386,18 @@ The `og::sim` module defines typed events for decoupling game logic from renderi
 
 ```cpp
 enum class EventKind : uint32_t {
-    None, Damage, Death, Spawn, PlaySound, SpawnFx, TextPopup,
-    LevelComplete, Notification, LevelLost, EntityHeal, SetPalette, RequestRedraw
+    None = 0,
+    PlaySound = 4,     // Request sound: a=sound_id, b=0
+    Notification = 8,  // Text notification: message in text field
+    SetPalette = 11,   // Request palette change: a=0 normal, a=1 blue/freeze
+    RequestRedraw = 12 // Force full screen redraw
 };
 
 struct Event {
     uint32_t tick;
     EventKind kind;
     uint32_t a, b;       // event-specific payload
-    std::string text;    // optional text (for Notification events)
+    std::string text;    // optional text payload for Notification events
 };
 ```
 
@@ -408,7 +411,7 @@ Entity code (walker::act, combat, specials, treasure pickup, ...)
        ↓
 Runtime layer (after SimWorld::tick() returns)
   → drain SimEventLog
-  → dispatch: play sounds, show HUD text, trigger visual FX
+  → dispatch: play sounds, show notifications, apply palette/redraw requests
 ```
 
 **`SimEventLog`** is owned by `GameContext` (`ctx().sim_events`), making it globally accessible to entity code without passing extra parameters through the call chain.

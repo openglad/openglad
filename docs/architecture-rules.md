@@ -81,7 +81,7 @@ These globals exist for backward compatibility. Prefer the `GameContext` accesso
 
 - `og::sim::SimWorld::tick()` runs headless, SDL-free game logic.
 - `screen::act()` delegates to `SimWorld::tick()`, which executes entity logic, dead entity cleanup, and level completion checks.
-- Events use `og::sim::EventKind` enum (Damage, Death, Spawn, PlaySound, Notification, etc.).
+- Events use `og::sim::EventKind` enum (PlaySound, Notification, SetPalette, RequestRedraw).
 - Entity code emits events via `og::sim::emit_sound()`, `emit_notification()`, `emit_event()` helpers.
 - `SimEventLog` accumulates events during the tick; runtime drains and dispatches after.
 
@@ -89,8 +89,9 @@ These globals exist for backward compatibility. Prefer the `GameContext` accesso
 
 The simulation emits semantic events. Runtime/render layers consume them:
 - Sound requests → audio subsystem
-- Visual FX → renderer
-- Text popups → UI layer
+- Notifications → HUD/UI text layer
+- Palette changes (`SetPalette`) → renderer palette state
+- Redraw requests (`RequestRedraw`) → runtime/render frame invalidation
 
 ## UI Architecture
 
