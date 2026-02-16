@@ -34,14 +34,14 @@ struct State final {
 // - emits Events into an internal event stream
 // - produces a stable State
 //
-// The Simulator is the public API for deterministic game simulation.
-// Internally it uses SimWorld for the actual entity tick logic when
-// a game screen is available. For headless testing (no screen),
-// it maintains its own deterministic accumulator.
+// The Simulator is the public API for deterministic headless testing.
+// It maintains its own deterministic accumulator and RNG, independent
+// of the full game loop. For the live game, screen::act() delegates
+// to SimWorld::tick() instead.
 //
 // Architecture:
 //   Input layer → CommandSnapshot → Simulator::step()
-//   Simulator → SimWorld::tick() → TickResult + Events
+//   Simulator → deterministic accumulator → State + Events
 //   Events → Runtime dispatcher → Sound, UI, Visual FX
 class Simulator final {
 public:

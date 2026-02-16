@@ -67,6 +67,7 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
         events.push(EventKind::SetPalette, 0, 0);
 
     // --- Entity act phase ---
+    bool printed_time = false;
     for (auto& uptr : level.oblist)
     {
         walker* ob = uptr.get();
@@ -89,10 +90,11 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
         }
         else // enemy livings are frozen
         {
-            if (!(enemy_freeze % 10) && result.level_done == 2)
+            if (!(enemy_freeze % 10) && !printed_time)
             {
                 std::string obmessage = std::format("TIME LEFT: {}", enemy_freeze);
-                events.push_notification(obmessage);
+                events.push_notification(obmessage, 10);
+                printed_time = true;
             }
             if (ob && !ob->dead &&
                 (((ob->query_order() != Order::Living) &&

@@ -453,7 +453,12 @@ bool screen::act()
 				break;
 			case og::sim::EventKind::Notification:
 				if (!ev.text.empty())
-					do_notify(ev.text, nullptr);
+				{
+					short duration = ev.a ? static_cast<short>(ev.a)
+					                      : STANDARD_TEXT_TIME;
+					for (short vi = 0; vi < numviews; vi++)
+						viewob[vi]->set_display_text(ev.text, duration);
+				}
 				break;
 			case og::sim::EventKind::SetPalette:
 				if (ev.a == 0)

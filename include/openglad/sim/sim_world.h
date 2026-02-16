@@ -34,8 +34,8 @@ struct TickResult {
 // SimWorld: deterministic simulation tick logic.
 //
 // Extracts the core game logic from screen::act() into a pure simulation
-// interface. Given the current level state, entity lists, and input
-// commands, it produces a TickResult and emits events via SimEventLog.
+// interface. Given the current level state and entity lists, it produces
+// a TickResult and emits events via SimEventLog.
 //
 // The rendering layer (screen/viewscreen) reads the resulting state
 // for display. Sound and UI notifications are dispatched from the

@@ -24,10 +24,11 @@ inline void emit_sound(std::uint32_t sound_id)
 
 // Emit a text notification event. The runtime event dispatcher will
 // display the text via the HUD/viewscreen system after the simulation tick.
-inline void emit_notification(const std::string& message)
+// If duration is non-zero, it overrides the default display time.
+inline void emit_notification(const std::string& message, std::uint32_t duration = 0)
 {
     if (ctx().sim_events)
-        ctx().sim_events->push_notification(message);
+        ctx().sim_events->push_notification(message, duration);
 }
 
 // Emit a generic simulation event.

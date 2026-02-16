@@ -231,7 +231,7 @@ static bool mage_do_special(walker* self)
                 if (generic > 50)
                     generic = 50;
                 message = std::format("TIME IS FROZEN! ({} rounds)", generic);
-                og::sim::emit_notification(message);
+                og::sim::emit_notification(message, 2);
                 og::sim::emit_event(og::sim::EventKind::RequestRedraw);
                 std::list<walker*> newlist = self->sim_level->find_friends_in_range(
                               self->sim_level->oblist, 30000, &howmany, self);

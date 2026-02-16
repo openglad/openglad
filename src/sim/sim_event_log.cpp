@@ -21,11 +21,12 @@ void SimEventLog::push(EventKind kind, std::uint32_t a, std::uint32_t b)
     events_.push_back(std::move(ev));
 }
 
-void SimEventLog::push_notification(const std::string& message)
+void SimEventLog::push_notification(const std::string& message, std::uint32_t duration)
 {
     Event ev;
     ev.tick = current_tick_;
     ev.kind = EventKind::Notification;
+    ev.a = duration;
     ev.text = message;
     events_.push_back(std::move(ev));
 }
