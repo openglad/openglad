@@ -503,10 +503,10 @@ void create_dataopenglad()
 
 void restore_default_campaigns()
 {
-    #ifndef FORCE_RESTORE_DEFAULT_CAMPAIGNS
-    if(!og::io::physfs_exists("campaigns/org.openglad.gladiator.glad"))
-    #endif
-        copy_file(get_asset_path() + "builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
+    // Always refresh the default campaign from the builtin copy so that stale
+    // archives (e.g. an older format with .png grid files instead of .pix)
+    // don't persist and break grid loading at runtime.
+    copy_file(get_asset_path() + "builtin/org.openglad.gladiator.glad", get_user_path() + "campaigns/org.openglad.gladiator.glad");
 }
 
 void restore_default_settings()
