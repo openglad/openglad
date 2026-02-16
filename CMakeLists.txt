@@ -147,6 +147,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/entities/guy.cpp
     ${SRC_DIR}/ui/help.cpp
     ${SRC_DIR}/input/input.cpp
+    ${SRC_DIR}/input/input_state.cpp
     ${SRC_DIR}/ui/intro.cpp
     ${SRC_DIR}/entities/living.cpp
     ${SRC_DIR}/entities/obmap.cpp
@@ -311,6 +312,7 @@ set(OG_RENDER_SOURCES
 set(OG_INPUT_SOURCES
     ${SRC_DIR}/input/button.cpp
     ${SRC_DIR}/input/input.cpp
+    ${SRC_DIR}/input/input_state.cpp
 )
 
 set(OG_UI_SOURCES
