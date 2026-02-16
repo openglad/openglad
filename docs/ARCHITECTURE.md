@@ -39,7 +39,7 @@ openglad/
 │
 ├── src/                    Private implementation
 │   ├── core/               combat_math.cpp, stats.cpp, util.cpp
-│   ├── sim/                simulator, sim_world, sim_event_log
+│   ├── sim/                sim_world, sim_event_log
 │   ├── data/               gloader, gparser, level_data, pixie_data, save_data
 │   ├── entities/           walker, living, weap, treasure, effect, guy, obmap
 │   ├── io/                 physfs_api, platform_io, yaml_stream, zip_api
@@ -99,9 +99,7 @@ Pure math, logging, time helpers, and compile-time constants. No SDL, no filesys
 
 Headless, SDL-free simulation layer. Given a seed + input sequence, produces identical state and typed events. This is the foundation for separating game logic from rendering.
 
-The simulation layer has two main entry points:
-- **`SimWorld`** — Used by the live game. `screen::act()` delegates to `SimWorld::tick()`, which executes all entity logic, handles dead entity cleanup, checks level completion, and emits events into a `SimEventLog`. The runtime layer then drains events and dispatches them to sound, HUD, and visual effects.
-- **`Simulator`** — Used for deterministic headless testing. Maintains its own RNG and accumulator, independent of the full game loop. Accepts `CommandSnapshot` (abstract player commands) and produces a stable `State` for cross-run comparison.
+`screen::act()` delegates to `SimWorld::tick()`, which executes all entity logic, handles dead entity cleanup, checks level completion, and emits events into a `SimEventLog`. The runtime layer then drains events and dispatches them to sound, HUD, and visual effects.
 
 Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notification()`, `emit_event()`) instead of making direct rendering/audio calls, completing the decoupling of simulation from presentation.
 
@@ -111,7 +109,6 @@ Entity code emits events via `sim_emit.h` helpers (`emit_sound()`, `emit_notific
 | `sim/sim_event_log.cpp` | `SimEventLog` — accumulates events during a tick for deferred dispatch |
 | `sim/sim_commands.h` | `PlayerCommand` flags, `PlayerInput`, `CommandSnapshot` — abstract input types |
 | `sim/sim_emit.h` | Convenience helpers: `emit_sound()`, `emit_notification()`, `emit_event()` |
-| `sim/simulator.cpp` | `Simulator::step(CommandSnapshot, dt)` — deterministic headless tick |
 | `sim/event.h` | `EventKind` enum: Damage, Death, Spawn, PlaySound, SpawnFx, TextPopup, LevelComplete, Notification, LevelLost, EntityHeal, SetPalette, RequestRedraw |
 
 ### og_data — Serialization and Persistence
@@ -711,7 +708,6 @@ The GitHub Actions workflow (`.github/workflows/test.yml`) runs:
 | `src/input/input.cpp` | Keyboard/controller event handling |
 | `src/sim/sim_world.cpp` | Live game simulation tick (extracted from `screen::act()`) |
 | `src/sim/sim_event_log.cpp` | Event accumulator: decouples sim from rendering/audio |
-| `src/sim/simulator.cpp` | Deterministic headless simulation |
 | `src/render/walker_draw.cpp` | Entity draw methods (extracted from `walker.cpp`) |
 | `CMakeLists.txt` | Build system — module targets, test binaries, install rules |
 | `CMakePresets.json` | Build presets for dev, CI, and web |

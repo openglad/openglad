@@ -77,12 +77,13 @@ These globals exist for backward compatibility. Prefer the `GameContext` accesso
 
 ## Simulation Architecture
 
-### Deterministic Sim
+### Simulation Tick
 
-- `og::sim::Simulator` runs headless, SDL-free.
-- Given the same seed + input sequence, produces identical state and events.
-- Events use `og::sim::EventKind` enum (Damage, Death, Spawn, PlaySound, etc.).
-- Runtime feeds inputs to the simulator via `step(InputSnapshot, dt)`.
+- `og::sim::SimWorld::tick()` runs headless, SDL-free game logic.
+- `screen::act()` delegates to `SimWorld::tick()`, which executes entity logic, dead entity cleanup, and level completion checks.
+- Events use `og::sim::EventKind` enum (Damage, Death, Spawn, PlaySound, Notification, etc.).
+- Entity code emits events via `og::sim::emit_sound()`, `emit_notification()`, `emit_event()` helpers.
+- `SimEventLog` accumulates events during the tick; runtime drains and dispatches after.
 
 ### Event Stream
 

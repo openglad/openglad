@@ -192,7 +192,6 @@ set(GAME_SOURCES
     ${SRC_DIR}/ui/campaign_picker.cpp
     ${SRC_DIR}/ui/results_screen.cpp
     ${SRC_DIR}/data/save_data.cpp
-    ${SRC_DIR}/sim/simulator.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/sim/sim_world.cpp
 )
@@ -209,7 +208,6 @@ set(OG_CORE_SOURCES
 )
 
 set(OG_SIM_SOURCES
-    ${SRC_DIR}/sim/simulator.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/sim/sim_world.cpp
 )
@@ -847,13 +845,11 @@ if(NOT EMSCRIPTEN)
         add_executable(og_unit_tests
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_determinism.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_commands.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_world_headless.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_ui_state.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_emscripten_logic.cpp
-            ${CMAKE_SOURCE_DIR}/tests/unit/test_web_sim_portability.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_family_registry.cpp
         )
         configure_openglad_library(og_unit_tests)
@@ -1105,17 +1101,6 @@ if(NOT EMSCRIPTEN)
         )
         set_tests_properties(og_runtime_tests PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        )
-
-        # Emscripten/WASM tests (run via Node.js, skip if emsdk not available)
-        add_test(NAME wasm_sim_test
-            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_wasm.sh
-        )
-        set_tests_properties(wasm_sim_test PROPERTIES
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            LABELS "emscripten;wasm"
-            TIMEOUT 120
-            SKIP_RETURN_CODE 77
         )
 
         add_test(NAME emscripten_build_test
