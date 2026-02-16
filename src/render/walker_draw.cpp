@@ -17,7 +17,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
 #include <openglad/runtime/game_context.h>
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <span>
 #include <cmath>
 

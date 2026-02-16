@@ -26,7 +26,7 @@
 #include <openglad/render/view.h>
 #include <openglad/render/radar.h>
 #include <openglad/entities/walker.h>
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/render/walker_draw.h>
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>

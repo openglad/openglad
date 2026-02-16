@@ -162,7 +162,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/render/pixien.cpp
     ${SRC_DIR}/render/radar.cpp
     ${SRC_DIR}/runtime/screen.cpp
-    ${SRC_DIR}/render/smooth.cpp
+    ${SRC_DIR}/runtime/smooth.cpp
     ${SRC_DIR}/platform/sound.cpp
     ${SRC_DIR}/runtime/stats.cpp
     ${SRC_DIR}/render/text.cpp
@@ -184,9 +184,9 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/io/zip_api.cpp
 		    ${SRC_DIR}/io/yaml_stream.cpp
 		    ${SRC_DIR}/data/gparser.cpp
-		    ${SRC_DIR}/data/gloader.cpp
+		    ${SRC_DIR}/runtime/gloader.cpp
     ${SRC_DIR}/data/pixie_data.cpp
-    ${SRC_DIR}/data/level_data.cpp
+    ${SRC_DIR}/runtime/level_data.cpp
     ${SRC_DIR}/ui/level_picker.cpp
     ${SRC_DIR}/ui/level_editor.cpp
     ${SRC_DIR}/ui/level_editor_ui.cpp
@@ -218,9 +218,7 @@ set(OG_SIM_SOURCES
 )
 
 set(OG_DATA_SOURCES
-    ${SRC_DIR}/data/gloader.cpp
     ${SRC_DIR}/data/gparser.cpp
-    ${SRC_DIR}/data/level_data.cpp
     ${SRC_DIR}/data/pixie_data.cpp
     ${SRC_DIR}/data/save_data.cpp
 )
@@ -294,6 +292,9 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/sim_world.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
     ${SRC_DIR}/runtime/input_event_bridge.cpp
+    ${SRC_DIR}/runtime/smooth.cpp
+    ${SRC_DIR}/runtime/gloader.cpp
+    ${SRC_DIR}/runtime/level_data.cpp
 )
 
 set(OG_RENDER_SOURCES
@@ -303,7 +304,6 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/render/pixien.cpp
     ${SRC_DIR}/render/radar.cpp
     ${SRC_DIR}/render/sai2x.cpp
-    ${SRC_DIR}/render/smooth.cpp
     ${SRC_DIR}/render/text.cpp
     ${SRC_DIR}/render/video.cpp
     ${SRC_DIR}/render/view.cpp

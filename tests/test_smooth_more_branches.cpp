@@ -1,6 +1,6 @@
 #include <openglad/data/pixie_data.h>
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 

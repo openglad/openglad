@@ -33,7 +33,7 @@ class walker;
 class statistics;
 class obmap;
 
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/legacy/pixdefs.h>
 class CampaignData

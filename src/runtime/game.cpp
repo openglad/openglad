@@ -19,7 +19,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/core/util.h>
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/render/view.h>

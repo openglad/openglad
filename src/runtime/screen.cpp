@@ -31,7 +31,7 @@
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/render/view.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>

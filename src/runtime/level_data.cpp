@@ -25,7 +25,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/render/view.h>

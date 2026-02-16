@@ -16,7 +16,7 @@
  */
 // Map smoother, for use in the scenario editor ..
 
-#include <openglad/render/smooth.h>
+#include <openglad/data/smooth.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
 static inline Uint32 rng(Uint32 max_exclusive) {
