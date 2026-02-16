@@ -84,6 +84,40 @@ jobs:
           ./build/ci-asan/og_data_tests
           ./build/ci-asan/og_runtime_tests
 
+  wasm:
+    name: WASM Build & Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 3.1.51
+
+      - name: Build web target (web-emscripten preset)
+        run: |
+          cmake --preset web-emscripten
+          cmake --build --preset web-emscripten --target play -j"$(nproc)"
+
+      - name: Verify expected output files exist
+        run: |
+          echo "Checking dist/ contents..."
+          ls -lh dist/
+          test -f dist/play.js   || { echo "FAIL: dist/play.js not found"; exit 1; }
+          test -f dist/play.wasm || { echo "FAIL: dist/play.wasm not found"; exit 1; }
+          echo "All expected output files present."
+
+      - name: Validate WASM output
+        run: ./scripts/validate_wasm_output.sh
+
   baseline-metrics:
     name: Baseline Metrics
     runs-on: ubuntu-latest
