@@ -99,7 +99,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/runtime/score_panel.cpp
     ${SRC_DIR}/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/core/combat_math.cpp
-    ${SRC_DIR}/input/button.cpp
+    ${SRC_DIR}/ui/button.cpp
     ${SRC_DIR}/entities/effect.cpp
     ${SRC_DIR}/entities/family_registry.cpp
     ${SRC_DIR}/entities/families/family_archer.cpp
@@ -199,6 +199,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/runtime/sim_world.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
+    ${SRC_DIR}/runtime/input_event_bridge.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -292,6 +293,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/stats.cpp
     ${SRC_DIR}/runtime/sim_world.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
+    ${SRC_DIR}/runtime/input_event_bridge.cpp
 )
 
 set(OG_RENDER_SOURCES
@@ -310,12 +312,12 @@ set(OG_RENDER_SOURCES
 )
 
 set(OG_INPUT_SOURCES
-    ${SRC_DIR}/input/button.cpp
     ${SRC_DIR}/input/input.cpp
     ${SRC_DIR}/input/input_state.cpp
 )
 
 set(OG_UI_SOURCES
+    ${SRC_DIR}/ui/button.cpp
     ${SRC_DIR}/ui/campaign_picker.cpp
     ${SRC_DIR}/ui/help.cpp
     ${SRC_DIR}/ui/intro.cpp

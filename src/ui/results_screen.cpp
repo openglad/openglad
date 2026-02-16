@@ -8,6 +8,7 @@
 #include <openglad/ui/results_screen.h>
 #include <openglad/legacy/base.h>
 #include <openglad/input/button.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/render/text.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>

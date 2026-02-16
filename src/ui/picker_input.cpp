@@ -23,6 +23,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/input/button.h>
 #include <openglad/input/input.h>
+#include <openglad/runtime/screen.h>
 #include "SDL.h"
 
 namespace {

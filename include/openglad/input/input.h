@@ -25,7 +25,6 @@
 #include "SDL.h"
 #include <cctype>
 #include <string>
-#include <openglad/render/video.h>
 
 
 #define SDLKey SDL_Keycode
@@ -207,8 +206,27 @@ bool query_input_continue();
 short get_and_reset_scroll_amount();
 
 #ifdef USE_TOUCH_INPUT
+
+// Touch input UI layout constants (shared by input and runtime bridge)
+inline constexpr int MOVE_AREA_DIM = 60;
+inline constexpr int MOVE_DEAD_ZONE = 10;
+inline constexpr int FIRE_BUTTON_X = 245;
+inline constexpr int FIRE_BUTTON_Y = 165;
+inline constexpr int SPECIAL_BUTTON_X = 285;
+inline constexpr int SPECIAL_BUTTON_Y = 165;
+inline constexpr int YO_BUTTON_X = 160;
+inline constexpr int YO_BUTTON_Y = 100;
+inline constexpr int SWITCH_CHARACTER_BUTTON_X = 0;
+inline constexpr int SWITCH_CHARACTER_BUTTON_Y = 0;
+inline constexpr int NEXT_SPECIAL_BUTTON_X = 245;
+inline constexpr int NEXT_SPECIAL_BUTTON_Y = 125;
+inline constexpr int ALTERNATE_SPECIAL_BUTTON_X = 285;
+inline constexpr int ALTERNATE_SPECIAL_BUTTON_Y = 125;
+inline constexpr int BUTTON_DIM = 30;
+
 class screen;
 void draw_touch_controls(screen* vob);
+bool input_touch_has_alternate();
 #define CONTINUE_ACTION_STRING "TAP"
 #else
 #ifdef OUYA
