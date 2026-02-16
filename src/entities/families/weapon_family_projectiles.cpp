@@ -8,20 +8,9 @@
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weap.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 static bool projectile_explode_on_death(weap* self)
 {
@@ -29,7 +18,7 @@ static bool projectile_explode_on_death(weap* self)
         return false;  // skip_exit means we're supposed to explode :)
     if (!self->owner || self->owner->dead)
         self->owner = self;
-    walker* newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     if (!newob)
         return false; // failsafe
     og::sim::emit_sound(SOUND_EXPLODE);

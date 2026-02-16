@@ -24,22 +24,11 @@
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weapon_family_registry.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/render/smooth.h>
-#include <openglad/runtime/screen.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 weap::weap(const PixieData& data)
     : walker(data)
@@ -74,7 +63,7 @@ bool weap::act()
 
 	//  Log("weap %d is ani %d\n", family, ani_type);
 
-	if (active_screen()->level_data.mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
+	if (sim_level->mysmoother.query_genre_x_y(xpos, ypos) == TYPE_TREES)
 		if (lineofsight)
 			lineofsight--;
 

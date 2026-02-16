@@ -344,241 +344,17 @@ void screen::reset(short howmany)
 
 bool screen::query_grid_passable(float x, float y, walker  *ob)
 {
-	Sint32 i,j;
-	//  short xsize=ob->sizex, ysize=ob->sizey;
-	Sint32 xtrax = 1;
-	Sint32 xtray = 1;
-	Sint32 xtarg; //the for loop target
-	Sint32 ytarg; //the for loop target
-	Sint32 dist;
-	// NOTE: we're going to shrink dimensions by one in each..
-	const Sint32 x_i = static_cast<Sint32>(x);
-	const Sint32 y_i = static_cast<Sint32>(y);
-	//Sint32 xover = static_cast<Sint32>(x+ob->sizex-1), yover = static_cast<Sint32>(y+ob->sizey-1);
-	Sint32 xover = x_i + ob->sizex;
-	Sint32 yover = y_i + ob->sizey;
-
-	// Again, this is for shrinking ...
-	//x+=1;
-	//y+=1;
-
-	if (x_i < 0 || y_i < 0 || xover >= level_data.pixmaxx || yover >= level_data.pixmaxy)
-		return 0;
-
-	// Are we ethereal?
-	if (ob->stats()->query_bit_flags(BIT_ETHEREAL) )
-		return 1; //moved up to avoid unneeded calculation
-
-	// Zardus: PORT: Does the grid exist?
-	if (!level_data.grid.valid())
-		return 0;
-
-	// Check if our butt hangs over into next grid square
-	if (!((xover)%GRID_SIZE))
-		xtrax = 0; //this should be the rare case
-	if (!((yover)%GRID_SIZE))
-		xtray = 0; //this should be the rare case
-
-
-	// Check grid squares by simulated grid coords.
-
-	xtarg = (xover/GRID_SIZE) + xtrax;
-	ytarg = (yover/GRID_SIZE) + xtray;
-
-	for (i = x_i/GRID_SIZE; i < xtarg; i++)
-		for (j = y_i/GRID_SIZE; j < ytarg; j++)
-
-		{
-			// Check if item in background grid
-			switch (static_cast<unsigned char>(level_data.grid.data[i+level_data.grid.w*j]))
-			{
-				case PIX_GRASS1:  // grass is pass..
-				case PIX_GRASS2:
-				case PIX_GRASS3:
-				case PIX_GRASS4:
-				case PIX_GRASS_DARK_1:
-				case PIX_GRASS_DARK_2:
-				case PIX_GRASS_DARK_3:
-				case PIX_GRASS_DARK_4:
-				case PIX_GRASS_DARK_LL:
-				case PIX_GRASS_DARK_UR:
-				case PIX_GRASS_DARK_B1: // shadowed edges
-				case PIX_GRASS_DARK_B2:
-				case PIX_GRASS_DARK_BR:
-				case PIX_GRASS_DARK_R1:
-				case PIX_GRASS_DARK_R2:
-				case PIX_GRASS_RUBBLE:
-				case PIX_GRASS1_DAMAGED:
-				case PIX_GRASS_LIGHT_1: // lighter grass
-				case PIX_GRASS_LIGHT_TOP:
-				case PIX_GRASS_LIGHT_RIGHT_TOP:
-				case PIX_GRASS_LIGHT_RIGHT:
-				case PIX_GRASS_LIGHT_RIGHT_BOTTOM:
-				case PIX_GRASS_LIGHT_BOTTOM:
-				case PIX_GRASS_LIGHT_LEFT_BOTTOM:
-				case PIX_GRASS_LIGHT_LEFT:
-				case PIX_GRASS_LIGHT_LEFT_TOP:
-				case PIX_GRASSWATER_LL: // mostly grass
-				case PIX_GRASSWATER_LR:
-				case PIX_GRASSWATER_UL:
-				case PIX_GRASSWATER_UR:
-				case PIX_PAVEMENT1:   // floor ok
-				case PIX_PAVEMENT2:
-				case PIX_PAVEMENT3:
-				case PIX_COBBLE_1:    // Cobblestone
-				case PIX_COBBLE_2:
-				case PIX_COBBLE_3:
-				case PIX_COBBLE_4:
-				case PIX_FLOOR_PAVEL: // wood/tile ok
-				case PIX_FLOOR_PAVER:
-				case PIX_FLOOR_PAVEU:
-				case PIX_FLOOR_PAVED:
-				case PIX_PAVESTEPS1:  // steps
-				case PIX_PAVESTEPS2:
-				case PIX_PAVESTEPS2L:
-				case PIX_PAVESTEPS2R:
-				case PIX_FLOOR1:
-				case PIX_CARPET_LL:   // carpet ok
-				case PIX_CARPET_B:
-				case PIX_CARPET_LR:
-				case PIX_CARPET_UR:
-				case PIX_CARPET_U:
-				case PIX_CARPET_UL:
-				case PIX_CARPET_L:
-				case PIX_CARPET_M:
-				case PIX_CARPET_M2:
-				case PIX_CARPET_R:
-				case PIX_CARPET_SMALL_HOR:
- 				case PIX_CARPET_SMALL_VER:
-				case PIX_CARPET_SMALL_CUP:
-				case PIX_CARPET_SMALL_CAP:
-				case PIX_CARPET_SMALL_LEFT:
-				case PIX_CARPET_SMALL_RIGHT:
-				case PIX_CARPET_SMALL_TINY:
-				case PIX_DIRT_1:    // Dirt paths
-				case PIX_DIRTGRASS_UL1:
-				case PIX_DIRTGRASS_UR1:
-				case PIX_DIRTGRASS_LL1:
-				case PIX_DIRTGRASS_LR1:
-				case PIX_DIRT_DARK_1:        // shadowed dirt/grass
-				case PIX_DIRTGRASS_DARK_UL1:
-				case PIX_DIRTGRASS_DARK_UR1:
-				case PIX_DIRTGRASS_DARK_LL1:
-				case PIX_DIRTGRASS_DARK_LR1:
-				case PIX_PATH_1:
-				case PIX_PATH_2:
-				case PIX_PATH_3:
-				case PIX_PATH_4:
-					break;
-				case PIX_TREE_M1:  // trees are usually bad, but
-				case PIX_TREE_ML:  // we can fly over them
-				case PIX_TREE_MR:
-				case PIX_TREE_MT:
-				case PIX_TREE_T1:
-					if (ob->stats()->query_bit_flags(BIT_FORESTWALK) )
-						break;
-					else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
-						break;
-					else
-						return 0;
-				case PIX_TREE_B1:  // Tree bottoms
-					{
-						if (ob->query_order() == Order::Weapon
-						        || ob->stats()->query_bit_flags(BIT_FORESTWALK) )
-							break;
-						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
-							break;
-						else
-							return 0;
-					}
-
-				case PIX_H_WALL1: // walls bad, but we can "ethereal"
-				case PIX_WALL2:   // through them by default
-				case PIX_WALL3:
-				case PIX_WALL_LL:
-				case PIX_WALLTOP_H:
-					return 0;// break;
-
-					case PIX_WALL4:  // Arrow slits
-					case PIX_WALL5:
-					case PIX_WALL_ARROW_GRASS:
-					case PIX_WALL_ARROW_FLOOR:
-					case PIX_WALL_ARROW_GRASS_DARK:
-						{
-							//if (!ob->owner)
-							if (ob->query_order()==Order::Living)
-								return 0;
-
-							if (abs(ob->xpos - ob->owner->xpos) >
-							        abs(ob->ypos - ob->owner->ypos))
-								dist = abs(ob->xpos - ob->owner->xpos);
-							else
-								dist = abs(ob->ypos - ob->owner->ypos);
-
-							dist -= (GRID_SIZE/2);
-							if (dist < GRID_SIZE)
-							{
-								dist += GRID_SIZE;
-							}
-
-							if (ctx().rng->next(dist/GRID_SIZE))
-							{
-								return 0;
-							}
-						}
-						[[fallthrough]];
-					case PIX_WATER1:      // Water
-				case PIX_WATER2:
-				case PIX_WATER3:
-				case PIX_WATERGRASS_LL:
-				case PIX_WATERGRASS_LR:
-				case PIX_WATERGRASS_UL:
-				case PIX_WATERGRASS_UR:
-				case PIX_WATERGRASS_U:
-				case PIX_WATERGRASS_L:
-				case PIX_WATERGRASS_R:
-				case PIX_WATERGRASS_D:
-				case PIX_WALLSIDE_L:  // v. walls
-				case PIX_WALLSIDE1:
-				case PIX_WALLSIDE_R:
-				case PIX_WALLSIDE_C:
-				case PIX_WALLSIDE_CRACK_C1:
-				case PIX_TORCH1:
-				case PIX_TORCH2:
-				case PIX_TORCH3:
-				case PIX_BRAZIER1:            // brazier
-				case PIX_COLUMN1:             //Columns
-				case PIX_COLUMN2:
-				case PIX_BOULDER_1: // Rocks
-				case PIX_BOULDER_2:
-				case PIX_BOULDER_3:
-				case PIX_BOULDER_4:
-					{
-						if (ob->query_order() == Order::Weapon)
-							break;
-						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
-							break;
-						else
-							return 0;
-					}
-				default:
-					return 0;
-			}
-
-		}
-	return 1;
+	return level_data.query_grid_passable(x, y, ob);
 }
 
 bool screen::query_object_passable(float x, float y, walker  *ob)
 {
-	if (ob->dead)
-		return 1;
-	return level_data.myobmap->query_list(ob, static_cast<short>(x), static_cast<short>(y));
+	return level_data.query_object_passable(x, y, ob);
 }
 
 bool screen::query_passable(float x, float y, walker  *ob)
 {
-	return query_grid_passable(x, y, ob) && query_object_passable(x, y, ob);
+	return level_data.query_passable(x, y, ob);
 }
 
 void screen::clear()
@@ -811,114 +587,12 @@ short screen::endgame(short ending, short nextlevel)
 
 walker *screen::find_near_foe(walker  *ob)
 {
-	short targx, targy;
-	short spread=1,xchange=0;
-	short loop=0;
-	short resolution = level_data.myobmap->obmapres;
-
-	if (!ob)
-	{
-		Log("no ob in find near foe.\n");
-		return nullptr;
-	}
-	targx = ob->xpos;
-	targy = ob->ypos;
-	spread = 1;
-
-	while (spread < MAX_SPREAD)
-	{
-		for (loop=0;loop<spread;loop++)
-		{
-			if (!(xchange%2))
-			{
-				targx += resolution; //changex is 0 or a mult of 2
-				if (targx<=0)
-					return find_far_foe(ob); //left edge of screen
-				if (targx>=level_data.pixmaxx)
-					return find_far_foe(ob); //right edge of screen
-			}
-			else
-			{
-				targy += resolution; //changex is odd
-				if (targy<=0)
-					return find_far_foe(ob); //top of screen
-				if (targy>=level_data.pixmaxy)
-					return find_far_foe(ob); //bottom of screen
-			}
-
-			std::list<walker*>& ls = level_data.myobmap->obmap_get_list(targx,targy);
-			for(auto* w : ls) //go through the list we received
-			{
-				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
-				        (ctx().rng->next(w->invisibility_left/20)==0)
-				   )
-				{
-					if (w->query_order() == Order::Living ||
-					        w->query_order() == Order::Generator)
-						//done separately since they are logically more significant
-						return w; // this should be a valid foe
-				}
-			}//end inner while
-
-		}//end for
-		xchange++; //change whether we do x or y in each for loop
-		if (!(xchange%2))
-		{
-			resolution = static_cast<short>(-resolution); // reverse direction around the search every other for
-			spread++; // increase the search width every other for
-		}
-	}//end while
-	//failure
-	return find_far_foe(ob);
-
+	return level_data.find_near_foe(ob);
 }
 
 walker  *screen::find_far_foe(walker  *ob)
 {
-	//short targx, targy;
-	Sint32 distance, tempdistance;
-	walker  *endfoe;
-
-	if (!ob)
-	{
-		Log("no ob in find far foe.\n");
-		return nullptr;
-	}
-
-	// Get our current coordinates
-	//targx = ob->xpos;
-	//targy = ob->ypos;
-
-	// Set our 'default' foe to nullptr
-	endfoe = nullptr;
-	distance = 10000;
-	ob->stats()->last_distance = 10000;
-
-    for(auto& uptr : level_data.oblist)
-	{
-	    walker* foe = uptr.get();
-		if (foe == nullptr || foe->dead)
-			continue;
-        
-		// Check for valid objects ..
-		if (ob->is_friendly(foe) == 0)
-		{
-			if (
-			    (foe->query_order() == Order::Living ||
-			     foe->query_order() == Order::Generator)  &&
-			    (!(ctx().rng->next(foe->invisibility_left/20)))
-			)
-			{
-				tempdistance = ob->distance_to_ob(foe);
-				if (tempdistance < distance)
-				{
-					distance = tempdistance;
-					endfoe = foe;
-				}
-			}
-		}
-	}
-	return endfoe;
+	return level_data.find_far_foe(ob);
 }
 
 walker* screen::set_walker(walker *ob, Order order, Sint32 family)
@@ -1056,143 +730,30 @@ void screen::draw_panels(short howmany)
 	buffer_to_screen(0, 0, 320, 200);
 }
 
-// This can be slow, so don't call it much
 walker  * screen::find_nearest_blood(walker  *who)
 {
-	Sint32 distance, newdistance;
-	walker  *returnob = nullptr;
-
-	if (!who)
-		return nullptr;
-
-	distance = 800;
-
-	for(auto& uptr : level_data.fxlist)
-	{
-	    walker* w = uptr.get();
-		if (w && w->query_order() == Order::Treasure &&
-		        w->query_family() == FAMILY_STAIN && !w->dead)
-		{
-			newdistance = static_cast<Uint32>(who->distance_to_ob_center(w));
-			if (newdistance < distance)
-			{
-				distance = newdistance;
-				returnob = w;
-			}
-		}
-	}
-	return returnob;
-
+	return level_data.find_nearest_blood(who);
 }
 
 std::list<walker*> screen::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-	//short obx, oby;
-    std::list<walker*> result;
-
-	*howmany = 0;
-
-	if(!ob)
-		return result;
-
-	//obx = static_cast<short>(ob->xpos + (ob->sizex/2) );  // center of object
-	//oby = static_cast<short>(ob->ypos + (ob->sizey/2) );
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead)
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+	return level_data.find_in_range(somelist, range, howmany, ob);
 }
 
 walker* screen::find_nearest_player(walker *ob)
 {
-	walker *returnob = nullptr;
-	Uint32 distance = 32000;
-	Uint32 tempdistance;
-
-	if (!ob)
-		return nullptr;
-
-	for(auto& uptr : level_data.oblist)
-	{
-	    walker* w = uptr.get();
-		if (w && (w->user != -1) )
-		{
-			tempdistance = ob->distance_to_ob(w);
-			if (tempdistance < distance)
-			{
-				distance = tempdistance;
-				returnob = w;
-			}
-		}
-	}
-
-	return returnob;
+	return level_data.find_nearest_player(ob);
 }
 
 std::list<walker*> screen::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
 {
-    std::list<walker*> result;
-    *howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead &&
-		        (w->query_order() == Order::Living ||
-		         w->query_order() == Order::Generator)
-		        && (ob->is_friendly(w) == 0)
-		   )
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+	return level_data.find_foes_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> screen::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
                                       Sint32* howmany, walker* ob)
 {
-    std::list<walker*> result;
-    *howmany = 0;
-
-	if(!ob)
-		return result;
-
-	for(auto& uptr : somelist)
-	{
-	    walker* w = uptr.get();
-		if (w && !w->dead && w->query_order() == Order::Living
-		        && ( ob->is_friendly(w) )
-		   )
-		{
-			if (ob->distance_to_ob(w) <= range)
-			{
-			    result.push_back(w);
-				(*howmany)++;
-			}
-		}
-	}
-
-	return result;
+	return level_data.find_friends_in_range(somelist, range, howmany, ob);
 }
 
 std::list<walker*> screen::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)

@@ -17,6 +17,7 @@
 //#include "graph.h"
 #include <openglad/data/gloader.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/family_descriptor.h>
@@ -806,7 +807,6 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
                                                     Sint32 family,
                                                     screen* screenp, [[maybe_unused]] bool cache_weapons)
 {
-	(void)screenp;
 	std::unique_ptr<walker> ob;
 
 	if(family < 0 || family >= NUM_FAMILIES)
@@ -840,8 +840,14 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	ob->stats()->special_cost[0] = 0; // shouldn't be used
 	ob->stats()->weapon_cost = 1; // default value
 
+	if (screenp) {
+		ob->sim_level = &screenp->level_data;
+		ob->sim_save = &screenp->save_data;
+		ob->sim_enemy_freeze = &screenp->enemy_freeze;
+	}
+
 	set_walker(ob.get(), order, family);
-	
+
 	if(order == Order::Living)
         ob->set_frame(ob->ani[ob->curdir][0]);
 	return ob;

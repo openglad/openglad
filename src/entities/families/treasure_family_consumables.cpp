@@ -9,7 +9,6 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
@@ -19,16 +18,6 @@
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 static bool drumstick_on_eat(treasure* self, walker* eater)
 {

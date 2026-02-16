@@ -8,25 +8,14 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
+#include <openglad/data/level_data.h>
 
 static bool door_open_on_act(effect* self)
 {
     if (self->ani_type != ANI_WALK)
         return false; // let default animate() handle it
 
-    walker* newob = active_screen()->level_data.add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
+    walker* newob = self->sim_level->add_fx_ob(Order::FX, FAMILY_DOOR_OPEN);
     if (!newob)
         return true; // handled (nothing to spawn)
     newob->ani_type = ANI_WALK;

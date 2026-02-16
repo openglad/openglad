@@ -8,18 +8,7 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
+#include <openglad/data/level_data.h>
 
 static bool knife_back_on_act(effect* self)
 {
@@ -61,13 +50,13 @@ static bool knife_back_on_act(effect* self)
                 yd = self->owner->ypos - self->ypos;
         }
         self->setworldxy(self->worldx()+xd, self->worldy()+yd);
-        walker* newob = active_screen()->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+        walker* newob = self->sim_level->add_ob(Order::Weapon, FAMILY_KNIFE);
         newob->damage = self->damage;
         newob->owner = self->owner;
         newob->team_num = self->team_num;
         newob->death_called = 1; // to ensure no spawning of more ..
         newob->setworldxy(self->worldx(), self->worldy());
-        if (!active_screen()->query_object_passable(self->xpos+xd, self->ypos+yd, newob))
+        if (!self->sim_level->query_object_passable(self->xpos+xd, self->ypos+yd, newob))
         {
             newob->attack(newob->collide_ob);
             self->damage /= 4.0f;

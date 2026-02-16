@@ -90,7 +90,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
             stats->last_distance = stats->current_distance = 15000;
         }
         Sint32 howmany = 0;
-        myscreen->find_foes_in_range(myscreen->level_data.oblist,
+        controller->sim_level->find_foes_in_range(controller->sim_level->oblist,
                                      200, &howmany, controller);
         if (howmany)
         {
@@ -175,7 +175,7 @@ static bool archmage_do_special(walker* self)
                     return false;
                 }
                 generic = 0;
-                for (auto& uptr : myscreen->level_data.oblist)
+                for (auto& uptr : self->sim_level->oblist)
                 {
                     walker* ob = uptr.get();
                     if (ob &&
@@ -193,7 +193,7 @@ static bool archmage_do_special(walker* self)
                         break;
                     }
                 }
-                newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+                newob = self->sim_level->add_ob(Order::FX, FAMILY_MARKER);
                 if (!newob)
                     return false;
                 newob->owner = self;
@@ -234,7 +234,7 @@ static bool archmage_do_special(walker* self)
             else
                 generic = 80;
             {
-                std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                       generic + 2 * self->stats()->level, &howmany, self);
                 if (!howmany)
                     return false;
@@ -251,7 +251,7 @@ static bool archmage_do_special(walker* self)
                     self->busy += 5;
                     for (auto* ob : newlist)
                     {
-                        newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+                        newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
                         if (!newob)
                             return false;
                         newob->owner = self;
@@ -275,7 +275,7 @@ static bool archmage_do_special(walker* self)
                         self->myguy->total_shots++;
                         self->myguy->scen_shots++;
                     }
-                    newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CHAIN);
+                    newob = self->sim_level->add_ob(Order::FX, FAMILY_CHAIN);
                     newob->center_on(self);
                     newob->owner = self;
                     newob->stats()->level = self->stats()->level;
@@ -311,7 +311,7 @@ static bool archmage_do_special(walker* self)
                 generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
                 generic /= 2;
                 self->stats()->magicpoints -= static_cast<float>(generic);
-                newob = myscreen->level_data.add_ob(Order::Living, FAMILY_FIREELEMENTAL);
+                newob = self->sim_level->add_ob(Order::Living, FAMILY_FIREELEMENTAL);
                 if (!newob)
                     return false;
                 generic = 0;
@@ -322,7 +322,7 @@ static bool archmage_do_special(walker* self)
                             continue;
                         float testx = static_cast<float>(self->xpos + ((newob->sizex + 1) * i));
                         float testy = static_cast<float>(self->ypos + ((newob->sizey + 1) * j));
-                        if (myscreen->query_passable(testx, testy, newob))
+                        if (self->sim_level->query_passable(testx, testy, newob))
                         {
                             generic = 1;
                             newob->setxy(testx, testy);
@@ -397,7 +397,7 @@ static bool archmage_do_special(walker* self)
                         default: person = FAMILY_ARCHER; break;
                     }
                 }
-                newob = myscreen->level_data.add_ob(Order::Living, person);
+                newob = self->sim_level->add_ob(Order::Living, person);
                 if (!newob)
                     return false;
                 generic = 0;
@@ -408,7 +408,7 @@ static bool archmage_do_special(walker* self)
                             continue;
                         float testx = static_cast<float>(self->xpos + ((newob->sizex + 1) * i));
                         float testy = static_cast<float>(self->ypos + ((newob->sizey + 1) * j));
-                        if (myscreen->query_passable(testx, testy, newob))
+                        if (self->sim_level->query_passable(testx, testy, newob))
                         {
                             generic = 1;
                             newob->setxy(testx, testy);
@@ -437,7 +437,7 @@ static bool archmage_do_special(walker* self)
             if (self->busy > 0)
                 return false;
             {
-                std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                       80 + 4 * self->stats()->level, &howmany, self);
                 if (howmany < 1)
                     return false;

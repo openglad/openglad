@@ -69,7 +69,7 @@ static bool druid_do_special(walker* self)
             if (!newob)
                 return false;
             self->busy += (self->fire_frequency * 2);
-            alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_TREE);
+            alive = self->sim_level->add_ob(Order::Weapon, FAMILY_TREE);
             alive->setxy(newob->xpos, newob->ypos);
             alive->team_num = self->team_num;
             alive->ani_type = ANI_GROW;
@@ -83,13 +83,13 @@ static bool druid_do_special(walker* self)
             newob = self->fire();
             if (!newob)
                 return false;
-            alive = myscreen->level_data.add_ob(Order::Living, FAMILY_FAERIE);
+            alive = self->sim_level->add_ob(Order::Living, FAMILY_FAERIE);
             alive->setxy(newob->xpos, newob->ypos);
             alive->team_num = self->team_num;
             alive->owner = self;
             alive->lifetime = 50 + self->stats()->level * 40;
             newob->dead = 1;
-            if (!myscreen->query_passable(alive->xpos, alive->ypos, alive))
+            if (!self->sim_level->query_passable(alive->xpos, alive->ypos, alive))
             {
                 alive->dead = 1;
                 return false;
@@ -108,7 +108,7 @@ static bool druid_do_special(walker* self)
                 return false;
             {
                 Sint32 howmany;
-                std::list<walker*> newlist = myscreen->find_friends_in_range(myscreen->level_data.oblist,
+                std::list<walker*> newlist = self->sim_level->find_friends_in_range(self->sim_level->oblist,
                           60, &howmany, self);
                 didheal = 0;
                 if (howmany > 1)
@@ -119,7 +119,7 @@ static bool druid_do_special(walker* self)
                         if (newob != self)
                         {
                             tempwalk = nullptr;
-                            for (auto& uptr : myscreen->level_data.oblist)
+                            for (auto& uptr : self->sim_level->oblist)
                             {
                                 walker* ob = uptr.get();
                                 if (ob && ob->owner == newob
@@ -132,7 +132,7 @@ static bool druid_do_special(walker* self)
                             }
                             if (!tempwalk)
                             {
-                                alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+                                alive = self->sim_level->add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
                                 if (!alive)
                                     return false;
                                 alive->owner = newob;
@@ -143,7 +143,7 @@ static bool druid_do_special(walker* self)
                             }
                             else
                             {
-                                alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+                                alive = self->sim_level->add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
                                 if (!alive)
                                     return false;
                                 tempwalk->stats()->hitpoints += alive->stats()->hitpoints;

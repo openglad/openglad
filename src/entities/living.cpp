@@ -111,7 +111,7 @@ bool living::act()
 
 	// Regenerate magic
 	{
-		bool frozen = myscreen->enemy_freeze || bonus_rounds;
+		bool frozen = *sim_enemy_freeze || bonus_rounds;
 		RegenTickResult mp = compute_regen_tick(stats_->magicpoints, stats_->max_magicpoints,
 		                                        stats_->magic_per_round,
 		                                        stats_->current_magic_delay, stats_->max_magic_delay,
@@ -122,7 +122,7 @@ bool living::act()
 
 	// Regenerate hitpoints
 	{
-		bool frozen = myscreen->enemy_freeze || bonus_rounds;
+		bool frozen = *sim_enemy_freeze || bonus_rounds;
 		HpRegenResult hp = compute_hp_regen_tick(stats_->hitpoints, stats_->max_hitpoints,
 		                                          stats_->heal_per_round,
 		                                          stats_->current_heal_delay, stats_->max_heal_delay,
@@ -149,7 +149,7 @@ bool living::act()
 	// Flight
 	if (flight_left > 0)
 		flight_left--;
-	if (!myscreen->query_grid_passable(xpos, ypos, this) && !flight_left)
+	if (!sim_level->query_grid_passable(xpos, ypos, this) && !flight_left)
 	{
 		flight_left++;
 		stats_->hitpoints--;
@@ -178,10 +178,10 @@ bool living::act()
 
 	if ( stats_->query_bit_flags(BIT_FORESTWALK) &&
 	        (
-	            myscreen->level_data.mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || myscreen->level_data.mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
-	            || myscreen->level_data.mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
-	            || myscreen->level_data.mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            sim_level->mysmoother.query_genre_x_y( xpos/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || sim_level->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, ypos/GRID_SIZE) == TYPE_TREES
+	            || sim_level->mysmoother.query_genre_x_y( (xpos+sizex)/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
+	            || sim_level->mysmoother.query_genre_x_y( xpos/GRID_SIZE, (ypos+sizey)/GRID_SIZE) == TYPE_TREES
 	        )
 	   )
 	{
@@ -317,7 +317,7 @@ bool living::act()
 					{
 						current_special = static_cast<char>(rng((stats_->level+2)/3) + 1);
 						if ( (current_special > 4) ||
-						        (myscreen->special_name[static_cast<int>(family)][static_cast<int>(current_special)] == "NONE")
+						        (strcmp(get_family_descriptor(family)->special_names[static_cast<int>(current_special)], "NONE") == 0)
 						   )
 							current_special = 1;
 						if (check_special() )
@@ -335,7 +335,7 @@ bool living::act()
 				{
 					if (!foe)
 					{
-						foe = myscreen->find_near_foe(this);
+						foe = sim_level->find_near_foe(this);
 					}
 					if (foe) // && rng(2) )
 					{
@@ -346,7 +346,7 @@ bool living::act()
 					//else if (foe)
 					//  stats_->try_command(COMMAND_RIGHT_WALK,40,0,0);
 					else if (!rng(2))
-						foe = myscreen->find_far_foe(this);
+						foe = sim_level->find_far_foe(this);
 					else
 						stats_->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -404,9 +404,9 @@ bool living::walk(float x, float y)
 	{
 		// check if off map
 		if (x+xpos < 0 ||
-		        x+xpos >= myscreen->level_data.grid.w*GRID_SIZE ||
+		        x+xpos >= sim_level->grid.w*GRID_SIZE ||
 		        y+ypos < 0 ||
-		        y+ypos >= myscreen->level_data.grid.h*GRID_SIZE)
+		        y+ypos >= sim_level->grid.h*GRID_SIZE)
 		{
 			return 0;
 		}
@@ -415,7 +415,7 @@ bool living::walk(float x, float y)
 		// Normally we would check if the object at this grid point
 		//    is passable (I cheated for now)
 		// FIXME: These additional checks are a hack for the corner clipping bug (you could get into trees, etc.)
-		if (myscreen->query_passable(xpos+x, ypos+y,this) && myscreen->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && myscreen->query_passable(xpos+floorf(x), ypos+floorf(y),this))
+		if (sim_level->query_passable(xpos+x, ypos+y,this) && sim_level->query_passable(xpos+ceilf(x), ypos+ceilf(y),this) && sim_level->query_passable(xpos+floorf(x), ypos+floorf(y),this))
 		{
 			// Control object does complete redraw anyway
 			worldmove(x,y);
@@ -489,7 +489,7 @@ walker* living::do_summon(char whatfamily, Sint32 summon_lifetime)
 {
 	walker  *newob;
 
-	newob = myscreen->level_data.add_ob(Order::Living, whatfamily);
+	newob = sim_level->add_ob(Order::Living, whatfamily);
 	newob->owner = this;
 		newob->lifetime = summon_lifetime;
 	newob->transform_to(Order::Living, whatfamily);
@@ -647,7 +647,7 @@ bool living::act_random()
 
 	// Find our foe
 	if (!rng(80) || (!foe))
-		foe = myscreen->find_near_foe(this);
+		foe = sim_level->find_near_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,40);
 
@@ -686,7 +686,7 @@ bool living::do_action()
 		case ACTION_FOLLOW: // follow our leader, attack his targets ..
 			if (foe)
 				return 0;       // continue as normal
-			leader = myscreen->find_nearest_player(this);
+			leader = sim_level->find_nearest_player(this);
 			if (!leader)
 				return 0;       // continue as normal ... shouldn't happen
 			if (leader->foe)

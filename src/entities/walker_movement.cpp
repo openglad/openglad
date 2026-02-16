@@ -256,12 +256,12 @@ bool walker::walkstep(float x, float y)
                     const Sint32 step_i = static_cast<Sint32>(step);
                     for (i = 0; i < step_i; i++)
                     {
-                        if (myscreen->query_passable(xpos, ypos + dy, this))
+                        if (sim_level->query_passable(xpos, ypos + dy, this))
                         {
                             worldmove(0, dy);  // walk without turning ..
                             gotup = true;
                         }
-                        if (myscreen->query_passable(xpos + dx, ypos, this))
+                        if (sim_level->query_passable(xpos + dx, ypos, this))
                         {
                             worldmove(dx, 0);
                             gotover = true;
@@ -325,15 +325,15 @@ bool walker::walk(float x, float y)
     {
         // check if off map
         if (x+xpos < 0 ||
-                x+xpos >= myscreen->level_data.grid.w*GRID_SIZE ||
+                x+xpos >= sim_level->grid.w*GRID_SIZE ||
                 y+ypos < 0 ||
-                y+ypos >= myscreen->level_data.grid.h*GRID_SIZE)
+                y+ypos >= sim_level->grid.h*GRID_SIZE)
         {
             return 0;
         }
 
         // Here we check if the move is valid
-        if (myscreen->query_passable(xpos+x, ypos+y, this))
+        if (sim_level->query_passable(xpos+x, ypos+y, this))
         {
             // Control object does complete redraw anyway
             worldmove(x,y);

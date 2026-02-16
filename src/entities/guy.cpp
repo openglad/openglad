@@ -386,7 +386,7 @@ float guy::get_fire_frequency_bonus() const
 void guy::update_derived_stats(walker* w)
 {
     guy* temp_guy = w->myguy;
-    myscreen->level_data.myloader->set_derived_stats(w, Order::Living, temp_guy->family);
+    w->sim_level->myloader->set_derived_stats(w, Order::Living, temp_guy->family);
     
     
     w->stats()->max_hitpoints += temp_guy->get_hp_bonus();
@@ -472,7 +472,7 @@ void guy::update_derived_stats(walker* w)
 std::unique_ptr<walker> guy::create_walker_owned(screen* screen_)
 {
 	    auto temp_guy = std::make_unique<guy>(*this);
-	    auto temp_walker = screen_->level_data.myloader->create_walker_owned(Order::Living, temp_guy->family, nullptr);
+	    auto temp_walker = screen_->level_data.myloader->create_walker_owned(Order::Living, temp_guy->family, screen_);
 	    if (!temp_walker)
 	        return nullptr;
 	    temp_walker->set_owned_myguy(std::move(temp_guy));

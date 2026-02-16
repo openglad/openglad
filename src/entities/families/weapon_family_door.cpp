@@ -8,24 +8,13 @@
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weap.h>
 #include <openglad/core/stats.h>
+#include <openglad/data/level_data.h>
 #include <openglad/render/smooth.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 static bool door_on_death(weap* self)
 {
-    walker* newob = active_screen()->level_data.add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
+    walker* newob = self->sim_level->add_weap_ob(Order::FX, FAMILY_DOOR_OPEN);
     if (!newob)
         return false;
     newob->ani_type = ANI_DOOR_OPEN;
@@ -33,7 +22,7 @@ static bool door_on_death(weap* self)
     newob->stats()->level = self->stats()->level;
     newob->team_num = self->team_num;
     // What way are we 'facing'?
-    if (active_screen()->level_data.mysmoother.query_genre_x_y((self->xpos/GRID_SIZE),(self->ypos/GRID_SIZE)-1)
+    if (self->sim_level->mysmoother.query_genre_x_y((self->xpos/GRID_SIZE),(self->ypos/GRID_SIZE)-1)
             == TYPE_WALL) // a wall above us?
     {
         newob->curdir = FACE_RIGHT;

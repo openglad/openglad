@@ -258,7 +258,7 @@ walker::~walker()
 	// Walkers can outlive a particular LevelData::myobmap instance in tests
 	// (screen cleanup replaces the obmap). Ensure we remove from the current
 	// active obmap as well as the one we were last bound to.
-	obmap* active = (myscreen != nullptr) ? myscreen->level_data.myobmap.get() : nullptr;
+	obmap* active = (sim_level != nullptr) ? sim_level->myobmap.get() : nullptr;
 	if (active != nullptr)
 		active->remove(this);
 	if (myobmap != nullptr && myobmap != active)
@@ -397,7 +397,7 @@ walker  * walker::fire()
 	//yp = weapon->ypos;
 
 	// Actual combat
-	if (!myscreen->query_passable(weapon->xpos, weapon->ypos, weapon))
+	if (!sim_level->query_passable(weapon->xpos, weapon->ypos, weapon))
 	{
 		// *** Melee combat ***
 		if (weapon->collide_ob && !weapon->collide_ob->dead)
@@ -720,7 +720,7 @@ bool walker::act()
 				{
 					if (!foe)
 					{
-						foe = myscreen->find_far_foe(this);
+						foe = sim_level->find_far_foe(this);
 					}
 					if (foe)
 						//stats_->try_command(COMMAND_SEARCH, 60, 0, 0);
@@ -882,7 +882,7 @@ walker  *walker::create_weapon()
 	// Special case for generators
 	if (query_order() == Order::Generator)
 	{
-		weapon = myscreen->level_data.add_ob(Order::Living, static_cast<char>(default_weapon));
+		weapon = sim_level->add_ob(Order::Living, static_cast<char>(default_weapon));
 		weapon->team_num = team_num;
 		weapon->owner = this;
 		weapon->set_difficulty(static_cast<Uint32>(stats_->level));
@@ -891,7 +891,7 @@ walker  *walker::create_weapon()
 	// Normally, only livings fire
 	weapon_type = current_weapon;
 
-	weapon = myscreen->level_data.add_ob(Order::Weapon, static_cast<char>(weapon_type));
+	weapon = sim_level->add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	weapon->team_num = team_num;
 	weapon->owner = this;
 	weapon->set_difficulty(static_cast<Uint32>(stats_->level));
@@ -948,7 +948,7 @@ bool walker::query_next_to()
 	else //if (lasty < 0)
 		newy += -sizey;
 
-	if (!myscreen->query_object_passable(newx, newy, this))
+	if (!sim_level->query_object_passable(newx, newy, this))
 	{
 		return 1;
 	}
@@ -1045,13 +1045,13 @@ bool walker::fire_check(short xdelta, short ydelta)
 	{
 		weapon->setxy(weapon->xpos + i*weapon->lastx,
 		              weapon->ypos + i*weapon->lasty);
-		if ( !myscreen->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !sim_level->query_grid_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit a wall, so fail
 			weapon->dead = 1;
 			return 0;
 		}
-		if ( !myscreen->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
+		if ( !sim_level->query_object_passable(weapon->xpos, weapon->ypos, weapon) )
 		{
 			// we hit an enemy, so good!
 			weapon->dead = 1;
@@ -1071,7 +1071,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 
 	// * 16 is to match with grid coords
 	for (i=0; i <= loops; i+=8)  // half a grid square
-		if ( !myscreen->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
+		if ( !sim_level->query_grid_passable(xpos+i*xdir, ypos+i*ydir, weapon) )
 		{
 			weapon->dead = 1;
 			//foe = nullptr;  // can't hit this guy
@@ -1094,8 +1094,8 @@ bool walker::fire_check(short xdelta, short ydelta)
 bool
 walker::act_generate()
 {
-	if ( myscreen->level_data.numobs < MAXOBS &&
-	        (rng(static_cast<Uint32>(stats_->level * 3)) > rng(static_cast<Uint32>(300 + (myscreen->level_data.numobs * 8))) )
+	if ( sim_level->numobs < MAXOBS &&
+	        (rng(static_cast<Uint32>(stats_->level * 3)) > rng(static_cast<Uint32>(300 + (sim_level->numobs * 8))) )
 	   )
 	{
 		lastx = static_cast<float>(1 - static_cast<Sint32>(rng(3)));
@@ -1146,7 +1146,7 @@ walker::act_guard()
 	//                       fire_check(lasty, lastx) ||
 	//                       fire_check(-lasty, -lastx) ||
 	//                       fire_check(-lastx, -lasty))
-	foe = myscreen->find_near_foe(this);
+	foe = sim_level->find_near_foe(this);
 	if (foe)
 	{
 		curdir = static_cast<char>(facing(foe->xpos - xpos, foe->ypos-ypos));
@@ -1168,7 +1168,7 @@ walker::act_random()
 
 	// Find our foe
 	if (!rng(70) || (!foe))
-		foe = myscreen->find_far_foe(this);
+		foe = sim_level->find_far_foe(this);
 	if (!foe)
 		return stats_->try_command(COMMAND_RANDOM_WALK,20);
 
@@ -1233,7 +1233,7 @@ short walker::spaces_clear()
 	for (i=-1; i < 2; i++)
 		for (j=-1; j < 2; j++)
 			if (i || j) // don't check our own location
-				if (myscreen->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
+				if (sim_level->query_passable(xpos+(i*sizex), ypos+(j*sizey), this) )
 					count++;
 
 	return count;
@@ -1296,10 +1296,10 @@ void walker::transform_to(Order whatorder, Sint32 whatfamily)
 	// Do this before resetting graphic so illegal
 	//  family values don't try to set graphics.
 	//  order and family are only set if legal
-	myscreen->set_walker(this, whatorder, whatfamily);
+	sim_level->myloader->set_walker(this, whatorder, whatfamily);
 
 	// Reset the graphics
-	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
+	const PixieData& data = sim_level->myloader->graphics[PIX(order, family)];
 	facings = data.data.get();
 	bmp = data.data.get();
 	frames = data.frames;
@@ -1348,7 +1348,7 @@ bool walker::death()
 	// Ensure we are removed from collision bookkeeping as soon as we "die".
 	// This prevents stale pointers in the obmap when callers manage walker
 	// lifetimes outside LevelData's owning lists (common in tests).
-	obmap* active = (myscreen != nullptr) ? myscreen->level_data.myobmap.get() : nullptr;
+	obmap* active = (sim_level != nullptr) ? sim_level->myobmap.get() : nullptr;
 	if (active != nullptr)
 		active->remove(this);
 	if (myobmap != nullptr && myobmap != active)
@@ -1356,7 +1356,7 @@ bool walker::death()
 
 	if (myguy) // were we a real character?  Then make a heart ..
 	{
-			newob = myscreen->level_data.add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
+			newob = sim_level->add_ob(Order::Treasure, FAMILY_LIFE_GEM, 1);
 			newob->stats()->hitpoints = static_cast<float>(myguy->query_heart_value());
 			newob->stats()->hitpoints *= 0.75f / 2.0f;  // 75%, divided by 2, since score is doubled at end of level
 			newob->team_num = team_num;
@@ -1367,7 +1367,7 @@ bool walker::death()
 	{
 		case Order::Living:
 			if (   (team_num == 0 || myguy) // our team
-			        && (myscreen->level_data.type & SCEN_TYPE_SAVE_ALL)
+			        && (sim_level->type & SCEN_TYPE_SAVE_ALL)
 			        && (stats_->name.size()) // we were named
 			   )
 				return myscreen->endgame(SCEN_TYPE_SAVE_ALL); // failed
@@ -1390,7 +1390,7 @@ bool walker::death()
 		case Order::Generator:  // go up in flames :>
 			for (i=0; i < 4; i++)
 			{
-				newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+				newob = sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
 				if (!newob) // failsafe
 					break;
 				newob->team_num = team_num;
@@ -1422,7 +1422,7 @@ void walker::generate_bloodspot()
 
 	dead = 1; // just in case ..
 
-	bloodstain = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+	bloodstain = sim_level->add_fx_ob(Order::Treasure, FAMILY_STAIN);
 	bloodstain->ignore = 1;
 	transfer_stats(bloodstain);
 
@@ -1455,7 +1455,7 @@ void walker::set_direct_frame(short whichframe)
 {
 	frame = whichframe;
 
-	const PixieData& data = myscreen->level_data.myloader->graphics[PIX(order, family)];
+	const PixieData& data = sim_level->myloader->graphics[PIX(order, family)];
 	bmp = data.data.get() + frame*size;
 
 }
@@ -1596,7 +1596,7 @@ Sint32 walker::is_friendly(const walker *target) const
 	// Is allied mode set to zero (enemy)?
 	// If so, then if our team numbers don't match,
 	// we are not friendly
-	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
+	if (sim_save->allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == headtarget->team_num);
 	}
@@ -1652,7 +1652,7 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 
 	// Is allied mode set to zero (enemy) or were we not hired (!myguy)?
 	// If so, then our team number must match.
-	if (myscreen->save_data.allied_mode == 0 || has_myguy == 0)
+	if (sim_save->allied_mode == 0 || has_myguy == 0)
 	{
 		return (headus->team_num == team);
 	}

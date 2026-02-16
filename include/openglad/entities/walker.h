@@ -27,6 +27,9 @@
 // Opaque state type used by MicroPather for pathfinding nodes.
 // States are encoded grid coordinates (not real pointers), but the
 // micropather library API requires void*.
+class LevelData;
+struct SaveData;
+
 using MicroPatherState = void*;
 
 class walker : public pixieN
@@ -200,6 +203,11 @@ class walker : public pixieN
 		float last_hitpoints;
 		std::list<DamageNumber> damage_numbers;
 		char enddir;                   // Proposed direction facing
+
+		// Sim-layer state references (set during entity creation)
+		LevelData* sim_level = nullptr;
+		SaveData* sim_save = nullptr;
+		std::int32_t* sim_enemy_freeze = nullptr;
 
 		// Accessors for protected fields used by family callbacks
 		void set_charm_left(short value) { charm_left_ = value; }

@@ -9,22 +9,12 @@
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include <openglad/runtime/game_context.h>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 static bool ghost_scare_on_act(effect* self)
 {
@@ -38,7 +28,7 @@ static bool ghost_scare_on_death(effect* self)
     if (!self->owner || self->owner->dead)
         return false;
     Sint32 howmany = 0;
-    auto foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist,
+    auto foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
         50+(10*self->owner->stats()->level), &howmany, self->owner);
     if (howmany < 1)
         return false;

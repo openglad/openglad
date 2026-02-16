@@ -55,7 +55,7 @@ static bool cleric_check_special_ai(living* self)
     if (self->current_special == 1) // healing
     {
         Sint32 howmany = 0;
-        myscreen->find_friends_in_range(myscreen->level_data.oblist,
+        self->sim_level->find_friends_in_range(self->sim_level->oblist,
                                         60, &howmany, self);
         if (howmany > 1)
         {
@@ -98,7 +98,7 @@ static bool cleric_do_special(walker* self)
             if (!self->shifter_down) // normal heal
             {
                 Sint32 howmany;
-                std::list<walker*> newlist = myscreen->find_friends_in_range(myscreen->level_data.oblist,
+                std::list<walker*> newlist = self->sim_level->find_friends_in_range(self->sim_level->oblist,
                           60, &howmany, self);
                 didheal = 0;
                 if (howmany > 1)
@@ -162,7 +162,7 @@ static bool cleric_do_special(walker* self)
                     self->myguy->total_shots++;
                     self->myguy->scen_shots++;
                 }
-                newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+                newob = self->sim_level->add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
                 if (!newob)
                     return false;
                 newob->owner = self;
@@ -204,13 +204,13 @@ static bool cleric_do_special(walker* self)
             }
             else
             {
-                newob = myscreen->find_nearest_blood(self);
+                newob = self->sim_level->find_nearest_blood(self);
                 if (newob)
                 {
                     targetx = newob->xpos;
                     targety = newob->ypos;
                     distance = static_cast<Uint32>(self->distance_to_ob(newob));
-                    if (myscreen->query_passable(targetx, targety, newob) && distance < 60)
+                    if (self->sim_level->query_passable(targetx, targety, newob) && distance < 60)
                     {
                         alive = self->do_summon(FAMILY_SKELETON, 125 + (self->stats()->level * 40));
                         if (!alive)
@@ -258,13 +258,13 @@ static bool cleric_do_special(walker* self)
             }
             else
             {
-                newob = myscreen->find_nearest_blood(self);
+                newob = self->sim_level->find_nearest_blood(self);
                 if (newob)
                 {
                     targetx = newob->xpos;
                     targety = newob->ypos;
                     distance = static_cast<Uint32>(self->distance_to_ob(newob));
-                    if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
+                    if (self->sim_level->query_passable(targetx, targety, newob) && distance < 30)
                     {
                         alive = self->do_summon(FAMILY_GHOST, 150 + (self->stats()->level * 40));
                         if (!alive)
@@ -287,17 +287,17 @@ static bool cleric_do_special(walker* self)
             break;
         case 4: // resurrect
         default:
-            newob = myscreen->find_nearest_blood(self);
+            newob = self->sim_level->find_nearest_blood(self);
             if (newob)
             {
                 targetx = newob->xpos;
                 targety = newob->ypos;
                 distance = self->distance_to_ob(newob);
-                if (myscreen->query_passable(targetx, targety, newob) && distance < 30)
+                if (self->sim_level->query_passable(targetx, targety, newob) && distance < 30)
                 {
                     if (self->is_friendly(newob))
                     {
-                        alive = myscreen->level_data.add_ob(Order::Living, newob->stats()->old_family);
+                        alive = self->sim_level->add_ob(Order::Living, newob->stats()->old_family);
                         if (!alive)
                             return false;
                         newob->transfer_stats(alive);

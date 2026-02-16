@@ -20,7 +20,7 @@ static bool ghost_check_special_ai(living* self)
         Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
         return (distance < 130);
     }
-    self->foe = myscreen->find_near_foe(self);
+    self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
     Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
@@ -29,7 +29,7 @@ static bool ghost_check_special_ai(living* self)
 
 static bool ghost_do_special(walker* self)
 {
-    walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_GHOST_SCARE);
+    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_GHOST_SCARE);
     newob->ani_type = ANI_SCARE;
     newob->setxy(self->xpos + self->sizex/2 - newob->sizex/2,
                  self->ypos + self->sizey/2 - newob->sizey/2);

@@ -77,10 +77,10 @@ void Map::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacen
             // TODO: Make teleporters add another adjacent space on the other side of the teleporter.
 
 			// Any terrain in the way?  This checks boundaries too.
-			if (!myscreen->query_grid_passable(adj_x, adj_y, path_walker))
+			if (!path_walker->sim_level->query_grid_passable(adj_x, adj_y, path_walker))
 				continue;
 			// Any moving objects in the way?
-			else if (myscreen->level_data.myobmap->obmap_get_list(static_cast<short>(adj_x), static_cast<short>(adj_y)).size() > 0)
+			else if (path_walker->sim_level->myobmap->obmap_get_list(static_cast<short>(adj_x), static_cast<short>(adj_y)).size() > 0)
 				cost.cost = 10;
 			else
 				// Nothing in the way, cost is 1 for adjacent, sqrt(2) for diagonal

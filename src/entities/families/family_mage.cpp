@@ -38,7 +38,7 @@ static bool mage_handle_teleport(walker* self)
 static bool mage_check_special_ai(living* self)
 {
     Sint32 howmany = 0;
-    myscreen->find_foes_in_range(myscreen->level_data.oblist,
+    self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                  110, &howmany, self);
     if (howmany < 1)
         return true;
@@ -134,7 +134,7 @@ static bool mage_do_special(walker* self)
                 }
                 // Remove a marker, if present
                 generic = 0;
-                for (auto& uptr : myscreen->level_data.oblist)
+                for (auto& uptr : self->sim_level->oblist)
                 {
                     walker* ob = uptr.get();
                     if (ob &&
@@ -154,7 +154,7 @@ static bool mage_do_special(walker* self)
                 generic = 0; // force new placement, for now
                 if (!generic) // didn't remove a marker, so place one
                 {
-                    newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MARKER);
+                    newob = self->sim_level->add_ob(Order::FX, FAMILY_MARKER);
                     if (!newob)
                         return false;
                     newob->owner = self;
@@ -222,7 +222,7 @@ static bool mage_do_special(walker* self)
         case 3: // freeze time
             if (self->team_num == 0 || self->myguy)
             {
-                myscreen->enemy_freeze += 20 + 11 * self->stats()->level;
+                *self->sim_enemy_freeze += 20 + 11 * self->stats()->level;
                 og::sim::emit_event(og::sim::EventKind::SetPalette, 1);
             }
             else
@@ -233,8 +233,8 @@ static bool mage_do_special(walker* self)
                 message = std::format("TIME IS FROZEN! ({} rounds)", generic);
                 og::sim::emit_notification(message);
                 og::sim::emit_event(og::sim::EventKind::RequestRedraw);
-                std::list<walker*> newlist = myscreen->find_friends_in_range(
-                              myscreen->level_data.oblist, 30000, &howmany, self);
+                std::list<walker*> newlist = self->sim_level->find_friends_in_range(
+                              self->sim_level->oblist, 30000, &howmany, self);
                 for (auto* w : newlist)
                 {
                     if (w)
@@ -246,7 +246,7 @@ static bool mage_do_special(walker* self)
             newob = self->fire();
             if (!newob)
                 return false;
-            alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_WAVE);
+            alive = self->sim_level->add_ob(Order::Weapon, FAMILY_WAVE);
             alive->center_on(newob);
             alive->owner = self;
             alive->stats()->level = self->stats()->level;
@@ -257,7 +257,7 @@ static bool mage_do_special(walker* self)
         case 5:
         default: // heartburst
         {
-            std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+            std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                   80 + 2 * self->stats()->level, &howmany, self);
             if (!howmany)
                 return false;
@@ -272,7 +272,7 @@ static bool mage_do_special(walker* self)
             self->busy += 5;
             for (auto* ob : newlist)
             {
-                newob = myscreen->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+                newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
                 if (!newob)
                     return false;
                 newob->owner = self;

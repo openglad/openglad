@@ -30,7 +30,7 @@ static bool bomb_on_death(effect* self)
     if (!self->owner || self->owner->dead)
         self->owner = self;
     og::sim::emit_sound(SOUND_EXPLODE);
-    walker* newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION, 1);
+    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION, 1);
     newob->owner = self->owner;
     newob->stats()->hitpoints = 0;
     newob->stats()->level = self->owner->stats()->level;
@@ -46,7 +46,7 @@ static bool explosion_on_death(effect* self)
         self->owner = self;
     Sint32 generic = compute_explosion_range(self->owner->stats()->level, self->skip_exit);
     Sint32 howmany = 0;
-    auto foelist = active_screen()->find_in_range(active_screen()->level_data.oblist, 15+generic,
+    auto foelist = self->sim_level->find_in_range(self->sim_level->oblist, 15+generic,
         &howmany, self);
 
     // Damage our tile location ..

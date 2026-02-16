@@ -39,7 +39,7 @@ static bool barbarian_do_special(walker* self)
     walker* newob = self->fire();
     if (!newob)
         return false;
-    walker* alive = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BOULDER);
+    walker* alive = self->sim_level->add_ob(Order::Weapon, FAMILY_BOULDER);
     alive->center_on(newob);
     alive->owner = self;
     alive->stats()->level = self->stats()->level;

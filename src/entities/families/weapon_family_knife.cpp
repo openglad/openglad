@@ -9,19 +9,8 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weap.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/soundob.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 static bool knife_on_death(weap* self)
 {
@@ -29,7 +18,7 @@ static bool knife_on_death(weap* self)
     if (!owner_fd || !owner_fd->has_returning_weapon)
         return false; // no special handling
 
-    walker* newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_KNIFE_BACK);
+    walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_KNIFE_BACK);
     newob->owner = self->owner;
     newob->center_on(self);
     newob->lastx = self->lastx;

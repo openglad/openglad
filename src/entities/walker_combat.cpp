@@ -96,7 +96,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
         const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(query_family()) : nullptr;
         if(query_order() != Order::FX || (efd && efd->creates_hit_effect))
         {
-           walker* newob = myscreen->level_data.add_ob(Order::FX, FAMILY_HIT);
+           walker* newob = sim_level->add_ob(Order::FX, FAMILY_HIT);
             if (newob)
             {
                 newob->owner = target;
@@ -268,7 +268,7 @@ bool walker::attack(walker  *target)
                 myguy->exp += newexp;
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level);
+                sim_save->m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level);
             }
         }
     }
@@ -300,7 +300,7 @@ bool walker::attack(walker  *target)
         {
             if (getscore)
             {
-                myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level); // / 2;
+                sim_save->m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level); // / 2;
             }
             if (headguy->myguy)
                 headguy->myguy->exp += newexp;
@@ -330,7 +330,7 @@ bool walker::attack(walker  *target)
                     //}
                     if (getscore)
                     {
-                        myscreen->save_data.m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(10 * target->stats()->level);
+                        sim_save->m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(10 * target->stats()->level);
                     }
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)
@@ -366,7 +366,7 @@ bool walker::attack(walker  *target)
 
             /* Blood splats at death */
             // Make temporary stain:
-            blood = myscreen->level_data.add_ob(Order::Weapon, FAMILY_BLOOD);
+            blood = sim_level->add_ob(Order::Weapon, FAMILY_BLOOD);
             blood->team_num = target->team_num;
             blood->ani_type = ANI_GROW;
             blood->ignore = 1; // so that we can be walked over .. ?

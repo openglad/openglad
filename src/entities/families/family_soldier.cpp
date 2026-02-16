@@ -47,7 +47,7 @@ static bool soldier_do_special(walker* self)
                 return false;
             break;
         case 2: // boomerang
-            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOOMERANG);
+            newob = self->sim_level->add_ob(Order::FX, FAMILY_BOOMERANG);
             newob->owner = self;
             newob->team_num = self->team_num;
             newob->ani_type = 1;
@@ -75,8 +75,8 @@ static bool soldier_do_special(walker* self)
             self->stats()->add_command(COMMAND_WALK, 1, -1, -1);
 
             {
-                std::list<walker*> newlist = myscreen->find_foes_in_range(
-                    myscreen->level_data.oblist,
+                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
+                    self->sim_level->oblist,
                     32 + self->stats()->level * 2, &howmany, self);
 
                 for (auto* w : newlist)
@@ -102,8 +102,8 @@ static bool soldier_do_special(walker* self)
                 return false;
 
             {
-                std::list<walker*> newlist = myscreen->find_foes_in_range(
-                    myscreen->level_data.oblist, 28, &howmany, self);
+                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
+                    self->sim_level->oblist, 28, &howmany, self);
 
                 generic = 0;
 
@@ -143,7 +143,7 @@ static bool soldier_check_special_ai(living* self)
             return true;
         return false;
     }
-    self->foe = myscreen->find_near_foe(self);
+    self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
     Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));

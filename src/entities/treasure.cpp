@@ -23,7 +23,7 @@
 #include <string>
 #include <openglad/entities/obmap.h>
 #include <openglad/data/gloader.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure_family_registry.h>
@@ -33,17 +33,6 @@
 #include <algorithm>
 #include <format>
 #include <cstring>
-#include <openglad/runtime/game_context.h>
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 treasure::treasure(const PixieData& data)
     : walker(data)
@@ -76,7 +65,7 @@ void treasure::set_direct_frame(short whatframe)
 {
 	frame = whatframe;
 
-	const PixieData& data = active_screen()->level_data.myloader->graphics[PIX(order, family)];
+	const PixieData& data = sim_level->myloader->graphics[PIX(order, family)];
 	bmp = data.data.get() + frame*size;
 
 }
@@ -84,7 +73,7 @@ void treasure::set_direct_frame(short whatframe)
 // Finds the next connected teleporter in the fxlist for you to warp to.
 walker  * treasure::find_teleport_target()
 {
-	auto& ls = active_screen()->level_data.fxlist;
+	auto& ls = sim_level->fxlist;
 	//Log("Teleporting from #%d ..", number);
 
 	// First find where we are in the list ...

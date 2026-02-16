@@ -8,22 +8,12 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include <openglad/runtime/game_context.h>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
@@ -45,8 +35,8 @@ static bool cloud_on_act(effect* self)
     if (self->invisibility_left > 0)
         self->invisibility_left--;
     // Hit any nearby foes (not friends, for now)
-    auto foelist = active_screen()->find_foes_in_range(
-        active_screen()->level_data.oblist, self->sizex, &temp, self);
+    auto foelist = self->sim_level->find_foes_in_range(
+        self->sim_level->oblist, self->sizex, &temp, self);
 
     for(auto* w : foelist)
     {

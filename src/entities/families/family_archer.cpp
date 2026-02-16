@@ -77,7 +77,7 @@ static bool archer_check_special_ai(living* self)
         Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
         return (distance < 130);
     }
-    self->foe = myscreen->find_near_foe(self);
+    self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
     Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));

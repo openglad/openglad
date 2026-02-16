@@ -144,6 +144,23 @@ public:
     walker* add_weap_ob(Order order, Sint32 family);
     short remove_ob(walker  *ob);
     
+    // Collision/passability queries (moved from screen)
+    bool query_passable(float x, float y, walker* ob);
+    bool query_object_passable(float x, float y, walker* ob);
+    bool query_grid_passable(float x, float y, walker* ob);
+    bool query_passable(Sint32 x, Sint32 y, walker* ob) { return query_passable(static_cast<float>(x), static_cast<float>(y), ob); }
+    bool query_object_passable(Sint32 x, Sint32 y, walker* ob) { return query_object_passable(static_cast<float>(x), static_cast<float>(y), ob); }
+    bool query_grid_passable(Sint32 x, Sint32 y, walker* ob) { return query_grid_passable(static_cast<float>(x), static_cast<float>(y), ob); }
+
+    // Entity search (moved from screen)
+    walker* find_near_foe(walker* ob);
+    walker* find_far_foe(walker* ob);
+    walker* find_nearest_blood(walker* who);
+    walker* find_nearest_player(walker* ob);
+    std::list<walker*> find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
+    std::list<walker*> find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
+    std::list<walker*> find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob);
+
     void create_new_grid();
     void resize_grid(int width, int height);
     void delete_grid();

@@ -54,8 +54,8 @@ static bool orc_do_special(walker* self)
             self->busy += 2;
 
             {
-                std::list<walker*> newlist = myscreen->find_foes_in_range(
-                    myscreen->level_data.oblist,
+                std::list<walker*> newlist = self->sim_level->find_foes_in_range(
+                    self->sim_level->oblist,
                     160 + (20 * self->stats()->level), &howmany, self);
 
                 for (auto* ob : newlist)
@@ -85,7 +85,7 @@ static bool orc_do_special(walker* self)
         default:
             if (self->stats()->hitpoints >= self->stats()->max_hitpoints)
                 return false;
-            newob = myscreen->find_nearest_blood(self);
+            newob = self->sim_level->find_nearest_blood(self);
             if (!newob)
                 return false;
             distance = static_cast<Uint32>(self->distance_to_ob_center(newob));
@@ -122,7 +122,7 @@ static bool orc_check_special_ai(living* self)
         Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
         return (distance < 130);
     }
-    self->foe = myscreen->find_near_foe(self);
+    self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
     Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));

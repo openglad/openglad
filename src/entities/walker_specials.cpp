@@ -73,7 +73,7 @@ bool walker::teleport()
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
-	for(auto& uptr : myscreen->level_data.oblist)
+	for(auto& uptr : sim_level->oblist)
 	{
 	    walker* ob = uptr.get();
 		if (ob &&
@@ -85,7 +85,7 @@ bool walker::teleport()
 		{
 			// Found our marker!
 				distance = distance_to_ob(ob);
-				if (myscreen->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
+				if (sim_level->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
 				{
 					center_on(ob);
 					ob->lifetime--;
@@ -107,19 +107,19 @@ bool walker::teleport()
 	// No marker: pick a random passable grid cell. Historically this was an
 	// unbounded loop, which can hang tests (and gameplay) if level/grid state
 	// isn't initialized or nothing is passable.
-	if (!myscreen || !myscreen->level_data.grid.valid() ||
-	    myscreen->level_data.grid.w <= 0 || myscreen->level_data.grid.h <= 0 ||
-	    myscreen->level_data.pixmaxx <= 0 || myscreen->level_data.pixmaxy <= 0)
+	if (!sim_level || !sim_level->grid.valid() ||
+	    sim_level->grid.w <= 0 || sim_level->grid.h <= 0 ||
+	    sim_level->pixmaxx <= 0 || sim_level->pixmaxy <= 0)
 		return 0;
 
 	Sint32 keep_going = 200; // maxtries
 	do
 	{
-		newx = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.w))) * GRID_SIZE;
-		newy = static_cast<Sint32>(rng(static_cast<Uint32>(myscreen->level_data.grid.h))) * GRID_SIZE;
+		newx = static_cast<Sint32>(rng(static_cast<Uint32>(sim_level->grid.w))) * GRID_SIZE;
+		newy = static_cast<Sint32>(rng(static_cast<Uint32>(sim_level->grid.h))) * GRID_SIZE;
 		keep_going--;
 	} while (keep_going > 0 &&
-	         !myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
+	         !sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
 
 	if (keep_going > 0)
 	{
@@ -137,7 +137,7 @@ bool walker::teleport_ranged(Sint32 range)
 	newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
 	newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
 
-	while(!myscreen->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
+	while(!sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
 	{
 		newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
 		newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
@@ -158,7 +158,7 @@ Sint32 walker::turn_undead(Sint32 range, [[maybe_unused]] Sint32 power)
 	Sint32 killed = 0;
 	Sint32 targets = 0;
 
-	std::list<walker*> deadlist = myscreen->find_foes_in_range(myscreen->level_data.oblist, range,
+	std::list<walker*> deadlist = sim_level->find_foes_in_range(sim_level->oblist, range,
 	                                       &targets, this);
 	if (!targets)
 		return -1;

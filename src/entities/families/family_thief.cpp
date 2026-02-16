@@ -39,7 +39,7 @@ static bool thief_check_special_ai(living* self)
         else
         {
             Sint32 howmany = 0;
-            myscreen->find_foes_in_range(myscreen->level_data.oblist,
+            self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                          110, &howmany, self);
             if (howmany < 3)
                 return false;
@@ -56,7 +56,7 @@ static bool thief_check_special_ai(living* self)
             myrange = 16 + 4 * self->stats()->level;
 
         Sint32 howmany = 0;
-        myscreen->find_foes_in_range(myscreen->level_data.oblist,
+        self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                      myrange, &howmany, self);
         if (howmany < 1)
             return false;
@@ -90,7 +90,7 @@ static bool thief_do_special(walker* self)
     switch (self->current_special)
     {
         case 1: // drop bomb
-            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_BOMB, 1);
+            newob = self->sim_level->add_ob(Order::FX, FAMILY_BOMB, 1);
             newob->ani_type = ANI_BOMB;
             if (self->myguy)
             {
@@ -123,7 +123,7 @@ static bool thief_do_special(walker* self)
                     return false;
                 {
                     Sint32 howmany;
-                    std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                    std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                           80 + 4 * self->stats()->level, &howmany, self);
                     for (auto* ob : newlist)
                     {
@@ -154,7 +154,7 @@ static bool thief_do_special(walker* self)
                     Sint32 howmany;
                     Sint32 didheal = 0;
                     Sint32 generic2 = 0;
-                    std::list<walker*> newlist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+                    std::list<walker*> newlist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                                                           16 + 4 * self->stats()->level, &howmany, self);
                     if (howmany < 1)
                         return false;
@@ -207,7 +207,7 @@ static bool thief_do_special(walker* self)
         default:
             if (self->busy > 0)
                 return false;
-            newob = myscreen->level_data.add_ob(Order::FX, FAMILY_CLOUD);
+            newob = self->sim_level->add_ob(Order::FX, FAMILY_CLOUD);
             if (!newob)
                 return false;
             self->busy += 5;

@@ -26,7 +26,9 @@
 #include <openglad/core/stats.h>
 #include <openglad/render/smooth.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/render/view.h>
+#include <openglad/entities/obmap.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -468,6 +470,11 @@ walker* LevelData::add_ob(Order order, Sint32 family, [[maybe_unused]] bool atst
         return nullptr;
 
     w->myobmap = this->myobmap.get();
+    w->sim_level = this;
+    if (myscreen) {
+        w->sim_save = &myscreen->save_data;
+        w->sim_enemy_freeze = &myscreen->enemy_freeze;
+    }
     if (order == Order::Living)
         numobs++;
 
@@ -483,9 +490,11 @@ walker* LevelData::add_fx_ob(Order order, Sint32 family)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
-
-	//numobs++;
-	//w->ignore = 1;
+    w->sim_level = this;
+    if (myscreen) {
+        w->sim_save = &myscreen->save_data;
+        w->sim_enemy_freeze = &myscreen->enemy_freeze;
+    }
 
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
@@ -499,6 +508,11 @@ walker* LevelData::add_weap_ob(Order order, Sint32 family)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
+    w->sim_level = this;
+    if (myscreen) {
+        w->sim_save = &myscreen->save_data;
+        w->sim_enemy_freeze = &myscreen->enemy_freeze;
+    }
 
     walker* raw = w.get();
     weaplist.push_back(std::move(w));
@@ -1851,7 +1865,7 @@ std::string LevelData::get_description_line(int i)
 {
     if(i >= int(description.size()))
         return "";
-    
+
     std::list<std::string>::iterator e = description.begin();
     while(i > 0 && e != description.end())
     {
@@ -1859,4 +1873,468 @@ std::string LevelData::get_description_line(int i)
         e++;
     }
     return *e;
+}
+
+// ---- Collision / passability queries ----
+
+static constexpr short MAX_SPREAD = 10;
+
+bool LevelData::query_grid_passable(float x, float y, walker  *ob)
+{
+	Sint32 i,j;
+	Sint32 xtrax = 1;
+	Sint32 xtray = 1;
+	Sint32 xtarg;
+	Sint32 ytarg;
+	Sint32 dist;
+	const Sint32 x_i = static_cast<Sint32>(x);
+	const Sint32 y_i = static_cast<Sint32>(y);
+	Sint32 xover = x_i + ob->sizex;
+	Sint32 yover = y_i + ob->sizey;
+
+	if (x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy)
+		return 0;
+
+	if (ob->stats()->query_bit_flags(BIT_ETHEREAL) )
+		return 1;
+
+	if (!grid.valid())
+		return 0;
+
+	if (!((xover)%GRID_SIZE))
+		xtrax = 0;
+	if (!((yover)%GRID_SIZE))
+		xtray = 0;
+
+	xtarg = (xover/GRID_SIZE) + xtrax;
+	ytarg = (yover/GRID_SIZE) + xtray;
+
+	for (i = x_i/GRID_SIZE; i < xtarg; i++)
+		for (j = y_i/GRID_SIZE; j < ytarg; j++)
+		{
+			switch (static_cast<unsigned char>(grid.data[i+grid.w*j]))
+			{
+				case PIX_GRASS1:
+				case PIX_GRASS2:
+				case PIX_GRASS3:
+				case PIX_GRASS4:
+				case PIX_GRASS_DARK_1:
+				case PIX_GRASS_DARK_2:
+				case PIX_GRASS_DARK_3:
+				case PIX_GRASS_DARK_4:
+				case PIX_GRASS_DARK_LL:
+				case PIX_GRASS_DARK_UR:
+				case PIX_GRASS_DARK_B1:
+				case PIX_GRASS_DARK_B2:
+				case PIX_GRASS_DARK_BR:
+				case PIX_GRASS_DARK_R1:
+				case PIX_GRASS_DARK_R2:
+				case PIX_GRASS_RUBBLE:
+				case PIX_GRASS1_DAMAGED:
+				case PIX_GRASS_LIGHT_1:
+				case PIX_GRASS_LIGHT_TOP:
+				case PIX_GRASS_LIGHT_RIGHT_TOP:
+				case PIX_GRASS_LIGHT_RIGHT:
+				case PIX_GRASS_LIGHT_RIGHT_BOTTOM:
+				case PIX_GRASS_LIGHT_BOTTOM:
+				case PIX_GRASS_LIGHT_LEFT_BOTTOM:
+				case PIX_GRASS_LIGHT_LEFT:
+				case PIX_GRASS_LIGHT_LEFT_TOP:
+				case PIX_GRASSWATER_LL:
+				case PIX_GRASSWATER_LR:
+				case PIX_GRASSWATER_UL:
+				case PIX_GRASSWATER_UR:
+				case PIX_PAVEMENT1:
+				case PIX_PAVEMENT2:
+				case PIX_PAVEMENT3:
+				case PIX_COBBLE_1:
+				case PIX_COBBLE_2:
+				case PIX_COBBLE_3:
+				case PIX_COBBLE_4:
+				case PIX_FLOOR_PAVEL:
+				case PIX_FLOOR_PAVER:
+				case PIX_FLOOR_PAVEU:
+				case PIX_FLOOR_PAVED:
+				case PIX_PAVESTEPS1:
+				case PIX_PAVESTEPS2:
+				case PIX_PAVESTEPS2L:
+				case PIX_PAVESTEPS2R:
+				case PIX_FLOOR1:
+				case PIX_CARPET_LL:
+				case PIX_CARPET_B:
+				case PIX_CARPET_LR:
+				case PIX_CARPET_UR:
+				case PIX_CARPET_U:
+				case PIX_CARPET_UL:
+				case PIX_CARPET_L:
+				case PIX_CARPET_M:
+				case PIX_CARPET_M2:
+				case PIX_CARPET_R:
+				case PIX_CARPET_SMALL_HOR:
+ 				case PIX_CARPET_SMALL_VER:
+				case PIX_CARPET_SMALL_CUP:
+				case PIX_CARPET_SMALL_CAP:
+				case PIX_CARPET_SMALL_LEFT:
+				case PIX_CARPET_SMALL_RIGHT:
+				case PIX_CARPET_SMALL_TINY:
+				case PIX_DIRT_1:
+				case PIX_DIRTGRASS_UL1:
+				case PIX_DIRTGRASS_UR1:
+				case PIX_DIRTGRASS_LL1:
+				case PIX_DIRTGRASS_LR1:
+				case PIX_DIRT_DARK_1:
+				case PIX_DIRTGRASS_DARK_UL1:
+				case PIX_DIRTGRASS_DARK_UR1:
+				case PIX_DIRTGRASS_DARK_LL1:
+				case PIX_DIRTGRASS_DARK_LR1:
+				case PIX_PATH_1:
+				case PIX_PATH_2:
+				case PIX_PATH_3:
+				case PIX_PATH_4:
+					break;
+				case PIX_TREE_M1:
+				case PIX_TREE_ML:
+				case PIX_TREE_MR:
+				case PIX_TREE_MT:
+				case PIX_TREE_T1:
+					if (ob->stats()->query_bit_flags(BIT_FORESTWALK) )
+						break;
+					else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
+						break;
+					else
+						return 0;
+				case PIX_TREE_B1:
+					{
+						if (ob->query_order() == Order::Weapon
+						        || ob->stats()->query_bit_flags(BIT_FORESTWALK) )
+							break;
+						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
+							break;
+						else
+							return 0;
+					}
+
+				case PIX_H_WALL1:
+				case PIX_WALL2:
+				case PIX_WALL3:
+				case PIX_WALL_LL:
+				case PIX_WALLTOP_H:
+					return 0;
+
+					case PIX_WALL4:
+					case PIX_WALL5:
+					case PIX_WALL_ARROW_GRASS:
+					case PIX_WALL_ARROW_FLOOR:
+					case PIX_WALL_ARROW_GRASS_DARK:
+						{
+							if (ob->query_order()==Order::Living)
+								return 0;
+
+							if (abs(ob->xpos - ob->owner->xpos) >
+							        abs(ob->ypos - ob->owner->ypos))
+								dist = abs(ob->xpos - ob->owner->xpos);
+							else
+								dist = abs(ob->ypos - ob->owner->ypos);
+
+							dist -= (GRID_SIZE/2);
+							if (dist < GRID_SIZE)
+							{
+								dist += GRID_SIZE;
+							}
+
+							if (ctx().rng->next(dist/GRID_SIZE))
+							{
+								return 0;
+							}
+						}
+						[[fallthrough]];
+					case PIX_WATER1:
+				case PIX_WATER2:
+				case PIX_WATER3:
+				case PIX_WATERGRASS_LL:
+				case PIX_WATERGRASS_LR:
+				case PIX_WATERGRASS_UL:
+				case PIX_WATERGRASS_UR:
+				case PIX_WATERGRASS_U:
+				case PIX_WATERGRASS_L:
+				case PIX_WATERGRASS_R:
+				case PIX_WATERGRASS_D:
+				case PIX_WALLSIDE_L:
+				case PIX_WALLSIDE1:
+				case PIX_WALLSIDE_R:
+				case PIX_WALLSIDE_C:
+				case PIX_WALLSIDE_CRACK_C1:
+				case PIX_TORCH1:
+				case PIX_TORCH2:
+				case PIX_TORCH3:
+				case PIX_BRAZIER1:
+				case PIX_COLUMN1:
+				case PIX_COLUMN2:
+				case PIX_BOULDER_1:
+				case PIX_BOULDER_2:
+				case PIX_BOULDER_3:
+				case PIX_BOULDER_4:
+					{
+						if (ob->query_order() == Order::Weapon)
+							break;
+						else if (ob->stats()->query_bit_flags(BIT_FLYING) || ob->flight_left)
+							break;
+						else
+							return 0;
+					}
+				default:
+					return 0;
+			}
+
+		}
+	return 1;
+}
+
+bool LevelData::query_object_passable(float x, float y, walker  *ob)
+{
+	if (ob->dead)
+		return 1;
+	return myobmap->query_list(ob, static_cast<short>(x), static_cast<short>(y));
+}
+
+bool LevelData::query_passable(float x, float y, walker  *ob)
+{
+	return query_grid_passable(x, y, ob) && query_object_passable(x, y, ob);
+}
+
+// ---- Entity search ----
+
+walker *LevelData::find_near_foe(walker  *ob)
+{
+	short targx, targy;
+	short spread=1,xchange=0;
+	short loop=0;
+	short resolution = myobmap->obmapres;
+
+	if (!ob)
+	{
+		Log("no ob in find near foe.\n");
+		return nullptr;
+	}
+	targx = ob->xpos;
+	targy = ob->ypos;
+	spread = 1;
+
+	while (spread < MAX_SPREAD)
+	{
+		for (loop=0;loop<spread;loop++)
+		{
+			if (!(xchange%2))
+			{
+				targx += resolution;
+				if (targx<=0)
+					return find_far_foe(ob);
+				if (targx>=pixmaxx)
+					return find_far_foe(ob);
+			}
+			else
+			{
+				targy += resolution;
+				if (targy<=0)
+					return find_far_foe(ob);
+				if (targy>=pixmaxy)
+					return find_far_foe(ob);
+			}
+
+			std::list<walker*>& ls = myobmap->obmap_get_list(targx,targy);
+			for(auto* w : ls)
+			{
+				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
+				        (ctx().rng->next(w->invisibility_left/20)==0)
+				   )
+				{
+					if (w->query_order() == Order::Living ||
+					        w->query_order() == Order::Generator)
+						return w;
+				}
+			}
+
+		}
+		xchange++;
+		if (!(xchange%2))
+		{
+			resolution = static_cast<short>(-resolution);
+			spread++;
+		}
+	}
+	return find_far_foe(ob);
+}
+
+walker  *LevelData::find_far_foe(walker  *ob)
+{
+	Sint32 distance, tempdistance;
+	walker  *endfoe;
+
+	if (!ob)
+	{
+		Log("no ob in find far foe.\n");
+		return nullptr;
+	}
+
+	endfoe = nullptr;
+	distance = 10000;
+	ob->stats()->last_distance = 10000;
+
+    for(auto& uptr : oblist)
+	{
+	    walker* foe = uptr.get();
+		if (foe == nullptr || foe->dead)
+			continue;
+
+		if (ob->is_friendly(foe) == 0)
+		{
+			if (
+			    (foe->query_order() == Order::Living ||
+			     foe->query_order() == Order::Generator)  &&
+			    (!(ctx().rng->next(foe->invisibility_left/20)))
+			)
+			{
+				tempdistance = ob->distance_to_ob(foe);
+				if (tempdistance < distance)
+				{
+					distance = tempdistance;
+					endfoe = foe;
+				}
+			}
+		}
+	}
+	return endfoe;
+}
+
+walker  * LevelData::find_nearest_blood(walker  *who)
+{
+	Sint32 distance, newdistance;
+	walker  *returnob = nullptr;
+
+	if (!who)
+		return nullptr;
+
+	distance = 800;
+
+	for(auto& uptr : fxlist)
+	{
+	    walker* w = uptr.get();
+		if (w && w->query_order() == Order::Treasure &&
+		        w->query_family() == FAMILY_STAIN && !w->dead)
+		{
+			newdistance = static_cast<Uint32>(who->distance_to_ob_center(w));
+			if (newdistance < distance)
+			{
+				distance = newdistance;
+				returnob = w;
+			}
+		}
+	}
+	return returnob;
+}
+
+walker* LevelData::find_nearest_player(walker *ob)
+{
+	walker *returnob = nullptr;
+	Uint32 distance = 32000;
+	Uint32 tempdistance;
+
+	if (!ob)
+		return nullptr;
+
+	for(auto& uptr : oblist)
+	{
+	    walker* w = uptr.get();
+		if (w && (w->user != -1) )
+		{
+			tempdistance = ob->distance_to_ob(w);
+			if (tempdistance < distance)
+			{
+				distance = tempdistance;
+				returnob = w;
+			}
+		}
+	}
+
+	return returnob;
+}
+
+std::list<walker*> LevelData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
+{
+    std::list<walker*> result;
+
+	*howmany = 0;
+
+	if(!ob)
+		return result;
+
+	for(auto& uptr : somelist)
+	{
+	    walker* w = uptr.get();
+		if (w && !w->dead)
+		{
+			if (ob->distance_to_ob(w) <= range)
+			{
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
+
+	return result;
+}
+
+std::list<walker*> LevelData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
+{
+    std::list<walker*> result;
+    *howmany = 0;
+
+	if(!ob)
+		return result;
+
+	for(auto& uptr : somelist)
+	{
+	    walker* w = uptr.get();
+		if (w && !w->dead &&
+		        (w->query_order() == Order::Living ||
+		         w->query_order() == Order::Generator)
+		        && (ob->is_friendly(w) == 0)
+		   )
+		{
+			if (ob->distance_to_ob(w) <= range)
+			{
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
+
+	return result;
+}
+
+std::list<walker*> LevelData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
+                                      Sint32* howmany, walker* ob)
+{
+    std::list<walker*> result;
+    *howmany = 0;
+
+	if(!ob)
+		return result;
+
+	for(auto& uptr : somelist)
+	{
+	    walker* w = uptr.get();
+		if (w && !w->dead && w->query_order() == Order::Living
+		        && ( ob->is_friendly(w) )
+		   )
+		{
+			if (ob->distance_to_ob(w) <= range)
+			{
+			    result.push_back(w);
+				(*howmany)++;
+			}
+		}
+	}
+
+	return result;
 }

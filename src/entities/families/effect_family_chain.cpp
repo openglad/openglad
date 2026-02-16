@@ -9,7 +9,7 @@
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
@@ -17,16 +17,6 @@
 static inline Uint32 rng(Uint32 max_exclusive) {
     return ctx().rng->next(max_exclusive);
 }
-
-namespace
-{
-inline screen* active_screen()
-{
-    if(ctx().game_screen != nullptr)
-        return ctx().game_screen;
-    return myscreen;
-}
-} // namespace
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
@@ -43,7 +33,7 @@ static bool chain_on_act(effect* self)
     if (hits(self->xpos, self->ypos, self->sizex, self->sizey,
              self->leader->xpos, self->leader->ypos, self->leader->sizex, self->leader->sizey))
     {
-        walker* newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_EXPLOSION);
+        walker* newob = self->sim_level->add_ob(Order::FX, FAMILY_EXPLOSION);
         if (!newob)
         {
             self->dead = 1;
@@ -63,10 +53,10 @@ static bool chain_on_act(effect* self)
         Sint32 temp = 0;
         std::list<walker*> foelist;
         if (self->owner->myguy)
-            foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist,
+            foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                 240+(self->owner->myguy->intelligence/2), &temp, self);
         else
-            foelist = active_screen()->find_foes_in_range(active_screen()->level_data.oblist,
+            foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
                 240+self->stats()->level*5, &temp, self);
         if (temp && generic>20)
         {
@@ -76,7 +66,7 @@ static bool chain_on_act(effect* self)
                 if (numfoes <= 0) break;
                 if (w != self->leader && w->skip_exit<1)
                 {
-                    newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_CHAIN);
+                    newob = self->sim_level->add_ob(Order::FX, FAMILY_CHAIN);
                     if (!newob)
                         return true;
                     newob->owner = self->owner;
