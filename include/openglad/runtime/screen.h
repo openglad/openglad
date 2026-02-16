@@ -32,6 +32,8 @@
 #include <string>
 #include <string_view>
 
+struct InputState;
+
 class screen : public video
 {
 	public:
@@ -70,6 +72,7 @@ class screen : public video
 		                   int team_num = -1);
 		short input(const SDL_Event& event);
 		short continuous_input();
+		void process_input(const InputState& input_state);
 		bool act();
 
 		short endgame(short ending);

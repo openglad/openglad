@@ -15,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <openglad/input/input_action.h>
 
 // Forward declarations — avoid pulling in heavy headers
 class screen;
@@ -90,6 +91,14 @@ struct PlayerInput {
 
     // Pressed this frame: true only on the frame the key transitions down
     bool pressed[NUM_INPUT_KEYS] = {};
+
+    // Semantic accessors using InputAction (SDL-independent)
+    bool is_held(InputAction action) const {
+        return held[static_cast<int>(action)];
+    }
+    bool was_pressed(InputAction action) const {
+        return pressed[static_cast<int>(action)];
+    }
 
     // Derived movement direction from held directional keys (-1, 0, or 1)
     int move_x() const;

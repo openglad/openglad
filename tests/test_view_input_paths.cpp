@@ -1,10 +1,12 @@
 #include <openglad/input/input.h>
+#include <openglad/input/input_action.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 
 #include <list>
@@ -100,21 +102,23 @@ void test_view_input_switch_control_forward_and_reverse()
     myscreen->level_data.oblist.push_back(std::move(w3));
     v->control = w1p;
 
-    SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.repeat = 0;
-    e.key.keysym.sym = SDLK_TAB;
-    v->input(e);
+    // Use process_input() with InputState for switch control.
+    InputState input = {};
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    v->process_input(input);
     TEST_ASSERT(v->control == w2p, "switch key should move to next team member");
 
-    // Reset debounce (changedchar) by sending a non-switch key event.
-    e.key.keysym.sym = SDLK_F1;
-    v->input(e);
+    // Reset debounce by sending a frame with no switch pressed.
+    InputState empty = {};
+    v->process_input(empty);
 
-    ks.set(SDLK_LSHIFT, true);
-    e.key.keysym.sym = SDLK_TAB;
-    v->input(e);
-    ks.set(SDLK_LSHIFT, false);
+    // Shift+switch should go backward.
+    InputState shift_switch = {};
+    shift_switch.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    shift_switch.players[0].held[static_cast<int>(InputAction::SwitchChar)] = true;
+    shift_switch.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    v->process_input(shift_switch);
     TEST_ASSERT(v->control == w1p, "shift+switch should move to previous team member");
 }
 REGISTER_TEST(test_view_input_switch_control_forward_and_reverse);
@@ -148,25 +152,25 @@ void test_view_input_yell_and_shift_yell_team_actions()
     myscreen->level_data.oblist.push_back(std::move(ally));
     v->control = controlp;
 
-    SDL_Event e{};
-    e.type = SDL_KEYDOWN;
-    e.key.repeat = 0;
-    e.key.keysym.sym = SDLK_y;
-
-    // Plain YELL: followers should get leader+follow command, and yo_delay set.
-    v->input(e);
+    // Plain YELL via process_input: followers get leader+follow, yo_delay set.
+    InputState yell_input = {};
+    yell_input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    yell_input.players[0].held[static_cast<int>(InputAction::Yell)] = true;
+    v->process_input(yell_input);
     TEST_ASSERT(allyp->leader == controlp, "plain yell should assign control as leader");
     TEST_ASSERT(controlp->yo_delay == 30, "plain yell should set yo_delay");
 
     // Shift+YELL toggles team defense mode.
-    ks.set(SDLK_LSHIFT, true);
-    v->input(e);
+    InputState shift_yell = {};
+    shift_yell.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    shift_yell.players[0].held[static_cast<int>(InputAction::Yell)] = true;
+    shift_yell.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    v->process_input(shift_yell);
     TEST_ASSERT(controlp->action == ACTION_FOLLOW, "shift+yell should enter follow/defense mode");
     TEST_ASSERT(allyp->action == ACTION_FOLLOW, "ally should enter follow action");
 
     // Repeat shift+yell should release defense mode.
-    v->input(e);
-    ks.set(SDLK_LSHIFT, false);
+    v->process_input(shift_yell);
     TEST_ASSERT(controlp->action == 0, "second shift+yell should clear defense mode");
 }
 REGISTER_TEST(test_view_input_yell_and_shift_yell_team_actions);
@@ -204,7 +208,10 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     v->control = controlp;
 
     // Hold cheat key so cheat branch executes.
+    // input() now reads from ctx().input, so populate it.
     ks.set(SDLK_c, true);
+    ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
 
     SDL_Event e{};
     e.type = SDL_KEYDOWN;
@@ -214,6 +221,9 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     e.key.keysym.sym = SDLK_TAB;
     v->input(e);
     TEST_ASSERT(v->control != nullptr, "control should remain valid after cheat-switch");
+
+    // Reset switch press for subsequent calls
+    ctx().input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = false;
 
     // Cheat+F12: eliminate enemy living units.
     enemyp->stats()->hitpoints = 25;
@@ -270,5 +280,6 @@ void test_view_input_cheat_mode_switch_team_kill_and_level_keys()
     TEST_ASSERT(v->control->speed_bonus_left >= speed_bonus_before + 20, "s key should increase speed bonus");
 
     ks.set(SDLK_c, false);
+    ctx().input.players[0].held[static_cast<int>(InputAction::Cheat)] = false;
 }
 REGISTER_TEST(test_view_input_cheat_mode_switch_team_kill_and_level_keys);

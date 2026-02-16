@@ -423,6 +423,12 @@ short screen::continuous_input()
 	return 1;
 }
 
+void screen::process_input(const InputState& input_state)
+{
+	for (short i = 0; i < numviews; i++)
+		viewob[i]->process_input(input_state);
+}
+
 bool screen::act()
 {
 	// Delegate simulation tick to SimWorld.

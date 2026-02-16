@@ -15,6 +15,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+// TODO: Migrate isPlayerHoldingKey() calls in handle_menu_nav() to use
+// InputState/InputAction once the menu navigation loop is refactored from
+// its current spin-wait (while + SDL_Delay + get_input_events) pattern
+// to a frame-based design.
+
 #include <openglad/legacy/base.h>
 #include <openglad/input/button.h>
 #include <openglad/input/input.h>

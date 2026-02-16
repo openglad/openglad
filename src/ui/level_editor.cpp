@@ -15,6 +15,11 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+// TODO: Migrate isPlayerHoldingKey()/didPlayerPressKey() calls in the
+// level editor to use InputState/InputAction. All current calls are
+// inside #ifdef USE_CONTROLLER_INPUT blocks and use the raw SDL event
+// loop pattern, which would require restructuring to frame-based input.
+
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
 #include <openglad/render/radar.h>
