@@ -9,15 +9,15 @@ OG_UNIT_TEST(test_sim_event_log_push_and_clear)
     OG_ASSERT(log.size() == 0);
 
     log.set_tick(1);
-    log.push(og::sim::EventKind::Damage, 10, 20);
+    log.push(og::sim::EventKind::SetPalette, 1, 0);
     OG_ASSERT(!log.empty());
     OG_ASSERT(log.size() == 1);
 
     const auto& ev = log.events()[0];
     OG_ASSERT(ev.tick == 1);
-    OG_ASSERT(ev.kind == og::sim::EventKind::Damage);
-    OG_ASSERT(ev.a == 10);
-    OG_ASSERT(ev.b == 20);
+    OG_ASSERT(ev.kind == og::sim::EventKind::SetPalette);
+    OG_ASSERT(ev.a == 1);
+    OG_ASSERT(ev.b == 0);
 
     log.clear();
     OG_ASSERT(log.empty());
@@ -75,11 +75,11 @@ OG_UNIT_TEST(test_sim_event_log_tick_tracking)
     log.set_tick(42);
     OG_ASSERT(log.tick() == 42);
 
-    log.push(og::sim::EventKind::Death, 1, 2);
+    log.push(og::sim::EventKind::SetPalette, 1, 0);
     OG_ASSERT(log.events()[0].tick == 42);
 
     log.set_tick(43);
-    log.push(og::sim::EventKind::Spawn, 3, 4);
+    log.push(og::sim::EventKind::RequestRedraw, 0, 0);
     OG_ASSERT(log.events()[1].tick == 43);
 }
 
@@ -90,12 +90,12 @@ OG_UNIT_TEST(test_sim_event_log_multiple_event_types)
 
     log.push_sound(10);
     log.push_notification("test msg");
-    log.push(og::sim::EventKind::Damage, 5, 15);
-    log.push(og::sim::EventKind::EntityHeal, 7, 25);
+    log.push(og::sim::EventKind::SetPalette, 1, 0);
+    log.push(og::sim::EventKind::RequestRedraw, 0, 0);
 
     OG_ASSERT(log.size() == 4);
     OG_ASSERT(log.events()[0].kind == og::sim::EventKind::PlaySound);
     OG_ASSERT(log.events()[1].kind == og::sim::EventKind::Notification);
-    OG_ASSERT(log.events()[2].kind == og::sim::EventKind::Damage);
-    OG_ASSERT(log.events()[3].kind == og::sim::EventKind::EntityHeal);
+    OG_ASSERT(log.events()[2].kind == og::sim::EventKind::SetPalette);
+    OG_ASSERT(log.events()[3].kind == og::sim::EventKind::RequestRedraw);
 }
