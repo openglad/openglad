@@ -16,7 +16,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/runtime/game_context.h>  // PlayerInput definition
 #include <algorithm>
 
 walker* sim_find_next_control(LevelData& level, short my_team)

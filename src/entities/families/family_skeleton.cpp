@@ -8,7 +8,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 

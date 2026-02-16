@@ -10,7 +10,6 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
 
 // --- TREE and BLOOD: simple animation cycling ---
@@ -71,7 +70,7 @@ static bool sprinkle_on_hit_target(walker* weapon, walker* target, walker* owner
     {
         Sint32 con = target->myguy ? target->myguy->constitution : 0;
         target->stats()->frozen_delay =
-            static_cast<short>(compute_freeze_duration(owner->stats()->level, con, *ctx().rng));
+            static_cast<short>(compute_freeze_duration(owner->stats()->level, con, *owner->sim_rng));
     }
     return true;
 }

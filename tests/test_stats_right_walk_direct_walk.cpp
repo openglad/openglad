@@ -55,6 +55,8 @@ void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
 
     PixieData px = one_px();
     walker w(px);
+    w.sim_rng = ctx().rng;
+    w.sim_config = ctx().config;
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
     w.curdir = FACE_UP;
@@ -113,7 +115,11 @@ void test_stats_direct_walk_grid_passability_branches()
     // pointer instead of the global myscreen->level_data.  Wire it up so
     // fire_check -> create_weapon -> sim_level->add_ob() doesn't segfault.
     w.sim_level = &myscreen->level_data;
+    w.sim_rng = ctx().rng;
+    w.sim_config = ctx().config;
     foe.sim_level = &myscreen->level_data;
+    foe.sim_rng = ctx().rng;
+    foe.sim_config = ctx().config;
 
     w.stepsize = 1.0f;
     w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);

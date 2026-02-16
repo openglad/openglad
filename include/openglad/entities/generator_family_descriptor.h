@@ -7,8 +7,6 @@
  */
 #pragma once
 
-#include <openglad/legacy/base.h>
-
 struct GeneratorFamilyDescriptor {
     int family_id;
     const char* name;

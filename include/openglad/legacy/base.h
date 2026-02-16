@@ -194,15 +194,7 @@ inline constexpr int ANI_EXPLODE  = 1; // 4
 inline constexpr int ANI_SPIN     = 1; // for the marker
 
 // Orders
-enum class Order : unsigned char {
-    Living = 0,
-    Weapon = 1,
-    Treasure = 2,
-    Generator = 3,
-    FX = 4,
-    Special = 5,
-    Button1 = 6
-};
+#include <openglad/core/order.h>
 
 // Living families
 inline constexpr int FAMILY_SOLDIER = 0;

@@ -27,25 +27,13 @@
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <cmath>
 #include <format>
 
-namespace {
-static inline Uint32 rng(Uint32 max_exclusive)
-{
-    return ctx().rng->next(max_exclusive);
-}
-
-static inline cfg_store& active_config()
-{
-    if(ctx().config != nullptr)
-        return *ctx().config;
-    return cfg;
-}
-} // namespace
+// namespace removed: rng/config wrappers replaced with SimEntity fields
 
 // from level_data.cpp (LevelData overload for sim/render split)
 short remaining_foes(LevelData& level, walker* myguy);
@@ -54,12 +42,12 @@ short remaining_foes(LevelData& level, walker* myguy);
 short exp_from_action(ExpAction action, walker* w, walker* target, short value)
 {
     return compute_xp_from_action(action, w->stats()->level, target->stats()->level,
-                                  value, *ctx().rng);
+                                  value, *w->sim_rng);
 }
 
 float get_base_damage(walker* w)
 {
-    return compute_base_damage(w->damage, *ctx().rng);
+    return compute_base_damage(w->damage, *w->sim_rng);
 }
 
 float get_damage_reduction(walker* w, float damage, walker* target)
@@ -70,7 +58,7 @@ float get_damage_reduction(walker* w, float damage, walker* target)
 
 void walker::do_heal_effects(walker* healer, walker* target, short amount)
 {
-    if(!active_config().is_on("effects", "heal_numbers"))
+    if(!sim_config || !sim_config->is_on("effects", "heal_numbers"))
         return;
 
     if(healer)
@@ -80,7 +68,7 @@ void walker::do_heal_effects(walker* healer, walker* target, short amount)
 
 void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 {
-    if(active_config().is_on("effects", "damage_numbers"))
+    if(sim_config && sim_config->is_on("effects", "damage_numbers"))
     {
         // Orange numbers for the attacker to see
         if(attacker)
@@ -91,7 +79,7 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
     if (target->stats()->hitpoints < 0)
         tempdamage = static_cast<short>(static_cast<float>(tempdamage) + target->stats()->hitpoints);
 
-    if(active_config().is_on("effects", "hit_anim"))
+    if(sim_config && sim_config->is_on("effects", "hit_anim"))
     {
         // Create hit effect
         const auto* efd = (query_order() == Order::FX) ? get_effect_family_descriptor(query_family()) : nullptr;
@@ -122,10 +110,10 @@ void walker::do_hit_effects(walker* attacker, walker* target, short tempdamage)
 
     if(tempdamage > 0)
     {
-        if(active_config().is_on("effects", "hit_flash"))
+        if(sim_config && sim_config->is_on("effects", "hit_flash"))
             target->hurt_flash = true;
 
-        if(active_config().is_on("effects", "hit_recoil"))
+        if(sim_config && sim_config->is_on("effects", "hit_recoil"))
         {
             if(target->query_order() == Order::Living)
             {
@@ -375,7 +363,7 @@ bool walker::attack(walker  *target)
         }
         if (targetorder == Order::Living)
         {
-            if (rng(2))
+            if (sim_rng->next(2))
                 og::sim::emit_sound(sim_events, SOUND_DIE1);
             else
                 og::sim::emit_sound(sim_events, SOUND_DIE2);

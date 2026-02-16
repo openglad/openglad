@@ -5,15 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#pragma once
 
-class treasure;
-class walker;
+#include <openglad/sim/sim_entity.h>
 
-struct TreasureFamilyDescriptor {
-    int family_id;
-    const char* name;
-    bool init_ignore;         // true for STAIN
-    short init_frame;         // -1 = no override
-    bool (*on_eat)(treasure* self, walker* eater);
-};
+namespace og::sim {
+
+SimEntity::SimEntity() = default;
+SimEntity::~SimEntity() = default;
+
+} // namespace og::sim

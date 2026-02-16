@@ -9,13 +9,12 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
 
 #include <format>
 #include <string>

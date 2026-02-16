@@ -4,6 +4,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/runtime/game_context.h>
 #include "test_framework.h"
 
 #include <array>
@@ -107,6 +108,9 @@ void test_viewscreen_input_switch_control_not_in_oblist_logs_and_returns()
     // Create a control walker not present in level_data.oblist.
     PixieData px(1, 1, 1, new unsigned char[1]{0});
     walker orphan(px);
+    orphan.sim_level = &myscreen->level_data;
+    orphan.sim_rng = ctx().rng;
+    orphan.sim_config = ctx().config;
     orphan.team_num = 0;
     orphan.real_team_num = 255;
     orphan.dead = 0;

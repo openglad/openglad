@@ -23,6 +23,7 @@
 		*changed the SDL surfaces to 24bit
 */
 #include <openglad/render/pixie.h>
+#include <openglad/render/pal32.h>
 #include <openglad/render/view.h>
 #include <openglad/runtime/screen.h>
 // ************************************************************

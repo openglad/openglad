@@ -7,46 +7,47 @@
  */
 #pragma once
 
-// SimEntity: a lightweight, SDL-free description of an entity's simulation state.
+// SimEntity: SDL-free base class for all game entities.
 //
-// This does NOT replace walker's inheritance from pixieN. Instead, it provides
-// a pure-data view of the simulation-relevant fields that can be:
-//   - Instantiated headlessly (no SDL, no PixieData)
-//   - Used for deterministic replay/snapshot
-//   - Tested without graphics initialization
+// walker inherits from SimEntity for position, size, identity, state, and
+// animation frame tracking. Rendering data (pixel buffers, SDL_Surface)
+// lives in an optional pixieN render component attached at runtime.
 //
-// walker owns a SimEntity and exposes its fields. Sim-layer code that only
-// needs position, team, order, and state flags can operate on SimEntity
-// without pulling in SDL headers.
-//
-// Future work (G4 full extraction): refactor walker to inherit from SimEntity
-// instead of pixieN for sim fields, making pixieN a render-only component.
+// This class can be instantiated headlessly (no SDL, no PixieData) for
+// deterministic testing and replay.
 
+#include <openglad/core/order.h>
+#include <openglad/sim/irandom.h>
 #include <cstdint>
 
-// Forward declarations to avoid pulling in heavy headers.
 class LevelData;
 struct SaveData;
+class cfg_store;
 
 namespace og::sim {
 class SimEventLog;
 
-struct SimEntity
+class SimEntity
 {
+public:
+    SimEntity();
+    virtual ~SimEntity();
+
+    SimEntity(const SimEntity&) = delete;
+    SimEntity& operator=(const SimEntity&) = delete;
+    SimEntity(SimEntity&&) = delete;
+    SimEntity& operator=(SimEntity&&) = delete;
+
     // Position (pixel coordinates in the game world)
-    float worldx = -1.0f;
-    float worldy = -1.0f;
     short xpos = 0;
     short ypos = 0;
     short sizex = 0;
     short sizey = 0;
 
-    // Identity
-    std::uint8_t order = 0;      // Order enum value
-    std::int8_t  family = 0;
-    std::uint8_t team_num = 0;
-    std::uint8_t real_team_num = 255;
-    std::int8_t  user = -1;       // Controlling player (-1 = AI)
+    // Team/identity (public to match walker API)
+    unsigned char team_num = 0;
+    unsigned char real_team_num = 255;
+    signed char user = -1;              // Controlling player (-1 = AI)
 
     // State flags
     short dead = 0;
@@ -61,6 +62,21 @@ struct SimEntity
     SaveData*     sim_save = nullptr;
     std::int32_t* sim_enemy_freeze = nullptr;
     SimEventLog*  sim_events = nullptr;
+    IRandom*      sim_rng = nullptr;
+    cfg_store*    sim_config = nullptr;
+
+protected:
+    // Position: floating-point authoritative, xpos/ypos are display-snapped
+    float worldx_ = -1.0f;
+    float worldy_ = -1.0f;
+
+    // Identity
+    Order order = Order::Living;
+    char  family = 0;
+
+    // Animation frame state (sim-relevant; actual pixel data is in render component)
+    short frame = 0;
+    short frames = 0;
 };
 
 } // namespace og::sim

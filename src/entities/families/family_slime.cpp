@@ -8,20 +8,15 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
 
 #include <openglad/entities/living.h>
-#include <openglad/runtime/game_context.h>
 
 Sint32 calculate_level(Uint32 temp_exp);
 
 #define BASE_GUY_HP 30
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 static bool slime_check_special_ai(living* self)
 {
@@ -126,7 +121,7 @@ static bool small_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(self->sim_rng->next(3)) - 1, static_cast<Sint32>(self->sim_rng->next(3)) - 1);
         return false;
     }
     return true;
@@ -140,7 +135,7 @@ static bool medium_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(rng(3)) - 1, static_cast<Sint32>(rng(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(self->sim_rng->next(3)) - 1, static_cast<Sint32>(self->sim_rng->next(3)) - 1);
         return false;
     }
     return true;

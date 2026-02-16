@@ -26,45 +26,15 @@ namespace og::sim { class SimEventLog; }
 // ---------------------------------------------------------------------------
 // IRandom — injectable RNG interface
 // ---------------------------------------------------------------------------
-// Production code uses the global random(). Tests can supply a fixed-seed
-// or deterministic implementation.
+// Defined in <openglad/sim/irandom.h> so entity code can use it without
+// pulling in runtime headers.
 
-class IRandom {
-public:
-    virtual ~IRandom() = default;
-    virtual std::uint32_t next(std::uint32_t max_exclusive) = 0;
-};
+#include <openglad/sim/irandom.h>
 
 // Production RNG: wraps the existing global random() function
 class ProductionRandom : public IRandom {
 public:
     std::uint32_t next(std::uint32_t max_exclusive) override;
-};
-
-// Test RNG: returns a fixed value or cycles through a sequence
-class FixedRandom : public IRandom {
-public:
-    explicit FixedRandom(std::uint32_t value) : value_(value) {}
-    std::uint32_t next(std::uint32_t max_exclusive) override {
-        return (max_exclusive == 0) ? 0 : (value_ % max_exclusive);
-    }
-private:
-    std::uint32_t value_;
-};
-
-// Seeded RNG: uses a simple LCG for reproducible sequences
-class SeededRandom : public IRandom {
-public:
-    explicit SeededRandom(std::uint32_t seed) : state_(seed) {}
-    std::uint32_t next(std::uint32_t max_exclusive) override {
-        if (max_exclusive == 0) return 0;
-        // LCG: same constants as glibc
-        state_ = state_ * 1103515245u + 12345u;
-        return (state_ >> 16) % max_exclusive;
-    }
-    void reset(std::uint32_t seed) { state_ = seed; }
-private:
-    std::uint32_t state_;
 };
 
 // ---------------------------------------------------------------------------

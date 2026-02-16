@@ -9,10 +9,9 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
-
-#include <openglad/runtime/screen.h>
 
 #define BASE_GUY_HP 30
 

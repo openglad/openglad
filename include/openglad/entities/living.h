@@ -18,7 +18,6 @@
 
 // Definition of LIVING class
 
-#include <openglad/legacy/base.h>
 #include <openglad/entities/walker.h>
 class living : public walker
 {

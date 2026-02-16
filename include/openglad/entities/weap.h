@@ -18,7 +18,6 @@
 
 // Definition of WEAP class
 
-#include <openglad/legacy/base.h>
 #include <openglad/entities/walker.h>
 class weap : public walker
 {

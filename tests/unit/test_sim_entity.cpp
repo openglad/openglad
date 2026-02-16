@@ -1,15 +1,16 @@
-// Headless tests for SimEntity (G4).
-// These verify that SimEntity can be created and manipulated without SDL.
+// Headless tests for SimEntity and walker (G4).
+// These verify that SimEntity/walker can be created and manipulated without SDL.
 
 #include <openglad/sim/sim_entity.h>
 #include <openglad/sim/sim_event_log.h>
+#include <openglad/sim/irandom.h>
+#include <openglad/entities/walker.h>
+#include <openglad/core/stats.h>
 #include "unit.h"
 
 OG_UNIT_TEST(test_sim_entity_default_construction)
 {
     og::sim::SimEntity e;
-    OG_ASSERT(e.worldx == -1.0f);
-    OG_ASSERT(e.worldy == -1.0f);
     OG_ASSERT(e.xpos == 0);
     OG_ASSERT(e.ypos == 0);
     OG_ASSERT(e.dead == 0);
@@ -23,15 +24,11 @@ OG_UNIT_TEST(test_sim_entity_default_construction)
 OG_UNIT_TEST(test_sim_entity_set_position)
 {
     og::sim::SimEntity e;
-    e.worldx = 100.5f;
-    e.worldy = 200.3f;
     e.xpos = 100;
     e.ypos = 200;
     e.sizex = 16;
     e.sizey = 16;
 
-    OG_ASSERT(e.worldx == 100.5f);
-    OG_ASSERT(e.worldy == 200.3f);
     OG_ASSERT(e.xpos == 100);
     OG_ASSERT(e.ypos == 200);
     OG_ASSERT(e.sizex == 16);
@@ -41,14 +38,10 @@ OG_UNIT_TEST(test_sim_entity_set_position)
 OG_UNIT_TEST(test_sim_entity_team_and_identity)
 {
     og::sim::SimEntity e;
-    e.order = 0;     // Order::Living
-    e.family = 3;    // FAMILY_MAGE
     e.team_num = 1;
     e.real_team_num = 255;
     e.user = 0;      // Player 0
 
-    OG_ASSERT(e.order == 0);
-    OG_ASSERT(e.family == 3);
     OG_ASSERT(e.team_num == 1);
     OG_ASSERT(e.user == 0);
 }
@@ -85,4 +78,67 @@ OG_UNIT_TEST(test_sim_entity_event_log_binding)
     e.sim_events->push(og::sim::EventKind::PlaySound, 42);
     OG_ASSERT(e.sim_events->size() == 1);
     OG_ASSERT(e.sim_events->events()[0].a == 42);
+}
+
+// ---------------------------------------------------------------------------
+// Headless walker creation tests (G4)
+// Verify walker can be created without SDL, without pixieN rendering data.
+// ---------------------------------------------------------------------------
+
+OG_UNIT_TEST(test_walker_headless_construction)
+{
+    walker w;  // No PixieData — headless mode
+
+    OG_ASSERT(w.xpos == 0);
+    OG_ASSERT(w.ypos == 0);
+    OG_ASSERT(w.dead == 0);
+    OG_ASSERT(w.user == -1);
+    OG_ASSERT(!w.has_render());
+    OG_ASSERT(w.bmp_data() == nullptr);
+    OG_ASSERT(w.render_component() == nullptr);
+}
+
+OG_UNIT_TEST(test_walker_headless_position_and_movement)
+{
+    walker w;
+    w.setxy(100, 200);
+    OG_ASSERT(w.xpos == 100);
+    OG_ASSERT(w.ypos == 200);
+
+    w.setxy(50, 75);
+    OG_ASSERT(w.xpos == 50);
+    OG_ASSERT(w.ypos == 75);
+}
+
+OG_UNIT_TEST(test_walker_headless_with_rng)
+{
+    SeededRandom rng(42);
+    walker w;
+    w.sim_rng = &rng;
+
+    OG_ASSERT(w.sim_rng != nullptr);
+    std::uint32_t val = w.sim_rng->next(100);
+    OG_ASSERT(val < 100);
+}
+
+OG_UNIT_TEST(test_walker_headless_stats)
+{
+    walker w;
+    statistics* st = w.stats();
+    OG_ASSERT(st != nullptr);
+    st->hitpoints = 50;
+    st->max_hitpoints = 100;
+    OG_ASSERT(st->hitpoints == 50);
+    OG_ASSERT(st->max_hitpoints == 100);
+}
+
+OG_UNIT_TEST(test_walker_headless_frame_tracking)
+{
+    walker w;
+    OG_ASSERT(w.query_frame() == 0);
+
+    // set_frame validates against frames count; headless walker has 0 frames
+    short result = w.set_frame(2);
+    OG_ASSERT(result == 0);           // Should fail — no frames allocated
+    OG_ASSERT(w.query_frame() == 0);  // Frame unchanged
 }

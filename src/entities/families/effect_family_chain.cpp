@@ -10,13 +10,8 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
@@ -60,7 +55,7 @@ static bool chain_on_act(effect* self)
                 240+self->stats()->level*5, &temp, self);
         if (temp && generic>20)
         {
-            Sint32 numfoes = static_cast<Sint32>(rng(static_cast<Uint32>(self->owner->stats()->level))) + 1;
+            Sint32 numfoes = static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(self->owner->stats()->level))) + 1;
             for(auto* w : foelist)
             {
                 if (numfoes <= 0) break;

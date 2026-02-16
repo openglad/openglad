@@ -17,7 +17,7 @@
 
 #include <openglad/core/util.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 #include "micropather.h"
 #include <cmath>
 

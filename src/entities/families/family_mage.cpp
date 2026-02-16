@@ -8,22 +8,17 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
 
 #include <format>
 #include <string>
 #include <list>
 #include <cmath>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 static bool mage_handle_teleport(walker* self)
 {

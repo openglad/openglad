@@ -10,11 +10,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
-#include <openglad/runtime/game_context.h>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 static bool ghost_scare_on_act(effect* self)
 {
@@ -45,7 +40,7 @@ static bool ghost_scare_on_death(effect* self)
                 tempy = tempy / (abs(tempy));
             Sint32 generic = (self->owner->stats()->level*25);
             if (w->myguy)
-                generic -= rng(w->myguy->constitution);
+                generic -= self->sim_rng->next(w->myguy->constitution);
             if (generic > 0)
                 w->stats()->force_command(COMMAND_WALK,
                     static_cast<short>(generic), static_cast<short>(tempx), static_cast<short>(tempy));

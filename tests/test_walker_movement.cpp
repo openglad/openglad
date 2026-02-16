@@ -338,8 +338,10 @@ void test_walker_on_screen()
     walker* w = make_guy(FAMILY_SOLDIER, 0);
     if (!w) return;
     w->setxy(100, 100);
-    bool result = w->on_screen();
-    (void)result;
+    // on_screen() is a render-layer method on pixie, not walker.
+    // Verify walker position is set correctly instead.
+    TEST_ASSERT(w->xpos == 100, "xpos set");
+    TEST_ASSERT(w->ypos == 100, "ypos set");
 }
 REGISTER_TEST(test_walker_on_screen);
 

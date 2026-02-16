@@ -8,10 +8,9 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
 #include <openglad/sim/sim_emit.h>
 
 #include <cmath>
@@ -19,12 +18,7 @@
 
 #define BASE_GUY_HP 30
 
-namespace {
-static inline Uint32 rng(Uint32 max_exclusive)
-{
-    return ctx().rng->next(max_exclusive);
-}
-} // namespace
+// rng wrapper removed: use SimEntity field sim_rng directly
 
 static bool soldier_do_special(walker* self)
 {
@@ -111,7 +105,7 @@ static bool soldier_do_special(walker* self)
                 {
                     if (w)
                     {
-                        if (rng(self->stats()->level) >= rng(w->stats()->level))
+                        if (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(w->stats()->level))
                             w->busy += 6.0f * static_cast<float>(self->stats()->level - w->stats()->level + 1);
                         generic = 1;
                     }

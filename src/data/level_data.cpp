@@ -21,6 +21,7 @@
 #include <openglad/platform/io.h>
 
 #include <openglad/render/pixie.h>
+#include <openglad/render/pixien.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -477,6 +478,8 @@ walker* LevelData::add_ob(Order order, Sint32 family, [[maybe_unused]] bool atst
     }
     if (ctx().sim_events)
         w->sim_events = ctx().sim_events.get();
+    w->sim_rng = ctx().rng;
+    w->sim_config = ctx().config;
     if (order == Order::Living)
         numobs++;
 
@@ -499,6 +502,8 @@ walker* LevelData::add_fx_ob(Order order, Sint32 family)
     }
     if (ctx().sim_events)
         w->sim_events = ctx().sim_events.get();
+    w->sim_rng = ctx().rng;
+    w->sim_config = ctx().config;
 
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
@@ -519,6 +524,8 @@ walker* LevelData::add_weap_ob(Order order, Sint32 family)
     }
     if (ctx().sim_events)
         w->sim_events = ctx().sim_events.get();
+    w->sim_rng = ctx().rng;
+    w->sim_config = ctx().config;
 
     walker* raw = w.get();
     weaplist.push_back(std::move(w));

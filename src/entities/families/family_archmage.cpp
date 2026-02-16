@@ -8,8 +8,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
@@ -20,10 +19,6 @@
 #include <string>
 #include <list>
 #include <cmath>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 #define BASE_GUY_HP 30
 
@@ -74,7 +69,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
     else
         threshold = (3.0f * stats->max_hitpoints) / 8.0f;
 
-    if (stats->hitpoints < threshold && possible_specials[1] && rng(3))
+    if (stats->hitpoints < threshold && possible_specials[1] && controller->sim_rng->next(3))
     {
         controller->current_special = 1;
         controller->shifter_down = 0;
@@ -102,7 +97,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
             }
             if (possible_specials[2])
             {
-                if (rng(2))
+                if (controller->sim_rng->next(2))
                 {
                     controller->shifter_down = 1;
                     controller->current_special = 2;
@@ -347,7 +342,7 @@ static bool archmage_do_special(walker* self)
                     person = FAMILY_ELF;
                 else if (generic < 250)
                 {
-                    switch (rng(3))
+                    switch (self->sim_rng->next(3))
                     {
                         case 0: person = FAMILY_ELF; break;
                         case 1: person = FAMILY_SOLDIER; break;
@@ -357,7 +352,7 @@ static bool archmage_do_special(walker* self)
                 }
                 else if (generic < 500)
                 {
-                    switch (rng(5))
+                    switch (self->sim_rng->next(5))
                     {
                         case 0: person = FAMILY_ELF; break;
                         case 1: person = FAMILY_SOLDIER; break;
@@ -369,7 +364,7 @@ static bool archmage_do_special(walker* self)
                 }
                 else if (generic < 1000)
                 {
-                    switch (rng(7))
+                    switch (self->sim_rng->next(7))
                     {
                         case 0: person = FAMILY_ELF; break;
                         case 1: person = FAMILY_SOLDIER; break;
@@ -383,7 +378,7 @@ static bool archmage_do_special(walker* self)
                 }
                 else
                 {
-                    switch (rng(9))
+                    switch (self->sim_rng->next(9))
                     {
                         case 0: person = FAMILY_ELF; break;
                         case 1: person = FAMILY_SOLDIER; break;
@@ -452,18 +447,18 @@ static bool archmage_do_special(walker* self)
                     {
                         generic2 -= 10;
                         generic = self->stats()->level - ob->stats()->level;
-                        if (generic < 0 || (!rng(20)))
+                        if (generic < 0 || (!self->sim_rng->next(20)))
                         {
                             ob->real_team_num = ob->team_num;
-                            ob->team_num = static_cast<unsigned char>(rng(8));
-                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *ctx().rng)));
+                            ob->team_num = static_cast<unsigned char>(self->sim_rng->next(8));
+                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
                         }
                         else
                         {
                             ob->real_team_num = ob->team_num;
                             ob->team_num = self->team_num;
                             ob->foe = nullptr;
-                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *ctx().rng)));
+                            ob->set_charm_left(static_cast<short>(compute_charm_duration(generic, *self->sim_rng)));
                         }
                         didheal++;
                     }

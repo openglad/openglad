@@ -142,6 +142,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/entities/families/treasure_family_navigation.cpp
     ${SRC_DIR}/entities/generator_family_registry.cpp
     ${SRC_DIR}/runtime/game.cpp
+    ${SRC_DIR}/runtime/guy_create.cpp
     ${SRC_DIR}/render/graphlib.cpp
     ${SRC_DIR}/entities/guy.cpp
     ${SRC_DIR}/ui/help.cpp
@@ -193,6 +194,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/ui/campaign_picker.cpp
     ${SRC_DIR}/ui/results_screen.cpp
     ${SRC_DIR}/data/save_data.cpp
+    ${SRC_DIR}/sim/sim_entity.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/sim/sim_world.cpp
     ${SRC_DIR}/sim/sim_input_handler.cpp
@@ -210,6 +212,7 @@ set(OG_CORE_SOURCES
 )
 
 set(OG_SIM_SOURCES
+    ${SRC_DIR}/sim/sim_entity.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/sim/sim_world.cpp
     ${SRC_DIR}/sim/sim_input_handler.cpp
@@ -287,6 +290,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/score_panel.cpp
     ${SRC_DIR}/runtime/screen_lifecycle.cpp
     ${SRC_DIR}/runtime/screen.cpp
+    ${SRC_DIR}/runtime/guy_create.cpp
 )
 
 set(OG_RENDER_SOURCES

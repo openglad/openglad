@@ -19,20 +19,12 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/base.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/sim/sim_emit.h>
 
 #include <list>
-
-namespace {
-static inline Uint32 rng(Uint32 max_exclusive)
-{
-    return ctx().rng->next(max_exclusive);
-}
-} // namespace
 
 bool walker::special()
 {
@@ -115,8 +107,8 @@ bool walker::teleport()
 	Sint32 keep_going = 200; // maxtries
 	do
 	{
-		newx = static_cast<Sint32>(rng(static_cast<Uint32>(sim_level->grid.w))) * GRID_SIZE;
-		newy = static_cast<Sint32>(rng(static_cast<Uint32>(sim_level->grid.h))) * GRID_SIZE;
+		newx = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(sim_level->grid.w))) * GRID_SIZE;
+		newy = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(sim_level->grid.h))) * GRID_SIZE;
 		keep_going--;
 	} while (keep_going > 0 &&
 	         !sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
@@ -134,13 +126,13 @@ bool walker::teleport_ranged(Sint32 range)
 	Sint32 newx = 0, newy = 0;
 	Sint32 keep_going = 200; // maxtries
 
-	newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
-	newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
+	newx = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + xpos;
+	newy = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + ypos;
 
 	while(!sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
 	{
-		newx = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + xpos;
-		newy = static_cast<Sint32>(rng(static_cast<Uint32>(2 * range))) - range + ypos;
+		newx = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + xpos;
+		newy = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + ypos;
 		keep_going--;
 	}
 	if (keep_going)
@@ -168,7 +160,7 @@ Sint32 walker::turn_undead(Sint32 range, [[maybe_unused]] Sint32 power)
 		const auto* target_fd = w ? get_family_descriptor(w->query_family()) : nullptr;
 		if (w && target_fd && target_fd->is_undead)
 		{
-			if (rng(range*40) > rng(w->stats()->level*10) )
+			if (sim_rng->next(range*40) > sim_rng->next(w->stats()->level*10) )
 			{
 				w->dead = 1;
 				w->stats()->hitpoints = 0;

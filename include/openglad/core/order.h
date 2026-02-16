@@ -7,13 +7,14 @@
  */
 #pragma once
 
-class treasure;
-class walker;
+// Entity classification enum, extracted from base.h for use without SDL.
 
-struct TreasureFamilyDescriptor {
-    int family_id;
-    const char* name;
-    bool init_ignore;         // true for STAIN
-    short init_frame;         // -1 = no override
-    bool (*on_eat)(treasure* self, walker* eater);
+enum class Order : unsigned char {
+    Living = 0,
+    Weapon = 1,
+    Treasure = 2,
+    Generator = 3,
+    FX = 4,
+    Special = 5,
+    Button1 = 6
 };

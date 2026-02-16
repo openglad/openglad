@@ -19,7 +19,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/level_data.h>
 
 short walker::move(short x, short y)
 {
@@ -44,14 +44,16 @@ bool walker::setxy(short x, short y)
             myobmap->remove(this);
     }
 
-    return pixie::setxy(x, y);
+    xpos = x;
+    ypos = y;
+    return true;
 }
 
 void walker::setworldxy(float x, float y)
 {
     worldx_ = x;
     worldy_ = y;
-    
+
     if (myobmap != nullptr)
     {
         if (!ignore)
@@ -60,7 +62,8 @@ void walker::setworldxy(float x, float y)
             myobmap->remove(this);
     }
 
-    pixie::setxy(x, y);
+    xpos = static_cast<short>(x);
+    ypos = static_cast<short>(y);
 }
 
 // WALK -- This function allows us to change facing when we walk.

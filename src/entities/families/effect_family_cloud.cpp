@@ -9,11 +9,6 @@
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
-#include <openglad/runtime/game_context.h>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);
@@ -55,10 +50,10 @@ static bool cloud_on_act(effect* self)
         float xd = 0, yd = 0;
         while (xd == 0 && yd == 0)
         {
-            xd = static_cast<float>(static_cast<Sint32>(rng(3)) - 1);
-            yd = static_cast<float>(static_cast<Sint32>(rng(3)) - 1);
+            xd = static_cast<float>(static_cast<Sint32>(self->sim_rng->next(3)) - 1);
+            yd = static_cast<float>(static_cast<Sint32>(self->sim_rng->next(3)) - 1);
         }
-        self->stats()->add_command(COMMAND_WALK, static_cast<short>(rng(20)),
+        self->stats()->add_command(COMMAND_WALK, static_cast<short>(self->sim_rng->next(20)),
             static_cast<short>(xd), static_cast<short>(yd));
     }
     return true;

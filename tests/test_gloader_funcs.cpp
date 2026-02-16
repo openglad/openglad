@@ -1,5 +1,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
+#include <openglad/render/pixien.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/gloader.h>
 #include <openglad/legacy/base.h>

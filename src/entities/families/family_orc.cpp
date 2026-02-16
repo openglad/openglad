@@ -9,11 +9,11 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
 #include <openglad/core/stats.h>
-#include <openglad/runtime/game_context.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 
 #include <format>
@@ -24,19 +24,7 @@
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
-namespace {
-static inline Uint32 rng(Uint32 max_exclusive)
-{
-    return ctx().rng->next(max_exclusive);
-}
-
-static inline cfg_store& active_config()
-{
-    if (ctx().config != nullptr)
-        return *ctx().config;
-    return cfg;
-}
-} // namespace
+// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
 
 static bool orc_do_special(walker* self)
 {
@@ -68,8 +56,8 @@ static bool orc_do_special(walker* self)
                             tempx = static_cast<Sint32>(ob->stats()->hitpoints / 30.0f);
                         Sint32 tempx_clamped = (tempx > 0) ? tempx : 0;
                         tempy = 10
-                            + static_cast<Sint32>(rng(static_cast<Uint32>(self->stats()->level * 10)))
-                            - static_cast<Sint32>(rng(static_cast<Uint32>(tempx_clamped * 10)));
+                            + static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(self->stats()->level * 10)))
+                            - static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(tempx_clamped * 10)));
                         if (tempy < 0)
                             tempy = 0;
                         ob->stats()->frozen_delay = static_cast<short>(ob->stats()->frozen_delay + tempy);
@@ -104,7 +92,7 @@ static bool orc_do_special(walker* self)
             else
                 message = "Orc ate a corpse.";
 
-            if (!active_config().is_on("effects", "heal_numbers"))
+            if (self->sim_config && self->sim_config->is_on("effects", "heal_numbers"))
                 og::sim::emit_notification(self->sim_events, message);
             if (self->stats()->hitpoints > self->stats()->max_hitpoints)
                 self->stats()->hitpoints = self->stats()->max_hitpoints;

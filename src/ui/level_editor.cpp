@@ -21,6 +21,8 @@
 // loop pattern, which would require restructuring to frame-based input.
 
 #include <openglad/runtime/screen.h>
+#include <openglad/render/pal32.h>
+#include <openglad/render/pixien.h>
 #include <openglad/render/view.h>
 #include <openglad/render/radar.h>
 #include <openglad/entities/walker.h>

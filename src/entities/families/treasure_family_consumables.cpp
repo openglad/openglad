@@ -9,21 +9,16 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>
 #include <string>
 
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
-
 static bool drumstick_on_eat(treasure* self, walker* eater)
 {
     if (eater->stats()->hitpoints >= eater->stats()->max_hitpoints)
         return true;
-    const Sint32 heal_amount = 10 * self->stats()->level + static_cast<Sint32>(rng(static_cast<Uint32>(10 * self->stats()->level)));
+    const Sint32 heal_amount = 10 * self->stats()->level + static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(10 * self->stats()->level)));
     const short amount = static_cast<short>(heal_amount);
     eater->stats()->hitpoints += amount;
     if (eater->stats()->hitpoints > eater->stats()->max_hitpoints)

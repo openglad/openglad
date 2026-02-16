@@ -23,11 +23,7 @@
 #include <cmath>
 #include <algorithm>
 #include <format>
-#include <openglad/runtime/game_context.h>
 #include <openglad/sim/sim_emit.h>
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 bool debug_draw_obmap = false;
 
@@ -271,7 +267,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
             if((targetorder == Order::Weapon || myorder == Order::Weapon) && ob->is_friendly(w))
                 continue;
             // Allow weapons to sometimes 'miss' opposing team's weapons
-            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (rng(10) > 3))
+            else if(targetorder == Order::Weapon && myorder == Order::Weapon && (ob->sim_rng->next(10) > 3))
                 continue;
             // Weapons never hit treasure
             else if(targetorder == Order::Treasure && myorder == Order::Weapon)

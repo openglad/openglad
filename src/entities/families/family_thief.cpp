@@ -9,8 +9,7 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/level_data.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/core/stats.h>
@@ -19,10 +18,6 @@
 #include <format>
 #include <string>
 #include <list>
-
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
 
 #define BASE_GUY_HP 30
 
@@ -105,8 +100,8 @@ static bool thief_do_special(walker* self)
             {
                 if (self->user == -1)
                 {
-                    Sint32 tempx = static_cast<Sint32>(rng(3)) - 1;
-                    Sint32 tempy = static_cast<Sint32>(rng(3)) - 1;
+                    Sint32 tempx = static_cast<Sint32>(self->sim_rng->next(3)) - 1;
+                    Sint32 tempy = static_cast<Sint32>(self->sim_rng->next(3)) - 1;
                     if ((tempx == 0) && (tempy == 0))
                         tempx = 1;
                     self->stats()->force_command(COMMAND_WALK, 20, tempx, tempy);
@@ -114,7 +109,7 @@ static bool thief_do_special(walker* self)
             }
             break;
         case 2: // cloak
-            self->invisibility_left = static_cast<short>(self->invisibility_left + 20 + static_cast<Sint32>(rng(20)) * self->stats()->level);
+            self->invisibility_left = static_cast<short>(self->invisibility_left + 20 + static_cast<Sint32>(self->sim_rng->next(20)) * self->stats()->level);
             break;
         case 3: // taunt / charm
             if (!self->shifter_down) // normal taunt
@@ -127,12 +122,12 @@ static bool thief_do_special(walker* self)
                                                           80 + 4 * self->stats()->level, &howmany, self);
                     for (auto* ob : newlist)
                     {
-                        if (ob && (rng(self->stats()->level) >= rng(ob->stats()->level)))
+                        if (ob && (self->sim_rng->next(self->stats()->level) >= self->sim_rng->next(ob->stats()->level)))
                         {
                             ob->foe = self;
                             ob->leader = self;
                             if (ob->query_act_type() != ACT_CONTROL)
-                                ob->stats()->force_command(COMMAND_FOLLOW, 10 + rng(self->stats()->level), 0, 0);
+                                ob->stats()->force_command(COMMAND_FOLLOW, 10 + self->sim_rng->next(self->stats()->level), 0, 0);
                         }
                     }
                 }
@@ -166,7 +161,7 @@ static bool thief_do_special(walker* self)
                             1)
                         {
                             Sint32 generic = self->stats()->level - ob->stats()->level;
-                            if (generic < 0 || (!rng(20)))
+                            if (generic < 0 || (!self->sim_rng->next(20)))
                             {
                                 ob->foe = self;
                                 ob->attack(self);

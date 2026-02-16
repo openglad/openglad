@@ -29,6 +29,8 @@
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/platform/io.h>
+#include <openglad/render/pal32.h>
+#include <openglad/render/pixien.h>
 #include <openglad/render/radar.h>
 #include <openglad/render/view.h>
 #include <openglad/render/walker_draw.h>

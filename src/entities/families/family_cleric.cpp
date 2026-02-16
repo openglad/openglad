@@ -9,6 +9,7 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
+#include <openglad/data/level_data.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/combat_math.h>
 #include <openglad/legacy/base.h>
@@ -16,8 +17,7 @@
 #include <openglad/sim/sim_emit.h>
 #include <openglad/data/gparser.h>
 
-#include <openglad/runtime/screen.h>
-#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 
 #include <format>
 #include <string>
@@ -25,16 +25,7 @@
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
-static inline Uint32 rng(Uint32 max_exclusive) {
-    return ctx().rng->next(max_exclusive);
-}
-
-static inline cfg_store& active_config()
-{
-    if (ctx().config != nullptr)
-        return *ctx().config;
-    return cfg;
-}
+// rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
 
 static void cleric_customize_weapon(walker* self, walker* weapon)
 {
@@ -109,7 +100,7 @@ static bool cleric_do_special(walker* self)
                         if (newob->stats()->hitpoints < newob->stats()->max_hitpoints &&
                                 newob != self)
                         {
-                            HealResult heal = compute_heal_amount(static_cast<Sint32>(self->stats()->magicpoints), self->stats()->level, *ctx().rng);
+                            HealResult heal = compute_heal_amount(static_cast<Sint32>(self->stats()->magicpoints), self->stats()->level, *self->sim_rng);
                             generic = heal.amount;
                             Sint32 cost = heal.cost;
                             if (self->stats()->magicpoints < static_cast<float>(cost))
@@ -131,7 +122,7 @@ static bool cleric_do_special(walker* self)
                         return false;
                     else
                     {
-                        if (!active_config().is_on("effects", "heal_numbers"))
+                        if (self->sim_config && self->sim_config->is_on("effects", "heal_numbers"))
                         {
                             if (didheal == 1)
                                 message = "Cleric healed 1 man!";
@@ -216,7 +207,7 @@ static bool cleric_do_special(walker* self)
                         if (!alive)
                             return false;
                         alive->team_num = self->team_num;
-                        alive->stats()->level = rng(self->stats()->level) + 1;
+                        alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
                         alive->setxy(newob->xpos, newob->ypos);
                         alive->owner = self;
@@ -269,7 +260,7 @@ static bool cleric_do_special(walker* self)
                         alive = self->do_summon(FAMILY_GHOST, 150 + (self->stats()->level * 40));
                         if (!alive)
                             return false;
-                        alive->stats()->level = rng(self->stats()->level) + 1;
+                        alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
                         alive->team_num = self->team_num;
                         alive->setxy(newob->xpos, newob->ypos);
@@ -319,7 +310,7 @@ static bool cleric_do_special(walker* self)
                         if (!alive)
                             return false;
                         alive->team_num = self->team_num;
-                        alive->stats()->level = rng(self->stats()->level) + 1;
+                        alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
                         alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
                         alive->owner = self;
                     }

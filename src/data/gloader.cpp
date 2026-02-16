@@ -16,6 +16,7 @@
  */
 //#include "graph.h"
 #include <openglad/data/gloader.h>
+#include <openglad/render/pixien.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
@@ -847,6 +848,8 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	}
 	if (ctx().sim_events)
 		ob->sim_events = ctx().sim_events.get();
+	ob->sim_rng = ctx().rng;
+	ob->sim_config = ctx().config;
 
 	set_walker(ob.get(), order, family);
 

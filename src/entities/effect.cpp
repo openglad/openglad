@@ -24,6 +24,10 @@
 
 //#include "graph.h"
 #include <openglad/entities/effect.h>
+#include <openglad/legacy/base.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/core/stats.h>
+#include <openglad/entities/guy.h>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect_family_registry.h>
 #include <openglad/legacy/test_trace.h>

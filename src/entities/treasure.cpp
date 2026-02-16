@@ -25,6 +25,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
 #include <openglad/entities/treasure.h>
+#include <openglad/render/pixien.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure_family_registry.h>
 #include <openglad/core/stats.h>
@@ -64,9 +65,9 @@ void treasure::set_direct_frame(short whatframe)
 {
 	frame = whatframe;
 
-	const PixieData& data = sim_level->myloader->graphics[PIX(order, family)];
-	bmp = data.data.get() + frame*size;
-
+	// Update render component's bmp pointer if available
+	if (render_)
+		render_->set_frame(whatframe);
 }
 
 // Finds the next connected teleporter in the fxlist for you to warp to.

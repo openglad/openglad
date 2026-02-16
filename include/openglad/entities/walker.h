@@ -17,31 +17,54 @@
 #pragma once
 
 // Definition of WALKER class
+//
+// walker inherits from SimEntity (SDL-free) for position, size, identity,
+// state, and animation frame tracking. Rendering data lives in an optional
+// pixieN component (render_) created when graphics are available.
 
-#include <openglad/legacy/base.h>
-#include <openglad/render/pixien.h>
+#include <openglad/sim/sim_entity.h>
 #include <openglad/entities/obmap.h>
+#include <cstdint>
+#include <list>
 #include <memory>
 #include <vector>
+
+// Forward declarations
+class PixieData;
+class pixieN;
+class guy;
+class statistics;
 
 // Opaque state type used by MicroPather for pathfinding nodes.
 // States are encoded grid coordinates (not real pointers), but the
 // micropather library API requires void*.
-class LevelData;
-struct SaveData;
-namespace og::sim { class SimEventLog; }
-
 using MicroPatherState = void*;
 
-class walker : public pixieN
+class walker : public og::sim::SimEntity
 {
 	public:
 		walker(const PixieData& data);
+		walker();  // Headless constructor (no rendering data)
 		~walker() override;
 		walker(const walker&) = delete;
 		walker& operator=(const walker&) = delete;
 		walker(walker&&) = delete;
 		walker& operator=(walker&&) = delete;
+
+		// Render component management
+		void attach_render(const PixieData& data);
+		void set_data(const PixieData& data);  // Update render graphics (for editor)
+		bool has_render() const { return render_ != nullptr; }
+		const unsigned char* bmp_data() const;
+		pixieN* render_component() { return render_.get(); }
+		const pixieN* render_component() const { return render_.get(); }
+
+		// Animation frame management (sim state in SimEntity::frame/frames;
+		// render bmp pointer updated via render component)
+		short set_frame(short framenum);
+		short query_frame() const { return frame; }
+		short next_frame();
+
 		void set_myguy_view(guy* guy_view);
 		void set_owned_myguy(std::unique_ptr<guy> owned_guy);
 		void clear_myguy();
@@ -150,14 +173,8 @@ class walker : public pixieN
         void do_hit_effects(walker* attacker, walker* target, short tempdamage);
         void do_combat_damage(walker* attacker, walker* target, short tempdamage);
 
-		// Public data members
-		unsigned char team_num;
-		unsigned char real_team_num;   // for 'Charm', etc.
-		short bonus_rounds;            // used if an object has extra rounds this cycle
-		short dead;                    // safety check
-		short death_called;            // if death has already been called
+		// Public data members (fields NOT in SimEntity base)
 		short skip_exit;               // cycles after failed exit choice
-		short invulnerable_left;
 		guy  *myguy;                   // Non-owning view of character data; ownership, when present, lives in owned_myguy_
 		walker *foe;
 		walker *leader;
@@ -177,14 +194,11 @@ class walker : public pixieN
 		float busy;
 		char ignore;                   // for non-colliding objects
 		unsigned short current_weapon;
-		short flight_left;             // for bonus flight ..
-		short invisibility_left;
 		std::int32_t lifetime;               // how much life summoned guys have ..
 			float speed_bonus;             // Additional stepsize while speed potions are active
 			std::int32_t speed_bonus_left;        // Cycles remaining for speed bonus
 		walker* collide_ob;
 		unsigned short default_weapon;
-		signed char user;              // are we being used by anyone?
 		signed char curdir;            // Current direction facing
 		signed char** ani;
 		unsigned char drawcycle;
@@ -205,12 +219,6 @@ class walker : public pixieN
 		std::list<DamageNumber> damage_numbers;
 		char enddir;                   // Proposed direction facing
 
-		// Sim-layer state references (set during entity creation)
-		LevelData* sim_level = nullptr;
-		SaveData* sim_save = nullptr;
-		std::int32_t* sim_enemy_freeze = nullptr;
-		og::sim::SimEventLog* sim_events = nullptr;
-
 		// Accessors for protected fields used by family callbacks
 		void set_charm_left(short value) { charm_left_ = value; }
 		short charm_left() const { return charm_left_; }
@@ -221,14 +229,10 @@ class walker : public pixieN
 		bool act_guard();
 		virtual bool act_random();
 		char act_type,old_act_type;
-		Order order;
-		char family;
 		short charm_left_;             // If we're still being charmed
 			std::int32_t regen_delay_;           // Delay after being hit
-		float worldx_, worldy_;        // Floating point buffer for movement
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
-
-
+		std::unique_ptr<pixieN> render_;  // Optional render component (null for headless)
 };
