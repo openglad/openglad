@@ -197,8 +197,8 @@ set(GAME_SOURCES
     ${SRC_DIR}/data/save_data.cpp
     ${SRC_DIR}/sim/sim_entity.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
-    ${SRC_DIR}/sim/sim_world.cpp
-    ${SRC_DIR}/sim/sim_input_handler.cpp
+    ${SRC_DIR}/runtime/sim_world.cpp
+    ${SRC_DIR}/runtime/sim_input_handler.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -214,8 +214,6 @@ set(OG_CORE_SOURCES
 set(OG_SIM_SOURCES
     ${SRC_DIR}/sim/sim_entity.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
-    ${SRC_DIR}/sim/sim_world.cpp
-    ${SRC_DIR}/sim/sim_input_handler.cpp
 )
 
 set(OG_DATA_SOURCES
@@ -292,6 +290,8 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/screen.cpp
     ${SRC_DIR}/runtime/guy_create.cpp
     ${SRC_DIR}/runtime/stats.cpp
+    ${SRC_DIR}/runtime/sim_world.cpp
+    ${SRC_DIR}/runtime/sim_input_handler.cpp
 )
 
 set(OG_RENDER_SOURCES
