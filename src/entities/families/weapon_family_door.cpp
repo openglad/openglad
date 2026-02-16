@@ -9,7 +9,7 @@
 #include <openglad/entities/weap.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
-#include <openglad/render/smooth.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/legacy/soundob.h>
 
 static bool door_on_death(weap* self)

@@ -27,7 +27,6 @@
 #include <openglad/entities/treasure.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure_family_registry.h>
-#include <openglad/render/text.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <algorithm>

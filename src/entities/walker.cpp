@@ -32,8 +32,6 @@
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#include <openglad/render/smooth.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
 #include <format>

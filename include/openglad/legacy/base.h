@@ -31,11 +31,11 @@
 #include <cmath>
 #include <cctype>
 #include <openglad/legacy/sounds.h>
-#include "SDL.h"
+#include "SDL_stdinc.h"
+#include "SDL_rwops.h"
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
 #include <openglad/data/gparser.h>
-#include <openglad/render/pal32.h>
 #include <openglad/legacy/pixdefs.h>
 #include <openglad/legacy/soundob.h> // sound defines
 

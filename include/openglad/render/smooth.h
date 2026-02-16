@@ -21,43 +21,25 @@
 
 #include "SDL.h"
 #include <openglad/data/pixie_data.h>
-// Used for deciding cases
-inline constexpr int TO_UP = 1;
-inline constexpr int TO_RIGHT = 2;
-inline constexpr int TO_DOWN = 4;
-inline constexpr int TO_LEFT = 8;
-inline constexpr int TO_AROUND = 15;
-
-// These are the 'genre' defines ..
-inline constexpr int TYPE_GRASS = 1;
-inline constexpr int TYPE_WATER = 2;
-inline constexpr int TYPE_TREES = 3;
-inline constexpr int TYPE_DIRT = 4;
-inline constexpr int TYPE_COBBLE = 5;
-inline constexpr int TYPE_GRASS_DARK = 6;
-inline constexpr int TYPE_DIRT_DARK = 7;
-inline constexpr int TYPE_WALL = 8;
-inline constexpr int TYPE_CARPET = 9;
-inline constexpr int TYPE_GRASS_LIGHT = 10;
-inline constexpr int TYPE_UNKNOWN = 50;
+#include <openglad/core/terrain_types.h>
 
 
 class smoother
 {
 	public:
 		smoother();
-        
+
         void reset();
 		void set_target(const PixieData& data);     // set our target grid to smooth ..
 		Sint32 smooth();                        // smooths entire target grid
 		Sint32 smooth(Sint32 x, Sint32 y);          // smooth at x, y; returns changed or not
 		Sint32 query_x_y(Sint32 x, Sint32 y);       // return target type, ie PIX_GRASS1
 		Sint32 query_genre_x_y(Sint32 x, Sint32 y); // returns target genre, ie TYPE_GRASS
-    
+
     protected:
 		Sint32 surrounds(Sint32 x, Sint32 y, Sint32 whatgenre); // returns 0-15 of 4 surroundings
 		void set_x_y(Sint32 x, Sint32 y, Sint32 whatvalue);  // sets grid location to whatvalue
-		
+
 		unsigned char  *mygrid; // our grid to change
 		Sint32 maxx, maxy;   // dimensions of our grid ..
 };

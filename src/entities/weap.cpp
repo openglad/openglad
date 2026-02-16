@@ -25,7 +25,7 @@
 #include <openglad/entities/weapon_family_registry.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
-#include <openglad/render/smooth.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 #include <format>

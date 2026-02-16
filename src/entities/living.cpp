@@ -20,7 +20,7 @@
 
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/combat_math.h>
-#include <openglad/render/smooth.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/weapon_family_descriptor.h>

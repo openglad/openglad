@@ -13,7 +13,7 @@
 #include <openglad/ui/results_screen.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
-#include <openglad/entities/obmap.h>
+#include <openglad/render/obmap_debug_draw.h>
 #include <openglad/core/util.h>
 
 
@@ -77,7 +77,7 @@ GameFrameResult game_frame_with_result(screen& s, GameLoopFrameState& st, const 
         s.redraw();
 
         if (debug_draw_obmap)
-            s.level_data.myobmap->draw();  // debug drawing for object collision map
+            obmap_debug_draw(*s.level_data.myobmap, &s);  // debug drawing for object collision map
 
 #ifdef USE_TOUCH_INPUT
         draw_touch_controls(&s);

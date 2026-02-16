@@ -168,6 +168,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/render/video.cpp
     ${SRC_DIR}/render/view.cpp
     ${SRC_DIR}/render/walker_draw.cpp
+    ${SRC_DIR}/render/obmap_debug_draw.cpp
     ${SRC_DIR}/entities/walker.cpp
     ${SRC_DIR}/entities/walker_combat.cpp
     ${SRC_DIR}/entities/walker_movement.cpp
@@ -298,6 +299,7 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/render/video.cpp
     ${SRC_DIR}/render/view.cpp
     ${SRC_DIR}/render/walker_draw.cpp
+    ${SRC_DIR}/render/obmap_debug_draw.cpp
 )
 
 set(OG_INPUT_SOURCES
