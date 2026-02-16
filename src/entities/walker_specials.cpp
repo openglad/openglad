@@ -85,12 +85,7 @@ bool walker::teleport()
 		{
 			// Found our marker!
 				distance = distance_to_ob(ob);
-				// Temporarily hide the marker so it doesn't block the
-				// passability check at its own position.
-				ob->dead = 1;
-				bool passable = sim_level->query_passable(ob->xpos, ob->ypos, this);
-				ob->dead = 0;
-				if (passable && (distance > 64))
+				if (sim_level->query_passable(ob->xpos, ob->ypos, this) && (distance > 64))
 				{
 					center_on(ob);
 					ob->lifetime--;
