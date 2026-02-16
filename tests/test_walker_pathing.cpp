@@ -2,6 +2,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
+#include <openglad/render/walker_draw.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
@@ -39,7 +40,7 @@ void test_walker_pathfinding_follow_and_draw_path_smoke()
         for (int i = 0; i < 5; i++)
             a->follow_path_to_foe();
 
-        a->draw_path(v);
+        draw_walker_path(*a, v);
     }
 
     delete a;
@@ -66,7 +67,7 @@ void test_walker_damage_numbers_and_compute_outline_smoke()
     w->compute_outline(v->control);
 
     // Draw should update and consume damage numbers over time.
-    (void)w->draw(v);
+    (void)draw_walker(*w, v);
 
     // Restore view control.
     v->control = nullptr;

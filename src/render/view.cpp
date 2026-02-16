@@ -31,6 +31,7 @@
 #include <openglad/platform/io.h>
 #include <openglad/render/radar.h>
 #include <openglad/render/view.h>
+#include <openglad/render/walker_draw.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <string>
@@ -1086,7 +1087,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	{
 	    walker* w = uptr.get();
 		if(w && !w->dead)
-			w->draw(this);
+			draw_walker(*w, this);
 	}
 
 	// Now do real objects
@@ -1094,7 +1095,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	{
 	    walker* w = uptr.get();
 		if(w && !w->dead)
-			w->draw(this);
+			draw_walker(*w, this);
 	}
 
 	// Finally draw the weapons
@@ -1102,7 +1103,7 @@ bool viewscreen::draw_obs(LevelData* data)
 	{
 	    walker* w = uptr.get();
 		if(w && !w->dead)
-			w->draw(this);
+			draw_walker(*w, this);
 	}
 
 	return 1;

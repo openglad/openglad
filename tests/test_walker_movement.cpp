@@ -4,6 +4,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
+#include <openglad/render/walker_draw.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
@@ -146,7 +147,7 @@ void test_walker_draw_basic()
 
     viewscreen* vs = myscreen->viewob[0].get();
     if (vs) {
-        w->draw(vs);
+        draw_walker(*w, vs);
     }
 }
 REGISTER_TEST(test_walker_draw_basic);
@@ -166,16 +167,16 @@ void test_walker_draw_tile_basic()
             vs->control = control;
         }
 
-        w->draw_tile(vs);
+        draw_walker_tile(*w, vs);
 
         // draw_tile invisibility path (requires non-null control).
         w->invisibility_left = 12;
-        w->draw_tile(vs);
+        draw_walker_tile(*w, vs);
         w->invisibility_left = 0;
 
         // draw_tile outline path.
         w->invulnerable_left = 10;
-        w->draw_tile(vs);
+        draw_walker_tile(*w, vs);
         w->invulnerable_left = 0;
 
         vs->control = old_control;
@@ -193,7 +194,7 @@ void test_walker_draw_with_flight()
 
     viewscreen* vs = myscreen->viewob[0].get();
     if (vs) {
-        w->draw(vs);
+        draw_walker(*w, vs);
     }
 }
 REGISTER_TEST(test_walker_draw_with_flight);
@@ -213,7 +214,7 @@ void test_walker_draw_with_invisibility()
             control->setxy(96, 96);
             vs->control = control;
         }
-        w->draw(vs);
+        draw_walker(*w, vs);
         w->compute_outline(vs->control);
         w->flight_left = 8;
         w->compute_outline(vs->control);
@@ -234,7 +235,7 @@ void test_walker_draw_with_invulnerability()
 
     viewscreen* vs = myscreen->viewob[0].get();
     if (vs) {
-        w->draw(vs);
+        draw_walker(*w, vs);
     }
 }
 REGISTER_TEST(test_walker_draw_with_invulnerability);
@@ -360,7 +361,7 @@ void test_walker_draw_tile_phantom_and_forestwalk_paths()
 
         // PHANTOM draw_tile branch.
         w->stats()->set_bit_flags(BIT_PHANTOM, 1);
-        (void)w->draw_tile(vs);
+        (void)draw_walker_tile(*w, vs);
         w->stats()->set_bit_flags(BIT_PHANTOM, 0);
 
         // FORESTWALK draw_tile branch.
@@ -372,7 +373,7 @@ void test_walker_draw_tile_phantom_and_forestwalk_paths()
         }
         w->flight_left = 0;
         w->stats()->set_bit_flags(BIT_FLYING, 0);
-        (void)w->draw_tile(vs);
+        (void)draw_walker_tile(*w, vs);
 
         vs->control = old_control;
         delete control;

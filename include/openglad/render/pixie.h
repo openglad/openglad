@@ -61,7 +61,8 @@ class pixie
 		int accel;
 		short on_screen();                                                                // on ANY viewscreen?
 		short on_screen(viewscreen  *viewp);  // on a specific viewscreen?
-		
+		const unsigned char* bmp_data() const { return bmp; }
+
 	protected:
 		unsigned short size;
 		unsigned char  *bmp,  *oldbmp;

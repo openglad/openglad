@@ -4,6 +4,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
+#include <openglad/render/walker_draw.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 #include <memory>
@@ -112,8 +113,8 @@ void test_walker_specials_and_render_paths_smoke()
 
     // Keep to deterministic, non-blocking paths in unit-test mode.
     (void)w->query_next_to();
-    (void)w->draw(v);
-    (void)w->draw_tile(v);
+    (void)draw_walker(*w, v);
+    (void)draw_walker_tile(*w, v);
     w->animate();
     w->set_difficulty(1);
     w->set_direct_frame(0);

@@ -59,9 +59,6 @@ class walker : public pixieN
 			bool walkstep(std::int32_t x, std::int32_t y) { return walkstep(static_cast<float>(x), static_cast<float>(y)); }
 			bool walkstep(short x, short y) { return walkstep(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)); }
 			virtual bool walk(float x, float y);
-		bool draw(viewscreen  *view_buf);
-		bool draw_tile(viewscreen  *view_buf);
-		void draw_path(viewscreen* view_buf);
 		void find_path_to_foe();
 		void follow_path_to_foe();
 		bool init_fire();
@@ -141,7 +138,6 @@ class walker : public pixieN
             unsigned char color;
 
 	            DamageNumber(float x_, float y_, float value_, unsigned char color_);
-            void draw(viewscreen* view_buf);
 		};
 
 		void compute_outline(const walker* viewer_control);

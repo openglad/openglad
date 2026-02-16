@@ -152,28 +152,4 @@ void walker::follow_path_to_foe()
     }
 }
 
-void walker::draw_path(viewscreen* view_buf)
-{
-    if (path_to_foe.size() == 0)
-        return;
-
-    const unsigned char mycolor = static_cast<unsigned char>(query_team_color() + static_cast<unsigned char>(reinterpret_cast<intptr_t>(this) % 5));  // Pointer-derived offset for visibility.
-
-    const Sint32 offsetx = view_buf->topx - view_buf->xloc - 8;
-    const Sint32 offsety = view_buf->topy - view_buf->yloc - 8;
-
-    std::vector<MicroPatherState>::iterator e = path_to_foe.begin();
-    int px = GET_STATE_X(*e) - offsetx;
-    int py = GET_STATE_Y(*e) - offsety;
-    while (e != path_to_foe.end())
-    {
-        int x1 = GET_STATE_X(*e) - offsetx;
-        int y1 = GET_STATE_Y(*e) - offsety;
-
-        myscreen->draw_line(px, py, x1, y1, mycolor);
-        myscreen->fastbox_outline(x1 - 1, y1 - 1, 2, 2, mycolor);
-        e++;
-        px = x1;
-        py = y1;
-    }
-}
+// draw_path() has been moved to src/render/walker_draw.cpp as draw_walker_path()

@@ -20,6 +20,7 @@
 #include <openglad/render/radar.h>
 #include <openglad/entities/walker.h>
 #include <openglad/render/smooth.h>
+#include <openglad/render/walker_draw.h>
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
@@ -1491,7 +1492,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
         newob->set_data(level->myloader->graphics[PIX(object_brush.order, object_brush.family)]);
         level->myloader->set_walker(newob, object_brush.order, object_brush.family);
         newob->team_num = static_cast<unsigned char>(object_brush.team);
-        newob->draw_tile(s->viewob[0].get());
+        draw_walker_tile(*newob, s->viewob[0].get());
         // Border
         s->draw_box(lm+25, PIX_TOP-16-1, lm+25+GRID_SIZE, PIX_TOP-16-1+GRID_SIZE, RED, 0, 1);
         
@@ -1513,7 +1514,7 @@ Sint32 LevelEditorData::display_panel(screen* s)
                     newob->set_data(level->myloader->graphics[PIX(object_pane[index].order, object_pane[index].family)]);
                     level->myloader->set_walker(newob, object_pane[index].order, object_pane[index].family);
                     newob->team_num = static_cast<unsigned char>(object_brush.team);
-                    newob->draw_tile(s->viewob[0].get());
+                    draw_walker_tile(*newob, s->viewob[0].get());
                 }
             }
         }
