@@ -7,6 +7,7 @@ module.exports = defineConfig({
   expect: {
     timeout: 30_000,
   },
+  // Run serially because all tests share one wasm page/server lifecycle and input state.
   fullyParallel: false,
   retries: 1,
   reporter: [['html', { open: 'never' }], ['list']],
@@ -28,6 +29,7 @@ module.exports = defineConfig({
     },
   ],
   webServer: {
+    // Serve the prebuilt WASM artifacts in dist/ during Playwright runs.
     command: 'npx http-server dist -p 8089 -s',
     port: 8089,
     reuseExistingServer: !process.env.CI,

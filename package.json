@@ -1,8 +1,7 @@
 {
   "name": "openglad-wasm-tests",
   "version": "1.0.0",
-  "description": "[![GitHub license](https://img.shields.io/github/license/openglad/openglad)](https://github.com/openglad/openglad/blob/master/COPYING) [![GitHub all releases](https://img.shields.io/github/downloads/openglad/openglad/total)](https://github.com/openglad/openglad/releases)",
-  "main": "index.js",
+  "description": "End-to-end tests for OpenGlad WASM build using Playwright",
   "directories": {
     "doc": "docs",
     "test": "tests"
@@ -12,8 +11,7 @@
     "test:e2e": "playwright test"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "license": "GPL-2.0",
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "http-server": "^14.1.1"
