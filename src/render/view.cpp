@@ -685,6 +685,7 @@ void viewscreen::process_input(const InputState& input_state)
 			auto mine = std::find_if(oblist.begin(), oblist.end(), pred);
 			if (mine == oblist.end())
 			{
+				LogError("view_control_switch_failed");
 				control = oldcontrol;
 				active_screen()->control_hp = control->stats()->hitpoints;
 				return;
@@ -722,6 +723,7 @@ void viewscreen::process_input(const InputState& input_state)
 			auto mine = std::find_if(oblist.rbegin(), oblist.rend(), pred);
 			if (mine == oblist.rend())
 			{
+				LogError("view_control_switch_failed");
 				control = oldcontrol;
 				active_screen()->control_hp = control->stats()->hitpoints;
 				return;
