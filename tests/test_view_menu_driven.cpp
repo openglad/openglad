@@ -65,6 +65,9 @@ void test_viewscreen_options_menu_exercises_key_paths()
     walker* controlp = control.get();
     v->control = controlp;
 
+    // Save prefs that options_menu() may mutate and persist to keyprefs.dat.
+    const signed char saved_view = v->prefs[PREF_VIEW];
+
     KeystateOverride ks;
 
     // Drive a few option toggles then exit with Escape.
@@ -115,6 +118,10 @@ void test_viewscreen_options_menu_exercises_key_paths()
     player_keys[v->mynum][KEY_SPECIAL] = saved_special;
     player_keys[v->mynum][KEY_YELL] = saved_yell;
     player_keys[v->mynum][KEY_SHIFTER] = saved_shifter;
+
+    // Restore view pref that was mutated by the ] and [ hotkeys.
+    v->prefs[PREF_VIEW] = saved_view;
+    v->resize(saved_view);
 
     v->control = nullptr;
 }

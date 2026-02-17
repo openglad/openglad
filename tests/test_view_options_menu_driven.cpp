@@ -100,6 +100,9 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
         }
     }
 
+    // Save prefs that options_menu() may mutate and persist to keyprefs.dat.
+    const signed char saved_view = vs->prefs[PREF_VIEW];
+
     KeyStateGuard ks;
 
     SDL_Thread* th = SDL_CreateThread(injector_thread_options_menu, "opts_fake_keystates", &ks);
@@ -110,5 +113,9 @@ void test_viewscreen_options_menu_driven_exercises_hotkeys()
     int code = 0;
     if (th)
         SDL_WaitThread(th, &code);
+
+    // Restore view pref that was mutated by the [ and ] hotkeys.
+    vs->prefs[PREF_VIEW] = saved_view;
+    vs->resize(saved_view);
 }
 REGISTER_TEST(test_viewscreen_options_menu_driven_exercises_hotkeys);
