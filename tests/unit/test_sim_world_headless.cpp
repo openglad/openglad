@@ -2,7 +2,6 @@
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/sim_world.h>
-#include <openglad/runtime/game_context.h>
 
 #include "unit.h"
 
@@ -61,34 +60,25 @@ OG_UNIT_TEST(test_sim_event_log_request_redraw_event)
 
 OG_UNIT_TEST(test_emit_event_set_palette)
 {
-    // Set up a minimal context with a SimEventLog
-    GameContext test_ctx;
-    test_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
-    test_ctx.sim_events->set_tick(5);
-    set_global_context(&test_ctx);
+    og::sim::SimEventLog log;
+    log.set_tick(5);
 
-    og::sim::emit_event(test_ctx.sim_events.get(), og::sim::EventKind::SetPalette, 1);
+    og::sim::emit_event(&log, og::sim::EventKind::SetPalette, 1);
 
-    OG_ASSERT(test_ctx.sim_events->size() == 1);
-    OG_ASSERT(test_ctx.sim_events->events()[0].kind == og::sim::EventKind::SetPalette);
-    OG_ASSERT(test_ctx.sim_events->events()[0].a == 1);
-
-    set_global_context(nullptr);
+    OG_ASSERT(log.size() == 1);
+    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::SetPalette);
+    OG_ASSERT(log.events()[0].a == 1);
 }
 
 OG_UNIT_TEST(test_emit_event_request_redraw)
 {
-    GameContext test_ctx;
-    test_ctx.sim_events = std::make_unique<og::sim::SimEventLog>();
-    test_ctx.sim_events->set_tick(7);
-    set_global_context(&test_ctx);
+    og::sim::SimEventLog log;
+    log.set_tick(7);
 
-    og::sim::emit_event(test_ctx.sim_events.get(), og::sim::EventKind::RequestRedraw);
+    og::sim::emit_event(&log, og::sim::EventKind::RequestRedraw);
 
-    OG_ASSERT(test_ctx.sim_events->size() == 1);
-    OG_ASSERT(test_ctx.sim_events->events()[0].kind == og::sim::EventKind::RequestRedraw);
-
-    set_global_context(nullptr);
+    OG_ASSERT(log.size() == 1);
+    OG_ASSERT(log.events()[0].kind == og::sim::EventKind::RequestRedraw);
 }
 
 // --- Mixed event stream with new types ---

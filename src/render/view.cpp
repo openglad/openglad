@@ -21,6 +21,7 @@
 */
 
 #include <openglad/input/input.h>
+#include <openglad/runtime/cheat_handler.h>
 #include <openglad/legacy/colors.h>
 #include <openglad/core/version.h>
 #include <openglad/core/util.h>
@@ -402,9 +403,7 @@ short viewscreen::input(const SDL_Event& event)
 	// This method only handles raw SDL events that cannot go through InputState:
 	// debug/cheat keys that use specific SDL keycodes (F-keys, letter keys, etc.).
 
-	static short changedteam[6] = {0, 0, 0, 0, 0, 0};
 	Uint32 totaltime, totalframes, framespersec;
-	walker *newob;
 
 	if (!control || control->dead)
 		return 1;
@@ -435,128 +434,8 @@ short viewscreen::input(const SDL_Event& event)
 		clear_keyboard();
 	}
 
-	// --- Cheat keys (require raw SDL keycode checks) ---
-	if (pi.is_held(InputAction::Cheat) && CHEAT_MODE)
-	{
-		// Change team (Cheat+Switch)
-		if (changedteam[mynum] && !pi.was_pressed(InputAction::SwitchChar))
-			changedteam[mynum] = 0;
-		if (pi.was_pressed(InputAction::SwitchChar) && !changedteam[mynum])
-		{
-			changedteam[mynum] = 1;
-
-			walker* result = nullptr;
-			control->user = -1;
-			control->set_act_type(ACT_RANDOM);
-
-			short oldteam = active_screen()->save_data.my_team;
-
-			do
-			{
-				active_screen()->save_data.my_team++;
-				active_screen()->save_data.my_team %= MAX_TEAM;
-
-				for (auto& uptr : active_screen()->level_data.oblist)
-				{
-					walker* w = uptr.get();
-					if ((w->team_num == active_screen()->save_data.my_team) &&
-							(w->query_order() == Order::Living))
-					{
-						result = w;
-						break;
-					}
-				}
-			}
-			while (result == nullptr && active_screen()->save_data.my_team != oldteam);
-
-			if (result != nullptr)
-				control = result;
-
-			control->user = static_cast<signed char>(mynum);
-			control->set_act_type(ACT_CONTROL);
-		}
-
-		if (query_key_event(SDLK_F12, event))
-		{
-			for (auto& uptr : active_screen()->level_data.oblist)
-			{
-				walker* w = uptr.get();
-				if (w && w->query_order() == Order::Living && !control->is_friendly(w))
-				{
-					w->stats()->hitpoints = -1;
-					control->attack(w);
-					w->death();
-				}
-			}
-		}
-
-		if (query_key_event(SDLK_RIGHTBRACKET, event))
-			control->stats()->level++;
-
-		if (query_key_event(SDLK_LEFTBRACKET, event))
-		{
-			if (control->stats()->level > 1)
-				control->stats()->level--;
-		}
-
-		if (query_key_event(SDLK_F1, event))
-		{
-			active_screen()->enemy_freeze += 50;
-			set_palette(active_screen()->bluepalette);
-		}
-
-		if (query_key_event(SDLK_F2, event))
-		{
-			newob = active_screen()->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
-			newob->owner = control;
-			newob->team_num = control->team_num;
-			newob->ani_type = 1;
-			newob->lifetime = 200;
-		}
-
-		if (query_key_event(SDLK_f, event))
-		{
-			if (control->stats()->query_bit_flags(BIT_FLYING))
-				control->stats()->set_bit_flags(BIT_FLYING, 0);
-			else
-				control->stats()->set_bit_flags(BIT_FLYING, 1);
-		}
-
-		if (query_key_event(SDLK_h, event))
-		{
-			control->stats()->hitpoints += 100;
-			active_screen()->control_hp += 100;
-		}
-
-		if (query_key_event(SDLK_i, event))
-		{
-			if (control->stats()->query_bit_flags(BIT_INVINCIBLE))
-				control->stats()->set_bit_flags(BIT_INVINCIBLE, 0);
-			else
-				control->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
-		}
-
-		if (query_key_event(SDLK_m, event))
-			control->stats()->magicpoints += 150;
-
-		if (query_key_event(SDLK_s, event))
-		{
-			control->speed_bonus_left = control->speed_bonus_left + 20;
-			control->speed_bonus = control->normal_stepsize;
-		}
-
-		if (query_key_event(SDLK_t, event))
-		{
-			Sint32 family = (static_cast<Sint32>(static_cast<unsigned char>(control->query_family())) + 1) % NUM_FAMILIES;
-			control->transform_to(control->query_order(), family);
-		}
-
-		if (query_key_event(SDLK_v, event))
-		{
-			if (control->invisibility_left < 3000)
-				control->invisibility_left = control->invisibility_left + 100;
-		}
-	}
+	// --- Cheat keys (sim mutations handled in runtime layer) ---
+	handle_cheat_keys(control, mynum, event, pi, active_screen());
 
 	return 1;
 }
