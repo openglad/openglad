@@ -22,7 +22,6 @@
 //   end of its animation, it will call function x.
 //
 
-//#include "graph.h"
 #include <cstdint>
 #include <openglad/entities/effect.h>
 #include <openglad/core/constants.h>

@@ -18,7 +18,6 @@
 // treasure; a derived class of walker
 //
 
-//#include "graph.h"
 #include <cmath>
 #include <string>
 #include <openglad/entities/obmap.h>
