@@ -15,6 +15,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 #include <openglad/input/button.h>
+#include <openglad/input/input.h>
+#include <openglad/core/util.h>
 #include <openglad/render/pixien.h>
 #include <openglad/render/text.h>
 #include <openglad/runtime/screen.h>
@@ -681,6 +683,9 @@ void toggle_rendering_engine()
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         active_config().load_settings();
+        overscan_percentage = static_cast<float>(
+            parse_int_strict(active_config().get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+        update_overscan_setting();
         return REDRAW;
     default:
         return OK;

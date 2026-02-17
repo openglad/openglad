@@ -35,6 +35,7 @@
 #include <format>
 #include <stdexcept>
 #include <openglad/core/util.h>
+#include <openglad/input/input.h>
 #include <openglad/platform/io.h>
 #include <openglad/render/text.h>
 #include <openglad/ui/results_screen.h>
@@ -233,6 +234,12 @@ int main(int argc, char *argv[])
 		io_init(argc, argv);
 
 		cfg.load_settings();
+		// Sync overscan from config (data/ can't depend on input/)
+		overscan_percentage = static_cast<float>(
+		    parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+		update_overscan_setting();
+		cfg.apply_setting("graphics", "overscan_percentage",
+		    std::format("{:.0f}", 100 * overscan_percentage));
 		cfg.save_settings();
 		cfg.commandline(argc, argv);
 

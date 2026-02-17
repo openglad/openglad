@@ -11,6 +11,7 @@
 #include <openglad/core/util.h>
 #include <openglad/input/input.h>
 #include <openglad/render/view.h> // options
+#include <format>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen_lifecycle.h>
 extern screen* myscreen;
@@ -55,6 +56,11 @@ int main(int argc, char* argv[]) {
     SDL_Init(SDL_INIT_VIDEO);
     io_init(argc, argv);
     cfg.load_settings();
+    overscan_percentage = static_cast<float>(
+        parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+    update_overscan_setting();
+    cfg.apply_setting("graphics", "overscan_percentage",
+        std::format("{:.0f}", 100 * overscan_percentage));
     cfg.save_settings();
 
     // Optional test filter: ./openglad_test [filter_substring]

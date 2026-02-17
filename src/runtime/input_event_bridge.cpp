@@ -5,6 +5,7 @@
 // runtime module) to keep the input module free of runtime/render deps.
 
 #include <openglad/input/input.h>
+#include <openglad/core/util.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/data/gparser.h>
@@ -86,6 +87,9 @@ void handle_key_event(const SDL_Event& event)
         {
             restore_default_settings();
             active_config()->load_settings();
+            overscan_percentage = static_cast<float>(
+                parse_int_strict(active_config()->get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
+            update_overscan_setting();
         }
         break;
     case SDL_KEYUP:

@@ -194,7 +194,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/ui/level_editor_file_ops.cpp
     ${SRC_DIR}/ui/campaign_picker.cpp
     ${SRC_DIR}/ui/results_screen.cpp
-    ${SRC_DIR}/data/save_data.cpp
+    ${SRC_DIR}/runtime/save_data.cpp
     ${SRC_DIR}/sim/sim_entity.cpp
     ${SRC_DIR}/sim/sim_event_log.cpp
     ${SRC_DIR}/runtime/sim_world.cpp
@@ -222,7 +222,6 @@ set(OG_SIM_SOURCES
 set(OG_DATA_SOURCES
     ${SRC_DIR}/data/gparser.cpp
     ${SRC_DIR}/data/pixie_data.cpp
-    ${SRC_DIR}/data/save_data.cpp
 )
 
 set(OG_ENTITIES_SOURCES
@@ -299,6 +298,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/level_data.cpp
     ${SRC_DIR}/runtime/walker_render_bridge.cpp
     ${SRC_DIR}/runtime/cheat_handler.cpp
+    ${SRC_DIR}/runtime/save_data.cpp
 )
 
 set(OG_RENDER_SOURCES

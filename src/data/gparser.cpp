@@ -31,9 +31,6 @@
 #include <openglad/platform/io.h>
 #include <openglad/io/yaml_stream.h>
 
-// TODO: Move overscan setting and toInt() to this file.
-#include <openglad/input/input.h>
-
 int toInt(const std::string& s);
 
 
@@ -123,20 +120,13 @@ bool cfg_store::load_settings()
         LogError("Parsing error in config file.\n");
     
     yaml.close_input();
-    
-    // Update game stuff from these settings
-    overscan_percentage = static_cast<float>(toInt(get_setting("graphics", "overscan_percentage"))) / 100.0f;
-    update_overscan_setting();
-    
+
 	return true;
 }
 
 
 bool cfg_store::save_settings()
 {
-    std::string buf = std::format("{:.0f}", 100*overscan_percentage);
-    apply_setting("graphics", "overscan_percentage", buf);
-    
     RwopsPtr outfile(open_write_file("cfg/openglad.yaml"));
     if(outfile != nullptr)
     {

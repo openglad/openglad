@@ -720,6 +720,9 @@ Sint32 main_options()
 	}
 	
 	myscreen->soundp->set_sound(!active_config().is_on("sound", "sound"));
+	// Sync overscan to config before saving (data/ can't depend on input/)
+	active_config().apply_setting("graphics", "overscan_percentage",
+	    std::format("{:.0f}", 100 * overscan_percentage));
 	active_config().save_settings();
     
     return menu_result_id(MenuResult::Redraw);
