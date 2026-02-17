@@ -57,11 +57,6 @@ bool physfs_unmount(const std::string& path)
     return PHYSFS_unmount(path.c_str()) != 0;
 }
 
-bool physfs_exists(const std::string& path)
-{
-    return PHYSFS_exists(path.c_str()) != 0;
-}
-
 std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname)
 {
     std::list<std::string> out;

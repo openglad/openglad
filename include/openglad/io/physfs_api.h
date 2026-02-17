@@ -17,7 +17,6 @@ bool physfs_set_write_dir(const std::string& path);
 
 bool physfs_mount(const std::string& path, const char* mount_point, int append_to_path);
 bool physfs_unmount(const std::string& path);
-bool physfs_exists(const std::string& path);
 
 // Enumerate files in a directory. Returned list is sorted.
 std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname);
