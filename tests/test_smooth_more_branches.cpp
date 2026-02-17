@@ -73,7 +73,7 @@ void test_smooth_dark_grass_to_around_rng_switch_cases()
     // Cover each rng(4) case in TYPE_GRASS_DARK + around==TO_AROUND.
     for (int fixed = 0; fixed < 4; fixed++)
     {
-        FixedRandom rng(static_cast<Uint32>(fixed));
+        FixedRandom rng(static_cast<std::uint32_t>(fixed));
         GameContext c;
         c.rng = &rng;
         GlobalContextGuard guard(&c);
@@ -133,7 +133,7 @@ void test_smooth_dirt_and_dark_dirt_to_around_rng_switch_cases()
     // Dirt TYPE_DIRT around==TO_AROUND uses rng(3) switch.
     for (int fixed = 0; fixed < 3; fixed++)
     {
-        FixedRandom rng(static_cast<Uint32>(fixed));
+        FixedRandom rng(static_cast<std::uint32_t>(fixed));
         GameContext c;
         c.rng = &rng;
         GlobalContextGuard guard(&c);

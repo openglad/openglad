@@ -29,6 +29,7 @@
 #include <openglad/entities/treasure_family_registry.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
+#include <openglad/render/pixien.h>
 #include <algorithm>
 #include <format>
 #include <cstring>

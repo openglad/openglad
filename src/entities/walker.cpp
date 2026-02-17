@@ -39,6 +39,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
+#include <openglad/render/pixien.h>
 #include "SDL_stdinc.h"
 #include <format>
 #include <span>
