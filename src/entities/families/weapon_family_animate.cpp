@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weap.h>
 #include <openglad/core/combat_math.h>
@@ -68,7 +69,7 @@ static bool sprinkle_on_hit_target(walker* weapon, walker* target, walker* owner
 {
     if (target->query_order() == Order::Living)
     {
-        Sint32 con = target->myguy ? target->myguy->constitution : 0;
+        std::int32_t con = target->myguy ? target->myguy->constitution : 0;
         target->stats()->frozen_delay =
             static_cast<short>(compute_freeze_duration(owner->stats()->level, con, *owner->sim_rng));
     }

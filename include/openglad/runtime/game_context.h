@@ -30,9 +30,11 @@ public:
     std::uint32_t next(std::uint32_t max_exclusive) override;
 };
 
+#ifndef OPENGLAD_HEADLESS
 // Populate an InputState from the current SDL keyboard/joystick state.
 // Called once per frame before game logic runs.
 void input_state_from_sdl(InputState& out);
+#endif
 
 // ---------------------------------------------------------------------------
 // Context services for config/input/render access
@@ -88,8 +90,10 @@ struct GameContext {
     // Convenience: is this a valid, initialized context?
     bool valid() const { return game_screen != nullptr; }
 
+#ifndef OPENGLAD_HEADLESS
     screen* active_screen() const;
     options* active_prefs() const;
+#endif
     cfg_store* active_config() const;
     InputState* active_input();
     void poll_input();

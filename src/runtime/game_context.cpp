@@ -6,14 +6,20 @@
  * (at your option) any later version.
  */
 #include <openglad/runtime/game_context.h>
-#include <openglad/legacy/base.h>
 #include <openglad/data/gparser.h>
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/input/input.h>
 #include <openglad/render/view.h> // options definition for GameContext::~GameContext
+#else
+// Headless: unique_ptr<options> destructor needs a complete type.
+// The text client never creates an options object (prefs stays nullptr),
+// so an empty definition is safe.
+class options {};
+#endif
 #include <openglad/sim/sim_event_log.h>
 
-// The existing global random() function (defined in screen.cpp)
-Uint32 random(Uint32 x);
+// The existing global random() function (defined in screen.cpp or text_client main)
+std::uint32_t random(std::uint32_t x);
 
 GameContext::GameContext()
     : sim_events(std::make_unique<og::sim::SimEventLog>())
@@ -21,11 +27,12 @@ GameContext::GameContext()
 
 GameContext::~GameContext() = default;
 
-Uint32 ProductionRandom::next(Uint32 max_exclusive)
+std::uint32_t ProductionRandom::next(std::uint32_t max_exclusive)
 {
     return random(max_exclusive);
 }
 
+#ifndef OPENGLAD_HEADLESS
 void input_state_from_sdl(InputState& out)
 {
     for (int p = 0; p < MAX_PLAYERS; p++) {
@@ -60,6 +67,7 @@ options* GameContext::active_prefs() const
     }
     return prefs.get();
 }
+#endif
 
 cfg_store* GameContext::active_config() const
 {
@@ -85,7 +93,9 @@ void GameContext::poll_input()
         input_service->poll_input();
         return;
     }
+#ifndef OPENGLAD_HEADLESS
     input_state_from_sdl(input);
+#endif
 }
 
 // ---------------------------------------------------------------------------
@@ -99,9 +109,11 @@ static ProductionRandom s_production_rng;
 static GameContext s_default_context;
 static GameContext* s_active_context = nullptr;
 
-// Forward-declare the globals this wraps
+#ifndef OPENGLAD_HEADLESS
+// Forward-declare the globals this wraps (SDL build only)
 extern screen* myscreen;
 extern options* theprefs;
+#endif
 
 namespace
 {
@@ -111,6 +123,7 @@ public:
     cfg_store* config() override { return &cfg; }
 };
 
+#ifndef OPENGLAD_HEADLESS
 class LegacyRenderContextService final : public IRenderContextService
 {
 public:
@@ -130,11 +143,14 @@ public:
 private:
     GameContext& context_;
 };
+#endif
 } // namespace
 
 static LegacyConfigContextService s_default_config_service;
+#ifndef OPENGLAD_HEADLESS
 static LegacyRenderContextService s_default_render_service;
 static LegacyInputContextService s_default_input_service(s_default_context);
+#endif
 
 GameContext& ctx()
 {
@@ -142,16 +158,20 @@ GameContext& ctx()
         return *s_active_context;
 
     // Lazily populate from existing globals
+#ifndef OPENGLAD_HEADLESS
     s_default_context.game_screen = myscreen;
+#endif
     s_default_context.config = &cfg;
     if (!s_default_context.rng)
         s_default_context.rng = &s_production_rng;
     if (!s_default_context.config_service)
         s_default_context.config_service = &s_default_config_service;
+#ifndef OPENGLAD_HEADLESS
     if (!s_default_context.render_service)
         s_default_context.render_service = &s_default_render_service;
     if (!s_default_context.input_service)
         s_default_context.input_service = &s_default_input_service;
+#endif
 
     return s_default_context;
 }

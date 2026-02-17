@@ -18,7 +18,6 @@
 #include <openglad/entities/family_registry.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 
 // Forward declarations of family descriptor providers
 const FamilyDescriptor& describe_family_golem();

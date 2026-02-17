@@ -25,10 +25,14 @@
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
+#include <openglad/data/level_data.h>
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
+#endif
 #include <cmath>
 #include <openglad/runtime/game_context.h>
+#include <openglad/sim/sim_event_log.h>
 #include <format>
 
 static inline Uint32 rng(Uint32 max_exclusive) {
@@ -227,7 +231,9 @@ short statistics::do_command()
 	if (!controller) // allow dead controllers for now
 	{
 		Log("STATS:DO_COM: No controller!\n");
+#ifndef OPENGLAD_HEADLESS
 		wait_for_key(KEYSTATE_z);
+#endif
 		return 0;
 	}
 
@@ -276,6 +282,7 @@ short statistics::do_command()
 			}
 			if (!controller->leader)
 			{
+#ifndef OPENGLAD_HEADLESS
 				if (myscreen->numviews == 1)
 					controller->leader = myscreen->viewob[0]->control;
 				else
@@ -292,6 +299,12 @@ short statistics::do_command()
 						break;
 					}
 				}
+#else
+				commands.front().commandcount = 0;
+				controller->leader = nullptr;
+				result = 0;
+				break;
+#endif
 			}
 			
 			// Do we have a leader now?
@@ -499,8 +512,8 @@ void statistics::yell_for_help(walker *foe)
 	controller->yo_delay = controller->yo_delay + 80;
 	
 	// Get AI-controlled allies to target my foe
-	std::list<walker*> helplist = myscreen->find_friends_in_range(
-	               myscreen->level_data.oblist, 160, &howmany, controller);
+	std::list<walker*> helplist = controller->sim_level->find_friends_in_range(
+	               controller->sim_level->oblist, 160, &howmany, controller);
 	for(auto* w : helplist)
 	{
 		w->leader = controller;
@@ -524,7 +537,8 @@ void statistics::yell_for_help(walker *foe)
 	if (controller->myguy && (controller->team_num == 0) )
 	{
 		std::string message = std::format("{} yells for help!", controller->myguy->name);
-		myscreen->do_notify(message.c_str(), controller);
+		if (controller->sim_events)
+			controller->sim_events->push_notification(message, 10);
 	}
 
 }
@@ -599,7 +613,7 @@ bool statistics::right_blocked()
 			break;
 	}
 
-	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !controller->sim_level->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
 // Returns whether our right-forward is blocked
@@ -612,22 +626,22 @@ bool statistics::right_forward_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
+			return !controller->sim_level->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_RIGHT:
-			return !myscreen->query_passable(controlx+mystep, controly, controller);
+			return !controller->sim_level->query_passable(controlx+mystep, controly, controller);
 
 		case FACE_RIGHT:
-			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
+			return !controller->sim_level->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !myscreen->query_passable(controlx, controly+mystep, controller);
+			return !controller->sim_level->query_passable(controlx, controly+mystep, controller);
 		case FACE_DOWN:
-			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller);
+			return !controller->sim_level->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !myscreen->query_passable(controlx-mystep, controly, controller);
+			return !controller->sim_level->query_passable(controlx-mystep, controly, controller);
 		case FACE_LEFT:
-			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller);
+			return !controller->sim_level->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !myscreen->query_passable(controlx, controly-mystep, controller);
+			return !controller->sim_level->query_passable(controlx, controly-mystep, controller);
 		default:
 			break;
 
@@ -645,23 +659,23 @@ bool statistics::right_back_blocked()
 	switch (controller->curdir)
 	{
 		case FACE_UP:
-			return !myscreen->query_passable(controlx+mystep, controly+mystep, controller);
+			return !controller->sim_level->query_passable(controlx+mystep, controly+mystep, controller);
 		case FACE_UP_RIGHT:
-			return !myscreen->query_passable(controlx, controly+mystep, controller);
+			return !controller->sim_level->query_passable(controlx, controly+mystep, controller);
 
 		case FACE_RIGHT:
-			return !myscreen->query_passable(controlx-mystep, controly+mystep, controller);
+			return !controller->sim_level->query_passable(controlx-mystep, controly+mystep, controller);
 		case FACE_DOWN_RIGHT:
-			return !myscreen->query_passable(controlx-mystep, controly, controller);
+			return !controller->sim_level->query_passable(controlx-mystep, controly, controller);
 		case FACE_DOWN:
-			return !myscreen->query_passable(controlx-mystep, controly-mystep, controller);
+			return !controller->sim_level->query_passable(controlx-mystep, controly-mystep, controller);
 		case FACE_DOWN_LEFT:
-			return !myscreen->query_passable(controlx, controly-mystep,
+			return !controller->sim_level->query_passable(controlx, controly-mystep,
 			                                controller);
 		case FACE_LEFT:
-			return !myscreen->query_passable(controlx+mystep, controly-mystep, controller);
+			return !controller->sim_level->query_passable(controlx+mystep, controly-mystep, controller);
 		case FACE_UP_LEFT:
-			return !myscreen->query_passable(controlx+mystep, controly, controller);
+			return !controller->sim_level->query_passable(controlx+mystep, controly, controller);
 		default:
 			break;
 	}
@@ -716,7 +730,7 @@ bool statistics::forward_blocked()
 			break;
 	}
 
-	return !myscreen->query_passable(controlx + xdelta, controly + ydelta, controller);
+	return !controller->sim_level->query_passable(controlx + xdelta, controly + ydelta, controller);
 }
 
 bool statistics::right_walk()
@@ -898,11 +912,11 @@ bool statistics::direct_walk()
 	// replaced by some sort of single "if forward_blocked()"
 	// check, otherwise I'm not sure if this works regardless of
 	// current facing ...
-	if (!myscreen->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller) )
+	if (!controller->sim_level->query_grid_passable(controlx+xdeltastep, controly+ydeltastep, controller) )
 	{
-		if (!myscreen->query_grid_passable(controlx+xdeltastep,controly+0,controller) )
+		if (!controller->sim_level->query_grid_passable(controlx+xdeltastep,controly+0,controller) )
 		{
-			if (!myscreen->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
+			if (!controller->sim_level->query_grid_passable(controlx+0,controly+ydeltastep,controller) )
 			{
 				walkrounds = 0;
 				return 0;
@@ -983,9 +997,9 @@ bool statistics::walk_to_foe()
         
 		tempdistance = static_cast<Uint32>(controller->distance_to_ob(foe));
 		// Do simpler pathing if the distance is short or if there are too many walkers (pathfinding is expensive)
-		if (tempdistance < PATHING_MIN_DISTANCE || myscreen->level_data.myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
+		if (tempdistance < PATHING_MIN_DISTANCE || controller->sim_level->myobmap->size() > PATHING_SHORT_CIRCUIT_OBJECT_LIMIT)
 		{
-			std::list<walker*> foelist = myscreen->find_foes_in_range(myscreen->level_data.oblist,
+			std::list<walker*> foelist = controller->sim_level->find_foes_in_range(controller->sim_level->oblist,
 			          PATHING_MIN_DISTANCE, &howmany, controller);
 			if (howmany > 0)
 			{
@@ -993,7 +1007,7 @@ bool statistics::walk_to_foe()
 				clear_command();
 				controller->turn(controller->facing(xdelta, ydelta));
 				controller->stats()->try_command(COMMAND_ATTACK,static_cast<short>(30+ rng(25)), 1, 1);
-				myscreen->find_near_foe(controller);
+				controller->sim_level->find_near_foe(controller);
 				if (!controller->foe && firstfoe)
 				{
 					controller->foe = firstfoe;

@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
@@ -13,7 +14,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
-#include "SDL_stdinc.h"
 #include <openglad/sim/sim_emit.h>
 
 #include <cmath>
@@ -26,9 +26,9 @@
 static bool soldier_do_special(walker* self)
 {
     walker* newob;
-    Sint32 tempx, tempy;
-    Sint32 howmany;
-    Sint32 generic;
+    std::int32_t tempx, tempy;
+    std::int32_t howmany;
+    std::int32_t generic;
 
     switch (self->current_special)
     {
@@ -36,8 +36,8 @@ static bool soldier_do_special(walker* self)
             if (!self->stats()->forward_blocked())
             {
                 self->stats()->add_command(COMMAND_RUSH, 3,
-                    static_cast<Sint32>(self->lastx / self->stepsize),
-                    static_cast<Sint32>(self->lasty / self->stepsize));
+                    static_cast<std::int32_t>(self->lastx / self->stepsize),
+                    static_cast<std::int32_t>(self->lasty / self->stepsize));
                 og::sim::emit_sound(self->sim_events, SOUND_CHARGE);
             }
             else
@@ -57,8 +57,8 @@ static bool soldier_do_special(walker* self)
             if (self->busy)
                 return false;
             self->busy += 8;
-            tempx = static_cast<Sint32>(self->lastx);
-            tempy = static_cast<Sint32>(self->lasty);
+            tempx = static_cast<std::int32_t>(self->lastx);
+            tempy = static_cast<std::int32_t>(self->lasty);
             self->curdir = -1;
             self->lastx = 0;
             self->lasty = 0;
@@ -135,7 +135,7 @@ static bool soldier_check_special_ai(living* self)
 {
     if (self->foe)
     {
-        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
         if (distance < 75 && distance > 20)
             return true;
         return false;
@@ -143,7 +143,7 @@ static bool soldier_check_special_ai(living* self)
     self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
-    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
     if (distance < 75 && distance > 20)
         return true;
     return false;
@@ -168,7 +168,7 @@ static void soldier_on_create(walker* self)
         static_cast<short>((self->stats()->level + 1) / 2);
 }
 
-static void soldier_set_difficulty(living* self, Uint32 level)
+static void soldier_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);

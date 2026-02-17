@@ -17,7 +17,9 @@
 // Soundob.h file ..
 #pragma once
 
+#ifndef OPENGLAD_HEADLESS
 #include "SDL_mixer.h"
+#endif
 #include <string>
 
 inline constexpr int SOUND_BOW = 0;
@@ -42,6 +44,7 @@ inline constexpr int NUMSOUNDS = 16;   // For now, let's use ALL sounds, regardl
 //buffers: PORT: don't need this anymore: #include "detect.h"
 //buffers: PORT: don't need this anymore: #include "smix.h"
 
+#ifndef OPENGLAD_HEADLESS
 class soundob
 {
 	public:
@@ -63,3 +66,4 @@ class soundob
 		int volume;                       // Volume: 0 - 255
 		unsigned char silence;                      // 0 = on, 1 = silent
 };
+#endif

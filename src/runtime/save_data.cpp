@@ -16,19 +16,23 @@
  */
 
 #include <openglad/data/save_data.h>
+#include <openglad/core/util.h>
 #include <openglad/legacy/test_trace.h>
 #include <format>
 
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/platform/io.h>
+#endif
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <string>
 
+#ifndef OPENGLAD_HEADLESS
 namespace {
 bool rw_read_exact(SDL_RWops* rwops, void* dst, size_t size, size_t count)
 {
@@ -40,6 +44,7 @@ bool rw_write_exact(SDL_RWops* rwops, const void* src, size_t size, size_t count
     return rwops && SDL_RWwrite(rwops, src, size, count) == count;
 }
 } // namespace
+#endif // !OPENGLAD_HEADLESS
 
 
 #ifdef USE_TOUCH_INPUT
@@ -96,6 +101,7 @@ void SaveData::reset()
 	//allied_mode = 1;
 }
 
+#ifndef OPENGLAD_HEADLESS
 bool SaveData::load(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
@@ -776,6 +782,21 @@ SaveDataIoError SaveData::save_with_error(const std::string& filename)
     save(filename);
     return last_io_error_;
 }
+#else // OPENGLAD_HEADLESS
+// Headless mode: save/load not supported (no SDL_RWops).
+// These paths should not be reached in normal headless simulation.
+bool SaveData::load(const std::string& filename)
+{
+    LogWarn("SaveData::load('{}') called in headless mode — not supported\n", filename);
+    return false;
+}
+
+bool SaveData::save(const std::string& filename)
+{
+    LogWarn("SaveData::save('{}') called in headless mode — not supported\n", filename);
+    return false;
+}
+#endif // !OPENGLAD_HEADLESS
 
 
 

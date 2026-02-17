@@ -5,18 +5,18 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/core/stats.h>
 
 #include <openglad/entities/living.h>
 
-Sint32 calculate_level(Uint32 temp_exp);
+std::int32_t calculate_level(std::uint32_t temp_exp);
 
 #define BASE_GUY_HP 30
 
@@ -84,7 +84,7 @@ static bool slime_on_ani_complete(walker* self)
     newob->setxy(self->xpos+12, self->ypos-12);
     // Transfer stats/etc. across to new guy
     self->transfer_stats(newob);
-    if (newob->myguy && newob->myguy->exp < static_cast<Uint32>(1000 * self->stats()->level))
+    if (newob->myguy && newob->myguy->exp < static_cast<std::uint32_t>(1000 * self->stats()->level))
     {
         newob->clear_myguy();
         newob->stats()->name = "SLIME";
@@ -92,7 +92,7 @@ static bool slime_on_ani_complete(walker* self)
     }
     else if (newob->myguy)
     {
-        Uint32 exp = self->myguy->exp / 2;
+        std::uint32_t exp = self->myguy->exp / 2;
         const short newlevel = static_cast<short>(calculate_level(exp));
         self->myguy->upgrade_to_level(newlevel);
         self->myguy->update_derived_stats(self);
@@ -123,7 +123,7 @@ static bool small_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(self->sim_rng->next(3)) - 1, static_cast<Sint32>(self->sim_rng->next(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
         return false;
     }
     return true;
@@ -137,7 +137,7 @@ static bool medium_slime_do_special(walker* self)
     }
     else
     {
-        self->stats()->set_command(COMMAND_WALK, 10, static_cast<Sint32>(self->sim_rng->next(3)) - 1, static_cast<Sint32>(self->sim_rng->next(3)) - 1);
+        self->stats()->set_command(COMMAND_WALK, 10, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1, static_cast<std::int32_t>(self->sim_rng->next(3)) - 1);
         return false;
     }
     return true;

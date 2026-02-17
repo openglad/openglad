@@ -41,53 +41,7 @@
 // have also been moved to video
 
 
-PixieData read_pixie_file(const char  * filename)
-{
-	auto rw_read_exact = [](SDL_RWops* rwops, void* dst, size_t size, size_t count) {
-		return rwops && SDL_RWread(rwops, dst, size, count) == count;
-	};
-
-	// Create a file stream, and read the image
-	// File data in form:
-	// <# of frames>      1 byte
-	// <x size>                   1 byte
-	// <y size>                   1 byte
-	// <pixie data>               <x*y*frames> bytes
-    
-    PixieData result;
-    RwopsPtr infile;
-
-	// Zardus: try to find file using open_read_file
-    infile.reset(open_read_file("pix/", filename));
-    if (!infile) {
-        infile.reset(open_read_file(filename));
-    }
-    if (!infile) {
-        LogError("Cannot open pixie file: pix/{}\n", filename);
-        return result;
-    }
-
-	if (!rw_read_exact(infile.get(), &result.frames, 1, 1) ||
-	    !rw_read_exact(infile.get(), &result.w, 1, 1) ||
-	    !rw_read_exact(infile.get(), &result.h, 1, 1))
-	{
-	    LogError("Failed to read pixie header: pix/{}\n", filename);
-	    return result;
-	}
-
-    size_t size = result.w * result.h * result.frames;
-	result.data = std::make_unique<unsigned char[]>(size);
-
-	// Now read the data in a big chunk
-	if (!rw_read_exact(infile.get(), result.data.get(), 1, size))
-	{
-	    LogError("Failed to read pixie payload: pix/{} ({} bytes)\n", filename, size);
-	    result.free();
-	    return result;
-	}
-    
-	return result;
-} // End of image-reading routine
+// read_pixie_file is now in src/io/og_file.cpp (SDL-free implementation)
 
 
 

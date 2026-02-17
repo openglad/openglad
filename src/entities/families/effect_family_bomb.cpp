@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
@@ -12,7 +13,7 @@
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 
-Sint32 compute_explosion_range(Sint32 level, short skip_exit);
+std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
 
 static bool bomb_on_death(effect* self)
 {
@@ -33,8 +34,8 @@ static bool explosion_on_death(effect* self)
 {
     if (!self->owner || self->owner->dead)
         self->owner = self;
-    Sint32 generic = compute_explosion_range(self->owner->stats()->level, self->skip_exit);
-    Sint32 howmany = 0;
+    std::int32_t generic = compute_explosion_range(self->owner->stats()->level, self->skip_exit);
+    std::int32_t howmany = 0;
     auto foelist = self->sim_level->find_in_range(self->sim_level->oblist, 15+generic,
         &howmany, self);
 
@@ -53,10 +54,10 @@ static bool explosion_on_death(effect* self)
                 (!self->skip_exit || w != self->owner)
            )
         {
-            Sint32 xdelta = w->xpos - self->xpos;
+            std::int32_t xdelta = w->xpos - self->xpos;
             if (xdelta)
                 xdelta = xdelta/abs(xdelta);
-            Sint32 ydelta = w->ypos - self->ypos;
+            std::int32_t ydelta = w->ypos - self->ypos;
             if (ydelta)
                 ydelta = ydelta/abs(ydelta);
             generic = 2+self->owner->stats()->level/15;

@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
@@ -33,7 +34,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
-#include "SDL_stdinc.h"
 #include <cmath>
 #include <format>
 
@@ -261,7 +261,7 @@ bool walker::attack(walker  *target)
                 myguy->exp += newexp;
             if (getscore)
             {
-                sim_save->m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level);
+                sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(target->stats()->level);
             }
         }
     }
@@ -293,7 +293,7 @@ bool walker::attack(walker  *target)
         {
             if (getscore)
             {
-                sim_save->m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(target->stats()->level); // / 2;
+                sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(target->stats()->level); // / 2;
             }
             if (headguy->myguy)
                 headguy->myguy->exp += newexp;
@@ -323,7 +323,7 @@ bool walker::attack(walker  *target)
                     //}
                     if (getscore)
                     {
-                        sim_save->m_score[team_num] += static_cast<Uint32>(tempdamage_i) + static_cast<Uint32>(10 * target->stats()->level);
+                        sim_save->m_score[team_num] += static_cast<std::uint32_t>(tempdamage_i) + static_cast<std::uint32_t>(10 * target->stats()->level);
                     }
                     // If named, alert us of the enemy's death
                     if (target->stats()->name.size() && !(target->lifetime)

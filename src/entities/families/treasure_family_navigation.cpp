@@ -5,21 +5,29 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/entities/obmap.h>
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/input/input.h>
+#endif
 #include <openglad/sim/sim_emit.h>
 #include <format>
 #include <string>
 
 std::string get_scenario_title(const char* filename);
 
+#ifndef OPENGLAD_HEADLESS
 void get_input_events(bool);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
+#else
+static inline bool yes_or_no_prompt(const char*, const char*, bool default_value) { return default_value; }
+static inline void clear_keyboard() {}
+#endif
 
 static bool exit_on_eat(treasure* self, walker* eater)
 {
@@ -42,8 +50,8 @@ static bool exit_on_eat(treasure* self, walker* eater)
         exitname = std::format("Level {}", self->stats()->level);
     }
 
-    Sint32 leftside  = 160 - ( (static_cast<int>(exitname.size()) + 18) * 3);
-    Sint32 rightside = 160 + ( (static_cast<int>(exitname.size()) + 18) * 3);
+    std::int32_t leftside  = 160 - ( (static_cast<int>(exitname.size()) + 18) * 3);
+    std::int32_t rightside = 160 + ( (static_cast<int>(exitname.size()) + 18) * 3);
     // First check to see if we're withdrawing into
     //    somewhere we've been, in which case we abort
     //    this level, and set our current level to
@@ -119,7 +127,7 @@ static bool teleporter_on_eat(treasure* self, walker* eater)
 {
     if (eater->skip_exit > 1)
         return true;
-    Sint32 distance = self->distance_to_ob_center(eater); // how far away?
+    std::int32_t distance = self->distance_to_ob_center(eater); // how far away?
     if (distance > 21)
         return true;
     if (distance < 4 && eater->skip_exit)

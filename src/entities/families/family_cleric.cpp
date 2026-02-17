@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
@@ -14,7 +15,6 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/data/gparser.h>
@@ -47,7 +47,7 @@ static bool cleric_check_special_ai(living* self)
 {
     if (self->current_special == 1) // healing
     {
-        Sint32 howmany = 0;
+        std::int32_t howmany = 0;
         self->sim_level->find_friends_in_range(self->sim_level->oblist,
                                         60, &howmany, self);
         if (howmany > 1)
@@ -65,7 +65,7 @@ static bool cleric_check_special_ai(living* self)
     return true;
 }
 
-static void cleric_set_difficulty(living* self, Uint32 level)
+static void cleric_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);
@@ -79,10 +79,10 @@ static bool cleric_do_special(walker* self)
 {
     walker* newob;
     walker* alive;
-    Sint32 generic;
+    std::int32_t generic;
     float targetx, targety;
-    Uint32 distance;
-    Sint32 didheal;
+    std::uint32_t distance;
+    std::int32_t didheal;
     std::string message;
 
     switch (self->current_special)
@@ -90,7 +90,7 @@ static bool cleric_do_special(walker* self)
         case 1: // heal / mystic mace
             if (!self->shifter_down) // normal heal
             {
-                Sint32 howmany;
+                std::int32_t howmany;
                 std::list<walker*> newlist = self->sim_level->find_friends_in_range(self->sim_level->oblist,
                           60, &howmany, self);
                 didheal = 0;
@@ -102,13 +102,13 @@ static bool cleric_do_special(walker* self)
                         if (newob->stats()->hitpoints < newob->stats()->max_hitpoints &&
                                 newob != self)
                         {
-                            HealResult heal = compute_heal_amount(static_cast<Sint32>(self->stats()->magicpoints), self->stats()->level, *self->sim_rng);
+                            HealResult heal = compute_heal_amount(static_cast<std::int32_t>(self->stats()->magicpoints), self->stats()->level, *self->sim_rng);
                             generic = heal.amount;
-                            Sint32 cost = heal.cost;
+                            std::int32_t cost = heal.cost;
                             if (self->stats()->magicpoints < static_cast<float>(cost))
                             {
-                                generic -= static_cast<Sint32>(self->stats()->magicpoints);
-                                cost -= static_cast<Sint32>(self->stats()->magicpoints);
+                                generic -= static_cast<std::int32_t>(self->stats()->magicpoints);
+                                cost -= static_cast<std::int32_t>(self->stats()->magicpoints);
                             }
                             if (generic <= 0 || cost <= 0)
                                 break;
@@ -161,7 +161,7 @@ static bool cleric_do_special(walker* self)
                 newob->owner = self;
                 newob->team_num = self->team_num;
                 newob->ani_type = 1;
-                generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+                generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
                 generic /= 2;
                 newob->lifetime = 100 + generic;
                 newob->stats()->hitpoints += static_cast<float>(generic) / 2.0f;
@@ -202,7 +202,7 @@ static bool cleric_do_special(walker* self)
                 {
                     targetx = newob->xpos;
                     targety = newob->ypos;
-                    distance = static_cast<Uint32>(self->distance_to_ob(newob));
+                    distance = static_cast<std::uint32_t>(self->distance_to_ob(newob));
                     if (self->sim_level->query_passable(targetx, targety, newob) && distance < 60)
                     {
                         alive = self->do_summon(FAMILY_SKELETON, 125 + (self->stats()->level * 40));
@@ -210,7 +210,7 @@ static bool cleric_do_special(walker* self)
                             return false;
                         alive->team_num = self->team_num;
                         alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
-                        alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
+                        alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->setxy(newob->xpos, newob->ypos);
                         alive->owner = self;
                         newob->dead = 1;
@@ -256,14 +256,14 @@ static bool cleric_do_special(walker* self)
                 {
                     targetx = newob->xpos;
                     targety = newob->ypos;
-                    distance = static_cast<Uint32>(self->distance_to_ob(newob));
+                    distance = static_cast<std::uint32_t>(self->distance_to_ob(newob));
                     if (self->sim_level->query_passable(targetx, targety, newob) && distance < 30)
                     {
                         alive = self->do_summon(FAMILY_GHOST, 150 + (self->stats()->level * 40));
                         if (!alive)
                             return false;
                         alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
-                        alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
+                        alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->team_num = self->team_num;
                         alive->setxy(newob->xpos, newob->ypos);
                         alive->owner = self;
@@ -313,7 +313,7 @@ static bool cleric_do_special(walker* self)
                             return false;
                         alive->team_num = self->team_num;
                         alive->stats()->level = self->sim_rng->next(self->stats()->level) + 1;
-                        alive->set_difficulty(static_cast<Uint32>(alive->stats()->level));
+                        alive->set_difficulty(static_cast<std::uint32_t>(alive->stats()->level));
                         alive->owner = self;
                     }
                     alive->setxy(newob->xpos, newob->ypos);

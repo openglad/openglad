@@ -7,7 +7,6 @@
  */
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure_family_registry.h>
 

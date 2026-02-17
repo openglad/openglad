@@ -94,11 +94,7 @@ inline constexpr int S_WIDTH = (S_RIGHT - S_LEFT);
 inline constexpr int S_HEIGHT = (S_DOWN - S_UP);
 inline constexpr int MAX_SPREAD = 10; // this controls find_near_foe
 
-short load_version_2(SDL_RWops  *infile, screen * master);
-short load_version_3(SDL_RWops  *infile, screen * master); // v.3 scen
-short load_version_4(SDL_RWops  *infile, screen * master); // v.4 scen: + names
-short load_version_5(SDL_RWops  *infile, screen * master); // v.5 scen: + type
-short load_version_6(SDL_RWops  *infile, screen * master, short version=6); // v.6 scen: + title
+// load_version_* functions now live in level_data.cpp and take OgFile& + LevelData*
 
 
 

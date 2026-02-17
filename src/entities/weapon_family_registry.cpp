@@ -10,7 +10,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/legacy/soundob.h>
 
 static constexpr int NUM_WEAPON_FAMILIES = 20;

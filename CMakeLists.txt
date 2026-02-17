@@ -183,6 +183,7 @@ set(GAME_SOURCES
 		    ${SRC_DIR}/io/physfs_api.cpp
 		    ${SRC_DIR}/io/zip_api.cpp
 		    ${SRC_DIR}/io/yaml_stream.cpp
+		    ${SRC_DIR}/io/og_file.cpp
 		    ${SRC_DIR}/data/gparser.cpp
 		    ${SRC_DIR}/runtime/gloader.cpp
     ${SRC_DIR}/data/pixie_data.cpp
@@ -344,6 +345,7 @@ set(OG_IO_SOURCES
     ${SRC_DIR}/io/physfs_api.cpp
     ${SRC_DIR}/io/zip_api.cpp
     ${SRC_DIR}/io/yaml_stream.cpp
+    ${SRC_DIR}/io/og_file.cpp
 )
 
 set(OG_PLATFORM_SOURCES
@@ -786,6 +788,65 @@ if(NOT EMSCRIPTEN)
         add_runtime_assets_dependency(openscen)
     endif()
 
+    # --- openglad_text (headless text-based simulation client) ---
+    # Compiles game sources directly with -DOPENGLAD_HEADLESS to exclude
+    # all SDL-dependent code paths. Links only PhysFS/libzip/libyaml (no SDL2).
+    set(HEADLESS_SOURCES
+        # text client
+        ${SRC_DIR}/text_client/main.cpp
+        ${SRC_DIR}/text_client/platform_headless.cpp
+        # core
+        ${OG_CORE_SOURCES}
+        # sim
+        ${OG_SIM_SOURCES}
+        # data
+        ${OG_DATA_SOURCES}
+        # entities
+        ${OG_ENTITIES_SOURCES}
+        # input (SDL-free data structs only)
+        ${SRC_DIR}/input/input_state.cpp
+        # io (no platform_io.cpp — uses SDL)
+        ${SRC_DIR}/io/physfs_api.cpp
+        ${SRC_DIR}/io/zip_api.cpp
+        ${SRC_DIR}/io/yaml_stream.cpp
+        ${SRC_DIR}/io/og_file.cpp
+        # runtime (SDL-free subset)
+        ${SRC_DIR}/runtime/game_context.cpp
+        ${SRC_DIR}/runtime/sim_world.cpp
+        ${SRC_DIR}/runtime/sim_input_handler.cpp
+        ${SRC_DIR}/runtime/gloader.cpp
+        ${SRC_DIR}/runtime/level_data.cpp
+        ${SRC_DIR}/runtime/save_data.cpp
+        ${SRC_DIR}/runtime/smooth.cpp
+        ${SRC_DIR}/runtime/stats.cpp
+    )
+
+    add_executable(openglad_text ${HEADLESS_SOURCES})
+    target_include_directories(openglad_text PUBLIC
+        $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>
+    )
+    target_include_directories(openglad_text PRIVATE
+        ${THIRD_PARTY_DIR}/micropather
+        ${THIRD_PARTY_DIR}/yam
+        ${THIRD_PARTY_DIR}/libyaml/include
+        ${THIRD_PARTY_DIR}/physfs
+        ${THIRD_PARTY_DIR}/physfs/extras
+        ${THIRD_PARTY_DIR}/libzip
+    )
+    target_compile_definitions(openglad_text PRIVATE
+        OPENGLAD_HEADLESS
+        ${COMMON_DEFINITIONS}
+    )
+    target_link_libraries(openglad_text PRIVATE
+        project_warnings
+        project_sanitizers
+        og_ext_micropather
+        ${OG_IO_EXTERNAL_LIBS}
+        m
+        pthread
+    )
+    add_runtime_assets_dependency(openglad_text)
+
     install(TARGETS
         project_warnings
         project_sanitizers
@@ -1117,6 +1178,14 @@ if(NOT EMSCRIPTEN)
         )
         set_tests_properties(og_runtime_tests PROPERTIES
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        )
+
+        add_test(NAME openglad_text_sim
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client.sh $<TARGET_FILE:openglad_text>
+        )
+        set_tests_properties(openglad_text_sim PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 60
         )
 
         add_test(NAME emscripten_build_test

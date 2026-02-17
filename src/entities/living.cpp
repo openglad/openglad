@@ -18,6 +18,8 @@
 // Living; derived class of walker
 //
 
+#include <cmath>
+#include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/terrain_types.h>
 #include <openglad/entities/family_descriptor.h>
@@ -31,17 +33,23 @@
 #include <openglad/data/gparser.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <cstring>
 
 // From picker
-extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
-extern Sint32 current_difficulty;
+extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
+extern std::int32_t current_difficulty;
 
 // rng/config wrappers removed: use SimEntity fields sim_rng/sim_config directly
 
 living::living(const PixieData& data)
     : walker(data)
+{
+	current_special = 1;
+	lifetime = 0;
+}
+
+living::living()
+    : walker()
 {
 	current_special = 1;
 	lifetime = 0;
@@ -250,7 +258,7 @@ bool living::act()
 	// Are we performing some action?
 	if (stats_->has_commands())
 	{
-		Sint32 temp = stats_->do_command();
+		std::int32_t temp = stats_->do_command();
 		if (temp)
 			return 1;
 	}
@@ -261,7 +269,7 @@ bool living::act()
 	// Do we have a generic action-type set?
 	if (action  && (user == -1) )
 	{
-		Sint32 temp = do_action();
+		std::int32_t temp = do_action();
 		if (temp)
 			return temp;
 	}
@@ -478,7 +486,7 @@ bool living::collide(walker  *ob)
 	return 1;
 }
 
-walker* living::do_summon(char whatfamily, Sint32 summon_lifetime)
+walker* living::do_summon(char whatfamily, std::int32_t summon_lifetime)
 {
 	walker  *newob;
 
@@ -509,10 +517,10 @@ bool living::check_special()
 	return true;
 }
 
-void living::set_difficulty(Uint32 whatlevel)
+void living::set_difficulty(std::uint32_t whatlevel)
 {
-	//  Sint32 calcdelay,calcrate;  // apparently not used anymore
-	Uint32 dif1 = difficulty_level[current_difficulty];
+	//  std::int32_t calcdelay,calcrate;  // apparently not used anymore
+	std::uint32_t dif1 = difficulty_level[current_difficulty];
 	const float levmult = static_cast<float>(whatlevel) * static_cast<float>(whatlevel);
 	const float level_f = static_cast<float>(whatlevel);
 
@@ -544,7 +552,7 @@ void living::set_difficulty(Uint32 whatlevel)
 
 		stats_->max_heal_delay = REGEN; //defined in graph.h
 		stats_->current_heal_delay =
-		    static_cast<Sint32>(levmult * 4.0f); //for purposes of calculation only
+		    static_cast<std::int32_t>(levmult * 4.0f); //for purposes of calculation only
 
 	while (stats_->current_heal_delay > REGEN)
 	{
@@ -555,7 +563,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	if (stats_->current_heal_delay > 1)
 	{
 		stats_->max_heal_delay /=
-		    static_cast<Sint32>(stats_->current_heal_delay + 1);
+		    static_cast<std::int32_t>(stats_->current_heal_delay + 1);
 	}
 	stats_->current_heal_delay = 0; //start off without healing
 
@@ -569,7 +577,7 @@ void living::set_difficulty(Uint32 whatlevel)
 
 	// Set the magic delay ..
 	stats_->max_magic_delay = REGEN;
-	stats_->current_magic_delay = static_cast<Sint32>(levmult*30);//for calculation only
+	stats_->current_magic_delay = static_cast<std::int32_t>(levmult*30);//for calculation only
 
 	while (stats_->current_magic_delay > REGEN)
 	{
@@ -580,7 +588,7 @@ void living::set_difficulty(Uint32 whatlevel)
 	if (stats_->current_magic_delay > 1)
 	{
 		stats_->max_magic_delay /=
-		    static_cast<Sint32>(stats_->current_magic_delay + 1);
+		    static_cast<std::int32_t>(stats_->current_magic_delay + 1);
 	}
 	stats_->current_magic_delay = 0; //start off without magic regen
 
@@ -594,8 +602,8 @@ void living::set_difficulty(Uint32 whatlevel)
 
 short living::facing(short x, short y)
 {
-	Sint32 bigy = static_cast<Sint32>(y*1000);
-	Sint32 slope;
+	std::int32_t bigy = static_cast<std::int32_t>(y*1000);
+	std::int32_t slope;
 
 	if (!x)
 	{

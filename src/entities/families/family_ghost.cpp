@@ -5,12 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/core/stats.h>
 
 #define BASE_GUY_HP 30
@@ -19,13 +19,13 @@ static bool ghost_check_special_ai(living* self)
 {
     if (self->foe)
     {
-        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
         return (distance < 130);
     }
     self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
-    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
     return (distance < 130);
 }
 

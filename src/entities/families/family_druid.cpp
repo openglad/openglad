@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
@@ -14,7 +15,6 @@
 #include <openglad/core/combat_math.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 
@@ -26,7 +26,7 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
 #define BASE_GUY_HP 30
 
-static void druid_set_difficulty(living* self, Uint32 level)
+static void druid_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);
@@ -36,20 +36,20 @@ static void druid_set_difficulty(living* self, Uint32 level)
     self->stats()->armor += levmult / 2.0f;
 }
 
-static void druid_level_up(guy* self, Sint32 level_diff)
+static void druid_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     d /= 2;
     it = (it * 3) / 2;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 static bool druid_do_special(walker* self)
@@ -57,7 +57,7 @@ static bool druid_do_special(walker* self)
     walker* newob;
     walker* alive;
     walker* tempwalk;
-    Sint32 didheal;
+    std::int32_t didheal;
     std::string message;
 
     switch (self->current_special)
@@ -108,7 +108,7 @@ static bool druid_do_special(walker* self)
             if (self->busy > 0)
                 return false;
             {
-                Sint32 howmany;
+                std::int32_t howmany;
                 std::list<walker*> newlist = self->sim_level->find_friends_in_range(self->sim_level->oblist,
                           60, &howmany, self);
                 didheal = 0;

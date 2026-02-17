@@ -15,13 +15,13 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 // OBMAP -- an object to handle locations of pixies on a hash table.
+#include <cstdint>
 #include <openglad/entities/obmap.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/core/util.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <cmath>
 #include <algorithm>
 #include <format>
@@ -290,7 +290,7 @@ short ob_pass_check(short x, short y, walker* ob, const std::list<walker*>& pile
                               && (w->query_family() == FAMILY_DOOR) )
                     {
                         // Can we unlock this door?
-                        if (ob->keys & static_cast<Sint32>(pow(static_cast<double>(2), w->stats()->level)))
+                        if (ob->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), w->stats()->level)))
                         {
                             // Open the door ..
                             w->dead = 1;

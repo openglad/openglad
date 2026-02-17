@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/weapon_family_descriptor.h>
 #include <openglad/entities/weap.h>
 #include <openglad/core/stats.h>
@@ -26,7 +27,7 @@ static bool wave2_on_death(weap* self)
     return true;
 }
 
-static constexpr Sint32 WAVE_BIT_FLAGS = BIT_IMMORTAL | BIT_NO_COLLIDE | BIT_PHANTOM | BIT_FLYING | BIT_MAGICAL;
+static constexpr std::int32_t WAVE_BIT_FLAGS = BIT_IMMORTAL | BIT_NO_COLLIDE | BIT_PHANTOM | BIT_FLYING | BIT_MAGICAL;
 
 const WeaponFamilyDescriptor& describe_weapon_wave()
 {

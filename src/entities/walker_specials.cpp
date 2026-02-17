@@ -15,6 +15,7 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cstdint>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
@@ -22,7 +23,6 @@
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/legacy/test_trace.h>
 #include <openglad/sim/sim_emit.h>
 
@@ -62,8 +62,8 @@ bool walker::special()
 
 bool walker::teleport()
 {
-	Sint32 newx = 0, newy = 0;
-	Sint32 distance = 0;
+	std::int32_t newx = 0, newy = 0;
+	std::int32_t distance = 0;
 
 	// First check to see if we have a marker to go to
 	// NOTE: it must be a bit away from us ..
@@ -106,11 +106,11 @@ bool walker::teleport()
 	    sim_level->pixmaxx <= 0 || sim_level->pixmaxy <= 0)
 		return 0;
 
-	Sint32 keep_going = 200; // maxtries
+	std::int32_t keep_going = 200; // maxtries
 	do
 	{
-		newx = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(sim_level->grid.w))) * GRID_SIZE;
-		newy = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(sim_level->grid.h))) * GRID_SIZE;
+		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.w))) * GRID_SIZE;
+		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(sim_level->grid.h))) * GRID_SIZE;
 		keep_going--;
 	} while (keep_going > 0 &&
 	         !sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this));
@@ -123,18 +123,18 @@ bool walker::teleport()
 	return 0;
 }
 
-bool walker::teleport_ranged(Sint32 range)
+bool walker::teleport_ranged(std::int32_t range)
 {
-	Sint32 newx = 0, newy = 0;
-	Sint32 keep_going = 200; // maxtries
+	std::int32_t newx = 0, newy = 0;
+	std::int32_t keep_going = 200; // maxtries
 
-	newx = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + xpos;
-	newy = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + ypos;
+	newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
+	newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
 
 	while(!sim_level->query_passable(static_cast<float>(newx), static_cast<float>(newy), this) && keep_going)
 	{
-		newx = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + xpos;
-		newy = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(2 * range))) - range + ypos;
+		newx = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + xpos;
+		newy = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(2 * range))) - range + ypos;
 		keep_going--;
 	}
 	if (keep_going)
@@ -147,10 +147,10 @@ bool walker::teleport_ranged(Sint32 range)
 
 // Turns undead; ie, skeleton or ghost, within range
 // Returns the number of dead destroyed
-Sint32 walker::turn_undead(Sint32 range, [[maybe_unused]] Sint32 power)
+std::int32_t walker::turn_undead(std::int32_t range, [[maybe_unused]] std::int32_t power)
 {
-	Sint32 killed = 0;
-	Sint32 targets = 0;
+	std::int32_t killed = 0;
+	std::int32_t targets = 0;
 
 	std::list<walker*> deadlist = sim_level->find_foes_in_range(sim_level->oblist, range,
 	                                       &targets, this);

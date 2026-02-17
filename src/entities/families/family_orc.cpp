@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
@@ -14,7 +15,6 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
-#include "SDL_stdinc.h"
 #include <openglad/core/stats.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
@@ -32,9 +32,9 @@ short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 static bool orc_do_special(walker* self)
 {
     walker* newob;
-    Sint32 tempx, tempy;
-    Sint32 howmany;
-    Uint32 distance;
+    std::int32_t tempx, tempy;
+    std::int32_t howmany;
+    std::uint32_t distance;
     std::string message;
 
     switch (self->current_special)
@@ -56,11 +56,11 @@ static bool orc_do_special(walker* self)
                         if (ob->myguy)
                             tempx = ob->myguy->constitution;
                         else
-                            tempx = static_cast<Sint32>(ob->stats()->hitpoints / 30.0f);
-                        Sint32 tempx_clamped = (tempx > 0) ? tempx : 0;
+                            tempx = static_cast<std::int32_t>(ob->stats()->hitpoints / 30.0f);
+                        std::int32_t tempx_clamped = (tempx > 0) ? tempx : 0;
                         tempy = 10
-                            + static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(self->stats()->level * 10)))
-                            - static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(tempx_clamped * 10)));
+                            + static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(self->stats()->level * 10)))
+                            - static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(tempx_clamped * 10)));
                         if (tempy < 0)
                             tempy = 0;
                         ob->stats()->frozen_delay = static_cast<short>(ob->stats()->frozen_delay + tempy);
@@ -79,7 +79,7 @@ static bool orc_do_special(walker* self)
             newob = self->sim_level->find_nearest_blood(self);
             if (!newob)
                 return false;
-            distance = static_cast<Uint32>(self->distance_to_ob_center(newob));
+            distance = static_cast<std::uint32_t>(self->distance_to_ob_center(newob));
             if (distance > 24)
                 return false;
             self->stats()->hitpoints += static_cast<float>(newob->stats()->level) * 5.0f;
@@ -110,17 +110,17 @@ static bool orc_check_special_ai(living* self)
 {
     if (self->foe)
     {
-        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
         return (distance < 130);
     }
     self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
-    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
     return (distance < 130);
 }
 
-static void orc_set_difficulty(living* self, Uint32 level)
+static void orc_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);
@@ -130,22 +130,22 @@ static void orc_set_difficulty(living* self, Uint32 level)
     self->stats()->armor += 3.0f * levmult;
 }
 
-static void orc_level_up(guy* self, Sint32 level_diff)
+static void orc_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     s = (s * 3) / 2;
     d /= 2;
     c = (c * 3) / 2;
     it /= 2;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 static short orc_promotion_level([[maybe_unused]] int old_level)

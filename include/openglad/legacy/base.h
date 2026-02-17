@@ -30,14 +30,22 @@
 #include <fstream>
 #include <cmath>
 #include <cctype>
+#include <openglad/legacy/soundob.h> // sound constants (always needed)
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/legacy/sounds.h>
 #include "SDL_stdinc.h"
 #include "SDL_rwops.h"
 #include <openglad/input/input.h>
+#else
+#include <cstdint>
+using Uint8  = std::uint8_t;
+using Uint16 = std::uint16_t;
+using Uint32 = std::uint32_t;
+using Sint32 = std::int32_t;
+#endif
 #include <openglad/core/util.h>
 #include <openglad/data/gparser.h>
 #include <openglad/legacy/pixdefs.h>
-#include <openglad/legacy/soundob.h> // sound defines
 
 class video;
 class screen;
@@ -98,10 +106,12 @@ inline constexpr int MAX_LEVELS = 500; // Maximum number of scenarios allowed ..
 // Used for the help-text system:
 inline constexpr int MAX_LINES = 100;   // maximum number of lines in helpfile
 inline constexpr int HELP_WIDTH = 100;   // maximum length of display line
+#ifndef OPENGLAD_HEADLESS
 short   fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile);
 short   read_campaign_intro(screen *myscreen);
 short   read_scenario(screen  *myscreen);
 std::string read_one_line(SDL_RWops *infile, short length);
+#endif
 
 //color defines:
 inline constexpr unsigned char DEFAULT_TEXT_COLOR = 88;

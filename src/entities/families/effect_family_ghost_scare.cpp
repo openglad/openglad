@@ -5,12 +5,12 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
-#include "SDL_stdinc.h"
 
 static bool ghost_scare_on_act(effect* self)
 {
@@ -23,7 +23,7 @@ static bool ghost_scare_on_death(effect* self)
 {
     if (!self->owner || self->owner->dead)
         return false;
-    Sint32 howmany = 0;
+    std::int32_t howmany = 0;
     auto foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
         50+(10*self->owner->stats()->level), &howmany, self->owner);
     if (howmany < 1)
@@ -33,13 +33,13 @@ static bool ghost_scare_on_death(effect* self)
     {
         if (w && w->query_order() == Order::Living)
         {
-            Sint32 tempx = w->xpos - self->xpos;
+            std::int32_t tempx = w->xpos - self->xpos;
             if (tempx)
                 tempx = tempx / (abs(tempx));
-            Sint32 tempy = w->ypos - self->ypos;
+            std::int32_t tempy = w->ypos - self->ypos;
             if (tempy)
                 tempy = tempy / (abs(tempy));
-            Sint32 generic = (self->owner->stats()->level*25);
+            std::int32_t generic = (self->owner->stats()->level*25);
             if (w->myguy)
                 generic -= self->sim_rng->next(w->myguy->constitution);
             if (generic > 0)

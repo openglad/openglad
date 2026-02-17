@@ -23,10 +23,10 @@
 //
 
 //#include "graph.h"
+#include <cstdint>
 #include <openglad/entities/effect.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/entities/obmap.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
@@ -38,6 +38,12 @@ effect::effect(const PixieData& data)
     : walker(data)
 {
 	ignore = 1; // don't collide with other objects
+}
+
+effect::effect()
+    : walker()
+{
+	ignore = 1;
 }
 
 effect::~effect()
@@ -112,9 +118,9 @@ bool effect::animate()
 	return 1;
 }
 
-Sint32 compute_explosion_range(Sint32 level, short skip_exit)
+std::int32_t compute_explosion_range(std::int32_t level, short skip_exit)
 {
-    Sint32 range = level * 4;
+    std::int32_t range = level * 4;
     if (skip_exit > 0)
         range = 0;
     if (range > 96)

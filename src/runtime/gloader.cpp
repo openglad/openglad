@@ -16,9 +16,14 @@
  */
 //#include "graph.h"
 #include <openglad/data/gloader.h>
+#include <openglad/io/og_file.h>
+#include <openglad/core/util.h>
+#ifndef OPENGLAD_HEADLESS
+#include "SDL.h"  // needed for screen* in create_walker_owned
 #include <openglad/render/pixien.h>
-#include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
+#endif
+#include <openglad/runtime/game_context.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/family_descriptor.h>
@@ -39,12 +44,14 @@
 #include <algorithm>
 #include <cstring>
 
+#ifndef OPENGLAD_HEADLESS
 static inline cfg_store& active_config()
 {
     if(ctx().config != nullptr)
         return *ctx().config;
     return cfg;
 }
+#endif
 
 void popup_dialog(const char* title, const char* message);
 
@@ -476,6 +483,7 @@ loader::loader()
 	graphics[PIX(Order::Weapon, FAMILY_METEOR)] = read_pixie_file("meteor.pix");
 	graphics[PIX(Order::Weapon, FAMILY_SPRINKLE)] = read_pixie_file("sparkle.pix");
 	
+#ifndef OPENGLAD_HEADLESS
 	if(active_config().is_on("effects", "gore"))
     {
         graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
@@ -486,6 +494,11 @@ loader::loader()
         graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood_friendly.pix");
         graphics[PIX(Order::Treasure,FAMILY_STAIN)] = read_pixie_file("stain_friendly.pix");
     }
+#else
+	// Headless: always load the standard blood graphics
+	graphics[PIX(Order::Weapon, FAMILY_BLOOD)] = read_pixie_file("blood.pix");
+	graphics[PIX(Order::Treasure,FAMILY_STAIN)] = read_pixie_file("stain.pix");
+#endif
         
 	graphics[PIX(Order::Weapon, FAMILY_BONE)] = read_pixie_file("bone1.pix");
 	graphics[PIX(Order::Weapon, FAMILY_BLOB)] = read_pixie_file("sl_ball.pix");
@@ -792,7 +805,7 @@ loader::~loader(void)
 	// vectors clean up automatically
 }
 
-void loader::set_derived_stats(walker* w, Order order, Sint32 family)
+void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 {
 	if(family < 0 || family >= NUM_FAMILIES)
 		family = 0;
@@ -804,8 +817,9 @@ void loader::set_derived_stats(walker* w, Order order, Sint32 family)
 	w->fire_frequency = fire_frequency[PIX(order, family)];
 }
 
+#ifndef OPENGLAD_HEADLESS
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
-                                                    Sint32 family,
+                                                    std::int32_t family,
                                                     screen* screenp, [[maybe_unused]] bool cache_weapons)
 {
 	std::unique_ptr<walker> ob;
@@ -857,10 +871,57 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
         ob->set_frame(ob->ani[ob->curdir][0]);
 	return ob;
 }
+#endif
+
+std::unique_ptr<walker> loader::create_walker_headless(Order order,
+                                                       std::int32_t family)
+{
+	std::unique_ptr<walker> ob;
+
+	if(family < 0 || family >= NUM_FAMILIES)
+	{
+		family = (order == Order::Living) ? FAMILY_SOLDIER : 0;
+	}
+
+	// Create headless walker (no render component) but set size from PixieData
+	const auto& pix = graphics[PIX(order, family)];
+
+	if (order == Order::Living)
+		ob = std::make_unique<living>();
+	else if (order == Order::Weapon)
+		ob = std::make_unique<weap>();
+	else if (order == Order::Treasure)
+		ob = std::make_unique<treasure>();
+	else if (order == Order::FX)
+		ob = std::make_unique<effect>();
+	else
+		ob = std::make_unique<walker>();
+	if (!ob)
+		return nullptr;
+
+	// Set size and frame count from PixieData (needed for collision) without creating render component
+	if (pix.valid())
+	{
+		ob->sizex = pix.w;
+		ob->sizey = pix.h;
+	}
+
+	ob->stats()->hitpoints = hitpoints[PIX(order, family)];
+	ob->stats()->max_hitpoints = hitpoints[PIX(order, family)];
+	ob->stats()->special_cost[0] = 0;
+	ob->stats()->weapon_cost = 1;
+
+	// sim context pointers are NOT set here - caller wires them after creation
+	set_walker(ob.get(), order, family);
+
+	if(order == Order::Living && ob->ani)
+		ob->set_frame(ob->ani[ob->curdir][0]);
+	return ob;
+}
 
 walker  *loader::set_walker(walker *ob,
                             Order order,
-                            Sint32 family)
+                            std::int32_t family)
 {
 	short i;
 
@@ -977,7 +1038,8 @@ walker  *loader::set_walker(walker *ob,
 	return ob;
 }
 
-std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, Sint32 family)
+#ifndef OPENGLAD_HEADLESS
+std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, std::int32_t family)
 {
 	if (!graphics[PIX(order, family)].valid())
 	{
@@ -987,3 +1049,4 @@ std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, Sint32 family)
 
 	return std::make_unique<pixieN>(graphics[PIX(order, family)]);
 }
+#endif

@@ -55,6 +55,7 @@ void test_stats_right_walk_turn_right_adds_walk_command_all_enddirs()
 
     PixieData px = one_px();
     walker w(px);
+    w.sim_level = &myscreen->level_data;
     w.sim_rng = ctx().rng;
     w.sim_config = ctx().config;
     w.stepsize = 1.0f;

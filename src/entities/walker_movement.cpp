@@ -15,6 +15,8 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cmath>
+#include <cstdint>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
@@ -22,7 +24,6 @@
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 
 short walker::move(short x, short y)
 {
@@ -81,8 +82,8 @@ bool walker::walk()
 
 short walker::facing(short x, short y)
 {
-    Sint32 bigy = y*1000;
-    Sint32 slope;
+    std::int32_t bigy = y*1000;
+    std::int32_t slope;
 
     if (!x)
     {
@@ -138,7 +139,7 @@ bool walker::walkstep(float x, float y)
     short oldcurdir = curdir;
     float step = stepsize;
     float halfstep;
-    Sint32 i;
+    std::int32_t i;
     //walker *control1 = myscreen->viewob[0]->control;
     //walker *control2;
     short mycycle;
@@ -259,7 +260,7 @@ bool walker::walkstep(float x, float y)
                 
                 if(dx != 0 || dy != 0)
                 {
-                    const Sint32 step_i = static_cast<Sint32>(step);
+                    const std::int32_t step_i = static_cast<std::int32_t>(step);
                     for (i = 0; i < step_i; i++)
                     {
                         if (sim_level->query_passable(xpos, ypos + dy, this))
@@ -290,9 +291,11 @@ bool walker::walkstep(float x, float y)
                         {
                             cycle = static_cast<signed char>(mycycle);
                             cycle++;
-                            if (ani[curdir][cycle] == -1)
-                                cycle = 0;
-                            set_frame(ani[curdir][cycle]);
+                            if (ani) {
+                                if (ani[curdir][cycle] == -1)
+                                    cycle = 0;
+                                set_frame(ani[curdir][cycle]);
+                            }
                         }  // end of cycled us a frame
                     }
                 }
@@ -346,9 +349,11 @@ bool walker::walk(float x, float y)
             cycle++;
             //if (!ani || (curdir*cycle > sizeof(ani)) )
             //  Log("WALKER::WALK: Bad ani!\n");
-            if (ani[curdir][cycle] == -1)
-                cycle = 0;
-            set_frame(ani[curdir][cycle]);
+            if (ani) {
+                if (ani[curdir][cycle] == -1)
+                    cycle = 0;
+                set_frame(ani[curdir][cycle]);
+            }
             return 1;
         }
         else //Invalid move?
@@ -358,9 +363,11 @@ bool walker::walk(float x, float y)
             if (stats_->query_bit_flags(BIT_ANIMATE) )  // animate regardless..
             {
                 cycle++;
-                if (ani[curdir][cycle] == -1)
-                    cycle = 0;
-                set_frame(ani[curdir][cycle]);
+                if (ani) {
+                    if (ani[curdir][cycle] == -1)
+                        cycle = 0;
+                    set_frame(ani[curdir][cycle]);
+                }
             }
             return 0;
         }
@@ -369,7 +376,8 @@ bool walker::walk(float x, float y)
     {
         curdir = static_cast<char>(dir);
         cycle = 0;
-        set_frame(ani[curdir][cycle]);
+        if (ani)
+            set_frame(ani[curdir][cycle]);
         worldmove(0,0);
     }
     return 1;
@@ -465,7 +473,8 @@ bool walker::turn(short targetdir)
         }
     }
     cycle = 0;
-    set_frame(ani[curdir][cycle]);
+    if (ani)
+        set_frame(ani[curdir][cycle]);
     worldmove(0,0);
     return true;
 }

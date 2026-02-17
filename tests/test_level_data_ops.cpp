@@ -8,13 +8,52 @@
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
+#include <openglad/io/og_file.h>
+
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <unistd.h>
 #include <vector>
 
 extern screen* myscreen;
-short load_scenario_version(SDL_RWops* infile, LevelData* data, short version);
+short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
+
+// Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
+class MemoryOgFile final : public og::io::OgFile {
+public:
+    MemoryOgFile(const void* data, std::size_t size)
+        : data_(static_cast<const unsigned char*>(data)), size_(size), pos_(0) {}
+
+    std::size_t read(void* buf, std::size_t size, std::size_t count) override {
+        if (size == 0 || count == 0) return 0;
+        std::size_t total = size * count;
+        std::size_t avail = (pos_ < size_) ? size_ - pos_ : 0;
+        if (total > avail) total = avail;
+        std::size_t objects = total / size;
+        std::memcpy(buf, data_ + pos_, objects * size);
+        pos_ += objects * size;
+        return objects;
+    }
+    std::size_t write(const void*, std::size_t, std::size_t) override { return 0; }
+    std::int64_t seek(std::int64_t offset, int whence) override {
+        std::int64_t newpos = 0;
+        switch (whence) {
+            case 0: newpos = offset; break;
+            case 1: newpos = static_cast<std::int64_t>(pos_) + offset; break;
+            case 2: newpos = static_cast<std::int64_t>(size_) + offset; break;
+            default: return -1;
+        }
+        if (newpos < 0) return -1;
+        pos_ = static_cast<std::size_t>(newpos);
+        return static_cast<std::int64_t>(pos_);
+    }
+    std::int64_t tell() override { return static_cast<std::int64_t>(pos_); }
+private:
+    const unsigned char* data_;
+    std::size_t size_;
+    std::size_t pos_;
+};
 
 namespace
 {
@@ -404,35 +443,29 @@ void test_level_data_get_description_line()
     // Directly exercise load_scenario_version branches 3/4/5 and unknown version.
     {
         std::vector<uint8_t> blob3 = make_scenario_blob_with_one_object(false, false);
-        SDL_RWops* rw3 = SDL_RWFromConstMem(blob3.data(), static_cast<int>(blob3.size()));
-        TEST_ASSERT(rw3 != nullptr, "SDL_RWFromConstMem for version 3 should succeed");
+        MemoryOgFile rw3(blob3.data(), blob3.size());
         myscreen->level_data.delete_objects();
         myscreen->level_data.description.clear();
         short r3 = load_scenario_version(rw3, &myscreen->level_data, 3);
-        SDL_RWclose(rw3);
         TEST_ASSERT_EQ(1, (int)r3, "load_scenario_version v3 should succeed");
         TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v3 should load at least one object");
         TEST_ASSERT(!myscreen->level_data.description.empty(), "v3 should load description lines");
     }
     {
         std::vector<uint8_t> blob4 = make_scenario_blob_with_one_object(false, true);
-        SDL_RWops* rw4 = SDL_RWFromConstMem(blob4.data(), static_cast<int>(blob4.size()));
-        TEST_ASSERT(rw4 != nullptr, "SDL_RWFromConstMem for version 4 should succeed");
+        MemoryOgFile rw4(blob4.data(), blob4.size());
         myscreen->level_data.delete_objects();
         myscreen->level_data.description.clear();
         short r4 = load_scenario_version(rw4, &myscreen->level_data, 4);
-        SDL_RWclose(rw4);
         TEST_ASSERT_EQ(1, (int)r4, "load_scenario_version v4 should succeed");
         TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v4 should load at least one object");
     }
     {
         std::vector<uint8_t> blob5 = make_scenario_blob_with_one_object(true, true);
-        SDL_RWops* rw5 = SDL_RWFromConstMem(blob5.data(), static_cast<int>(blob5.size()));
-        TEST_ASSERT(rw5 != nullptr, "SDL_RWFromConstMem for version 5 should succeed");
+        MemoryOgFile rw5(blob5.data(), blob5.size());
         myscreen->level_data.delete_objects();
         myscreen->level_data.description.clear();
         short r5 = load_scenario_version(rw5, &myscreen->level_data, 5);
-        SDL_RWclose(rw5);
         TEST_ASSERT_EQ(1, (int)r5, "load_scenario_version v5 should succeed");
         TEST_ASSERT_EQ(2, (int)myscreen->level_data.type, "v5 should load scenario type");
         TEST_ASSERT(!myscreen->level_data.oblist.empty(), "v5 should load at least one object");
@@ -440,10 +473,8 @@ void test_level_data_get_description_line()
     {
         // Unknown version should hit default branch and report failure.
         std::vector<uint8_t> tiny = {0};
-        SDL_RWops* rw_bad = SDL_RWFromConstMem(tiny.data(), static_cast<int>(tiny.size()));
-        TEST_ASSERT(rw_bad != nullptr, "SDL_RWFromConstMem for unknown version should succeed");
+        MemoryOgFile rw_bad(tiny.data(), tiny.size());
         short bad = load_scenario_version(rw_bad, &myscreen->level_data, 42);
-        SDL_RWclose(rw_bad);
         TEST_ASSERT_EQ(0, (int)bad, "unknown scenario version should fail");
     }
 

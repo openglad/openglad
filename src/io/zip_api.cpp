@@ -14,6 +14,7 @@
 #include "zip.h"
 
 #include <array>
+#include <cstdio>
 #include <filesystem>
 #include <vector>
 
@@ -145,7 +146,7 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
             continue;
         }
 
-        SDL_RWops* out = SDL_RWFromFile(dest.string().c_str(), "wb");
+        FILE* out = std::fopen(dest.string().c_str(), "wb");
         if (out == nullptr)
         {
             zip_fclose(zf);
@@ -169,11 +170,11 @@ ArchiveIoError unzip_into_with_error(const std::string& infile, const std::strin
                     result = ArchiveIoError::ReadEntryFailed;
                 break;
             }
-            SDL_RWwrite(out, buf.data(), 1, static_cast<size_t>(n));
+            std::fwrite(buf.data(), 1, static_cast<size_t>(n), out);
             written += static_cast<zip_uint64_t>(n);
         }
 
-        SDL_RWclose(out);
+        std::fclose(out);
         zip_fclose(zf);
     }
 

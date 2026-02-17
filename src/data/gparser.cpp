@@ -28,8 +28,10 @@
 #include <format>
 #include <openglad/data/gparser.h>
 #include <openglad/core/util.h>
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/platform/io.h>
 #include <openglad/io/yaml_stream.h>
+#endif
 
 int toInt(const std::string& s);
 
@@ -75,19 +77,20 @@ bool cfg_store::load_settings()
     apply_setting("effects", "heal_numbers", "on");
     
     Log("Loading settings\n");
+#ifndef OPENGLAD_HEADLESS
     RwopsPtr rwops(open_read_file("cfg/openglad.yaml", true));
     if(rwops == nullptr)
 	{
 		Log("Could not open config file. Using defaults.");
 		return false;
 	}
-    
+
     og::io::YamlParser yaml;
     yaml.set_input(rwops_read_handler, rwops.get());
-    
+
     std::string last_scalar;
     std::string current_category;
-    
+
     og::io::YamlParseResult parse_result;
     while((parse_result = yaml.parse_next()) == og::io::YamlParseResult::Ok)
     {
@@ -115,30 +118,34 @@ bool cfg_store::load_settings()
                 break;
         }
     }
-    
+
     if(parse_result == og::io::YamlParseResult::Error)
         LogError("Parsing error in config file.\n");
-    
+
     yaml.close_input();
+#else
+    Log("Headless mode: using default settings.\n");
+#endif
 
 	return true;
 }
 
 
+#ifndef OPENGLAD_HEADLESS
 bool cfg_store::save_settings()
 {
     RwopsPtr outfile(open_write_file("cfg/openglad.yaml"));
     if(outfile != nullptr)
     {
         Log("Saving settings\n");
-        
+
         og::io::YamlEmitter yaml;
         if (!yaml.set_output(rwops_write_handler, outfile.get()))
         {
             LogError("Couldn't initialize YAML emitter for cfg/openglad.yaml.\n");
             return false;
         }
-        
+
         // Each category is a mapping that holds setting/value pairs
         for(auto& [category, settings] : data)
         {
@@ -158,7 +165,7 @@ bool cfg_store::save_settings()
                 yaml.emit_end_mapping();
             }
         }
-        
+
         yaml.close_output();
 
         // Sync to persistent storage (IDBFS on web)
@@ -172,6 +179,7 @@ bool cfg_store::save_settings()
         return false;
     }
 }
+#endif
 
 void cfg_store::commandline(int &argc, char **&argv)
 {

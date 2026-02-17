@@ -17,19 +17,23 @@
 
 #include <openglad/data/level_data.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/io/yaml_stream.h>
-#include <openglad/platform/io.h>
-
-#include <openglad/render/pixie.h>
-#include <openglad/render/pixien.h>
+#include <openglad/io/og_file.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/smooth.h>
+#include <openglad/entities/obmap.h>
+#include <openglad/core/util.h>
+
+#ifndef OPENGLAD_HEADLESS
+#include <openglad/io/yaml_stream.h>
+#include <openglad/platform/io.h>
+#include <openglad/render/pixie.h>
+#include <openglad/render/pixien.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/render/view.h>
-#include <openglad/entities/obmap.h>
+#endif
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -39,16 +43,27 @@
 
 int toInt(const std::string& s);
 
+void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
+                                og::sim::SimEventLog* events, IRandom* rng,
+                                cfg_store* config)
+{
+    sim_ctx_save_ = save;
+    sim_ctx_enemy_freeze_ = enemy_freeze;
+    sim_ctx_events_ = events;
+    sim_ctx_rng_ = rng;
+    sim_ctx_config_ = config;
+}
+
 static constexpr char VERSION_NUM = 9; // save scenario type info
 
 static constexpr short MAX_SCENARIO_OBJECTS = 4096;
 
-static bool rw_read_exact_or_log(SDL_RWops* rwops, void* dst, size_t size, size_t count)
+static bool rw_read_exact_or_log(og::io::OgFile& file, void* dst, size_t size, size_t count)
 {
-    const size_t got = SDL_RWread(rwops, dst, size, count);
+    const size_t got = file.read(dst, size, count);
     if (got != count)
     {
-        Log("Read error: expected {} items, got {} (SDL: {})\n", count, got, SDL_GetError());
+        Log("Read error: expected {} items, got {}\n", count, got);
         return false;
     }
     return true;
@@ -79,6 +94,7 @@ static std::string ensure_pix_extension(std::string_view name)
 
 
 
+#ifndef OPENGLAD_HEADLESS
 CampaignData::CampaignData(const std::string& campaign_id)
     : id(campaign_id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0)
 {
@@ -380,21 +396,23 @@ std::string CampaignData::get_description_line(int i)
 {
     if(i < 0 || i >= int(description.size()))
         return "";
-    
+
     std::list<std::string>::iterator e = description.begin();
     while(i > 0)
     {
         e++;
         i--;
     }
-    
+
     return *e;
 }
+#endif // !OPENGLAD_HEADLESS
 
 
 
 
 
+#ifndef OPENGLAD_HEADLESS
 LevelData::LevelData(int level_id)
     : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
     , myloader(nullptr), numobs(0), topx(0), topy(0)
@@ -428,6 +446,44 @@ LevelData::LevelData(int level_id)
     back[PIX_GRASSWATER_UL]->set_accel(0);
     back[PIX_GRASSWATER_UR]->set_accel(0);
 }
+#endif // !OPENGLAD_HEADLESS
+
+LevelData::LevelData(int level_id, bool headless)
+    : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
+    , myloader(nullptr), numobs(0), topx(0), topy(0)
+{
+    headless_ = headless;
+    myobmap = std::make_unique<obmap>();
+    myloader = std::make_unique<loader>();
+
+#ifndef OPENGLAD_HEADLESS
+    if (!headless)
+    {
+        // Load map data from a pixie format
+        load_map_data(pixdata);
+
+        // Initialize a pixie for each background piece
+        for(int i = 0; i < PIX_MAX; i++)
+            back[i] = std::make_unique<pixieN>(pixdata[i], 0);
+
+        back[PIX_WATER1]->set_accel(0);
+        back[PIX_WATER2]->set_accel(0);
+        back[PIX_WATER3]->set_accel(0);
+        back[PIX_WATERGRASS_LL]->set_accel(0);
+        back[PIX_WATERGRASS_LR]->set_accel(0);
+        back[PIX_WATERGRASS_UL]->set_accel(0);
+        back[PIX_WATERGRASS_UR]->set_accel(0);
+        back[PIX_WATERGRASS_U]->set_accel(0);
+        back[PIX_WATERGRASS_D]->set_accel(0);
+        back[PIX_WATERGRASS_L]->set_accel(0);
+        back[PIX_WATERGRASS_R]->set_accel(0);
+        back[PIX_GRASSWATER_LL]->set_accel(0);
+        back[PIX_GRASSWATER_LR]->set_accel(0);
+        back[PIX_GRASSWATER_UL]->set_accel(0);
+        back[PIX_GRASSWATER_UR]->set_accel(0);
+    }
+#endif // !OPENGLAD_HEADLESS
+}
 
 LevelData::~LevelData()
 {
@@ -436,12 +492,13 @@ LevelData::~LevelData()
     myloader.reset();
 
     myobmap.reset();
-    
-        
+
     for (int i = 0; i < PIX_MAX; i++)
     {
         pixdata[i].free();
+#ifndef OPENGLAD_HEADLESS
         back[i].reset();
+#endif
     }
 }
 
@@ -461,8 +518,13 @@ void LevelData::clear()
     topy = 0;
 }
 
-walker* LevelData::add_ob(Order order, Sint32 family, [[maybe_unused]] bool atstart)
+walker* LevelData::add_ob(Order order, std::int32_t family, [[maybe_unused]] bool atstart)
 {
+#ifdef OPENGLAD_HEADLESS
+    return add_ob_headless(order, family);
+#else
+	if (headless_)
+		return add_ob_headless(order, family);
 	if (order == Order::Weapon)
 		return add_weap_ob(order, family);
 
@@ -486,10 +548,16 @@ walker* LevelData::add_ob(Order order, Sint32 family, [[maybe_unused]] bool atst
     walker* raw = w.get();
     oblist.push_back(std::move(w));
     return raw;
+#endif
 }
 
-walker* LevelData::add_fx_ob(Order order, Sint32 family)
+walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 {
+#ifdef OPENGLAD_HEADLESS
+    return add_fx_ob_headless(order, family);
+#else
+	if (headless_)
+		return add_fx_ob_headless(order, family);
 	auto w = myloader->create_walker_owned(order, family, myscreen, false);
     if (!w)
         return nullptr;
@@ -508,10 +576,16 @@ walker* LevelData::add_fx_ob(Order order, Sint32 family)
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
 	return raw;
+#endif
 }
 
-walker* LevelData::add_weap_ob(Order order, Sint32 family)
+walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 {
+#ifdef OPENGLAD_HEADLESS
+    return add_weap_ob_headless(order, family);
+#else
+	if (headless_)
+		return add_weap_ob_headless(order, family);
 	auto w = myloader->create_walker_owned(order, family, myscreen);
     if (!w)
         return nullptr;
@@ -526,6 +600,62 @@ walker* LevelData::add_weap_ob(Order order, Sint32 family)
         w->sim_events = ctx().sim_events.get();
     w->sim_rng = ctx().rng;
     w->sim_config = ctx().config;
+
+    walker* raw = w.get();
+    weaplist.push_back(std::move(w));
+	return raw;
+#endif
+}
+
+void LevelData::wire_entity(walker* w)
+{
+    w->myobmap = myobmap.get();
+    w->sim_level = this;
+    w->sim_save = sim_ctx_save_;
+    w->sim_enemy_freeze = sim_ctx_enemy_freeze_;
+    w->sim_events = sim_ctx_events_;
+    w->sim_rng = sim_ctx_rng_;
+    w->sim_config = sim_ctx_config_;
+}
+
+walker* LevelData::add_ob_headless(Order order, std::int32_t family)
+{
+	if (order == Order::Weapon)
+		return add_weap_ob_headless(order, family);
+
+    auto w = myloader->create_walker_headless(order, family);
+    if (!w)
+        return nullptr;
+
+    wire_entity(w.get());
+    if (order == Order::Living)
+        numobs++;
+
+    walker* raw = w.get();
+    oblist.push_back(std::move(w));
+    return raw;
+}
+
+walker* LevelData::add_fx_ob_headless(Order order, std::int32_t family)
+{
+	auto w = myloader->create_walker_headless(order, family);
+    if (!w)
+        return nullptr;
+
+    wire_entity(w.get());
+
+	walker* raw = w.get();
+	fxlist.push_back(std::move(w));
+	return raw;
+}
+
+walker* LevelData::add_weap_ob_headless(Order order, std::int32_t family)
+{
+	auto w = myloader->create_walker_headless(order, family);
+    if (!w)
+        return nullptr;
+
+    wire_entity(w.get());
 
     walker* raw = w.get();
     weaplist.push_back(std::move(w));
@@ -688,6 +818,7 @@ void LevelData::delete_objects()
 
     // If this is the active screen level, clear any stale control pointers
     // that may reference walkers just deleted above.
+#ifndef OPENGLAD_HEADLESS
     if (myscreen != nullptr && &myscreen->level_data == this)
     {
         for (auto& view : myscreen->viewob)
@@ -696,7 +827,8 @@ void LevelData::delete_objects()
                 view->control = nullptr;
         }
     }
-	
+#endif // !OPENGLAD_HEADLESS
+
 	    // Clear the obmap references
 	    // Since the walker destructor removes itself from the obmap, this should be empty already.
 	    if(myobmap->walker_to_pos.size() > 0)
@@ -714,7 +846,7 @@ void LevelData::delete_objects()
 	myobmap->walker_to_pos.clear();
 }
 
-short load_version_2(SDL_RWops  *infile, LevelData* data)
+short load_version_2(og::io::OgFile& infile, LevelData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -805,7 +937,7 @@ short load_version_2(SDL_RWops  *infile, LevelData* data)
 // # of lines,
 //  1-byte character width
 //  n bytes specified from above
-short load_version_3(SDL_RWops  *infile, LevelData* data)
+short load_version_3(og::io::OgFile& infile, LevelData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -943,7 +1075,7 @@ short load_version_3(SDL_RWops  *infile, LevelData* data)
 }
 
 // Version 4 scenarios include a 12-byte name for EVERY walker..
-short load_version_4(SDL_RWops  *infile, LevelData* data)
+short load_version_4(og::io::OgFile& infile, LevelData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -1088,7 +1220,7 @@ short load_version_4(SDL_RWops  *infile, LevelData* data)
 
 // Version 5 scenarios include a 1-byte 'scenario-type' specifier after
 // the grid name.
-short load_version_5(SDL_RWops  *infile, LevelData* data)
+short load_version_5(og::io::OgFile& infile, LevelData* data)
 {
 	short currentx, currenty;
 	unsigned char temporder, tempfamily;
@@ -1260,7 +1392,7 @@ do{ \
 
 // Version 6 includes a 30-byte scenario title after the grid name.
 // Also load version 7 and 8 here, since it's a simple change ..
-short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
+short load_version_6(og::io::OgFile& infile, LevelData* data, short version)
 {
     short currentx, currenty;
     unsigned char temporder, tempfamily;
@@ -1445,7 +1577,7 @@ short load_version_6(SDL_RWops  *infile, LevelData* data, short version)
     return 1;
 } // end load_version_6
 
-short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
+short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version)
 {
     if(data == nullptr)
         return 0;
@@ -1480,19 +1612,19 @@ short load_scenario_version(SDL_RWops* infile, LevelData* data, short version)
 	return result;
 }
 
+#ifndef OPENGLAD_HEADLESS
 bool LevelData::load()
 {
 	TRACE("game", "LevelData::load id=%d", id);
     last_io_error_ = IoError::None;
-	SDL_RWops  *infile = nullptr;
 	char temptext[10] = {};
 	char versionnumber = 0;
-	
+
 	// Build up the file name (scen#.fss)
 	std::string thefile = std::format("scen{}.fss", id);
 
-	// Zardus: much much better this way
-	if ( !(infile = open_read_file("scen/", thefile.c_str())))
+	auto infile = og::io::og_open_read("scen/", thefile.c_str());
+	if (!infile)
     {
         LogError("Cannot open level file for reading: {}\n", thefile);
         last_io_error_ = IoError::OpenReadFailed;
@@ -1500,24 +1632,21 @@ bool LevelData::load()
     }
 
 	// Are we a scenario file?
-	if (!rw_read_exact_or_log(infile, temptext, 1, 3))
+	if (!rw_read_exact_or_log(*infile, temptext, 1, 3))
 	{
-		SDL_RWclose(infile);
         last_io_error_ = IoError::ParseFailed;
 		return false;
 	}
 	if (std::string(temptext) != "FSS")
 	{
 		LogError("File {} is not a valid scenario!\n", thefile);
-		SDL_RWclose(infile);
         last_io_error_ = IoError::InvalidHeader;
 		return false;
 	}
 
 	// Check the version number
-	if (!rw_read_exact_or_log(infile, &versionnumber, 1, 1))
+	if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
 	{
-		SDL_RWclose(infile);
         last_io_error_ = IoError::ParseFailed;
 		return false;
 	}
@@ -1525,23 +1654,21 @@ bool LevelData::load()
     {
         Log("Scenario {} is version-level {}, and cannot be read.\n",
             id, static_cast<int>(versionnumber));
-        SDL_RWclose(infile);
         last_io_error_ = IoError::UnsupportedVersion;
         return false;
     }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
-    
+
     // Reset the loader (which holds graphics for the objects to use)
     myloader = std::make_unique<loader>();
-    
+
     // Do the rest of the loading
     clear();
-    
+
     // Set default par_value
     par_value = static_cast<short>(id);
-    
-    short tempvalue = load_scenario_version(infile, this, versionnumber);
-    SDL_RWclose(infile);
+
+    short tempvalue = load_scenario_version(*infile, this, versionnumber);
     if(tempvalue == 0)
     {
         if(last_io_error_ == IoError::None)
@@ -1588,7 +1715,75 @@ bool LevelData::load()
     last_io_error_ = IoError::None;
 	return true;
 }
+#endif // !OPENGLAD_HEADLESS
 
+bool LevelData::load_headless()
+{
+	TRACE("game", "LevelData::load_headless id=%d", id);
+    last_io_error_ = IoError::None;
+    headless_ = true;
+	char temptext[10] = {};
+	char versionnumber = 0;
+
+	std::string thefile = std::format("scen{}.fss", id);
+
+	auto infile = og::io::og_open_read("scen/", thefile.c_str());
+	if (!infile)
+    {
+        LogError("Cannot open level file for reading: {}\n", thefile);
+        last_io_error_ = IoError::OpenReadFailed;
+        return false;
+    }
+
+	if (!rw_read_exact_or_log(*infile, temptext, 1, 3))
+	{
+        last_io_error_ = IoError::ParseFailed;
+		return false;
+	}
+	if (std::string(temptext) != "FSS")
+	{
+		LogError("File {} is not a valid scenario!\n", thefile);
+        last_io_error_ = IoError::InvalidHeader;
+		return false;
+	}
+
+	if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
+	{
+        last_io_error_ = IoError::ParseFailed;
+		return false;
+	}
+    if(versionnumber < 2 || versionnumber > VERSION_NUM)
+    {
+        Log("Scenario {} is version-level {}, and cannot be read.\n",
+            id, static_cast<int>(versionnumber));
+        last_io_error_ = IoError::UnsupportedVersion;
+        return false;
+    }
+    Log("Loading version {} scenario (headless)", static_cast<int>(versionnumber));
+
+    // Reset the loader (which holds graphics/stats data for entities)
+    myloader = std::make_unique<loader>();
+
+    clear();
+    par_value = static_cast<short>(id);
+
+    // load_scenario_version calls add_ob/add_fx_ob which check headless_ flag
+    short tempvalue = load_scenario_version(*infile, this, versionnumber);
+    if(tempvalue == 0)
+    {
+        if(last_io_error_ == IoError::None)
+            last_io_error_ = IoError::ParseFailed;
+        return false;
+    }
+
+    // Skip background tile creation (no pixieN sprites needed for headless sim)
+
+	TRACE("game", "LevelData::load_headless complete");
+    last_io_error_ = IoError::None;
+	return true;
+}
+
+#ifndef OPENGLAD_HEADLESS
 bool save_grid_file(const char* gridname, const PixieData& grid)
 {
 	// File data in form:
@@ -1628,7 +1823,7 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 bool LevelData::save()
 {
     last_io_error_ = IoError::None;
-	Sint32 currentx, currenty;
+	std::int32_t currentx, currenty;
 	unsigned char temporder;
 	char tempfamily;
 	char tempteam, tempfacing, tempcommand;
@@ -1657,12 +1852,12 @@ bool LevelData::save()
 	// 1-byte scenario_type
 	// 2-bytes par-value for level
 	// 2-bytes time limit for bonus points, v9+
-	// 2-bytes (Sint32) = total objects to follow
+	// 2-bytes (std::int32_t) = total objects to follow
 	// List of n objects, each of 20-bytes of form:
 	// 1-byte ORDER
 	// 1-byte FAMILY
-	// 2-byte Sint32 xpos
-	// 2-byte Sint32 ypos
+	// 2-byte std::int32_t xpos
+	// 2-byte std::int32_t ypos
 	// 1-byte TEAM
 	// 1-byte current facing
 	// 1-byte current command
@@ -1840,26 +2035,37 @@ bool LevelData::save()
     last_io_error_ = IoError::None;
 	return true;
 }
+#endif // !OPENGLAD_HEADLESS
 
 LevelData::IoError LevelData::load_with_error()
 {
-    load();
+#ifdef OPENGLAD_HEADLESS
+    load_headless();
+#else
+    if (headless_)
+        load_headless();
+    else
+        load();
+#endif
     return last_io_error_;
 }
 
+#ifndef OPENGLAD_HEADLESS
 LevelData::IoError LevelData::save_with_error()
 {
     save();
     return last_io_error_;
 }
+#endif // !OPENGLAD_HEADLESS
 
-void LevelData::set_draw_pos(Sint32 new_topx, Sint32 new_topy)
+#ifndef OPENGLAD_HEADLESS
+void LevelData::set_draw_pos(std::int32_t new_topx, std::int32_t new_topy)
 {
     this->topx = new_topx;
     this->topy = new_topy;
 }
 
-void LevelData::add_draw_pos(Sint32 dx, Sint32 dy)
+void LevelData::add_draw_pos(std::int32_t dx, std::int32_t dy)
 {
     this->topx += dx;
     this->topy += dy;
@@ -1873,6 +2079,7 @@ void LevelData::draw(screen* screenp)
         screenp->viewob[i]->redraw(this, false);  // Don't draw the radar here
     }
 }
+#endif // !OPENGLAD_HEADLESS
 
 std::string LevelData::get_description_line(int i)
 {
@@ -1896,8 +2103,8 @@ std::string get_scenario_title(const char* filename)
         return "none";
 
     std::string tempfile = std::string(filename) + ".fss";
-    SDL_RWops* infile = open_read_file("scen/", tempfile.c_str());
-    if (infile == nullptr)
+    auto infile = og::io::og_open_read("scen/", tempfile.c_str());
+    if (!infile)
         return "none";
 
     char temptext[4] = {};
@@ -1906,29 +2113,16 @@ std::string get_scenario_title(const char* filename)
     char buffer[31] = {};
     std::string result = "none";
 
-    if (!rw_read_exact_or_log(infile, temptext, 1, 3) ||
+    if (!rw_read_exact_or_log(*infile, temptext, 1, 3) ||
         std::string(temptext, 3) != "FSS")
-    {
-        SDL_RWclose(infile);
         return result;
-    }
-    if (!rw_read_exact_or_log(infile, &versionnumber, 1, 1) || versionnumber < 6)
-    {
-        SDL_RWclose(infile);
+    if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1) || versionnumber < 6)
         return result;
-    }
-    if (!rw_read_exact_or_log(infile, gridname, 1, 8))
-    {
-        SDL_RWclose(infile);
+    if (!rw_read_exact_or_log(*infile, gridname, 1, 8))
         return result;
-    }
-    if (!rw_read_exact_or_log(infile, buffer, 1, 30))
-    {
-        SDL_RWclose(infile);
+    if (!rw_read_exact_or_log(*infile, buffer, 1, 30))
         return result;
-    }
     result = std::string(buffer);
-    SDL_RWclose(infile);
     return result;
 }
 
@@ -1954,16 +2148,16 @@ static constexpr short MAX_SPREAD = 10;
 
 bool LevelData::query_grid_passable(float x, float y, walker  *ob)
 {
-	Sint32 i,j;
-	Sint32 xtrax = 1;
-	Sint32 xtray = 1;
-	Sint32 xtarg;
-	Sint32 ytarg;
-	Sint32 dist;
-	const Sint32 x_i = static_cast<Sint32>(x);
-	const Sint32 y_i = static_cast<Sint32>(y);
-	Sint32 xover = x_i + ob->sizex;
-	Sint32 yover = y_i + ob->sizey;
+	std::int32_t i,j;
+	std::int32_t xtrax = 1;
+	std::int32_t xtray = 1;
+	std::int32_t xtarg;
+	std::int32_t ytarg;
+	std::int32_t dist;
+	const std::int32_t x_i = static_cast<std::int32_t>(x);
+	const std::int32_t y_i = static_cast<std::int32_t>(y);
+	std::int32_t xover = x_i + ob->sizex;
+	std::int32_t yover = y_i + ob->sizey;
 
 	if (x_i < 0 || y_i < 0 || xover >= pixmaxx || yover >= pixmaxy)
 		return 0;
@@ -2115,7 +2309,7 @@ bool LevelData::query_grid_passable(float x, float y, walker  *ob)
 								dist += GRID_SIZE;
 							}
 
-							if (ctx().rng->next(dist/GRID_SIZE))
+							if (ob->sim_rng->next(dist/GRID_SIZE))
 							{
 								return 0;
 							}
@@ -2218,7 +2412,7 @@ walker *LevelData::find_near_foe(walker  *ob)
 			for(auto* w : ls)
 			{
 				if (!(w->dead) && (ob->is_friendly(w)==0)  &&
-				        (ctx().rng->next(w->invisibility_left/20)==0)
+				        (ob->sim_rng->next(w->invisibility_left/20)==0)
 				   )
 				{
 					if (w->query_order() == Order::Living ||
@@ -2240,7 +2434,7 @@ walker *LevelData::find_near_foe(walker  *ob)
 
 walker  *LevelData::find_far_foe(walker  *ob)
 {
-	Sint32 distance, tempdistance;
+	std::int32_t distance, tempdistance;
 	walker  *endfoe;
 
 	if (!ob)
@@ -2264,7 +2458,7 @@ walker  *LevelData::find_far_foe(walker  *ob)
 			if (
 			    (foe->query_order() == Order::Living ||
 			     foe->query_order() == Order::Generator)  &&
-			    (!(ctx().rng->next(foe->invisibility_left/20)))
+			    (!(ob->sim_rng->next(foe->invisibility_left/20)))
 			)
 			{
 				tempdistance = ob->distance_to_ob(foe);
@@ -2281,7 +2475,7 @@ walker  *LevelData::find_far_foe(walker  *ob)
 
 walker  * LevelData::find_nearest_blood(walker  *who)
 {
-	Sint32 distance, newdistance;
+	std::int32_t distance, newdistance;
 	walker  *returnob = nullptr;
 
 	if (!who)
@@ -2295,7 +2489,7 @@ walker  * LevelData::find_nearest_blood(walker  *who)
 		if (w && w->query_order() == Order::Treasure &&
 		        w->query_family() == FAMILY_STAIN && !w->dead)
 		{
-			newdistance = static_cast<Uint32>(who->distance_to_ob_center(w));
+			newdistance = static_cast<std::int32_t>(who->distance_to_ob_center(w));
 			if (newdistance < distance)
 			{
 				distance = newdistance;
@@ -2309,8 +2503,8 @@ walker  * LevelData::find_nearest_blood(walker  *who)
 walker* LevelData::find_nearest_player(walker *ob)
 {
 	walker *returnob = nullptr;
-	Uint32 distance = 32000;
-	Uint32 tempdistance;
+	std::uint32_t distance = 32000;
+	std::uint32_t tempdistance;
 
 	if (!ob)
 		return nullptr;
@@ -2332,7 +2526,7 @@ walker* LevelData::find_nearest_player(walker *ob)
 	return returnob;
 }
 
-std::list<walker*> LevelData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
+std::list<walker*> LevelData::find_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     std::list<walker*> result;
 
@@ -2357,7 +2551,7 @@ std::list<walker*> LevelData::find_in_range(std::list<std::unique_ptr<walker>>& 
 	return result;
 }
 
-std::list<walker*> LevelData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range, Sint32* howmany, walker* ob)
+std::list<walker*> LevelData::find_foes_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range, std::int32_t* howmany, walker* ob)
 {
     std::list<walker*> result;
     *howmany = 0;
@@ -2385,8 +2579,8 @@ std::list<walker*> LevelData::find_foes_in_range(std::list<std::unique_ptr<walke
 	return result;
 }
 
-std::list<walker*> LevelData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
-                                      Sint32* howmany, walker* ob)
+std::list<walker*> LevelData::find_foe_weapons_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+                                      std::int32_t* howmany, walker* ob)
 {
     std::list<walker*> result;
     *howmany = 0;
@@ -2413,8 +2607,8 @@ std::list<walker*> LevelData::find_foe_weapons_in_range(std::list<std::unique_pt
 	return result;
 }
 
-std::list<walker*> LevelData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, Sint32 range,
-                                      Sint32* howmany, walker* ob)
+std::list<walker*> LevelData::find_friends_in_range(std::list<std::unique_ptr<walker>>& somelist, std::int32_t range,
+                                      std::int32_t* howmany, walker* ob)
 {
     std::list<walker*> result;
     *howmany = 0;

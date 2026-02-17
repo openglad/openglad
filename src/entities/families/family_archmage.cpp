@@ -5,13 +5,13 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/core/stats.h>
@@ -44,7 +44,7 @@ static bool archmage_on_fire_weapon(walker* self, walker* weapon)
 static void archmage_on_act_living(living* self)
 {
     // Archmage gets bonus viewing periodically based on level
-    Sint32 temp;
+    std::int32_t temp;
     if (self->stats()->level >= 40)
         temp = 1;
     else
@@ -58,7 +58,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
     walker* controller = stats->controller;
     controller->busy = 0; // yes, this is a cheat
 
-    Sint32 possible_specials[NUM_SPECIALS];
+    std::int32_t possible_specials[NUM_SPECIALS];
     for (int i = 0; i < NUM_SPECIALS; i++)
         possible_specials[i] = 0;
     for (int i = 0; i <= (stats->level + 2) / 3; i++)
@@ -86,7 +86,7 @@ static void archmage_hit_response(statistics* stats, walker* foe)
             foe->foe = controller;
             stats->last_distance = stats->current_distance = 15000;
         }
-        Sint32 howmany = 0;
+        std::int32_t howmany = 0;
         controller->sim_level->find_foes_in_range(controller->sim_level->oblist,
                                      200, &howmany, controller);
         if (howmany)
@@ -130,30 +130,30 @@ static void archmage_hit_response(statistics* stats, walker* foe)
     }
 }
 
-static void archmage_level_up(guy* self, Sint32 level_diff)
+static void archmage_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     s /= 2;
     c /= 2;
     it *= 2;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 static bool archmage_do_special(walker* self)
 {
     walker* newob;
-    Sint32 i, j;
-    Sint32 generic, generic2;
-    Sint32 howmany;
-    Sint32 didheal;
+    std::int32_t i, j;
+    std::int32_t generic, generic2;
+    std::int32_t howmany;
+    std::int32_t didheal;
     char person;
     std::string message, tempstr;
 
@@ -207,7 +207,7 @@ static bool archmage_do_special(walker* self)
                     og::sim::emit_notification(self->sim_events, message);
                 }
                 self->busy += 8;
-                generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+                generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
                 generic /= 2;
                 self->stats()->magicpoints -= static_cast<float>(generic);
             }
@@ -237,7 +237,7 @@ static bool archmage_do_special(walker* self)
                     return false;
                 if (!self->shifter_down) // normal heartburst
                 {
-                    generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
+                    generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
                     generic /= 2;
                     generic /= howmany;
                     if (self->myguy)
@@ -277,14 +277,14 @@ static bool archmage_do_special(walker* self)
                     newob->owner = self;
                     newob->stats()->level = self->stats()->level;
                     newob->team_num = self->team_num;
-                    generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
+                    generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[2]));
                     generic /= 2;
                     self->stats()->magicpoints -= static_cast<float>(generic);
                     newob->damage = static_cast<float>(generic);
                     generic = 30000;
                     for (auto* w : newlist)
                     {
-                        Sint32 dist = self->distance_to_ob_center(w);
+                        std::int32_t dist = self->distance_to_ob_center(w);
                         if (generic > dist)
                         {
                             generic = dist;
@@ -305,7 +305,7 @@ static bool archmage_do_special(walker* self)
                         og::sim::emit_notification(self->sim_events, "150 Int required to Summon!");
                     return false;
                 }
-                generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
+                generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
                 generic /= 2;
                 self->stats()->magicpoints -= static_cast<float>(generic);
                 newob = self->sim_level->add_ob(Order::Living, FAMILY_FIREELEMENTAL);
@@ -324,7 +324,7 @@ static bool archmage_do_special(walker* self)
                             generic = 1;
                             newob->setxy(testx, testy);
                             newob->stats()->level = (self->stats()->level + 1) / 2;
-                            newob->set_difficulty(static_cast<Uint32>(newob->stats()->level));
+                            newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level));
                             newob->team_num = self->team_num;
                             newob->owner = self;
                             newob->lifetime = 200 + 60 * self->stats()->level;
@@ -339,7 +339,7 @@ static bool archmage_do_special(walker* self)
             }
             else // illusion summoning
             {
-                generic = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
+                generic = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[3]));
                 if (generic < 100)
                     person = FAMILY_ELF;
                 else if (generic < 250)
@@ -410,7 +410,7 @@ static bool archmage_do_special(walker* self)
                             generic = 1;
                             newob->setxy(testx, testy);
                             newob->stats()->level = (self->stats()->level + 2) / 3;
-                            newob->set_difficulty(static_cast<Uint32>(newob->stats()->level));
+                            newob->set_difficulty(static_cast<std::uint32_t>(newob->stats()->level));
                             newob->team_num = self->team_num;
                             newob->owner = self;
                             newob->lifetime = 100 + 20 * self->stats()->level;
@@ -439,7 +439,7 @@ static bool archmage_do_special(walker* self)
                 if (howmany < 1)
                     return false;
                 didheal = 0;
-                generic2 = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)])) + 10;
+                generic2 = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)])) + 10;
                 for (auto* ob : newlist)
                 {
                     if (generic2 < 10) break;
@@ -476,7 +476,7 @@ static bool archmage_do_special(walker* self)
                 message = "ArchMage";
             tempstr = std::format("{} has controlled {} men", message, didheal);
             og::sim::emit_notification(self->sim_events, tempstr);
-            generic2 = static_cast<Sint32>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
+            generic2 = static_cast<std::int32_t>(self->stats()->magicpoints - static_cast<float>(self->stats()->special_cost[static_cast<int>(self->current_special)]));
             if (generic2 > 0)
             {
                 while ((didheal > 0) && (generic2 >= 10))

@@ -27,6 +27,7 @@ class effect : public walker
 {
 	public:
 		effect(const PixieData& data);
+		effect();  // Headless constructor (no rendering data)
 		~effect() override;
 		effect(const effect&) = delete;
 		effect& operator=(const effect&) = delete;

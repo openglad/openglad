@@ -15,10 +15,10 @@
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
 
+#include <cstdint>
 #include <openglad/core/util.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
-#include "SDL_stdinc.h"
 #include "micropather.h"
 #include <cmath>
 
@@ -26,8 +26,8 @@
 #define GRID_SIZE 16  // Should not really be duplicating this from screen.cpp
 
 #define MAKE_STATE(x, y) reinterpret_cast<MicroPatherState>(static_cast<intptr_t>(((y)/GRID_SIZE)*MAP_WIDTH + ((x)/GRID_SIZE)))
-#define GET_STATE_X(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
-#define GET_STATE_Y(state) (static_cast<Sint32>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
+#define GET_STATE_X(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) % MAP_WIDTH) * GRID_SIZE)
+#define GET_STATE_Y(state) (static_cast<std::int32_t>(reinterpret_cast<intptr_t>(state) / MAP_WIDTH) * GRID_SIZE)
 #define ALIGN_TO_GRID(x) ((x)/GRID_SIZE * GRID_SIZE)
 
 namespace {

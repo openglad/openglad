@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
@@ -18,7 +19,7 @@ static bool drumstick_on_eat(treasure* self, walker* eater)
 {
     if (eater->stats()->hitpoints >= eater->stats()->max_hitpoints)
         return true;
-    const Sint32 heal_amount = 10 * self->stats()->level + static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(10 * self->stats()->level)));
+    const std::int32_t heal_amount = 10 * self->stats()->level + static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(10 * self->stats()->level)));
     const short amount = static_cast<short>(heal_amount);
     eater->stats()->hitpoints += amount;
     if (eater->stats()->hitpoints > eater->stats()->max_hitpoints)

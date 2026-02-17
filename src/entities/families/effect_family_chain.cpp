@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
@@ -45,7 +46,7 @@ static bool chain_on_act(effect* self)
         og::sim::emit_sound(self->sim_events, SOUND_EXPLODE);
         // Now make new objects to seek out foes ..
         float generic = self->damage * 0.5f;
-        Sint32 temp = 0;
+        std::int32_t temp = 0;
         std::list<walker*> foelist;
         if (self->owner->myguy)
             foelist = self->sim_level->find_foes_in_range(self->sim_level->oblist,
@@ -55,7 +56,7 @@ static bool chain_on_act(effect* self)
                 240+self->stats()->level*5, &temp, self);
         if (temp && generic>20)
         {
-            Sint32 numfoes = static_cast<Sint32>(self->sim_rng->next(static_cast<Uint32>(self->owner->stats()->level))) + 1;
+            std::int32_t numfoes = static_cast<std::int32_t>(self->sim_rng->next(static_cast<std::uint32_t>(self->owner->stats()->level))) + 1;
             for(auto* w : foelist)
             {
                 if (numfoes <= 0) break;
@@ -82,7 +83,7 @@ static bool chain_on_act(effect* self)
     }
     // Move toward our leader ..
     self->lineofsight--;
-    Sint32 distance = self->distance_to_ob_center(self->leader);
+    std::int32_t distance = self->distance_to_ob_center(self->leader);
     if (static_cast<float>(distance) > self->stepsize*2)
     {
         float xd = 0, yd = 0;

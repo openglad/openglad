@@ -25,6 +25,7 @@ class living : public walker
 		using walker::facing; // unhide overloads (std::int32_t/float) from base
 		using walker::shove;  // unhide overloads (std::int32_t/float) from base
 		living(const PixieData& data);
+		living();  // Headless constructor (no rendering data)
 		~living() override;
 		living(const living&) = delete;
 		living& operator=(const living&) = delete;

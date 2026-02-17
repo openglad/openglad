@@ -20,6 +20,7 @@
 	buffers: 7/31/02: *deleted some redundant headers
 */
 
+#include <cstdint>
 #include <openglad/core/combat_math.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/family_descriptor.h>
@@ -39,8 +40,9 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/render/pixien.h>
-#include "SDL_stdinc.h"
+#endif
 #include <format>
 #include <span>
 
@@ -56,9 +58,9 @@
 bool debug_draw_paths = false;
 
 // From picker.cpp
-extern Sint32 calculate_level(Uint32 temp_exp);
-extern Sint32 difficulty_level[DIFFICULTY_SETTINGS];
-extern Sint32 current_difficulty;
+extern std::int32_t calculate_level(std::uint32_t temp_exp);
+extern std::int32_t difficulty_level[DIFFICULTY_SETTINGS];
+extern std::int32_t current_difficulty;
 
 short exp_from_action(ExpAction action, walker* w, walker* target, short value);
 
@@ -430,8 +432,8 @@ walker  * walker::fire()
 					weapon->ani_type = gfd->spawn_ani_type;
 				if (gfd->has_lifetime)
 					weapon->lifetime = 800 + stats_->level*11;
-				weapon->stats()->level = static_cast<Sint32>(sim_rng->next(static_cast<Uint32>(stats_->level))) + 1;
-				weapon->set_difficulty(static_cast<Uint32>(weapon->stats()->level));
+				weapon->stats()->level = static_cast<std::int32_t>(sim_rng->next(static_cast<std::uint32_t>(stats_->level))) + 1;
+				weapon->set_difficulty(static_cast<std::uint32_t>(weapon->stats()->level));
 				if (gfd->clear_owner)
 					weapon->owner = nullptr;
 			}
@@ -745,6 +747,8 @@ bool walker::collide(walker  *ob)
 
 bool walker::animate()
 {
+	if (!ani)
+		return 0;
 	const int ani_index = curdir + ani_type * NUM_FACINGS;
 	const signed char* seq = ani[ani_index];
 	if (!seq)
@@ -853,7 +857,7 @@ walker  *walker::create_weapon()
 		weapon = sim_level->add_ob(Order::Living, static_cast<char>(default_weapon));
 		weapon->team_num = team_num;
 		weapon->owner = this;
-		weapon->set_difficulty(static_cast<Uint32>(stats_->level));
+		weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
 		return weapon;
 	}
 	// Normally, only livings fire
@@ -862,7 +866,7 @@ walker  *walker::create_weapon()
 	weapon = sim_level->add_ob(Order::Weapon, static_cast<char>(weapon_type));
 	weapon->team_num = team_num;
 	weapon->owner = this;
-	weapon->set_difficulty(static_cast<Uint32>(stats_->level));
+	weapon->set_difficulty(static_cast<std::uint32_t>(stats_->level));
 	weapon->damage = (weapon->damage * (static_cast<float>(stats_->level) + 3.0f)) / 4.0f;
 	if (myguy)
 	{
@@ -933,7 +937,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	short i, loops;
 	short xdir = 0;
 	short ydir = 0;
-	Sint32 distance;
+	std::int32_t distance;
 	short targetdir;
 
 	// Allow generators to 'always' succeed
@@ -947,7 +951,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	weapon->collide_ob = nullptr;
 	// Based on facing, we alter the weapon's proposed
 	//   size so the collision check is fooled into checking
-	//   a Sint32 strip equal to the lineofsight times the size
+	//   a std::int32_t strip equal to the lineofsight times the size
 	//   of the weapon.
 	if (!foe)     // nobody to fire at?
 	{
@@ -969,7 +973,7 @@ bool walker::fire_check(short xdelta, short ydelta)
 	}
 
 	distance = distance_to_ob(foe);
-	if (distance > static_cast<Sint32>( static_cast<Sint32>(weapon->stepsize) * static_cast<Sint32>(weapon->lineofsight)) )
+	if (distance > static_cast<std::int32_t>( static_cast<std::int32_t>(weapon->stepsize) * static_cast<std::int32_t>(weapon->lineofsight)) )
 	{
 		weapon->dead = 1;
 		return 0;
@@ -1063,11 +1067,11 @@ bool
 walker::act_generate()
 {
 	if ( sim_level->numobs < MAXOBS &&
-	        (sim_rng->next(static_cast<Uint32>(stats_->level * 3)) > sim_rng->next(static_cast<Uint32>(300 + (sim_level->numobs * 8))) )
+	        (sim_rng->next(static_cast<std::uint32_t>(stats_->level * 3)) > sim_rng->next(static_cast<std::uint32_t>(300 + (sim_level->numobs * 8))) )
 	   )
 	{
-		lastx = static_cast<float>(1 - static_cast<Sint32>(sim_rng->next(3)));
-		lasty = static_cast<float>(1 - static_cast<Sint32>(sim_rng->next(3)));
+		lastx = static_cast<float>(1 - static_cast<std::int32_t>(sim_rng->next(3)));
+		lasty = static_cast<float>(1 - static_cast<std::int32_t>(sim_rng->next(3)));
 		if (!lastx && !lasty)
 			lastx = 1;
 		init_fire(static_cast<short>(lastx), static_cast<short>(lasty));
@@ -1177,8 +1181,8 @@ walker::act_random()
 		{
 			while ( !newx && !newy)
 			{
-				newx = static_cast<short>(1 - static_cast<Sint32>(sim_rng->next(3)));   // Walk in some random direction
-				newy = static_cast<short>(1 - static_cast<Sint32>(sim_rng->next(3)));   // other than 0,0 :)
+				newx = static_cast<short>(1 - static_cast<std::int32_t>(sim_rng->next(3)));   // Walk in some random direction
+				newy = static_cast<short>(1 - static_cast<std::int32_t>(sim_rng->next(3)));   // other than 0,0 :)
 			}
 		}
 
@@ -1241,7 +1245,7 @@ void walker::transfer_stats(walker  *newob)
 
 // change picture, etc. but NOT stats (use transfer_stats for that)
 
-void walker::transform_to(Order whatorder, Sint32 whatfamily)
+void walker::transform_to(Order whatorder, std::int32_t whatfamily)
 {
 	short xcenter, ycenter;
 	short tempxpos, tempypos;
@@ -1302,7 +1306,7 @@ bool walker::death()
 	// time this function is called, so that we can easily reverse
 	// the decision :)
 	walker  *newob = nullptr;
-	Sint32 i;
+	std::int32_t i;
 
 	if (death_called)
 		return 0;
@@ -1423,7 +1427,7 @@ bool walker::eat_me(walker  * eater)
 
 // set_direct_frame is in src/runtime/walker_render_bridge.cpp.
 
-walker* walker::do_summon(char whatfamily, Sint32 summon_lifetime)
+walker* walker::do_summon(char whatfamily, std::int32_t summon_lifetime)
 {
 	if (whatfamily || summon_lifetime)
 		Log("Should not be hitting walker::do_summon!\n");
@@ -1453,9 +1457,9 @@ void walker::center_on(walker  *target)
 	setxy(newx, newy);
 }
 
-void walker::set_difficulty(Uint32 whatlevel)
+void walker::set_difficulty(std::uint32_t whatlevel)
 {
-	Uint32 temp, dif1;
+	std::uint32_t temp, dif1;
 
 	dif1 = difficulty_level[current_difficulty];
 
@@ -1480,28 +1484,28 @@ void walker::set_difficulty(Uint32 whatlevel)
 	return;
 }
 
-Sint32 walker::distance_to_ob(const walker  * target) const
+std::int32_t walker::distance_to_ob(const walker  * target) const
 {
-	//Sint32 xdelta,ydelta;
+	//std::int32_t xdelta,ydelta;
 
-	//xdelta = static_cast<Sint32>(target->xpos - xpos) +
-	//         static_cast<Sint32>( (target->sizex - sizex) / 2 );
-	//ydelta = static_cast<Sint32>(target->ypos - ypos) +
-	//         static_cast<Sint32>( (target->sizey - sizey) / 2 );
-	//return static_cast<Sint32>(xdelta*xdelta + ydelta*ydelta);
+	//xdelta = static_cast<std::int32_t>(target->xpos - xpos) +
+	//         static_cast<std::int32_t>( (target->sizex - sizex) / 2 );
+	//ydelta = static_cast<std::int32_t>(target->ypos - ypos) +
+	//         static_cast<std::int32_t>( (target->sizey - sizey) / 2 );
+	//return static_cast<std::int32_t>(xdelta*xdelta + ydelta*ydelta);
 	return ( abs(target->xpos - xpos) + abs(target->ypos - ypos) );
 
 }
 
-Sint32 walker::distance_to_ob_center(const walker * target) const
+std::int32_t walker::distance_to_ob_center(const walker * target) const
 {
-	Sint32 xdelta,ydelta;
+	std::int32_t xdelta,ydelta;
 
-	xdelta = static_cast<Sint32>(target->xpos - xpos) +
-	         static_cast<Sint32>( (target->sizex - sizex) / 2 );
-	ydelta = static_cast<Sint32>(target->ypos - ypos) +
-	         static_cast<Sint32>( (target->sizey - sizey) / 2 );
-	return static_cast<Sint32>(xdelta*xdelta + ydelta*ydelta);
+	xdelta = static_cast<std::int32_t>(target->xpos - xpos) +
+	         static_cast<std::int32_t>( (target->sizex - sizex) / 2 );
+	ydelta = static_cast<std::int32_t>(target->ypos - ypos) +
+	         static_cast<std::int32_t>( (target->sizey - sizey) / 2 );
+	return static_cast<std::int32_t>(xdelta*xdelta + ydelta*ydelta);
 }
 
 unsigned char walker::query_team_color() const
@@ -1513,7 +1517,7 @@ unsigned char walker::query_team_color() const
 	//  return static_cast<unsigned char>(7*16 + 40);
 }
 
-Sint32 walker::is_friendly(const walker *target) const
+std::int32_t walker::is_friendly(const walker *target) const
 {
 	// is_friendly determines if _target_ is "friendly"
 	// towards this walker.
@@ -1581,7 +1585,7 @@ Sint32 walker::is_friendly(const walker *target) const
 	return 1;
 }
 
-Sint32 walker::is_friendly_to_team(unsigned char team) const
+std::int32_t walker::is_friendly_to_team(unsigned char team) const
 {
 	// is_friendly_to_team determines if _team_ is "friendly"
 	// towards this walker.
@@ -1623,3 +1627,58 @@ Sint32 walker::is_friendly_to_team(unsigned char team) const
 	// If we're a hired guy in allied mode, then we're friendly with team 0 (red)
 	return (has_myguy == 1 && team == 0);
 }
+
+#ifdef OPENGLAD_HEADLESS
+// Headless implementations of render bridge functions.
+// Normally these live in walker_render_bridge.cpp (which requires pixieN / SDL).
+// In headless mode we just track the sim-relevant fields (size, frame count).
+
+#include <openglad/entities/obmap.h>
+
+void walker::attach_render(const PixieData& data)
+{
+	sizex = data.w;
+	sizey = data.h;
+	frames = data.frames;
+	frame = 0;
+}
+
+void walker::set_data(const PixieData& data)
+{
+	sizex = data.w;
+	sizey = data.h;
+	frames = data.frames;
+}
+
+short walker::set_frame(short framenum)
+{
+	if (framenum < 0 || framenum >= frames)
+		return 0;
+	frame = framenum;
+	return 1;
+}
+
+void walker::set_direct_frame(short whichframe)
+{
+	frame = whichframe;
+}
+
+walker::~walker()
+{
+	foe = nullptr;
+	leader = nullptr;
+	owner = nullptr;
+	collide_ob = nullptr;
+	dead = 1;
+
+	obmap* active = (sim_level != nullptr) ? sim_level->myobmap.get() : nullptr;
+	if (active != nullptr)
+		active->remove(this);
+	if (myobmap != nullptr && myobmap != active)
+		myobmap->remove(this);
+
+	stats_.reset();
+	clear_myguy();
+	myself_ = nullptr;
+}
+#endif // OPENGLAD_HEADLESS

@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/living.h>
@@ -13,7 +14,6 @@
 #include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 
 #define BASE_GUY_HP 30
 
@@ -75,13 +75,13 @@ static bool archer_check_special_ai(living* self)
 {
     if (self->foe)
     {
-        Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+        std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
         return (distance < 130);
     }
     self->foe = self->sim_level->find_near_foe(self);
     if (!self->foe)
         return false;
-    Uint32 distance = static_cast<Uint32>(self->distance_to_ob(self->foe));
+    std::uint32_t distance = static_cast<std::uint32_t>(self->distance_to_ob(self->foe));
     return (distance < 130);
 }
 
@@ -94,20 +94,20 @@ static void archer_hit_response(statistics* stats, walker* foe)
         stats->clear_command();
         stats->last_distance = stats->current_distance = 15000;
     }
-    Sint32 distance = controller->distance_to_ob(foe);
+    std::int32_t distance = controller->distance_to_ob(foe);
     if (distance < 64)
     {
-        Sint32 deltax = static_cast<short>(controller->xpos - foe->xpos);
+        std::int32_t deltax = static_cast<short>(controller->xpos - foe->xpos);
         if (deltax)
             deltax = static_cast<short>(deltax / abs(deltax));
-        Sint32 deltay = static_cast<short>(controller->ypos - foe->ypos);
+        std::int32_t deltay = static_cast<short>(controller->ypos - foe->ypos);
         if (deltay)
             deltay = static_cast<short>(deltay / abs(deltay));
         stats->force_command(COMMAND_WALK, 8, deltax, deltay);
     }
 }
 
-static void archer_set_difficulty(living* self, Uint32 level)
+static void archer_set_difficulty(living* self, std::uint32_t level)
 {
     const float levmult = static_cast<float>(level) * static_cast<float>(level);
     const float level_f = static_cast<float>(level);
@@ -117,20 +117,20 @@ static void archer_set_difficulty(living* self, Uint32 level)
     self->stats()->armor += levmult;
 }
 
-static void archer_level_up(guy* self, Sint32 level_diff)
+static void archer_level_up(guy* self, std::int32_t level_diff)
 {
-    Sint32 s = 8 * level_diff;
-    Sint32 d = 6 * level_diff;
-    Sint32 c = 8 * level_diff;
-    Sint32 it = 8 * level_diff;
-    Sint32 a = 1 * level_diff;
+    std::int32_t s = 8 * level_diff;
+    std::int32_t d = 6 * level_diff;
+    std::int32_t c = 8 * level_diff;
+    std::int32_t it = 8 * level_diff;
+    std::int32_t a = 1 * level_diff;
     s /= 2;
     d = (d * 3) / 2;
-    self->strength = static_cast<short>(static_cast<Sint32>(self->strength) + s);
-    self->dexterity = static_cast<short>(static_cast<Sint32>(self->dexterity) + d);
-    self->constitution = static_cast<short>(static_cast<Sint32>(self->constitution) + c);
-    self->intelligence = static_cast<short>(static_cast<Sint32>(self->intelligence) + it);
-    self->armor = static_cast<short>(static_cast<Sint32>(self->armor) + a);
+    self->strength = static_cast<short>(static_cast<std::int32_t>(self->strength) + s);
+    self->dexterity = static_cast<short>(static_cast<std::int32_t>(self->dexterity) + d);
+    self->constitution = static_cast<short>(static_cast<std::int32_t>(self->constitution) + c);
+    self->intelligence = static_cast<short>(static_cast<std::int32_t>(self->intelligence) + it);
+    self->armor = static_cast<short>(static_cast<std::int32_t>(self->armor) + a);
 }
 
 const FamilyDescriptor& describe_family_archer()

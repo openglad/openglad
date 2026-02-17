@@ -30,13 +30,18 @@
 #include <openglad/sim/sim_emit.h>
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
-#include "SDL_stdinc.h"
 #include <format>
 
 weap::weap(const PixieData& data)
     : walker(data)
 {
 	do_bounce = 0; // don't normally bounce :)
+}
+
+weap::weap()
+    : walker()
+{
+	do_bounce = 0;
 }
 
 weap::~weap()

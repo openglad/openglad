@@ -5,11 +5,11 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
-#include "SDL_stdinc.h"
 
 static bool knife_back_on_act(effect* self)
 {
@@ -18,7 +18,7 @@ static bool knife_back_on_act(effect* self)
         self->dead = 1;
         return true;
     }
-    Sint32 distance = self->distance_to_ob(self->owner);
+    std::int32_t distance = self->distance_to_ob(self->owner);
     if (distance > 10)
     {
         float xd = 0, yd = 0;

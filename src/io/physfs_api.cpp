@@ -10,7 +10,9 @@
 #include <openglad/io/physfs_api.h>
 
 #include "physfs.h"
+#ifndef OPENGLAD_HEADLESS
 #include "physfsrwops.h"
+#endif
 
 #include <memory>
 
@@ -73,6 +75,7 @@ std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname)
     return out;
 }
 
+#ifndef OPENGLAD_HEADLESS
 SDL_RWops* physfsrw_open_read(const char* path)
 {
     return PHYSFSRWOPS_openRead(path);
@@ -82,6 +85,7 @@ SDL_RWops* physfsrw_open_write(const char* path)
 {
     return PHYSFSRWOPS_openWrite(path);
 }
+#endif
 
 } // namespace og::io
 

@@ -29,7 +29,9 @@
 #include <openglad/entities/treasure_family_registry.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
+#ifndef OPENGLAD_HEADLESS
 #include <openglad/render/pixien.h>
+#endif
 #include <algorithm>
 #include <format>
 #include <cstring>
@@ -38,6 +40,13 @@ treasure::treasure(const PixieData& data)
     : walker(data)
 {
 	ignore =static_cast<char>(0);
+	dead = static_cast<char>(0);
+}
+
+treasure::treasure()
+    : walker()
+{
+	ignore = static_cast<char>(0);
 	dead = static_cast<char>(0);
 }
 
@@ -65,9 +74,11 @@ void treasure::set_direct_frame(short whatframe)
 {
 	frame = whatframe;
 
+#ifndef OPENGLAD_HEADLESS
 	// Update render component's bmp pointer if available
 	if (render_)
 		render_->set_frame(whatframe);
+#endif
 }
 
 // Finds the next connected teleporter in the fxlist for you to warp to.

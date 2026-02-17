@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/sim/sim_world.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/entities/walker.h>
@@ -25,7 +26,7 @@ static walker* find_far_foe(LevelData& level, walker* ob, SimRandom& rng)
         return nullptr;
 
     walker* endfoe = nullptr;
-    Sint32 distance = 10000;
+    std::int32_t distance = 10000;
     ob->stats()->last_distance = 10000;
 
     for (auto& uptr : level.oblist)
@@ -40,7 +41,7 @@ static walker* find_far_foe(LevelData& level, walker* ob, SimRandom& rng)
                  foe->query_order() == Order::Generator) &&
                 (!(rng.next(foe->invisibility_left / 20))))
             {
-                Sint32 tempdistance = ob->distance_to_ob(foe);
+                std::int32_t tempdistance = ob->distance_to_ob(foe);
                 if (tempdistance < distance)
                 {
                     distance = tempdistance;

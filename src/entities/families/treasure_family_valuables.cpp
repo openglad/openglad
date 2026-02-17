@@ -5,6 +5,7 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
+#include <cstdint>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure.h>
 #include <openglad/core/stats.h>
@@ -44,7 +45,7 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
 {
     if (eater->team_num != self->team_num) // only our team can get these
         return true;
-    eater->sim_save->m_score[eater->team_num] += static_cast<Uint32>(std::max(0.0f, self->stats()->hitpoints));
+    eater->sim_save->m_score[eater->team_num] += static_cast<std::uint32_t>(std::max(0.0f, self->stats()->hitpoints));
     walker* flash = self->sim_level->add_ob(Order::FX, FAMILY_FLASH);
     flash->ani_type = ANI_EXPAND_8;
     flash->center_on(self);
@@ -55,9 +56,9 @@ static bool life_gem_on_eat(treasure* self, walker* eater)
 
 static bool key_on_eat(treasure* self, walker* eater)
 {
-    if (!(eater->keys & static_cast<Sint32>(pow(static_cast<double>(2), self->stats()->level)))) // just got it?
+    if (!(eater->keys & static_cast<std::int32_t>(pow(static_cast<double>(2), self->stats()->level)))) // just got it?
     {
-        eater->keys = eater->keys | static_cast<Sint32>(pow(static_cast<double>(2), self->stats()->level)); // ie, 2, 4, 8, 16...
+        eater->keys = eater->keys | static_cast<std::int32_t>(pow(static_cast<double>(2), self->stats()->level)); // ie, 2, 4, 8, 16...
         std::string message;
         if (eater->myguy)
             message = std::format("{} picks up key {}", eater->myguy->name,

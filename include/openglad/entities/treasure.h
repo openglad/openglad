@@ -23,6 +23,7 @@ class treasure : public walker
 {
 	public:
 		treasure(const PixieData& data);
+		treasure();  // Headless constructor (no rendering data)
 		~treasure() override;
 		treasure(const treasure&) = delete;
 		treasure& operator=(const treasure&) = delete;

@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <openglad/entities/effect.h>
 #include <openglad/data/gloader.h>
 #include "test_framework.h"
@@ -110,9 +111,9 @@ REGISTER_TEST(test_orbit_offset_symmetry);
 
 void test_compute_explosion_range_scaling()
 {
-    Sint32 r1 = compute_explosion_range(1, 0);
-    Sint32 r5 = compute_explosion_range(5, 0);
-    Sint32 r10 = compute_explosion_range(10, 0);
+    std::int32_t r1 = compute_explosion_range(1, 0);
+    std::int32_t r5 = compute_explosion_range(5, 0);
+    std::int32_t r10 = compute_explosion_range(10, 0);
     TEST_ASSERT(r5 > r1, "range should increase with level");
     TEST_ASSERT(r10 > r5, "range should increase with level");
 }
@@ -120,8 +121,8 @@ REGISTER_TEST(test_compute_explosion_range_scaling);
 
 void test_compute_explosion_range_clamp()
 {
-    Sint32 r50 = compute_explosion_range(50, 0);
-    Sint32 r100 = compute_explosion_range(100, 0);
+    std::int32_t r50 = compute_explosion_range(50, 0);
+    std::int32_t r100 = compute_explosion_range(100, 0);
     TEST_ASSERT_EQ(96, (int)r50, "level 50 should cap at 96");
     TEST_ASSERT_EQ(96, (int)r100, "level 100 should cap at 96");
 }

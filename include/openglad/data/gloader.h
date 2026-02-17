@@ -18,16 +18,18 @@
 
 // Definition of LOADER class
 
-#include "SDL.h"
 #include <openglad/data/level_data.h> // Order forward-decl
 #include <openglad/data/pixie_data.h>
 #include <array>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
-class screen;
 class walker;
+#ifndef OPENGLAD_HEADLESS
+class screen;
 class pixieN;
+#endif
 
 class loader
 {
@@ -38,14 +40,17 @@ class loader
 		loader& operator=(const loader&) = delete;
 		loader(loader&&) = delete;
 		loader& operator=(loader&&) = delete;
-		[[nodiscard]] std::unique_ptr<walker> create_walker_owned(Order order, Sint32 family, screen* screenp, [[maybe_unused]] bool cache_weapons = true);
-		[[nodiscard]] std::unique_ptr<pixieN> create_pixieN_owned(Order order, Sint32 family);
-		void set_derived_stats(walker* w, Order order, Sint32 family);
-		walker *set_walker(walker *ob, Order order, Sint32 family);
+#ifndef OPENGLAD_HEADLESS
+		[[nodiscard]] std::unique_ptr<walker> create_walker_owned(Order order, std::int32_t family, screen* screenp, [[maybe_unused]] bool cache_weapons = true);
+		[[nodiscard]] std::unique_ptr<pixieN> create_pixieN_owned(Order order, std::int32_t family);
+#endif
+		[[nodiscard]] std::unique_ptr<walker> create_walker_headless(Order order, std::int32_t family);
+		void set_derived_stats(walker* w, Order order, std::int32_t family);
+		walker *set_walker(walker *ob, Order order, std::int32_t family);
 		std::vector<PixieData> graphics;
 		std::vector<signed char**> animations;
 		std::vector<float> stepsizes;
-		std::vector<Sint32> lineofsight;
+		std::vector<std::int32_t> lineofsight;
 
 		std::array<float, 200> hitpoints{}; // hack for now
 		std::vector<char> act_types;
