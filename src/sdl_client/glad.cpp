@@ -54,7 +54,7 @@ inline screen* active_screen()
 inline options* active_prefs()
 {
     if (ctx().prefs)
-        return ctx().prefs.get();
+        return ctx().prefs;
     return theprefs;
 }
 

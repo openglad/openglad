@@ -19,6 +19,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/core/util.h>
 #include <openglad/io/physfs_api.h>
+#include "physfsrwops.h"  // PhysFS SDL_RWops bridge
 #include <openglad/io/zip_api.h>
 #include <openglad/io/yaml_stream.h>
 #include <openglad/legacy/pixdefs.h>
@@ -38,6 +39,12 @@
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+
+// SDL_RWops bridge for PhysFS (SDL-specific; not in headless builds)
+namespace og::io {
+SDL_RWops* physfsrw_open_read(const char* path) { return PHYSFSRWOPS_openRead(path); }
+SDL_RWops* physfsrw_open_write(const char* path) { return PHYSFSRWOPS_openWrite(path); }
+} // namespace og::io
 
 namespace
 {

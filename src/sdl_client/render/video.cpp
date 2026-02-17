@@ -21,6 +21,7 @@
 #include <openglad/render/sai2x.h>
 #include <openglad/data/gparser.h>
 #include <openglad/core/util.h>
+#include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
 #include <openglad/platform/io.h>

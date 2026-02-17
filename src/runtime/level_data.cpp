@@ -16,7 +16,9 @@
  */
 
 #include <openglad/data/level_data.h>
+#include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
+#include <openglad/platform/io_common.h>
 #include <openglad/io/og_file.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
@@ -400,7 +402,7 @@ LevelData::LevelData(int level_id)
     , myloader(nullptr), numobs(0), topx(0), topy(0)
 {
 	myobmap = std::make_unique<obmap>();
-    myloader = std::make_unique<loader>();
+    myloader = std::make_unique<loader>(this);
 
     // Load map data from a pixie format
     load_map_data(pixdata);
@@ -415,7 +417,7 @@ LevelData::LevelData(int level_id, bool headless)
 {
     headless_ = headless;
     myobmap = std::make_unique<obmap>();
-    myloader = std::make_unique<loader>();
+    myloader = std::make_unique<loader>(this);
 
     if (!headless)
     {
@@ -1548,7 +1550,7 @@ bool LevelData::load()
     }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
 
-    myloader = std::make_unique<loader>();
+    myloader = std::make_unique<loader>(this);
     clear();
     par_value = static_cast<short>(id);
 

@@ -204,6 +204,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/sdl_client/runtime/walker_render_bridge.cpp
     ${SRC_DIR}/sdl_client/runtime/sdl_context_services.cpp
     ${SRC_DIR}/sdl_client/runtime/cheat_handler.cpp
+    ${SRC_DIR}/sdl_client/render/sdl_level_render.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})

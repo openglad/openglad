@@ -9,7 +9,7 @@
 
 #include <openglad/io/zip_api.h>
 
-#include <openglad/platform/io.h> // ArchiveIoError values
+#include <openglad/platform/io_common.h> // ArchiveIoError values
 
 #include "zip.h"
 

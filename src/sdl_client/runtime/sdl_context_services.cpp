@@ -10,6 +10,7 @@
 // This file is compiled only in the SDL build (not in openglad_text).
 
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
 #include <openglad/input/input.h>
 #include <openglad/render/view.h>
 #include <openglad/data/level_data.h>

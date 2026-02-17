@@ -31,6 +31,7 @@
 #include <openglad/entities/generator_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/walker_render.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gloader.h>

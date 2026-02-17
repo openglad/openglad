@@ -9,9 +9,6 @@
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
 
-// Forward-declare the options type. In SDL builds this comes from view.h;
-// in headless builds we provide an empty definition so unique_ptr<options>
-// destructor works (prefs stays nullptr in headless).
 class options;
 
 // The existing global random() function (defined in screen.cpp or text_client main)
@@ -43,7 +40,7 @@ options* GameContext::active_prefs() const
         if (options* p = render_service->prefs())
             return p;
     }
-    return prefs.get();
+    return prefs;
 }
 
 cfg_store* GameContext::active_config() const

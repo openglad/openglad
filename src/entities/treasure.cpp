@@ -25,6 +25,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
 #include <openglad/entities/treasure.h>
+#include <openglad/entities/walker_render.h>
 #include <openglad/entities/treasure_family_descriptor.h>
 #include <openglad/entities/treasure_family_registry.h>
 #include <openglad/core/stats.h>

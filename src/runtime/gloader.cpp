@@ -16,6 +16,7 @@
  */
 //#include "graph.h"
 #include <openglad/data/gloader.h>
+#include <openglad/data/gparser.h>
 #include <openglad/io/og_file.h>
 #include <openglad/core/util.h>
 #include <openglad/runtime/game_context.h>
@@ -365,7 +366,6 @@ loader::loader()
       fire_frequency(SIZE_ORDERS*SIZE_FAMILIES, 0.0f)
 {
 	std::fill(std::begin(hitpoints), std::end(hitpoints), 0.0f);
-
 
 	// Livings
 	graphics[PIX(Order::Living, FAMILY_SOLDIER)] = read_pixie_file("footman.pix");
@@ -784,6 +784,12 @@ loader::loader()
 
 }
 
+loader::loader(LevelData* owner)
+    : loader()
+{
+    owner_level = owner;
+}
+
 loader::~loader(void)
 {
 	for(int i=0;i<(SIZE_ORDERS*SIZE_FAMILIES);i++) {
@@ -850,7 +856,9 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 	ob->stats()->special_cost[0] = 0; // shouldn't be used
 	ob->stats()->weapon_cost = 1; // default value
 
-	// Sim context is wired by the caller (add_ob, wire_entity, etc.)
+	// Wire sim context from owning LevelData if available.
+	if (owner_level)
+		owner_level->wire_entity(ob.get());
 
 	set_walker(ob.get(), order, family);
 

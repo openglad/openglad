@@ -31,7 +31,8 @@ GameSession::GameSession(const Config& session_cfg)
     prev_theprefs_ = theprefs;
 
     if (cfg_.allocate_prefs) {
-        ctx_.prefs = std::make_unique<options>();
+        prefs_owner_ = std::make_unique<options>();
+        ctx_.prefs = prefs_owner_.get();
     }
     ctx_.config = &::cfg;
     ctx_.mounted_campaign = prev_ctx.mounted_campaign;
@@ -54,7 +55,7 @@ GameSession::GameSession(const Config& session_cfg)
     }
 
     if (cfg_.install_legacy_globals) {
-        theprefs = ctx_.prefs.get();
+        theprefs = ctx_.prefs;
     }
 
     if (cfg_.allocate_screen) {
@@ -74,7 +75,7 @@ GameSession::~GameSession()
     if (cfg_.install_legacy_globals) {
         if (myscreen == ctx_.game_screen)
             myscreen = prev_myscreen_;
-        if (theprefs == ctx_.prefs.get())
+        if (theprefs == ctx_.prefs)
             theprefs = prev_theprefs_;
     }
 
@@ -85,7 +86,8 @@ GameSession::~GameSession()
 
     ctx_.game_screen = nullptr;
     screen_owner_.reset();
-    ctx_.prefs.reset();
+    ctx_.prefs = nullptr;
+    prefs_owner_.reset();
     seeded_rng_.reset();
 }
 

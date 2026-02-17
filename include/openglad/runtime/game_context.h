@@ -72,7 +72,7 @@ struct GameContext {
     GameContext& operator=(GameContext&&) noexcept = default;
 
     screen*     game_screen = nullptr;
-    std::unique_ptr<options> prefs;
+    options*    prefs       = nullptr;  // non-owning; GameSession owns via prefs_owner_
     std::string mounted_campaign;
     cfg_store*  config      = nullptr;
     IRandom*    rng         = nullptr;

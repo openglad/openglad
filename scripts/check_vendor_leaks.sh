@@ -16,7 +16,7 @@ fi
 # 2. Only src/io/ may include filesystem/archive vendor headers
 FS_VENDOR='(physfs\.h|physfsrwops\.h|zip\.h|zipint\.h|zipconf\.h|yaml\.h|yam\.h|zlib\.h|zconf\.h)'
 if grep -rn --include='*.cpp' --include='*.h' -E "#include.*${FS_VENDOR}" src/ \
-    | grep -v 'src/io/' | grep -v 'ogfile_yaml' 2>/dev/null; then
+    | grep -v 'src/io/' | grep -v 'src/sdl_client/io/' | grep -v 'ogfile_yaml' 2>/dev/null; then
     echo "ERROR: filesystem/archive vendor headers found outside src/io/" >&2
     status=1
 fi

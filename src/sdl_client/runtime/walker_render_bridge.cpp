@@ -16,7 +16,10 @@
 #include <openglad/render/pixien.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/core/stats.h>
+#include <openglad/data/gloader.h>
 #include <openglad/data/level_data.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
 
 // Concrete IWalkerRender backed by a pixieN sprite.
 class PixieNWalkerRender final : public IWalkerRender {
@@ -100,4 +103,15 @@ walker::~walker()
 	render_.reset();
 	clear_myguy();
 	myself_ = nullptr;
+}
+
+std::unique_ptr<pixieN> loader::create_pixieN_owned(Order order, std::int32_t family)
+{
+	if (!graphics[PIX(order, family)].valid())
+	{
+		Log("Alert! No valid graphics for pixieN\n");
+		return nullptr;
+	}
+
+	return std::make_unique<pixieN>(graphics[PIX(order, family)]);
 }

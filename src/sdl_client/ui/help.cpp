@@ -25,6 +25,7 @@
 #include <openglad/platform/io.h>
 #include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
+#include <openglad/io/og_file.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
 #ifdef __EMSCRIPTEN__
@@ -366,6 +367,31 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], SDL_RWops *infile)
 	return MAX_LINES;
 }
 
+// OgFile-based overloads (used by tests and headless builds)
+std::string read_one_line(og::io::OgFile& infile, short length)
+{
+    char temp;
+    std::string newline;
+    newline.reserve(static_cast<size_t>(length));
+    for (short i = 0; i < length; i++) {
+        size_t n = infile.read(&temp, 1, 1);
+        if (n != 1) { end_of_file = 1; return newline; }
+        if (temp == '\n' || temp == '\r') return newline;
+        newline.push_back(temp);
+    }
+    return newline;
+}
+
+short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& infile)
+{
+    short i;
+    for (i = 0; i < MAX_LINES; i++) {
+        std::string someline = read_one_line(infile, HELP_WIDTH);
+        snprintf(somearray[i], HELP_WIDTH, "%s", someline.c_str());
+        if (end_of_file) return i;
+    }
+    return MAX_LINES;
+}
 
 // General help text lines (Controls tab)
 static const char* controls_help_lines[] = {

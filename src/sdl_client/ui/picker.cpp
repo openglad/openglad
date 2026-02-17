@@ -627,7 +627,7 @@ void quit(Sint32 arg1)
 #else
 		myscreen->refresh();
 
-		ctx().prefs.reset();
+		ctx().prefs = nullptr;
 		picker_quit();  // deletes the screen objects
 		Log("quit({})\n", arg1);
 		exit(0);

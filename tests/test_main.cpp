@@ -14,6 +14,9 @@
 #include <format>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen_lifecycle.h>
+#include <openglad/runtime/screen.h>
+#include <openglad/data/save_data.h>
+#include <openglad/sim/sim_event_log.h>
 extern screen* myscreen;
 extern options* theprefs;
 
@@ -67,10 +70,17 @@ int main(int argc, char* argv[]) {
     if (argc > 1)
         g_test_filter = argv[1];
 
-    ctx().prefs = std::make_unique<options>();
-    theprefs = ctx().prefs.get();
+    static options test_prefs;
+    ctx().prefs = &test_prefs;
+    theprefs = ctx().prefs;
     create_global_screen(1);
     init_input();
+
+    // Initialize sim context so walkers created for testing have a valid RNG etc.
+    static og::sim::SimEventLog test_events;
+    static ProductionRandom test_rng;
+    myscreen->level_data.set_sim_context(&myscreen->save_data, &myscreen->enemy_freeze,
+                                         &test_events, &test_rng, &cfg);
 
     run_all_tests();
 

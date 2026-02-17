@@ -17,13 +17,12 @@
 #include <openglad/render/text.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/render/view.h>
+#include <openglad/input/input.h>
 #include <openglad/legacy/base.h>
 #include <cstring>
 #include <span>
 #include <string>
 #include <string_view>
-
-void get_input_events(bool);
 
 static PixieData letters1;
 static PixieData letters_big;
