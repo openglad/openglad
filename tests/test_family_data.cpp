@@ -1,6 +1,7 @@
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/runtime/screen.h>
@@ -163,7 +164,7 @@ void test_family_data_walker_init_matches_registry()
         auto* d = get_family_descriptor(fam);
         guy g(fam);
         g.teamnum = 0;
-        auto w = g.create_walker_owned(myscreen);
+        auto w = guy_create_walker_owned(g, myscreen);
         if (!w) continue;
 
         char msg[128];

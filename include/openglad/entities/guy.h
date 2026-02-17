@@ -20,7 +20,6 @@
 #include <memory>
 #include <string>
 
-class screen;
 class walker;
 
 // Holds attributes for characters.
@@ -34,8 +33,6 @@ class guy
 			guy (const guy& copy);
 			~guy();
 			std::int32_t query_heart_value(); // how much are we worth?
-			[[nodiscard]] std::unique_ptr<walker> create_walker_owned(screen* myscreen);
-			walker* create_and_add_walker(screen* myscreen);
 			void upgrade_to_level(short new_level, bool set_xp = true);
 		
         float get_hp_bonus() const;

@@ -30,7 +30,6 @@
 #include <openglad/entities/generator_family_registry.h>
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
-#include <openglad/render/pixien.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gloader.h>
@@ -124,40 +123,8 @@ walker::walker()
 	act_type = ACT_RANDOM;
 }
 
-void walker::attach_render(const PixieData& data)
-{
-	render_ = std::make_unique<pixieN>(data);
-	// Sync size from PixieData into SimEntity fields
-	sizex = data.w;
-	sizey = data.h;
-	frames = data.frames;
-	frame = 0;
-}
-
-void walker::set_data(const PixieData& data)
-{
-	// Update render graphics and sync sim-level size/frame fields
-	sizex = data.w;
-	sizey = data.h;
-	frames = data.frames;
-	if (render_)
-		render_->set_data(data);
-}
-
-const unsigned char* walker::bmp_data() const
-{
-	return render_ ? render_->bmp_data() : nullptr;
-}
-
-short walker::set_frame(short framenum)
-{
-	if (framenum < 0 || framenum >= frames)
-		return 0;
-	frame = framenum;
-	if (render_)
-		render_->set_frame(framenum);
-	return 1;
-}
+// attach_render, set_data, bmp_data, set_frame are in
+// src/runtime/walker_render_bridge.cpp (require pixieN full definition).
 
 short walker::next_frame()
 {
@@ -267,28 +234,7 @@ walker::reset(void)
 	return 1;
 }
 
-walker::~walker()
-{
-	foe = nullptr;
-	leader = nullptr;
-	owner = nullptr;
-	collide_ob = nullptr;
-	dead = 1;
-
-	// Walkers can outlive a particular LevelData::myobmap instance in tests
-	// (screen cleanup replaces the obmap). Ensure we remove from the current
-	// active obmap as well as the one we were last bound to.
-	obmap* active = (sim_level != nullptr) ? sim_level->myobmap.get() : nullptr;
-	if (active != nullptr)
-		active->remove(this);
-	if (myobmap != nullptr && myobmap != active)
-		myobmap->remove(this); // remove ourselves from obmap lists
-
-	stats_.reset();
-	render_.reset();
-	clear_myguy();
-	myself_ = nullptr;
-}
+// ~walker() is in src/runtime/walker_render_bridge.cpp (requires pixieN for render_.reset()).
 
 // Movement/facing/turning methods moved to walker_movement.cpp.
 
@@ -1318,20 +1264,15 @@ void walker::transform_to(Order whatorder, Sint32 whatfamily)
 
 	// Reset the graphics
 	const PixieData& data = sim_level->myloader->graphics[PIX(order, family)];
-	frames = data.frames;
-	frame = 0;
-	cycle = 0;
 
-	// Deal with resizing and centering ..
+	// Save center before resize (uses old sizex/sizey)
 	xcenter = xpos + sizex/2;
 	ycenter = ypos + sizey/2;
 
-	sizex = data.w;
-	sizey = data.h;
-
-	// Update render component with new graphics data
-	if (render_)
-		render_->set_data(data);
+	// Update sim fields + sync render component
+	set_data(data);
+	frame = 0;
+	cycle = 0;
 
 	tempxpos = xcenter - sizex/2;
 	tempypos = ycenter - sizey/2;
@@ -1476,14 +1417,7 @@ bool walker::eat_me(walker  * eater)
 	return 0;
 }
 
-void walker::set_direct_frame(short whichframe)
-{
-	frame = whichframe;
-
-	// Update render component's bmp pointer if available
-	if (render_)
-		render_->set_frame(whichframe);
-}
+// set_direct_frame is in src/runtime/walker_render_bridge.cpp.
 
 walker* walker::do_summon(char whatfamily, Sint32 summon_lifetime)
 {

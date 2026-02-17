@@ -200,6 +200,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/runtime/sim_world.cpp
     ${SRC_DIR}/runtime/sim_input_handler.cpp
     ${SRC_DIR}/runtime/input_event_bridge.cpp
+    ${SRC_DIR}/runtime/walker_render_bridge.cpp
 )
 
 set(GAME_SOURCES_NO_MAIN ${GAME_SOURCES})
@@ -295,6 +296,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/smooth.cpp
     ${SRC_DIR}/runtime/gloader.cpp
     ${SRC_DIR}/runtime/level_data.cpp
+    ${SRC_DIR}/runtime/walker_render_bridge.cpp
 )
 
 set(OG_RENDER_SOURCES

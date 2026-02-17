@@ -7,6 +7,7 @@
  * FamilyDescriptor callbacks.
  */
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <openglad/entities/living.h>
@@ -293,7 +294,7 @@ static std::unique_ptr<walker> make_guy_for_death(char family, short level = 3)
     guy g(family);
     g.teamnum = 1; // non-player team (avoids endgame check)
     g.upgrade_to_level(level, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (w) w->setxy(100, 100);
     return w;
 }
@@ -1103,7 +1104,7 @@ void test_soldier_weapons_left_on_create()
     guy g(FAMILY_SOLDIER);
     g.teamnum = 0;
     g.upgrade_to_level(5, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     TEST_ASSERT(w != nullptr, "create soldier walker");
     TEST_ASSERT_EQ(3, (int)static_cast<living*>(w.get())->weapons_left,
                    "soldier weapons_left should be (level+1)/2 = 3 at level 5");

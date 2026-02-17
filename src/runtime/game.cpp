@@ -16,6 +16,7 @@
  */
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/legacy/test_trace.h>
@@ -82,7 +83,7 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 	for(int guy_idx = 0; guy_idx < screenp->save_data.team_size; guy_idx++)
     {
 	    temp_guy = screenp->save_data.team_list[guy_idx].get();
-	    temp_walker = temp_guy->create_and_add_walker(screenp);
+	    temp_walker = guy_create_and_add_walker(*temp_guy, screenp);
 	    // Clear the new guy's battle data
 	    temp_walker->myguy->scen_damage = 0;
 	    temp_walker->myguy->scen_kills = 0;

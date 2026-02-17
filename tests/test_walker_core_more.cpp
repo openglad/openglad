@@ -1,6 +1,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
@@ -27,7 +28,7 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team = 0, 
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(level, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (w)
         w->setxy(100, 100);
     return w;

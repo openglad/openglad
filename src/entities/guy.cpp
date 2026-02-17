@@ -470,5 +470,6 @@ void guy::update_derived_stats(walker* w)
         w->stats()->max_magic_delay = 2;
 }
 
-// create_walker_owned and create_and_add_walker are in src/runtime/guy_create.cpp
-// because they depend on screen* (runtime layer).
+// guy_create_walker_owned and guy_create_and_add_walker are free functions
+// in src/runtime/guy_create.cpp (declared in runtime/guy_create.h) because
+// they depend on screen* (runtime layer).

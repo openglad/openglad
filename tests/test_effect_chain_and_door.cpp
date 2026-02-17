@@ -1,6 +1,7 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
@@ -46,7 +47,7 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team)
     guy g(family);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    return g.create_walker_owned(myscreen);
+    return guy_create_walker_owned(g, myscreen);
 }
 
 void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx()

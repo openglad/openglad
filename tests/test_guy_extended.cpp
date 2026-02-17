@@ -1,4 +1,5 @@
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
@@ -146,7 +147,7 @@ void test_guy_update_derived_stats_soldier()
 {
     guy g(FAMILY_SOLDIER);
     g.upgrade_to_level(3, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     TEST_ASSERT(w != nullptr, "create_walker should succeed");
     TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive");
     TEST_ASSERT(w->stats()->max_magicpoints >= 0, "MP should be non-negative");
@@ -164,7 +165,7 @@ void test_guy_update_derived_stats_all_families()
     for (int i = 0; i < 14; i++) {
         guy g(families[i]);
         g.upgrade_to_level(3, true);
-        auto w = g.create_walker_owned(myscreen);
+        auto w = guy_create_walker_owned(g, myscreen);
         if (w) {
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP should be positive for all families");
         }
@@ -211,7 +212,7 @@ void test_guy_create_walker_various()
     for (int i = 0; i < 6; i++) {
         guy g(families[i]);
         g.upgrade_to_level(2, true);
-        auto w = g.create_walker_owned(myscreen);
+        auto w = guy_create_walker_owned(g, myscreen);
         TEST_ASSERT(w != nullptr, "create_walker should succeed");
         TEST_ASSERT(w->myguy != nullptr, "walker should have myguy set");
         TEST_ASSERT(w->stats()->level == 2, "walker level should match guy level");

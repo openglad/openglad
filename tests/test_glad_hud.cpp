@@ -1,4 +1,5 @@
 #include <openglad/entities/guy.h>
+#include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -27,7 +28,7 @@ static std::unique_ptr<walker> make_player(unsigned char team)
     guy g(FAMILY_SOLDIER);
     g.teamnum = team;
     g.upgrade_to_level(3, true);
-    auto w = g.create_walker_owned(myscreen);
+    auto w = guy_create_walker_owned(g, myscreen);
     if (!w)
         return nullptr;
     w->team_num = team;
