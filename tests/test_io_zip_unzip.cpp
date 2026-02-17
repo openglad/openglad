@@ -78,6 +78,9 @@ void test_io_open_read_file_prefers_cwd_fallback()
     SDL_RWclose(rw);
     TEST_ASSERT_EQ(3, (int)got, "should read 3 bytes");
     TEST_ASSERT_STR_EQ("cwd", buf, "contents should match");
+
+    // Clean up transient test file so it doesn't accumulate in the repo root.
+    std::remove(fname.c_str());
 }
 REGISTER_TEST(test_io_open_read_file_prefers_cwd_fallback);
 
