@@ -139,204 +139,245 @@ Why this is good: It enforces module boundaries and avoids pulling render depend
 
 ## 6. Remediation Plan
 
-This section replaces the earlier plan and assumes the current objective is a complete text-mode game flow, not just a simulation harness.
+This section supersedes the previous rewrite and incorporates a full audit against Sections 2-4 plus current code in `src/text_client/`, `src/sdl_client/`, `CMakeLists.txt`, and test infrastructure.
 
-### 6.1 Target End State
+### 6.1 Scope, Objectives, and Guardrails
 
-- `openglad_text` has an interactive picker/menu flow (campaign selection, team setup, options/settings, save/load, play, quit) driven by `run_picker()` and a concrete text client.
-- Headless platform support is explicit: required features are implemented, intentionally unsupported features return typed errors with visible diagnostics (never silent no-op behavior).
-- Runtime/documentation cleanup follows once text-mode completeness is in place.
-- Temporary worker artifacts (`io_tmp_*.txt`) are removed from the repo root and prevented from returning.
+Primary objective:
+- Ship a complete text-mode gameplay flow in `openglad_text` (interactive picker + playable mission loop + save/load/settings/campaign flows) without silent no-op behavior.
 
-### 6.2 Reframed Findings (H1-H4, M1-M3, L1-L3)
+Secondary objective:
+- Preserve a build-green migration path while reducing over-engineered seams called out in H1-H4, M1-M3, L1-L3.
 
-#### H1 (revised): Complete and integrate the picker state machine
+Guardrails:
+- No commit in the sequence should knowingly leave default CI targets broken (`openglad`, `openglad_text`, test binaries).
+- Unsupported behavior must be explicit and observable (typed error or one-time warning), never silent `false`/empty stubs on critical paths.
+- Keep SDL and text responsibilities separated by capability boundaries, not link-time surprises.
 
-Previous decision to remove picker code was incorrect for product goals. `include/openglad/ui/picker_state.h` and `src/text_client/text_picker.cpp` are the intended foundation for text mode and must be wired into `src/text_client/main.cpp`.
+### 6.2 Coverage of Audit Findings (H1-H4, M1-M3, L1-L3)
 
-Implementation details:
-1. Make `text_picker.cpp` export a real entrypoint (for example `int run_text_client_picker(int argc, char** argv)` or equivalent façade around `run_picker()`).
-2. Expand `TextPickerClient` so methods are functional, not placeholders:
-   - `show_campaign_select()` should use `list_campaigns()`, `CampaignData::load_with_error()`, and `mount_campaign_package_with_error()`.
-   - `show_team_build()` should support selecting families/count and updating in-memory team/save structures.
-   - `show_options()` should load/edit/save config through `cfg_store` (`load_settings()`, `save_settings()` path).
-   - `load_game()` / `save_game()` should call real `SaveData` serialization (`SaveData::load_with_error`, `save_with_error`) and surface precise error states.
-   - `run_game()` should launch the existing tick/state/events loop path (currently in `main.cpp`) with the selected campaign/team/level state.
-3. Convert `src/text_client/main.cpp` from “JSON command loop only” to mode-based entry:
-   - default interactive picker mode (stdin/stdout menu),
-   - retain current protocol mode behind an explicit flag (for automation/tests), not as the only behavior.
-4. Keep `src/text_client/text_picker.cpp` in `HEADLESS_SOURCES` (`CMakeLists.txt`) and add/adjust tests to exercise picker entry and one end-to-end menu path.
+H1 (dead picker abstraction):
+- Keep picker abstraction, but make it real: add a concrete text-picker entrypoint and wire `main.cpp` mode selection so picker is the default interactive path, with protocol mode retained behind explicit flag.
+- Fix stdin handling pitfalls during integration (`scanf`/`getline` mixing) by using one consistent input strategy.
 
-#### H2 (revised): Replace no-op headless platform surface with capability-complete behavior
+H2 (silent link-time no-op surface):
+- Replace required `platform_headless.cpp` stubs with functional implementations or shared SDL-free helpers.
+- For intentionally unsupported features, return deterministic fallback + typed/logged diagnostics.
+- Eliminate hidden behavior drift by introducing a single header for level-data dispatch contract signatures used by both SDL and headless implementations.
 
-The core issue is not that headless symbols exist; it is that many required operations currently return false/empty with no behavior in `src/text_client/platform_headless.cpp`.
+H3 (duplicated headless/SDL object creation):
+- Not indefinite deferral. This is phase-2 work in this same remediation stream, executed immediately after text-mode baseline is stable.
+- Collapse `create_walker_headless` / `add_*_headless` duplication into one creation path with optional render attachment.
 
-Implementation details:
-1. Split stubs into three categories and implement accordingly:
-   - Required for text-client completeness: campaign/package mount/list, level listing, settings load/save/reset, save/load plumbing, archive helpers used by campaign flows, filesystem init/sync/dirs.
-   - Optional for text mode but should be explicit unsupported: audio/UI-only prompts, SDL event pumping, visual rendering hooks.
-   - Transitional shims that should be removed once call sites are migrated.
-2. Move shared non-SDL filesystem logic out of SDL-only code:
-   - extract reusable logic from `src/sdl_client/io/platform_io.cpp` into SDL-free helpers under `src/io/` (for example campaign list/mount helpers, archive wrappers, file creation helpers),
-   - keep SDL-only RWops/input code in SDL compilation units.
-3. In `src/text_client/platform_headless.cpp`, replace false-return stubs with real implementations where required, and ensure bool wrappers delegate to `_with_error` functions as single source of truth.
-4. For intentionally unsupported functions (for example `yes_or_no_prompt`, `get_input_events`, draw-only hooks), return deterministic defaults plus one-time `LogWarn` diagnostics.
-5. Preserve link compatibility during migration, then remove obsolete shim stubs once all required behavior is implemented.
+H4 (GameContext interface over-abstraction):
+- Defer until after H2/H3 but keep in-scope for this plan with explicit exit criteria and a target commit window.
 
-#### H3 (unchanged goal, deferred until completeness baseline): Unify duplicated headless vs SDL entity creation
+M1 (single-implementation render interfaces):
+- Execute after H3. Reduce virtual-interface overhead only after construction/capability flow is unified.
 
-Implementation details:
-1. Remove `create_walker_headless` from `include/openglad/data/gloader.h` and `src/runtime/gloader.cpp`; keep one `create_walker_owned(Order, std::int32_t family)` path.
-2. Remove `LevelData::add_*_headless` declarations from `include/openglad/data/level_data.h` and implementations from `src/runtime/level_data.cpp`.
-3. Keep headless behavior via render attachment policy (`walker_headless.cpp` / render hooks), not duplicate construction branches.
+M2 (legacy loader params):
+- Bundle with H3 unification to avoid churn.
 
-#### H4 (unchanged, later pass): Simplify `GameContext` service indirection
+M3 (large transitional shim layer):
+- Keep minimal necessary shims during migration.
+- Add CI guard to block new `src/*` shim includes.
+- Remove obsolete shims only after include scan proves zero users.
 
-Implementation details:
-1. Remove `IConfigContextService`, `IRenderContextService`, `IInputContextService` from `include/openglad/runtime/game_context.h` after platform wiring is stable.
-2. Simplify `src/runtime/game_context.cpp` to direct fields and direct `input_state_from_sdl()` call path.
-3. Reduce `src/sdl_client/runtime/sdl_context_services.cpp` to SDL-specific input/render bridge code only.
+L1 (`PickerTransition` unused):
+- Resolve during picker integration: either use it in transition flow or remove it.
 
-#### M1 (unchanged, later pass): Reduce single-implementation render interface overhead
+L2 (empty `include/openglad/ui/picker.h`):
+- Promote it to real exported picker API surface (text + SDL entrypoints or state-machine façade).
 
-After H2/H3 settle:
-1. Collapse `ILevelRender` indirection in `LevelData` toward concrete SDL-side ownership.
-2. Collapse `IWalkerRender` if compile-boundary constraints remain satisfied.
+L3 (`IAudio` dead abstraction):
+- Remove after functional work and dependency cleanup.
 
-#### M2 (bundled into H3): Remove legacy loader params
+### 6.3 Headless Platform Completion Matrix (audited against `platform_headless.cpp` + SDL `platform_io.cpp`)
 
-Implementation details:
-1. Remove unused `screen*` / `cache_weapons` parameters from `create_walker_owned`.
-2. Update call sites such as `src/sdl_client/runtime/guy_create.cpp`, `src/sdl_client/ui/picker_team_build.cpp`, and `src/sdl_client/ui/results_screen.cpp`.
+Primary files:
+- `src/text_client/platform_headless.cpp`
+- `src/sdl_client/io/platform_io.cpp`
+- `src/io/og_file.cpp`
 
-#### M3 (re-scoped): Remove only truly obsolete shims, keep necessary migration aids
+#### A) Must be implemented for text-mode completeness
 
-Because picker integration now depends on UI-facing headers:
-1. Do not auto-delete picker headers as part of H1.
-2. Remove unrelated transitional headers only after include scan confirms zero users (`src/runtime/game_context.h`, `src/render/view.h`, `src/base.h`, etc.).
-3. Add an include-path guard in CI to prevent reintroduction of new `src/*` shim includes.
+Campaign/filesystem/runtime operations currently stubbed but required:
+- `list_files`
+- `mount_campaign_package_with_error` / `unmount_campaign_package_with_error` / `remount_campaign_package_with_error`
+- bool wrappers `mount_campaign_package` / `unmount_campaign_package` / `remount_campaign_package`
+- `list_campaigns`, `list_levels`, `list_levels_v`
+- `restore_default_campaigns`
+- `create_dir`
+- `io_init`, `io_exit`, `sync_filesystem` (or remove/replace `headless_io_init` so there is exactly one headless init/teardown path)
+- Archive helpers: `zip_contents_with_error`, `unzip_into_with_error`, wrappers
 
-#### L1 (revised): `PickerTransition` is either used or removed based on final picker design
+Save/config operations:
+- Remove headless `SaveData::{load,save,is_level_completed}` overrides from `platform_headless.cpp`.
+- Ensure real `src/runtime/save_data.cpp` is linked for `openglad_text` and used via `load_with_error` / `save_with_error` at call sites.
+- Route settings persistence through `cfg_store::load_settings()` / `cfg_store::save_settings()` and remove or repurpose orphan free-function wrappers `load_settings`/`save_settings` in `io_common.h` (currently declared but not implemented in SDL).
 
-With picker retained:
-1. Either wire `PickerTransition` into `run_picker()` transitions and redraw semantics,
-2. Or remove it from `include/openglad/ui/picker_state.h` if the final state machine does not need it.
+#### B) Keep as explicit unsupported for text mode (deterministic + one-time warning)
 
-#### L2 (revised): `include/openglad/ui/picker.h` should become real API surface
+- `yes_or_no_prompt` (replace with text prompt implementation if picker/runtime path needs confirmations; otherwise explicit non-interactive default policy with warning)
+- `get_input_events` and other SDL event-pump-only behavior
+- `level_data_draw_impl` and visual draw hooks
+- Audio-only behavior where simulation correctness does not depend on playback
 
-Instead of deleting:
-1. Populate `include/openglad/ui/picker.h` with exported picker entrypoints for text/SDL callers.
-2. Keep `src/ui/picker.h` shim only if external compatibility requires it; otherwise remove it in M3 cleanup.
+Implementation rule:
+- Use one-time diagnostics (`std::once_flag`) for unsupported calls so logs are visible but not spammy.
 
-#### L3 (unchanged): Remove dead `IAudio` abstraction after behavior work
+#### C) Keep minimal no-op/compat only where semantically safe
 
-`include/openglad/platform/audio.h` can still be removed once no pending branch depends on it.
+- `clear_stale_view_controls` in headless (safe no-op, but document why)
+- `level_data_wire_entity_from_screen` only until LevelData wiring is made explicit without screen globals
+- `input_state_from_sdl` should not remain silent forever; either route to text input sampling or explicitly annotate unsupported in non-interactive protocol mode
 
-### 6.3 Required Headless Stub Completion Matrix
+#### D) Defer or remove from text-mode critical path
 
-Primary implementation file: `src/text_client/platform_headless.cpp`.
+Editor-adjacent APIs can stay non-functional short-term, but must not silently claim success:
+- `delete_level`, `delete_campaign`
+- `unpack_campaign`, `repack_campaign`, `cleanup_unpacked_campaign`
+- `create_new_map_pix_with_error`, `create_new_pix_with_error`, `create_new_campaign_descriptor_with_error`, `create_new_scen_file_with_error`, wrappers
+- `load_map_data`
 
-Must implement now (functional text client):
-- Campaign package operations:
-  - `mount_campaign_package_with_error`, `unmount_campaign_package_with_error`, `remount_campaign_package_with_error`
-  - `mount_campaign_package`, `unmount_campaign_package`, `remount_campaign_package`
-  - `get_mounted_campaign`, `list_campaigns`, `list_levels`, `list_levels_v`
-- Settings/config operations:
-  - `load_settings`, `save_settings`, `restore_default_settings`
-- Save/load operations:
-  - stop overriding `SaveData::load/save` with hardcoded false stubs in headless build; use real serialization path
-- Filesystem/archive support used by campaign/editor-adjacent flows:
-  - `zip_contents_with_error`, `unzip_into_with_error`, wrappers
-  - `create_dir`, `sync_filesystem`, `restore_default_campaigns`
+Policy:
+- Return typed failure with clear log if invoked from text mode until editor parity work is explicitly scheduled.
 
-Keep as explicit unsupported (with warnings):
-- `yes_or_no_prompt` (SDL dialog replacement)
-- `get_input_events` (SDL input pump)
-- draw/render hooks that are genuinely no-op in text mode
-- audio-only behaviors
+### 6.4 Additional Missing Concerns to Address
 
-Transitional:
-- Keep compatibility wrappers only while migrating call sites; remove once unused.
+1. Init/teardown duplication risk:
+- `openglad_text` currently uses `headless_io_init()` while `io_common.h` still exposes `io_init/io_exit/sync_filesystem` that are stubbed in headless.
+- Plan must converge to one authoritative headless lifecycle path.
 
-### 6.4 `og_file` vs PhysFS Write-up (required documentation output)
+2. Error-handling consistency:
+- Any bool wrapper should delegate to `_with_error` function and preserve diagnostic context.
+- Avoid direct `false` returns without context on campaign/save/archive operations.
 
-The plan keeps `OgFile` and documents why:
-- `PhysFS` is a backend API and mount abstraction, not a full high-level file object used uniformly by runtime/data code.
-- `OgFile` provides one RAII read/write/seek interface used by save/load, scenario/campaign parsing, and pixie loading across SDL and headless builds.
-- `OgFile` enables fallback paths (PhysFS + stdio filesystem) that are required in current runtime behavior (`src/io/og_file.cpp`).
-- `physfs_api` remains useful as a narrow vendor wrapper for mount/enumeration/error management.
+3. Include/link contract drift:
+- `level_data.cpp` relies on local `extern` declarations for dispatch functions.
+- Add shared declarations header and include from both implementations to prevent signature drift and hidden link failures.
 
-Required doc updates:
-1. Add a dedicated subsection to `docs/ARCHITECTURE.md` under I/O architecture describing:
-   - `physfs_api` responsibilities,
-   - `OgFile` responsibilities,
-   - what is intentionally redundant vs accidental duplication.
-2. Add a short “headless/text client architecture” and “I/O layering” summary to `CLAUDE.md` so contributor guidance matches current structure.
+4. Threading/concurrency constraints:
+- Headless mode is single-threaded today; document this explicitly.
+- Ensure one-time warning/logging helpers are thread-safe.
+- For future multi-session/headless harnesses, identify global state blockers (`cfg`, difficulty globals, mounted campaign state) and mark non-thread-safe assumptions in docs/tests.
 
-### 6.5 Unified Commit Sequence
+5. SDL-side impact containment:
+- Any helper extracted from `platform_io.cpp` to `src/io/` must remain SDL-free.
+- Keep SDL RWops/input glue in `src/sdl_client/` only.
 
-This is the single implementation sequence for the full remediation scope.
+### 6.5 Dependency-Safe Commit Sequence
 
-1. `chore(repo): remove transient io_tmp worker artifacts`
-   - Delete `io_tmp_*.txt` from repo root.
-   - Add ignore rule (for example in `.gitignore`) to prevent recurrence.
+This sequence replaces the previous 12-commit ordering to keep builds green between steps.
 
-2. `feat(text): wire picker state machine into openglad_text entry`
-   - Files: `src/text_client/main.cpp`, `src/text_client/text_picker.cpp`, `include/openglad/ui/picker_state.h`, `include/openglad/ui/picker.h`, `CMakeLists.txt`.
-   - Outcome: interactive picker is the primary text-client flow; protocol mode preserved under explicit flag.
+1. `chore(repo): remove transient io_tmp artifacts and ignore pattern`
+- Delete tracked `io_tmp_*.txt` files and add ignore coverage.
 
-3. `feat(text): implement campaign and level selection in headless platform layer`
-   - Files: `src/text_client/platform_headless.cpp`, shared helpers in `src/io/*`, related headers in `include/openglad/platform/io_common.h` / `include/openglad/io/*`.
-   - Outcome: real mount/list/remount behavior and campaign selection in text mode.
+2. `refactor(headless): establish shared non-SDL io helpers`
+- Extract campaign/list/archive/fs helpers from `src/sdl_client/io/platform_io.cpp` into `src/io/*`.
+- No behavior change yet for SDL/text callers.
 
-4. `feat(text): implement settings and save/load behavior for text client`
-   - Files: `src/text_client/platform_headless.cpp`, `src/text_client/text_picker.cpp`, `src/runtime/save_data.cpp` (and/or build lists), `include/openglad/data/save_data.h`.
-   - Outcome: text picker can load/save games and persist settings.
+3. `refactor(headless): replace critical platform_headless stubs with real implementations`
+- Implement required APIs from 6.3A using shared helpers.
+- Add explicit one-time warnings for unsupported paths from 6.3B.
 
-5. `refactor(headless): classify remaining unsupported APIs and add explicit diagnostics`
-   - Files: `src/text_client/platform_headless.cpp`.
-   - Outcome: no silent false/no-op for critical flows; unsupported paths are visible and typed.
+4. `build(text): link real save_data into openglad_text and remove SaveData stub overrides`
+- Update `CMakeLists.txt` and delete `SaveData` method bodies from `platform_headless.cpp`.
+- Ensure headless save/load goes through real serialization.
 
-6. `refactor(runtime): unify LevelData/gloader object creation paths`
-   - Files: `include/openglad/data/gloader.h`, `src/runtime/gloader.cpp`, `include/openglad/data/level_data.h`, `src/runtime/level_data.cpp`, affected SDL callers.
-   - Outcome: remove duplicate headless constructors and legacy loader params (H3 + M2).
+5. `refactor(io): unify headless lifecycle entrypoints`
+- Converge `headless_io_init` vs `io_init/io_exit/sync_filesystem` into one clear path.
+- Preserve startup behavior parity (default campaign, cfg/assets mount).
 
-7. `refactor(runtime): replace LevelData link-time hook globals with explicit capability wiring`
-   - Files: `include/openglad/data/level_data.h`, `src/runtime/level_data.cpp`, `src/sdl_client/runtime/sdl_context_services.cpp`, `src/text_client/platform_headless.cpp`, text runtime wiring in `src/text_client/main.cpp`.
-   - Outcome: behavior is explicit per runtime, not hidden behind unresolved extern shims.
+6. `feat(text): add text-picker entrypoint and exported picker API`
+- Implement concrete `run_text_picker(...)` (or equivalent) and populate `include/openglad/ui/picker.h`.
+- Resolve `PickerTransition` (use or remove).
 
-8. `refactor(context): simplify GameContext service layers`
-   - Files: `include/openglad/runtime/game_context.h`, `src/runtime/game_context.cpp`, `src/sdl_client/runtime/sdl_context_services.cpp`, dependent callers.
+7. `feat(text): implement functional picker screens (campaign/team/options/help/load/save)`
+- Complete `TextPickerClient` behavior with typed error reporting.
+- Replace fragile mixed input parsing with consistent line-based parsing.
 
-9. `refactor(render): collapse single-implementation render interfaces`
-   - Files: `include/openglad/entities/walker_render.h`, `include/openglad/data/level_render.h`, walker/level render bridge sources.
-   - Execute in two commits if needed (`ILevelRender` then `IWalkerRender`) to isolate regressions.
+8. `feat(text): switch openglad_text default mode to interactive picker and retain protocol flag`
+- Keep existing automation protocol under explicit `--protocol` (or equivalent).
+- Update `scripts/test_text_client.sh` and related tests for explicit protocol mode.
 
-10. `chore(headers): remove obsolete transitional shim headers`
-    - Files: `src/ui/picker.h` (if no longer needed), `src/runtime/game_context.h`, `src/render/view.h`, `src/base.h`, plus CI include guard script.
+9. `test(text): add interactive picker smoke + save/load round-trip coverage`
+- Add non-flaky scripted text-mode interaction tests.
+- Assert unsupported features emit expected warnings/errors.
 
-11. `docs(architecture): update architecture and contributor guidance for post-refactor reality`
-    - Files: `docs/ARCHITECTURE.md`, `CLAUDE.md`.
-    - Include:
-      - text client flow and capability boundaries,
-      - updated directory/module map (`src/sdl_client`, `src/text_client`, link-time/capability dispatch decisions),
-      - `OgFile` vs `PhysFS` rationale.
+10. `refactor(runtime): unify LevelData/gloader object creation paths (H3 + M2)`
+- Remove `create_walker_headless` and `add_*_headless` variants.
+- Remove legacy loader params and update SDL call sites.
 
-12. `chore(audio): remove unused IAudio abstraction`
-    - File: `include/openglad/platform/audio.h` (or replace with temporary deprecation header if required).
+11. `refactor/runtime: replace level_data link-time extern hooks with explicit capability wiring`
+- Introduce explicit capability object or function-table injection for level render/wiring.
+- Maintain headless + SDL behavior parity.
 
-### 6.6 Validation Gates
+12. `refactor(context): simplify GameContext service indirection (H4)`
+- Remove interfaces that only wrap globals/fields once alternate providers are no longer needed.
 
-Run between commits, not only at the end:
+13. `refactor(render): collapse single-implementation render interfaces (M1)`
+- Execute after H3/H4 to minimize churn and isolate regressions.
 
-1. Build gates:
-   - `cmake --build <build-dir> --target openglad openglad_text`
-2. Text-client gates:
-   - Existing protocol smoke (`scripts/test_text_client.sh`) in protocol mode flag.
-   - New interactive picker smoke test (campaign select -> team build -> start -> quit).
-   - Save/load round-trip test in headless mode.
-3. Runtime gates:
-   - SDL startup and one mission flow sanity run.
-4. Cleanup/documentation gates:
-   - `rg -n "io_tmp_"` returns none in tracked files.
-   - Architecture docs mention final module/layout and I/O layering.
+14. `chore(headers+audio+docs): remove obsolete shims, remove IAudio, update architecture docs`
+- Remove stale `src/*` transitional headers (after include scan).
+- Document final text/headless/SDL boundaries and I/O layering.
+
+### 6.6 Validation Gates (expanded)
+
+Run gates at each phase boundary, not only at the end.
+
+Build/link gates:
+- `cmake --build <build-dir> --target openglad openglad_text openglad_test og_unit_tests`
+- Verify no unresolved-symbol regressions after each dispatch/lifecycle refactor commit.
+
+Headless/text gates:
+- Protocol mode smoke (`scripts/test_text_client.sh`) using explicit protocol flag.
+- Interactive picker smoke (scripted stdin): campaign select -> team setup -> start mission -> quit.
+- Headless save/load round-trip with real `SaveData` path.
+- Failure-path checks: invalid campaign ID, missing save file, archive operation failures return typed errors and logs.
+
+SDL regression gates:
+- `ctest -R "openglad_test_picker|og_data_tests|og_runtime_tests" --output-on-failure`
+- One mission startup sanity run for `openglad`.
+
+Architecture hygiene gates:
+- `rg -n "io_tmp_"` returns none for tracked files.
+- Include hygiene check scripts still pass (`check_graph_h_includes`, vendor leak guard).
+- CI guard rejects newly introduced `#include "src/..."` shims outside allowed temporary set.
+
+Diagnostics and unsupported-surface gates:
+- Tests assert one-time warnings for unsupported text-mode-only exclusions.
+- No critical path returns raw `false` without diagnostic context.
+
+### 6.7 Deferrals and Exit Criteria
+
+Allowed temporary deferrals:
+- H4/M1 internals may follow H2/H3, but remain in this remediation stream (no open-ended “later”).
+- Editor-only APIs in 6.3D can remain unsupported for text mode if they return explicit typed failure.
+
+Not allowed to defer:
+- SaveData real linkage in headless.
+- Campaign mount/list behavior needed by picker flow.
+- Lifecycle unification (`headless_io_init` vs `io_init/io_exit`).
+- Protocol-mode compatibility coverage when default mode changes.
+
+### 6.8 Expected End State
+
+- `openglad_text` supports interactive text picker and playable loop by default.
+- Protocol mode remains available and tested explicitly.
+- Required headless platform APIs are functional; unsupported features are explicit and observable.
+- Duplicate headless construction paths and stale service abstractions are removed on a controlled schedule.
+- Build/test/docs enforce architectural boundaries and prevent reintroduction of silent stubs.
+
+### 6.9 Audit Notes (delta from previous Section 6)
+
+Changes made after audit:
+- Expanded stub matrix to include every current headless stub surface, including lifecycle APIs and SaveData overrides.
+- Corrected sequencing to avoid breaking builds/tests by integrating picker before foundational headless IO/save support.
+- Added missing concern: orphan `load_settings`/`save_settings` free-function API mismatch vs real `cfg_store` usage.
+- Added lifecycle convergence requirement (`headless_io_init` vs `io_init/io_exit/sync_filesystem`).
+- Added include/link-contract hardening for level-data dispatch signatures.
+- Added concurrency assumptions and one-time-warning requirements for unsupported paths.
+- Strengthened validation gates with explicit protocol-mode coverage, failure-path assertions, and unresolved-symbol checks.
+- Converted open-ended deferrals into bounded phase ordering with explicit non-deferrable items.
