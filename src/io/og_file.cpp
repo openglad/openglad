@@ -20,7 +20,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
-#include <sys/stat.h>
+#include <system_error>
 
 // Path helpers (defined in platform_io.cpp, linked via og_io or text client)
 std::string get_user_path();
@@ -275,10 +275,11 @@ void headless_io_init(const char* argv0)
 {
     // Create user directory tree
     std::string user_path = get_user_path();
-    mkdir(user_path.c_str(), 0770);
-    mkdir((user_path + "campaigns/").c_str(), 0770);
-    mkdir((user_path + "save/").c_str(), 0770);
-    mkdir((user_path + "cfg/").c_str(), 0770);
+    std::error_code mkdir_ec;
+    std::filesystem::create_directories(user_path, mkdir_ec);
+    std::filesystem::create_directories(user_path + "campaigns/", mkdir_ec);
+    std::filesystem::create_directories(user_path + "save/", mkdir_ec);
+    std::filesystem::create_directories(user_path + "cfg/", mkdir_ec);
 
     // Initialize PhysFS
     if (!PHYSFS_init(argv0)) {
