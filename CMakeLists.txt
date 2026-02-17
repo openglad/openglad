@@ -799,6 +799,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/text_client/main.cpp
         ${SRC_DIR}/text_client/platform_headless.cpp
         ${SRC_DIR}/text_client/walker_headless.cpp
+        ${SRC_DIR}/text_client/text_picker.cpp
         # core
         ${OG_CORE_SOURCES}
         # sim
