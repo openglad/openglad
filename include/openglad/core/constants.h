@@ -195,3 +195,6 @@ inline constexpr int GRID_SIZE = 16;
 
 // Generators are limited by this number
 inline constexpr int MAXOBS = 150;
+
+// Difficulty settings
+inline constexpr int DIFFICULTY_SETTINGS = 3;

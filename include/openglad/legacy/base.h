@@ -61,7 +61,7 @@ class radar;
 class soundob;
 class smoother;
 
-inline constexpr int DIFFICULTY_SETTINGS = 3;
+// DIFFICULTY_SETTINGS moved to core/constants.h
 
 Uint32 random(Uint32 x);
 

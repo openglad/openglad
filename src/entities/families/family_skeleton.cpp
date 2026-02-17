@@ -9,7 +9,9 @@
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 #include <openglad/core/stats.h>
 
 static bool skeleton_handle_teleport(walker* self)

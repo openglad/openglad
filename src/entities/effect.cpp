@@ -24,7 +24,9 @@
 
 //#include "graph.h"
 #include <openglad/entities/effect.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 #include <openglad/entities/obmap.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>

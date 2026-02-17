@@ -28,7 +28,9 @@
 #include <openglad/core/terrain_types.h>
 #include <openglad/legacy/soundob.h>
 #include <openglad/sim/sim_emit.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 #include <format>
 
 weap::weap(const PixieData& data)

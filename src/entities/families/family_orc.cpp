@@ -11,7 +11,9 @@
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
 #include <openglad/core/combat_math.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 #include <openglad/core/stats.h>
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>

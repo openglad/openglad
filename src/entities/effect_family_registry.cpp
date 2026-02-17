@@ -8,7 +8,9 @@
 #include <openglad/entities/effect_family_descriptor.h>
 #include <openglad/entities/effect_family_registry.h>
 #include <openglad/core/stats.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 
 static constexpr int NUM_EFFECT_FAMILIES = 13;
 

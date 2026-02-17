@@ -6,7 +6,9 @@
  * (at your option) any later version.
  */
 #include <openglad/entities/family_descriptor.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 
 #define BASE_GUY_HP 30
 

@@ -36,7 +36,9 @@
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_emit.h>
 #include <openglad/legacy/test_trace.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 #include <format>
 #include <span>
 
@@ -516,7 +518,7 @@ void walker::compute_outline(const walker* viewer_control)
 
 			if (outline != OUTLINE_NAMED)
 				if (invisibility_left)
-					outline = OUTLINE_INVISIBLE;
+					outline = query_team_color();
 		}
 		else if (outline == OUTLINE_FLYING)
 		{
@@ -527,7 +529,7 @@ void walker::compute_outline(const walker* viewer_control)
 			if (outline != OUTLINE_NAMED)
 			{
 				if (invisibility_left)
-					outline = OUTLINE_INVISIBLE;
+					outline = query_team_color();
 				else if (invulnerable_left)
 					outline = OUTLINE_INVULNERABLE;
 			}
@@ -535,13 +537,13 @@ void walker::compute_outline(const walker* viewer_control)
 		else if (outline == OUTLINE_NAMED)
 		{
 			if      (invisibility_left)
-				outline = OUTLINE_INVISIBLE;
+				outline = query_team_color();
 			else if (invulnerable_left)
 				outline = OUTLINE_INVULNERABLE;
 			else if (flight_left)
 				outline = OUTLINE_FLYING;
 		}
-		else if (outline == OUTLINE_INVISIBLE)
+		else if (outline == query_team_color())
 		{
 			if      (invulnerable_left)
 				outline = OUTLINE_INVULNERABLE;
@@ -554,7 +556,7 @@ void walker::compute_outline(const walker* viewer_control)
 		else
 		{
 			if      (invisibility_left)
-				outline = OUTLINE_INVISIBLE;
+				outline = query_team_color();
 			else if (flight_left)
 				outline = OUTLINE_FLYING;
 			else if (invulnerable_left)
@@ -570,7 +572,7 @@ void walker::compute_outline(const walker* viewer_control)
 	}
 
     if(outline == 0 && user != -1 && viewer_control && this != viewer_control && this->team_num == viewer_control->team_num)
-        outline = OUTLINE_INVISIBLE;
+        outline = query_team_color();
 }
 
 bool walker::act()

@@ -5,7 +5,9 @@
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
  */
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 #include <openglad/entities/generator_family_descriptor.h>
 #include <openglad/entities/generator_family_registry.h>
 

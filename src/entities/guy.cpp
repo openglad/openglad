@@ -19,7 +19,9 @@
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/gloader.h>
-#include <openglad/legacy/base.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/util.h>
+#include "SDL_stdinc.h"
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/family_registry.h>
 #include <cmath>
