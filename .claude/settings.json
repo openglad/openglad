@@ -7,11 +7,12 @@
       "Bash(source:*)",
       "Bash(mdfind:*)",
       "Bash(make:*)",
-      "Bash(./scripts/build_web.sh:*)",
       "Bash(python3 -m http.server:*)",
       "Bash(emcc:*)",
       "Bash(em++:*)",
       "Bash(premake4:*)",
+      "Bash(cmake:*)",
+      "Bash(ctest:*)",
       "Edit(**)"
     ]
   }
