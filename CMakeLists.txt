@@ -1242,3 +1242,17 @@ endif()
         SUFFIX ".html"
     )
 endif()
+
+# --------------------------------------------------------------------------
+# SDL-free text client (headless simulation interface)
+# --------------------------------------------------------------------------
+
+option(BUILD_TEXT_CLIENT "Build the SDL-free text client (openglad_text)" ON)
+
+if(BUILD_TEXT_CLIENT AND NOT EMSCRIPTEN)
+    add_executable(openglad_text ${SRC_DIR}/apps/openglad_text.cpp)
+    target_include_directories(openglad_text PRIVATE
+        $<BUILD_INTERFACE:${OG_PUBLIC_INCLUDE_DIR}>)
+    target_compile_definitions(openglad_text PRIVATE ${COMMON_DEFINITIONS})
+    target_link_libraries(openglad_text PRIVATE og_sim og_core project_warnings project_sanitizers)
+endif()

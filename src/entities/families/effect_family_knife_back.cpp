@@ -9,6 +9,7 @@
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
+#include "SDL_stdinc.h"
 
 static bool knife_back_on_act(effect* self)
 {

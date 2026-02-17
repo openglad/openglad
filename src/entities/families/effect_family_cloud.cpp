@@ -9,6 +9,7 @@
 #include <openglad/entities/effect.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
+#include "SDL_stdinc.h"
 
 short hits(short x,  short y,  short xsize,  short ysize,
            short x2, short y2, short xsize2, short ysize2);

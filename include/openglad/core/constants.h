@@ -198,3 +198,6 @@ inline constexpr int MAXOBS = 150;
 
 // Difficulty settings
 inline constexpr int DIFFICULTY_SETTINGS = 3;
+
+// Palette color indices (used by entity logic for outlines, notifications)
+inline constexpr unsigned char RED = 40;

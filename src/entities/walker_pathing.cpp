@@ -18,6 +18,7 @@
 #include <openglad/core/util.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
+#include "SDL_stdinc.h"
 #include "micropather.h"
 #include <cmath>
 

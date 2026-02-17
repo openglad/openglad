@@ -10,6 +10,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/level_data.h>
+#include "SDL_stdinc.h"
 
 static bool ghost_scare_on_act(effect* self)
 {

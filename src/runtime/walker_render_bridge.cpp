@@ -11,9 +11,11 @@
 // does not depend on the render module (pixien.h).
 
 #include <openglad/entities/walker.h>
+#include <openglad/entities/guy.h>
 #include <openglad/render/pixien.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/core/stats.h>
+#include <openglad/data/level_data.h>
 
 void walker::attach_render(const PixieData& data)
 {

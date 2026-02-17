@@ -112,7 +112,7 @@ inline constexpr unsigned char WHITE        = 24;
 inline constexpr unsigned char BLACK        = 160;
 inline constexpr unsigned char GREY         = 23;
 inline constexpr unsigned char YELLOW       = 88;
-inline constexpr unsigned char RED          = 40;
+// RED moved to core/constants.h
 inline constexpr unsigned char DARK_BLUE    = 72;
 inline constexpr unsigned char LIGHT_BLUE   = 120;
 inline constexpr unsigned char DARK_GREEN   = 63;

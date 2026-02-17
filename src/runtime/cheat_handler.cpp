@@ -12,6 +12,7 @@
 #include <openglad/runtime/cheat_handler.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/input/input.h>
+#include <openglad/input/input_state.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
