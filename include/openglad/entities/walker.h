@@ -31,9 +31,7 @@
 
 // Forward declarations
 class PixieData;
-#ifndef OPENGLAD_HEADLESS
-class pixieN;
-#endif
+class IWalkerRender;
 class guy;
 class statistics;
 
@@ -56,15 +54,10 @@ class walker : public og::sim::SimEntity
 		// Render component management
 		void attach_render(const PixieData& data);
 		void set_data(const PixieData& data);  // Update render graphics (for editor)
-#ifndef OPENGLAD_HEADLESS
 		bool has_render() const { return render_ != nullptr; }
 		const unsigned char* bmp_data() const;
-		pixieN* render_component() { return render_.get(); }
-		const pixieN* render_component() const { return render_.get(); }
-#else
-		bool has_render() const { return false; }
-		const unsigned char* bmp_data() const { return nullptr; }
-#endif
+		IWalkerRender* render_component() { return render_.get(); }
+		const IWalkerRender* render_component() const { return render_.get(); }
 
 		// Animation frame management (sim state in SimEntity::frame/frames;
 		// render bmp pointer updated via render component)
@@ -241,7 +234,5 @@ class walker : public og::sim::SimEntity
 		walker * myself_;
 		std::unique_ptr<statistics> stats_;
 		std::unique_ptr<guy> owned_myguy_;
-#ifndef OPENGLAD_HEADLESS
-		std::unique_ptr<pixieN> render_;  // Optional render component (null for headless)
-#endif
+		std::unique_ptr<IWalkerRender> render_;  // Optional render component (null for headless)
 };

@@ -25,15 +25,10 @@
 #include <openglad/entities/obmap.h>
 #include <openglad/core/util.h>
 
-#ifndef OPENGLAD_HEADLESS
 #include <openglad/io/yaml_stream.h>
-#include <openglad/platform/io.h>
-#include <openglad/render/pixie.h>
-#include <openglad/render/pixien.h>
-#include <openglad/runtime/screen.h>
+#include <openglad/io/ogfile_yaml.h>
 #include <openglad/runtime/game_context.h>
-#include <openglad/render/view.h>
-#endif
+#include <openglad/data/level_render.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -42,6 +37,12 @@
 
 
 int toInt(const std::string& s);
+
+// Link-time dispatch: defined in sdl_context_services.cpp (SDL) and platform_headless.cpp (text client)
+extern void clear_stale_view_controls(LevelData* level);
+extern void level_data_wire_entity_from_screen(walker* w);
+extern void level_data_draw_impl(LevelData* level, screen* screenp);
+extern std::unique_ptr<ILevelRender> create_level_render(PixieData pixdata[]);
 
 void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
@@ -94,7 +95,6 @@ static std::string ensure_pix_extension(std::string_view name)
 
 
 
-#ifndef OPENGLAD_HEADLESS
 CampaignData::CampaignData(const std::string& campaign_id)
     : id(campaign_id), title("New Campaign"), rating(0.0f), version("1.0"), suggested_power(0), first_level(1), num_levels(0)
 {
@@ -103,7 +103,6 @@ CampaignData::CampaignData(const std::string& campaign_id)
 
 CampaignData::~CampaignData()
 {
-	icon.reset();
 	icondata.free();
 }
 
@@ -117,18 +116,18 @@ bool CampaignData::load()
     // Load the campaign data from <user_data>/scen/<id>.glad
     if(mount_campaign_package(id))
     {
-        SDL_RWops* rwops = open_read_file("campaign.yaml");
-        if(rwops == nullptr)
+        auto file = og::io::og_open_read("campaign.yaml", true);
+        if(!file)
         {
             last_io_error_ = IoError::OpenReadFailed;
             unmount_campaign_package(id);
             mount_campaign_package(old_campaign);
             return false;
         }
-        
+
         og::io::YamlParser yaml;
-        yaml.set_input(rwops_read_handler, rwops);
-        
+        yaml.set_input(ogfile_read_handler, file.get());
+
         auto parse_result = og::io::YamlParseResult::Ok;
         while((parse_result = yaml.parse_next()) == og::io::YamlParseResult::Ok)
         {
@@ -160,22 +159,18 @@ bool CampaignData::load()
         }
         if(parse_result == og::io::YamlParseResult::Error)
             last_io_error_ = IoError::ParseFailed;
-        
+
         yaml.close_input();
-        SDL_RWclose(rwops);
-        
+
         // TODO: Get rating from website
         rating = 0.0f;
-        
-        std::string icon_file = "icon.pix";
-        icondata = read_pixie_file(icon_file.c_str());
-        if(icondata.valid())
-            icon = std::make_unique<pixie>(icondata);
-        
+
+        icondata = read_pixie_file("icon.pix");
+
         // Count the number of levels
         std::list<int> levels = list_levels();
         num_levels = static_cast<int>(levels.size());
-        
+
         unmount_campaign_package(id);
     }
     else
@@ -199,14 +194,13 @@ bool CampaignData::save()
         // Unmount campaign while it is changed
         //unmount_campaign_package(ascreen->current_campaign);
         
-        SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
-        if(outfile != nullptr)
+        auto outfile = og::io::og_open_write("temp/campaign.yaml");
+        if(outfile)
         {
             og::io::YamlEmitter yaml;
-            if (!yaml.set_output(rwops_write_handler, outfile))
+            if (!yaml.set_output(ogfile_write_handler, outfile.get()))
             {
                 LogError("Couldn't initialize YAML emitter for temp/campaign.yaml.\n");
-                SDL_RWclose(outfile);
                 last_io_error_ = IoError::OpenWriteFailed;
                 cleanup_unpacked_campaign();
                 return false;
@@ -221,25 +215,22 @@ bool CampaignData::save()
 
             buf = std::format("{}", suggested_power);
             yaml.emit_pair("suggested_power", buf.c_str());
-            
+
             yaml.emit_pair("authors", authors.c_str());
             yaml.emit_pair("contributors", contributors.c_str());
-            
+
             std::string desc;
-            for(std::list<std::string>::const_iterator e = description.begin(); e != description.end();)
+            for(auto e = description.begin(); e != description.end();)
             {
                 desc += *e;
-                
                 e++;
                 if(e != description.end())
                     desc += '\n';
             }
-            
+
             yaml.emit_pair("description", desc.c_str());
-            
+
             yaml.close_output();
-            SDL_RWclose(outfile);
-            
         }
         else
         {
@@ -247,7 +238,7 @@ bool CampaignData::save()
             result = false;
             last_io_error_ = IoError::OpenWriteFailed;
         }
-        
+
         if(result)
         {
             if(repack_campaign(id))
@@ -261,9 +252,6 @@ bool CampaignData::save()
                 last_io_error_ = IoError::PackageRepackFailed;
             }
         }
-
-        // Remount the new campaign package
-        //mount_campaign_package(ascreen->current_campaign);
     }
     else
     {
@@ -272,7 +260,7 @@ bool CampaignData::save()
         last_io_error_ = IoError::PackageUnpackFailed;
     }
     cleanup_unpacked_campaign();
-    
+
     if(result)
         last_io_error_ = IoError::None;
     return result;
@@ -282,20 +270,19 @@ bool CampaignData::save_as(const std::string& new_id)
 {
     last_io_error_ = IoError::None;
     cleanup_unpacked_campaign();
-    
+
     bool result = true;
     // Unpack the campaign
     if(unpack_campaign(id))
     {
         // Save the descriptor file
-        SDL_RWops* outfile = open_write_file("temp/campaign.yaml");
-        if(outfile != nullptr)
+        auto outfile = og::io::og_open_write("temp/campaign.yaml");
+        if(outfile)
         {
             og::io::YamlEmitter yaml;
-            if (!yaml.set_output(rwops_write_handler, outfile))
+            if (!yaml.set_output(ogfile_write_handler, outfile.get()))
             {
                 LogError("Couldn't initialize YAML emitter for temp/campaign.yaml.\n");
-                SDL_RWclose(outfile);
                 result = false;
                 last_io_error_ = IoError::OpenWriteFailed;
             }
@@ -311,26 +298,23 @@ bool CampaignData::save_as(const std::string& new_id)
 
                 buf = std::format("{}", suggested_power);
                 yaml.emit_pair("suggested_power", buf.c_str());
-            
+
                 yaml.emit_pair("authors", authors.c_str());
                 yaml.emit_pair("contributors", contributors.c_str());
-            
+
                 std::string desc;
-                for(std::list<std::string>::const_iterator e = description.begin(); e != description.end();)
+                for(auto e = description.begin(); e != description.end();)
                 {
                     desc += *e;
-                    
                     e++;
                     if(e != description.end())
                         desc += '\n';
                 }
-            
+
                 yaml.emit_pair("description", desc.c_str());
-            
+
                 yaml.close_output();
-                SDL_RWclose(outfile);
             }
-            
         }
         else
         {
@@ -406,47 +390,24 @@ std::string CampaignData::get_description_line(int i)
 
     return *e;
 }
-#endif // !OPENGLAD_HEADLESS
 
 
 
 
 
-#ifndef OPENGLAD_HEADLESS
 LevelData::LevelData(int level_id)
     : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
     , myloader(nullptr), numobs(0), topx(0), topy(0)
 {
 	myobmap = std::make_unique<obmap>();
-
     myloader = std::make_unique<loader>();
 
     // Load map data from a pixie format
     load_map_data(pixdata);
 
-    // Initialize a pixie for each background piece
-    for(int i = 0; i < PIX_MAX; i++)
-        back[i] = std::make_unique<pixieN>(pixdata[i], 0);
-
-    //buffers: after we set all the tiles to use acceleration, we go
-    //through the tiles that have pal cycling to turn of the accel.
-    back[PIX_WATER1]->set_accel(0);
-    back[PIX_WATER2]->set_accel(0);
-    back[PIX_WATER3]->set_accel(0);
-    back[PIX_WATERGRASS_LL]->set_accel(0);
-    back[PIX_WATERGRASS_LR]->set_accel(0);
-    back[PIX_WATERGRASS_UL]->set_accel(0);
-    back[PIX_WATERGRASS_UR]->set_accel(0);
-    back[PIX_WATERGRASS_U]->set_accel(0);
-    back[PIX_WATERGRASS_D]->set_accel(0);
-    back[PIX_WATERGRASS_L]->set_accel(0);
-    back[PIX_WATERGRASS_R]->set_accel(0);
-    back[PIX_GRASSWATER_LL]->set_accel(0);
-    back[PIX_GRASSWATER_LR]->set_accel(0);
-    back[PIX_GRASSWATER_UL]->set_accel(0);
-    back[PIX_GRASSWATER_UR]->set_accel(0);
+    // Initialize tile renderer (SDL creates pixieN tiles, headless returns nullptr)
+    renderer_ = create_level_render(pixdata);
 }
-#endif // !OPENGLAD_HEADLESS
 
 LevelData::LevelData(int level_id, bool headless)
     : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
@@ -456,33 +417,11 @@ LevelData::LevelData(int level_id, bool headless)
     myobmap = std::make_unique<obmap>();
     myloader = std::make_unique<loader>();
 
-#ifndef OPENGLAD_HEADLESS
     if (!headless)
     {
-        // Load map data from a pixie format
         load_map_data(pixdata);
-
-        // Initialize a pixie for each background piece
-        for(int i = 0; i < PIX_MAX; i++)
-            back[i] = std::make_unique<pixieN>(pixdata[i], 0);
-
-        back[PIX_WATER1]->set_accel(0);
-        back[PIX_WATER2]->set_accel(0);
-        back[PIX_WATER3]->set_accel(0);
-        back[PIX_WATERGRASS_LL]->set_accel(0);
-        back[PIX_WATERGRASS_LR]->set_accel(0);
-        back[PIX_WATERGRASS_UL]->set_accel(0);
-        back[PIX_WATERGRASS_UR]->set_accel(0);
-        back[PIX_WATERGRASS_U]->set_accel(0);
-        back[PIX_WATERGRASS_D]->set_accel(0);
-        back[PIX_WATERGRASS_L]->set_accel(0);
-        back[PIX_WATERGRASS_R]->set_accel(0);
-        back[PIX_GRASSWATER_LL]->set_accel(0);
-        back[PIX_GRASSWATER_LR]->set_accel(0);
-        back[PIX_GRASSWATER_UL]->set_accel(0);
-        back[PIX_GRASSWATER_UR]->set_accel(0);
+        renderer_ = create_level_render(pixdata);
     }
-#endif // !OPENGLAD_HEADLESS
 }
 
 LevelData::~LevelData()
@@ -493,13 +432,9 @@ LevelData::~LevelData()
 
     myobmap.reset();
 
+    renderer_.reset();
     for (int i = 0; i < PIX_MAX; i++)
-    {
         pixdata[i].free();
-#ifndef OPENGLAD_HEADLESS
-        back[i].reset();
-#endif
-    }
 }
 
 void LevelData::clear()
@@ -520,91 +455,58 @@ void LevelData::clear()
 
 walker* LevelData::add_ob(Order order, std::int32_t family, [[maybe_unused]] bool atstart)
 {
-#ifdef OPENGLAD_HEADLESS
-    return add_ob_headless(order, family);
-#else
 	if (headless_)
 		return add_ob_headless(order, family);
 	if (order == Order::Weapon)
 		return add_weap_ob(order, family);
 
-    auto w = myloader->create_walker_owned(order, family, myscreen);
+    auto w = myloader->create_walker_owned(order, family);
     if (!w)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
     w->sim_level = this;
-    if (myscreen) {
-        w->sim_save = &myscreen->save_data;
-        w->sim_enemy_freeze = &myscreen->enemy_freeze;
-    }
-    if (ctx().sim_events)
-        w->sim_events = ctx().sim_events.get();
-    w->sim_rng = ctx().rng;
-    w->sim_config = ctx().config;
+    level_data_wire_entity_from_screen(w.get());
     if (order == Order::Living)
         numobs++;
 
     walker* raw = w.get();
     oblist.push_back(std::move(w));
     return raw;
-#endif
 }
 
 walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 {
-#ifdef OPENGLAD_HEADLESS
-    return add_fx_ob_headless(order, family);
-#else
 	if (headless_)
 		return add_fx_ob_headless(order, family);
-	auto w = myloader->create_walker_owned(order, family, myscreen, false);
+	auto w = myloader->create_walker_owned(order, family);
     if (!w)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
     w->sim_level = this;
-    if (myscreen) {
-        w->sim_save = &myscreen->save_data;
-        w->sim_enemy_freeze = &myscreen->enemy_freeze;
-    }
-    if (ctx().sim_events)
-        w->sim_events = ctx().sim_events.get();
-    w->sim_rng = ctx().rng;
-    w->sim_config = ctx().config;
+    level_data_wire_entity_from_screen(w.get());
 
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
 	return raw;
-#endif
 }
 
 walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 {
-#ifdef OPENGLAD_HEADLESS
-    return add_weap_ob_headless(order, family);
-#else
 	if (headless_)
 		return add_weap_ob_headless(order, family);
-	auto w = myloader->create_walker_owned(order, family, myscreen);
+	auto w = myloader->create_walker_owned(order, family);
     if (!w)
         return nullptr;
 
     w->myobmap = this->myobmap.get();
     w->sim_level = this;
-    if (myscreen) {
-        w->sim_save = &myscreen->save_data;
-        w->sim_enemy_freeze = &myscreen->enemy_freeze;
-    }
-    if (ctx().sim_events)
-        w->sim_events = ctx().sim_events.get();
-    w->sim_rng = ctx().rng;
-    w->sim_config = ctx().config;
+    level_data_wire_entity_from_screen(w.get());
 
     walker* raw = w.get();
     weaplist.push_back(std::move(w));
 	return raw;
-#endif
 }
 
 void LevelData::wire_entity(walker* w)
@@ -818,16 +720,7 @@ void LevelData::delete_objects()
 
     // If this is the active screen level, clear any stale control pointers
     // that may reference walkers just deleted above.
-#ifndef OPENGLAD_HEADLESS
-    if (myscreen != nullptr && &myscreen->level_data == this)
-    {
-        for (auto& view : myscreen->viewob)
-        {
-            if (view)
-                view->control = nullptr;
-        }
-    }
-#endif // !OPENGLAD_HEADLESS
+    clear_stale_view_controls(this);
 
 	    // Clear the obmap references
 	    // Since the walker destructor removes itself from the obmap, this should be empty already.
@@ -1612,15 +1505,13 @@ short load_scenario_version(og::io::OgFile& infile, LevelData* data, short versi
 	return result;
 }
 
-#ifndef OPENGLAD_HEADLESS
 bool LevelData::load()
 {
-	TRACE("game", "LevelData::load id=%d", id);
+	TRACE("game", "LevelData::load id=%d headless=%d", id, headless_ ? 1 : 0);
     last_io_error_ = IoError::None;
 	char temptext[10] = {};
 	char versionnumber = 0;
 
-	// Build up the file name (scen#.fss)
 	std::string thefile = std::format("scen{}.fss", id);
 
 	auto infile = og::io::og_open_read("scen/", thefile.c_str());
@@ -1631,7 +1522,6 @@ bool LevelData::load()
         return false;
     }
 
-	// Are we a scenario file?
 	if (!rw_read_exact_or_log(*infile, temptext, 1, 3))
 	{
         last_io_error_ = IoError::ParseFailed;
@@ -1644,7 +1534,6 @@ bool LevelData::load()
 		return false;
 	}
 
-	// Check the version number
 	if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
 	{
         last_io_error_ = IoError::ParseFailed;
@@ -1659,13 +1548,8 @@ bool LevelData::load()
     }
     Log("Loading version {} scenario", static_cast<int>(versionnumber));
 
-    // Reset the loader (which holds graphics for the objects to use)
     myloader = std::make_unique<loader>();
-
-    // Do the rest of the loading
     clear();
-
-    // Set default par_value
     par_value = static_cast<short>(id);
 
     short tempvalue = load_scenario_version(*infile, this, versionnumber);
@@ -1675,115 +1559,29 @@ bool LevelData::load()
             last_io_error_ = IoError::ParseFailed;
         return false;
     }
-    
-    // Load background tiles
+
+    // Reload background tiles (only when rendering)
+    if (!headless_)
     {
-        // Delete old tiles
+        renderer_.reset();
         for (int i = 0; i < PIX_MAX; i++)
-        {
             pixdata[i].free();
-            back[i].reset();
-        }
 
-        // Load map data from a pixie format
         load_map_data(pixdata);
-
-        // Initialize a pixie for each background piece
-        for(int i = 0; i < PIX_MAX; i++)
-            back[i] = std::make_unique<pixieN>(pixdata[i], 0);
-
-        //buffers: after we set all the tiles to use acceleration, we go
-        //through the tiles that have pal cycling to turn of the accel.
-        back[PIX_WATER1]->set_accel(0);
-        back[PIX_WATER2]->set_accel(0);
-        back[PIX_WATER3]->set_accel(0);
-        back[PIX_WATERGRASS_LL]->set_accel(0);
-        back[PIX_WATERGRASS_LR]->set_accel(0);
-        back[PIX_WATERGRASS_UL]->set_accel(0);
-        back[PIX_WATERGRASS_UR]->set_accel(0);
-        back[PIX_WATERGRASS_U]->set_accel(0);
-        back[PIX_WATERGRASS_D]->set_accel(0);
-        back[PIX_WATERGRASS_L]->set_accel(0);
-        back[PIX_WATERGRASS_R]->set_accel(0);
-        back[PIX_GRASSWATER_LL]->set_accel(0);
-        back[PIX_GRASSWATER_LR]->set_accel(0);
-        back[PIX_GRASSWATER_UL]->set_accel(0);
-        back[PIX_GRASSWATER_UR]->set_accel(0);
+        renderer_ = create_level_render(pixdata);
     }
-    
+
 	TRACE("game", "LevelData::load complete");
     last_io_error_ = IoError::None;
 	return true;
 }
-#endif // !OPENGLAD_HEADLESS
 
 bool LevelData::load_headless()
 {
-	TRACE("game", "LevelData::load_headless id=%d", id);
-    last_io_error_ = IoError::None;
     headless_ = true;
-	char temptext[10] = {};
-	char versionnumber = 0;
-
-	std::string thefile = std::format("scen{}.fss", id);
-
-	auto infile = og::io::og_open_read("scen/", thefile.c_str());
-	if (!infile)
-    {
-        LogError("Cannot open level file for reading: {}\n", thefile);
-        last_io_error_ = IoError::OpenReadFailed;
-        return false;
-    }
-
-	if (!rw_read_exact_or_log(*infile, temptext, 1, 3))
-	{
-        last_io_error_ = IoError::ParseFailed;
-		return false;
-	}
-	if (std::string(temptext) != "FSS")
-	{
-		LogError("File {} is not a valid scenario!\n", thefile);
-        last_io_error_ = IoError::InvalidHeader;
-		return false;
-	}
-
-	if (!rw_read_exact_or_log(*infile, &versionnumber, 1, 1))
-	{
-        last_io_error_ = IoError::ParseFailed;
-		return false;
-	}
-    if(versionnumber < 2 || versionnumber > VERSION_NUM)
-    {
-        Log("Scenario {} is version-level {}, and cannot be read.\n",
-            id, static_cast<int>(versionnumber));
-        last_io_error_ = IoError::UnsupportedVersion;
-        return false;
-    }
-    Log("Loading version {} scenario (headless)", static_cast<int>(versionnumber));
-
-    // Reset the loader (which holds graphics/stats data for entities)
-    myloader = std::make_unique<loader>();
-
-    clear();
-    par_value = static_cast<short>(id);
-
-    // load_scenario_version calls add_ob/add_fx_ob which check headless_ flag
-    short tempvalue = load_scenario_version(*infile, this, versionnumber);
-    if(tempvalue == 0)
-    {
-        if(last_io_error_ == IoError::None)
-            last_io_error_ = IoError::ParseFailed;
-        return false;
-    }
-
-    // Skip background tile creation (no pixieN sprites needed for headless sim)
-
-	TRACE("game", "LevelData::load_headless complete");
-    last_io_error_ = IoError::None;
-	return true;
+    return load();
 }
 
-#ifndef OPENGLAD_HEADLESS
 bool save_grid_file(const char* gridname, const PixieData& grid)
 {
 	// File data in form:
@@ -1794,14 +1592,14 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 
 	char numframes, x, y;
 	std::string fullpath(gridname);
-	SDL_RWops  *outfile;
 
 	// Create the full pathname for the pixie file
 	fullpath += ".pix";
 
 	lowercase (fullpath);
 
-	if ( (outfile = open_write_file("temp/pix/", fullpath.c_str())) == nullptr )
+	auto outfile = og::io::og_open_write("temp/pix/", fullpath.c_str());
+	if (!outfile)
 	{
 		Log("Failed to save map file: temp/pix/{}\n", fullpath);
 		return false;
@@ -1810,13 +1608,12 @@ bool save_grid_file(const char* gridname, const PixieData& grid)
 	x = grid.w;
 	y = grid.h;
 	numframes = 1;
-	SDL_RWwrite(outfile, &numframes, 1, 1);
-	SDL_RWwrite(outfile, &x, 1, 1);
-	SDL_RWwrite(outfile, &y, 1, 1);
+	outfile->write(&numframes, 1, 1);
+	outfile->write(&x, 1, 1);
+	outfile->write(&y, 1, 1);
 
-	SDL_RWwrite(outfile, grid.data.get(), 1, (x*y));
+	outfile->write(grid.data.get(), 1, (x*y));
 
-	SDL_RWclose(outfile);        // Close the data file
 	return true;
 }
 
@@ -1829,15 +1626,14 @@ bool LevelData::save()
 	char tempteam, tempfacing, tempcommand;
 	short shortlevel;
 	char filler[20] = "MSTRMSTRMSTRMSTR"; // for RESERVED
-	SDL_RWops  *outfile;
 	char temptext[10] = "FSS";
 	char temp_grid[20] = {};
 	char temp_scen_type = 0;
 	short listsize = 0;
 	char temp_version = VERSION_NUM;
 	std::string temp_filename;
-	Uint8 numlines = 0;
-	Uint8 tempwidth = 0;
+	std::uint8_t numlines = 0;
+	std::uint8_t tempwidth = 0;
 	char oneline[80];
 	char tempname[12] = {};
 	char scentitle[30] = {};
@@ -1874,45 +1670,48 @@ bool LevelData::save()
 	//strcpy(temp_filename, scen_directory);
 	temp_filename = std::format("scen{}.fss", this->id);
 
-	if ( (outfile = open_write_file("temp/scen/", temp_filename.c_str())) == nullptr ) // open for write
+	auto outfile = og::io::og_open_write("temp/scen/", temp_filename.c_str());
+	if (!outfile)
 	{
 		Log("Could not open file for writing: temp/scen/{}\n", temp_filename);
         last_io_error_ = IoError::OpenWriteFailed;
 		return false;
 	}
 
+#define WRITE_FIELD(src, size, count) outfile->write((src), (size), (count))
+
 	// Write id header
-	SDL_RWwrite(outfile, temptext, 3, 1);
+	WRITE_FIELD(temptext, 3, 1);
 
 	// Write version number
-	SDL_RWwrite(outfile, &temp_version, 1, 1);
+	WRITE_FIELD(&temp_version, 1, 1);
 
 	// Write name of current grid...
 	fill_fixed_field(temp_grid, 8, this->grid_file, "grid_file");  // Do NOT include extension (max 8 chars)
-	SDL_RWwrite(outfile, temp_grid, 8, 1);
+	WRITE_FIELD(temp_grid, 8, 1);
 
 	// Write the scenario title, if it exists
 	fill_fixed_field(scentitle, 30, this->title, "title");
-	SDL_RWwrite(outfile, scentitle, 30, 1);
+	WRITE_FIELD(scentitle, 30, 1);
 
 	// Write the scenario type info
 	temp_scen_type = this->type;
-	SDL_RWwrite(outfile, &temp_scen_type, 1, 1);
+	WRITE_FIELD(&temp_scen_type, 1, 1);
 
 	// Write our par value (version 8+)
 	temp_par = this->par_value;
-	SDL_RWwrite(outfile, &temp_par, 2, 1);
+	WRITE_FIELD(&temp_par, 2, 1);
 
 	// Write the time limit (version 9+)
 	temp_time_limit = this->time_bonus_limit;
-	SDL_RWwrite(outfile, &temp_time_limit, 2, 1);
+	WRITE_FIELD(&temp_time_limit, 2, 1);
 
 	// Determine size of object list ...
 	{
 		const size_t listsize_st = oblist.size() + fxlist.size() + weaplist.size();
 		listsize = static_cast<short>(listsize_st);
 	}
-	SDL_RWwrite(outfile, &listsize, 2, 1);
+	WRITE_FIELD(&listsize, 2, 1);
 
 	// Okay, we've written header .. now dump the data ..
 	for(auto& uptr : oblist)
@@ -1921,7 +1720,6 @@ bool LevelData::save()
         if (w == nullptr)
         {
             Log("Unexpected nullptr object.\n");
-            SDL_RWclose(outfile);
             last_io_error_ = IoError::SerializeFailed;
             return false;  // Something wrong! Too few objects..
         }
@@ -1935,16 +1733,16 @@ bool LevelData::save()
         //templevel = w->stats()->level;
         shortlevel = static_cast<short>(w->stats()->level);
         snprintf(tempname, sizeof(tempname), "%s", w->stats()->name.c_str());
-        SDL_RWwrite(outfile, &temporder, 1, 1);
-        SDL_RWwrite(outfile, &tempfamily, 1, 1);
-        SDL_RWwrite(outfile, &currentx, 2, 1);
-        SDL_RWwrite(outfile, &currenty, 2, 1);
-        SDL_RWwrite(outfile, &tempteam, 1, 1);
-        SDL_RWwrite(outfile, &tempfacing, 1, 1);
-        SDL_RWwrite(outfile, &tempcommand, 1, 1);
-        SDL_RWwrite(outfile, &shortlevel, 2, 1);
-        SDL_RWwrite(outfile, tempname, 12, 1);
-        SDL_RWwrite(outfile, filler, 10, 1);
+        WRITE_FIELD( &temporder, 1, 1);
+        WRITE_FIELD( &tempfamily, 1, 1);
+        WRITE_FIELD( &currentx, 2, 1);
+        WRITE_FIELD( &currenty, 2, 1);
+        WRITE_FIELD( &tempteam, 1, 1);
+        WRITE_FIELD( &tempfacing, 1, 1);
+        WRITE_FIELD( &tempcommand, 1, 1);
+        WRITE_FIELD( &shortlevel, 2, 1);
+        WRITE_FIELD( tempname, 12, 1);
+        WRITE_FIELD( filler, 10, 1);
 	}
 
 	// Now dump the fxlist data ..
@@ -1954,7 +1752,6 @@ bool LevelData::save()
         if (ob == nullptr)
         {
             Log("Unexpected nullptr fx object.\n");
-            SDL_RWclose(outfile);
             last_io_error_ = IoError::SerializeFailed;
             return false;  // Something wrong! Too few objects..
         }
@@ -1968,16 +1765,16 @@ bool LevelData::save()
         //templevel = ob->stats()->level;
         shortlevel = static_cast<short>(ob->stats()->level);
         snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
-        SDL_RWwrite(outfile, &temporder, 1, 1);
-        SDL_RWwrite(outfile, &tempfamily, 1, 1);
-        SDL_RWwrite(outfile, &currentx, 2, 1);
-        SDL_RWwrite(outfile, &currenty, 2, 1);
-        SDL_RWwrite(outfile, &tempteam, 1, 1);
-        SDL_RWwrite(outfile, &tempfacing, 1, 1);
-        SDL_RWwrite(outfile, &tempcommand, 1, 1);
-        SDL_RWwrite(outfile, &shortlevel, 2, 1);
-        SDL_RWwrite(outfile, tempname, 12, 1);
-        SDL_RWwrite(outfile, filler, 10, 1);
+        WRITE_FIELD( &temporder, 1, 1);
+        WRITE_FIELD( &tempfamily, 1, 1);
+        WRITE_FIELD( &currentx, 2, 1);
+        WRITE_FIELD( &currenty, 2, 1);
+        WRITE_FIELD( &tempteam, 1, 1);
+        WRITE_FIELD( &tempfacing, 1, 1);
+        WRITE_FIELD( &tempcommand, 1, 1);
+        WRITE_FIELD( &shortlevel, 2, 1);
+        WRITE_FIELD( tempname, 12, 1);
+        WRITE_FIELD( filler, 10, 1);
 	}
 
 	// Now dump the weaplist data ..
@@ -1987,7 +1784,6 @@ bool LevelData::save()
         if (ob == nullptr)
         {
             Log("Unexpected nullptr weap object.\n");
-            SDL_RWclose(outfile);
             last_io_error_ = IoError::SerializeFailed;
             return false;  // Something wrong! Too few objects..
         }
@@ -2000,65 +1796,52 @@ bool LevelData::save()
         currenty  = ob->ypos;
         shortlevel = static_cast<short>(ob->stats()->level);
         snprintf(tempname, sizeof(tempname), "%s", ob->stats()->name.c_str());
-        SDL_RWwrite(outfile, &temporder, 1, 1);
-        SDL_RWwrite(outfile, &tempfamily, 1, 1);
-        SDL_RWwrite(outfile, &currentx, 2, 1);
-        SDL_RWwrite(outfile, &currenty, 2, 1);
-        SDL_RWwrite(outfile, &tempteam, 1, 1);
-        SDL_RWwrite(outfile, &tempfacing, 1, 1);
-        SDL_RWwrite(outfile, &tempcommand, 1, 1);
-        SDL_RWwrite(outfile, &shortlevel, 2, 1);
-        SDL_RWwrite(outfile, tempname, 12, 1);
-        SDL_RWwrite(outfile, filler, 10, 1);
+        WRITE_FIELD( &temporder, 1, 1);
+        WRITE_FIELD( &tempfamily, 1, 1);
+        WRITE_FIELD( &currentx, 2, 1);
+        WRITE_FIELD( &currenty, 2, 1);
+        WRITE_FIELD( &tempteam, 1, 1);
+        WRITE_FIELD( &tempfacing, 1, 1);
+        WRITE_FIELD( &tempcommand, 1, 1);
+        WRITE_FIELD( &shortlevel, 2, 1);
+        WRITE_FIELD( tempname, 12, 1);
+        WRITE_FIELD( filler, 10, 1);
 	}
 
 	numlines = static_cast<Uint8>(this->description.size());
 	//printf("saving %d lines\n", numlines);
 
-	SDL_RWwrite(outfile, &numlines, 1, 1);
+	WRITE_FIELD( &numlines, 1, 1);
 	for (auto& line : this->description)
 	{
 		snprintf(oneline, sizeof(oneline), "%s", line.c_str());
 		tempwidth = static_cast<Uint8>(line.size());
-		SDL_RWwrite(outfile, &tempwidth, 1, 1);
-		SDL_RWwrite(outfile, oneline, tempwidth, 1);
+		WRITE_FIELD( &tempwidth, 1, 1);
+		WRITE_FIELD( oneline, tempwidth, 1);
 	}
 
-	SDL_RWclose(outfile);
-	
 	// Save map (grid) file
 	save_grid_file(grid_file.c_str(), grid);
-	
-	
+
 	Log("Scenario saved.\n");
 
     last_io_error_ = IoError::None;
+#undef WRITE_FIELD
 	return true;
 }
-#endif // !OPENGLAD_HEADLESS
 
 LevelData::IoError LevelData::load_with_error()
 {
-#ifdef OPENGLAD_HEADLESS
-    load_headless();
-#else
-    if (headless_)
-        load_headless();
-    else
-        load();
-#endif
+    load();
     return last_io_error_;
 }
 
-#ifndef OPENGLAD_HEADLESS
 LevelData::IoError LevelData::save_with_error()
 {
     save();
     return last_io_error_;
 }
-#endif // !OPENGLAD_HEADLESS
 
-#ifndef OPENGLAD_HEADLESS
 void LevelData::set_draw_pos(std::int32_t new_topx, std::int32_t new_topy)
 {
     this->topx = new_topx;
@@ -2073,13 +1856,9 @@ void LevelData::add_draw_pos(std::int32_t dx, std::int32_t dy)
 
 void LevelData::draw(screen* screenp)
 {
-	short i;
-	for (i=0; i < screenp->numviews; i++)
-    {
-        screenp->viewob[i]->redraw(this, false);  // Don't draw the radar here
-    }
+    if (!screenp) return;
+    level_data_draw_impl(this, screenp);
 }
-#endif // !OPENGLAD_HEADLESS
 
 std::string LevelData::get_description_line(int i)
 {

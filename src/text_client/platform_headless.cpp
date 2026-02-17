@@ -7,6 +7,7 @@
 #include <openglad/core/constants.h>
 
 #include <algorithm>
+#include <memory>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -70,3 +71,28 @@ std::string get_asset_path()
     return s;
 #endif
 }
+
+// Link-time dispatch stubs for level_data.cpp (headless has no SDL render layer)
+class LevelData;
+class walker;
+class screen;
+class ILevelRender;
+class PixieData;
+
+void clear_stale_view_controls(LevelData*) {}
+void level_data_wire_entity_from_screen(walker*) {}
+void level_data_draw_impl(LevelData*, screen*) {}
+std::unique_ptr<ILevelRender> create_level_render(PixieData[]) { return nullptr; }
+
+// Stubs for treasure_family_navigation.cpp
+bool yes_or_no_prompt(const char*, const char*, bool) { return false; }
+void clear_keyboard() {}
+int get_input_events() { return 0; }
+
+// Stub for stats.cpp
+walker* find_follow_leader(walker*) { return nullptr; }
+
+// Stubs for base.h helpers that use OgFile
+namespace og { namespace io { class OgFile; } }
+short fill_help_array(const char*, og::io::OgFile&, short) { return 0; }
+void read_one_line(og::io::OgFile&, short, char*) {}

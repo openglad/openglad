@@ -202,6 +202,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/runtime/sim_input_handler.cpp
     ${SRC_DIR}/runtime/input_event_bridge.cpp
     ${SRC_DIR}/runtime/walker_render_bridge.cpp
+    ${SRC_DIR}/runtime/sdl_context_services.cpp
     ${SRC_DIR}/runtime/cheat_handler.cpp
 )
 
@@ -298,6 +299,7 @@ set(OG_RUNTIME_SOURCES
     ${SRC_DIR}/runtime/gloader.cpp
     ${SRC_DIR}/runtime/level_data.cpp
     ${SRC_DIR}/runtime/walker_render_bridge.cpp
+    ${SRC_DIR}/runtime/sdl_context_services.cpp
     ${SRC_DIR}/runtime/cheat_handler.cpp
     ${SRC_DIR}/runtime/save_data.cpp
 )
@@ -314,6 +316,7 @@ set(OG_RENDER_SOURCES
     ${SRC_DIR}/render/view.cpp
     ${SRC_DIR}/render/walker_draw.cpp
     ${SRC_DIR}/render/obmap_debug_draw.cpp
+    ${SRC_DIR}/render/sdl_level_render.cpp
 )
 
 set(OG_INPUT_SOURCES
@@ -789,12 +792,13 @@ if(NOT EMSCRIPTEN)
     endif()
 
     # --- openglad_text (headless text-based simulation client) ---
-    # Compiles game sources directly with -DOPENGLAD_HEADLESS to exclude
-    # all SDL-dependent code paths. Links only PhysFS/libzip/libyaml (no SDL2).
+    # Compiles shared game sources without SDL. Uses link-time dispatch
+    # (stubs in platform_headless.cpp) instead of preprocessor guards.
     set(HEADLESS_SOURCES
         # text client
         ${SRC_DIR}/text_client/main.cpp
         ${SRC_DIR}/text_client/platform_headless.cpp
+        ${SRC_DIR}/text_client/walker_headless.cpp
         # core
         ${OG_CORE_SOURCES}
         # sim
@@ -816,7 +820,6 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/runtime/sim_input_handler.cpp
         ${SRC_DIR}/runtime/gloader.cpp
         ${SRC_DIR}/runtime/level_data.cpp
-        ${SRC_DIR}/runtime/save_data.cpp
         ${SRC_DIR}/runtime/smooth.cpp
         ${SRC_DIR}/runtime/stats.cpp
     )
@@ -834,7 +837,6 @@ if(NOT EMSCRIPTEN)
         ${THIRD_PARTY_DIR}/libzip
     )
     target_compile_definitions(openglad_text PRIVATE
-        OPENGLAD_HEADLESS
         ${COMMON_DEFINITIONS}
     )
     target_link_libraries(openglad_text PRIVATE

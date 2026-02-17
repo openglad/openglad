@@ -1,9 +1,5 @@
 #pragma once
 
-#ifndef OPENGLAD_HEADLESS
-#include "SDL.h"
-#endif
-
 #include <list>
 #include <string>
 
@@ -25,11 +21,5 @@ bool physfs_exists(const std::string& path);
 
 // Enumerate files in a directory. Returned list is sorted.
 std::list<std::string> physfs_enumerate_files_sorted(const std::string& dirname);
-
-#ifndef OPENGLAD_HEADLESS
-// RWops bridges for PhysFS paths (require SDL).
-SDL_RWops* physfsrw_open_read(const char* path);
-SDL_RWops* physfsrw_open_write(const char* path);
-#endif
 
 } // namespace og::io

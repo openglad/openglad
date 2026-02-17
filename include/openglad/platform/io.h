@@ -17,15 +17,14 @@
 
 #pragma once
 
-#ifndef OPENGLAD_HEADLESS
+// SDL-specific platform I/O functions.
+// This header requires SDL and is only included by SDL-client code.
 #include "SDL.h"
-#endif
 #include <list>
 #include <vector>
 #include <string>
 #include <memory>
 
-#ifndef OPENGLAD_HEADLESS
 struct SDLRWopsCloser {
     void operator()(SDL_RWops* rwops) const
     {
@@ -39,7 +38,6 @@ void io_init(int argc, char* argv[]);
 void io_exit();
 void sync_filesystem();  // Sync to persistent storage (IDBFS on web)
 
-
 std::string get_user_path();
 bool create_dir(const std::string& dirname);
 
@@ -47,7 +45,6 @@ SDL_RWops* open_read_file(const char* file, bool debug = false);
 SDL_RWops* open_read_file(const char* path, const char* file);
 SDL_RWops* open_write_file(const char* file);
 SDL_RWops* open_write_file(const char* path, const char* file);
-#endif
 
 std::list<std::string> list_files(const std::string& dirname);
 
@@ -91,10 +88,8 @@ bool load_settings();
 void delete_level(int id);
 void delete_campaign(const std::string& id);
 
-#ifndef OPENGLAD_HEADLESS
 int rwops_read_handler(void *data, unsigned char *buffer, size_t size, size_t *size_read);
 int rwops_write_handler(void *data, unsigned char *buffer, size_t size);
-#endif
 
 [[nodiscard]] ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std::string& outfile);
 [[nodiscard]] ArchiveIoError unzip_into_with_error(const std::string& infile, const std::string& outdirectory);

@@ -14,7 +14,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  */
- 
+
 #pragma once
 
 #include <cstdint>
@@ -25,11 +25,8 @@
 // Forward-declare Order enum class (defined in base.h)
 enum class Order : unsigned char;
 
-#ifndef OPENGLAD_HEADLESS
 class screen;
-class pixie;
-class pixieN;
-#endif
+class ILevelRender;
 class loader;
 class walker;
 class statistics;
@@ -42,7 +39,7 @@ namespace og::sim { class SimEventLog; }
 #include <openglad/data/smooth.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/legacy/pixdefs.h>
-#ifndef OPENGLAD_HEADLESS
+
 class CampaignData
 {
 public:
@@ -70,7 +67,6 @@ public:
     int num_levels;
 
     PixieData icondata;
-    std::unique_ptr<pixie> icon;
 
     CampaignData(const std::string& campaign_id);
     ~CampaignData();
@@ -89,7 +85,6 @@ public:
 private:
     IoError last_io_error_ = IoError::None;
 };
-#endif // !OPENGLAD_HEADLESS
 
 
 
@@ -109,19 +104,19 @@ public:
 
     int id;
     std::string title;
-    
+
     static const char TYPE_CAN_EXIT_WHENEVER = 0x1;  // Can exit without defeating all enemies
     static const char TYPE_MUST_DESTROY_GENERATORS = 0x2;  // Must destroy generators to exit
     static const char TYPE_MUST_PROTECT_NAMED_NPCS = 0x4;  // Must protect named NPCs or else you lose
     char type;
-    
+
     std::string grid_file;
     short par_value;
     short time_bonus_limit;  // frames until you get no time bonus
     PixieData grid;
     std::int32_t pixmaxx, pixmaxy;
     short level_done = 0;  // Set by sim tick: 0=foes remain, 1=all foes dead+exit, 2=no foes
-    
+
     smoother mysmoother;
     std::unique_ptr<loader> myloader;
     int numobs;
@@ -130,28 +125,22 @@ public:
     std::list<std::unique_ptr<walker>> weaplist;  // weapons
     // Keep a list of dead guys so weapons can still have valid owners
     std::list<std::unique_ptr<walker>> dead_list;
-    
+
     std::unique_ptr<obmap> myobmap;
     std::list<std::string> description;
-    
+
     // Drawing details
     PixieData pixdata[PIX_MAX];
-#ifndef OPENGLAD_HEADLESS
-    std::unique_ptr<pixieN> back[PIX_MAX];
-#endif
+    std::unique_ptr<ILevelRender> renderer_;  // Tile rendering (null for headless)
     std::int32_t topx, topy;
-    
-#ifndef OPENGLAD_HEADLESS
+
     LevelData(int level_id);
-#endif
     LevelData(int level_id, bool headless);  // Headless constructor (no tile graphics)
     ~LevelData();
 
-#ifndef OPENGLAD_HEADLESS
     bool load();
     bool save();
     [[nodiscard]] IoError save_with_error();
-#endif
     [[nodiscard]] IoError load_with_error();
     bool load_headless();  // Load level without creating render components
     [[nodiscard]] IoError last_io_error() const { return last_io_error_; }
@@ -163,7 +152,7 @@ public:
     walker* add_fx_ob_headless(Order order, std::int32_t family);
     walker* add_weap_ob_headless(Order order, std::int32_t family);
     short remove_ob(walker  *ob);
-    
+
     // Collision/passability queries (moved from screen)
     bool query_passable(float x, float y, walker* ob);
     bool query_object_passable(float x, float y, walker* ob);
@@ -187,13 +176,11 @@ public:
     void delete_grid();
     void delete_objects();
     void clear();
-    
-#ifndef OPENGLAD_HEADLESS
+
     void set_draw_pos(std::int32_t new_topx, std::int32_t new_topy);
     void add_draw_pos(std::int32_t dx, std::int32_t dy);
     void draw(screen* myscreen);
-#endif
-    
+
     std::string get_description_line(int i);
     bool is_headless() const { return headless_; }
     void wire_entity(walker* w);  // Wire all stored sim context onto an entity.

@@ -17,9 +17,6 @@
 // Soundob.h file ..
 #pragma once
 
-#ifndef OPENGLAD_HEADLESS
-#include "SDL_mixer.h"
-#endif
 #include <string>
 
 inline constexpr int SOUND_BOW = 0;
@@ -40,30 +37,3 @@ inline constexpr int SOUND_MONEY = 14; // reg
 inline constexpr int SOUND_EAT = 15;   // reg
 
 inline constexpr int NUMSOUNDS = 16;   // For now, let's use ALL sounds, regardless
-
-//buffers: PORT: don't need this anymore: #include "detect.h"
-//buffers: PORT: don't need this anymore: #include "smix.h"
-
-#ifndef OPENGLAD_HEADLESS
-class soundob
-{
-	public:
-		soundob();
-		soundob(bool silent);
-		~soundob();
-		int init();
-		void shutdown();
-		void play_sound(short whichsound);
-		void set_sound_volume(int);
-		void load_sound(Mix_Chunk **audio, const char * file);
-		void free_sound(Mix_Chunk **sound);
-
-		unsigned char set_sound(bool silent);      // Toggle sound on/off
-		void load_sound(SDL_AudioSpec, char *);
-		std::string soundlist[NUMSOUNDS];            // Our list of sounds
-		Mix_Chunk *sound[NUMSOUNDS];		// AudioSpec for loading sounds
-		int baseio, irq, dma, dma16;                // Card-specific information
-		int volume;                       // Volume: 0 - 255
-		unsigned char silence;                      // 0 = on, 1 = silent
-};
-#endif

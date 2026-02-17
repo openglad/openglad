@@ -11,15 +11,33 @@
 // does not depend on the render module (pixien.h).
 
 #include <openglad/entities/walker.h>
+#include <openglad/entities/walker_render.h>
 #include <openglad/entities/guy.h>
 #include <openglad/render/pixien.h>
 #include <openglad/entities/obmap.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
 
+// Concrete IWalkerRender backed by a pixieN sprite.
+class PixieNWalkerRender final : public IWalkerRender {
+public:
+	explicit PixieNWalkerRender(const PixieData& data)
+		: pix_(std::make_unique<pixieN>(data)) {}
+
+	const unsigned char* bmp_data() const override { return pix_->bmp_data(); }
+	void set_frame(short framenum) override { pix_->set_frame(framenum); }
+	void set_data(const PixieData& data) override { pix_->set_data(data); }
+
+	pixieN* pixie() { return pix_.get(); }
+	const pixieN* pixie() const { return pix_.get(); }
+
+private:
+	std::unique_ptr<pixieN> pix_;
+};
+
 void walker::attach_render(const PixieData& data)
 {
-	render_ = std::make_unique<pixieN>(data);
+	render_ = std::make_unique<PixieNWalkerRender>(data);
 	// Sync size from PixieData into SimEntity fields
 	sizex = data.w;
 	sizey = data.h;

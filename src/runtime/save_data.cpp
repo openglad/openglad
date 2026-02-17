@@ -22,29 +22,14 @@
 
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
-#ifndef OPENGLAD_HEADLESS
+#include <openglad/io/og_file.h>
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/platform/io.h>
-#endif
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
 #include <string>
-
-#ifndef OPENGLAD_HEADLESS
-namespace {
-bool rw_read_exact(SDL_RWops* rwops, void* dst, size_t size, size_t count)
-{
-    return rwops && SDL_RWread(rwops, dst, size, count) == count;
-}
-
-bool rw_write_exact(SDL_RWops* rwops, const void* src, size_t size, size_t count)
-{
-    return rwops && SDL_RWwrite(rwops, src, size, count) == count;
-}
-} // namespace
-#endif // !OPENGLAD_HEADLESS
 
 
 #ifdef USE_TOUCH_INPUT
@@ -57,14 +42,14 @@ SaveData::SaveData()
 {
     completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
     current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
-    
+
     for (size_t i = 0; i < std::size(m_score); i++)
 	{
 		m_score[i] = 0;
 		m_totalcash[i] = 5000;
 		m_totalscore[i] = 0;
 	}
-	
+
 	team_size = 0;
 }
 
@@ -79,7 +64,7 @@ void SaveData::reset()
     current_levels.clear();
     completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
     current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
-	
+
 
 	score = totalcash = totalscore = 0;
     for (size_t i = 0; i < std::size(m_score); i++)
@@ -88,26 +73,24 @@ void SaveData::reset()
 		m_totalcash[i] = 5000;
 		m_totalscore[i] = 0;
 	}
-	
+
 	for(int i = 0; i < team_size; i++)
     {
         team_list[i].reset();
     }
 	team_size = 0;
-	
+
 	scen_num = 1;
 	my_team = 0;
     //numplayers = 1;
 	//allied_mode = 1;
 }
 
-#ifndef OPENGLAD_HEADLESS
 bool SaveData::load(const std::string& filename)
 {
     last_io_error_ = SaveDataIoError::None;
 	TRACE("load", "SaveData::load file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	SDL_RWops  *infile;
 
 	char temptext[10] = "GTL";
 	char savedgame[40];
@@ -115,8 +98,8 @@ bool SaveData::load(const std::string& filename)
 	snprintf(temp_campaign, sizeof(temp_campaign), "org.openglad.gladiator");
 	temp_campaign[40] = '\0';
 	std::uint8_t temp_version = 9;
-	Uint32 newcash;
-	Uint32 newscore = 0;
+	std::uint32_t newcash;
+	std::uint32_t newscore = 0;
 	//  short numguys;
 	std::int16_t listsize = 0;
 
@@ -131,10 +114,10 @@ bool SaveData::load(const std::string& filename)
 	std::int16_t temp_arm = 0;
 	std::int16_t temp_lev = 0;
 	std::uint8_t temp_numplayers = 0;
-	Uint32 temp_exp;
+	std::uint32_t temp_exp;
 	std::int16_t temp_kills = 0;
-	Sint32 temp_level_kills;
-	Sint32 temp_td, temp_th, temp_ts;
+	std::int32_t temp_level_kills;
+	std::int32_t temp_td, temp_th, temp_ts;
 	std::int16_t temp_teamnum = 0; // version 5+
 	std::int16_t temp_allied = 0;            // v.7+
 	std::int16_t temp_registered = 0;        // v.7+
@@ -184,11 +167,12 @@ bool SaveData::load(const std::string& filename)
 	//   2-bytes Number of level indices in list
 	//   List of n level indices
 	//     2-bytes Level index
-    
+
     Log("Loading save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
 
-	if ( (infile = open_read_file("save/", temp_filename.c_str())) == nullptr )
+	og::io::OgFilePtr infile = og::io::og_open_read("save/", temp_filename.c_str());
+	if (!infile)
 	{
 		LogError("Failed to open save file: {}\n", filename);
         last_io_error_ = SaveDataIoError::OpenReadFailed;
@@ -197,17 +181,16 @@ bool SaveData::load(const std::string& filename)
 
 #define READ_OR_FAIL(dst, size, count) \
     do { \
-        if(!rw_read_exact(infile, (dst), (size), (count))) { \
+        if(!og::io::og_read_exact(*infile, (dst), (size), (count))) { \
             LogError("Failed to read save file: {} ({} bytes x {})\n", filename, (int)(size), (int)(count)); \
-            SDL_RWclose(infile); \
             last_io_error_ = SaveDataIoError::ReadFailed; \
             return 0; \
         } \
     } while(0)
-    
+
     completed_levels.clear();
     current_levels.clear();
-    
+
 	for(int i = 0; i < team_size; i++)
     {
         team_list[i].reset();
@@ -218,7 +201,6 @@ bool SaveData::load(const std::string& filename)
 	READ_OR_FAIL(temptext, 3, 1);
 	if ( std::string(temptext) != "GTL")
 	{
-	    SDL_RWclose(infile);
 		LogError("Selected file is not a GTL file: {}\n", filename);
         last_io_error_ = SaveDataIoError::InvalidHeader;
 		return 0; //not a gtl file
@@ -240,7 +222,6 @@ bool SaveData::load(const std::string& filename)
 			READ_OR_FAIL(savedgame, 40, 1); // read and ignore the name
 		else
 		{
-            SDL_RWclose(infile);
 			LogError("Save file version not supported: {}\n", filename);
             last_io_error_ = SaveDataIoError::UnsupportedVersion;
 			return 0;
@@ -258,7 +239,7 @@ bool SaveData::load(const std::string& filename)
         else
             current_campaign = "org.openglad.gladiator";
 	}
-	
+
 	// Read scenario number
 	std::int16_t temp_scenario = 0;
 	READ_OR_FAIL(&temp_scenario, 2, 1);
@@ -320,7 +301,7 @@ bool SaveData::load(const std::string& filename)
             team_list[i] = std::move(temp_guy);
             team_size++;
         }
-        
+
 		// Get temp values to be read
 		temp_order = static_cast<unsigned char>(Order::Living); // may be changed later
 		// Read name of current guy...
@@ -399,10 +380,9 @@ bool SaveData::load(const std::string& filename)
     if (invalid_team_size)
     {
         last_io_error_ = SaveDataIoError::ReadFailed;
-        SDL_RWclose(infile);
         return false;
     }
-	
+
     // Make sure the default campaign is included
 	completed_levels.insert(std::make_pair("org.openglad.gladiator", std::set<int>()));
 	current_levels.insert(std::make_pair("org.openglad.gladiator", 1));
@@ -411,12 +391,12 @@ bool SaveData::load(const std::string& filename)
     {
         char levelstatus[MAX_LEVELS];
         std::fill_n(levelstatus, 500, '\0');
-        
+
         if (temp_version >= 5)
             READ_OR_FAIL(levelstatus, 500, 1);
         else
             READ_OR_FAIL(levelstatus, 200, 1);
-        
+
         // Guaranteed to be the default campaign if version < 8
         for(int i = 0; i < 500; i++)
         {
@@ -436,32 +416,31 @@ bool SaveData::load(const std::string& filename)
             // Get the campaign ID (40 chars)
             READ_OR_FAIL(campaign, 1, 40);
             campaign[40] = '\0';
-            
+
             short index = 1;
             // Get the current level for this campaign
             READ_OR_FAIL(&index, 2, 1);
             current_levels[campaign] = index;
-            
+
             // Get the number of cleared levels
             READ_OR_FAIL(&num_levels, 2, 1);
             for(int j = 0; j < num_levels; j++)
             {
                 // Get the level index
                 READ_OR_FAIL(&index, 2, 1);
-                
+
                 // Add it to our list
                 add_level_completed(campaign, index);
             }
         }
     }
-    
+
 	Log("Loading campaign: {}\n", current_campaign);
     int current_level = load_campaign(current_campaign, current_levels);
     if(current_level < 0)
     {
         LogError("Failed to load current campaign {} from save {} (error code {})\n",
             current_campaign, filename, current_level);
-        SDL_RWclose(infile);
         last_io_error_ = SaveDataIoError::CampaignLoadFailed;
         return 0;
     }
@@ -473,15 +452,13 @@ bool SaveData::load(const std::string& filename)
         //scen_num = current_level;
     }
 
-    SDL_RWclose(infile);
-
 	TRACE("load", "SaveData::load complete: scen=%d team_size=%d", scen_num, team_size);
     last_io_error_ = SaveDataIoError::None;
 #undef READ_OR_FAIL
 	return 1;
 }
 
-Sint32 calculate_level(Uint32 temp_exp);
+std::int32_t calculate_level(std::uint32_t temp_exp);
 
 void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 {
@@ -502,7 +479,7 @@ void SaveData::update_guys(std::list<std::unique_ptr<walker>>& oblist)
 		    // Take this one
 			team_list[team_size] = std::make_unique<guy>(*ob->myguy);
 			// Update his level from the experience
-			Uint32 exp = team_list[team_size]->exp;
+			std::uint32_t exp = team_list[team_size]->exp;
 			team_list[team_size]->upgrade_to_level(static_cast<short>(calculate_level(team_list[team_size]->exp)));
 			team_list[team_size]->exp = exp;
 			team_size++;
@@ -516,7 +493,6 @@ bool SaveData::save(const std::string& filename)
     last_io_error_ = SaveDataIoError::None;
 	TRACE("save", "SaveData::save file=%s", filename.c_str());
 	char filler[50] = "GTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTLGTL"; // for RESERVED
-	SDL_RWops  *outfile;
 	char savedgame[41];
 	std::fill_n(savedgame, 41, '\0');
 	char temp_campaign[41];
@@ -524,9 +500,9 @@ bool SaveData::save(const std::string& filename)
 
 	char temptext[10] = "GTL";
 	std::uint8_t temp_version = 9;
-	
-	Uint32 newcash = totalcash;
-	Uint32 newscore = totalscore;
+
+	std::uint32_t newcash = totalcash;
+	std::uint32_t newscore = totalscore;
 	//  short numguys;
 	std::int16_t listsize = 0;
 
@@ -540,10 +516,10 @@ bool SaveData::save(const std::string& filename)
 	std::int16_t temp_arm = 0;
 	std::int16_t temp_lev = 0;
 	std::uint8_t numplayers_to_save = this->numplayers;
-	Uint32 temp_exp;
+	std::uint32_t temp_exp;
 	std::int16_t temp_kills = 0;
-	Sint32 temp_level_kills;
-	Sint32 temp_td, temp_th, temp_ts;
+	std::int32_t temp_level_kills;
+	std::int32_t temp_td, temp_th, temp_ts;
 	std::int16_t temp_teamnum = 0;
 	std::int16_t temp_allied = 0;
 	std::int16_t temp_registered = 0;
@@ -599,7 +575,8 @@ bool SaveData::save(const std::string& filename)
 	Log("Saving save: {}\n", filename);
 	std::string temp_filename = std::format("{}.gtl", filename); // gladiator team list
 
-	if ( (outfile = open_write_file("save/", temp_filename.c_str())) == nullptr ) // open for write
+	og::io::OgFilePtr outfile = og::io::og_open_write("save/", temp_filename.c_str());
+	if (!outfile) // open for write
 	{
 		LogError("Failed to write team file: {}\n", filename);
         last_io_error_ = SaveDataIoError::OpenWriteFailed;
@@ -608,9 +585,8 @@ bool SaveData::save(const std::string& filename)
 
 #define WRITE_OR_FAIL(src, size, count) \
     do { \
-        if(!rw_write_exact(outfile, (src), (size), (count))) { \
+        if(!og::io::og_write_exact(*outfile, (src), (size), (count))) { \
             LogError("Failed to write save file: {} ({} bytes x {})\n", filename, (int)(size), (int)(count)); \
-            SDL_RWclose(outfile); \
             last_io_error_ = SaveDataIoError::WriteFailed; \
             return 0; \
         } \
@@ -629,7 +605,7 @@ bool SaveData::save(const std::string& filename)
 	// Write the name
 	snprintf(savedgame, sizeof(savedgame), "%s", save_name.c_str());
 	WRITE_OR_FAIL(savedgame, 40, 1);
-	
+
 	// Write current campaign
 	Log("Saving campaign status: {}\n", current_campaign);
 	snprintf(temp_campaign, sizeof(temp_campaign), "%s", current_campaign.c_str());
@@ -673,7 +649,7 @@ bool SaveData::save(const std::string& filename)
 	for(int team_idx = 0; team_idx < team_size; team_idx++)
 	{
 	    guy* temp_guy = team_list[team_idx].get();
-	    
+
         // Get temp values to be saved
         temp_order = static_cast<unsigned char>(Order::Living);
         temp_family= temp_guy->family;
@@ -720,7 +696,7 @@ bool SaveData::save(const std::string& filename)
 	}
 
 	// Write the completed levels
-	
+
 	// Make sure our current level is saved
 	std::map<std::string, int>::iterator cur = current_levels.find(current_campaign);
 	if(cur != current_levels.end())
@@ -731,7 +707,7 @@ bool SaveData::save(const std::string& filename)
     {
         current_levels.insert(std::make_pair(current_campaign, scen_num));
     }
-    
+
 	// Number of campaigns
 	short num_campaigns = static_cast<short>(completed_levels.size());
     WRITE_OR_FAIL(&num_campaigns, 2, 1);
@@ -742,13 +718,13 @@ bool SaveData::save(const std::string& filename)
         std::fill_n(campaign, 41, '\0');
         snprintf(campaign, sizeof(campaign), "%s", e->first.c_str());
         WRITE_OR_FAIL(campaign, 1, 40);
-        
+
 	        short index = 1;
 	        std::map<std::string, int>::const_iterator g = current_levels.find(e->first);
 	        if(g != current_levels.end())
 	            index = static_cast<short>(g->second);
 	        WRITE_OR_FAIL(&index, 2, 1);
-        
+
 	        // Number of levels
 	        short num_levels = static_cast<short>(e->second.size());
 	        WRITE_OR_FAIL(&num_levels, 2, 1);
@@ -760,7 +736,7 @@ bool SaveData::save(const std::string& filename)
 	        }
 	    }
 
-    SDL_RWclose(outfile);
+    // unique_ptr auto-closes outfile
 
     // Sync to persistent storage (IDBFS on web)
     sync_filesystem();
@@ -782,22 +758,6 @@ SaveDataIoError SaveData::save_with_error(const std::string& filename)
     save(filename);
     return last_io_error_;
 }
-#else // OPENGLAD_HEADLESS
-// Headless mode: save/load not supported (no SDL_RWops).
-// These paths should not be reached in normal headless simulation.
-bool SaveData::load(const std::string& filename)
-{
-    LogWarn("SaveData::load('{}') called in headless mode — not supported\n", filename);
-    return false;
-}
-
-bool SaveData::save(const std::string& filename)
-{
-    LogWarn("SaveData::save('{}') called in headless mode — not supported\n", filename);
-    return false;
-}
-#endif // !OPENGLAD_HEADLESS
-
 
 
 bool SaveData::is_level_completed(int level_index) const
@@ -806,7 +766,7 @@ bool SaveData::is_level_completed(int level_index) const
     // Campaign not found?  Then this level is not done.
     if(e == completed_levels.end())
         return false;
-    
+
     // If the level is listed, then it is completed.
     std::set<int>::const_iterator f = e->second.find(level_index);
     return (f != e->second.end());
@@ -818,18 +778,18 @@ int SaveData::get_num_levels_completed(const std::string& campaign) const
     // Campaign not found?
     if(e == completed_levels.end())
         return 0;
-    
+
     return static_cast<int>(e->second.size());
 }
 
 void SaveData::add_level_completed(const std::string& campaign, int level_index)
 {
     std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
-    
+
     // Campaign not found?  Add it in.
     if(e == completed_levels.end())
         e = completed_levels.insert(std::make_pair(campaign, std::set<int>())).first;
-    
+
     // Add the completed level
     e->second.insert(level_index);
 }
@@ -837,7 +797,7 @@ void SaveData::add_level_completed(const std::string& campaign, int level_index)
 void SaveData::reset_campaign(const std::string& campaign)
 {
     std::map<std::string, std::set<int> >::iterator e = completed_levels.find(campaign);
-    
+
     if(e != completed_levels.end())
         e->second.clear();
 }

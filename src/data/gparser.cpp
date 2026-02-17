@@ -28,10 +28,9 @@
 #include <format>
 #include <openglad/data/gparser.h>
 #include <openglad/core/util.h>
-#ifndef OPENGLAD_HEADLESS
-#include <openglad/platform/io.h>
+#include <openglad/io/og_file.h>
+#include <openglad/io/ogfile_yaml.h>
 #include <openglad/io/yaml_stream.h>
-#endif
 
 int toInt(const std::string& s);
 
@@ -52,7 +51,7 @@ std::string cfg_store::get_setting(const std::string& category, const std::strin
 		if(a2 != a1->second.end())
 			return a2->second;
 	}
-	
+
 	Log("cfg setting not found: {}/{}\n", category, setting);
 	return "";
 }
@@ -62,11 +61,11 @@ bool cfg_store::load_settings()
     // Load defaults
     apply_setting("", "version", "1");
     apply_setting("sound", "sound", "on");
-    
+
     apply_setting("graphics", "render", "normal");
     apply_setting("graphics", "fullscreen", "off");
     apply_setting("graphics", "overscan_percentage", "0");
-    
+
     apply_setting("effects", "gore", "on");
     apply_setting("effects", "mini_hp_bar", "on");
     apply_setting("effects", "hit_flash", "on");
@@ -75,18 +74,17 @@ bool cfg_store::load_settings()
     apply_setting("effects", "hit_anim", "on");
     apply_setting("effects", "damage_numbers", "off");
     apply_setting("effects", "heal_numbers", "on");
-    
+
     Log("Loading settings\n");
-#ifndef OPENGLAD_HEADLESS
-    RwopsPtr rwops(open_read_file("cfg/openglad.yaml", true));
-    if(rwops == nullptr)
+    auto file = og::io::og_open_read("cfg/openglad.yaml", true);
+    if(!file)
 	{
 		Log("Could not open config file. Using defaults.");
 		return false;
 	}
 
     og::io::YamlParser yaml;
-    yaml.set_input(rwops_read_handler, rwops.get());
+    yaml.set_input(ogfile_read_handler, file.get());
 
     std::string last_scalar;
     std::string current_category;
@@ -123,24 +121,20 @@ bool cfg_store::load_settings()
         LogError("Parsing error in config file.\n");
 
     yaml.close_input();
-#else
-    Log("Headless mode: using default settings.\n");
-#endif
 
 	return true;
 }
 
 
-#ifndef OPENGLAD_HEADLESS
 bool cfg_store::save_settings()
 {
-    RwopsPtr outfile(open_write_file("cfg/openglad.yaml"));
+    auto outfile = og::io::og_open_write("cfg/openglad.yaml");
     if(outfile != nullptr)
     {
         Log("Saving settings\n");
 
         og::io::YamlEmitter yaml;
-        if (!yaml.set_output(rwops_write_handler, outfile.get()))
+        if (!yaml.set_output(ogfile_write_handler, outfile.get()))
         {
             LogError("Couldn't initialize YAML emitter for cfg/openglad.yaml.\n");
             return false;
@@ -168,9 +162,6 @@ bool cfg_store::save_settings()
 
         yaml.close_output();
 
-        // Sync to persistent storage (IDBFS on web)
-        sync_filesystem();
-
         return true;
     }
     else
@@ -179,11 +170,10 @@ bool cfg_store::save_settings()
         return false;
     }
 }
-#endif
 
 void cfg_store::commandline(int &argc, char **&argv)
 {
-	const char helpmsg[] = 
+	const char helpmsg[] =
 "Usage: openglad [-d -f ...]\n"
 "  -s		Turn sound on\n"
 "  -S		Turn sound off\n"

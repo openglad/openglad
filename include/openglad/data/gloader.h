@@ -26,10 +26,7 @@
 #include <vector>
 
 class walker;
-#ifndef OPENGLAD_HEADLESS
 class screen;
-class pixieN;
-#endif
 
 class loader
 {
@@ -40,10 +37,7 @@ class loader
 		loader& operator=(const loader&) = delete;
 		loader(loader&&) = delete;
 		loader& operator=(loader&&) = delete;
-#ifndef OPENGLAD_HEADLESS
-		[[nodiscard]] std::unique_ptr<walker> create_walker_owned(Order order, std::int32_t family, screen* screenp, [[maybe_unused]] bool cache_weapons = true);
-		[[nodiscard]] std::unique_ptr<pixieN> create_pixieN_owned(Order order, std::int32_t family);
-#endif
+		[[nodiscard]] std::unique_ptr<walker> create_walker_owned(Order order, std::int32_t family, screen* screenp = nullptr, bool cache_weapons = true);
 		[[nodiscard]] std::unique_ptr<walker> create_walker_headless(Order order, std::int32_t family);
 		void set_derived_stats(walker* w, Order order, std::int32_t family);
 		walker *set_walker(walker *ob, Order order, std::int32_t family);

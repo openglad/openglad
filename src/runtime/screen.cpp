@@ -47,6 +47,22 @@
 #include <cstring>
 #include <format>
 
+// Used by statistics::do_command() COMMAND_FOLLOW to find a leader walker.
+// The function is declared in stats.cpp; defined here in the SDL build.
+walker* find_follow_leader()
+{
+    if (myscreen == nullptr)
+        return nullptr;
+    if (myscreen->numviews == 1)
+        return myscreen->viewob[0]->control;
+    // Multi-view: pick whichever view's controller has yo_delay set
+    if (myscreen->viewob[0]->control && myscreen->viewob[0]->control->yo_delay)
+        return myscreen->viewob[0]->control;
+    if (myscreen->viewob[1]->control && myscreen->viewob[1]->control->yo_delay)
+        return myscreen->viewob[1]->control;
+    return nullptr;
+}
+
 namespace
 {
 const char* scenario_title_error_string(screen::ScenarioTitleError err)

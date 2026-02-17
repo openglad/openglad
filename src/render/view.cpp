@@ -34,6 +34,7 @@
 #include <openglad/render/pixien.h>
 #include <openglad/render/radar.h>
 #include <openglad/render/view.h>
+#include <openglad/data/level_render.h>
 #include <openglad/render/walker_draw.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
@@ -239,7 +240,8 @@ bool viewscreen::redraw()
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
-	auto& backp = active_screen()->level_data.back;
+	auto* renderer = active_screen()->level_data.renderer_.get();
+	if (!renderer) return false;
 	PixieData& gridp = active_screen()->level_data.grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
@@ -274,14 +276,14 @@ bool viewscreen::redraw()
 			if (i<0 || j<0 || i>=maxx || j>=maxy)
 			{
 				if (j == -1 && i>-1 && i<maxx)  // show side of wall
-					backp[PIX_WALLSIDE1]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+					renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this);
 				else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
-					backp[PIX_H_WALL1]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+					renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this);
 				else                                                                  // show only top of wall
-					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+					renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this);
 			}
 			else if(gridp.valid())
-				backp[static_cast<int>(gridp.data[i + maxx * j])]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+				renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this);
 		}
 
 	draw_obs(); //moved here to put the radar on top of obs
@@ -298,7 +300,8 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 	Sint32 xneg = 0;
 	Sint32 yneg = 0;
 	walker  *controlob = control;
-	auto& backp = data->back;
+	auto* renderer = data->renderer_.get();
+	if (!renderer) return false;
 	PixieData& gridp = data->grid;
 	unsigned short maxx = gridp.w;
 	unsigned short maxy = gridp.h;
@@ -333,14 +336,14 @@ bool viewscreen::redraw(LevelData* data, bool draw_radar)
 			if (i<0 || j<0 || i>=maxx || j>=maxy)
 			{
 				if (j == -1 && i>-1 && i<maxx)  // show side of wall
-					backp[PIX_WALLSIDE1]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+					renderer->draw_tile(PIX_WALLSIDE1, i*GRID_SIZE, j*GRID_SIZE, this);
 				else if (j == -2 && i>-1 && i<maxx)  // show top side of wall
-					backp[PIX_H_WALL1]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+					renderer->draw_tile(PIX_H_WALL1, i*GRID_SIZE, j*GRID_SIZE, this);
 				else                                                                  // show only top of wall
-					backp[PIX_WALLTOP_H]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+					renderer->draw_tile(PIX_WALLTOP_H, i*GRID_SIZE, j*GRID_SIZE, this);
 			}
 			else if(gridp.valid())
-				backp[static_cast<int>(gridp.data[i + maxx * j])]->draw(i*GRID_SIZE,j*GRID_SIZE, this);
+				renderer->draw_tile(static_cast<int>(gridp.data[i + maxx * j]), i*GRID_SIZE, j*GRID_SIZE, this);
 		}
 
 	draw_obs(data); //moved here to put the radar on top of obs

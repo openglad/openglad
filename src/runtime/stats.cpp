@@ -26,10 +26,9 @@
 #include <openglad/entities/guy.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_data.h>
-#ifndef OPENGLAD_HEADLESS
-#include <openglad/runtime/screen.h>
-#include <openglad/render/view.h>
-#endif
+// find_follow_leader is defined in the SDL build (screen.cpp) and stubbed
+// by the text client. Returns a walker to follow, or nullptr if none.
+walker* find_follow_leader();
 #include <cmath>
 #include <openglad/runtime/game_context.h>
 #include <openglad/sim/sim_event_log.h>
@@ -231,9 +230,7 @@ short statistics::do_command()
 	if (!controller) // allow dead controllers for now
 	{
 		Log("STATS:DO_COM: No controller!\n");
-#ifndef OPENGLAD_HEADLESS
-		wait_for_key(KEYSTATE_z);
-#endif
+		// wait_for_key only available in SDL builds; skip in headless
 		return 0;
 	}
 
@@ -282,29 +279,13 @@ short statistics::do_command()
 			}
 			if (!controller->leader)
 			{
-#ifndef OPENGLAD_HEADLESS
-				if (myscreen->numviews == 1)
-					controller->leader = myscreen->viewob[0]->control;
-				else
+				controller->leader = find_follow_leader();
+				if (!controller->leader)
 				{
-					if (myscreen->viewob[0]->control->yo_delay)
-						controller->leader = myscreen->viewob[0]->control;
-					else if (myscreen->viewob[1]->control->yo_delay)
-						controller->leader = myscreen->viewob[1]->control;
-					else
-					{
-						commands.front().commandcount = 0;
-						controller->leader = nullptr;
-						result = 0;
-						break;
-					}
+					commands.front().commandcount = 0;
+					result = 0;
+					break;
 				}
-#else
-				commands.front().commandcount = 0;
-				controller->leader = nullptr;
-				result = 0;
-				break;
-#endif
 			}
 			
 			// Do we have a leader now?

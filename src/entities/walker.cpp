@@ -40,9 +40,7 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 #include <openglad/legacy/soundob.h>
-#ifndef OPENGLAD_HEADLESS
-#include <openglad/render/pixien.h>
-#endif
+// pixieN include not needed here; render bridge is in walker_render_bridge.cpp
 #include <format>
 #include <span>
 
@@ -1628,57 +1626,5 @@ std::int32_t walker::is_friendly_to_team(unsigned char team) const
 	return (has_myguy == 1 && team == 0);
 }
 
-#ifdef OPENGLAD_HEADLESS
-// Headless implementations of render bridge functions.
-// Normally these live in walker_render_bridge.cpp (which requires pixieN / SDL).
-// In headless mode we just track the sim-relevant fields (size, frame count).
-
-#include <openglad/entities/obmap.h>
-
-void walker::attach_render(const PixieData& data)
-{
-	sizex = data.w;
-	sizey = data.h;
-	frames = data.frames;
-	frame = 0;
-}
-
-void walker::set_data(const PixieData& data)
-{
-	sizex = data.w;
-	sizey = data.h;
-	frames = data.frames;
-}
-
-short walker::set_frame(short framenum)
-{
-	if (framenum < 0 || framenum >= frames)
-		return 0;
-	frame = framenum;
-	return 1;
-}
-
-void walker::set_direct_frame(short whichframe)
-{
-	frame = whichframe;
-}
-
-walker::~walker()
-{
-	foe = nullptr;
-	leader = nullptr;
-	owner = nullptr;
-	collide_ob = nullptr;
-	dead = 1;
-
-	obmap* active = (sim_level != nullptr) ? sim_level->myobmap.get() : nullptr;
-	if (active != nullptr)
-		active->remove(this);
-	if (myobmap != nullptr && myobmap != active)
-		myobmap->remove(this);
-
-	stats_.reset();
-	clear_myguy();
-	myself_ = nullptr;
-}
-#endif // OPENGLAD_HEADLESS
+// attach_render, set_data, bmp_data, set_frame, set_direct_frame, ~walker
+// are all in src/runtime/walker_render_bridge.cpp.

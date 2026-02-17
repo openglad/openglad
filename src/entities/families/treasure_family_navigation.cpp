@@ -12,22 +12,16 @@
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/entities/obmap.h>
-#ifndef OPENGLAD_HEADLESS
-#include <openglad/input/input.h>
-#endif
 #include <openglad/sim/sim_emit.h>
 #include <format>
 #include <string>
 
 std::string get_scenario_title(const char* filename);
 
-#ifndef OPENGLAD_HEADLESS
+// These are defined in the input module (SDL build) or stubbed by the text client.
 void get_input_events(bool);
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value);
-#else
-static inline bool yes_or_no_prompt(const char*, const char*, bool default_value) { return default_value; }
-static inline void clear_keyboard() {}
-#endif
+void clear_keyboard();
 
 static bool exit_on_eat(treasure* self, walker* eater)
 {
