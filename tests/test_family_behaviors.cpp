@@ -344,7 +344,7 @@ REGISTER_TEST(test_on_death_fire_elemental_explodes);
 void test_on_death_slime_shrinks()
 {
     auto w = myscreen->level_data.myloader->create_walker_owned(
-        Order::Living, FAMILY_SLIME, myscreen);
+        Order::Living, FAMILY_SLIME);
     TEST_ASSERT(w != nullptr, "should create slime");
     w->setxy(100, 100);
     w->dead = 1;
@@ -357,7 +357,7 @@ REGISTER_TEST(test_on_death_slime_shrinks);
 void test_on_death_medium_slime_shrinks()
 {
     auto w = myscreen->level_data.myloader->create_walker_owned(
-        Order::Living, FAMILY_MEDIUM_SLIME, myscreen);
+        Order::Living, FAMILY_MEDIUM_SLIME);
     TEST_ASSERT(w != nullptr, "should create medium slime");
     w->setxy(100, 100);
     w->dead = 1;

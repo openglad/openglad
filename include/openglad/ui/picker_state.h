@@ -53,6 +53,12 @@ struct PickerTransition
     bool redraw = false;   // Hint to re-render current screen
 };
 
+enum class TeamBuildAction : std::int32_t
+{
+    BackToMainMenu,
+    PlayGame,
+};
+
 // Abstract interface that a picker client implements.
 // The platform (SDL/text) provides concrete implementations.
 class IPickerClient
@@ -63,8 +69,12 @@ public:
     // Display the main menu and block until the user makes a choice.
     virtual MainMenuAction show_main_menu() = 0;
 
-    // Display team building menu. Returns when user exits back to main menu.
-    virtual void show_team_build() = 0;
+    // Prepare local save/team state for starting a new game.
+    // Return false to cancel and go back to the main menu.
+    virtual bool prepare_new_game() { return true; }
+
+    // Display team building menu.
+    virtual TeamBuildAction show_team_build() = 0;
 
     // Display campaign selection. Returns selected campaign ID or empty on cancel.
     virtual std::string show_campaign_select() = 0;
@@ -84,88 +94,15 @@ public:
     // Save the current game. Returns true if save succeeded.
     virtual bool save_game() = 0;
 
+    // Decide where the state machine should return after a game run.
+    virtual PickerScreen screen_after_game() const { return PickerScreen::MainMenu; }
+
 protected:
     IPickerClient() = default;
 };
 
 // Run the picker state machine with the given client implementation.
 // This is the platform-agnostic main loop.
-inline void run_picker(IPickerClient& client)
-{
-    PickerScreen screen = PickerScreen::MainMenu;
-
-    while (screen != PickerScreen::Quit) {
-        PickerTransition transition{screen, false};
-        switch (screen) {
-        case PickerScreen::MainMenu: {
-            MainMenuAction action = client.show_main_menu();
-            switch (action) {
-            case MainMenuAction::ContinueGame:
-                client.run_game();
-                transition.next_screen = PickerScreen::MainMenu;
-                break;
-            case MainMenuAction::NewGame:
-                transition.next_screen = PickerScreen::CampaignSelect;
-                break;
-            case MainMenuAction::LoadGame:
-                if (client.load_game())
-                    transition.next_screen = PickerScreen::MainMenu; // Redraw with loaded data
-                else
-                    transition.next_screen = PickerScreen::MainMenu;
-                break;
-            case MainMenuAction::SaveGame:
-                client.save_game();
-                transition.next_screen = PickerScreen::MainMenu;
-                break;
-            case MainMenuAction::ViewTeam:
-            case MainMenuAction::HireTeam:
-            case MainMenuAction::TrainTeam:
-                client.show_team_build();
-                transition.next_screen = PickerScreen::MainMenu;
-                break;
-            case MainMenuAction::Options:
-                client.show_options();
-                transition.next_screen = PickerScreen::MainMenu;
-                break;
-            case MainMenuAction::Help:
-                client.show_help();
-                transition.next_screen = PickerScreen::MainMenu;
-                break;
-            case MainMenuAction::Multiplayer:
-                transition.next_screen = PickerScreen::MainMenu; // Handled in show_main_menu
-                break;
-            case MainMenuAction::Quit:
-                transition.next_screen = PickerScreen::Quit;
-                break;
-            }
-            break;
-        }
-        case PickerScreen::TeamBuild:
-            client.show_team_build();
-            transition.next_screen = PickerScreen::MainMenu;
-            break;
-        case PickerScreen::CampaignSelect:
-            client.show_campaign_select();
-            transition.next_screen = PickerScreen::TeamBuild;
-            break;
-        case PickerScreen::Options:
-            client.show_options();
-            transition.next_screen = PickerScreen::MainMenu;
-            break;
-        case PickerScreen::Help:
-            client.show_help();
-            transition.next_screen = PickerScreen::MainMenu;
-            break;
-        case PickerScreen::Playing:
-            client.run_game();
-            transition.next_screen = PickerScreen::MainMenu;
-            break;
-        default:
-            transition.next_screen = PickerScreen::Quit;
-            break;
-        }
-        screen = transition.next_screen;
-    }
-}
+void run_picker(IPickerClient& client);
 
 } // namespace og::ui
