@@ -142,8 +142,8 @@ All game objects (players, enemies, projectiles, items, effects) derive from `wa
 
 **Class hierarchy:**
 ```
-pixieN (animated sprite)
-└── walker (base entity)
+SimEntity (SDL-free base: position, size, identity, state, animation frames)
+└── walker (base entity, optional WalkerRender component for graphics)
     ├── living (AI entities with health, behavior, specials)
     ├── weap (projectiles and weapons)
     ├── treasure (collectible items)
@@ -151,6 +151,8 @@ pixieN (animated sprite)
 
 guy — persistent player character data (not a walker; bound via walker::myguy)
 obmap — spatial hash for collision queries
+WalkerRender — concrete render component wrapping pixieN (SDL only; nullptr in headless)
+LevelRender — concrete tile renderer wrapping PIX_MAX pixieN sprites (SDL only; nullptr in headless)
 ```
 
 ### og_io — Filesystem Abstraction
@@ -183,7 +185,7 @@ Owns the game session lifecycle, wires services together, manages the game loop 
 **Key types:**
 
 - **`GameSession`** — RAII root for all runtime state. Owns the `screen`, `options`, and RNG. Installs legacy global shims (`myscreen`, `theprefs`). Production `main()` constructs one; tests construct one per test.
-- **`GameContext`** — Dependency injection container. Holds references to screen, prefs, config, RNG, input state, and service interfaces (`IConfigContextService`, `IRenderContextService`, `IInputContextService`). Accessed globally via `ctx()`.
+- **`GameContext`** — Dependency injection container. Holds direct references to screen, prefs, config, RNG, and input state. Accessed globally via `ctx()`.
 - **`screen`** — The game world container. Extends `video` (graphics layer). Contains `level_data`, `save_data`, and up to 4 `viewscreen` objects for split-screen. The `act()` method delegates to `SimWorld::tick()` for game logic; `redraw()` handles rendering and event dispatch.
 
 ### og_render — Graphics and Display
@@ -328,7 +330,7 @@ Both checks run as custom CMake targets (`check_graph_h_includes`, `check_vendor
 
 ### Entity System
 
-**`walker`** is the base class for all game entities. It extends `pixieN` (animated sprite) and provides position, movement, combat, AI, and lifecycle management.
+**`walker`** is the base class for all game entities. It extends `SimEntity` (SDL-free base providing position, size, identity, state, and animation frames) and holds an optional `WalkerRender` component for graphics. It provides movement, combat, AI, and lifecycle management.
 
 ```
 walker
@@ -580,6 +582,27 @@ ctest --preset ci-test         # Run tests
 - **Warnings:** `-Wall -Wextra -Wpedantic -Wconversion -Wshadow` (project code only)
 - **Vendored code:** Compiled with `-w` (all warnings suppressed)
 - **Sanitizers:** Optional ASan + UBSan via `ENABLE_SANITIZERS`
+
+### SDL and Headless Build Targets
+
+The project builds two executables from shared source with platform-specific implementations:
+
+- **`openglad`** (SDL client) — Full graphical game with rendering, audio, and input via SDL2. Platform-specific code lives in `src/sdl_client/`.
+- **`openglad_text`** (headless client) — SDL-free text-mode client for simulation, testing, and scripting. Platform-specific code lives in `src/text_client/`.
+
+Both targets link the same core modules (`og_core`, `og_sim`, `og_data`, `og_entities`, `og_io`). The boundary is enforced via link-time dispatch: shared code calls functions declared in `level_data_hooks.h` (e.g., `create_level_render`, `level_data_wire_entity_from_screen`), which have separate implementations in `sdl_context_services.cpp` (SDL) and `platform_headless.cpp` (headless).
+
+**Key boundary files:**
+
+| File | Purpose |
+|------|---------|
+| `src/sdl_client/runtime/sdl_context_services.cpp` | SDL implementations: view control wiring, entity rendering hooks, level draw |
+| `src/sdl_client/runtime/walker_render_bridge.cpp` | SDL `walker` member functions: render component, destructor, frame management |
+| `src/text_client/platform_headless.cpp` | Headless stubs: filesystem init, no-op/warning render functions |
+| `src/text_client/walker_headless.cpp` | Headless `walker` member functions: no render component, sim-only frame tracking |
+| `include/openglad/data/level_data_hooks.h` | Shared declarations enforcing signature parity between SDL and headless |
+
+**Render component pattern:** `walker` holds an optional `std::unique_ptr<WalkerRender> render_`. SDL builds create the component in `attach_render()`; headless builds leave it null. Entity code checks `if (render_)` before delegating to the render component. `LevelData` follows the same pattern with `std::unique_ptr<LevelRender> renderer_`.
 
 ### Legacy Build Scripts
 

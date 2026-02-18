@@ -29,7 +29,7 @@
 #include <openglad/entities/treasure_family_registry.h>
 #include <openglad/core/stats.h>
 #include <openglad/entities/guy.h>
-// pixieN include not needed; render access is through IWalkerRender
+// pixieN include not needed; render access is through WalkerRender
 #include <algorithm>
 #include <format>
 #include <cstring>

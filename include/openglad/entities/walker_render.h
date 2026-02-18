@@ -31,5 +31,3 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-// Backwards-compatibility alias
-using IWalkerRender = WalkerRender;

@@ -33,6 +33,3 @@ private:
 
 // Factory: create and initialize a LevelRender from pixdata.
 std::unique_ptr<LevelRender> create_sdl_level_render(PixieData pixdata[]);
-
-// Backwards-compatibility alias
-using ILevelRender = LevelRender;
