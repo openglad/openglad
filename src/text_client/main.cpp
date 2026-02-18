@@ -62,8 +62,9 @@ options* theprefs = nullptr;
 // The global config store
 extern cfg_store cfg;
 
-// headless_io_init from og_file.cpp (SDL-free)
-void headless_io_init(const char* argv0);
+// Platform lifecycle (headless implementation in platform_headless.cpp)
+void io_init(int argc, char* argv[]);
+void io_exit();
 
 // popup_dialog: normally shows an SDL dialog, we just print to stderr
 void popup_dialog(const char* title, const char* message)
@@ -257,7 +258,7 @@ int main(int argc, char* argv[])
         return 0;
 
     // Initialize filesystem (SDL-free)
-    headless_io_init(argv[0]);
+    io_init(argc, argv);
 
     // Load configuration
     cfg.load_settings();
@@ -370,5 +371,6 @@ int main(int argc, char* argv[])
     }
 
     set_global_context(nullptr);
+    io_exit();
     return 0;
 }

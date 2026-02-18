@@ -245,9 +245,53 @@ void load_map_data(PixieData*)
     });
 }
 
-// Lifecycle stubs (will be unified in step 5)
-void io_init(int, char*[]) {}
-void io_exit() {}
+// ---------------------------------------------------------------------------
+// Headless lifecycle (mirrors SDL io_init/io_exit/sync_filesystem)
+// ---------------------------------------------------------------------------
+#include <openglad/io/physfs_api.h>
+
+void io_init(int argc, char* argv[])
+{
+    (void)argc;
+
+    // Create user directory tree
+    std::string user_path = get_user_path();
+    create_dir(user_path);
+    create_dir(user_path + "campaigns/");
+    create_dir(user_path + "save/");
+    create_dir(user_path + "cfg/");
+
+    // Initialize PhysFS
+    og::io::physfs_init(argv[0]);
+    og::io::physfs_set_write_dir(user_path);
+
+    if (!og::io::physfs_mount(user_path, nullptr, 1)) {
+        LogError("io_init(headless): Failed to mount user path: {}\n", user_path);
+    }
+
+    // Copy default campaign from asset directory to user directory
+    restore_default_campaigns();
+
+    // Mount default campaign
+    if (!mount_campaign_package("org.openglad.gladiator")) {
+        LogError("io_init(headless): Failed to mount default campaign\n");
+    }
+
+    // Mount asset directories
+    std::string asset_path = get_asset_path();
+    og::io::physfs_mount(asset_path + "pix/", "pix/", 1);
+    og::io::physfs_mount(asset_path + "sound/", "sound/", 1);
+    og::io::physfs_mount(asset_path + "cfg/", "cfg/", 1);
+
+    Log("io_init(headless): done\n");
+}
+
+void io_exit()
+{
+    og::io::physfs_deinit();
+}
+
+// No-op on non-web platforms (they use real filesystem)
 void sync_filesystem() {}
 
 int toInt(const std::string& s)

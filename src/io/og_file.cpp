@@ -17,10 +17,8 @@
 
 #include <cstdio>
 #include <cstring>
-#include <filesystem>
 #include <memory>
 #include <string>
-#include <system_error>
 
 // Path helpers (defined in platform_io.cpp, linked via og_io or text client)
 std::string get_user_path();
@@ -254,70 +252,3 @@ PixieData read_pixie_file(const char* filename)
     return result;
 }
 
-// ---------------------------------------------------------------------------
-// headless_io_init — SDL-free filesystem initialization
-// ---------------------------------------------------------------------------
-// Mirrors io_init() from platform_io.cpp but uses stdio for file copying
-// instead of SDL_RWFromFile.
-
-static void headless_copy_file(const std::string& src, const std::string& dst)
-{
-    std::error_code ec;
-    std::filesystem::copy_file(src, dst,
-        std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec)
-        LogWarn("headless_copy_file: {} -> {}: {}\n", src, dst, ec.message());
-    else
-        Log("Copied: {} -> {}\n", src, dst);
-}
-
-void headless_io_init(const char* argv0)
-{
-    // Create user directory tree
-    std::string user_path = get_user_path();
-    std::error_code mkdir_ec;
-    std::filesystem::create_directories(user_path, mkdir_ec);
-    std::filesystem::create_directories(user_path + "campaigns/", mkdir_ec);
-    std::filesystem::create_directories(user_path + "save/", mkdir_ec);
-    std::filesystem::create_directories(user_path + "cfg/", mkdir_ec);
-
-    // Initialize PhysFS
-    if (!PHYSFS_init(argv0)) {
-        LogError("headless_io_init: PHYSFS_init failed: {}\n",
-                 PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
-        return;
-    }
-
-    if (!PHYSFS_setWriteDir(user_path.c_str())) {
-        LogError("headless_io_init: PHYSFS_setWriteDir failed: {}\n",
-                 PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
-    }
-
-    if (!PHYSFS_mount(user_path.c_str(), nullptr, 1)) {
-        LogError("headless_io_init: Failed to mount user path: {}\n",
-                 PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
-    }
-
-    // Copy default campaign from asset path to user path (stdio, no SDL)
-    std::string asset_path = get_asset_path();
-    std::string src_campaign = asset_path + "builtin/org.openglad.gladiator.glad";
-    std::string dst_campaign = user_path + "campaigns/org.openglad.gladiator.glad";
-    headless_copy_file(src_campaign, dst_campaign);
-
-    // Mount default campaign
-    if (!PHYSFS_mount(dst_campaign.c_str(), nullptr, 0)) {
-        LogError("headless_io_init: Failed to mount campaign: {}\n",
-                 PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
-    }
-
-    // Mount asset directories
-    auto try_mount = [](const std::string& path, const char* mount) {
-        if (!PHYSFS_mount(path.c_str(), mount, 1))
-            LogWarn("headless_io_init: Failed to mount {}\n", path);
-    };
-    try_mount(asset_path + "pix/", "pix/");
-    try_mount(asset_path + "sound/", "sound/");
-    try_mount(asset_path + "cfg/", "cfg/");
-
-    Log("headless_io_init: done\n");
-}
