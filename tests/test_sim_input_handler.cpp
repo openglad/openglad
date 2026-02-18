@@ -9,6 +9,7 @@
 #include <openglad/core/stats.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/legacy/base.h>
 #include "test_framework.h"
 #include <memory>
 
@@ -153,7 +154,6 @@ void test_sim_input_movement()
     std::string special_names[NUM_FAMILIES][NUM_SPECIALS];
     og::sim::SimEventLog log;
 
-    short oldx = control->xpos;
     sim_process_player_input(
         input.players[0], control, myscreen->level_data,
         0, 0, debounce, special_names, &log);
@@ -165,3 +165,318 @@ void test_sim_input_movement()
     teardown();
 }
 REGISTER_TEST(test_sim_input_movement);
+
+void test_sim_input_switch_special_wraps_and_debounces()
+{
+    auto w = make_living(0);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    walker* control = w.get();
+    control->user = 0;
+    control->current_special = 1;
+    control->stats()->level = 1;
+    myscreen->level_data.oblist.push_back(std::move(w));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    special_names[FAMILY_SOLDIER][2] = "NONE";
+    og::sim::SimEventLog log;
+
+    sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT_EQ(1, debounce.changedspec, "switch special should set debounce latch");
+    TEST_ASSERT_EQ(1, control->current_special, "invalid/locked special should wrap to 1");
+
+    input.clear();
+    sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT_EQ(0, debounce.changedspec, "no press frame should clear special debounce");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_switch_special_wraps_and_debounces);
+
+void test_sim_input_yell_sets_follow_and_notification()
+{
+    auto control_up = make_living(0, 0);
+    auto ally_up = make_living(0, -1);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+    TEST_ASSERT(ally_up != nullptr, "ally should be created");
+
+    walker* control = control_up.get();
+    walker* ally = ally_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->yo_delay = 0;
+    ally->leader = nullptr;
+    ally->action = 0;
+
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+    myscreen->level_data.oblist.push_back(std::move(ally_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    const SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT_EQ(SOUND_YO, result.play_sound, "plain yell should request yo sound");
+    TEST_ASSERT(result.notify_text == "Yo!", "plain yell should emit Yo notification");
+    TEST_ASSERT(result.notify_source == control, "notification source should be control");
+    TEST_ASSERT(ally->leader == control, "plain yell should assign nearby ally leader");
+    TEST_ASSERT_EQ(30, control->yo_delay, "plain yell should set yell cooldown");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_yell_sets_follow_and_notification);
+
+void test_sim_input_shift_yell_summon_and_release()
+{
+    auto control_up = make_living(0, 0);
+    auto ally_up = make_living(0, -1);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+    TEST_ASSERT(ally_up != nullptr, "ally should be created");
+
+    walker* control = control_up.get();
+    walker* ally = ally_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->action = 0;
+    ally->action = 0;
+
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+    myscreen->level_data.oblist.push_back(std::move(ally_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(result.notify_text == "SUMMONING DEFENSE!", "shift+yell should enter summon mode");
+    TEST_ASSERT_EQ(ACTION_FOLLOW, ally->action, "summon mode should set ally action to follow");
+
+    control->action = ACTION_FOLLOW;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(result.notify_text == "RELEASING MEN!", "shift+yell in follow mode should release");
+    TEST_ASSERT_EQ(0, ally->action, "release should reset ally action");
+    TEST_ASSERT_EQ(0, control->action, "release should reset control action");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_shift_yell_summon_and_release);
+
+void test_sim_input_frozen_and_user_mismatch_early_returns()
+{
+    auto w = make_living(0);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    walker* control = w.get();
+    control->set_act_type(ACT_CONTROL);
+    control->user = 1;
+    control->stats()->frozen_delay = 2;
+    myscreen->level_data.oblist.push_back(std::move(w));
+
+    InputState input;
+    input.clear();
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "user mismatch should return current control early");
+
+    control->user = 0;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(result.new_control == control, "frozen control should still be returned");
+    TEST_ASSERT_EQ(1, control->stats()->frozen_delay, "frozen delay should decrement");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_frozen_and_user_mismatch_early_returns);
+
+void test_sim_input_switch_char_forward_selects_next_friendly()
+{
+    auto control_up = make_living(0, 0);
+    auto ally_up = make_living(0, -1);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+    TEST_ASSERT(ally_up != nullptr, "ally should be created");
+
+    walker* oldcontrol = control_up.get();
+    walker* ally = ally_up.get();
+    oldcontrol->set_act_type(ACT_CONTROL);
+    oldcontrol->stats()->hitpoints = 33.0f;
+    ally->stats()->hitpoints = 77.0f;
+
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+    myscreen->level_data.oblist.push_back(std::move(ally_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+    SimInputResult result = sim_process_player_input(
+        input.players[0], oldcontrol, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(oldcontrol == ally, "switch char should move control to next valid teammate");
+    TEST_ASSERT_EQ(1, debounce.changedchar, "switch char should set debounce latch");
+    TEST_ASSERT(result.control_hp_changed, "switch char should report hp change");
+    TEST_ASSERT(result.control_hp == 77.0f, "switch char hp should reflect new control");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_switch_char_forward_selects_next_friendly);
+
+void test_sim_input_switch_char_reverse_and_missing_old_control_paths()
+{
+    // Reverse path.
+    auto ally_up = make_living(0, -1);
+    auto control_up = make_living(0, 0);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+    TEST_ASSERT(ally_up != nullptr, "ally should be created");
+
+    walker* control = control_up.get();
+    walker* ally = ally_up.get();
+    control->set_act_type(ACT_CONTROL);
+    ally->stats()->hitpoints = 88.0f;
+
+    myscreen->level_data.oblist.push_back(std::move(ally_up));
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(control == ally, "reverse switch should pick previous valid teammate");
+    TEST_ASSERT(result.control_hp == 88.0f, "reverse switch should return ally hp");
+
+    teardown();
+
+    // mine == end() failure path: control not in oblist should keep old control.
+    auto orphan_up = make_living(0, 0);
+    TEST_ASSERT(orphan_up != nullptr, "orphan control should be created");
+    walker* orphan = orphan_up.get();
+    orphan->set_act_type(ACT_CONTROL);
+    orphan->stats()->hitpoints = 19.0f;
+
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    debounce = {};
+
+    result = sim_process_player_input(
+        input.players[0], orphan, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(orphan == orphan_up.get(), "missing old control entry should preserve old control");
+    TEST_ASSERT(result.control_hp_changed, "missing old control should still return hp update");
+    TEST_ASSERT(result.control_hp == 19.0f, "hp update should reflect preserved old control");
+}
+REGISTER_TEST(test_sim_input_switch_char_reverse_and_missing_old_control_paths);
+
+void test_sim_input_switch_char_no_candidate_keeps_old_control_and_ticks()
+{
+    auto control_up = make_living(0, 0);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+
+    walker* control = control_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->bonus_rounds = 2;
+    control->lastx = 1.0f;
+    control->lasty = 0.0f;
+    control->yo_delay = 4;
+    control->stats()->hitpoints = 55.0f;
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    const SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(control != nullptr, "control should remain valid");
+    TEST_ASSERT_EQ(1, control->bonus_rounds, "bonus rounds should tick down");
+    TEST_ASSERT_EQ(3, control->yo_delay, "yo_delay should tick down");
+    TEST_ASSERT(result.control_hp_changed, "switch attempt should still report hp");
+    TEST_ASSERT(result.control_hp == 55.0f, "hp should remain from old control");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_switch_char_no_candidate_keeps_old_control_and_ticks);
+
+void test_sim_input_special_and_fire_paths()
+{
+    auto control_up = make_living(0, 0);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+
+    walker* control = control_up.get();
+    control->set_act_type(ACT_CONTROL);
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::Fire)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Special)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "special/fire paths should preserve control");
+
+    control->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "non-empty command queue path should return control");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_special_and_fire_paths);

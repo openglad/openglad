@@ -1105,6 +1105,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_util.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
         )
 
@@ -1124,6 +1125,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
         )
 

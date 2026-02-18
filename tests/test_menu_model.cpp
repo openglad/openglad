@@ -1,0 +1,60 @@
+#include <openglad/ui/menu_model.h>
+#include "test_framework.h"
+
+void test_menu_model_main_definition_and_lookup()
+{
+    using namespace og::ui;
+    const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::Main);
+
+    TEST_ASSERT_EQ(static_cast<int>(PickerMenuId::Main), static_cast<int>(def.id),
+                   "main menu definition should report main id");
+    TEST_ASSERT(def.items.size() >= 10, "main menu should expose expected item count");
+
+    const PickerMenuItem* begin = find_picker_menu_item(PickerMenuId::Main, "begin_new_game");
+    TEST_ASSERT(begin != nullptr, "begin_new_game id should resolve");
+    TEST_ASSERT_EQ(static_cast<int>(PickerMenuCommand::BeginNewGame), static_cast<int>(begin->command),
+                   "begin_new_game should map to BeginNewGame command");
+
+    const PickerMenuItem* p4 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 4);
+    TEST_ASSERT(p4 != nullptr, "set player mode with arg=4 should resolve");
+    TEST_ASSERT(p4->id == "4_player", "set player mode arg=4 should resolve to 4_player item");
+
+    const PickerMenuItem* missing = find_picker_menu_item(PickerMenuId::Main, "missing-item");
+    TEST_ASSERT(missing == nullptr, "missing id should return nullptr");
+}
+REGISTER_TEST(test_menu_model_main_definition_and_lookup);
+
+void test_menu_model_team_build_lookup()
+{
+    using namespace og::ui;
+    const PickerMenuDefinition& def = picker_menu_definition(PickerMenuId::TeamBuild);
+
+    TEST_ASSERT_EQ(static_cast<int>(PickerMenuId::TeamBuild), static_cast<int>(def.id),
+                   "team build definition should report team build id");
+    TEST_ASSERT(def.items.size() >= 9, "team build should expose expected item count");
+
+    const PickerMenuItem* start = find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::StartGame);
+    TEST_ASSERT(start != nullptr, "start game command should resolve in team build");
+    TEST_ASSERT(start->id == "go", "start game item id should be go");
+
+    const PickerMenuItem* back = find_picker_menu_item(PickerMenuId::TeamBuild, "back");
+    TEST_ASSERT(back != nullptr, "back id should resolve in team build");
+    TEST_ASSERT_EQ(static_cast<int>(PickerMenuCommand::Back), static_cast<int>(back->command),
+                   "back item should map to Back command");
+
+    const PickerMenuItem* wrong_arg = find_picker_menu_item(
+        PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 99);
+    TEST_ASSERT(wrong_arg == nullptr, "unknown arg variant should return nullptr");
+}
+REGISTER_TEST(test_menu_model_team_build_lookup);
+
+void test_menu_model_invalid_menu_id_falls_back_to_main()
+{
+    using namespace og::ui;
+    const PickerMenuId invalid = static_cast<PickerMenuId>(999);
+    const PickerMenuDefinition& def = picker_menu_definition(invalid);
+
+    TEST_ASSERT_EQ(static_cast<int>(PickerMenuId::Main), static_cast<int>(def.id),
+                   "unknown menu id should fall back to main definition");
+}
+REGISTER_TEST(test_menu_model_invalid_menu_id_falls_back_to_main);

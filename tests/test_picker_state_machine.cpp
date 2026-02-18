@@ -157,3 +157,101 @@ void test_picker_state_screen_after_game_routes_through_help()
     TEST_ASSERT_EQ(2, client.show_main_menu_calls, "help should return back to main menu");
 }
 REGISTER_TEST(test_picker_state_screen_after_game_routes_through_help);
+
+class MenuOnlyPickerClient final : public og::ui::IPickerClient
+{
+public:
+    std::vector<const og::ui::PickerMenuItem*> scripted_results;
+    int present_calls = 0;
+    int handle_calls = 0;
+
+    const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId) override
+    {
+        if (present_calls >= static_cast<int>(scripted_results.size()))
+            return nullptr;
+        return scripted_results[static_cast<size_t>(present_calls++)];
+    }
+
+    void handle_menu_item(og::ui::PickerMenuId, const og::ui::PickerMenuItem&) override
+    {
+        ++handle_calls;
+    }
+
+    std::string show_campaign_select() override { return {}; }
+    void show_options() override {}
+    void show_help() override {}
+    void run_game() override {}
+    bool load_game() override { return false; }
+    bool save_game() override { return false; }
+};
+
+void test_picker_state_show_main_menu_handles_unknown_then_quit()
+{
+    MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem unknown{
+        "noop", "noop", og::ui::PickerMenuCommand::SetDifficulty, 0
+    };
+    client.scripted_results = {&unknown, nullptr};
+
+    const og::ui::MainMenuAction action = client.show_main_menu();
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Quit),
+                   static_cast<int>(action),
+                   "null menu selection should map to Quit");
+    TEST_ASSERT_EQ(1, client.handle_calls, "unknown command should be handled and looped");
+}
+REGISTER_TEST(test_picker_state_show_main_menu_handles_unknown_then_quit);
+
+void test_picker_state_show_team_build_play_and_back()
+{
+    MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem go{
+        "go", "GO!", og::ui::PickerMenuCommand::StartGame, 0
+    };
+    static const og::ui::PickerMenuItem back{
+        "back", "Back", og::ui::PickerMenuCommand::Back, 0
+    };
+
+    client.scripted_results = {&go};
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::TeamBuildAction::PlayGame),
+                   static_cast<int>(client.show_team_build()),
+                   "start game command should return PlayGame");
+
+    client.present_calls = 0;
+    client.scripted_results = {&back};
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::TeamBuildAction::BackToMainMenu),
+                   static_cast<int>(client.show_team_build()),
+                   "back command should return BackToMainMenu");
+}
+REGISTER_TEST(test_picker_state_show_team_build_play_and_back);
+
+void test_picker_state_new_game_cancel_stays_in_main_menu()
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::NewGame,
+        og::ui::MainMenuAction::Quit
+    };
+    client.prepare_new_game_result = false;
+
+    og::ui::run_picker(client);
+
+    TEST_ASSERT_EQ(1, client.prepare_new_game_calls, "new game should invoke preparation");
+    TEST_ASSERT_EQ(0, client.show_campaign_select_calls, "failed prepare should skip campaign select");
+    TEST_ASSERT_EQ(2, client.show_main_menu_calls, "flow should return to main menu and then quit");
+}
+REGISTER_TEST(test_picker_state_new_game_cancel_stays_in_main_menu);
+
+void test_picker_state_multiplayer_noop_returns_to_menu()
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::Multiplayer,
+        og::ui::MainMenuAction::Quit
+    };
+
+    og::ui::run_picker(client);
+
+    TEST_ASSERT_EQ(2, client.show_main_menu_calls, "multiplayer action should keep picker in main menu");
+    TEST_ASSERT_EQ(0, client.run_game_calls, "multiplayer action should not run game");
+}
+REGISTER_TEST(test_picker_state_multiplayer_noop_returns_to_menu);

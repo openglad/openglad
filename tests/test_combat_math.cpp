@@ -35,6 +35,18 @@ void test_compute_base_damage_deterministic()
 }
 REGISTER_TEST(test_compute_base_damage_deterministic);
 
+void test_compute_base_damage_null_rng_and_irandom_overload()
+{
+    RandomU32 null_rng = nullptr;
+    float d = compute_base_damage(9.0f, null_rng);
+    TEST_ASSERT((d > 7.49f && d < 7.51f), "null RandomU32 should fall back to deterministic zero RNG");
+
+    FixedRandom fixed(2);
+    float d_irandom = compute_base_damage(9.0f, fixed);
+    TEST_ASSERT((d_irandom > 9.49f && d_irandom < 9.51f), "IRandom overload should use rng.next()");
+}
+REGISTER_TEST(test_compute_base_damage_null_rng_and_irandom_overload);
+
 void test_compute_post_reduction_damage_clamps()
 {
     TEST_ASSERT_EQ(0, (int)compute_post_reduction_damage(-1.0f, 0.0f), "negative incoming damage clamps to 0");
