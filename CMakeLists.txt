@@ -1069,6 +1069,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_external_physfs_api_edges.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_ownership_fixture.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
