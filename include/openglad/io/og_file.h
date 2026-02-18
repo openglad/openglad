@@ -73,7 +73,3 @@ class PixieData;
 
 // Read a pixie (.pix) sprite file. SDL-free — implemented in og_file.cpp.
 PixieData read_pixie_file(const char* filename);
-
-// SDL-free filesystem initialization for headless clients.
-// Replaces io_init() — sets up PhysFS, mounts campaign and asset dirs.
-void headless_io_init(const char* argv0);

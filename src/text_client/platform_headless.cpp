@@ -121,7 +121,12 @@ void level_data_draw_impl(LevelData*, screen*)
     });
 }
 
-std::unique_ptr<ILevelRender> create_level_render(PixieData[]) { return nullptr; }
+std::unique_ptr<ILevelRender> create_level_render(PixieData[])
+{
+    static std::once_flag warn_flag;
+    std::call_once(warn_flag, []() { Log("Warning: create_level_render not supported in headless mode\n"); });
+    return nullptr;
+}
 
 bool yes_or_no_prompt(const char* /*title*/, const char* /*message*/, bool default_value)
 {
@@ -189,13 +194,13 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& inf
 
 #include <openglad/platform/io_common.h>
 #include <openglad/data/save_data.h>
+#include <openglad/data/gparser.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/input/input_state.h>
 
-// Settings stubs (headless: settings persistence deferred)
-bool save_settings() { return false; }
-bool load_settings() { return false; }
+bool save_settings() { return cfg.save_settings(); }
+bool load_settings() { return cfg.load_settings(); }
 
 // ---------------------------------------------------------------------------
 // Category D: Editor-adjacent stubs (deferred — typed failure + log)
@@ -262,8 +267,14 @@ void io_init(int argc, char* argv[])
     create_dir(user_path + "cfg/");
 
     // Initialize PhysFS
-    og::io::physfs_init(argv[0]);
-    og::io::physfs_set_write_dir(user_path);
+    if (!og::io::physfs_init(argv[0])) {
+        LogError("io_init(headless): physfs_init failed\n");
+        return;
+    }
+    if (!og::io::physfs_set_write_dir(user_path)) {
+        LogError("io_init(headless): Failed to set write dir: {}\n", user_path);
+        return;
+    }
 
     if (!og::io::physfs_mount(user_path, nullptr, 1)) {
         LogError("io_init(headless): Failed to mount user path: {}\n", user_path);
