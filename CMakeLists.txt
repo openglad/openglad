@@ -1196,6 +1196,22 @@ if(NOT EMSCRIPTEN)
             TIMEOUT 60
         )
 
+        add_test(NAME openglad_text_picker_interactive
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_picker_interactive.sh $<TARGET_FILE:openglad_text>
+        )
+        set_tests_properties(openglad_text_picker_interactive PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 60
+        )
+
+        add_test(NAME openglad_text_unsupported
+            COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_text_client_unsupported.sh $<TARGET_FILE:openglad_text>
+        )
+        set_tests_properties(openglad_text_unsupported PROPERTIES
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 60
+        )
+
         add_test(NAME emscripten_build_test
             COMMAND ${CMAKE_SOURCE_DIR}/scripts/test_emscripten_build.sh
         )
