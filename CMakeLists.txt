@@ -180,6 +180,7 @@ set(GAME_SOURCES
 	    ${SRC_DIR}/sdl_client/render/sai2x.cpp
 		    ${SRC_DIR}/core/util.cpp
 		    ${SRC_DIR}/sdl_client/io/platform_io.cpp
+		    ${SRC_DIR}/io/platform_io_common.cpp
 		    ${SRC_DIR}/io/physfs_api.cpp
 		    ${SRC_DIR}/io/zip_api.cpp
 		    ${SRC_DIR}/io/yaml_stream.cpp
@@ -346,6 +347,7 @@ set(OG_UI_SOURCES
 
 set(OG_IO_SOURCES
     ${SRC_DIR}/sdl_client/io/platform_io.cpp
+    ${SRC_DIR}/io/platform_io_common.cpp
     ${SRC_DIR}/io/physfs_api.cpp
     ${SRC_DIR}/io/zip_api.cpp
     ${SRC_DIR}/io/yaml_stream.cpp
@@ -811,7 +813,8 @@ if(NOT EMSCRIPTEN)
         ${OG_ENTITIES_SOURCES}
         # input (SDL-free data structs only)
         ${SRC_DIR}/input/input_state.cpp
-        # io (no platform_io.cpp — uses SDL)
+        # io (shared SDL-free helpers + PhysFS/zip/yaml)
+        ${SRC_DIR}/io/platform_io_common.cpp
         ${SRC_DIR}/io/physfs_api.cpp
         ${SRC_DIR}/io/zip_api.cpp
         ${SRC_DIR}/io/yaml_stream.cpp

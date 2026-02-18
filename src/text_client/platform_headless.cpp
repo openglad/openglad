@@ -123,53 +123,22 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& inf
     return MAX_LINES;
 }
 
-// --- Platform I/O stubs (headless: no campaign/archive support) ---
+// --- Platform I/O ---
+// Campaign/list/archive/fs helpers are now in src/io/platform_io_common.cpp
+// (shared by both SDL and headless builds).  Only stubs that remain here are
+// for functions that genuinely have no headless implementation yet.
+
 #include <openglad/platform/io_common.h>
 #include <openglad/data/save_data.h>
 #include <openglad/entities/guy.h>
 #include <openglad/data/pixie_data.h>
 #include <openglad/input/input_state.h>
 
-std::list<std::string> list_files(const std::string&) { return {}; }
-std::list<std::string> explode(const std::string& str, char delimiter)
-{
-    std::list<std::string> result;
-    std::string token;
-    for (char c : str) {
-        if (c == delimiter) { result.push_back(token); token.clear(); }
-        else token += c;
-    }
-    if (!token.empty()) result.push_back(token);
-    return result;
-}
-
-std::string get_mounted_campaign() { return "org.openglad.gladiator"; }
-bool mount_campaign_package(const std::string&) { return false; }
-bool unmount_campaign_package(const std::string&) { return false; }
-bool remount_campaign_package() { return false; }
-CampaignPackageIoError mount_campaign_package_with_error(const std::string&) { return CampaignPackageIoError::MountFailed; }
-CampaignPackageIoError unmount_campaign_package_with_error(const std::string&) { return CampaignPackageIoError::UnmountFailed; }
-CampaignPackageIoError remount_campaign_package_with_error() { return CampaignPackageIoError::MountFailed; }
-std::list<std::string> list_campaigns() { return {}; }
-std::list<int> list_levels() { return {}; }
-std::vector<int> list_levels_v() { return {}; }
-
-void restore_default_campaigns() {}
-void restore_default_settings() {}
+// Settings stubs (headless: settings persistence deferred)
 bool save_settings() { return false; }
 bool load_settings() { return false; }
-void delete_level(int) {}
-void delete_campaign(const std::string&) {}
 
-ArchiveIoError zip_contents_with_error(const std::string&, const std::string&) { return ArchiveIoError::OpenArchiveFailed; }
-ArchiveIoError unzip_into_with_error(const std::string&, const std::string&) { return ArchiveIoError::OpenArchiveFailed; }
-bool zip_contents(const std::string&, const std::string&) { return false; }
-bool unzip_into(const std::string&, const std::string&) { return false; }
-
-bool unpack_campaign(const std::string&) { return false; }
-bool repack_campaign(const std::string&) { return false; }
-void cleanup_unpacked_campaign() {}
-
+// Editor-adjacent stubs (category D: deferred, returns typed failure)
 NewFileIoError create_new_map_pix_with_error(const std::string&, int, int) { return NewFileIoError::OpenWriteFailed; }
 NewFileIoError create_new_pix_with_error(const std::string&, int, int, unsigned char) { return NewFileIoError::OpenWriteFailed; }
 NewFileIoError create_new_campaign_descriptor_with_error(const std::string&) { return NewFileIoError::OpenWriteFailed; }
@@ -180,7 +149,8 @@ bool create_new_campaign_descriptor(const std::string&) { return false; }
 bool create_new_scen_file(const std::string&, const std::string&) { return false; }
 
 void load_map_data(PixieData*) {}
-bool create_dir(const std::string&) { return false; }
+
+// Lifecycle stubs (will be unified in step 5)
 void io_init(int, char*[]) {}
 void io_exit() {}
 void sync_filesystem() {}
