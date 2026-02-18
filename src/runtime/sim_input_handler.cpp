@@ -77,7 +77,7 @@ SimInputResult sim_process_player_input(
     short my_team,
     SimInputDebounce& debounce,
     const std::string (*special_names)[6],
-    og::sim::SimEventLog* sim_events)
+    [[maybe_unused]] og::sim::SimEventLog* sim_events)
 {
     SimInputResult result;
     walker* oldcontrol = control;

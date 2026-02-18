@@ -490,7 +490,7 @@ void viewscreen::process_input(const InputState& input_state)
 	if (!result.notify_text.empty())
 	{
 		if (result.play_sound >= 0)
-			active_screen()->soundp->play_sound(result.play_sound);
+			active_screen()->soundp->play_sound(static_cast<short>(result.play_sound));
 		active_screen()->do_notify(result.notify_text.c_str(), result.notify_source);
 	}
 }

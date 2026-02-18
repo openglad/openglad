@@ -206,9 +206,9 @@ static bool mage_do_special(walker* self)
                             newob->damage += static_cast<float>(generic);
                             newob->lineofsight += (generic / 3);
                             if (newob->lastx != 0.0f)
-                                newob->lastx /= fabs(newob->lastx);
+                                newob->lastx /= std::fabs(newob->lastx);
                             if (newob->lasty != 0.0f)
-                                newob->lasty /= fabs(newob->lasty);
+                                newob->lasty /= std::fabs(newob->lasty);
                         }
                     }
                 }

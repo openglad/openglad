@@ -728,14 +728,14 @@ bool statistics::right_walk()
 		{
 			xdelta = controller->lastx;
 			ydelta = controller->lasty;
-			if (abs(xdelta) > abs(3*ydelta))
+			if (std::fabs(xdelta) > std::fabs(3 * ydelta))
 				ydelta = 0;
-			if (abs(ydelta) > abs(3*xdelta))
+			if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 				xdelta = 0;
 			if (xdelta)
-				xdelta /= abs(xdelta);
+				xdelta /= std::fabs(xdelta);
 			if (ydelta)
-				ydelta /= abs(ydelta);
+				ydelta /= std::fabs(ydelta);
 			//              return controller->walk();
 			return controller->walkstep(xdelta, ydelta);
 		}
@@ -866,9 +866,9 @@ bool statistics::direct_walk()
 
 	xdelta = xdest - controller->xpos;
 	ydelta = ydest - controller->ypos;
-	if (abs(xdelta) > abs(3*ydelta))
+	if (std::fabs(xdelta) > std::fabs(3 * ydelta))
 		ydelta = 0;
-	if (abs(ydelta) > abs(3*xdelta))
+	if (std::fabs(ydelta) > std::fabs(3 * xdelta))
 		xdelta = 0;
 
 	const short xdir = (xdelta > 0.0f) ? 1 : ((xdelta < 0.0f) ? -1 : 0);
@@ -882,9 +882,9 @@ bool statistics::direct_walk()
 	}
 
 	if (xdelta)
-		xdelta = xdelta / fabs(xdelta);
+		xdelta = xdelta / std::fabs(xdelta);
 	if (ydelta)
-		ydelta = ydelta / fabs(ydelta);
+		ydelta = ydelta / std::fabs(ydelta);
 
 	xdeltastep = xdelta*controller->stepsize;
 	ydeltastep = ydelta*controller->stepsize;

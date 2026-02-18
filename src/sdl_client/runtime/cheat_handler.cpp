@@ -23,7 +23,7 @@ static short changedteam[6] = {0, 0, 0, 0, 0, 0};
 
 void handle_cheat_keys(walker*& control, short mynum,
                        const SDL_Event& event, const PlayerInput& pi,
-                       screen* myscreen)
+                       screen* game_screen)
 {
 	if (!pi.is_held(InputAction::Cheat) || !CHEAT_MODE)
 		return;
@@ -41,17 +41,17 @@ void handle_cheat_keys(walker*& control, short mynum,
 		control->user = -1;
 		control->set_act_type(ACT_RANDOM);
 
-		short oldteam = myscreen->save_data.my_team;
+		short oldteam = game_screen->save_data.my_team;
 
 		do
 		{
-			myscreen->save_data.my_team++;
-			myscreen->save_data.my_team %= MAX_TEAM;
+			game_screen->save_data.my_team++;
+			game_screen->save_data.my_team %= MAX_TEAM;
 
-			for (auto& uptr : myscreen->level_data.oblist)
+			for (auto& uptr : game_screen->level_data.oblist)
 			{
 				walker* w = uptr.get();
-				if ((w->team_num == myscreen->save_data.my_team) &&
+				if ((w->team_num == game_screen->save_data.my_team) &&
 						(w->query_order() == Order::Living))
 				{
 					result = w;
@@ -59,7 +59,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 				}
 			}
 		}
-		while (result == nullptr && myscreen->save_data.my_team != oldteam);
+		while (result == nullptr && game_screen->save_data.my_team != oldteam);
 
 		if (result != nullptr)
 			control = result;
@@ -70,7 +70,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(SDLK_F12, event))
 	{
-		for (auto& uptr : myscreen->level_data.oblist)
+		for (auto& uptr : game_screen->level_data.oblist)
 		{
 			walker* w = uptr.get();
 			if (w && w->query_order() == Order::Living && !control->is_friendly(w))
@@ -93,13 +93,13 @@ void handle_cheat_keys(walker*& control, short mynum,
 
 	if (query_key_event(SDLK_F1, event))
 	{
-		myscreen->enemy_freeze += 50;
-		set_palette(myscreen->bluepalette);
+		game_screen->enemy_freeze += 50;
+		set_palette(game_screen->bluepalette);
 	}
 
 	if (query_key_event(SDLK_F2, event))
 	{
-		newob = myscreen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+		newob = game_screen->level_data.add_ob(Order::FX, FAMILY_MAGIC_SHIELD);
 		newob->owner = control;
 		newob->team_num = control->team_num;
 		newob->ani_type = 1;
@@ -117,7 +117,7 @@ void handle_cheat_keys(walker*& control, short mynum,
 	if (query_key_event(SDLK_h, event))
 	{
 		control->stats()->hitpoints += 100;
-		myscreen->control_hp += 100;
+		game_screen->control_hp += 100;
 	}
 
 	if (query_key_event(SDLK_i, event))

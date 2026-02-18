@@ -65,7 +65,7 @@ static bool glow_on_animate(weap* self)
 
 // --- SPRINKLE: freeze foes on hit ---
 
-static bool sprinkle_on_hit_target(walker* weapon, walker* target, walker* owner)
+static bool sprinkle_on_hit_target([[maybe_unused]] walker* weapon, walker* target, walker* owner)
 {
     if (target->query_order() == Order::Living)
     {
