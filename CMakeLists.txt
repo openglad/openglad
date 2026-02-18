@@ -158,6 +158,7 @@ set(GAME_SOURCES
     ${SRC_DIR}/sdl_client/ui/picker_main_menu.cpp
     ${SRC_DIR}/sdl_client/ui/picker_accessible_levels.cpp
     ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
+    ${SRC_DIR}/ui/picker_state.cpp
     ${SRC_DIR}/sdl_client/render/pixie.cpp
     ${SRC_DIR}/sdl_client/render/pixien.cpp
     ${SRC_DIR}/sdl_client/render/radar.cpp
@@ -342,6 +343,7 @@ set(OG_UI_SOURCES
     ${SRC_DIR}/sdl_client/ui/picker_input.cpp
     ${SRC_DIR}/sdl_client/ui/picker_main_menu.cpp
     ${SRC_DIR}/sdl_client/ui/picker_team_build.cpp
+    ${SRC_DIR}/ui/picker_state.cpp
     ${SRC_DIR}/sdl_client/ui/results_screen.cpp
 )
 
@@ -803,6 +805,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/text_client/platform_headless.cpp
         ${SRC_DIR}/text_client/walker_headless.cpp
         ${SRC_DIR}/text_client/text_picker.cpp
+        ${SRC_DIR}/ui/picker_state.cpp
         # core
         ${OG_CORE_SOURCES}
         # sim

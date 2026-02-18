@@ -121,7 +121,7 @@ public:
         }
     }
 
-    void show_team_build() override
+    TeamBuildAction show_team_build() override
     {
         for (;;) {
             std::printf("\n--- Team Setup ---\n");
@@ -135,7 +135,7 @@ public:
 
             std::string line;
             if (!read_line(line))
-                return;
+                return TeamBuildAction::BackToMainMenu;
             const auto choice = parse_int_strict(line);
             if (!choice) {
                 set_error(TextPickerErrorCode::ParseError, "team menu choice must be an integer");
@@ -147,7 +147,7 @@ public:
                 std::printf("Family id to add: ");
                 std::fflush(stdout);
                 if (!read_line(line))
-                    return;
+                    return TeamBuildAction::BackToMainMenu;
                 const auto family = parse_int_strict(line);
                 if (!family) {
                     set_error(TextPickerErrorCode::ParseError, "family id must be an integer");
@@ -164,7 +164,7 @@ public:
             } else if (*choice == 4) {
                 if (config_.team_families.empty())
                     config_.team_families.push_back(FAMILY_SOLDIER);
-                return;
+                return TeamBuildAction::BackToMainMenu;
             } else {
                 set_error(TextPickerErrorCode::InvalidSelection, "team menu choice out of range");
                 std::printf("Invalid choice.\n");
