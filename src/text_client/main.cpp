@@ -66,6 +66,7 @@ extern cfg_store cfg;
 // Platform lifecycle (headless implementation in platform_headless.cpp)
 void io_init(int argc, char* argv[]);
 void io_exit();
+void emit_headless_unsupported_warnings_probe();
 
 // popup_dialog: normally shows an SDL dialog, we just print to stderr
 void popup_dialog(const char* title, const char* message)
@@ -210,6 +211,7 @@ struct TextClientArgs {
     std::vector<int> team_families; // family IDs
     std::uint32_t seed = 42;
     bool protocol_mode = false;
+    bool probe_unsupported_warnings = false;
 };
 
 static bool parse_args(int argc, char* argv[], TextClientArgs& args)
@@ -231,6 +233,8 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
             args.seed = static_cast<std::uint32_t>(std::atol(argv[++i]));
         } else if (arg == "--protocol") {
             args.protocol_mode = true;
+        } else if (arg == "--probe-unsupported-warnings") {
+            args.probe_unsupported_warnings = true;
         } else if (arg == "--help" || arg == "-h") {
             std::fprintf(stderr,
                 "Usage: openglad_text [options]\n"
@@ -239,6 +243,7 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
                 "  --team <f1,f2,...>  Team family IDs, comma-separated (default: 0 = soldier)\n"
                 "  --seed <num>        RNG seed (default: 42)\n"
                 "  --protocol          Run JSON protocol mode directly (no picker)\n"
+                "  --probe-unsupported-warnings  Emit one-time headless unsupported warnings and exit\n"
                 "\nCommands (stdin):\n"
                 "  tick [N]   Advance N simulation ticks\n"
                 "  state      Dump entity state as JSON\n"
@@ -380,6 +385,12 @@ int main(int argc, char* argv[])
 
     // Load configuration
     cfg.load_settings();
+
+    if (args.probe_unsupported_warnings) {
+        emit_headless_unsupported_warnings_probe();
+        io_exit();
+        return 0;
+    }
 
     int rc = 0;
     if (args.protocol_mode) {

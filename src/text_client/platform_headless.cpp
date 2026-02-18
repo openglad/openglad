@@ -319,6 +319,33 @@ void input_state_from_sdl(InputState&)
     });
 }
 
+void emit_headless_unsupported_warnings_probe()
+{
+    // Intentionally call each unsupported API twice; std::call_once-backed warnings
+    // must still emit only once per process.
+    level_data_draw_impl(nullptr, nullptr);
+    level_data_draw_impl(nullptr, nullptr);
+
+    (void)create_level_render(nullptr);
+    (void)create_level_render(nullptr);
+
+    (void)yes_or_no_prompt("probe", "probe", true);
+    (void)yes_or_no_prompt("probe", "probe", true);
+
+    (void)get_input_events();
+    (void)get_input_events();
+
+    (void)find_follow_leader();
+    (void)find_follow_leader();
+
+    load_map_data(nullptr);
+    load_map_data(nullptr);
+
+    InputState input{};
+    input_state_from_sdl(input);
+    input_state_from_sdl(input);
+}
+
 // SaveData is now provided by the real src/runtime/save_data.cpp
 // (linked into openglad_text via HEADLESS_SOURCES).
 
