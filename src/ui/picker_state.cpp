@@ -29,12 +29,14 @@ void run_picker(IPickerClient& client)
                     : PickerScreen::MainMenu;
                 break;
             case MainMenuAction::LoadGame:
-                client.load_game();
-                transition.next_screen = PickerScreen::MainMenu;
+                transition.next_screen = client.load_game()
+                    ? PickerScreen::MainMenu
+                    : PickerScreen::TeamBuild;
                 break;
             case MainMenuAction::SaveGame:
-                client.save_game();
-                transition.next_screen = PickerScreen::MainMenu;
+                transition.next_screen = client.save_game()
+                    ? PickerScreen::MainMenu
+                    : PickerScreen::TeamBuild;
                 break;
             case MainMenuAction::ViewTeam:
             case MainMenuAction::HireTeam:
