@@ -12,6 +12,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/core/util.h>
 #include <atomic>
+#include <functional>
 
 extern screen* myscreen;
 
@@ -44,6 +45,47 @@ static void cleanup_picker_state()
     main_columns_data.free();
     main_title_logo_pix.reset();
     main_title_logo_data.free();
+}
+
+static bool wait_for_interactable_match(
+    const std::string& id,
+    const std::function<bool(const Interactable&)>& predicate,
+    int timeout_ms = 5000)
+{
+    int elapsed = 0;
+    const int poll_interval = 50;
+    while (elapsed < timeout_ms) {
+        const auto interactables = get_interactables();
+        for (const auto& item : interactables) {
+            if (item.id == id && !item.hidden && predicate(item))
+                return true;
+        }
+        SDL_Delay(poll_interval);
+        elapsed += poll_interval;
+    }
+    fprintf(stderr, "  [interact] TIMEOUT waiting for matched '%s' (%d ms)\n", id.c_str(), timeout_ms);
+    return false;
+}
+
+static bool interact_match(
+    const std::string& id,
+    const std::function<bool(const Interactable&)>& predicate)
+{
+    const auto interactables = get_interactables();
+    for (const auto& item : interactables) {
+        if (item.id == id && !item.hidden && predicate(item)) {
+            const int game_x = item.x + item.width / 2;
+            const int game_y = item.y + item.height / 2;
+            const int win_x = static_cast<int>(static_cast<float>(game_x) * (viewport_w / 320.0f) + viewport_offset_x);
+            const int win_y = static_cast<int>(static_cast<float>(game_y) * (viewport_h / 200.0f) + viewport_offset_y);
+            fprintf(stderr, "  [interact] clicking matched '%s' at game(%d,%d) win(%d,%d)\n",
+                    id.c_str(), game_x, game_y, win_x, win_y);
+            inject_click(win_x, win_y);
+            return true;
+        }
+    }
+    fprintf(stderr, "  [interact] WARNING: matched '%s' not found\n", id.c_str());
+    return false;
 }
 
 // Test: Continue -> View Team -> Back -> Back
@@ -92,10 +134,13 @@ static int view_team_injector(void* data)
     interact("view_team");
 
     // View team menu has "go" and "back" buttons.
-    if (wait_for_interactable("go", 5000) && wait_for_interactable("back", 5000)) {
+    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
+    const auto is_view_menu_back = [](const Interactable& item) { return item.y >= 160; };
+    if (wait_for_interactable_match("go", is_view_menu_go, 5000)
+        && wait_for_interactable_match("back", is_view_menu_back, 5000)) {
         state->saw_view_menu = true;
         fprintf(stderr, "  [test] clicking back from view menu\n");
-        interact("back");
+        interact_match("back", is_view_menu_back);
     }
 
     // Ensure we return to main menu even if the view menu wasn't reached.
@@ -182,7 +227,8 @@ static int view_team_go_injector(void* data)
     }
     interact("view_team");
 
-    if (!wait_for_interactable("go", 5000)) {
+    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
+    if (!wait_for_interactable_match("go", is_view_menu_go, 5000)) {
         state->finished = true;
         return 0;
     }
@@ -192,7 +238,7 @@ static int view_team_go_injector(void* data)
     set_game_speed(0.0f);
 
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
-    interact("go");
+    interact_match("go", is_view_menu_go);
 
     int waited_ms = 0;
     const int poll_ms = 50;

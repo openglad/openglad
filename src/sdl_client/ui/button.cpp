@@ -525,6 +525,8 @@ void draw_buttons(button * buttons, Sint32 numbuttons)
     Sint32 i;
     for (i=0; i < numbuttons; i++)
     {
+        if (!allbuttons[i])
+            continue;
         if(buttons[i].hidden || buttons[i].no_draw)
             continue;
         

@@ -143,6 +143,11 @@ Sint32 create_team_menu(Sint32 arg1)
         
         // Reset buttons
         bool buttons_were_reset = reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+
+        // Nested menus can replace the global vbutton array with a different
+        // layout before returning EXIT. Avoid drawing with mismatched arrays.
+        if (retvalue & EXIT)
+            break;
 		
         if(last_level_id != myscreen->save_data.scen_num || buttons_were_reset)
         {
