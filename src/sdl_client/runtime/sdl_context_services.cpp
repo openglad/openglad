@@ -6,7 +6,7 @@
  * (at your option) any later version.
  */
 
-// SDL-specific GameContext service implementations.
+// SDL-specific GameContext wiring and link-time dispatch implementations.
 // This file is compiled only in the SDL build (not in openglad_text).
 
 #include <openglad/runtime/game_context.h>
@@ -38,42 +38,14 @@ void input_state_from_sdl(InputState& out)
     }
 }
 
-namespace
-{
-class LegacyRenderContextService final : public IRenderContextService
-{
-public:
-    screen* game_screen() override { return myscreen; }
-    options* prefs() override { return theprefs; }
-};
-
-class LegacyInputContextService final : public IInputContextService
-{
-public:
-    explicit LegacyInputContextService(GameContext& context) : context_(context) {}
-
-    InputState* input_state() override { return &context_.input; }
-
-    void poll_input() override { input_state_from_sdl(context_.input); }
-
-private:
-    GameContext& context_;
-};
-
-LegacyRenderContextService s_render_service;
-LegacyInputContextService s_input_service(ctx());
-} // namespace
-
-// Called from the SDL client initialization to register services.
+// Called from the SDL client initialization to populate GameContext fields.
 // The production main() or GameSession should call this after io_init.
 namespace og::runtime {
 void install_sdl_context_services()
 {
     auto& c = ctx();
-    if (!c.render_service)
-        c.render_service = &s_render_service;
-    if (!c.input_service)
-        c.input_service = &s_input_service;
+    c.game_screen = myscreen;
+    c.prefs = theprefs;
 }
 } // namespace og::runtime
 

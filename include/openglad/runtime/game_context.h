@@ -36,30 +36,6 @@ public:
 void input_state_from_sdl(InputState& out);
 
 // ---------------------------------------------------------------------------
-// Context services for config/input/render access
-// ---------------------------------------------------------------------------
-
-class IConfigContextService {
-public:
-    virtual ~IConfigContextService() = default;
-    virtual cfg_store* config() = 0;
-};
-
-class IRenderContextService {
-public:
-    virtual ~IRenderContextService() = default;
-    virtual screen* game_screen() = 0;
-    virtual options* prefs() = 0;
-};
-
-class IInputContextService {
-public:
-    virtual ~IInputContextService() = default;
-    virtual InputState* input_state() = 0;
-    virtual void poll_input() = 0;
-};
-
-// ---------------------------------------------------------------------------
 // GameContext
 // ---------------------------------------------------------------------------
 
@@ -77,9 +53,6 @@ struct GameContext {
     cfg_store*  config      = nullptr;
     IRandom*    rng         = nullptr;
     InputState  input       = {};
-    IConfigContextService* config_service = nullptr;
-    IRenderContextService* render_service = nullptr;
-    IInputContextService* input_service   = nullptr;
 
     // Simulation event log: accumulates events during a simulation tick.
     // Owned by GameContext. Simulation code pushes events here; the runtime
@@ -89,10 +62,11 @@ struct GameContext {
     // Convenience: is this a valid, initialized context?
     bool valid() const { return game_screen != nullptr; }
 
-    screen* active_screen() const;
-    options* active_prefs() const;
-    cfg_store* active_config() const;
-    InputState* active_input();
+    // Direct accessors — no service indirection.
+    screen* active_screen() const { return game_screen; }
+    options* active_prefs() const { return prefs; }
+    cfg_store* active_config() const { return config; }
+    InputState* active_input() { return &input; }
     void poll_input();
 };
 

@@ -25,48 +25,8 @@ std::uint32_t ProductionRandom::next(std::uint32_t max_exclusive)
     return random(max_exclusive);
 }
 
-screen* GameContext::active_screen() const
-{
-    if (render_service) {
-        if (screen* s = render_service->game_screen())
-            return s;
-    }
-    return game_screen;
-}
-
-options* GameContext::active_prefs() const
-{
-    if (render_service) {
-        if (options* p = render_service->prefs())
-            return p;
-    }
-    return prefs;
-}
-
-cfg_store* GameContext::active_config() const
-{
-    if (config_service) {
-        if (cfg_store* c = config_service->config())
-            return c;
-    }
-    return config;
-}
-
-InputState* GameContext::active_input()
-{
-    if (input_service) {
-        if (InputState* in = input_service->input_state())
-            return in;
-    }
-    return &input;
-}
-
 void GameContext::poll_input()
 {
-    if (input_service) {
-        input_service->poll_input();
-        return;
-    }
     input_state_from_sdl(input);
 }
 
@@ -84,17 +44,6 @@ static GameContext* s_active_context = nullptr;
 // Forward-declare the globals this wraps
 extern screen* myscreen;
 
-namespace
-{
-class LegacyConfigContextService final : public IConfigContextService
-{
-public:
-    cfg_store* config() override { return &cfg; }
-};
-} // namespace
-
-static LegacyConfigContextService s_default_config_service;
-
 GameContext& ctx()
 {
     if (s_active_context)
@@ -105,8 +54,6 @@ GameContext& ctx()
     s_default_context.config = &cfg;
     if (!s_default_context.rng)
         s_default_context.rng = &s_production_rng;
-    if (!s_default_context.config_service)
-        s_default_context.config_service = &s_default_config_service;
 
     return s_default_context;
 }
