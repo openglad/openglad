@@ -53,4 +53,8 @@ struct TextPickerConfig
 // looping back after games. Returns when the user quits from the picker.
 void run_text_picker(TextPickerConfig& config, TextPickerError* error = nullptr);
 
+// Runs the text protocol gameplay session using picker config values.
+// Returns the same status code as run_text_protocol_session().
+int run_text_picker_protocol_session(const TextPickerConfig& config);
+
 } // namespace og::ui
