@@ -1,6 +1,15 @@
-/* SDL-free path helpers for headless clients.
- * Provides get_user_path() and get_asset_path() without SDL dependency.
- * These are normally defined in platform_io.cpp (which includes SDL.h).
+/* SDL-free platform layer for headless clients.
+ *
+ * Provides get_user_path(), get_asset_path(), and link-time dispatch
+ * implementations for functions that the game engine expects but that have
+ * no SDL dependency in headless mode.
+ *
+ * Categorisation follows the headless platform completion matrix (section 6.3
+ * of docs/over-engineering-audit.md):
+ *   A) Implemented via shared helpers in src/io/platform_io_common.cpp
+ *   B) Explicit unsupported — one-time warning via std::call_once
+ *   C) Safe no-ops with documentation
+ *   D) Deferred — returns typed failure with log message
  */
 
 #include <openglad/core/util.h>
@@ -8,6 +17,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <mutex>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -72,27 +82,75 @@ std::string get_asset_path()
 #endif
 }
 
-// Link-time dispatch stubs for level_data.cpp (headless has no SDL render layer)
+// ---------------------------------------------------------------------------
+// Category C: Safe no-ops (documented)
+// ---------------------------------------------------------------------------
+
 class LevelData;
 class walker;
 class screen;
 #include <openglad/data/level_render.h>
 class PixieData;
 
+// Safe no-op: view controls are an SDL render concern; headless has no views.
 void clear_stale_view_controls(LevelData*) {}
+
+// Safe no-op: entity-to-screen wiring is only needed for SDL rendering.
+// Sim pointers are set separately via LevelData::set_sim_context().
 void level_data_wire_entity_from_screen(walker*) {}
-void level_data_draw_impl(LevelData*, screen*) {}
+
+// Safe no-op: keyboard buffer is an SDL input concern.
+void clear_keyboard() {}
+
+// ---------------------------------------------------------------------------
+// Category B: Explicit unsupported (one-time warning)
+// ---------------------------------------------------------------------------
+
+namespace {
+std::once_flag warn_draw_impl;
+std::once_flag warn_yes_or_no;
+std::once_flag warn_input_events;
+std::once_flag warn_input_state;
+std::once_flag warn_find_follow;
+} // namespace
+
+void level_data_draw_impl(LevelData*, screen*)
+{
+    std::call_once(warn_draw_impl, [] {
+        LogWarn("level_data_draw_impl: not supported in headless mode\n");
+    });
+}
+
 std::unique_ptr<ILevelRender> create_level_render(PixieData[]) { return nullptr; }
 
-// Stubs for treasure_family_navigation.cpp
-bool yes_or_no_prompt(const char*, const char*, bool) { return false; }
-void clear_keyboard() {}
-int get_input_events() { return 0; }
+bool yes_or_no_prompt(const char* /*title*/, const char* /*message*/, bool default_value)
+{
+    std::call_once(warn_yes_or_no, [] {
+        LogWarn("yes_or_no_prompt: not supported in headless mode, returning default\n");
+    });
+    return default_value;
+}
 
-// Stub for stats.cpp
-walker* find_follow_leader() { return nullptr; }
+int get_input_events()
+{
+    std::call_once(warn_input_events, [] {
+        LogWarn("get_input_events: not supported in headless mode\n");
+    });
+    return 0;
+}
 
+// Stub for stats.cpp — headless has no follow-leader concept
+walker* find_follow_leader()
+{
+    std::call_once(warn_find_follow, [] {
+        LogWarn("find_follow_leader: not supported in headless mode\n");
+    });
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
 // Stubs for base.h helpers that use OgFile
+// ---------------------------------------------------------------------------
 #include <openglad/io/og_file.h>
 #include <openglad/legacy/base.h>
 
@@ -123,10 +181,11 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& inf
     return MAX_LINES;
 }
 
-// --- Platform I/O ---
+// ---------------------------------------------------------------------------
+// Platform I/O
 // Campaign/list/archive/fs helpers are now in src/io/platform_io_common.cpp
-// (shared by both SDL and headless builds).  Only stubs that remain here are
-// for functions that genuinely have no headless implementation yet.
+// (shared by both SDL and headless builds).
+// ---------------------------------------------------------------------------
 
 #include <openglad/platform/io_common.h>
 #include <openglad/data/save_data.h>
@@ -138,17 +197,53 @@ short fill_help_array(char somearray[HELP_WIDTH][MAX_LINES], og::io::OgFile& inf
 bool save_settings() { return false; }
 bool load_settings() { return false; }
 
-// Editor-adjacent stubs (category D: deferred, returns typed failure)
-NewFileIoError create_new_map_pix_with_error(const std::string&, int, int) { return NewFileIoError::OpenWriteFailed; }
-NewFileIoError create_new_pix_with_error(const std::string&, int, int, unsigned char) { return NewFileIoError::OpenWriteFailed; }
-NewFileIoError create_new_campaign_descriptor_with_error(const std::string&) { return NewFileIoError::OpenWriteFailed; }
-NewFileIoError create_new_scen_file_with_error(const std::string&, const std::string&) { return NewFileIoError::OpenWriteFailed; }
-bool create_new_map_pix(const std::string&, int, int) { return false; }
-bool create_new_pix(const std::string&, int, int, unsigned char) { return false; }
-bool create_new_campaign_descriptor(const std::string&) { return false; }
-bool create_new_scen_file(const std::string&, const std::string&) { return false; }
+// ---------------------------------------------------------------------------
+// Category D: Editor-adjacent stubs (deferred — typed failure + log)
+// ---------------------------------------------------------------------------
 
-void load_map_data(PixieData*) {}
+namespace {
+std::once_flag warn_editor_create;
+std::once_flag warn_load_map;
+} // namespace
+
+NewFileIoError create_new_map_pix_with_error(const std::string& filename, int, int)
+{
+    std::call_once(warn_editor_create, [] {
+        LogWarn("Editor file creation not supported in headless mode\n");
+    });
+    LogError("create_new_map_pix_with_error: unsupported in headless mode (file={})\n", filename);
+    return NewFileIoError::OpenWriteFailed;
+}
+
+NewFileIoError create_new_pix_with_error(const std::string& filename, int, int, unsigned char)
+{
+    LogError("create_new_pix_with_error: unsupported in headless mode (file={})\n", filename);
+    return NewFileIoError::OpenWriteFailed;
+}
+
+NewFileIoError create_new_campaign_descriptor_with_error(const std::string& filename)
+{
+    LogError("create_new_campaign_descriptor_with_error: unsupported in headless mode (file={})\n", filename);
+    return NewFileIoError::OpenWriteFailed;
+}
+
+NewFileIoError create_new_scen_file_with_error(const std::string& scenfile, const std::string&)
+{
+    LogError("create_new_scen_file_with_error: unsupported in headless mode (file={})\n", scenfile);
+    return NewFileIoError::OpenWriteFailed;
+}
+
+bool create_new_map_pix(const std::string& f, int w, int h) { return create_new_map_pix_with_error(f, w, h) == NewFileIoError::None; }
+bool create_new_pix(const std::string& f, int w, int h, unsigned char c) { return create_new_pix_with_error(f, w, h, c) == NewFileIoError::None; }
+bool create_new_campaign_descriptor(const std::string& f) { return create_new_campaign_descriptor_with_error(f) == NewFileIoError::None; }
+bool create_new_scen_file(const std::string& f, const std::string& g) { return create_new_scen_file_with_error(f, g) == NewFileIoError::None; }
+
+void load_map_data(PixieData*)
+{
+    std::call_once(warn_load_map, [] {
+        LogWarn("load_map_data: not supported in headless mode\n");
+    });
+}
 
 // Lifecycle stubs (will be unified in step 5)
 void io_init(int, char*[]) {}
@@ -161,9 +256,17 @@ int toInt(const std::string& s)
     catch (...) { return 0; }
 }
 
-void input_state_from_sdl(InputState&) {}
+// Category B: SDL input sampling not available in headless mode
+void input_state_from_sdl(InputState&)
+{
+    std::call_once(warn_input_state, [] {
+        LogWarn("input_state_from_sdl: not supported in headless mode\n");
+    });
+}
 
-// --- SaveData stubs (headless: no save/load) ---
+// ---------------------------------------------------------------------------
+// SaveData stubs (will be replaced by real save_data.cpp linkage in step 4)
+// ---------------------------------------------------------------------------
 SaveData::SaveData()
     : scen_num(1), score(0), totalcash(0), totalscore(0), team_size(0), numplayers(1), allied_mode(0)
 {
