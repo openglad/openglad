@@ -37,7 +37,6 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/input/input_state.h>
 #include <openglad/ui/picker.h>
-#include <openglad/ui/text_protocol.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -146,16 +145,6 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
     return true;
 }
 
-static int run_protocol_session(const TextClientArgs& args)
-{
-    og::ui::TextProtocolArgs protocol_args;
-    protocol_args.campaign = args.campaign;
-    protocol_args.level = args.level;
-    protocol_args.team_families = args.team_families;
-    protocol_args.seed = args.seed;
-    return og::ui::run_text_protocol_session(protocol_args);
-}
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -178,18 +167,18 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    int rc = 0;
-    if (args.protocol_mode) {
-        rc = run_protocol_session(args);
-        io_exit();
-        return rc;
-    }
-
     og::ui::TextPickerConfig picker_config;
     picker_config.campaign = args.campaign;
     picker_config.level = args.level;
     picker_config.team_families = args.team_families;
     picker_config.seed = args.seed;
+
+    int rc = 0;
+    if (args.protocol_mode) {
+        rc = og::ui::run_text_picker_protocol_session(picker_config);
+        io_exit();
+        return rc;
+    }
 
     og::ui::TextPickerError picker_error;
     og::ui::run_text_picker(picker_config, &picker_error);
