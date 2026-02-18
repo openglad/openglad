@@ -63,8 +63,9 @@ void run_picker(IPickerClient& client)
                     : PickerScreen::MainMenu;
             break;
         case PickerScreen::CampaignSelect:
-            client.show_campaign_select();
-            transition.next_screen = PickerScreen::TeamBuild;
+            transition.next_screen = client.show_campaign_select().empty()
+                ? PickerScreen::MainMenu
+                : PickerScreen::TeamBuild;
             break;
         case PickerScreen::Options:
             client.show_options();
