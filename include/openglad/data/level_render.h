@@ -7,21 +7,32 @@
  */
 #pragma once
 
-#include <cstdint>
+#include <memory>
 
 class PixieData;
 class viewscreen;
 
-// Abstract interface for level tile rendering.
-// SDL builds create an SdlLevelRender that owns back[PIX_MAX] pixieN tiles.
-// Headless builds leave renderer_ as nullptr.
-class ILevelRender {
+// Concrete level tile renderer that owns PIX_MAX pixieN tile sprites.
+// SDL builds create a LevelRender; headless builds leave renderer_ as nullptr.
+class LevelRender {
 public:
-    virtual ~ILevelRender() = default;
-    virtual void init_tiles(PixieData pixdata[]) = 0;
-    virtual void reset_tiles(PixieData pixdata[]) = 0;
-    virtual void draw_tile(int tile_index, int x, int y, viewscreen* view) = 0;
+    LevelRender();
+    ~LevelRender();
 
-protected:
-    ILevelRender() = default;
+    LevelRender(const LevelRender&) = delete;
+    LevelRender& operator=(const LevelRender&) = delete;
+
+    void init_tiles(PixieData pixdata[]);
+    void reset_tiles(PixieData pixdata[]);
+    void draw_tile(int tile_index, int x, int y, viewscreen* view);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
+
+// Factory: create and initialize a LevelRender from pixdata.
+std::unique_ptr<LevelRender> create_sdl_level_render(PixieData pixdata[]);
+
+// Backwards-compatibility alias
+using ILevelRender = LevelRender;

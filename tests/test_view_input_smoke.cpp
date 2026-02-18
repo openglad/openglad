@@ -15,7 +15,7 @@ static std::unique_ptr<walker> create_living_on_team(unsigned char team)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER, myscreen);
+    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w)
         return nullptr;
     w->team_num = team;

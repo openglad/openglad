@@ -83,7 +83,7 @@ void test_effect_magic_shield_hits_weapon_and_enemy_paths()
     shield->setxy(100, 100);
 
     // Inject a weapon into oblist (effect::act queries level_data.oblist for weapons).
-    auto weapon = myscreen->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW, myscreen);
+    auto weapon = myscreen->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
         weapon->myobmap = myscreen->level_data.myobmap.get();
@@ -135,7 +135,7 @@ void test_effect_boomerang_hits_weapon_and_enemy_paths()
     fx->drawcycle = 12;
     fx->setxy(100, 100);
 
-    auto weapon = myscreen->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW, myscreen);
+    auto weapon = myscreen->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (weapon) {
         weapon->myobmap = myscreen->level_data.myobmap.get();

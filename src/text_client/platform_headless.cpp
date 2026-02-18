@@ -117,7 +117,16 @@ void level_data_draw_impl(LevelData*, screen*)
     });
 }
 
-std::unique_ptr<ILevelRender> create_level_render(PixieData[])
+// LevelRender stubs for headless mode.
+// renderer_ is always nullptr in headless, but the linker needs these symbols.
+struct LevelRender::Impl {};
+LevelRender::LevelRender() {}
+LevelRender::~LevelRender() = default;
+void LevelRender::init_tiles(PixieData[]) {}
+void LevelRender::reset_tiles(PixieData[]) {}
+void LevelRender::draw_tile(int, int, int, viewscreen*) {}
+
+std::unique_ptr<LevelRender> create_level_render(PixieData[])
 {
     static std::once_flag warn_flag;
     std::call_once(warn_flag, []() { Log("Warning: create_level_render not supported in headless mode\n"); });

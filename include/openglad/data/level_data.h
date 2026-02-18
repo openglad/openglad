@@ -26,7 +26,7 @@
 enum class Order : unsigned char;
 
 class screen;
-class ILevelRender;
+class LevelRender;
 class loader;
 class walker;
 class statistics;
@@ -131,7 +131,7 @@ public:
 
     // Drawing details
     PixieData pixdata[PIX_MAX];
-    std::unique_ptr<ILevelRender> renderer_;  // Tile rendering (null for headless)
+    std::unique_ptr<LevelRender> renderer_;  // Tile rendering (null for headless)
     std::int32_t topx, topy;
 
     LevelData(int level_id);

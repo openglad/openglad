@@ -60,7 +60,7 @@ static std::unique_ptr<walker> make_living(unsigned char family, unsigned char t
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
     w->team_num = team;

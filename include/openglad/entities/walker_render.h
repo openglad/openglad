@@ -7,18 +7,29 @@
  */
 #pragma once
 
+#include <memory>
+
 class PixieData;
 
-// Abstract render component for walker entities.
-// SDL builds create a PixieNWalkerRender (wrapping pixieN);
+// Concrete render component for walker entities.
+// SDL builds create a WalkerRender (wrapping pixieN);
 // headless builds leave render_ as nullptr.
-class IWalkerRender {
+class WalkerRender {
 public:
-    virtual ~IWalkerRender() = default;
-    virtual const unsigned char* bmp_data() const = 0;
-    virtual void set_frame(short framenum) = 0;
-    virtual void set_data(const PixieData& data) = 0;
+    explicit WalkerRender(const PixieData& data);
+    ~WalkerRender();
 
-protected:
-    IWalkerRender() = default;
+    WalkerRender(const WalkerRender&) = delete;
+    WalkerRender& operator=(const WalkerRender&) = delete;
+
+    const unsigned char* bmp_data() const;
+    void set_frame(short framenum);
+    void set_data(const PixieData& data);
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
+
+// Backwards-compatibility alias
+using IWalkerRender = WalkerRender;

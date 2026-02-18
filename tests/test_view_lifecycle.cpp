@@ -29,7 +29,7 @@ static std::unique_ptr<walker> make_npc_walker(char family, unsigned char team)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (w) {
         w->team_num = team;
         w->user = -1;

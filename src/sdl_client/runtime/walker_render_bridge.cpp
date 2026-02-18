@@ -21,26 +21,24 @@
 #include <openglad/core/constants.h>
 #include <openglad/core/util.h>
 
-// Concrete IWalkerRender backed by a pixieN sprite.
-class PixieNWalkerRender final : public IWalkerRender {
-public:
-	explicit PixieNWalkerRender(const PixieData& data)
-		: pix_(std::make_unique<pixieN>(data)) {}
-
-	const unsigned char* bmp_data() const override { return pix_->bmp_data(); }
-	void set_frame(short framenum) override { pix_->set_frame(framenum); }
-	void set_data(const PixieData& data) override { pix_->set_data(data); }
-
-	pixieN* pixie() { return pix_.get(); }
-	const pixieN* pixie() const { return pix_.get(); }
-
-private:
-	std::unique_ptr<pixieN> pix_;
+// WalkerRender PIMPL implementation (backed by pixieN sprite)
+struct WalkerRender::Impl {
+	std::unique_ptr<pixieN> pix;
+	explicit Impl(const PixieData& data) : pix(std::make_unique<pixieN>(data)) {}
 };
+
+WalkerRender::WalkerRender(const PixieData& data)
+	: impl_(std::make_unique<Impl>(data)) {}
+
+WalkerRender::~WalkerRender() = default;
+
+const unsigned char* WalkerRender::bmp_data() const { return impl_->pix->bmp_data(); }
+void WalkerRender::set_frame(short framenum) { impl_->pix->set_frame(framenum); }
+void WalkerRender::set_data(const PixieData& data) { impl_->pix->set_data(data); }
 
 void walker::attach_render(const PixieData& data)
 {
-	render_ = std::make_unique<PixieNWalkerRender>(data);
+	render_ = std::make_unique<WalkerRender>(data);
 	// Sync size from PixieData into SimEntity fields
 	sizex = data.w;
 	sizey = data.h;

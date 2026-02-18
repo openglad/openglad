@@ -77,7 +77,7 @@ void test_screen_query_grid_passable_walking()
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return;
-    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER, myscreen);
+    auto w = l->create_walker_owned(Order::Living, FAMILY_SOLDIER);
     if (!w) return;
     w->setxy(100, 100);
 
@@ -98,7 +98,7 @@ void test_screen_query_grid_passable_weapon()
 {
     loader* l = myscreen->level_data.myloader.get();
     if (!l) return;
-    auto w = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE, myscreen);
+    auto w = l->create_walker_owned(Order::Weapon, FAMILY_KNIFE);
     if (!w) return;
     w->setxy(100, 100);
 

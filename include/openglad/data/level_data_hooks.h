@@ -35,5 +35,5 @@ void level_data_wire_entity_from_screen(walker* w);
 void level_data_draw_impl(LevelData* level, screen* screenp);
 
 // Create a tile renderer for the level.
-// SDL: returns SdlLevelRender. Headless: returns nullptr with one-time warning.
-std::unique_ptr<ILevelRender> create_level_render(PixieData pixdata[]);
+// SDL: returns LevelRender. Headless: returns nullptr with one-time warning.
+std::unique_ptr<LevelRender> create_level_render(PixieData pixdata[]);

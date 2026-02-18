@@ -16,7 +16,7 @@ static std::unique_ptr<walker> create_living(char family)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
     w->setxy(50, 50);
@@ -179,7 +179,7 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
     if (!l)
         return;
 
-    auto weapon = l->create_walker_owned(Order::Weapon, FAMILY_ARROW, myscreen);
+    auto weapon = l->create_walker_owned(Order::Weapon, FAMILY_ARROW);
     TEST_ASSERT(weapon != nullptr, "weapon created");
     if (!weapon)
         return;

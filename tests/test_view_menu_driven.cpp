@@ -21,7 +21,7 @@ static std::unique_ptr<walker> create_controlled_living(char family)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
     w->team_num = 0;

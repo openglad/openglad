@@ -35,7 +35,7 @@ void test_living_set_difficulty_levels()
         for (int level = 1; level <= 5; level++) {
             loader* l = myscreen->level_data.myloader.get();
             if (!l) continue;
-            auto w = l->create_walker_owned(Order::Living, families[i], myscreen);
+            auto w = l->create_walker_owned(Order::Living, families[i]);
             if (w) {
                 static_cast<living*>(w.get())->set_difficulty(level);
                 TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP positive for all families at all levels");

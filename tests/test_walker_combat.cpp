@@ -282,7 +282,7 @@ void test_walker_act_with_commands()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
     if (l) {
-        auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
+        auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
         TEST_ASSERT(gen != nullptr, "generator created");
         if (gen) {
             walker* genp = gen.get();
@@ -608,14 +608,14 @@ void test_walker_set_difficulty_all_families()
                         FAMILY_FAERIE, FAMILY_SMALL_SLIME, FAMILY_THIEF,
                         FAMILY_GHOST, FAMILY_DRUID, FAMILY_ORC, FAMILY_BARBARIAN };
     for (int i = 0; i < 14; i++) {
-        auto w = l->create_walker_owned(Order::Living, families[i], myscreen);
+        auto w = l->create_walker_owned(Order::Living, families[i]);
         if (w) {
             w->set_difficulty(5);
             TEST_ASSERT(w->stats()->max_hitpoints > 0, "HP positive after set_difficulty");
         }
     }
 
-    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
+    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
     TEST_ASSERT(gen != nullptr, "generator created");
     if (gen) {
         float hp_before = gen->stats()->hitpoints;
@@ -694,7 +694,7 @@ void test_walker_act_random_generator_paths()
     loader* l = myscreen->level_data.myloader.get();
     TEST_ASSERT(l != nullptr, "loader exists");
 
-    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT, myscreen);
+    auto gen = l->create_walker_owned(Order::Generator, FAMILY_TENT);
     walker* foe = make_guy(FAMILY_ORC, 2);
     TEST_ASSERT(gen != nullptr && foe != nullptr, "generator and foe created");
     if (!(gen && foe)) {

@@ -15,7 +15,7 @@ static std::unique_ptr<walker> create_living(char family)
     loader* l = myscreen->level_data.myloader.get();
     if (!l)
         return nullptr;
-    auto w = l->create_walker_owned(Order::Living, family, myscreen);
+    auto w = l->create_walker_owned(Order::Living, family);
     if (!w)
         return nullptr;
     // Place at a valid position so obmap operations are safe.

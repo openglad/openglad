@@ -17,6 +17,18 @@
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
 
+// ---------------------------------------------------------------------------
+// WalkerRender stubs for headless mode.
+// render_ is always nullptr in headless, but the linker still needs these
+// symbols because shared code (e.g. treasure.cpp) references them.
+// ---------------------------------------------------------------------------
+struct WalkerRender::Impl {};
+WalkerRender::WalkerRender(const PixieData&) {}
+WalkerRender::~WalkerRender() = default;
+const unsigned char* WalkerRender::bmp_data() const { return nullptr; }
+void WalkerRender::set_frame(short) {}
+void WalkerRender::set_data(const PixieData&) {}
+
 void walker::attach_render(const PixieData& data)
 {
 	// No render component in headless mode; just sync sim fields.

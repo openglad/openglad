@@ -7,21 +7,6 @@
  */
 #pragma once
 
+// This header is now a thin compatibility shim. The concrete LevelRender
+// class is defined in include/openglad/data/level_render.h.
 #include <openglad/data/level_render.h>
-#include <openglad/data/pixie_data.h>
-#include <openglad/render/pixien.h>
-#include <openglad/legacy/pixdefs.h>
-#include <memory>
-
-// SDL implementation of ILevelRender that owns PIX_MAX pixieN tile sprites.
-class SdlLevelRender final : public ILevelRender {
-public:
-    std::unique_ptr<pixieN> back[PIX_MAX];
-
-    void init_tiles(PixieData pixdata[]) override;
-    void reset_tiles(PixieData pixdata[]) override;
-    void draw_tile(int tile_index, int x, int y, viewscreen* view) override;
-};
-
-// Factory: create and initialize an SdlLevelRender from pixdata.
-std::unique_ptr<ILevelRender> create_sdl_level_render(PixieData pixdata[]);

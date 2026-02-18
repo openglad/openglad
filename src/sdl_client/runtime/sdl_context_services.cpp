@@ -82,10 +82,7 @@ void level_data_draw_impl(LevelData* level, screen* screenp)
         screenp->viewob[i]->redraw(level, false);
 }
 
-// Forward-declare the factory from sdl_level_render.cpp
-std::unique_ptr<ILevelRender> create_sdl_level_render(PixieData pixdata[]);
-
-std::unique_ptr<ILevelRender> create_level_render(PixieData pixdata[])
+std::unique_ptr<LevelRender> create_level_render(PixieData pixdata[])
 {
     return create_sdl_level_render(pixdata);
 }
