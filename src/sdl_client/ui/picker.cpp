@@ -36,6 +36,7 @@
 #include <openglad/data/gparser.h>
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/ui/level_picker.h>
+#include <openglad/ui/menu_model.h>
 #include <openglad/ui/picker_state.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen_lifecycle.h>
@@ -207,8 +208,7 @@ enum class PickerInterceptScope
 };
 
 static PickerInterceptScope g_picker_intercept_scope = PickerInterceptScope::None;
-static og::ui::MainMenuAction g_picker_main_menu_action = og::ui::MainMenuAction::Quit;
-static og::ui::TeamBuildAction g_picker_team_build_action = og::ui::TeamBuildAction::BackToMainMenu;
+static const og::ui::PickerMenuItem* g_picker_selected_menu_item = nullptr;
 
 static cfg_store& active_config()
 {
@@ -280,34 +280,41 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     (void)call_arg;
     const ButtonAction action = button_action_from_id(whatfunc);
     if (g_picker_intercept_scope == PickerInterceptScope::MainMenu) {
+        const og::ui::PickerMenuItem* menu_item = nullptr;
         switch (action) {
         case ButtonAction::BeginMenu:
-            g_picker_main_menu_action = og::ui::MainMenuAction::NewGame;
-            retvalue = menu_result_id(MenuResult::Exit);
-            return true;
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::BeginNewGame);
+            break;
         case ButtonAction::CreateTeamMenu:
-            g_picker_main_menu_action = og::ui::MainMenuAction::ViewTeam;
-            retvalue = menu_result_id(MenuResult::Exit);
-            return true;
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::ContinueGame);
+            break;
         case ButtonAction::MainOptions:
-            g_picker_main_menu_action = og::ui::MainMenuAction::Options;
-            retvalue = menu_result_id(MenuResult::Exit);
-            return true;
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Options);
+            break;
         case ButtonAction::ShowHelp:
-            g_picker_main_menu_action = og::ui::MainMenuAction::Help;
-            retvalue = menu_result_id(MenuResult::Exit);
-            return true;
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Help);
+            break;
         case ButtonAction::QuitMenu:
-            g_picker_main_menu_action = og::ui::MainMenuAction::Quit;
-            retvalue = menu_result_id(MenuResult::Exit);
-            return true;
+            menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
+            break;
         default:
             return false;
         }
+        if (!menu_item)
+            return false;
+        g_picker_selected_menu_item = menu_item;
+        retvalue = menu_result_id(MenuResult::Exit);
+        return true;
     }
     if (g_picker_intercept_scope == PickerInterceptScope::TeamBuild) {
         if (action == ButtonAction::GoMenu) {
-            g_picker_team_build_action = og::ui::TeamBuildAction::PlayGame;
+            g_picker_selected_menu_item = og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::StartGame);
             retvalue = menu_result_id(MenuResult::Exit);
             return true;
         }
@@ -318,20 +325,38 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
 class SdlPickerClient final : public og::ui::IPickerClient
 {
 public:
-    og::ui::MainMenuAction show_main_menu() override
+    const og::ui::PickerMenuItem* present_menu(og::ui::PickerMenuId menu_id) override
     {
 #ifdef TESTING
-        if (g_picker_max_mainmenu_calls > 0 && g_picker_mainmenu_calls >= g_picker_max_mainmenu_calls)
-            return og::ui::MainMenuAction::Quit;
+        if (menu_id == og::ui::PickerMenuId::Main
+            && g_picker_max_mainmenu_calls > 0
+            && g_picker_mainmenu_calls >= g_picker_max_mainmenu_calls) {
+            return og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
+        }
 #endif
-        g_picker_main_menu_action = og::ui::MainMenuAction::Quit;
-        g_picker_intercept_scope = PickerInterceptScope::MainMenu;
-        mainmenu(1);
-        g_picker_intercept_scope = PickerInterceptScope::None;
+        g_picker_selected_menu_item = nullptr;
+        if (menu_id == og::ui::PickerMenuId::Main) {
+            g_picker_intercept_scope = PickerInterceptScope::MainMenu;
+            mainmenu(1);
+            g_picker_intercept_scope = PickerInterceptScope::None;
 #ifdef TESTING
-        g_picker_mainmenu_calls++;
+            g_picker_mainmenu_calls++;
 #endif
-        return g_picker_main_menu_action;
+            if (g_picker_selected_menu_item)
+                return g_picker_selected_menu_item;
+            return og::ui::find_picker_menu_item(
+                og::ui::PickerMenuId::Main, og::ui::PickerMenuCommand::Quit);
+        }
+
+        g_picker_intercept_scope = PickerInterceptScope::TeamBuild;
+        create_team_menu(start_team_build_in_hire_menu_ ? 1 : 0);
+        g_picker_intercept_scope = PickerInterceptScope::None;
+        start_team_build_in_hire_menu_ = false;
+        if (g_picker_selected_menu_item)
+            return g_picker_selected_menu_item;
+        return og::ui::find_picker_menu_item(
+            og::ui::PickerMenuId::TeamBuild, og::ui::PickerMenuCommand::Back);
     }
 
     bool prepare_new_game() override
@@ -340,16 +365,6 @@ public:
             return false;
         start_team_build_in_hire_menu_ = true;
         return true;
-    }
-
-    og::ui::TeamBuildAction show_team_build() override
-    {
-        g_picker_team_build_action = og::ui::TeamBuildAction::BackToMainMenu;
-        g_picker_intercept_scope = PickerInterceptScope::TeamBuild;
-        create_team_menu(start_team_build_in_hire_menu_ ? 1 : 0);
-        g_picker_intercept_scope = PickerInterceptScope::None;
-        start_team_build_in_hire_menu_ = false;
-        return g_picker_team_build_action;
     }
 
     std::string show_campaign_select() override

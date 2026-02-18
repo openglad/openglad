@@ -13,20 +13,17 @@ TMPIN=$(mktemp)
 trap 'rm -rf "$TMPHOME"; rm -f "$TMPOUT" "$TMPIN"' EXIT
 
 cat > "$TMPIN" << 'INP'
+1
+
+3
+2
 5
-3
-1
-1
 4
-4
-5
-3
-4
-3
-1
+6
 state
 quit
-8
+7
+11
 INP
 
 HOME="$TMPHOME" timeout 30 "$TEXT_BIN" < "$TMPIN" > "$TMPOUT" 2>/dev/null
@@ -43,7 +40,7 @@ import json, os, sys
 out_path = os.environ['TMPOUT']
 home = os.environ['TMPHOME']
 lines = [l.rstrip('\n') for l in open(out_path, encoding='utf-8', errors='replace')]
-if not any('OpenGlad Text Picker' in l for l in lines):
+if not any('OpenGlad Main Menu' in l for l in lines):
     print('FAIL: interactive picker banner not found', file=sys.stderr)
     sys.exit(1)
 
@@ -74,9 +71,15 @@ if state is None:
     sys.exit(1)
 
 team_entities = [e for e in state.get('entities', []) if e.get('team') == 0]
-families = {e.get('family') for e in team_entities}
-if not ({0, 1}.issubset(families)):
-    print(f'FAIL: expected loaded team families {{0,1}} in player team, got {sorted(f for f in families if isinstance(f, int))}', file=sys.stderr)
+if not any(e.get('family') == 0 for e in team_entities):
+    print('FAIL: expected at least one player team family=0 entity', file=sys.stderr)
+    sys.exit(1)
+if not any(isinstance(e.get('family'), int) and e.get('family') != 0 for e in team_entities):
+    print('FAIL: expected at least one non-zero family in player team after hire/load', file=sys.stderr)
+    sys.exit(1)
+
+if not any("Loaded 'text_quicksave'" in l and 'team=2' in l for l in lines):
+    print('FAIL: expected load confirmation with team=2 after save/load round-trip', file=sys.stderr)
     sys.exit(1)
 
 quit_ok = any(o.get('cmd') == 'quit' and o.get('status') == 'ok' for o in objs)

@@ -10,6 +10,50 @@
 
 namespace og::ui {
 
+MainMenuAction IPickerClient::show_main_menu()
+{
+    for (;;) {
+        const PickerMenuItem* item = present_menu(PickerMenuId::Main);
+        if (!item)
+            return MainMenuAction::Quit;
+
+        switch (item->command) {
+        case PickerMenuCommand::BeginNewGame:
+            return MainMenuAction::NewGame;
+        case PickerMenuCommand::ContinueGame:
+            return MainMenuAction::ViewTeam;
+        case PickerMenuCommand::Options:
+            return MainMenuAction::Options;
+        case PickerMenuCommand::Help:
+            return MainMenuAction::Help;
+        case PickerMenuCommand::Quit:
+            return MainMenuAction::Quit;
+        default:
+            handle_menu_item(PickerMenuId::Main, *item);
+            break;
+        }
+    }
+}
+
+TeamBuildAction IPickerClient::show_team_build()
+{
+    for (;;) {
+        const PickerMenuItem* item = present_menu(PickerMenuId::TeamBuild);
+        if (!item)
+            return TeamBuildAction::BackToMainMenu;
+
+        switch (item->command) {
+        case PickerMenuCommand::StartGame:
+            return TeamBuildAction::PlayGame;
+        case PickerMenuCommand::Back:
+            return TeamBuildAction::BackToMainMenu;
+        default:
+            handle_menu_item(PickerMenuId::TeamBuild, *item);
+            break;
+        }
+    }
+}
+
 void run_picker(IPickerClient& client)
 {
     PickerScreen screen = PickerScreen::MainMenu;

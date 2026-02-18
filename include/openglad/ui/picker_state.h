@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <openglad/ui/menu_model.h>
 
 // Platform-agnostic picker menu state machine.
 // Describes the flow of the team/game picker independently of the
@@ -67,14 +68,25 @@ public:
     virtual ~IPickerClient() = default;
 
     // Display the main menu and block until the user makes a choice.
-    virtual MainMenuAction show_main_menu() = 0;
+    virtual MainMenuAction show_main_menu();
 
     // Prepare local save/team state for starting a new game.
     // Return false to cancel and go back to the main menu.
     virtual bool prepare_new_game() { return true; }
 
     // Display team building menu.
-    virtual TeamBuildAction show_team_build() = 0;
+    virtual TeamBuildAction show_team_build();
+
+    // Render a shared picker menu and return which shared item was selected.
+    // Returning nullptr means "cancel/default back".
+    virtual const PickerMenuItem* present_menu(PickerMenuId menu_id) { (void)menu_id; return nullptr; }
+
+    // Handle menu commands that do not leave the current screen.
+    virtual void handle_menu_item(PickerMenuId menu_id, const PickerMenuItem& item)
+    {
+        (void)menu_id;
+        (void)item;
+    }
 
     // Display campaign selection. Returns selected campaign ID or empty on cancel.
     virtual std::string show_campaign_select() = 0;
