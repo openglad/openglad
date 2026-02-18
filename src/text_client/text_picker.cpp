@@ -63,6 +63,16 @@ std::string save_error_string(SaveDataIoError error)
 
 } // namespace
 
+int run_text_picker_protocol_session(const TextPickerConfig& config)
+{
+    TextProtocolArgs protocol_args;
+    protocol_args.campaign = config.campaign;
+    protocol_args.level = config.level;
+    protocol_args.team_families = config.team_families;
+    protocol_args.seed = config.seed;
+    return run_text_protocol_session(protocol_args);
+}
+
 class TextPickerClient final : public IPickerClient
 {
 public:
@@ -262,13 +272,7 @@ public:
             config_.team_families.push_back(FAMILY_SOLDIER);
 
         // Run the protocol session inline (blocks until game ends)
-        TextProtocolArgs protocol_args;
-        protocol_args.campaign = config_.campaign;
-        protocol_args.level = config_.level;
-        protocol_args.team_families = config_.team_families;
-        protocol_args.seed = config_.seed;
-
-        const int result = run_text_protocol_session(protocol_args);
+        const int result = run_text_picker_protocol_session(config_);
         if (result != 0) {
             set_error(TextPickerErrorCode::Unsupported,
                 std::string("protocol session failed with code ") + std::to_string(result));
