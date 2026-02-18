@@ -105,7 +105,7 @@ inline void run_picker(IPickerClient& client)
                 transition.next_screen = PickerScreen::MainMenu;
                 break;
             case MainMenuAction::NewGame:
-                transition.next_screen = PickerScreen::TeamBuild;
+                transition.next_screen = PickerScreen::CampaignSelect;
                 break;
             case MainMenuAction::LoadGame:
                 if (client.load_game())
@@ -143,6 +143,10 @@ inline void run_picker(IPickerClient& client)
         case PickerScreen::TeamBuild:
             client.show_team_build();
             transition.next_screen = PickerScreen::MainMenu;
+            break;
+        case PickerScreen::CampaignSelect:
+            client.show_campaign_select();
+            transition.next_screen = PickerScreen::TeamBuild;
             break;
         case PickerScreen::Options:
             client.show_options();

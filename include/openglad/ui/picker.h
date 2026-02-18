@@ -26,9 +26,11 @@ namespace og::ui {
 enum class TextPickerErrorCode : std::int32_t
 {
     None = 0,
-    InvalidInput,
-    InvalidCommand,
-    IoError,
+    ParseError,
+    InvalidSelection,
+    CampaignIoError,
+    SaveIoError,
+    LoadIoError,
     Unsupported,
 };
 
