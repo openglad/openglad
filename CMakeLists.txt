@@ -805,6 +805,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/text_client/platform_headless.cpp
         ${SRC_DIR}/text_client/walker_headless.cpp
         ${SRC_DIR}/text_client/text_picker.cpp
+        ${SRC_DIR}/text_client/text_protocol.cpp
         ${SRC_DIR}/ui/picker_state.cpp
         # core
         ${OG_CORE_SOURCES}

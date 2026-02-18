@@ -49,8 +49,8 @@ struct TextPickerConfig
     std::string save_name = "text_quicksave";
 };
 
-// Runs the text picker loop. Returns true when the user selected "play",
-// false when the user quits from the picker.
-bool run_text_picker(TextPickerConfig& config, TextPickerError* error = nullptr);
+// Runs the text picker state machine. Drives the full lifecycle including
+// looping back after games. Returns when the user quits from the picker.
+void run_text_picker(TextPickerConfig& config, TextPickerError* error = nullptr);
 
 } // namespace og::ui

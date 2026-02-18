@@ -11,6 +11,7 @@
 #include <openglad/platform/io_common.h>
 #include <openglad/ui/picker.h>
 #include <openglad/ui/picker_state.h>
+#include <openglad/ui/text_protocol.h>
 
 #include <cstdio>
 #include <iostream>
@@ -68,13 +69,8 @@ public:
     explicit TextPickerClient(TextPickerConfig& config, TextPickerError* error)
         : config_(config), error_(error) {}
 
-    bool play_requested() const { return play_requested_; }
-
     MainMenuAction show_main_menu() override
     {
-        if (play_requested_)
-            return MainMenuAction::Quit;
-
         for (;;) {
             std::printf("\n=== OpenGlad Text Picker ===\n");
             std::printf("Campaign: %s\n", config_.campaign.c_str());
@@ -99,7 +95,6 @@ public:
 
             const auto choice = parse_int_strict(line);
             if (!choice) {
-                set_error(TextPickerErrorCode::ParseError, "main_menu choice must be an integer");
                 std::printf("Invalid choice.\n");
                 continue;
             }
@@ -114,17 +109,29 @@ public:
             case 7: return MainMenuAction::Help;
             case 8: return MainMenuAction::Quit;
             default:
-                set_error(TextPickerErrorCode::InvalidSelection, "main_menu choice out of range");
                 std::printf("Invalid choice.\n");
                 break;
             }
         }
     }
 
+    bool prepare_new_game() override
+    {
+        // Reset team state to default (similar to SDL's picker_prepare_new_game_setup)
+        config_.team_families.clear();
+        config_.team_families.push_back(FAMILY_SOLDIER);
+        start_team_build_in_hire_mode_ = true;
+        return true;
+    }
+
     TeamBuildAction show_team_build() override
     {
         for (;;) {
             std::printf("\n--- Team Setup ---\n");
+            if (start_team_build_in_hire_mode_) {
+                std::printf("[Starting in hire mode - add team members]\n");
+                start_team_build_in_hire_mode_ = false;
+            }
             print_team(config_);
             std::printf("  1. Add family id\n");
             std::printf("  2. Remove last\n");
@@ -138,7 +145,6 @@ public:
                 return TeamBuildAction::BackToMainMenu;
             const auto choice = parse_int_strict(line);
             if (!choice) {
-                set_error(TextPickerErrorCode::ParseError, "team menu choice must be an integer");
                 std::printf("Invalid choice.\n");
                 continue;
             }
@@ -150,7 +156,6 @@ public:
                     return TeamBuildAction::BackToMainMenu;
                 const auto family = parse_int_strict(line);
                 if (!family) {
-                    set_error(TextPickerErrorCode::ParseError, "family id must be an integer");
                     std::printf("Invalid family id.\n");
                     continue;
                 }
@@ -166,7 +171,6 @@ public:
                     config_.team_families.push_back(FAMILY_SOLDIER);
                 return TeamBuildAction::BackToMainMenu;
             } else {
-                set_error(TextPickerErrorCode::InvalidSelection, "team menu choice out of range");
                 std::printf("Invalid choice.\n");
             }
         }
@@ -197,7 +201,6 @@ public:
 
         const auto choice = parse_int_strict(line);
         if (!choice || *choice < 1 || static_cast<size_t>(*choice) > entries.size()) {
-            set_error(TextPickerErrorCode::InvalidSelection, "campaign selection out of range");
             std::printf("Invalid campaign selection.\n");
             return config_.campaign;
         }
@@ -217,7 +220,6 @@ public:
         if (!line.empty()) {
             const auto value = parse_int_strict(line);
             if (!value || *value < 1) {
-                set_error(TextPickerErrorCode::ParseError, "level must be a positive integer");
                 std::printf("Invalid level.\n");
             } else {
                 config_.level = *value;
@@ -232,7 +234,6 @@ public:
         if (!line.empty()) {
             const auto value = parse_int_strict(line);
             if (!value || *value < 0) {
-                set_error(TextPickerErrorCode::ParseError, "seed must be a non-negative integer");
                 std::printf("Invalid seed.\n");
             } else {
                 config_.seed = static_cast<std::uint32_t>(*value);
@@ -259,7 +260,25 @@ public:
     {
         if (config_.team_families.empty())
             config_.team_families.push_back(FAMILY_SOLDIER);
-        play_requested_ = true;
+
+        // Run the protocol session inline (blocks until game ends)
+        TextProtocolArgs protocol_args;
+        protocol_args.campaign = config_.campaign;
+        protocol_args.level = config_.level;
+        protocol_args.team_families = config_.team_families;
+        protocol_args.seed = config_.seed;
+
+        const int result = run_text_protocol_session(protocol_args);
+        if (result != 0) {
+            set_error(TextPickerErrorCode::Unsupported,
+                std::string("protocol session failed with code ") + std::to_string(result));
+        }
+    }
+
+    PickerScreen screen_after_game() const override
+    {
+        // After a game, return to TeamBuild (matching SDL version's flow)
+        return PickerScreen::TeamBuild;
     }
 
     bool load_game() override
@@ -337,10 +356,10 @@ private:
 
     TextPickerConfig& config_;
     TextPickerError* error_ = nullptr;
-    bool play_requested_ = false;
+    bool start_team_build_in_hire_mode_ = false;
 };
 
-bool run_text_picker(TextPickerConfig& config, TextPickerError* error)
+void run_text_picker(TextPickerConfig& config, TextPickerError* error)
 {
     if (config.team_families.empty())
         config.team_families.push_back(FAMILY_SOLDIER);
@@ -349,7 +368,6 @@ bool run_text_picker(TextPickerConfig& config, TextPickerError* error)
 
     TextPickerClient client(config, error);
     run_picker(client);
-    return client.play_requested();
 }
 
 } // namespace og::ui
