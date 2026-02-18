@@ -17,6 +17,7 @@
 
 #include <openglad/ui/level_picker.h>
 #include <openglad/data/level_data.h>
+#include <openglad/data/level_data_hooks.h>
 #include <openglad/render/radar.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
@@ -199,7 +200,7 @@ class BrowserEntry
 };
 
 BrowserEntry::BrowserEntry(screen* screenp, int index, int scen_num)
-	    : level_data(scen_num), myradar(nullptr, myscreen, 0)
+	    : level_data(scen_num, false, &sdl_level_data_hooks()), myradar(nullptr, myscreen, 0)
 {
 	(void)screenp;
 	    level_data.load();

@@ -34,6 +34,7 @@ class obmap;
 class SaveData;
 class IRandom;
 class cfg_store;
+struct LevelDataHooks;
 namespace og::sim { class SimEventLog; }
 
 #include <openglad/data/smooth.h>
@@ -135,7 +136,9 @@ public:
     std::int32_t topx, topy;
 
     LevelData(int level_id);
+    LevelData(int level_id, const LevelDataHooks* hooks);
     LevelData(int level_id, bool headless);  // Headless constructor (no tile graphics)
+    LevelData(int level_id, bool headless, const LevelDataHooks* hooks);
     ~LevelData();
 
     bool load();
@@ -189,6 +192,7 @@ public:
 private:
     IoError last_io_error_ = IoError::None;
     bool headless_ = false;  // When true, skip render component creation
+    const LevelDataHooks* hooks_ = nullptr;
 
     // Sim context pointers for wiring newly created entities.
     SaveData*              sim_ctx_save_ = nullptr;

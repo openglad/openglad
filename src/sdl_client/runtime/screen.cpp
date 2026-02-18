@@ -42,6 +42,7 @@
 #include <openglad/sim/sim_world.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/render/pal32.h>
+#include <openglad/data/level_data_hooks.h>
 #include <algorithm>
 #include <string>
 #include <cstring>
@@ -131,7 +132,7 @@ Uint32 random(Uint32 x)
 
 
 screen::screen(short howmany)
-    : video(), level_data(1)
+    : video(), level_data(1, false, &sdl_level_data_hooks())
 {
     TRACE("init", "screen constructor: numviews=%d", howmany);
     // Set the global here so objects we construct here can use it

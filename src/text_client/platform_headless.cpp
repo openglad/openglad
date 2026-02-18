@@ -89,11 +89,11 @@ std::string get_asset_path()
 #include <openglad/data/level_data_hooks.h>
 
 // Safe no-op: view controls are an SDL render concern; headless has no views.
-void clear_stale_view_controls(LevelData*) {}
+void headless_clear_stale_view_controls(LevelData*) {}
 
 // Safe no-op: entity-to-screen wiring is only needed for SDL rendering.
 // Sim pointers are set separately via LevelData::set_sim_context().
-void level_data_wire_entity_from_screen(walker*) {}
+void headless_wire_entity_from_screen(walker*) {}
 
 // Safe no-op: keyboard buffer is an SDL input concern.
 void clear_keyboard() {}
@@ -110,7 +110,7 @@ std::once_flag warn_input_state;
 std::once_flag warn_find_follow;
 } // namespace
 
-void level_data_draw_impl(LevelData*, screen*)
+void headless_level_data_draw(LevelData*, screen*)
 {
     std::call_once(warn_draw_impl, [] {
         LogWarn("level_data_draw_impl: not supported in headless mode\n");
@@ -126,12 +126,19 @@ void LevelRender::init_tiles(PixieData[]) {}
 void LevelRender::reset_tiles(PixieData[]) {}
 void LevelRender::draw_tile(int, int, int, viewscreen*) {}
 
-std::unique_ptr<LevelRender> create_level_render(PixieData[])
+std::unique_ptr<LevelRender> headless_create_level_render(PixieData[])
 {
     static std::once_flag warn_flag;
     std::call_once(warn_flag, []() { Log("Warning: create_level_render not supported in headless mode\n"); });
     return nullptr;
 }
+
+const LevelDataHooks kHeadlessLevelDataHooks{
+    .clear_stale_view_controls = headless_clear_stale_view_controls,
+    .wire_entity_from_screen = headless_wire_entity_from_screen,
+    .draw = headless_level_data_draw,
+    .create_level_render = headless_create_level_render,
+};
 
 bool yes_or_no_prompt(const char* /*title*/, const char* /*message*/, bool default_value)
 {
@@ -326,13 +333,14 @@ void input_state_from_sdl(InputState&)
 
 void emit_headless_unsupported_warnings_probe()
 {
+    const LevelDataHooks& hooks = headless_level_data_hooks();
     // Intentionally call each unsupported API twice; std::call_once-backed warnings
     // must still emit only once per process.
-    level_data_draw_impl(nullptr, nullptr);
-    level_data_draw_impl(nullptr, nullptr);
+    hooks.draw(nullptr, nullptr);
+    hooks.draw(nullptr, nullptr);
 
-    (void)create_level_render(nullptr);
-    (void)create_level_render(nullptr);
+    (void)hooks.create_level_render(nullptr);
+    (void)hooks.create_level_render(nullptr);
 
     (void)yes_or_no_prompt("probe", "probe", true);
     (void)yes_or_no_prompt("probe", "probe", true);
@@ -349,6 +357,11 @@ void emit_headless_unsupported_warnings_probe()
     InputState input{};
     input_state_from_sdl(input);
     input_state_from_sdl(input);
+}
+
+const LevelDataHooks& headless_level_data_hooks()
+{
+    return kHeadlessLevelDataHooks;
 }
 
 // SaveData is now provided by the real src/runtime/save_data.cpp

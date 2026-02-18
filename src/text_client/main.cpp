@@ -24,6 +24,7 @@
 #include <openglad/sim/sim_emit.h>
 #include <openglad/sim/irandom.h>
 #include <openglad/data/level_data.h>
+#include <openglad/data/level_data_hooks.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gloader.h>
 #include <openglad/data/gparser.h>
@@ -283,7 +284,7 @@ static int run_protocol_session(const TextClientArgs& args)
     set_global_context(&text_ctx);
 
     // Create level data and load (headless — no tile graphics)
-    LevelData level(args.level, true); // headless=true
+    LevelData level(args.level, true, &headless_level_data_hooks()); // headless=true
     SaveData save;
     save.current_campaign = args.campaign;
     save.scen_num = static_cast<short>(args.level);

@@ -34,6 +34,7 @@
 #include <openglad/render/text.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/level_data.h>
+#include <openglad/data/level_data_hooks.h>
 #include <openglad/ui/level_picker.h>
 #include <span>
 #include <openglad/ui/campaign_picker.h>
@@ -606,7 +607,7 @@ EventType handle_basic_editor_event(const SDL_Event& event);
 #endif
 
 LevelEditorData::LevelEditorData()
-    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelData>(1)), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0].get(), myscreen, 0)
+    : campaign(std::make_unique<CampaignData>("org.openglad.gladiator")), level(std::make_unique<LevelData>(1, false, &sdl_level_data_hooks())), mode(Mode::Terrain), rect_selecting(false), dragging(false), myradar(myscreen->viewob[0].get(), myscreen, 0)
     , menu_button_height(DEFAULT_EDITOR_MENU_BUTTON_HEIGHT)
     
 	, fileButton("File", OVERSCAN_PADDING, 0, 30, menu_button_height)

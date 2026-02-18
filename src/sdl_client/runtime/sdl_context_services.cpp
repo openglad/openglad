@@ -49,10 +49,9 @@ void install_sdl_context_services()
 }
 } // namespace og::runtime
 
-// Link-time dispatch functions for level_data.cpp
-// These provide SDL-specific behavior that level_data.cpp can't access directly.
-
-void clear_stale_view_controls(LevelData* level)
+namespace
+{
+void sdl_clear_stale_view_controls(LevelData* level)
 {
     if (myscreen != nullptr && &myscreen->level_data == level)
     {
@@ -64,7 +63,7 @@ void clear_stale_view_controls(LevelData* level)
     }
 }
 
-void level_data_wire_entity_from_screen(walker* w)
+void sdl_level_data_wire_entity_from_screen(walker* w)
 {
     if (myscreen) {
         w->sim_save = &myscreen->save_data;
@@ -76,13 +75,26 @@ void level_data_wire_entity_from_screen(walker* w)
     w->sim_config = ctx().config;
 }
 
-void level_data_draw_impl(LevelData* level, screen* screenp)
+void sdl_level_data_draw(LevelData* level, screen* screenp)
 {
     for (short i = 0; i < screenp->numviews; i++)
         screenp->viewob[i]->redraw(level, false);
 }
 
-std::unique_ptr<LevelRender> create_level_render(PixieData pixdata[])
+std::unique_ptr<LevelRender> sdl_create_level_render(PixieData pixdata[])
 {
     return create_sdl_level_render(pixdata);
+}
+
+const LevelDataHooks kSdlLevelDataHooks{
+    .clear_stale_view_controls = sdl_clear_stale_view_controls,
+    .wire_entity_from_screen = sdl_level_data_wire_entity_from_screen,
+    .draw = sdl_level_data_draw,
+    .create_level_render = sdl_create_level_render,
+};
+} // namespace
+
+const LevelDataHooks& sdl_level_data_hooks()
+{
+    return kSdlLevelDataHooks;
 }

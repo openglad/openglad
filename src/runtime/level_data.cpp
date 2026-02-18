@@ -393,31 +393,35 @@ std::string CampaignData::get_description_line(int i)
 
 
 LevelData::LevelData(int level_id)
-    : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
-    , myloader(nullptr), numobs(0), topx(0), topy(0)
+    : LevelData(level_id, false, nullptr)
 {
-	myobmap = std::make_unique<obmap>();
-    myloader = std::make_unique<loader>(this);
+}
 
-    // Load map data from a pixie format
-    load_map_data(pixdata);
-
-    // Initialize tile renderer (SDL creates pixieN tiles, headless returns nullptr)
-    renderer_ = create_level_render(pixdata);
+LevelData::LevelData(int level_id, const LevelDataHooks* hooks)
+    : LevelData(level_id, false, hooks)
+{
 }
 
 LevelData::LevelData(int level_id, bool headless)
+    : LevelData(level_id, headless, nullptr)
+{
+}
+
+LevelData::LevelData(int level_id, bool headless, const LevelDataHooks* hooks)
     : id(level_id), title("New Level"), type(0), par_value(1), time_bonus_limit(4000), pixmaxx(0), pixmaxy(0)
     , myloader(nullptr), numobs(0), topx(0), topy(0)
 {
+    hooks_ = hooks;
     headless_ = headless;
-    myobmap = std::make_unique<obmap>();
+
+	myobmap = std::make_unique<obmap>();
     myloader = std::make_unique<loader>(this);
 
     if (!headless)
     {
         load_map_data(pixdata);
-        renderer_ = create_level_render(pixdata);
+        if (hooks_ && hooks_->create_level_render)
+            renderer_ = hooks_->create_level_render(pixdata);
     }
 }
 
@@ -461,8 +465,8 @@ walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
         return nullptr;
 
     wire_entity(w.get());
-    if (!headless_)
-        level_data_wire_entity_from_screen(w.get());
+    if (hooks_ && hooks_->wire_entity_from_screen)
+        hooks_->wire_entity_from_screen(w.get());
     if (order == Order::Living)
         numobs++;
 
@@ -478,8 +482,8 @@ walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 		return nullptr;
 
 	wire_entity(w.get());
-	if (!headless_)
-		level_data_wire_entity_from_screen(w.get());
+	if (hooks_ && hooks_->wire_entity_from_screen)
+		hooks_->wire_entity_from_screen(w.get());
 
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
@@ -493,8 +497,8 @@ walker* LevelData::add_weap_ob(Order order, std::int32_t family)
         return nullptr;
 
     wire_entity(w.get());
-    if (!headless_)
-        level_data_wire_entity_from_screen(w.get());
+    if (hooks_ && hooks_->wire_entity_from_screen)
+        hooks_->wire_entity_from_screen(w.get());
 
     walker* raw = w.get();
     weaplist.push_back(std::move(w));
@@ -668,7 +672,8 @@ void LevelData::delete_objects()
 
     // If this is the active screen level, clear any stale control pointers
     // that may reference walkers just deleted above.
-    clear_stale_view_controls(this);
+    if (hooks_ && hooks_->clear_stale_view_controls)
+        hooks_->clear_stale_view_controls(this);
 
 	    // Clear the obmap references
 	    // Since the walker destructor removes itself from the obmap, this should be empty already.
@@ -1516,7 +1521,8 @@ bool LevelData::load()
             pixdata[i].free();
 
         load_map_data(pixdata);
-        renderer_ = create_level_render(pixdata);
+        if (hooks_ && hooks_->create_level_render)
+            renderer_ = hooks_->create_level_render(pixdata);
     }
 
 	TRACE("game", "LevelData::load complete");
@@ -1799,7 +1805,8 @@ void LevelData::add_draw_pos(std::int32_t dx, std::int32_t dy)
 void LevelData::draw(screen* screenp)
 {
     if (!screenp) return;
-    level_data_draw_impl(this, screenp);
+    if (hooks_ && hooks_->draw)
+        hooks_->draw(this, screenp);
 }
 
 std::string LevelData::get_description_line(int i)
