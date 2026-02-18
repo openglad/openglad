@@ -142,15 +142,11 @@ public:
     bool save();
     [[nodiscard]] IoError save_with_error();
     [[nodiscard]] IoError load_with_error();
-    bool load_headless();  // Load level without creating render components
     [[nodiscard]] IoError last_io_error() const { return last_io_error_; }
 
-    walker* add_ob(Order order, std::int32_t family, [[maybe_unused]] bool atstart = false);
+    walker* add_ob(Order order, std::int32_t family, bool atstart = false);
     walker* add_fx_ob(Order order, std::int32_t family);
     walker* add_weap_ob(Order order, std::int32_t family);
-    walker* add_ob_headless(Order order, std::int32_t family);
-    walker* add_fx_ob_headless(Order order, std::int32_t family);
-    walker* add_weap_ob_headless(Order order, std::int32_t family);
     short remove_ob(walker  *ob);
 
     // Collision/passability queries (moved from screen)

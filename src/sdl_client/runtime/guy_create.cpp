@@ -16,7 +16,7 @@
 std::unique_ptr<walker> guy_create_walker_owned(guy& g, screen* screen_)
 {
 	    auto temp_guy = std::make_unique<guy>(g);
-	    auto temp_walker = screen_->level_data.myloader->create_walker_owned(Order::Living, temp_guy->family, screen_);
+	    auto temp_walker = screen_->level_data.myloader->create_walker_owned(Order::Living, temp_guy->family);
 	    if (!temp_walker)
 	        return nullptr;
 	    temp_walker->set_owned_myguy(std::move(temp_guy));

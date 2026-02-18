@@ -455,10 +455,9 @@ void LevelData::clear()
     topy = 0;
 }
 
-walker* LevelData::add_ob(Order order, std::int32_t family, [[maybe_unused]] bool atstart)
+walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
 {
-	if (headless_)
-		return add_ob_headless(order, family);
+	(void)atstart;
 	if (order == Order::Weapon)
 		return add_weap_ob(order, family);
 
@@ -466,9 +465,9 @@ walker* LevelData::add_ob(Order order, std::int32_t family, [[maybe_unused]] boo
     if (!w)
         return nullptr;
 
-    w->myobmap = this->myobmap.get();
-    w->sim_level = this;
-    level_data_wire_entity_from_screen(w.get());
+    wire_entity(w.get());
+    if (!headless_)
+        level_data_wire_entity_from_screen(w.get());
     if (order == Order::Living)
         numobs++;
 
@@ -479,15 +478,13 @@ walker* LevelData::add_ob(Order order, std::int32_t family, [[maybe_unused]] boo
 
 walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 {
-	if (headless_)
-		return add_fx_ob_headless(order, family);
 	auto w = myloader->create_walker_owned(order, family);
     if (!w)
         return nullptr;
 
-    w->myobmap = this->myobmap.get();
-    w->sim_level = this;
-    level_data_wire_entity_from_screen(w.get());
+    wire_entity(w.get());
+    if (!headless_)
+        level_data_wire_entity_from_screen(w.get());
 
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));
@@ -496,15 +493,13 @@ walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 
 walker* LevelData::add_weap_ob(Order order, std::int32_t family)
 {
-	if (headless_)
-		return add_weap_ob_headless(order, family);
 	auto w = myloader->create_walker_owned(order, family);
     if (!w)
         return nullptr;
 
-    w->myobmap = this->myobmap.get();
-    w->sim_level = this;
-    level_data_wire_entity_from_screen(w.get());
+    wire_entity(w.get());
+    if (!headless_)
+        level_data_wire_entity_from_screen(w.get());
 
     walker* raw = w.get();
     weaplist.push_back(std::move(w));
@@ -520,50 +515,6 @@ void LevelData::wire_entity(walker* w)
     w->sim_events = sim_ctx_events_;
     w->sim_rng = sim_ctx_rng_;
     w->sim_config = sim_ctx_config_;
-}
-
-walker* LevelData::add_ob_headless(Order order, std::int32_t family)
-{
-	if (order == Order::Weapon)
-		return add_weap_ob_headless(order, family);
-
-    auto w = myloader->create_walker_headless(order, family);
-    if (!w)
-        return nullptr;
-
-    wire_entity(w.get());
-    if (order == Order::Living)
-        numobs++;
-
-    walker* raw = w.get();
-    oblist.push_back(std::move(w));
-    return raw;
-}
-
-walker* LevelData::add_fx_ob_headless(Order order, std::int32_t family)
-{
-	auto w = myloader->create_walker_headless(order, family);
-    if (!w)
-        return nullptr;
-
-    wire_entity(w.get());
-
-	walker* raw = w.get();
-	fxlist.push_back(std::move(w));
-	return raw;
-}
-
-walker* LevelData::add_weap_ob_headless(Order order, std::int32_t family)
-{
-	auto w = myloader->create_walker_headless(order, family);
-    if (!w)
-        return nullptr;
-
-    wire_entity(w.get());
-
-    walker* raw = w.get();
-    weaplist.push_back(std::move(w));
-	return raw;
 }
 
 short LevelData::remove_ob(walker  *ob)
@@ -1576,12 +1527,6 @@ bool LevelData::load()
 	TRACE("game", "LevelData::load complete");
     last_io_error_ = IoError::None;
 	return true;
-}
-
-bool LevelData::load_headless()
-{
-    headless_ = true;
-    return load();
 }
 
 bool save_grid_file(const char* gridname, const PixieData& grid)

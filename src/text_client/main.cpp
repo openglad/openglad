@@ -289,7 +289,7 @@ static int run_protocol_session(const TextClientArgs& args)
     save.scen_num = static_cast<short>(args.level);
     save.numplayers = 1;
 
-    if (!level.load_headless()) {
+    if (!level.load()) {
         std::fprintf(stderr, "Failed to load level %d\n", args.level);
         return 1;
     }

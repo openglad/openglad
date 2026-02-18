@@ -810,8 +810,7 @@ void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 }
 
 std::unique_ptr<walker> loader::create_walker_owned(Order order,
-                                                    std::int32_t family,
-                                                    [[maybe_unused]] screen* screenp, [[maybe_unused]] bool cache_weapons)
+                                                    std::int32_t family)
 {
 	std::unique_ptr<walker> ob;
 
@@ -861,54 +860,8 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
 
 	set_walker(ob.get(), order, family);
 
-	if(order == Order::Living)
-        ob->set_frame(ob->ani[ob->curdir][0]);
-	return ob;
-}
-
-std::unique_ptr<walker> loader::create_walker_headless(Order order,
-                                                       std::int32_t family)
-{
-	std::unique_ptr<walker> ob;
-
-	if(family < 0 || family >= NUM_FAMILIES)
-	{
-		family = (order == Order::Living) ? FAMILY_SOLDIER : 0;
-	}
-
-	// Create headless walker (no render component) but set size from PixieData
-	const auto& pix = graphics[PIX(order, family)];
-
-	if (order == Order::Living)
-		ob = std::make_unique<living>();
-	else if (order == Order::Weapon)
-		ob = std::make_unique<weap>();
-	else if (order == Order::Treasure)
-		ob = std::make_unique<treasure>();
-	else if (order == Order::FX)
-		ob = std::make_unique<effect>();
-	else
-		ob = std::make_unique<walker>();
-	if (!ob)
-		return nullptr;
-
-	// Set size and frame count from PixieData (needed for collision) without creating render component
-	if (pix.valid())
-	{
-		ob->sizex = pix.w;
-		ob->sizey = pix.h;
-	}
-
-	ob->stats()->hitpoints = hitpoints[PIX(order, family)];
-	ob->stats()->max_hitpoints = hitpoints[PIX(order, family)];
-	ob->stats()->special_cost[0] = 0;
-	ob->stats()->weapon_cost = 1;
-
-	// sim context pointers are NOT set here - caller wires them after creation
-	set_walker(ob.get(), order, family);
-
 	if(order == Order::Living && ob->ani)
-		ob->set_frame(ob->ani[ob->curdir][0]);
+        ob->set_frame(ob->ani[ob->curdir][0]);
 	return ob;
 }
 

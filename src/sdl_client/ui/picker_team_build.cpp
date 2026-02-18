@@ -1798,7 +1798,7 @@ Sint32 cycle_guy(Sint32 whichway)
 		(void)who; // always show current_guy
 		newfamily = current_guy->family;
 
-		mywalker = myscreen->level_data.myloader->create_walker_owned(Order::Living, newfamily, myscreen);
+		mywalker = myscreen->level_data.myloader->create_walker_owned(Order::Living, newfamily);
 		mywalker->stats()->bit_flags = 0;
 		mywalker->curdir = static_cast<signed char>(((frames/192) + FACE_DOWN)%8);
 		mywalker->ani_type = ANI_WALK;

@@ -281,7 +281,7 @@ void show_guy(Sint32 frames, guy* myguy, Sint32 centerx, Sint32 centery) // show
 	newfamily = myguy->family;
 
 	mywalker = myscreen->level_data.myloader->create_walker_owned(Order::Living,
-	           newfamily,myscreen);
+	           newfamily);
 	mywalker->stats()->bit_flags = 0;
 	mywalker->curdir = FACE_DOWN;
 	mywalker->ani_type = ANI_WALK;
