@@ -264,19 +264,7 @@ void input_state_from_sdl(InputState&)
     });
 }
 
-// ---------------------------------------------------------------------------
-// SaveData stubs (will be replaced by real save_data.cpp linkage in step 4)
-// ---------------------------------------------------------------------------
-SaveData::SaveData()
-    : scen_num(1), score(0), totalcash(0), totalscore(0), team_size(0), numplayers(1), allied_mode(0)
-{
-    std::fill(std::begin(m_score), std::end(m_score), 0);
-    std::fill(std::begin(m_totalcash), std::end(m_totalcash), 0);
-    std::fill(std::begin(m_totalscore), std::end(m_totalscore), 0);
-}
-SaveData::~SaveData() = default;
-bool SaveData::load(const std::string&) { return false; }
-bool SaveData::save(const std::string&) { return false; }
-bool SaveData::is_level_completed(int) const { return false; }
+// SaveData is now provided by the real src/runtime/save_data.cpp
+// (linked into openglad_text via HEADLESS_SOURCES).
 
 // popup_dialog is defined in main.cpp for the text client

@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <format>
+#include <map>
 #include <string>
 
 // Path helpers (defined per-platform in platform_io.cpp or platform_headless.cpp)
@@ -352,4 +353,52 @@ void restore_default_settings()
         LogWarn("restore_default_settings: {} -> {}: {}\n", src, dst, ec.message());
     else
         Log("Restored default settings: {} -> {}\n", src, dst);
+}
+
+// ---------------------------------------------------------------------------
+// Campaign loading (unmount old, mount new)
+// ---------------------------------------------------------------------------
+
+CampaignLoadResult load_campaign_with_error(const std::string& campaign,
+    std::map<std::string, int>& current_levels, int first_level)
+{
+    CampaignLoadResult result;
+    result.current_level = first_level;
+    std::string old_campaign = get_mounted_campaign();
+    if(old_campaign != campaign)
+    {
+        if(!unmount_campaign_package(old_campaign))
+        {
+            LogError("campaign_load_failed reason=unmount_failed old={} requested={}\n", old_campaign, campaign);
+            result.error = CampaignLoadError::UnmountFailed;
+            return result;
+        }
+
+        if(!mount_campaign_package(campaign))
+        {
+            result.error = CampaignLoadError::MountFailed;
+            return result;
+        }
+    }
+
+    std::map<std::string, int>::const_iterator g = current_levels.find(campaign);
+    if(g != current_levels.end())
+        result.current_level = g->second;
+    return result;
+}
+
+int load_campaign(const std::string& campaign,
+    std::map<std::string, int>& current_levels, int first_level)
+{
+    const CampaignLoadResult result = load_campaign_with_error(campaign, current_levels, first_level);
+    switch(result.error)
+    {
+        case CampaignLoadError::None:
+            return result.current_level;
+        case CampaignLoadError::MountFailed:
+            return -2;
+        case CampaignLoadError::UnmountFailed:
+            return -3;
+    }
+    return -1;
 }

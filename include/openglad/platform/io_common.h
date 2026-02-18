@@ -11,6 +11,7 @@
 // Shared by both SDL and headless builds.
 
 #include <list>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -58,6 +59,26 @@ std::vector<int> list_levels_v();
 
 void restore_default_campaigns();
 void restore_default_settings();
+
+// Campaign loading (unmount old, mount new, return current level).
+// Shared by SDL and headless builds; uses mount/unmount helpers above.
+enum class CampaignLoadError
+{
+    None = 0,
+    UnmountFailed,
+    MountFailed
+};
+
+struct CampaignLoadResult
+{
+    CampaignLoadError error = CampaignLoadError::None;
+    int current_level = 1;
+};
+
+CampaignLoadResult load_campaign_with_error(const std::string& campaign,
+    std::map<std::string, int>& current_levels, int first_level = 1);
+int load_campaign(const std::string& campaign,
+    std::map<std::string, int>& current_levels, int first_level = 1);
 
 bool save_settings();
 bool load_settings();

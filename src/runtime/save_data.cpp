@@ -23,8 +23,8 @@
 #include <openglad/entities/walker.h>
 #include <openglad/entities/guy.h>
 #include <openglad/io/og_file.h>
-#include <openglad/ui/campaign_picker.h>
-#include <openglad/platform/io.h>
+#include <openglad/platform/io_common.h>
+#include <openglad/legacy/base.h>
 #include <algorithm>
 #include <cstdint>
 #include <cstring>

@@ -827,6 +827,7 @@ if(NOT EMSCRIPTEN)
         ${SRC_DIR}/runtime/level_data.cpp
         ${SRC_DIR}/runtime/smooth.cpp
         ${SRC_DIR}/runtime/stats.cpp
+        ${SRC_DIR}/runtime/save_data.cpp
     )
 
     add_executable(openglad_text ${HEADLESS_SOURCES})
