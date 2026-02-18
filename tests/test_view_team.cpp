@@ -11,6 +11,7 @@
 #include <openglad/data/save_data.h>
 #include <openglad/entities/guy.h>
 #include <openglad/core/util.h>
+#include <atomic>
 
 extern screen* myscreen;
 
@@ -18,6 +19,11 @@ extern screen* myscreen;
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+#ifdef TESTING
+extern bool g_test_remove_exits;
+extern std::atomic<bool> g_test_in_game;
+extern std::atomic<int> g_test_game_epoch;
+#endif
 
 // Globals defined in picker.cpp that we need for cleanup
 extern PixieData main_title_logo_data, main_columns_data;
@@ -149,3 +155,105 @@ void test_view_team() {
     TEST_ASSERT(state.saw_view_menu, "should have entered the view team menu");
 }
 REGISTER_TEST(test_view_team);
+
+struct ViewTeamGoState {
+    bool started;
+    bool finished;
+    bool saw_view_menu;
+    bool game_started;
+    bool game_finished;
+    float original_speed;
+};
+
+static int view_team_go_injector(void* data)
+{
+    ViewTeamGoState* state = static_cast<ViewTeamGoState*>(data);
+    state->started = true;
+
+    if (!wait_for_interactable("continue_game", 5000)) {
+        state->finished = true;
+        return 0;
+    }
+    interact("continue_game");
+
+    if (!wait_for_interactable("view_team", 8000)) {
+        state->finished = true;
+        return 0;
+    }
+    interact("view_team");
+
+    if (!wait_for_interactable("go", 5000)) {
+        state->finished = true;
+        return 0;
+    }
+    state->saw_view_menu = true;
+
+    g_test_remove_exits = true;
+    set_game_speed(0.0f);
+
+    const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
+    interact("go");
+
+    int waited_ms = 0;
+    const int poll_ms = 50;
+    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+        SDL_Delay(poll_ms);
+        waited_ms += poll_ms;
+    }
+    state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
+
+    waited_ms = 0;
+    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 60000) {
+        SDL_Delay(poll_ms);
+        waited_ms += poll_ms;
+    }
+    state->game_finished = !g_test_in_game.load(std::memory_order_acquire);
+
+    set_game_speed(state->original_speed);
+    g_test_remove_exits = false;
+
+    if (wait_for_interactable("back", 10000))
+        interact("back");
+
+    state->finished = true;
+    return 0;
+}
+
+void test_view_team_go_starts_level() {
+    trace_clear();
+
+    myscreen->save_data.reset();
+    myscreen->save_data.numplayers = 1;
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 1;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    soldier->strength = soldier->dexterity = soldier->constitution = soldier->intelligence = soldier->armor = 200;
+    archer->strength = archer->dexterity = archer->constitution = archer->intelligence = archer->armor = 200;
+    myscreen->save_data.team_list[0] = std::move(soldier);
+    myscreen->save_data.team_list[1] = std::move(archer);
+    myscreen->save_data.team_size = 2;
+    myscreen->save_data.save("save0");
+
+    ViewTeamGoState state = { false, false, false, false, false, g_game_speed_factor };
+    SDL_Thread* thread = SDL_CreateThread(view_team_go_injector, "view_team_go", &state);
+    TEST_ASSERT(thread != nullptr, "failed to create injector thread");
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+
+    picker_main(0, nullptr);
+
+    int thread_result;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    TEST_ASSERT(state.finished, "injector thread should have completed");
+    TEST_ASSERT(state.saw_view_menu, "should have entered the view team menu");
+    TEST_ASSERT(state.game_started, "GO from view team should start the game");
+    TEST_ASSERT(state.game_finished, "started game should return to picker");
+}
+REGISTER_TEST(test_view_team_go_starts_level);
