@@ -339,6 +339,7 @@ public:
         if (!picker_prepare_new_game_setup())
             return false;
         start_team_build_in_hire_menu_ = true;
+        skip_campaign_select_once_ = true;
         return true;
     }
 
@@ -354,6 +355,10 @@ public:
 
     std::string show_campaign_select() override
     {
+        if (skip_campaign_select_once_) {
+            skip_campaign_select_once_ = false;
+            return myscreen->save_data.current_campaign;
+        }
         do_pick_campaign(0);
         return myscreen->save_data.current_campaign;
     }
@@ -396,6 +401,7 @@ public:
 
 private:
     bool start_team_build_in_hire_menu_ = false;
+    bool skip_campaign_select_once_ = false;
 };
 
 void picker_main(Sint32 argc, char  **argv)
