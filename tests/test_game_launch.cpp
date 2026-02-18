@@ -1,5 +1,7 @@
 #include <openglad/legacy/test_trace.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/render/view.h>
+#include <openglad/entities/walker.h>
 #include "test_framework.h"
 #include <openglad/data/save_data.h>
 extern screen* myscreen;
@@ -25,3 +27,33 @@ void test_level_loading() {
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_loading);
+
+void test_level_load_initial_view_centers_on_player_control()
+{
+    myscreen->save_data.scen_num = static_cast<short>(1);
+    myscreen->save_data.numplayers = 1;
+    myscreen->save_data.save("test_level_initial_view_focus");
+
+    short result = load_saved_game("test_level_initial_view_focus", myscreen);
+    TEST_ASSERT(result != 0, "load_saved_game should succeed");
+
+    viewscreen* vs = myscreen->viewob[0].get();
+    TEST_ASSERT(vs != nullptr, "viewscreen 0 should exist");
+    if (!vs)
+        return;
+
+    TEST_ASSERT(vs->control != nullptr, "control should be initialized on level load");
+    if (!vs->control)
+        return;
+
+    // Simulate the first render pass during level intro.
+    myscreen->redraw();
+
+    const Sint32 expected_topx = vs->control->xpos - (vs->xview - vs->control->sizex) / 2;
+    const Sint32 expected_topy = vs->control->ypos - (vs->yview - vs->control->sizey) / 2;
+    TEST_ASSERT_EQ(expected_topx, vs->topx, "initial redraw should center viewport x on control");
+    TEST_ASSERT_EQ(expected_topy, vs->topy, "initial redraw should center viewport y on control");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_load_initial_view_centers_on_player_control);

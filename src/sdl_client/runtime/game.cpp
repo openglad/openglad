@@ -190,15 +190,26 @@ LoadSavedGameError load_saved_game_with_error(const char *filename, screen *scre
 		}
 	}
 
-	// Here we decide if all players are controlling
-	// team 0, or if they're playing competing teams ..
+    // Here we decide if all players are controlling team 0, or if they're
+    // playing competing teams. Then pre-assign controls so the first redraw
+    // (shown before/under scenario intro text) is centered on the player.
     short view_idx = 0;
     const short numviews = std::min<short>(screenp->numviews, static_cast<short>(std::size(screenp->viewob)));
     for (auto& view : screenp->viewob)
     {
         if (!view || view_idx >= numviews)
             break;
+
         view->my_team = multi_team ? view_idx : 0;
+        view->control = view->find_next_control();
+        if (view->control && view->control->user == -1)
+        {
+            view->control->user = static_cast<signed char>(view_idx);
+            view->control->set_act_type(ACT_CONTROL);
+            view->control->stats()->clear_command();
+            if (view_idx == 0)
+                screenp->control_hp = view->control->stats()->hitpoints;
+        }
         ++view_idx;
     }
 
