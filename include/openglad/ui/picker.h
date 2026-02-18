@@ -17,3 +17,38 @@
 
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <vector>
+
+namespace og::ui {
+
+enum class TextPickerErrorCode : std::int32_t
+{
+    None = 0,
+    InvalidInput,
+    InvalidCommand,
+    IoError,
+    Unsupported,
+};
+
+struct TextPickerError
+{
+    TextPickerErrorCode code = TextPickerErrorCode::None;
+    std::string detail;
+};
+
+struct TextPickerConfig
+{
+    std::string campaign = "org.openglad.gladiator";
+    int level = 1;
+    std::vector<int> team_families;
+    std::uint32_t seed = 42;
+    std::string save_name = "text_quicksave";
+};
+
+// Runs the text picker loop. Returns true when the user selected "play",
+// false when the user quits from the picker.
+bool run_text_picker(TextPickerConfig& config, TextPickerError* error = nullptr);
+
+} // namespace og::ui

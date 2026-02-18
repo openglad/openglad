@@ -95,70 +95,72 @@ inline void run_picker(IPickerClient& client)
     PickerScreen screen = PickerScreen::MainMenu;
 
     while (screen != PickerScreen::Quit) {
+        PickerTransition transition{screen, false};
         switch (screen) {
         case PickerScreen::MainMenu: {
             MainMenuAction action = client.show_main_menu();
             switch (action) {
             case MainMenuAction::ContinueGame:
                 client.run_game();
-                screen = PickerScreen::MainMenu;
+                transition.next_screen = PickerScreen::MainMenu;
                 break;
             case MainMenuAction::NewGame:
-                screen = PickerScreen::TeamBuild;
+                transition.next_screen = PickerScreen::TeamBuild;
                 break;
             case MainMenuAction::LoadGame:
                 if (client.load_game())
-                    screen = PickerScreen::MainMenu; // Redraw with loaded data
+                    transition.next_screen = PickerScreen::MainMenu; // Redraw with loaded data
                 else
-                    screen = PickerScreen::MainMenu;
+                    transition.next_screen = PickerScreen::MainMenu;
                 break;
             case MainMenuAction::SaveGame:
                 client.save_game();
-                screen = PickerScreen::MainMenu;
+                transition.next_screen = PickerScreen::MainMenu;
                 break;
             case MainMenuAction::ViewTeam:
             case MainMenuAction::HireTeam:
             case MainMenuAction::TrainTeam:
                 client.show_team_build();
-                screen = PickerScreen::MainMenu;
+                transition.next_screen = PickerScreen::MainMenu;
                 break;
             case MainMenuAction::Options:
                 client.show_options();
-                screen = PickerScreen::MainMenu;
+                transition.next_screen = PickerScreen::MainMenu;
                 break;
             case MainMenuAction::Help:
                 client.show_help();
-                screen = PickerScreen::MainMenu;
+                transition.next_screen = PickerScreen::MainMenu;
                 break;
             case MainMenuAction::Multiplayer:
-                screen = PickerScreen::MainMenu; // Handled in show_main_menu
+                transition.next_screen = PickerScreen::MainMenu; // Handled in show_main_menu
                 break;
             case MainMenuAction::Quit:
-                screen = PickerScreen::Quit;
+                transition.next_screen = PickerScreen::Quit;
                 break;
             }
             break;
         }
         case PickerScreen::TeamBuild:
             client.show_team_build();
-            screen = PickerScreen::MainMenu;
+            transition.next_screen = PickerScreen::MainMenu;
             break;
         case PickerScreen::Options:
             client.show_options();
-            screen = PickerScreen::MainMenu;
+            transition.next_screen = PickerScreen::MainMenu;
             break;
         case PickerScreen::Help:
             client.show_help();
-            screen = PickerScreen::MainMenu;
+            transition.next_screen = PickerScreen::MainMenu;
             break;
         case PickerScreen::Playing:
             client.run_game();
-            screen = PickerScreen::MainMenu;
+            transition.next_screen = PickerScreen::MainMenu;
             break;
         default:
-            screen = PickerScreen::Quit;
+            transition.next_screen = PickerScreen::Quit;
             break;
         }
+        screen = transition.next_screen;
     }
 }
 

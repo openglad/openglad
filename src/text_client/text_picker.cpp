@@ -7,8 +7,9 @@
  * Licensed under GPL v2.
  */
 
-#include <openglad/ui/picker_state.h>
 #include <openglad/core/constants.h>
+#include <openglad/ui/picker.h>
+#include <openglad/ui/picker_state.h>
 
 #include <cstdio>
 #include <iostream>
@@ -19,6 +20,11 @@ namespace og::ui {
 class TextPickerClient final : public IPickerClient
 {
 public:
+    explicit TextPickerClient(TextPickerConfig& config)
+        : config_(config) {}
+
+    bool play_requested() const { return play_requested_; }
+
     MainMenuAction show_main_menu() override
     {
         std::printf("\n=== OpenGlad (Text Mode) ===\n");
@@ -38,8 +44,12 @@ public:
             return MainMenuAction::Quit; // EOF
 
         switch (choice) {
-        case 1: return MainMenuAction::ContinueGame;
-        case 2: return MainMenuAction::NewGame;
+        case 1:
+            play_requested_ = true;
+            return MainMenuAction::Quit;
+        case 2:
+            play_requested_ = true;
+            return MainMenuAction::Quit;
         case 3: return MainMenuAction::LoadGame;
         case 4: return MainMenuAction::SaveGame;
         case 5: return MainMenuAction::ViewTeam;
@@ -57,6 +67,8 @@ public:
         std::printf("\n--- Team Build ---\n");
         std::printf("(Team building not available in text mode.)\n");
         std::printf("Use --team <fam1,fam2,...> on the command line.\n");
+        if (config_.team_families.empty())
+            config_.team_families.push_back(FAMILY_SOLDIER);
     }
 
     std::string show_campaign_select() override
@@ -68,6 +80,7 @@ public:
         std::getline(std::cin, campaign);
         if (campaign.empty())
             campaign = "org.openglad.gladiator";
+        config_.campaign = campaign;
         return campaign;
     }
 
@@ -101,6 +114,22 @@ public:
         std::printf("(Save not available in text mode.)\n");
         return false;
     }
+
+private:
+    TextPickerConfig& config_;
+    bool play_requested_ = false;
 };
+
+bool run_text_picker(TextPickerConfig& config, TextPickerError* error)
+{
+    if (error)
+        *error = {};
+    if (config.team_families.empty())
+        config.team_families.push_back(FAMILY_SOLDIER);
+
+    TextPickerClient client(config);
+    run_picker(client);
+    return client.play_requested();
+}
 
 } // namespace og::ui
