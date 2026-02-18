@@ -1,5 +1,6 @@
 #include <unistd.h>
 #include <signal.h>
+#include <cstdlib>
 #ifdef __linux__
 #include <sys/prctl.h>
 #endif
@@ -19,11 +20,6 @@
 #include <openglad/sim/sim_event_log.h>
 extern screen* myscreen;
 extern options* theprefs;
-
-#ifdef ENABLE_COVERAGE
-// Ensure coverage data is flushed even though we terminate via _exit().
-extern "C" void __gcov_dump();
-#endif
 
 static void handle_test_signal(int sig)
 {
@@ -84,13 +80,12 @@ int main(int argc, char* argv[]) {
 
     run_all_tests();
 
-    // Use _exit() to terminate immediately. SDL_Quit() (called by the video
-    // destructor during normal cleanup) hangs on some drivers/configurations.
-    // This is a test binary so we don't need graceful teardown — the OS
-    // reclaims all resources on process exit.
+    // Default behavior uses _exit() to avoid SDL shutdown hangs seen in some
+    // CI/runtime combinations. For coverage runs, opt in to normal process
+    // shutdown so gcov can emit .gcda files.
     fflush(nullptr); // _exit() doesn't flush stdio — do it explicitly
-#ifdef ENABLE_COVERAGE
-    __gcov_dump();
-#endif
+    const char* normal_exit = std::getenv("OPENGLAD_TEST_NORMAL_EXIT");
+    if (normal_exit && normal_exit[0] != '\0')
+        return (g_tests_failed > 0 ? 1 : 0);
     _exit(g_tests_failed > 0 ? 1 : 0);
 }

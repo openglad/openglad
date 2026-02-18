@@ -951,6 +951,7 @@ if(NOT EMSCRIPTEN)
         set(TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/test_framework.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_main.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_trace_buffer.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_startup.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_combat_math.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_loader_and_walker.cpp

@@ -20,6 +20,8 @@ extern screen* myscreen;
 void picker_main(Sint32 argc, char **argv);
 extern int g_picker_mainmenu_calls;
 extern int g_picker_max_mainmenu_calls;
+Sint32 create_view_menu(Sint32 arg1);
+Sint32 create_team_menu(Sint32 arg1);
 #ifdef TESTING
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
@@ -303,3 +305,95 @@ void test_view_team_go_starts_level() {
     TEST_ASSERT(state.game_finished, "started game should return to picker");
 }
 REGISTER_TEST(test_view_team_go_starts_level);
+
+struct DirectMenuClickState {
+    bool finished;
+    bool clicked_target;
+    const char* target_id;
+    int min_y;
+};
+
+static int direct_menu_click_injector(void* data)
+{
+    auto* state = static_cast<DirectMenuClickState*>(data);
+
+    int elapsed = 0;
+    while (elapsed < 5000) {
+        auto interactables = get_interactables();
+        for (const auto& item : interactables) {
+            if (item.id == state->target_id && !item.hidden && item.y >= state->min_y) {
+                const int game_x = item.x + item.width / 2;
+                const int game_y = item.y + item.height / 2;
+                const int win_x = static_cast<int>(static_cast<float>(game_x) * (viewport_w / 320.0f) + viewport_offset_x);
+                const int win_y = static_cast<int>(static_cast<float>(game_y) * (viewport_h / 200.0f) + viewport_offset_y);
+                inject_click(win_x, win_y);
+                state->clicked_target = true;
+                state->finished = true;
+                return 0;
+            }
+        }
+        SDL_Delay(50);
+        elapsed += 50;
+    }
+
+    // Safety valve so menu loops don't hang forever in a failed interaction.
+    inject_key_press(SDLK_ESCAPE, 10);
+    state->finished = true;
+    return 0;
+}
+
+void test_create_view_menu_direct_back()
+{
+    trace_clear();
+
+    myscreen->save_data.reset();
+    myscreen->save_data.numplayers = 1;
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    myscreen->save_data.team_list[0] = std::move(soldier);
+    myscreen->save_data.team_size = 1;
+
+    DirectMenuClickState state = { false, false, "back", 160 };
+    SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_view_back", &state);
+    TEST_ASSERT(thread != nullptr, "failed to create direct view-menu injector thread");
+
+    const Sint32 ret = create_view_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    TEST_ASSERT(state.finished, "direct view-menu injector should complete");
+    TEST_ASSERT(state.clicked_target, "direct view-menu injector should click back");
+    TEST_ASSERT(ret & 1, "create_view_menu(back) should propagate EXIT");
+}
+REGISTER_TEST(test_create_view_menu_direct_back);
+
+void test_create_team_menu_direct_back()
+{
+    trace_clear();
+
+    myscreen->save_data.reset();
+    myscreen->save_data.numplayers = 1;
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 1;
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    myscreen->save_data.team_list[0] = std::move(soldier);
+    myscreen->save_data.team_size = 1;
+
+    DirectMenuClickState state = { false, false, "back", 100 };
+    SDL_Thread* thread = SDL_CreateThread(direct_menu_click_injector, "direct_team_back", &state);
+    TEST_ASSERT(thread != nullptr, "failed to create direct team-menu injector thread");
+
+    const Sint32 ret = create_team_menu(0);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+    cleanup_picker_state();
+
+    TEST_ASSERT(state.finished, "direct team-menu injector should complete");
+    TEST_ASSERT(state.clicked_target, "direct team-menu injector should click back");
+    TEST_ASSERT(ret & 1, "create_team_menu(back) should propagate EXIT");
+}
+REGISTER_TEST(test_create_team_menu_direct_back);
