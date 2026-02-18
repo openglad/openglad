@@ -216,6 +216,11 @@ Sint32 create_view_menu(Sint32 arg1)
 	}
 	myscreen->clearbuffer();
 
+    // Preserve EXIT so TeamBuild interception can map GO -> StartGame.
+    if (retvalue & EXIT) {
+        return retvalue;
+    }
+
 	return REDRAW;
 }
 
