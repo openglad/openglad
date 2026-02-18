@@ -23,7 +23,7 @@ TMPOUT=$(mktemp)
 trap 'rm -f "$TMPOUT"' EXIT
 
 # Run 1000 ticks, dump state, then quit.  Timeout after 30 seconds.
-printf 'tick 1000\nstate\nquit\n' | timeout 30 "$TEXT_BIN" --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
+printf 'tick 1000\nstate\nquit\n' | timeout 30 "$TEXT_BIN" --protocol --level 1 --seed 42 > "$TMPOUT" 2>/dev/null
 rc=$?
 if [ $rc -ne 0 ]; then
     echo "FAIL: openglad_text exited with code $rc" >&2

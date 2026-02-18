@@ -35,6 +35,7 @@
 #include <openglad/core/util.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/input/input_state.h>
+#include <openglad/ui/picker.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -208,6 +209,7 @@ struct TextClientArgs {
     int level = 1;
     std::vector<int> team_families; // family IDs
     std::uint32_t seed = 42;
+    bool protocol_mode = false;
 };
 
 static bool parse_args(int argc, char* argv[], TextClientArgs& args)
@@ -227,6 +229,8 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
             }
         } else if (arg == "--seed" && i + 1 < argc) {
             args.seed = static_cast<std::uint32_t>(std::atol(argv[++i]));
+        } else if (arg == "--protocol") {
+            args.protocol_mode = true;
         } else if (arg == "--help" || arg == "-h") {
             std::fprintf(stderr,
                 "Usage: openglad_text [options]\n"
@@ -234,6 +238,7 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
                 "  --level <num>       Level number (default: 1)\n"
                 "  --team <f1,f2,...>  Team family IDs, comma-separated (default: 0 = soldier)\n"
                 "  --seed <num>        RNG seed (default: 42)\n"
+                "  --protocol          Run JSON protocol mode directly (no picker)\n"
                 "\nCommands (stdin):\n"
                 "  tick [N]   Advance N simulation ticks\n"
                 "  state      Dump entity state as JSON\n"
@@ -247,22 +252,8 @@ static bool parse_args(int argc, char* argv[], TextClientArgs& args)
     return true;
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
-int main(int argc, char* argv[])
+static int run_protocol_session(const TextClientArgs& args)
 {
-    TextClientArgs args;
-    if (!parse_args(argc, argv, args))
-        return 0;
-
-    // Initialize filesystem (SDL-free)
-    io_init(argc, argv);
-
-    // Load configuration
-    cfg.load_settings();
-
     // Set up sim infrastructure
     og::sim::SimEventLog events;
     og::sim::SimWorld sim(args.seed);
@@ -371,6 +362,58 @@ int main(int argc, char* argv[])
     }
 
     set_global_context(nullptr);
-    io_exit();
     return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+int main(int argc, char* argv[])
+{
+    TextClientArgs args;
+    if (!parse_args(argc, argv, args))
+        return 0;
+
+    // Initialize filesystem (SDL-free)
+    io_init(argc, argv);
+
+    // Load configuration
+    cfg.load_settings();
+
+    int rc = 0;
+    if (args.protocol_mode) {
+        rc = run_protocol_session(args);
+        io_exit();
+        return rc;
+    }
+
+    og::ui::TextPickerConfig picker_config;
+    picker_config.campaign = args.campaign;
+    picker_config.level = args.level;
+    picker_config.team_families = args.team_families;
+    picker_config.seed = args.seed;
+
+    while (true) {
+        og::ui::TextPickerError picker_error;
+        const bool play = og::ui::run_text_picker(picker_config, &picker_error);
+        if (!play)
+            break;
+        if (picker_error.code != og::ui::TextPickerErrorCode::None) {
+            std::fprintf(stderr, "picker warning: %s\n", picker_error.detail.c_str());
+        }
+
+        TextClientArgs launch_args = args;
+        launch_args.campaign = picker_config.campaign;
+        launch_args.level = picker_config.level;
+        launch_args.team_families = picker_config.team_families;
+        launch_args.seed = picker_config.seed;
+        launch_args.protocol_mode = true;
+        rc = run_protocol_session(launch_args);
+        if (rc != 0)
+            break;
+    }
+
+    io_exit();
+    return rc;
 }
