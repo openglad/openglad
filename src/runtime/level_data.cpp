@@ -31,6 +31,7 @@
 #include <openglad/io/ogfile_yaml.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/data/level_render.h>
+#include <openglad/data/level_data_hooks.h>
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -39,12 +40,6 @@
 
 
 int toInt(const std::string& s);
-
-// Link-time dispatch: defined in sdl_context_services.cpp (SDL) and platform_headless.cpp (text client)
-extern void clear_stale_view_controls(LevelData* level);
-extern void level_data_wire_entity_from_screen(walker* w);
-extern void level_data_draw_impl(LevelData* level, screen* screenp);
-extern std::unique_ptr<ILevelRender> create_level_render(PixieData pixdata[]);
 
 void LevelData::set_sim_context(SaveData* save, std::int32_t* enemy_freeze,
                                 og::sim::SimEventLog* events, IRandom* rng,
@@ -479,12 +474,12 @@ walker* LevelData::add_ob(Order order, std::int32_t family, bool atstart)
 walker* LevelData::add_fx_ob(Order order, std::int32_t family)
 {
 	auto w = myloader->create_walker_owned(order, family);
-    if (!w)
-        return nullptr;
+	if (!w)
+		return nullptr;
 
-    wire_entity(w.get());
-    if (!headless_)
-        level_data_wire_entity_from_screen(w.get());
+	wire_entity(w.get());
+	if (!headless_)
+		level_data_wire_entity_from_screen(w.get());
 
 	walker* raw = w.get();
 	fxlist.push_back(std::move(w));

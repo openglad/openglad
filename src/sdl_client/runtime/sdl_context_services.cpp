@@ -16,6 +16,7 @@
 #include <openglad/data/level_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/data/level_render.h>
+#include <openglad/data/level_data_hooks.h>
 
 extern screen* myscreen;
 extern options* theprefs;

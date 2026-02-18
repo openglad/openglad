@@ -86,11 +86,7 @@ std::string get_asset_path()
 // Category C: Safe no-ops (documented)
 // ---------------------------------------------------------------------------
 
-class LevelData;
-class walker;
-class screen;
-#include <openglad/data/level_render.h>
-class PixieData;
+#include <openglad/data/level_data_hooks.h>
 
 // Safe no-op: view controls are an SDL render concern; headless has no views.
 void clear_stale_view_controls(LevelData*) {}
