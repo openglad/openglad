@@ -36,6 +36,7 @@
 #include <openglad/data/gparser.h>
 #include <openglad/ui/campaign_picker.h>
 #include <openglad/ui/level_picker.h>
+#include <openglad/ui/picker_state.h>
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen_lifecycle.h>
 #include <array>
@@ -89,6 +90,8 @@ void glad_main(Sint32 playermode);
 std::string get_saved_name(const char * filename);
 Sint32 do_pick_campaign(Sint32 arg1);
 Sint32 do_set_scen_level(Sint32 arg1);
+bool picker_prepare_new_game_setup();
+Sint32 show_general_help();
 
 Sint32 leftmouse(button* buttons);
 void draw_highlight_interior(const button& b);
@@ -107,15 +110,6 @@ std::array<std::unique_ptr<pixieN>, 5> backdrops;
 #include <emscripten.h>
 // Flag to signal that game should start (for state machine)
 bool g_start_game_requested = false;
-// Flag to track if picker has been initialized
-static bool g_picker_initialized = false;
-// Store the current menu state for frame-based operation
-enum class PickerMenuState {
-    Main,
-    CreateTeam,
-    Other
-};
-static PickerMenuState g_picker_menu_state = PickerMenuState::Main;
 #endif
 
 std::unique_ptr<guy> current_guy;
@@ -205,6 +199,17 @@ char difficulty_names[DIFFICULTY_SETTINGS][80] =
         "Slaughter",
     };  // end of difficulty names
 
+enum class PickerInterceptScope
+{
+    None,
+    MainMenu,
+    TeamBuild,
+};
+
+static PickerInterceptScope g_picker_intercept_scope = PickerInterceptScope::None;
+static og::ui::MainMenuAction g_picker_main_menu_action = og::ui::MainMenuAction::Quit;
+static og::ui::TeamBuildAction g_picker_team_build_action = og::ui::TeamBuildAction::BackToMainMenu;
+
 static cfg_store& active_config()
 {
     if (ctx().config)
@@ -270,6 +275,129 @@ static void picker_load_default_save_if_present()
         myscreen->save_data.load("save0");
 }
 
+bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue)
+{
+    (void)call_arg;
+    const ButtonAction action = button_action_from_id(whatfunc);
+    if (g_picker_intercept_scope == PickerInterceptScope::MainMenu) {
+        switch (action) {
+        case ButtonAction::BeginMenu:
+            g_picker_main_menu_action = og::ui::MainMenuAction::NewGame;
+            retvalue = menu_result_id(MenuResult::Exit);
+            return true;
+        case ButtonAction::CreateTeamMenu:
+            g_picker_main_menu_action = og::ui::MainMenuAction::ViewTeam;
+            retvalue = menu_result_id(MenuResult::Exit);
+            return true;
+        case ButtonAction::MainOptions:
+            g_picker_main_menu_action = og::ui::MainMenuAction::Options;
+            retvalue = menu_result_id(MenuResult::Exit);
+            return true;
+        case ButtonAction::ShowHelp:
+            g_picker_main_menu_action = og::ui::MainMenuAction::Help;
+            retvalue = menu_result_id(MenuResult::Exit);
+            return true;
+        case ButtonAction::QuitMenu:
+            g_picker_main_menu_action = og::ui::MainMenuAction::Quit;
+            retvalue = menu_result_id(MenuResult::Exit);
+            return true;
+        default:
+            return false;
+        }
+    }
+    if (g_picker_intercept_scope == PickerInterceptScope::TeamBuild) {
+        if (action == ButtonAction::GoMenu) {
+            g_picker_team_build_action = og::ui::TeamBuildAction::PlayGame;
+            retvalue = menu_result_id(MenuResult::Exit);
+            return true;
+        }
+    }
+    return false;
+}
+
+class SdlPickerClient final : public og::ui::IPickerClient
+{
+public:
+    og::ui::MainMenuAction show_main_menu() override
+    {
+#ifdef TESTING
+        if (g_picker_max_mainmenu_calls > 0 && g_picker_mainmenu_calls >= g_picker_max_mainmenu_calls)
+            return og::ui::MainMenuAction::Quit;
+#endif
+        g_picker_main_menu_action = og::ui::MainMenuAction::Quit;
+        g_picker_intercept_scope = PickerInterceptScope::MainMenu;
+        mainmenu(1);
+        g_picker_intercept_scope = PickerInterceptScope::None;
+#ifdef TESTING
+        g_picker_mainmenu_calls++;
+#endif
+        return g_picker_main_menu_action;
+    }
+
+    bool prepare_new_game() override
+    {
+        if (!picker_prepare_new_game_setup())
+            return false;
+        start_team_build_in_hire_menu_ = true;
+        return true;
+    }
+
+    og::ui::TeamBuildAction show_team_build() override
+    {
+        g_picker_team_build_action = og::ui::TeamBuildAction::BackToMainMenu;
+        g_picker_intercept_scope = PickerInterceptScope::TeamBuild;
+        create_team_menu(start_team_build_in_hire_menu_ ? 1 : 0);
+        g_picker_intercept_scope = PickerInterceptScope::None;
+        start_team_build_in_hire_menu_ = false;
+        return g_picker_team_build_action;
+    }
+
+    std::string show_campaign_select() override
+    {
+        do_pick_campaign(0);
+        return myscreen->save_data.current_campaign;
+    }
+
+    void show_options() override
+    {
+        main_options();
+    }
+
+    void show_help() override
+    {
+        show_general_help();
+    }
+
+    void run_game() override
+    {
+        go_menu(0);
+    }
+
+    bool load_game() override
+    {
+        create_load_menu(0);
+        return true;
+    }
+
+    bool save_game() override
+    {
+        create_save_menu(0);
+        return true;
+    }
+
+    og::ui::PickerScreen screen_after_game() const override
+    {
+#ifdef __EMSCRIPTEN__
+        if (g_start_game_requested)
+            return og::ui::PickerScreen::Quit;
+#endif
+        return og::ui::PickerScreen::TeamBuild;
+    }
+
+private:
+    bool start_team_build_in_hire_menu_ = false;
+};
+
 void picker_main(Sint32 argc, char  **argv)
 {
 	(void)argc;
@@ -279,8 +407,8 @@ void picker_main(Sint32 argc, char  **argv)
     picker_initialize_shared_menu_state();
     // Load the current saved game, if it exists .. (save0.gtl)
     picker_load_default_save_if_present();
-
-	picker_mainmenu_loop();
+    SdlPickerClient client;
+    og::ui::run_picker(client);
 }
 
 // Centralized picker resource cleanup (no screen destruction).
@@ -1398,6 +1526,12 @@ Sint32 change_allied()
 // These functions allow the picker to work with a non-blocking main loop
 // ============================================================================
 
+static void run_picker_state_machine_until_game_requested()
+{
+    SdlPickerClient client;
+    og::ui::run_picker(client);
+}
+
 // Check if game start was requested (called from main after picker_init)
 bool picker_check_start_requested()
 {
@@ -1414,14 +1548,9 @@ void picker_init()
     // Load the current saved game, if it exists
     picker_load_default_save_if_present();
 
-    g_picker_initialized = true;
     g_start_game_requested = false;
-
-    // Start the main menu - this will run its blocking loop
-    // When go_menu returns menu_result_id(MenuResult::Exit) with g_start_game_requested, the loop exits
-    mainmenu(1);
-
-    Log("picker_init: mainmenu returned, g_start_game_requested={}\n", g_start_game_requested);
+    run_picker_state_machine_until_game_requested();
+    Log("picker_init: picker returned, g_start_game_requested={}\n", g_start_game_requested);
 }
 
 // Run one frame of the picker - returns true when game should start
@@ -1432,18 +1561,6 @@ bool picker_frame()
         Log("picker_frame: Game start requested\n");
         g_start_game_requested = false;
         return true;  // Signal to transition to PLAYING state
-    }
-
-    // If we get here without g_start_game_requested, the menus exited normally
-    // (e.g., user quit). For now, just restart the main menu.
-    // In a more complete implementation, we'd track menu state.
-    mainmenu(1);
-
-    // Check again after menu returns
-    if (g_start_game_requested) {
-        Log("picker_frame: Game start requested after mainmenu\n");
-        g_start_game_requested = false;
-        return true;
     }
 
     return false;
@@ -1475,9 +1592,7 @@ void picker_reinit_after_game()
 
     g_start_game_requested = false;
 
-    // Restart the main menu
-    mainmenu(1);
-
-    Log("picker_reinit_after_game: mainmenu returned, g_start_game_requested={}\n", g_start_game_requested);
+    run_picker_state_machine_until_game_requested();
+    Log("picker_reinit_after_game: picker returned, g_start_game_requested={}\n", g_start_game_requested);
 }
 #endif

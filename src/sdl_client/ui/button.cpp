@@ -574,8 +574,15 @@ void toggle_rendering_engine()
 #define REDRAW 2 //we just exited a menu, so redraw your buttons
 #define OK 4 //this function was successful, continue normal operation
 
+bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32& retvalue);
+
 	Sint32 vbutton::do_call(Sint32 whatfunc, Sint32 call_arg)
 	{
+        Sint32 intercepted_retvalue = 0;
+        if (picker_try_intercept_button_action(whatfunc, call_arg, intercepted_retvalue)) {
+            return intercepted_retvalue;
+        }
+
 	    switch (button_action_from_id(whatfunc))
 	    {
 	    case ButtonAction::BeginMenu:

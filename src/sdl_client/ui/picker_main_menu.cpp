@@ -221,18 +221,17 @@ Sint32 mainmenu(Sint32 arg1)
 }
 
 // Reset game data and go to create_team_menu()
-Sint32 beginmenu(Sint32 arg1)
+bool picker_prepare_new_game_setup()
 {
-	(void)arg1;
     screen* game = ctx().active_screen() ? ctx().active_screen() : myscreen;
     if (!game)
-        return REDRAW_VALUE;
+        return false;
 
     // Do we have a team already?  Then prompt to reset.
     if(game->save_data.team_size > 0)
     {
         if(!yes_or_no_prompt("NEW GAME", "There is already a game loaded.\nDo you want to restart?", false))
-            return REDRAW_VALUE;
+            return false;
     }
     
 	game->clear();
@@ -254,5 +253,14 @@ Sint32 beginmenu(Sint32 arg1)
 	for (int i = 0; i < NUM_FAMILIES; i++)
 		numbought[i] = 0;
 
-	return create_team_menu(1);
+    return true;
+}
+
+Sint32 beginmenu(Sint32 arg1)
+{
+    (void)arg1;
+    if (!picker_prepare_new_game_setup())
+        return REDRAW_VALUE;
+
+    return create_team_menu(1);
 }
