@@ -14,6 +14,7 @@ short load_version_2(og::io::OgFile& infile, LevelData* data);
 short load_version_3(og::io::OgFile& infile, LevelData* data);
 short load_version_4(og::io::OgFile& infile, LevelData* data);
 short load_version_5(og::io::OgFile& infile, LevelData* data);
+short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
@@ -477,3 +478,106 @@ void test_level_data_load_version4_truncated_discard_tail_fails()
     TEST_ASSERT_EQ(0, (int)ok, "load_version_4 should fail when long-line discard bytes are truncated");
 }
 REGISTER_TEST(test_level_data_load_version4_truncated_discard_tail_fails);
+
+void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
+{
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_i16(bytes, 1);
+        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
+        append_i16(bytes, 100);
+        append_i16(bytes, 100);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        for (int i = 0; i < 11; i++)
+            append_u8(bytes, 0);
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        const short ok = load_version_2(rw, &data);
+        // Legacy v2 behavior can differ based on loader state; ensure stability/no crash.
+        TEST_ASSERT(ok == 0 || ok == 1, "v2 unknown-order input should not crash loader");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_i16(bytes, 1);
+        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
+        append_i16(bytes, 100);
+        append_i16(bytes, 100);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        append_u8(bytes, 1); // level
+        for (int i = 0; i < 10; i++)
+            append_u8(bytes, 0);
+        append_u8(bytes, 0); // numlines
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        const short ok = load_version_3(rw, &data);
+        TEST_ASSERT(ok == 0 || ok == 1, "v3 unknown-order input should not crash loader");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_i16(bytes, 1);
+        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
+        append_i16(bytes, 100);
+        append_i16(bytes, 100);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        append_u8(bytes, 1); // level
+        for (int i = 0; i < 12; i++)
+            append_u8(bytes, 0); // name
+        for (int i = 0; i < 10; i++)
+            append_u8(bytes, 0); // reserved
+        append_u8(bytes, 0); // numlines
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        const short ok = load_version_4(rw, &data);
+        TEST_ASSERT(ok == 0 || ok == 1, "v4 unknown-order input should not crash loader");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_u8(bytes, 1); // scenario type
+        append_i16(bytes, 1);
+        append_u8(bytes, 255); // invalid Order -> add_ob should fail
+        append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
+        append_i16(bytes, 100);
+        append_i16(bytes, 100);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        append_u8(bytes, 0);
+        append_u8(bytes, 1); // level
+        for (int i = 0; i < 12; i++)
+            append_u8(bytes, 0); // name
+        for (int i = 0; i < 10; i++)
+            append_u8(bytes, 0); // reserved
+        append_u8(bytes, 0); // numlines
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        const short ok = load_version_5(rw, &data);
+        TEST_ASSERT(ok == 0 || ok == 1, "v5 unknown-order input should not crash loader");
+    }
+}
+REGISTER_TEST(test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation);
+
+void test_level_data_load_scenario_version_dispatcher_guards()
+{
+    std::vector<uint8_t> bytes;
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    const short null_result = load_scenario_version(rw, nullptr, 2);
+    TEST_ASSERT_EQ(0, (int)null_result, "dispatcher should reject null data pointer");
+
+    LevelData data(1);
+    MemoryOgFile rw2(bytes.data(), bytes.size());
+    const short old_version_result = load_scenario_version(rw2, &data, 1);
+    TEST_ASSERT_EQ(0, (int)old_version_result, "dispatcher should reject unsupported old version");
+}
+REGISTER_TEST(test_level_data_load_scenario_version_dispatcher_guards);

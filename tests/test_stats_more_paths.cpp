@@ -212,3 +212,93 @@ void test_stats_forward_and_side_blocked_invalid_direction_defaults()
     TEST_ASSERT(w->stats()->right_walk(), "invalid direction fallback in right_walk should still return true");
 }
 REGISTER_TEST(test_stats_forward_and_side_blocked_invalid_direction_defaults);
+
+void test_stats_add_and_force_command_walk_clamp_and_zero_fallback()
+{
+    auto w = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->stats()->commands.clear();
+    w->stats()->add_command(COMMAND_WALK, 2, 7, -9);
+    TEST_ASSERT(!w->stats()->commands.empty(), "add_command should enqueue walk command");
+    if (!w->stats()->commands.empty())
+    {
+        const command& c = w->stats()->commands.back();
+        TEST_ASSERT_EQ(1, (int)c.com1, "add_command should clamp walk com1 to +1");
+        TEST_ASSERT_EQ(-1, (int)c.com2, "add_command should clamp walk com2 to -1");
+    }
+
+    w->stats()->force_command(COMMAND_WALK, 1, 0, 0);
+    TEST_ASSERT(!w->stats()->commands.empty(), "force_command should prepend command");
+    if (!w->stats()->commands.empty())
+    {
+        const command& c = w->stats()->commands.front();
+        TEST_ASSERT_EQ(1, (int)c.com1, "force_command should convert zero walk x to 1");
+        TEST_ASSERT_EQ(1, (int)c.com2, "force_command should convert zero walk y to 1");
+    }
+}
+REGISTER_TEST(test_stats_add_and_force_command_walk_clamp_and_zero_fallback);
+
+void test_stats_do_command_die_and_multido_paths()
+{
+    auto w = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // COMMAND_DIE path in do_command() (distinct from add_command shortcut).
+    statistics local_stats_die(w.get());
+    local_stats_die.commands.clear();
+    local_stats_die.force_command(COMMAND_DIE, 1, 0, 0);
+    (void)local_stats_die.do_command();
+    TEST_ASSERT(local_stats_die.delete_me == 1, "COMMAND_DIE do_command should mark delete_me");
+
+    // COMMAND_MULTIDO case branch with com1=0 avoids recursive self-entry while still
+    // executing the switch branch and post-switch command decrement path.
+    statistics local_stats_multi(w.get());
+    local_stats_multi.commands.clear();
+    local_stats_multi.force_command(COMMAND_MULTIDO, 1, 0, 0);
+    (void)local_stats_multi.do_command();
+    TEST_ASSERT(!local_stats_multi.has_commands(), "COMMAND_MULTIDO with zero iterations should finish command");
+}
+REGISTER_TEST(test_stats_do_command_die_and_multido_paths);
+
+void test_stats_set_command_die_and_hit_response_early_returns()
+{
+    auto target = make_walker(FAMILY_SOLDIER);
+    auto attacker = make_walker(FAMILY_ORC);
+    TEST_ASSERT(target && attacker, "walkers created");
+    if (!(target && attacker))
+        return;
+
+    // set_command(COMMAND_DIE) logging branch.
+    target->stats()->commands.clear();
+    target->stats()->set_command(COMMAND_DIE, 1, 0, 0);
+    TEST_ASSERT(!target->stats()->commands.empty(), "set_command COMMAND_DIE should still enqueue a command");
+
+    // hit_response early return: null attacker.
+    target->stats()->hit_response(nullptr);
+
+    // hit_response early return: dead attacker.
+    attacker->dead = 1;
+    target->stats()->hit_response(attacker.get());
+    attacker->dead = 0;
+
+    // hit_response early return: dead controller.
+    target->dead = 1;
+    target->stats()->hit_response(attacker.get());
+    target->dead = 0;
+
+    // hit_response early return: ACT_CONTROL.
+    target->set_act_type(ACT_CONTROL);
+    target->stats()->hit_response(attacker.get());
+    target->set_act_type(ACT_RANDOM);
+
+    // hit_response early return: non-living order.
+    target->set_order_family(Order::Weapon, FAMILY_ARROW);
+    target->stats()->hit_response(attacker.get());
+    target->set_order_family(Order::Living, FAMILY_SOLDIER);
+}
+REGISTER_TEST(test_stats_set_command_die_and_hit_response_early_returns);

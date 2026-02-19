@@ -226,3 +226,90 @@ void test_walker_act_guard_and_random_branch_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_act_guard_and_random_branch_paths);
+
+void test_walker_act_generate_zero_vector_and_hp_cap_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    // next(60)=59 and next(300+numobs*8)=0 satisfy generation condition.
+    // next(3)=1 for both axes gives 0,0 to trigger the fallback lastx=1 branch.
+    SequenceRandom rng_seq({59, 0, 1, 1, 0, 0, 0});
+    GameContext c;
+    c.game_screen = myscreen;
+    c.rng = &rng_seq;
+    GlobalContextGuard guard(&c);
+
+    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    TEST_ASSERT(gen != nullptr, "generator created");
+    if (!gen)
+        return;
+
+    gen->stats()->level = 20;
+    gen->stats()->max_hitpoints = 10;
+    gen->stats()->hitpoints = 10;
+    gen->default_weapon = FAMILY_ELF;
+    gen->current_weapon = gen->default_weapon;
+
+    gen->set_act_type(ACT_GENERATE);
+    (void)gen->act();
+    TEST_ASSERT_EQ(1, (int)gen->lastx, "act_generate should force lastx=1 when random step vector is zero");
+    TEST_ASSERT_EQ((int)gen->stats()->max_hitpoints, (int)gen->stats()->hitpoints,
+                   "act_generate should clamp hitpoints at max");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_act_generate_zero_vector_and_hp_cap_paths);
+
+void test_walker_act_guard_else_and_act_random_turn_walk_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto actor = make_living(FAMILY_ORC, 1, 4);
+    auto foe = make_living(FAMILY_SOLDIER, 2, 4);
+    TEST_ASSERT(actor != nullptr && foe != nullptr, "walkers created");
+    if (!(actor && foe))
+        return;
+
+    actor->sim_level = &myscreen->level_data;
+    foe->sim_level = &myscreen->level_data;
+    actor->setxy(96, 96);
+    foe->setxy(128, 96);
+
+    // No nearby foe case: hit act_guard() else return path.
+    actor->foe = nullptr;
+    myscreen->level_data.delete_objects();
+    actor->set_act_type(ACT_GUARD);
+    TEST_ASSERT(!actor->act(), "ACT_GUARD should return false when no foe is found");
+
+    // Recreate context and drive act_random() through fire_check-false turn + walkstep path.
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+    actor = make_living(FAMILY_ORC, 1, 4);
+    foe = make_living(FAMILY_SOLDIER, 2, 4);
+    TEST_ASSERT(actor != nullptr && foe != nullptr, "walkers recreated");
+    if (!(actor && foe))
+        return;
+
+    actor->sim_level = &myscreen->level_data;
+    foe->sim_level = &myscreen->level_data;
+    actor->setxy(96, 96);
+    foe->setxy(128, 96);
+    actor->foe = foe.get();
+    actor->lineofsight = 30;
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1); // forces fire_check() false branch
+
+    SequenceRandom rng_seq({0, 1, 1});
+    GameContext c;
+    c.game_screen = myscreen;
+    c.rng = &rng_seq;
+    GlobalContextGuard guard(&c);
+
+    actor->set_act_type(ACT_RANDOM);
+    (void)actor->act();
+    TEST_ASSERT(actor->query_act_type() != ACT_FIRE, "act_random blocked fire path should not set ACT_FIRE");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_act_guard_else_and_act_random_turn_walk_paths);
