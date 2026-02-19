@@ -180,3 +180,34 @@ void test_io_unzip_with_error_open_output_failed_path()
         "unzip_into_with_error should report OpenOutputFailed when output path is blocked by a file");
 }
 REGISTER_TEST(test_io_unzip_with_error_open_output_failed_path);
+
+void test_io_zip_batch5_empty_directory_and_non_regular_entries()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_zip_batch5_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path zipfile = base / "bundle.zip";
+    fs::path outdir = base / "out";
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir input should succeed");
+    TEST_ASSERT(create_dir((indir / "empty_subdir").string()), "create_dir empty_subdir should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "root.txt").string(), "ROOT"), "write regular file should succeed");
+
+#if !defined(_WIN32)
+    // Symlink entry exercises non-regular-file skip path in zip enumeration.
+    std::error_code ec;
+    fs::create_symlink(indir / "root.txt", indir / "root.link", ec);
+#endif
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "zip with empty dir and non-regular entries should still succeed");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(unzip_into_with_error(zipfile.string(), outdir.string())),
+        "unzip should succeed for archive containing empty directories");
+
+    std::string payload;
+    TEST_ASSERT(read_file_all((outdir / "root.txt").string(), &payload), "unzipped root file should exist");
+    TEST_ASSERT(payload == "ROOT", "unzipped root file content should match");
+}
+REGISTER_TEST(test_io_zip_batch5_empty_directory_and_non_regular_entries);

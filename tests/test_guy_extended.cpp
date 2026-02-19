@@ -11,6 +11,7 @@ extern screen* myscreen;
 extern Sint32 costlist[NUM_FAMILIES];
 extern Sint32 statlist[NUM_FAMILIES][6];
 extern Sint32 statcosts[NUM_FAMILIES][6];
+int MAX(int a, int b);
 
 // ---------------------------------------------------------------------------
 // upgrade_to_level - exercises the big family switch (lines 323-456)
@@ -306,3 +307,17 @@ void test_guy_update_derived_stats_clamps_speed_and_regen_delays()
     TEST_ASSERT(w->stats()->max_magic_delay >= 2, "max_magic_delay should respect minimum clamp");
 }
 REGISTER_TEST(test_guy_update_derived_stats_clamps_speed_and_regen_delays);
+
+void test_guy_batch5_max_helper_and_more_unknown_family_paths()
+{
+    TEST_ASSERT_EQ(5, MAX(3, 5), "MAX should return second operand when first is lower");
+    TEST_ASSERT_EQ(7, MAX(7, 2), "MAX should return first operand when first is higher");
+
+    guy unknown_neg(-999);
+    TEST_ASSERT_STR_EQ("BEAST", unknown_neg.name.c_str(), "negative unknown family should use fallback name");
+    TEST_ASSERT_EQ(1, (int)unknown_neg.level, "negative unknown family should use fallback level");
+    unknown_neg.family = static_cast<char>(-127);
+    TEST_ASSERT_EQ(0, (int)unknown_neg.query_heart_value(),
+                   "unknown negative family should report zero heart value");
+}
+REGISTER_TEST(test_guy_batch5_max_helper_and_more_unknown_family_paths);

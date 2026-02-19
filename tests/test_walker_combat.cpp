@@ -798,3 +798,60 @@ void test_walker_attack_weapon_owner_chain_and_nonliving_target()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_attack_weapon_owner_chain_and_nonliving_target);
+
+void test_walker_combat_batch5_heal_and_hit_effect_variants()
+{
+    walker* healer = make_guy(FAMILY_CLERIC, 0);
+    walker* target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(healer != nullptr && target != nullptr, "healer and target created");
+    if (!(healer && target))
+        return;
+
+    healer->setxy(100, 100);
+    target->setxy(116, 104);
+
+    // do_heal_effects with config enabled and null-healer branch.
+    cfg.apply_setting("effects", "heal_numbers", "on");
+    healer->do_heal_effects(nullptr, target, 9);
+    TEST_ASSERT(!target->damage_numbers.empty(), "heal numbers should be emitted for target when enabled");
+
+    // do_hit_effects projectile branch (attacker != this) and damage number branch.
+    cfg.apply_setting("effects", "damage_numbers", "on");
+    cfg.apply_setting("effects", "hit_anim", "on");
+    cfg.apply_setting("effects", "hit_flash", "on");
+    cfg.apply_setting("effects", "hit_recoil", "on");
+    walker* projectile = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(projectile != nullptr, "projectile created");
+    if (projectile)
+    {
+        projectile->owner = healer;
+        projectile->team_num = healer->team_num;
+        projectile->setxy(108, 100);
+        projectile->do_hit_effects(healer, target, 6);
+        TEST_ASSERT(target->hurt_flash, "hit_flash should be set on positive damage when enabled");
+        TEST_ASSERT(target->hit_recoil > 0.0f, "hit_recoil should be set for living targets");
+    }
+}
+REGISTER_TEST(test_walker_combat_batch5_heal_and_hit_effect_variants);
+
+void test_walker_combat_batch5_do_combat_damage_target_myguy_stats()
+{
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* victim = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker != nullptr && victim != nullptr, "attacker and victim created");
+    if (!(attacker && victim))
+        return;
+
+    const float taken_before = victim->myguy ? victim->myguy->scen_damage_taken : 0.0f;
+    attacker->do_combat_damage(attacker, victim, 7);
+
+    TEST_ASSERT(victim->last_hitpoints >= victim->stats()->hitpoints, "combat damage should update last_hitpoints");
+    if (victim->myguy)
+    {
+        TEST_ASSERT(victim->myguy->scen_damage_taken >= taken_before,
+                    "target myguy scen_damage_taken should increase");
+    }
+    TEST_ASSERT(victim->stats()->hitpoints <= victim->last_hitpoints,
+                "combat damage should not increase target hitpoints");
+}
+REGISTER_TEST(test_walker_combat_batch5_do_combat_damage_target_myguy_stats);

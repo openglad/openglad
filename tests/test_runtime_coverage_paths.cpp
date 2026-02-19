@@ -556,3 +556,52 @@ void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
     clear_level_lists();
 }
 REGISTER_TEST(test_sim_world_freeze_countdown_notification_and_weap_cleanup);
+
+void test_sim_world_batch5_game_end_paths()
+{
+    clear_level_lists();
+
+    og::sim::SimWorld world(99);
+    og::sim::SimEventLog events;
+    SaveData save;
+    save.my_team = 0;
+
+    // No foes and no exits => level_done stays 2 and game ends.
+    std::int32_t enemy_freeze = 0;
+    char end = 0;
+    og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    TEST_ASSERT(r.game_ended, "empty level should trigger game_ended path");
+    TEST_ASSERT_EQ(0, (int)r.ending, "empty level ending should be 0");
+
+    // end flag path when level is not fully done.
+    clear_level_lists();
+    walker* foe = add_living(1);
+    TEST_ASSERT(foe != nullptr, "foe created");
+    if (!foe)
+        return;
+    foe->set_act_type(ACT_CONTROL);
+    end = 1;
+    r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    TEST_ASSERT(r.game_ended, "end flag should force game end");
+    TEST_ASSERT_EQ(0, (int)r.level_done, "hostile living should keep level_done at 0 before end flag handling");
+}
+REGISTER_TEST(test_sim_world_batch5_game_end_paths);
+
+void test_treasure_batch5_default_eat_and_missing_self_target_lookup()
+{
+    clear_level_lists();
+
+    // Unknown treasure family should take default eat_me() return path.
+    treasure standalone;
+    standalone.set_order_family(Order::Treasure, 127);
+    walker eater;
+    TEST_ASSERT(standalone.eat_me(&eater), "unknown treasure family should use default eat_me return true");
+
+    // find_teleport_target should return nullptr when object is not in fxlist.
+    standalone.set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    standalone.stats()->level = 4;
+    standalone.sim_level = &myscreen->level_data;
+    TEST_ASSERT(standalone.find_teleport_target() == nullptr,
+                "teleport target lookup should fail when teleporter is not present in fxlist");
+}
+REGISTER_TEST(test_treasure_batch5_default_eat_and_missing_self_target_lookup);
