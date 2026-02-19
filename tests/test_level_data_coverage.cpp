@@ -393,3 +393,168 @@ void test_level_data_range_helpers_positive_selection_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_range_helpers_positive_selection_paths);
+
+void test_level_data_round5_query_grid_passable_contiguous_block_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* living = add_living(FAMILY_SOLDIER);
+    walker* owner = add_living(FAMILY_ARCHER);
+    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(living && owner && weapon, "fixture walkers should be created");
+    if (!(living && owner && weapon))
+        return;
+
+    living->setxy(0, 0);
+    living->sizex = 1;
+    living->sizey = 1;
+    owner->setxy(80, 0);
+    owner->sizex = 1;
+    owner->sizey = 1;
+    weapon->setxy(0, 0);
+    weapon->sizex = 1;
+    weapon->sizey = 1;
+    weapon->owner = owner;
+
+    myscreen->level_data.grid.data[0] = PIX_GRASS1;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "ground tile should pass");
+
+    myscreen->level_data.grid.data[0] = PIX_TREE_M1;
+    living->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "forestwalk should pass upper tree tiles");
+    living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
+
+    living->stats()->set_bit_flags(BIT_FLYING, 1);
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "flying should pass upper tree tiles");
+    living->stats()->set_bit_flags(BIT_FLYING, 0);
+
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "non-flying non-forestwalk should fail upper tree tiles");
+
+    myscreen->level_data.grid.data[0] = PIX_TREE_B1;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "weapon should pass trunk tree tile");
+
+    living->stats()->set_bit_flags(BIT_FLYING, 1);
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "flying should pass trunk tree tile");
+    living->stats()->set_bit_flags(BIT_FLYING, 0);
+
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "non-flying living should fail trunk tree tile");
+
+    myscreen->level_data.grid.data[0] = PIX_H_WALL1;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "hard wall tile should block living");
+
+    myscreen->level_data.grid.data[0] = PIX_WALL4;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "wall4 should block living immediately");
+
+    FixedRandom rng_block(1);
+    weapon->sim_rng = &rng_block;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "wall4 projectile should block when rng returns non-zero");
+
+    owner->setxy(8, 0); // triggers dist < GRID_SIZE adjustment branch
+    FixedRandom rng_pass(0);
+    weapon->sim_rng = &rng_pass;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "wall4 projectile should pass and fall through with rng zero");
+
+    myscreen->level_data.grid.data[0] = PIX_WATER1;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "weapon should pass water/obstacle group");
+
+    living->stats()->set_bit_flags(BIT_FLYING, 1);
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "flying living should pass water/obstacle group");
+    living->stats()->set_bit_flags(BIT_FLYING, 0);
+
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "non-flying living should fail water/obstacle group");
+
+    myscreen->level_data.grid.data[0] = 255;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "unknown tile should use default fail branch");
+
+    living->dead = 1;
+    TEST_ASSERT(myscreen->level_data.query_object_passable(0.0f, 0.0f, living),
+                "dead object should pass object-collision query");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_round5_query_grid_passable_contiguous_block_paths);
+
+void test_level_data_round5_find_helpers_contiguous_block_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = add_living(FAMILY_SOLDIER);
+    walker* friend_living = add_living(FAMILY_ARCHER);
+    walker* foe_living = add_living(FAMILY_ORC);
+    walker* foe_generator = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* foe_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* blood = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    TEST_ASSERT(actor && friend_living && foe_living && foe_generator && foe_weapon && blood,
+                "fixtures should be created");
+    if (!(actor && friend_living && foe_living && foe_generator && foe_weapon && blood))
+        return;
+
+    actor->team_num = 0;
+    actor->setxy(64, 64);
+    actor->sim_level = &myscreen->level_data;
+
+    friend_living->team_num = 0;
+    friend_living->setxy(72, 64);
+
+    foe_living->team_num = 1;
+    foe_living->setxy(80, 64);
+
+    foe_generator->team_num = 1;
+    foe_generator->setxy(96, 64);
+
+    foe_weapon->team_num = 1;
+    foe_weapon->setxy(70, 64);
+
+    blood->setxy(68, 64);
+
+    FixedRandom rng_zero(0);
+    actor->sim_rng = &rng_zero;
+    TEST_ASSERT(myscreen->level_data.find_far_foe(actor) != nullptr,
+                "find_far_foe should return nearest visible living/generator foe");
+    TEST_ASSERT(myscreen->level_data.find_nearest_blood(actor) == blood,
+                "find_nearest_blood should return stain target");
+    TEST_ASSERT(myscreen->level_data.find_nearest_player(actor) == nullptr,
+                "find_nearest_player should return null when no controlled walkers exist");
+
+    std::int32_t howmany = -1;
+    auto in_range = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 128, &howmany, actor);
+    TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should count nearby non-dead walkers");
+
+    auto foes = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 128, &howmany, actor);
+    TEST_ASSERT(!foes.empty() && howmany > 0, "find_foes_in_range should include living/generator enemies");
+
+    auto foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 128, &howmany, actor);
+    TEST_ASSERT(foe_weapons.empty(), "enemy weapon should be excluded because helper accepts friendly weapons");
+
+    foe_weapon->team_num = actor->team_num;
+    foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 128, &howmany, actor);
+    TEST_ASSERT(!foe_weapons.empty() && howmany > 0, "friendly weapon should be included by helper predicate");
+
+    auto friends = myscreen->level_data.find_friends_in_range(myscreen->level_data.oblist, 128, &howmany, actor);
+    TEST_ASSERT(!friends.empty() && howmany > 0, "find_friends_in_range should include friendly living");
+
+    TEST_ASSERT(myscreen->level_data.find_nearest_blood(nullptr) == nullptr,
+                "find_nearest_blood nullptr guard should return null");
+    TEST_ASSERT(myscreen->level_data.find_nearest_player(nullptr) == nullptr,
+                "find_nearest_player nullptr guard should return null");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_round5_find_helpers_contiguous_block_paths);
