@@ -1025,6 +1025,7 @@ if(NOT EMSCRIPTEN)
 	            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_ops.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_more_branches.cpp
+	            ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_radar_more.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
 	            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
@@ -1092,6 +1093,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_input_event_dispatch.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
         )
@@ -1134,6 +1137,9 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
