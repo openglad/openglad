@@ -8,6 +8,8 @@
 #include <openglad/render/walker_draw.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
+#include <deque>
+#include <vector>
 
 extern screen* myscreen;
 
@@ -658,3 +660,77 @@ void test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths()
     TEST_ASSERT(true, "blocked npc and user-slide subpaths executed");
 }
 REGISTER_TEST(test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths);
+
+namespace {
+class ScriptedWalkWalker : public walker {
+public:
+    explicit ScriptedWalkWalker(const PixieData& p) : walker(p) {}
+
+    void set_walk_results(std::initializer_list<bool> vals)
+    {
+        results_ = std::deque<bool>(vals.begin(), vals.end());
+    }
+
+    bool walk(float x, float y) override
+    {
+        calls_.push_back({x, y});
+        if (results_.empty())
+            return false;
+        const bool r = results_.front();
+        results_.pop_front();
+        return r;
+    }
+
+    std::size_t call_count() const { return calls_.size(); }
+
+private:
+    std::deque<bool> results_;
+    std::vector<std::pair<float, float>> calls_;
+};
+
+static PixieData one_px_for_scripted()
+{
+    return PixieData(1, 1, 1, new unsigned char[1]{0});
+}
+} // namespace
+
+void test_walker_movement_round6_scripted_walkstep_switch_coverage()
+{
+    PixieData px = one_px_for_scripted();
+    ScriptedWalkWalker w(px);
+    w.sim_level = &myscreen->level_data;
+    w.stepsize = 1.0f;
+
+    // NPC fallback switch: first two attempts fail, case body executes.
+    w.user = -1;
+    w.set_walk_results({false, false, true});
+    TEST_ASSERT(w.walkstep(0, -1), "FACE_UP npc fallback should return ret1");
+
+    w.set_walk_results({false, false, true});
+    TEST_ASSERT(w.walkstep(1, 0), "FACE_RIGHT npc fallback should return ret1");
+
+    w.set_walk_results({false, false, true});
+    TEST_ASSERT(w.walkstep(0, 1), "FACE_DOWN npc fallback should return ret1");
+
+    w.set_walk_results({false, false, true});
+    TEST_ASSERT(w.walkstep(-1, 0), "FACE_LEFT npc fallback should return ret1");
+
+    // Diagonal NPC fallbacks (ret1/ret2 dual-call path).
+    w.set_walk_results({false, false, false, true});
+    TEST_ASSERT(w.walkstep(1, -1), "FACE_UP_RIGHT npc fallback should return ret2");
+
+    w.set_walk_results({false, false, true, false});
+    TEST_ASSERT(w.walkstep(1, 1), "FACE_DOWN_RIGHT npc fallback should return ret1");
+
+    w.set_walk_results({false, false, false, true});
+    TEST_ASSERT(w.walkstep(-1, 1), "FACE_DOWN_LEFT npc fallback should return ret2");
+
+    w.set_walk_results({false, false, true, false});
+    TEST_ASSERT(w.walkstep(-1, -1), "FACE_UP_LEFT npc fallback should return ret1");
+
+    // User slide switch cardinal branch (dx/dy stays zero and returns false).
+    w.user = 0;
+    w.set_walk_results({false, false});
+    TEST_ASSERT(!w.walkstep(0, -1), "user cardinal blocked path should return false");
+}
+REGISTER_TEST(test_walker_movement_round6_scripted_walkstep_switch_coverage);
