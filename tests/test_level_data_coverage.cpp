@@ -1303,3 +1303,61 @@ void test_level_data_round13_find_helpers_selection_and_filters()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round13_find_helpers_selection_and_filters);
+
+void test_level_data_round14_find_helper_exclusion_branches()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* hidden_foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* dead_blood = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* near_friend = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* dead_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* enemy_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(actor && hidden_foe && dead_blood && near_friend && dead_enemy && enemy_weapon, "fixtures created");
+    if (!(actor && hidden_foe && dead_blood && near_friend && dead_enemy && enemy_weapon))
+        return;
+
+    actor->team_num = 0;
+    actor->setxy(64, 64);
+    actor->sim_level = &myscreen->level_data;
+
+    hidden_foe->team_num = 1;
+    hidden_foe->setxy(72, 64);
+    hidden_foe->invisibility_left = 40; // divisor branch in find_far_foe
+
+    near_friend->team_num = 0;
+    near_friend->setxy(70, 64);
+
+    dead_enemy->team_num = 2;
+    dead_enemy->setxy(68, 64);
+    dead_enemy->dead = 1;
+
+    enemy_weapon->team_num = 2;
+    enemy_weapon->setxy(66, 64);
+
+    dead_blood->setxy(66, 64);
+    dead_blood->dead = 1;
+
+    ConstRandom rng_block_hidden(1);
+    actor->sim_rng = &rng_block_hidden;
+    TEST_ASSERT(myscreen->level_data.find_far_foe(actor) == nullptr,
+                "find_far_foe should skip hidden foes when rng check blocks visibility");
+    TEST_ASSERT(myscreen->level_data.find_nearest_blood(actor) == nullptr,
+                "find_nearest_blood should ignore dead blood stains");
+
+    std::int32_t howmany = -1;
+    auto in_range = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 32, &howmany, actor);
+    for (walker* w : in_range)
+        TEST_ASSERT(!w->dead, "find_in_range should exclude dead objects");
+
+    auto foes = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 32, &howmany, actor);
+    TEST_ASSERT_EQ(1, (int)foes.size(), "find_foes_in_range should keep one alive enemy in range");
+    if (!foes.empty())
+        TEST_ASSERT(foes.front() == hidden_foe, "find_foes_in_range should exclude dead and friendly walkers");
+
+    auto foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 32, &howmany, actor);
+    TEST_ASSERT(foe_weapons.empty(), "find_foe_weapons_in_range should exclude enemy-team weapons");
+}
+REGISTER_TEST(test_level_data_round14_find_helper_exclusion_branches);

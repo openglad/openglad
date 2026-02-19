@@ -1108,3 +1108,59 @@ void test_walker_round13_act_command_short_circuit_and_switch_paths_625_707()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_round13_act_command_short_circuit_and_switch_paths_625_707);
+
+void test_walker_round14_distance_color_and_friendliness_modes_1480_1615()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* a = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* b = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(a && b, "fixtures created");
+    if (!(a && b))
+        return;
+
+    // distance_to_ob and distance_to_ob_center branches.
+    a->setxy(100, 100);
+    b->setxy(116, 110);
+    a->sizex = 8;
+    a->sizey = 8;
+    b->sizex = 10;
+    b->sizey = 12;
+    TEST_ASSERT_EQ(26, (int)a->distance_to_ob(b), "distance_to_ob should use manhattan distance");
+    TEST_ASSERT(a->distance_to_ob_center(b) > 0, "distance_to_ob_center should compute squared center distance");
+
+    // query_team_color line path.
+    a->team_num = 3;
+    TEST_ASSERT_EQ(88, (int)a->query_team_color(), "team color should map to team*16+40");
+
+    SaveData save;
+    a->sim_save = &save;
+    b->sim_save = &save;
+    a->dead = 0;
+    b->dead = 0;
+
+    // Enemy mode (allied_mode == 0) compares team numbers.
+    save.allied_mode = 0;
+    a->team_num = 1;
+    b->team_num = 1;
+    a->clear_myguy();
+    b->clear_myguy();
+    TEST_ASSERT_EQ(1, (int)a->is_friendly(b), "enemy mode same-team should be friendly");
+    b->team_num = 2;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(b), "enemy mode different-team should be unfriendly");
+    TEST_ASSERT_EQ(1, (int)a->is_friendly_to_team(1), "enemy mode should match own team");
+    TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "enemy mode should reject other teams");
+
+    // Allied mode with both myguy pointers should return friendly.
+    save.allied_mode = 1;
+    a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    b->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    TEST_ASSERT_EQ(1, (int)a->is_friendly(b), "allied mode with both myguy pointers should be friendly");
+
+    // Allied mode has_myguy==2 false side: target without myguy and non-red team.
+    b->clear_myguy();
+    b->team_num = 3;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(b), "one-sided myguy should reject non-red team target");
+}
+REGISTER_TEST(test_walker_round14_distance_color_and_friendliness_modes_1480_1615);
