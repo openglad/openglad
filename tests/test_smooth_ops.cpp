@@ -7,6 +7,11 @@
 extern screen* myscreen;
 
 static void run_smooth_branch_outputs_with_fixed_rng();
+static PixieData make_center_pattern(unsigned char fill, unsigned char center,
+                                     unsigned char up, unsigned char right,
+                                     unsigned char down, unsigned char left,
+                                     unsigned char upleft, unsigned char upright,
+                                     unsigned char downleft, unsigned char downright);
 
 // ---------------------------------------------------------------------------
 // smoother query_x_y
