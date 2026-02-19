@@ -335,7 +335,7 @@ void test_walker_query_next_to_and_generator_fire_check_paths()
     myscreen->level_data.create_new_grid();
     myscreen->level_data.delete_objects();
 
-    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* actor = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
     walker* blocker = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
     TEST_ASSERT(actor != nullptr && blocker != nullptr, "walkers created");
     if (!(actor && blocker))
@@ -1064,3 +1064,47 @@ void test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths);
+
+void test_walker_round13_act_command_short_circuit_and_switch_paths_625_707()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    TEST_ASSERT(actor && foe && gen, "fixtures created");
+    if (!(actor && foe && gen))
+        return;
+
+    // Command short-circuit path: do_command() returns true and act() exits at line 625.
+    actor->stats()->clear_command();
+    actor->stats()->force_command(COMMAND_WALK, 1, 1, 0);
+    actor->attack_lunge = 1.0f;
+    actor->hit_recoil = 1.0f;
+    TEST_ASSERT(actor->act(), "act should return true when queued command executes");
+
+    // ACT_DIE branch (lines 669-673).
+    actor->stats()->clear_command();
+    actor->set_act_type(ACT_DIE);
+    actor->dead = 0;
+    TEST_ASSERT(actor->act(), "ACT_DIE should return true");
+
+    // ACT_GENERATE break path should flow to the function's final return false.
+    gen->set_act_type(ACT_GENERATE);
+    TEST_ASSERT(!gen->act(), "ACT_GENERATE path should break and return false in base act()");
+
+    // ACT_GUARD with no available foe should break and return false.
+    actor->dead = 0;
+    actor->foe = foe;
+    foe->dead = 1;
+    actor->set_act_type(ACT_GUARD);
+    TEST_ASSERT(!actor->act(), "ACT_GUARD with dead/no foe should return false");
+
+    // Default act_type branch should return false.
+    actor->set_act_type(99);
+    TEST_ASSERT(!actor->act(), "unknown act type should return false");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_round13_act_command_short_circuit_and_switch_paths_625_707);
