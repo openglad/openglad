@@ -13,7 +13,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout push ref
         if: ${{ github.event_name != 'pull_request' }}
