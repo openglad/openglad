@@ -1,6 +1,10 @@
 #include <openglad/data/gparser.h>
 #include "test_framework.h"
 
+#include <cstring>
+#include <cstdio>
+#include <filesystem>
+
 extern cfg_store cfg;
 
 // ---------------------------------------------------------------------------
@@ -151,3 +155,43 @@ void test_gparser_commandline_additional_switches_and_unknown()
     TEST_ASSERT(cfg.get_setting("graphics", "fullscreen") == "off", "unknown switch should not alter fullscreen");
 }
 REGISTER_TEST(test_gparser_commandline_additional_switches_and_unknown);
+
+void test_gparser_load_settings_sequence_and_alias_event_paths()
+{
+    namespace fs = std::filesystem;
+    fs::create_directories("cfg");
+
+    const fs::path cfg_path = fs::path("cfg") / "openglad.yaml";
+    const fs::path backup_path = fs::path("cfg") / "openglad.yaml.bak.test";
+
+    std::error_code ec;
+    fs::remove(backup_path, ec);
+    if (fs::exists(cfg_path, ec))
+        fs::rename(cfg_path, backup_path, ec);
+
+    const char* yaml =
+        "defaults: &d\n"
+        "  sound: on\n"
+        "graphics:\n"
+        "  render: normal\n"
+        "listcat:\n"
+        "  - one\n"
+        "  - two\n"
+        "alias_use: *d\n";
+    FILE* f = std::fopen(cfg_path.string().c_str(), "wb");
+    TEST_ASSERT(f != nullptr, "should open cfg/openglad.yaml for test write");
+    if (!f)
+        return;
+    (void)std::fwrite(yaml, 1, std::strlen(yaml), f);
+    std::fclose(f);
+
+    cfg.data.clear();
+    (void)cfg.load_settings();
+
+    TEST_ASSERT(!cfg.get_setting("graphics", "render").empty(), "load_settings should parse scalar/pair mapping");
+
+    fs::remove(cfg_path, ec);
+    if (fs::exists(backup_path, ec))
+        fs::rename(backup_path, cfg_path, ec);
+}
+REGISTER_TEST(test_gparser_load_settings_sequence_and_alias_event_paths);

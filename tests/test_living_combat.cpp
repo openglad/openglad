@@ -5,6 +5,7 @@
 #include <openglad/data/gloader.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/obmap.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
@@ -400,3 +401,83 @@ void test_living_set_difficulty_delay_loops_and_clamps()
     TEST_ASSERT(w->stats()->magic_per_round > 0, "high level should force magic-per-round loop increments");
 }
 REGISTER_TEST(test_living_set_difficulty_delay_loops_and_clamps);
+
+void test_living_do_action_follow_leader_null_and_command_paths()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    living* lv = static_cast<living*>(w.get());
+    lv->action = ACTION_FOLLOW;
+    lv->foe = nullptr;
+    lv->leader = nullptr;
+
+    bool r = lv->do_action();
+    TEST_ASSERT(!r, "ACTION_FOLLOW without leader should return false");
+
+    walker* leader = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    TEST_ASSERT(leader != nullptr, "leader created");
+    if (!leader)
+        return;
+    leader->team_num = lv->team_num;
+    leader->user = 0;
+    leader->setxy(static_cast<short>(lv->xpos + 8), lv->ypos);
+    leader->foe = nullptr;
+
+    r = lv->do_action();
+    TEST_ASSERT(r, "ACTION_FOLLOW with leader and no foe should return true");
+    TEST_ASSERT(lv->stats()->has_commands(), "ACTION_FOLLOW should enqueue follow command");
+}
+REGISTER_TEST(test_living_do_action_follow_leader_null_and_command_paths);
+
+void test_living_facing_vertical_and_boundary_cases()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    living* lv = static_cast<living*>(w.get());
+    TEST_ASSERT_EQ(FACE_DOWN, (int)lv->facing(0, 5), "x==0 positive y should face down");
+    TEST_ASSERT_EQ(FACE_UP, (int)lv->facing(0, -5), "x==0 negative y should face up");
+    TEST_ASSERT_EQ(FACE_DOWN_RIGHT, (int)lv->facing(5, 3), "positive boundary slope should face down-right");
+    TEST_ASSERT_EQ(FACE_UP_LEFT, (int)lv->facing(-5, -3), "negative boundary slope should face up-left");
+}
+REGISTER_TEST(test_living_facing_vertical_and_boundary_cases);
+
+void test_obmap_guard_and_hash_and_move_branches()
+{
+    obmap map;
+
+    TEST_ASSERT_EQ(1, (int)map.query_list(nullptr, 0, 0), "query_list null should return pass");
+
+    walker dead_w;
+    dead_w.dead = 1;
+    dead_w.sizex = 4;
+    dead_w.sizey = 4;
+    TEST_ASSERT_EQ(1, (int)map.query_list(&dead_w, 0, 0), "query_list dead walker should return pass");
+
+    TEST_ASSERT_EQ(0, (int)map.hash(-1), "negative small values hash to 0 with integer truncation");
+    TEST_ASSERT_EQ(199, (int)map.hash(10000), "large hash should clamp to 199");
+
+    walker orphan;
+    orphan.sizex = 8;
+    orphan.sizey = 8;
+    orphan.setxy(-1, -1);
+    TEST_ASSERT_EQ(0, (int)map.remove(&orphan), "remove unknown negative-position walker should fail");
+
+    walker* live = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(live != nullptr, "live walker created");
+    if (!live)
+        return;
+    live->sizex = 8;
+    live->sizey = 8;
+    live->setxy(100, 100);
+
+    TEST_ASSERT_EQ(1, (int)map.add(live, 100, 100), "add should succeed");
+    TEST_ASSERT_EQ(1, (int)map.move(live, 100, 100), "move same pos should succeed");
+    TEST_ASSERT_EQ(1, (int)map.remove(live), "remove tracked walker should succeed");
+}
+REGISTER_TEST(test_obmap_guard_and_hash_and_move_branches);

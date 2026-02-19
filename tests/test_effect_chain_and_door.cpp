@@ -174,3 +174,45 @@ void test_effect_chain_early_exit_and_movement_branches()
     level.delete_objects();
 }
 REGISTER_TEST(test_effect_chain_early_exit_and_movement_branches);
+
+void test_effect_chain_movement_axis_delta_branches()
+{
+    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
+    if (!myscreen)
+        return;
+
+    LevelData& level = myscreen->level_data;
+    level.delete_objects();
+
+    walker* owner = level.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* leader = level.add_ob(Order::Living, FAMILY_ORC);
+    walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    TEST_ASSERT(owner && leader && chain, "owner/leader/chain created");
+    if (!(owner && leader && chain))
+        return;
+
+    chain->owner = owner;
+    chain->leader = leader;
+    chain->lineofsight = 20;
+    chain->setxy(200, 200);
+
+    // leader x greater/y less: xd positive, yd negative path
+    leader->setxy(240, 120);
+    (void)chain->act();
+
+    // leader x less/y greater: xd negative, yd positive path
+    leader->setxy(80, 260);
+    (void)chain->act();
+
+    // x equal/y less: x branch skipped, y negative path
+    leader->setxy(chain->xpos, static_cast<short>(chain->ypos - 20));
+    (void)chain->act();
+
+    // x equal/y equal: near-distance center_on path
+    leader->setxy(chain->xpos, chain->ypos);
+    (void)chain->act();
+
+    TEST_ASSERT(chain->lineofsight < 20, "movement branch should consume lineofsight across acts");
+    level.delete_objects();
+}
+REGISTER_TEST(test_effect_chain_movement_axis_delta_branches);

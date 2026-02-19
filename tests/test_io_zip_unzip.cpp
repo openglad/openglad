@@ -128,3 +128,17 @@ void test_io_zip_unzip_typed_errors()
         "unzip_into_with_error should return OpenArchiveFailed for missing archive");
 }
 REGISTER_TEST(test_io_zip_unzip_typed_errors);
+
+void test_io_zip_contents_with_error_missing_input_directory_path()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_missing_in_" + std::to_string(::getpid()));
+    fs::path missing = base / "no_such_dir";
+    fs::path zipfile = base / "empty_from_missing.zip";
+    std::filesystem::create_directories(base);
+
+    const ArchiveIoError r = zip_contents_with_error(missing.string(), zipfile.string());
+    TEST_ASSERT(r == ArchiveIoError::None || r == ArchiveIoError::OpenArchiveFailed,
+                "missing input dir should not report add-entry errors");
+}
+REGISTER_TEST(test_io_zip_contents_with_error_missing_input_directory_path);

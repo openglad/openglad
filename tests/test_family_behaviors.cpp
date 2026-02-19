@@ -1218,6 +1218,39 @@ void test_archmage_hit_response_threshold_and_retarget_branches()
 }
 REGISTER_TEST(test_archmage_hit_response_threshold_and_retarget_branches);
 
+void test_cleric_check_special_ai_branch_paths()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->check_special_ai, "cleric check_special_ai callback exists");
+    if (!(cleric && fd && fd->check_special_ai))
+        return;
+
+    living* lv = static_cast<living*>(cleric);
+    lv->current_special = 2;
+    TEST_ASSERT(fd->check_special_ai(lv), "non-heal special should return true");
+
+    lv->current_special = 1;
+    lv->stats()->magicpoints = 0.0f;
+    lv->stats()->max_magicpoints = 100.0f;
+    TEST_ASSERT(!fd->check_special_ai(lv), "heal special should return false with no friends and low magic");
+
+    lv->stats()->magicpoints = 60.0f;
+    TEST_ASSERT(fd->check_special_ai(lv), "heal special should return true for mace mode when magic >= half");
+    TEST_ASSERT_EQ(1, (int)lv->shifter_down, "mace mode should set shifter_down");
+
+    walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 108, 100);
+    TEST_ASSERT(ally != nullptr, "ally created");
+    lv->stats()->magicpoints = 1.0f;
+    TEST_ASSERT(fd->check_special_ai(lv), "heal special should return true when multiple allies nearby");
+    TEST_ASSERT_EQ(0, (int)lv->shifter_down, "heal mode should clear shifter_down");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_cleric_check_special_ai_branch_paths);
+
 // --- handle_teleport: mage teleport-out completes ---
 void test_mage_handle_teleport()
 {
