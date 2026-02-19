@@ -7,6 +7,8 @@
 #include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/runtime/screen_lifecycle.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/sim/event.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/sim_world.h>
@@ -51,6 +53,16 @@ treasure* add_treasure(char family, short level)
     w->stats()->level = level;
     w->setxy(100, 100);
     return static_cast<treasure*>(w);
+}
+
+void set_world_tile(short world_x, short world_y, unsigned char tile)
+{
+    auto& level = myscreen->level_data;
+    const int gx = world_x / GRID_SIZE;
+    const int gy = world_y / GRID_SIZE;
+    if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
+        return;
+    level.grid.data[gx + level.grid.w * gy] = tile;
 }
 
 } // namespace
@@ -281,6 +293,100 @@ void test_treasure_navigation_early_returns_and_withdraw_decline()
     clear_level_lists();
 }
 REGISTER_TEST(test_treasure_navigation_early_returns_and_withdraw_decline);
+
+void test_treasure_batch3_find_target_wraparound_and_no_match()
+{
+    clear_level_lists();
+
+    treasure* tele_a = add_treasure(FAMILY_TELEPORTER, 7);
+    treasure* tele_b = add_treasure(FAMILY_TELEPORTER, 8);
+    treasure* tele_c = add_treasure(FAMILY_TELEPORTER, 7);
+    TEST_ASSERT(tele_a && tele_b && tele_c, "teleporters created");
+    if (!(tele_a && tele_b && tele_c))
+        return;
+
+    tele_b->dead = 1;
+    TEST_ASSERT(tele_c->find_teleport_target() == tele_a,
+                "teleporter should wrap to earlier matching target when no later target matches");
+
+    tele_a->dead = 1;
+    TEST_ASSERT(tele_c->find_teleport_target() == nullptr,
+                "teleporter should return nullptr when no live matching target exists");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_treasure_batch3_find_target_wraparound_and_no_match);
+
+void test_treasure_batch3_teleporter_leader_and_blocked_destination()
+{
+    clear_level_lists();
+    myscreen->level_data.create_new_grid();
+
+    treasure* tele_src = add_treasure(FAMILY_TELEPORTER, 4);
+    treasure* tele_dst = add_treasure(FAMILY_TELEPORTER, 4);
+    walker* mover = add_living(0);
+    TEST_ASSERT(tele_src && tele_dst && mover, "teleporter source/destination and mover created");
+    if (!(tele_src && tele_dst && mover))
+        return;
+
+    tele_src->setxy(100, 100);
+    tele_dst->setxy(160, 160);
+    tele_src->leader = tele_dst; // Force the "use leader" branch.
+    mover->setxy(100, 100);
+    mover->skip_exit = 0;
+
+    // Make destination impassable so teleporter recenters mover back to source.
+    set_world_tile(160, 160, PIX_H_WALL1);
+
+    TEST_ASSERT(tele_src->eat_me(mover), "teleporter eat should still return true when destination blocked");
+    TEST_ASSERT_EQ(100, (int)mover->xpos, "blocked destination should recenter mover to source X");
+    TEST_ASSERT_EQ(100, (int)mover->ypos, "blocked destination should recenter mover to source Y");
+    TEST_ASSERT(tele_src->leader == tele_dst, "leader-based destination should remain set");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_treasure_batch3_teleporter_leader_and_blocked_destination);
+
+void test_treasure_batch3_exit_withdraw_accept_path()
+{
+    clear_level_lists();
+
+    static og::sim::SimEventLog sim_events;
+    static ProductionRandom rng;
+    sim_events.clear();
+    myscreen->level_data.set_sim_context(
+        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+
+    myscreen->save_data.reset();
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 8; // Current level is not marked complete.
+    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 5);
+    (void)myscreen->save_data.save("save0");
+
+    myscreen->level_data.level_done = 0; // enemies still present -> guys_here != 0
+
+    treasure* exit_fx = add_treasure(FAMILY_EXIT, 5);
+    walker* eater = add_living(0);
+    walker* ally = add_living(0);
+    TEST_ASSERT(exit_fx && eater && ally, "exit/eater/ally created");
+    if (!(exit_fx && eater && ally))
+        return;
+
+    eater->set_act_type(ACT_CONTROL);
+    eater->in_act = false;
+    eater->skip_exit = 0;
+
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(true);
+
+    TEST_ASSERT(exit_fx->eat_me(eater), "withdraw accept path should return true");
+
+    TEST_ASSERT_EQ((int)exit_fx->stats()->level, (int)myscreen->save_data.scen_num,
+                   "withdraw accept should switch scen_num to exit level");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_treasure_batch3_exit_withdraw_accept_path);
 
 void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
 {

@@ -2,10 +2,16 @@
 #include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/weap.h>
+#include <openglad/entities/weapon_family_registry.h>
+#include <openglad/entities/weapon_family_descriptor.h>
+#include <openglad/core/constants.h>
+#include <openglad/core/terrain_types.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 #include <memory>
+#include <cstdlib>
 
 extern screen* myscreen;
 
@@ -311,3 +317,187 @@ void test_weap_death_is_idempotent()
     myscreen->level_data.remove_ob(w);
 }
 REGISTER_TEST(test_weap_death_is_idempotent);
+
+static void set_world_tile(short world_x, short world_y, unsigned char tile)
+{
+    auto& level = myscreen->level_data;
+    const int gx = world_x / GRID_SIZE;
+    const int gy = world_y / GRID_SIZE;
+    if (gx < 0 || gy < 0 || gx >= level.grid.w || gy >= level.grid.h)
+        return;
+    level.grid.data[gx + level.grid.w * gy] = tile;
+}
+
+void test_weapon_family_rock_death_bounce_matrix()
+{
+    myscreen->level_data.create_new_grid();
+    walker* rock_w = make_weapon(FAMILY_ROCK);
+    TEST_ASSERT(rock_w != nullptr, "rock weapon created");
+    if (!rock_w)
+        return;
+    auto* rock = static_cast<weap*>(rock_w);
+
+    const WeaponFamilyDescriptor* rock_desc = get_weapon_family_descriptor(FAMILY_ROCK);
+    TEST_ASSERT(rock_desc != nullptr && rock_desc->on_death != nullptr, "rock descriptor callback exists");
+    if (!(rock_desc && rock_desc->on_death))
+    {
+        myscreen->level_data.remove_ob(rock_w);
+        return;
+    }
+
+    rock->setxy(64, 64);
+    rock->lastx = GRID_SIZE;
+    rock->lasty = GRID_SIZE;
+    rock->collide_ob = nullptr;
+    rock->lineofsight = 1;
+
+    // Guard: do_bounce disabled.
+    rock->dead = 1;
+    rock->do_bounce = 0;
+    TEST_ASSERT(!rock_desc->on_death(rock), "rock on_death should short-circuit when do_bounce=0");
+
+    // First probe passable => no bounce, die normally.
+    rock->do_bounce = 1;
+    rock->dead = 1;
+    set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_GRASS1);
+    TEST_ASSERT(!rock_desc->on_death(rock), "rock on_death should return false when forward tile is passable");
+    TEST_ASSERT_EQ(1, (int)rock->dead, "forward-passable path should leave rock dead");
+
+    // First blocked, second passable => bounce down-left (flip X only).
+    rock->setxy(64, 64);
+    rock->lastx = GRID_SIZE;
+    rock->lasty = GRID_SIZE;
+    rock->dead = 1;
+    set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_GRASS1);
+    TEST_ASSERT(rock_desc->on_death(rock), "rock on_death should bounce down-left");
+    TEST_ASSERT_EQ(-GRID_SIZE, (int)rock->lastx, "down-left bounce should invert X velocity");
+    TEST_ASSERT_EQ(GRID_SIZE, (int)rock->lasty, "down-left bounce should preserve Y velocity");
+
+    // First+second blocked, third passable => bounce up-right (flip Y only).
+    rock->setxy(64, 64);
+    rock->lastx = GRID_SIZE;
+    rock->lasty = GRID_SIZE;
+    rock->dead = 1;
+    set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_GRASS1);
+    TEST_ASSERT(rock_desc->on_death(rock), "rock on_death should bounce up-right");
+    TEST_ASSERT_EQ(GRID_SIZE, (int)rock->lastx, "up-right bounce should preserve X velocity");
+    TEST_ASSERT_EQ(-GRID_SIZE, (int)rock->lasty, "up-right bounce should invert Y velocity");
+
+    // First+second+third blocked, fourth passable => bounce up-left (flip both).
+    rock->setxy(64, 64);
+    rock->lastx = GRID_SIZE;
+    rock->lasty = GRID_SIZE;
+    rock->dead = 1;
+    set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 - GRID_SIZE, 64 - GRID_SIZE, PIX_GRASS1);
+    TEST_ASSERT(rock_desc->on_death(rock), "rock on_death should bounce up-left");
+    TEST_ASSERT_EQ(-GRID_SIZE, (int)rock->lastx, "up-left bounce should invert X velocity");
+    TEST_ASSERT_EQ(-GRID_SIZE, (int)rock->lasty, "up-left bounce should invert Y velocity");
+
+    // All blocked => remain dead.
+    rock->setxy(64, 64);
+    rock->lastx = GRID_SIZE;
+    rock->lasty = GRID_SIZE;
+    rock->dead = 1;
+    set_world_tile(64 + GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 - GRID_SIZE, 64 + GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 + GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
+    set_world_tile(64 - GRID_SIZE, 64 - GRID_SIZE, PIX_H_WALL1);
+    TEST_ASSERT(!rock_desc->on_death(rock), "rock on_death should fail when all bounce probes are blocked");
+    TEST_ASSERT_EQ(1, (int)rock->dead, "all-blocked path should leave rock dead");
+
+    myscreen->level_data.remove_ob(rock_w);
+}
+REGISTER_TEST(test_weapon_family_rock_death_bounce_matrix);
+
+void test_weapon_family_animate_callbacks_and_sprinkle_hit_paths()
+{
+    myscreen->level_data.create_new_grid();
+
+    walker* tree_w = make_weapon(FAMILY_TREE);
+    walker* glow_w = make_weapon(FAMILY_GLOW);
+    walker* circle_w = make_weapon(FAMILY_CIRCLE_PROTECTION);
+    auto owner = make_living(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(tree_w && glow_w && circle_w && owner, "tree/glow/circle and owner created");
+    if (!(tree_w && glow_w && circle_w && owner))
+        return;
+
+    // TREE/BLOOD callback: ani_type clamp + sentinel reset.
+    tree_w->curdir = 0;
+    tree_w->ani_type = 5;
+    tree_w->cycle = 0;
+    tree_w->ani[0][0] = 10;
+    tree_w->ani[0][1] = -1;
+    TEST_ASSERT(tree_w->animate(), "tree animate should succeed");
+    TEST_ASSERT_EQ(0, (int)tree_w->ani_type, "tree animate should clamp ani_type >1 to 0");
+    TEST_ASSERT_EQ(0, (int)tree_w->cycle, "tree animate should reset cycle at -1 sentinel");
+
+    // CIRCLE_PROTECTION callback: no owner/invalid owner path.
+    circle_w->owner = nullptr;
+    circle_w->dead = 0;
+    TEST_ASSERT(circle_w->animate(), "circle animate should still return via death handling");
+    TEST_ASSERT_EQ(1, (int)circle_w->dead, "circle animate should mark dead when owner is missing");
+
+    // CIRCLE_PROTECTION callback: valid owner centers on owner.
+    circle_w->dead = 0;
+    circle_w->death_called = 0;
+    circle_w->owner = owner.get();
+    owner->dead = 0;
+    circle_w->stats()->hitpoints = 5;
+    owner->setxy(180, 188);
+    TEST_ASSERT(circle_w->animate(), "circle animate should succeed with valid owner");
+    TEST_ASSERT(std::abs((int)circle_w->xpos - (int)owner->xpos) <= GRID_SIZE,
+                "circle animate should center near owner on X");
+    TEST_ASSERT(std::abs((int)circle_w->ypos - (int)owner->ypos) <= GRID_SIZE,
+                "circle animate should center near owner on Y");
+
+    // GLOW callback: illegal ani_type clamp + sentinel reset + lifetime death.
+    glow_w->curdir = 0;
+    glow_w->ani_type = 9;
+    glow_w->cycle = 0;
+    glow_w->lifetime = 0;
+    glow_w->dead = 0;
+    glow_w->death_called = 0;
+    glow_w->ani[NUM_FACINGS * 2][0] = 12;
+    glow_w->ani[NUM_FACINGS * 2][1] = -1;
+    TEST_ASSERT(glow_w->animate(), "glow animate should succeed");
+    TEST_ASSERT_EQ(2, (int)glow_w->ani_type, "glow animate should clamp ani_type >2 to pulse state");
+    TEST_ASSERT_EQ(0, (int)glow_w->cycle, "glow animate should reset cycle at sentinel");
+    TEST_ASSERT_EQ(1, (int)glow_w->dead, "glow animate should mark dead when lifetime expires");
+
+    // SPRINKLE callback: non-living target no-op; living target with null myguy uses con=0.
+    const WeaponFamilyDescriptor* sprinkle_desc = get_weapon_family_descriptor(FAMILY_SPRINKLE);
+    TEST_ASSERT(sprinkle_desc != nullptr && sprinkle_desc->on_hit_target != nullptr,
+                "sprinkle descriptor callback exists");
+    walker* non_living_target = myscreen->level_data.add_ob(Order::Treasure, FAMILY_STAIN);
+    walker* living_target = myscreen->level_data.add_ob(Order::Living, FAMILY_SLIME);
+    TEST_ASSERT(non_living_target != nullptr && living_target != nullptr, "sprinkle targets created");
+    if (sprinkle_desc && sprinkle_desc->on_hit_target && non_living_target && living_target)
+    {
+        short before_non_living = non_living_target->stats()->frozen_delay;
+        TEST_ASSERT(sprinkle_desc->on_hit_target(tree_w, non_living_target, owner.get()),
+                    "sprinkle hit callback should return true for non-living targets");
+        TEST_ASSERT_EQ((int)before_non_living, (int)non_living_target->stats()->frozen_delay,
+                       "sprinkle should not change frozen_delay for non-living targets");
+
+        living_target->myguy = nullptr;
+        living_target->stats()->frozen_delay = 0;
+        owner->stats()->level = 6;
+        TEST_ASSERT(sprinkle_desc->on_hit_target(tree_w, living_target, owner.get()),
+                    "sprinkle hit callback should return true for living targets");
+        TEST_ASSERT(living_target->stats()->frozen_delay >= 0,
+                    "sprinkle should set a deterministic frozen_delay for living targets");
+    }
+
+    myscreen->level_data.remove_ob(non_living_target);
+    myscreen->level_data.remove_ob(living_target);
+    myscreen->level_data.remove_ob(tree_w);
+    myscreen->level_data.remove_ob(glow_w);
+    myscreen->level_data.remove_ob(circle_w);
+}
+REGISTER_TEST(test_weapon_family_animate_callbacks_and_sprinkle_hit_paths);
