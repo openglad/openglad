@@ -392,3 +392,18 @@ void test_hp_regen_no_delay()
     TEST_ASSERT_EQ(0, (int)r.new_regen_delay, "regen delay should remain 0");
 }
 REGISTER_TEST(test_hp_regen_no_delay);
+
+void test_combat_math_round11_edge_branches()
+{
+    // incoming < 1 with huge armor: reduction clamps to incoming-1 (negative), post-reduction still non-negative.
+    const float reduction = compute_damage_reduction(0.5f, 999.0f);
+    TEST_ASSERT(reduction < 0.0f, "tiny incoming damage should hit incoming-1 clamp branch");
+    const float post = compute_post_reduction_damage(0.5f, 999.0f);
+    TEST_ASSERT(post > 0.49f, "post reduction should remain positive for tiny incoming values");
+
+    // Null RNG path with non-perfect-square base to exercise floor(sqrt()) argument.
+    RandomU32 null_rng = nullptr;
+    const float base = compute_base_damage(15.0f, null_rng);
+    TEST_ASSERT(base > 13.0f && base < 14.0f, "null RNG fallback should use zero return with floor(sqrt(base))");
+}
+REGISTER_TEST(test_combat_math_round11_edge_branches);

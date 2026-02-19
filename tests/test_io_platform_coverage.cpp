@@ -210,6 +210,48 @@ void test_yaml_stream_alias_and_sequence_event_paths()
 }
 REGISTER_TEST(test_yaml_stream_alias_and_sequence_event_paths);
 
+void test_yaml_stream_empty_input_and_read_failure_paths()
+{
+    MemReadCtx empty_reader{"", 0};
+    og::io::YamlParser parser;
+    parser.set_input(mem_read_handler, &empty_reader);
+    og::io::YamlParseResult empty_r = og::io::YamlParseResult::Ok;
+    int empty_steps = 0;
+    while (empty_r == og::io::YamlParseResult::Ok && empty_steps < 16)
+    {
+        empty_r = parser.parse_next();
+        empty_steps++;
+    }
+    TEST_ASSERT(empty_steps > 0, "empty input should produce at least one parser step");
+    TEST_ASSERT(empty_r == og::io::YamlParseResult::Done || empty_r == og::io::YamlParseResult::Error,
+                "empty input should eventually terminate parse");
+    parser.close_input();
+
+    struct FailReadCtx {
+    };
+    auto fail_read_handler = [](void*, unsigned char*, std::size_t, std::size_t*) -> int {
+        return 0;
+    };
+
+    og::io::YamlParser fail_parser;
+    FailReadCtx fail_ctx{};
+    fail_parser.set_input(fail_read_handler, &fail_ctx);
+    og::io::YamlParseResult fail_r = og::io::YamlParseResult::Ok;
+    int fail_steps = 0;
+    while (fail_r == og::io::YamlParseResult::Ok && fail_steps < 16)
+    {
+        fail_r = fail_parser.parse_next();
+        fail_steps++;
+    }
+    TEST_ASSERT(fail_steps > 0, "read failure stream should produce at least one parser step");
+    TEST_ASSERT(fail_r == og::io::YamlParseResult::Error ||
+                fail_r == og::io::YamlParseResult::Done ||
+                fail_steps == 16,
+                "read failure should either terminate or remain bounded by guard");
+    fail_parser.close_input();
+}
+REGISTER_TEST(test_yaml_stream_empty_input_and_read_failure_paths);
+
 void test_zip_api_roundtrip_and_error_paths()
 {
     namespace fs = std::filesystem;

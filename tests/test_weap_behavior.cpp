@@ -513,3 +513,25 @@ void test_weapon_family_animate_callbacks_and_sprinkle_hit_paths()
     myscreen->level_data.remove_ob(circle_w);
 }
 REGISTER_TEST(test_weapon_family_animate_callbacks_and_sprinkle_hit_paths);
+
+void test_weap_act_sit_with_non_skipping_family_and_act_animate_shortcut()
+{
+    walker* sit_weapon = make_weapon(FAMILY_KNIFE);
+    walker* anim_weapon = make_weapon(FAMILY_ARROW);
+    TEST_ASSERT(sit_weapon && anim_weapon, "weapons created");
+    if (!(sit_weapon && anim_weapon))
+        return;
+
+    sit_weapon->set_act_type(ACT_SIT);
+    TEST_ASSERT(sit_weapon->act(), "non-skip sit family should still return true");
+
+    // Cover act() early return path when previous animation is still active.
+    anim_weapon->ani_type = ANI_ATTACK;
+    anim_weapon->cycle = 0;
+    anim_weapon->curdir = 0;
+    TEST_ASSERT(anim_weapon->act(), "non-walk ani_type should route through animate() and return true");
+
+    myscreen->level_data.remove_ob(sit_weapon);
+    myscreen->level_data.remove_ob(anim_weapon);
+}
+REGISTER_TEST(test_weap_act_sit_with_non_skipping_family_and_act_animate_shortcut);
