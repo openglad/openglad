@@ -10,6 +10,7 @@
 #include "test_framework.h"
 
 #include <memory>
+#include <vector>
 
 extern screen* myscreen;
 
@@ -33,6 +34,25 @@ static std::unique_ptr<walker> make_living(char family, unsigned char team = 0, 
         w->setxy(100, 100);
     return w;
 }
+
+class SequenceRandom : public IRandom
+{
+public:
+    explicit SequenceRandom(std::initializer_list<std::uint32_t> values)
+        : values_(values), index_(0) {}
+
+    std::uint32_t next(std::uint32_t max_exclusive) override
+    {
+        if (max_exclusive == 0)
+            return 0;
+        const std::uint32_t raw = (index_ < values_.size()) ? values_[index_++] : values_.back();
+        return raw % max_exclusive;
+    }
+
+private:
+    std::vector<std::uint32_t> values_;
+    std::size_t index_;
+};
 } // namespace
 
 void test_walker_compute_outline_state_transitions()
@@ -136,3 +156,72 @@ void test_walker_generator_create_weapon_special_case()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_generator_create_weapon_special_case);
+
+void test_walker_act_guard_and_random_branch_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto actor = make_living(FAMILY_ORC, 1, 4);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+
+    actor->sim_level = &myscreen->level_data;
+    actor->setxy(96, 96);
+
+    {
+        FixedRandom rng1(1);
+        GameContext c;
+        c.game_screen = myscreen;
+        c.rng = &rng1;
+        GlobalContextGuard guard(&c);
+
+        actor->set_act_type(ACT_GUARD);
+        actor->foe = nullptr;
+        const bool acted = actor->act();
+        TEST_ASSERT(!acted, "ACT_GUARD with no nearby foe should return false");
+    }
+
+    {
+        SequenceRandom rng_seq({0, 1, 0, 0});
+        GameContext c;
+        c.game_screen = myscreen;
+        c.rng = &rng_seq;
+        GlobalContextGuard guard(&c);
+
+        actor->stats()->clear_command();
+        actor->set_act_type(ACT_RANDOM);
+        actor->foe = nullptr;
+        (void)actor->act();
+        TEST_ASSERT(actor->stats()->has_commands(), "ACT_RANDOM with no foe should enqueue random walk command");
+    }
+
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(foe != nullptr, "foe created");
+    if (foe)
+    {
+        foe->team_num = 2;
+        foe->setxy(128, 96);
+    }
+    actor->team_num = 1;
+    actor->lineofsight = 50;
+    actor->foe = foe;
+
+    {
+        SequenceRandom rng_seq({0, 1, 1, 5});
+        GameContext c;
+        c.game_screen = myscreen;
+        c.rng = &rng_seq;
+        GlobalContextGuard guard(&c);
+
+        actor->stats()->clear_command();
+        actor->set_act_type(ACT_RANDOM);
+        (void)actor->act();
+
+        TEST_ASSERT(actor->foe == foe, "ACT_RANDOM visible-foe branch should keep the selected foe");
+    }
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_act_guard_and_random_branch_paths);

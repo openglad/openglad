@@ -35,6 +35,16 @@ static unsigned char& at(PixieData& g, int x, int y)
 {
     return g.data[x + y * g.w];
 }
+
+static void apply_cardinal_mask(PixieData& grid, int cx, int cy,
+                                int mask, unsigned char same_genre, unsigned char other)
+{
+    at(grid, cx, cy) = same_genre;
+    at(grid, cx, cy - 1) = (mask & TO_UP) ? same_genre : other;
+    at(grid, cx + 1, cy) = (mask & TO_RIGHT) ? same_genre : other;
+    at(grid, cx, cy + 1) = (mask & TO_DOWN) ? same_genre : other;
+    at(grid, cx - 1, cy) = (mask & TO_LEFT) ? same_genre : other;
+}
 } // namespace
 
 void test_smooth_dark_grass_rubble_and_corner_branches()
@@ -234,3 +244,102 @@ void test_smooth_wall_water_tree_unknown_and_setxy_guard_paths()
     ex.set_x_y(0, 0, PIX_WATER1);
 }
 REGISTER_TEST(test_smooth_wall_water_tree_unknown_and_setxy_guard_paths);
+
+void test_smooth_tree_dirt_dark_dirt_mask_ladders()
+{
+    FixedRandom rng0(0);
+    GameContext c;
+    c.rng = &rng0;
+    GlobalContextGuard guard(&c);
+
+    {
+        const std::array<std::pair<int, unsigned char>, 15> expected = {{
+            {TO_LEFT | TO_RIGHT | TO_DOWN, PIX_TREE_T1},
+            {TO_UP | TO_DOWN | TO_LEFT, PIX_TREE_MR},
+            {TO_LEFT | TO_DOWN, PIX_TREE_T1},
+            {TO_LEFT | TO_RIGHT | TO_UP, PIX_TREE_B1},
+            {TO_LEFT | TO_RIGHT, PIX_TREE_B1},
+            {TO_LEFT | TO_UP, PIX_TREE_B1},
+            {TO_LEFT, PIX_TREE_B1},
+            {TO_DOWN | TO_RIGHT | TO_UP, PIX_TREE_ML},
+            {TO_DOWN | TO_RIGHT, PIX_TREE_T1},
+            {TO_DOWN | TO_UP, PIX_TREE_MT},
+            {TO_DOWN, PIX_TREE_T1},
+            {TO_RIGHT | TO_UP, PIX_TREE_B1},
+            {TO_RIGHT, PIX_TREE_B1},
+            {TO_UP, PIX_TREE_B1},
+            {0, PIX_TREE_B1},
+        }};
+
+        for (const auto& entry : expected)
+        {
+            PixieData grid = make_grid(5, 5, PIX_GRASS1);
+            smoother s;
+            s.set_target(grid);
+            apply_cardinal_mask(grid, 2, 2, entry.first, PIX_TREE_M1, PIX_GRASS1);
+            (void)s.smooth(2, 2);
+            TEST_ASSERT_EQ((int)entry.second, (int)at(grid, 2, 2), "tree around-mask mapping should match branch table");
+        }
+    }
+
+    {
+        const std::array<std::pair<int, unsigned char>, 15> expected = {{
+            {TO_LEFT | TO_RIGHT | TO_DOWN, PIX_DIRT_1},
+            {TO_UP | TO_DOWN | TO_LEFT, PIX_DIRT_1},
+            {TO_LEFT | TO_DOWN, PIX_DIRTGRASS_LL1},
+            {TO_LEFT | TO_RIGHT | TO_UP, PIX_DIRT_1},
+            {TO_LEFT | TO_RIGHT, PIX_DIRT_1},
+            {TO_LEFT | TO_UP, PIX_DIRTGRASS_UL1},
+            {TO_LEFT, PIX_DIRT_1},
+            {TO_DOWN | TO_RIGHT | TO_UP, PIX_DIRT_1},
+            {TO_DOWN | TO_RIGHT, PIX_DIRTGRASS_LR1},
+            {TO_DOWN | TO_UP, PIX_DIRT_1},
+            {TO_DOWN, PIX_DIRT_1},
+            {TO_RIGHT | TO_UP, PIX_DIRTGRASS_UR1},
+            {TO_RIGHT, PIX_DIRT_1},
+            {TO_UP, PIX_DIRT_1},
+            {0, PIX_DIRT_1},
+        }};
+
+        for (const auto& entry : expected)
+        {
+            PixieData grid = make_grid(5, 5, PIX_GRASS1);
+            smoother s;
+            s.set_target(grid);
+            apply_cardinal_mask(grid, 2, 2, entry.first, PIX_DIRT_1, PIX_GRASS1);
+            (void)s.smooth(2, 2);
+            TEST_ASSERT_EQ((int)entry.second, (int)at(grid, 2, 2), "dirt around-mask mapping should match branch table");
+        }
+    }
+
+    {
+        const std::array<std::pair<int, unsigned char>, 15> expected = {{
+            {TO_LEFT | TO_RIGHT | TO_DOWN, PIX_DIRT_DARK_1},
+            {TO_UP | TO_DOWN | TO_LEFT, PIX_DIRT_DARK_1},
+            {TO_LEFT | TO_DOWN, PIX_DIRTGRASS_DARK_LL1},
+            {TO_LEFT | TO_RIGHT | TO_UP, PIX_DIRT_DARK_1},
+            {TO_LEFT | TO_RIGHT, PIX_DIRT_DARK_1},
+            {TO_LEFT | TO_UP, PIX_DIRTGRASS_DARK_UL1},
+            {TO_LEFT, PIX_DIRT_DARK_1},
+            {TO_DOWN | TO_RIGHT | TO_UP, PIX_DIRT_DARK_1},
+            {TO_DOWN | TO_RIGHT, PIX_DIRTGRASS_DARK_LR1},
+            {TO_DOWN | TO_UP, PIX_DIRT_DARK_1},
+            {TO_DOWN, PIX_DIRT_DARK_1},
+            {TO_RIGHT | TO_UP, PIX_DIRTGRASS_DARK_UR1},
+            {TO_RIGHT, PIX_DIRT_DARK_1},
+            {TO_UP, PIX_DIRT_DARK_1},
+            {0, PIX_DIRT_DARK_1},
+        }};
+
+        for (const auto& entry : expected)
+        {
+            PixieData grid = make_grid(5, 5, PIX_GRASS1);
+            smoother s;
+            s.set_target(grid);
+            apply_cardinal_mask(grid, 2, 2, entry.first, PIX_DIRT_DARK_1, PIX_GRASS1);
+            (void)s.smooth(2, 2);
+            TEST_ASSERT_EQ((int)entry.second, (int)at(grid, 2, 2), "dark dirt around-mask mapping should match branch table");
+        }
+    }
+}
+REGISTER_TEST(test_smooth_tree_dirt_dark_dirt_mask_ladders);

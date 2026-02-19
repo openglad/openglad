@@ -291,3 +291,105 @@ void test_level_data_batch2_misc_uncovered_paths_smoke()
     TEST_ASSERT(myscreen->level_data.find_far_foe(nullptr) == nullptr, "find_far_foe null should return null");
 }
 REGISTER_TEST(test_level_data_batch2_misc_uncovered_paths_smoke);
+
+void test_level_data_wall4_projectile_passability_distance_and_rng_paths()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.grid.data[0] = PIX_WALL4;
+
+    walker* owner = add_living(FAMILY_ARCHER);
+    walker* projectile = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(owner != nullptr && projectile != nullptr, "owner and projectile should be created");
+    if (!(owner && projectile))
+        return;
+
+    owner->setxy(160, 0);
+    owner->sizex = 1;
+    owner->sizey = 1;
+
+    projectile->owner = owner;
+    projectile->setxy(0, 0);
+    projectile->sizex = 1;
+    projectile->sizey = 1;
+
+    FixedRandom rng_pass(0);
+    projectile->sim_rng = &rng_pass;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, projectile),
+                "weapon on PIX_WALL4 should pass when rng returns 0");
+
+    FixedRandom rng_block(1);
+    projectile->sim_rng = &rng_block;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, projectile),
+                "weapon on PIX_WALL4 should block when rng returns non-zero");
+
+    owner->setxy(0, 0);
+    owner->stats()->set_bit_flags(BIT_FLYING, 0);
+    owner->flight_left = 0;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, owner),
+                "living walker on PIX_WALL4 should be blocked immediately");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_wall4_projectile_passability_distance_and_rng_paths);
+
+void test_level_data_range_helpers_positive_selection_paths()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* actor = add_living(FAMILY_SOLDIER);
+    walker* friend_living = add_living(FAMILY_ARCHER);
+    walker* foe_living = add_living(FAMILY_ORC);
+    walker* foe_generator = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* friend_weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* blood_far = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    walker* blood_near = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+
+    TEST_ASSERT(actor && friend_living && foe_living && foe_generator && friend_weapon && blood_far && blood_near,
+                "range-helper fixtures should be created");
+    if (!(actor && friend_living && foe_living && foe_generator && friend_weapon && blood_far && blood_near))
+        return;
+
+    actor->team_num = 0;
+    actor->setxy(64, 64);
+    actor->sizex = 1;
+    actor->sizey = 1;
+
+    friend_living->team_num = 0;
+    friend_living->setxy(80, 64);
+    friend_living->dead = 0;
+
+    foe_living->team_num = 1;
+    foe_living->setxy(96, 64);
+    foe_living->dead = 0;
+
+    foe_generator->team_num = 1;
+    foe_generator->setxy(112, 64);
+    foe_generator->dead = 0;
+
+    friend_weapon->team_num = 0;
+    friend_weapon->setxy(72, 64);
+    friend_weapon->dead = 0;
+
+    blood_far->setxy(200, 200);
+    blood_near->setxy(68, 64);
+
+    std::int32_t howmany = -1;
+    auto nearest_blood = myscreen->level_data.find_nearest_blood(actor);
+    TEST_ASSERT(nearest_blood == blood_near, "find_nearest_blood should return nearest stain");
+
+    auto in_range = myscreen->level_data.find_in_range(myscreen->level_data.oblist, 80, &howmany, actor);
+    TEST_ASSERT(!in_range.empty() && howmany > 0, "find_in_range should collect nearby non-dead walkers");
+
+    auto foes = myscreen->level_data.find_foes_in_range(myscreen->level_data.oblist, 100, &howmany, actor);
+    TEST_ASSERT((int)foes.size() >= 2 && howmany >= 2, "find_foes_in_range should include living + generator foes");
+
+    auto foe_weapons = myscreen->level_data.find_foe_weapons_in_range(myscreen->level_data.weaplist, 80, &howmany, actor);
+    TEST_ASSERT(foe_weapons.size() == 1 && howmany == 1, "find_foe_weapons_in_range should include friendly weapon");
+
+    auto friends = myscreen->level_data.find_friends_in_range(myscreen->level_data.oblist, 80, &howmany, actor);
+    TEST_ASSERT(!friends.empty() && howmany >= 1, "find_friends_in_range should include friendly living walkers");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_range_helpers_positive_selection_paths);
