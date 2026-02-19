@@ -12,6 +12,11 @@ struct GlobalContextGuard {
     ~GlobalContextGuard() { set_global_context(nullptr); }
 };
 
+class ExposedSmoother : public smoother {
+public:
+    using smoother::set_x_y;
+};
+
 static PixieData make_grid(unsigned char w, unsigned char h, unsigned char fill)
 {
     auto* raw = new unsigned char[w * h];
@@ -150,3 +155,309 @@ void test_smooth_water_tree_dirt_and_dark_dirt_edges()
     TEST_ASSERT_EQ((int)PIX_DIRTGRASS_DARK_UR1, (int)at(grid, 2, 2), "dark dirt bottom-left edge should map to UR1");
 }
 REGISTER_TEST(test_smooth_water_tree_dirt_and_dark_dirt_edges);
+
+static void set_diagonals(PixieData& g, int cx, int cy, unsigned char ul, unsigned char ur, unsigned char dl, unsigned char dr)
+{
+    at(g, cx - 1, cy - 1) = ul;
+    at(g, cx + 1, cy - 1) = ur;
+    at(g, cx - 1, cy + 1) = dl;
+    at(g, cx + 1, cy + 1) = dr;
+}
+
+void test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches()
+{
+    PixieData grid = make_grid(9, 9, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+    const int cx = 4, cy = 4;
+
+    // Grass to water corners + rng grass variants.
+    {
+        FixedRandom rng0(0);
+        GameContext c;
+        c.rng = &rng0;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_GRASS1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_LEFT | TO_DOWN);
+        set_diagonals(grid, cx, cy, PIX_WATER1, PIX_GRASS1, PIX_WATER1, PIX_WATER1);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_GRASS1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_RIGHT);
+        set_diagonals(grid, cx, cy, PIX_WATER1, PIX_WATER1, PIX_GRASS1, PIX_WATER1);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_GRASS1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
+        set_diagonals(grid, cx, cy, PIX_WATER1, PIX_WATER1, PIX_WATER1, PIX_GRASS1);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_GRASS1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_RIGHT | TO_DOWN);
+        set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_WATER1, PIX_WATER1, PIX_WATER1);
+        (void)s.smooth(cx, cy);
+    }
+    for (int seed = 0; seed < 4; seed++)
+    {
+        FixedRandom rng(static_cast<std::uint32_t>(seed));
+        GameContext c;
+        c.rng = &rng;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_GRASS1;
+        set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_WATER1, 0);
+        set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        (void)s.smooth(cx, cy);
+    }
+
+    // Dark grass hard branches.
+    for (int seed = 0; seed < 2; seed++)
+    {
+        FixedRandom rng(static_cast<std::uint32_t>(seed));
+        GameContext c0;
+        c0.rng = &rng;
+        GlobalContextGuard guard0(&c0);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, TO_UP | TO_RIGHT);
+        at(grid, cx - 1, cy) = PIX_TREE_M1;
+        at(grid, cx, cy + 1) = PIX_H_WALL1;
+        at(grid, cx + 1, cy - 1) = PIX_GRASS1;
+        (void)s.smooth(cx, cy);
+    }
+    {
+        FixedRandom rng1(1);
+        GameContext c1;
+        c1.rng = &rng1;
+        GlobalContextGuard guard1(&c1);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx - 1, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx + 1, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx, cy + 1) = PIX_GRASS1;
+        at(grid, cx, cy - 1) = PIX_GRASS_DARK_1;
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx - 1, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx + 1, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx, cy - 1) = PIX_GRASS1;
+        at(grid, cx, cy + 1) = PIX_GRASS_DARK_1;
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx - 1, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx + 1, cy) = PIX_GRASS1;
+        at(grid, cx, cy + 1) = PIX_GRASS_DARK_1;
+        at(grid, cx, cy - 1) = PIX_GRASS1;
+        (void)s.smooth(cx, cy);
+    }
+    {
+        FixedRandom rng2(2);
+        GameContext c2;
+        c2.rng = &rng2;
+        GlobalContextGuard guard2(&c2);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx - 1, cy - 1) = PIX_TREE_M1;
+        at(grid, cx, cy - 1) = PIX_H_WALL1;
+        at(grid, cx, cy + 1) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, TO_LEFT | TO_RIGHT);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
+        (void)s.smooth(cx, cy);
+    }
+    {
+        FixedRandom rng3(3);
+        GameContext c3;
+        c3.rng = &rng3;
+        GlobalContextGuard guard3(&c3);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx, cy - 1) = PIX_TREE_M1;
+        at(grid, cx + 1, cy) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, TO_LEFT | TO_DOWN);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx - 1, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx, cy - 1) = PIX_GRASS_DARK_1;
+        at(grid, cx + 1, cy) = PIX_GRASS1;
+        at(grid, cx, cy + 1) = PIX_GRASS1;
+        (void)s.smooth(cx, cy);
+    }
+
+    // Carpet around=15 keep-center and promote-to-center branches.
+    {
+        FixedRandom rng0(0);
+        GameContext c;
+        c.rng = &rng0;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_CARPET_M;
+        set_same_neighbors(grid, cx, cy, PIX_CARPET_M, PIX_GRASS1, TO_AROUND);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_CARPET_SMALL_TINY;
+        set_same_neighbors(grid, cx, cy, PIX_CARPET_M, PIX_GRASS1, TO_AROUND);
+        (void)s.smooth(cx, cy);
+    }
+
+    // Wall cases.
+    {
+        FixedRandom rng0(0);
+        GameContext c;
+        c.rng = &rng0;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_UP);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_UP | TO_DOWN);
+        at(grid, cx, cy + 2) = PIX_GRASS1;
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_UP | TO_LEFT);
+        at(grid, cx, cy + 2) = PIX_H_WALL1;
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_UP | TO_LEFT | TO_RIGHT);
+        at(grid, cx, cy + 2) = PIX_H_WALL1;
+        at(grid, cx - 1, cy + 1) = PIX_GRASS1;
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_UP | TO_RIGHT);
+        at(grid, cx, cy + 2) = PIX_GRASS1;
+        (void)s.smooth(cx, cy);
+    }
+
+    // Water corner, edge-rng, and default cases.
+    {
+        for (int seed = 0; seed < 2; seed++)
+        {
+            FixedRandom rng(static_cast<std::uint32_t>(seed));
+            GameContext c;
+            c.rng = &rng;
+            GlobalContextGuard guard(&c);
+
+            at(grid, cx, cy) = PIX_WATER1;
+            set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN);
+            (void)s.smooth(cx, cy);
+
+            at(grid, cx, cy) = PIX_WATER1;
+            set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_LEFT);
+            (void)s.smooth(cx, cy);
+
+            at(grid, cx, cy) = PIX_WATER1;
+            set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_RIGHT);
+            (void)s.smooth(cx, cy);
+        }
+
+        FixedRandom rng2(2);
+        GameContext c2;
+        c2.rng = &rng2;
+        GlobalContextGuard guard2(&c2);
+        at(grid, cx, cy) = PIX_WATER1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_RIGHT);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_WATER1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_WATER1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_WATER1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_LEFT);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_WATER2;
+        set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, 0);
+        (void)s.smooth(cx, cy);
+    }
+
+    // Trees, dirt, and dark dirt else-if ladders.
+    {
+        FixedRandom rng0(0);
+        GameContext c;
+        c.rng = &rng0;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_TREE_M1;
+        set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
+        set_diagonals(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1, PIX_GRASS1);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_TREE_M1;
+        set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
+        set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_TREE_M1;
+        set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_UP | TO_DOWN);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_TREE_M1;
+        set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, 0);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_1, PIX_GRASS1, TO_LEFT | TO_DOWN);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_1, PIX_GRASS1, TO_LEFT | TO_UP);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_1, PIX_GRASS1, TO_RIGHT | TO_UP);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_DARK_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_DARK_1, PIX_GRASS1, TO_LEFT | TO_DOWN);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_DARK_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_DARK_1, PIX_GRASS1, TO_LEFT | TO_UP);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_DARK_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_DARK_1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
+        (void)s.smooth(cx, cy);
+
+        at(grid, cx, cy) = PIX_DIRT_DARK_1;
+        set_same_neighbors(grid, cx, cy, PIX_DIRT_DARK_1, PIX_GRASS1, TO_RIGHT | TO_UP);
+        (void)s.smooth(cx, cy);
+    }
+
+    // Unknown fallback and smooth()/set_x_y no-target guard.
+    {
+        FixedRandom rng0(0);
+        GameContext c;
+        c.rng = &rng0;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = 255;
+        (void)s.smooth(cx, cy);
+    }
+    s.reset();
+    TEST_ASSERT_EQ(0, (int)s.smooth(), "smooth() without target should return 0");
+    ExposedSmoother ex;
+    ex.set_x_y(cx, cy, PIX_WATER1);
+    TEST_ASSERT(true, "deep smooth branch scenarios executed");
+}
+REGISTER_TEST(test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches);

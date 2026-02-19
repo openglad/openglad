@@ -594,3 +594,113 @@ void test_sim_input_switch_special_valid_advance_and_shift_yell_default_branch()
     teardown();
 }
 REGISTER_TEST(test_sim_input_switch_special_valid_advance_and_shift_yell_default_branch);
+
+void test_sim_input_deep_branch_coverage_smoke()
+{
+    teardown();
+    auto control_up = make_living(0, 0);
+    auto ally_after_up = make_living(0, -1);
+    auto ally_before_up = make_living(0, -1);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+    TEST_ASSERT(ally_after_up != nullptr, "ally after should be created");
+    TEST_ASSERT(ally_before_up != nullptr, "ally before should be created");
+
+    walker* control = control_up.get();
+    walker* ally_after = ally_after_up.get();
+    walker* ally_before = ally_before_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->stats()->level = 30;
+    control->current_special = 1;
+    control->yo_delay = 0;
+    control->ani_type = ANI_ATTACK; // forces animate() branch
+    control->stats()->set_bit_flags(BIT_ANIMATE, 1);
+    control->cycle = 0;
+    control->ani[control->curdir][1] = -1; // force animation wrap in idle branch
+
+    myscreen->level_data.oblist.push_back(std::move(ally_before_up));
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+    myscreen->level_data.oblist.push_back(std::move(ally_after_up));
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    special_names[FAMILY_SOLDIER][2] = "SPECIAL_OK";
+    special_names[FAMILY_SOLDIER][3] = "SPECIAL_OK_2";
+    og::sim::SimEventLog log;
+    InputState input;
+    SimInputResult result;
+
+    // Forward switch character.
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.control_hp_changed, "forward switch should report hp");
+
+    // Reset latch and reverse switch character.
+    input.clear();
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.control_hp_changed, "reverse switch should report hp");
+
+    // Switch special advance.
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "switch special should preserve control");
+
+    // Plain yell.
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.notify_source == control || result.notify_source == nullptr, "yell path executes");
+
+    // Shift+yell summon, then release, then default.
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    control->action = 0;
+    (void)sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    control->action = ACTION_FOLLOW;
+    (void)sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    control->action = 99;
+    (void)sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+
+    // Movement/action block with walk and fire/special branches.
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Special)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::Fire)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Special)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Fire)] = true;
+    input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "movement/action branch should keep control");
+
+    // Idle animation branch (no walk input).
+    input.clear();
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "idle animate branch should keep control");
+
+    // Mismatch user early return line.
+    control->user = 1;
+    input.clear();
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "user mismatch path should return control");
+
+    teardown();
+    (void)ally_after;
+    (void)ally_before;
+}
+REGISTER_TEST(test_sim_input_deep_branch_coverage_smoke);

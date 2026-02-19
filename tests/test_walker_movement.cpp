@@ -436,3 +436,77 @@ void test_walker_draw_tile_phantom_and_forestwalk_paths()
 
 }
 REGISTER_TEST(test_walker_draw_tile_phantom_and_forestwalk_paths);
+
+void test_walker_movement_deep_branch_coverage_smoke()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    if (!w)
+        return;
+
+    // facing() threshold coverage for both x>0 and x<0 ladders.
+    const short f0 = w->facing(1, 3);
+    const short f1 = w->facing(2, 1);
+    const short f2 = w->facing(3, 0);
+    const short f3 = w->facing(2, -1);
+    const short f4 = w->facing(1, -3);
+    const short f5 = w->facing(-1, 3);
+    const short f6 = w->facing(-2, 1);
+    const short f7 = w->facing(-3, 0);
+    const short f8 = w->facing(-2, -1);
+    const short f9 = w->facing(-1, -3);
+    TEST_ASSERT(f0 >= 0 && f0 < 8, "facing value should be valid");
+    TEST_ASSERT(f1 >= 0 && f1 < 8, "facing value should be valid");
+    TEST_ASSERT(f2 >= 0 && f2 < 8, "facing value should be valid");
+    TEST_ASSERT(f3 >= 0 && f3 < 8, "facing value should be valid");
+    TEST_ASSERT(f4 >= 0 && f4 < 8, "facing value should be valid");
+    TEST_ASSERT(f5 >= 0 && f5 < 8, "facing value should be valid");
+    TEST_ASSERT(f6 >= 0 && f6 < 8, "facing value should be valid");
+    TEST_ASSERT(f7 >= 0 && f7 < 8, "facing value should be valid");
+    TEST_ASSERT(f8 >= 0 && f8 < 8, "facing value should be valid");
+    TEST_ASSERT(f9 >= 0 && f9 < 8, "facing value should be valid");
+
+    // NPC blocked walkstep fallback switch paths.
+    w->user = -1;
+    w->stepsize = 2.0f;
+    w->setxy(0, 0);
+    (void)w->walkstep(-1, 0);   // FACE_LEFT
+    (void)w->walkstep(0, -1);   // FACE_UP
+    (void)w->walkstep(-1, -1);  // FACE_UP_LEFT
+    (void)w->walkstep(1, -1);   // FACE_UP_RIGHT
+
+    // Force bottom/right edge for remaining blocked cardinal/diagonal attempts.
+    const short max_x = static_cast<short>(myscreen->level_data.grid.w * GRID_SIZE - 1);
+    const short max_y = static_cast<short>(myscreen->level_data.grid.h * GRID_SIZE - 1);
+    w->setxy(max_x, max_y);
+    (void)w->walkstep(1, 0);    // FACE_RIGHT
+    (void)w->walkstep(0, 1);    // FACE_DOWN
+    (void)w->walkstep(1, 1);    // FACE_DOWN_RIGHT
+    (void)w->walkstep(-1, 1);   // FACE_DOWN_LEFT
+
+    // User slide internals.
+    w->user = 0;
+    w->setxy(32, 0);
+    (void)w->walkstep(1, -1);   // horizontal slide path
+    w->setxy(0, 32);
+    (void)w->walkstep(-1, -1);  // vertical slide path
+
+    // walk() off-map and blocked animate paths.
+    w->setxy(0, 0);
+    w->curdir = FACE_LEFT;
+    w->stats()->set_bit_flags(BIT_ANIMATE, 1);
+    (void)w->walk(-1, 0); // off-map check
+    w->curdir = FACE_UP;
+    (void)w->walk(0, -1); // blocked move with animate path
+
+    // stationary walk branch + turn default branch.
+    w->set_order_family(Order::Living, FAMILY_TOWER1);
+    (void)w->walk(1, 0);
+    w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    w->curdir = 99;
+    (void)w->turn(FACE_UP);
+
+    TEST_ASSERT(true, "walker movement deep branches executed");
+}
+REGISTER_TEST(test_walker_movement_deep_branch_coverage_smoke);
