@@ -58,3 +58,22 @@ void test_menu_model_invalid_menu_id_falls_back_to_main()
                    "unknown menu id should fall back to main definition");
 }
 REGISTER_TEST(test_menu_model_invalid_menu_id_falls_back_to_main);
+
+void test_menu_model_lookup_miss_paths_and_fallback_item()
+{
+    using namespace og::ui;
+    const PickerMenuId invalid = static_cast<PickerMenuId>(-7);
+
+    const PickerMenuItem* begin_from_invalid =
+        find_picker_menu_item(invalid, "begin_new_game");
+    TEST_ASSERT(begin_from_invalid != nullptr, "invalid menu id should fall back to main menu items");
+
+    const PickerMenuItem* command_miss =
+        find_picker_menu_item(PickerMenuId::TeamBuild, PickerMenuCommand::SetDifficulty, 0);
+    TEST_ASSERT(command_miss == nullptr, "nonexistent command lookup should return nullptr");
+
+    const PickerMenuItem* id_miss =
+        find_picker_menu_item(PickerMenuId::TeamBuild, "definitely_missing_item");
+    TEST_ASSERT(id_miss == nullptr, "missing id lookup should return nullptr");
+}
+REGISTER_TEST(test_menu_model_lookup_miss_paths_and_fallback_item);

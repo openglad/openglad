@@ -255,3 +255,93 @@ void test_picker_state_multiplayer_noop_returns_to_menu()
     TEST_ASSERT_EQ(0, client.run_game_calls, "multiplayer action should not run game");
 }
 REGISTER_TEST(test_picker_state_multiplayer_noop_returns_to_menu);
+
+void test_picker_state_show_main_menu_command_mappings()
+{
+    MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem begin_new_game{
+        "begin_new_game", "Begin New Game", og::ui::PickerMenuCommand::BeginNewGame, 0
+    };
+    static const og::ui::PickerMenuItem continue_game{
+        "continue_game", "Continue Game", og::ui::PickerMenuCommand::ContinueGame, 0
+    };
+    static const og::ui::PickerMenuItem options{
+        "options", "Options", og::ui::PickerMenuCommand::Options, 0
+    };
+    static const og::ui::PickerMenuItem help{
+        "help", "Help", og::ui::PickerMenuCommand::Help, 0
+    };
+    static const og::ui::PickerMenuItem quit{
+        "quit", "Quit", og::ui::PickerMenuCommand::Quit, 0
+    };
+
+    client.scripted_results = {&begin_new_game};
+    client.present_calls = 0;
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::NewGame),
+                   static_cast<int>(client.show_main_menu()),
+                   "BeginNewGame command should map to NewGame action");
+
+    client.scripted_results = {&continue_game};
+    client.present_calls = 0;
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::ViewTeam),
+                   static_cast<int>(client.show_main_menu()),
+                   "ContinueGame command should map to ViewTeam action");
+
+    client.scripted_results = {&options};
+    client.present_calls = 0;
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Options),
+                   static_cast<int>(client.show_main_menu()),
+                   "Options command should map to Options action");
+
+    client.scripted_results = {&help};
+    client.present_calls = 0;
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Help),
+                   static_cast<int>(client.show_main_menu()),
+                   "Help command should map to Help action");
+
+    client.scripted_results = {&quit};
+    client.present_calls = 0;
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Quit),
+                   static_cast<int>(client.show_main_menu()),
+                   "Quit command should map to Quit action");
+}
+REGISTER_TEST(test_picker_state_show_main_menu_command_mappings);
+
+void test_picker_state_show_team_build_unknown_and_null_paths()
+{
+    MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem unknown{
+        "noop", "noop", og::ui::PickerMenuCommand::SetCampaign, 0
+    };
+
+    client.scripted_results = {&unknown, nullptr};
+    const og::ui::TeamBuildAction action = client.show_team_build();
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::TeamBuildAction::BackToMainMenu),
+                   static_cast<int>(action),
+                   "unknown team-build command then null should return BackToMainMenu");
+    TEST_ASSERT_EQ(1, client.handle_calls, "unknown team-build command should call handle_menu_item");
+}
+REGISTER_TEST(test_picker_state_show_team_build_unknown_and_null_paths);
+
+void test_picker_state_load_save_success_and_options_flow()
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::LoadGame,
+        og::ui::MainMenuAction::SaveGame,
+        og::ui::MainMenuAction::Options,
+        og::ui::MainMenuAction::Help,
+        og::ui::MainMenuAction::Quit
+    };
+    client.load_result = true;
+    client.save_result = true;
+
+    og::ui::run_picker(client);
+
+    TEST_ASSERT_EQ(1, client.load_game_calls, "successful load should run once");
+    TEST_ASSERT_EQ(1, client.save_game_calls, "successful save should run once");
+    TEST_ASSERT_EQ(1, client.show_options_calls, "options action should route to show_options");
+    TEST_ASSERT_EQ(1, client.show_help_calls, "help action should route to show_help");
+    TEST_ASSERT_EQ(0, client.show_team_build_calls, "successful load/save should not route to team build");
+}
+REGISTER_TEST(test_picker_state_load_save_success_and_options_flow);

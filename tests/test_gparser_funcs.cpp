@@ -159,12 +159,13 @@ REGISTER_TEST(test_gparser_commandline_additional_switches_and_unknown);
 void test_gparser_load_settings_sequence_and_alias_event_paths()
 {
     namespace fs = std::filesystem;
-    fs::create_directories("cfg");
+    std::error_code ec;
+    if (fs::exists("cfg", ec) && !fs::is_directory("cfg", ec))
+        fs::remove("cfg", ec);
+    fs::create_directories("cfg", ec);
 
     const fs::path cfg_path = fs::path("cfg") / "openglad.yaml";
     const fs::path backup_path = fs::path("cfg") / "openglad.yaml.bak.test";
-
-    std::error_code ec;
     fs::remove(backup_path, ec);
     if (fs::exists(cfg_path, ec))
         fs::rename(cfg_path, backup_path, ec);

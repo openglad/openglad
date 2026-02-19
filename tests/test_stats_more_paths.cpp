@@ -4,7 +4,9 @@
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
+#include <openglad/runtime/game_context.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/sim/irandom.h>
 #include "test_framework.h"
 
 #include <memory>
@@ -302,3 +304,45 @@ void test_stats_set_command_die_and_hit_response_early_returns()
     target->set_order_family(Order::Living, FAMILY_SOLDIER);
 }
 REGISTER_TEST(test_stats_set_command_die_and_hit_response_early_returns);
+
+void test_stats_walk_to_foe_short_circuit_and_path_branches()
+{
+    auto actor = make_walker(FAMILY_SOLDIER);
+    auto foe = make_walker(FAMILY_ORC);
+    TEST_ASSERT(actor && foe, "walkers created");
+    if (!(actor && foe))
+        return;
+
+    actor->team_num = 0;
+    foe->team_num = 1;
+    actor->setxy(GRID_SIZE * 8, GRID_SIZE * 8);
+    foe->setxy(static_cast<std::int32_t>(actor->xpos + 16), static_cast<std::int32_t>(actor->ypos));
+    actor->foe = foe.get();
+    actor->path_check_counter = 0;
+    actor->stats()->clear_command();
+
+    FixedRandom rng_nonzero(1); // avoid rng(300)==0 early-return branch
+    IRandom* prev_rng = ctx().rng;
+    ctx().rng = &rng_nonzero;
+
+    // Nearby foe path: should short-circuit into attack command logic.
+    bool ok = actor->stats()->walk_to_foe();
+    TEST_ASSERT(ok, "walk_to_foe should succeed for nearby foe");
+
+    // Nearby but dead foe: find_foes_in_range should fail and zero command count branch should run.
+    actor->stats()->force_command(COMMAND_WALK, 5, 1, 0);
+    foe->dead = 1;
+    actor->path_check_counter = 0;
+    ok = actor->stats()->walk_to_foe();
+    TEST_ASSERT(ok, "walk_to_foe should still run with dead remembered foe");
+
+    // Distant foe path: executes find_path_to_foe() branch.
+    foe->dead = 0;
+    foe->setxy(static_cast<std::int32_t>(actor->xpos + 600), static_cast<std::int32_t>(actor->ypos));
+    actor->path_check_counter = 0;
+    ok = actor->stats()->walk_to_foe();
+    TEST_ASSERT(ok, "walk_to_foe should run distant-path branch");
+
+    ctx().rng = prev_rng;
+}
+REGISTER_TEST(test_stats_walk_to_foe_short_circuit_and_path_branches);

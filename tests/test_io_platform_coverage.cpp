@@ -391,3 +391,68 @@ void test_zip_api_batch3_output_open_failure_and_empty_input_dir()
     fs::remove_all(base, ec);
 }
 REGISTER_TEST(test_zip_api_batch3_output_open_failure_and_empty_input_dir);
+
+void test_platform_io_delete_level_nonempty_campaign_path()
+{
+    namespace fs = std::filesystem;
+    const std::string user = get_user_path();
+    const std::string id = "batch5_delete_level";
+    const fs::path temp_root = fs::path(user) / "temp";
+    const fs::path temp_scen = temp_root / "scen";
+    const fs::path temp_pix = temp_root / "pix";
+    const fs::path campaigns_dir = fs::path(user) / "campaigns";
+    const fs::path archive = campaigns_dir / (id + ".glad");
+
+    std::error_code ec;
+    fs::create_directories(temp_scen, ec);
+    fs::create_directories(temp_pix, ec);
+    fs::create_directories(campaigns_dir, ec);
+
+    {
+        std::FILE* f = std::fopen((temp_scen / "scen321.fss").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create scen file");
+        if (f) std::fclose(f);
+    }
+    {
+        std::FILE* f = std::fopen((temp_pix / "scen0321.pix").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create pix file");
+        if (f) std::fclose(f);
+    }
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+                   static_cast<int>(og::io::zip_contents_with_error(temp_root.string(), archive.string())),
+                   "seed campaign archive should be created");
+
+    const std::string prev = ctx().mounted_campaign;
+    ctx().mounted_campaign = id;
+    delete_level(321);
+    ctx().mounted_campaign = prev;
+
+    cleanup_unpacked_campaign();
+    fs::remove(archive, ec);
+}
+REGISTER_TEST(test_platform_io_delete_level_nonempty_campaign_path);
+
+void test_og_file_open_read_user_and_asset_fallbacks()
+{
+    namespace fs = std::filesystem;
+    const fs::path user_rel = fs::path("batch5_user_read.bin");
+    const fs::path user_abs = fs::path(get_user_path()) / user_rel;
+    std::error_code ec;
+
+    fs::create_directories(user_abs.parent_path(), ec);
+
+    {
+        std::FILE* f = std::fopen(user_abs.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create user fallback file");
+        if (f) {
+            const unsigned char b = 17;
+            std::fwrite(&b, 1, 1, f);
+            std::fclose(f);
+        }
+    }
+    auto user_in = og::io::og_open_read(user_rel.string().c_str(), true);
+    TEST_ASSERT(user_in != nullptr, "og_open_read should find file in user path fallback");
+    fs::remove(user_abs, ec);
+}
+REGISTER_TEST(test_og_file_open_read_user_and_asset_fallbacks);

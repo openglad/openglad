@@ -13,6 +13,8 @@
 
 extern screen* myscreen;
 bool walkerIsAutoAttackable(walker* ob);
+short collide(short x, short y, short xsize, short ysize,
+              short x2, short y2, short xsize2, short ysize2);
 
 static std::unique_ptr<walker> make_living(char family, short level = 3)
 {
@@ -494,3 +496,31 @@ void test_living_facing_zero_vector_and_obmap_door_paths()
     TEST_ASSERT_EQ(FACE_UP, (int)lv->facing(0, 0), "facing with zero vector should use x==0/y<=0 branch");
 }
 REGISTER_TEST(test_living_facing_zero_vector_and_obmap_door_paths);
+
+void test_obmap_remove_stale_and_collide_axis_reject_paths()
+{
+    obmap map;
+
+    walker stale;
+    stale.set_order_family(Order::Living, FAMILY_SOLDIER);
+    stale.sizex = 12;
+    stale.sizey = 12;
+    stale.setxy(96, 96);
+
+    // Simulate stale bookkeeping: present in pile map, absent in walker_to_pos.
+    auto cell = std::make_pair(obmap::hash(stale.xpos), obmap::hash(stale.ypos));
+    map.pos_to_walker[cell].push_back(&stale);
+    TEST_ASSERT_EQ(1, (int)map.remove(&stale), "remove should clean stale pointer via bounded fallback");
+    TEST_ASSERT(map.pos_to_walker.find(cell) == map.pos_to_walker.end(),
+                "fallback remove should erase empty cell pile");
+
+    TEST_ASSERT_EQ(0, (int)collide(100, 100, 10, 10, 200, 100, 10, 10),
+                   "collide should reject separated x-right case");
+    TEST_ASSERT_EQ(0, (int)collide(200, 100, 10, 10, 100, 100, 10, 10),
+                   "collide should reject separated x-left case");
+    TEST_ASSERT_EQ(0, (int)collide(100, 200, 10, 10, 100, 100, 10, 10),
+                   "collide should reject separated y-up case");
+    TEST_ASSERT_EQ(0, (int)collide(100, 100, 10, 10, 100, 200, 10, 10),
+                   "collide should reject separated y-down case");
+}
+REGISTER_TEST(test_obmap_remove_stale_and_collide_axis_reject_paths);
