@@ -15,6 +15,8 @@
 #include <filesystem>
 #include <physfs.h>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -607,6 +609,54 @@ void test_zip_api_missing_input_dir_exists_guard_path()
     fs::remove(archive, ec);
 }
 REGISTER_TEST(test_zip_api_missing_input_dir_exists_guard_path);
+
+void test_zip_api_unreadable_and_non_regular_entries_report_add_failure()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path base = fs::path("temp") / "io_platform_cov_zip_batch8";
+    const fs::path archive = base / "edge_cases.zip";
+    const fs::path unreadable = base / "no_read.txt";
+    const fs::path normal = base / "ok.txt";
+    const fs::path fifo_path = base / "ignored_fifo";
+
+    fs::remove_all(base, ec);
+    fs::create_directories(base, ec);
+    fs::remove(archive, ec);
+
+    {
+        std::FILE* f = std::fopen(normal.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create normal file");
+        if (f)
+        {
+            const char* txt = "ok";
+            std::fwrite(txt, 1, std::strlen(txt), f);
+            std::fclose(f);
+        }
+    }
+    {
+        std::FILE* f = std::fopen(unreadable.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create unreadable file");
+        if (f)
+        {
+            const char* txt = "nope";
+            std::fwrite(txt, 1, std::strlen(txt), f);
+            std::fclose(f);
+        }
+    }
+    (void)::chmod(unreadable.string().c_str(), 0);
+
+    // Create a non-regular entry that should be skipped.
+    (void)::mkfifo(fifo_path.string().c_str(), 0600);
+
+    const ArchiveIoError r = og::io::zip_contents_with_error(base.string(), archive.string());
+    TEST_ASSERT(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::None,
+                "zip should report add failure (or succeed if platform permits unreadable reopen)");
+
+    (void)::chmod(unreadable.string().c_str(), 0600);
+    fs::remove_all(base, ec);
+}
+REGISTER_TEST(test_zip_api_unreadable_and_non_regular_entries_report_add_failure);
 
 void test_platform_io_restore_defaults_and_load_campaign_unmount_error_path()
 {

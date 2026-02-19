@@ -734,3 +734,31 @@ void test_walker_movement_round6_scripted_walkstep_switch_coverage()
     TEST_ASSERT(!w.walkstep(0, -1), "user cardinal blocked path should return false");
 }
 REGISTER_TEST(test_walker_movement_round6_scripted_walkstep_switch_coverage);
+
+void test_walker_get_current_angle_all_direction_cases()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    if (!w)
+        return;
+
+    w->curdir = FACE_UP;
+    TEST_ASSERT(w->get_current_angle() < -1.0f, "FACE_UP should be near -pi/2");
+    w->curdir = FACE_UP_RIGHT;
+    TEST_ASSERT(w->get_current_angle() < 0.0f, "FACE_UP_RIGHT should be negative");
+    w->curdir = FACE_RIGHT;
+    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "FACE_RIGHT should be zero angle");
+    w->curdir = FACE_DOWN_RIGHT;
+    TEST_ASSERT(w->get_current_angle() > 0.0f, "FACE_DOWN_RIGHT should be positive");
+    w->curdir = FACE_DOWN;
+    TEST_ASSERT(w->get_current_angle() > 1.0f, "FACE_DOWN should be near +pi/2");
+    w->curdir = FACE_DOWN_LEFT;
+    TEST_ASSERT(w->get_current_angle() > 2.0f, "FACE_DOWN_LEFT should be in third quadrant");
+    w->curdir = FACE_LEFT;
+    TEST_ASSERT(w->get_current_angle() > 3.0f, "FACE_LEFT should be near pi");
+    w->curdir = FACE_UP_LEFT;
+    TEST_ASSERT(w->get_current_angle() > 3.5f, "FACE_UP_LEFT should be near 5*pi/4");
+    w->curdir = static_cast<char>(99);
+    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "invalid direction should use default 0.0 angle");
+}
+REGISTER_TEST(test_walker_get_current_angle_all_direction_cases);
