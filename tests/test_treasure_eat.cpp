@@ -7,6 +7,7 @@
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
+#include <memory>
 
 extern screen* myscreen;
 
@@ -305,3 +306,53 @@ void test_treasure_eat_default_fallback_and_teleporter_wraparound()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_treasure_eat_default_fallback_and_teleporter_wraparound);
+
+void test_treasure_batch7_explicit_fxlist_teleporter_branches()
+{
+    myscreen->level_data.delete_objects();
+    auto& fx = myscreen->level_data.fxlist;
+    fx.clear();
+
+    auto before = std::make_unique<treasure>();
+    before->sim_level = &myscreen->level_data;
+    before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    before->stats()->level = 7;
+    before->setxy(60, 60);
+    walker* before_ptr = before.get();
+    fx.push_back(std::move(before));
+
+    auto self = std::make_unique<treasure>();
+    self->sim_level = &myscreen->level_data;
+    self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    self->stats()->level = 7;
+    self->setxy(80, 60);
+    walker* self_ptr = self.get();
+    fx.push_back(std::move(self));
+
+    auto mismatch = std::make_unique<treasure>();
+    mismatch->sim_level = &myscreen->level_data;
+    mismatch->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    mismatch->stats()->level = 8; // level mismatch should be skipped
+    mismatch->setxy(100, 60);
+    fx.push_back(std::move(mismatch));
+
+    walker* found = static_cast<treasure*>(self_ptr)->find_teleport_target();
+    TEST_ASSERT(found == before_ptr, "tail search should wrap around and return earlier matching teleporter");
+
+    static_cast<treasure*>(before_ptr)->dead = 1;
+    found = static_cast<treasure*>(self_ptr)->find_teleport_target();
+    TEST_ASSERT(found == nullptr, "dead and mismatched teleporters should be rejected");
+
+    treasure detached;
+    detached.sim_level = &myscreen->level_data;
+    detached.stats()->level = 7;
+    TEST_ASSERT(detached.find_teleport_target() == nullptr,
+                "find_teleport_target should return null when self is not in fx list");
+
+    treasure unknown_family;
+    unknown_family.set_order_family(Order::Treasure, static_cast<char>(-1));
+    TEST_ASSERT(unknown_family.eat_me(nullptr), "unknown treasure family should use default eat_me return path");
+
+    fx.clear();
+}
+REGISTER_TEST(test_treasure_batch7_explicit_fxlist_teleporter_branches);

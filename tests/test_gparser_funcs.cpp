@@ -1,11 +1,49 @@
 #include <openglad/data/gparser.h>
+#include <openglad/io/og_file.h>
 #include "test_framework.h"
 
 #include <cstring>
 #include <cstdio>
 #include <filesystem>
+#include <physfs.h>
 
 extern cfg_store cfg;
+
+namespace {
+
+bool write_cfg_text(const char* text)
+{
+    auto out = og::io::og_open_write("cfg/openglad.yaml");
+    if (!out)
+        return false;
+    return og::io::og_write_exact(*out, text, 1, std::strlen(text));
+}
+
+std::string read_cfg_text()
+{
+    std::string result;
+    auto in = og::io::og_open_read("cfg/openglad.yaml", true);
+    if (!in)
+        return result;
+    char buf[256];
+    while (true)
+    {
+        const std::size_t n = in->read(buf, 1, sizeof(buf));
+        if (n == 0)
+            break;
+        result.append(buf, n);
+    }
+    return result;
+}
+
+void restore_cfg_text(const std::string& text)
+{
+    if (text.empty())
+        return;
+    (void)write_cfg_text(text.c_str());
+}
+
+} // namespace
 
 // ---------------------------------------------------------------------------
 // cfg_store::apply_setting / get_setting
@@ -274,3 +312,41 @@ void test_gparser_round6_commandline_all_short_switches()
     TEST_ASSERT(cfg.get_setting("graphics", "fullscreen") == "on", "-f should enable fullscreen");
 }
 REGISTER_TEST(test_gparser_round6_commandline_all_short_switches);
+
+void test_gparser_batch7_load_settings_physfs_yaml_events_and_missing_file_paths()
+{
+    const std::string original_cfg = read_cfg_text();
+
+    const char* yaml_with_sequence_and_alias =
+        "root: &r\n"
+        "  item: yes\n"
+        "graphics:\n"
+        "  render: normal\n"
+        "numbers:\n"
+        "  - one\n"
+        "  - two\n"
+        "alias: *r\n";
+    TEST_ASSERT(write_cfg_text(yaml_with_sequence_and_alias),
+                "should write cfg/openglad.yaml through og_file path");
+    cfg.data.clear();
+    TEST_ASSERT(cfg.load_settings(), "load_settings should parse valid YAML with sequence/alias events");
+    TEST_ASSERT(!cfg.get_setting("graphics", "render").empty(),
+                "load_settings should still parse mapping pairs");
+
+    const char* malformed_yaml =
+        "graphics:\n"
+        "  render: normal\n"
+        "  - malformed\n";
+    TEST_ASSERT(write_cfg_text(malformed_yaml), "should write malformed YAML");
+    cfg.data.clear();
+    TEST_ASSERT(cfg.load_settings(), "load_settings should return true after parse-error path");
+    TEST_ASSERT(!cfg.get_setting("sound", "sound").empty(),
+                "load_settings should keep defaults after malformed YAML");
+
+    (void)PHYSFS_delete("cfg/openglad.yaml");
+    cfg.data.clear();
+    TEST_ASSERT(!cfg.load_settings(), "load_settings should return false when cfg file cannot be opened");
+
+    restore_cfg_text(original_cfg);
+}
+REGISTER_TEST(test_gparser_batch7_load_settings_physfs_yaml_events_and_missing_file_paths);

@@ -360,3 +360,37 @@ void test_picker_state_invalid_screen_after_game_falls_back_to_quit()
     TEST_ASSERT_EQ(1, client.show_main_menu_calls, "invalid next screen should exit without re-entering main menu");
 }
 REGISTER_TEST(test_picker_state_invalid_screen_after_game_falls_back_to_quit);
+
+void test_picker_state_batch7_hire_and_train_actions_route_to_team_build()
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::HireTeam,
+        og::ui::MainMenuAction::TrainTeam,
+        og::ui::MainMenuAction::Quit
+    };
+    client.team_build_result = og::ui::TeamBuildAction::BackToMainMenu;
+
+    og::ui::run_picker(client);
+
+    TEST_ASSERT_EQ(2, client.show_team_build_calls, "hire/train actions should both route through team build");
+    TEST_ASSERT_EQ(3, client.show_main_menu_calls, "flow should return to main menu between team-build actions");
+}
+REGISTER_TEST(test_picker_state_batch7_hire_and_train_actions_route_to_team_build);
+
+void test_picker_state_batch7_team_build_play_game_path()
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::ViewTeam,
+        og::ui::MainMenuAction::Quit
+    };
+    client.team_build_result = og::ui::TeamBuildAction::PlayGame;
+    client.screen_after_game_result = og::ui::PickerScreen::MainMenu;
+
+    og::ui::run_picker(client);
+
+    TEST_ASSERT_EQ(1, client.show_team_build_calls, "view team should enter team build once");
+    TEST_ASSERT_EQ(1, client.run_game_calls, "PlayGame from team build should enter playing state");
+}
+REGISTER_TEST(test_picker_state_batch7_team_build_play_game_path);

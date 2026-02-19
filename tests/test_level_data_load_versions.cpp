@@ -14,6 +14,7 @@ short load_version_2(og::io::OgFile& infile, LevelData* data);
 short load_version_3(og::io::OgFile& infile, LevelData* data);
 short load_version_4(og::io::OgFile& infile, LevelData* data);
 short load_version_5(og::io::OgFile& infile, LevelData* data);
+short load_version_6(og::io::OgFile& infile, LevelData* data, short version);
 short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
@@ -581,3 +582,83 @@ void test_level_data_load_scenario_version_dispatcher_guards()
     TEST_ASSERT_EQ(0, (int)old_version_result, "dispatcher should reject unsupported old version");
 }
 REGISTER_TEST(test_level_data_load_scenario_version_dispatcher_guards);
+
+static void append_v6_object_record(std::vector<uint8_t>& out, uint8_t order, uint8_t family, int16_t x, int16_t y,
+                                    uint8_t team, uint8_t facing, uint8_t command, int16_t level, const char* name12)
+{
+    append_u8(out, order);
+    append_u8(out, family);
+    append_i16(out, x);
+    append_i16(out, y);
+    append_u8(out, team);
+    append_u8(out, facing);
+    append_u8(out, command);
+    append_i16(out, level);
+
+    std::array<char, 12> nbuf{};
+    for (int i = 0; i < 12 && name12 && name12[i] != '\0'; i++)
+        nbuf[i] = name12[i];
+    append_bytes(out, nbuf.data(), nbuf.size());
+    for (int i = 0; i < 10; i++)
+        append_u8(out, 0);
+}
+
+void test_level_data_load_version6plus_invalid_counts_and_object_fail_paths()
+{
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_bytes(bytes, "title", 5);
+        for (int i = 0; i < 25; i++)
+            append_u8(bytes, 0); // title padding to 30
+        append_u8(bytes, 1); // scen type
+        append_i16(bytes, 1); // par
+        append_i16(bytes, 100); // time limit (v9+ path)
+        append_i16(bytes, 5000); // invalid list size
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_6(rw, &data, 9), "v9 loader should reject invalid object count");
+    }
+
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_bytes(bytes, "title", 5);
+        for (int i = 0; i < 25; i++)
+            append_u8(bytes, 0);
+        append_u8(bytes, 1); // scen type
+        append_i16(bytes, 1); // par
+        append_i16(bytes, 100); // time limit
+        append_i16(bytes, 1); // list size
+        append_v6_object_record(bytes, 255, static_cast<uint8_t>(FAMILY_SOLDIER), 64, 64, 0, 0, 0, 3, "BadOrder");
+        append_u8(bytes, 0); // num lines
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        const short ok = load_version_6(rw, &data, 9);
+        TEST_ASSERT(ok == 0 || ok == 1, "v9 loader unknown order should not crash");
+    }
+}
+REGISTER_TEST(test_level_data_load_version6plus_invalid_counts_and_object_fail_paths);
+
+void test_level_data_load_version6plus_truncated_description_discard_path()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_bytes(bytes, "title", 5);
+    for (int i = 0; i < 25; i++)
+        append_u8(bytes, 0);
+    append_u8(bytes, 1);    // scen type
+    append_i16(bytes, 1);   // par
+    append_i16(bytes, 100); // time limit
+    append_i16(bytes, 0);   // no objects
+    append_u8(bytes, 1);    // num lines
+    append_u8(bytes, 200);  // long line width, triggers truncation/discard loop
+    for (int i = 0; i < 120; i++)
+        append_u8(bytes, 'q'); // intentionally short to force discard read failure
+
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    TEST_ASSERT_EQ(0, (int)load_version_6(rw, &data, 9),
+                   "v9 loader should fail when long description discard tail is truncated");
+}
+REGISTER_TEST(test_level_data_load_version6plus_truncated_description_discard_path);

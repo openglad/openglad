@@ -816,3 +816,52 @@ void test_walker_round7a_compute_outline_and_friendliness_edge_paths()
     }
 }
 REGISTER_TEST(test_walker_round7a_compute_outline_and_friendliness_edge_paths);
+
+void test_walker_round7a_death_guard_and_friendliness_team_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // death_called guard.
+    w->dead = 1;
+    w->death_called = 0;
+    TEST_ASSERT(w->death(), "first death call should run");
+    TEST_ASSERT_EQ(0, (int)w->death(), "second death call should hit death_called guard");
+
+    // is_friendly_to_team paths for no myguy and hired allied modes.
+    SaveData save;
+    w->sim_save = &save;
+    w->dead = 0;
+    w->team_num = 2;
+    w->clear_myguy();
+
+    save.allied_mode = 0;
+    TEST_ASSERT_EQ(1, (int)w->is_friendly_to_team(2), "enemy mode should only match own team");
+    TEST_ASSERT_EQ(0, (int)w->is_friendly_to_team(0), "enemy mode should reject other teams");
+
+    save.allied_mode = 1;
+    w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    TEST_ASSERT_EQ(1, (int)w->is_friendly_to_team(0), "hired unit in allied mode should be friendly to team 0");
+    TEST_ASSERT_EQ(0, (int)w->is_friendly_to_team(3), "hired unit in allied mode should reject non-zero teams");
+
+    // Explicit has_myguy==0 path in is_friendly.
+    walker* other = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(other != nullptr, "other created");
+    if (other)
+    {
+        other->sim_save = &save;
+        other->team_num = 2;
+        other->clear_myguy();
+        w->clear_myguy();
+        save.allied_mode = 1;
+        TEST_ASSERT_EQ(1, (int)w->is_friendly(other), "both without myguy should compare teams only");
+        other->team_num = 1;
+        TEST_ASSERT_EQ(0, (int)w->is_friendly(other), "both without myguy different teams should be unfriendly");
+    }
+}
+REGISTER_TEST(test_walker_round7a_death_guard_and_friendliness_team_paths);
