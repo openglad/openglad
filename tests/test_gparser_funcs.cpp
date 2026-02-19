@@ -246,3 +246,31 @@ void test_gparser_round6_save_settings_open_write_failure()
     TEST_ASSERT(true, "save_settings open-write edge path executed");
 }
 REGISTER_TEST(test_gparser_round6_save_settings_open_write_failure);
+
+void test_gparser_round6_commandline_all_short_switches()
+{
+    cfg.apply_setting("sound", "sound", "off");
+    cfg.apply_setting("graphics", "render", "normal");
+    cfg.apply_setting("graphics", "fullscreen", "off");
+
+    char arg0[] = "openglad";
+    char arg1[] = "-s";
+    char arg2[] = "-S";
+    char arg3[] = "-n";
+    char arg4[] = "-d";
+    char arg5[] = "-e";
+    char arg6[] = "-x";
+    char arg7[] = "-f";
+    char arg8[] = "-?";
+    char* argv[] = {arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8};
+    int argc = 9;
+    char** argv_ptr = argv;
+
+    cfg.commandline(argc, argv_ptr);
+
+    // Last toggle wins for repeated options.
+    TEST_ASSERT(cfg.get_setting("sound", "sound") == "off", "-S should leave sound disabled");
+    TEST_ASSERT(cfg.get_setting("graphics", "render") == "sai", "-x should leave render in sai mode");
+    TEST_ASSERT(cfg.get_setting("graphics", "fullscreen") == "on", "-f should enable fullscreen");
+}
+REGISTER_TEST(test_gparser_round6_commandline_all_short_switches);

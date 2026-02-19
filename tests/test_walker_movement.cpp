@@ -53,6 +53,31 @@ void test_walker_facing_zero()
 }
 REGISTER_TEST(test_walker_facing_zero);
 
+void test_walker_facing_threshold_boundaries_round6()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    if (!w) return;
+
+    // x == 0 branch
+    TEST_ASSERT_EQ(FACE_DOWN, (int)w->facing(0, 1), "facing(0,+) should be FACE_DOWN");
+    TEST_ASSERT_EQ(FACE_UP, (int)w->facing(0, 0), "facing(0,0) should be FACE_UP");
+
+    // x > 0 slope buckets
+    TEST_ASSERT_EQ(FACE_DOWN, (int)w->facing(1, 3), "positive x with steep positive slope");
+    TEST_ASSERT_EQ(FACE_DOWN_RIGHT, (int)w->facing(1, 1), "positive x with medium positive slope");
+    TEST_ASSERT_EQ(FACE_RIGHT, (int)w->facing(1, 0), "positive x with flat slope");
+    TEST_ASSERT_EQ(FACE_UP_RIGHT, (int)w->facing(1, -1), "positive x with medium negative slope");
+    TEST_ASSERT_EQ(FACE_UP, (int)w->facing(1, -3), "positive x with steep negative slope");
+
+    // x < 0 slope buckets
+    TEST_ASSERT_EQ(FACE_UP, (int)w->facing(-1, -3), "negative x with steep positive slope");
+    TEST_ASSERT_EQ(FACE_UP_LEFT, (int)w->facing(-1, -1), "negative x with medium positive slope");
+    TEST_ASSERT_EQ(FACE_LEFT, (int)w->facing(-1, 0), "negative x with flat slope");
+    TEST_ASSERT_EQ(FACE_DOWN_LEFT, (int)w->facing(-1, 1), "negative x with medium negative slope");
+    TEST_ASSERT_EQ(FACE_DOWN, (int)w->facing(-1, 3), "negative x with steep negative slope");
+}
+REGISTER_TEST(test_walker_facing_threshold_boundaries_round6);
+
 // ---------------------------------------------------------------------------
 // walker::turn - exercises the turning logic
 // ---------------------------------------------------------------------------
@@ -153,6 +178,26 @@ void test_walker_walkstep_user_slide_cardinal_break_path_round5()
     TEST_ASSERT(!moved, "blocked cardinal user movement should keep slide dx/dy at zero and fail");
 }
 REGISTER_TEST(test_walker_walkstep_user_slide_cardinal_break_path_round5);
+
+void test_walker_walkstep_user_slide_diagonal_switch_cases_round6()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // Block movement at map edge so the user-slide diagonal switch executes.
+    w->user = 0;
+    w->stepsize = 1.0f;
+    w->setxy(0, 0);
+
+    (void)w->walkstep(1, -1);   // FACE_UP_RIGHT
+    (void)w->walkstep(1, 1);    // FACE_DOWN_RIGHT
+    (void)w->walkstep(-1, 1);   // FACE_DOWN_LEFT
+    (void)w->walkstep(-1, -1);  // FACE_UP_LEFT
+}
+REGISTER_TEST(test_walker_walkstep_user_slide_diagonal_switch_cases_round6);
 
 // ---------------------------------------------------------------------------
 // walker::draw and walker::draw_tile via viewscreen

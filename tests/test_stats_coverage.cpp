@@ -115,3 +115,30 @@ void test_stats_round6_block_query_switches_all_directions()
     (void)w->stats()->forward_blocked();
 }
 REGISTER_TEST(test_stats_round6_block_query_switches_all_directions);
+
+void test_stats_round6_walk_clamp_extremes_and_empty_queue_paths()
+{
+    walker w;
+    statistics s(&w);
+
+    s.commands.clear();
+    s.add_command(COMMAND_WALK, 1, -99, 99);
+    TEST_ASSERT(!s.commands.empty(), "add_command should append walk command");
+    if (!s.commands.empty())
+    {
+        TEST_ASSERT_EQ(-1, (int)s.commands.back().com1, "add_command should clamp com1 to -1");
+        TEST_ASSERT_EQ(1, (int)s.commands.back().com2, "add_command should clamp com2 to +1");
+    }
+
+    s.force_command(COMMAND_WALK, 1, -88, 88);
+    TEST_ASSERT(!s.commands.empty(), "force_command should prepend walk command");
+    if (!s.commands.empty())
+    {
+        TEST_ASSERT_EQ(-1, (int)s.commands.front().com1, "force_command should clamp com1 to -1");
+        TEST_ASSERT_EQ(1, (int)s.commands.front().com2, "force_command should clamp com2 to +1");
+    }
+
+    s.commands.clear();
+    TEST_ASSERT_EQ(0, (int)s.do_command(), "do_command should return 0 for empty queue");
+}
+REGISTER_TEST(test_stats_round6_walk_clamp_extremes_and_empty_queue_paths);
