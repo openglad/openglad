@@ -410,3 +410,138 @@ void test_walker_init_fire_turn_busy_and_fire_fallback_paths()
     TEST_ASSERT(!w->init_fire(1, 0), "non-walk init_fire should return false when fire() fails");
 }
 REGISTER_TEST(test_walker_init_fire_turn_busy_and_fire_fallback_paths);
+
+void test_walker_round5_act_switch_random_and_fire_branches()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be created");
+    if (!(actor && foe))
+        return;
+
+    actor->team_num = 1;
+    actor->setxy(96, 96);
+    actor->sim_level = &myscreen->level_data;
+    actor->ani_type = ANI_WALK;
+    actor->stats()->clear_command();
+
+    foe->team_num = 2;
+    foe->setxy(128, 96);
+    foe->sim_level = &myscreen->level_data;
+
+    // ACT_GUARD no-foe path: break from switch then return 0.
+    actor->foe = nullptr;
+    actor->set_act_type(ACT_GUARD);
+    TEST_ASSERT(!actor->act(), "ACT_GUARD should return false when no nearby foe exists");
+
+    // ACT_FIRE dispatch path from the act() switch.
+    actor->set_act_type(ACT_FIRE);
+    actor->lineofsight = 2;
+    actor->lastx = 0;
+    actor->lasty = 0;
+    TEST_ASSERT(actor->act(), "ACT_FIRE should dispatch and return true");
+
+    // ACT_RANDOM 1/4 + 1/20 branch should queue COMMAND_WALK.
+    SequenceRandom rng_walk_branch({0, 0, 5, 1, 2});
+    actor->sim_rng = &rng_walk_branch;
+    actor->stats()->clear_command();
+    actor->ani_type = ANI_WALK;
+    actor->foe = nullptr;
+    actor->set_act_type(ACT_RANDOM);
+    TEST_ASSERT(actor->act(), "ACT_RANDOM walk-command branch should return true");
+
+    // ACT_RANDOM 3/4 branch should acquire far foe and queue COMMAND_SEARCH.
+    SequenceRandom rng_search_branch({3, 0});
+    actor->sim_rng = &rng_search_branch;
+    actor->stats()->clear_command();
+    actor->ani_type = ANI_WALK;
+    actor->foe = nullptr;
+    actor->set_act_type(ACT_RANDOM);
+    (void)actor->act();
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_round5_act_switch_random_and_fire_branches);
+
+void test_walker_round5_act_random_contiguous_block_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be created");
+    if (!(actor && foe))
+        return;
+
+    actor->team_num = 1;
+    actor->setxy(96, 96);
+    actor->sim_level = &myscreen->level_data;
+    actor->ani_type = ANI_WALK;
+    actor->lineofsight = 20;
+
+    foe->team_num = 2;
+    foe->setxy(112, 96);
+    foe->sim_level = &myscreen->level_data;
+
+    // No-foe branch: find_far_foe fails and queues COMMAND_RANDOM_WALK.
+    myscreen->level_data.delete_objects();
+    actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(actor != nullptr, "actor should be recreated");
+    if (!actor)
+        return;
+    actor->team_num = 1;
+    actor->setxy(96, 96);
+    actor->sim_level = &myscreen->level_data;
+    actor->lineofsight = 20;
+    actor->ani_type = ANI_WALK;
+
+    SequenceRandom rng_no_foe({0, 1, 0});
+    actor->sim_rng = &rng_no_foe;
+    actor->foe = nullptr;
+    actor->stats()->clear_command();
+    actor->ani_type = ANI_WALK;
+    actor->set_act_type(ACT_RANDOM);
+    (void)actor->act();
+
+    // Rebuild actor/foe pair for LOS branches.
+    myscreen->level_data.delete_objects();
+    actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be recreated");
+    if (!(actor && foe))
+        return;
+
+    actor->team_num = 1;
+    actor->setxy(96, 96);
+    actor->sim_level = &myscreen->level_data;
+    actor->ani_type = ANI_WALK;
+    actor->lineofsight = 20;
+    actor->foe = foe;
+
+    foe->team_num = 2;
+    foe->setxy(112, 96);
+    foe->sim_level = &myscreen->level_data;
+
+    // In-range foe with blocked ranged attack path: fire_check false -> turn/walkstep.
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    SequenceRandom rng_turn_walk({0, 1, 1});
+    actor->sim_rng = &rng_turn_walk;
+    actor->stats()->clear_command();
+    actor->set_act_type(ACT_RANDOM);
+    (void)actor->act();
+
+    // In-range foe with clear fire path: init_fire + COMMAND_FIRE path.
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    SequenceRandom rng_fire_cmd({0, 1, 1, 7});
+    actor->sim_rng = &rng_fire_cmd;
+    actor->stats()->clear_command();
+    actor->set_act_type(ACT_RANDOM);
+    (void)actor->act();
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_round5_act_random_contiguous_block_paths);
