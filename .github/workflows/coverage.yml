@@ -9,6 +9,10 @@ permissions:
   contents: read
   pull-requests: write
 
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   coverage:
     name: Coverage
