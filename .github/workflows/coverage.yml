@@ -74,8 +74,8 @@ jobs:
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
             --json-summary build/ci-coverage/coverage/coverage-summary.json \
-            --fail-under-line 70 \
-            --fail-under-function 75 \
+            --fail-under-line 85 \
+            --fail-under-function 95 \
             build/ci-coverage
           gcovr_status=$?
           set -e
@@ -99,8 +99,8 @@ jobs:
 
           line_status="FAIL"
           function_status="FAIL"
-          if awk "BEGIN {exit !($line_pct >= 70)}"; then line_status="PASS"; fi
-          if awk "BEGIN {exit !($function_pct >= 75)}"; then function_status="PASS"; fi
+          if awk "BEGIN {exit !($line_pct >= 85)}"; then line_status="PASS"; fi
+          if awk "BEGIN {exit !($function_pct >= 95)}"; then function_status="PASS"; fi
 
           echo "line_pct=$line_pct" >> "$GITHUB_OUTPUT"
           echo "function_pct=$function_pct" >> "$GITHUB_OUTPUT"
@@ -112,8 +112,8 @@ jobs:
             echo
             echo "| Metric | Coverage | Threshold | Status |"
             echo "|---|---:|---:|---|"
-            echo "| Line | ${line_pct}% | 70% | ${line_status} |"
-            echo "| Function | ${function_pct}% | 75% | ${function_status} |"
+            echo "| Line | ${line_pct}% | 85% | ${line_status} |"
+            echo "| Function | ${function_pct}% | 95% | ${function_status} |"
             echo
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -148,8 +148,8 @@ jobs:
               '',
               '| Metric | Coverage | Threshold | Status |',
               '|---|---:|---:|---|',
-              `| Line | ${linePct}% | 70% | ${lineStatus} |`,
-              `| Function | ${functionPct}% | 75% | ${functionStatus} |`,
+              `| Line | ${linePct}% | 85% | ${lineStatus} |`,
+              `| Function | ${functionPct}% | 95% | ${functionStatus} |`,
               '',
               `Run: ${runUrl}`,
             ].join('\n');
