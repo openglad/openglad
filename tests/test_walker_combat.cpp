@@ -962,3 +962,59 @@ void test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps);
+
+void test_walker_batch7_init_fire_and_animate_edge_paths()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(100, 100);
+
+    // init_fire turn-gate while ACT_CONTROL (returns false).
+    w->set_act_type(ACT_CONTROL);
+    w->curdir = FACE_LEFT;
+    bool r = w->init_fire(1, 0);
+    TEST_ASSERT(!r, "init_fire should refuse turning fire while ACT_CONTROL");
+
+    // init_fire turning path for non-control walker.
+    w->set_act_type(ACT_RANDOM);
+    w->curdir = FACE_LEFT;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(r, "init_fire should allow turning for non-control walkers");
+
+    // Busy gate.
+    w->busy = 3;
+    w->curdir = FACE_RIGHT;
+    w->enddir = FACE_RIGHT;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(!r, "init_fire should fail while busy");
+    w->busy = 0;
+
+    // Attack animation path from ANI_WALK.
+    w->ani_type = ANI_WALK;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(r, "init_fire should start attack animation from ANI_WALK");
+
+    // Non-walk path uses fire(); insufficient MP should make it fail.
+    w->ani_type = ANI_ATTACK;
+    w->stats()->magicpoints = 0;
+    w->stats()->weapon_cost = 20;
+    r = w->init_fire(1, 0);
+    TEST_ASSERT(!r, "init_fire should fail via fire() when MP is insufficient");
+
+    // animate() no-animation-table path.
+    auto saved_ani = w->ani;
+    w->ani = nullptr;
+    TEST_ASSERT(!w->animate(), "animate should return false when animation table is null");
+    w->ani = saved_ani;
+
+    // animate() null-sequence path.
+    const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
+    auto saved_seq = w->ani[ani_index];
+    w->ani[ani_index] = nullptr;
+    TEST_ASSERT(!w->animate(), "animate should return false when selected sequence is null");
+    w->ani[ani_index] = saved_seq;
+}
+REGISTER_TEST(test_walker_batch7_init_fire_and_animate_edge_paths);

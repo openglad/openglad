@@ -156,3 +156,64 @@ void test_smooth_matrix_covers_grass_dark_grass_wall_and_cobble_paths()
     TEST_ASSERT(true, "matrix smooth coverage across remaining genres completed");
 }
 REGISTER_TEST(test_smooth_matrix_covers_grass_dark_grass_wall_and_cobble_paths);
+
+void test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks()
+{
+    FixedRandom rng(0);
+    GameContext ctx;
+    ctx.rng = &rng;
+    GlobalContextGuard guard(&ctx);
+
+    smoother s;
+    struct MaskExpect { int mask; unsigned char expect; };
+
+    const MaskExpect tree_cases[] = {
+        {7, PIX_TREE_ML}, {13, PIX_TREE_MR}, {12, PIX_TREE_T1}, {11, PIX_TREE_B1},
+        {10, PIX_TREE_B1}, {9, PIX_TREE_B1}, {8, PIX_TREE_B1}, {14, PIX_TREE_T1},
+        {6, PIX_TREE_T1}, {5, PIX_TREE_MT}, {4, PIX_TREE_T1}, {3, PIX_TREE_B1},
+        {2, PIX_TREE_B1}, {1, PIX_TREE_B1}, {0, PIX_TREE_B1}
+    };
+    for (const auto& c : tree_cases)
+    {
+        PixieData tree = make_grid(5, 5, PIX_GRASS1);
+        at(tree, 2, 2) = PIX_TREE_M1;
+        set_neighbors_for_mask(tree, 2, 2, PIX_TREE_M1, PIX_GRASS1, c.mask);
+        s.set_target(tree);
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)c.expect, (int)at(tree, 2, 2), "tree mask branch should select expected tile");
+    }
+
+    const MaskExpect dirt_cases[] = {
+        {12, PIX_DIRTGRASS_LL1}, {9, PIX_DIRTGRASS_UL1}, {6, PIX_DIRTGRASS_LR1}, {3, PIX_DIRTGRASS_UR1},
+        {7, PIX_DIRT_1}, {13, PIX_DIRT_1}, {11, PIX_DIRT_1}, {10, PIX_DIRT_1},
+        {8, PIX_DIRT_1}, {14, PIX_DIRT_1}, {5, PIX_DIRT_1}, {4, PIX_DIRT_1},
+        {2, PIX_DIRT_1}, {1, PIX_DIRT_1}, {0, PIX_DIRT_1}
+    };
+    for (const auto& c : dirt_cases)
+    {
+        PixieData dirt = make_grid(5, 5, PIX_GRASS1);
+        at(dirt, 2, 2) = PIX_DIRT_1;
+        set_neighbors_for_mask(dirt, 2, 2, PIX_DIRT_1, PIX_GRASS1, c.mask);
+        s.set_target(dirt);
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)c.expect, (int)at(dirt, 2, 2), "dirt mask branch should select expected tile");
+    }
+
+    const MaskExpect dark_cases[] = {
+        {12, PIX_DIRTGRASS_DARK_LL1}, {9, PIX_DIRTGRASS_DARK_UL1},
+        {6, PIX_DIRTGRASS_DARK_LR1}, {3, PIX_DIRTGRASS_DARK_UR1},
+        {7, PIX_DIRT_DARK_1}, {13, PIX_DIRT_DARK_1}, {11, PIX_DIRT_DARK_1}, {10, PIX_DIRT_DARK_1},
+        {8, PIX_DIRT_DARK_1}, {14, PIX_DIRT_DARK_1}, {5, PIX_DIRT_DARK_1}, {4, PIX_DIRT_DARK_1},
+        {2, PIX_DIRT_DARK_1}, {1, PIX_DIRT_DARK_1}, {0, PIX_DIRT_DARK_1}
+    };
+    for (const auto& c : dark_cases)
+    {
+        PixieData dd = make_grid(5, 5, PIX_GRASS1);
+        at(dd, 2, 2) = PIX_DIRT_DARK_1;
+        set_neighbors_for_mask(dd, 2, 2, PIX_DIRT_DARK_1, PIX_GRASS1, c.mask);
+        s.set_target(dd);
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)c.expect, (int)at(dd, 2, 2), "dark dirt mask branch should select expected tile");
+    }
+}
+REGISTER_TEST(test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks);

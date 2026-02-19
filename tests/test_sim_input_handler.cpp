@@ -840,3 +840,56 @@ void test_sim_input_deep_branch_coverage_smoke()
     (void)ally_before;
 }
 REGISTER_TEST(test_sim_input_deep_branch_coverage_smoke);
+
+void test_sim_input_cheat_gates_and_command_queue_skip_movement_block()
+{
+    teardown();
+    auto control_up = make_living(0, 0);
+    auto ally_up = make_living(0, -1);
+    TEST_ASSERT(control_up != nullptr && ally_up != nullptr, "control and ally should be created");
+    if (!(control_up && ally_up))
+        return;
+
+    walker* control = control_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->yo_delay = 0;
+    control->current_special = 1;
+    control->stats()->level = 30;
+
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+    myscreen->level_data.oblist.push_back(std::move(ally_up));
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    special_names[FAMILY_SOLDIER][2] = "SPECIAL_OK";
+    og::sim::SimEventLog log;
+    InputState input;
+
+    // Cheat should block switch-char branch.
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "cheat-held switch-char should keep existing control");
+    TEST_ASSERT_EQ(0, (int)debounce.changedchar, "cheat-held switch-char should not latch debounce");
+
+    // With queued command, movement/action block should be skipped.
+    control->stats()->force_command(COMMAND_FOLLOW, 5, 0, 0);
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::MoveRight)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "queued-command path should preserve control");
+
+    // Cheat should also block both yell branches.
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Cheat)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.notify_text.empty(), "cheat-held yell should not emit notifications");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_cheat_gates_and_command_queue_skip_movement_block);

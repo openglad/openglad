@@ -13,6 +13,7 @@
 short load_version_2(og::io::OgFile& infile, LevelData* data);
 short load_version_3(og::io::OgFile& infile, LevelData* data);
 short load_version_4(og::io::OgFile& infile, LevelData* data);
+short load_version_5(og::io::OgFile& infile, LevelData* data);
 
 // Memory-backed OgFile for testing (replaces SDL_RWFromConstMem)
 class MemoryOgFile final : public og::io::OgFile {
@@ -285,3 +286,73 @@ void test_level_data_load_version4_truncates_long_description_line()
     TEST_ASSERT(!data.description.empty(), "description should contain at least one line");
 }
 REGISTER_TEST(test_level_data_load_version4_truncates_long_description_line);
+
+void test_level_data_load_version5_rejects_invalid_object_count()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_u8(bytes, 2);     // scenario type
+    append_i16(bytes, 5000); // > MAX_SCENARIO_OBJECTS
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    short ok = load_version_5(rw, &data);
+    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should reject invalid list size");
+}
+REGISTER_TEST(test_level_data_load_version5_rejects_invalid_object_count);
+
+void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_u8(bytes, 3); // scenario type
+    append_i16(bytes, 2); // listsize
+
+    // Treasure object path (routes through add_fx_ob).
+    append_u8(bytes, static_cast<uint8_t>(Order::Treasure));
+    append_u8(bytes, static_cast<uint8_t>(FAMILY_GOLD_BAR));
+    append_i16(bytes, 100);
+    append_i16(bytes, 100);
+    append_u8(bytes, 0); // team
+    append_u8(bytes, 0); // facing
+    append_u8(bytes, 0); // command
+    append_u8(bytes, 4); // level
+    {
+        std::array<char, 12> name{};
+        std::memcpy(name.data(), "Treasure", 8);
+        append_bytes(bytes, name.data(), name.size());
+    }
+    for (int i = 0; i < 10; i++)
+        append_u8(bytes, 0);
+
+    // Weapon door object to exercise version-5 door fixup loop.
+    append_u8(bytes, static_cast<uint8_t>(Order::Weapon));
+    append_u8(bytes, static_cast<uint8_t>(FAMILY_DOOR));
+    append_i16(bytes, GRID_SIZE * 2);
+    append_i16(bytes, GRID_SIZE * 2);
+    append_u8(bytes, 0); // team
+    append_u8(bytes, 0); // facing
+    append_u8(bytes, 0); // command
+    append_u8(bytes, 2); // level
+    {
+        std::array<char, 12> name{};
+        std::memcpy(name.data(), "Door", 4);
+        append_bytes(bytes, name.data(), name.size());
+    }
+    for (int i = 0; i < 10; i++)
+        append_u8(bytes, 0);
+
+    append_u8(bytes, 1);   // numlines
+    append_u8(bytes, 120); // width > local line buffer, exercises truncate/discard loop
+    for (int i = 0; i < 120; i++)
+        append_u8(bytes, 'q');
+
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    short ok = load_version_5(rw, &data);
+    TEST_ASSERT_EQ(1, (int)ok, "load_version_5 should succeed on valid buffer");
+    TEST_ASSERT_EQ(3, (int)data.type, "load_version_5 should set scenario type");
+    TEST_ASSERT(!data.fxlist.empty(), "treasure object should populate fxlist");
+    TEST_ASSERT(!data.weaplist.empty(), "weapon object should populate weaplist");
+    TEST_ASSERT(!data.description.empty(), "description line should be read");
+}
+REGISTER_TEST(test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text);
