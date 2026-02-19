@@ -1216,3 +1216,53 @@ void test_walker_round16_act_random_no_foe_far_search_fallback_path()
     TEST_ASSERT(actor->foe == nullptr, "ACT_RANDOM should keep foe null when far-foe search finds nothing");
 }
 REGISTER_TEST(test_walker_round16_act_random_no_foe_far_search_fallback_path);
+
+void test_walker_round17_query_next_to_and_fire_check_early_branches()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* blocker = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(actor && blocker, "fixtures created");
+    if (!(actor && blocker))
+        return;
+
+    actor->setxy(100, 100);
+    actor->sizex = 12;
+    actor->sizey = 12;
+    actor->lastx = 1;
+    actor->lasty = 0;
+    blocker->setxy(static_cast<short>(actor->xpos + actor->sizex - 1),
+                   static_cast<short>(actor->ypos - actor->sizey));
+    blocker->sizex = 12;
+    blocker->sizey = 12;
+
+    TEST_ASSERT(actor->query_next_to(), "query_next_to should report blocked when adjacent tile is occupied");
+    myscreen->level_data.remove_ob(blocker);
+    TEST_ASSERT(!actor->query_next_to(), "query_next_to should report pass when adjacent tile is clear");
+
+    // fire_check generator early return path (walker.cpp:943-944).
+    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    TEST_ASSERT(gen != nullptr, "generator created");
+    if (gen)
+        TEST_ASSERT(gen->fire_check(1, 0), "generator fire_check should short-circuit true");
+
+    // fire_check no-foe early return path (walker.cpp:955-959).
+    actor->foe = nullptr;
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    actor->stats()->magicpoints = 9999.0f;
+    TEST_ASSERT(!actor->fire_check(1, 0), "fire_check should fail when actor has no foe");
+
+    // fire_check BIT_NO_RANGED early return path (walker.cpp:962-965).
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(foe != nullptr, "foe created");
+    if (foe)
+    {
+        foe->setxy(static_cast<short>(actor->xpos + 40), actor->ypos);
+        actor->foe = foe;
+        actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+        TEST_ASSERT(!actor->fire_check(1, 0), "fire_check should fail when BIT_NO_RANGED is set");
+    }
+}
+REGISTER_TEST(test_walker_round17_query_next_to_and_fire_check_early_branches);

@@ -622,6 +622,59 @@ void test_smooth_round13_dark_grass_targeted_338_448_branches()
 }
 REGISTER_TEST(test_smooth_round13_dark_grass_targeted_338_448_branches);
 
+void test_smooth_round14_wall_case11_and_case15_branch_matrix()
+{
+    PixieData grid = make_grid(7, 7, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+    const int cx = 3, cy = 3;
+
+    // case 11 wall base branch with crack rng path (smooth.cpp:605-610).
+    {
+        FixedRandom crack_rng(0); // rng(10)==0 => crack
+        GameContext c;
+        c.rng = &crack_rng;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_H_WALL1;
+        set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_UP | TO_LEFT | TO_RIGHT);
+        (void)s.smooth(cx, cy);
+        TEST_ASSERT_EQ((int)PIX_WALLSIDE_CRACK_C1, (int)at(grid, cx, cy),
+                       "wall case 11 should choose crack variant when rng hits 0");
+    }
+
+    // case 15 branch where below and lower-left are walls => PIX_WALL3 (620-624).
+    at(grid, cx, cy) = PIX_H_WALL1;
+    set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_AROUND);
+    at(grid, cx, cy + 2) = PIX_H_WALL1;
+    at(grid, cx - 1, cy + 1) = PIX_H_WALL1;
+    {
+        FixedRandom rng1(1);
+        GameContext c;
+        c.rng = &rng1;
+        GlobalContextGuard guard(&c);
+        (void)s.smooth(cx, cy);
+    }
+    TEST_ASSERT_EQ((int)PIX_WALL3, (int)at(grid, cx, cy),
+                   "wall case 15 should choose WALL3 when below and lower-left are walls");
+
+    // case 15 branch where below is not wall and lower-left is wall => H_WALL1 (627-631).
+    at(grid, cx, cy) = PIX_H_WALL1;
+    set_same_neighbors(grid, cx, cy, PIX_H_WALL1, PIX_GRASS1, TO_AROUND);
+    at(grid, cx, cy + 2) = PIX_GRASS1;
+    at(grid, cx - 1, cy + 1) = PIX_H_WALL1;
+    {
+        FixedRandom rng2(2);
+        GameContext c;
+        c.rng = &rng2;
+        GlobalContextGuard guard(&c);
+        (void)s.smooth(cx, cy);
+    }
+    TEST_ASSERT_EQ((int)PIX_H_WALL1, (int)at(grid, cx, cy),
+                   "wall case 15 should choose H_WALL1 when below is open and lower-left is wall");
+}
+REGISTER_TEST(test_smooth_round14_wall_case11_and_case15_branch_matrix);
+
 void test_smooth_round6_query_genre_and_water_tree_edges()
 {
     FixedRandom rng0(0);
