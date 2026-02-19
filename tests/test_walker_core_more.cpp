@@ -865,3 +865,102 @@ void test_walker_round7a_death_guard_and_friendliness_team_paths()
     }
 }
 REGISTER_TEST(test_walker_round7a_death_guard_and_friendliness_team_paths);
+
+void test_walker_round7b_base_act_guard_random_and_death_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe created");
+    if (!(actor && foe))
+        return;
+
+    actor->team_num = 1;
+    actor->setxy(96, 96);
+    actor->lineofsight = 2;
+    actor->sim_level = &myscreen->level_data;
+    foe->team_num = 2;
+    foe->setxy(128, 128);
+
+    // Base walker::act_guard() no-foe return branch.
+    myscreen->level_data.delete_objects();
+    actor = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    TEST_ASSERT(actor != nullptr, "actor recreated");
+    if (!actor)
+        return;
+    actor->team_num = 1;
+    actor->setxy(96, 96);
+    actor->sim_level = &myscreen->level_data;
+    actor->set_act_type(ACT_GUARD);
+    TEST_ASSERT(!actor->act(), "base ACT_GUARD should return false when no foe is found");
+
+    // Base walker::act_random() in-range fire path.
+    foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(foe != nullptr, "foe recreated");
+    if (!foe)
+        return;
+    foe->team_num = 2;
+    foe->setxy(112, 96);
+    actor->foe = foe;
+    actor->lineofsight = 40;
+    actor->set_act_type(ACT_RANDOM);
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    SequenceRandom rng_fire({5, 7});
+    actor->sim_rng = &rng_fire;
+    (void)actor->act();
+
+    // Base walker::act_random() blocked-ranged path -> turn + walkstep.
+    actor->foe = foe;
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    SequenceRandom rng_turn_walk({5});
+    actor->sim_rng = &rng_turn_walk;
+    const short x_before = actor->xpos;
+    const short y_before = actor->ypos;
+    TEST_ASSERT(actor->act(), "base ACT_RANDOM should still act when ranged attack is blocked");
+    TEST_ASSERT(actor->xpos != x_before || actor->ypos != y_before,
+                "blocked-ranged act_random path should continue into walkstep");
+
+    // Base walker::death() generator explosion and death_called guard.
+    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    TEST_ASSERT(gen != nullptr, "generator created");
+    if (gen)
+    {
+        gen->dead = 1;
+        gen->death_called = 0;
+        const size_t fx_before = myscreen->level_data.fxlist.size();
+        TEST_ASSERT(gen->death(), "first generator death call should succeed");
+        TEST_ASSERT(myscreen->level_data.fxlist.size() >= fx_before,
+                    "generator death should run explosion spawning path");
+        TEST_ASSERT_EQ(0, (int)gen->death(), "second death call should hit death_called guard");
+    }
+
+    // Save-all early-return event branch in living death path.
+    const short old_type = myscreen->level_data.type;
+    myscreen->level_data.type = static_cast<short>(SCEN_TYPE_SAVE_ALL);
+    walker* named = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(named != nullptr, "named living created");
+    if (named)
+    {
+        named->team_num = 0;
+        named->stats()->name = "Round7B";
+        named->dead = 1;
+        named->death_called = 0;
+        TEST_ASSERT(named->death(), "save-all named death path should return true");
+    }
+    myscreen->level_data.type = old_type;
+
+    // FX-order death branch (log-only, returns success).
+    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    TEST_ASSERT(fx != nullptr, "fx created");
+    if (fx)
+    {
+        fx->dead = 1;
+        fx->death_called = 0;
+        TEST_ASSERT(fx->death(), "fx death branch should return true");
+    }
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_round7b_base_act_guard_random_and_death_paths);

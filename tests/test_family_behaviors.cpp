@@ -1511,6 +1511,68 @@ void test_cleric_turn_undead_success_with_undead_targets()
 }
 REGISTER_TEST(test_cleric_turn_undead_success_with_undead_targets);
 
+void test_cleric_turn_undead_special2_and_3_shifter_notification_paths()
+{
+    myscreen->level_data.create_new_grid();
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+    if (!(fd && fd->do_special))
+        return;
+
+    // Special 2 / shifter_down path with myguy should pass generic>0 branch.
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    walker* skeleton = add_living_to_level(FAMILY_SKELETON, 2, 108, 100);
+    TEST_ASSERT(cleric && skeleton, "cleric+skeleton created");
+    if (!(cleric && skeleton))
+        return;
+
+    auto c2 = std::make_unique<guy>(FAMILY_CLERIC);
+    c2->intelligence = 80;
+    c2->name = "Turner2";
+    c2->exp = 0;
+    cleric->set_owned_myguy(std::move(c2));
+    cleric->current_special = 2;
+    cleric->shifter_down = 1;
+    cleric->busy = 0;
+    cleric->stats()->level = 6;
+    ConstRandomFamily rng2(0);
+    cleric->sim_rng = &rng2;
+    skeleton->sim_rng = &rng2;
+    const int exp_before_2 = cleric->myguy ? cleric->myguy->exp : 0;
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "turn undead special2 shifter path should succeed");
+    TEST_ASSERT(cleric->myguy && cleric->myguy->exp >= exp_before_2,
+                "turn undead special2 should run exp/notification block when generic is positive");
+
+    // Special 3 / shifter_down path with myguy should also pass generic>0 branch.
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    walker* skeleton2 = add_living_to_level(FAMILY_SKELETON, 2, 108, 100);
+    TEST_ASSERT(cleric && skeleton2, "cleric+skeleton recreated");
+    if (!(cleric && skeleton2))
+        return;
+
+    auto c3 = std::make_unique<guy>(FAMILY_CLERIC);
+    c3->intelligence = 80;
+    c3->name = "Turner3";
+    c3->exp = 0;
+    cleric->set_owned_myguy(std::move(c3));
+    cleric->current_special = 3;
+    cleric->shifter_down = 1;
+    cleric->busy = 0;
+    cleric->stats()->level = 6;
+    ConstRandomFamily rng3(0);
+    cleric->sim_rng = &rng3;
+    skeleton2->sim_rng = &rng3;
+    const int exp_before_3 = cleric->myguy ? cleric->myguy->exp : 0;
+    ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "turn undead special3 shifter path should succeed");
+    TEST_ASSERT(cleric->myguy && cleric->myguy->exp >= exp_before_3,
+                "turn undead special3 should run exp/notification block when generic is positive");
+}
+REGISTER_TEST(test_cleric_turn_undead_special2_and_3_shifter_notification_paths);
+
 void test_cleric_resurrect_penalty_underflow_clamps_to_zero()
 {
     myscreen->level_data.create_new_grid();

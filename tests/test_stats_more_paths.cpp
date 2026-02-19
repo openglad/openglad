@@ -346,3 +346,72 @@ void test_stats_walk_to_foe_short_circuit_and_path_branches()
     ctx().rng = prev_rng;
 }
 REGISTER_TEST(test_stats_walk_to_foe_short_circuit_and_path_branches);
+
+void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+
+    actor->setxy(GRID_SIZE * 10, GRID_SIZE * 10);
+    actor->curdir = FACE_UP;
+    actor->lastx = 0;
+    actor->lasty = -1;
+    actor->stats()->commands.clear();
+
+    // Force only right_back_blocked() to be true for FACE_UP.
+    walker* blocker = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(blocker != nullptr, "blocker created");
+    if (!blocker)
+        return;
+    blocker->team_num = 1;
+    blocker->setxy(static_cast<short>(actor->xpos + 1),
+                   static_cast<short>(actor->ypos + 1));
+
+    struct ExpectedDir {
+        char target_dir;
+        int dx;
+        int dy;
+    };
+    const ExpectedDir expected[] = {
+        {FACE_UP, 0, -1},
+        {FACE_UP_RIGHT, 1, -1},
+        {FACE_RIGHT, 1, 0},
+        {FACE_DOWN_RIGHT, 1, 1},
+        {FACE_DOWN, 0, 1},
+        {FACE_DOWN_LEFT, -1, 1},
+        {FACE_LEFT, -1, 0},
+        {FACE_UP_LEFT, -1, -1},
+    };
+
+    for (const auto& e : expected)
+    {
+        actor->enddir = static_cast<char>((e.target_dir + 6) % 8); // +2 in right_walk => target_dir
+        actor->stats()->commands.clear();
+        TEST_ASSERT(actor->stats()->right_walk(), "right_walk should succeed in right_back_blocked branch");
+        TEST_ASSERT(!actor->stats()->commands.empty(), "right_back_blocked branch should add COMMAND_WALK");
+        if (!actor->stats()->commands.empty())
+        {
+            const command& c = actor->stats()->commands.back();
+            TEST_ASSERT_EQ((int)COMMAND_WALK, (int)c.commandtype, "right_back_blocked branch should enqueue COMMAND_WALK");
+            TEST_ASSERT_EQ(e.dx, (int)c.com1, "mapped walk x should match direction");
+            TEST_ASSERT_EQ(e.dy, (int)c.com2, "mapped walk y should match direction");
+        }
+    }
+
+    // Remove blocker and force the direct_walk()==false fallback switch for FACE_UP.
+    myscreen->level_data.remove_ob(blocker);
+    actor->foe = nullptr;
+    actor->curdir = FACE_UP;
+    actor->enddir = FACE_UP;
+    const short y_before = actor->ypos;
+    TEST_ASSERT(actor->stats()->right_walk(), "right_walk direct-walk fallback should return true");
+    TEST_ASSERT(actor->ypos <= y_before, "FACE_UP fallback should walk in negative y direction");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_stats_right_walk_round7_right_back_and_forward_direction_maps);

@@ -647,3 +647,39 @@ void test_living_act_command_execution_and_autoattackable_edges()
                     "non-living non-generator non-weapon should not be auto-attackable");
 }
 REGISTER_TEST(test_living_act_command_execution_and_autoattackable_edges);
+
+void test_living_round7_act_random_and_do_action_targeted_branches()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto actor = make_living(FAMILY_SOLDIER);
+    auto foe = make_living(FAMILY_ORC);
+    TEST_ASSERT(actor && foe, "actor and foe created");
+    if (!(actor && foe))
+        return;
+
+    actor->team_num = 0;
+    foe->team_num = 1;
+    actor->setxy(100, 100);
+    foe->setxy(120, 100);
+    actor->lineofsight = 40;
+    actor->foe = foe.get();
+
+    // living::act_random fire_check true path through act() dispatch.
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    actor->set_act_type(ACT_RANDOM);
+    bool ok = actor->act();
+    TEST_ASSERT(ok, "living act_random should succeed for in-range foe");
+
+    // living::act_random fire_check false path -> turn + COMMAND_SEARCH.
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    actor->set_act_type(ACT_RANDOM);
+    ok = actor->act();
+    TEST_ASSERT(ok, "living act_random should still succeed when ranged attack is blocked");
+
+    // living::do_action default branch.
+    actor->action = static_cast<char>(99);
+    TEST_ASSERT(!static_cast<living*>(actor.get())->do_action(), "unknown action should return false");
+}
+REGISTER_TEST(test_living_round7_act_random_and_do_action_targeted_branches);
