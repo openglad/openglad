@@ -496,3 +496,28 @@ void test_save_data_save_with_team_entry_and_wrapper_none_path()
     TEST_ASSERT_EQ(1, (int)loaded.team_size, "loaded team should contain one entry");
 }
 REGISTER_TEST(test_save_data_save_with_team_entry_and_wrapper_none_path);
+
+void test_save_data_round8_open_write_failure_and_is_level_completed_paths()
+{
+    SaveData data;
+    data.current_campaign = "round8.campaign";
+    data.completed_levels.clear();
+
+    TEST_ASSERT(!data.is_level_completed(3),
+                "is_level_completed should be false when current campaign is absent");
+
+    data.add_level_completed("round8.campaign", 3);
+    TEST_ASSERT(data.is_level_completed(3),
+                "is_level_completed should be true after adding the level to current campaign");
+    TEST_ASSERT(!data.is_level_completed(99),
+                "is_level_completed should be false for a non-completed level index");
+
+    data.reset_campaign("round8.campaign");
+    TEST_ASSERT(!data.is_level_completed(3),
+                "is_level_completed should become false after reset_campaign");
+
+    const SaveDataIoError err = data.save_with_error("round8/missing_parent_path");
+    TEST_ASSERT_EQ((int)SaveDataIoError::OpenWriteFailed, (int)err,
+                   "save_with_error should report OpenWriteFailed when parent path is missing");
+}
+REGISTER_TEST(test_save_data_round8_open_write_failure_and_is_level_completed_paths);

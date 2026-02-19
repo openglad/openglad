@@ -788,3 +788,62 @@ void test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths()
         TEST_ASSERT_EQ(-1, (int)in_stdio->seek(-1, 0), "stdio seek should fail for negative SET offset");
 }
 REGISTER_TEST(test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths);
+
+void test_og_file_round8_seek_cur_end_and_open_write_failure_paths()
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov" / "round8_seek";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+
+    const fs::path data_path = tmp_dir / "seek_modes.bin";
+    {
+        auto out = og::io::og_open_write(data_path.string().c_str());
+        TEST_ASSERT(out != nullptr, "open write for seek mode file");
+        if (!out)
+            return;
+        const unsigned char bytes[] = {10, 20, 30, 40, 50};
+        TEST_ASSERT(og::io::og_write_exact(*out, bytes, 1, sizeof(bytes)), "write seek mode payload");
+    }
+
+    auto in = og::io::og_open_read((tmp_dir.string() + "/").c_str(), "seek_modes.bin");
+    TEST_ASSERT(in != nullptr, "open stdio-backed input for seek mode checks");
+    if (in)
+    {
+        TEST_ASSERT_EQ(2, (int)in->seek(2, 0), "SEEK_SET should position at offset 2");
+        TEST_ASSERT_EQ(3, (int)in->seek(1, 1), "SEEK_CUR should advance by 1");
+        TEST_ASSERT_EQ(4, (int)in->seek(-1, 2), "SEEK_END with -1 should position at last byte");
+        TEST_ASSERT_EQ(4, (int)in->tell(), "tell should match final offset");
+    }
+
+    auto missing_parent_out = og::io::og_open_write((tmp_dir / "missing" / "nested" / "nope.bin").string().c_str());
+    TEST_ASSERT(missing_parent_out == nullptr, "open_write should fail for missing parent directory");
+}
+REGISTER_TEST(test_og_file_round8_seek_cur_end_and_open_write_failure_paths);
+
+void test_zip_platform_round8_open_archive_and_mount_error_paths()
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov" / "round8_zip";
+    const fs::path missing_parent_archive = tmp_dir / "missing" / "archive.zip";
+    std::error_code ec;
+    fs::remove_all(tmp_dir, ec);
+    fs::create_directories(tmp_dir, ec);
+
+    const ArchiveIoError zip_err = zip_contents_with_error(tmp_dir.string(), missing_parent_archive.string());
+    TEST_ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)zip_err,
+                   "zip_contents_with_error should report OpenArchiveFailed for missing parent");
+
+    const ArchiveIoError unzip_err = unzip_into_with_error((tmp_dir / "does_not_exist.zip").string(),
+                                                           (tmp_dir / "out").string());
+    TEST_ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)unzip_err,
+                   "unzip_into_with_error should report OpenArchiveFailed for missing archive");
+
+    const std::string prev = ctx().mounted_campaign;
+    ctx().mounted_campaign.clear();
+    std::map<std::string, int> current_levels;
+    TEST_ASSERT_EQ(-2, load_campaign("definitely.not.a.campaign", current_levels, 5),
+                   "load_campaign should map mount failure to -2");
+    ctx().mounted_campaign = prev;
+}
+REGISTER_TEST(test_zip_platform_round8_open_archive_and_mount_error_paths);

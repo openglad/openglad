@@ -2597,3 +2597,72 @@ void test_druid_round6_protection_existing_circle_and_blocked_faerie_paths()
     (void)fd->do_special(druid);
 }
 REGISTER_TEST(test_druid_round6_protection_existing_circle_and_blocked_faerie_paths);
+
+void test_family_round8_mage_thief_soldier_callback_edge_paths()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
+    const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
+    const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
+    TEST_ASSERT(mage_fd && mage_fd->check_special_ai && mage_fd->do_special, "mage callbacks exist");
+    TEST_ASSERT(thief_fd && thief_fd->check_special_ai, "thief callback exists");
+    TEST_ASSERT(soldier_fd && soldier_fd->on_fire_weapon, "soldier callback exists");
+    if (!(mage_fd && thief_fd && soldier_fd && mage_fd->check_special_ai && mage_fd->do_special &&
+          thief_fd->check_special_ai && soldier_fd->on_fire_weapon))
+        return;
+
+    walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    if (!mage)
+        return;
+
+    // Mage AI returns false when 1-3 foes are in range.
+    add_living_to_level(FAMILY_ORC, 1, 120, 100);
+    add_living_to_level(FAMILY_ORC, 1, 130, 100);
+    TEST_ASSERT(!mage_fd->check_special_ai(static_cast<living*>(mage)),
+                "mage special AI should be false with 1-3 nearby foes");
+
+    // Teleport special hard guard while already in teleport animation.
+    mage->current_special = 1;
+    mage->ani_type = ANI_TELE_OUT;
+    TEST_ASSERT(!mage_fd->do_special(mage),
+                "mage teleport special should fail while already teleporting");
+
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
+    walker* foe = add_living_to_level(FAMILY_ORC, 1, 150, 100);
+    TEST_ASSERT(thief && foe, "thief and foe created");
+    if (thief && foe)
+    {
+        thief->current_special = 1;
+        thief->foe = foe;
+        TEST_ASSERT(!thief_fd->check_special_ai(static_cast<living*>(thief)),
+                    "thief bomb AI should reject medium-range foe distance");
+    }
+
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(soldier && weapon, "soldier and weapon created");
+    if (soldier && weapon)
+    {
+        living* lv = static_cast<living*>(soldier);
+        const float mp_before = soldier->stats()->magicpoints;
+        lv->weapons_left = 0;
+        TEST_ASSERT(!soldier_fd->on_fire_weapon(soldier, weapon),
+                    "soldier on_fire_weapon should fail and consume weapon when no weapons_left");
+        TEST_ASSERT(weapon->dead == 1, "soldier fallback should mark weapon dead");
+        TEST_ASSERT(soldier->stats()->magicpoints >= mp_before,
+                    "soldier fallback should refund weapon cost to magicpoints");
+
+        weapon->dead = 0;
+        lv->weapons_left = 2;
+        TEST_ASSERT(soldier_fd->on_fire_weapon(soldier, weapon),
+                    "soldier on_fire_weapon should succeed when weapons_left > 0");
+        TEST_ASSERT_EQ(1, (int)lv->weapons_left, "soldier on_fire_weapon should decrement weapons_left");
+    }
+}
+REGISTER_TEST(test_family_round8_mage_thief_soldier_callback_edge_paths);
