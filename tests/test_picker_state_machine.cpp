@@ -394,3 +394,34 @@ void test_picker_state_batch7_team_build_play_game_path()
     TEST_ASSERT_EQ(1, client.run_game_calls, "PlayGame from team build should enter playing state");
 }
 REGISTER_TEST(test_picker_state_batch7_team_build_play_game_path);
+
+void test_picker_state_show_main_menu_null_immediate_maps_to_quit()
+{
+    MenuOnlyPickerClient client;
+    client.scripted_results = {nullptr};
+    const og::ui::MainMenuAction action = client.show_main_menu();
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::MainMenuAction::Quit),
+                   static_cast<int>(action),
+                   "null selection should map directly to Quit");
+    TEST_ASSERT_EQ(0, client.handle_calls, "null immediate path should not call handle_menu_item");
+}
+REGISTER_TEST(test_picker_state_show_main_menu_null_immediate_maps_to_quit);
+
+void test_picker_state_show_team_build_unknown_then_start_game()
+{
+    MenuOnlyPickerClient client;
+    static const og::ui::PickerMenuItem unknown{
+        "noop", "noop", og::ui::PickerMenuCommand::SetDifficulty, 0
+    };
+    static const og::ui::PickerMenuItem go{
+        "go", "GO!", og::ui::PickerMenuCommand::StartGame, 0
+    };
+
+    client.scripted_results = {&unknown, &go};
+    const og::ui::TeamBuildAction action = client.show_team_build();
+    TEST_ASSERT_EQ(static_cast<int>(og::ui::TeamBuildAction::PlayGame),
+                   static_cast<int>(action),
+                   "unknown command should be handled and loop until StartGame");
+    TEST_ASSERT_EQ(1, client.handle_calls, "unknown team-build command should call handle_menu_item once");
+}
+REGISTER_TEST(test_picker_state_show_team_build_unknown_then_start_game);

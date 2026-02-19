@@ -356,3 +356,71 @@ void test_treasure_batch7_explicit_fxlist_teleporter_branches()
     fx.clear();
 }
 REGISTER_TEST(test_treasure_batch7_explicit_fxlist_teleporter_branches);
+
+void test_treasure_set_direct_frame_updates_frame_without_render_component()
+{
+    treasure t;
+    TEST_ASSERT_EQ(0, (int)t.query_frame(), "new treasure should start on frame 0");
+    t.set_direct_frame(7);
+    TEST_ASSERT_EQ(7, (int)t.query_frame(), "set_direct_frame should update frame even without render component");
+}
+REGISTER_TEST(test_treasure_set_direct_frame_updates_frame_without_render_component);
+
+void test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps()
+{
+    myscreen->level_data.delete_objects();
+    auto& fx = myscreen->level_data.fxlist;
+    fx.clear();
+
+    auto before = std::make_unique<treasure>();
+    before->sim_level = &myscreen->level_data;
+    before->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    before->stats()->level = 4;
+    walker* before_ptr = before.get();
+    fx.push_back(std::move(before));
+
+    auto self = std::make_unique<treasure>();
+    self->sim_level = &myscreen->level_data;
+    self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    self->stats()->level = 4;
+    walker* self_ptr = self.get();
+    fx.push_back(std::move(self));
+
+    fx.push_back(std::unique_ptr<walker>{}); // null entry
+
+    auto dead = std::make_unique<treasure>();
+    dead->sim_level = &myscreen->level_data;
+    dead->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    dead->stats()->level = 4;
+    dead->dead = 1;
+    fx.push_back(std::move(dead));
+
+    auto wrong_family = std::make_unique<treasure>();
+    wrong_family->sim_level = &myscreen->level_data;
+    wrong_family->set_order_family(Order::Treasure, FAMILY_GOLD_BAR);
+    wrong_family->stats()->level = 4;
+    fx.push_back(std::move(wrong_family));
+
+    auto wrong_level = std::make_unique<treasure>();
+    wrong_level->sim_level = &myscreen->level_data;
+    wrong_level->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    wrong_level->stats()->level = 5;
+    fx.push_back(std::move(wrong_level));
+
+    auto after = std::make_unique<treasure>();
+    after->sim_level = &myscreen->level_data;
+    after->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    after->stats()->level = 4;
+    walker* after_ptr = after.get();
+    fx.push_back(std::move(after));
+
+    walker* found = static_cast<treasure*>(self_ptr)->find_teleport_target();
+    TEST_ASSERT(found == after_ptr, "forward search should skip invalid entries and find later valid teleporter");
+
+    static_cast<treasure*>(after_ptr)->dead = 1;
+    found = static_cast<treasure*>(self_ptr)->find_teleport_target();
+    TEST_ASSERT(found == before_ptr, "when forward candidates are invalid, search should wrap to earlier match");
+
+    fx.clear();
+}
+REGISTER_TEST(test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps);
