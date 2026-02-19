@@ -279,3 +279,29 @@ void test_treasure_find_teleport_target_loop_and_missing_self()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_treasure_find_teleport_target_loop_and_missing_self);
+
+void test_treasure_eat_default_fallback_and_teleporter_wraparound()
+{
+    treasure t;
+    t.set_order_family(Order::Treasure, 127);
+    TEST_ASSERT(t.eat_me(nullptr), "unknown treasure family should take default eat_me path");
+
+    myscreen->level_data.delete_objects();
+    walker* tele_a = make_treasure(FAMILY_TELEPORTER, 9);
+    walker* tele_b = make_treasure(FAMILY_TELEPORTER, 9);
+    walker* tele_c = make_treasure(FAMILY_TELEPORTER, 9);
+    TEST_ASSERT(tele_a && tele_b && tele_c, "teleporters created");
+    if (!(tele_a && tele_b && tele_c))
+        return;
+
+    tele_a->setxy(60, 100);
+    tele_b->setxy(80, 100);
+    tele_c->setxy(100, 100);
+    tele_a->dead = 1; // force wraparound search to skip dead teleporter
+
+    walker* target = static_cast<treasure*>(tele_c)->find_teleport_target();
+    TEST_ASSERT(target == tele_b, "teleporter at list tail should wrap and find earlier same-level target");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_treasure_eat_default_fallback_and_teleporter_wraparound);

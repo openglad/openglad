@@ -607,3 +607,56 @@ void test_zip_api_missing_input_dir_exists_guard_path()
     fs::remove(archive, ec);
 }
 REGISTER_TEST(test_zip_api_missing_input_dir_exists_guard_path);
+
+void test_platform_io_restore_defaults_and_load_campaign_unmount_error_path()
+{
+    namespace fs = std::filesystem;
+    const std::string user = get_user_path();
+    const fs::path user_campaigns = fs::path(user) / "campaigns";
+    const fs::path user_cfg = fs::path(user) / "cfg";
+    std::error_code ec;
+
+    // Force copy_file error branches by removing destination parent directories.
+    fs::remove_all(user_campaigns, ec);
+    fs::remove_all(user_cfg, ec);
+    restore_default_campaigns();
+    restore_default_settings();
+
+    // Then exercise success branches by recreating destination parents.
+    fs::create_directories(user_campaigns, ec);
+    fs::create_directories(user_cfg, ec);
+    restore_default_campaigns();
+    restore_default_settings();
+
+    const std::string prev = ctx().mounted_campaign;
+    ctx().mounted_campaign = "definitely.not.a.campaign";
+    std::map<std::string, int> current_levels;
+    TEST_ASSERT_EQ(-3, load_campaign("org.openglad.gladiator", current_levels, 9),
+                   "load_campaign should map unmount failure to -3");
+    ctx().mounted_campaign = prev;
+}
+REGISTER_TEST(test_platform_io_restore_defaults_and_load_campaign_unmount_error_path);
+
+void test_read_pixie_file_truncated_header_path()
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
+    const fs::path pix_header_bad = tmp_dir / "bad_header.pix";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+
+    {
+        std::FILE* f = std::fopen(pix_header_bad.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create truncated-header pix");
+        if (!f)
+            return;
+        const unsigned char partial_header[] = {1, 2}; // missing h byte
+        std::fwrite(partial_header, 1, sizeof(partial_header), f);
+        std::fclose(f);
+    }
+
+    PixieData bad_header = read_pixie_file(pix_header_bad.string().c_str());
+    TEST_ASSERT(bad_header.data == nullptr, "truncated pix header should fail");
+    fs::remove(pix_header_bad, ec);
+}
+REGISTER_TEST(test_read_pixie_file_truncated_header_path);

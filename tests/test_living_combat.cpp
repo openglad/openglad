@@ -594,3 +594,31 @@ void test_obmap_query_list_door_unlock_and_lock_branches()
     (void)map.remove(nocollide_door);
 }
 REGISTER_TEST(test_obmap_query_list_door_unlock_and_lock_branches);
+
+void test_living_act_invisibility_skip_exit_and_action_command_paths()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->set_act_type(ACT_GUARD);
+    w->invisibility_left = 2;
+    w->outline = 7;
+    w->skip_exit = 2;
+    w->action = ACTION_FOLLOW;
+    w->user = -1;
+    w->foe = nullptr;
+    w->leader = nullptr;
+    bool r = w->act();
+    (void)r;
+    TEST_ASSERT_EQ(1, (int)w->invisibility_left, "invisibility should decrement when active");
+    TEST_ASSERT_EQ(7, (int)w->outline, "outline should remain while invisibility is active");
+    TEST_ASSERT_EQ(1, (int)w->skip_exit, "skip_exit should decrement");
+
+    // Unknown act_type should take default branch and return false.
+    w->set_act_type(static_cast<char>(99));
+    r = w->act();
+    TEST_ASSERT(!r, "unknown act type should return false");
+}
+REGISTER_TEST(test_living_act_invisibility_skip_exit_and_action_command_paths);

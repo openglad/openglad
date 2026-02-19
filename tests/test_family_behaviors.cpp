@@ -2283,3 +2283,80 @@ void test_family_batch6_soldier_orc_mage_callback_edge_branches()
     }
 }
 REGISTER_TEST(test_family_batch6_soldier_orc_mage_callback_edge_branches);
+
+void test_cleric_raise_and_resurrect_distance_and_busy_guards()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+    if (!(fd && fd->do_special))
+        return;
+
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    if (!cleric)
+        return;
+
+    // Turn-undead busy guard.
+    cleric->current_special = 2;
+    cleric->shifter_down = 1;
+    cleric->busy = 1;
+    TEST_ASSERT(!fd->do_special(cleric), "turn undead should fail while busy");
+    cleric->busy = 0;
+
+    // Raise skeleton distance guard.
+    walker* blood_far = add_stain_to_fxlist(1, 250, 100);
+    TEST_ASSERT(blood_far != nullptr, "far blood created");
+    cleric->current_special = 2;
+    cleric->shifter_down = 0;
+    TEST_ASSERT(!fd->do_special(cleric), "raise skeleton should fail when blood is out of range");
+    if (blood_far)
+        blood_far->dead = 1;
+
+    // Raise ghost distance guard.
+    walker* blood_far2 = add_stain_to_fxlist(1, 180, 100);
+    TEST_ASSERT(blood_far2 != nullptr, "second far blood created");
+    cleric->current_special = 3;
+    cleric->shifter_down = 0;
+    TEST_ASSERT(!fd->do_special(cleric), "raise ghost should fail when blood is out of range");
+    if (blood_far2)
+        blood_far2->dead = 1;
+
+    // Resurrect path distance guard.
+    walker* blood_far3 = add_stain_to_fxlist(0, 250, 100);
+    TEST_ASSERT(blood_far3 != nullptr, "third far blood created");
+    cleric->current_special = 4;
+    TEST_ASSERT(!fd->do_special(cleric), "resurrect should fail when blood is out of range");
+}
+REGISTER_TEST(test_cleric_raise_and_resurrect_distance_and_busy_guards);
+
+void test_druid_special_busy_and_friend_count_guards()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    const auto* fd = get_family_descriptor(FAMILY_DRUID);
+    TEST_ASSERT(fd && fd->do_special, "druid do_special present");
+    if (!(fd && fd->do_special))
+        return;
+
+    walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
+    TEST_ASSERT(druid != nullptr, "druid created");
+    if (!druid)
+        return;
+
+    druid->busy = 1;
+    druid->current_special = 1;
+    TEST_ASSERT(!fd->do_special(druid), "druid tree special should fail while busy");
+    druid->current_special = 2;
+    TEST_ASSERT(!fd->do_special(druid), "druid summon special should fail while busy");
+    druid->current_special = 3;
+    TEST_ASSERT(!fd->do_special(druid), "druid reveal special should fail while busy");
+    druid->current_special = 4;
+    TEST_ASSERT(!fd->do_special(druid), "druid protection special should fail while busy");
+
+    druid->busy = 0;
+    druid->current_special = 4;
+    TEST_ASSERT(!fd->do_special(druid), "druid protection should fail with no nearby allies");
+}
+REGISTER_TEST(test_druid_special_busy_and_friend_count_guards);
