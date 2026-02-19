@@ -100,6 +100,7 @@ namespace
 // Optional test-only override for yes_or_no_prompt(). When empty, the function
 // falls back to returning the provided default_value.
 std::vector<bool> s_yes_or_no_overrides;
+bool s_force_real_dialogs = false;
 }
 
 void picker_testing_yes_or_no_queue_clear()
@@ -111,19 +112,27 @@ void picker_testing_yes_or_no_queue_push(bool value)
 {
     s_yes_or_no_overrides.push_back(value);
 }
+
+void picker_testing_set_force_real_dialogs(bool enabled)
+{
+    s_force_real_dialogs = enabled;
+}
 #endif
 
 bool yes_or_no_prompt(const char* title, const char* message, bool default_value)
 {
     Log("{}, {}: \n", title, message);
 #ifdef TESTING
-    if (!s_yes_or_no_overrides.empty())
+    if (!s_force_real_dialogs)
     {
-        bool v = s_yes_or_no_overrides.front();
-        s_yes_or_no_overrides.erase(s_yes_or_no_overrides.begin());
-        return v;
+        if (!s_yes_or_no_overrides.empty())
+        {
+            bool v = s_yes_or_no_overrides.front();
+            s_yes_or_no_overrides.erase(s_yes_or_no_overrides.begin());
+            return v;
+        }
+        return default_value;
     }
-    return default_value;
 #endif
 
     myscreen->darken_screen();
@@ -219,6 +228,10 @@ bool yes_or_no_prompt(const char* title, const char* message, bool default_value
 bool no_or_yes_prompt(const char* title, const char* message, bool default_value)
 {
     Log("{}, {}: \n", title, message);
+#ifdef TESTING
+    if (!s_force_real_dialogs)
+        return default_value;
+#endif
 
     myscreen->darken_screen();
 
@@ -314,8 +327,11 @@ void popup_dialog(const char* title, const char* message)
 {
     Log("{}, {}\n", title, message);
 #ifdef TESTING
-    TRACE("popup", "%s: %s", title, message);
-    return;
+    if (!s_force_real_dialogs)
+    {
+        TRACE("popup", "%s: %s", title, message);
+        return;
+    }
 #endif
 
     myscreen->darken_screen();

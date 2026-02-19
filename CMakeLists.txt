@@ -1133,6 +1133,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)

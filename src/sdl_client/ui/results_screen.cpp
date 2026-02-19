@@ -23,6 +23,9 @@
 // For deterministic helper-only test coverage.
 #ifdef TESTING
 #include <openglad/ui/results_screen.h>
+namespace {
+bool s_force_full_results_ui = false;
+}
 #endif
 
 #ifdef OUYA
@@ -77,10 +80,13 @@ void show_ending_popup(int ending, int nextlevel)
 bool results_screen(int ending, int nextlevel)
 {
 #ifdef TESTING
-    // In test mode we still want to exercise the "ending" branching logic,
-    // but must avoid modal UI loops that would hang CI.
-    show_ending_popup(ending, nextlevel);
-    return false;
+    if (!s_force_full_results_ui)
+    {
+        // In test mode we still want to exercise the "ending" branching logic,
+        // but must avoid modal UI loops that would hang CI.
+        show_ending_popup(ending, nextlevel);
+        return false;
+    }
 #endif
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
@@ -355,11 +361,14 @@ Uint32 get_time_bonus(int playernum)
 bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std::map<int, walker*>& after)
 {
 #ifdef TESTING
-    // Same rationale as the 2-arg overload: cover branching without UI loops.
-    show_ending_popup(ending, nextlevel);
-    (void)before;
-    (void)after;
-    return false;
+    if (!s_force_full_results_ui)
+    {
+        // Same rationale as the 2-arg overload: cover branching without UI loops.
+        show_ending_popup(ending, nextlevel);
+        (void)before;
+        (void)after;
+        return false;
+    }
 #endif
     // Popup the ending dialog
     show_ending_popup(ending, nextlevel);
@@ -813,6 +822,11 @@ bool results_screen(int ending, int nextlevel, std::map<int, guy*>& before, std:
 }
 
 #ifdef TESTING
+void results_screen_testing_set_force_full(bool enabled)
+{
+    s_force_full_results_ui = enabled;
+}
+
 int results_screen_test_exercise_internal()
 {
     // Exercise the core computation helpers in this TU without entering any
