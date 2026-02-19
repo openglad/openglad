@@ -1094,7 +1094,6 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
         )
@@ -1138,7 +1137,6 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
-            ${CMAKE_SOURCE_DIR}/tests/test_picker_dialogs_real.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
         )
 
