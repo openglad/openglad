@@ -17,6 +17,7 @@
 #include <openglad/data/gparser.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
+#include <openglad/sim/irandom.h>
 #include "test_framework.h"
 #include <cmath>
 #include <algorithm>
@@ -1175,6 +1176,47 @@ void test_archmage_special_case2_case3_case4_guard_branches()
     TEST_ASSERT(!fd->do_special(arch), "mind control should fail with no nearby foes");
 }
 REGISTER_TEST(test_archmage_special_case2_case3_case4_guard_branches);
+
+void test_archmage_hit_response_threshold_and_retarget_branches()
+{
+    myscreen->level_data.create_new_grid();
+    walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
+    walker* foe = add_living_to_level(FAMILY_ORC, 1, 132, 100);
+    TEST_ASSERT(arch != nullptr && foe != nullptr, "archmage and foe should be created");
+    const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    TEST_ASSERT(fd && fd->hit_response, "archmage hit_response callback exists");
+    if (!(arch && foe && fd && fd->hit_response))
+        return;
+
+    FixedRandom rng1(1); // non-zero rng(3) to trigger the low-HP special branch
+    arch->sim_rng = &rng1;
+    arch->stats()->special_cost[1] = 0;
+    arch->stats()->magicpoints = 500;
+    arch->stats()->level = 9;
+    arch->stats()->max_hitpoints = 100;
+    arch->stats()->hitpoints = 10;
+    arch->foe = nullptr;
+    arch->busy = 10;
+    arch->shifter_down = 1;
+
+    fd->hit_response(arch->stats(), foe);
+    TEST_ASSERT_EQ(1, (int)arch->current_special, "low HP archmage should choose special 1");
+    TEST_ASSERT_EQ(0, (int)arch->shifter_down, "low HP branch should clear shifter flag");
+
+    // Exercise the retargeting/foe-assignment branch in the non-threshold path.
+    arch->stats()->hitpoints = 90;
+    arch->foe = nullptr;
+    foe->foe = nullptr;
+    arch->stats()->last_distance = 1;
+    arch->stats()->current_distance = 2;
+    fd->hit_response(arch->stats(), foe);
+
+    TEST_ASSERT(arch->foe == foe, "non-threshold branch should retarget controller to attacker");
+    TEST_ASSERT(foe->foe == arch, "non-threshold branch should set attacker foe back to controller");
+    TEST_ASSERT_EQ(15000, (int)arch->stats()->last_distance, "retarget should reset last_distance");
+    TEST_ASSERT_EQ(15000, (int)arch->stats()->current_distance, "retarget should reset current_distance");
+}
+REGISTER_TEST(test_archmage_hit_response_threshold_and_retarget_branches);
 
 // --- handle_teleport: mage teleport-out completes ---
 void test_mage_handle_teleport()

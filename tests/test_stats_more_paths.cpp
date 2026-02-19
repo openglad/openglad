@@ -193,3 +193,22 @@ void test_stats_blocked_helpers_default_dir_branches()
     (void)w->stats()->forward_blocked();
 }
 REGISTER_TEST(test_stats_blocked_helpers_default_dir_branches);
+
+void test_stats_forward_and_side_blocked_invalid_direction_defaults()
+{
+    auto w = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    myscreen->level_data.create_new_grid();
+    w->setxy(GRID_SIZE * 4, GRID_SIZE * 4);
+    w->curdir = static_cast<char>(127);
+    w->enddir = static_cast<char>(127);
+
+    TEST_ASSERT(!w->stats()->forward_blocked(), "invalid curdir should fall back to no forward block");
+    TEST_ASSERT(!w->stats()->right_forward_blocked(), "invalid curdir should fall back to no right-forward block");
+    TEST_ASSERT(!w->stats()->right_back_blocked(), "invalid curdir should fall back to no right-back block");
+    TEST_ASSERT(w->stats()->right_walk(), "invalid direction fallback in right_walk should still return true");
+}
+REGISTER_TEST(test_stats_forward_and_side_blocked_invalid_direction_defaults);
