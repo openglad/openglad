@@ -339,6 +339,46 @@ void test_walker_friendliness_null_dead_and_allied_mode_paths()
 }
 REGISTER_TEST(test_walker_friendliness_null_dead_and_allied_mode_paths);
 
+void test_walker_batch2_misc_uncovered_paths_smoke()
+{
+    auto w = create_living(FAMILY_SOLDIER);
+    auto t = create_living(FAMILY_ORC);
+    TEST_ASSERT(w && t, "walkers created");
+    if (!(w && t))
+        return;
+
+    // move_myguy_to(nullptr) small branch.
+    w->move_myguy_to(nullptr);
+
+    // default virtual-like hooks that log and return fallback values.
+    TEST_ASSERT(w->eat_me(t.get()) == 0, "eat_me non-treasure fallback should return 0");
+    (void)w->do_summon(1, 5);
+    (void)w->check_special();
+
+    // set_difficulty branches.
+    w->team_num = 1;
+    w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    w->set_difficulty(3);
+    w->set_order_family(Order::Generator, FAMILY_TENT);
+    w->set_difficulty(3);
+
+    // act_generate / act_fire / act_guard / act_random smoke via public act().
+    w->set_order_family(Order::Generator, FAMILY_TENT);
+    w->stats()->level = 5;
+    w->set_act_type(ACT_GENERATE);
+    (void)w->act();
+    w->set_order_family(Order::Weapon, FAMILY_ARROW);
+    w->lineofsight = 1;
+    w->set_act_type(ACT_FIRE);
+    (void)w->act();
+    w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    w->set_act_type(ACT_GUARD);
+    (void)w->act();
+    w->set_act_type(ACT_RANDOM);
+    (void)w->act();
+}
+REGISTER_TEST(test_walker_batch2_misc_uncovered_paths_smoke);
+
 void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
 {
     auto shooter = create_living(FAMILY_CLERIC);

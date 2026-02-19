@@ -18,6 +18,7 @@ extern screen* myscreen;
 
 short load_scenario_version(og::io::OgFile& infile, LevelData* data, short version);
 bool save_grid_file(const char* gridname, const PixieData& grid);
+short remaining_foes(LevelData& level, walker* myguy);
 
 namespace {
 
@@ -260,3 +261,33 @@ void test_level_data_set_sim_context_wires_pointers()
     TEST_ASSERT(true, "set_sim_context should accept valid pointer set");
 }
 REGISTER_TEST(test_level_data_set_sim_context_wires_pointers);
+
+void test_level_data_batch2_misc_uncovered_paths_smoke()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* a = add_living(FAMILY_SOLDIER);
+    walker* b = add_living(FAMILY_ORC);
+    TEST_ASSERT(a && b, "walkers created");
+    if (!(a && b))
+        return;
+
+    a->team_num = 0;
+    b->team_num = 1;
+    a->setxy(64, 64);
+    b->setxy(96, 64);
+
+    // remaining_foes helper.
+    TEST_ASSERT(remaining_foes(myscreen->level_data, a) >= 0, "remaining_foes should run");
+
+    // query_passable wrappers.
+    TEST_ASSERT(myscreen->level_data.query_passable(64.0f, 64.0f, a) == (myscreen->level_data.query_grid_passable(64.0f, 64.0f, a)
+        && myscreen->level_data.query_object_passable(64.0f, 64.0f, a)),
+        "query_passable should compose grid/object checks");
+
+    // entity search null-protected paths.
+    TEST_ASSERT(myscreen->level_data.find_near_foe(nullptr) == nullptr, "find_near_foe null should return null");
+    TEST_ASSERT(myscreen->level_data.find_far_foe(nullptr) == nullptr, "find_far_foe null should return null");
+}
+REGISTER_TEST(test_level_data_batch2_misc_uncovered_paths_smoke);

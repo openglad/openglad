@@ -54,3 +54,32 @@ void test_stats_set_and_try_command_random_walk_paths()
     set_global_context(nullptr);
 }
 REGISTER_TEST(test_stats_set_and_try_command_random_walk_paths);
+
+void test_stats_batch2_command_edge_paths_smoke()
+{
+    walker w;
+    statistics s(&w);
+
+    w.default_weapon = FAMILY_KNIFE;
+    w.current_weapon = FAMILY_ARROW;
+    w.team_num = 1;
+    w.real_team_num = 0;
+
+    // clear_command branch that restores weapon/team and clears leader.
+    s.clear_command();
+    TEST_ASSERT_EQ((int)FAMILY_KNIFE, (int)w.current_weapon, "clear_command should restore default weapon");
+    TEST_ASSERT_EQ(0, (int)w.team_num, "clear_command should restore real team");
+    TEST_ASSERT_EQ(255, (int)w.real_team_num, "clear_command should reset real team marker");
+
+    // Add follow command (logging branch) and walk clamping branches.
+    s.add_command(COMMAND_FOLLOW, 1, 0, 0);
+    s.add_command(COMMAND_WALK, 1, 9, 9);
+    s.add_command(COMMAND_WALK, 1, -9, -9);
+    s.force_command(COMMAND_WALK, 1, 0, 0);
+    TEST_ASSERT(!s.commands.empty(), "commands should be enqueued");
+
+    // set_command COMMAND_DIE logging branch.
+    s.set_command(COMMAND_DIE, 1, 0, 0);
+    TEST_ASSERT(!s.commands.empty(), "set_command should enqueue command");
+}
+REGISTER_TEST(test_stats_batch2_command_edge_paths_smoke);
