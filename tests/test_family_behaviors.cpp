@@ -405,6 +405,19 @@ static walker* add_living_to_level(int family, int team, short x, short y)
     return ob;
 }
 
+class ConstRandomFamily : public IRandom {
+public:
+    explicit ConstRandomFamily(Uint32 value) : value_(value) {}
+    Uint32 next(Uint32 max_exclusive) override
+    {
+        if (max_exclusive == 0)
+            return 0;
+        return value_ % max_exclusive;
+    }
+private:
+    Uint32 value_;
+};
+
 // Soldier: foe within 20-75 → true; outside → false
 void test_check_special_soldier_range()
 {
@@ -1865,6 +1878,124 @@ void test_soldier_batch3_special_ai_and_fire_callback_paths()
     TEST_ASSERT_EQ(1, (int)static_cast<living*>(soldier)->weapons_left, "successful throw should decrement weapons_left");
 }
 REGISTER_TEST(test_soldier_batch3_special_ai_and_fire_callback_paths);
+
+void test_family_batch4_druid_refresh_oblist_and_failure_branches()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    const auto* fd = get_family_descriptor(FAMILY_DRUID);
+    TEST_ASSERT(fd && fd->do_special, "druid callback present");
+    if (!(fd && fd->do_special))
+        return;
+
+    walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
+    walker* ally1 = add_living_to_level(FAMILY_SOLDIER, 0, 108, 100);
+    walker* ally2 = add_living_to_level(FAMILY_ARCHER, 0, 112, 100);
+    TEST_ASSERT(druid && ally1 && ally2, "druid and allies created");
+    if (!(druid && ally1 && ally2))
+        return;
+
+    druid->stats()->magicpoints = 1000;
+    druid->stats()->level = 6;
+    druid->set_owned_myguy(std::make_unique<guy>(FAMILY_DRUID));
+
+    // Force fire() fail paths for cases 1 and 2.
+    druid->stats()->weapon_cost = 9999;
+    druid->current_special = 1;
+    druid->busy = 0;
+    (void)fd->do_special(druid);
+    druid->current_special = 2;
+    (void)fd->do_special(druid);
+    druid->stats()->weapon_cost = 0;
+
+    // Summon faerie passability failure path.
+    druid->current_special = 2;
+    druid->setxy(-200, -200);
+    TEST_ASSERT(!fd->do_special(druid), "summon faerie should fail when spawn tile is impassable");
+    druid->setxy(100, 100);
+
+    // Protection refresh branch requires existing circle in oblist.
+    walker* existing = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    TEST_ASSERT(existing != nullptr, "existing protection object created");
+    if (existing) {
+        existing->owner = ally1;
+        existing->stats()->hitpoints = 5;
+    }
+    druid->current_special = 4;
+    druid->busy = 0;
+    TEST_ASSERT(fd->do_special(druid), "protection should succeed with multiple allies");
+    if (existing)
+        TEST_ASSERT(existing->stats()->hitpoints >= 5.0f, "existing protection HP should be refreshed");
+}
+REGISTER_TEST(test_family_batch4_druid_refresh_oblist_and_failure_branches);
+
+void test_family_batch4_soldier_orc_thief_edge_callbacks()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* sold_fd = get_family_descriptor(FAMILY_SOLDIER);
+    const auto* orc_fd = get_family_descriptor(FAMILY_ORC);
+    const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
+    TEST_ASSERT(sold_fd && orc_fd && thief_fd, "family descriptors available");
+    if (!(sold_fd && orc_fd && thief_fd))
+        return;
+
+    // Soldier default-special branch.
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 100, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    if (soldier) {
+        soldier->current_special = 99;
+        TEST_ASSERT(sold_fd->do_special(soldier), "unknown soldier special should fall through and succeed");
+        soldier->foe = nullptr;
+        TEST_ASSERT(!sold_fd->check_special_ai(static_cast<living*>(soldier)),
+                    "soldier AI should fail with no nearby foe");
+    }
+
+    // Orc AI no-foe branch and default corpse message path.
+    walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
+    TEST_ASSERT(orc != nullptr, "orc created");
+    if (orc) {
+        orc->foe = nullptr;
+        TEST_ASSERT(!orc_fd->check_special_ai(static_cast<living*>(orc)),
+                    "orc AI should fail with no nearby foe");
+
+        orc->current_special = 2;
+        orc->stats()->hitpoints = orc->stats()->max_hitpoints - 10.0f;
+        orc->stats()->name.clear();
+        orc->clear_myguy();
+        walker* blood = add_stain_to_fxlist(1, 101, 100);
+        TEST_ASSERT(blood != nullptr, "blood stain for eat-corpse created");
+        if (blood)
+            blood->stats()->level = 2;
+        TEST_ASSERT(orc_fd->do_special(orc), "orc should eat corpse via default message branch");
+        TEST_ASSERT_EQ(1, (int)orc_fd->promotion_new_level(42), "orc promotion callback should return level 1");
+    }
+
+    // Thief: drop bomb AI run-away and charm success branch.
+    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
+    walker* foe = add_living_to_level(FAMILY_SOLDIER, 1, 110, 100);
+    TEST_ASSERT(thief && foe, "thief and foe created");
+    if (thief && foe) {
+        ConstRandomFamily rng_nonzero(1);
+        thief->sim_rng = &rng_nonzero;
+        thief->stats()->magicpoints = 1000;
+
+        thief->current_special = 1;
+        thief->user = -1;
+        TEST_ASSERT(thief_fd->do_special(thief), "drop bomb should succeed and schedule run-away for AI");
+
+        thief->current_special = 3;
+        thief->shifter_down = 1;
+        thief->busy = 0;
+        thief->stats()->level = 9;
+        foe->stats()->level = 1;
+        thief->foe = foe;
+        TEST_ASSERT(thief_fd->do_special(thief), "charm should succeed with favorable deterministic RNG");
+        TEST_ASSERT(foe->team_num == thief->team_num, "successful charm should switch foe team");
+    }
+}
+REGISTER_TEST(test_family_batch4_soldier_orc_thief_edge_callbacks);
 
 void test_mage_batch3_special_and_promotion_branches()
 {

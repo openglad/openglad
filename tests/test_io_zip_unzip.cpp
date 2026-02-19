@@ -142,3 +142,41 @@ void test_io_zip_contents_with_error_missing_input_directory_path()
                 "missing input dir should not report add-entry errors");
 }
 REGISTER_TEST(test_io_zip_contents_with_error_missing_input_directory_path);
+
+void test_io_zip_contents_with_error_open_archive_failed_path()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_zip_open_fail_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path bad_zip = indir; // output points to directory -> zip_open should fail
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir in should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "a.txt").string(), "A"), "write input file");
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenArchiveFailed),
+        static_cast<int>(zip_contents_with_error(indir.string(), bad_zip.string())),
+        "zip_contents_with_error should return OpenArchiveFailed when output path is a directory");
+}
+REGISTER_TEST(test_io_zip_contents_with_error_open_archive_failed_path);
+
+void test_io_unzip_with_error_open_output_failed_path()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_unzip_open_output_fail_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path zipfile = base / "bundle.zip";
+    fs::path out_as_file = base / "out_file";
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir in should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "a.txt").string(), "ABC"), "write zip input");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "zip creation should succeed");
+
+    // out_as_file is a regular file; extracting into "out_as_file/<entry>" should fail fopen.
+    TEST_ASSERT(write_file_bytes(out_as_file.string(), "marker"), "create output blocker file");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed),
+        static_cast<int>(unzip_into_with_error(zipfile.string(), out_as_file.string())),
+        "unzip_into_with_error should report OpenOutputFailed when output path is blocked by a file");
+}
+REGISTER_TEST(test_io_unzip_with_error_open_output_failed_path);
