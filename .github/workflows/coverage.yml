@@ -59,6 +59,7 @@ jobs:
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
+            --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --html-details \
             --output build/ci-coverage/coverage/coverage.html \
             build/ci-coverage
@@ -71,6 +72,7 @@ jobs:
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
+            --gcov-ignore-parse-errors=suspicious_hits.warn_once_per_file \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
             --json-summary build/ci-coverage/coverage/coverage-summary.json \
