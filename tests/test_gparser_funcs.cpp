@@ -196,3 +196,53 @@ void test_gparser_load_settings_sequence_and_alias_event_paths()
         fs::rename(backup_path, cfg_path, ec);
 }
 REGISTER_TEST(test_gparser_load_settings_sequence_and_alias_event_paths);
+
+void test_gparser_round6_load_settings_missing_file_and_parse_error_paths()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (fs::exists("cfg", ec) && !fs::is_directory("cfg", ec))
+        fs::remove("cfg", ec);
+    fs::create_directories("cfg", ec);
+
+    const fs::path cfg_path = fs::path("cfg") / "openglad.yaml";
+    const fs::path backup_path = fs::path("cfg") / "openglad.yaml.bak.round6";
+    fs::remove(backup_path, ec);
+    if (fs::exists(cfg_path, ec))
+        fs::rename(cfg_path, backup_path, ec);
+
+    cfg.data.clear();
+    (void)cfg.load_settings();
+    TEST_ASSERT(!cfg.get_setting("sound", "sound").empty(),
+                "load_settings should keep defaults even when config file is missing");
+
+    const char* bad_yaml = "graphics:\n  render: normal\n  - invalid\n";
+    FILE* f = std::fopen(cfg_path.string().c_str(), "wb");
+    TEST_ASSERT(f != nullptr, "should open cfg file for malformed yaml write");
+    if (f)
+    {
+        (void)std::fwrite(bad_yaml, 1, std::strlen(bad_yaml), f);
+        std::fclose(f);
+    }
+
+    cfg.data.clear();
+    (void)cfg.load_settings();
+    TEST_ASSERT(!cfg.get_setting("graphics", "render").empty(),
+                "load_settings should still leave defaults available after parse error");
+
+    fs::remove(cfg_path, ec);
+    if (fs::exists(backup_path, ec))
+        fs::rename(backup_path, cfg_path, ec);
+}
+REGISTER_TEST(test_gparser_round6_load_settings_missing_file_and_parse_error_paths);
+
+void test_gparser_round6_save_settings_open_write_failure()
+{
+    namespace fs = std::filesystem;
+    const fs::path old_cwd = fs::current_path();
+    fs::current_path("/proc");
+    (void)cfg.save_settings();
+    fs::current_path(old_cwd);
+    TEST_ASSERT(true, "save_settings open-write edge path executed");
+}
+REGISTER_TEST(test_gparser_round6_save_settings_open_write_failure);

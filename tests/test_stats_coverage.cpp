@@ -2,7 +2,10 @@
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
+
+extern screen* myscreen;
 
 void test_stats_constructor_null_controller_defaults_and_no_command_guard()
 {
@@ -83,3 +86,32 @@ void test_stats_batch2_command_edge_paths_smoke()
     TEST_ASSERT(!s.commands.empty(), "set_command should enqueue command");
 }
 REGISTER_TEST(test_stats_batch2_command_edge_paths_smoke);
+
+void test_stats_round6_block_query_switches_all_directions()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
+    w->sim_level = &myscreen->level_data;
+
+    for (int dir = 0; dir < 8; dir++)
+    {
+        w->curdir = static_cast<char>(dir);
+        (void)w->stats()->right_blocked();
+        (void)w->stats()->right_forward_blocked();
+        (void)w->stats()->right_back_blocked();
+        (void)w->stats()->forward_blocked();
+    }
+
+    // Invalid dir defaults.
+    w->curdir = static_cast<char>(120);
+    (void)w->stats()->right_blocked();
+    (void)w->stats()->right_forward_blocked();
+    (void)w->stats()->right_back_blocked();
+    (void)w->stats()->forward_blocked();
+}
+REGISTER_TEST(test_stats_round6_block_query_switches_all_directions);

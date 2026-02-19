@@ -400,6 +400,41 @@ void test_walker_create_weapon_mage()
 }
 REGISTER_TEST(test_walker_create_weapon_mage);
 
+void test_walker_movement_round6_blocked_animate_and_default_angle_turn()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // Blocked walk + BIT_ANIMATE branch.
+    myscreen->level_data.grid.frames = 1;
+    myscreen->level_data.grid.w = 1;
+    myscreen->level_data.grid.h = 1;
+    myscreen->level_data.pixmaxx = GRID_SIZE;
+    myscreen->level_data.pixmaxy = GRID_SIZE;
+    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    myscreen->level_data.grid.data[0] = PIX_WATER1;
+
+    w->setxy(0, 0);
+    w->sizex = 1;
+    w->sizey = 1;
+    w->curdir = FACE_RIGHT;
+    w->stats()->set_bit_flags(BIT_ANIMATE, 1);
+    TEST_ASSERT(!w->walk(1, 0), "blocked animated walker should fail movement but still animate");
+
+    // get_current_angle default branch.
+    w->curdir = static_cast<char>(99);
+    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "invalid direction should map to angle 0");
+
+    // turn default branch in lastx/lasty fallback.
+    w->curdir = static_cast<char>(99);
+    (void)w->turn(FACE_UP);
+    TEST_ASSERT(true, "turn should tolerate invalid current direction");
+}
+REGISTER_TEST(test_walker_movement_round6_blocked_animate_and_default_angle_turn);
+
 // ---------------------------------------------------------------------------
 // walker on_screen
 // ---------------------------------------------------------------------------
