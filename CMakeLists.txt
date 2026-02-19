@@ -1128,6 +1128,13 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_combat.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_specials.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_pathing.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_draw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_resize.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_redraw.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_get_keypress_and_edge_cases.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_view_input_prefs_and_redraw.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
@@ -1166,6 +1173,12 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
