@@ -964,3 +964,44 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_round7b_base_act_guard_random_and_death_paths);
+
+void test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(96, 96);
+
+    // Force act() through command handling (temp==0), recoil/lunge clamping, and ACT_CONTROL return.
+    w->stats()->clear_command();
+    w->stats()->force_command(COMMAND_MULTIDO, 1, 0, 0);
+    w->busy = 2.0f;
+    w->attack_lunge = 0.2f;
+    w->hit_recoil = 0.2f;
+    w->ani_type = ANI_WALK;
+    w->set_act_type(ACT_CONTROL);
+    TEST_ASSERT(w->act(), "ACT_CONTROL path should return true");
+    TEST_ASSERT(w->busy <= 1.0f, "act should decrement busy when positive");
+    TEST_ASSERT_EQ(0, (int)w->attack_lunge, "act should clamp attack_lunge to zero");
+    TEST_ASSERT_EQ(0, (int)w->hit_recoil, "act should clamp hit_recoil to zero");
+
+    // Exercise death() branch that removes from active obmap and alternate myobmap.
+    obmap spare_map;
+    spare_map.add(w, w->xpos, w->ypos);
+    w->myobmap = &spare_map;
+    w->dead = 1;
+    w->death_called = 0;
+    const size_t active_before = myscreen->level_data.myobmap->size();
+    const size_t spare_before = spare_map.size();
+    TEST_ASSERT(w->death(), "death should succeed with alternate myobmap");
+    TEST_ASSERT(spare_map.size() < spare_before, "death should remove from alternate myobmap");
+    TEST_ASSERT(myscreen->level_data.myobmap->size() <= active_before, "death should remove from active obmap");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths);
