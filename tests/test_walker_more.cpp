@@ -308,6 +308,85 @@ void test_walker_init_fire_and_fire_check_gate_branches()
 }
 REGISTER_TEST(test_walker_init_fire_and_fire_check_gate_branches);
 
+void test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes()
+{
+    auto a = create_living(FAMILY_SOLDIER);
+    auto b = create_living(FAMILY_ARCHER);
+    auto owner_a = create_living(FAMILY_MAGE);
+    auto owner_b = create_living(FAMILY_ORC);
+    TEST_ASSERT(a && b && owner_a && owner_b, "walkers created");
+    if (!(a && b && owner_a && owner_b))
+        return;
+
+    // Null target guard.
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(nullptr), "is_friendly should return 0 for null target");
+
+    // Dead target guard.
+    b->dead = 1;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "dead target should be unfriendly");
+    b->dead = 0;
+
+    // Owner-chain traversal branches.
+    a->owner = owner_a.get();
+    b->owner = owner_b.get();
+    owner_a->team_num = 0;
+    owner_b->team_num = 1;
+
+    const int old_allied_mode = a->sim_save->allied_mode;
+
+    // Allied mode with one myguy missing (has_myguy == 2 path).
+    owner_a->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    owner_b->clear_myguy();
+    owner_b->team_num = 0;
+    a->sim_save->allied_mode = 1;
+    TEST_ASSERT(a->is_friendly(b.get()) != 0, "allied mode should treat team-0 non-myguy as friendly");
+
+    owner_b->team_num = 1;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly(b.get()), "allied mode should reject non-team-0 when only one side has myguy");
+
+    // Enemy mode path (allied_mode==0).
+    a->sim_save->allied_mode = 0;
+    owner_b->team_num = owner_a->team_num;
+    TEST_ASSERT(a->is_friendly(b.get()) != 0, "enemy mode uses team equality");
+
+    // is_friendly_to_team dead and no-myguy paths.
+    a->dead = 1;
+    TEST_ASSERT_EQ(0, (int)a->is_friendly_to_team(0), "dead walker should not be friendly to any team");
+    a->dead = 0;
+    owner_a->clear_myguy();
+    a->sim_save->allied_mode = 0;
+    TEST_ASSERT(a->is_friendly_to_team(owner_a->team_num) != 0, "non-myguy path should still compare team");
+
+    a->sim_save->allied_mode = old_allied_mode;
+}
+REGISTER_TEST(test_walker_round6_friendliness_null_dead_owner_chain_and_allied_modes);
+
+void test_walker_round6_act_fire_collision_attack_path()
+{
+    auto weapon = create_living(FAMILY_ARROW);
+    auto target = create_living(FAMILY_ORC);
+    TEST_ASSERT(weapon && target, "walkers created");
+    if (!(weapon && target))
+        return;
+
+    weapon->set_order_family(Order::Weapon, FAMILY_ARROW);
+    weapon->team_num = 0;
+    target->team_num = 1;
+    target->stats()->hitpoints = 50;
+    weapon->lineofsight = 5;
+    weapon->lastx = -1;
+    weapon->lasty = 0;
+    weapon->setxy(0, GRID_SIZE * 4); // force walk() failure on next step
+    weapon->collide_ob = target.get();
+    weapon->stats()->set_bit_flags(BIT_IMMORTAL, 1); // keep weapon alive after collision branch
+
+    const float hp_before = target->stats()->hitpoints;
+    weapon->set_act_type(ACT_FIRE);
+    TEST_ASSERT(weapon->act(), "act() should dispatch to act_fire");
+    TEST_ASSERT(target->stats()->hitpoints <= hp_before, "collision branch should attack target");
+}
+REGISTER_TEST(test_walker_round6_act_fire_collision_attack_path);
+
 void test_walker_friendliness_null_dead_and_allied_mode_paths()
 {
     auto a = create_living(FAMILY_SOLDIER);

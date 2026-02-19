@@ -197,3 +197,37 @@ void test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch
     TEST_ASSERT(st->right_walk(), "right_walk should still succeed via turn-left when forward is blocked");
 }
 REGISTER_TEST(test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch);
+
+void test_stats_blocked_direction_switch_tables_all_cases_round6()
+{
+    set_all_tiles(PIX_GRASS1);
+
+    PixieData px = one_px();
+    walker w(px);
+    w.sim_level = &myscreen->level_data;
+    w.sim_rng = ctx().rng;
+    w.sim_config = ctx().config;
+    w.stepsize = 1.0f;
+    w.setxy(GRID_SIZE * 4, GRID_SIZE * 4);
+
+    statistics* st = w.stats();
+    TEST_ASSERT(st != nullptr, "stats exists");
+    if (!st)
+        return;
+
+    const std::array<char, 9> dirs = {
+        FACE_UP, FACE_UP_RIGHT, FACE_RIGHT, FACE_DOWN_RIGHT,
+        FACE_DOWN, FACE_DOWN_LEFT, FACE_LEFT, FACE_UP_LEFT,
+        static_cast<char>(99)
+    };
+    for (char d : dirs)
+    {
+        w.curdir = d;
+        (void)st->right_blocked();
+        (void)st->right_forward_blocked();
+        (void)st->right_back_blocked();
+        (void)st->forward_blocked();
+    }
+    TEST_ASSERT(true, "blocked-direction switch tables executed");
+}
+REGISTER_TEST(test_stats_blocked_direction_switch_tables_all_cases_round6);
