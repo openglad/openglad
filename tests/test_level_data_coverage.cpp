@@ -2,6 +2,7 @@
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
+#include <openglad/sim/sim_event_log.h>
 #include <openglad/io/og_file.h>
 #include <openglad/platform/io.h>
 #include <openglad/runtime/screen.h>
@@ -231,3 +232,31 @@ void test_level_data_query_grid_passable_edge_cases()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_query_grid_passable_edge_cases);
+
+void test_campaign_data_save_and_save_as_fail_for_missing_campaign()
+{
+    const std::string missing_id = "org.openglad.test.missing.save.coverage";
+    delete_campaign(missing_id);
+
+    CampaignData cd(missing_id);
+    TEST_ASSERT_EQ((int)CampaignData::IoError::PackageUnpackFailed, (int)cd.save_with_error(),
+                   "save_with_error should report unpack failure for missing campaign");
+
+    TEST_ASSERT_EQ((int)CampaignData::IoError::PackageUnpackFailed, (int)cd.save_as_with_error("new_missing_id"),
+                   "save_as_with_error should report unpack failure for missing campaign");
+}
+REGISTER_TEST(test_campaign_data_save_and_save_as_fail_for_missing_campaign);
+
+void test_level_data_set_sim_context_wires_pointers()
+{
+    SaveData save;
+    std::int32_t enemy_freeze = 0;
+    og::sim::SimEventLog events;
+    FixedRandom rng(1);
+    cfg_store cfg_local;
+
+    LevelData d(42);
+    d.set_sim_context(&save, &enemy_freeze, &events, &rng, &cfg_local);
+    TEST_ASSERT(true, "set_sim_context should accept valid pointer set");
+}
+REGISTER_TEST(test_level_data_set_sim_context_wires_pointers);

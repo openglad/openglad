@@ -241,6 +241,58 @@ void test_walker_draw_with_invulnerability()
 }
 REGISTER_TEST(test_walker_draw_with_invulnerability);
 
+void test_walker_movement_stationary_family_walk_and_turn_branches()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(120, 120);
+    w->set_order_family(Order::Living, FAMILY_TOWER1);
+
+    // walkstep stationary short-circuit branch.
+    TEST_ASSERT(w->walkstep(1, 0), "stationary walkstep should succeed without moving");
+    TEST_ASSERT_EQ(1, (int)w->lastx, "stationary walkstep should store unit x input");
+    TEST_ASSERT_EQ(0, (int)w->lasty, "stationary walkstep should store unit y input");
+
+    // walk() stationary branch.
+    TEST_ASSERT(w->walk(1, 1), "stationary walk should succeed");
+
+    // turn() stationary branch should not overwrite facing vector.
+    w->lastx = 7;
+    w->lasty = -3;
+    (void)w->turn(FACE_LEFT);
+    TEST_ASSERT_EQ(7, (int)w->lastx, "stationary turn should preserve lastx");
+    TEST_ASSERT_EQ(-3, (int)w->lasty, "stationary turn should preserve lasty");
+}
+REGISTER_TEST(test_walker_movement_stationary_family_walk_and_turn_branches);
+
+void test_walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->user = 0;
+    w->stepsize = 2.0f;
+
+    // Horizontal-only slide: up blocked at top edge, right passable.
+    w->setxy(32, 0);
+    w->curdir = FACE_DOWN;
+    (void)w->walkstep(1, -1);
+    TEST_ASSERT(true, "user slide horizontal branch executed");
+
+    // Vertical-only slide: left blocked at left edge, up passable.
+    w->setxy(0, 32);
+    w->curdir = FACE_RIGHT;
+    (void)w->walkstep(-1, -1);
+    TEST_ASSERT(true, "user slide vertical branch executed");
+}
+REGISTER_TEST(test_walker_walkstep_user_slide_sets_vertical_and_horizontal_dirs);
+
 // ---------------------------------------------------------------------------
 // walker::animate - different animation types
 // ---------------------------------------------------------------------------

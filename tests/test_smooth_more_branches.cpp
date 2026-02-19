@@ -9,6 +9,12 @@
 
 namespace
 {
+class ExposedSmoother : public smoother
+{
+public:
+    using smoother::set_x_y;
+};
+
 struct GlobalContextGuard
 {
     explicit GlobalContextGuard(GameContext* ctx) { set_global_context(ctx); }
@@ -153,3 +159,78 @@ void test_smooth_dirt_and_dark_dirt_to_around_rng_switch_cases()
     }
 }
 REGISTER_TEST(test_smooth_dirt_and_dark_dirt_to_around_rng_switch_cases);
+
+void test_smooth_wall_water_tree_unknown_and_setxy_guard_paths()
+{
+    FixedRandom rng0(0);
+    GameContext c;
+    c.rng = &rng0;
+    GlobalContextGuard guard(&c);
+
+    PixieData grid = make_grid(6, 6, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+
+    // TYPE_UNKNOWN default branch.
+    at(grid, 1, 1) = 255;
+    (void)s.smooth(1, 1);
+    TEST_ASSERT_EQ(255, (int)at(grid, 1, 1), "unknown tile should remain unchanged");
+
+    // Wall around==1 and around==9 branches.
+    at(grid, 2, 2) = PIX_H_WALL1;
+    at(grid, 2, 1) = PIX_H_WALL1; // up only -> around==1
+    at(grid, 3, 2) = PIX_GRASS1;
+    at(grid, 2, 3) = PIX_GRASS1;
+    at(grid, 1, 2) = PIX_GRASS1;
+    (void)s.smooth(2, 2);
+    TEST_ASSERT_EQ((int)PIX_WALLSIDE_C, (int)at(grid, 2, 2), "wall around==1 should map to WALLSIDE_C");
+
+    at(grid, 3, 3) = PIX_H_WALL1;
+    at(grid, 3, 2) = PIX_GRASS1;
+    at(grid, 4, 3) = PIX_GRASS1;
+    at(grid, 3, 4) = PIX_GRASS1;
+    at(grid, 2, 3) = PIX_H_WALL1; // left only -> around==8, plus up+down? keep simple for side
+    (void)s.smooth(3, 3);
+
+    at(grid, 4, 2) = PIX_H_WALL1;
+    at(grid, 4, 1) = PIX_H_WALL1;
+    at(grid, 5, 2) = PIX_GRASS1;
+    at(grid, 4, 3) = PIX_GRASS1;
+    at(grid, 3, 2) = PIX_H_WALL1; // around==9
+    (void)s.smooth(4, 2);
+    TEST_ASSERT_EQ((int)PIX_WALLSIDE_R, (int)at(grid, 4, 2), "wall around==9 should map to WALLSIDE_R");
+
+    // Water around==TO_LEFT and TO_RIGHT random switch branches.
+    at(grid, 2, 4) = PIX_WATER1;
+    at(grid, 1, 4) = PIX_WATER1;
+    at(grid, 2, 3) = PIX_GRASS1;
+    at(grid, 3, 4) = PIX_GRASS1;
+    at(grid, 2, 5) = PIX_GRASS1;
+    (void)s.smooth(2, 4);
+    TEST_ASSERT(at(grid, 2, 4) == PIX_WATERGRASS_UR || at(grid, 2, 4) == PIX_WATERGRASS_LR,
+                "water around==TO_LEFT should choose UR or LR");
+
+    at(grid, 3, 4) = PIX_WATER1;
+    at(grid, 2, 4) = PIX_GRASS1;
+    at(grid, 4, 4) = PIX_GRASS1;
+    at(grid, 3, 3) = PIX_GRASS1;
+    at(grid, 3, 5) = PIX_GRASS1;
+    (void)s.smooth(3, 4);
+    TEST_ASSERT(at(grid, 3, 4) == PIX_WATERGRASS_UL || at(grid, 3, 4) == PIX_WATERGRASS_LL,
+                "water around==TO_RIGHT should choose UL or LL");
+
+    // Trees around==TO_DOWN|TO_UP branch.
+    at(grid, 1, 3) = PIX_TREE_M1;
+    at(grid, 1, 2) = PIX_TREE_M1;
+    at(grid, 1, 4) = PIX_TREE_M1;
+    at(grid, 0, 3) = PIX_GRASS1;
+    at(grid, 2, 3) = PIX_GRASS1;
+    (void)s.smooth(1, 3);
+    TEST_ASSERT_EQ((int)PIX_TREE_MT, (int)at(grid, 1, 3), "trees vertical branch should map to MT");
+
+    // set_x_y no-grid guard.
+    ExposedSmoother ex;
+    ex.reset();
+    ex.set_x_y(0, 0, PIX_WATER1);
+}
+REGISTER_TEST(test_smooth_wall_water_tree_unknown_and_setxy_guard_paths);

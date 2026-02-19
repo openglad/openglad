@@ -242,3 +242,72 @@ void test_weap_animate_arrow()
     myscreen->level_data.remove_ob(w);
 }
 REGISTER_TEST(test_weap_animate_arrow);
+
+void test_weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_weapon(FAMILY_KNIFE);
+    auto dead_living = make_living(FAMILY_SOLDIER, 1);
+    TEST_ASSERT(w && dead_living, "weapon and dead living created");
+    if (!(w && dead_living))
+        return;
+
+    dead_living->dead = 1;
+    w->foe = dead_living.get();
+    w->leader = dead_living.get();
+    w->owner = dead_living.get();
+    w->setxy(0, 0);
+    w->lineofsight = 5;
+    myscreen->level_data.grid.data[0] = PIX_TREE_M1;
+    w->set_act_type(ACT_RANDOM);
+
+    (void)w->act();
+    TEST_ASSERT(w->foe == nullptr && w->leader == nullptr, "dead foe/leader should be cleared");
+    TEST_ASSERT(w->owner == w, "dead owner should be cleared then default to self");
+    TEST_ASSERT_EQ(4, (int)w->lineofsight, "trees tile should decrement lineofsight");
+
+    myscreen->level_data.remove_ob(w);
+}
+REGISTER_TEST(test_weap_act_clears_dead_refs_and_defaults_owner_and_tree_lineofsight);
+
+void test_weap_act_control_generate_guard_and_default_paths()
+{
+    walker* control = make_weapon(FAMILY_KNIFE);
+    walker* gen = make_weapon(FAMILY_KNIFE);
+    walker* guard = make_weapon(FAMILY_KNIFE);
+    walker* unknown = make_weapon(FAMILY_KNIFE);
+    TEST_ASSERT(control && gen && guard && unknown, "weapons created");
+    if (!(control && gen && guard && unknown))
+        return;
+
+    control->set_act_type(ACT_CONTROL);
+    TEST_ASSERT(control->act(), "ACT_CONTROL should return true");
+
+    gen->set_act_type(ACT_GENERATE);
+    TEST_ASSERT(!gen->act(), "ACT_GENERATE path should fall through to return false");
+
+    guard->set_act_type(ACT_GUARD);
+    TEST_ASSERT(!guard->act(), "ACT_GUARD path should fall through to return false");
+
+    unknown->set_act_type(123);
+    TEST_ASSERT(!unknown->act(), "unknown act should return false");
+
+    myscreen->level_data.remove_ob(control);
+    myscreen->level_data.remove_ob(gen);
+    myscreen->level_data.remove_ob(guard);
+    myscreen->level_data.remove_ob(unknown);
+}
+REGISTER_TEST(test_weap_act_control_generate_guard_and_default_paths);
+
+void test_weap_death_is_idempotent()
+{
+    walker* w = make_weapon(FAMILY_KNIFE);
+    TEST_ASSERT(w != nullptr, "weapon created");
+    if (!w)
+        return;
+    w->dead = 1;
+    TEST_ASSERT(w->death(), "first death() call should succeed");
+    TEST_ASSERT(!w->death(), "second death() call should short-circuit");
+    myscreen->level_data.remove_ob(w);
+}
+REGISTER_TEST(test_weap_death_is_idempotent);

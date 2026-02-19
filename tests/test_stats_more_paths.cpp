@@ -131,3 +131,65 @@ void test_stats_right_walk_exercises_direction_switch_when_direct_walk_fails()
     }
 }
 REGISTER_TEST(test_stats_right_walk_exercises_direction_switch_when_direct_walk_fails);
+
+void test_stats_constructor_null_controller_and_command_die_shortcuts()
+{
+    statistics s(nullptr);
+    TEST_ASSERT(s.controller == nullptr, "null-controller ctor should keep controller null");
+    TEST_ASSERT_EQ((int)Order::Living, (int)s.old_order, "null-controller ctor should set fallback old_order");
+    TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)s.old_family, "null-controller ctor should set fallback old_family");
+
+    auto w = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->stats()->delete_me = 0;
+    w->stats()->add_command(COMMAND_DIE, 1, 0, 0);
+    TEST_ASSERT(w->stats()->delete_me == 1, "COMMAND_DIE add_command should mark delete_me");
+}
+REGISTER_TEST(test_stats_constructor_null_controller_and_command_die_shortcuts);
+
+void test_stats_do_command_set_reset_weapon_and_search_without_foe()
+{
+    auto w = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->default_weapon = FAMILY_KNIFE;
+    w->current_weapon = FAMILY_ARROW;
+    w->stats()->commands.clear();
+
+    w->stats()->force_command(COMMAND_SET_WEAPON, 1, FAMILY_BOMB, 0);
+    (void)w->stats()->do_command();
+    TEST_ASSERT_EQ((int)FAMILY_BOMB, (int)w->current_weapon, "COMMAND_SET_WEAPON should set current weapon");
+
+    w->stats()->force_command(COMMAND_RESET_WEAPON, 1, 0, 0);
+    (void)w->stats()->do_command();
+    TEST_ASSERT_EQ((int)w->default_weapon, (int)w->current_weapon, "COMMAND_RESET_WEAPON should restore default");
+
+    w->foe = nullptr;
+    w->stats()->force_command(COMMAND_SEARCH, 1, 0, 0);
+    (void)w->stats()->do_command();
+    TEST_ASSERT(!w->stats()->has_commands(), "COMMAND_SEARCH with no foe should clear command");
+}
+REGISTER_TEST(test_stats_do_command_set_reset_weapon_and_search_without_foe);
+
+void test_stats_blocked_helpers_default_dir_branches()
+{
+    auto w = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    myscreen->level_data.create_new_grid();
+    w->setxy(128, 128);
+    w->curdir = 99;
+
+    (void)w->stats()->right_blocked();
+    (void)w->stats()->right_forward_blocked();
+    (void)w->stats()->right_back_blocked();
+    (void)w->stats()->forward_blocked();
+}
+REGISTER_TEST(test_stats_blocked_helpers_default_dir_branches);

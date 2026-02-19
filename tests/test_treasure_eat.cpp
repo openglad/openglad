@@ -2,6 +2,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/runtime/guy_create.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/treasure.h>
 #include <openglad/data/gloader.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
@@ -28,6 +29,7 @@ static walker* make_treasure(char family, short level = 1)
     }
     return t;
 }
+
 
 // ---------------------------------------------------------------------------
 // treasure::eat_me - various treasure types

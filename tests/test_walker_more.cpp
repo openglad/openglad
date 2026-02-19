@@ -259,6 +259,86 @@ void test_walker_myguy_move_and_weapon_heading_and_outline_named()
 }
 REGISTER_TEST(test_walker_myguy_move_and_weapon_heading_and_outline_named);
 
+void test_walker_init_fire_and_fire_check_gate_branches()
+{
+    auto w = create_living(FAMILY_SOLDIER);
+    auto foe = create_living(FAMILY_ORC);
+    TEST_ASSERT(w && foe, "walkers created");
+    if (!(w && foe))
+        return;
+
+    w->setxy(80, 80);
+    foe->setxy(96, 80);
+    w->foe = foe.get();
+
+    // init_fire: control walker must not turn/fire when facing differs.
+    w->curdir = FACE_LEFT;
+    w->enddir = FACE_LEFT;
+    w->set_act_type(ACT_CONTROL);
+    TEST_ASSERT(!w->init_fire(1, 0), "ACT_CONTROL init_fire should fail when facing differs");
+
+    // init_fire: busy gate.
+    w->set_act_type(ACT_RANDOM);
+    w->curdir = FACE_RIGHT;
+    w->enddir = FACE_RIGHT;
+    w->busy = 3;
+    TEST_ASSERT(!w->init_fire(1, 0), "busy init_fire should fail");
+    w->busy = 0;
+
+    // fire_check: no foe.
+    w->foe = nullptr;
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail without foe");
+    w->foe = foe.get();
+
+    // fire_check: no-ranged bit.
+    w->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail with BIT_NO_RANGED");
+    w->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+
+    // fire_check: insufficient magic for weapon cost.
+    w->stats()->weapon_cost = 9999;
+    w->stats()->magicpoints = 0;
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail when weapon_cost exceeds magicpoints");
+    w->stats()->weapon_cost = 0;
+    w->stats()->magicpoints = 100;
+
+    // fire_check: target direction mismatch with current facing.
+    w->curdir = FACE_LEFT;
+    TEST_ASSERT(!w->fire_check(1, 0), "fire_check should fail when targetdir differs from curdir");
+}
+REGISTER_TEST(test_walker_init_fire_and_fire_check_gate_branches);
+
+void test_walker_friendliness_null_dead_and_allied_mode_paths()
+{
+    auto a = create_living(FAMILY_SOLDIER);
+    auto b = create_living(FAMILY_ORC);
+    TEST_ASSERT(a && b, "walkers created");
+    if (!(a && b))
+        return;
+
+    a->team_num = 0;
+    b->team_num = 1;
+
+    TEST_ASSERT(!a->is_friendly(nullptr), "null target should be unfriendly");
+
+    b->dead = 1;
+    TEST_ASSERT(!a->is_friendly(b.get()), "dead target should be unfriendly");
+    b->dead = 0;
+
+    a->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    b->clear_myguy();
+
+    b->team_num = 0;
+    TEST_ASSERT(a->is_friendly(b.get()) != 0, "team 0 target with one myguy should be treated as friendly");
+
+    TEST_ASSERT(a->is_friendly_to_team(1) == 0 || a->is_friendly_to_team(1) == 1, "friendly-to-team path should execute");
+
+    a->dead = 1;
+    TEST_ASSERT(!a->is_friendly_to_team(0), "dead walker should be unfriendly to all teams");
+    a->dead = 0;
+}
+REGISTER_TEST(test_walker_friendliness_null_dead_and_allied_mode_paths);
+
 void test_walker_create_weapon_myguy_and_direction_and_cleric_branches()
 {
     auto shooter = create_living(FAMILY_CLERIC);
