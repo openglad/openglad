@@ -345,3 +345,18 @@ void test_picker_state_load_save_success_and_options_flow()
     TEST_ASSERT_EQ(0, client.show_team_build_calls, "successful load/save should not route to team build");
 }
 REGISTER_TEST(test_picker_state_load_save_success_and_options_flow);
+
+void test_picker_state_invalid_screen_after_game_falls_back_to_quit()
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::ContinueGame
+    };
+    client.screen_after_game_result = static_cast<og::ui::PickerScreen>(99);
+
+    og::ui::run_picker(client);
+
+    TEST_ASSERT_EQ(1, client.run_game_calls, "continue game should run exactly once");
+    TEST_ASSERT_EQ(1, client.show_main_menu_calls, "invalid next screen should exit without re-entering main menu");
+}
+REGISTER_TEST(test_picker_state_invalid_screen_after_game_falls_back_to_quit);

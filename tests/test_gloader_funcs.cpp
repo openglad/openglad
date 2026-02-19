@@ -188,3 +188,32 @@ void test_gloader_set_walker()
     TEST_ASSERT(pixie_created > 0, "create_pixieN sweep should create objects");
 }
 REGISTER_TEST(test_gloader_set_walker);
+
+void test_gloader_invalid_family_clamp_paths()
+{
+    loader* l = myscreen->level_data.myloader.get();
+    TEST_ASSERT(l != nullptr, "loader exists");
+    if (!l)
+        return;
+
+    auto living_w = l->create_walker_owned(Order::Living, NUM_FAMILIES + 5);
+    TEST_ASSERT(living_w != nullptr, "invalid living family should fall back to soldier");
+    if (!living_w)
+        return;
+    TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)living_w->query_family(),
+                   "invalid living family should clamp to soldier");
+
+    auto weapon_w = l->create_walker_owned(Order::Weapon, NUM_FAMILIES + 5);
+    TEST_ASSERT(weapon_w != nullptr, "invalid weapon family should clamp to 0 and still construct");
+    if (weapon_w)
+        TEST_ASSERT_EQ(0, (int)weapon_w->query_family(),
+                       "invalid non-living family should clamp to family 0");
+
+    l->set_derived_stats(living_w.get(), Order::Living, NUM_FAMILIES + 9);
+    TEST_ASSERT(living_w->normal_stepsize >= 0.0f, "set_derived_stats should clamp invalid family safely");
+
+    walker* changed = l->set_walker(living_w.get(), Order::Living, NUM_FAMILIES + 9);
+    TEST_ASSERT(changed != nullptr, "set_walker should clamp invalid family and return object");
+    TEST_ASSERT_EQ(0, (int)living_w->query_family(), "set_walker invalid family should clamp to 0");
+}
+REGISTER_TEST(test_gloader_invalid_family_clamp_paths);

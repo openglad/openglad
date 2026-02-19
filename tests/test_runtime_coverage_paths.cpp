@@ -704,3 +704,35 @@ void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
     myscreen->save_data.allied_mode = saved_allied_mode;
 }
 REGISTER_TEST(test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present);
+
+void test_sim_world_freeze_branch_allows_non_living_actions()
+{
+    clear_level_lists();
+
+    og::sim::SimWorld world(777);
+    og::sim::SimEventLog events;
+    SaveData save;
+    save.my_team = 0;
+
+    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    TEST_ASSERT(gen != nullptr, "generator created");
+    if (!gen)
+        return;
+    gen->team_num = 2;
+    gen->set_act_type(ACT_CONTROL); // deterministic no-op-ish act path
+
+    std::int32_t enemy_freeze = 11;
+    char end = 0;
+    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    TEST_ASSERT_EQ(10, (int)enemy_freeze, "freeze counter should decrement");
+    TEST_ASSERT(r.game_ended, "no hostile living and no exits should auto-end level");
+
+    bool saw_time_left = false;
+    for (const auto& ev : events.events())
+    {
+        if (ev.kind == og::sim::EventKind::Notification && ev.text.find("TIME LEFT:") != std::string::npos)
+            saw_time_left = true;
+    }
+    TEST_ASSERT(saw_time_left, "freeze branch should emit countdown notification on modulo-10 ticks");
+}
+REGISTER_TEST(test_sim_world_freeze_branch_allows_non_living_actions);
