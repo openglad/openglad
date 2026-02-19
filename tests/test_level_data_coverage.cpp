@@ -764,3 +764,118 @@ void test_level_data_round6_wrapper_and_passability_edges()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round6_wrapper_and_passability_edges);
+
+void test_level_data_round6_load_version3_4_5_minimal_and_treasure_paths()
+{
+    auto append_short = [](std::vector<unsigned char>& bytes, short value) {
+        unsigned char raw[sizeof(short)];
+        std::memcpy(raw, &value, sizeof(short));
+        bytes.insert(bytes.end(), raw, raw + sizeof(short));
+    };
+
+    auto append_obj_v3 = [&](std::vector<unsigned char>& bytes, unsigned char order) {
+        bytes.push_back(order);                            // order
+        bytes.push_back(FAMILY_GOLD_BAR);                 // family
+        append_short(bytes, 8);                           // x
+        append_short(bytes, 8);                           // y
+        bytes.push_back(0);                               // team
+        bytes.push_back(0);                               // facing
+        bytes.push_back(0);                               // command
+        bytes.push_back(1);                               // level
+        bytes.insert(bytes.end(), 10, 0);                // reserved
+    };
+
+    auto append_obj_v4_v5 = [&](std::vector<unsigned char>& bytes, unsigned char order) {
+        bytes.push_back(order);                            // order
+        bytes.push_back(FAMILY_GOLD_BAR);                 // family
+        append_short(bytes, 8);                           // x
+        append_short(bytes, 8);                           // y
+        bytes.push_back(0);                               // team
+        bytes.push_back(0);                               // facing
+        bytes.push_back(0);                               // command
+        bytes.push_back(1);                               // level
+        bytes.insert(bytes.end(), 12, 0);                // name
+        bytes.insert(bytes.end(), 10, 0);                // reserved
+    };
+
+    LevelData data(5501);
+
+    // Version 3: minimal valid payload + treasure object branch + width==0 branch.
+    {
+        std::vector<unsigned char> bytes(8, 0);          // grid name
+        append_short(bytes, 1);                          // listsize
+        append_obj_v3(bytes, static_cast<unsigned char>(Order::Treasure));
+        bytes.push_back(1);                              // numlines
+        bytes.push_back(0);                              // width -> oneline[0] branch
+        MemoryOgFile f(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 3), "version 3 should load treasure+zero-width path");
+    }
+
+    // Version 4: minimal valid payload + treasure object branch + width==0 branch.
+    {
+        std::vector<unsigned char> bytes(8, 0);          // grid name
+        append_short(bytes, 1);                          // listsize
+        append_obj_v4_v5(bytes, static_cast<unsigned char>(Order::Treasure));
+        bytes.push_back(1);                              // numlines
+        bytes.push_back(0);                              // width
+        MemoryOgFile f(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 4), "version 4 should load treasure+zero-width path");
+    }
+
+    // Version 5: includes scenario type byte.
+    {
+        std::vector<unsigned char> bytes(8, 0);          // grid name
+        bytes.push_back(2);                              // scenario type
+        append_short(bytes, 1);                          // listsize
+        append_obj_v4_v5(bytes, static_cast<unsigned char>(Order::Treasure));
+        bytes.push_back(1);                              // numlines
+        bytes.push_back(0);                              // width
+        MemoryOgFile f(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 5), "version 5 should load treasure+zero-width path");
+    }
+
+    // Truncated payloads should fail early read guards in each version parser.
+    {
+        unsigned char one = 0;
+        MemoryOgFile f(&one, 1);
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 3), "version 3 should fail on truncated grid read");
+    }
+    {
+        unsigned char one = 0;
+        MemoryOgFile f(&one, 1);
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 4), "version 4 should fail on truncated grid read");
+    }
+    {
+        unsigned char one = 0;
+        MemoryOgFile f(&one, 1);
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 5), "version 5 should fail on truncated grid read");
+    }
+}
+REGISTER_TEST(test_level_data_round6_load_version3_4_5_minimal_and_treasure_paths);
+
+void test_level_data_round6_find_near_foe_boundary_fallback_path()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(actor && foe, "fixtures should be created");
+    if (!(actor && foe))
+        return;
+
+    actor->team_num = 0;
+    foe->team_num = 1;
+    actor->setxy(GRID_SIZE * 3, myscreen->level_data.pixmaxy - 1);
+    foe->setxy(GRID_SIZE * 2, GRID_SIZE * 2);
+
+    ConstRandom rng_zero(0);
+    actor->sim_rng = &rng_zero;
+
+    // Near-search spiral should hit the y-boundary and fall back to find_far_foe().
+    walker* picked = myscreen->level_data.find_near_foe(actor);
+    TEST_ASSERT(picked == foe, "find_near_foe should boundary-fallback to far foe selection");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_round6_find_near_foe_boundary_fallback_path);

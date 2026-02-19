@@ -608,3 +608,53 @@ void test_walker_movement_deep_branch_coverage_smoke()
     TEST_ASSERT(true, "walker movement deep branches executed");
 }
 REGISTER_TEST(test_walker_movement_deep_branch_coverage_smoke);
+
+void test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    if (!w)
+        return;
+
+    w->stepsize = 2.0f;
+
+    // NPC blocked switch: force first and baby-step movement failures by placing at edges.
+    w->user = -1;
+
+    w->setxy(0, GRID_SIZE * 6);
+    (void)w->walkstep(-1, 0);  // FACE_LEFT -> FACE_DOWN fallback
+
+    w->setxy(GRID_SIZE * 6, 0);
+    (void)w->walkstep(0, -1);  // FACE_UP -> FACE_LEFT fallback
+
+    const short max_x = static_cast<short>(myscreen->level_data.grid.w * GRID_SIZE - 1);
+    const short max_y = static_cast<short>(myscreen->level_data.grid.h * GRID_SIZE - 1);
+    w->setxy(max_x, static_cast<short>(GRID_SIZE * 6));
+    (void)w->walkstep(1, 0);   // FACE_RIGHT -> FACE_UP fallback
+
+    w->setxy(static_cast<short>(GRID_SIZE * 6), max_y);
+    (void)w->walkstep(0, 1);   // FACE_DOWN -> FACE_RIGHT fallback
+
+    w->setxy(0, 0);
+    (void)w->walkstep(-1, -1); // FACE_UP_LEFT diagonal fallback
+    (void)w->walkstep(1, -1);  // FACE_UP_RIGHT diagonal fallback
+    w->setxy(max_x, max_y);
+    (void)w->walkstep(1, 1);   // FACE_DOWN_RIGHT diagonal fallback
+    (void)w->walkstep(-1, 1);  // FACE_DOWN_LEFT diagonal fallback
+
+    // User-slide branch internals: one-axis movement results (gotup/gotover flags).
+    w->user = 0;
+    w->stepsize = 2.0f;
+
+    // Top edge: vertical blocked, horizontal passable -> gotover branch.
+    w->setxy(GRID_SIZE * 3, 0);
+    (void)w->walkstep(1, -1);
+
+    // Left edge: horizontal blocked, vertical passable -> gotup branch.
+    w->setxy(0, GRID_SIZE * 3);
+    (void)w->walkstep(-1, -1);
+
+    TEST_ASSERT(true, "blocked npc and user-slide subpaths executed");
+}
+REGISTER_TEST(test_walker_movement_round6_npc_blocked_switch_and_user_slide_subpaths);

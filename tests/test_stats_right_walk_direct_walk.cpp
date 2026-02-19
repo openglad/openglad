@@ -157,3 +157,43 @@ void test_stats_direct_walk_grid_passability_branches()
     TEST_ASSERT_EQ(0, static_cast<int>(st->direct_walk()), "direct_walk should return 0 when foe at same position");
 }
 REGISTER_TEST(test_stats_direct_walk_grid_passability_branches);
+
+void test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch()
+{
+    set_all_tiles(PIX_GRASS1);
+
+    PixieData px = one_px();
+    walker w(px);
+    w.sim_level = &myscreen->level_data;
+    w.sim_rng = ctx().rng;
+    w.sim_config = ctx().config;
+    w.stepsize = 1.0f;
+    w.setxy(GRID_SIZE - 1, GRID_SIZE - 1);
+    w.curdir = FACE_UP;
+    w.enddir = FACE_UP;
+    w.foe = nullptr; // keep direct_walk path deterministic when reached
+
+    statistics* st = w.stats();
+    TEST_ASSERT(st != nullptr, "stats exists");
+    if (!st)
+        return;
+
+    // Condition: (right_blocked || right_forward_blocked) && !forward_blocked.
+    // For FACE_UP at (GRID_SIZE-1, GRID_SIZE-1):
+    // right/right_forward probe tile (1,0), forward probes (0,0).
+    set_all_tiles(PIX_GRASS1);
+    set_tile(1, 0, PIX_H_WALL1);
+
+    w.lastx = 10.0f;
+    w.lasty = 1.0f;
+    TEST_ASSERT(st->right_walk(), "right_walk should take forward branch when right side is blocked");
+
+    w.lastx = 1.0f;
+    w.lasty = 10.0f;
+    TEST_ASSERT(st->right_walk(), "right_walk should normalize steep-y forward branch");
+
+    // Force explicit forward_blocked branch: block forward tile too.
+    set_tile(0, 0, PIX_H_WALL1);
+    TEST_ASSERT(st->right_walk(), "right_walk should still succeed via turn-left when forward is blocked");
+}
+REGISTER_TEST(test_stats_right_walk_forward_normalization_and_forward_blocked_turn_branch);
