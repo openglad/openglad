@@ -1138,6 +1138,21 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_living_combat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_treasure_eat.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_weap_behavior.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_data.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_behaviors.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_funcs.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_filesystem.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
