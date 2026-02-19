@@ -211,3 +211,31 @@ void test_io_zip_batch5_empty_directory_and_non_regular_entries()
     TEST_ASSERT(payload == "ROOT", "unzipped root file content should match");
 }
 REGISTER_TEST(test_io_zip_batch5_empty_directory_and_non_regular_entries);
+
+void test_io_zip_batch6_add_entry_failed_for_unreadable_file()
+{
+    namespace fs = std::filesystem;
+    fs::path base = fs::temp_directory_path() / ("openglad_io_zip_batch6_" + std::to_string(::getpid()));
+    fs::path indir = base / "in";
+    fs::path zipfile = base / "bundle.zip";
+    fs::path blocked = indir / "blocked.txt";
+
+    TEST_ASSERT(create_dir(indir.string()), "create_dir input should succeed");
+    TEST_ASSERT(write_file_bytes((indir / "ok.txt").string(), "OK"), "write readable file");
+    TEST_ASSERT(write_file_bytes(blocked.string(), "NOPE"), "write blocked file");
+
+#if !defined(_WIN32)
+    std::error_code ec;
+    fs::permissions(blocked, fs::perms::none, fs::perm_options::replace, ec);
+    const ArchiveIoError r = zip_contents_with_error(indir.string(), zipfile.string());
+    TEST_ASSERT(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed,
+                "unreadable regular file should produce AddEntryFailed or close failure");
+    fs::permissions(blocked, fs::perms::owner_read | fs::perms::owner_write,
+                    fs::perm_options::replace, ec);
+#else
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+        static_cast<int>(zip_contents_with_error(indir.string(), zipfile.string())),
+        "windows permission behavior may not reject unreadable entry");
+#endif
+}
+REGISTER_TEST(test_io_zip_batch6_add_entry_failed_for_unreadable_file);

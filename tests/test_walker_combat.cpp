@@ -855,3 +855,110 @@ void test_walker_combat_batch5_do_combat_damage_target_myguy_stats()
                 "combat damage should not increase target hitpoints");
 }
 REGISTER_TEST(test_walker_combat_batch5_do_combat_damage_target_myguy_stats);
+
+void test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths()
+{
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 0;
+
+    // Enemy kill path: magical modifier, kill awards, notifications, and remaining-foe branch.
+    walker* attacker = make_guy(FAMILY_MAGE, 0);
+    walker* enemy = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker != nullptr && enemy != nullptr, "attacker/enemy created");
+    if (!(attacker && enemy))
+        return;
+    attacker->stats()->set_bit_flags(BIT_MAGICAL, 1);
+    attacker->damage = 500.0f;
+    enemy->stats()->hitpoints = 3;
+    enemy->stats()->max_hitpoints = 3;
+    enemy->stats()->name = "NamedEnemy";
+    enemy->owner = nullptr;
+    enemy->lifetime = 0;
+    enemy->setxy(attacker->xpos + 10, attacker->ypos + 6);
+    TEST_ASSERT(attacker->attack(enemy), "enemy kill branch should execute");
+
+    // Non-living default branch and weapon durability/death/on-hit callbacks.
+    walker* owner = make_guy(FAMILY_SOLDIER, 0);
+    walker* fx_target = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
+    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_SPRINKLE);
+    TEST_ASSERT(owner && fx_target && weapon, "owner/fx_target/weapon created");
+    if (owner && fx_target && weapon)
+    {
+        owner->user = 0;
+        weapon->owner = owner;
+        weapon->team_num = owner->team_num;
+        weapon->damage = 10.0f;
+        weapon->stats()->hitpoints = 1;
+        owner->myguy->total_shots = 2;
+        owner->myguy->scen_shots = 2;
+        fx_target->team_num = 1;
+        (void)weapon->attack(fx_target);
+        TEST_ASSERT(owner->myguy->total_shots <= 1, "default non-living target branch should decrement shots");
+        TEST_ASSERT(weapon->dead == 1, "weapon durability path should kill mortal weapon at <=0 hp");
+    }
+
+    myscreen->save_data.allied_mode = saved_allied_mode;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_batch6_attack_branches_enemy_and_weapon_paths);
+
+void test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps()
+{
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 1;
+
+    // Build an attacker that is not considered friendly to team 0 even when allied mode is on.
+    walker* attacker = make_guy(FAMILY_SOLDIER, 1);
+    TEST_ASSERT(attacker != nullptr, "attacker created");
+    if (!attacker)
+        return;
+    attacker->clear_myguy();
+    attacker->damage = 500.0f;
+
+    // Team-0 target death paths (playerteam==target team) that select various message branches.
+    walker* t_dispelled = make_guy(FAMILY_ORC, 0);
+    walker* t_named = make_guy(FAMILY_ORC, 0);
+    walker* t_myguy_name = make_guy(FAMILY_ORC, 0);
+    TEST_ASSERT(t_dispelled && t_named && t_myguy_name, "targets created");
+    if (t_dispelled && t_named && t_myguy_name)
+    {
+        t_dispelled->stats()->hitpoints = 1;
+        t_dispelled->stats()->name = "Summon";
+        t_dispelled->owner = attacker; // dispelled branch
+        (void)attacker->attack(t_dispelled);
+
+        t_named->stats()->hitpoints = 1;
+        t_named->owner = nullptr;
+        t_named->lifetime = 0;
+        t_named->stats()->name = "AllyName"; // named death branch
+        (void)attacker->attack(t_named);
+
+        t_myguy_name->stats()->hitpoints = 1;
+        t_myguy_name->owner = nullptr;
+        t_myguy_name->lifetime = 0;
+        t_myguy_name->stats()->name.clear();
+        if (t_myguy_name->myguy)
+            t_myguy_name->myguy->name = "GuyName"; // myguy-name branch
+        (void)attacker->attack(t_myguy_name);
+    }
+
+    // High-armor path in attack() (engine still guarantees at least 1 damage).
+    walker* armored = make_guy(FAMILY_ORC, 2);
+    TEST_ASSERT(armored != nullptr, "armored target created");
+    if (armored)
+    {
+        armored->stats()->armor = 100000;
+        const float hp_before = armored->stats()->hitpoints;
+        (void)attacker->attack(armored);
+        TEST_ASSERT(armored->stats()->hitpoints <= hp_before, "high armor path should not increase hitpoints");
+    }
+
+    // do_heal_effects early-return branch when heal numbers are disabled.
+    cfg.apply_setting("effects", "heal_numbers", "off");
+    attacker->do_heal_effects(attacker, attacker, 5);
+    cfg.apply_setting("effects", "heal_numbers", "on");
+
+    myscreen->save_data.allied_mode = saved_allied_mode;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_batch6_attack_friendly_team_death_messages_and_clamps);

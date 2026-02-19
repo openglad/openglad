@@ -605,3 +605,102 @@ void test_treasure_batch5_default_eat_and_missing_self_target_lookup()
                 "teleport target lookup should fail when teleporter is not present in fxlist");
 }
 REGISTER_TEST(test_treasure_batch5_default_eat_and_missing_self_target_lookup);
+
+void test_treasure_batch6_find_teleport_target_full_loop_paths()
+{
+    clear_level_lists();
+
+    treasure* tele_a = add_treasure(FAMILY_TELEPORTER, 5);
+    treasure* tele_b = add_treasure(FAMILY_TELEPORTER, 5);
+    treasure* tele_c = add_treasure(FAMILY_TELEPORTER, 6);
+    TEST_ASSERT(tele_a && tele_b && tele_c, "teleporters created");
+    if (!(tele_a && tele_b && tele_c))
+        return;
+
+    // Forward scan success branch.
+    TEST_ASSERT(tele_a->find_teleport_target() == tele_b,
+                "first teleporter should find next same-level teleporter");
+
+    // Wraparound scan success branch (mark later candidate dead first).
+    tele_b->dead = 1;
+    TEST_ASSERT(tele_c->find_teleport_target() == nullptr,
+                "mismatched level with dead later target should return nullptr");
+    tele_b->dead = 0;
+    tele_c->stats()->level = 5;
+    TEST_ASSERT(tele_c->find_teleport_target() == tele_a,
+                "last teleporter should wrap around to first same-level teleporter");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_treasure_batch6_find_teleport_target_full_loop_paths);
+
+void test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present()
+{
+    clear_level_lists();
+
+    og::sim::SimWorld world(6060);
+    og::sim::SimEventLog events;
+    SaveData save;
+    save.my_team = 0;
+    const short saved_allied_mode = myscreen->save_data.allied_mode;
+    myscreen->save_data.allied_mode = 0;
+
+    walker* ally = add_living(0);
+    walker* hostile = add_living(1);
+    (void)add_treasure(FAMILY_EXIT, 1);
+    TEST_ASSERT(ally && hostile, "ally/hostile created");
+    if (!(ally && hostile))
+        return;
+    ally->set_act_type(ACT_CONTROL);
+    hostile->set_act_type(ACT_CONTROL);
+
+    // Force find_far_foe path by clearing references.
+    ally->foe = nullptr;
+    ally->leader = nullptr;
+
+    // Dead linked object used for pointer cleanup.
+    walker* dead_link = add_living(2);
+    TEST_ASSERT(dead_link != nullptr, "dead link created");
+    if (!dead_link)
+        return;
+    dead_link->dead = 1;
+    ally->owner = dead_link;
+    ally->collide_ob = dead_link;
+    hostile->foe = dead_link;
+    hostile->leader = dead_link;
+    hostile->owner = dead_link;
+    hostile->collide_ob = dead_link;
+
+    walker* weap_owner = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(weap_owner && dead_fx && dead_weap, "weapon/fx created");
+    if (!(weap_owner && dead_fx && dead_weap))
+        return;
+    weap_owner->foe = dead_link;
+    weap_owner->leader = dead_link;
+    weap_owner->owner = dead_link;
+    weap_owner->collide_ob = dead_link;
+    dead_fx->dead = 1;
+    dead_weap->dead = 1;
+
+    // Dead living without myguy should decrement numobs during erase.
+    walker* dead_living = add_living(3);
+    TEST_ASSERT(dead_living != nullptr, "dead living created");
+    if (!dead_living)
+        return;
+    dead_living->myguy = nullptr;
+    dead_living->dead = 1;
+
+    std::int32_t enemy_freeze = 0;
+    char end = 0;
+    og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    (void)r;
+    TEST_ASSERT(ally->owner == nullptr && ally->collide_ob == nullptr, "dead links should be cleared on oblist entities");
+    TEST_ASSERT(hostile->foe == nullptr && hostile->leader == nullptr, "all dead references should be cleared");
+    (void)weap_owner;
+
+    clear_level_lists();
+    myscreen->save_data.allied_mode = saved_allied_mode;
+}
+REGISTER_TEST(test_sim_world_batch6_cleanup_and_erase_paths_with_hostiles_present);
