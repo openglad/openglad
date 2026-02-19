@@ -3,6 +3,7 @@
 #include <openglad/entities/living.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gloader.h>
+#include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
@@ -10,6 +11,7 @@
 #include <memory>
 
 extern screen* myscreen;
+bool walkerIsAutoAttackable(walker* ob);
 
 static std::unique_ptr<walker> make_living(char family, short level = 3)
 {
@@ -235,3 +237,166 @@ void test_living_walk_all_families()
     }
 }
 REGISTER_TEST(test_living_walk_all_families);
+
+void test_living_headless_ctor_defaults()
+{
+    living w;
+    TEST_ASSERT_EQ(1, (int)w.current_special, "headless living ctor should set current_special=1");
+    TEST_ASSERT_EQ(0, (int)w.lifetime, "headless living ctor should set lifetime=0");
+}
+REGISTER_TEST(test_living_headless_ctor_defaults);
+
+void test_living_act_bonus_rounds_and_dead_gate()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+
+    w->set_act_type(ACT_CONTROL);
+    w->bonus_rounds = 1;
+    bool r = w->act();
+    TEST_ASSERT(r, "act should still succeed when bonus_rounds recurse");
+    TEST_ASSERT_EQ(0, (int)w->bonus_rounds, "bonus_rounds should decrement to zero");
+
+    w->dead = 1;
+    r = w->act();
+    TEST_ASSERT(!r, "dead living should return false from act");
+}
+REGISTER_TEST(test_living_act_bonus_rounds_and_dead_gate);
+
+void test_living_act_lifetime_expiry_with_owner()
+{
+    auto owner = make_living(FAMILY_MAGE);
+    auto summoned = make_living(FAMILY_FIREELEMENTAL);
+    TEST_ASSERT(owner && summoned, "walkers created");
+    if (!(owner && summoned))
+        return;
+
+    summoned->owner = owner.get();
+    summoned->lifetime = 1;
+    summoned->dead = 0;
+    bool r = summoned->act();
+    (void)r;
+    TEST_ASSERT(summoned->dead, "summoned living should die when lifetime reaches zero");
+}
+REGISTER_TEST(test_living_act_lifetime_expiry_with_owner);
+
+void test_living_act_timers_charm_and_recoil_clamps()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+
+    w->set_act_type(ACT_CONTROL);
+    w->view_all = 1;
+    w->invulnerable_left = 1;
+    w->invisibility_left = 0;
+    w->outline = 5;
+    w->set_charm_left(1);
+    w->team_num = 4;
+    w->real_team_num = 2;
+    w->speed_bonus_left = 2;
+    w->speed_bonus = 3.0f;
+    w->attack_lunge = 0.2f;
+    w->hit_recoil = 0.3f;
+
+    bool r = w->act();
+    TEST_ASSERT(r, "ACT_CONTROL should return true");
+    TEST_ASSERT_EQ(0, (int)w->view_all, "view_all should decrement");
+    TEST_ASSERT_EQ(0, (int)w->invulnerable_left, "invulnerable_left should decrement");
+    TEST_ASSERT_EQ(0, (int)w->outline, "outline should clear when not invisible");
+    TEST_ASSERT_EQ(2, (int)w->team_num, "team should restore from real_team_num after charm expires");
+    TEST_ASSERT_EQ(255, (int)w->real_team_num, "real_team_num should reset after charm expires");
+    TEST_ASSERT_EQ(1, (int)w->speed_bonus_left, "speed bonus timer should decrement");
+    TEST_ASSERT_EQ(0, (int)w->attack_lunge, "attack_lunge should clamp to zero");
+    TEST_ASSERT_EQ(0, (int)w->hit_recoil, "hit_recoil should clamp to zero");
+}
+REGISTER_TEST(test_living_act_timers_charm_and_recoil_clamps);
+
+void test_living_act_nonpassable_tile_damage_kills()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+
+    cfg.apply_setting("effects", "damage_numbers", "on");
+    w->set_act_type(ACT_CONTROL);
+    w->xpos = -100;
+    w->ypos = -100;
+    w->flight_left = 0;
+    w->stats()->hitpoints = 1;
+    w->stats()->magicpoints = 0;
+    w->stats()->max_magicpoints = 0;
+
+    (void)w->act();
+    TEST_ASSERT(w->dead, "non-flying living on an impassable tile should die at 1 HP");
+}
+REGISTER_TEST(test_living_act_nonpassable_tile_damage_kills);
+
+void test_living_walk_and_do_action_edge_branches()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    w->setxy(10, 10);
+    w->curdir = FACE_LEFT;
+
+    bool moved = static_cast<living*>(w.get())->walk(-1000, 0);
+    TEST_ASSERT(!moved, "walk should fail when target would be outside map bounds");
+
+    w->action = 0;
+    bool a = static_cast<living*>(w.get())->do_action();
+    TEST_ASSERT(!a, "do_action should return false when action=0");
+
+    w->action = ACTION_FOLLOW;
+    w->foe = w.get();
+    a = static_cast<living*>(w.get())->do_action();
+    TEST_ASSERT(!a, "ACTION_FOLLOW with existing foe should return false");
+
+    w->foe = nullptr;
+    w->leader = w.get();
+    w->leader->foe = w.get();
+    a = static_cast<living*>(w.get())->do_action();
+    TEST_ASSERT(!a, "ACTION_FOLLOW should copy leader foe then return false");
+    TEST_ASSERT(w->foe == w.get(), "foe should be copied from leader");
+}
+REGISTER_TEST(test_living_walk_and_do_action_edge_branches);
+
+void test_living_facing_threshold_edges_and_summon_and_autoattackable()
+{
+    auto w = make_living(FAMILY_CLERIC);
+    TEST_ASSERT(w != nullptr, "walker created");
+    living* lv = static_cast<living*>(w.get());
+
+    TEST_ASSERT_EQ(FACE_DOWN, (int)lv->facing(1, 3), "x>0 slope>2414 => down");
+    TEST_ASSERT_EQ(FACE_DOWN_RIGHT, (int)lv->facing(1, 1), "x>0 slope>414 => down-right");
+    TEST_ASSERT_EQ(FACE_RIGHT, (int)lv->facing(1, 0), "x>0 slope>-414 => right");
+    TEST_ASSERT_EQ(FACE_UP_RIGHT, (int)lv->facing(1, -1), "x>0 slope>-2414 => up-right");
+    TEST_ASSERT_EQ(FACE_UP, (int)lv->facing(1, -3), "x>0 steep negative => up");
+
+    TEST_ASSERT_EQ(FACE_UP, (int)lv->facing(-1, -3), "x<0 slope>2414 => up");
+    TEST_ASSERT_EQ(FACE_UP_LEFT, (int)lv->facing(-1, -1), "x<0 slope>414 => up-left");
+    TEST_ASSERT_EQ(FACE_LEFT, (int)lv->facing(-1, 0), "x<0 slope>-414 => left");
+    TEST_ASSERT_EQ(FACE_DOWN_LEFT, (int)lv->facing(-1, 1), "x<0 slope>-2414 => down-left");
+    TEST_ASSERT_EQ(FACE_DOWN, (int)lv->facing(-1, 3), "x<0 steep negative => down");
+
+    walker* summoned = lv->do_summon(FAMILY_GHOST, 123);
+    TEST_ASSERT(summoned != nullptr, "do_summon should create a living walker");
+    if (!summoned)
+        return;
+    TEST_ASSERT(summoned->owner == w.get(), "summoned owner should be summoner");
+    TEST_ASSERT_EQ(123, (int)summoned->lifetime, "summoned lifetime should match input");
+
+    walker* fx = myscreen->level_data.add_ob(Order::FX, FAMILY_BLOOD);
+    TEST_ASSERT(fx != nullptr, "fx object created");
+    bool aa = walkerIsAutoAttackable(fx);
+    TEST_ASSERT(!aa, "FX should not be auto-attackable");
+}
+REGISTER_TEST(test_living_facing_threshold_edges_and_summon_and_autoattackable);
+
+void test_living_set_difficulty_delay_loops_and_clamps()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    w->team_num = 0;
+    static_cast<living*>(w.get())->set_difficulty(200);
+    TEST_ASSERT(w->stats()->heal_per_round > 0, "high level should force heal-per-round loop increments");
+    TEST_ASSERT(w->stats()->magic_per_round > 0, "high level should force magic-per-round loop increments");
+}
+REGISTER_TEST(test_living_set_difficulty_delay_loops_and_clamps);

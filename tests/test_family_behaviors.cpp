@@ -14,10 +14,12 @@
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/data/gloader.h>
+#include <openglad/data/gparser.h>
 #include <openglad/legacy/base.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
 #include <cmath>
+#include <algorithm>
 
 extern screen* myscreen;
 
@@ -1110,3 +1112,238 @@ void test_soldier_weapons_left_on_create()
                    "soldier weapons_left should be (level+1)/2 = 3 at level 5");
 }
 REGISTER_TEST(test_soldier_weapons_left_on_create);
+
+static walker* add_stain_to_fxlist(int team, short x, short y)
+{
+    walker* ob = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_STAIN);
+    if (!ob) return nullptr;
+    ob->ignore = 1;
+    ob->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
+    ob->team_num = static_cast<unsigned char>(team);
+    ob->setxy(x, y);
+    return ob;
+}
+
+void test_cleric_check_special_ai_direct_branches()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->check_special_ai, "cleric check_special_ai present");
+
+    cleric->current_special = 1;
+    cleric->stats()->max_magicpoints = 100;
+    cleric->stats()->magicpoints = 0;
+    bool ok = fd->check_special_ai(static_cast<living*>(cleric));
+    TEST_ASSERT(!ok, "special=1 without allies and low MP should fail");
+
+    walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 120, 100);
+    TEST_ASSERT(ally != nullptr, "ally created");
+    ok = fd->check_special_ai(static_cast<living*>(cleric));
+    TEST_ASSERT(ok, "special=1 with an ally nearby should pass");
+    TEST_ASSERT_EQ(0, (int)cleric->shifter_down, "heal mode should set shifter_down=0");
+
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric recreated");
+    cleric->current_special = 1;
+    cleric->stats()->max_magicpoints = 100;
+    cleric->stats()->magicpoints = 50;
+    ok = fd->check_special_ai(static_cast<living*>(cleric));
+    TEST_ASSERT(ok, "special=1 with no allies but MP>=half should pass");
+    TEST_ASSERT_EQ(1, (int)cleric->shifter_down, "mace mode should set shifter_down=1");
+
+    cleric->current_special = 2;
+    ok = fd->check_special_ai(static_cast<living*>(cleric));
+    TEST_ASSERT(ok, "special!=1 should always pass");
+}
+REGISTER_TEST(test_cleric_check_special_ai_direct_branches);
+
+void test_cleric_heal_special_success_and_noheal_branch()
+{
+    myscreen->level_data.create_new_grid();
+    cfg.apply_setting("effects", "heal_numbers", "on");
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 110, 100);
+    TEST_ASSERT(cleric && ally, "cleric+ally created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+
+    cleric->current_special = 1;
+    cleric->shifter_down = 0;
+    cleric->stats()->level = 5;
+    cleric->stats()->magicpoints = 200;
+    ally->stats()->max_hitpoints = 100;
+    ally->stats()->hitpoints = 10;
+
+    float hp_before = ally->stats()->hitpoints;
+    float mp_before = cleric->stats()->magicpoints;
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "heal special should succeed with an injured ally");
+    TEST_ASSERT(ally->stats()->hitpoints > hp_before, "ally HP should increase");
+    TEST_ASSERT(cleric->stats()->magicpoints < mp_before, "cleric MP should decrease");
+
+    ally->stats()->hitpoints = ally->stats()->max_hitpoints;
+    ok = fd->do_special(cleric);
+    TEST_ASSERT(!ok, "heal special should fail when nobody is healable");
+}
+REGISTER_TEST(test_cleric_heal_special_success_and_noheal_branch);
+
+void test_cleric_mystic_mace_gates()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+
+    cleric->current_special = 1;
+    cleric->shifter_down = 1;
+    cleric->busy = 1;
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(!ok, "mystic mace should fail while busy");
+
+    cleric->busy = 0;
+    auto low_int = std::make_unique<guy>(FAMILY_CLERIC);
+    low_int->intelligence = 40;
+    cleric->set_owned_myguy(std::move(low_int));
+    cleric->user = 0;
+    ok = fd->do_special(cleric);
+    TEST_ASSERT(!ok, "mystic mace should fail when int<50");
+}
+REGISTER_TEST(test_cleric_mystic_mace_gates);
+
+void test_cleric_turn_undead_branches()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+
+    cleric->current_special = 2;
+    cleric->shifter_down = 1;
+    auto low_int = std::make_unique<guy>(FAMILY_CLERIC);
+    low_int->intelligence = 50;
+    cleric->set_owned_myguy(std::move(low_int));
+    cleric->busy = 0;
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(!ok, "turn undead should fail at int<60");
+    TEST_ASSERT(cleric->busy >= 5, "failed int gate should add busy delay");
+
+    auto good_int = std::make_unique<guy>(FAMILY_CLERIC);
+    good_int->intelligence = 80;
+    cleric->set_owned_myguy(std::move(good_int));
+    cleric->busy = 0;
+    ok = fd->do_special(cleric);
+    TEST_ASSERT(!ok, "turn undead should fail when no undead foes are in range");
+
+}
+REGISTER_TEST(test_cleric_turn_undead_branches);
+
+void test_cleric_raise_skeleton_and_ghost_from_blood()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+
+    walker* blood = add_stain_to_fxlist(1, 110, 100);
+    TEST_ASSERT(blood != nullptr, "blood created");
+    cleric->current_special = 2;
+    cleric->shifter_down = 0;
+    cleric->stats()->level = 6;
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "raise skeleton should succeed when blood is nearby and passable");
+    TEST_ASSERT(blood->dead, "blood should be consumed by raise skeleton");
+
+    bool found_skeleton = false;
+    for (auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w && w != cleric && w->query_order() == Order::Living &&
+            w->query_family() == FAMILY_SKELETON && w->owner == cleric)
+        {
+            found_skeleton = true;
+            break;
+        }
+    }
+    TEST_ASSERT(found_skeleton, "raise skeleton should spawn a summoned skeleton");
+
+    blood = add_stain_to_fxlist(1, 115, 100);
+    TEST_ASSERT(blood != nullptr, "second blood created");
+    cleric->current_special = 3;
+    cleric->shifter_down = 0;
+    ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "raise ghost should succeed when blood is close (<30)");
+    TEST_ASSERT(blood->dead, "blood should be consumed by raise ghost");
+
+    bool found_ghost = false;
+    for (auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w && w != cleric && w->query_order() == Order::Living &&
+            w->query_family() == FAMILY_GHOST && w->owner == cleric)
+        {
+            found_ghost = true;
+            break;
+        }
+    }
+    TEST_ASSERT(found_ghost, "raise ghost should spawn a summoned ghost");
+}
+REGISTER_TEST(test_cleric_raise_skeleton_and_ghost_from_blood);
+
+void test_cleric_resurrect_friendly_and_enemy_blood()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+
+    walker* blood_friend = add_stain_to_fxlist(0, 110, 100);
+    TEST_ASSERT(blood_friend != nullptr, "friendly blood created");
+    blood_friend->stats()->old_family = FAMILY_SOLDIER;
+    cleric->current_special = 4;
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "resurrect should succeed for friendly blood");
+    TEST_ASSERT(blood_friend->dead, "friendly blood should be consumed");
+
+    bool found_resurrected_friend = false;
+    for (auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w && w != cleric && w->query_order() == Order::Living &&
+            w->query_family() == FAMILY_SOLDIER && w->team_num == 0)
+        {
+            found_resurrected_friend = true;
+            break;
+        }
+    }
+    TEST_ASSERT(found_resurrected_friend, "friendly blood should resurrect old_family");
+
+    walker* blood_enemy = add_stain_to_fxlist(1, 112, 100);
+    TEST_ASSERT(blood_enemy != nullptr, "enemy blood created");
+    blood_enemy->stats()->old_family = FAMILY_ORC;
+    ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "resurrect should also succeed for enemy blood");
+    TEST_ASSERT(blood_enemy->dead, "enemy blood should be consumed");
+
+    bool found_enemy_ghost = false;
+    for (auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w && w != cleric && w->query_order() == Order::Living &&
+            w->query_family() == FAMILY_GHOST && w->team_num == cleric->team_num &&
+            w->owner == cleric)
+        {
+            found_enemy_ghost = true;
+            break;
+        }
+    }
+    TEST_ASSERT(found_enemy_ghost, "enemy blood should summon a friendly ghost");
+}
+REGISTER_TEST(test_cleric_resurrect_friendly_and_enemy_blood);
