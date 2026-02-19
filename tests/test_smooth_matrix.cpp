@@ -217,3 +217,78 @@ void test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks()
     }
 }
 REGISTER_TEST(test_smooth_matrix_targets_tree_dirt_dark_dirt_large_mask_blocks);
+
+void test_smooth_query_helpers_and_grass_water_corner_branches()
+{
+    FixedRandom rng(0);
+    GameContext ctx;
+    ctx.rng = &rng;
+    GlobalContextGuard guard(&ctx);
+
+    smoother s;
+
+    // query_x_y guard rails before target is set.
+    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(0, 0), "query_x_y should default to grass before target is set");
+
+    PixieData base = make_grid(3, 3, PIX_GRASS1);
+    s.set_target(base);
+    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(-1, 0), "query_x_y should clamp negative x to grass");
+    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(0, -1), "query_x_y should clamp negative y to grass");
+    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(3, 1), "query_x_y should clamp x>=maxx to grass");
+    TEST_ASSERT_EQ(PIX_GRASS1, (int)s.query_x_y(1, 3), "query_x_y should clamp y>=maxy to grass");
+    TEST_ASSERT_EQ(TYPE_GRASS, (int)s.query_genre_x_y(1, 1), "query_genre_x_y should classify grass tile");
+
+    auto run_grass_case = [&](auto setup, unsigned char expected, const char* msg) {
+        PixieData g = make_grid(5, 5, PIX_GRASS1);
+        at(g, 2, 2) = PIX_GRASS1;
+        setup(g);
+        s.set_target(g);
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)expected, (int)at(g, 2, 2), msg);
+    };
+
+    run_grass_case(
+        [&](PixieData& g) {
+            at(g, 1, 1) = PIX_WATER1; // upleft
+            at(g, 3, 3) = PIX_WATER1; // downright
+            at(g, 1, 3) = PIX_WATER1; // downleft
+            at(g, 2, 3) = PIX_WATER1; // down
+            at(g, 1, 2) = PIX_WATER1; // left
+        },
+        PIX_GRASSWATER_LL,
+        "grass-water LL branch should produce PIX_GRASSWATER_LL");
+
+    run_grass_case(
+        [&](PixieData& g) {
+            at(g, 1, 1) = PIX_WATER1; // upleft
+            at(g, 3, 1) = PIX_WATER1; // upright
+            at(g, 3, 3) = PIX_WATER1; // downright
+            at(g, 2, 1) = PIX_WATER1; // up
+            at(g, 3, 2) = PIX_WATER1; // right
+        },
+        PIX_GRASSWATER_UR,
+        "grass-water UR branch should produce PIX_GRASSWATER_UR");
+
+    run_grass_case(
+        [&](PixieData& g) {
+            at(g, 1, 1) = PIX_WATER1; // upleft
+            at(g, 3, 1) = PIX_WATER1; // upright
+            at(g, 1, 3) = PIX_WATER1; // downleft
+            at(g, 2, 1) = PIX_WATER1; // up
+            at(g, 1, 2) = PIX_WATER1; // left
+        },
+        PIX_GRASSWATER_UL,
+        "grass-water UL branch should produce PIX_GRASSWATER_UL");
+
+    run_grass_case(
+        [&](PixieData& g) {
+            at(g, 3, 1) = PIX_WATER1; // upright
+            at(g, 3, 3) = PIX_WATER1; // downright
+            at(g, 1, 3) = PIX_WATER1; // downleft
+            at(g, 3, 2) = PIX_WATER1; // right
+            at(g, 2, 3) = PIX_WATER1; // down
+        },
+        PIX_GRASSWATER_LR,
+        "grass-water LR branch should produce PIX_GRASSWATER_LR");
+}
+REGISTER_TEST(test_smooth_query_helpers_and_grass_water_corner_branches);

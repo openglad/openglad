@@ -416,3 +416,64 @@ void test_level_data_load_version5_truncated_discard_tail_fails()
     TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when long-line discard bytes are truncated");
 }
 REGISTER_TEST(test_level_data_load_version5_truncated_discard_tail_fails);
+
+void test_level_data_load_versions_2_3_4_missing_grid_or_count_fail()
+{
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes; // missing grid bytes
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when grid field is missing");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid"); // missing listsize bytes
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_2(rw, &data), "v2 should fail when object count field is missing");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes; // missing grid bytes
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when grid field is missing");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid"); // missing listsize bytes
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_3(rw, &data), "v3 should fail when object count field is missing");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes; // missing grid bytes
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when grid field is missing");
+    }
+    {
+        LevelData data(1);
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid"); // missing listsize bytes
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when object count field is missing");
+    }
+}
+REGISTER_TEST(test_level_data_load_versions_2_3_4_missing_grid_or_count_fail);
+
+void test_level_data_load_version4_truncated_discard_tail_fails()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_i16(bytes, 0); // listsize
+    append_u8(bytes, 1);  // numlines
+    append_u8(bytes, 120); // long line, requires discard
+    for (int i = 0; i < 90; i++)
+        append_u8(bytes, 'w'); // intentionally short payload for discard loop
+
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    short ok = load_version_4(rw, &data);
+    TEST_ASSERT_EQ(0, (int)ok, "load_version_4 should fail when long-line discard bytes are truncated");
+}
+REGISTER_TEST(test_level_data_load_version4_truncated_discard_tail_fails);

@@ -923,3 +923,37 @@ void test_sim_input_switch_char_reverse_missing_old_control_restores_control()
     TEST_ASSERT(result.control_hp == 27.0f, "reverse missing-control path should preserve old-control HP");
 }
 REGISTER_TEST(test_sim_input_switch_char_reverse_missing_old_control_restores_control);
+
+void test_sim_input_dead_control_reassigns_to_next_alive()
+{
+    teardown();
+    auto dead_control_up = make_living(0, 0);
+    auto replacement_up = make_living(0, -1);
+    TEST_ASSERT(dead_control_up != nullptr && replacement_up != nullptr, "walkers should be created");
+    if (!(dead_control_up && replacement_up))
+        return;
+
+    walker* control = dead_control_up.get();
+    walker* replacement = replacement_up.get();
+    control->dead = 1;
+    replacement->stats()->hitpoints = 64.0f;
+
+    myscreen->level_data.oblist.push_back(std::move(dead_control_up));
+    myscreen->level_data.oblist.push_back(std::move(replacement_up));
+
+    InputState input;
+    input.clear();
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(control == replacement, "dead control should be replaced by next available teammate");
+    TEST_ASSERT(result.control_hp_changed, "dead-control reassignment should report HP changed");
+    TEST_ASSERT(result.control_hp == 64.0f, "dead-control reassignment should report replacement HP");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_dead_control_reassigns_to_next_alive);
