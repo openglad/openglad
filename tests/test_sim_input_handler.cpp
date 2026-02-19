@@ -480,3 +480,117 @@ void test_sim_input_special_and_fire_paths()
     teardown();
 }
 REGISTER_TEST(test_sim_input_special_and_fire_paths);
+
+void test_sim_find_next_control_fallback_any_team_player()
+{
+    teardown();
+    auto other_team_player = make_living(1);
+    TEST_ASSERT(other_team_player != nullptr, "other-team player should be created");
+    other_team_player->myguy = reinterpret_cast<guy*>(1);
+    walker* expected = other_team_player.get();
+    myscreen->level_data.oblist.push_back(std::move(other_team_player));
+
+    walker* found = sim_find_next_control(myscreen->level_data, 0);
+    TEST_ASSERT(found == expected, "fallback pass should find any alive player character");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_find_next_control_fallback_any_team_player);
+
+void test_sim_input_switch_char_wraparound_forward_and_reverse()
+{
+    // Forward wraparound: old control is last entry, so selection wraps to head.
+    auto candidate_up = make_living(0, -1);
+    auto control_up = make_living(0, 0);
+    TEST_ASSERT(candidate_up != nullptr, "candidate should be created");
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+    walker* candidate = candidate_up.get();
+    walker* control = control_up.get();
+    control->set_act_type(ACT_CONTROL);
+    candidate->stats()->hitpoints = 61.0f;
+
+    myscreen->level_data.oblist.push_back(std::move(candidate_up));
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT(control == candidate, "forward switch should wrap to first teammate");
+    TEST_ASSERT(result.control_hp_changed, "wrapped switch should report hp change");
+    TEST_ASSERT(result.control_hp == 61.0f, "wrapped switch hp should match target");
+
+    teardown();
+
+    // Reverse wraparound: old control is first entry, so reverse wraps to tail.
+    auto reverse_control_up = make_living(0, 0);
+    auto reverse_candidate_up = make_living(0, -1);
+    TEST_ASSERT(reverse_control_up != nullptr, "reverse control should be created");
+    TEST_ASSERT(reverse_candidate_up != nullptr, "reverse candidate should be created");
+    walker* reverse_control = reverse_control_up.get();
+    walker* reverse_candidate = reverse_candidate_up.get();
+    reverse_control->set_act_type(ACT_CONTROL);
+    reverse_candidate->stats()->hitpoints = 72.0f;
+
+    myscreen->level_data.oblist.push_back(std::move(reverse_control_up));
+    myscreen->level_data.oblist.push_back(std::move(reverse_candidate_up));
+
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    debounce = {};
+
+    result = sim_process_player_input(
+        input.players[0], reverse_control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT(reverse_control == reverse_candidate, "reverse switch should wrap to last teammate");
+    TEST_ASSERT(result.control_hp == 72.0f, "reverse wrapped hp should match target");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_switch_char_wraparound_forward_and_reverse);
+
+void test_sim_input_switch_special_valid_advance_and_shift_yell_default_branch()
+{
+    auto control_up = make_living(0, 0);
+    TEST_ASSERT(control_up != nullptr, "control should be created");
+    walker* control = control_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->current_special = 1;
+    control->stats()->level = 20;
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    special_names[FAMILY_SOLDIER][2] = "VALID_SPECIAL";
+    og::sim::SimEventLog log;
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchSpecial)] = true;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "switch special should keep control");
+    TEST_ASSERT_EQ(2, control->current_special, "valid unlocked special should advance");
+
+    control->action = 99;
+    input.clear();
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+    input.players[0].pressed[static_cast<int>(InputAction::Yell)] = true;
+    result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data,
+        0, 0, debounce, special_names, &log);
+    TEST_ASSERT(result.new_control == control, "shift+yell default branch should keep control");
+    TEST_ASSERT_EQ(0, control->action, "default shift+yell branch should reset action");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_switch_special_valid_advance_and_shift_yell_default_branch);
