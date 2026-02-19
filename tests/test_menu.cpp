@@ -27,6 +27,16 @@ static Sint32 passthrough_cb(Sint32 arg)
     return arg;
 }
 
+static void push_mouse_motion_game_coords(int game_x, int game_y)
+{
+    SDL_Event event{};
+    event.type = SDL_MOUSEMOTION;
+    event.motion.type = SDL_MOUSEMOTION;
+    event.motion.x = static_cast<int>(viewport_offset_x + (static_cast<float>(game_x) * viewport_w / 320.0f));
+    event.motion.y = static_cast<int>(viewport_offset_y + (static_cast<float>(game_y) * viewport_h / 200.0f));
+    SDL_PushEvent(&event);
+}
+
 void test_mainmenu_buttons() {
     // Create a simple button array using the button struct constructor
     button test_buttons[3] = {
@@ -76,19 +86,17 @@ void test_menu_button_misc_paths()
     TEST_ASSERT_EQ(0, (int)func_button.myfunc, "function-pointer constructor should set myfunc=0");
 
     vbutton b(10, 10, 30, 10, 0, 0, "B", KEYSTATE_q);
-    mouse_state.x = 15;
-    mouse_state.y = 15;
+    clear_events();
+    push_mouse_motion_game_coords(15, 15);
     mouse_state.left = false;
     mouse_state.right = false;
 
     TEST_ASSERT_EQ(1, (int)b.mouse_on(), "mouse_on should detect in-bounds hover");
     TEST_ASSERT_EQ(1, (int)b.mouse_on(), "mouse_on should stay focused while hovered");
-    mouse_state.x = 200;
-    mouse_state.y = 150;
+    push_mouse_motion_game_coords(200, 150);
     TEST_ASSERT_EQ(0, (int)b.mouse_on(), "mouse_on should clear focus out of bounds");
 
-    mouse_state.x = 15;
-    mouse_state.y = 15;
+    push_mouse_motion_game_coords(15, 15);
     TEST_ASSERT_EQ(0, (int)b.rightclick(0), "rightclick direct path should succeed with myfunc=0");
 
     allbuttons[0] = &b;
