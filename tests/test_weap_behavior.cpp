@@ -318,6 +318,18 @@ void test_weap_death_is_idempotent()
 }
 REGISTER_TEST(test_weap_death_is_idempotent);
 
+void test_weap_headless_default_ctor_and_setxy_path()
+{
+    weap headless;
+    TEST_ASSERT_EQ(0, (int)headless.do_bounce, "default weap ctor should initialize do_bounce=0");
+    TEST_ASSERT_EQ((int)Order::Weapon, (int)headless.query_order(), "headless weap should report weapon order");
+
+    headless.setxy(12, 34);
+    TEST_ASSERT_EQ(12, (int)headless.xpos, "weap::setxy override should update xpos");
+    TEST_ASSERT_EQ(34, (int)headless.ypos, "weap::setxy override should update ypos");
+}
+REGISTER_TEST(test_weap_headless_default_ctor_and_setxy_path);
+
 static void set_world_tile(short world_x, short world_y, unsigned char tile)
 {
     auto& level = myscreen->level_data;

@@ -1,6 +1,7 @@
 #include <openglad/data/pixie_data.h>
 #include <openglad/io/og_file.h>
 #include <openglad/io/ogfile_yaml.h>
+#include <openglad/io/physfs_api.h>
 #include <openglad/io/yaml_stream.h>
 #include <openglad/io/zip_api.h>
 #include <openglad/platform/io_common.h>
@@ -12,6 +13,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <physfs.h>
 #include <string>
 #include <vector>
 
@@ -172,6 +174,39 @@ void test_yaml_stream_sequence_emit_and_parse_error_path()
     TEST_ASSERT(guard > 0, "parser should process at least one malformed-yaml step");
 }
 REGISTER_TEST(test_yaml_stream_sequence_emit_and_parse_error_path);
+
+void test_yaml_stream_alias_and_sequence_event_paths()
+{
+    const std::string yaml_text =
+        "a: &anchor 1\n"
+        "b: *anchor\n"
+        "c: [2, 3]\n";
+    MemReadCtx reader{yaml_text, 0};
+    og::io::YamlParser parser;
+    parser.set_input(mem_read_handler, &reader);
+
+    bool saw_alias = false;
+    bool saw_begin_sequence = false;
+    bool saw_end_sequence = false;
+    og::io::YamlParseResult r = og::io::YamlParseResult::Error;
+    do
+    {
+        r = parser.parse_next();
+        const og::io::YamlEvent& ev = parser.event();
+        if (ev.type == og::io::YamlEventType::Alias)
+            saw_alias = true;
+        if (ev.type == og::io::YamlEventType::BeginSequence)
+            saw_begin_sequence = true;
+        if (ev.type == og::io::YamlEventType::EndSequence)
+            saw_end_sequence = true;
+    } while (r == og::io::YamlParseResult::Ok);
+
+    parser.close_input();
+    TEST_ASSERT(r == og::io::YamlParseResult::Done, "alias/sequence parse should complete");
+    TEST_ASSERT(saw_alias, "parser should emit alias events");
+    TEST_ASSERT(saw_begin_sequence && saw_end_sequence, "parser should emit sequence begin/end events");
+}
+REGISTER_TEST(test_yaml_stream_alias_and_sequence_event_paths);
 
 void test_zip_api_roundtrip_and_error_paths()
 {
@@ -363,6 +398,8 @@ void test_og_file_batch3_physfs_seek_and_path_overloads()
     TEST_ASSERT(phys != nullptr, "PhysFS read for cfg/openglad.yaml should succeed");
     if (phys)
     {
+        unsigned char ch = 0;
+        TEST_ASSERT_EQ(1, (int)phys->read(&ch, 1, 1), "physfs read should return one byte");
         const std::int64_t start = phys->seek(0, 0);
         TEST_ASSERT(start >= 0, "physfs seek set should succeed");
         const std::int64_t cur = phys->seek(1, 1);
@@ -489,3 +526,30 @@ void test_og_file_open_read_user_and_asset_fallbacks()
     fs::remove(user_abs, ec);
 }
 REGISTER_TEST(test_og_file_open_read_user_and_asset_fallbacks);
+
+void test_pixie_data_move_constructor_resets_source()
+{
+    PixieData src(2, 3, 1, new unsigned char[6]{1, 2, 3, 4, 5, 6});
+    TEST_ASSERT(src.valid(), "source pixie should start valid");
+
+    PixieData moved(std::move(src));
+    TEST_ASSERT(moved.valid(), "moved pixie should retain data");
+    TEST_ASSERT_EQ(0, (int)src.frames, "move ctor should clear source frames");
+    TEST_ASSERT_EQ(0, (int)src.w, "move ctor should clear source width");
+    TEST_ASSERT_EQ(0, (int)src.h, "move ctor should clear source height");
+}
+REGISTER_TEST(test_pixie_data_move_constructor_resets_source);
+
+void test_physfs_api_wrapper_error_and_list_paths()
+{
+    // Hit wrapper calls without mutating shared runtime mount/write state.
+    const std::list<std::string> root_files = og::io::physfs_enumerate_files_sorted("");
+    TEST_ASSERT(!root_files.empty(), "physfs_enumerate_files_sorted should list mounted root entries");
+
+    TEST_ASSERT(!og::io::physfs_mount("definitely_missing_physfs_path", nullptr, 1),
+                "physfs_mount should fail for a missing path");
+    TEST_ASSERT(!og::io::physfs_unmount("definitely_missing_physfs_path"),
+                "physfs_unmount should fail for an unmounted path");
+    TEST_ASSERT(!og::io::physfs_last_error().empty(), "physfs_last_error wrapper should return error text");
+}
+REGISTER_TEST(test_physfs_api_wrapper_error_and_list_paths);
