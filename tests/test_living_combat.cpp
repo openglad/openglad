@@ -460,6 +460,7 @@ void test_obmap_guard_and_hash_and_move_branches()
     TEST_ASSERT_EQ(1, (int)map.query_list(&dead_w, 0, 0), "query_list dead walker should return pass");
 
     TEST_ASSERT_EQ(0, (int)map.hash(-1), "negative small values hash to 0 with integer truncation");
+    TEST_ASSERT_EQ(199, (int)map.hash(-1000), "large negative hash should clamp to 199");
     TEST_ASSERT_EQ(199, (int)map.hash(10000), "large hash should clamp to 199");
 
     walker orphan;
@@ -481,3 +482,15 @@ void test_obmap_guard_and_hash_and_move_branches()
     TEST_ASSERT_EQ(1, (int)map.remove(live), "remove tracked walker should succeed");
 }
 REGISTER_TEST(test_obmap_guard_and_hash_and_move_branches);
+
+void test_living_facing_zero_vector_and_obmap_door_paths()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    living* lv = static_cast<living*>(w.get());
+    TEST_ASSERT_EQ(FACE_UP, (int)lv->facing(0, 0), "facing with zero vector should use x==0/y<=0 branch");
+}
+REGISTER_TEST(test_living_facing_zero_vector_and_obmap_door_paths);

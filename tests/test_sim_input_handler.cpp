@@ -957,3 +957,70 @@ void test_sim_input_dead_control_reassigns_to_next_alive()
     teardown();
 }
 REGISTER_TEST(test_sim_input_dead_control_reassigns_to_next_alive);
+
+void test_sim_input_switch_char_skips_ineligible_candidates_then_selects_valid()
+{
+    teardown();
+
+    auto control_up = make_living(0, 0);
+    auto enemy_up = make_living(1, -1);          // wrong team
+    auto charmed_up = make_living(0, -1);        // real_team_num != 255
+    auto taken_up = make_living(0, 2);           // user already taken
+    auto good_up = make_living(0, -1);           // first valid candidate
+    TEST_ASSERT(control_up && enemy_up && charmed_up && taken_up && good_up, "walkers should be created");
+    if (!(control_up && enemy_up && charmed_up && taken_up && good_up))
+        return;
+
+    auto nonliving = myscreen->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(nonliving != nullptr, "nonliving candidate should be created");
+    if (!nonliving)
+        return;
+
+    walker* control = control_up.get();
+    walker* good = good_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->team_num = 0;
+    control->real_team_num = 255;
+    control->stats()->hitpoints = 31.0f;
+
+    enemy_up->team_num = 1;
+    charmed_up->team_num = 0;
+    charmed_up->real_team_num = 7;
+    taken_up->team_num = 0;
+    taken_up->real_team_num = 255;
+    good_up->team_num = 0;
+    good_up->real_team_num = 255;
+    good_up->stats()->hitpoints = 77.0f;
+
+    // Keep every candidate friendly so team/user/real-team checks determine eligibility.
+    control->owner = control;
+    enemy_up->owner = control;
+    charmed_up->owner = control;
+    taken_up->owner = control;
+    good_up->owner = control;
+
+    myscreen->level_data.oblist.push_back(std::move(control_up));
+    myscreen->level_data.oblist.push_back(std::move(nonliving));
+    myscreen->level_data.oblist.push_back(std::move(enemy_up));
+    myscreen->level_data.oblist.push_back(std::move(charmed_up));
+    myscreen->level_data.oblist.push_back(std::move(taken_up));
+    myscreen->level_data.oblist.push_back(std::move(good_up));
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(control == good, "switch-char should skip ineligible entries and select first valid candidate");
+    TEST_ASSERT(result.control_hp_changed, "valid switch should report hp change");
+    TEST_ASSERT(result.control_hp == 77.0f, "reported hp should come from selected candidate");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_switch_char_skips_ineligible_candidates_then_selects_valid);
