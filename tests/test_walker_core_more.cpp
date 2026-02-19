@@ -363,3 +363,50 @@ void test_walker_query_next_to_and_generator_fire_check_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_query_next_to_and_generator_fire_check_paths);
+
+void test_walker_init_fire_turn_busy_and_fire_fallback_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto w_up = make_living(FAMILY_SOLDIER, 0, 3);
+    TEST_ASSERT(w_up != nullptr, "walker created");
+    if (!w_up)
+        return;
+    walker* w = w_up.get();
+    w->sim_level = &myscreen->level_data;
+    w->setxy(160, 160);
+    w->lastx = 1;
+    w->lasty = 0;
+
+    // ACT_CONTROL + direction mismatch should reject init_fire.
+    w->curdir = FACE_LEFT;
+    w->enddir = FACE_LEFT;
+    w->set_act_type(ACT_CONTROL);
+    TEST_ASSERT(!w->init_fire(1, 0), "ACT_CONTROL should reject firing when turn is required");
+
+    // Non-control mismatch should take the turn() path.
+    w->set_act_type(ACT_RANDOM);
+    w->curdir = FACE_LEFT;
+    w->enddir = FACE_LEFT;
+    TEST_ASSERT(w->init_fire(1, 0), "non-control should allow init_fire to turn first");
+
+    // Busy gate should block firing.
+    w->busy = 1;
+    w->curdir = FACE_RIGHT;
+    w->enddir = FACE_RIGHT;
+    TEST_ASSERT(!w->init_fire(1, 0), "busy walkers should not init_fire");
+
+    // ANI_WALK branch should transition into attack animation.
+    w->busy = 0;
+    w->ani_type = ANI_WALK;
+    TEST_ASSERT(w->init_fire(1, 0), "ANI_WALK branch should succeed and start attack animation");
+    TEST_ASSERT_EQ(ANI_ATTACK, (int)w->ani_type, "ANI_WALK firing should switch to ANI_ATTACK");
+
+    // Non-walk path delegates to fire(); force fire() to fail via magic cost check.
+    w->ani_type = ANI_ATTACK;
+    w->stats()->magicpoints = 0.0f;
+    w->stats()->weapon_cost = 10.0f;
+    TEST_ASSERT(!w->init_fire(1, 0), "non-walk init_fire should return false when fire() fails");
+}
+REGISTER_TEST(test_walker_init_fire_turn_busy_and_fire_fallback_paths);
