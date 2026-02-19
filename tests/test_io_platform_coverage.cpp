@@ -700,6 +700,55 @@ void test_zip_api_unreadable_and_non_regular_entries_report_add_failure()
 }
 REGISTER_TEST(test_zip_api_unreadable_and_non_regular_entries_report_add_failure);
 
+void test_zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path base = fs::path("temp") / "io_platform_cov_zip_batch9";
+    const fs::path blocked = base / "blocked";
+    const fs::path blocked_child = blocked / "child";
+    const fs::path archive = base / "blocked_walk.zip";
+    const fs::path corrupt = base / "corrupt.zip";
+    const fs::path out = base / "out";
+
+    fs::remove_all(base, ec);
+    fs::create_directories(blocked_child, ec);
+    {
+        std::FILE* f = std::fopen((blocked_child / "p.txt").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create blocked child payload");
+        if (f) {
+            const char* txt = "payload";
+            std::fwrite(txt, 1, std::strlen(txt), f);
+            std::fclose(f);
+        }
+    }
+
+    // Try to trigger recursive iterator increment error path under permission restrictions.
+    (void)::chmod(blocked.string().c_str(), 0);
+    const ArchiveIoError walk_r = og::io::zip_contents_with_error(base.string(), archive.string());
+    TEST_ASSERT(walk_r == ArchiveIoError::None || walk_r == ArchiveIoError::AddEntryFailed,
+                "permission-denied walk should take guarded recursive-iterator path");
+    (void)::chmod(blocked.string().c_str(), 0700);
+
+    // Corrupt archive bytes should fail open/read in unzip path.
+    {
+        std::FILE* f = std::fopen(corrupt.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create corrupt zip bytes");
+        if (f) {
+            const unsigned char junk[] = {0x50, 0x4B, 0x01, 0x02, 0x00, 0x00};
+            std::fwrite(junk, 1, sizeof(junk), f);
+            std::fclose(f);
+        }
+    }
+    const ArchiveIoError unzip_r = og::io::unzip_into_with_error(corrupt.string(), out.string());
+    TEST_ASSERT(unzip_r == ArchiveIoError::OpenArchiveFailed || unzip_r == ArchiveIoError::OpenEntryFailed ||
+                    unzip_r == ArchiveIoError::ReadEntryFailed,
+                "corrupt archive should fail through guarded unzip error paths");
+
+    fs::remove_all(base, ec);
+}
+REGISTER_TEST(test_zip_api_batch9_permission_denied_walk_and_corrupt_unzip_paths);
+
 void test_platform_io_restore_defaults_and_load_campaign_unmount_error_path()
 {
     namespace fs = std::filesystem;

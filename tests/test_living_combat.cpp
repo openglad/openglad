@@ -842,3 +842,59 @@ void test_obmap_round10_add_remove_move_and_fallback_paths()
     TEST_ASSERT_EQ(0, (int)map.remove(&c), "remove fallback should reject negative-position stale object");
 }
 REGISTER_TEST(test_obmap_round10_add_remove_move_and_fallback_paths);
+
+void test_obmap_round11_stale_query_and_helper_accessors_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    obmap map;
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+    actor->team_num = 0;
+    actor->sizex = 12;
+    actor->sizey = 12;
+    actor->setxy(64, 64);
+
+    // query_list should ignore stale entries that are not tracked in walker_to_pos.
+    walker stale;
+    stale.set_order_family(Order::Living, FAMILY_ORC);
+    stale.team_num = 1;
+    stale.sizex = 12;
+    stale.sizey = 12;
+    stale.setxy(64, 64);
+    auto cell = std::make_pair(obmap::hash(stale.xpos), obmap::hash(stale.ypos));
+    map.pos_to_walker[cell].push_back(&stale); // intentionally stale (not added/tracked)
+    TEST_ASSERT_EQ(1, (int)map.query_list(actor, actor->xpos, actor->ypos),
+                   "query_list should skip stale pile entries safely");
+
+    // weapon-vs-weapon "miss" branch in ob_pass_check.
+    walker* w1 = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* w2 = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(w1 != nullptr && w2 != nullptr, "weapon fixtures created");
+    if (!(w1 && w2))
+        return;
+    w1->team_num = 1;
+    w2->team_num = 2;
+    w1->sizex = w1->sizey = 12;
+    w2->sizex = w2->sizey = 12;
+    w1->setxy(64, 64);
+    w2->setxy(64, 64);
+    FixedRandom high_rng(9); // >3 for weapon-vs-weapon miss branch
+    w1->sim_rng = &high_rng;
+    w2->sim_rng = &high_rng;
+    TEST_ASSERT_EQ(1, (int)map.add(w2, w2->xpos, w2->ypos), "track second weapon");
+    TEST_ASSERT_EQ(1, (int)map.query_list(w1, w1->xpos, w1->ypos),
+                   "weapon should pass when colliding weapon-miss branch executes");
+
+    // obmap_get_list/unhash helpers.
+    auto& pile = map.obmap_get_list(64, 64);
+    TEST_ASSERT(!pile.empty(), "obmap_get_list should expose hashed pile");
+    TEST_ASSERT_EQ(64, (int)obmap::unhash(obmap::hash(64)), "unhash(hash(x)) should map to cell origin");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_obmap_round11_stale_query_and_helper_accessors_paths);

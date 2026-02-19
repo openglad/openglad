@@ -543,6 +543,8 @@ void test_effect_batch6_chain_small_delta_else_branches()
 REGISTER_TEST(test_effect_batch6_chain_small_delta_else_branches);
 
 void orbit_offset(int drawcycle, float &xd, float &yd);
+short hits(short x, short y, short xsize, short ysize,
+           short x2, short y2, short xsize2, short ysize2);
 
 void test_effect_round8_orbit_offset_and_default_act_death_paths()
 {
@@ -584,3 +586,14 @@ void test_effect_round9_death_called_guard_returns_false_on_second_call()
     TEST_ASSERT(!eff->death(), "second death() call should be guarded and return false");
 }
 REGISTER_TEST(test_effect_round9_death_called_guard_returns_false_on_second_call);
+
+void test_effect_round10_hits_overlap_and_axis_reject_paths()
+{
+    TEST_ASSERT_EQ(1, (int)hits(100, 100, 10, 10, 105, 105, 8, 8),
+                   "hits should report overlap for intersecting boxes");
+    TEST_ASSERT_EQ(0, (int)hits(100, 100, 10, 10, 200, 100, 8, 8),
+                   "hits should reject separated x axis");
+    TEST_ASSERT_EQ(0, (int)hits(100, 100, 10, 10, 100, 200, 8, 8),
+                   "hits should reject separated y axis");
+}
+REGISTER_TEST(test_effect_round10_hits_overlap_and_axis_reject_paths);
