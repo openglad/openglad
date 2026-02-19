@@ -124,3 +124,53 @@ void test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_doo
     remove_new_leveldata_objects(level, ob_before, fx_before, weap_before);
 }
 REGISTER_TEST(test_effect_chain_hits_leader_spawns_explosion_and_secondary_chains_and_door_open_spawns_fx);
+
+void test_effect_chain_early_exit_and_movement_branches()
+{
+    TEST_ASSERT(myscreen != nullptr, "myscreen exists");
+    if (!myscreen)
+        return;
+
+    LevelData& level = myscreen->level_data;
+
+    // Missing leader should kill the chain immediately.
+    walker* chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    TEST_ASSERT(chain != nullptr, "chain created");
+    if (chain) {
+        chain->owner = nullptr;
+        chain->leader = nullptr;
+        chain->lineofsight = 0;
+        chain->dead = 0;
+        (void)chain->act();
+        TEST_ASSERT(chain->dead == 1, "chain without leader/owner should die");
+    }
+
+    // Non-hit movement path: chain should move toward leader and consume LOS.
+    walker* owner = level.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* leader = level.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(owner != nullptr && leader != nullptr, "owner and leader created");
+    if (!(owner && leader))
+        return;
+
+    owner->setxy(20, 20);
+    leader->setxy(260, 180);
+
+    walker* moving_chain = level.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    TEST_ASSERT(moving_chain != nullptr, "moving chain created");
+    if (!moving_chain)
+        return;
+
+    moving_chain->owner = owner;
+    moving_chain->leader = leader;
+    moving_chain->lineofsight = 5;
+    moving_chain->setxy(40, 40);
+    const short x_before = moving_chain->xpos;
+    const short y_before = moving_chain->ypos;
+    (void)moving_chain->act();
+    TEST_ASSERT(moving_chain->lineofsight == 4, "movement path should decrement lineofsight");
+    TEST_ASSERT(moving_chain->xpos != x_before || moving_chain->ypos != y_before,
+                "movement path should move toward leader");
+
+    level.delete_objects();
+}
+REGISTER_TEST(test_effect_chain_early_exit_and_movement_branches);

@@ -212,6 +212,76 @@ void test_treasure_exit_and_teleporter_navigation_paths()
 }
 REGISTER_TEST(test_treasure_exit_and_teleporter_navigation_paths);
 
+void test_treasure_navigation_early_returns_and_withdraw_decline()
+{
+    clear_level_lists();
+
+    static og::sim::SimEventLog sim_events;
+    static ProductionRandom rng;
+    sim_events.clear();
+    myscreen->level_data.set_sim_context(
+        &myscreen->save_data, &myscreen->enemy_freeze, &sim_events, &rng, &cfg);
+
+    // Exit early return: eater currently in act.
+    treasure* exit_fx = add_treasure(FAMILY_EXIT, 3);
+    walker* eater = add_living(0);
+    TEST_ASSERT(exit_fx != nullptr && eater != nullptr, "exit/eater created");
+    if (!(exit_fx && eater))
+        return;
+    eater->set_act_type(ACT_CONTROL);
+    eater->skip_exit = 0;
+    eater->in_act = true;
+    TEST_ASSERT(exit_fx->eat_me(eater), "in_act early return should succeed");
+    TEST_ASSERT_EQ(0, static_cast<int>(eater->skip_exit), "in_act path should not update skip_exit");
+
+    // Exit early return: not ACT_CONTROL.
+    eater->in_act = false;
+    eater->set_act_type(0);
+    TEST_ASSERT(exit_fx->eat_me(eater), "non-control early return should succeed");
+    TEST_ASSERT_EQ(0, static_cast<int>(eater->skip_exit), "non-control path should not update skip_exit");
+
+    // Withdraw branch with decline: level is completed, current isn't, enemies still present.
+    myscreen->save_data.reset();
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 5;
+    myscreen->save_data.add_level_completed(myscreen->save_data.current_campaign, 3);
+    myscreen->level_data.level_done = 0; // enemies still present
+    eater->set_act_type(ACT_CONTROL);
+    eater->skip_exit = 0;
+    exit_fx->stats()->level = 3;
+    picker_testing_yes_or_no_queue_clear();
+    picker_testing_yes_or_no_queue_push(false);
+    TEST_ASSERT(exit_fx->eat_me(eater), "withdraw decline path should return true");
+    TEST_ASSERT_EQ(10, static_cast<int>(eater->skip_exit), "withdraw prompt path should set skip_exit debounce");
+
+    // Teleporter early returns: skip_exit > 1 and distance too far.
+    clear_level_lists();
+    treasure* tele = add_treasure(FAMILY_TELEPORTER, 9);
+    walker* mover = add_living(0);
+    TEST_ASSERT(tele != nullptr && mover != nullptr, "teleporter/mover created");
+    if (!(tele && mover))
+        return;
+
+    tele->setxy(200, 200);
+    mover->setxy(200, 200);
+    mover->skip_exit = 5;
+    TEST_ASSERT(tele->eat_me(mover), "teleporter skip_exit guard should return true");
+    TEST_ASSERT_EQ(5, static_cast<int>(mover->skip_exit), "skip_exit guard should not alter cooldown");
+
+    mover->skip_exit = 0;
+    mover->setxy(400, 400);
+    TEST_ASSERT(tele->eat_me(mover), "teleporter far-distance guard should return true");
+    TEST_ASSERT_EQ(0, static_cast<int>(mover->skip_exit), "far-distance path should not alter cooldown");
+
+    // No target teleporter available.
+    mover->setxy(200, 200);
+    TEST_ASSERT(tele->eat_me(mover), "teleporter without target should return true");
+    TEST_ASSERT(mover->skip_exit >= 20, "no-target path still applies cooldown increment");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_treasure_navigation_early_returns_and_withdraw_decline);
+
 void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
 {
     clear_level_lists();

@@ -1071,6 +1071,111 @@ void test_archmage_weapon_damage_boost()
 }
 REGISTER_TEST(test_archmage_weapon_damage_boost);
 
+void test_archmage_on_act_low_level_periodic_gate()
+{
+    auto w = make_living(FAMILY_ARCHMAGE);
+    TEST_ASSERT(w != nullptr, "make archmage");
+    auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    TEST_ASSERT(fd && fd->on_act_living, "archmage on_act_living callback exists");
+    if (!(w && fd && fd->on_act_living))
+        return;
+
+    living* lv = static_cast<living*>(w.get());
+    lv->stats()->level = 20; // temp = 40-level = 20
+
+    lv->drawcycle = 1;
+    short before = lv->view_all;
+    fd->on_act_living(lv);
+    TEST_ASSERT_EQ(static_cast<int>(before), static_cast<int>(lv->view_all),
+                   "drawcycle not divisible by temp should not increment view_all");
+
+    lv->drawcycle = 20;
+    fd->on_act_living(lv);
+    TEST_ASSERT(lv->view_all > before, "drawcycle divisible by temp should increment view_all");
+}
+REGISTER_TEST(test_archmage_on_act_low_level_periodic_gate);
+
+void test_archmage_handle_teleport_and_special_guards()
+{
+    myscreen->level_data.create_new_grid();
+    walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
+    TEST_ASSERT(arch != nullptr, "archmage created");
+    const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    TEST_ASSERT(fd && fd->handle_teleport && fd->do_special, "archmage callbacks exist");
+    if (!(arch && fd && fd->handle_teleport && fd->do_special))
+        return;
+
+    arch->ani_type = ANI_WALK;
+    arch->cycle = 5;
+    TEST_ASSERT(fd->handle_teleport(arch), "handle_teleport should return true");
+    TEST_ASSERT_EQ(ANI_TELE_IN, static_cast<int>(arch->ani_type), "handle_teleport should set tele-in");
+    TEST_ASSERT_EQ(0, static_cast<int>(arch->cycle), "handle_teleport should reset cycle");
+
+    // case 1 guard: already teleporting
+    arch->current_special = 1;
+    arch->shifter_down = 0;
+    arch->ani_type = ANI_TELE_OUT;
+    TEST_ASSERT(!fd->do_special(arch), "teleport special should fail while already teleporting");
+
+    // case 1 guard: marker path but busy
+    arch->ani_type = ANI_WALK;
+    arch->shifter_down = 1;
+    arch->busy = 1;
+    TEST_ASSERT(!fd->do_special(arch), "marker path should fail when busy");
+
+    // case 1 guard: low intelligence for marker
+    arch->busy = 0;
+    auto low_int = std::make_unique<guy>(FAMILY_ARCHMAGE);
+    low_int->intelligence = 30;
+    arch->set_owned_myguy(std::move(low_int));
+    arch->user = 0;
+    TEST_ASSERT(!fd->do_special(arch), "marker path should fail when int<75");
+}
+REGISTER_TEST(test_archmage_handle_teleport_and_special_guards);
+
+void test_archmage_special_case2_case3_case4_guard_branches()
+{
+    myscreen->level_data.create_new_grid();
+    walker* arch = add_living_to_level(FAMILY_ARCHMAGE, 0, 100, 100);
+    TEST_ASSERT(arch != nullptr, "archmage created");
+    const auto* fd = get_family_descriptor(FAMILY_ARCHMAGE);
+    TEST_ASSERT(fd && fd->do_special, "archmage do_special callback exists");
+    if (!(arch && fd && fd->do_special))
+        return;
+
+    arch->stats()->magicpoints = 5000;
+    arch->stats()->special_cost[2] = 0;
+    arch->stats()->special_cost[3] = 0;
+    arch->stats()->special_cost[4] = 0;
+
+    // case 2 guard: busy
+    arch->current_special = 2;
+    arch->busy = 1;
+    arch->shifter_down = 0;
+    TEST_ASSERT(!fd->do_special(arch), "heartburst should fail when busy");
+
+    // case 2 guard: no foes in range
+    arch->busy = 0;
+    TEST_ASSERT(!fd->do_special(arch), "heartburst should fail with zero foes");
+
+    // case 3 guard: summon elemental needs int >= 150
+    arch->current_special = 3;
+    arch->shifter_down = 1;
+    auto low_int = std::make_unique<guy>(FAMILY_ARCHMAGE);
+    low_int->intelligence = 120;
+    arch->set_owned_myguy(std::move(low_int));
+    arch->user = 0;
+    arch->busy = 0;
+    TEST_ASSERT(!fd->do_special(arch), "true summon should fail when int<150");
+
+    // case 4 guard: no charm candidates nearby
+    arch->current_special = 4;
+    arch->shifter_down = 0;
+    arch->busy = 0;
+    TEST_ASSERT(!fd->do_special(arch), "mind control should fail with no nearby foes");
+}
+REGISTER_TEST(test_archmage_special_case2_case3_case4_guard_branches);
+
 // --- handle_teleport: mage teleport-out completes ---
 void test_mage_handle_teleport()
 {
