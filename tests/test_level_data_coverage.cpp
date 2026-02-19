@@ -938,3 +938,56 @@ void test_level_data_round6_find_near_foe_boundary_fallback_path()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round6_find_near_foe_boundary_fallback_path);
+
+void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    TEST_ASSERT(owner && weapon && living, "fixtures should be created");
+    if (!(owner && weapon && living))
+        return;
+
+    myscreen->level_data.grid.frames = 1;
+    myscreen->level_data.grid.w = 1;
+    myscreen->level_data.grid.h = 1;
+    myscreen->level_data.pixmaxx = GRID_SIZE;
+    myscreen->level_data.pixmaxy = GRID_SIZE;
+    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+    myscreen->level_data.grid.data[0] = PIX_WALL5;
+
+    owner->sizex = 1;
+    owner->sizey = 1;
+    weapon->sizex = 1;
+    weapon->sizey = 1;
+    weapon->owner = owner;
+
+    // Living walkers should fail immediately on wall-arrow tiles.
+    living->setxy(0, 0);
+    living->sizex = 1;
+    living->sizey = 1;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "wall-arrow tiles should block living walkers");
+
+    // X-axis distance branch (abs(dx) > abs(dy)); rng zero => pass.
+    owner->setxy(200, 5);
+    weapon->setxy(0, 0);
+    ConstRandom rng_zero(0);
+    weapon->sim_rng = &rng_zero;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "wall-arrow projectile should pass when rng returns zero");
+
+    // Y-axis distance branch (abs(dy) >= abs(dx)); rng non-zero => fail.
+    owner->setxy(5, 200);
+    weapon->setxy(0, 0);
+    ConstRandom rng_block(1);
+    weapon->sim_rng = &rng_block;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "wall-arrow projectile should fail when rng returns non-zero");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_round7_wall_arrow_distance_axis_and_rng_paths);

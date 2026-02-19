@@ -557,3 +557,36 @@ REGISTER_TEST_WITH_FIXTURE(
     test_campaign_editor_save_load_and_remount_with_fixture,
     setup_editor_campaign_fixture,
     teardown_editor_campaign_fixture);
+
+void test_level_data_find_foe_helpers_return_null_without_valid_targets()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor should be created");
+    if (!actor)
+        return;
+    actor->team_num = 0;
+    actor->setxy(64, 64);
+
+    // Friendly and dead enemies should be ignored by foe selection helpers.
+    walker* friendly = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* dead_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(friendly && dead_enemy, "fixtures should be created");
+    if (!(friendly && dead_enemy))
+        return;
+    friendly->team_num = 0;
+    friendly->setxy(96, 64);
+    dead_enemy->team_num = 1;
+    dead_enemy->dead = 1;
+    dead_enemy->setxy(128, 64);
+
+    TEST_ASSERT(myscreen->level_data.find_far_foe(actor) == nullptr,
+                "find_far_foe should return null when no valid foes exist");
+    TEST_ASSERT(myscreen->level_data.find_near_foe(actor) == nullptr,
+                "find_near_foe should return null when no valid foes exist");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_find_foe_helpers_return_null_without_valid_targets);
