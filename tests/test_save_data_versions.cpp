@@ -521,3 +521,27 @@ void test_save_data_round8_open_write_failure_and_is_level_completed_paths()
                    "save_with_error should report OpenWriteFailed when parent path is missing");
 }
 REGISTER_TEST(test_save_data_round8_open_write_failure_and_is_level_completed_paths);
+
+void test_save_data_round9_reset_campaign_missing_entry_is_noop()
+{
+    SaveData data;
+    data.completed_levels.clear();
+    data.current_campaign = "round9.none";
+
+    // Missing campaign path should be a no-op.
+    data.reset_campaign("round9.none");
+    TEST_ASSERT_EQ(0, data.get_num_levels_completed("round9.none"),
+                   "reset_campaign should keep missing campaign at zero levels");
+
+    // Existing campaign path should clear only that campaign's levels.
+    data.add_level_completed("round9.a", 1);
+    data.add_level_completed("round9.a", 2);
+    data.add_level_completed("round9.b", 3);
+    data.reset_campaign("round9.a");
+
+    TEST_ASSERT_EQ(0, data.get_num_levels_completed("round9.a"),
+                   "reset_campaign should clear target campaign progress");
+    TEST_ASSERT_EQ(1, data.get_num_levels_completed("round9.b"),
+                   "reset_campaign should not clear other campaign progress");
+}
+REGISTER_TEST(test_save_data_round9_reset_campaign_missing_entry_is_noop);

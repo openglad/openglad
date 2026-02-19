@@ -802,3 +802,32 @@ void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
     clear_level_lists();
 }
 REGISTER_TEST(test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event);
+
+void test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero()
+{
+    clear_level_lists();
+
+    og::sim::SimWorld world(31337);
+    og::sim::SimEventLog events;
+    SaveData save;
+    save.my_team = 0;
+
+    // Only friendly living => level_done remains 2 and should trigger game end path.
+    walker* ally = add_living(0);
+    TEST_ASSERT(ally != nullptr, "ally created");
+    if (!ally)
+        return;
+    ally->set_act_type(ACT_CONTROL);
+
+    myscreen->level_data.id = 41;
+    std::int32_t enemy_freeze = 0;
+    char end = 0;
+    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+
+    TEST_ASSERT(r.game_ended, "no hostiles and no exits should end level");
+    TEST_ASSERT_EQ(0, (int)r.ending, "auto-end path should set ending to zero");
+    TEST_ASSERT_EQ(42, (int)r.next_level, "auto-end path should advance to next level id");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_sim_world_round9_no_hostiles_or_exit_sets_next_level_and_ending_zero);

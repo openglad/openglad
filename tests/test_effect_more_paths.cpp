@@ -571,3 +571,16 @@ void test_effect_round8_orbit_offset_and_default_act_death_paths()
     TEST_ASSERT(eff->dead == 1, "default effect act path should mark effect dead");
 }
 REGISTER_TEST(test_effect_round8_orbit_offset_and_default_act_death_paths);
+
+void test_effect_round9_death_called_guard_returns_false_on_second_call()
+{
+    auto eff = myscreen->level_data.myloader->create_walker_owned(Order::FX, FAMILY_FLASH);
+    TEST_ASSERT(eff != nullptr, "effect created for death guard");
+    if (!eff)
+        return;
+
+    eff->dead = 1;
+    TEST_ASSERT(eff->death(), "first death() call should succeed");
+    TEST_ASSERT(!eff->death(), "second death() call should be guarded and return false");
+}
+REGISTER_TEST(test_effect_round9_death_called_guard_returns_false_on_second_call);
