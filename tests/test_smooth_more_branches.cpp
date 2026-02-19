@@ -343,3 +343,166 @@ void test_smooth_tree_dirt_dark_dirt_mask_ladders()
     }
 }
 REGISTER_TEST(test_smooth_tree_dirt_dark_dirt_mask_ladders);
+
+void test_smooth_round8_dark_grass_and_wall_branch_clusters()
+{
+    FixedRandom rng1(1);
+    GameContext c;
+    c.rng = &rng1;
+    GlobalContextGuard guard(&c);
+
+    // Dark grass branch cluster around lines ~338-448.
+    {
+        PixieData grid = make_grid(5, 5, PIX_GRASS1);
+        smoother s;
+        s.set_target(grid);
+
+        apply_cardinal_mask(grid, 2, 2, TO_UP | TO_DOWN | TO_LEFT, PIX_GRASS_DARK_1, PIX_GRASS1);
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_R2, (int)at(grid, 2, 2),
+                       "dark grass right-middle mask should choose R2 with rng==1");
+
+        grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, 2, 2, TO_LEFT | TO_DOWN, PIX_GRASS_DARK_1, PIX_GRASS1);
+        at(grid, 3, 2) = PIX_H_WALL1;
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B2, (int)at(grid, 2, 2),
+                       "dark grass top-right mask with non-grass right should choose B2");
+
+        grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, 2, 2, TO_LEFT | TO_UP, PIX_GRASS_DARK_1, PIX_GRASS1);
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_BR, (int)at(grid, 2, 2),
+                       "dark grass bottom-right mask should map to BR");
+
+        grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, 2, 2, TO_DOWN, PIX_GRASS_DARK_1, PIX_GRASS1);
+        at(grid, 2, 1) = PIX_H_WALL1;
+        at(grid, 3, 2) = PIX_H_WALL1;
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, 2, 2),
+                       "dark grass top-alone mask with non-grass neighbors should choose B1");
+
+        grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, 2, 2, TO_RIGHT | TO_UP, PIX_GRASS_DARK_1, PIX_GRASS1);
+        at(grid, 1, 2) = PIX_H_WALL1;
+        at(grid, 2, 3) = PIX_H_WALL1;
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, 2, 2),
+                       "dark grass bottom-left mask without grass support should choose B1");
+
+        grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, 2, 2, TO_RIGHT, PIX_GRASS_DARK_1, PIX_GRASS1);
+        at(grid, 1, 2) = PIX_H_WALL1;
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, 2, 2),
+                       "dark grass left-alone mask without grass support should choose B1");
+
+        grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, 2, 2, TO_UP, PIX_GRASS_DARK_1, PIX_GRASS1);
+        at(grid, 2, 3) = PIX_H_WALL1;
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, 2, 2),
+                       "dark grass bottom-alone mask without grass support should choose B1");
+
+        grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, 2, 2, 0, PIX_GRASS_DARK_1, PIX_GRASS1);
+        (void)s.smooth(2, 2);
+        TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)at(grid, 2, 2),
+                       "dark grass with no same-genre neighbors should hit default case");
+    }
+
+    // Wall branch cluster around lines ~557-648.
+    {
+        PixieData wall = make_grid(7, 7, PIX_GRASS1);
+        smoother s;
+        s.set_target(wall);
+
+        at(wall, 3, 3) = PIX_WALL_ARROW_GRASS;
+        at(wall, 3, 2) = PIX_PAVEMENT1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_WALL4, (int)at(wall, 3, 3),
+                       "arrow slit over pavement should map to stone wall");
+
+        at(wall, 3, 3) = PIX_WALL_ARROW_GRASS;
+        at(wall, 3, 2) = PIX_FLOOR1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_WALL_ARROW_FLOOR, (int)at(wall, 3, 3),
+                       "arrow slit over floor should map to floor arrow wall");
+
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 2) = PIX_H_WALL1;
+        at(wall, 4, 3) = PIX_H_WALL1;
+        at(wall, 3, 5) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_WALL3, (int)at(wall, 3, 3),
+                       "wall around==12 with lower continuation should map to WALL3");
+
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 2) = PIX_H_WALL1;
+        at(wall, 4, 3) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_H_WALL1, (int)at(wall, 3, 3),
+                       "wall around==12 without lower continuation should map to H_WALL1");
+
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 2) = PIX_H_WALL1;
+        at(wall, 4, 3) = PIX_H_WALL1;
+        at(wall, 3, 4) = PIX_H_WALL1;
+        at(wall, 2, 3) = PIX_H_WALL1;
+        at(wall, 3, 5) = PIX_H_WALL1;
+        at(wall, 2, 4) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_WALL3, (int)at(wall, 3, 3),
+                       "wall around==15 with left-lower continuation should map to WALL3");
+
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 2) = PIX_H_WALL1;
+        at(wall, 4, 3) = PIX_H_WALL1;
+        at(wall, 3, 4) = PIX_H_WALL1;
+        at(wall, 2, 3) = PIX_H_WALL1;
+        at(wall, 3, 5) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_WALL2, (int)at(wall, 3, 3),
+                       "wall around==15 with lower continuation only should map to WALL2");
+
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 2) = PIX_H_WALL1;
+        at(wall, 4, 3) = PIX_H_WALL1;
+        at(wall, 3, 4) = PIX_H_WALL1;
+        at(wall, 2, 3) = PIX_H_WALL1;
+        at(wall, 2, 4) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_H_WALL1, (int)at(wall, 3, 3),
+                       "wall around==15 with side continuation only should map to H_WALL1");
+
+        wall = make_grid(7, 7, PIX_GRASS1);
+        s.set_target(wall);
+        at(wall, 3, 3) = PIX_H_WALL1;
+        at(wall, 3, 2) = PIX_H_WALL1;
+        at(wall, 4, 3) = PIX_H_WALL1;
+        at(wall, 3, 4) = PIX_H_WALL1;
+        at(wall, 2, 3) = PIX_H_WALL1;
+        (void)s.smooth(3, 3);
+        TEST_ASSERT_EQ((int)PIX_WALL_LL, (int)at(wall, 3, 3),
+                       "wall around==15 with no continuations should map to WALL_LL");
+    }
+}
+REGISTER_TEST(test_smooth_round8_dark_grass_and_wall_branch_clusters);

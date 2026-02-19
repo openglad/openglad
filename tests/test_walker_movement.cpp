@@ -682,10 +682,25 @@ public:
     }
 
     std::size_t call_count() const { return calls_.size(); }
+    void set_forced_facing(short dir)
+    {
+        forced_facing_ = dir;
+        use_forced_facing_ = true;
+    }
+    void clear_forced_facing() { use_forced_facing_ = false; }
+
+    short facing(short x, short y) override
+    {
+        if (use_forced_facing_)
+            return forced_facing_;
+        return walker::facing(x, y);
+    }
 
 private:
     std::deque<bool> results_;
     std::vector<std::pair<float, float>> calls_;
+    short forced_facing_ = FACE_UP;
+    bool use_forced_facing_ = false;
 };
 
 static PixieData one_px_for_scripted()
@@ -734,6 +749,26 @@ void test_walker_movement_round6_scripted_walkstep_switch_coverage()
     TEST_ASSERT(!w.walkstep(0, -1), "user cardinal blocked path should return false");
 }
 REGISTER_TEST(test_walker_movement_round6_scripted_walkstep_switch_coverage);
+
+void test_walker_movement_round8_user_slide_switch_default_branch()
+{
+    PixieData px = one_px_for_scripted();
+    ScriptedWalkWalker w(px);
+    w.sim_level = &myscreen->level_data;
+    w.stepsize = 1.0f;
+    w.user = 0;
+
+    // User-slide cardinal branch: switch hits the cardinal break path.
+    w.set_forced_facing(FACE_UP);
+    w.set_walk_results({false, false});
+    TEST_ASSERT(!w.walkstep(0, -1), "blocked user cardinal slide should return false");
+
+    // Force impossible facing value to hit user-slide switch default fallback.
+    w.set_forced_facing(99);
+    w.set_walk_results({false, false});
+    TEST_ASSERT(!w.walkstep(0, -1), "invalid facing should hit user-slide default branch and return false");
+}
+REGISTER_TEST(test_walker_movement_round8_user_slide_switch_default_branch);
 
 void test_walker_get_current_angle_all_direction_cases()
 {
