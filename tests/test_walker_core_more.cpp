@@ -328,3 +328,38 @@ void test_walker_act_guard_else_and_act_random_turn_walk_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_act_guard_else_and_act_random_turn_walk_paths);
+
+void test_walker_query_next_to_and_generator_fire_check_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* blocker = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(actor != nullptr && blocker != nullptr, "walkers created");
+    if (!(actor && blocker))
+        return;
+
+    actor->setxy(200, 200);
+    blocker->setxy(static_cast<short>(actor->xpos + actor->sizex), actor->ypos);
+
+    actor->lastx = 1;
+    actor->lasty = 1;
+    blocker->setxy(static_cast<short>(actor->xpos + actor->sizex), static_cast<short>(actor->ypos + actor->sizey));
+    TEST_ASSERT(actor->query_next_to(), "query_next_to should detect nearby blocking object to the right");
+
+    actor->lastx = -1;
+    actor->lasty = -1;
+    blocker->setxy(10, 10); // clear proximity
+    TEST_ASSERT(!actor->query_next_to(), "query_next_to should return false when next tile is passable");
+
+    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TENT);
+    TEST_ASSERT(gen != nullptr, "generator created");
+    if (gen)
+    {
+        TEST_ASSERT(gen->fire_check(1, 0), "generator fire_check should always succeed");
+    }
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_query_next_to_and_generator_fire_check_paths);
