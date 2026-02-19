@@ -508,3 +508,36 @@ void test_effect_batch4_chain_movement_negative_delta_branch()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_effect_batch4_chain_movement_negative_delta_branch);
+
+void test_effect_batch6_chain_small_delta_else_branches()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* leader = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* chain = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    TEST_ASSERT(owner != nullptr && leader != nullptr && chain != nullptr, "owner/leader/chain created");
+    if (!(owner && leader && chain))
+        return;
+
+    owner->team_num = 1;
+    leader->team_num = 2;
+    chain->owner = owner;
+    chain->leader = leader;
+    chain->team_num = 1;
+    chain->lineofsight = 8;
+    chain->stepsize = 10.0f;
+    chain->setxy(100, 100);
+
+    // X delta within stepsize (else sub-branch), Y delta larger than stepsize
+    // (main sub-branch), while distance stays > 2*stepsize so movement branch runs.
+    leader->setxy(106, 150);
+    const short before_x = chain->xpos;
+    const short before_y = chain->ypos;
+    (void)chain->act();
+    TEST_ASSERT(chain->xpos > before_x, "small positive x delta should move right");
+    TEST_ASSERT(chain->ypos > before_y, "large positive y delta should move down toward leader");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_effect_batch6_chain_small_delta_else_branches);

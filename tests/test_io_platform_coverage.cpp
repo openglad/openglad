@@ -591,3 +591,19 @@ void test_physfs_api_wrapper_error_and_list_paths()
     TEST_ASSERT(!og::io::physfs_last_error().empty(), "physfs_last_error wrapper should return error text");
 }
 REGISTER_TEST(test_physfs_api_wrapper_error_and_list_paths);
+
+void test_zip_api_missing_input_dir_exists_guard_path()
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path missing = fs::path("temp") / "zip_missing_input_batch8";
+    const fs::path archive = fs::path("temp") / "zip_missing_input_batch8.zip";
+    fs::remove_all(missing, ec);
+    fs::remove(archive, ec);
+
+    const ArchiveIoError r = og::io::zip_contents_with_error(missing.string(), archive.string());
+    TEST_ASSERT(r == ArchiveIoError::None || r == ArchiveIoError::AddEntryFailed,
+                "zipping a missing input dir should take empty-enumeration guard path");
+    fs::remove(archive, ec);
+}
+REGISTER_TEST(test_zip_api_missing_input_dir_exists_guard_path);

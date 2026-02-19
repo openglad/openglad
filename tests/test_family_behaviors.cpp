@@ -2230,3 +2230,56 @@ void test_mage_batch3_special_and_promotion_branches()
     TEST_ASSERT_EQ(3, (int)fd->promotion_new_level(10), "mage promotion level formula should match legacy behavior");
 }
 REGISTER_TEST(test_mage_batch3_special_and_promotion_branches);
+
+void test_family_batch6_soldier_orc_mage_callback_edge_branches()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
+    const auto* orc_fd = get_family_descriptor(FAMILY_ORC);
+    const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
+    TEST_ASSERT(soldier_fd && soldier_fd->do_special && soldier_fd->check_special_ai, "soldier callbacks present");
+    TEST_ASSERT(orc_fd && orc_fd->do_special, "orc callbacks present");
+    TEST_ASSERT(mage_fd && mage_fd->check_special_ai, "mage callbacks present");
+    if (!(soldier_fd && soldier_fd->do_special && soldier_fd->check_special_ai &&
+          orc_fd && orc_fd->do_special &&
+          mage_fd && mage_fd->check_special_ai))
+        return;
+
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, -300, -300);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    if (soldier)
+    {
+        // charge blocked branch
+        soldier->current_special = 1;
+        soldier->curdir = FACE_RIGHT;
+        TEST_ASSERT(!soldier_fd->do_special(soldier), "charge should fail when forward is blocked");
+
+        // check_special_ai no-foe + no-near-foe path
+        soldier->foe = nullptr;
+        TEST_ASSERT(!soldier_fd->check_special_ai(static_cast<living*>(soldier)),
+                    "soldier AI should fail when no foe can be found");
+    }
+
+    walker* orc = add_living_to_level(FAMILY_ORC, 0, 120, 100);
+    TEST_ASSERT(orc != nullptr, "orc created");
+    if (orc)
+    {
+        orc->current_special = 1;
+        orc->busy = 2;
+        TEST_ASSERT(!orc_fd->do_special(orc), "orc howl should fail while busy");
+    }
+
+    walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    if (mage)
+    {
+        // check_special_ai with exactly 1-3 foes in range should return false.
+        add_living_to_level(FAMILY_ORC, 1, 120, 100);
+        add_living_to_level(FAMILY_ORC, 1, 130, 100);
+        TEST_ASSERT(!mage_fd->check_special_ai(static_cast<living*>(mage)),
+                    "mage AI should be false with 2 nearby foes");
+    }
+}
+REGISTER_TEST(test_family_batch6_soldier_orc_mage_callback_edge_branches);
