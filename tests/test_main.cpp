@@ -5,6 +5,10 @@
 #include <sys/prctl.h>
 #endif
 
+#ifdef ENABLE_COVERAGE
+extern "C" void __gcov_dump();
+#endif
+
 #include <openglad/legacy/test_trace.h>
 #include "test_framework.h"
 #include <openglad/data/gparser.h>
@@ -25,6 +29,9 @@ static void handle_test_signal(int sig)
 {
     // Async-signal-safe termination to avoid leaving orphaned UI test processes
     // (e.g. when CTest is interrupted).
+#ifdef ENABLE_COVERAGE
+    __gcov_dump();
+#endif
     _exit(128 + sig);
 }
 
@@ -81,11 +88,12 @@ int main(int argc, char* argv[]) {
     run_all_tests();
 
     // Default behavior uses _exit() to avoid SDL shutdown hangs seen in some
-    // CI/runtime combinations. For coverage runs, opt in to normal process
-    // shutdown so gcov can emit .gcda files.
+    // CI/runtime combinations. For coverage builds, explicitly flush gcov data
+    // before _exit() since _exit() skips atexit handlers (where gcov normally
+    // writes .gcda files).
     fflush(nullptr); // _exit() doesn't flush stdio — do it explicitly
-    const char* normal_exit = std::getenv("OPENGLAD_TEST_NORMAL_EXIT");
-    if (normal_exit && normal_exit[0] != '\0')
-        return (g_tests_failed > 0 ? 1 : 0);
+#ifdef ENABLE_COVERAGE
+    __gcov_dump();
+#endif
     _exit(g_tests_failed > 0 ? 1 : 0);
 }
