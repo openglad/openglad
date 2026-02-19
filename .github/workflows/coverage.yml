@@ -56,8 +56,8 @@ jobs:
             --exclude 'src/fuzz/' \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
-            --fail-under-line 1 \
-            --fail-under-function 3 \
+            --fail-under-line 70 \
+            --fail-under-function 75 \
             build/ci-coverage
           cat build/ci-coverage/coverage/coverage-summary.txt
 
