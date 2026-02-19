@@ -28,13 +28,14 @@ jobs:
         run: cmake --preset ci-coverage
 
       - name: Build coverage test binaries
-        run: cmake --build --preset ci-coverage --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
+        run: cmake --build --preset ci-coverage --target og_unit_tests og_data_tests og_runtime_tests openglad_test -j"$(nproc)"
 
       - name: Run coverage test binaries
         run: |
           ./build/ci-coverage/og_unit_tests
           ./build/ci-coverage/og_data_tests
           ./build/ci-coverage/og_runtime_tests
+          ./build/ci-coverage/openglad_test
 
       - name: Generate HTML coverage report
         run: |
@@ -42,6 +43,9 @@ jobs:
           python3 -m gcovr \
             --root . \
             --filter src/ \
+            --exclude 'src/sdl_client/' \
+            --exclude 'src/text_client/' \
+            --exclude 'src/fuzz/' \
             --html-details \
             --output build/ci-coverage/coverage/coverage.html \
             build/ci-coverage
@@ -51,6 +55,9 @@ jobs:
           python3 -m gcovr \
             --root . \
             --filter src/ \
+            --exclude 'src/sdl_client/' \
+            --exclude 'src/text_client/' \
+            --exclude 'src/fuzz/' \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
             --fail-under-line 85 \
