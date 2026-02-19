@@ -247,3 +247,35 @@ void test_treasure_eat_life_gem()
     delete eater;
 }
 REGISTER_TEST(test_treasure_eat_life_gem);
+
+void test_treasure_find_teleport_target_loop_and_missing_self()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* tele_a = make_treasure(FAMILY_TELEPORTER, 5);
+    walker* tele_b = make_treasure(FAMILY_TELEPORTER, 5);
+    walker* tele_c = make_treasure(FAMILY_TELEPORTER, 6); // mismatch level
+    TEST_ASSERT(tele_a && tele_b && tele_c, "teleporters created");
+    if (!(tele_a && tele_b && tele_c))
+        return;
+
+    tele_a->setxy(80, 100);
+    tele_b->setxy(100, 100);
+    tele_c->setxy(120, 100);
+
+    walker* target = static_cast<treasure*>(tele_a)->find_teleport_target();
+    TEST_ASSERT(target == tele_b, "find_teleport_target should pick next same-level teleporter");
+
+    tele_b->dead = 1;
+    target = static_cast<treasure*>(tele_a)->find_teleport_target();
+    TEST_ASSERT(target == nullptr, "dead/mismatched teleporters should yield null target");
+
+    treasure detached;
+    detached.stats()->level = 5;
+    detached.sim_level = &myscreen->level_data;
+    TEST_ASSERT(detached.find_teleport_target() == nullptr,
+                "teleporter lookup should return null when self is not in fx list");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_treasure_find_teleport_target_loop_and_missing_self);

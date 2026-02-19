@@ -2099,6 +2099,79 @@ void test_family_batch4_soldier_orc_thief_edge_callbacks()
 }
 REGISTER_TEST(test_family_batch4_soldier_orc_thief_edge_callbacks);
 
+void test_family_batch5_cleric_on_shoved_and_elf_fire_fail_paths()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* cleric_fd = get_family_descriptor(FAMILY_CLERIC);
+    const auto* elf_fd = get_family_descriptor(FAMILY_ELF);
+    TEST_ASSERT(cleric_fd && cleric_fd->on_shoved && elf_fd && elf_fd->do_special,
+                "cleric/elf callbacks present");
+    if (!(cleric_fd && cleric_fd->on_shoved && elf_fd && elf_fd->do_special))
+        return;
+
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    if (cleric)
+    {
+        cleric->current_special = 4;
+        cleric_fd->on_shoved(cleric);
+        TEST_ASSERT_EQ(1, (int)cleric->current_special, "cleric on_shoved should force heal special");
+    }
+
+    walker* elf = add_living_to_level(FAMILY_ELF, 0, 100, 100);
+    TEST_ASSERT(elf != nullptr, "elf created");
+    if (elf)
+    {
+        // Keep MP deeply negative so each special's pre-bonus still leaves
+        // fire() below weapon_cost and returns null deterministically.
+        elf->stats()->magicpoints = -1000;
+
+        elf->current_special = 1;
+        TEST_ASSERT(!elf_fd->do_special(elf), "elf special 1 should fail when fire() fails");
+        elf->current_special = 2;
+        TEST_ASSERT(!elf_fd->do_special(elf), "elf special 2 should fail when fire() fails");
+        elf->current_special = 3;
+        TEST_ASSERT(!elf_fd->do_special(elf), "elf special 3 should fail when fire() fails");
+        elf->current_special = 4;
+        TEST_ASSERT(!elf_fd->do_special(elf), "elf special 4 should fail when fire() fails");
+    }
+}
+REGISTER_TEST(test_family_batch5_cleric_on_shoved_and_elf_fire_fail_paths);
+
+void test_druid_batch5_fire_fail_and_existing_protection_refresh_branch()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* fd = get_family_descriptor(FAMILY_DRUID);
+    TEST_ASSERT(fd && fd->do_special, "druid callback present");
+    if (!(fd && fd->do_special))
+        return;
+
+    walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
+    walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 112, 100);
+    TEST_ASSERT(druid && ally, "druid and ally created");
+    if (!(druid && ally))
+        return;
+
+    // Force fire() failure in specials 1/2: MP remains below weapon_cost even
+    // after do_special's pre-fire MP adjustment.
+    druid->stats()->weapon_cost = 10;
+    druid->stats()->magicpoints = -1000;
+    druid->busy = 0;
+
+    druid->current_special = 1;
+    TEST_ASSERT(!fd->do_special(druid), "druid special 1 should fail when fire() returns null");
+
+    druid->current_special = 2;
+    TEST_ASSERT(!fd->do_special(druid), "druid special 2 should fail when fire() returns null");
+
+    (void)ally;
+}
+REGISTER_TEST(test_druid_batch5_fire_fail_and_existing_protection_refresh_branch);
+
 void test_mage_batch3_special_and_promotion_branches()
 {
     myscreen->level_data.create_new_grid();

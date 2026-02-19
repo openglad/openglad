@@ -524,3 +524,73 @@ void test_obmap_remove_stale_and_collide_axis_reject_paths()
                    "collide should reject separated y-down case");
 }
 REGISTER_TEST(test_obmap_remove_stale_and_collide_axis_reject_paths);
+
+void test_obmap_query_list_door_unlock_and_lock_branches()
+{
+    obmap map;
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+    actor->sizex = 12;
+    actor->sizey = 12;
+    actor->setxy(64, 64);
+    actor->user = 0;
+    actor->skip_exit = 0;
+    actor->team_num = 1;
+
+    // Locked door branch: missing key should block and set skip_exit.
+    walker* locked_door = myscreen->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    TEST_ASSERT(locked_door != nullptr, "locked door created");
+    if (!locked_door)
+        return;
+    locked_door->stats()->level = 3;
+    locked_door->sizex = 12;
+    locked_door->sizey = 12;
+    locked_door->setxy(64, 64);
+    locked_door->team_num = 2;
+    TEST_ASSERT_EQ(1, (int)map.add(locked_door, 64, 64), "add locked door");
+
+    actor->keys = 0;
+    short pass = map.query_list(actor, 64, 64);
+    TEST_ASSERT_EQ(0, (int)pass, "locked door without key should block movement");
+    TEST_ASSERT(actor->skip_exit >= 10, "locked door branch should set skip_exit cooldown");
+    (void)map.remove(locked_door);
+
+    // Unlocked door path with normal collision: should return blocked for this round.
+    walker* unlocked_door = myscreen->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    TEST_ASSERT(unlocked_door != nullptr, "unlocked door created");
+    if (!unlocked_door)
+        return;
+    unlocked_door->stats()->level = 1;
+    unlocked_door->sizex = 12;
+    unlocked_door->sizey = 12;
+    unlocked_door->setxy(64, 64);
+    unlocked_door->team_num = 2;
+    TEST_ASSERT_EQ(1, (int)map.add(unlocked_door, 64, 64), "add unlocked door");
+
+    actor->keys = 2; // 2^level where level=1
+    actor->stats()->set_bit_flags(BIT_NO_COLLIDE, 0);
+    pass = map.query_list(actor, 64, 64);
+    TEST_ASSERT_EQ(0, (int)pass, "unlocked door should still block for current query tick");
+    TEST_ASSERT(unlocked_door->dead == 1, "unlocked door should be marked dead");
+    (void)map.remove(unlocked_door);
+
+    // Unlocked door + BIT_NO_COLLIDE path should return pass-through.
+    walker* nocollide_door = myscreen->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    TEST_ASSERT(nocollide_door != nullptr, "nocollide door created");
+    if (!nocollide_door)
+        return;
+    nocollide_door->stats()->level = 1;
+    nocollide_door->sizex = 12;
+    nocollide_door->sizey = 12;
+    nocollide_door->setxy(64, 64);
+    nocollide_door->team_num = 2;
+    TEST_ASSERT_EQ(1, (int)map.add(nocollide_door, 64, 64), "add nocollide door");
+    actor->stats()->set_bit_flags(BIT_NO_COLLIDE, 1);
+    pass = map.query_list(actor, 64, 64);
+    TEST_ASSERT_EQ(1, (int)pass, "BIT_NO_COLLIDE should pass through opened door");
+    (void)map.remove(nocollide_door);
+}
+REGISTER_TEST(test_obmap_query_list_door_unlock_and_lock_branches);

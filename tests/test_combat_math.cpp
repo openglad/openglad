@@ -302,6 +302,15 @@ void test_xp_from_action_eat_corpse()
 }
 REGISTER_TEST(test_xp_from_action_eat_corpse);
 
+void test_xp_from_action_unknown_enum_defaults_to_zero()
+{
+    FixedRandom fixed(7);
+    const ExpAction unknown = static_cast<ExpAction>(999);
+    short xp = compute_xp_from_action(unknown, 5, 2, 10, fixed);
+    TEST_ASSERT_EQ(0, (int)xp, "unknown ExpAction should default to zero XP");
+}
+REGISTER_TEST(test_xp_from_action_unknown_enum_defaults_to_zero);
+
 // ---------------------------------------------------------------------------
 // compute_regen_tick tests
 // ---------------------------------------------------------------------------

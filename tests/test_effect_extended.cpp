@@ -1,6 +1,8 @@
 #include <cstdint>
 #include <openglad/entities/effect.h>
 #include <openglad/data/gloader.h>
+#include <openglad/legacy/base.h>
+#include <openglad/runtime/screen.h>
 #include "test_framework.h"
 
 extern screen* myscreen;
@@ -127,3 +129,29 @@ void test_compute_explosion_range_clamp()
     TEST_ASSERT_EQ(96, (int)r100, "level 100 should cap at 96");
 }
 REGISTER_TEST(test_compute_explosion_range_clamp);
+
+void test_effect_ctor_defaults_and_owner_pointer_cleanup_in_act()
+{
+    effect headless;
+    TEST_ASSERT_EQ(1, (int)headless.ignore, "headless effect ctor should set ignore");
+
+    effect fx;
+    fx.ani_type = ANI_WALK;
+    fx.set_order_family(Order::FX, 120);
+
+    walker foe;
+    walker leader;
+    walker owner;
+    fx.foe = &foe;
+    fx.leader = &leader;
+    fx.owner = &owner;
+    foe.dead = 1;
+    leader.dead = 1;
+    owner.dead = 1;
+
+    (void)fx.act();
+    TEST_ASSERT(fx.foe == nullptr, "effect act should clear dead foe pointer");
+    TEST_ASSERT(fx.leader == nullptr, "effect act should clear dead leader pointer");
+    TEST_ASSERT(fx.owner == nullptr, "effect act should clear dead owner pointer");
+}
+REGISTER_TEST(test_effect_ctor_defaults_and_owner_pointer_cleanup_in_act);

@@ -8,6 +8,8 @@
 #include <openglad/legacy/base.h> // Order + family constants used for test data
 #include <openglad/platform/io.h>
 #include <openglad/data/save_data.h>
+#include <openglad/entities/walker.h>
+#include <openglad/entities/guy.h>
 #include "test_framework.h"
 
 static void rw_write(SDL_RWops* out, const void* data, size_t len)
@@ -395,3 +397,34 @@ void test_save_data_v9_roundtrip_preserves_campaign_progress_maps()
         "secondary campaign completed level should roundtrip");
 }
 REGISTER_TEST(test_save_data_v9_roundtrip_preserves_campaign_progress_maps);
+
+void test_save_data_update_guys_copies_only_live_entries_with_myguy()
+{
+    std::list<std::unique_ptr<walker>> oblist;
+
+    auto live_with_guy = std::make_unique<walker>();
+    live_with_guy->dead = 0;
+    live_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    live_with_guy->myguy->exp = 50;
+
+    auto dead_with_guy = std::make_unique<walker>();
+    dead_with_guy->dead = 1;
+    dead_with_guy->set_owned_myguy(std::make_unique<guy>(FAMILY_ARCHER));
+
+    auto live_no_guy = std::make_unique<walker>();
+    live_no_guy->dead = 0;
+    live_no_guy->clear_myguy();
+
+    oblist.push_back(std::move(live_with_guy));
+    oblist.push_back(std::move(dead_with_guy));
+    oblist.push_back(std::move(live_no_guy));
+
+    SaveData data;
+    data.update_guys(oblist);
+
+    TEST_ASSERT_EQ(1, (int)data.team_size, "update_guys should copy only live walkers with myguy");
+    TEST_ASSERT(data.team_list[0] != nullptr, "copied guy should exist");
+    if (data.team_list[0])
+        TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)data.team_list[0]->family, "copied guy should match source family");
+}
+REGISTER_TEST(test_save_data_update_guys_copies_only_live_entries_with_myguy);

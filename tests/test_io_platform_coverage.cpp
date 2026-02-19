@@ -1,5 +1,6 @@
 #include <openglad/data/pixie_data.h>
 #include <openglad/io/og_file.h>
+#include <openglad/io/ogfile_yaml.h>
 #include <openglad/io/yaml_stream.h>
 #include <openglad/io/zip_api.h>
 #include <openglad/platform/io_common.h>
@@ -139,6 +140,38 @@ void test_yaml_stream_emitter_and_parser_paths()
     TEST_ASSERT(saw_begin_mapping, "parser should see mapping events");
 }
 REGISTER_TEST(test_yaml_stream_emitter_and_parser_paths);
+
+void test_yaml_stream_sequence_emit_and_parse_error_path()
+{
+    // Exercise emitter sequence APIs and parser error mapping.
+    auto out = og::io::og_open_write("temp/io_platform_cov_yaml_seq.yaml");
+    TEST_ASSERT(out != nullptr, "yaml output file should open");
+    if (!out)
+        return;
+
+    og::io::YamlEmitter emitter;
+    TEST_ASSERT(emitter.set_output(ogfile_write_handler, out.get()), "yaml emitter set_output should succeed");
+    TEST_ASSERT(emitter.emit_begin_sequence(), "emit_begin_sequence should succeed");
+    TEST_ASSERT(emitter.emit_scalar("entry"), "emit_scalar in sequence should succeed");
+    TEST_ASSERT(emitter.emit_end_sequence(), "emit_end_sequence should succeed");
+    emitter.close_output();
+    out.reset();
+
+    // Parse malformed YAML as a smoke path; backend may return Done or Error.
+    MemReadCtx bad_reader{"bad: [unclosed", 0};
+    og::io::YamlParser parser;
+    parser.set_input(mem_read_handler, &bad_reader);
+    og::io::YamlParseResult r = og::io::YamlParseResult::Ok;
+    int guard = 0;
+    while (r == og::io::YamlParseResult::Ok && guard < 32)
+    {
+        r = parser.parse_next();
+        guard++;
+    }
+    parser.close_input();
+    TEST_ASSERT(guard > 0, "parser should process at least one malformed-yaml step");
+}
+REGISTER_TEST(test_yaml_stream_sequence_emit_and_parse_error_path);
 
 void test_zip_api_roundtrip_and_error_paths()
 {
