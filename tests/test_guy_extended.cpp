@@ -268,3 +268,41 @@ void test_guy_derived_bonus_scaling()
     TEST_ASSERT(mp2 > mp1, "more intelligence should give more MP bonus");
 }
 REGISTER_TEST(test_guy_derived_bonus_scaling);
+
+void test_guy_unknown_family_fallback_and_zero_heart_value()
+{
+    guy unknown(127);
+    TEST_ASSERT_EQ(12, (int)unknown.strength, "unknown family should use fallback STR");
+    TEST_ASSERT_EQ(6, (int)unknown.dexterity, "unknown family should use fallback DEX");
+    TEST_ASSERT_EQ(12, (int)unknown.constitution, "unknown family should use fallback CON");
+    TEST_ASSERT_EQ(8, (int)unknown.intelligence, "unknown family should use fallback INT");
+    TEST_ASSERT_EQ(6, (int)unknown.armor, "unknown family should use fallback armor");
+    TEST_ASSERT_EQ(1, (int)unknown.level, "unknown family should use fallback level");
+
+    unknown.family = 127;
+    TEST_ASSERT_EQ(0, (int)unknown.query_heart_value(), "unknown family should have zero heart value");
+}
+REGISTER_TEST(test_guy_unknown_family_fallback_and_zero_heart_value);
+
+void test_guy_update_derived_stats_clamps_speed_and_regen_delays()
+{
+    guy g(FAMILY_SOLDIER);
+    g.dexterity = 3000;
+    g.constitution = 3000;
+    g.strength = 3000;
+    g.intelligence = 3000;
+    g.level = 1;
+
+    auto w = guy_create_walker_owned(g, myscreen);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    if (!w)
+        return;
+
+    TEST_ASSERT(w->stepsize <= 12.0f, "stepsize should clamp to 12");
+    TEST_ASSERT(w->fire_frequency >= 1.0f, "fire_frequency should clamp to minimum 1");
+    TEST_ASSERT(w->stats()->heal_per_round > 0, "high stats should increase heal_per_round");
+    TEST_ASSERT(w->stats()->magic_per_round > 0, "high stats should increase magic_per_round");
+    TEST_ASSERT(w->stats()->max_heal_delay >= 2, "max_heal_delay should respect minimum clamp");
+    TEST_ASSERT(w->stats()->max_magic_delay >= 2, "max_magic_delay should respect minimum clamp");
+}
+REGISTER_TEST(test_guy_update_derived_stats_clamps_speed_and_regen_delays);

@@ -110,6 +110,14 @@ private:
     size_t idx_;
 };
 
+class NoStatsWalker : public walker {
+public:
+    NoStatsWalker() : walker()
+    {
+        stats_.reset();
+    }
+};
+
 // ---------------------------------------------------------------------------
 // special() - exercises the massive family switch (lines 2293-3909)
 // Each family test covers a different switch case
@@ -1237,3 +1245,46 @@ void test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges()
     myscreen->level_data.delete_objects();
 }
 REGISTER_SPECIAL_TEST(test_walker_turn_undead_attack_kill_branch_and_act_guard_random_edges);
+
+void test_walker_special_guard_paths_and_teleport_failures()
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
+    TEST_ASSERT(w != nullptr, "mage created");
+    if (!w)
+        return;
+
+    // dead guard
+    w->dead = 1;
+    TEST_ASSERT(!w->special(), "dead walker special should fail");
+    w->dead = 0;
+
+    // magic cost guard
+    w->current_special = 1;
+    w->stats()->special_cost[1] = 50;
+    w->stats()->magicpoints = 0;
+    TEST_ASSERT(!w->special(), "insufficient MP special should fail");
+
+    // order guard
+    w->stats()->magicpoints = 500;
+    w->set_order_family(Order::FX, FAMILY_MARKER);
+    TEST_ASSERT(!w->special(), "non-living special should fail");
+    w->set_order_family(Order::Living, FAMILY_MAGE);
+
+    // teleport_ranged failure branch
+    w->setxy(-200, -200);
+    TEST_ASSERT(!w->teleport_ranged(0), "teleport_ranged should fail when no passable destination exists");
+
+    // turn_undead no-target branch
+    TEST_ASSERT_EQ(-1, (int)w->turn_undead(10, 1), "turn_undead should return -1 with no foes in range");
+
+    delete w;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_guard_paths_and_teleport_failures);
+
+void test_walker_special_no_stats_guard()
+{
+    NoStatsWalker no_stats;
+    TEST_ASSERT(!no_stats.special(), "special should fail safely when stats are missing");
+}
+REGISTER_SPECIAL_TEST(test_walker_special_no_stats_guard);

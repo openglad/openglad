@@ -2,6 +2,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
+#include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
 #include <openglad/runtime/screen.h>
 #include <openglad/core/stats.h>
@@ -11,6 +12,7 @@
 #include <vector>
 
 extern screen* myscreen;
+extern cfg_store cfg;
 
 static walker* make_guy(char family, unsigned char team = 0)
 {
@@ -733,3 +735,66 @@ void test_walker_act_random_generator_paths()
     delete foe;
 }
 REGISTER_TEST(test_walker_act_random_generator_paths);
+
+void test_walker_combat_effect_helpers_and_recoil_branches()
+{
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker != nullptr && target != nullptr, "combat walkers created");
+    if (!(attacker && target))
+        return;
+
+    target->setxy(attacker->xpos + 12, attacker->ypos + 4);
+    cfg.apply_setting("effects", "hit_recoil", "on");
+    cfg.apply_setting("effects", "hit_anim", "off");
+    cfg.apply_setting("effects", "damage_numbers", "off");
+    cfg.apply_setting("effects", "hit_flash", "off");
+
+    attacker->do_hit_effects(attacker, target, 12);
+    TEST_ASSERT(target->hit_recoil > 0.0f, "hit_recoil should be set for living targets when enabled");
+
+    // do_heal_effects early-return path when sim_config is null.
+    walker stack_a;
+    walker stack_b;
+    stack_a.sim_config = nullptr;
+    stack_a.do_heal_effects(&stack_a, &stack_b, 5);
+
+    delete attacker;
+    delete target;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_effect_helpers_and_recoil_branches);
+
+void test_walker_attack_weapon_owner_chain_and_nonliving_target()
+{
+    walker* owner = make_guy(FAMILY_SOLDIER, 0);
+    walker* living_target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(owner != nullptr && living_target != nullptr, "owner and target created");
+    if (!(owner && living_target))
+        return;
+
+    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(weapon != nullptr, "weapon created");
+    if (weapon) {
+        owner->user = 0;
+        weapon->owner = owner;
+        weapon->team_num = owner->team_num;
+        weapon->damage = 1.0f;
+        weapon->stats()->hitpoints = 50;
+
+        living_target->stats()->armor = 5000; // force damage clamp-to-zero path
+        living_target->stats()->hitpoints = 100;
+        (void)weapon->attack(living_target);
+        TEST_ASSERT(living_target->stats()->hitpoints <= 100, "weapon attack path should execute safely");
+
+        walker* nonliving = myscreen->level_data.add_ob(Order::FX, FAMILY_FLASH);
+        TEST_ASSERT(nonliving != nullptr, "nonliving target created");
+        if (nonliving)
+            (void)weapon->attack(nonliving);
+    }
+
+    delete owner;
+    delete living_target;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_attack_weapon_owner_chain_and_nonliving_target);

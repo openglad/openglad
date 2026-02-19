@@ -459,3 +459,105 @@ void test_sim_world_tick_branches_for_end_freeze_and_cleanup()
     clear_level_lists();
 }
 REGISTER_TEST(test_sim_world_tick_branches_for_end_freeze_and_cleanup);
+
+void test_treasure_find_teleport_target_wraparound_and_missing_self()
+{
+    clear_level_lists();
+
+    treasure stack_only;
+    TEST_ASSERT(stack_only.find_teleport_target() == nullptr,
+                "teleporter not present in fxlist should not find a target");
+
+    treasure* tele_a = add_treasure(FAMILY_TELEPORTER, 6);
+    treasure* tele_b = add_treasure(FAMILY_TELEPORTER, 6);
+    treasure* tele_c = add_treasure(FAMILY_TELEPORTER, 6);
+    TEST_ASSERT(tele_a && tele_b && tele_c, "teleporters created");
+    if (!(tele_a && tele_b && tele_c))
+        return;
+
+    TEST_ASSERT(tele_c->find_teleport_target() == tele_a,
+                "last teleporter should wrap to first matching teleporter");
+
+    tele_a->stats()->level = 7;
+    tele_b->dead = 1;
+    TEST_ASSERT(tele_c->find_teleport_target() == nullptr,
+                "teleporter should return nullptr when no live same-level target exists");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_treasure_find_teleport_target_wraparound_and_missing_self);
+
+void test_sim_world_freeze_countdown_notification_and_weap_cleanup()
+{
+    clear_level_lists();
+
+    og::sim::SimWorld world(2026);
+    og::sim::SimEventLog events;
+    SaveData save;
+    save.my_team = 1; // team 0 is hostile from this perspective
+
+    // Team-0 living should still act while freeze is active and mark level as not done.
+    walker* hostile_team0 = add_living(0);
+    TEST_ASSERT(hostile_team0 != nullptr, "hostile team0 living created");
+    if (!hostile_team0)
+        return;
+    hostile_team0->set_act_type(ACT_CONTROL);
+
+    // Additional frozen enemy for loop iteration volume.
+    walker* frozen_enemy = add_living(2);
+    TEST_ASSERT(frozen_enemy != nullptr, "frozen enemy created");
+
+    std::int32_t enemy_freeze = 10;
+    char end = 0;
+    og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    TEST_ASSERT_EQ(9, (int)enemy_freeze, "enemy_freeze should decrement from 10 to 9");
+    TEST_ASSERT_EQ(0, (int)r.level_done, "hostile team-0 living during freeze should keep level_done at 0");
+
+    int time_left_messages = 0;
+    for (const auto& ev : events.events())
+    {
+        if (ev.kind == og::sim::EventKind::Notification && ev.text.find("TIME LEFT:") != std::string::npos)
+            time_left_messages++;
+    }
+    TEST_ASSERT_EQ(1, time_left_messages, "freeze countdown should emit only one TIME LEFT notification per tick");
+
+    // Weapon cleanup branch: clear dead pointer links and erase dead weapon/fx.
+    clear_level_lists();
+    walker* owner = add_living(0);
+    walker* dead_ref = add_living(2);
+    TEST_ASSERT(owner && dead_ref, "owner and dead ref created");
+    if (!(owner && dead_ref))
+        return;
+    dead_ref->dead = 1;
+    owner->foe = dead_ref;
+    owner->leader = dead_ref;
+    owner->owner = dead_ref;
+    owner->collide_ob = dead_ref;
+
+    walker* weap_owner = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* dead_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* dead_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    TEST_ASSERT(weap_owner && dead_fx && dead_weap, "weapon/fx walkers created");
+    if (weap_owner) {
+        weap_owner->foe = dead_ref;
+        weap_owner->leader = dead_ref;
+        weap_owner->owner = dead_ref;
+        weap_owner->collide_ob = dead_ref;
+    }
+    if (dead_fx)
+        dead_fx->dead = 1;
+    if (dead_weap)
+        dead_weap->dead = 1;
+
+    enemy_freeze = 0;
+    end = 0;
+    events.clear();
+    r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    TEST_ASSERT(owner->foe == nullptr, "oblist dead foe pointer should be cleared");
+    TEST_ASSERT(owner->leader == nullptr, "oblist dead leader pointer should be cleared");
+    TEST_ASSERT(weap_owner == nullptr || weap_owner->foe == nullptr, "weaplist dead foe pointer should be cleared");
+    TEST_ASSERT(weap_owner == nullptr || weap_owner->owner == nullptr, "weaplist dead owner pointer should be cleared");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_sim_world_freeze_countdown_notification_and_weap_cleanup);
