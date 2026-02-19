@@ -93,6 +93,7 @@ REGISTER_TEST(test_walker_compute_outline_state_transitions);
 
 void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
 {
+    myscreen->level_data.create_new_grid();
     myscreen->level_data.delete_objects();
 
     FixedRandom fixed_rng(1);
@@ -110,10 +111,17 @@ void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
     if (gen_tower) {
         gen_tower->team_num = 2;
         gen_tower->stats()->level = 5;
-        gen_tower->lastx = gen_tower->stepsize;
+        gen_tower->setxy(128, 128);
+        gen_tower->lastx = 1;
         gen_tower->lasty = 0;
-        walker* weapon = gen_tower->create_weapon();
-        TEST_ASSERT(weapon != nullptr, "tower create_weapon should create a living");
+        gen_tower->stats()->magicpoints = 9999.0f;
+        walker* weapon = gen_tower->fire();
+        TEST_ASSERT(weapon != nullptr, "tower fire should create a living projectile/spawn");
+        if (weapon)
+        {
+            TEST_ASSERT_EQ(ANI_TELE_IN, (int)weapon->ani_type, "tower spawn should set tele-in animation");
+            TEST_ASSERT(weapon->owner == nullptr, "tower spawn should clear owner");
+        }
     }
 
     // Generator: tent (default generator branch).
@@ -122,10 +130,17 @@ void test_walker_generator_fire_sets_weapon_lifetime_or_owner_paths()
     if (gen_tent) {
         gen_tent->team_num = 3;
         gen_tent->stats()->level = 4;
-        gen_tent->lastx = gen_tent->stepsize;
+        gen_tent->setxy(160, 128);
+        gen_tent->lastx = 1;
         gen_tent->lasty = 0;
-        walker* weapon = gen_tent->create_weapon();
-        TEST_ASSERT(weapon != nullptr, "tent create_weapon should create a living");
+        gen_tent->stats()->magicpoints = 9999.0f;
+        walker* weapon = gen_tent->fire();
+        TEST_ASSERT(weapon != nullptr, "tent fire should create a living projectile/spawn");
+        if (weapon)
+        {
+            TEST_ASSERT(weapon->lifetime >= 800, "tent spawn should assign lifetime");
+            TEST_ASSERT(weapon->owner == gen_tent, "tent spawn should keep owner");
+        }
     }
 
     myscreen->level_data.delete_objects();

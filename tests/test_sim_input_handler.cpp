@@ -1024,3 +1024,65 @@ void test_sim_input_switch_char_skips_ineligible_candidates_then_selects_valid()
     teardown();
 }
 REGISTER_TEST(test_sim_input_switch_char_skips_ineligible_candidates_then_selects_valid);
+
+void test_sim_input_assigns_unowned_control_and_clears_commands()
+{
+    teardown();
+    auto w_up = make_living(0, -1);
+    TEST_ASSERT(w_up != nullptr, "walker should be created");
+    if (!w_up)
+        return;
+
+    walker* control = w_up.get();
+    control->stats()->force_command(COMMAND_FOLLOW, 3, 0, 0);
+    TEST_ASSERT(control->stats()->has_commands(), "precondition: command queue is non-empty");
+    myscreen->level_data.oblist.push_back(std::move(w_up));
+
+    InputState input;
+    input.clear();
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(result.new_control == control, "control should be preserved");
+    TEST_ASSERT_EQ(0, (int)control->user, "unowned control should be assigned to player");
+    TEST_ASSERT(!control->stats()->has_commands(), "assignment path should clear queued commands");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_assigns_unowned_control_and_clears_commands);
+
+void test_sim_input_bonus_rounds_walks_when_last_vector_nonzero()
+{
+    teardown();
+    auto w_up = make_living(0, 0);
+    TEST_ASSERT(w_up != nullptr, "walker should be created");
+    if (!w_up)
+        return;
+
+    walker* control = w_up.get();
+    control->setxy(100, 100);
+    control->set_act_type(ACT_CONTROL);
+    control->bonus_rounds = 1;
+    control->lastx = 1;
+    control->lasty = 0;
+    myscreen->level_data.oblist.push_back(std::move(w_up));
+
+    InputState input;
+    input.clear();
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(result.new_control == control, "control should stay active");
+    TEST_ASSERT_EQ(0, (int)control->bonus_rounds, "bonus rounds should decrement");
+
+    teardown();
+}
+REGISTER_TEST(test_sim_input_bonus_rounds_walks_when_last_vector_nonzero);
