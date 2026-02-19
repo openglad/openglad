@@ -54,29 +54,39 @@ jobs:
             --output build/ci-coverage/coverage/coverage.html \
             build/ci-coverage
 
-      - name: Generate coverage summary report
+      - name: Generate coverage summary report and enforce thresholds
+        id: coverage_metrics
         run: |
+          set +e
           python3 -m gcovr \
             --root . \
             --filter src/ \
             --exclude 'src/fuzz/' \
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
+            --json-summary build/ci-coverage/coverage/coverage-summary.json \
+            --fail-under-line 70 \
+            --fail-under-function 75 \
             build/ci-coverage
+          gcovr_status=$?
+          set -e
+
           cat build/ci-coverage/coverage/coverage-summary.txt
 
-      - name: Compute coverage metrics
-        id: coverage_metrics
-        run: |
-          python3 -m gcovr \
-            --root . \
-            --filter src/ \
-            --exclude 'src/fuzz/' \
-            --txt-summary \
-            build/ci-coverage > build/ci-coverage/coverage/coverage-metrics.txt
-
-          line_pct=$(awk -F'[:%]' '/^lines:/{gsub(/[[:space:]]/, "", $2); print $2}' build/ci-coverage/coverage/coverage-metrics.txt)
-          function_pct=$(awk -F'[:%]' '/^functions:/{gsub(/[[:space:]]/, "", $2); print $2}' build/ci-coverage/coverage/coverage-metrics.txt)
+          line_pct=$(python3 - <<'PY'
+          import json
+          with open("build/ci-coverage/coverage/coverage-summary.json", "r", encoding="utf-8") as f:
+              s = json.load(f)
+          print(f"{s['line_percent']:.1f}")
+          PY
+          )
+          function_pct=$(python3 - <<'PY'
+          import json
+          with open("build/ci-coverage/coverage/coverage-summary.json", "r", encoding="utf-8") as f:
+              s = json.load(f)
+          print(f"{s['function_percent']:.1f}")
+          PY
+          )
 
           line_status="FAIL"
           function_status="FAIL"
@@ -99,17 +109,7 @@ jobs:
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Enforce coverage thresholds
-        run: |
-          python3 -m gcovr \
-            --root . \
-            --filter src/ \
-            --exclude 'src/fuzz/' \
-            --txt \
-            --output build/ci-coverage/coverage/coverage-summary.txt \
-            --fail-under-line 70 \
-            --fail-under-function 75 \
-            build/ci-coverage
+          exit "$gcovr_status"
 
       - name: Comment coverage on pull request
         if: ${{ always() && github.event_name == 'pull_request' }}
