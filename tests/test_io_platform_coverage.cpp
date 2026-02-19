@@ -213,3 +213,181 @@ void test_platform_io_campaign_error_codes()
     ctx().mounted_campaign = prev;
 }
 REGISTER_TEST(test_platform_io_campaign_error_codes);
+
+void test_platform_io_batch3_mount_switch_and_listing_filters()
+{
+    namespace fs = std::filesystem;
+    const std::string prev = ctx().mounted_campaign;
+    const std::string user = get_user_path();
+    const fs::path campaigns_dir = fs::path(user) / "campaigns";
+    const fs::path scen_dir = fs::path(user) / "scen";
+    std::error_code ec;
+    fs::create_directories(campaigns_dir, ec);
+    fs::create_directories(scen_dir, ec);
+
+    // Hit prev==id short-circuit and prev!=id unmount-failure branch.
+    ctx().mounted_campaign = "same.id";
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+                   static_cast<int>(mount_campaign_package_with_error("same.id")),
+                   "mount should short-circuit when requested id is already mounted");
+    ctx().mounted_campaign = "definitely.not.a.campaign";
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::UnmountFailed),
+                   static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
+                   "mount should report unmount failure when previous mounted id is invalid");
+
+    // list_campaigns should filter non-.glad files.
+    {
+        std::FILE* f = std::fopen((campaigns_dir / "batch3_filter_marker.glad").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create .glad marker");
+        if (f) std::fclose(f);
+    }
+    {
+        std::FILE* f = std::fopen((campaigns_dir / "batch3_filter_marker.txt").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create non-glad marker");
+        if (f) std::fclose(f);
+    }
+    const std::list<std::string> campaigns = list_campaigns();
+    TEST_ASSERT(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker") != campaigns.end(),
+                "list_campaigns should keep .glad ids");
+    TEST_ASSERT(std::find(campaigns.begin(), campaigns.end(), "batch3_filter_marker.txt") == campaigns.end(),
+                "list_campaigns should filter non-.glad names");
+
+    // list_levels/list_levels_v should filter malformed entries and keep strict positive scen ids.
+    {
+        std::FILE* f = std::fopen((scen_dir / "batch3_note.txt").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create non-fss level marker");
+        if (f) std::fclose(f);
+    }
+    {
+        std::FILE* f = std::fopen((scen_dir / "foo.fss").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create non-scen fss marker");
+        if (f) std::fclose(f);
+    }
+    {
+        std::FILE* f = std::fopen((scen_dir / "scen0.fss").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create zero-id scen marker");
+        if (f) std::fclose(f);
+    }
+    {
+        std::FILE* f = std::fopen((scen_dir / "scen987.fss").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create valid scen marker");
+        if (f) std::fclose(f);
+    }
+    const std::list<int> levels = list_levels();
+    const std::vector<int> levels_v = list_levels_v();
+    TEST_ASSERT(std::find(levels.begin(), levels.end(), 987) != levels.end(),
+                "list_levels should include strict positive scen id");
+    TEST_ASSERT(std::find(levels.begin(), levels.end(), 0) == levels.end(),
+                "list_levels should reject scen0");
+    TEST_ASSERT(std::find(levels_v.begin(), levels_v.end(), 987) != levels_v.end(),
+                "list_levels_v should include strict positive scen id");
+
+    // delete_level early return path when no mounted campaign.
+    ctx().mounted_campaign.clear();
+    delete_level(987);
+
+    std::remove((campaigns_dir / "batch3_filter_marker.glad").string().c_str());
+    std::remove((campaigns_dir / "batch3_filter_marker.txt").string().c_str());
+    std::remove((scen_dir / "batch3_note.txt").string().c_str());
+    std::remove((scen_dir / "foo.fss").string().c_str());
+    std::remove((scen_dir / "scen0.fss").string().c_str());
+    std::remove((scen_dir / "scen987.fss").string().c_str());
+    ctx().mounted_campaign = prev;
+}
+REGISTER_TEST(test_platform_io_batch3_mount_switch_and_listing_filters);
+
+void test_og_file_batch3_physfs_seek_and_path_overloads()
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
+    const fs::path overload_file = tmp_dir / "overload.bin";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+
+    // Exercise path+file open-write overload and stdio-backed seek/tell path.
+    auto out = og::io::og_open_write((tmp_dir.string() + "/").c_str(), "overload.bin");
+    TEST_ASSERT(out != nullptr, "og_open_write(path,file) should create file");
+    if (out)
+    {
+        const unsigned char bytes[] = {9, 8, 7};
+        TEST_ASSERT(og::io::og_write_exact(*out, bytes, 1, sizeof(bytes)), "overload write payload");
+        TEST_ASSERT_EQ(3, static_cast<int>(out->tell()), "stdio tell should advance after write");
+        TEST_ASSERT_EQ(3, static_cast<int>(out->seek(0, 2)), "stdio seek end should return file size");
+    }
+    out.reset();
+
+    // Exercise path+file read overload.
+    auto in_overload = og::io::og_open_read((tmp_dir.string() + "/").c_str(), "overload.bin");
+    TEST_ASSERT(in_overload != nullptr, "og_open_read(path,file) should open written file");
+    if (in_overload)
+    {
+        TEST_ASSERT_EQ(1, static_cast<int>(in_overload->seek(1, 0)), "stdio seek set should work");
+        TEST_ASSERT_EQ(1, static_cast<int>(in_overload->tell()), "stdio tell should track seek");
+    }
+
+    // PhysFS-backed read path and seek whence variants.
+    auto phys = og::io::og_open_read("cfg/openglad.yaml", true);
+    TEST_ASSERT(phys != nullptr, "PhysFS read for cfg/openglad.yaml should succeed");
+    if (phys)
+    {
+        const std::int64_t start = phys->seek(0, 0);
+        TEST_ASSERT(start >= 0, "physfs seek set should succeed");
+        const std::int64_t cur = phys->seek(1, 1);
+        TEST_ASSERT(cur >= 1, "physfs seek cur should advance");
+        const std::int64_t end = phys->seek(0, 2);
+        TEST_ASSERT(end >= cur, "physfs seek end should be >= current position");
+        TEST_ASSERT_EQ(-1, static_cast<int>(phys->seek(0, 99)), "physfs invalid whence should fail");
+    }
+
+    PixieData missing = read_pixie_file("does_not_exist_batch3.pix");
+    TEST_ASSERT(missing.data == nullptr, "missing pix file should return empty PixieData");
+
+    std::remove(overload_file.string().c_str());
+}
+REGISTER_TEST(test_og_file_batch3_physfs_seek_and_path_overloads);
+
+void test_zip_api_batch3_output_open_failure_and_empty_input_dir()
+{
+    namespace fs = std::filesystem;
+    const fs::path base = fs::path("temp") / "io_platform_cov_zip_batch3";
+    const fs::path in_empty = base / "empty_input";
+    const fs::path in_one = base / "one_input";
+    const fs::path archive_empty = base / "empty.zip";
+    const fs::path archive_one = base / "one.zip";
+    const fs::path out_blocker = base / "out_blocker";
+    std::error_code ec;
+
+    fs::remove_all(base, ec);
+    fs::create_directories(in_empty, ec);
+    fs::create_directories(in_one, ec);
+    {
+        std::FILE* f = std::fopen((in_one / "p.txt").string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create zip payload");
+        if (f)
+        {
+            const char* txt = "payload";
+            std::fwrite(txt, 1, std::strlen(txt), f);
+            std::fclose(f);
+        }
+    }
+
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+                   static_cast<int>(og::io::zip_contents_with_error(in_empty.string(), archive_empty.string())),
+                   "zipping an empty existing directory should still succeed");
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::None),
+                   static_cast<int>(og::io::zip_contents_with_error(in_one.string(), archive_one.string())),
+                   "zipping a normal directory should succeed");
+
+    {
+        std::FILE* f = std::fopen(out_blocker.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create out blocker file");
+        if (f) std::fclose(f);
+    }
+    TEST_ASSERT_EQ(static_cast<int>(ArchiveIoError::OpenOutputFailed),
+                   static_cast<int>(og::io::unzip_into_with_error(archive_one.string(), out_blocker.string())),
+                   "unzip should fail with OpenOutputFailed when outdirectory is a file");
+
+    std::remove(out_blocker.string().c_str());
+    fs::remove_all(base, ec);
+}
+REGISTER_TEST(test_zip_api_batch3_output_open_failure_and_empty_input_dir);
