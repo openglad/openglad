@@ -565,6 +565,63 @@ void test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches()
 }
 REGISTER_TEST(test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches);
 
+void test_smooth_round13_dark_grass_targeted_338_448_branches()
+{
+    FixedRandom rng0(0);
+    GameContext c;
+    c.rng = &rng0;
+    GlobalContextGuard guard(&c);
+
+    PixieData grid = make_grid(7, 7, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+    const int cx = 3, cy = 3;
+
+    at(grid, cx, cy) = PIX_GRASS_DARK_1;
+
+    // around == (TO_DOWN) with right/up non-grass should choose B1 (smooth.cpp:418-424).
+    set_same_neighbors(grid, cx, cy, PIX_GRASS_DARK_1, PIX_GRASS1, TO_DOWN);
+    at(grid, cx + 1, cy) = PIX_WATER1;
+    at(grid, cx, cy - 1) = PIX_WATER1;
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy),
+                   "dark grass down-only with non-grass right/up should map to B1");
+
+    // around == (TO_RIGHT | TO_UP) with left/down non-grass should choose B1 (425-431).
+    at(grid, cx, cy) = PIX_GRASS_DARK_1;
+    set_same_neighbors(grid, cx, cy, PIX_GRASS_DARK_1, PIX_GRASS1, TO_RIGHT | TO_UP);
+    at(grid, cx - 1, cy) = PIX_WATER1;
+    at(grid, cx, cy + 1) = PIX_WATER1;
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy),
+                   "dark grass up-right with non-grass left/down should map to B1");
+
+    // around == (TO_RIGHT) with left non-grass should choose B1 (432-438).
+    at(grid, cx, cy) = PIX_GRASS_DARK_1;
+    set_same_neighbors(grid, cx, cy, PIX_GRASS_DARK_1, PIX_GRASS1, TO_RIGHT);
+    at(grid, cx - 1, cy) = PIX_WATER1;
+    at(grid, cx, cy - 1) = PIX_WATER1;
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)at(grid, cx, cy),
+                   "dark grass right-only with non-grass left should map to B1");
+
+    // around == TO_UP with down == TYPE_GRASS should choose UR (439-445).
+    at(grid, cx, cy) = PIX_GRASS_DARK_1;
+    set_same_neighbors(grid, cx, cy, PIX_GRASS_DARK_1, PIX_GRASS1, TO_UP);
+    at(grid, cx, cy + 1) = PIX_GRASS1;
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)at(grid, cx, cy),
+                   "dark grass up-only with grass below should map to UR");
+
+    // around == 0 default branch should choose DARK_1 (446-447).
+    at(grid, cx, cy) = PIX_GRASS_DARK_1;
+    set_same_neighbors(grid, cx, cy, PIX_GRASS_DARK_1, PIX_GRASS1, 0);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)at(grid, cx, cy),
+                   "dark grass default should map to DARK_1");
+}
+REGISTER_TEST(test_smooth_round13_dark_grass_targeted_338_448_branches);
+
 void test_smooth_round6_query_genre_and_water_tree_edges()
 {
     FixedRandom rng0(0);

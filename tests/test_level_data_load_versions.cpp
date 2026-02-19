@@ -483,6 +483,58 @@ void test_level_data_load_version4_truncated_discard_tail_fails()
 }
 REGISTER_TEST(test_level_data_load_version4_truncated_discard_tail_fails);
 
+void test_level_data_load_version4_truncated_numlines_or_width_fails()
+{
+    LevelData data(1);
+
+    // Missing numlines byte after one object should fail at numlines read.
+    {
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_i16(bytes, 1);
+        append_u8(bytes, static_cast<uint8_t>(Order::Living));
+        append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
+        append_i16(bytes, 100);
+        append_i16(bytes, 100);
+        append_u8(bytes, 0); // team
+        append_u8(bytes, 0); // facing
+        append_u8(bytes, 0); // command
+        append_u8(bytes, 1); // level
+        std::array<char, 12> name{};
+        append_bytes(bytes, name.data(), name.size());
+        for (int i = 0; i < 10; i++)
+            append_u8(bytes, 0);
+
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when numlines byte is missing");
+    }
+
+    // numlines present but first line width byte missing should fail in line loop.
+    {
+        std::vector<uint8_t> bytes;
+        append_fixed8(bytes, "grid");
+        append_i16(bytes, 1);
+        append_u8(bytes, static_cast<uint8_t>(Order::Living));
+        append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
+        append_i16(bytes, 100);
+        append_i16(bytes, 100);
+        append_u8(bytes, 0); // team
+        append_u8(bytes, 0); // facing
+        append_u8(bytes, 0); // command
+        append_u8(bytes, 1); // level
+        std::array<char, 12> name{};
+        append_bytes(bytes, name.data(), name.size());
+        for (int i = 0; i < 10; i++)
+            append_u8(bytes, 0);
+        append_u8(bytes, 1); // numlines
+        // width byte intentionally omitted
+
+        MemoryOgFile rw(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_version_4(rw, &data), "v4 should fail when description width byte is missing");
+    }
+}
+REGISTER_TEST(test_level_data_load_version4_truncated_numlines_or_width_fails);
+
 void test_level_data_load_versions_2_to_5_invalid_order_fails_object_creation()
 {
     {

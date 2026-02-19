@@ -1193,3 +1193,26 @@ void test_walker_round15_set_difficulty_generator_and_non_player_paths()
                 "team 0 difficulty application should leave valid hitpoints");
 }
 REGISTER_TEST(test_walker_round15_set_difficulty_generator_and_non_player_paths);
+
+void test_walker_round16_act_random_no_foe_far_search_fallback_path()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+
+    SequenceRandom rng({1}); // rng(4)!=0 => ACT_RANDOM else branch
+    actor->sim_rng = &rng;
+    actor->set_act_type(ACT_RANDOM);
+    actor->ani_type = ANI_WALK;
+    actor->foe = nullptr;
+    actor->stats()->clear_command();
+
+    // With no foes in the level, find_far_foe should return nullptr and no search command is queued.
+    TEST_ASSERT(actor->act(), "ACT_RANDOM no-foe fallback should still return true");
+    TEST_ASSERT(actor->foe == nullptr, "ACT_RANDOM should keep foe null when far-foe search finds nothing");
+}
+REGISTER_TEST(test_walker_round16_act_random_no_foe_far_search_fallback_path);
