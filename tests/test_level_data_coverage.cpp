@@ -1397,3 +1397,41 @@ void test_level_data_round15_hard_wall_and_unknown_tile_block_paths()
                 "unknown tile id should hit default blocked path");
 }
 REGISTER_TEST(test_level_data_round15_hard_wall_and_unknown_tile_block_paths);
+
+void test_level_data_round16_remaining_foes_and_object_passable_collision_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* friendly = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* dead_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* alive_enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(actor && friendly && dead_enemy && alive_enemy, "fixtures created");
+    if (!(actor && friendly && dead_enemy && alive_enemy))
+        return;
+
+    actor->team_num = 0;
+    actor->setxy(100, 100);
+    actor->sim_level = &myscreen->level_data;
+
+    friendly->team_num = 0;
+    friendly->setxy(100, 100);
+
+    dead_enemy->team_num = 1;
+    dead_enemy->dead = 1;
+    dead_enemy->setxy(100, 100);
+
+    alive_enemy->team_num = 1;
+    alive_enemy->setxy(100, 100);
+
+    // remaining_foes should count only alive non-friendly living objects.
+    TEST_ASSERT_EQ(1, (int)remaining_foes(myscreen->level_data, actor),
+                   "remaining_foes should ignore friendly and dead living walkers");
+
+    // query_object_passable should fail when collision exists for a live walker.
+    actor->dead = 0;
+    TEST_ASSERT(!myscreen->level_data.query_object_passable(actor->xpos, actor->ypos, actor),
+                "query_object_passable should block on occupied tile for live walker");
+}
+REGISTER_TEST(test_level_data_round16_remaining_foes_and_object_passable_collision_paths);

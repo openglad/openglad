@@ -1266,3 +1266,33 @@ void test_walker_round17_query_next_to_and_fire_check_early_branches()
     }
 }
 REGISTER_TEST(test_walker_round17_query_next_to_and_fire_check_early_branches);
+
+void test_walker_round18_animate_teleport_and_skelgrow_completion_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    // ANI_TELE_OUT + family teleport handler branch (walker.cpp:817-821).
+    walker* mage = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    if (mage)
+    {
+        mage->setxy(100, 100);
+        mage->ani_type = ANI_TELE_OUT;
+        mage->cycle = 127; // force animate() into end-of-sequence handling
+        TEST_ASSERT(mage->animate(), "mage teleport handler should return true from animate");
+        TEST_ASSERT_EQ(ANI_TELE_IN, (int)mage->ani_type, "teleport handler should switch mage to ANI_TELE_IN");
+    }
+
+    // ANI_SKEL_GROW completion branch (walker.cpp:807-815).
+    walker* skeleton = myscreen->level_data.add_ob(Order::Living, FAMILY_SKELETON);
+    TEST_ASSERT(skeleton != nullptr, "skeleton created");
+    if (skeleton)
+    {
+        skeleton->ani_type = ANI_SKEL_GROW;
+        skeleton->cycle = 127; // force completion path
+        TEST_ASSERT(skeleton->animate(), "skeleton grow completion should return true");
+        TEST_ASSERT_EQ(ANI_WALK, (int)skeleton->ani_type, "skeleton grow completion should reset to ANI_WALK");
+    }
+}
+REGISTER_TEST(test_walker_round18_animate_teleport_and_skelgrow_completion_paths);
