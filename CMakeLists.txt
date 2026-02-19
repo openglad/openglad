@@ -1147,9 +1147,11 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_entity_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
@@ -1158,6 +1160,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
@@ -1173,11 +1176,13 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_io_zip_unzip.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_new_file_fixture.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_io_platform_coverage.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_io_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_load.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_save_data_versions.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_ops.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
