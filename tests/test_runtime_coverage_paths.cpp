@@ -767,3 +767,38 @@ void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
     TEST_ASSERT(ally->foe == foe_near, "nearest hostile should be selected as far foe");
 }
 REGISTER_TEST(test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present);
+
+void test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event()
+{
+    clear_level_lists();
+
+    og::sim::SimWorld world(1234);
+    og::sim::SimEventLog events;
+    SaveData save;
+    save.my_team = 0;
+
+    walker* ally = add_living(0);
+    walker* hostile = add_living(1);
+    TEST_ASSERT(ally && hostile, "ally/hostile created");
+    if (!(ally && hostile))
+        return;
+    ally->set_act_type(ACT_CONTROL);
+    hostile->set_act_type(ACT_CONTROL);
+
+    std::int32_t enemy_freeze = 2; // decrements to 1 -> SetPalette(0) branch
+    char end = 1;                  // explicit end short-circuit branch
+    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    TEST_ASSERT(r.game_ended, "end flag should force game_ended");
+    TEST_ASSERT_EQ(1, (int)enemy_freeze, "freeze should decrement before end short-circuit");
+
+    bool saw_palette_reset = false;
+    for (const auto& ev : events.events())
+    {
+        if (ev.kind == og::sim::EventKind::SetPalette && ev.a == 0)
+            saw_palette_reset = true;
+    }
+    TEST_ASSERT(saw_palette_reset, "enemy_freeze transition to 1 should emit SetPalette reset event");
+
+    clear_level_lists();
+}
+REGISTER_TEST(test_sim_world_round8_end_flag_short_circuit_and_palette_unfreeze_event);

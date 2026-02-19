@@ -825,14 +825,14 @@ void test_zip_platform_round8_open_archive_and_mount_error_paths()
 {
     namespace fs = std::filesystem;
     const fs::path tmp_dir = fs::path("temp") / "io_platform_cov" / "round8_zip";
-    const fs::path missing_parent_archive = tmp_dir / "missing" / "archive.zip";
     std::error_code ec;
     fs::remove_all(tmp_dir, ec);
     fs::create_directories(tmp_dir, ec);
 
-    const ArchiveIoError zip_err = zip_contents_with_error(tmp_dir.string(), missing_parent_archive.string());
+    // Force open failure deterministically by using a directory path as archive output.
+    const ArchiveIoError zip_err = zip_contents_with_error(tmp_dir.string(), tmp_dir.string());
     TEST_ASSERT_EQ((int)ArchiveIoError::OpenArchiveFailed, (int)zip_err,
-                   "zip_contents_with_error should report OpenArchiveFailed for missing parent");
+                   "zip_contents_with_error should report OpenArchiveFailed for directory output path");
 
     const ArchiveIoError unzip_err = unzip_into_with_error((tmp_dir / "does_not_exist.zip").string(),
                                                            (tmp_dir / "out").string());

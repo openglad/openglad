@@ -1054,3 +1054,42 @@ void test_walker_batch8_act_default_and_animate_invalid_sequence_bounds()
     delete w;
 }
 REGISTER_TEST(test_walker_batch8_act_default_and_animate_invalid_sequence_bounds);
+
+void test_walker_combat_round8_attack_early_return_guards()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* attacker = make_guy(FAMILY_SOLDIER, 0);
+    walker* living_target = make_guy(FAMILY_ORC, 1);
+    TEST_ASSERT(attacker && living_target, "attacker and living target created");
+    if (!(attacker && living_target))
+        return;
+
+    // Dead target guard.
+    living_target->dead = 1;
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail on dead target");
+    living_target->dead = 0;
+
+    // Friendly target guard.
+    living_target->team_num = attacker->team_num;
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail on friendly target");
+    living_target->team_num = 1;
+
+    // Treasure target guard.
+    walker* treasure_target = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    TEST_ASSERT(treasure_target != nullptr, "treasure target created");
+    if (treasure_target)
+        TEST_ASSERT(!attacker->attack(treasure_target), "attack should fail against treasure targets");
+
+    // Invincible target guard via bit flag.
+    living_target->stats()->set_bit_flags(BIT_INVINCIBLE, 1);
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail on BIT_INVINCIBLE targets");
+    living_target->stats()->set_bit_flags(BIT_INVINCIBLE, 0);
+
+    // Invulnerability timer guard.
+    living_target->invulnerable_left = 3;
+    TEST_ASSERT(!attacker->attack(living_target), "attack should fail while invulnerable_left is active");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_combat_round8_attack_early_return_guards);

@@ -683,3 +683,51 @@ void test_living_round7_act_random_and_do_action_targeted_branches()
     TEST_ASSERT(!static_cast<living*>(actor.get())->do_action(), "unknown action should return false");
 }
 REGISTER_TEST(test_living_round7_act_random_and_do_action_targeted_branches);
+
+void test_living_round8_dead_outline_forestwalk_and_offmap_walk_paths()
+{
+    // dead gate: line-early return path.
+    auto dead_w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(dead_w != nullptr, "dead gate walker created");
+    if (!dead_w)
+        return;
+    dead_w->dead = 1;
+    TEST_ASSERT(!dead_w->act(), "dead living should return false immediately");
+
+    auto w = make_living(FAMILY_DRUID);
+    TEST_ASSERT(w != nullptr, "forestwalk walker created");
+    if (!w)
+        return;
+
+    living* lv = static_cast<living*>(w.get());
+    w->set_act_type(ACT_CONTROL);
+
+    // invisibility expiry should clear outline.
+    w->invisibility_left = 0;
+    w->outline = 7;
+    (void)w->act();
+    TEST_ASSERT_EQ(0, (int)w->outline, "outline should clear when invisibility is exhausted");
+
+    // Forestwalk myguy dex branch with clamp-to-zero temp.
+    w->stats()->set_bit_flags(BIT_FORESTWALK, 1);
+    if (w->myguy)
+        w->myguy->dexterity = 120;
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.grid.data[(w->ypos / GRID_SIZE) * myscreen->level_data.grid.w + (w->xpos / GRID_SIZE)] = PIX_TREE_B1;
+    const float normal = lv->normal_stepsize;
+    (void)w->act();
+    TEST_ASSERT(lv->stepsize >= 1.0f, "forestwalk path should keep stepsize >= 1");
+    TEST_ASSERT(lv->stepsize <= normal + 0.1f, "high dex forestwalk branch should clamp temp and avoid negative speed penalty");
+
+    // Off-map walk rejection branch.
+    w->curdir = lv->facing(-1000, 0);
+    TEST_ASSERT(!lv->walk(-1000, 0), "walk should reject off-map target coordinates");
+}
+REGISTER_TEST(test_living_round8_dead_outline_forestwalk_and_offmap_walk_paths);
+
+void test_obmap_round8_hash_negative_and_large_clamp_paths()
+{
+    TEST_ASSERT_EQ(199, (int)obmap::hash(-100), "hash should clamp negative coordinates to 199 bucket");
+    TEST_ASSERT_EQ(199, (int)obmap::hash(9999), "hash should clamp very large coordinates to 199 bucket");
+}
+REGISTER_TEST(test_obmap_round8_hash_negative_and_large_clamp_paths);

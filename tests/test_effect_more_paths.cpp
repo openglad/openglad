@@ -541,3 +541,33 @@ void test_effect_batch6_chain_small_delta_else_branches()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_effect_batch6_chain_small_delta_else_branches);
+
+void orbit_offset(int drawcycle, float &xd, float &yd);
+
+void test_effect_round8_orbit_offset_and_default_act_death_paths()
+{
+    float x0 = 0.0f;
+    float y0 = 0.0f;
+    orbit_offset(0, x0, y0);
+    TEST_ASSERT_EQ(0, (int)x0, "orbit offset at cycle 0 should have zero x");
+    TEST_ASSERT_EQ(-24, (int)y0, "orbit offset at cycle 0 should have negative y arc");
+
+    float x1 = 0.0f;
+    float y1 = 0.0f;
+    orbit_offset(17, x1, y1); // wraps to index 1
+    TEST_ASSERT_EQ(-9, (int)x1, "orbit offset should wrap every 16 cycles");
+    TEST_ASSERT_EQ(-22, (int)y1, "orbit offset wrap y should match lookup table");
+
+    // Default effect::act path with ANI_WALK should force dead + death.
+    auto eff = myscreen->level_data.myloader->create_walker_owned(Order::FX, FAMILY_FLASH);
+    TEST_ASSERT(eff != nullptr, "effect walker created");
+    if (!eff)
+        return;
+
+    eff->ani_type = ANI_WALK;
+    eff->dead = 0;
+    const bool r = eff->act();
+    TEST_ASSERT(!r, "default effect act path should return false after killing itself");
+    TEST_ASSERT(eff->dead == 1, "default effect act path should mark effect dead");
+}
+REGISTER_TEST(test_effect_round8_orbit_offset_and_default_act_death_paths);
