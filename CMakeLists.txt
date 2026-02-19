@@ -1149,6 +1149,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_handler.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_entity_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_mass_coverage.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage.cpp
