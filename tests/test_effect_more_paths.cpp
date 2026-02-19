@@ -424,3 +424,87 @@ void test_effect_batch3_chain_snap_to_leader_and_effect_death_guard()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_effect_batch3_chain_snap_to_leader_and_effect_death_guard);
+
+void test_effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan()
+{
+    myscreen->level_data.delete_objects();
+
+    // Early guard branch: missing owner must kill chain immediately.
+    walker* orphan_chain = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    walker* any_leader = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(orphan_chain != nullptr && any_leader != nullptr, "orphan chain/leader created");
+    if (orphan_chain && any_leader)
+    {
+        orphan_chain->leader = any_leader;
+        orphan_chain->lineofsight = 4;
+        orphan_chain->setxy(100, 100);
+        any_leader->setxy(100, 100);
+        (void)orphan_chain->act();
+        TEST_ASSERT(orphan_chain->dead == 1, "ownerless chain should die in guard path");
+    }
+
+    myscreen->level_data.delete_objects();
+
+    // Hit-leader path with owner->myguy == nullptr should take non-myguy foe scan branch.
+    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* leader = myscreen->level_data.add_ob(Order::Living, FAMILY_CLERIC);
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* chain = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    TEST_ASSERT(owner != nullptr && leader != nullptr && foe != nullptr && chain != nullptr,
+                "owner/leader/foe/chain created");
+    if (!(owner && leader && foe && chain))
+        return;
+
+    owner->team_num = 1;
+    owner->stats()->level = 8;
+    leader->team_num = 1; // not a foe, prevents leader from consuming the first chain bounce
+    foe->team_num = 2;
+    leader->setxy(120, 120);
+    foe->setxy(124, 120);
+
+    chain->owner = owner;
+    chain->leader = leader;
+    chain->team_num = owner->team_num;
+    chain->damage = 70.0f; // generic=35, so branch generic>20 can run
+    chain->lineofsight = 3;
+    chain->setxy(120, 120); // overlap leader -> explosion/branch fanout path
+
+    SequenceRandom seq_rng({0});
+    chain->sim_rng = &seq_rng;
+    owner->sim_rng = &seq_rng;
+    (void)chain->act();
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_effect_batch4_chain_guard_ownerless_and_non_myguy_foe_scan);
+
+void test_effect_batch4_chain_movement_negative_delta_branch()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* leader = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* chain = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    TEST_ASSERT(owner != nullptr && leader != nullptr && chain != nullptr, "movement chain objects created");
+    if (!(owner && leader && chain))
+        return;
+
+    owner->team_num = 1;
+    leader->team_num = 2;
+    leader->setxy(60, 60);
+    chain->owner = owner;
+    chain->leader = leader;
+    chain->team_num = 1;
+    chain->lineofsight = 8;
+    chain->stepsize = 4.0f;
+    chain->setxy(140, 140); // ensures x and y deltas are negative
+
+    const short before_x = chain->xpos;
+    const short before_y = chain->ypos;
+    (void)chain->act();
+    TEST_ASSERT(chain->xpos <= before_x && chain->ypos <= before_y,
+                "chain movement should step toward upper-left leader when deltas are negative");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_effect_batch4_chain_movement_negative_delta_branch);

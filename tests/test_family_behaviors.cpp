@@ -1436,6 +1436,108 @@ void test_cleric_turn_undead_branches()
 }
 REGISTER_TEST(test_cleric_turn_undead_branches);
 
+void test_cleric_mystic_mace_success_path_direct()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+    if (!(cleric && fd && fd->do_special))
+        return;
+
+    cleric->current_special = 1;
+    cleric->shifter_down = 1;
+    cleric->busy = 0;
+    cleric->stats()->magicpoints = 200;
+    cleric->stats()->special_cost[1] = 0;
+    cleric->stats()->level = 6;
+    auto smart = std::make_unique<guy>(FAMILY_CLERIC);
+    smart->intelligence = 120;
+    cleric->set_owned_myguy(std::move(smart));
+
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "mystic mace should succeed with enough INT and not busy");
+    TEST_ASSERT(cleric->busy > 0, "mystic mace success should add busy delay");
+
+    bool found_shield = false;
+    for (auto& uptr : myscreen->level_data.oblist)
+    {
+        walker* w = uptr.get();
+        if (w && w->query_order() == Order::FX && w->query_family() == FAMILY_MAGIC_SHIELD &&
+            w->owner == cleric)
+        {
+            found_shield = true;
+            break;
+        }
+    }
+    for (auto& uptr : myscreen->level_data.fxlist)
+    {
+        walker* w = uptr.get();
+        if (w && w->query_family() == FAMILY_MAGIC_SHIELD && w->owner == cleric)
+        {
+            found_shield = true;
+            break;
+        }
+    }
+    TEST_ASSERT(found_shield, "mystic mace should spawn magic shield");
+}
+REGISTER_TEST(test_cleric_mystic_mace_success_path_direct);
+
+void test_cleric_turn_undead_success_with_undead_targets()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    walker* skeleton = add_living_to_level(FAMILY_SKELETON, 2, 108, 100);
+    TEST_ASSERT(cleric != nullptr && skeleton != nullptr, "cleric and skeleton created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+    if (!(cleric && skeleton && fd && fd->do_special))
+        return;
+
+    cleric->current_special = 2;
+    cleric->shifter_down = 1;
+    cleric->busy = 0;
+    cleric->team_num = 1;
+    cleric->stats()->level = 6;
+    ConstRandomFamily deterministic_rng(39);
+    cleric->sim_rng = &deterministic_rng;
+    skeleton->sim_rng = &deterministic_rng;
+
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "turn undead branch should execute when an undead foe is nearby");
+    TEST_ASSERT(skeleton->dead || skeleton->stats()->hitpoints <= 0,
+                "turn undead should remove or kill nearby undead target");
+}
+REGISTER_TEST(test_cleric_turn_undead_success_with_undead_targets);
+
+void test_cleric_resurrect_penalty_underflow_clamps_to_zero()
+{
+    myscreen->level_data.create_new_grid();
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+    if (!(cleric && fd && fd->do_special))
+        return;
+
+    auto hero = std::make_unique<guy>(FAMILY_CLERIC);
+    hero->exp = 0;
+    cleric->set_owned_myguy(std::move(hero));
+    cleric->current_special = 4;
+
+    walker* blood_friend = add_stain_to_fxlist(0, 110, 100);
+    TEST_ASSERT(blood_friend != nullptr, "friendly blood created");
+    if (!blood_friend)
+        return;
+    blood_friend->stats()->old_family = FAMILY_SOLDIER;
+
+    bool ok = fd->do_special(cleric);
+    TEST_ASSERT(ok, "resurrect should succeed for nearby friendly blood");
+    TEST_ASSERT(cleric->myguy->exp >= 0, "resurrect path should leave non-negative experience");
+}
+REGISTER_TEST(test_cleric_resurrect_penalty_underflow_clamps_to_zero);
+
 void test_cleric_raise_skeleton_and_ghost_from_blood()
 {
     myscreen->level_data.create_new_grid();
