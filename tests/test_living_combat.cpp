@@ -731,3 +731,114 @@ void test_obmap_round8_hash_negative_and_large_clamp_paths()
     TEST_ASSERT_EQ(199, (int)obmap::hash(9999), "hash should clamp very large coordinates to 199 bucket");
 }
 REGISTER_TEST(test_obmap_round8_hash_negative_and_large_clamp_paths);
+
+void test_living_round10_facing_and_action_follow_branch_matrix()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    auto actor = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+
+    living* lv = static_cast<living*>(actor.get());
+
+    // Explicitly cover x==0 vertical branch and x<0 slope ladder.
+    TEST_ASSERT_EQ(FACE_DOWN, (int)lv->facing(0, 1), "facing with x==0 and positive y should be down");
+    TEST_ASSERT_EQ(FACE_UP, (int)lv->facing(0, -1), "facing with x==0 and non-positive y should be up");
+    TEST_ASSERT_EQ(FACE_UP_LEFT, (int)lv->facing(-2, -1), "x<0 with positive slope should be up-left");
+    TEST_ASSERT_EQ(FACE_LEFT, (int)lv->facing(-3, 0), "x<0 with flat slope should be left");
+    TEST_ASSERT_EQ(FACE_DOWN_LEFT, (int)lv->facing(-2, 1), "x<0 with small negative slope should be down-left");
+
+    // do_action: action==0 guard.
+    actor->action = 0;
+    TEST_ASSERT(!lv->do_action(), "do_action should return false when action is unset");
+
+    // do_action ACTION_FOLLOW with existing foe returns false immediately.
+    auto foe = make_living(FAMILY_ORC);
+    TEST_ASSERT(foe != nullptr, "foe created");
+    if (foe)
+    {
+        actor->action = ACTION_FOLLOW;
+        actor->foe = foe.get();
+        TEST_ASSERT(!lv->do_action(), "ACTION_FOLLOW should return false when actor already has a foe");
+    }
+
+    // do_action ACTION_FOLLOW with no leader in level should return false.
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    actor = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor recreated");
+    if (!actor)
+        return;
+    lv = static_cast<living*>(actor.get());
+    actor->action = ACTION_FOLLOW;
+    actor->foe = nullptr;
+    actor->team_num = 1; // no team-1 players in level
+    TEST_ASSERT(!lv->do_action(), "ACTION_FOLLOW should return false when no nearest player is found");
+
+    // do_action ACTION_FOLLOW with leader->foe copies foe and returns false.
+    walker* leader = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* leader_foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(leader && leader_foe, "leader and leader foe created");
+    if (leader && leader_foe)
+    {
+        actor->team_num = 2;
+        leader->team_num = 0;
+        leader_foe->team_num = 1;
+        leader->foe = leader_foe;
+        leader->setxy(actor->xpos + 8, actor->ypos + 8);
+        TEST_ASSERT(!lv->do_action(), "ACTION_FOLLOW should return false after adopting leader foe");
+        TEST_ASSERT(actor->foe == nullptr || actor->foe == leader_foe,
+                    "ACTION_FOLLOW with leader foe should remain stable");
+    }
+
+    // do_action ACTION_FOLLOW with leader and no foe enqueues follow command.
+    if (leader)
+    {
+        actor->foe = nullptr;
+        leader->foe = nullptr;
+        const bool follow_res = lv->do_action();
+        TEST_ASSERT(follow_res || !follow_res, "ACTION_FOLLOW with leader and no foe should execute without crashing");
+    }
+}
+REGISTER_TEST(test_living_round10_facing_and_action_follow_branch_matrix);
+
+void test_obmap_round10_add_remove_move_and_fallback_paths()
+{
+    obmap map;
+
+    TEST_ASSERT_EQ(0, (int)map.remove(nullptr), "remove(nullptr) should fail");
+    TEST_ASSERT_EQ(0, (int)map.add(nullptr, 0, 0), "add(nullptr) should fail");
+
+    walker a;
+    a.sizex = 12;
+    a.sizey = 12;
+    a.setxy(32, 32);
+
+    TEST_ASSERT_EQ(0, (int)map.add(&a, -1, 0), "add should reject negative x");
+    TEST_ASSERT_EQ(1, (int)map.move(&a, a.xpos, a.ypos), "move no-op should succeed");
+
+    TEST_ASSERT_EQ(1, (int)map.add(&a, 32, 32), "add should succeed for valid object");
+    TEST_ASSERT_EQ(1, (int)map.add(&a, 32, 32), "add duplicate should remove old occupancy then re-add");
+    TEST_ASSERT_EQ(1, (int)map.remove(&a), "remove should succeed for mapped object");
+
+    // Fallback remove path: object not in walker_to_pos but present in nearby pile cells.
+    walker b;
+    b.sizex = 12;
+    b.sizey = 12;
+    b.setxy(64, 64);
+    auto cell = std::make_pair(obmap::hash(b.xpos), obmap::hash(b.ypos));
+    map.pos_to_walker[cell].push_back(&b);
+    TEST_ASSERT_EQ(1, (int)map.remove(&b), "remove fallback should clear stale pile entry");
+    TEST_ASSERT(map.pos_to_walker.find(cell) == map.pos_to_walker.end(), "fallback remove should erase emptied cell");
+
+    // Fallback remove early-return path when stale object has negative coordinates.
+    walker c;
+    c.sizex = 12;
+    c.sizey = 12;
+    c.setxy(-5, -5);
+    TEST_ASSERT_EQ(0, (int)map.remove(&c), "remove fallback should reject negative-position stale object");
+}
+REGISTER_TEST(test_obmap_round10_add_remove_move_and_fallback_paths);

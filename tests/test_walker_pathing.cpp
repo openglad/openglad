@@ -6,6 +6,7 @@
 #include <openglad/render/walker_draw.h>
 #include <openglad/runtime/screen.h>
 #include "test_framework.h"
+#include <cstdint>
 
 extern screen* myscreen;
 
@@ -74,3 +75,39 @@ void test_walker_damage_numbers_and_compute_outline_smoke()
     v->control = nullptr;
 }
 REGISTER_TEST(test_walker_damage_numbers_and_compute_outline_smoke);
+
+void test_walker_pathing_round10_follow_path_node_erase_and_normalize_paths()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    if (!w)
+        return;
+
+    using State = typename decltype(w->path_to_foe)::value_type;
+    auto make_state = [](int x, int y) -> State {
+        constexpr int grid = 16;
+        constexpr int width = 400;
+        const std::intptr_t idx = static_cast<std::intptr_t>((y / grid) * width + (x / grid));
+        return reinterpret_cast<State>(idx);
+    };
+
+    w->setxy(32, 32);
+
+    // First node equals current position -> erase-node path.
+    w->path_to_foe.clear();
+    w->path_to_foe.push_back(make_state(32, 32));
+    w->follow_path_to_foe();
+    TEST_ASSERT(w->path_to_foe.empty(), "follow_path_to_foe should erase already-reached node");
+
+    // Diagonal node -> normalize dx/dy and walkstep branch.
+    w->path_to_foe.clear();
+    w->path_to_foe.push_back(make_state(48, 48));
+    const short x_before = w->xpos;
+    const short y_before = w->ypos;
+    w->follow_path_to_foe();
+    TEST_ASSERT(w->xpos >= x_before && w->ypos >= y_before,
+                "follow_path_to_foe should move toward diagonal next node");
+
+    delete w;
+}
+REGISTER_TEST(test_walker_pathing_round10_follow_path_node_erase_and_normalize_paths);

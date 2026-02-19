@@ -424,3 +424,36 @@ void test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps()
     fx.clear();
 }
 REGISTER_TEST(test_treasure_find_teleport_target_filters_invalid_candidates_and_wraps);
+
+void test_treasure_round10_find_teleport_target_forward_wrap_and_empty_paths()
+{
+    myscreen->level_data.delete_objects();
+    auto& fx = myscreen->level_data.fxlist;
+    fx.clear();
+
+    auto self = std::make_unique<treasure>();
+    self->sim_level = &myscreen->level_data;
+    self->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    self->stats()->level = 6;
+    walker* self_ptr = self.get();
+    fx.push_back(std::move(self));
+
+    auto match_after = std::make_unique<treasure>();
+    match_after->sim_level = &myscreen->level_data;
+    match_after->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    match_after->stats()->level = 6;
+    walker* after_ptr = match_after.get();
+    fx.push_back(std::move(match_after));
+
+    // Forward scan should return later matching entry.
+    TEST_ASSERT(static_cast<treasure*>(self_ptr)->find_teleport_target() == after_ptr,
+                "find_teleport_target should return later matching teleporter in forward scan");
+
+    // Kill forward match and ensure no wrap candidates -> nullptr.
+    after_ptr->dead = 1;
+    TEST_ASSERT(static_cast<treasure*>(self_ptr)->find_teleport_target() == nullptr,
+                "find_teleport_target should return nullptr when no live same-level teleporter exists");
+
+    fx.clear();
+}
+REGISTER_TEST(test_treasure_round10_find_teleport_target_forward_wrap_and_empty_paths);

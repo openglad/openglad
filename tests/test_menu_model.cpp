@@ -77,3 +77,19 @@ void test_menu_model_lookup_miss_paths_and_fallback_item()
     TEST_ASSERT(id_miss == nullptr, "missing id lookup should return nullptr");
 }
 REGISTER_TEST(test_menu_model_lookup_miss_paths_and_fallback_item);
+
+void test_menu_model_round10_set_player_mode_arg_variants_and_invalid_command_lookup()
+{
+    using namespace og::ui;
+
+    const PickerMenuItem* p1 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 1);
+    const PickerMenuItem* p2 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 2);
+    const PickerMenuItem* p3 = find_picker_menu_item(PickerMenuId::Main, PickerMenuCommand::SetPlayerMode, 3);
+    TEST_ASSERT(p1 && p2 && p3, "set-player-mode items for args 1/2/3 should resolve");
+
+    const PickerMenuItem* invalid_cmd =
+        find_picker_menu_item(static_cast<PickerMenuId>(777), PickerMenuCommand::SetCampaign, 0);
+    TEST_ASSERT(invalid_cmd == nullptr,
+                "invalid menu id plus unmatched command should return nullptr via fallback lookup");
+}
+REGISTER_TEST(test_menu_model_round10_set_player_mode_arg_variants_and_invalid_command_lookup);

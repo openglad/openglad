@@ -321,3 +321,21 @@ void test_guy_batch5_max_helper_and_more_unknown_family_paths()
                    "unknown negative family should report zero heart value");
 }
 REGISTER_TEST(test_guy_batch5_max_helper_and_more_unknown_family_paths);
+
+void test_guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost()
+{
+    guy g(FAMILY_SOLDIER);
+    const Sint32 base = g.query_heart_value();
+
+    // Drop stats below base values; MAX(temp,0) branches should prevent negative contributions.
+    g.strength = static_cast<short>(g.strength - 5);
+    g.dexterity = static_cast<short>(g.dexterity - 5);
+    g.constitution = static_cast<short>(g.constitution - 5);
+    g.intelligence = static_cast<short>(g.intelligence - 5);
+    g.armor = static_cast<short>(g.armor - 5);
+
+    const Sint32 lowered = g.query_heart_value();
+    TEST_ASSERT_EQ(base, lowered,
+                   "query_heart_value should clamp negative stat deltas and keep base hiring cost only");
+}
+REGISTER_TEST(test_guy_round10_query_heart_value_clamps_negative_stat_deltas_to_base_cost);

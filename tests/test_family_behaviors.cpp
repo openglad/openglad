@@ -2666,3 +2666,77 @@ void test_family_round8_mage_thief_soldier_callback_edge_paths()
     }
 }
 REGISTER_TEST(test_family_round8_mage_thief_soldier_callback_edge_paths);
+
+void test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* orc_fd = get_family_descriptor(FAMILY_ORC);
+    const auto* ghost_fd = get_family_descriptor(FAMILY_GHOST);
+    const auto* archer_fd = get_family_descriptor(FAMILY_ARCHER);
+    const auto* slime_fd = get_family_descriptor(FAMILY_SLIME);
+    const auto* elf_fd = get_family_descriptor(FAMILY_ELF);
+    TEST_ASSERT(orc_fd && ghost_fd && archer_fd && slime_fd && elf_fd, "family descriptors exist");
+    if (!(orc_fd && ghost_fd && archer_fd && slime_fd && elf_fd))
+        return;
+
+    // ORC special: full-hp eat-corpse guard should fail.
+    walker* orc = add_living_to_level(FAMILY_ORC, 0, 100, 100);
+    TEST_ASSERT(orc != nullptr, "orc created");
+    if (!orc)
+        return;
+    orc->current_special = 2;
+    orc->stats()->hitpoints = orc->stats()->max_hitpoints;
+    TEST_ASSERT(!orc_fd->do_special(orc), "orc eat-corpse special should fail at full hp");
+
+    // GHOST AI: no foe in range should fail, nearby foe should pass.
+    walker* ghost = add_living_to_level(FAMILY_GHOST, 0, 120, 100);
+    TEST_ASSERT(ghost != nullptr, "ghost created");
+    if (!ghost)
+        return;
+    ghost->foe = nullptr;
+    TEST_ASSERT(!ghost_fd->check_special_ai(static_cast<living*>(ghost)),
+                "ghost check_special_ai should fail without nearby foes");
+    walker* ghost_foe = add_living_to_level(FAMILY_ORC, 1, 130, 100);
+    TEST_ASSERT(ghost_foe != nullptr, "ghost foe created");
+    if (ghost_foe)
+    {
+        ghost->foe = ghost_foe;
+        TEST_ASSERT(ghost_fd->check_special_ai(static_cast<living*>(ghost)),
+                    "ghost check_special_ai should pass with close foe");
+    }
+
+    // ARCHER hit_response: close-range foe should force a walk command away.
+    walker* archer = add_living_to_level(FAMILY_ARCHER, 0, 100, 100);
+    walker* archer_foe = add_living_to_level(FAMILY_ORC, 1, 110, 100);
+    TEST_ASSERT(archer && archer_foe, "archer and foe created");
+    if (archer && archer_foe)
+    {
+        archer->stats()->clear_command();
+        archer_fd->hit_response(archer->stats(), archer_foe);
+        TEST_ASSERT(archer->foe == archer_foe, "archer hit_response should assign foe");
+        TEST_ASSERT(archer->stats()->has_commands(), "archer hit_response should enqueue retreat command at close range");
+    }
+
+    // SLIME AI: MAXOBS guard branch.
+    auto saved_numobs = myscreen->level_data.numobs;
+    myscreen->level_data.numobs = MAXOBS;
+    TEST_ASSERT(!slime_fd->check_special_ai(static_cast<living*>(orc)),
+                "slime check_special_ai should fail when numobs reaches MAXOBS");
+    myscreen->level_data.numobs = 0;
+    TEST_ASSERT(slime_fd->check_special_ai(static_cast<living*>(orc)),
+                "slime check_special_ai should pass when numobs is below MAXOBS");
+    myscreen->level_data.numobs = saved_numobs;
+
+    // ELF special basic branch should execute for case 1 when fire is available.
+    walker* elf = add_living_to_level(FAMILY_ELF, 0, 100, 100);
+    TEST_ASSERT(elf != nullptr, "elf created");
+    if (elf)
+    {
+        elf->current_special = 1;
+        elf->stats()->magicpoints = 200;
+        TEST_ASSERT(elf_fd->do_special(elf), "elf special case 1 should succeed in normal conditions");
+    }
+}
+REGISTER_TEST(test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks);

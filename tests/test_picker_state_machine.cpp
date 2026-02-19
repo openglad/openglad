@@ -425,3 +425,19 @@ void test_picker_state_show_team_build_unknown_then_start_game()
     TEST_ASSERT_EQ(1, client.handle_calls, "unknown team-build command should call handle_menu_item once");
 }
 REGISTER_TEST(test_picker_state_show_team_build_unknown_then_start_game);
+
+void test_picker_state_round10_continue_game_to_quit_transition()
+{
+    ScriptedPickerClient client;
+    client.main_menu_actions = {
+        og::ui::MainMenuAction::ContinueGame
+    };
+    client.screen_after_game_result = og::ui::PickerScreen::Quit;
+
+    og::ui::run_picker(client);
+
+    TEST_ASSERT_EQ(1, client.run_game_calls, "continue game should execute one game run");
+    TEST_ASSERT_EQ(1, client.show_main_menu_calls,
+                   "screen_after_game=Quit should exit picker without re-entering main menu");
+}
+REGISTER_TEST(test_picker_state_round10_continue_game_to_quit_transition);
