@@ -1131,6 +1131,11 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_view_input_smoke.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_effect_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_helpers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_act.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_chain_and_door.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_effect_weapon_interactions.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_core_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_picker_state_machine.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_menu_model.cpp
@@ -1138,6 +1143,14 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_runtime_coverage_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_results_screen_full_ui.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_matrix.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_extended.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_navigation.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_commands.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_more_paths.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_more.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_hit_response_teleport.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_right_walk_direct_walk.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_more.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_extended.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_death.cpp
