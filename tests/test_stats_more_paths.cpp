@@ -415,3 +415,23 @@ void test_stats_right_walk_round7_right_back_and_forward_direction_maps()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_stats_right_walk_round7_right_back_and_forward_direction_maps);
+
+void test_stats_right_walk_round8_negative_enddir_default_switch_path()
+{
+    myscreen->level_data.create_new_grid();
+    auto actor = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+
+    // Geometry setup:
+    // - right/right-forward/forward are passable
+    // - right-back is blocked by bottom boundary
+    actor->setxy(GRID_SIZE * 6, static_cast<std::int32_t>(myscreen->level_data.pixmaxy - 1));
+    actor->curdir = FACE_UP;
+    actor->enddir = static_cast<char>(-127);
+    actor->stats()->commands.clear();
+
+    TEST_ASSERT(actor->stats()->right_walk(), "right_walk should return true for negative-enddir fallback path");
+}
+REGISTER_TEST(test_stats_right_walk_round8_negative_enddir_default_switch_path);

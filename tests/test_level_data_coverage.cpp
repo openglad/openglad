@@ -1,4 +1,5 @@
 #include <openglad/data/level_data.h>
+#include <openglad/data/level_data_hooks.h>
 #include <openglad/entities/walker.h>
 #include <openglad/core/stats.h>
 #include <openglad/runtime/game_context.h>
@@ -262,6 +263,57 @@ void test_level_data_set_sim_context_wires_pointers()
 }
 REGISTER_TEST(test_level_data_set_sim_context_wires_pointers);
 
+void test_level_data_round8_ctor_hook_wiring_and_remove_paths()
+{
+    static int wired_count = 0;
+    static int render_count = 0;
+    wired_count = 0;
+    render_count = 0;
+
+    LevelDataHooks hooks;
+    hooks.wire_entity_from_screen = [](walker*) { wired_count++; };
+    hooks.create_level_render = [](PixieData[]) -> std::unique_ptr<LevelRender> {
+        render_count++;
+        return nullptr;
+    };
+
+    {
+        LevelData d(17001, false, &hooks);
+        walker* living = d.add_ob(Order::Living, FAMILY_SOLDIER);
+        walker* fx = d.add_fx_ob(Order::FX, FAMILY_FLASH);
+        walker* weapon = d.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+        TEST_ASSERT(living && fx && weapon, "hooked level should create walkers");
+        if (!(living && fx && weapon))
+            return;
+
+        TEST_ASSERT(living->sim_level == &d, "wire_entity should set sim_level");
+        TEST_ASSERT(living->myobmap == d.myobmap.get(), "wire_entity should set myobmap");
+        TEST_ASSERT_EQ(1, (int)d.remove_ob(weapon), "remove_ob should erase from weaplist");
+        TEST_ASSERT_EQ(1, (int)d.remove_ob(fx), "remove_ob should erase from fxlist");
+        TEST_ASSERT_EQ(1, (int)d.remove_ob(living), "remove_ob should erase from oblist");
+    }
+
+    // Delegating constructor path LevelData(int, const LevelDataHooks*).
+    {
+        LevelData d(17002, &hooks);
+        walker* living = d.add_ob(Order::Living, FAMILY_ARCHER);
+        TEST_ASSERT(living != nullptr, "delegating hooks ctor should create living walkers");
+    }
+
+    // Headless constructor should not invoke create_level_render.
+    const int render_before_headless = render_count;
+    {
+        LevelData d(17003, true, &hooks);
+        walker* living = d.add_ob(Order::Living, FAMILY_SOLDIER);
+        TEST_ASSERT(living != nullptr, "headless hooks ctor should still create walkers");
+    }
+
+    TEST_ASSERT(render_count >= 1, "non-headless constructors should invoke create_level_render hook");
+    TEST_ASSERT_EQ(render_before_headless, render_count, "headless ctor should skip create_level_render hook");
+    TEST_ASSERT(wired_count >= 5, "wire_entity_from_screen hook should run for each created walker");
+}
+REGISTER_TEST(test_level_data_round8_ctor_hook_wiring_and_remove_paths);
+
 void test_level_data_batch2_misc_uncovered_paths_smoke()
 {
     myscreen->level_data.create_new_grid();
@@ -332,6 +384,61 @@ void test_level_data_wall4_projectile_passability_distance_and_rng_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_wall4_projectile_passability_distance_and_rng_paths);
+
+void test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    walker* living = add_living(FAMILY_SOLDIER);
+    walker* weapon = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(living && weapon, "living and weapon should be created");
+    if (!(living && weapon))
+        return;
+
+    living->setxy(0, 0);
+    weapon->setxy(0, 0);
+    living->sizex = weapon->sizex = 1;
+    living->sizey = weapon->sizey = 1;
+
+    // PIX_TREE_B1 branch: living blocks, weapon passes.
+    myscreen->level_data.grid.data[0] = PIX_TREE_B1;
+    living->stats()->set_bit_flags(BIT_FORESTWALK, 0);
+    living->stats()->set_bit_flags(BIT_FLYING, 0);
+    living->flight_left = 0;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "TREE_B1 should block non-flying, non-forestwalk living");
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "TREE_B1 should allow weapons");
+
+    // Arrow-slit distance/rng branch for weapons.
+    walker* owner = add_living(FAMILY_ARCHER);
+    TEST_ASSERT(owner != nullptr, "owner should be created");
+    if (!owner)
+        return;
+    weapon->owner = owner;
+    owner->setxy(48, 0);
+    weapon->setxy(0, 0);
+
+    myscreen->level_data.grid.data[0] = PIX_WALL_ARROW_GRASS;
+    FixedRandom rng_pass(0);
+    weapon->sim_rng = &rng_pass;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "arrow-slit passability should pass when rng returns 0");
+
+    FixedRandom rng_block(1);
+    weapon->sim_rng = &rng_block;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "arrow-slit passability should block when rng returns non-zero");
+
+    // Unknown tile type default should block.
+    myscreen->level_data.grid.data[0] = 255;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "unknown tile type should block in default branch");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_round8_query_grid_treeb1_and_arrow_slit_variants);
 
 void test_level_data_range_helpers_positive_selection_paths()
 {
