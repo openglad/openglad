@@ -685,3 +685,56 @@ void test_platform_io_bool_wrappers_and_small_helpers()
     ctx().mounted_campaign = prev;
 }
 REGISTER_TEST(test_platform_io_bool_wrappers_and_small_helpers);
+
+void test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths()
+{
+    namespace fs = std::filesystem;
+    const fs::path tmp_dir = fs::path("temp") / "io_platform_cov";
+    std::error_code ec;
+    fs::create_directories(tmp_dir, ec);
+
+    // PhysFS-backed zero-size read/write paths.
+    const char* write_dir = PHYSFS_getWriteDir();
+    TEST_ASSERT(write_dir != nullptr, "PHYSFS write dir should exist");
+    if (write_dir)
+    {
+        const std::string vdir = "batch9_physfs_zero";
+        const std::string vpath = vdir + "/rw.bin";
+        TEST_ASSERT(PHYSFS_mkdir(vdir.c_str()) != 0, "create virtual dir for zero-size path");
+        auto out = og::io::og_open_write(vpath.c_str());
+        TEST_ASSERT(out != nullptr, "open physfs output");
+        if (out)
+        {
+            const unsigned char b = 1;
+            TEST_ASSERT_EQ(0, (int)out->write(&b, 0, 1), "physfs write size=0 should return 0");
+            out.reset();
+        }
+        auto in = og::io::og_open_read(vpath.c_str(), true);
+        TEST_ASSERT(in != nullptr, "open physfs input");
+        if (in)
+        {
+            unsigned char b = 0;
+            TEST_ASSERT_EQ(0, (int)in->read(&b, 0, 1), "physfs read size=0 should return 0");
+        }
+        (void)PHYSFS_delete(vpath.c_str());
+        (void)std::remove((std::string(write_dir) + "/" + vpath).c_str());
+    }
+
+    // stdio-backed negative seek failure path.
+    const fs::path seek_file = tmp_dir / "seek_fail.bin";
+    {
+        std::FILE* f = std::fopen(seek_file.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create stdio seek-fail file");
+        if (f)
+        {
+            const unsigned char bytes[] = {1, 2, 3};
+            std::fwrite(bytes, 1, sizeof(bytes), f);
+            std::fclose(f);
+        }
+    }
+    auto in_stdio = og::io::og_open_read((tmp_dir.string() + "/").c_str(), "seek_fail.bin");
+    TEST_ASSERT(in_stdio != nullptr, "open stdio seek-fail file");
+    if (in_stdio)
+        TEST_ASSERT_EQ(-1, (int)in_stdio->seek(-1, 0), "stdio seek should fail for negative SET offset");
+}
+REGISTER_TEST(test_og_file_round6_physfs_zero_size_and_stdio_seek_failure_paths);

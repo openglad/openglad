@@ -2450,3 +2450,88 @@ void test_family_round6_mage_thief_soldier_guard_branches()
     TEST_ASSERT(!soldier_fd->do_special(soldier), "soldier whirlwind should fail while busy");
 }
 REGISTER_TEST(test_family_round6_mage_thief_soldier_guard_branches);
+
+void test_cleric_round6_heal_low_magic_and_undead_raise_no_target_guards()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* fd = get_family_descriptor(FAMILY_CLERIC);
+    TEST_ASSERT(fd && fd->do_special, "cleric do_special present");
+    if (!(fd && fd->do_special))
+        return;
+
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 108, 100);
+    TEST_ASSERT(cleric && ally, "cleric and ally created");
+    if (!(cleric && ally))
+        return;
+
+    // Heal special with low MP should take the low-magic adjustment branch.
+    cleric->current_special = 1;
+    cleric->shifter_down = 0;
+    cleric->stats()->level = 12;
+    cleric->stats()->magicpoints = 1;
+    ally->stats()->hitpoints = ally->stats()->max_hitpoints - 20.0f;
+    (void)fd->do_special(cleric);
+
+    // Full-health ally path should produce didheal==0 and return false.
+    cleric->stats()->magicpoints = 200;
+    ally->stats()->hitpoints = ally->stats()->max_hitpoints;
+    TEST_ASSERT(!fd->do_special(cleric), "heal special should fail when nobody needs healing");
+
+    // Raise/ghost specials with no blood target should fail via nearest-blood null branches.
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric recreated");
+    if (!cleric)
+        return;
+    cleric->current_special = 2;
+    cleric->shifter_down = 0;
+    TEST_ASSERT(!fd->do_special(cleric), "raise skeleton should fail with no blood target");
+    cleric->current_special = 3;
+    cleric->shifter_down = 0;
+    TEST_ASSERT(!fd->do_special(cleric), "raise ghost should fail with no blood target");
+}
+REGISTER_TEST(test_cleric_round6_heal_low_magic_and_undead_raise_no_target_guards);
+
+void test_druid_round6_protection_existing_circle_and_blocked_faerie_paths()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* fd = get_family_descriptor(FAMILY_DRUID);
+    TEST_ASSERT(fd && fd->do_special, "druid do_special present");
+    if (!(fd && fd->do_special))
+        return;
+
+    walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
+    walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 112, 100);
+    TEST_ASSERT(druid && ally, "druid and ally created");
+    if (!(druid && ally))
+        return;
+
+    // Pre-existing protection circle on ally should hit refresh/merge branch.
+    walker* existing = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    TEST_ASSERT(existing != nullptr, "existing protection circle created");
+    if (!existing)
+        return;
+    existing->owner = ally;
+    existing->team_num = ally->team_num;
+    existing->stats()->hitpoints = 10.0f;
+
+    druid->current_special = 4;
+    druid->busy = 0;
+    druid->stats()->magicpoints = 300;
+    TEST_ASSERT(fd->do_special(druid), "protection with existing circle should succeed");
+    TEST_ASSERT(existing->stats()->hitpoints >= 10.0f, "existing circle hp should be refreshed");
+
+    // Blocked summon destination path for special 2.
+    druid->current_special = 2;
+    druid->busy = 0;
+    druid->stats()->magicpoints = 300;
+    druid->setxy(0, 0); // edge tends to make summon destination impassable
+    (void)fd->do_special(druid);
+}
+REGISTER_TEST(test_druid_round6_protection_existing_circle_and_blocked_faerie_paths);
