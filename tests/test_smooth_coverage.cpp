@@ -461,3 +461,65 @@ void test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches()
     TEST_ASSERT(true, "deep smooth branch scenarios executed");
 }
 REGISTER_TEST(test_smooth_grass_dark_wall_water_tree_dirt_and_unknown_deep_branches);
+
+void test_smooth_round6_query_genre_and_water_tree_edges()
+{
+    FixedRandom rng0(0);
+    GameContext c;
+    c.rng = &rng0;
+    GlobalContextGuard guard(&c);
+
+    PixieData grid = make_grid(7, 7, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+
+    // query_x_y / query_genre_x_y front guards and genre mapping.
+    s.reset();
+    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0), "query_x_y should return fallback when target missing");
+    s.set_target(grid);
+    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0), "query_x_y should reject negative x");
+    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 99), "query_x_y should reject out-of-range y");
+    TEST_ASSERT_EQ((int)TYPE_GRASS, (int)s.query_genre_x_y(0, 0), "grass tile should map to TYPE_GRASS");
+
+    const int cx = 3;
+    const int cy = 3;
+
+    // Water around masks that map to each corner branch and fallback/default.
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_RIGHT);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATERGRASS_LL, (int)at(grid, cx, cy), "water around up|right should map to LL");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)at(grid, cx, cy), "water around up|left should map to LR");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)at(grid, cx, cy), "water around down|right should map to UL");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_LEFT);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)at(grid, cx, cy), "water around down|left should map to UR");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, 0);
+    const int old = (int)at(grid, cx, cy);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ(old, (int)at(grid, cx, cy), "water default branch should keep existing tile");
+
+    // Tree edge-only branches.
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_RIGHT);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_TREE_B1, (int)at(grid, cx, cy), "tree around right-only should map to B1");
+
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_UP);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_TREE_B1, (int)at(grid, cx, cy), "tree around up-only should map to B1");
+}
+REGISTER_TEST(test_smooth_round6_query_genre_and_water_tree_edges);

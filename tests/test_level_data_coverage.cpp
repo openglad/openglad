@@ -558,3 +558,153 @@ void test_level_data_round5_find_helpers_contiguous_block_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round5_find_helpers_contiguous_block_paths);
+
+namespace {
+class ConstRandom final : public IRandom {
+public:
+    explicit ConstRandom(std::uint32_t value) : value_(value) {}
+    std::uint32_t next(std::uint32_t max_exclusive) override {
+        if (max_exclusive == 0) return 0;
+        return value_ % max_exclusive;
+    }
+private:
+    std::uint32_t value_;
+};
+}
+
+void test_level_data_round6_version6plus_and_title_read_paths()
+{
+    LevelData data(1);
+
+    // v9: truncate before time-limit field to hit version>=9 READ_OR_RETURN failure.
+    {
+        std::vector<unsigned char> bytes(8 + 30 + 1 + 2, 0);
+        MemoryOgFile f(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 9), "v9 should fail when time-limit field is missing");
+    }
+
+    // v6: invalid object count (> MAX_SCENARIO_OBJECTS).
+    {
+        std::vector<unsigned char> bytes(8 + 30 + 1 + 2, 0);
+        short bad_count = 5000;
+        std::memcpy(bytes.data() + 8 + 30 + 1, &bad_count, sizeof(bad_count));
+        MemoryOgFile f(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(0, (int)load_scenario_version(f, &data, 6), "v6 should reject invalid object count");
+    }
+
+    // v8: long description line exercises discard loop in load_version_6.
+    {
+        std::vector<unsigned char> bytes;
+        bytes.resize(8 + 30 + 1 + 2 + 2 + 1 + 1, 0); // grid + title + type + par + listsize + numlines + width
+        bytes.back() = 120;
+        bytes.insert(bytes.end(), 120, 'x');
+        MemoryOgFile f(bytes.data(), bytes.size());
+        TEST_ASSERT_EQ(1, (int)load_scenario_version(f, &data, 8), "v8 should accept long description line with discard");
+    }
+
+    namespace fs = std::filesystem;
+    fs::create_directories("scen");
+    const int id_ver_read_fail = 9401;
+    const int id_grid_read_fail = 9402;
+    const int id_title_read_fail = 9403;
+    const auto p1 = fs::path("scen") / std::format("scen{}.fss", id_ver_read_fail);
+    const auto p2 = fs::path("scen") / std::format("scen{}.fss", id_grid_read_fail);
+    const auto p3 = fs::path("scen") / std::format("scen{}.fss", id_title_read_fail);
+    TEST_ASSERT(write_bytes(p1, {'F', 'S', 'S'}), "write version-read-fail title file");
+    TEST_ASSERT(write_bytes(p2, {'F', 'S', 'S', 6}), "write grid-read-fail title file");
+
+    std::vector<unsigned char> with_grid = {'F', 'S', 'S', 6};
+    const char grid8[8] = {'g','r','i','d',0,0,0,0};
+    with_grid.insert(with_grid.end(), grid8, grid8 + 8);
+    TEST_ASSERT(write_bytes(p3, with_grid), "write title-read-fail title file");
+
+    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_ver_read_fail).c_str()) == "none",
+                "title read should return none when version byte read fails");
+    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_grid_read_fail).c_str()) == "none",
+                "title read should return none when grid bytes are missing");
+    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_title_read_fail).c_str()) == "none",
+                "title read should return none when title bytes are missing");
+}
+REGISTER_TEST(test_level_data_round6_version6plus_and_title_read_paths);
+
+void test_level_data_round6_remove_ob_and_wrapper_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = myscreen->level_data.add_fx_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    walker* weap = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(living && fx && weap, "fixtures should be created");
+    if (!(living && fx && weap))
+        return;
+
+    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(weap), "remove_ob should remove from weaplist");
+    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(fx), "remove_ob should remove from fxlist");
+    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(living), "remove_ob should remove from oblist");
+
+    walker orphan;
+    orphan.set_order_family(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT_EQ(0, (int)myscreen->level_data.remove_ob(&orphan), "remove_ob should return 0 for unknown walker");
+
+    std::filesystem::create_directories("temp/scen");
+    myscreen->level_data.id = 9410;
+    myscreen->level_data.grid_file = "grid";
+    myscreen->level_data.title = "round6";
+    TEST_ASSERT_EQ((int)LevelData::IoError::None, (int)myscreen->level_data.save_with_error(),
+                   "save_with_error should return None on successful save");
+}
+REGISTER_TEST(test_level_data_round6_remove_ob_and_wrapper_paths);
+
+void test_level_data_round6_passable_wall4_and_water_weapon_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    TEST_ASSERT(owner && weapon && living, "fixtures should be created");
+    if (!(owner && weapon && living))
+        return;
+
+    owner->setxy(64, 0);
+    weapon->owner = owner;
+    weapon->setxy(0, 0);
+    weapon->sizex = 1;
+    weapon->sizey = 1;
+    living->setxy(0, 0);
+    living->sizex = 1;
+    living->sizey = 1;
+
+    myscreen->level_data.grid.frames = 1;
+    myscreen->level_data.grid.w = 1;
+    myscreen->level_data.grid.h = 1;
+    myscreen->level_data.pixmaxx = GRID_SIZE;
+    myscreen->level_data.pixmaxy = GRID_SIZE;
+    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+
+    myscreen->level_data.grid.data[0] = PIX_WALL4;
+    ConstRandom rng_block(1);
+    weapon->sim_rng = &rng_block;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "wall4 projectile should block when rng yields non-zero");
+
+    ConstRandom rng_zero(0);
+    weapon->sim_rng = &rng_zero;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "wall4 projectile should pass when rng yields zero");
+
+    myscreen->level_data.grid.data[0] = PIX_WATER1;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "weapon should pass water tile group");
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "non-flying living should fail water tile group");
+
+    living->stats()->set_bit_flags(BIT_FLYING, 1);
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "flying living should pass water tile group");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_round6_passable_wall4_and_water_weapon_paths);

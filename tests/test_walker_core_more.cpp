@@ -3,6 +3,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
+#include <openglad/data/save_data.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
@@ -545,3 +546,141 @@ void test_walker_round5_act_random_contiguous_block_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_round5_act_random_contiguous_block_paths);
+
+void test_walker_round6_init_fire_animate_and_misc_guards()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker should be created");
+    if (!w)
+        return;
+
+    // next_frame path (smoke coverage without touching protected state).
+    const short before = w->query_frame();
+    (void)w->next_frame();
+    const short after = w->query_frame();
+    (void)before;
+    (void)after;
+    TEST_ASSERT(true, "next_frame should be callable");
+
+    // move_myguy_to nullptr guard.
+    w->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    w->move_myguy_to(nullptr);
+    TEST_ASSERT(w->myguy != nullptr, "move_myguy_to(nullptr) should keep myguy unchanged");
+
+    // init_fire: ACT_CONTROL early-return branch.
+    w->curdir = FACE_UP;
+    w->set_act_type(ACT_CONTROL);
+    TEST_ASSERT(!w->init_fire(1, 0), "init_fire should return false for control walker needing turn");
+
+    // init_fire: busy early-return branch.
+    w->set_act_type(ACT_RANDOM);
+    w->curdir = FACE_RIGHT;
+    w->busy = 1;
+    TEST_ASSERT(!w->init_fire(1, 0), "init_fire should return false when busy");
+
+    // animate null-ani guard using headless default ctor.
+    walker headless;
+    TEST_ASSERT(!headless.animate(), "animate should return false when ani is null");
+
+    // ACT() pointer cleanup and recoil/lunge clamping.
+    walker* dead_target = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    TEST_ASSERT(dead_target != nullptr, "dead target should be created");
+    if (dead_target)
+    {
+        dead_target->dead = 1;
+        w->attack_lunge = 0.2f;
+        w->hit_recoil = 0.2f;
+        w->ani_type = ANI_WALK;
+        w->set_act_type(ACT_CONTROL);
+
+        w->foe = dead_target;
+        w->leader = nullptr;
+        w->owner = nullptr;
+        (void)w->act();
+        TEST_ASSERT(w->foe == nullptr, "act should clear dead foe pointer");
+
+        w->foe = nullptr;
+        w->leader = dead_target;
+        w->owner = nullptr;
+        w->ani_type = ANI_WALK;
+        (void)w->act();
+        TEST_ASSERT(w->leader == nullptr, "act should clear dead leader pointer");
+
+        TEST_ASSERT(w->attack_lunge == 0.0f && w->hit_recoil == 0.0f,
+                    "act should clamp lunge/recoil to zero");
+    }
+
+    // animate ANI_TELE_OUT default no-handler branch.
+    w->ani_type = ANI_TELE_OUT;
+    w->cycle = 120;
+    w->curdir = FACE_DOWN;
+    TEST_ASSERT(!w->animate(), "ANI_TELE_OUT without handler should return false after reset");
+}
+REGISTER_TEST(test_walker_round6_init_fire_animate_and_misc_guards);
+
+void test_walker_round6_fire_and_friendliness_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* target = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(actor && target, "actor/target should be created");
+    if (!(actor && target))
+        return;
+
+    actor->setxy(64, 64);
+    actor->lastx = 1;
+    actor->lasty = 0;
+    actor->stats()->magicpoints = 0.0f;
+    actor->stats()->weapon_cost = 5.0f;
+    TEST_ASSERT(actor->fire() == nullptr, "fire should fail when magicpoints are insufficient");
+
+    actor->stats()->magicpoints = 999.0f;
+    actor->stats()->weapon_cost = 0.0f;
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    TEST_ASSERT(actor->fire() == nullptr, "fire should return null for BIT_NO_RANGED");
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+
+    // fire_check special guards.
+    actor->set_order_family(Order::Generator, FAMILY_TOWER);
+    TEST_ASSERT(actor->fire_check(1, 0), "fire_check should always succeed for generators");
+    actor->set_order_family(Order::Living, FAMILY_SOLDIER);
+
+    actor->foe = nullptr;
+    TEST_ASSERT(!actor->fire_check(1, 0), "fire_check should fail when no foe is selected");
+
+    actor->foe = target;
+    target->setxy(actor->xpos + 4, actor->ypos + 40);
+    actor->curdir = FACE_RIGHT;
+    TEST_ASSERT(!actor->fire_check(0, 1), "fire_check should fail on targetdir mismatch");
+
+    // create_weapon default switch branch (diagonal facing).
+    actor->lastx = 1;
+    actor->lasty = 1;
+    walker* diagonal_weapon = actor->create_weapon();
+    TEST_ASSERT(diagonal_weapon != nullptr, "create_weapon should succeed for living actor");
+
+    // is_friendly / is_friendly_to_team paths with allied mode and myguy combinations.
+    SaveData save;
+    save.allied_mode = 1;
+    actor->sim_save = &save;
+    target->sim_save = &save;
+    actor->team_num = 0;
+    target->team_num = 2;
+    actor->clear_myguy();
+    target->set_owned_myguy(std::make_unique<guy>(FAMILY_ORC));
+    TEST_ASSERT(actor->is_friendly(target) != 0,
+                "allied mode with one myguy and team0 other should be friendly");
+
+    actor->dead = 1;
+    TEST_ASSERT(actor->is_friendly_to_team(2) == 0, "dead walker should not be friendly to any team");
+    actor->dead = 0;
+    actor->clear_myguy();
+    TEST_ASSERT(actor->is_friendly_to_team(actor->team_num) != 0,
+                "no-myguy walker should be friendly only to matching team");
+}
+REGISTER_TEST(test_walker_round6_fire_and_friendliness_paths);
