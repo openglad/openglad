@@ -1018,3 +1018,39 @@ void test_walker_batch7_init_fire_and_animate_edge_paths()
     w->ani[ani_index] = saved_seq;
 }
 REGISTER_TEST(test_walker_batch7_init_fire_and_animate_edge_paths);
+
+void test_walker_batch8_act_default_and_animate_invalid_sequence_bounds()
+{
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(100, 100);
+
+    // Drive act() default branch for unknown act type.
+    w->set_act_type(99);
+    bool acted = w->act();
+    TEST_ASSERT(!acted, "act() should return false for unknown act types");
+
+    // Build an animation sequence with no -1 sentinel to trigger bounds guard.
+    static signed char no_sentinel_seq[128];
+    for (int i = 0; i < 128; i++)
+        no_sentinel_seq[i] = 0;
+
+    w->ani_type = ANI_ATTACK;
+    w->curdir = FACE_RIGHT;
+    const int ani_index = w->curdir + w->ani_type * NUM_FACINGS;
+    signed char* original_seq = w->ani[ani_index];
+    w->ani[ani_index] = no_sentinel_seq;
+    w->cycle = 0;
+
+    bool animated = w->animate();
+    TEST_ASSERT(!animated, "animate() should fail when animation sequence has no sentinel");
+    TEST_ASSERT_EQ(ANI_WALK, (int)w->ani_type, "animate() should reset to ANI_WALK on invalid sequence");
+    TEST_ASSERT_EQ(0, (int)w->cycle, "animate() should reset cycle on invalid sequence");
+
+    w->ani[ani_index] = original_seq;
+    delete w;
+}
+REGISTER_TEST(test_walker_batch8_act_default_and_animate_invalid_sequence_bounds);

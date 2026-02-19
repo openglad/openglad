@@ -893,3 +893,33 @@ void test_sim_input_cheat_gates_and_command_queue_skip_movement_block()
     teardown();
 }
 REGISTER_TEST(test_sim_input_cheat_gates_and_command_queue_skip_movement_block);
+
+void test_sim_input_switch_char_reverse_missing_old_control_restores_control()
+{
+    teardown();
+    auto orphan_up = make_living(0, 0);
+    TEST_ASSERT(orphan_up != nullptr, "orphan control should be created");
+    if (!orphan_up)
+        return;
+
+    walker* control = orphan_up.get();
+    control->set_act_type(ACT_CONTROL);
+    control->stats()->hitpoints = 27.0f;
+
+    InputState input;
+    input.clear();
+    input.players[0].pressed[static_cast<int>(InputAction::SwitchChar)] = true;
+    input.players[0].held[static_cast<int>(InputAction::Shift)] = true;
+
+    SimInputDebounce debounce = {};
+    std::string special_names[NUM_FAMILIES][NUM_SPECIALS] = {};
+    og::sim::SimEventLog log;
+
+    SimInputResult result = sim_process_player_input(
+        input.players[0], control, myscreen->level_data, 0, 0, debounce, special_names, &log);
+
+    TEST_ASSERT(control == orphan_up.get(), "reverse switch should restore old control when not found in oblist");
+    TEST_ASSERT(result.control_hp_changed, "reverse missing-control path should report HP changed");
+    TEST_ASSERT(result.control_hp == 27.0f, "reverse missing-control path should preserve old-control HP");
+}
+REGISTER_TEST(test_sim_input_switch_char_reverse_missing_old_control_restores_control);

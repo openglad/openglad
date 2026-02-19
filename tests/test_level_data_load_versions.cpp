@@ -356,3 +356,63 @@ void test_level_data_load_version5_success_with_treasure_weapon_and_truncated_te
     TEST_ASSERT(!data.description.empty(), "description line should be read");
 }
 REGISTER_TEST(test_level_data_load_version5_success_with_treasure_weapon_and_truncated_text);
+
+void test_level_data_load_version5_truncated_scenario_type_fails()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    // Truncate before scenario type byte.
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    short ok = load_version_5(rw, &data);
+    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when scenario type byte is missing");
+}
+REGISTER_TEST(test_level_data_load_version5_truncated_scenario_type_fails);
+
+void test_level_data_load_version5_truncated_object_payload_fails()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_u8(bytes, 1);  // scenario type
+    append_i16(bytes, 1); // listsize
+    append_u8(bytes, static_cast<uint8_t>(Order::Living));
+    append_u8(bytes, static_cast<uint8_t>(FAMILY_SOLDIER));
+    // Truncated before full object payload is available.
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    short ok = load_version_5(rw, &data);
+    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail on truncated object payload");
+}
+REGISTER_TEST(test_level_data_load_version5_truncated_object_payload_fails);
+
+void test_level_data_load_version5_missing_numlines_fails()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_u8(bytes, 1);  // scenario type
+    append_i16(bytes, 0); // listsize
+    // Truncate before numlines byte.
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    short ok = load_version_5(rw, &data);
+    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when numlines byte is missing");
+}
+REGISTER_TEST(test_level_data_load_version5_missing_numlines_fails);
+
+void test_level_data_load_version5_truncated_discard_tail_fails()
+{
+    LevelData data(1);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_u8(bytes, 1);  // scenario type
+    append_i16(bytes, 0); // listsize
+    append_u8(bytes, 1);  // numlines
+    append_u8(bytes, 120); // forces truncate + discard
+    for (int i = 0; i < 90; i++)
+        append_u8(bytes, 'z'); // fewer bytes than required after truncation
+
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    short ok = load_version_5(rw, &data);
+    TEST_ASSERT_EQ(0, (int)ok, "load_version_5 should fail when long-line discard bytes are truncated");
+}
+REGISTER_TEST(test_level_data_load_version5_truncated_discard_tail_fails);
