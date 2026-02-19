@@ -660,3 +660,28 @@ void test_read_pixie_file_truncated_header_path()
     fs::remove(pix_header_bad, ec);
 }
 REGISTER_TEST(test_read_pixie_file_truncated_header_path);
+
+void test_platform_io_bool_wrappers_and_small_helpers()
+{
+    namespace fs = std::filesystem;
+    const std::string prev = ctx().mounted_campaign;
+
+    TEST_ASSERT(!mount_campaign_package(""), "mount_campaign_package wrapper should fail for empty id");
+    TEST_ASSERT(unmount_campaign_package(""), "unmount_campaign_package wrapper should succeed for empty id");
+    ctx().mounted_campaign.clear();
+    TEST_ASSERT(!remount_campaign_package(), "remount_campaign_package wrapper should fail when nothing is mounted");
+
+    const std::list<std::string> exploded = explode("a,b,", ',');
+    TEST_ASSERT_EQ(3, (int)exploded.size(), "explode should include trailing empty segment");
+
+    const fs::path nested = fs::path("temp") / "io_platform_cov" / "wrapper_dir" / "a" / "b";
+    TEST_ASSERT(create_dir(nested.string()), "create_dir should create nested directories");
+
+    const fs::path missing_zip = fs::path("temp") / "io_platform_cov" / "missing_bool_wrapper.zip";
+    TEST_ASSERT(!unzip_into(missing_zip.string(), (nested / "out").string()),
+                "unzip_into wrapper should return false for missing archive");
+    (void)zip_contents((nested / "missing_input").string(), (nested / "out.zip").string());
+
+    ctx().mounted_campaign = prev;
+}
+REGISTER_TEST(test_platform_io_bool_wrappers_and_small_helpers);

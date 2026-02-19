@@ -428,3 +428,71 @@ void test_save_data_update_guys_copies_only_live_entries_with_myguy()
         TEST_ASSERT_EQ((int)FAMILY_SOLDIER, (int)data.team_list[0]->family, "copied guy should match source family");
 }
 REGISTER_TEST(test_save_data_update_guys_copies_only_live_entries_with_myguy);
+
+void test_save_data_unsupported_version_and_campaign_helper_branches()
+{
+    SDL_RWops* out = open_write_file("save/", "unsupported_ver0.gtl");
+    TEST_ASSERT(out != nullptr, "open_write_file unsupported version");
+    if (!out)
+        return;
+    rw_write(out, "GTL", 3);
+    unsigned char version0 = 0;
+    rw_write_val(out, version0);
+    SDL_RWclose(out);
+
+    SaveData tmp;
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::UnsupportedVersion),
+                   static_cast<int>(tmp.load_with_error("unsupported_ver0")),
+                   "version 0 save should report UnsupportedVersion");
+
+    tmp.completed_levels.clear();
+    tmp.add_level_completed("test.campaign", 2);
+    tmp.add_level_completed("test.campaign", 5);
+    TEST_ASSERT_EQ(2, tmp.get_num_levels_completed("test.campaign"),
+                   "helper should count completed levels for present campaign");
+    TEST_ASSERT_EQ(0, tmp.get_num_levels_completed("missing.campaign"),
+                   "helper should return 0 for missing campaign");
+    tmp.reset_campaign("test.campaign");
+    TEST_ASSERT_EQ(0, tmp.get_num_levels_completed("test.campaign"),
+                   "reset_campaign should clear existing campaign progress");
+}
+REGISTER_TEST(test_save_data_unsupported_version_and_campaign_helper_branches);
+
+void test_save_data_save_with_team_entry_and_wrapper_none_path()
+{
+    SaveData tmp;
+    tmp.current_campaign = "org.openglad.gladiator";
+    tmp.scen_num = 3;
+    tmp.team_size = 1;
+    tmp.team_list[0] = std::make_unique<guy>(FAMILY_SOLDIER);
+    tmp.team_list[0]->name = "B6TEAM";
+    tmp.team_list[0]->strength = 14;
+    tmp.team_list[0]->dexterity = 13;
+    tmp.team_list[0]->constitution = 12;
+    tmp.team_list[0]->intelligence = 11;
+    tmp.team_list[0]->armor = 10;
+    tmp.team_list[0]->level = 4;
+    tmp.team_list[0]->exp = 777;
+    tmp.team_list[0]->kills = 5;
+    tmp.team_list[0]->level_kills = 6;
+    tmp.team_list[0]->total_damage = 7;
+    tmp.team_list[0]->total_hits = 8;
+    tmp.team_list[0]->total_shots = 9;
+    tmp.team_list[0]->teamnum = 0;
+
+    tmp.current_levels.clear();      // exercise insert branch for current campaign on save
+    tmp.completed_levels.clear();
+    tmp.completed_levels["org.openglad.gladiator"].insert(1);
+    tmp.completed_levels["org.openglad.gladiator"].insert(2);
+
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+                   static_cast<int>(tmp.save_with_error("typed_save_with_team")),
+                   "save_with_error should succeed for one-team-entry save");
+
+    SaveData loaded;
+    TEST_ASSERT_EQ(static_cast<int>(SaveDataIoError::None),
+                   static_cast<int>(loaded.load_with_error("typed_save_with_team")),
+                   "load_with_error wrapper should return None for saved file");
+    TEST_ASSERT_EQ(1, (int)loaded.team_size, "loaded team should contain one entry");
+}
+REGISTER_TEST(test_save_data_save_with_team_entry_and_wrapper_none_path);

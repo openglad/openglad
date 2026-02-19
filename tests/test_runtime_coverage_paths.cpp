@@ -736,3 +736,34 @@ void test_sim_world_freeze_branch_allows_non_living_actions()
     TEST_ASSERT(saw_time_left, "freeze branch should emit countdown notification on modulo-10 ticks");
 }
 REGISTER_TEST(test_sim_world_freeze_branch_allows_non_living_actions);
+
+void test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present()
+{
+    clear_level_lists();
+
+    og::sim::SimWorld world(9090);
+    og::sim::SimEventLog events;
+    SaveData save;
+    save.my_team = 0;
+
+    walker* ally = add_living(0);
+    walker* foe_near = add_living(1);
+    walker* foe_far = add_living(1);
+    TEST_ASSERT(ally && foe_near && foe_far, "ally and foes created");
+    if (!(ally && foe_near && foe_far))
+        return;
+
+    ally->set_act_type(ACT_CONTROL);
+    ally->foe = nullptr;
+    ally->leader = nullptr;
+    foe_near->setxy(140, 100);
+    foe_far->setxy(300, 100);
+
+    std::int32_t enemy_freeze = 0;
+    char end = 0;
+    const og::sim::TickResult r = world.tick(myscreen->level_data, save, enemy_freeze, end, events);
+    TEST_ASSERT_EQ(0, (int)r.level_done, "hostile living should keep level unfinished");
+    TEST_ASSERT(ally->foe != nullptr, "sim world should assign a far foe when none is set");
+    TEST_ASSERT(ally->foe == foe_near, "nearest hostile should be selected as far foe");
+}
+REGISTER_TEST(test_sim_world_assigns_far_foe_when_no_target_and_hostiles_present);

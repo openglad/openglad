@@ -622,3 +622,28 @@ void test_living_act_invisibility_skip_exit_and_action_command_paths()
     TEST_ASSERT(!r, "unknown act type should return false");
 }
 REGISTER_TEST(test_living_act_invisibility_skip_exit_and_action_command_paths);
+
+void test_living_act_command_execution_and_autoattackable_edges()
+{
+    auto w = make_living(FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    living* lv = static_cast<living*>(w.get());
+    lv->set_act_type(ACT_GUARD);
+    lv->ani_type = ANI_WALK;
+    lv->stats()->set_command(COMMAND_WALK, 2, 1, 0);
+    bool r = lv->act();
+    TEST_ASSERT(r, "act should return true when command execution returns non-zero");
+
+    walker* non_auto_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_KNIFE);
+    walker* non_attackable = myscreen->level_data.add_ob(Order::Treasure, FAMILY_GOLD_BAR);
+    TEST_ASSERT(non_auto_weap != nullptr && non_attackable != nullptr, "walkers created");
+    if (non_auto_weap)
+        (void)walkerIsAutoAttackable(non_auto_weap);
+    if (non_attackable)
+        TEST_ASSERT(!walkerIsAutoAttackable(non_attackable),
+                    "non-living non-generator non-weapon should not be auto-attackable");
+}
+REGISTER_TEST(test_living_act_command_execution_and_autoattackable_edges);
