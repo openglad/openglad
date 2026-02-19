@@ -136,6 +136,24 @@ void test_walker_walkstep_zero()
 }
 REGISTER_TEST(test_walker_walkstep_zero);
 
+void test_walker_walkstep_user_slide_cardinal_break_path_round5()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->user = 0;
+    w->stepsize = 2.0f;
+    w->setxy(0, 24); // left edge forces blocked cardinal movement
+    w->curdir = FACE_LEFT;
+
+    const bool moved = w->walkstep(-1, 0);
+    TEST_ASSERT(!moved, "blocked cardinal user movement should keep slide dx/dy at zero and fail");
+}
+REGISTER_TEST(test_walker_walkstep_user_slide_cardinal_break_path_round5);
+
 // ---------------------------------------------------------------------------
 // walker::draw and walker::draw_tile via viewscreen
 // ---------------------------------------------------------------------------
