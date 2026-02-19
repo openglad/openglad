@@ -118,9 +118,7 @@ jobs:
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          if [ "$gcovr_status" -ne 0 ]; then
-            echo "::warning::Coverage thresholds (line 85%, function 95%) are not met in this run; continuing without failing the workflow."
-          fi
+          exit "$gcovr_status"
 
       - name: Comment coverage on pull request
         if: ${{ always() && github.event_name == 'pull_request' }}
