@@ -708,3 +708,59 @@ void test_level_data_round6_passable_wall4_and_water_weapon_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round6_passable_wall4_and_water_weapon_paths);
+
+void test_level_data_round6_wrapper_and_passability_edges()
+{
+    // load_with_error wrapper should surface open-read failure.
+    {
+        LevelData missing(9898);
+        TEST_ASSERT_EQ((int)LevelData::IoError::OpenReadFailed, (int)missing.load_with_error(),
+                       "load_with_error should report open-read failure for missing scenario");
+    }
+
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    TEST_ASSERT(owner && weapon && living, "fixtures should be created");
+    if (!(owner && weapon && living))
+        return;
+
+    owner->setxy(0, 64);
+    weapon->owner = owner;
+    weapon->setxy(0, 0);
+    weapon->sizex = 1;
+    weapon->sizey = 1;
+    living->setxy(0, 0);
+    living->sizex = 1;
+    living->sizey = 1;
+
+    myscreen->level_data.grid.frames = 1;
+    myscreen->level_data.grid.w = 1;
+    myscreen->level_data.grid.h = 1;
+    myscreen->level_data.pixmaxx = GRID_SIZE;
+    myscreen->level_data.pixmaxy = GRID_SIZE;
+    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+
+    // Hard-wall branch.
+    myscreen->level_data.grid.data[0] = PIX_WALLTOP_H;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "wall top should block living walker");
+
+    // WALL4 projectile branch using Y-distance path in dist calculation.
+    myscreen->level_data.grid.data[0] = PIX_WALL4;
+    ConstRandom rng_block(1);
+    weapon->sim_rng = &rng_block;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "wall4 projectile should block when rng is non-zero (y-distance branch)");
+
+    // Weapon should pass water/obstacle bucket via weapon special-case.
+    myscreen->level_data.grid.data[0] = PIX_BOULDER_1;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, weapon),
+                "weapon should pass obstacle bucket tiles");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_level_data_round6_wrapper_and_passability_edges);

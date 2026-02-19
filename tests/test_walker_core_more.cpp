@@ -684,3 +684,58 @@ void test_walker_round6_fire_and_friendliness_paths()
                 "no-myguy walker should be friendly only to matching team");
 }
 REGISTER_TEST(test_walker_round6_fire_and_friendliness_paths);
+
+void test_walker_round6_guard_and_random_direct_branches()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr && foe != nullptr, "actor and foe should be created");
+    if (!(actor && foe))
+        return;
+
+    actor->sim_level = &myscreen->level_data;
+    actor->team_num = 1;
+    actor->setxy(96, 96);
+    actor->lineofsight = 20;
+    actor->stats()->magicpoints = 9999.0f;
+    actor->stats()->weapon_cost = 0.0f;
+
+    foe->sim_level = &myscreen->level_data;
+    foe->team_num = 2;
+    foe->setxy(112, 96);
+
+    // act_guard() foe path via act(): set facing + queue fire command.
+    SequenceRandom guard_rng({7});
+    actor->sim_rng = &guard_rng;
+    actor->ani_type = ANI_WALK;
+    actor->set_act_type(ACT_GUARD);
+    (void)actor->act();
+
+    // act_random() blocked-ranged path via act(): fire_check false -> turn branch.
+    actor->foe = foe;
+    actor->curdir = FACE_UP;
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    SequenceRandom blocked_rng({1, 0, 0});
+    actor->sim_rng = &blocked_rng;
+    actor->ani_type = ANI_WALK;
+    actor->set_act_type(ACT_RANDOM);
+    TEST_ASSERT(actor->act(), "ACT_RANDOM should still act when ranged attack is blocked");
+
+    // act_random() in-range firing path via act(): fire_check true -> init_fire + COMMAND_FIRE.
+    actor->foe = foe;
+    actor->curdir = FACE_RIGHT;
+    actor->enddir = FACE_RIGHT;
+    actor->ani_type = ANI_WALK;
+    actor->busy = 0;
+    actor->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    SequenceRandom fire_rng({1, 5});
+    actor->sim_rng = &fire_rng;
+    actor->set_act_type(ACT_RANDOM);
+    (void)actor->act();
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_round6_guard_and_random_direct_branches);
