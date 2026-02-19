@@ -37,7 +37,10 @@ static void set_same_neighbors(PixieData& g, int cx, int cy, unsigned char same,
     at(g, cx, cy + 1) = (mask & TO_DOWN) ? same : other;
     at(g, cx - 1, cy) = (mask & TO_LEFT) ? same : other;
 }
+
 } // namespace
+
+static void set_diagonals(PixieData& g, int cx, int cy, unsigned char ul, unsigned char ur, unsigned char dl, unsigned char dr);
 
 void test_smooth_query_and_reset_out_of_bounds_paths()
 {
@@ -155,6 +158,52 @@ void test_smooth_water_tree_dirt_and_dark_dirt_edges()
     TEST_ASSERT_EQ((int)PIX_DIRTGRASS_DARK_UR1, (int)at(grid, 2, 2), "dark dirt bottom-left edge should map to UR1");
 }
 REGISTER_TEST(test_smooth_water_tree_dirt_and_dark_dirt_edges);
+
+void test_smooth_round11_water_diagonals_and_tree_to_around_edges()
+{
+    FixedRandom rng0(0);
+    GameContext c;
+    c.rng = &rng0;
+    GlobalContextGuard guard(&c);
+
+    PixieData grid = make_grid(5, 5, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+    const int cx = 2, cy = 2;
+
+    // Water diagonal branches around masks (smooth.cpp:662-669).
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)at(grid, cx, cy), "water up+left should map LR");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)at(grid, cx, cy), "water down+right should map UL");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN | TO_LEFT);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)at(grid, cx, cy), "water down+left should map UR");
+
+    // Trees around==TO_AROUND with diagonal edge checks (smooth.cpp:715-720).
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
+    set_diagonals(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_TREE_MR, (int)at(grid, cx, cy), "trees missing upper-right should map MR");
+
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)at(grid, cx, cy), "trees missing upper-left should map ML");
+}
+REGISTER_TEST(test_smooth_round11_water_diagonals_and_tree_to_around_edges);
 
 static void set_diagonals(PixieData& g, int cx, int cy, unsigned char ul, unsigned char ur, unsigned char dl, unsigned char dr)
 {

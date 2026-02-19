@@ -435,3 +435,59 @@ void test_stats_right_walk_round8_negative_enddir_default_switch_path()
     TEST_ASSERT(actor->stats()->right_walk(), "right_walk should return true for negative-enddir fallback path");
 }
 REGISTER_TEST(test_stats_right_walk_round8_negative_enddir_default_switch_path);
+
+void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto leader = make_walker(FAMILY_SOLDIER);
+    auto follower = make_walker(FAMILY_ELF);
+    auto foe = make_walker(FAMILY_ORC);
+    TEST_ASSERT(leader && follower && foe, "fixtures created");
+    if (!(leader && follower && foe))
+        return;
+
+    // force_command WALK clamp path (stats.cpp:152-163).
+    follower->stats()->commands.clear();
+    follower->stats()->force_command(COMMAND_WALK, 3, 9, -9);
+    TEST_ASSERT(!follower->stats()->commands.empty(), "force_command should enqueue walk");
+    if (!follower->stats()->commands.empty())
+    {
+        const command& c = follower->stats()->commands.front();
+        TEST_ASSERT_EQ(1, (int)c.com1, "force_command should clamp com1 to +1");
+        TEST_ASSERT_EQ(-1, (int)c.com2, "force_command should clamp com2 to -1");
+    }
+
+    // COMMAND_FOLLOW no-leader-found branch (stats.cpp:285-287).
+    myscreen->viewob[0]->control = nullptr;
+    follower->foe = nullptr;
+    follower->leader = nullptr;
+    follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
+    (void)follower->stats()->do_command();
+    TEST_ASSERT(follower->leader == nullptr, "follow without leader should stay leaderless");
+
+    // COMMAND_FOLLOW axis-normalization branch (stats.cpp:303-310).
+    myscreen->viewob[0]->control = leader.get();
+    leader->setxy(static_cast<Sint32>(follower->xpos) + 300, static_cast<Sint32>(follower->ypos) + 40);
+    follower->leader = nullptr;
+    follower->foe = nullptr;
+    const short before_y = follower->ypos;
+    follower->stats()->force_command(COMMAND_FOLLOW, 2, 0, 0);
+    (void)follower->stats()->do_command();
+    TEST_ASSERT(follower->ypos == before_y || std::abs((int)follower->ypos - (int)before_y) <= 1,
+                "follow axis-normalization should heavily favor x-axis movement");
+
+    // COMMAND_RIGHT_WALK distance gate branches (stats.cpp:360-368).
+    follower->foe = foe.get();
+    foe->setxy(static_cast<Sint32>(follower->xpos) + 150, static_cast<Sint32>(follower->ypos)); // distance in (120,240)
+    follower->stats()->force_command(COMMAND_RIGHT_WALK, 1, 0, 0);
+    (void)follower->stats()->do_command();
+
+    foe->setxy(static_cast<Sint32>(follower->xpos) + 20, static_cast<Sint32>(follower->ypos)); // distance outside (120,240)
+    follower->stats()->force_command(COMMAND_RIGHT_WALK, 1, 0, 0);
+    (void)follower->stats()->do_command();
+
+    myscreen->viewob[0]->control = nullptr;
+}
+REGISTER_TEST(test_stats_round11_follow_force_walk_and_right_walk_distance_branches);

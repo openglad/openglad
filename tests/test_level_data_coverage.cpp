@@ -1098,3 +1098,53 @@ void test_level_data_round7_wall_arrow_distance_axis_and_rng_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_level_data_round7_wall_arrow_distance_axis_and_rng_paths);
+
+void test_level_data_round11_wrappers_draw_and_query_grid_entry_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    // save_with_error/load_with_error wrappers should return a concrete enum.
+    myscreen->level_data.id = 9421;
+    myscreen->level_data.grid_file = "grid";
+    myscreen->level_data.title = "round11";
+    const auto save_err = myscreen->level_data.save_with_error();
+    TEST_ASSERT((int)save_err >= (int)LevelData::IoError::None, "save_with_error wrapper should execute");
+
+    LevelData missing(9876);
+    const auto load_err = missing.load_with_error();
+    TEST_ASSERT_EQ((int)LevelData::IoError::OpenReadFailed, (int)load_err,
+                   "load_with_error should report open-read failure for missing scenario");
+
+    // draw(nullptr) should hit early-return guard safely.
+    myscreen->level_data.draw(nullptr);
+
+    // get_description_line while-loop and bounds branches.
+    myscreen->level_data.description.clear();
+    myscreen->level_data.description.push_back("alpha");
+    myscreen->level_data.description.push_back("beta");
+    TEST_ASSERT(myscreen->level_data.get_description_line(1) == "beta", "second description line should be readable");
+    TEST_ASSERT(myscreen->level_data.get_description_line(5).empty(), "out-of-range description line should be empty");
+
+    // query_grid_passable switch-entry path over passable terrain (lines 1907+).
+    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(living != nullptr, "living created");
+    if (!living)
+        return;
+
+    myscreen->level_data.grid.frames = 1;
+    myscreen->level_data.grid.w = 2;
+    myscreen->level_data.grid.h = 2;
+    myscreen->level_data.pixmaxx = GRID_SIZE * 2;
+    myscreen->level_data.pixmaxy = GRID_SIZE * 2;
+    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(4);
+    for (int i = 0; i < 4; i++)
+        myscreen->level_data.grid.data[i] = PIX_GRASS1;
+
+    living->setxy(0, 0);
+    living->sizex = GRID_SIZE; // force xover/yover exact-grid-edge path
+    living->sizey = GRID_SIZE;
+    TEST_ASSERT(myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "grass tile should be passable for living walker");
+}
+REGISTER_TEST(test_level_data_round11_wrappers_draw_and_query_grid_entry_paths);

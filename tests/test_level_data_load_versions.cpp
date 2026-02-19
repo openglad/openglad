@@ -1,12 +1,15 @@
 #include "SDL.h"
 #include <openglad/data/level_data.h>
+#include <openglad/entities/walker.h>
 #include <openglad/io/og_file.h>
 #include <openglad/legacy/base.h>
 #include "test_framework.h"
 
 #include <array>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <vector>
 
 // Forward declarations from src/runtime/level_data.cpp (now using OgFile&)
@@ -662,3 +665,90 @@ void test_level_data_load_version6plus_truncated_description_discard_path()
                    "v9 loader should fail when long description discard tail is truncated");
 }
 REGISTER_TEST(test_level_data_load_version6plus_truncated_description_discard_path);
+
+void test_level_data_load_version6plus_named_objects_treasure_route_and_door_fixup()
+{
+    namespace fs = std::filesystem;
+    const fs::path grid_path = "grid.pix";
+    std::error_code ec;
+    fs::remove(grid_path, ec);
+
+    // Build a tiny 4x4 pixie: mostly grass with a wall directly above door tile (2,2)->(2,1).
+    {
+        std::FILE* f = std::fopen(grid_path.string().c_str(), "wb");
+        TEST_ASSERT(f != nullptr, "create grid.pix fixture");
+        if (!f)
+            return;
+        const unsigned char header[] = {1, 4, 4}; // frames,w,h
+        unsigned char data[16];
+        for (unsigned char& b : data) b = PIX_GRASS1;
+        data[2 + 4 * 1] = PIX_H_WALL1;
+        std::fwrite(header, 1, sizeof(header), f);
+        std::fwrite(data, 1, sizeof(data), f);
+        std::fclose(f);
+    }
+
+    LevelData data(7777);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid"); // -> grid.pix
+    {
+        std::array<char, 30> title{};
+        std::memcpy(title.data(), "v9 objects", 9);
+        append_bytes(bytes, title.data(), title.size());
+    }
+    append_u8(bytes, 4);       // scenario type
+    append_i16(bytes, 12);     // par
+    append_i16(bytes, 345);    // time limit
+    append_i16(bytes, 2);      // listsize
+
+    // Treasure path (routes through add_fx_ob in v6 loader)
+    append_v6_object_record(bytes, static_cast<uint8_t>(Order::Treasure),
+                            static_cast<uint8_t>(FAMILY_GOLD_BAR),
+                            GRID_SIZE, GRID_SIZE, 0, 0, 0, 5, "AB");
+    // Door object for wall-above frame fixup path.
+    append_v6_object_record(bytes, static_cast<uint8_t>(Order::Weapon),
+                            static_cast<uint8_t>(FAMILY_DOOR),
+                            GRID_SIZE * 2, GRID_SIZE * 2, 0, 0, 0, 2, "DoorX");
+
+    append_u8(bytes, 1);   // numlines
+    append_u8(bytes, 120); // long line width -> truncation/discard loop
+    for (int i = 0; i < 120; i++)
+        append_u8(bytes, 'n');
+
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    TEST_ASSERT_EQ(1, (int)load_version_6(rw, &data, 9),
+                   "v9 loader should parse treasure/door objects and long description");
+    TEST_ASSERT(!data.fxlist.empty(), "treasure object should be routed into fxlist");
+    TEST_ASSERT(!data.weaplist.empty(), "door object should be routed into weaplist");
+    if (!data.fxlist.empty())
+        TEST_ASSERT(data.fxlist.front()->stats()->query_bit_flags(BIT_NAMED) != 0,
+                    "name length > 1 should set BIT_NAMED");
+
+    bool saw_door = false;
+    for (auto& uptr : data.weaplist)
+    {
+        walker* w = uptr.get();
+        if (w && w->query_family() == FAMILY_DOOR)
+        {
+            saw_door = true;
+            TEST_ASSERT_EQ(1, (int)w->query_frame(), "door with wall above should be frame 1 after fixup");
+        }
+    }
+    TEST_ASSERT(saw_door, "door object should be present in loaded weapon list");
+
+    fs::remove(grid_path, ec);
+}
+REGISTER_TEST(test_level_data_load_version6plus_named_objects_treasure_route_and_door_fixup);
+
+void test_level_data_load_scenario_dispatch_case2_path()
+{
+    // Minimal v2 payload through dispatcher (case 2 branch).
+    LevelData data(8888);
+    std::vector<uint8_t> bytes;
+    append_fixed8(bytes, "grid");
+    append_i16(bytes, 0); // listsize
+    MemoryOgFile rw(bytes.data(), bytes.size());
+    const short result = load_scenario_version(rw, &data, 2);
+    TEST_ASSERT(result == 0 || result == 1, "dispatch case 2 should execute without crashing");
+}
+REGISTER_TEST(test_level_data_load_scenario_dispatch_case2_path);

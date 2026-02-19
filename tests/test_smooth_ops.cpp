@@ -850,3 +850,64 @@ static void run_smooth_branch_outputs_with_fixed_rng()
 
     set_global_context(nullptr);
 }
+
+void test_smooth_round11_water_and_tree_edge_masks_662_720()
+{
+    FixedRandom fixed0(0);
+    GameContext test_ctx;
+    test_ctx.game_screen = myscreen;
+    test_ctx.rng = &fixed0;
+    set_global_context(&test_ctx);
+
+    // TYPE_WATER diagonal-corner masks (smooth.cpp:662-669).
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_WATER1, PIX_GRASS1, PIX_GRASS1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_LR, (int)s.query_x_y(1, 1), "water up+left should map LR");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_WATER1, PIX_WATER1, PIX_GRASS1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UL, (int)s.query_x_y(1, 1), "water down+right should map UL");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_WATER1, PIX_WATER1,
+                                           PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_WATERGRASS_UR, (int)s.query_x_y(1, 1), "water down+left should map UR");
+    }
+
+    // TYPE_TREES TO_AROUND edge-side selection (smooth.cpp:715-720).
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
+                                           PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1,
+                                           PIX_TREE_M1, PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_TREE_MR, (int)s.query_x_y(1, 1), "trees with missing upper-right should map to right edge");
+    }
+    {
+        PixieData pd = make_center_pattern(PIX_GRASS1, PIX_TREE_M1,
+                                           PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1,
+                                           PIX_GRASS1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1);
+        smoother s;
+        s.set_target(pd);
+        s.smooth(1, 1);
+        TEST_ASSERT_EQ((int)PIX_TREE_ML, (int)s.query_x_y(1, 1), "trees with missing upper-left should map to left edge");
+    }
+
+    set_global_context(nullptr);
+}
+REGISTER_TEST(test_smooth_round11_water_and_tree_edge_masks_662_720);

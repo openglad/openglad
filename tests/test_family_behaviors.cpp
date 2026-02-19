@@ -2740,3 +2740,68 @@ void test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks()
     }
 }
 REGISTER_TEST(test_family_round10_orc_ghost_archer_slime_elf_edge_callbacks);
+
+void test_family_round11_mage_and_druid_targeted_special_clusters()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
+    const auto* druid_fd = get_family_descriptor(FAMILY_DRUID);
+    TEST_ASSERT(mage_fd && mage_fd->do_special && druid_fd && druid_fd->do_special,
+                "mage/druid callbacks present");
+    if (!(mage_fd && mage_fd->do_special && druid_fd && druid_fd->do_special))
+        return;
+
+    // Mage case 1 guard: busy/intelligence marker path (family_mage.cpp:121-130).
+    walker* mage = add_living_to_level(FAMILY_MAGE, 0, 100, 100);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    if (!mage)
+        return;
+    mage->stats()->magicpoints = 400;
+    mage->current_special = 1;
+    mage->ani_type = ANI_WALK;
+    mage->shifter_down = 1;
+    mage->busy = 0;
+    mage->user = 0;
+    mage->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    if (mage->myguy)
+        mage->myguy->intelligence = 50;
+    TEST_ASSERT(!mage_fd->do_special(mage), "mage marker should fail with int < 75");
+
+    // Mage case 5 heartburst success path (family_mage.cpp:260-289).
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
+    walker* foe1 = add_living_to_level(FAMILY_ORC, 0, 118, 100);
+    walker* foe2 = add_living_to_level(FAMILY_ORC, 0, 100, 118);
+    TEST_ASSERT(mage && foe1 && foe2, "mage and foes created");
+    if (!(mage && foe1 && foe2))
+        return;
+    mage->current_special = 5;
+    mage->stats()->magicpoints = 500;
+    const float mp_before = mage->stats()->magicpoints;
+    TEST_ASSERT(mage_fd->do_special(mage), "mage heartburst should succeed with nearby foes");
+    TEST_ASSERT(mage->busy >= 5, "heartburst should add busy delay");
+    TEST_ASSERT(mage->stats()->magicpoints < mp_before, "heartburst should consume magic");
+
+    // Druid protection refresh branch with existing circle (family_druid.cpp:147-176).
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+    walker* druid = add_living_to_level(FAMILY_DRUID, 0, 100, 100);
+    walker* ally = add_living_to_level(FAMILY_SOLDIER, 0, 110, 100);
+    TEST_ASSERT(druid && ally, "druid and ally created");
+    if (!(druid && ally))
+        return;
+    walker* circle = myscreen->level_data.add_ob(Order::Weapon, FAMILY_CIRCLE_PROTECTION);
+    TEST_ASSERT(circle != nullptr, "existing protection circle created");
+    if (!circle)
+        return;
+    circle->owner = ally;
+    circle->stats()->hitpoints = 10.0f;
+    druid->current_special = 4;
+    druid->busy = 0;
+    druid->stats()->magicpoints = 500;
+    TEST_ASSERT(druid_fd->do_special(druid), "druid protection should succeed with nearby ally");
+}
+REGISTER_TEST(test_family_round11_mage_and_druid_targeted_special_clusters);

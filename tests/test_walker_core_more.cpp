@@ -965,6 +965,65 @@ void test_walker_round7b_base_act_guard_random_and_death_paths()
 }
 REGISTER_TEST(test_walker_round7b_base_act_guard_random_and_death_paths);
 
+void test_walker_round11_friendliness_owner_chain_and_difficulty_paths_1480_1615()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* target = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* actor_owner = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    walker* actor_root = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    walker* target_owner = myscreen->level_data.add_ob(Order::Living, FAMILY_DRUID);
+    TEST_ASSERT(actor && target && actor_owner && actor_root && target_owner, "fixtures created");
+    if (!(actor && target && actor_owner && actor_root && target_owner))
+        return;
+
+    SaveData save;
+    save.allied_mode = 1;
+    actor->sim_save = &save;
+    target->sim_save = &save;
+
+    // Owner-chain traversal: actor -> actor_owner -> actor_root -> self.
+    actor_owner->owner = actor_root;
+    actor_root->owner = actor_root;
+    actor->owner = actor_owner;
+    target->owner = target_owner;
+    target_owner->owner = target_owner;
+
+    actor->dead = 0;
+    target->dead = 0;
+    actor_root->team_num = 0;
+    target_owner->team_num = 0;
+    actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    target_owner->clear_myguy();
+    TEST_ASSERT(actor->is_friendly(target) != 0,
+                "owner-chain has_myguy==2 path should treat team-0 side as friendly");
+
+    // Both roots without myguy: allied mode should compare teams only.
+    actor_root->clear_myguy();
+    target_owner->clear_myguy();
+    actor_root->team_num = 2;
+    target_owner->team_num = 2;
+    TEST_ASSERT_EQ(1, (int)actor->is_friendly(target), "both roots without myguy and same team should be friendly");
+    target_owner->team_num = 3;
+    TEST_ASSERT_EQ(0, (int)actor->is_friendly(target), "both roots without myguy and different team should be unfriendly");
+
+    // is_friendly_to_team owner-chain + hired/allied branch.
+    actor_root->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    actor_root->team_num = 3;
+    TEST_ASSERT_EQ(1, (int)actor->is_friendly_to_team(0), "hired allied unit should be friendly to team 0");
+    TEST_ASSERT_EQ(0, (int)actor->is_friendly_to_team(2), "hired allied unit should reject non-zero teams");
+
+    // set_difficulty default branch path for non-generator orders.
+    actor->team_num = 1;
+    const float hp_before = actor->stats()->max_hitpoints;
+    actor->set_difficulty(4);
+    TEST_ASSERT(actor->stats()->max_hitpoints > 0.0f && actor->stats()->max_hitpoints != hp_before,
+                "set_difficulty should apply default non-generator scaling path");
+}
+REGISTER_TEST(test_walker_round11_friendliness_owner_chain_and_difficulty_paths_1480_1615);
+
 void test_walker_round8_death_obmap_cleanup_and_act_control_fallthrough_paths()
 {
     myscreen->level_data.create_new_grid();
