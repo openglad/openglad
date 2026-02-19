@@ -1179,6 +1179,16 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_error_paths.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_load_versions.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_campaign_and_level_picker.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_smoke.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_interactions.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_helpers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_editor_prompt_block.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_menu_nav.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_uncovered.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_ownership_fixture.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_picker_detail_menu_driven.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_branches.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_results_screen_internal_helper.cpp
         )
 
         add_library(og_game_test STATIC ${GAME_SOURCES_NO_MAIN} ${SRC_DIR}/test_trace.cpp)
