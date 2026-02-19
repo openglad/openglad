@@ -1,0 +1,66 @@
+name: Coverage CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply third-party build fixes
+        run: git apply third_party/build-fixes.patch
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libpng-dev cmake ninja-build
+
+      - name: Install coverage tools
+        run: python3 -m pip install gcovr
+
+      - name: Configure (ci-coverage preset)
+        run: cmake --preset ci-coverage
+
+      - name: Build coverage test binaries
+        run: cmake --build --preset ci-coverage --target og_unit_tests og_data_tests og_runtime_tests -j"$(nproc)"
+
+      - name: Run coverage test binaries
+        run: |
+          ./build/ci-coverage/og_unit_tests
+          ./build/ci-coverage/og_data_tests
+          ./build/ci-coverage/og_runtime_tests
+
+      - name: Generate HTML coverage report
+        run: |
+          mkdir -p build/ci-coverage/coverage
+          python3 -m gcovr \
+            --root . \
+            --filter src/ \
+            --html-details \
+            --output build/ci-coverage/coverage/coverage.html \
+            build/ci-coverage
+
+      - name: Generate coverage summary and enforce thresholds
+        run: |
+          python3 -m gcovr \
+            --root . \
+            --filter src/ \
+            --txt \
+            --output build/ci-coverage/coverage/coverage-summary.txt \
+            --fail-under-line 85 \
+            --fail-under-function 95 \
+            build/ci-coverage
+          cat build/ci-coverage/coverage/coverage-summary.txt
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: build/ci-coverage/coverage/
