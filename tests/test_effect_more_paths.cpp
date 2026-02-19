@@ -278,3 +278,149 @@ void test_effect_death_explosion_shoves_nearby_targets()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_effect_death_explosion_shoves_nearby_targets);
+
+void test_effect_batch3_explosion_owner_fallback_and_empty_target_list()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* explosion = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    TEST_ASSERT(explosion != nullptr, "explosion created");
+    if (!explosion)
+        return;
+
+    explosion->owner = nullptr; // force owner=self path in explosion_on_death()
+    explosion->skip_exit = 1;   // range gets zeroed then clamped to 16
+    explosion->dead = 1;
+    (void)explosion->death();   // no targets nearby: howmany<1 branch
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_effect_batch3_explosion_owner_fallback_and_empty_target_list);
+
+void test_effect_batch3_bomb_owner_dead_fallback_path()
+{
+    myscreen->level_data.delete_objects();
+
+    walker* dead_owner = myscreen->level_data.add_ob(Order::Living, FAMILY_THIEF);
+    TEST_ASSERT(dead_owner != nullptr, "owner created");
+    if (!dead_owner)
+        return;
+    dead_owner->dead = 1;
+
+    walker* bomb = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_BOMB);
+    TEST_ASSERT(bomb != nullptr, "bomb created");
+    if (!bomb)
+        return;
+
+    bomb->owner = dead_owner; // bomb_on_death should replace this with self
+    bomb->damage = 15.0f;
+    bomb->dead = 1;
+    (void)bomb->death();
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_effect_batch3_bomb_owner_dead_fallback_path);
+
+void test_effect_batch3_shield_and_boomerang_collision_loops()
+{
+    myscreen->level_data.delete_objects();
+
+    FixedRandom fixed_rng(1);
+    GameContext c;
+    c.game_screen = myscreen;
+    c.rng = &fixed_rng;
+    GlobalContextGuard guard(&c);
+
+    auto owner = make_living(FAMILY_CLERIC, 1, 6);
+    TEST_ASSERT(owner != nullptr, "owner created");
+    if (!owner)
+        return;
+
+    // Magic shield: hit incoming weapon and nearby foe, then die from hp/lifetime check.
+    walker* shield = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_MAGIC_SHIELD);
+    TEST_ASSERT(shield != nullptr, "shield created");
+    if (!shield)
+        return;
+    shield->owner = owner.get();
+    shield->team_num = owner->team_num;
+    shield->setxy(100, 100);
+    shield->stats()->hitpoints = 1.0f;
+    shield->lifetime = 0;
+
+    auto incoming = myscreen->level_data.myloader->create_walker_owned(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(incoming != nullptr, "incoming weapon created");
+    if (incoming) {
+        incoming->myobmap = myscreen->level_data.myobmap.get();
+        incoming->team_num = 2;
+        incoming->damage = 2.0f;
+        incoming->setxy(100, 100);
+        myscreen->level_data.oblist.push_back(std::move(incoming));
+    }
+
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(foe != nullptr, "foe created");
+    if (foe) {
+        foe->team_num = 2;
+        foe->damage = 2.0f;
+        foe->setxy(100, 100);
+    }
+
+    (void)shield->act();
+
+    // Boomerang: foe loop path in boomerang_on_act().
+    walker* boomerang = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_BOOMERANG);
+    TEST_ASSERT(boomerang != nullptr, "boomerang created");
+    if (boomerang) {
+        boomerang->owner = owner.get();
+        boomerang->team_num = owner->team_num;
+        boomerang->setxy(100, 100);
+        boomerang->drawcycle = 10;
+        boomerang->stats()->hitpoints = 20.0f;
+        boomerang->lifetime = 5;
+        (void)boomerang->act();
+    }
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_effect_batch3_shield_and_boomerang_collision_loops);
+
+void test_effect_batch3_chain_snap_to_leader_and_effect_death_guard()
+{
+    myscreen->level_data.delete_objects();
+
+    auto owner = make_living(FAMILY_MAGE, 1, 5);
+    walker* leader = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(owner != nullptr && leader != nullptr, "owner+leader created");
+    if (!(owner && leader))
+        return;
+    leader->team_num = 2;
+
+    // Place close enough that chain takes the center_on(leader) branch.
+    walker* chain = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_CHAIN);
+    TEST_ASSERT(chain != nullptr, "chain created");
+    if (!chain)
+        return;
+    chain->owner = owner.get();
+    chain->leader = leader;
+    chain->lineofsight = 10;
+    leader->setxy(120, 120);
+    chain->setxy(121, 121);
+    std::int32_t before_dist = chain->distance_to_ob_center(leader);
+    (void)chain->act();
+    std::int32_t after_dist = chain->distance_to_ob_center(leader);
+    TEST_ASSERT(after_dist <= before_dist, "close chain path should not move chain farther from leader");
+
+    // effect::death() second-call guard on a fresh effect object.
+    walker* death_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_EXPLOSION);
+    TEST_ASSERT(death_fx != nullptr, "death guard fx created");
+    if (!death_fx)
+        return;
+    death_fx->dead = 1;
+    bool first = death_fx->death();
+    bool second = death_fx->death();
+    TEST_ASSERT(first, "first death call should succeed");
+    TEST_ASSERT(!second, "second death call should be guarded");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_effect_batch3_chain_snap_to_leader_and_effect_death_guard);
