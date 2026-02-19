@@ -587,3 +587,116 @@ void test_smooth_round6_dark_grass_and_water_single_edge_switches()
     TEST_ASSERT(true, "dark-grass/water/tree switch branches executed");
 }
 REGISTER_TEST(test_smooth_round6_dark_grass_and_water_single_edge_switches);
+
+void test_smooth_round7a_grass_dark_wall_and_water_specific_branches()
+{
+    const int cx = 3;
+    const int cy = 3;
+    PixieData grid = make_grid(7, 7, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+
+    // TYPE_GRASS corner-to-water branches.
+    at(grid, cx, cy) = PIX_GRASS1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_LEFT | TO_DOWN);
+    set_diagonals(grid, cx, cy, PIX_WATER1, PIX_GRASS1, PIX_WATER1, PIX_WATER1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASSWATER_LL, (int)at(grid, cx, cy), "grass-water LL branch");
+
+    at(grid, cx, cy) = PIX_GRASS1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_RIGHT);
+    set_diagonals(grid, cx, cy, PIX_WATER1, PIX_WATER1, PIX_GRASS1, PIX_WATER1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASSWATER_UR, (int)at(grid, cx, cy), "grass-water UR branch");
+
+    at(grid, cx, cy) = PIX_GRASS1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP | TO_LEFT);
+    set_diagonals(grid, cx, cy, PIX_WATER1, PIX_WATER1, PIX_WATER1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASSWATER_UL, (int)at(grid, cx, cy), "grass-water UL branch");
+
+    at(grid, cx, cy) = PIX_GRASS1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_RIGHT | TO_DOWN);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_WATER1, PIX_WATER1, PIX_WATER1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_GRASSWATER_LR, (int)at(grid, cx, cy), "grass-water LR branch");
+
+    // TYPE_GRASS_DARK around==(TO_UP|TO_DOWN|TO_LEFT) rng(2) branch.
+    for (int seed = 0; seed < 2; seed++)
+    {
+        FixedRandom rng(static_cast<std::uint32_t>(seed));
+        GameContext c;
+        c.rng = &rng;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx, cy - 1) = PIX_GRASS_DARK_1;
+        at(grid, cx, cy + 1) = PIX_GRASS_DARK_1;
+        at(grid, cx - 1, cy) = PIX_GRASS_DARK_1;
+        at(grid, cx + 1, cy) = PIX_GRASS1;
+        (void)s.smooth(cx, cy);
+    }
+
+    // TYPE_WALL non-arrow cases that branch on y+2 / x-1,y+1 checks.
+    at(grid, cx, cy) = PIX_H_WALL1;
+    at(grid, cx, cy - 1) = PIX_H_WALL1;
+    at(grid, cx + 1, cy) = PIX_H_WALL1;
+    at(grid, cx - 1, cy) = PIX_GRASS1;
+    at(grid, cx, cy + 1) = PIX_GRASS1;
+    at(grid, cx, cy + 2) = PIX_H_WALL1;
+    (void)s.smooth(cx, cy);
+
+    at(grid, cx, cy) = PIX_H_WALL1;
+    at(grid, cx, cy - 1) = PIX_H_WALL1;
+    at(grid, cx + 1, cy) = PIX_H_WALL1;
+    at(grid, cx - 1, cy) = PIX_H_WALL1;
+    at(grid, cx, cy + 1) = PIX_H_WALL1;
+    at(grid, cx, cy + 2) = PIX_GRASS1;
+    at(grid, cx - 1, cy + 1) = PIX_H_WALL1;
+    (void)s.smooth(cx, cy);
+
+    // TYPE_WATER single-edge and full-rng variants.
+    for (int seed = 0; seed < 3; seed++)
+    {
+        FixedRandom rng(static_cast<std::uint32_t>(seed));
+        GameContext c;
+        c.rng = &rng;
+        GlobalContextGuard guard(&c);
+
+        at(grid, cx, cy) = PIX_WATER1;
+        set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_AROUND);
+        (void)s.smooth(cx, cy);
+    }
+}
+REGISTER_TEST(test_smooth_round7a_grass_dark_wall_and_water_specific_branches);
+
+void test_smooth_round7a_query_guards_and_tree_branches()
+{
+    smoother s;
+    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(0, 0), "query_x_y guard with no grid");
+
+    PixieData grid = make_grid(5, 5, PIX_GRASS1);
+    s.set_target(grid);
+    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(-1, 0), "query_x_y negative guard");
+    TEST_ASSERT_EQ((int)PIX_GRASS1, (int)s.query_x_y(99, 0), "query_x_y maxx guard");
+
+    const int cx = 2;
+    const int cy = 2;
+
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_LEFT | TO_RIGHT | TO_DOWN);
+    (void)s.smooth(cx, cy);
+
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_UP | TO_DOWN | TO_LEFT);
+    (void)s.smooth(cx, cy);
+
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_DOWN | TO_RIGHT);
+    (void)s.smooth(cx, cy);
+
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_RIGHT | TO_UP);
+    (void)s.smooth(cx, cy);
+}
+REGISTER_TEST(test_smooth_round7a_query_guards_and_tree_branches);

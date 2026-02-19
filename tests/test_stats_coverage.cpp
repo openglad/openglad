@@ -142,3 +142,92 @@ void test_stats_round6_walk_clamp_extremes_and_empty_queue_paths()
     TEST_ASSERT_EQ(0, (int)s.do_command(), "do_command should return 0 for empty queue");
 }
 REGISTER_TEST(test_stats_round6_walk_clamp_extremes_and_empty_queue_paths);
+
+void test_stats_round7a_command_clamps_and_direction_switches()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    w->setxy(GRID_SIZE * 5, GRID_SIZE * 5);
+    w->sim_level = &myscreen->level_data;
+
+    // Explicitly hit both +/- clamp sides in add/force command.
+    w->stats()->add_command(COMMAND_WALK, 1, -9, 9);
+    TEST_ASSERT(!w->stats()->commands.empty(), "walk command added");
+    if (!w->stats()->commands.empty())
+    {
+        const command& c = w->stats()->commands.back();
+        TEST_ASSERT_EQ(-1, (int)c.com1, "add_command should clamp x to -1");
+        TEST_ASSERT_EQ(1, (int)c.com2, "add_command should clamp y to +1");
+    }
+    w->stats()->force_command(COMMAND_WALK, 1, -8, 8);
+    TEST_ASSERT(!w->stats()->commands.empty(), "forced walk command added");
+    if (!w->stats()->commands.empty())
+    {
+        const command& c = w->stats()->commands.front();
+        TEST_ASSERT_EQ(-1, (int)c.com1, "force_command should clamp x to -1");
+        TEST_ASSERT_EQ(1, (int)c.com2, "force_command should clamp y to +1");
+    }
+
+    // set_command non-random branch.
+    w->stats()->set_command(COMMAND_SET_WEAPON, 1);
+    TEST_ASSERT(!w->stats()->commands.empty(), "set_command should enqueue non-random command");
+
+    // Drive the direction switches using explicit FACE_* constants.
+    const char dirs[] = {
+        FACE_UP, FACE_UP_RIGHT, FACE_RIGHT, FACE_DOWN_RIGHT,
+        FACE_DOWN, FACE_DOWN_LEFT, FACE_LEFT, FACE_UP_LEFT
+    };
+    for (char dir : dirs)
+    {
+        w->curdir = dir;
+        (void)w->stats()->right_blocked();
+        (void)w->stats()->right_forward_blocked();
+        (void)w->stats()->right_back_blocked();
+        (void)w->stats()->forward_blocked();
+    }
+}
+REGISTER_TEST(test_stats_round7a_command_clamps_and_direction_switches);
+
+void test_stats_round7a_follow_and_die_do_command_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor)
+        return;
+
+    actor->setxy(64, 64);
+    actor->sim_level = &myscreen->level_data;
+
+    // Follow with no eligible leader: find_follow_leader() null -> command count zero path.
+    actor->stats()->clear_command();
+    actor->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
+    (void)actor->stats()->do_command();
+
+    // Follow with foe set: immediate early stop path in COMMAND_FOLLOW.
+    walker* foe = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(foe != nullptr, "foe created");
+    if (foe)
+    {
+        foe->team_num = 1;
+        foe->setxy(96, 64);
+        actor->foe = foe;
+        actor->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
+        (void)actor->stats()->do_command();
+        actor->foe = nullptr;
+    }
+
+    // COMMAND_DIE in do_command with commandcount < 2.
+    actor->dead = 0;
+    actor->stats()->delete_me = 0;
+    actor->stats()->force_command(COMMAND_DIE, 1, 0, 0);
+    (void)actor->stats()->do_command();
+    TEST_ASSERT(actor->stats()->delete_me == 1, "COMMAND_DIE do_command should set delete_me");
+}
+REGISTER_TEST(test_stats_round7a_follow_and_die_do_command_paths);
