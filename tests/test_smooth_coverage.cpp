@@ -205,6 +205,60 @@ void test_smooth_round11_water_diagonals_and_tree_to_around_edges()
 }
 REGISTER_TEST(test_smooth_round11_water_diagonals_and_tree_to_around_edges);
 
+void test_smooth_round12_water_single_edge_and_tree_center_paths()
+{
+    FixedRandom rng0(0);
+    GameContext c;
+    c.rng = &rng0;
+    GlobalContextGuard guard(&c);
+
+    PixieData grid = make_grid(5, 5, PIX_GRASS1);
+    smoother s;
+    s.set_target(grid);
+    const int cx = 2, cy = 2;
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_UP);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LR,
+                "water up-only branch should map to one top shoreline variant");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_DOWN);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UR,
+                "water down-only branch should map to one bottom shoreline variant");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_LEFT);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UR || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LR,
+                "water left-only branch should map to one left shoreline variant");
+
+    at(grid, cx, cy) = PIX_WATER1;
+    set_same_neighbors(grid, cx, cy, PIX_WATER1, PIX_GRASS1, TO_RIGHT);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT((int)at(grid, cx, cy) == (int)PIX_WATERGRASS_UL || (int)at(grid, cx, cy) == (int)PIX_WATERGRASS_LL,
+                "water right-only branch should map to one right shoreline variant");
+
+    at(grid, cx, cy) = PIX_WATER2;
+    set_same_neighbors(grid, cx, cy, PIX_WATER2, PIX_GRASS1, 0);
+    set_diagonals(grid, cx, cy, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_WATER2, (int)at(grid, cx, cy), "water default branch should keep existing tile");
+
+    at(grid, cx, cy) = PIX_TREE_M1;
+    set_same_neighbors(grid, cx, cy, PIX_TREE_M1, PIX_GRASS1, TO_AROUND);
+    set_diagonals(grid, cx, cy, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1, PIX_TREE_M1);
+    (void)s.smooth(cx, cy);
+    TEST_ASSERT_EQ((int)PIX_TREE_M1, (int)at(grid, cx, cy), "trees around path with full diagonals should keep center variant");
+}
+REGISTER_TEST(test_smooth_round12_water_single_edge_and_tree_center_paths);
+
 static void set_diagonals(PixieData& g, int cx, int cy, unsigned char ul, unsigned char ur, unsigned char dl, unsigned char dr)
 {
     at(g, cx - 1, cy - 1) = ul;

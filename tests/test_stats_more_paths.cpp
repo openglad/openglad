@@ -491,3 +491,53 @@ void test_stats_round11_follow_force_walk_and_right_walk_distance_branches()
     myscreen->viewob[0]->control = nullptr;
 }
 REGISTER_TEST(test_stats_round11_follow_force_walk_and_right_walk_distance_branches);
+
+void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto follower = make_walker(FAMILY_ELF);
+    auto foe = make_walker(FAMILY_ORC);
+    auto leader = make_walker(FAMILY_SOLDIER);
+    TEST_ASSERT(follower && foe && leader, "fixtures created");
+    if (!(follower && foe && leader))
+        return;
+
+    follower->stats()->commands.clear();
+
+    // add_command(COMMAND_WALK) clamp/default branches (stats.cpp:128-140).
+    follower->stats()->add_command(COMMAND_WALK, 2, 0, 0);
+    TEST_ASSERT(!follower->stats()->commands.empty(), "add_command walk should enqueue");
+    if (!follower->stats()->commands.empty())
+    {
+        const command& c = follower->stats()->commands.back();
+        TEST_ASSERT_EQ(1, (int)c.com1, "zero walk x should default to +1");
+        TEST_ASSERT_EQ(1, (int)c.com2, "zero walk y should default to +1");
+    }
+
+    follower->stats()->add_command(COMMAND_WALK, 2, 7, -7);
+    TEST_ASSERT(!follower->stats()->commands.empty(), "second walk command enqueued");
+    if (!follower->stats()->commands.empty())
+    {
+        const command& c = follower->stats()->commands.back();
+        TEST_ASSERT_EQ(1, (int)c.com1, "walk x should clamp high value to +1");
+        TEST_ASSERT_EQ(-1, (int)c.com2, "walk y should clamp low value to -1");
+    }
+
+    // COMMAND_FOLLOW early exit when foe exists (stats.cpp:273-278).
+    follower->foe = foe.get();
+    follower->leader = leader.get();
+    follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
+    (void)follower->stats()->do_command();
+    TEST_ASSERT(follower->leader == nullptr, "follow should clear leader when foe is present");
+
+    // COMMAND_FOLLOW close-distance branch (stats.cpp:295-300).
+    follower->foe = nullptr;
+    follower->leader = leader.get();
+    leader->setxy(static_cast<Sint32>(follower->xpos) + 10, static_cast<Sint32>(follower->ypos) + 10);
+    follower->stats()->force_command(COMMAND_FOLLOW, 1, 0, 0);
+    (void)follower->stats()->do_command();
+    TEST_ASSERT(follower->leader == nullptr, "follow should drop leader when already close");
+}
+REGISTER_TEST(test_stats_round12_add_command_walk_clamps_and_follow_shortcuts);
