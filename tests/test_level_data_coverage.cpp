@@ -1361,3 +1361,39 @@ void test_level_data_round14_find_helper_exclusion_branches()
     TEST_ASSERT(foe_weapons.empty(), "find_foe_weapons_in_range should exclude enemy-team weapons");
 }
 REGISTER_TEST(test_level_data_round14_find_helper_exclusion_branches);
+
+void test_level_data_round15_hard_wall_and_unknown_tile_block_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* flying = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    TEST_ASSERT(living && flying, "fixtures created");
+    if (!(living && flying))
+        return;
+
+    flying->stats()->set_bit_flags(BIT_FLYING, 1);
+    living->setxy(0, 0);
+    flying->setxy(0, 0);
+
+    myscreen->level_data.grid.frames = 1;
+    myscreen->level_data.grid.w = 1;
+    myscreen->level_data.grid.h = 1;
+    myscreen->level_data.pixmaxx = GRID_SIZE;
+    myscreen->level_data.pixmaxy = GRID_SIZE;
+    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
+
+    // Hard wall cases return blocked immediately for all walkers.
+    myscreen->level_data.grid.data[0] = PIX_H_WALL1;
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "hard wall should block living walkers");
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, flying),
+                "hard wall should block flying walkers");
+
+    // Unknown/default tile path should also block.
+    myscreen->level_data.grid.data[0] = static_cast<unsigned char>(255);
+    TEST_ASSERT(!myscreen->level_data.query_grid_passable(0.0f, 0.0f, living),
+                "unknown tile id should hit default blocked path");
+}
+REGISTER_TEST(test_level_data_round15_hard_wall_and_unknown_tile_block_paths);

@@ -541,3 +541,29 @@ void test_stats_round12_add_command_walk_clamps_and_follow_shortcuts()
     TEST_ASSERT(follower->leader == nullptr, "follow should drop leader when already close");
 }
 REGISTER_TEST(test_stats_round12_add_command_walk_clamps_and_follow_shortcuts);
+
+void test_stats_round13_die_and_non_living_fire_command_branches()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto living = make_walker(FAMILY_SOLDIER);
+    walker* weapon = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(living && weapon, "fixtures created");
+    if (!(living && weapon))
+        return;
+
+    // COMMAND_DIE branch (stats.cpp:266-271).
+    living->dead = 1;
+    living->stats()->delete_me = 0;
+    living->stats()->force_command(COMMAND_DIE, 1, 0, 0);
+    (void)living->stats()->do_command();
+    TEST_ASSERT_EQ(1, (int)living->stats()->delete_me, "COMMAND_DIE should set delete_me when count is low");
+
+    // COMMAND_FIRE on non-living controller path (stats.cpp:253-257).
+    weapon->stats()->force_command(COMMAND_FIRE, 1, 1, 0);
+    const short fire_result = weapon->stats()->do_command();
+    TEST_ASSERT(fire_result == 0 || fire_result == 1,
+                "COMMAND_FIRE on non-living should execute guarded branch without crashing");
+}
+REGISTER_TEST(test_stats_round13_die_and_non_living_fire_command_branches);

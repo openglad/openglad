@@ -1164,3 +1164,32 @@ void test_walker_round14_distance_color_and_friendliness_modes_1480_1615()
     TEST_ASSERT_EQ(0, (int)a->is_friendly(b), "one-sided myguy should reject non-red team target");
 }
 REGISTER_TEST(test_walker_round14_distance_color_and_friendliness_modes_1480_1615);
+
+void test_walker_round15_set_difficulty_generator_and_non_player_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* gen = myscreen->level_data.add_ob(Order::Generator, FAMILY_TOWER);
+    walker* enemy = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* player = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(gen && enemy && player, "fixtures created");
+    if (!(gen && enemy && player))
+        return;
+
+    gen->stats()->hitpoints = 1.0f;
+    gen->set_difficulty(5);
+    TEST_ASSERT(gen->stats()->hitpoints > 1.0f, "generator difficulty path should scale hitpoints directly");
+
+    enemy->team_num = 2;
+    const float enemy_hp_before = enemy->stats()->max_hitpoints;
+    enemy->set_difficulty(4);
+    TEST_ASSERT(enemy->stats()->max_hitpoints != enemy_hp_before,
+                "non-player living difficulty path should scale stats");
+
+    player->team_num = 0;
+    player->set_difficulty(4);
+    TEST_ASSERT(player->stats()->max_hitpoints > 0.0f,
+                "team 0 difficulty application should leave valid hitpoints");
+}
+REGISTER_TEST(test_walker_round15_set_difficulty_generator_and_non_player_paths);
