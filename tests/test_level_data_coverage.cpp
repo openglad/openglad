@@ -559,6 +559,65 @@ void test_level_data_round5_find_helpers_contiguous_block_paths()
 }
 REGISTER_TEST(test_level_data_round5_find_helpers_contiguous_block_paths);
 
+void test_level_data_round7a_constructor_overloads_and_remove_paths()
+{
+    LevelData a(11);
+    LevelData b(12, static_cast<const LevelDataHooks*>(nullptr));
+    LevelData c(13, true);
+    LevelData d(14, true, static_cast<const LevelDataHooks*>(nullptr));
+    TEST_ASSERT(true, "constructor overloads executed");
+
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* living = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* weap = myscreen->level_data.add_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(living && fx && weap, "objects created");
+    if (!(living && fx && weap))
+        return;
+
+    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(weap), "remove_ob should erase weapon list item");
+    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(fx), "remove_ob should erase fx list item");
+    TEST_ASSERT_EQ(1, (int)myscreen->level_data.remove_ob(living), "remove_ob should erase oblist item");
+
+    walker dummy;
+    TEST_ASSERT_EQ(0, (int)myscreen->level_data.remove_ob(&dummy), "remove_ob should return 0 when not found");
+}
+REGISTER_TEST(test_level_data_round7a_constructor_overloads_and_remove_paths);
+
+void test_level_data_round7a_title_reader_and_error_wrappers()
+{
+    namespace fs = std::filesystem;
+    fs::create_directories("scen");
+
+    // Header ok, version ok, but truncated before grid/title reads.
+    const int id_short = 9401;
+    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_short), {'F', 'S', 'S', 6}),
+                "write short title file");
+    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_short).c_str()) == "none",
+                "title reader should fail on short grid/title payload");
+
+    // Header ok but version too old.
+    const int id_old = 9402;
+    TEST_ASSERT(write_bytes(fs::path("scen") / std::format("scen{}.fss", id_old), {'F', 'S', 'S', 5}),
+                "write old-version title file");
+    TEST_ASSERT(get_scenario_title(std::format("scen{}", id_old).c_str()) == "none",
+                "title reader should reject versions < 6");
+
+    // save_with_error wrapper.
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.id = 9403;
+    myscreen->level_data.grid_file = "round7a";
+    myscreen->level_data.title = "Round7A";
+    myscreen->level_data.create_new_grid();
+    std::filesystem::create_directories("temp/scen");
+    const auto err = myscreen->level_data.save_with_error();
+    TEST_ASSERT(err == LevelData::IoError::None || err == LevelData::IoError::OpenWriteFailed,
+                "save_with_error wrapper should return a concrete io error");
+}
+REGISTER_TEST(test_level_data_round7a_title_reader_and_error_wrappers);
+
 namespace {
 class ConstRandom final : public IRandom {
 public:

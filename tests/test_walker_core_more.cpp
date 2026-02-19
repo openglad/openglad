@@ -739,3 +739,80 @@ void test_walker_round6_guard_and_random_direct_branches()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_walker_round6_guard_and_random_direct_branches);
+
+void test_walker_round7a_compute_outline_and_friendliness_edge_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* viewer = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* subject = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(viewer && subject, "viewer/subject created");
+    if (!(viewer && subject))
+        return;
+
+    viewer->team_num = 0;
+    subject->team_num = 1;
+    subject->stats()->set_bit_flags(BIT_NAMED, 1);
+
+    subject->outline = OUTLINE_INVULNERABLE;
+    subject->flight_left = 3;
+    subject->compute_outline(viewer);
+
+    subject->outline = OUTLINE_INVULNERABLE;
+    subject->flight_left = 0;
+    subject->invisibility_left = 3;
+    subject->compute_outline(viewer);
+
+    subject->outline = OUTLINE_FLYING;
+    subject->invisibility_left = 0;
+    subject->invulnerable_left = 3;
+    subject->compute_outline(viewer);
+
+    subject->outline = OUTLINE_NAMED;
+    subject->invisibility_left = 3;
+    subject->invulnerable_left = 0;
+    subject->flight_left = 0;
+    subject->compute_outline(viewer);
+
+    // No special flags path.
+    subject->outline = OUTLINE_NAMED;
+    subject->invisibility_left = 0;
+    subject->invulnerable_left = 0;
+    subject->flight_left = 0;
+    subject->stats()->set_bit_flags(BIT_NAMED, 0);
+    subject->compute_outline(viewer);
+    TEST_ASSERT(subject->outline == 0 || subject->outline == subject->query_team_color(),
+                "compute_outline should settle into neutral or team outline");
+
+    // is_friendly null/dead guards and owner-chain branches.
+    SaveData save;
+    save.allied_mode = 1;
+    subject->sim_save = &save;
+    viewer->sim_save = &save;
+
+    TEST_ASSERT_EQ(0, (int)subject->is_friendly(nullptr), "is_friendly should reject null");
+
+    subject->dead = 1;
+    TEST_ASSERT_EQ(0, (int)subject->is_friendly(viewer), "is_friendly should reject dead self");
+    subject->dead = 0;
+
+    viewer->dead = 1;
+    TEST_ASSERT_EQ(0, (int)subject->is_friendly(viewer), "is_friendly should reject dead target");
+    viewer->dead = 0;
+
+    // Owner-loop traversal with one side missing myguy (has_myguy==2 path).
+    walker* owner = myscreen->level_data.add_ob(Order::Living, FAMILY_MAGE);
+    TEST_ASSERT(owner != nullptr, "owner created");
+    if (owner)
+    {
+        owner->team_num = 0;
+        owner->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+        subject->owner = owner;
+        viewer->owner = nullptr;
+        viewer->team_num = 0;
+        viewer->clear_myguy();
+        TEST_ASSERT(subject->is_friendly(viewer) != 0, "allied mode has_myguy==2 branch should allow red-team friendliness");
+    }
+}
+REGISTER_TEST(test_walker_round7a_compute_outline_and_friendliness_edge_paths);
