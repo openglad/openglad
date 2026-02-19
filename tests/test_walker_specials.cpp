@@ -1288,3 +1288,27 @@ void test_walker_special_no_stats_guard()
     TEST_ASSERT(!no_stats.special(), "special should fail safely when stats are missing");
 }
 REGISTER_SPECIAL_TEST(test_walker_special_no_stats_guard);
+
+void test_walker_special_unknown_family_and_teleport_ranged_fail_loop()
+{
+    walker* w = make_special_guy(FAMILY_MAGE, 0, 4);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // special(): living + enough MP but missing descriptor callback -> return tail.
+    w->set_order_family(Order::Living, 120);
+    w->current_special = 1;
+    w->stats()->special_cost[1] = 0;
+    w->stats()->magicpoints = 100;
+    TEST_ASSERT(!w->special(), "unknown living family special should fall through and return false");
+
+    // teleport_ranged(): exhaust keep_going loop and hit explicit false return.
+    w->set_order_family(Order::Living, FAMILY_MAGE);
+    w->setxy(-1000, -1000);
+    TEST_ASSERT(!w->teleport_ranged(1), "teleport_ranged should fail after retries on invalid area");
+
+    delete w;
+    myscreen->level_data.delete_objects();
+}
+REGISTER_SPECIAL_TEST(test_walker_special_unknown_family_and_teleport_ranged_fail_loop);

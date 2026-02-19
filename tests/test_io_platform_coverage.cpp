@@ -527,6 +527,44 @@ void test_og_file_open_read_user_and_asset_fallbacks()
 }
 REGISTER_TEST(test_og_file_open_read_user_and_asset_fallbacks);
 
+void test_og_file_physfs_backed_write_and_read_roundtrip()
+{
+    const char* write_dir = PHYSFS_getWriteDir();
+    TEST_ASSERT(write_dir != nullptr, "PHYSFS write dir should be initialized for runtime tests");
+    if (!write_dir)
+        return;
+
+    const std::string vdir = "batch7_physfs_only_dir";
+    const std::string vpath = vdir + "/rw.bin";
+    TEST_ASSERT(PHYSFS_mkdir(vdir.c_str()) != 0, "PHYSFS_mkdir should create virtual directory");
+
+    auto out = og::io::og_open_write(vpath.c_str());
+    TEST_ASSERT(out != nullptr, "og_open_write should use PhysFS-backed file for virtual path");
+    if (!out)
+        return;
+
+    const unsigned char payload[] = {10, 20, 30, 40};
+    TEST_ASSERT(og::io::og_write_exact(*out, payload, 1, sizeof(payload)), "physfs-backed write should succeed");
+    TEST_ASSERT(out->tell() >= 4, "physfs-backed tell should report advanced position");
+    TEST_ASSERT(out->seek(0, 0) >= 0, "physfs-backed seek set should succeed");
+    out.reset();
+
+    auto in = og::io::og_open_read(vpath.c_str(), true);
+    TEST_ASSERT(in != nullptr, "og_open_read should find newly written PhysFS file");
+    if (in)
+    {
+        unsigned char got[4] = {};
+        TEST_ASSERT(og::io::og_read_exact(*in, got, 1, sizeof(got)), "physfs-backed read should succeed");
+        TEST_ASSERT(std::memcmp(got, payload, sizeof(payload)) == 0, "physfs-backed roundtrip should match");
+        TEST_ASSERT(in->tell() >= 4, "physfs-backed read tell should advance");
+        TEST_ASSERT(in->seek(0, 2) >= 0, "physfs-backed seek end should succeed");
+    }
+
+    (void)PHYSFS_delete(vpath.c_str());
+    (void)std::remove((std::string(write_dir) + "/" + vpath).c_str());
+}
+REGISTER_TEST(test_og_file_physfs_backed_write_and_read_roundtrip);
+
 void test_pixie_data_move_constructor_resets_source()
 {
     PixieData src(2, 3, 1, new unsigned char[6]{1, 2, 3, 4, 5, 6});
