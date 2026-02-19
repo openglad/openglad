@@ -2360,3 +2360,93 @@ void test_druid_special_busy_and_friend_count_guards()
     TEST_ASSERT(!fd->do_special(druid), "druid protection should fail with no nearby allies");
 }
 REGISTER_TEST(test_druid_special_busy_and_friend_count_guards);
+
+void test_family_round6_mage_thief_soldier_guard_branches()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* mage_fd = get_family_descriptor(FAMILY_MAGE);
+    const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
+    const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
+    TEST_ASSERT(mage_fd && thief_fd && soldier_fd, "family descriptors present");
+    if (!(mage_fd && thief_fd && soldier_fd))
+        return;
+
+    // Mage AI check branches: <1 foes => true, 1-3 foes => false, >3 foes => true.
+    walker* mage = add_living_to_level(FAMILY_MAGE, 1, 100, 100);
+    TEST_ASSERT(mage != nullptr, "mage created");
+    if (!mage)
+        return;
+    mage->current_special = 1;
+    TEST_ASSERT(mage_fd->check_special_ai(static_cast<living*>(mage)),
+                "mage AI should allow special when no foes are in range");
+    add_living_to_level(FAMILY_SOLDIER, 0, 120, 100);
+    add_living_to_level(FAMILY_ORC, 0, 130, 100);
+    TEST_ASSERT(!mage_fd->check_special_ai(static_cast<living*>(mage)),
+                "mage AI should reject special when 1-3 foes are in range");
+    add_living_to_level(FAMILY_SOLDIER, 0, 140, 100);
+    add_living_to_level(FAMILY_ORC, 0, 150, 100);
+    TEST_ASSERT(mage_fd->check_special_ai(static_cast<living*>(mage)),
+                "mage AI should allow special when many foes are in range");
+
+    // Mage teleport guards.
+    mage->stats()->magicpoints = 1000;
+    mage->current_special = 1;
+    mage->ani_type = ANI_TELE_OUT;
+    TEST_ASSERT(!mage_fd->do_special(mage), "mage teleport should fail while already teleporting");
+    mage->ani_type = ANI_WALK;
+    mage->shifter_down = 1;
+    mage->busy = 1;
+    TEST_ASSERT(!mage_fd->do_special(mage), "mage marker path should fail while busy");
+    mage->busy = 0;
+    mage->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    if (mage->myguy)
+        mage->myguy->intelligence = 50;
+    mage->user = 0;
+    TEST_ASSERT(!mage_fd->do_special(mage),
+                "mage marker path should fail for low-intelligence player characters");
+
+    // Thief AI and do_special guards.
+    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 100, 100);
+    TEST_ASSERT(thief != nullptr, "thief created");
+    if (!thief)
+        return;
+    thief->current_special = 1;
+    thief->foe = add_living_to_level(FAMILY_SOLDIER, 1, 200, 100);
+    TEST_ASSERT(thief->foe != nullptr, "thief foe created");
+    if (thief->foe)
+        TEST_ASSERT(!thief_fd->check_special_ai(static_cast<living*>(thief)),
+                    "thief bomb AI should reject when foe distance is in drop-bomb window");
+    thief->foe = nullptr;
+    TEST_ASSERT(!thief_fd->check_special_ai(static_cast<living*>(thief)),
+                "thief bomb AI should reject when too few foes are nearby");
+    thief->current_special = 5;
+    TEST_ASSERT(thief_fd->check_special_ai(static_cast<living*>(thief)),
+                "thief AI default branch should allow special");
+
+    thief->current_special = 3;
+    thief->shifter_down = 0;
+    thief->busy = 1;
+    TEST_ASSERT(!thief_fd->do_special(thief), "thief taunt should fail while busy");
+    thief->shifter_down = 1;
+    thief->busy = 0;
+    TEST_ASSERT(!thief_fd->do_special(thief), "thief charm should fail when no targets are in range");
+    thief->current_special = 4;
+    thief->busy = 1;
+    TEST_ASSERT(!thief_fd->do_special(thief), "thief poison cloud should fail while busy");
+
+    // Soldier special guards.
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 0, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    if (!soldier)
+        return;
+    soldier->stats()->magicpoints = 1000;
+    soldier->current_special = 1;
+    soldier->curdir = FACE_LEFT; // blocked by map edge
+    TEST_ASSERT(!soldier_fd->do_special(soldier), "soldier charge should fail when forward is blocked");
+    soldier->current_special = 3;
+    soldier->busy = 1;
+    TEST_ASSERT(!soldier_fd->do_special(soldier), "soldier whirlwind should fail while busy");
+}
+REGISTER_TEST(test_family_round6_mage_thief_soldier_guard_branches);
