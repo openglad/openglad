@@ -1435,3 +1435,71 @@ void test_level_data_round16_remaining_foes_and_object_passable_collision_paths(
                 "query_object_passable should block on occupied tile for live walker");
 }
 REGISTER_TEST(test_level_data_round16_remaining_foes_and_object_passable_collision_paths);
+
+namespace {
+static bool g_clear_stale_called = false;
+static void clear_stale_hook(LevelData*)
+{
+    g_clear_stale_called = true;
+}
+} // namespace
+
+void test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks()
+{
+    // Campaign wrapper passthroughs.
+    CampaignData missing("org.openglad.round9b.missing");
+    TEST_ASSERT_EQ((int)CampaignData::IoError::PackageMountFailed, (int)missing.load_with_error(),
+                   "load_with_error should forward mount failures");
+    TEST_ASSERT_EQ((int)CampaignData::IoError::PackageUnpackFailed, (int)missing.save_with_error(),
+                   "save_with_error should forward unpack failures");
+    TEST_ASSERT_EQ((int)CampaignData::IoError::PackageUnpackFailed, (int)missing.save_as_with_error("org.openglad.round9b.copy"),
+                   "save_as_with_error should forward unpack failures");
+
+    // create_new_grid + resize copy/fill + off-map erase paths.
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.grid.data[0] = PIX_TREE_M1;
+    const int old_w = myscreen->level_data.grid.w;
+    const int old_h = myscreen->level_data.grid.h;
+
+    walker* keep = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* drop_living = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* drop_fx = myscreen->level_data.add_fx_ob(Order::FX, FAMILY_FLASH);
+    walker* drop_weap = myscreen->level_data.add_weap_ob(Order::Weapon, FAMILY_ARROW);
+    TEST_ASSERT(keep && drop_living && drop_fx && drop_weap, "fixtures created");
+    if (!(keep && drop_living && drop_fx && drop_weap))
+        return;
+
+    keep->setxy(8, 8);
+    drop_living->setxy(static_cast<short>(old_w * GRID_SIZE - 1), static_cast<short>(old_h * GRID_SIZE - 1));
+    drop_fx->setxy(static_cast<short>(old_w * GRID_SIZE - 1), static_cast<short>(old_h * GRID_SIZE - 1));
+    drop_weap->setxy(static_cast<short>(old_w * GRID_SIZE - 1), static_cast<short>(old_h * GRID_SIZE - 1));
+
+    // Shrink by one cell in each axis so edge fixtures fall off-map.
+    myscreen->level_data.resize_grid(old_w - 1, old_h - 1);
+    TEST_ASSERT_EQ(PIX_TREE_M1, (int)myscreen->level_data.grid.data[0], "resize should copy existing tiles");
+
+    // Grow and ensure newly added cells are initialized (not left zeroed from freed memory).
+    const int resized_w = myscreen->level_data.grid.w;
+    const int resized_h = myscreen->level_data.grid.h;
+    myscreen->level_data.resize_grid(resized_w + 1, resized_h + 1);
+    const int tail_idx = myscreen->level_data.grid.w * myscreen->level_data.grid.h - 1;
+    TEST_ASSERT(myscreen->level_data.grid.data[tail_idx] >= PIX_GRASS1 &&
+                myscreen->level_data.grid.data[tail_idx] <= PIX_GRASS4,
+                "resize should seed newly grown cells with grass variants");
+
+    // delete_objects hook + stale-obmap clearing.
+    LevelDataHooks hooks;
+    hooks.clear_stale_view_controls = clear_stale_hook;
+    g_clear_stale_called = false;
+    LevelData hooked_level(9917, true, &hooks);
+    hooked_level.create_new_grid();
+    walker* hw = hooked_level.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(hw != nullptr, "hooked level fixture created");
+    if (hw)
+        hooked_level.myobmap->walker_to_pos[hw] = {};
+    hooked_level.delete_objects();
+    TEST_ASSERT(g_clear_stale_called, "delete_objects should invoke clear_stale_view_controls hook");
+    TEST_ASSERT(hooked_level.myobmap->walker_to_pos.empty(), "delete_objects should clear stale obmap indices");
+}
+REGISTER_TEST(test_level_data_round17_grid_resize_campaign_wrappers_and_delete_object_hooks);

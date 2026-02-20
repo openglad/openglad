@@ -10,6 +10,7 @@
 #include "test_framework.h"
 
 #include <memory>
+#include <vector>
 
 extern screen* myscreen;
 
@@ -567,3 +568,59 @@ void test_stats_round13_die_and_non_living_fire_command_branches()
                 "COMMAND_FIRE on non-living should execute guarded branch without crashing");
 }
 REGISTER_TEST(test_stats_round13_die_and_non_living_fire_command_branches);
+
+void test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    auto actor = make_walker(FAMILY_SOLDIER);
+    auto foe = make_walker(FAMILY_ORC);
+    TEST_ASSERT(actor && foe, "fixtures created");
+    if (!(actor && foe))
+        return;
+
+    // COMMAND_QUICK_FIRE and COMMAND_MULTIDO branches.
+    actor->stats()->commands.clear();
+    actor->stats()->force_command(COMMAND_QUICK_FIRE, 1, 1, 0);
+    (void)actor->stats()->do_command();
+    actor->stats()->force_command(COMMAND_MULTIDO, 1, 2, 0);
+    (void)actor->stats()->do_command();
+
+    // COMMAND_RUSH with collide_ob target.
+    walker* rush_target = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    TEST_ASSERT(rush_target != nullptr, "rush target created");
+    if (rush_target)
+    {
+        actor->collide_ob = rush_target;
+        actor->stats()->force_command(COMMAND_RUSH, 1, 1, 0);
+        (void)actor->stats()->do_command();
+    }
+
+    // walk_to_foe firstfoe fallback branch (stats.cpp:994-995).
+    class SeqRandom final : public IRandom {
+    public:
+        explicit SeqRandom(std::initializer_list<std::uint32_t> v) : values(v) {}
+        std::uint32_t next(std::uint32_t max_exclusive) override
+        {
+            if (max_exclusive == 0) return 0;
+            const std::uint32_t raw = (idx < values.size()) ? values[idx++] : values.back();
+            return raw % max_exclusive;
+        }
+        std::vector<std::uint32_t> values;
+        std::size_t idx = 0;
+    };
+
+    actor->setxy(100, 100);
+    foe->setxy(120, 100); // short-circuit distance path
+    actor->foe = foe.get();
+    actor->path_check_counter = 0;
+    actor->stats()->last_distance = 99999;
+    foe->invisibility_left = 64; // allows near-foe scan to skip via rng
+    SeqRandom rng({1, 1, 1, 1, 1});
+    actor->sim_rng = &rng;
+    const bool walked = actor->stats()->walk_to_foe();
+    TEST_ASSERT(walked, "walk_to_foe should still succeed when using firstfoe fallback path");
+    TEST_ASSERT(actor->foe != nullptr, "walk_to_foe should restore foe from firstfoe fallback");
+}
+REGISTER_TEST(test_stats_round14_quickfire_multido_rush_and_walk_to_foe_firstfoe_fallback);

@@ -4,6 +4,7 @@
 #include <openglad/runtime/guy_create.h>
 #include <openglad/data/gloader.h>
 #include <openglad/data/save_data.h>
+#include <openglad/entities/living.h>
 #include <openglad/entities/walker.h>
 #include <openglad/legacy/base.h>
 #include <openglad/render/view.h>
@@ -1296,3 +1297,55 @@ void test_walker_round18_animate_teleport_and_skelgrow_completion_paths()
     }
 }
 REGISTER_TEST(test_walker_round18_animate_teleport_and_skelgrow_completion_paths);
+
+void test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    walker* source = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    walker* target = myscreen->level_data.add_ob(Order::Living, FAMILY_ORC);
+    walker* target2 = myscreen->level_data.add_ob(Order::Living, FAMILY_ARCHER);
+    TEST_ASSERT(source && target && target2, "fixtures created");
+    if (!(source && target && target2))
+        return;
+
+    // move_myguy_to nullptr early return.
+    source->set_owned_myguy(std::make_unique<guy>(FAMILY_SOLDIER));
+    source->move_myguy_to(nullptr);
+    TEST_ASSERT(source->myguy != nullptr, "move_myguy_to(nullptr) should keep myguy on source");
+
+    // Owned transfer branch.
+    source->move_myguy_to(target);
+    TEST_ASSERT(source->myguy == nullptr, "owned myguy should move off source");
+    TEST_ASSERT(target->myguy != nullptr, "target should receive moved owned myguy");
+
+    // View transfer branch.
+    source->set_myguy_view(target->myguy);
+    source->move_myguy_to(target2);
+    TEST_ASSERT(source->myguy == nullptr, "view myguy should clear on source after transfer");
+    TEST_ASSERT(target2->myguy == target->myguy, "target2 should receive transferred view myguy pointer");
+
+    // Soldier fire callback returning false branch (walker.cpp on_fire_weapon gate).
+    source->setxy(100, 100);
+    source->stats()->magicpoints = 200.0f;
+    source->stats()->weapon_cost = 1.0f;
+    source->lastx = 1;
+    source->lasty = 0;
+    static_cast<living*>(source)->weapons_left = 0;
+    TEST_ASSERT(source->fire() == nullptr, "soldier fire should return nullptr when on_fire_weapon rejects");
+
+    // Drive ACT_RANDOM into act_random() with no foe so it queues random walk.
+    SequenceRandom rng({0, 1, 0});
+    source->sim_rng = &rng;
+    source->foe = nullptr;
+    source->stats()->clear_command();
+    source->set_act_type(ACT_RANDOM);
+    source->ani_type = ANI_WALK;
+    const bool acted = source->act();
+    TEST_ASSERT(!acted, "ACT_RANDOM act_random no-foe subpath should hit final false return");
+    TEST_ASSERT(source->stats()->has_commands(), "act_random no-foe branch should queue random walk command");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_walker_round19_move_myguy_fire_callback_and_act_random_no_foe_paths);
