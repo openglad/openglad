@@ -989,6 +989,7 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_coverage_r17.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_coverage_r18.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_coverage_r19.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_coverage_r20.cpp
         )
 
         add_executable(og_unit_tests
