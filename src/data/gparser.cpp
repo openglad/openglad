@@ -24,6 +24,7 @@
 #include <fstream>
 #include <string>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <format>
 #include <openglad/data/gparser.h>
@@ -204,10 +205,12 @@ void cfg_store::commandline(int &argc, char **&argv)
 			{
 				case 'h':
 					Log(helpmsg);
-					exit (0);
+                    std::fflush(nullptr);
+                    std::_Exit(0);
 				case 'v':
 					Log(versmsg);
-					exit (0);
+                    std::fflush(nullptr);
+                    std::_Exit(0);
 				case 's':
 					data["sound"]["sound"] = "on";
 					Log("Sound is on.");

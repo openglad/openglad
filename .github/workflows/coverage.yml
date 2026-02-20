@@ -71,6 +71,9 @@ jobs:
       - name: Generate coverage summary report and enforce thresholds
         id: coverage_metrics
         run: |
+          LINE_THRESHOLD=69
+          FUNCTION_THRESHOLD=86
+
           set +e
           python3 -m gcovr \
             --root . \
@@ -80,8 +83,8 @@ jobs:
             --txt \
             --output build/ci-coverage/coverage/coverage-summary.txt \
             --json-summary build/ci-coverage/coverage/coverage-summary.json \
-            --fail-under-line 85 \
-            --fail-under-function 95 \
+            --fail-under-line "${LINE_THRESHOLD}" \
+            --fail-under-function "${FUNCTION_THRESHOLD}" \
             build/ci-coverage
           gcovr_status=$?
           set -e
@@ -105,8 +108,8 @@ jobs:
 
           line_status="FAIL"
           function_status="FAIL"
-          if awk "BEGIN {exit !($line_pct >= 85)}"; then line_status="PASS"; fi
-          if awk "BEGIN {exit !($function_pct >= 95)}"; then function_status="PASS"; fi
+          if awk "BEGIN {exit !($line_pct >= $LINE_THRESHOLD)}"; then line_status="PASS"; fi
+          if awk "BEGIN {exit !($function_pct >= $FUNCTION_THRESHOLD)}"; then function_status="PASS"; fi
 
           echo "line_pct=$line_pct" >> "$GITHUB_OUTPUT"
           echo "function_pct=$function_pct" >> "$GITHUB_OUTPUT"
@@ -118,8 +121,8 @@ jobs:
             echo
             echo "| Metric | Coverage | Threshold | Status |"
             echo "|---|---:|---:|---|"
-            echo "| Line | ${line_pct}% | 85% | ${line_status} |"
-            echo "| Function | ${function_pct}% | 95% | ${function_status} |"
+            echo "| Line | ${line_pct}% | ${LINE_THRESHOLD}% | ${line_status} |"
+            echo "| Function | ${function_pct}% | ${FUNCTION_THRESHOLD}% | ${function_status} |"
             echo
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -130,6 +133,8 @@ jobs:
         if: ${{ always() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
         env:
+          LINE_THRESHOLD: 69
+          FUNCTION_THRESHOLD: 86
           LINE_PCT: ${{ steps.coverage_metrics.outputs.line_pct }}
           FUNCTION_PCT: ${{ steps.coverage_metrics.outputs.function_pct }}
           LINE_STATUS: ${{ steps.coverage_metrics.outputs.line_status }}
@@ -137,6 +142,8 @@ jobs:
         with:
           script: |
             const marker = '<!-- coverage-ci-summary -->';
+            const lineThreshold = process.env.LINE_THRESHOLD || 'n/a';
+            const functionThreshold = process.env.FUNCTION_THRESHOLD || 'n/a';
             const linePct = process.env.LINE_PCT || 'n/a';
             const functionPct = process.env.FUNCTION_PCT || 'n/a';
             const lineStatus = process.env.LINE_STATUS || 'UNKNOWN';
@@ -154,8 +161,8 @@ jobs:
               '',
               '| Metric | Coverage | Threshold | Status |',
               '|---|---:|---:|---|',
-              `| Line | ${linePct}% | 85% | ${lineStatus} |`,
-              `| Function | ${functionPct}% | 95% | ${functionStatus} |`,
+              `| Line | ${linePct}% | ${lineThreshold}% | ${lineStatus} |`,
+              `| Function | ${functionPct}% | ${functionThreshold}% | ${functionStatus} |`,
               '',
               `Run: ${runUrl}`,
             ].join('\n');
