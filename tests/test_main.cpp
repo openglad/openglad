@@ -61,13 +61,13 @@ int main(int argc, char* argv[]) {
     init_logging();
     SDL_Init(SDL_INIT_VIDEO);
     io_init(argc, argv);
-    cfg.load_settings();
+    // Avoid startup hangs in CI from filesystem-backed config loading in module suites.
+    cfg.apply_setting("graphics", "overscan_percentage", "0");
     overscan_percentage = static_cast<float>(
         parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
     update_overscan_setting();
     cfg.apply_setting("graphics", "overscan_percentage",
         std::format("{:.0f}", 100 * overscan_percentage));
-    cfg.save_settings();
 
     // Optional test filter: ./openglad_test [filter_substring]
     if (argc > 1)
