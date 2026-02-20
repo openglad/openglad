@@ -979,6 +979,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_r14.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_smooth_r14.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_orc_big_orc_r15.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_world_r15.cpp
         )
 
         add_executable(og_unit_tests
