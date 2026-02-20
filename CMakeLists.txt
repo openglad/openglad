@@ -975,6 +975,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_stats_r14.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_living_r14.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r14.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_r14.cpp
         )
 
         add_executable(og_unit_tests
