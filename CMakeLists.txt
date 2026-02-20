@@ -966,6 +966,12 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_r11.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_level_data_r11.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_stats_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r12.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_thief_r12.cpp
         )
 
         add_executable(og_unit_tests
