@@ -955,6 +955,8 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_walker_coverage_push.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_stats_coverage_push.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_sim_input_coverage_push.cpp
         )
 
         add_executable(og_unit_tests
