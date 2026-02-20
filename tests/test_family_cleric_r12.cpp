@@ -229,3 +229,57 @@ OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
     fx.level.fxlist.push_back(std::move(t2));
     OG_ASSERT(t1_raw->find_teleport_target() == t2_raw);
 }
+
+OG_UNIT_TEST(test_family_cleric_r12_shoved_ai_and_turn_undead_guard_paths)
+{
+    const FamilyDescriptor& desc = describe_family_cleric();
+    ClericR12Fixture fx;
+
+    living* cleric = add_living(fx, 0, FAMILY_CLERIC);
+    OG_ASSERT(cleric != nullptr);
+    cleric->set_owned_myguy(std::make_unique<guy>(FAMILY_CLERIC));
+    cleric->user = 0;
+    cleric->stats()->level = 6;
+    cleric->stats()->magicpoints = 120.0f;
+
+    // on_shoved callback path.
+    desc.on_shoved(cleric);
+
+    // check_special_ai healing branch with >1 friends nearby.
+    cleric->current_special = 1;
+    living* friend1 = add_living(fx, 0, FAMILY_SOLDIER);
+    living* friend2 = add_living(fx, 0, FAMILY_ARCHER);
+    friend1->setxy(82, 80);
+    friend2->setxy(84, 80);
+    OG_ASSERT(desc.check_special_ai(cleric));
+    OG_ASSERT(cleric->shifter_down == 0);
+
+    // check_special_ai mace branch with high MP and not enough heal targets.
+    friend2->setxy(300, 300);
+    friend1->setxy(300, 300);
+    cleric->stats()->max_magicpoints = 100.0f;
+    cleric->stats()->magicpoints = 80.0f;
+    OG_ASSERT(desc.check_special_ai(cleric));
+    OG_ASSERT(cleric->shifter_down == 1);
+
+    // Mystic mace INT guard message path.
+    cleric->current_special = 1;
+    cleric->shifter_down = 1;
+    cleric->busy = 0;
+    cleric->myguy->intelligence = 40;
+    OG_ASSERT(!desc.do_special(cleric));
+
+    // Turn-undead INT guard path for special 2.
+    cleric->current_special = 2;
+    cleric->shifter_down = 1;
+    cleric->busy = 0;
+    cleric->myguy->intelligence = 50;
+    OG_ASSERT(!desc.do_special(cleric));
+
+    // Turn-undead INT guard path for special 3.
+    cleric->current_special = 3;
+    cleric->shifter_down = 1;
+    cleric->busy = 0;
+    cleric->myguy->intelligence = 50;
+    OG_ASSERT(!desc.do_special(cleric));
+}

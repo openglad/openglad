@@ -89,3 +89,52 @@ OG_UNIT_TEST(test_walker_movement_r12_stationary_slope_and_animate_paths)
     mover->curdir = FACE_LEFT;
     OG_ASSERT(!mover->walk(-1.0f, 0.0f));
 }
+
+OG_UNIT_TEST(test_walker_movement_r12_walkstep_npc_and_user_slide_paths)
+{
+    MovementR12Fixture fx;
+    walker* npc = add_living(fx, FAMILY_SOLDIER);
+    walker* user = add_living(fx, FAMILY_SOLDIER);
+    OG_ASSERT(npc && user);
+    assign_basic_ani(npc);
+    assign_basic_ani(user);
+
+    // walk() wrapper
+    npc->lastx = 1.0f;
+    npc->lasty = 0.0f;
+    (void)npc->walk();
+
+    // shove non-living fallback path
+    OG_ASSERT(npc->shove(user, 1, 0) == -1);
+
+    npc->setxy(0, 0);
+    npc->stepsize = 1.0f;
+    npc->user = -1;
+
+    // NPC fallback switch paths from blocked movement.
+    npc->curdir = FACE_LEFT;
+    (void)npc->walkstep(-1.0f, 0.0f);
+    npc->curdir = FACE_UP;
+    (void)npc->walkstep(0.0f, -1.0f);
+    npc->curdir = FACE_UP_RIGHT;
+    (void)npc->walkstep(1.0f, -1.0f);
+    npc->curdir = FACE_DOWN_LEFT;
+    (void)npc->walkstep(-1.0f, 1.0f);
+
+    // User slide path where diagonal move is blocked but one axis can progress.
+    user->setxy(0, 1);
+    user->stepsize = 1.0f;
+    user->user = 0;
+    user->curdir = FACE_UP_LEFT;
+    (void)user->walkstep(-1.0f, -1.0f);
+
+    // Invalid BIT_ANIMATE walk branch.
+    user->stats()->set_bit_flags(BIT_ANIMATE, 1);
+    user->setxy(0, 0);
+    user->curdir = FACE_LEFT;
+    OG_ASSERT(!user->walk(-1.0f, 0.0f));
+
+    // turn default branch via invalid curdir.
+    user->curdir = 127;
+    (void)user->turn(FACE_UP);
+}
