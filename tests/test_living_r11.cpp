@@ -5,6 +5,7 @@
 #include <openglad/data/gparser.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/irandom.h>
+#include <openglad/core/stats.h>
 #include <openglad/core/constants.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
 #include <catch2/catch_test_macros.hpp>
@@ -116,4 +117,44 @@ OG_UNIT_TEST(test_living_r11_collide_and_act_type_switches)
     self->set_act_type(ACT_DIE);
     OG_ASSERT(self->act());
     OG_ASSERT(self->dead == 1 || self->dead == 0);
+}
+
+OG_UNIT_TEST(test_living_r11_summon_difficulty_checkspecial_and_walk_paths)
+{
+    LivingFixture fx;
+    living* self = add_living(fx, FAMILY_SOLDIER, 0);
+    living* foe = add_living(fx, FAMILY_ORC, 1);
+    OG_ASSERT(self && foe);
+
+    // do_summon path.
+    walker* summoned = self->do_summon(FAMILY_SKELETON, 25);
+    OG_ASSERT(summoned != nullptr);
+    OG_ASSERT(summoned->owner == self);
+    OG_ASSERT(summoned->lifetime == 25);
+
+    // Default set_difficulty fallback path on unknown family id.
+    self->set_order_family(Order::Living, static_cast<char>(127));
+    self->set_difficulty(2);
+    OG_ASSERT(self->stats()->max_hitpoints >= self->stats()->hitpoints);
+    self->set_order_family(Order::Living, FAMILY_SOLDIER);
+
+    // check_special path when not enough magic resets special to 1.
+    self->current_special = 4;
+    self->stats()->special_cost[4] = 200;
+    self->stats()->magicpoints = 0;
+    (void)self->check_special();
+    OG_ASSERT(self->current_special == 1);
+
+    // living::walk bounds fail + direction-turn path.
+    self->setxy(0, 0);
+    self->curdir = FACE_LEFT;
+    OG_ASSERT(!self->walk(-1.0f, 0.0f));
+    self->curdir = FACE_UP;
+    OG_ASSERT(self->walk(1.0f, 0.0f));
+
+    // ACT_RANDOM path with foe present/no fire then search.
+    self->foe = foe;
+    self->lineofsight = 1;
+    self->set_act_type(ACT_RANDOM);
+    (void)self->act();
 }
