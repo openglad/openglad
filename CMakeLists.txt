@@ -938,7 +938,7 @@ if(NOT EMSCRIPTEN)
     # --- openglad_test ---
     if(BUILD_TESTING)
         # --- Headless unit tests (no SDL/video init) ---
-        add_executable(og_unit_tests
+        set(OG_UNIT_TEST_SOURCES
             ${CMAKE_SOURCE_DIR}/tests/unit/unit_main.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_session_raii.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_event_log.cpp
@@ -947,6 +947,15 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/unit/test_input_actions.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_sim_entity.cpp
             ${CMAKE_SOURCE_DIR}/tests/unit/test_physfs_wrappers.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_gparser_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_cleric_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_thief_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_family_druid_coverage_push.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_smooth_coverage_push.cpp
+        )
+
+        add_executable(og_unit_tests
+            ${OG_UNIT_TEST_SOURCES}
         )
         configure_openglad_library(og_unit_tests)
         target_link_libraries(og_unit_tests PRIVATE og_game)
