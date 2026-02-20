@@ -963,6 +963,9 @@ if(NOT EMSCRIPTEN)
             ${CMAKE_SOURCE_DIR}/tests/test_sim_input_r11.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_walker_specials_r11.cpp
             ${CMAKE_SOURCE_DIR}/tests/test_living_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_level_data_r11.cpp
+            ${CMAKE_SOURCE_DIR}/tests/test_walker_movement_r11.cpp
         )
 
         add_executable(og_unit_tests
