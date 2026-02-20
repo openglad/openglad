@@ -4,6 +4,8 @@
 #include <cstring>
 #include <cstdio>
 #include <filesystem>
+#include <sys/wait.h>
+#include <unistd.h>
 
 extern cfg_store cfg;
 
@@ -274,3 +276,31 @@ void test_gparser_round6_commandline_all_short_switches()
     TEST_ASSERT(cfg.get_setting("graphics", "fullscreen") == "on", "-f should enable fullscreen");
 }
 REGISTER_TEST(test_gparser_round6_commandline_all_short_switches);
+
+void test_gparser_round9_commandline_help_and_version_exit_paths()
+{
+    auto run_child = [](const char* flag) -> int {
+        pid_t pid = fork();
+        if (pid == 0)
+        {
+            char arg0[] = "openglad";
+            char arg1[3] = {'-', flag[1], '\0'};
+            char* argv[] = {arg0, arg1};
+            int argc = 2;
+            char** argv_ptr = argv;
+            cfg.commandline(argc, argv_ptr);
+            _exit(42); // should not happen for -h/-v paths
+        }
+        if (pid < 0)
+            return -1;
+        int status = 0;
+        (void)waitpid(pid, &status, 0);
+        if (WIFEXITED(status))
+            return WEXITSTATUS(status);
+        return -1;
+    };
+
+    TEST_ASSERT_EQ(0, run_child("-h"), "commandline -h should exit(0)");
+    TEST_ASSERT_EQ(0, run_child("-v"), "commandline -v should exit(0)");
+}
+REGISTER_TEST(test_gparser_round9_commandline_help_and_version_exit_paths);
