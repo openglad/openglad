@@ -506,3 +506,51 @@ void test_smooth_round8_dark_grass_and_wall_branch_clusters()
     }
 }
 REGISTER_TEST(test_smooth_round8_dark_grass_and_wall_branch_clusters);
+
+void test_smooth_round9_dark_grass_single_neighbor_branch_pairs()
+{
+    FixedRandom rng0(0);
+    GameContext c;
+    c.rng = &rng0;
+    GlobalContextGuard guard(&c);
+
+    smoother s;
+    const int cx = 2;
+    const int cy = 2;
+
+    auto run = [&](int mask, unsigned char right, unsigned char left, unsigned char up, unsigned char down) {
+        PixieData grid = make_grid(5, 5, PIX_GRASS1);
+        s.set_target(grid);
+        apply_cardinal_mask(grid, cx, cy, mask, PIX_GRASS_DARK_1, PIX_GRASS1);
+        at(grid, cx + 1, cy) = right;
+        at(grid, cx - 1, cy) = left;
+        at(grid, cx, cy - 1) = up;
+        at(grid, cx, cy + 1) = down;
+        (void)s.smooth(cx, cy);
+        return at(grid, cx, cy);
+    };
+
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_LL, (int)run(TO_DOWN, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1),
+                   "TO_DOWN should choose LL when right or up is grass");
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)run(TO_DOWN, PIX_H_WALL1, PIX_GRASS1, PIX_H_WALL1, PIX_GRASS_DARK_1),
+                   "TO_DOWN should choose B1 when right/up are not grass");
+
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)run(TO_RIGHT | TO_UP, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1),
+                   "TO_RIGHT|TO_UP should choose UR when left or down is grass");
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)run(TO_RIGHT | TO_UP, PIX_GRASS_DARK_1, PIX_H_WALL1, PIX_GRASS_DARK_1, PIX_H_WALL1),
+                   "TO_RIGHT|TO_UP should choose B1 when left/down are not grass");
+
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)run(TO_RIGHT, PIX_GRASS_DARK_1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1),
+                   "TO_RIGHT should choose UR when left is grass");
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)run(TO_RIGHT, PIX_GRASS_DARK_1, PIX_H_WALL1, PIX_GRASS1, PIX_GRASS1),
+                   "TO_RIGHT should choose B1 when left is not grass");
+
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_UR, (int)run(TO_UP, PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_GRASS1),
+                   "TO_UP should choose UR when down is grass");
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_B1, (int)run(TO_UP, PIX_GRASS1, PIX_GRASS1, PIX_GRASS_DARK_1, PIX_H_WALL1),
+                   "TO_UP should choose B1 when down is not grass");
+
+    TEST_ASSERT_EQ((int)PIX_GRASS_DARK_1, (int)run(0, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1, PIX_GRASS1),
+                   "no neighbors should use dark-grass default");
+}
+REGISTER_TEST(test_smooth_round9_dark_grass_single_neighbor_branch_pairs);
