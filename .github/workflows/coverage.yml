@@ -51,49 +51,9 @@ jobs:
           timeout 300 ./build/ci-coverage/og_unit_tests
           timeout 600 ./build/ci-coverage/og_data_tests || echo "og_data_tests timed out or failed (exit $?), continuing for partial coverage"
           timeout 600 ./build/ci-coverage/og_runtime_tests || echo "og_runtime_tests timed out or failed (exit $?), continuing for partial coverage"
-          if mapfile -t openglad_tests < <(./build/ci-coverage/openglad_test --list-tests); then
-            echo "Discovered ${#openglad_tests[@]} openglad_test cases"
-            openglad_failures=0
-            chunk_size=25
-            chunk_index=0
-            chunk_items=()
-
-            run_openglad_chunk() {
-              if [ "${#chunk_items[@]}" -eq 0 ]; then
-                return
-              fi
-              chunk_index=$((chunk_index + 1))
-              local joined_tests
-              joined_tests="$(IFS=,; echo "${chunk_items[*]}")"
-              echo "Running openglad_test chunk ${chunk_index} (${#chunk_items[@]} tests)"
-              if ! timeout 300 ./build/ci-coverage/openglad_test --test "$joined_tests"; then
-                echo "openglad_test chunk ${chunk_index} attempt 1 failed (exit $?), retrying once..."
-                if ! timeout 300 ./build/ci-coverage/openglad_test --test "$joined_tests"; then
-                  echo "openglad_test chunk ${chunk_index} attempt 2 timed out or failed (exit $?), continuing for partial coverage"
-                  openglad_failures=$((openglad_failures + 1))
-                fi
-              fi
-              chunk_items=()
-            }
-
-            for test_name in "${openglad_tests[@]}"; do
-              [ -z "$test_name" ] && continue
-              chunk_items+=("$test_name")
-              if [ "${#chunk_items[@]}" -ge "$chunk_size" ]; then
-                run_openglad_chunk
-              fi
-            done
-            run_openglad_chunk
-
-            if [ "$openglad_failures" -gt 0 ]; then
-              echo "openglad_test had $openglad_failures failing chunk(s); continuing for partial coverage"
-            fi
-          else
-            echo "Unable to list openglad_test cases; falling back to monolithic execution"
-            if ! timeout 900 ./build/ci-coverage/openglad_test; then
-              echo "openglad_test attempt 1 failed (exit $?), retrying once..."
-              timeout 900 ./build/ci-coverage/openglad_test || echo "openglad_test attempt 2 timed out or failed (exit $?), continuing for partial coverage"
-            fi
+          if ! timeout 900 ./build/ci-coverage/openglad_test; then
+            echo "openglad_test attempt 1 failed (exit $?), retrying once..."
+            timeout 900 ./build/ci-coverage/openglad_test || echo "openglad_test attempt 2 timed out or failed (exit $?), continuing for partial coverage"
           fi
 
       - name: Generate HTML coverage report
