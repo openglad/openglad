@@ -597,3 +597,22 @@ void test_effect_round10_hits_overlap_and_axis_reject_paths()
                    "hits should reject separated y axis");
 }
 REGISTER_TEST(test_effect_round10_hits_overlap_and_axis_reject_paths);
+
+std::int32_t compute_explosion_range(std::int32_t level, short skip_exit);
+
+void test_effect_round11_compute_explosion_range_clamps_and_hits_edge_touches()
+{
+    TEST_ASSERT_EQ(16, (int)compute_explosion_range(1, 0),
+                   "explosion range should clamp to minimum 16");
+    TEST_ASSERT_EQ(96, (int)compute_explosion_range(40, 0),
+                   "explosion range should clamp to maximum 96");
+    TEST_ASSERT_EQ(16, (int)compute_explosion_range(40, 1),
+                   "skip_exit branch should zero before min clamp, resulting in 16");
+
+    // Boundary-touching boxes are still collisions in hits().
+    TEST_ASSERT_EQ(1, (int)hits(10, 10, 10, 10, 20, 10, 5, 5),
+                   "touching on x edge should count as hit");
+    TEST_ASSERT_EQ(1, (int)hits(10, 10, 10, 10, 10, 20, 5, 5),
+                   "touching on y edge should count as hit");
+}
+REGISTER_TEST(test_effect_round11_compute_explosion_range_clamps_and_hits_edge_touches);

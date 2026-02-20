@@ -2805,3 +2805,101 @@ void test_family_round11_mage_and_druid_targeted_special_clusters()
     TEST_ASSERT(druid_fd->do_special(druid), "druid protection should succeed with nearby ally");
 }
 REGISTER_TEST(test_family_round11_mage_and_druid_targeted_special_clusters);
+
+void test_family_round12_cleric_druid_soldier_thief_guard_and_ai_edges()
+{
+    myscreen->level_data.delete_objects();
+    myscreen->level_data.create_new_grid();
+
+    const auto* cleric_fd = get_family_descriptor(FAMILY_CLERIC);
+    const auto* druid_fd = get_family_descriptor(FAMILY_DRUID);
+    const auto* soldier_fd = get_family_descriptor(FAMILY_SOLDIER);
+    const auto* thief_fd = get_family_descriptor(FAMILY_THIEF);
+    TEST_ASSERT(cleric_fd && cleric_fd->check_special_ai && cleric_fd->do_special, "cleric callbacks exist");
+    TEST_ASSERT(druid_fd && druid_fd->do_special, "druid callback exists");
+    TEST_ASSERT(soldier_fd && soldier_fd->do_special && soldier_fd->check_special_ai, "soldier callbacks exist");
+    TEST_ASSERT(thief_fd && thief_fd->do_special && thief_fd->check_special_ai, "thief callbacks exist");
+    if (!(cleric_fd && druid_fd && soldier_fd && thief_fd &&
+          cleric_fd->check_special_ai && cleric_fd->do_special &&
+          druid_fd->do_special && soldier_fd->do_special && soldier_fd->check_special_ai &&
+          thief_fd->do_special && thief_fd->check_special_ai))
+        return;
+
+    // Cleric AI special-1 low-friend/low-magic false and non-special-1 true.
+    walker* cleric = add_living_to_level(FAMILY_CLERIC, 0, 100, 100);
+    TEST_ASSERT(cleric != nullptr, "cleric created");
+    if (!cleric)
+        return;
+    cleric->current_special = 1;
+    cleric->stats()->magicpoints = 0.0f;
+    TEST_ASSERT(!cleric_fd->check_special_ai(static_cast<living*>(cleric)),
+                "cleric check_special_ai should fail for heal with no targets and low mp");
+    cleric->current_special = 3;
+    TEST_ASSERT(cleric_fd->check_special_ai(static_cast<living*>(cleric)),
+                "cleric check_special_ai should default true for non-heal specials");
+
+    // Cleric turn-undead guard branch: busy rejects immediately.
+    cleric->current_special = 2;
+    cleric->shifter_down = 1;
+    cleric->busy = 1;
+    TEST_ASSERT(!cleric_fd->do_special(cleric), "cleric turn-undead should fail while busy");
+    cleric->busy = 0;
+
+    // Druid busy and fire-fail guards.
+    walker* druid = add_living_to_level(FAMILY_DRUID, 0, 120, 100);
+    TEST_ASSERT(druid != nullptr, "druid created");
+    if (!druid)
+        return;
+    druid->current_special = 1;
+    druid->busy = 1;
+    TEST_ASSERT(!druid_fd->do_special(druid), "druid tree special should fail when busy");
+    druid->busy = 0;
+    druid->current_special = 2;
+    druid->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    TEST_ASSERT(!druid_fd->do_special(druid), "druid faerie summon should fail when fire() fails");
+    druid->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+    druid->current_special = 4;
+    // No nearby allies except self => howmany <= 1 => false.
+    TEST_ASSERT(!druid_fd->do_special(druid), "druid protection should fail with no nearby allies");
+
+    // Soldier special guards.
+    walker* soldier = add_living_to_level(FAMILY_SOLDIER, 0, 140, 100);
+    TEST_ASSERT(soldier != nullptr, "soldier created");
+    if (!soldier)
+        return;
+    soldier->current_special = 1;
+    soldier->lastx = 1;
+    soldier->lasty = 0;
+    walker* block_front = add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos + GRID_SIZE), soldier->ypos);
+    TEST_ASSERT(block_front != nullptr, "soldier blocker created");
+    TEST_ASSERT(!soldier_fd->do_special(soldier), "soldier charge should fail when forward is blocked");
+    soldier->current_special = 3;
+    soldier->busy = 1;
+    TEST_ASSERT(!soldier_fd->do_special(soldier), "soldier whirlwind should fail when busy");
+    soldier->current_special = 4;
+    TEST_ASSERT(!soldier_fd->do_special(soldier), "soldier disarm should fail when busy");
+    soldier->busy = 0;
+    soldier->foe = add_living_to_level(FAMILY_ORC, 1, static_cast<short>(soldier->xpos + 10), soldier->ypos);
+    TEST_ASSERT(!soldier_fd->check_special_ai(static_cast<living*>(soldier)),
+                "soldier special ai should fail for too-close foe distance");
+
+    // Thief AI/special guards.
+    walker* thief = add_living_to_level(FAMILY_THIEF, 0, 180, 100);
+    walker* thief_foe = add_living_to_level(FAMILY_ORC, 1, 240, 100);
+    TEST_ASSERT(thief && thief_foe, "thief fixtures created");
+    if (!(thief && thief_foe))
+        return;
+    thief->current_special = 1;
+    thief->foe = thief_foe;
+    TEST_ASSERT(!thief_fd->check_special_ai(static_cast<living*>(thief)),
+                "thief bomb ai should reject medium-range foe distances");
+    thief->current_special = 3;
+    thief->shifter_down = 0;
+    thief->busy = 1;
+    TEST_ASSERT(!thief_fd->do_special(thief), "thief taunt should fail when busy");
+    thief->shifter_down = 1;
+    TEST_ASSERT(!thief_fd->do_special(thief), "thief charm should fail when busy");
+    thief->current_special = 4;
+    TEST_ASSERT(!thief_fd->do_special(thief), "thief poison cloud should fail when busy");
+}
+REGISTER_TEST(test_family_round12_cleric_druid_soldier_thief_guard_and_ai_edges);
