@@ -52,6 +52,11 @@ ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std
     base = fs::weakly_canonical(base, ec);
     if (ec)
         base = fs::path(indirectory);
+    fs::path out_path = fs::path(outfile);
+    std::error_code out_ec;
+    out_path = fs::weakly_canonical(out_path, out_ec);
+    if (out_ec)
+        out_path = fs::path(outfile);
 
     int err = 0;
     zip* archive = zip_open(outfile.c_str(), ZIP_CREATE | ZIP_TRUNCATE, &err);
@@ -64,6 +69,9 @@ ArchiveIoError zip_contents_with_error(const std::string& indirectory, const std
         const fs::path src = base / rel;
         const std::string dest_name = rel.generic_string();
         if (dest_name.empty())
+            continue;
+        std::error_code same_ec;
+        if (fs::equivalent(src, out_path, same_ec))
             continue;
 
         if (fs::is_directory(src, ec))

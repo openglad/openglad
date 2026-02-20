@@ -52,6 +52,13 @@ void popup_dialog(const char* title, const char* message);
 #define SIZE_FAMILIES 21  // see also NUM_FAMILIES in graph.h
 //#define PIX(a,b) (SIZE_FAMILIES*a+b)  //moved to graph.h
 
+static inline Order sanitize_order(Order order)
+{
+    if (order > Order::Button1)
+        return Order::Living;
+    return order;
+}
+
 extern float derived_bonuses[NUM_FAMILIES][8];
 
 // These are for monsters and us
@@ -799,6 +806,7 @@ loader::~loader(void)
 
 void loader::set_derived_stats(walker* w, Order order, std::int32_t family)
 {
+    order = sanitize_order(order);
 	if(family < 0 || family >= NUM_FAMILIES)
 		family = 0;
 
@@ -813,6 +821,7 @@ std::unique_ptr<walker> loader::create_walker_owned(Order order,
                                                     std::int32_t family)
 {
 	std::unique_ptr<walker> ob;
+    order = sanitize_order(order);
 
 	if(family < 0 || family >= NUM_FAMILIES)
 	{
@@ -870,6 +879,7 @@ walker  *loader::set_walker(walker *ob,
                             std::int32_t family)
 {
 	short i;
+    order = sanitize_order(order);
 
 	if(family < 0 || family >= NUM_FAMILIES)
 		family = 0;
@@ -983,4 +993,3 @@ walker  *loader::set_walker(walker *ob,
 
 	return ob;
 }
-

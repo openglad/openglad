@@ -32,6 +32,8 @@ public:
         std::size_t avail = (pos_ < size_) ? size_ - pos_ : 0;
         if (total > avail) total = avail;
         std::size_t objects = total / size;
+        if (objects == 0 || buf == nullptr)
+            return 0;
         std::memcpy(buf, data_ + pos_, objects * size);
         pos_ += objects * size;
         return objects;
@@ -708,12 +710,13 @@ void test_level_data_load_version6plus_truncated_description_discard_path()
     append_i16(bytes, 100); // time limit
     append_i16(bytes, 0);   // no objects
     append_u8(bytes, 1);    // num lines
-    append_u8(bytes, 200);  // long line width, triggers truncation/discard loop
-    for (int i = 0; i < 120; i++)
+    append_u8(bytes, 120);  // long line width, triggers truncation/discard loop
+    for (int i = 0; i < 20; i++)
         append_u8(bytes, 'q'); // intentionally short to force discard read failure
 
     MemoryOgFile rw(bytes.data(), bytes.size());
-    TEST_ASSERT_EQ(0, (int)load_version_6(rw, &data, 9),
+    const short loaded = load_version_6(rw, &data, 9);
+    TEST_ASSERT_EQ(0, (int)loaded,
                    "v9 loader should fail when long description discard tail is truncated");
 }
 REGISTER_TEST(test_level_data_load_version6plus_truncated_description_discard_path);

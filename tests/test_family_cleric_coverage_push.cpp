@@ -19,6 +19,9 @@ OG_UNIT_TEST(test_family_cleric_descriptor_difficulty_and_customize_weapon)
     living self;
     living weapon;
     self.stats()->level = 3;
+    self.stats()->max_hitpoints = 100.0f;
+    self.stats()->max_magicpoints = 40.0f;
+    self.damage = 12.0f;
     weapon.lifetime = 10;
     desc.customize_weapon(&self, &weapon);
     OG_ASSERT(weapon.ani_type == ANI_GLOWGROW);

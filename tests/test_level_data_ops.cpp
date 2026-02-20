@@ -31,6 +31,7 @@ public:
         std::size_t avail = (pos_ < size_) ? size_ - pos_ : 0;
         if (total > avail) total = avail;
         std::size_t objects = total / size;
+        if (objects == 0 || buf == nullptr) return 0;
         std::memcpy(buf, data_ + pos_, objects * size);
         pos_ += objects * size;
         return objects;

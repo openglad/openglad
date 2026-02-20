@@ -44,7 +44,14 @@ bool walker::special()
 		return 0;
 	}
 
-	if (stats_->magicpoints < stats_->special_cost[static_cast<int>(current_special)])
+	int special_index = static_cast<int>(current_special);
+	if (special_index < 0 || special_index >= NUM_SPECIALS)
+	{
+		current_special = 1;
+		special_index = 1;
+	}
+
+	if (stats_->magicpoints < stats_->special_cost[special_index])
 		return 0;
 
 	if (query_order() != Order::Living)
@@ -55,7 +62,7 @@ bool walker::special()
 	if (fd && fd->do_special)
 	{
 		if (fd->do_special(this))
-			stats_->magicpoints -= stats_->special_cost[static_cast<int>(current_special)];
+			stats_->magicpoints -= stats_->special_cost[special_index];
 	}
 	return 0;
 }

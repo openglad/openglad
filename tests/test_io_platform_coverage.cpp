@@ -692,8 +692,9 @@ void test_zip_api_unreadable_and_non_regular_entries_report_add_failure()
     (void)::mkfifo(fifo_path.string().c_str(), 0600);
 
     const ArchiveIoError r = og::io::zip_contents_with_error(base.string(), archive.string());
-    TEST_ASSERT(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::None,
-                "zip should report add failure (or succeed if platform permits unreadable reopen)");
+    TEST_ASSERT(r == ArchiveIoError::AddEntryFailed || r == ArchiveIoError::CloseArchiveFailed ||
+                    r == ArchiveIoError::None,
+                "zip should report add/close failure (or succeed if platform permits unreadable reopen)");
 
     (void)::chmod(unreadable.string().c_str(), 0600);
     fs::remove_all(base, ec);

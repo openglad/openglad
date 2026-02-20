@@ -748,7 +748,20 @@ bool walker::animate()
 {
 	if (!ani)
 		return 0;
-	const int ani_index = curdir + ani_type * NUM_FACINGS;
+
+	// Guard against stale/invalid signed-char indices under sanitizer builds.
+	int dir_index = static_cast<int>(static_cast<unsigned char>(curdir));
+	if (dir_index < 0 || dir_index >= NUM_FACINGS)
+		dir_index = 0;
+	int type_index = static_cast<int>(ani_type);
+	if (type_index < ANI_WALK || type_index > ANI_SLIME_SPLIT)
+	{
+		type_index = ANI_WALK;
+		ani_type = static_cast<char>(ANI_WALK);
+		cycle = 0;
+	}
+
+	const int ani_index = dir_index + type_index * NUM_FACINGS;
 	const signed char* seq = ani[ani_index];
 	if (!seq)
 	{

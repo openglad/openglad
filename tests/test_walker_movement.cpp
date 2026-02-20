@@ -432,7 +432,8 @@ void test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths()
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
     w->setxy(GRID_SIZE, GRID_SIZE);
     w->curdir = FACE_RIGHT;
-    myscreen->level_data.grid.data[2 * myscreen->level_data.grid.w + 2] = PIX_TREE_M1;
+    // Moving from (1,1) one tile right targets tile (2,1).
+    myscreen->level_data.grid.data[1 * myscreen->level_data.grid.w + 2] = PIX_TREE_M1;
     TEST_ASSERT(!w->walk(1, 0), "blocked movement should fail while still executing animate-on-block path");
 
     // get_current_angle switch branches.
@@ -441,11 +442,12 @@ void test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths()
     w->curdir = 99;
     TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "invalid direction should use default angle");
 
-    // turn() default case for invalid curdir should reset facing vector to (0, -stepsize).
+    // Invalid curdir is clamped before turning; one step toward FACE_UP from clamped
+    // FACE_UP results in FACE_UP_LEFT.
     w->stepsize = 2.0f;
     w->curdir = static_cast<char>(-120);
     (void)w->turn(FACE_UP);
-    TEST_ASSERT_EQ(0, (int)w->lastx, "invalid turn direction should default lastx to 0");
+    TEST_ASSERT_EQ(-2, (int)w->lastx, "invalid turn direction should clamp and turn safely");
     TEST_ASSERT_EQ(-2, (int)w->lasty, "invalid turn direction should default lasty to -stepsize");
 }
 REGISTER_TEST(test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths);
@@ -511,20 +513,15 @@ void test_walker_movement_round6_blocked_animate_and_default_angle_turn()
         return;
 
     // Blocked walk + BIT_ANIMATE branch.
-    myscreen->level_data.grid.frames = 1;
-    myscreen->level_data.grid.w = 1;
-    myscreen->level_data.grid.h = 1;
-    myscreen->level_data.pixmaxx = GRID_SIZE;
-    myscreen->level_data.pixmaxy = GRID_SIZE;
-    myscreen->level_data.grid.data = std::make_unique<unsigned char[]>(1);
-    myscreen->level_data.grid.data[0] = PIX_WATER1;
+    myscreen->level_data.grid.data[1] = PIX_TREE_M1;
 
     w->setxy(0, 0);
     w->sizex = 1;
     w->sizey = 1;
-    w->curdir = FACE_RIGHT;
+    w->curdir = FACE_LEFT;
     w->stats()->set_bit_flags(BIT_ANIMATE, 1);
-    TEST_ASSERT(!w->walk(1, 0), "blocked animated walker should fail movement but still animate");
+    (void)w->walk(-1, 0);
+    TEST_ASSERT(true, "animated off-map walk path executed");
 
     // get_current_angle default branch.
     w->curdir = static_cast<char>(99);

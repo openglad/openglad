@@ -225,8 +225,19 @@ SimInputResult sim_process_player_input(
     {
         debounce.changedspec = 1;
         control->current_special = control->current_special + 1;
-        if (control->current_special > (NUM_SPECIALS - 1)
-            || (special_names[static_cast<int>(control->query_family())][static_cast<int>(control->current_special)] == "NONE")
+
+        const int special_index = static_cast<int>(control->current_special);
+        const int family_index = static_cast<int>(static_cast<unsigned char>(control->query_family()));
+        bool special_missing = true;
+        if (special_names != nullptr &&
+            family_index >= 0 && family_index < NUM_FAMILIES &&
+            special_index >= 0 && special_index < NUM_SPECIALS)
+        {
+            special_missing = (special_names[family_index][special_index] == "NONE");
+        }
+
+        if (special_index < 0 || special_index > (NUM_SPECIALS - 1)
+            || special_missing
             || (((control->current_special - 1) * 3 + 1) > control->stats()->level))
             control->current_special = 1;
     }

@@ -151,7 +151,9 @@ static bool soldier_check_special_ai(living* self)
 
 static bool soldier_on_fire_weapon(walker* self, walker* weapon)
 {
-    living* lv = static_cast<living*>(self);
+    living* lv = dynamic_cast<living*>(self);
+    if (lv == nullptr)
+        return true;
     if (lv->weapons_left <= 0)
     {
         self->stats()->magicpoints += self->stats()->weapon_cost;
@@ -164,8 +166,10 @@ static bool soldier_on_fire_weapon(walker* self, walker* weapon)
 
 static void soldier_on_create(walker* self)
 {
-    static_cast<living*>(self)->weapons_left =
-        static_cast<short>((self->stats()->level + 1) / 2);
+    if (living* lv = dynamic_cast<living*>(self))
+    {
+        lv->weapons_left = static_cast<short>((self->stats()->level + 1) / 2);
+    }
 }
 
 static void soldier_set_difficulty(living* self, std::uint32_t level)

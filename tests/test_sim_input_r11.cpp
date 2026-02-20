@@ -3,6 +3,7 @@
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
 #include <openglad/entities/walker.h>
+#include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/input/input_state.h>
@@ -37,7 +38,7 @@ struct SimInputFixture {
 
 walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -1)
 {
-    auto w = std::make_unique<walker>();
+    auto w = std::make_unique<living>();
     w->set_order_family(Order::Living, FAMILY_SOLDIER);
     fx.level.wire_entity(w.get());
     w->setxy(80, 80);
@@ -56,11 +57,12 @@ walker* add_living(SimInputFixture& fx, unsigned char team, signed char user = -
 
 void assign_basic_ani(walker* w)
 {
-    static std::array<std::array<signed char, 3>, 8> seqs{};
-    static std::array<signed char*, 8> rows{};
-    for (int i = 0; i < 8; ++i)
+    constexpr int kAniRows = NUM_FACINGS * (ANI_SLIME_SPLIT + 1);
+    static std::array<std::array<signed char, 3>, kAniRows> seqs{};
+    static std::array<signed char*, kAniRows> rows{};
+    for (int i = 0; i < kAniRows; ++i)
     {
-        seqs[i][0] = static_cast<signed char>(i);
+        seqs[i][0] = static_cast<signed char>(i % NUM_FACINGS);
         seqs[i][1] = -1;
         seqs[i][2] = -1;
         rows[i] = seqs[i].data();
