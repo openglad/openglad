@@ -29,7 +29,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .nightly-last-sha
-          key: nightly-last-sha
+          key: nightly-last-sha-${{ github.sha }}
           restore-keys: nightly-last-sha-
 
       - name: Compare commits
@@ -114,20 +114,20 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           cmake --preset dev-release
-          cmake --build build --target openglad openscen -j"$(nproc)"
+          cmake --build build/dev-release --target openglad openscen -j"$(nproc)"
 
       - name: Configure & Build (macOS)
         if: matrix.platform == 'macos'
         run: |
           cmake --preset dev-release
-          cmake --build build --target openglad openscen -j"$(sysctl -n hw.logicalcpu)"
+          cmake --build build/dev-release --target openglad openscen -j"$(sysctl -n hw.logicalcpu)"
 
       - name: Configure & Build (Windows)
         if: matrix.platform == 'windows'
         shell: msys2 {0}
         run: |
           cmake --preset dev-release
-          cmake --build build --target openglad openscen -j"$(nproc)"
+          cmake --build build/dev-release --target openglad openscen -j"$(nproc)"
 
       # ── Package ──
 
@@ -135,7 +135,7 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           mkdir -p staging/openglad
-          cp build/openglad build/openscen staging/openglad/
+          cp build/dev-release/openglad build/dev-release/openscen staging/openglad/
           cp -r pix cfg sound builtin extra_campaigns staging/openglad/
           cp LICENSE README.md staging/openglad/
           tar czf "${{ matrix.artifact_name }}.tar.gz" -C staging openglad
@@ -144,7 +144,7 @@ jobs:
         if: matrix.platform == 'macos'
         run: |
           mkdir -p staging/openglad
-          cp build/openglad build/openscen staging/openglad/
+          cp build/dev-release/openglad build/dev-release/openscen staging/openglad/
           cp -r pix cfg sound builtin extra_campaigns staging/openglad/
           cp LICENSE README.md staging/openglad/
           cd staging && zip -r "../${{ matrix.artifact_name }}.zip" openglad
@@ -154,7 +154,7 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p staging/openglad
-          cp build/openglad.exe build/openscen.exe staging/openglad/
+          cp build/dev-release/openglad.exe build/dev-release/openscen.exe staging/openglad/
           # Bundle MinGW runtime DLLs and common SDL2_mixer codec DLLs
           MINGW_BIN="/mingw64/bin"
           for dll in SDL2.dll SDL2_mixer.dll libogg-0.dll libvorbis-0.dll libvorbisfile-3.dll libFLAC-12.dll libmpg123-0.dll libopus-0.dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
