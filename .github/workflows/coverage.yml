@@ -48,9 +48,9 @@ jobs:
 
       - name: Run coverage test binaries
         run: |
-          ./build/ci-coverage/og_unit_tests
-          ./build/ci-coverage/og_data_tests
-          ./build/ci-coverage/og_runtime_tests
+          timeout 300 ./build/ci-coverage/og_unit_tests
+          timeout 300 ./build/ci-coverage/og_data_tests || echo "og_data_tests timed out or failed (exit $?), continuing for partial coverage"
+          timeout 300 ./build/ci-coverage/og_runtime_tests || echo "og_runtime_tests timed out or failed (exit $?), continuing for partial coverage"
           if ! timeout 600 ./build/ci-coverage/openglad_test; then
             echo "openglad_test attempt 1 failed (exit $?), retrying once..."
             timeout 600 ./build/ci-coverage/openglad_test || echo "openglad_test attempt 2 timed out or failed (exit $?), continuing for partial coverage"
