@@ -5,6 +5,8 @@
 #include <openglad/entities/guy.h>
 #include <openglad/core/stats.h>
 #include <openglad/io/og_file.h>
+#include <openglad/io/zip_api.h>
+#include <openglad/platform/io_common.h>
 #include <openglad/sim/sim_event_log.h>
 #include <openglad/sim/irandom.h>
 #if __has_include(<catch2/catch_test_macros.hpp>)
@@ -274,4 +276,23 @@ OG_UNIT_TEST(test_level_data_r12_find_helpers_null_and_ranges)
     OG_ASSERT(!foe_weapons.empty());
     auto friends = fx.level.find_friends_in_range(fx.level.oblist, 200, &howmany, self);
     OG_ASSERT(!friends.empty());
+}
+
+OG_UNIT_TEST(test_level_data_r12_remove_ob_paths_and_zip_api_paths)
+{
+    LevelR12Fixture fx;
+    walker* living = add_to(fx, fx.level.oblist, Order::Living, FAMILY_SOLDIER, 0, 40, 40);
+    walker* weap = add_to(fx, fx.level.weaplist, Order::Weapon, FAMILY_ARROW, 0, 44, 40);
+    walker* fxob = add_to(fx, fx.level.fxlist, Order::FX, FAMILY_EXPLOSION, 0, 48, 40);
+    OG_ASSERT(living && weap && fxob);
+
+    const std::int32_t before = fx.level.numobs;
+    OG_ASSERT(fx.level.remove_ob(weap) == 1);
+    OG_ASSERT(fx.level.remove_ob(fxob) == 1);
+    OG_ASSERT(fx.level.remove_ob(living) == 1);
+    OG_ASSERT(fx.level.numobs == before - 1);
+    OG_ASSERT(fx.level.remove_ob(nullptr) == 0);
+
+    OG_ASSERT(og::io::unzip_into_with_error("temp/r12_zip/not_there.zip", "temp/r12_zip/out2") == ArchiveIoError::OpenArchiveFailed);
+    (void)og::io::zip_contents_with_error("temp/r12_zip/in", "temp/r12_zip/missing_parent/archive.zip");
 }

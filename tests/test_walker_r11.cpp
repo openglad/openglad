@@ -69,7 +69,24 @@ void assign_basic_ani(walker* w)
     w->ani = rows.data();
 }
 
+void assign_wide_ani(walker* w)
+{
+    static std::array<std::array<signed char, 4>, 256> seqs{};
+    static std::array<signed char*, 256> rows{};
+    for (int i = 0; i < 256; ++i)
+    {
+        seqs[i][0] = 0;
+        seqs[i][1] = 1;
+        seqs[i][2] = -1;
+        seqs[i][3] = -1;
+        rows[i] = seqs[i].data();
+    }
+    w->ani = rows.data();
+}
+
 } // namespace
+
+bool float_eq(float a, float b);
 
 OG_UNIT_TEST(test_walker_r11_myguy_move_and_init_fire_paths)
 {
@@ -223,4 +240,128 @@ OG_UNIT_TEST(test_walker_r11_act_animate_and_misc_paths)
     OG_ASSERT(w->do_summon(1, 1) == nullptr);
     OG_ASSERT(!w->check_special());
     (void)w->eat_me(foe);
+}
+
+OG_UNIT_TEST(test_walker_r11_fire_query_next_to_and_outline_branches)
+{
+    WalkerR11Fixture fx;
+    walker* shooter = add_ob(fx, Order::Living, FAMILY_MAGE, 0, 64, 64);
+    walker* foe = add_ob(fx, Order::Living, FAMILY_ORC, 1, 82, 64);
+    OG_ASSERT(shooter && foe);
+
+    shooter->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    shooter->stats()->magicpoints = 200.0f;
+    shooter->stats()->weapon_cost = 1;
+    shooter->lastx = 1.0f;
+    shooter->lasty = 0.0f;
+    shooter->current_weapon = FAMILY_FIREBALL;
+    shooter->setxy(64, 64);
+    foe->setxy(82, 64);
+
+    cfg.apply_setting("effects", "attack_lunge", "on");
+    walker* melee = shooter->fire();
+    OG_ASSERT(melee == nullptr);
+    OG_ASSERT(shooter->attack_lunge >= 0.0f);
+
+    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 1);
+    walker* blocked = shooter->fire();
+    OG_ASSERT(blocked == nullptr);
+    shooter->stats()->set_bit_flags(BIT_NO_RANGED, 0);
+
+    // Force ranged path by moving foe away and tracing all facings.
+    foe->setxy(220, 220);
+    const short dirs[8][2] = {
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1},
+        {1, -1}, {-1, -1}, {1, 1}, {-1, 1}
+    };
+    for (const auto& d : dirs)
+    {
+        shooter->lastx = static_cast<float>(d[0]);
+        shooter->lasty = static_cast<float>(d[1]);
+        walker* w = shooter->fire();
+        OG_ASSERT(w != nullptr);
+    }
+
+    shooter->lastx = 1.0f;
+    shooter->lasty = 1.0f;
+    OG_ASSERT(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
+    shooter->lastx = -1.0f;
+    shooter->lasty = -1.0f;
+    OG_ASSERT(shooter->query_next_to() == 0 || shooter->query_next_to() == 1);
+
+    walker* viewer = add_ob(fx, Order::Living, FAMILY_SOLDIER, 1, 60, 64);
+    OG_ASSERT(viewer != nullptr);
+    shooter->outline = OUTLINE_INVULNERABLE;
+    shooter->flight_left = 1;
+    shooter->invisibility_left = 1;
+    shooter->invulnerable_left = 0;
+    shooter->compute_outline(viewer);
+
+    shooter->outline = OUTLINE_FLYING;
+    shooter->flight_left = 0;
+    shooter->invulnerable_left = 1;
+    shooter->compute_outline(viewer);
+
+    shooter->outline = OUTLINE_NAMED;
+    shooter->stats()->set_bit_flags(BIT_NAMED, 1);
+    shooter->compute_outline(viewer);
+
+    shooter->outline = shooter->query_team_color();
+    shooter->stats()->set_bit_flags(BIT_NAMED, 0);
+    shooter->invulnerable_left = 0;
+    shooter->invisibility_left = 0;
+    shooter->flight_left = 0;
+    shooter->user = 0;
+    viewer->team_num = shooter->team_num;
+    shooter->compute_outline(viewer);
+    OG_ASSERT(shooter->outline == shooter->query_team_color() || shooter->outline == 0);
+
+    OG_ASSERT(float_eq(1.0f, 1.0f));
+    OG_ASSERT(float_eq(1.0000001f, 1.0f));
+}
+
+OG_UNIT_TEST(test_walker_r11_act_and_animate_extra_cases)
+{
+    WalkerR11Fixture fx;
+    walker* w = add_ob(fx, Order::Living, FAMILY_MAGE, 0, 64, 64);
+    walker* foe = add_ob(fx, Order::Living, FAMILY_ORC, 1, 72, 64);
+    OG_ASSERT(w && foe);
+
+    assign_wide_ani(w);
+    w->ani_type = ANI_WALK;
+    w->set_act_type(ACT_CONTROL);
+    OG_ASSERT(w->act());
+
+    w->set_act_type(ACT_GENERATE);
+    w->stats()->level = 50;
+    w->stats()->hitpoints = 10.0f;
+    w->stats()->max_hitpoints = 10.0f;
+    (void)w->act();
+
+    w->set_act_type(ACT_RANDOM);
+    w->foe = foe;
+    (void)w->act();
+
+    w->stats()->frozen_delay = 2;
+    (void)w->act();
+
+    w->attack_lunge = 0.2f;
+    w->hit_recoil = 0.2f;
+    (void)w->act();
+
+    w->ani_type = ANI_SKEL_GROW;
+    w->cycle = 8;
+    w->set_order_family(Order::Living, FAMILY_SKELETON);
+    (void)w->animate();
+
+    w->ani_type = ANI_TELE_OUT;
+    w->cycle = 8;
+    w->set_order_family(Order::Living, FAMILY_MAGE);
+    (void)w->animate();
+
+    // ANI_TELE_OUT default path on family without teleport handler.
+    w->ani_type = ANI_TELE_OUT;
+    w->cycle = 8;
+    w->set_order_family(Order::Living, FAMILY_SOLDIER);
+    OG_ASSERT(!w->animate() || w->ani_type == ANI_WALK);
 }

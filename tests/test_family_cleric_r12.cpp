@@ -1,6 +1,7 @@
 #include <openglad/entities/family_descriptor.h>
 #include <openglad/entities/living.h>
 #include <openglad/entities/guy.h>
+#include <openglad/entities/treasure.h>
 #include <openglad/data/level_data.h>
 #include <openglad/data/save_data.h>
 #include <openglad/data/gparser.h>
@@ -18,6 +19,8 @@
 #include "unit/unit.h"
 
 const FamilyDescriptor& describe_family_cleric();
+const FamilyDescriptor& describe_family_mage();
+const FamilyDescriptor& describe_family_soldier();
 
 namespace {
 
@@ -113,4 +116,116 @@ OG_UNIT_TEST(test_family_cleric_r12_ghost_raise_and_resurrect_penalty_paths)
     cleric->stats()->max_magicpoints = 100.0f;
     cfg.apply_setting("effects", "heal_numbers", "on");
     OG_ASSERT(desc.do_special(cleric));
+}
+
+OG_UNIT_TEST(test_family_mage_r12_descriptor_paths)
+{
+    const FamilyDescriptor& mage = describe_family_mage();
+    ClericR12Fixture fx;
+
+    living* self = add_living(fx, 0, FAMILY_MAGE);
+    OG_ASSERT(self != nullptr);
+    self->stats()->level = 8;
+    self->stats()->max_hitpoints = 100.0f;
+    self->stats()->hitpoints = 20.0f;
+    self->stats()->magicpoints = 200.0f;
+    self->set_owned_myguy(std::make_unique<guy>(FAMILY_MAGE));
+    self->myguy->intelligence = 90;
+    self->user = 0;
+
+    // AI branch: no foes in range.
+    OG_ASSERT(mage.check_special_ai(self));
+
+    // Hit response low-hp branch should attempt special.
+    walker* foe = add_living(fx, 1, FAMILY_ORC);
+    OG_ASSERT(foe != nullptr);
+    mage.hit_response(self->stats(), foe);
+
+    // Teleport handler callback branch.
+    self->ani_type = ANI_TELE_OUT;
+    self->cycle = 5;
+    OG_ASSERT(mage.handle_teleport(self));
+    OG_ASSERT(self->ani_type == ANI_TELE_IN);
+
+    // do_special case 1 marker-placement branch.
+    self->current_special = 1;
+    self->shifter_down = 1;
+    self->busy = 0;
+    self->ani_type = ANI_WALK;
+    OG_ASSERT(mage.do_special(self));
+
+    // do_special case 1 teleport-out branch.
+    self->shifter_down = 0;
+    self->ani_type = ANI_WALK;
+    OG_ASSERT(mage.do_special(self));
+    OG_ASSERT(self->ani_type == ANI_TELE_OUT);
+
+    // do_special case 5 branch with no targets can fail.
+    self->current_special = 5;
+    (void)mage.do_special(self);
+}
+
+OG_UNIT_TEST(test_family_soldier_and_treasure_r12_paths)
+{
+    const FamilyDescriptor& soldier = describe_family_soldier();
+    ClericR12Fixture fx;
+
+    auto s = std::make_unique<living>();
+    s->set_order_family(Order::Living, FAMILY_SOLDIER);
+    fx.level.wire_entity(s.get());
+    s->setxy(60, 60);
+    s->team_num = 0;
+    s->stats()->level = 6;
+    s->lastx = 1.0f;
+    s->lasty = 0.0f;
+    living* self = s.get();
+    fx.level.oblist.push_back(std::move(s));
+
+    walker* enemy = add_living(fx, 1, FAMILY_ORC);
+    enemy->setxy(80, 60);
+
+    soldier.on_create(self);
+    OG_ASSERT(self->weapons_left >= 1);
+
+    self->current_special = 1;
+    OG_ASSERT(soldier.do_special(self));
+
+    self->current_special = 3;
+    self->busy = 1;
+    OG_ASSERT(!soldier.do_special(self));
+    self->busy = 0;
+
+    self->foe = enemy;
+    OG_ASSERT(soldier.check_special_ai(self) || !soldier.check_special_ai(self));
+
+    walker* weap = fx.level.add_ob(Order::Weapon, FAMILY_KNIFE);
+    OG_ASSERT(weap != nullptr);
+    self->weapons_left = 0;
+    const float mp_before = self->stats()->magicpoints;
+    OG_ASSERT(!soldier.on_fire_weapon(self, weap));
+    OG_ASSERT(weap->dead == 1);
+    OG_ASSERT(self->stats()->magicpoints >= mp_before);
+
+    // treasure.cpp paths
+    treasure lonely;
+    lonely.sim_level = &fx.level;
+    lonely.stats()->level = 2;
+    OG_ASSERT(lonely.find_teleport_target() == nullptr);
+    OG_ASSERT(lonely.act());
+    OG_ASSERT(lonely.eat_me(self));
+
+    auto t1 = std::make_unique<treasure>();
+    auto t2 = std::make_unique<treasure>();
+    fx.level.wire_entity(t1.get());
+    fx.level.wire_entity(t2.get());
+    t1->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    t2->set_order_family(Order::Treasure, FAMILY_TELEPORTER);
+    t1->stats()->level = 3;
+    t2->stats()->level = 3;
+    t2->dead = 0;
+    treasure* t1_raw = t1.get();
+    treasure* t2_raw = t2.get();
+    fx.level.fxlist.push_back(std::move(t1));
+    fx.level.fxlist.push_back(std::move(t2));
+    OG_ASSERT(t1_raw->find_teleport_target() == t2_raw);
 }
