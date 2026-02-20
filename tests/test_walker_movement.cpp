@@ -395,6 +395,61 @@ void test_walker_animate_all_families()
 }
 REGISTER_TEST(test_walker_animate_all_families);
 
+void test_walker_movement_round9_user_cardinal_slide_break_and_offmap_guards()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // User + cardinal blocked move: dx/dy stays 0 in slide switch and returns false.
+    w->user = 0;
+    w->stepsize = 1.0f;
+    w->setxy(0, 16);
+    w->curdir = FACE_LEFT;
+    TEST_ASSERT(!w->walkstep(-1, 0), "blocked cardinal user slide should fail");
+
+    // walk(0,0) early-return path.
+    TEST_ASSERT(w->walk(0, 0), "walk(0,0) should return success");
+
+    // Off-map guard in walk().
+    w->setxy(0, 0);
+    w->curdir = FACE_LEFT;
+    TEST_ASSERT(!w->walk(-1, 0), "walk should fail when target is off map");
+}
+REGISTER_TEST(test_walker_movement_round9_user_cardinal_slide_break_and_offmap_guards);
+
+void test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths()
+{
+    myscreen->level_data.create_new_grid();
+    walker* w = make_guy(FAMILY_SOLDIER, 0);
+    TEST_ASSERT(w != nullptr, "walker created");
+    if (!w)
+        return;
+
+    // Force an in-bounds blocked move and keep animation active.
+    w->stats()->set_bit_flags(BIT_ANIMATE, 1);
+    w->setxy(GRID_SIZE, GRID_SIZE);
+    w->curdir = FACE_RIGHT;
+    myscreen->level_data.grid.data[2 * myscreen->level_data.grid.w + 2] = PIX_TREE_M1;
+    TEST_ASSERT(!w->walk(1, 0), "blocked movement should fail while still executing animate-on-block path");
+
+    // get_current_angle switch branches.
+    w->curdir = FACE_UP;
+    TEST_ASSERT(w->get_current_angle() < 0.0f, "FACE_UP angle should be negative");
+    w->curdir = 99;
+    TEST_ASSERT_EQ(0, (int)w->get_current_angle(), "invalid direction should use default angle");
+
+    // turn() default case for invalid curdir should reset facing vector to (0, -stepsize).
+    w->stepsize = 2.0f;
+    w->curdir = static_cast<char>(-120);
+    (void)w->turn(FACE_UP);
+    TEST_ASSERT_EQ(0, (int)w->lastx, "invalid turn direction should default lastx to 0");
+    TEST_ASSERT_EQ(-2, (int)w->lasty, "invalid turn direction should default lasty to -stepsize");
+}
+REGISTER_TEST(test_walker_movement_round9_blocked_animate_angle_and_turn_default_paths);
+
 // ---------------------------------------------------------------------------
 // walker::create_weapon
 // ---------------------------------------------------------------------------
