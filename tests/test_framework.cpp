@@ -20,6 +20,7 @@ TestEntry g_test_registry[MAX_TESTS];
 int g_test_registry_count = 0;
 
 const char* g_test_filter = nullptr;
+const char* g_test_exact = nullptr;
 
 static bool test_matches_filter(const char* test_name, const char* filter)
 {
@@ -67,11 +68,61 @@ static bool test_matches_filter(const char* test_name, const char* filter)
     return false;
 }
 
+static bool test_matches_exact_selector(const char* test_name, const char* selector)
+{
+    if (!selector || !*selector || !test_name)
+        return false;
+
+    const char* p = selector;
+    while (*p)
+    {
+        while (*p == ',' || *p == ' ')
+            ++p;
+        if (!*p)
+            break;
+
+        const char* start = p;
+        while (*p && *p != ',')
+            ++p;
+        const size_t len = static_cast<size_t>(p - start);
+        if (len == 0)
+            continue;
+        if (strlen(test_name) == len && strncmp(test_name, start, len) == 0)
+            return true;
+    }
+    return false;
+}
+
+void list_all_tests(FILE* out)
+{
+    FILE* stream = out ? out : stdout;
+    for (int i = 0; i < g_test_registry_count; i++) {
+        if (g_test_registry[i].name)
+            fprintf(stream, "%s\n", g_test_registry[i].name);
+    }
+}
+
+static bool test_is_selected(const char* test_name)
+{
+    if (!test_name)
+        return false;
+    if (g_test_exact && *g_test_exact)
+        return test_matches_exact_selector(test_name, g_test_exact);
+    return test_matches_filter(test_name, g_test_filter);
+}
+
 void run_all_tests() {
     int total_to_run = 0;
-    if (g_test_filter) {
+    if (g_test_exact && *g_test_exact) {
         for (int i = 0; i < g_test_registry_count; i++) {
-            if (test_matches_filter(g_test_registry[i].name, g_test_filter))
+            if (test_is_selected(g_test_registry[i].name))
+                total_to_run++;
+        }
+        fprintf(stderr, "\n=== Running %d/%d tests (exact: \"%s\") ===\n\n",
+                total_to_run, g_test_registry_count, g_test_exact);
+    } else if (g_test_filter) {
+        for (int i = 0; i < g_test_registry_count; i++) {
+            if (test_is_selected(g_test_registry[i].name))
                 total_to_run++;
         }
         fprintf(stderr, "\n=== Running %d/%d tests (filter: \"%s\") ===\n\n",
@@ -83,7 +134,7 @@ void run_all_tests() {
 
     int run_idx = 0;
     for (int i = 0; i < g_test_registry_count; i++) {
-        if (g_test_filter && !test_matches_filter(g_test_registry[i].name, g_test_filter))
+        if (!test_is_selected(g_test_registry[i].name))
             continue;
         run_idx++;
         fprintf(stderr, "  [%d/%d] %s ... ", run_idx, total_to_run, g_test_registry[i].name);

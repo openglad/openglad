@@ -36,6 +36,45 @@ static void handle_test_signal(int sig)
 }
 
 int main(int argc, char* argv[]) {
+    bool list_tests = false;
+    const char* positional_filter = nullptr;
+
+    for (int i = 1; i < argc; ++i) {
+        const char* arg = argv[i];
+        if (strcmp(arg, "--list-tests") == 0) {
+            list_tests = true;
+        } else if (strcmp(arg, "--test") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "error: --test requires an exact test name (or comma-separated exact names)\n");
+                return 2;
+            }
+            g_test_exact = argv[++i];
+        } else if (strcmp(arg, "--filter") == 0) {
+            if (i + 1 >= argc) {
+                fprintf(stderr, "error: --filter requires a substring\n");
+                return 2;
+            }
+            g_test_filter = argv[++i];
+        } else if (arg[0] == '-') {
+            fprintf(stderr, "error: unknown option: %s\n", arg);
+            return 2;
+        } else if (!positional_filter) {
+            positional_filter = arg;
+        } else {
+            fprintf(stderr, "error: unexpected extra argument: %s\n", arg);
+            return 2;
+        }
+    }
+
+    if (!g_test_filter && positional_filter)
+        g_test_filter = positional_filter;
+
+    if (list_tests) {
+        list_all_tests(stdout);
+        fflush(nullptr);
+        _exit(0);
+    }
+
     // Ensure the test process is terminated when its parent (usually CTest)
     // exits, and exit promptly on interrupt/terminate signals.
 #ifdef __linux__
@@ -68,10 +107,6 @@ int main(int argc, char* argv[]) {
     update_overscan_setting();
     cfg.apply_setting("graphics", "overscan_percentage",
         std::format("{:.0f}", 100 * overscan_percentage));
-
-    // Optional test filter: ./openglad_test [filter_substring]
-    if (argc > 1)
-        g_test_filter = argv[1];
 
     static options test_prefs;
     ctx().prefs = &test_prefs;
