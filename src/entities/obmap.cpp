@@ -73,12 +73,17 @@ short obmap::query_list(walker  *ob, short x, short y)
 	{
 		for (numy = startnumy; numy <= endnumy; numy++)
 		{
-			// We should be finding the same item over and over. Avoid
-			// default-constructing empty piles during queries.
+			// Avoid default-constructing empty piles during queries.
 			auto it = pos_to_walker.find(std::make_pair(numx, numy));
 			if (it == pos_to_walker.end())
 				continue;
-			if (!ob_pass_check(x, y, ob, it->second, this)) //&& ob->collide_ob??
+			// Snapshot the pile: collision handlers inside ob_pass_check
+			// (e.g. walker::death → obmap::remove) can erase this
+			// pos_to_walker entry, which would leave a dangling reference
+			// and corrupt iterator traversal — the root cause of the
+			// walker_to_pos.find() infinite-loop hang.
+			auto pile_snapshot = it->second;
+			if (!ob_pass_check(x, y, ob, pile_snapshot, this))
 				return 0;
 		}
 	}

@@ -20,6 +20,7 @@
 
 #include <cstddef>
 #include <map>
+#include <unordered_map>
 #include <list>
 
 class walker;
@@ -38,7 +39,7 @@ class obmap
 		size_t size() const;
 
 		std::map<std::pair<short, short>, std::list<walker*> > pos_to_walker;
-		std::map<walker*, std::list<std::pair<short, short> > > walker_to_pos;
+		std::unordered_map<walker*, std::list<std::pair<short, short> > > walker_to_pos;
 
 		static short hash(short y);
 		static short unhash(short y);

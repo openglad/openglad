@@ -910,3 +910,55 @@ void test_obmap_round11_stale_query_and_helper_accessors_paths()
     myscreen->level_data.delete_objects();
 }
 REGISTER_TEST(test_obmap_round11_stale_query_and_helper_accessors_paths);
+
+// Regression test for the walker_to_pos.find() infinite-loop hang.
+// The bug: ob_pass_check receives a reference to a pile stored inside
+// pos_to_walker. When a collision handler (walker::death → obmap::remove)
+// erases that pile entry, the reference becomes dangling.  Subsequent
+// iteration reads freed memory, feeding corrupt pointers to
+// walker_to_pos.find() which loops forever on the std::map RB-tree.
+// The fix snapshots the pile before passing it to ob_pass_check.
+void test_obmap_query_list_no_hang_when_pile_erased_during_collision()
+{
+    myscreen->level_data.create_new_grid();
+    myscreen->level_data.delete_objects();
+
+    // Actor: a soldier with the key to open a door (key bit 2 = level 1).
+    walker* actor = myscreen->level_data.add_ob(Order::Living, FAMILY_SOLDIER);
+    TEST_ASSERT(actor != nullptr, "actor created");
+    if (!actor) return;
+    actor->sizex = 12;
+    actor->sizey = 12;
+    actor->setxy(64, 64);
+    actor->keys = 2; // 2^1 → unlocks level-1 doors
+    actor->team_num = 0;
+    actor->user = 0;
+
+    // Door: a FAMILY_DOOR weapon whose death() calls obmap::remove(this),
+    // which may erase the pos_to_walker pile that query_list is iterating.
+    walker* door = myscreen->level_data.add_ob(Order::Weapon, FAMILY_DOOR);
+    TEST_ASSERT(door != nullptr, "door created");
+    if (!door) return;
+    door->stats()->level = 1;
+    door->sizex = 12;
+    door->sizey = 12;
+    door->setxy(64, 64);
+    door->team_num = 1; // different team from actor
+
+    // Use the level's own obmap so that death() → remove() hits the same
+    // map that query_list is iterating.
+    obmap* map = myscreen->level_data.myobmap.get();
+    map->add(actor, actor->xpos, actor->ypos);
+    map->add(door, door->xpos, door->ypos);
+
+    // This would hang (infinite loop in walker_to_pos.find) before the fix.
+    // The door collision triggers door->death() → obmap::remove(door),
+    // which can erase the pile entry from pos_to_walker.
+    short result = map->query_list(actor, actor->xpos, actor->ypos);
+    // Door should block movement for this frame (result 0) but not hang.
+    TEST_ASSERT_EQ(0, (int)result, "door collision should block without hanging");
+    TEST_ASSERT(door->dead == 1, "door should be dead after unlock collision");
+
+    myscreen->level_data.delete_objects();
+}
+REGISTER_TEST(test_obmap_query_list_no_hang_when_pile_erased_during_collision);
