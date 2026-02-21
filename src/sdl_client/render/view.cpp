@@ -1573,7 +1573,7 @@ static const char* get_key_display_name(int keycode)
 	std::string sname = SDL_GetKeyName(keycode);
 
 	// Substitute characters not in the bitmap font
-	if (sname == "`") return "~/`";  // Backtick not in font
+	if (sname == "`") return "Grv";
 
 	// Shorten long modifier key names to fit
 	if (sname == "Left Ctrl") return "LCtrl";
