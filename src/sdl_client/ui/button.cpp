@@ -432,9 +432,6 @@ Sint32 vbutton::rightclick(Sint32 whichbutton)
 
     if (mousex > xloc && mousex < xend && mousey > yloc && mousey < yend)
     {
-        // Draw yellow highlight box every frame while hovered (not just on
-        // focus-gain) so the highlight persists visually.
-        myscreen->draw_box(xloc-1, yloc-1, xend, yend, 88, 0, 1); // 88 = YELLOW
         had_focus = 1;
         return 1;
     }
@@ -518,10 +515,18 @@ void draw_buttons(button * buttons, Sint32 numbuttons)
             continue;
         
         allbuttons[i]->vdisplay();
-        myscreen->draw_box(allbuttons[i]->xloc-1,
-                           allbuttons[i]->yloc-1,
-                           allbuttons[i]->xend,
-                           allbuttons[i]->yend, 0, 0, 1);
+        if (allbuttons[i]->had_focus)
+        {
+            // Draw hover highlight after button draw so it survives
+            // per-frame clearbuffer/redraw.
+            myscreen->draw_box(allbuttons[i]->xloc - 1,
+                               allbuttons[i]->yloc - 1,
+                               allbuttons[i]->xend,
+                               allbuttons[i]->yend,
+                               YELLOW,
+                               0,
+                               1);
+        }
     }
 }
 

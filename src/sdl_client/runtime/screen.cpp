@@ -510,8 +510,7 @@ bool screen::act()
 
 	if (result.game_ended && !end)
 	{
-		if (result.level_done == 2)
-			return endgame(result.ending, result.next_level);
+		return endgame(result.ending, result.next_level);
 	}
 
 	if (end)

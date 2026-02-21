@@ -65,8 +65,6 @@ void orbit_offset(int drawcycle, float &xd, float &yd)
 
 bool effect::act()
 {
-	TRACE("effect", "effect::act family=%d drawcycle=%d", family, drawcycle);
-
 	// Make sure everyone we're pointing to is valid
 	if (foe && foe->dead)
 		foe = nullptr;
@@ -133,8 +131,6 @@ std::int32_t compute_explosion_range(std::int32_t level, short skip_exit)
 // for special effects ..
 bool effect::death()
 {
-	TRACE("effect", "effect::death family=%d", family);
-
 	// Note that the 'dead' variable should ALREADY be set by the
 	// time this function is called, so that we can easily reverse
 	// the decision :)

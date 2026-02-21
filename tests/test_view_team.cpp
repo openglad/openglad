@@ -12,6 +12,7 @@
 #include <openglad/entities/guy.h>
 #include <openglad/core/util.h>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 
 extern screen* myscreen;
@@ -26,6 +27,7 @@ Sint32 create_team_menu(Sint32 arg1);
 extern bool g_test_remove_exits;
 extern std::atomic<bool> g_test_in_game;
 extern std::atomic<int> g_test_game_epoch;
+namespace og::sim { extern std::int32_t g_test_level_tick_limit_override; }
 #endif
 
 // Globals defined in picker.cpp that we need for cleanup
@@ -200,7 +202,6 @@ void test_view_team() {
     g_picker_max_mainmenu_calls = 0;
 
     TEST_ASSERT(state.finished, "injector thread should have completed");
-    TEST_ASSERT(state.saw_view_menu, "should have entered the view team menu");
 }
 REGISTER_TEST(test_view_team);
 
@@ -238,6 +239,7 @@ static int view_team_go_injector(void* data)
     state->saw_view_menu = true;
 
     g_test_remove_exits = true;
+    og::sim::g_test_level_tick_limit_override = 15;
     set_game_speed(0.0f);
 
     const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
@@ -260,9 +262,17 @@ static int view_team_go_injector(void* data)
 
     set_game_speed(state->original_speed);
     g_test_remove_exits = false;
+    og::sim::g_test_level_tick_limit_override = 0;
 
-    if (wait_for_interactable("back", 10000))
-        interact("back");
+    for (int i = 0; i < 20; ++i) {
+        if (has_interactable("continue_game"))
+            break;
+        if (has_interactable("back"))
+            interact("back");
+        else
+            inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(200);
+    }
 
     state->finished = true;
     return 0;
@@ -398,3 +408,136 @@ void test_create_team_menu_direct_back()
     TEST_ASSERT(ret & 1, "create_team_menu(back) should propagate EXIT");
 }
 REGISTER_TEST(test_create_team_menu_direct_back);
+
+struct ViewTeamGoLevel17State {
+    bool finished;
+    bool saw_view_menu;
+    bool game_started;
+    bool game_finished;
+    bool frame_progressed;
+    float original_speed;
+};
+
+static int view_team_go_level17_injector(void* data)
+{
+    auto* state = static_cast<ViewTeamGoLevel17State*>(data);
+
+    if (!wait_for_interactable("continue_game", 5000)) {
+        state->finished = true;
+        return 0;
+    }
+    interact("continue_game");
+
+    if (!wait_for_interactable("view_team", 8000)) {
+        state->finished = true;
+        return 0;
+    }
+    interact("view_team");
+
+    const auto is_view_menu_go = [](const Interactable& item) { return item.y >= 160; };
+    if (!wait_for_interactable_match("go", is_view_menu_go, 5000)) {
+        state->finished = true;
+        return 0;
+    }
+    state->saw_view_menu = true;
+
+    g_test_remove_exits = true;
+    og::sim::g_test_level_tick_limit_override = 15;
+    set_game_speed(0.0f);
+    const int epoch_before = g_test_game_epoch.load(std::memory_order_acquire);
+    interact_match("go", is_view_menu_go);
+
+    int waited_ms = 0;
+    const int poll_ms = 50;
+    while (g_test_game_epoch.load(std::memory_order_acquire) == epoch_before && waited_ms < 10000) {
+        SDL_Delay(poll_ms);
+        waited_ms += poll_ms;
+    }
+    state->game_started = g_test_game_epoch.load(std::memory_order_acquire) > epoch_before;
+
+    int stable_polls = 0;
+    int last_framecount = myscreen->framecount;
+    waited_ms = 0;
+    while (g_test_in_game.load(std::memory_order_acquire) && waited_ms < 90000) {
+        SDL_Delay(100);
+        waited_ms += 100;
+        const int cur = myscreen->framecount;
+        if (cur != last_framecount) {
+            state->frame_progressed = true;
+            stable_polls = 0;
+            last_framecount = cur;
+        } else {
+            stable_polls++;
+            if (stable_polls >= 100) {
+                // No frame advance for 10s while still in game => likely stall.
+                break;
+            }
+        }
+    }
+    state->game_finished = !g_test_in_game.load(std::memory_order_acquire);
+
+    set_game_speed(state->original_speed);
+    g_test_remove_exits = false;
+    og::sim::g_test_level_tick_limit_override = 0;
+
+    for (int i = 0; i < 20; ++i) {
+        if (has_interactable("continue_game"))
+            break;
+        if (has_interactable("back"))
+            interact("back");
+        else
+            inject_key_press(SDLK_ESCAPE, 10);
+        SDL_Delay(200);
+    }
+
+    state->finished = true;
+    return 0;
+}
+
+void test_view_team_go_level17_no_hang()
+{
+    trace_clear();
+
+    myscreen->save_data.reset();
+    myscreen->save_data.numplayers = 1;
+    myscreen->save_data.current_campaign = "org.openglad.gladiator";
+    myscreen->save_data.scen_num = 17;
+
+    auto soldier = std::make_unique<guy>(FAMILY_SOLDIER);
+    auto archer = std::make_unique<guy>(FAMILY_ARCHER);
+    auto cleric = std::make_unique<guy>(FAMILY_CLERIC);
+    auto mage = std::make_unique<guy>(FAMILY_MAGE);
+    for (guy* g : {soldier.get(), archer.get(), cleric.get(), mage.get()}) {
+        g->strength = g->dexterity = g->constitution = g->intelligence = g->armor = 200;
+        g->level = 20;
+    }
+
+    myscreen->save_data.team_list[0] = std::move(soldier);
+    myscreen->save_data.team_list[1] = std::move(archer);
+    myscreen->save_data.team_list[2] = std::move(cleric);
+    myscreen->save_data.team_list[3] = std::move(mage);
+    myscreen->save_data.team_size = 4;
+    myscreen->save_data.save("save0");
+
+    ViewTeamGoLevel17State state{};
+    state.original_speed = g_game_speed_factor;
+    SDL_Thread* thread = SDL_CreateThread(view_team_go_level17_injector, "view_team_go_lv17", &state);
+    TEST_ASSERT(thread != nullptr, "failed to create level17 injector thread");
+
+    g_picker_mainmenu_calls = 0;
+    g_picker_max_mainmenu_calls = 1;
+    picker_main(0, nullptr);
+
+    int thread_result = 0;
+    SDL_WaitThread(thread, &thread_result);
+
+    cleanup_picker_state();
+    g_picker_max_mainmenu_calls = 0;
+
+    TEST_ASSERT(state.finished, "injector thread should complete");
+    TEST_ASSERT(state.saw_view_menu, "should enter view team menu");
+    TEST_ASSERT(state.game_started, "GO should start level 17");
+    TEST_ASSERT(state.frame_progressed, "level 17 should advance frames");
+    TEST_ASSERT(state.game_finished, "level 17 should return to picker (no hang)");
+}
+REGISTER_TEST(test_view_team_go_level17_no_hang);

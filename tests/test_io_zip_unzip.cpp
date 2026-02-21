@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <unistd.h>
+#include <physfs.h>
 
 static bool write_file_bytes(const std::string& path, const std::string& contents)
 {
@@ -108,6 +109,25 @@ void test_io_mount_unmount_campaign_typed_errors()
         "remount with no mounted campaign should return EmptyId");
 }
 REGISTER_TEST(test_io_mount_unmount_campaign_typed_errors);
+
+void test_io_remount_campaign_with_open_physfs_file_is_safe()
+{
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+        static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
+        "mount default campaign should succeed");
+
+    PHYSFS_File* held = PHYSFS_openRead("campaign.yaml");
+    TEST_ASSERT(held != nullptr, "campaign.yaml should open to hold a live PhysFS handle");
+    if (!held)
+        return;
+
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+        static_cast<int>(remount_campaign_package_with_error()),
+        "remount should gracefully no-op when campaign files are still open");
+
+    PHYSFS_close(held);
+}
+REGISTER_TEST(test_io_remount_campaign_with_open_physfs_file_is_safe);
 
 void test_io_zip_unzip_typed_errors()
 {

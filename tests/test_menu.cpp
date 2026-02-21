@@ -5,11 +5,13 @@
 #include <openglad/input/button.h>
 #include "test_interact.h"
 #include <openglad/input/input.h>
+#include <openglad/runtime/screen.h>
 extern MouseState mouse_state;
 
 Sint32 yes_or_no(Sint32 arg);
 void toggle_rendering_engine();
 void toggle_effect(const std::string& category, const std::string& setting);
+Sint32 leftmouse(button* buttons);
 
 static int release_scancode_after_delay(void* data)
 {
@@ -124,3 +126,39 @@ void test_menu_button_misc_paths()
     TEST_ASSERT_EQ(-1, (int)b.rightclick(0), "rightclick should reject hidden buttons");
 }
 REGISTER_TEST(test_menu_button_misc_paths);
+
+void test_menu_hover_highlight_draws_without_click_and_persists()
+{
+    button test_buttons[1] = {
+        button("hover", "HOVER", SDLK_h, 10, 10, 30, 10, 0, 0, MenuNav::None()),
+    };
+
+    vbutton* localbuttons = init_buttons(test_buttons, 1);
+    TEST_ASSERT(localbuttons != nullptr, "init_buttons should return first button");
+    clear_events();
+    mouse_state.left = false;
+    mouse_state.right = false;
+
+    clear_events();
+    push_mouse_motion_game_coords(15, 15);
+    leftmouse(test_buttons);
+    myscreen->clearbuffer();
+    draw_buttons(test_buttons, 1);
+    TEST_ASSERT(localbuttons->had_focus, "hover should set focus without clicking");
+
+    // Without moving the mouse, highlight should persist frame-to-frame.
+    leftmouse(test_buttons);
+    myscreen->clearbuffer();
+    draw_buttons(test_buttons, 1);
+    TEST_ASSERT(localbuttons->had_focus, "hover highlight should persist while hovered");
+
+    clear_events();
+    push_mouse_motion_game_coords(200, 150);
+    leftmouse(test_buttons);
+    myscreen->clearbuffer();
+    draw_buttons(test_buttons, 1);
+    TEST_ASSERT(!localbuttons->had_focus, "hover highlight should clear after leaving button bounds");
+
+    clear_allbuttons();
+}
+REGISTER_TEST(test_menu_hover_highlight_draws_without_click_and_persists);

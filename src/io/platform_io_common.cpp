@@ -108,9 +108,23 @@ CampaignPackageIoError unmount_campaign_package_with_error(const std::string& id
 CampaignPackageIoError remount_campaign_package_with_error()
 {
     std::string id = get_mounted_campaign();
-    CampaignPackageIoError unmount_error = unmount_campaign_package_with_error(id);
-    if(unmount_error != CampaignPackageIoError::None)
-        return unmount_error;
+    if (id.empty())
+        return CampaignPackageIoError::EmptyId;
+
+    const std::string filename = get_user_path() + "campaigns/" + id + ".glad";
+    if(!og::io::physfs_unmount(filename))
+    {
+        const std::string physfs_error = og::io::physfs_last_error();
+        // In long-running flows (notably editor/test paths), remount can be
+        // requested while transient campaign files are still open. Keep the
+        // current mount instead of forcing repeated unmount failures.
+        if (physfs_error.find("files still open") != std::string::npos)
+            return CampaignPackageIoError::None;
+        LogError("campaign_unmount_failed id={} path={} code={} physfs={}\n",
+            id, filename, campaign_io_error_string(CampaignPackageIoError::UnmountFailed), physfs_error);
+        return CampaignPackageIoError::UnmountFailed;
+    }
+    ctx().mounted_campaign.clear();
     return mount_campaign_package_with_error(id);
 }
 

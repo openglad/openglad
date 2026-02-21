@@ -100,6 +100,8 @@ public:
 
 private:
     std::uint32_t tick_count_ = 0;
+    std::uint32_t level_tick_count_ = 0;
+    int last_level_id_ = -1;
     SimRandom rng_;
 };
 

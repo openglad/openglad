@@ -408,6 +408,28 @@ void test_platform_io_batch3_mount_switch_and_listing_filters()
 }
 REGISTER_TEST(test_platform_io_batch3_mount_switch_and_listing_filters);
 
+void test_platform_io_remount_allows_files_still_open_path()
+{
+    const std::string prev = ctx().mounted_campaign;
+
+    TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+                   static_cast<int>(mount_campaign_package_with_error("org.openglad.gladiator")),
+                   "mount default campaign should succeed");
+
+    PHYSFS_File* held = PHYSFS_openRead("campaign.yaml");
+    TEST_ASSERT(held != nullptr, "campaign.yaml should open to hold a live PhysFS handle");
+    if (held)
+    {
+        TEST_ASSERT_EQ(static_cast<int>(CampaignPackageIoError::None),
+                       static_cast<int>(remount_campaign_package_with_error()),
+                       "remount should gracefully no-op when files are still open");
+        PHYSFS_close(held);
+    }
+
+    ctx().mounted_campaign = prev;
+}
+REGISTER_TEST(test_platform_io_remount_allows_files_still_open_path);
+
 void test_og_file_batch3_physfs_seek_and_path_overloads()
 {
     namespace fs = std::filesystem;

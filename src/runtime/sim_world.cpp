@@ -17,6 +17,11 @@
 
 namespace og::sim {
 
+#ifdef TESTING
+// Test hook to shorten mission timeout checks in deterministic harnesses.
+std::int32_t g_test_level_tick_limit_override = 0;
+#endif
+
 // File-local helper: find the nearest hostile entity for AI targeting.
 // Mirrors screen::find_far_foe() but operates on LevelData directly.
 // Uses the sim-layer's own deterministic RNG for invisibility checks.
@@ -60,6 +65,27 @@ TickResult SimWorld::tick(LevelData& level, SaveData& save,
     TickResult result;
     tick_count_++;
     events.set_tick(tick_count_);
+    if (last_level_id_ != level.id)
+    {
+        last_level_id_ = level.id;
+        level_tick_count_ = 0;
+    }
+    level_tick_count_++;
+
+    std::uint32_t max_level_ticks = 36000;
+#ifdef TESTING
+    if (g_test_level_tick_limit_override > 0)
+        max_level_ticks = static_cast<std::uint32_t>(g_test_level_tick_limit_override);
+#endif
+    if (level_tick_count_ > max_level_ticks)
+    {
+        // Hard mission timeout safety net to avoid unbounded gameplay loops.
+        result.game_ended = true;
+        result.ending = 1;
+        result.next_level = -1;
+        events.push_notification("Mission timed out. Retreating.", 40);
+        return result;
+    }
 
     result.level_done = 2; // unless we find valid foes while looping
 

@@ -23,6 +23,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <set>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -53,7 +54,12 @@ std::string cfg_store::get_setting(const std::string& category, const std::strin
 			return a2->second;
 	}
 
-	Log("cfg setting not found: {}/{}\n", category, setting);
+    static std::set<std::string> missing_logged;
+    const std::string key = category + "/" + setting;
+    if (missing_logged.insert(key).second)
+    {
+        Log("cfg setting not found: {}/{}\n", category, setting);
+    }
 	return "";
 }
 
