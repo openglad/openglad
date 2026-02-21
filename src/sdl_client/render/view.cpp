@@ -992,8 +992,8 @@ void viewscreen::options_menu()
 	active_screen()->draw_box(45,OPLINES(11),275,OPLINES(11)+6,PANEL_COLOR,1,1);
 	optiontext.write_xy(LEFT_OPS,OPLINES(11),message.c_str(),static_cast<unsigned char>(BLACK),1);
 
-	optiontext.write_xy(LEFT_OPS, OPLINES(12), "EDIT KEY PREFS (K)", static_cast<unsigned char>(BLACK), 1);
-	optiontext.write_xy(LEFT_OPS, OPLINES(13), "VIEW KEY BINDINGS (V)", static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(12), "Configure controls from main menu", static_cast<unsigned char>(BLACK), 1);
+	optiontext.write_xy(LEFT_OPS, OPLINES(13), "  Options -> Player Controls", static_cast<unsigned char>(BLACK), 1);
 
 	// Draw the current screen
 	active_screen()->buffer_to_screen(0, 0, 320, 200);
@@ -1260,24 +1260,6 @@ void viewscreen::options_menu()
             clear_events();
 		}
 
-		if (keystates[KEYSTATE_k])      // Edit the keyboard mappings
-		{
-			if (set_key_prefs())
-			{
-				set_display_text("NEW KEYBOARD STATE SAVED", 30);
-				set_display_text("DELETE KEYPREFS.DAT FOR DEFAULTS", 30);
-			}
-			active_screen()->redraw();
-			options_menu();
-			return;
-		}
-		if (keystates[KEYSTATE_v])      // View current key bindings
-		{
-			view_key_bindings();
-			active_screen()->redraw();
-			options_menu();
-			return;
-		}
 			if (keystates[KEYSTATE_b]) // toggle button display
 			{
 				prefs[PREF_OVERLAY] = static_cast<signed char>((prefs[PREF_OVERLAY] + 1) % 2);
@@ -1591,7 +1573,7 @@ static const char* get_key_display_name(int keycode)
 	std::string sname = SDL_GetKeyName(keycode);
 
 	// Substitute characters not in the bitmap font
-	if (sname == "`") return "~/`";  // Backtick not in font
+	if (sname == "`") return "Grv";
 
 	// Shorten long modifier key names to fit
 	if (sname == "Left Ctrl") return "LCtrl";

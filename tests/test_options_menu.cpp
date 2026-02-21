@@ -70,6 +70,18 @@ static int options_injector(void* data)
         state->saw_options = true;
         SDL_Delay(500);
 
+        fprintf(stderr, "  [test] entering player controls\n");
+        interact("player_controls");
+        SDL_Delay(400);
+        if (wait_for_interactable("player1_mode", 5000)) {
+            interact("player1_mode");
+            SDL_Delay(150);
+            interact("player1_remap");
+            SDL_Delay(150);
+            interact("controls_back");
+            SDL_Delay(250);
+        }
+
         // Toggle a few settings
         fprintf(stderr, "  [test] toggling hit flash\n");
         interact("toggle_hit_flash");

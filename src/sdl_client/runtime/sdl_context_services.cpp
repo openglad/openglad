@@ -35,6 +35,18 @@ void input_state_from_sdl(InputState& out)
             // Pressed = held now but wasn't held last frame
             out.players[p].pressed[k] = out.players[p].held[k] && !was_held[k];
         }
+
+        if (!player_allows_diagonal_movement(p))
+        {
+            out.players[p].held[KEY_UP_RIGHT] = false;
+            out.players[p].held[KEY_DOWN_RIGHT] = false;
+            out.players[p].held[KEY_DOWN_LEFT] = false;
+            out.players[p].held[KEY_UP_LEFT] = false;
+            out.players[p].pressed[KEY_UP_RIGHT] = false;
+            out.players[p].pressed[KEY_DOWN_RIGHT] = false;
+            out.players[p].pressed[KEY_DOWN_LEFT] = false;
+            out.players[p].pressed[KEY_UP_LEFT] = false;
+        }
     }
 }
 
