@@ -595,7 +595,7 @@ button viewteam_buttons[] =
         //  button("TRAIN", KEYSTATE_e, 85, 170, 60, 20, CREATE_TRAIN_MENU, -1},
         //  button("HIRE",  KEYSTATE_b, 190, 170, 60, 20, CREATE_HIRE_MENU, -1},
         button("go", "GO", KEYSTATE_UNKNOWN,        270, 170, 40, 20, GO_MENU, -1, MenuNav::Left(1)),
-        button("back", "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , menu_result_id(MenuResult::Exit), MenuNav::Right(0)),
+        button("back", "BACK", KEYSTATE_ESCAPE,    10, 170, 44, 20, RETURN_MENU , menu_result_id(MenuResult::Redraw), MenuNav::Right(0)),
 
     };
 
@@ -694,7 +694,7 @@ void view_team(short left, short top, short right, short bottom)
 
 	text_down+=6;
 
-	for(i=0; i < myscreen->save_data.team_size; i++)
+	for(i=0; i < MAX_TEAM_SIZE; i++)
 	{
 	    auto& ourteam = myscreen->save_data.team_list;
 		if (ourteam[i])

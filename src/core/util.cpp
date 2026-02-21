@@ -122,14 +122,23 @@ std::int32_t query_timer_control()
 
 void time_delay(std::int32_t delay)
 {
-    if (delay < 0) return;
-    auto ms = static_cast<unsigned int>(delay * 13.6);
+    if (delay <= 0) return;
+    auto target_us = static_cast<std::int64_t>(delay * 13600); // microseconds
 #ifdef __EMSCRIPTEN__
   #ifdef __ASYNCIFY__
-    emscripten_sleep(ms);
+    emscripten_sleep(static_cast<unsigned int>(target_us / 1000));
   #endif
 #else
-    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+    auto start = std::chrono::steady_clock::now();
+    // Sleep for the bulk of the time, leaving 2ms margin to avoid overshoot
+    if (target_us > 3000) {
+        std::this_thread::sleep_for(std::chrono::microseconds(target_us - 2000));
+    }
+    // Spin-wait for the remainder to hit the target precisely
+    while (std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now() - start).count() < target_us) {
+        // busy-wait
+    }
 #endif
 }
 

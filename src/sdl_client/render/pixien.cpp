@@ -52,6 +52,14 @@ pixieN::~pixieN()
 	frame = 0;
 }
 
+void pixieN::set_data(const PixieData& data)
+{
+	pixie::set_data(data);
+	facings = data.data.get();
+	frames = data.frames;
+	frame = 0;
+}
+
 // Changes the frame number and poshorts the BMP data poshorter to
 //  the correct frame's data
 short pixieN::set_frame(short framenum)

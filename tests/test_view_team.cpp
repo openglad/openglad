@@ -145,9 +145,10 @@ static int view_team_injector(void* data)
         interact_match("back", is_view_menu_back);
     }
 
-    // Ensure we return to main menu even if the view menu wasn't reached.
-    // Prefer the BACK button when present; otherwise, fall back to Escape.
-    for (int i = 0; i < 4; i++) {
+    // BACK from view menu returns to team menu (REDRAW), not main menu.
+    // Wait for the team menu to redraw, then click its back button.
+    SDL_Delay(500);
+    for (int i = 0; i < 8; i++) {
         if (has_interactable("continue_game"))
             break; // main menu
         if (has_interactable("back")) {
@@ -156,7 +157,7 @@ static int view_team_injector(void* data)
         } else {
             inject_key_press(SDLK_ESCAPE, 10);
         }
-        SDL_Delay(200);
+        SDL_Delay(300);
     }
 
     state->finished = true;
@@ -366,7 +367,7 @@ void test_create_view_menu_direct_back()
 
     TEST_ASSERT(state.finished, "direct view-menu injector should complete");
     TEST_ASSERT(state.clicked_target, "direct view-menu injector should click back");
-    TEST_ASSERT(ret & 1, "create_view_menu(back) should propagate EXIT");
+    TEST_ASSERT(ret & 2, "create_view_menu(back) should return REDRAW");
 }
 REGISTER_TEST(test_create_view_menu_direct_back);
 

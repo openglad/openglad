@@ -193,7 +193,7 @@ Sint32 create_view_menu(Sint32 arg1)
 	myscreen->clearbuffer();
 
 		// init_buttons owns allbuttons[]; localbuttons is a non-owning alias.
-    
+
 	button* buttons = viewteam_buttons;
 	int num_buttons = 2;
 	int highlighted_button = 1;
@@ -204,12 +204,17 @@ Sint32 create_view_menu(Sint32 arg1)
 	    // Input
 		if(leftmouse(buttons))
 			retvalue = localbuttons->leftclick();
-        
+
         handle_menu_nav(buttons, highlighted_button, retvalue);
-        
-        // Reset buttons
+
+        // BACK returns REDRAW to signal "go back to team menu".
+        // Check before reset_buttons can clear it.
+        if (retvalue & REDRAW)
+            break;
+
+        // Reset buttons (relevant after go_menu returns from game)
         reset_buttons(localbuttons, buttons, num_buttons, retvalue);
-		
+
 		// Draw
 		myscreen->clearbuffer();
         draw_backdrop();
@@ -221,10 +226,10 @@ Sint32 create_view_menu(Sint32 arg1)
 	}
 	myscreen->clearbuffer();
 
-    // Preserve EXIT so TeamBuild interception can map GO -> StartGame.
-    if (retvalue & EXIT) {
-        return retvalue;
-    }
+	// Propagate EXIT so TeamBuild interception can map GO -> StartGame.
+	// BACK returns REDRAW to keep parent create_team_menu running.
+	if (retvalue & EXIT)
+		return retvalue;
 
 	return REDRAW;
 }

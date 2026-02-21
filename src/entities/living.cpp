@@ -60,7 +60,12 @@ living::~living()
 
 bool living::act()
 {
-	if (bonus_rounds>0 && !dead)  // we get extra rounds to act this cycle
+	// Cap bonus_rounds to prevent stack overflow from unbounded recursion.
+	// The original code recursed for each bonus round, which could exhaust
+	// the stack with large values (e.g., mage freeze-time on many allies).
+	if (bonus_rounds > 50)
+		bonus_rounds = 50;
+	if (bonus_rounds > 0 && !dead)
 	{
 		bonus_rounds--;
 		act();
