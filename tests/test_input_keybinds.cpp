@@ -382,3 +382,127 @@ void test_controls_reset_defaults_action_resets_controls_only()
     cfg.apply_setting("graphics", "render", old_render);
 }
 REGISTER_TEST(test_controls_reset_defaults_action_resets_controls_only);
+
+void test_eight_direction_defaults_p1_clockwise_from_up()
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    // P1 8-dir defaults clockwise from Up: W, E, D, C, X, Z, A, Q
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_w),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP),
+        "P1 8-dir Up should be W");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_e),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT),
+        "P1 8-dir Up-Right should be E");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_d),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT),
+        "P1 8-dir Right should be D");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_c),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN_RIGHT),
+        "P1 8-dir Down-Right should be C");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_x),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN),
+        "P1 8-dir Down should be X");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_z),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_DOWN_LEFT),
+        "P1 8-dir Down-Left should be Z");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_a),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_LEFT),
+        "P1 8-dir Left should be A");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_q),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_LEFT),
+        "P1 8-dir Up-Left should be Q");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_s),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL),
+        "P1 8-dir Yell should be S");
+}
+REGISTER_TEST(test_eight_direction_defaults_p1_clockwise_from_up);
+
+void test_eight_direction_defaults_other_players()
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    // P2: arrows, no diagonals
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_UP),
+        get_player_key_binding_for_mode(1, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP),
+        "P2 8-dir Up should be Up arrow");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN),
+        get_player_key_binding_for_mode(1, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT),
+        "P2 8-dir Up-Right should be UNKNOWN");
+
+    // P3: clockwise I/O/L/./,/M/J/U, Yell=K
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_i),
+        get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP),
+        "P3 8-dir Up should be I");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_o),
+        get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT),
+        "P3 8-dir Up-Right should be O");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_l),
+        get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT),
+        "P3 8-dir Right should be L");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_k),
+        get_player_key_binding_for_mode(2, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL),
+        "P3 8-dir Yell should be K");
+
+    // P4: clockwise T/Y/H/N/B/V/F/R, Yell=G
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_t),
+        get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP),
+        "P4 8-dir Up should be T");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_y),
+        get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT),
+        "P4 8-dir Up-Right should be Y");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_h),
+        get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_RIGHT),
+        "P4 8-dir Right should be H");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_g),
+        get_player_key_binding_for_mode(3, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL),
+        "P4 8-dir Yell should be G");
+}
+REGISTER_TEST(test_eight_direction_defaults_other_players);
+
+void test_eight_direction_defaults_differ_from_four_direction()
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    // P1 4-dir Yell should be E, but 8-dir Yell should be S
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_e),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_YELL),
+        "P1 4-dir Yell should be E");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_s),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_YELL),
+        "P1 8-dir Yell should be S");
+
+    // P1 4-dir diagonals should be UNKNOWN
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_UNKNOWN),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP_RIGHT),
+        "P1 4-dir Up-Right should be UNKNOWN");
+    // P1 8-dir diagonals should be set
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_e),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::EightDirection), KEY_UP_RIGHT),
+        "P1 8-dir Up-Right should be E");
+}
+REGISTER_TEST(test_eight_direction_defaults_differ_from_four_direction);
+
+void test_four_direction_defaults_unchanged_wasd()
+{
+    FullControlSnapshotGuard guard;
+    reset_default_player_controls();
+
+    // P1 4-dir should still be WASD
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_w),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_UP),
+        "P1 4-dir Up should be W");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_a),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_LEFT),
+        "P1 4-dir Left should be A");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_s),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_DOWN),
+        "P1 4-dir Down should be S");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_d),
+        get_player_key_binding_for_mode(0, static_cast<int>(ControlDirectionMode::FourDirection), KEY_RIGHT),
+        "P1 4-dir Right should be D");
+}
+REGISTER_TEST(test_four_direction_defaults_unchanged_wasd);

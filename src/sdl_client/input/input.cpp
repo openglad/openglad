@@ -108,7 +108,7 @@ constexpr int kModeFourIndex = 0;
 constexpr int kModeEightIndex = 1;
 constexpr int kNumControlModeKeymaps = 2;
 
-constexpr int kDefaultPlayerKeys[4][NUM_KEYS] = {
+constexpr int kDefaultFourDirKeys[4][NUM_KEYS] = {
     {
         SDLK_w, SDLK_UNKNOWN, SDLK_d, SDLK_UNKNOWN,  // movements
         SDLK_s, SDLK_UNKNOWN, SDLK_a, SDLK_UNKNOWN,
@@ -152,6 +152,36 @@ constexpr int kDefaultPlayerKeys[4][NUM_KEYS] = {
         SDLK_8,                                 // Shifter
         SDLK_4,                                 // Options menu
         SDLK_F8,                                // Cheat key
+    }
+};
+constexpr int kDefaultEightDirKeys[4][NUM_KEYS] = {
+    {   // P1: clockwise W/E/D/C/X/Z/A/Q, Yell=S
+        SDLK_w, SDLK_e, SDLK_d, SDLK_c,
+        SDLK_x, SDLK_z, SDLK_a, SDLK_q,
+        SDLK_LCTRL, SDLK_LALT,
+        SDLK_BACKQUOTE, SDLK_TAB,
+        SDLK_s, SDLK_LSHIFT, SDLK_1, SDLK_F5,
+    },
+    {   // P2: arrows, no diagonal keys
+        SDLK_UP, SDLK_UNKNOWN, SDLK_RIGHT, SDLK_UNKNOWN,
+        SDLK_DOWN, SDLK_UNKNOWN, SDLK_LEFT, SDLK_UNKNOWN,
+        SDLK_PERIOD, SDLK_SLASH,
+        SDLK_RETURN, SDLK_QUOTE,
+        SDLK_BACKSLASH, SDLK_RSHIFT, SDLK_2, SDLK_F6,
+    },
+    {   // P3: clockwise I/O/L/./,/M/J/U, Yell=K
+        SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,
+        SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
+        SDLK_SPACE, SDLK_SEMICOLON,
+        SDLK_MINUS, SDLK_9,
+        SDLK_k, SDLK_0, SDLK_3, SDLK_F7,
+    },
+    {   // P4: clockwise T/Y/H/N/B/V/F/R, Yell=G
+        SDLK_t, SDLK_y, SDLK_h, SDLK_n,
+        SDLK_b, SDLK_v, SDLK_f, SDLK_r,
+        SDLK_5, SDLK_6,
+        SDLK_EQUALS, SDLK_7,
+        SDLK_g, SDLK_8, SDLK_4, SDLK_F8,
     }
 };
 constexpr int kDefaultControlModes[4] = {
@@ -273,11 +303,14 @@ void reset_default_player_controls()
     {
         for (int k = 0; k < NUM_KEYS; ++k)
         {
-            player_keys[p][k] = kDefaultPlayerKeys[p][k];
-            player_mode_keys[p][kModeFourIndex][k] = kDefaultPlayerKeys[p][k];
-            player_mode_keys[p][kModeEightIndex][k] = kDefaultPlayerKeys[p][k];
+            player_mode_keys[p][kModeFourIndex][k] = kDefaultFourDirKeys[p][k];
+            player_mode_keys[p][kModeEightIndex][k] = kDefaultEightDirKeys[p][k];
         }
         player_control_modes[p] = kDefaultControlModes[p];
+        // Activate the default mode's keymap into player_keys
+        const int idx = control_mode_keymap_index(kDefaultControlModes[p]);
+        for (int k = 0; k < NUM_KEYS; ++k)
+            player_keys[p][k] = player_mode_keys[p][idx][k];
     }
 }
 
@@ -333,9 +366,10 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             const std::string legacy_key_value = config.get_setting("controls", legacy_key_name);
             if (!legacy_key_value.empty())
             {
-                const int parsed = parse_int_strict(legacy_key_value).value_or(kDefaultPlayerKeys[p][k]);
-                player_mode_keys[p][kModeFourIndex][k] = parsed;
-                player_mode_keys[p][kModeEightIndex][k] = parsed;
+                const int four_fallback = kDefaultFourDirKeys[p][k];
+                const int eight_fallback = kDefaultEightDirKeys[p][k];
+                player_mode_keys[p][kModeFourIndex][k] = parse_int_strict(legacy_key_value).value_or(four_fallback);
+                player_mode_keys[p][kModeEightIndex][k] = parse_int_strict(legacy_key_value).value_or(eight_fallback);
             }
 
             const std::string mode4_key_name = std::format("player{}_mode4_key{}", p + 1, k);
@@ -343,7 +377,7 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             if (!mode4_key_value.empty())
             {
                 player_mode_keys[p][kModeFourIndex][k] =
-                    parse_int_strict(mode4_key_value).value_or(kDefaultPlayerKeys[p][k]);
+                    parse_int_strict(mode4_key_value).value_or(kDefaultFourDirKeys[p][k]);
             }
 
             const std::string mode8_key_name = std::format("player{}_mode8_key{}", p + 1, k);
@@ -351,7 +385,7 @@ void load_player_control_settings_from_cfg(cfg_store& config)
             if (!mode8_key_value.empty())
             {
                 player_mode_keys[p][kModeEightIndex][k] =
-                    parse_int_strict(mode8_key_value).value_or(kDefaultPlayerKeys[p][k]);
+                    parse_int_strict(mode8_key_value).value_or(kDefaultEightDirKeys[p][k]);
             }
         }
 

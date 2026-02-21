@@ -875,11 +875,11 @@ std::string build_player_control_summary(int player_index)
     const std::string down_right_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_RIGHT]);
     const std::string down_left_s = get_key_display_name_short(player_keys[player_index][KEY_DOWN_LEFT]);
     const std::string up_left_s = get_key_display_name_short(player_keys[player_index][KEY_UP_LEFT]);
-    return std::format("Card:{}/{}/{}/{} Diag:{}/{}/{}/{} Y:{}",
-        up_s, left_s, down_s, right_s, up_right_s, down_right_s, down_left_s, up_left_s, yell_s);
+    return std::format("Dir:{}/{}/{}/{}/{}/{}/{}/{} Y:{}",
+        up_s, up_right_s, right_s, down_right_s, down_s, down_left_s, left_s, up_left_s, yell_s);
 }
 
-static void draw_remap_prompt(const std::string& prompt)
+static void draw_remap_prompt(const std::string& prompt, int player_index)
 {
     text& mytext = myscreen->text_normal;
     myscreen->clear_window();
@@ -888,6 +888,8 @@ static void draw_remap_prompt(const std::string& prompt)
     mytext.write_xy_center(160, 45, RED, "REMAP CONTROLS");
     mytext.write_xy_center(160, 80, DARK_BLUE, "%s", prompt.c_str());
     mytext.write_xy_center(160, 105, DARK_BLUE, "Press ESC to keep current key");
+    const std::string summary = build_player_control_summary(player_index);
+    mytext.write_xy_center(160, 155, DARK_BLUE, "%s", summary.c_str());
     myscreen->buffer_to_screen(0, 0, 320, 200);
 }
 
@@ -913,12 +915,12 @@ static void remap_player_keys(int player_index)
     };
     constexpr KeyPrompt prompts_eight[] = {
         {KEY_UP, "UP"},
-        {KEY_RIGHT, "RIGHT"},
-        {KEY_DOWN, "DOWN"},
-        {KEY_LEFT, "LEFT"},
         {KEY_UP_RIGHT, "UP-RIGHT"},
+        {KEY_RIGHT, "RIGHT"},
         {KEY_DOWN_RIGHT, "DOWN-RIGHT"},
+        {KEY_DOWN, "DOWN"},
         {KEY_DOWN_LEFT, "DOWN-LEFT"},
+        {KEY_LEFT, "LEFT"},
         {KEY_UP_LEFT, "UP-LEFT"},
         {KEY_FIRE, "FIRE"},
         {KEY_SPECIAL, "SPECIAL"},
@@ -934,7 +936,7 @@ static void remap_player_keys(int player_index)
     for (size_t idx = 0; idx < prompt_count; ++idx)
     {
         const auto& prompt = prompts[idx];
-        draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label));
+        draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label), player_index);
         assignKeyFromWaitEvent(player_index, prompt.key);
     }
 }

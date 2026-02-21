@@ -192,9 +192,33 @@ void test_controls_summary_switches_between_four_and_eight_direction_formats()
     set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
 
     const std::string summary_eight = build_player_control_summary(0);
-    TEST_ASSERT(summary_eight.find("Card:") != std::string::npos,
-        "8-direction summary should include cardinal-key label");
-    TEST_ASSERT(summary_eight.find("Diag:") != std::string::npos,
-        "8-direction summary should include diagonal-key label");
+    TEST_ASSERT(summary_eight.find("Dir:") != std::string::npos,
+        "8-direction summary should include Dir: label");
+    TEST_ASSERT(summary_eight.find("Y:") != std::string::npos,
+        "8-direction summary should include yell label");
 }
 REGISTER_TEST(test_controls_summary_switches_between_four_and_eight_direction_formats);
+
+void test_eight_direction_summary_clockwise_order()
+{
+    PlayerControlSnapshotGuard guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    set_player_key_binding(0, KEY_UP, SDLK_w);
+    set_player_key_binding(0, KEY_UP_RIGHT, SDLK_e);
+    set_player_key_binding(0, KEY_RIGHT, SDLK_d);
+    set_player_key_binding(0, KEY_DOWN_RIGHT, SDLK_c);
+    set_player_key_binding(0, KEY_DOWN, SDLK_x);
+    set_player_key_binding(0, KEY_DOWN_LEFT, SDLK_z);
+    set_player_key_binding(0, KEY_LEFT, SDLK_a);
+    set_player_key_binding(0, KEY_UP_LEFT, SDLK_q);
+    set_player_key_binding(0, KEY_YELL, SDLK_s);
+
+    const std::string summary = build_player_control_summary(0);
+    // Should be clockwise: Dir:W/E/D/C/X/Z/A/Q Y:S
+    TEST_ASSERT(summary.find("Dir:W/E/D/C/X/Z/A/Q") != std::string::npos,
+        "8-direction summary should list keys clockwise from Up");
+    TEST_ASSERT(summary.find("Y:S") != std::string::npos,
+        "8-direction summary should end with Yell key");
+}
+REGISTER_TEST(test_eight_direction_summary_clockwise_order);
