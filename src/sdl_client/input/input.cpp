@@ -23,10 +23,13 @@
 #include <openglad/input/input.h>
 #include <openglad/core/util.h>
 #include <openglad/platform/io.h>
+#include <openglad/data/gparser.h>
 #include <openglad/legacy/test_trace.h>
 #include <cstdio>
 #include <ctime>
 #include <cstring> //buffers: for strlen
+#include <array>
+#include <format>
 #include <string>
 
 #ifdef __EMSCRIPTEN__
@@ -99,14 +102,16 @@ JoyData player_joy[4];
 #define MAX_NUM_JOYSTICKS 10  // Just in case there are joysticks attached that are not useable (e.g. accelerometer)
 SDL_Joystick* joysticks[MAX_NUM_JOYSTICKS];
 
-int player_keys[4][NUM_KEYS] = {
+namespace
+{
+constexpr int kDefaultPlayerKeys[4][NUM_KEYS] = {
     {
-        SDLK_w, SDLK_e, SDLK_d, SDLK_c,  // movements
-        SDLK_x, SDLK_z, SDLK_a, SDLK_q,
+        SDLK_w, SDLK_UNKNOWN, SDLK_d, SDLK_UNKNOWN,  // movements
+        SDLK_s, SDLK_UNKNOWN, SDLK_a, SDLK_UNKNOWN,
         SDLK_LCTRL, SDLK_LALT,                  // fire & special
         SDLK_BACKQUOTE,                         // switch guys
         SDLK_TAB,                               // change special
-        SDLK_s,                                 // Yell
+        SDLK_e,                                 // Yell
         SDLK_LSHIFT,                            // Shifter
         SDLK_1,                                 // Options menu
         SDLK_F5,                                // Cheat key
@@ -123,27 +128,67 @@ int player_keys[4][NUM_KEYS] = {
         SDLK_F6,                                // Cheat key
     },
     {
-        SDLK_i, SDLK_o, SDLK_l, SDLK_PERIOD,  // movements
-        SDLK_COMMA, SDLK_m, SDLK_j, SDLK_u,
+        SDLK_i, SDLK_UNKNOWN, SDLK_l, SDLK_UNKNOWN,  // movements
+        SDLK_k, SDLK_UNKNOWN, SDLK_j, SDLK_UNKNOWN,
         SDLK_SPACE, SDLK_SEMICOLON,             // fire & special
         SDLK_MINUS,                             // switch guys
         SDLK_9,                                 // change special
-        SDLK_k,                                 // Yell
+        SDLK_u,                                 // Yell
         SDLK_0,                                 // Shifter
         SDLK_3,                                 // Options menu
         SDLK_F7,                                // Cheat key
     },
     {
-        SDLK_t, SDLK_y, SDLK_h, SDLK_n,  // movements
-        SDLK_b, SDLK_v, SDLK_f, SDLK_r,
+        SDLK_t, SDLK_UNKNOWN, SDLK_h, SDLK_UNKNOWN,  // movements
+        SDLK_g, SDLK_UNKNOWN, SDLK_f, SDLK_UNKNOWN,
         SDLK_5, SDLK_6,                         // fire & special
         SDLK_EQUALS,                            // switch guys
         SDLK_7,                                 // change special
-        SDLK_g,                                 // Yell
+        SDLK_y,                                 // Yell
         SDLK_8,                                 // Shifter
         SDLK_4,                                 // Options menu
         SDLK_F8,                                // Cheat key
     }
+};
+constexpr int kDefaultControlModes[4] = {
+    static_cast<int>(ControlDirectionMode::FourDirection),
+    static_cast<int>(ControlDirectionMode::FourDirection),
+    static_cast<int>(ControlDirectionMode::FourDirection),
+    static_cast<int>(ControlDirectionMode::FourDirection),
+};
+} // namespace
+
+int player_keys[4][NUM_KEYS] = {
+    {
+        SDLK_w, SDLK_UNKNOWN, SDLK_d, SDLK_UNKNOWN,
+        SDLK_s, SDLK_UNKNOWN, SDLK_a, SDLK_UNKNOWN,
+        SDLK_LCTRL, SDLK_LALT, SDLK_BACKQUOTE, SDLK_TAB,
+        SDLK_e, SDLK_LSHIFT, SDLK_1, SDLK_F5,
+    },
+    {
+        SDLK_UP, SDLK_UNKNOWN, SDLK_RIGHT, SDLK_UNKNOWN,
+        SDLK_DOWN, SDLK_UNKNOWN, SDLK_LEFT, SDLK_UNKNOWN,
+        SDLK_PERIOD, SDLK_SLASH, SDLK_RETURN, SDLK_QUOTE,
+        SDLK_BACKSLASH, SDLK_RSHIFT, SDLK_2, SDLK_F6,
+    },
+    {
+        SDLK_i, SDLK_UNKNOWN, SDLK_l, SDLK_UNKNOWN,
+        SDLK_k, SDLK_UNKNOWN, SDLK_j, SDLK_UNKNOWN,
+        SDLK_SPACE, SDLK_SEMICOLON, SDLK_MINUS, SDLK_9,
+        SDLK_u, SDLK_0, SDLK_3, SDLK_F7,
+    },
+    {
+        SDLK_t, SDLK_UNKNOWN, SDLK_h, SDLK_UNKNOWN,
+        SDLK_g, SDLK_UNKNOWN, SDLK_f, SDLK_UNKNOWN,
+        SDLK_5, SDLK_6, SDLK_EQUALS, SDLK_7,
+        SDLK_y, SDLK_8, SDLK_4, SDLK_F8,
+    }
+};
+int player_control_modes[4] = {
+    static_cast<int>(ControlDirectionMode::FourDirection),
+    static_cast<int>(ControlDirectionMode::FourDirection),
+    static_cast<int>(ControlDirectionMode::FourDirection),
+    static_cast<int>(ControlDirectionMode::FourDirection),
 };
 
 #ifdef USE_TOUCH_INPUT
@@ -195,6 +240,77 @@ bool touch_keystate[4][NUM_KEYS] = {
 };
 #endif
 
+void reset_default_player_controls()
+{
+    for (int p = 0; p < 4; ++p)
+    {
+        for (int k = 0; k < NUM_KEYS; ++k)
+            player_keys[p][k] = kDefaultPlayerKeys[p][k];
+        player_control_modes[p] = kDefaultControlModes[p];
+    }
+}
+
+int get_player_control_mode(int player_index)
+{
+    if (player_index < 0 || player_index >= 4)
+        return static_cast<int>(ControlDirectionMode::FourDirection);
+    return player_control_modes[player_index];
+}
+
+void set_player_control_mode(int player_index, int mode)
+{
+    if (player_index < 0 || player_index >= 4)
+        return;
+    player_control_modes[player_index] =
+        (mode == static_cast<int>(ControlDirectionMode::EightDirection))
+            ? static_cast<int>(ControlDirectionMode::EightDirection)
+            : static_cast<int>(ControlDirectionMode::FourDirection);
+}
+
+bool player_allows_diagonal_movement(int player_index)
+{
+    return get_player_control_mode(player_index) == static_cast<int>(ControlDirectionMode::EightDirection);
+}
+
+void load_player_control_settings_from_cfg(cfg_store& config)
+{
+    reset_default_player_controls();
+    if (config.get_setting("controls", "player1_mode").empty())
+        return;
+
+    for (int p = 0; p < 4; ++p)
+    {
+        const std::string mode_key = std::format("player{}_mode", p + 1);
+        const std::string mode_str = config.get_setting("controls", mode_key);
+        if (!mode_str.empty())
+            set_player_control_mode(p, parse_int_strict(mode_str).value_or(
+                static_cast<int>(ControlDirectionMode::FourDirection)));
+
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            const std::string key_name = std::format("player{}_key{}", p + 1, k);
+            const std::string key_value = config.get_setting("controls", key_name);
+            if (key_value.empty())
+                continue;
+            player_keys[p][k] = parse_int_strict(key_value).value_or(kDefaultPlayerKeys[p][k]);
+        }
+    }
+}
+
+void save_player_control_settings_to_cfg(cfg_store& config)
+{
+    for (int p = 0; p < 4; ++p)
+    {
+        config.apply_setting("controls", std::format("player{}_mode", p + 1),
+            std::to_string(get_player_control_mode(p)));
+        for (int k = 0; k < NUM_KEYS; ++k)
+        {
+            config.apply_setting("controls", std::format("player{}_key{}", p + 1, k),
+                std::to_string(player_keys[p][k]));
+        }
+    }
+}
+
 
 //
 // Input routines (for handling all events and then setting the appropriate vars)
@@ -202,6 +318,7 @@ bool touch_keystate[4][NUM_KEYS] = {
 
 void init_input()
 {
+    reset_default_player_controls();
     keystates = SDL_GetKeyboardState(nullptr);
 
     // Set up joysticks

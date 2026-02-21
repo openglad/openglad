@@ -194,6 +194,9 @@ Sint32 change_hire_teamnum(Sint32 arg);
 Sint32 change_allied();
 Sint32 level_editor();
 Sint32 main_options();
+Sint32 main_controls_options();
+Sint32 toggle_player_control_mode(Sint32 arg);
+Sint32 edit_player_keymap(Sint32 arg);
 Sint32 overscan_adjust(Sint32 arg);
 Sint32 show_general_help();
 
@@ -246,6 +249,9 @@ enum class ButtonAction : Sint32
     RestoreDefaultSettings = 44,
     ShowHelp = 45,
     CreateProgressMenu = 46,
+    OpenControlSettings = 47,
+    ToggleControlMode = 48,
+    EditPlayerKeymap = 49,
 };
 
 inline constexpr Sint32 button_action_id(ButtonAction action)
@@ -303,6 +309,9 @@ inline constexpr ButtonAction button_action_from_id(Sint32 action)
     case button_action_id(ButtonAction::RestoreDefaultSettings): return ButtonAction::RestoreDefaultSettings;
     case button_action_id(ButtonAction::ShowHelp): return ButtonAction::ShowHelp;
     case button_action_id(ButtonAction::CreateProgressMenu): return ButtonAction::CreateProgressMenu;
+    case button_action_id(ButtonAction::OpenControlSettings): return ButtonAction::OpenControlSettings;
+    case button_action_id(ButtonAction::ToggleControlMode): return ButtonAction::ToggleControlMode;
+    case button_action_id(ButtonAction::EditPlayerKeymap): return ButtonAction::EditPlayerKeymap;
     default:
         return ButtonAction::Invalid;
     }

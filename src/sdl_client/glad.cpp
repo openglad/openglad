@@ -234,12 +234,14 @@ int main(int argc, char *argv[])
 		io_init(argc, argv);
 
 		cfg.load_settings();
+		load_player_control_settings_from_cfg(cfg);
 		// Sync overscan from config (data/ can't depend on input/)
 		overscan_percentage = static_cast<float>(
 		    parse_int_strict(cfg.get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
 		update_overscan_setting();
 		cfg.apply_setting("graphics", "overscan_percentage",
 		    std::format("{:.0f}", 100 * overscan_percentage));
+		save_player_control_settings_to_cfg(cfg);
 		cfg.save_settings();
 		cfg.commandline(argc, argv);
 
@@ -261,6 +263,7 @@ int main(int argc, char *argv[])
 		srand(static_cast<unsigned int>(time(nullptr)));
 
 		init_input();
+		load_player_control_settings_from_cfg(cfg);
 		intro_main(argc, argv);
 
 	#ifdef __EMSCRIPTEN__

@@ -125,6 +125,7 @@ std::unique_ptr<pixieN> main_columns_pix;
 // Non-owning alias to the current button set (init_buttons owns allbuttons[]).
 vbutton * localbuttons;
 Sint32 current_team_num = 0;
+extern int player_keys[4][NUM_KEYS];
 
 #ifdef TESTING
 // Test infrastructure for picker_mainmenu_loop
@@ -570,7 +571,31 @@ button main_options_buttons[] =
     button("toggle_damage_numbers", "Damage numbers", KEYSTATE_UNKNOWN, 210, 10 + 6*BUTTON_PITCH, 90, 15, TOGGLE_DAMAGE_NUMBERS, -1, MenuNav::UpDownLeft(9, 13, 10)),
     button("toggle_heal_numbers", "Healing numbers", KEYSTATE_UNKNOWN, 80, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_HEAL_NUMBERS, -1, MenuNav::UpDownRight(10, 0, 13)),
     button("toggle_gore", "Gore", KEYSTATE_UNKNOWN, 210, 10 + 7*BUTTON_PITCH, 90, 15, TOGGLE_GORE, -1, MenuNav::UpDownLeft(11, 0, 12)),
-    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 170, 10, 120, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::UpDownLeft(12, 1, 0)),
+    button("restore_defaults", "RESTORE DEFAULTS", KEYSTATE_UNKNOWN, 170, 10, 120, 15, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::UpDownLeftRight(12, 1, 0, 15)),
+    button("player_controls", "PLAYER CONTROLS", KEYSTATE_UNKNOWN, 170, 29, 120, 15,
+        button_action_id(ButtonAction::OpenControlSettings), -1, MenuNav::UpDownLeft(14, 2, 1)),
+};
+
+button control_options_buttons[] =
+{
+    button("controls_back", "BACK", KEYSTATE_ESCAPE, 20, 10, 50, 15, RETURN_MENU, menu_result_id(MenuResult::Exit), MenuNav::Down(1)),
+    button("player1_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 40, 120, 15,
+        button_action_id(ButtonAction::ToggleControlMode), 0, MenuNav::UpDownRight(0, 3, 2)),
+    button("player1_remap", "REMAP P1", KEYSTATE_UNKNOWN, 160, 40, 120, 15,
+        button_action_id(ButtonAction::EditPlayerKeymap), 0, MenuNav::DownLeft(4, 1)),
+    button("player2_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 65, 120, 15,
+        button_action_id(ButtonAction::ToggleControlMode), 1, MenuNav::UpDownRight(1, 5, 4)),
+    button("player2_remap", "REMAP P2", KEYSTATE_UNKNOWN, 160, 65, 120, 15,
+        button_action_id(ButtonAction::EditPlayerKeymap), 1, MenuNav::UpDownLeft(2, 6, 3)),
+    button("player3_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 90, 120, 15,
+        button_action_id(ButtonAction::ToggleControlMode), 2, MenuNav::UpDownRight(3, 7, 6)),
+    button("player3_remap", "REMAP P3", KEYSTATE_UNKNOWN, 160, 90, 120, 15,
+        button_action_id(ButtonAction::EditPlayerKeymap), 2, MenuNav::UpDownLeft(4, 8, 5)),
+    button("player4_mode", "4-DIRECTION", KEYSTATE_UNKNOWN, 20, 115, 120, 15,
+        button_action_id(ButtonAction::ToggleControlMode), 3, MenuNav::UpDownRight(5, 9, 8)),
+    button("player4_remap", "REMAP P4", KEYSTATE_UNKNOWN, 160, 115, 120, 15,
+        button_action_id(ButtonAction::EditPlayerKeymap), 3, MenuNav::UpDownLeft(6, 9, 7)),
+    button("controls_restore_defaults", "RESET CONTROL DEFAULTS", KEYSTATE_UNKNOWN, 70, 150, 180, 18, RESTORE_DEFAULT_SETTINGS, -1, MenuNav::Up(8)),
 };
 
 // beginmenu (first menu of new game), create_team_menu
@@ -802,6 +827,160 @@ void draw_toggle_effect_button(button& b, const std::string& category, const std
     mytext.write_xy_center(b.x + b.sizex/2, b.y + b.sizey/2 - 3, DARK_BLUE, "%s", b.label.c_str());
 }
 
+static const char* get_key_display_name_short(int keycode)
+{
+    static std::string buffer;
+    std::string sname = SDL_GetKeyName(keycode);
+
+    if (sname == "`") return "~/`";
+    if (sname == "Left Ctrl") return "LCtrl";
+    if (sname == "Right Ctrl") return "RCtrl";
+    if (sname == "Left Shift") return "LShift";
+    if (sname == "Right Shift") return "RShift";
+    if (sname == "Left Alt") return "LAlt";
+    if (sname == "Right Alt") return "RAlt";
+    if (sname == "Backspace") return "BkSpc";
+    if (sname == "CapsLock") return "Caps";
+    if (sname == "Unknown Key") return "--";
+    if (sname.size() > 10)
+    {
+        buffer = sname.substr(0, 9);
+        return buffer.c_str();
+    }
+    return SDL_GetKeyName(keycode);
+}
+
+static void draw_remap_prompt(const std::string& prompt)
+{
+    text& mytext = myscreen->text_normal;
+    myscreen->clear_window();
+    myscreen->draw_button(0, 0, 320, 200, 0);
+    myscreen->draw_button_inverted(20, 30, 300, 170);
+    mytext.write_xy_center(160, 45, RED, "REMAP CONTROLS");
+    mytext.write_xy_center(160, 80, DARK_BLUE, "%s", prompt.c_str());
+    mytext.write_xy_center(160, 105, DARK_BLUE, "Press ESC to keep current key");
+    myscreen->buffer_to_screen(0, 0, 320, 200);
+}
+
+static void remap_player_keys(int player_index)
+{
+    if (player_index < 0 || player_index >= 4)
+        return;
+
+    struct KeyPrompt { int key; const char* label; };
+    constexpr KeyPrompt prompts[] = {
+        {KEY_UP, "UP"},
+        {KEY_RIGHT, "RIGHT"},
+        {KEY_DOWN, "DOWN"},
+        {KEY_LEFT, "LEFT"},
+        {KEY_UP_RIGHT, "UP-RIGHT (8-direction)"},
+        {KEY_DOWN_RIGHT, "DOWN-RIGHT (8-direction)"},
+        {KEY_DOWN_LEFT, "DOWN-LEFT (8-direction)"},
+        {KEY_UP_LEFT, "UP-LEFT (8-direction)"},
+        {KEY_FIRE, "FIRE"},
+        {KEY_SPECIAL, "SPECIAL"},
+        {KEY_SPECIAL_SWITCH, "SPECIAL SWITCH"},
+        {KEY_YELL, "YELL"},
+        {KEY_SWITCH, "SWITCH CHARACTER"},
+        {KEY_SHIFTER, "SHIFTER"},
+    };
+
+    for (const auto& prompt : prompts)
+    {
+        draw_remap_prompt(std::format("P{} {}", player_index + 1, prompt.label));
+        assignKeyFromWaitEvent(player_index, prompt.key);
+    }
+}
+
+Sint32 toggle_player_control_mode(Sint32 arg)
+{
+    const int player_index = static_cast<int>(arg);
+    if (player_index < 0 || player_index >= 4)
+        return menu_result_id(MenuResult::Redraw);
+
+    const int current_mode = get_player_control_mode(player_index);
+    const int next_mode = (current_mode == static_cast<int>(ControlDirectionMode::EightDirection))
+        ? static_cast<int>(ControlDirectionMode::FourDirection)
+        : static_cast<int>(ControlDirectionMode::EightDirection);
+    set_player_control_mode(player_index, next_mode);
+    return menu_result_id(MenuResult::Redraw);
+}
+
+Sint32 edit_player_keymap(Sint32 arg)
+{
+    remap_player_keys(static_cast<int>(arg));
+    return menu_result_id(MenuResult::Redraw);
+}
+
+Sint32 main_controls_options()
+{
+    text& mytext = myscreen->text_normal;
+    button* buttons = control_options_buttons;
+    const int num_buttons = array_size(control_options_buttons);
+    int highlighted_button = 0;
+    localbuttons = init_buttons(buttons, num_buttons);
+    clear_keyboard();
+
+    Sint32 retvalue = 0;
+	while(!(retvalue & menu_result_id(MenuResult::Exit)))
+	{
+        if(leftmouse(buttons))
+        {
+            const Sint32 click_result = localbuttons->leftclick();
+            if(click_result == menu_result_id(MenuResult::Exit))
+                break;
+            if(click_result != 0)
+                retvalue = click_result;
+        }
+
+        handle_menu_nav(buttons, highlighted_button, retvalue);
+        if(retvalue == menu_result_id(MenuResult::Exit))
+            break;
+
+        reset_buttons(localbuttons, buttons, num_buttons, retvalue);
+
+        for (int i = 0; i < 4; ++i)
+        {
+            const bool eight_dir = get_player_control_mode(i) == static_cast<int>(ControlDirectionMode::EightDirection);
+            const int mode_index = 1 + i * 2;
+            buttons[mode_index].label = eight_dir ? "8-DIRECTION" : "4-DIRECTION";
+            allbuttons[mode_index]->label = buttons[mode_index].label;
+        }
+
+        myscreen->clear_window();
+        myscreen->draw_button(0, 0, 320, 200, 0);
+        myscreen->draw_button_inverted(4, 4, 312, 192);
+        draw_buttons(buttons, num_buttons);
+
+        mytext.write_xy(20, 22, DARK_BLUE, "Player control modes and key remapping");
+        mytext.write_xy(20, 132, DARK_BLUE, "4-direction uses only cardinal movement.");
+        mytext.write_xy(20, 140, DARK_BLUE, "8-direction enables diagonal movement keys.");
+
+        for (int i = 0; i < 4; ++i)
+        {
+            const int y = 45 + i * 25;
+            const int up_key = player_keys[i][KEY_UP];
+            const int left_key = player_keys[i][KEY_LEFT];
+            const int down_key = player_keys[i][KEY_DOWN];
+            const int right_key = player_keys[i][KEY_RIGHT];
+            const int yell_key = player_keys[i][KEY_YELL];
+            mytext.write_xy(20, y - 8, DARK_BLUE, "P%d", i + 1);
+            mytext.write_xy(24, y + 10, DARK_BLUE, "%s/%s/%s/%s  Yell:%s",
+                get_key_display_name_short(up_key),
+                get_key_display_name_short(left_key),
+                get_key_display_name_short(down_key),
+                get_key_display_name_short(right_key),
+                get_key_display_name_short(yell_key));
+        }
+
+        draw_highlight(buttons[highlighted_button]);
+        myscreen->buffer_to_screen(0, 0, 320, 200);
+        SDL_Delay(10);
+    }
+
+    return menu_result_id(MenuResult::Redraw);
+}
+
 Sint32 main_options()
 {
     text& mytext = myscreen->text_normal;
@@ -827,8 +1006,11 @@ Sint32 main_options()
 	    // Input
 		if(leftmouse(buttons))
         {
-			if(localbuttons->leftclick() == menu_result_id(MenuResult::Exit))
+            const Sint32 click_result = localbuttons->leftclick();
+			if(click_result == menu_result_id(MenuResult::Exit))
                 break;
+            if(click_result != 0)
+                retvalue = click_result;
         }
         
         handle_menu_nav(buttons, highlighted_button, retvalue);
@@ -877,6 +1059,7 @@ Sint32 main_options()
 	// Sync overscan to config before saving (data/ can't depend on input/)
 	active_config().apply_setting("graphics", "overscan_percentage",
 	    std::format("{:.0f}", 100 * overscan_percentage));
+    save_player_control_settings_to_cfg(active_config());
 	active_config().save_settings();
     
     return menu_result_id(MenuResult::Redraw);

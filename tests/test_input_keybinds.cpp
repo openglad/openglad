@@ -1,4 +1,6 @@
 #include <openglad/input/input.h>
+#include <openglad/runtime/game_context.h>
+#include <openglad/data/gparser.h>
 #include "test_framework.h"
 
 extern int player_keys[4][NUM_KEYS];
@@ -20,6 +22,21 @@ struct KeyBindingGuard
     ~KeyBindingGuard()
     {
         player_keys[player][key_enum] = old;
+    }
+};
+
+struct ControlModeGuard
+{
+    int player;
+    int old_mode;
+
+    explicit ControlModeGuard(int player_)
+        : player(player_), old_mode(get_player_control_mode(player_))
+    {}
+
+    ~ControlModeGuard()
+    {
+        set_player_control_mode(player, old_mode);
     }
 };
 
@@ -133,3 +150,51 @@ void test_input_wait_for_key_event_returns_fake_escape_in_test_mode()
     TEST_ASSERT_EQ((int)SDLK_ESCAPE, (int)e.key.keysym.sym, "wait_for_key_event should return escape in test mode");
 }
 REGISTER_TEST(test_input_wait_for_key_event_returns_fake_escape_in_test_mode);
+
+void test_input_state_from_sdl_respects_four_direction_mode()
+{
+    disablePlayerJoystick(0);
+    KeyBindingGuard bind_diag(0, KEY_UP_RIGHT, SDLK_v);
+    KeyStateGuard ks(SDL_GetScancodeFromKey(SDLK_v));
+    ControlModeGuard mode_guard(0);
+
+    InputState input{};
+    input.clear();
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    ks.set(true);
+    input_state_from_sdl(input);
+    TEST_ASSERT(!input.players[0].held[KEY_UP_RIGHT], "4-direction should suppress held diagonal input");
+    TEST_ASSERT(!input.players[0].pressed[KEY_UP_RIGHT], "4-direction should suppress pressed diagonal input");
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    input_state_from_sdl(input);
+    TEST_ASSERT(input.players[0].held[KEY_UP_RIGHT], "8-direction should keep held diagonal input");
+    TEST_ASSERT(input.players[0].pressed[KEY_UP_RIGHT], "8-direction should allow pressed diagonal edges");
+}
+REGISTER_TEST(test_input_state_from_sdl_respects_four_direction_mode);
+
+void test_input_control_settings_cfg_roundtrip()
+{
+    cfg_store config;
+    config.load_settings();
+
+    const int old_yell = player_keys[0][KEY_YELL];
+    ControlModeGuard mode_guard(0);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::EightDirection));
+    player_keys[0][KEY_YELL] = SDLK_z;
+    save_player_control_settings_to_cfg(config);
+
+    set_player_control_mode(0, static_cast<int>(ControlDirectionMode::FourDirection));
+    player_keys[0][KEY_YELL] = SDLK_UNKNOWN;
+    load_player_control_settings_from_cfg(config);
+
+    TEST_ASSERT_EQ(static_cast<int>(ControlDirectionMode::EightDirection), get_player_control_mode(0),
+        "control mode should reload from config");
+    TEST_ASSERT_EQ(static_cast<int>(SDLK_z), player_keys[0][KEY_YELL],
+        "keybind should reload from config");
+
+    player_keys[0][KEY_YELL] = old_yell;
+}
+REGISTER_TEST(test_input_control_settings_cfg_roundtrip);

@@ -642,6 +642,12 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
         return yes_or_no(arg);
     case ButtonAction::MainOptions:
         return main_options();
+    case ButtonAction::OpenControlSettings:
+        return main_controls_options();
+    case ButtonAction::ToggleControlMode:
+        return toggle_player_control_mode(arg);
+    case ButtonAction::EditPlayerKeymap:
+        return edit_player_keymap(arg);
     case ButtonAction::ShowHelp:
         show_general_help();
         return REDRAW;
@@ -684,6 +690,7 @@ bool picker_try_intercept_button_action(Sint32 whatfunc, Sint32 call_arg, Sint32
     case ButtonAction::RestoreDefaultSettings:
         restore_default_settings();
         active_config().load_settings();
+        load_player_control_settings_from_cfg(active_config());
         overscan_percentage = static_cast<float>(
             parse_int_strict(active_config().get_setting("graphics", "overscan_percentage")).value_or(0)) / 100.0f;
         update_overscan_setting();

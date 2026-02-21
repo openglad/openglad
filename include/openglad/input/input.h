@@ -139,6 +139,21 @@ inline constexpr int KEY_PREFS               = 14;
 inline constexpr int KEY_CHEAT               = 15;
 inline constexpr int NUM_KEYS                = 16;
 
+enum class ControlDirectionMode : int
+{
+    FourDirection = 4,
+    EightDirection = 8
+};
+
+class cfg_store;
+
+void reset_default_player_controls();
+int get_player_control_mode(int player_index);
+void set_player_control_mode(int player_index, int mode);
+bool player_allows_diagonal_movement(int player_index);
+void load_player_control_settings_from_cfg(cfg_store& config);
+void save_player_control_settings_to_cfg(cfg_store& config);
+
 
 class JoyData
 {
