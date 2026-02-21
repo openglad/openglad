@@ -195,8 +195,8 @@ void test_controls_summary_switches_between_four_and_eight_direction_formats()
         "4-direction summary should include special key");
     TEST_ASSERT(summary_four.find("SS:=") != std::string::npos,
         "4-direction summary should include special switch key");
-    TEST_ASSERT(summary_four.find("SW:Grv") != std::string::npos,
-        "4-direction summary should map backtick to a font-safe switch key label");
+    TEST_ASSERT(summary_four.find("SW:`") != std::string::npos,
+        "4-direction summary should display backtick character for switch key");
     TEST_ASSERT(summary_four.find("Sh:F8") != std::string::npos,
         "4-direction summary should include shifter key");
     TEST_ASSERT(summary_four.find("Dir:") == std::string::npos,
@@ -275,7 +275,7 @@ void test_controls_summary_remap_mode_uses_two_lines()
         "remap summary first line should contain directional keys");
     TEST_ASSERT(remap_summary[1].find("Y:E") != std::string::npos,
         "remap summary second line should contain action keys");
-    TEST_ASSERT(remap_summary[1].find("SW:Grv") != std::string::npos,
-        "remap summary second line should use font-safe backtick label");
+    TEST_ASSERT(remap_summary[1].find("SW:`") != std::string::npos,
+        "remap summary second line should display backtick character");
 }
 REGISTER_TEST(test_controls_summary_remap_mode_uses_two_lines);

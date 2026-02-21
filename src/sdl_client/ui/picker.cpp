@@ -837,7 +837,11 @@ static std::string get_key_display_name_short(int keycode)
 {
     std::string sname = SDL_GetKeyName(keycode);
 
-    if (sname == "`") return "Grv";
+    if (sname == "`") return "`";
+    if (sname == "Up") return std::string(1, '\x01');
+    if (sname == "Down") return std::string(1, '\x02');
+    if (sname == "Left") return std::string(1, '\x03');
+    if (sname == "Right") return std::string(1, '\x04');
     if (sname == "Left Ctrl") return "LC";
     if (sname == "Right Ctrl") return "RC";
     if (sname == "Left Shift") return "LS";
